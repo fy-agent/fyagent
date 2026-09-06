@@ -1,5 +1,7 @@
 import type {
   ManagedAuthAccountRemovalPreview,
+  ManagedAuthConnectionActionPreview,
+  ManagedAuthConnectionActionRequest,
   ManagedAuthLoginSessionSnapshot,
   ManagedAuthMutationResult,
   ManagedAuthOverview,
@@ -16,6 +18,33 @@ export const CONNECTION_REVISION = `mr1:${"b".repeat(64)}`;
 export const SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
 export const OPERATION_ID = "223e4567-e89b-42d3-a456-426614174000";
 export const PREVIEW_ID = `mp1:${"7".repeat(32)}`;
+export const CONNECTION_PREVIEW_ID = "323e4567-e89b-42d3-a456-426614174000";
+
+export function connectionPreviewFixture(
+  request: ManagedAuthConnectionActionRequest,
+): ManagedAuthConnectionActionPreview {
+  return {
+    contractVersion: 1,
+    previewId: CONNECTION_PREVIEW_ID,
+    ...request,
+    writeTargets:
+      request.action === "disconnect"
+        ? []
+        : [
+            {
+              path: "~/.codex/auth.json",
+              backupPath: "~/.codex/auth.json.fyagent.backup",
+              exists: true,
+            },
+          ],
+    preservedPaths:
+      request.action === "disconnect"
+        ? ["~/.codex/auth.json", "~/.codex/config.toml"]
+        : ["~/.codex/config.toml"],
+    canApply: true,
+    reasonCodes: [],
+  };
+}
 
 export function managedAuthOverviewFixture(): ManagedAuthOverview {
   return {

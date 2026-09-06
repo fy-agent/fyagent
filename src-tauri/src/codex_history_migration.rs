@@ -1222,7 +1222,7 @@ fn backup_provider_settings_config(
     });
     let bytes =
         serde_json::to_vec_pretty(&payload).map_err(|e| AppError::JsonSerialize { source: e })?;
-    atomic_write(&backup_path, &bytes)
+    crate::config::write_backup_file(&backup_path, &bytes)
 }
 
 fn provider_settings_backup_filename(provider_id: &str) -> String {

@@ -11,7 +11,7 @@ pub(crate) enum ManagedDesktopSourceId {
     QoderWork,
     TraeWork,
     WorkBuddy,
-    ClaudeDesktop,
+    ClaudeCliTooling,
     OpenCodeDesktop,
     CodexDesktopDedicated,
     GrokCliTooling,
@@ -66,12 +66,12 @@ const CODEX_DESKTOP: AgentLifecyclePolicy = AgentLifecyclePolicy {
     managed_desktop_source: Some(ManagedDesktopSourceId::CodexDesktopDedicated),
 };
 
-const CLAUDE_DESKTOP: AgentLifecyclePolicy = AgentLifecyclePolicy {
-    surfaces: &[AgentSurface::Desktop],
+const CLAUDE_CLI: AgentLifecyclePolicy = AgentLifecyclePolicy {
+    surfaces: &[AgentSurface::Cli],
     install: true,
     update: true,
-    launch: true,
-    managed_desktop_source: Some(ManagedDesktopSourceId::ClaudeDesktop),
+    launch: false,
+    managed_desktop_source: Some(ManagedDesktopSourceId::ClaudeCliTooling),
 };
 
 const OPENCODE_DESKTOP: AgentLifecyclePolicy = AgentLifecyclePolicy {
@@ -89,7 +89,7 @@ fn policy_for_product(agent_id: AgentCatalogId) -> &'static AgentLifecyclePolicy
         AgentCatalogId::WorkBuddy => &WORKBUDDY,
         AgentCatalogId::GrokBuild => &GROK_CLI,
         AgentCatalogId::Codex => &CODEX_DESKTOP,
-        AgentCatalogId::ClaudeCode => &CLAUDE_DESKTOP,
+        AgentCatalogId::ClaudeCode => &CLAUDE_CLI,
         AgentCatalogId::OpenCode => &OPENCODE_DESKTOP,
     }
 }
@@ -227,11 +227,11 @@ mod tests {
                 ManagedDesktopSourceId::CodexDesktopDedicated,
             ),
             AgentCatalogId::ClaudeCode => (
-                &[AgentSurface::Desktop],
+                &[AgentSurface::Cli],
                 true,
                 true,
-                true,
-                ManagedDesktopSourceId::ClaudeDesktop,
+                false,
+                ManagedDesktopSourceId::ClaudeCliTooling,
             ),
             AgentCatalogId::OpenCode => (
                 &[AgentSurface::Desktop],
@@ -327,8 +327,9 @@ mod tests {
     }
 
     #[test]
-    fn claude_and_opencode_reject_cli_and_admit_desktop_lifecycle_actions() {
-        for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::OpenCode] {
+    fn opencode_rejects_cli_and_admits_desktop_lifecycle_actions() {
+        {
+            let agent_id = AgentCatalogId::OpenCode;
             assert_eq!(legal_surfaces(agent_id), &[AgentSurface::Desktop]);
             assert_eq!(default_surface(agent_id), AgentSurface::Desktop);
             assert_eq!(
@@ -346,6 +347,28 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn claude_is_cli_only_with_install_update_and_no_desktop_or_launch() {
+        let id = AgentCatalogId::ClaudeCode;
+        assert_eq!(legal_surfaces(id), &[AgentSurface::Cli]);
+        assert_eq!(default_surface(id), AgentSurface::Cli);
+        assert_eq!(
+            lifecycle_policy(id, AgentSurface::Desktop),
+            Err(AgentReasonCode::SurfaceNotSupported)
+        );
+        for action in [AgentActionId::Install, AgentActionId::Update] {
+            assert_eq!(admit_action(id, AgentSurface::Cli, action), Ok(()));
+            assert_eq!(
+                admit_action(id, AgentSurface::Desktop, action),
+                Err(AgentReasonCode::SurfaceNotSupported)
+            );
+        }
+        assert_eq!(
+            admit_action(id, AgentSurface::Cli, AgentActionId::Launch),
+            Err(AgentReasonCode::ActionNotSupported)
+        );
     }
 
     #[test]

@@ -11,6 +11,7 @@ import {
   parseManagedAuthMutationResult,
   parseManagedAuthOverview,
   parseManagedAuthRemovalPreview,
+  parseManagedAuthConnectionPreview,
   type ManagedAuthPort,
 } from "../../../features/managed-auth";
 
@@ -79,10 +80,21 @@ export function createManagedAuthPort(): ManagedAuthPort {
           ),
         }),
       ),
-    applyConnectionAction: async (request) =>
+    previewConnectionAction: async (request) => {
+      const validated = assertManagedAuthConnectionActionRequest(request);
+      return parseManagedAuthConnectionPreview(
+        await invoke<unknown>("managed_auth_preview_connection_action", {
+          request: validated,
+        }),
+        validated,
+      );
+    },
+    applyConnectionAction: async (request, previewId) =>
       parseManagedAuthMutationResult(
         await invoke<unknown>("managed_auth_apply_connection_action", {
           request: assertManagedAuthConnectionActionRequest(request),
+          previewId:
+            previewId == null ? null : assertManagedAuthSessionId(previewId),
         }),
       ),
   };

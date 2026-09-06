@@ -90,6 +90,7 @@ import {
   hasUnconfirmedAuthority,
 } from "./apply";
 import { changePlanErrorCode } from "../../shared/features/change-plans-ui/changePlanErrors";
+import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
 import {
   addUniqueModelIds,
   filterModelIds,
@@ -1338,6 +1339,31 @@ function ProviderPanel({
       ariaLabel={`${label} 模型配置`}
     >
       <ModelsPanelHeader title={label} pending={draftCommit.pending}>
+        <FileRecoveryButton
+          targets={
+            app === "codex"
+              ? ["codex_config", "codex_catalog", "codex_auth"]
+              : app === "claude"
+                ? ["claude_settings"]
+                : ["grok_config"]
+          }
+          disabled={
+            busy ||
+            probeBusy ||
+            writesBlocked ||
+            draftCommit.pending ||
+            Boolean(codexSaveRequest || codexSavePlan)
+          }
+          onRestored={async () => {
+            await summaryQuery.refetch();
+            setNotice({
+              tone: "warning",
+              title: "文件已恢复",
+              description:
+                "已保存的模型条目保持不变。请重新打开相关软件，检查当前配置。",
+            });
+          }}
+        />
         <Button
           className="fy-control-button-primary fy-models-commit-button"
           disabled={

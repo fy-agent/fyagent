@@ -24,6 +24,7 @@ import type { ManagedAuthConsumer } from "../../shared/features/managed-auth";
 import type { AgentCatalogId } from "../../shared/features/types";
 import { LifecycleTargetPicker } from "../../shared/ui/LifecycleTargetPicker";
 import { Button } from "../../shared/ui/Button";
+import { Dialog } from "../../shared/ui/Dialog";
 import { InlineNotice, Spinner } from "../../shared/ui/primitives";
 
 import {
@@ -220,6 +221,12 @@ function AgentAuthStatusPanelInner({
   const [selectedTarget, setSelectedTarget] =
     useState<AgentInstallationTarget | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [confirmIntent, setConfirmIntent] = useState<AgentAuthIntent | null>(
+    null,
+  );
+  const confirmIntentRef = useRef<AgentAuthIntent | null>(null);
+  const authOriginRef = useRef<HTMLElement | null>(null);
+  const authCancelRef = useRef<HTMLButtonElement>(null);
   const lastTerminalSession = useRef<string | null>(null);
   const session = useAgentAuthSession({
     agentId,
@@ -407,7 +414,15 @@ function AgentAuthStatusPanelInner({
               <Button
                 key={intent}
                 disabled={session.busy}
-                onClick={() => void runIntent(intent)}
+                dialogOriginRef={authOriginRef}
+                onClick={() => {
+                  if (agentId === "claude-code") {
+                    confirmIntentRef.current = intent;
+                    setConfirmIntent(intent);
+                  } else {
+                    void runIntent(intent);
+                  }
+                }}
               >
                 {intentLabel(intent)}
               </Button>
@@ -449,6 +464,62 @@ function AgentAuthStatusPanelInner({
           </InlineNotice>
         ) : null}
       </div>
+      <Dialog
+        open={confirmIntent !== null}
+        originRef={authOriginRef}
+        initialFocusRef={authCancelRef}
+        onOpenChange={(open) => {
+          if (!open) {
+            confirmIntentRef.current = null;
+            setConfirmIntent(null);
+          }
+        }}
+        title={
+          confirmIntent === "logout"
+            ? "退出 Claude Code 登录？"
+            : "打开 Claude Code 官方登录？"
+        }
+        description="此操作由 Claude Code CLI 完成，不会安装或打开 Claude Desktop。"
+        actions={
+          <>
+            <Button
+              ref={authCancelRef}
+              onClick={() => {
+                confirmIntentRef.current = null;
+                setConfirmIntent(null);
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              disabled={session.busy}
+              onClick={() => {
+                const intent = confirmIntentRef.current;
+                if (!intent || session.busy) return;
+                confirmIntentRef.current = null;
+                setConfirmIntent(null);
+                void runIntent(intent);
+              }}
+            >
+              {confirmIntent === "logout" ? "确认退出登录" : "确认打开官方登录"}
+            </Button>
+          </>
+        }
+      >
+        <p>
+          Claude Code 将更新自己的登录凭据；macOS 使用系统钥匙串。FyAgent
+          不读取、复制或替换这些凭据，也不会借此更改你的模型来源、MCP
+          或其他配置。
+        </p>
+        <p>
+          官方登录或退出不是 FyAgent
+          配置文件替换，不能通过文件备份撤销。需要恢复账号使用时，请重新运行官方登录。
+        </p>
+        <p>
+          关闭此窗口或停止等待只会结束 FyAgent
+          的监测，不会取消已经打开的官方登录流程。
+        </p>
+      </Dialog>
     </section>
   );
 }

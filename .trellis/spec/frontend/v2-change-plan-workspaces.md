@@ -64,6 +64,16 @@ and `SavePlanWorkspace` never forwards its request to apply.
 
 ## 3. Contracts
 
+### File-impact disclosure
+
+`ApplyWorkspace` accepts native-owned `writeTargets` and composes the shared
+`FileWriteDisclosure`. Saved-source selection freezes that source's targets
+with the generated plan, so a later selection/readback does not relabel the
+operation. Missing targets cannot become permission to apply a source switch.
+Root Quick Setup and per-source target lists have distinct ownership: sources
+with generated model catalogs disclose those files too. Paths are display-only;
+apply still sends only the existing opaque plan identity/digest.
+
 ### Ownership and route boundaries
 
 - Models owns adding, editing, testing, and saving configurations. Saving still
@@ -142,20 +152,20 @@ and `SavePlanWorkspace` never forwards its request to apply.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Apply receives anything beyond parsed `planId + planDigest` | Reject the design; native paths, secrets, commands, and write bodies stay out of Renderer apply. |
-| Confirm is activated twice before React commits disabled state | Admit one operation through the synchronous plan/controller lock. |
-| Workspace is hidden or inactive | Pause automatic reads; keep the native job and last parsed snapshot. |
-| A slow automatic read exceeds 1,000 ms | Share the in-flight Query request; do not overlap interval reads. |
-| One of several observers closes | Preserve a read still owned by another visible observer. |
-| Canceled observer's IPC result arrives late | Reject acceptance with `CancelledError`; do not overwrite current authority. |
-| Snapshot revision is lower than cached authority | Retain the newer snapshot. |
-| Job read fails | Cache only a closed error code, retain the last snapshot, and stop automatic polling. |
-| Final observer leaves | Cancel obsolete acceptance and make the zero-retention job query collectible. |
-| Saved-source apply admission is unknown | Block subsequent source/account writes; require reopen/reread, never automatic apply retry. |
-| Terminal owner readback fails | Keep the operation visible and blocked; offer read-only reconciliation retry. |
-| Raw native error, path, write body, or token reaches Query/Mutation cache, route, DOM, or log; or a credential escapes its owning secret input/mounted draft | Security regression. |
+| Condition                                                                                                                                                    | Required result                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Apply receives anything beyond parsed `planId + planDigest`                                                                                                  | Reject the design; native paths, secrets, commands, and write bodies stay out of Renderer apply. |
+| Confirm is activated twice before React commits disabled state                                                                                               | Admit one operation through the synchronous plan/controller lock.                                |
+| Workspace is hidden or inactive                                                                                                                              | Pause automatic reads; keep the native job and last parsed snapshot.                             |
+| A slow automatic read exceeds 1,000 ms                                                                                                                       | Share the in-flight Query request; do not overlap interval reads.                                |
+| One of several observers closes                                                                                                                              | Preserve a read still owned by another visible observer.                                         |
+| Canceled observer's IPC result arrives late                                                                                                                  | Reject acceptance with `CancelledError`; do not overwrite current authority.                     |
+| Snapshot revision is lower than cached authority                                                                                                             | Retain the newer snapshot.                                                                       |
+| Job read fails                                                                                                                                               | Cache only a closed error code, retain the last snapshot, and stop automatic polling.            |
+| Final observer leaves                                                                                                                                        | Cancel obsolete acceptance and make the zero-retention job query collectible.                    |
+| Saved-source apply admission is unknown                                                                                                                      | Block subsequent source/account writes; require reopen/reread, never automatic apply retry.      |
+| Terminal owner readback fails                                                                                                                                | Keep the operation visible and blocked; offer read-only reconciliation retry.                    |
+| Raw native error, path, write body, or token reaches Query/Mutation cache, route, DOM, or log; or a credential escapes its owning secret input/mounted draft | Security regression.                                                                             |
 
 ## 5. Good / Base / Bad Cases
 
@@ -224,8 +234,5 @@ await ports.changePlans.applyChangePlan({
 });
 
 // Shared Query lifecycle owns redacted job observation.
-const { job, error, setJob, refetch } = useChangeJob(
-  ports.changePlans,
-  active,
-);
+const { job, error, setJob, refetch } = useChangeJob(ports.changePlans, active);
 ```

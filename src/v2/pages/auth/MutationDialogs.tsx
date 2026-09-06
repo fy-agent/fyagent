@@ -12,6 +12,8 @@ import { Dialog } from "../../shared/ui/Dialog";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import { InlineNotice, Spinner } from "../../shared/ui/primitives";
 import { ProviderMark } from "./common";
+import { FileWriteDisclosure } from "../../shared/features/controls/FileWriteDisclosure";
+import { useManagedAuthConnectionPreview } from "../../shared/features/queries";
 import {
   managedAuthConsumerLabel,
   managedAuthProviderLabel,
@@ -46,7 +48,7 @@ export function RemoveAccountDialog({
       initialFocusRef={cancelRef}
       onOpenChange={(next) => !next && !pending && onCancel()}
       title={account ? `移除 ${account.login}？` : "移除账号"}
-      description="账号只有在所有连接都安全处理后才会从列表中移除。"
+      description="将删除 FyAgent 保存的账号凭证及其连接记录。其他软件的认证和配置文件保持不变；重新使用此账号需要再次登录。"
       actions={
         <>
           <Button ref={cancelRef} disabled={pending} onClick={onCancel}>
@@ -131,7 +133,7 @@ function connectionActionCopy(
     case "switch_account":
       return {
         title: `切换 ${consumer} 账号`,
-        description: "切换前会再次确认软件状态；需要时会提示重新启动。",
+        description: "只更换登录凭证，不修改模型来源。请先确认文件和备份位置。",
       };
     case "disconnect":
       return {
@@ -141,8 +143,7 @@ function connectionActionCopy(
     case "switch_to_official":
       return {
         title: `切回 ${consumer} 官方模式？`,
-        description:
-          "将停止使用当前第三方 API，并继续使用已保存的官方账号登录。",
+        description: "请通过模型来源设置切换；账号连接不会自动修改模型配置。",
       };
     case "refresh":
     case "restart":
@@ -159,7 +160,7 @@ interface ConnectionActionDialogProps {
   pending: boolean;
   preferredAccountId?: string | null;
   onCancel: () => void;
-  onConfirm: (accountId: string | null) => void;
+  onConfirm: (accountId: string | null, previewId: string) => void;
 }
 
 export function ConnectionActionDialog(props: ConnectionActionDialogProps) {
@@ -210,6 +211,26 @@ function ConnectionActionDialogContent({
       : null,
   );
   const copy = connectionActionCopy(connection, action);
+  const preview = useManagedAuthConnectionPreview(
+    {
+      connectionId: connection.connectionId,
+      expectedRevision: connection.revision,
+      action,
+      accountId: selectedAccountId,
+    },
+    !pending && (!requiresAccount || selectedAccountId !== null),
+  );
+  const [consumedPreviewId, setConsumedPreviewId] = useState<string | null>(
+    null,
+  );
+  const consumedPreviewRef = useRef<string | null>(null);
+  const canConfirm =
+    !pending &&
+    !preview.isError &&
+    !preview.isFetching &&
+    preview.data?.canApply === true &&
+    preview.data.previewId !== consumedPreviewId &&
+    (!requiresAccount || selectedAccountId !== null);
   return (
     <Dialog
       originRef={originRef}
@@ -227,10 +248,18 @@ function ConnectionActionDialogContent({
             className={
               action === "disconnect" ? "fy-control-button-danger" : undefined
             }
-            disabled={
-              pending || (requiresAccount && selectedAccountId === null)
-            }
-            onClick={() => onConfirm(selectedAccountId)}
+            disabled={!canConfirm}
+            onClick={() => {
+              if (
+                !canConfirm ||
+                !preview.data ||
+                consumedPreviewRef.current === preview.data.previewId
+              )
+                return;
+              consumedPreviewRef.current = preview.data.previewId;
+              setConsumedPreviewId(preview.data.previewId);
+              onConfirm(selectedAccountId, preview.data.previewId);
+            }}
           >
             {pending
               ? "正在处理…"
@@ -260,6 +289,7 @@ function ConnectionActionDialogContent({
                 <input
                   type="radio"
                   name="managed-auth-connection-account"
+                  disabled={pending}
                   checked={selectedAccountId === account.accountId}
                   onChange={() => setSelectedAccountId(account.accountId)}
                 />
@@ -287,6 +317,34 @@ function ConnectionActionDialogContent({
             connection.requestProviderLabel,
           )}
         </p>
+      ) : null}
+      {preview.isFetching ? (
+        <div className="fy-auth-dialog-loading">
+          <Spinner label="正在检查文件影响" />
+          <span>正在检查文件和备份位置</span>
+        </div>
+      ) : preview.data ? (
+        <>
+          <FileWriteDisclosure
+            targets={preview.data.writeTargets}
+            preservedPaths={preview.data.preservedPaths}
+          />
+          {connection.consumer === "codex" &&
+          preview.data.writeTargets.length > 0 ? (
+            <p>
+              当前模型来源保持不变。需要更换模型服务时，请另行确认模型来源设置。
+            </p>
+          ) : null}
+          {preview.data.previewId === consumedPreviewId && !pending ? (
+            <InlineNotice tone="warning">
+              此次确认已使用。请关闭后重新打开，检查最新状态再操作。
+            </InlineNotice>
+          ) : null}
+        </>
+      ) : preview.isError ? (
+        <InlineNotice tone="warning">
+          无法确认文件影响。请检查账号用途及软件状态，关闭后重新打开；尚未修改任何文件。
+        </InlineNotice>
       ) : null}
     </Dialog>
   );

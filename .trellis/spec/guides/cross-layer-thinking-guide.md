@@ -25,15 +25,15 @@ For each arrow identify:
 
 ## Assign one owner per responsibility
 
-| Responsibility | Typical owner |
-| --- | --- |
-| Storage/filesystem/process/network mutation | Rust service or platform adapter |
-| Serialized DTO and closed error/state enums | Owning backend contract and Rust type |
-| `unknown` wire parsing and normalization | Renderer platform/feature port boundary |
-| Server snapshot and invalidation | Query hook/feature owner |
-| Secret form draft | Component memory with explicit cleanup |
-| URL selection | Router/search-param owner |
-| Display-only derivation | Pure selector/view model |
+| Responsibility                              | Typical owner                           |
+| ------------------------------------------- | --------------------------------------- |
+| Storage/filesystem/process/network mutation | Rust service or platform adapter        |
+| Serialized DTO and closed error/state enums | Owning backend contract and Rust type   |
+| `unknown` wire parsing and normalization    | Renderer platform/feature port boundary |
+| Server snapshot and invalidation            | Query hook/feature owner                |
+| Secret form draft                           | Component memory with explicit cleanup  |
+| URL selection                               | Router/search-param owner               |
+| Display-only derivation                     | Pure selector/view model                |
 
 Do not let the renderer know a native storage schema, let every consumer cast
 the same payload, or let a process/HTTP success substitute for authoritative
@@ -68,8 +68,8 @@ semantics. Do not put those details into this guide.
   inferred from portable tests.
 - Verify version/path/history facts come from their owning configuration,
   provenance ledger, or Git history rather than a parallel guide matrix.
-- For Agent install/update/launch: OpenCode and Claude Agent surfaces are
-  desktop-only compact DTOs; job snapshots are contract v4 with optional
+- For Agent install/update/launch: consult the lifecycle policy owner rather
+  than a page-local product list; job snapshots are contract v4 with optional
   `transfer`; do not invent percent in the page. System `/Applications`
   writes stay `authorization_required` while
   `macos_system_commit::production_enabled()` is false. Helper code may exist

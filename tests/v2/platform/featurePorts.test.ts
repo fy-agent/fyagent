@@ -452,6 +452,13 @@ describe("V2 feature ports", () => {
             "provider-a": {
               id: "provider-a",
               name: "Provider A",
+              writeTargets: [
+                {
+                  path: "~/.codex/config.toml",
+                  backupPath: "~/.codex/config.toml.fyagent.backup",
+                  exists: true,
+                },
+              ],
             },
           },
           currentId: "provider-a",
@@ -579,6 +586,13 @@ describe("V2 feature ports", () => {
       "provider-a": {
         id: "provider-a",
         name: "Provider A",
+        writeTargets: [
+          {
+            path: "~/.codex/config.toml",
+            backupPath: "~/.codex/config.toml.fyagent.backup",
+            exists: true,
+          },
+        ],
       },
     });
     expect(JSON.stringify(summary)).not.toContain(sentinelSecret);

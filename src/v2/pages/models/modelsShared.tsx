@@ -6,7 +6,8 @@ import { useCallback, useRef, useState, type ReactNode } from "react";
 import { classNames } from "../../shared/design-system/classNames";
 import type { ModelWriteTarget } from "../../shared/features/types";
 import { CatalogDetail } from "../../shared/ui/catalog";
-import { CopyablePath } from "../../shared/features/controls/CopyablePath";
+import { FileWriteDisclosure as ModelsWriteDisclosure } from "../../shared/features/controls/FileWriteDisclosure";
+export { FileWriteDisclosure as ModelsWriteDisclosure } from "../../shared/features/controls/FileWriteDisclosure";
 import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
@@ -73,40 +74,6 @@ export function useModelsWriteConfirm<T>() {
     requestConfirm,
     takePending,
   };
-}
-
-export function ModelsWriteDisclosure({
-  targets,
-}: {
-  targets: readonly ModelWriteTarget[];
-}) {
-  if (targets.length === 0) return null;
-  return (
-    <div className="fy-models-write-disclosure">
-      <div className="fy-models-write-targets">
-        {targets.map((target) => (
-          <div className="fy-models-write-target" key={target.path}>
-            <div className="fy-models-write-path-row">
-              <span className="fy-models-write-path-label">将修改</span>
-              <CopyablePath label="配置文件路径" value={target.path} />
-            </div>
-            <div className="fy-models-write-path-row">
-              <span className="fy-models-write-path-label">备份位置</span>
-              <CopyablePath label="备份文件路径" value={target.backupPath} />
-            </div>
-            {!target.exists ? (
-              <span className="fy-models-muted">
-                当前文件尚不存在，首次创建时没有前像可备份。
-              </span>
-            ) : null}
-          </div>
-        ))}
-      </div>
-      <p className="fy-models-muted">
-        每个文件只保留这一份备份；再次保存会用修改前的最新内容更新它。
-      </p>
-    </div>
-  );
 }
 
 export function ModelsWriteConfirmDialog({

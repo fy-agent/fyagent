@@ -647,6 +647,7 @@ command = "noop"
     let err = fyagent_lib::write_codex_live_atomic(&auth, Some(config_text))
         .expect_err("config write should fail when target is directory");
     match err {
+        fyagent_lib::AppError::Config(code) => assert_eq!(code, "config_file_not_regular"),
         fyagent_lib::AppError::Io { path, .. } => {
             assert!(
                 path.ends_with("config.toml"),

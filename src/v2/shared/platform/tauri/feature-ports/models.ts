@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { parseFileWriteTarget as parseModelWriteTarget } from "../../../features/file-writes";
 
 import type { FeaturePorts } from "../../../features/ports";
 import type {
@@ -6,7 +7,6 @@ import type {
   FetchedModelRef,
   ModelProbeRequest,
   ModelProbeResult,
-  ModelWriteTarget,
   OpenCodeFetchModelsRequest,
   OpenCodeModelSnapshot,
   OpenCodeSaveModelsRequest,
@@ -280,22 +280,6 @@ function parseOpenCodeModelSnapshot(value: unknown): OpenCodeModelSnapshot {
   };
 }
 
-function parseModelWriteTarget(value: unknown): ModelWriteTarget {
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, ["path", "backupPath", "exists"]) ||
-    typeof value.path !== "string" ||
-    typeof value.backupPath !== "string" ||
-    typeof value.exists !== "boolean"
-  )
-    throw new Error("Model write target is unavailable");
-  return {
-    path: value.path,
-    backupPath: value.backupPath,
-    exists: value.exists,
-  };
-}
-
 function parseRevisionedSaveResult(value: unknown): WorkBuddySaveModelsResult {
   if (!isRecord(value) || typeof value.state !== "string")
     throw new Error("Model save result is unavailable");
@@ -360,7 +344,12 @@ function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
   for (const [key, candidate] of Object.entries(value.providers)) {
     if (
       !isRecord(candidate) ||
-      !hasRequiredAndOptionalKeys(candidate, ["id", "name"], ["modelId"]) ||
+      !hasRequiredAndOptionalKeys(
+        candidate,
+        ["id", "name", "writeTargets"],
+        ["modelId"],
+      ) ||
+      !Array.isArray(candidate.writeTargets) ||
       typeof candidate.id !== "string" ||
       typeof candidate.name !== "string" ||
       (candidate.modelId !== undefined &&
@@ -371,6 +360,7 @@ function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
     providers[key] = {
       id: candidate.id,
       name: candidate.name,
+      writeTargets: candidate.writeTargets.map(parseModelWriteTarget),
       ...(typeof candidate.modelId === "string" && candidate.modelId
         ? { modelId: candidate.modelId }
         : {}),

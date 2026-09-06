@@ -1464,7 +1464,7 @@ fn sync_all_enabled_reports_broken_app_but_projects_the_rest() {
 }
 
 #[test]
-fn provider_service_switch_codex_official_accounts_write_auth_json() {
+fn provider_service_official_source_switch_preserves_live_auth_json() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
     let _home = ensure_test_home();
@@ -1536,15 +1536,15 @@ fn provider_service_switch_codex_official_accounts_write_auth_json() {
     let state = create_test_state_with_config(&initial_config).expect("create test state");
 
     ProviderService::switch(&state, AppType::Codex, "official-b")
-        .expect("switch to official account B should write auth.json");
+        .expect("switch official request source without changing login identity");
     let auth_b: serde_json::Value =
         read_json_file(&fyagent_lib::get_codex_auth_path()).expect("read auth B");
     assert_eq!(
         auth_b
             .pointer("/tokens/access_token")
             .and_then(|v| v.as_str()),
-        Some("official-b-token"),
-        "switching official accounts must replace auth.json with the selected account"
+        Some("official-a-live-token"),
+        "source selection must not replace the official account from a saved Provider"
     );
 
     ProviderService::switch(&state, AppType::Codex, "official-a")
@@ -1682,8 +1682,8 @@ requires_openai_auth = true
             .and_then(|v| v.get("work"))
             .and_then(|v| v.get("model_provider"))
             .and_then(|v| v.as_str()),
-        Some("aihubmix"),
-        "profile overrides should be restored to provider b's storage-specific id"
+        None,
+        "a source switch must not install a snapshot's unrelated profile overrides"
     );
 }
 
@@ -2571,12 +2571,12 @@ command = "ghost-cmd"
         "provider A's bearer token must not leak into B's live, got: {live_after}"
     );
     assert!(
-        !live_after.contains("mcp_servers"),
-        "no DB-enabled MCP servers, so live must not resurrect stale entries, got: {live_after}"
+        live_after.contains("mcp_servers.echo"),
+        "source switching must preserve the user's existing unmanaged MCP, got: {live_after}"
     );
     assert!(
-        !live_after.contains("ghost-legacy"),
-        "the legacy [mcp.servers] orphan must not propagate to B's live, got: {live_after}"
+        live_after.contains("ghost-legacy"),
+        "unrelated legacy user tables are not owned by request-source selection, got: {live_after}"
     );
     assert!(
         !live_after.contains("wire_api = \"chat\""),

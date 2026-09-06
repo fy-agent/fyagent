@@ -48,6 +48,7 @@ export function CodexRequestSource({
       ) : null}
       {summary.data ? (
         <ChangePlanWorkspace
+          writeTargets={summary.data.writeTargets}
           active={active}
           providers={summary.data.providers}
           currentId={summary.data.currentId}

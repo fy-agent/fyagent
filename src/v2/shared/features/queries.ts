@@ -2,6 +2,8 @@ import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 
 import { usePersistentVisibility } from "../ui/PersistentSurface";
 import { useFeatures } from "./provider";
+import type { ManagedAuthConnectionActionRequest } from "./managed-auth";
+import type { ConfigRecoveryTarget } from "./config-recovery";
 import {
   PROMPT_APP_IDS,
   SKILL_DISCOVERY_PAGE_SIZE,
@@ -22,8 +24,12 @@ function useVisibleEnabled(enabled = true): boolean {
 const changeJobsKey = ["v2", "change-plans", "job"] as const;
 
 export const featureKeys = {
+  configRecoveries: (targets: readonly ConfigRecoveryTarget[]) =>
+    ["v2", "config-recoveries", ...targets] as const,
   agentCatalog: ["v2", "agents", "catalog"] as const,
   managedAuthOverview: ["v2", "managed-auth", "overview"] as const,
+  managedAuthConnectionPreview: (request: ManagedAuthConnectionActionRequest) =>
+    ["v2", "managed-auth", "connection-preview", request] as const,
   agentAuthObservation: (agentId: AgentCatalogId) =>
     ["v2", "agents", agentId, "auth-observation"] as const,
   agentInstallReadiness: (agentId: AgentCatalogId) =>
@@ -65,6 +71,39 @@ export function useManagedAuthOverview(enabled = true) {
     queryKey: featureKeys.managedAuthOverview,
     queryFn: ports.managedAuth.getOverview,
     enabled: useVisibleEnabled(enabled),
+  });
+}
+
+export function useConfigRecoveries(
+  targets: readonly ConfigRecoveryTarget[],
+  enabled: boolean,
+) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.configRecoveries(targets),
+    queryFn: () => ports.configRecovery.list(targets),
+    enabled: useVisibleEnabled(enabled),
+    retry: false,
+    gcTime: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useManagedAuthConnectionPreview(
+  request: ManagedAuthConnectionActionRequest,
+  enabled: boolean,
+) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.managedAuthConnectionPreview(request),
+    queryFn: () => ports.managedAuth.previewConnectionAction(request),
+    enabled: useVisibleEnabled(enabled),
+    retry: false,
+    gcTime: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 

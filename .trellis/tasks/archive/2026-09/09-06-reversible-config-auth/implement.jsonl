@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"Reuse the existing file/transaction owner"}
+{"file":".trellis/spec/backend/reversible-user-config.md","reason":"Shared backup, atomic write, recovery and disclosure contract"}
+{"file":".trellis/spec/backend/managed-auth-consumers.md","reason":"Consumer write, revision, readback and recovery boundaries"}
+{"file":".trellis/spec/frontend/v2-managed-auth.md","reason":"Typed Auth port and confirmation ownership"}

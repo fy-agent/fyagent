@@ -152,6 +152,10 @@ export function reasonCopy(code: AgentReasonCode): string | null {
       return "当前系统没有可用的官方安装包。";
     case "source_not_verified":
       return "暂时无法访问官方下载来源。请打开产品官网下载安装。";
+    case "tool_host_missing":
+      return "Claude Code CLI 安装需要 Node.js 22 或更高版本及 npm。请先安装依赖，再重新操作。";
+    case "tool_owner_unsupported":
+      return "当前安装来源或位置无法确认。请使用原安装方式更新；FyAgent 不会将它改为另一种安装方式。";
     case "official_page_only":
       return "请从产品官网下载安装。";
     case "provider_connection_required":

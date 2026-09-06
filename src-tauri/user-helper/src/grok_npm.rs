@@ -20,6 +20,50 @@ pub const GROK_NPM_PLAN_CONTROL_VERSION: u8 = 1;
 const PLAN_MAGIC: [u8; 8] = *b"FYAGROKP";
 const VERSION_FIELD_BYTES: usize = 32;
 
+/// Package identity is selected by a code-owned product action, never by a URL
+/// or package name from the renderer. Both products share registry/argv policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OfficialNpmTool {
+    Grok,
+    Claude,
+}
+
+impl OfficialNpmTool {
+    pub const fn package(self) -> &'static str {
+        match self {
+            Self::Grok => GROK_NPM_PACKAGE,
+            Self::Claude => crate::claude::CLAUDE_NPM_PACKAGE,
+        }
+    }
+
+    pub const fn executable(self) -> &'static str {
+        match self {
+            Self::Grok => "grok",
+            Self::Claude => "claude",
+        }
+    }
+
+    pub fn current_platform_package(self) -> Option<&'static str> {
+        match self {
+            Self::Grok => current_platform_package(),
+            Self::Claude => {
+                #[cfg(target_os = "macos")]
+                match std::env::consts::ARCH {
+                    "aarch64" => Some("@anthropic-ai/claude-code-darwin-arm64"),
+                    "x86_64" => Some("@anthropic-ai/claude-code-darwin-x64"),
+                    _ => None,
+                }
+                #[cfg(target_os = "windows")]
+                match std::env::consts::ARCH {
+                    "aarch64" => Some("@anthropic-ai/claude-code-win32-arm64"),
+                    "x86_64" => Some("@anthropic-ai/claude-code-win32-x64"),
+                    _ => None,
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GrokNpmRegistry {
     Tencent,
@@ -193,14 +237,31 @@ impl GrokNpmInstallPlan {
     }
 
     pub fn npm_argv(&self) -> Vec<String> {
+        self.npm_argv_for(OfficialNpmTool::Grok)
+    }
+
+    pub fn npm_argv_for(&self, tool: OfficialNpmTool) -> Vec<String> {
         let mut argv = vec![
             "i".to_string(),
             "-g".to_string(),
-            self.install_spec(),
+            format!("{}@{}", tool.package(), self.version),
             format!("--registry={}", self.registry.as_str()),
+            format!(
+                "--{}:registry={}",
+                tool.package()
+                    .split('/')
+                    .next()
+                    .expect("closed scoped package"),
+                self.registry.as_str()
+            ),
         ];
+        if tool == OfficialNpmTool::Claude {
+            // The official launcher links its native optional package. Do not
+            // let an ambient omit=optional setting trigger an external fallback.
+            argv.push("--include=optional".to_string());
+        }
         if self.allow_install_scripts {
-            argv.push(format!("--allow-scripts={GROK_NPM_ALLOW_SCRIPTS_PACKAGE}"));
+            argv.push(format!("--allow-scripts={}", tool.package()));
         }
         argv
     }
@@ -463,6 +524,24 @@ fn parse_https_url(url: &str) -> Option<ParsedHttpsUrl<'_>> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn claude_reuses_exact_version_registry_and_narrow_script_policy() {
+        let plan =
+            GrokNpmInstallPlan::for_execution("2.1.261", GrokNpmRegistry::Tencent, true).unwrap();
+        let args = plan.npm_argv_for(OfficialNpmTool::Claude);
+        assert!(args.contains(&"@anthropic-ai/claude-code@2.1.261".to_string()));
+        assert!(args.contains(&"--include=optional".to_string()));
+        assert!(args.contains(&"--allow-scripts=@anthropic-ai/claude-code".to_string()));
+        assert!(args
+            .iter()
+            .all(|arg| !arg.contains("@latest") && !arg.contains("config")));
+        assert!(!args.iter().any(|arg| arg.contains("xai")));
+        assert!(OfficialNpmTool::Claude
+            .current_platform_package()
+            .unwrap()
+            .starts_with("@anthropic-ai/claude-code-"));
+    }
+
     fn sample_plan(allow: bool) -> GrokNpmInstallPlan {
         GrokNpmInstallPlan::new(
             "1.0.13",
@@ -498,6 +577,7 @@ mod tests {
                 "-g",
                 "@xai-official/grok@1.0.13",
                 "--registry=https://mirrors.tencent.com/npm/",
+                "--@xai-official:registry=https://mirrors.tencent.com/npm/",
             ]
         );
         assert!(argv.iter().all(|arg| !arg.contains("@latest")));

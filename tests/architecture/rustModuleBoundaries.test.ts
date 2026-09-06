@@ -9,6 +9,49 @@ function read(relativePath: string): string {
 }
 
 describe("Rust modular architecture boundaries", () => {
+  it("keeps backup and undo below ordinary configuration writers and bounds bypass owners", () => {
+    const config = read("src-tauri/src/config.rs");
+    expect(config).toMatch(
+      /pub fn atomic_write\([^}]+recovery::write\(path, Some\(data\), false\)/su,
+    );
+    expect(config).toMatch(
+      /pub\(crate\) fn atomic_write_private\([^}]+recovery::write\(path, Some\(data\), true\)/su,
+    );
+    expect(config).toMatch(
+      /pub fn delete_file\([^}]+recovery::write\(path, None, false\)/su,
+    );
+    expect(config).toContain("atomic_write(path, &contents)?");
+    expect(config).toContain("atomic_write(path, data.as_bytes())");
+    expect(config).not.toMatch(/pub(?:\(crate\))? fn atomic_write_unbacked/u);
+    const root = path.join(repositoryRoot, "src-tauri/src");
+    const bypassOwners = fs
+      .readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((entry) => entry.endsWith(".rs"))
+      .filter((entry) =>
+        /\b(?:atomic_write_unbacked|write_backup_file|restore_file_preimage)\b/u.test(
+          fs.readFileSync(path.join(root, entry), "utf8"),
+        ),
+      )
+      .map((entry) => entry.split(path.sep).join("/"))
+      .sort();
+    expect(bypassOwners).toEqual(
+      [
+        "codex_config/storage.rs",
+        "codex_history_migration.rs",
+        "config.rs",
+        "config/recovery.rs",
+        "database/backup.rs",
+        "hermes_config.rs",
+        "openclaw_config.rs",
+        "services/managed_auth/consumers/codex/swap.rs",
+        "services/provider/mod.rs",
+      ].sort(),
+    );
+    expect(
+      read("src-tauri/src/services/managed_auth/consumers/codex/project.rs"),
+    ).not.toMatch(/ProviderService|switch_with_lock|write_text_file/u);
+  });
+
   it("keeps sync scheduling out of adapters and cloud consumers out of SQLite", () => {
     const database = read("src-tauri/src/database/mod.rs");
     expect(database).toContain("fn set_change_listener");

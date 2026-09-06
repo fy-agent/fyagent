@@ -284,7 +284,7 @@ function LoginDialogContent({
       }
       description={
         session
-          ? "登录由官方服务完成；FyAgent 只保存完成连接所需的账号状态。"
+          ? "登录由官方服务完成；FyAgent 保存账号后，不会自动替换软件的认证文件。连接软件需要另行确认。"
           : "选择账号类型和这次登录的用途。"
       }
       actions={actions}
@@ -307,7 +307,10 @@ function LoginDialogContent({
               tone={session.terminal ? "accent" : "neutral"}
             />
             {session.consumer ? (
-              <span>将连接到 {managedAuthConsumerLabel(session.consumer)}</span>
+              <span>
+                保存用于 {managedAuthConsumerLabel(session.consumer)}{" "}
+                的账号；连接前仍需确认文件更改
+              </span>
             ) : (
               <span>仅保存账号</span>
             )}

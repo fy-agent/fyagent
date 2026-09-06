@@ -5,6 +5,7 @@ use crate::grok::{GrokOwner, GrokToolAction};
 pub const INSTALL_ACTION: &str = "codex-msix-install";
 pub const AGENT_EXE_INSTALL_ACTION: &str = "agent-exe-install";
 pub const GROK_TOOL_ACTION: &str = "grok-tool";
+pub const CLAUDE_TOOL_ACTION: &str = "claude-tool";
 const PRODUCT_FLAG: &str = "--product";
 const ACTION_FLAG: &str = "--action";
 const OWNER_FLAG: &str = "--owner";
@@ -128,6 +129,9 @@ pub enum UserHelperAction {
         action: GrokToolAction,
         expected_owner: Option<GrokOwner>,
     },
+    ClaudeTool {
+        action: GrokToolAction,
+    },
 }
 
 impl UserHelperAction {
@@ -142,6 +146,11 @@ impl UserHelperAction {
                 action,
                 expected_owner,
             } => grok_tool_wire_code(action, expected_owner),
+            Self::ClaudeTool { action } => match action {
+                GrokToolAction::Observe => 15,
+                GrokToolAction::Install => 16,
+                GrokToolAction::Update => 17,
+            },
         }
     }
 
@@ -153,18 +162,27 @@ impl UserHelperAction {
             4 => Some(Self::AgentExeInstall(AgentInstallerProduct::WorkBuddy)),
             5..=13 => grok_tool_from_wire(value),
             14 => Some(Self::AgentExeInstall(AgentInstallerProduct::OpenCode)),
+            15 => Some(Self::ClaudeTool {
+                action: GrokToolAction::Observe,
+            }),
+            16 => Some(Self::ClaudeTool {
+                action: GrokToolAction::Install,
+            }),
+            17 => Some(Self::ClaudeTool {
+                action: GrokToolAction::Update,
+            }),
             _ => None,
         }
     }
 
     pub const fn requires_package_bridge(self) -> bool {
-        !matches!(self, Self::GrokTool { .. })
+        !matches!(self, Self::GrokTool { .. } | Self::ClaudeTool { .. })
     }
 
     pub const fn artifact_kind(self) -> crate::layout::PackageBridgeArtifactKind {
         match self {
             Self::CodexMsixInstall => crate::layout::PackageBridgeArtifactKind::Msix,
-            Self::AgentExeInstall(_) | Self::GrokTool { .. } => {
+            Self::AgentExeInstall(_) | Self::GrokTool { .. } | Self::ClaudeTool { .. } => {
                 crate::layout::PackageBridgeArtifactKind::Exe
             }
         }
@@ -178,6 +196,11 @@ impl UserHelperAction {
             ),
             Self::AgentExeInstall(product) => format!(
                 "{AGENT_EXE_INSTALL_ACTION} --product {product} --job-id {job_id} --pipe {}",
+                pipe_nonce.as_str()
+            ),
+            Self::ClaudeTool { action } => format!(
+                "{CLAUDE_TOOL_ACTION} --action {} --job-id {job_id} --pipe {}",
+                action.as_str(),
                 pipe_nonce.as_str()
             ),
             Self::GrokTool {
@@ -354,7 +377,14 @@ where
                 job_index,
             )
         }
-        Some(INSTALL_ACTION | AGENT_EXE_INSTALL_ACTION | GROK_TOOL_ACTION) => {
+        Some(CLAUDE_TOOL_ACTION) if raw.len() == 7 => {
+            if raw[1] != ACTION_FLAG {
+                return Err(CliError::ExpectedActionFlag);
+            }
+            let action = GrokToolAction::parse_cli(&raw[2]).ok_or(CliError::InvalidToolAction)?;
+            (UserHelperAction::ClaudeTool { action }, 3)
+        }
+        Some(INSTALL_ACTION | AGENT_EXE_INSTALL_ACTION | GROK_TOOL_ACTION | CLAUDE_TOOL_ACTION) => {
             return Err(CliError::WrongArgumentCount)
         }
         Some(_) => return Err(CliError::UnknownAction),
@@ -396,6 +426,85 @@ mod tests {
 
     const JOB_ID: &str = "123e4567-e89b-12d3-a456-426614174000";
     const NONCE: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn claude_actions_are_closed_bound_and_do_not_reuse_grok_wire_identity() {
+        for action in [
+            GrokToolAction::Observe,
+            GrokToolAction::Install,
+            GrokToolAction::Update,
+        ] {
+            let expected = UserHelperAction::ClaudeTool { action };
+            let request = parse_cli_args([
+                CLAUDE_TOOL_ACTION,
+                ACTION_FLAG,
+                action.as_str(),
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+            ])
+            .unwrap();
+            assert_eq!(request.action(), expected);
+            assert_eq!(
+                UserHelperAction::from_wire(expected.wire_code()),
+                Some(expected)
+            );
+            assert!(!expected.requires_package_bridge());
+            assert!(expected
+                .command_line(request.job_id(), request.pipe_nonce())
+                .starts_with("claude-tool --action "));
+            assert_ne!(
+                expected.wire_code(),
+                UserHelperAction::GrokTool {
+                    action,
+                    expected_owner: None
+                }
+                .wire_code()
+            );
+        }
+        for forbidden in [
+            "login",
+            "logout",
+            "install_native",
+            "run",
+            "npm",
+            "../claude",
+        ] {
+            assert!(parse_cli_args([
+                CLAUDE_TOOL_ACTION,
+                ACTION_FLAG,
+                forbidden,
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE
+            ])
+            .is_err());
+        }
+        assert!(parse_cli_args([
+            CLAUDE_TOOL_ACTION,
+            ACTION_FLAG,
+            "install",
+            "--owner",
+            "native",
+            JOB_ID_FLAG,
+            JOB_ID,
+            PIPE_FLAG,
+            NONCE
+        ])
+        .is_err());
+        assert!(parse_cli_args([
+            CLAUDE_TOOL_ACTION,
+            "--command",
+            "npm",
+            JOB_ID_FLAG,
+            JOB_ID,
+            PIPE_FLAG,
+            NONCE
+        ])
+        .is_err());
+    }
 
     fn valid_args() -> [&'static str; 5] {
         [INSTALL_ACTION, JOB_ID_FLAG, JOB_ID, PIPE_FLAG, NONCE]
@@ -548,7 +657,7 @@ mod tests {
             UserHelperAction::AgentExeInstall(AgentInstallerProduct::OpenCode)
                 .requires_package_bridge()
         );
-        assert_eq!(UserHelperAction::from_wire(15), None);
+        assert_eq!(UserHelperAction::from_wire(18), None);
         assert_eq!(
             UserHelperAction::GrokTool {
                 action: GrokToolAction::Install,

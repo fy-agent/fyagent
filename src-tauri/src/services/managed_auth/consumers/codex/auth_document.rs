@@ -161,12 +161,6 @@ impl CodexChatGptAuthDocument {
         })
     }
 
-    pub(crate) fn from_grant(grant: &OpenAiTokenGrant) -> Option<Self> {
-        let id_token = grant.id_token.as_deref()?;
-        let refresh = grant.refresh_token.as_deref()?;
-        Self::from_tokens(id_token, &grant.access_token, refresh, None, None)
-    }
-
     pub(crate) fn account_id(&self) -> Option<&str> {
         self.account_id.as_deref()
     }

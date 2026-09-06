@@ -143,6 +143,11 @@ installation controls. Configuration navigation never starts an installation.
   duplicate the installer.
 - Auth uses the shared Auth panel/hook and remains separate from lifecycle
   actions. Do not put `login` or `logout` into `start_agent_action`.
+- Claude Code is CLI-only: its Agent lifecycle actions reuse Tooling and the
+  Agent job observer. Backend readiness/inventory determines install/update;
+  the page does not offer Claude Desktop or infer CLI presence from an app
+  bundle. Missing Node/npm or an unconfirmed installation owner produces the
+  actionable closed reason; npm success alone is not installation proof.
 - Grok CLI install/update stays on the Tooling owner. The Agent Grok panel
   must not send a registry, version, hash, or npm command. Default one-click
   install is official npm; official CLI is an explicit secondary control.

@@ -43,6 +43,16 @@ fn auth_json_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+pub(crate) fn restore_auth_recovery(
+    path: &Path,
+    receipt_id: &str,
+) -> Result<(), crate::error::AppError> {
+    let _guard = auth_json_lock()
+        .lock()
+        .map_err(|_| crate::error::AppError::Config("config_writer_unavailable".into()))?;
+    crate::config::restore_file_recovery(path, receipt_id)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ObservedEntryKind {
     Oauth,
@@ -332,9 +342,7 @@ fn slot_summary(
         connection_id: stored
             .map(|row| row.connection_id.clone())
             .unwrap_or_else(|| slot_connection_id(provider)),
-        revision: stored
-            .and_then(|row| row.observed_revision.clone())
-            .unwrap_or_else(|| observation.revision.clone()),
+        revision: observation.revision.clone(),
         consumer: ManagedAuthConsumer::Opencode,
         target_id: None,
         target_label: None,
@@ -532,7 +540,7 @@ fn load_raw_map(path: &Path) -> Result<LoadedAuthJson, OpencodeAuthError> {
 fn commit_map(
     path: &Path,
     raw: &Map<String, Value>,
-    preimage: Option<&[u8]>,
+    _preimage: Option<&[u8]>,
 ) -> Result<AuthJsonWriteReceipt, OpencodeAuthError> {
     let serialized = serde_json::to_vec_pretty(raw).map_err(|_| OpencodeAuthError::Invalid)?;
     write_auth_json_0600(path, &serialized).map_err(|_| OpencodeAuthError::Io)?;
@@ -541,14 +549,11 @@ fn commit_map(
             revision: revision_for_source(true, Some(&readback)),
             pending_restart: !OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN,
         }),
-        Ok(Some(_)) | Ok(None) | Err(_) => {
-            if let Some(preimage) = preimage {
-                let _ = write_auth_json_0600(path, preimage);
-            } else {
-                let _ = fs::remove_file(path);
-            }
-            Err(OpencodeAuthError::Io)
-        }
+        // The shared writer already read back its own bytes and compensates
+        // write failures. A later mismatch belongs to an external writer;
+        // never overwrite it with our captured preimage.
+        Ok(Some(_)) | Ok(None) => Err(OpencodeAuthError::Stale),
+        Err(_) => Err(OpencodeAuthError::Io),
     }
 }
 
@@ -556,14 +561,7 @@ fn write_auth_json_0600(path: &Path, bytes: &[u8]) -> Result<(), ManagedAuthCore
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|_| ManagedAuthCoreError::Io)?;
     }
-    crate::config::atomic_write(path, bytes).map_err(|_| ManagedAuthCoreError::Io)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .map_err(|_| ManagedAuthCoreError::Io)?;
-    }
-    Ok(())
+    crate::config::atomic_write_private(path, bytes).map_err(|_| ManagedAuthCoreError::Io)
 }
 
 fn read_auth_bytes(path: &Path) -> Result<Option<Vec<u8>>, OpencodeAuthError> {

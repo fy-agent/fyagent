@@ -4,6 +4,8 @@
 //! composes `grok update || installer || npm` as one job. Windows command
 //! composition is owned by `lifecycle.rs` and is not changed here.
 
+#[cfg(target_os = "macos")]
+use super::npm_runtime::execution_path as grok_execution_path;
 #[cfg(all(target_os = "windows", not(test)))]
 use super::ToolLifecycleAction;
 #[cfg(any(target_os = "macos", test))]
@@ -888,8 +890,7 @@ async fn run_official_npm(
         }
     };
 
-    let client = crate::proxy::http_client::get();
-    let matching = super::grok_npm::registries_matching_manifest(&client, &manifest).await;
+    let matching = super::grok_npm::registries_matching_manifest(&manifest).await;
     if matching.is_empty() {
         return Err(fail_job(
             action,
@@ -1010,15 +1011,7 @@ fn execute_official_npm(
 
 #[cfg(target_os = "macos")]
 fn detect_npm_major(bin_path: Option<&str>) -> Option<u32> {
-    let command = match bin_path.and_then(|path| super::anchored_npm_command(path, "--version")) {
-        Some(command) => command,
-        None => "npm --version".to_string(),
-    };
-    let output = run_login_bash(&command, GROK_CHECK_TIMEOUT).ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    fyagent_user_helper::grok_npm::parse_npm_major(&decode_command_output(&output.stdout))
+    super::npm_runtime::npm_major(bin_path)
 }
 
 #[cfg(target_os = "macos")]
@@ -1026,22 +1019,11 @@ fn run_npm_install_plan(
     bin_path: Option<&str>,
     plan: &fyagent_user_helper::GrokNpmInstallPlan,
 ) -> Result<std::process::Output, String> {
-    let args = plan.npm_argv().join(" ");
-    let env = format!(
-        "{}={}",
-        fyagent_user_helper::GROK_NPM_REGISTRY_ENV,
-        shell_single_quote_for_env(plan.registry_url())
-    );
-    let command = match bin_path.and_then(|path| super::anchored_npm_command(path, &args)) {
-        Some(command) => format!("{env} {command}"),
-        None => format!("{env} npm {args}"),
-    };
-    run_login_bash(&command, GROK_UPDATE_TIMEOUT)
-}
-
-#[cfg(target_os = "macos")]
-fn shell_single_quote_for_env(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
+    super::npm_runtime::install(
+        fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
+        bin_path,
+        plan,
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -1245,12 +1227,6 @@ fn run_anchored_grok(
 }
 
 #[cfg(target_os = "macos")]
-fn grok_execution_path() -> Option<String> {
-    let inherited = std::env::var("PATH").unwrap_or_default();
-    login_shell_path().map(|login| merge_path_segments(&login, &inherited))
-}
-
-#[cfg(target_os = "macos")]
 fn run_bash_script(path: &Path, timeout: Duration) -> Result<std::process::Output, String> {
     use std::os::unix::fs::PermissionsExt;
     use std::process::{Command, Stdio};
@@ -1270,30 +1246,6 @@ fn run_bash_script(path: &Path, timeout: Duration) -> Result<std::process::Outpu
     let child = cmd
         .spawn()
         .map_err(|error| format!("启动官方安装脚本失败: {error}"))?;
-    wait_child_output_with_limit(
-        child,
-        CommandDeadline::from_timeout(Some(timeout)),
-        Some(GROK_OUTPUT_LIMIT),
-    )
-}
-
-#[cfg(target_os = "macos")]
-fn run_login_bash(command: &str, timeout: Duration) -> Result<std::process::Output, String> {
-    use std::process::{Command, Stdio};
-
-    let mut cmd = Command::new("/bin/bash");
-    cmd.arg("-c")
-        .arg(command)
-        .current_dir(crate::config::get_home_dir())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    if let Some(path_value) = grok_execution_path() {
-        cmd.env("PATH", path_value);
-    }
-    isolate_child_process_group(&mut cmd);
-    let child = cmd
-        .spawn()
-        .map_err(|error| format!("启动 npm 安装失败: {error}"))?;
     wait_child_output_with_limit(
         child,
         CommandDeadline::from_timeout(Some(timeout)),
@@ -1361,8 +1313,7 @@ async fn windows_npm_plans_for_action(
     let Ok(manifest) = super::grok_npm::bundled_manifest() else {
         return Vec::new();
     };
-    let client = crate::proxy::http_client::get();
-    let matching = super::grok_npm::registries_matching_manifest(&client, &manifest).await;
+    let matching = super::grok_npm::registries_matching_manifest(&manifest).await;
     matching
         .into_iter()
         .filter_map(|registry| super::grok_npm::plan_for_registry(&manifest, registry, false).ok())

@@ -1,3 +1,9 @@
+import {
+  parseFileDisplayPath,
+  parseFileWriteTarget,
+  type FileWriteTarget,
+} from "./file-writes";
+
 export const MANAGED_AUTH_CONTRACT_VERSION = 1 as const;
 
 export const MANAGED_AUTH_PROVIDERS = [
@@ -229,6 +235,19 @@ export interface ManagedAuthConnectionActionRequest {
   accountId: string | null;
 }
 
+export interface ManagedAuthConnectionActionPreview {
+  contractVersion: typeof MANAGED_AUTH_CONTRACT_VERSION;
+  previewId: string;
+  connectionId: string;
+  expectedRevision: string;
+  action: ManagedAuthConnectionAction;
+  accountId: string | null;
+  writeTargets: FileWriteTarget[];
+  preservedPaths: string[];
+  canApply: boolean;
+  reasonCodes: ManagedAuthReasonCode[];
+}
+
 export interface ManagedAuthAccountRemovalImpact {
   consumer: ManagedAuthConsumer;
   targetLabel: string | null;
@@ -282,7 +301,11 @@ export interface ManagedAuthPort {
   ): Promise<ManagedAuthMutationResult>;
   applyConnectionAction(
     request: ManagedAuthConnectionActionRequest,
+    previewId?: string | null,
   ): Promise<ManagedAuthMutationResult>;
+  previewConnectionAction(
+    request: ManagedAuthConnectionActionRequest,
+  ): Promise<ManagedAuthConnectionActionPreview>;
 }
 
 const DATA_ERROR = "账号与认证数据不可用";
@@ -855,6 +878,66 @@ export function parseManagedAuthRemovalPreview(
     expectedRevision: parseRevision(value.expectedRevision),
     disconnects: value.disconnects.map(parseRemovalImpact),
     preserved: value.preserved.map(parseRemovalImpact),
+    canApply: value.canApply,
+    reasonCodes: parseUniqueEnumList(
+      value.reasonCodes,
+      MANAGED_AUTH_REASON_CODES,
+    ),
+  };
+}
+
+export function parseManagedAuthConnectionPreview(
+  value: unknown,
+  request: ManagedAuthConnectionActionRequest,
+): ManagedAuthConnectionActionPreview {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "contractVersion",
+      "previewId",
+      "connectionId",
+      "expectedRevision",
+      "action",
+      "accountId",
+      "writeTargets",
+      "preservedPaths",
+      "canApply",
+      "reasonCodes",
+    ]) ||
+    value.contractVersion !== MANAGED_AUTH_CONTRACT_VERSION ||
+    typeof value.previewId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+      value.previewId,
+    ) ||
+    value.connectionId !== request.connectionId ||
+    value.expectedRevision !== request.expectedRevision ||
+    value.action !== request.action ||
+    value.accountId !== request.accountId ||
+    !Array.isArray(value.writeTargets) ||
+    value.writeTargets.length > 4 ||
+    !Array.isArray(value.preservedPaths) ||
+    value.preservedPaths.length > 4 ||
+    typeof value.canApply !== "boolean"
+  )
+    dataError();
+  const writeTargets = value.writeTargets.map(parseFileWriteTarget);
+  const preservedPaths = value.preservedPaths.map(parseFileDisplayPath);
+  if (
+    new Set(writeTargets.map((target) => target.path)).size !==
+      writeTargets.length ||
+    new Set(preservedPaths).size !== preservedPaths.length ||
+    writeTargets.some((target) => preservedPaths.includes(target.path))
+  )
+    dataError();
+  return {
+    contractVersion: MANAGED_AUTH_CONTRACT_VERSION,
+    previewId: value.previewId,
+    connectionId: parseConnectionId(value.connectionId),
+    expectedRevision: parseRevision(value.expectedRevision),
+    action: request.action,
+    accountId: parseNullableAccountId(value.accountId),
+    writeTargets,
+    preservedPaths,
     canApply: value.canApply,
     reasonCodes: parseUniqueEnumList(
       value.reasonCodes,

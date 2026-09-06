@@ -681,6 +681,10 @@ pub(super) fn codex_model_catalog_from_specs(
     json!({ "models": entries })
 }
 
+pub(crate) fn codex_model_catalog_write_required(settings: &Value) -> bool {
+    !codex_catalog_model_specs(settings).is_empty()
+}
+
 pub(super) fn codex_model_catalog_from_settings(
     settings: &Value,
     config_text: &str,

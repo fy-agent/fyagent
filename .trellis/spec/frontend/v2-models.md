@@ -176,6 +176,16 @@ an apply instruction.
 
 ### Claude, Grok Build, and Codex provider flows
 
+- Models, Auth and Change Plan previews share the `FileWriteDisclosure`
+  feature control, not a Models-page component or duplicated markup/parser.
+  Paths and backup paths are native-owned display metadata. The root Provider
+  summary has Quick Setup targets; individual saved sources additionally carry
+  their own `writeTargets` (including a generated Codex catalog when relevant).
+- The shared `FileRecoveryButton` restores only a native-admitted file receipt
+  after confirmation and rereads model state. Restore is not deletion of saved
+  Provider records; external edits disable automatic restoration. See
+  [Reversible User Configuration](../backend/reversible-user-config.md).
+
 - `ProviderPanel` is shared only by `claude`, `grokbuild`, and `codex`. It owns
   local `name`, `baseUrl`, API key, `modelId`, fetched model IDs, connectivity
   tests, write confirmation, and per-target warning state.

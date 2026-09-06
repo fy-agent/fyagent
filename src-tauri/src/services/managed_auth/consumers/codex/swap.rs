@@ -20,6 +20,16 @@ fn auth_json_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+pub(crate) fn restore_auth_recovery(
+    path: &Path,
+    receipt_id: &str,
+) -> Result<(), crate::error::AppError> {
+    let _guard = auth_json_lock()
+        .lock()
+        .map_err(|_| crate::error::AppError::Config("config_writer_unavailable".into()))?;
+    crate::config::restore_file_recovery(path, receipt_id)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CodexAuthSwapReceipt {
     pub revision: String,
@@ -135,33 +145,21 @@ fn try_restore_preimage(
     preimage: Option<&[u8]>,
     written_revision: &str,
 ) -> Result<(), CodexAuthSwapError> {
-    let live = read_auth_bytes(path).unwrap_or(None);
-    if let Some(bytes) = live.as_ref() {
-        if revision_for_bytes(bytes) != written_revision {
-            return Err(CodexAuthSwapError::ExternalChange);
-        }
+    let live = read_auth_bytes(path)?;
+    if !live
+        .as_ref()
+        .is_some_and(|bytes| revision_for_bytes(bytes) == written_revision)
+    {
+        return Err(CodexAuthSwapError::ExternalChange);
     }
-    match preimage {
-        Some(bytes) => write_auth_json_0600(path, bytes).map_err(|_| CodexAuthSwapError::Io),
-        None => {
-            let _ = fs::remove_file(path);
-            Ok(())
-        }
-    }
+    crate::config::restore_file_preimage(path, preimage).map_err(|_| CodexAuthSwapError::Io)
 }
 
 fn write_auth_json_0600(path: &Path, bytes: &[u8]) -> Result<(), ManagedAuthCoreError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|_| ManagedAuthCoreError::Io)?;
     }
-    crate::config::atomic_write(path, bytes).map_err(|_| ManagedAuthCoreError::Io)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .map_err(|_| ManagedAuthCoreError::Io)?;
-    }
-    Ok(())
+    crate::config::atomic_write_private(path, bytes).map_err(|_| ManagedAuthCoreError::Io)
 }
 
 fn read_auth_bytes(path: &Path) -> Result<Option<Vec<u8>>, CodexAuthSwapError> {
@@ -193,19 +191,6 @@ pub(crate) fn capture_auth_preimage(
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     read_auth_bytes(auth_path)
-}
-
-/// Restore exact preimage bytes only when live revision still matches the
-/// revision written by this coordinator. External changes stop the overwrite.
-pub(crate) fn restore_codex_auth_preimage(
-    auth_path: &Path,
-    written_revision: &str,
-    preimage: Option<&[u8]>,
-) -> Result<(), CodexAuthSwapError> {
-    let _guard = auth_json_lock()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    try_restore_preimage(auth_path, preimage, written_revision)
 }
 
 #[cfg(test)]

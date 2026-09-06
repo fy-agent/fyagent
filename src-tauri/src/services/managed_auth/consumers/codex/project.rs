@@ -1,244 +1,194 @@
-//! Codex official-account projection coordinator.
+//! Codex account projection. This owner never writes model configuration.
 
 use std::path::Path;
 
 use crate::app_config::AppType;
-use crate::database::CODEX_OFFICIAL_PROVIDER_ID;
 use crate::services::managed_auth::{
     ManagedAuthMutationOutcome, ManagedAuthReasonCode, ManagedAuthSecretBundle,
 };
-use crate::services::provider::ProviderService;
 use crate::store::AppState;
 
-use super::auth_document::{CodexChatGptAuthDocument, CodexNativeAuthState};
+use super::auth_document::CodexChatGptAuthDocument;
 use super::delta::{plan_codex_managed_auth_delta, CodexDeltaError, CodexManagedAuthDelta};
 use super::observation::{document_from_bundle, observe_managed_auth};
-use super::swap::{
-    auth_path_in, capture_auth_preimage, restore_codex_auth_preimage, swap_codex_chatgpt_auth,
-    CodexAuthSwapError, CodexAuthSwapReceipt,
-};
+use super::swap::{auth_path_in, swap_codex_chatgpt_auth, CodexAuthSwapError};
 
 #[derive(Debug, Clone)]
 pub(crate) struct CodexProjectionOutcome {
     pub outcome: ManagedAuthMutationOutcome,
     pub reason: Option<ManagedAuthReasonCode>,
     pub pending_restart: bool,
-    #[allow(dead_code)]
-    pub auth_revision: Option<String>,
     pub wrote_auth: bool,
-    pub switched_provider: bool,
 }
 
-impl CodexProjectionOutcome {
-    fn noop() -> Self {
-        Self {
-            outcome: ManagedAuthMutationOutcome::Completed,
-            reason: None,
-            pending_restart: false,
-            auth_revision: None,
-            wrote_auth: false,
-            switched_provider: false,
-        }
-    }
-}
-
-/// Project a selected official account into Codex using the minimum delta.
-///
-/// Caller must already hold any credential locks required for materialization.
-/// This function acquires the Codex Provider mutation guard for all paths,
-/// including AuthOnly, so auth swaps serialize with Provider switches.
+/// Serialize with Provider writes, but never invoke a Provider writer from an
+/// account operation. The displayed revision covers both auth and the store/
+/// routing configuration used to decide whether file projection is supported.
 pub(crate) fn project_codex_official_account(
     app_state: &AppState,
     codex_home: &Path,
     target_provider_subject: &str,
     target_document: &CodexChatGptAuthDocument,
-    expected_auth_revision: Option<&str>,
+    expected_connection_revision: &str,
 ) -> Result<CodexProjectionOutcome, ManagedAuthReasonCode> {
-    if !target_document.identity_matches(target_provider_subject) {
-        return Err(ManagedAuthReasonCode::IdentityMismatch);
-    }
-
     let _guard = futures::executor::block_on(
         app_state
             .proxy_service
             .lock_switch_for_app(AppType::Codex.as_str()),
     );
+    project_under_guard(
+        codex_home,
+        target_provider_subject,
+        target_document,
+        expected_connection_revision,
+    )
+}
 
+fn project_under_guard(
+    codex_home: &Path,
+    target_provider_subject: &str,
+    target_document: &CodexChatGptAuthDocument,
+    expected_connection_revision: &str,
+) -> Result<CodexProjectionOutcome, ManagedAuthReasonCode> {
+    if !target_document.identity_matches(target_provider_subject) {
+        return Err(ManagedAuthReasonCode::IdentityMismatch);
+    }
     let live = observe_managed_auth(codex_home);
+    if live.connection_revision() != expected_connection_revision {
+        return Err(ManagedAuthReasonCode::ExternalChangeDetected);
+    }
     let delta = plan_codex_managed_auth_delta(&live, target_provider_subject)
         .map_err(CodexDeltaError::reason_code)?;
-
-    match delta {
-        CodexManagedAuthDelta::Noop => Ok(CodexProjectionOutcome {
-            auth_revision: live.auth_revision,
-            ..CodexProjectionOutcome::noop()
-        }),
-        CodexManagedAuthDelta::AuthOnly => {
-            prepare_before_auth_overwrite(app_state, &live.auth_state, false)?;
-            let expected = expected_auth_revision.or(live.auth_revision.as_deref());
-            let receipt = swap_auth(codex_home, expected, target_document)?;
-            Ok(CodexProjectionOutcome {
-                outcome: ManagedAuthMutationOutcome::Completed,
-                reason: receipt
-                    .pending_restart
-                    .then_some(ManagedAuthReasonCode::PendingRestart),
-                pending_restart: receipt.pending_restart,
-                auth_revision: Some(receipt.revision),
-                wrote_auth: receipt.changed,
-                switched_provider: false,
-            })
-        }
-        CodexManagedAuthDelta::ProviderOnly => {
-            switch_official(app_state)?;
-            let after = observe_managed_auth(codex_home);
-            if !after.provider_route.is_official() {
-                return Err(ManagedAuthReasonCode::PartialCompletion);
-            }
-            Ok(CodexProjectionOutcome {
-                outcome: ManagedAuthMutationOutcome::Completed,
-                reason: None,
-                pending_restart: false,
-                auth_revision: after.auth_revision,
-                wrote_auth: false,
-                switched_provider: true,
-            })
-        }
-        CodexManagedAuthDelta::AuthThenProvider => {
-            prepare_before_auth_overwrite(app_state, &live.auth_state, true)?;
-
-            let auth_path = auth_path_in(codex_home);
-            let preimage = capture_auth_preimage(&auth_path)
-                .map_err(|_| ManagedAuthReasonCode::PartialCompletion)?;
-            let expected = expected_auth_revision.or(live.auth_revision.as_deref());
-            let receipt = swap_auth(codex_home, expected, target_document)?;
-            match switch_official(app_state) {
-                Ok(()) => {
-                    let after = observe_managed_auth(codex_home);
-                    if !after.provider_route.is_official() {
-                        return Ok(CodexProjectionOutcome {
-                            outcome: ManagedAuthMutationOutcome::Partial,
-                            reason: Some(ManagedAuthReasonCode::PartialCompletion),
-                            pending_restart: receipt.pending_restart,
-                            auth_revision: Some(receipt.revision),
-                            wrote_auth: receipt.changed,
-                            switched_provider: false,
-                        });
-                    }
-                    Ok(CodexProjectionOutcome {
-                        outcome: ManagedAuthMutationOutcome::Completed,
-                        reason: receipt
-                            .pending_restart
-                            .then_some(ManagedAuthReasonCode::PendingRestart),
-                        pending_restart: receipt.pending_restart,
-                        auth_revision: Some(receipt.revision),
-                        wrote_auth: receipt.changed,
-                        switched_provider: true,
-                    })
-                }
-                Err(reason) => {
-                    // Restore auth preimage only when route is still third-party
-                    // and auth revision is still ours.
-                    let after = observe_managed_auth(codex_home);
-                    if after.provider_route.is_official() {
-                        return Ok(CodexProjectionOutcome {
-                            outcome: ManagedAuthMutationOutcome::Partial,
-                            reason: Some(ManagedAuthReasonCode::PartialCompletion),
-                            pending_restart: receipt.pending_restart,
-                            auth_revision: Some(receipt.revision),
-                            wrote_auth: receipt.changed,
-                            switched_provider: true,
-                        });
-                    }
-                    if after.auth_revision.as_deref() == Some(receipt.revision.as_str()) {
-                        let _ = restore_codex_auth_preimage(
-                            &auth_path,
-                            &receipt.revision,
-                            preimage.as_deref(),
-                        );
-                    }
-                    Err(reason)
-                }
-            }
-        }
+    if delta == CodexManagedAuthDelta::Noop {
+        return Ok(CodexProjectionOutcome {
+            outcome: ManagedAuthMutationOutcome::Completed,
+            reason: None,
+            pending_restart: false,
+            wrote_auth: false,
+        });
     }
-}
-
-/// Before covering live auth, optionally backfill the current Provider row.
-/// Legacy API-key-only auth must prove the key is recoverable first.
-fn prepare_before_auth_overwrite(
-    app_state: &AppState,
-    auth_state: &CodexNativeAuthState,
-    always_backfill: bool,
-) -> Result<(), ManagedAuthReasonCode> {
-    let api_key_only = matches!(
-        auth_state,
-        CodexNativeAuthState::ThirdPartyApiKeyOnly { .. }
-    );
-    if !always_backfill && !api_key_only {
-        return Ok(());
-    }
-    let backfilled = ProviderService::backfill_current_live_under_lock(app_state, AppType::Codex)
-        .map_err(|_| ManagedAuthReasonCode::PartialCompletion)?;
-    if !api_key_only {
-        return Ok(());
-    }
-    if !backfilled {
-        return Err(ManagedAuthReasonCode::PartialCompletion);
-    }
-    let providers = app_state
-        .db
-        .get_all_providers(AppType::Codex.as_str())
-        .map_err(|_| ManagedAuthReasonCode::PartialCompletion)?;
-    let current_id =
-        crate::settings::get_effective_current_provider(&app_state.db, &AppType::Codex)
-            .map_err(|_| ManagedAuthReasonCode::PartialCompletion)?
-            .ok_or(ManagedAuthReasonCode::PartialCompletion)?;
-    let Some(current) = providers.get(&current_id) else {
-        return Err(ManagedAuthReasonCode::PartialCompletion);
-    };
-    let has_key = current
-        .settings_config
-        .pointer("/auth/OPENAI_API_KEY")
-        .and_then(|value| value.as_str())
-        .is_some_and(|value| !value.trim().is_empty());
-    if !has_key {
-        return Err(ManagedAuthReasonCode::PartialCompletion);
-    }
-    Ok(())
-}
-
-fn swap_auth(
-    codex_home: &Path,
-    expected: Option<&str>,
-    target: &CodexChatGptAuthDocument,
-) -> Result<CodexAuthSwapReceipt, ManagedAuthReasonCode> {
-    swap_codex_chatgpt_auth(&auth_path_in(codex_home), expected, target).map_err(
-        |error| match error {
-            CodexAuthSwapError::Stale | CodexAuthSwapError::ExternalChange => {
-                ManagedAuthReasonCode::ExternalChangeDetected
-            }
-            CodexAuthSwapError::IdentityMismatch => ManagedAuthReasonCode::IdentityMismatch,
-            CodexAuthSwapError::Invalid | CodexAuthSwapError::Io => {
-                ManagedAuthReasonCode::PartialCompletion
-            }
-        },
+    // The shared writer retains the exact old auth file even when it contains
+    // only a legacy API key. No hidden Provider backfill or config write is
+    // needed to make that credential recoverable.
+    let receipt = swap_codex_chatgpt_auth(
+        &auth_path_in(codex_home),
+        live.auth_revision.as_deref(),
+        target_document,
     )
+    .map_err(|error| match error {
+        CodexAuthSwapError::Stale | CodexAuthSwapError::ExternalChange => {
+            ManagedAuthReasonCode::ExternalChangeDetected
+        }
+        CodexAuthSwapError::IdentityMismatch => ManagedAuthReasonCode::IdentityMismatch,
+        CodexAuthSwapError::Invalid | CodexAuthSwapError::Io => {
+            ManagedAuthReasonCode::PartialCompletion
+        }
+    })?;
+    Ok(CodexProjectionOutcome {
+        outcome: ManagedAuthMutationOutcome::Completed,
+        reason: receipt
+            .pending_restart
+            .then_some(ManagedAuthReasonCode::PendingRestart),
+        pending_restart: receipt.pending_restart,
+        wrote_auth: receipt.changed,
+    })
 }
 
-fn switch_official(app_state: &AppState) -> Result<(), ManagedAuthReasonCode> {
-    ProviderService::switch_with_lock_held_skipping_backfill(
-        app_state,
-        AppType::Codex,
-        CODEX_OFFICIAL_PROVIDER_ID,
-    )
-    .map(|_| ())
-    .map_err(|_| ManagedAuthReasonCode::PartialCompletion)
-}
-
-/// Materialize a projection document from a complete bundle, or signal reauth.
 pub(crate) fn materialize_from_bundle(
     bundle: &ManagedAuthSecretBundle,
     expected_subject: &str,
 ) -> Result<CodexChatGptAuthDocument, ManagedAuthReasonCode> {
     document_from_bundle(bundle, expected_subject).ok_or(ManagedAuthReasonCode::RequiresReauth)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use serde_json::json;
+
+    fn account(id: &str) -> CodexChatGptAuthDocument {
+        let payload = URL_SAFE_NO_PAD
+            .encode(json!({"chatgpt_account_id":id,"email":"test@example.com"}).to_string());
+        let token = format!("e30.{payload}.sig");
+        CodexChatGptAuthDocument::from_tokens(
+            &token,
+            &token,
+            "fixture-refresh",
+            Some(id),
+            Some(1_700_000_000),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn account_switch_preserves_commented_custom_config_without_provider_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.toml");
+        let original = b"# user configuration\r\nmodel_provider = 'custom'\r\nmodel = 'user-model'\r\n[model_providers.custom]\r\nname = 'User provider'\r\nbase_url = 'https://example.test/v1'\r\nwire_api = 'responses'\r\n[mcp_servers.example]\r\ncommand = 'keep-me'\r\n[features]\r\nmulti_agent = true\r\n";
+        std::fs::write(&config, original).unwrap();
+        let auth = auth_path_in(dir.path());
+        std::fs::write(&auth, br#"{ "OPENAI_API_KEY": "old-fixture-key" }"#).unwrap();
+        let before_auth = std::fs::read(&auth).unwrap();
+        let revision = observe_managed_auth(dir.path()).connection_revision();
+        let result =
+            project_under_guard(dir.path(), "acct-a", &account("acct-a"), &revision).unwrap();
+        assert!(result.wrote_auth && result.pending_restart);
+        assert_eq!(std::fs::read(&config).unwrap(), original);
+        assert!(!crate::config::rolling_backup_path(&config).exists());
+        assert_eq!(
+            std::fs::read(crate::config::rolling_backup_path(&auth)).unwrap(),
+            before_auth
+        );
+        assert!(!observe_managed_auth(dir.path())
+            .provider_route
+            .is_official());
+    }
+
+    #[test]
+    fn stale_auth_or_config_snapshot_rejects_without_writes() {
+        for change_auth in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let revision = observe_managed_auth(dir.path()).connection_revision();
+            let path = dir.path().join(if change_auth {
+                "auth.json"
+            } else {
+                "config.toml"
+            });
+            let bytes: &[u8] = if change_auth {
+                br#"{"OPENAI_API_KEY":"external"}"#
+            } else {
+                b"# external configuration\nmodel = 'external'\n"
+            };
+            std::fs::write(&path, bytes).unwrap();
+            let result = project_under_guard(dir.path(), "acct-a", &account("acct-a"), &revision);
+            assert_eq!(
+                result.unwrap_err(),
+                ManagedAuthReasonCode::ExternalChangeDetected
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+            assert!(!crate::config::rolling_backup_path(&path).exists());
+            if !change_auth {
+                assert!(!auth_path_in(dir.path()).exists());
+            }
+        }
+    }
+
+    #[test]
+    fn existing_matching_account_never_changes_route_or_rotates_auth_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.toml");
+        let config_bytes = b"# keep\nmodel_provider = 'custom'\n";
+        std::fs::write(&config, config_bytes).unwrap();
+        let auth = auth_path_in(dir.path());
+        let document = account("acct-a");
+        std::fs::write(&auth, document.serialize_bytes().unwrap()).unwrap();
+        let before = std::fs::read(&auth).unwrap();
+        let revision = observe_managed_auth(dir.path()).connection_revision();
+        let result = project_under_guard(dir.path(), "acct-a", &document, &revision).unwrap();
+        assert!(!result.wrote_auth);
+        assert_eq!(std::fs::read(&auth).unwrap(), before);
+        assert_eq!(std::fs::read(&config).unwrap(), config_bytes);
+        assert!(!crate::config::rolling_backup_path(&auth).exists());
+    }
 }

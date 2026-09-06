@@ -1,3 +1,5 @@
+import type { FileWriteTarget } from "./file-writes";
+
 export type ProviderAppId = "claude" | "codex" | "grokbuild";
 
 export interface ProviderQuickSetupRequest {
@@ -15,13 +17,10 @@ export interface ProviderSummary {
   id: string;
   name: string;
   modelId?: string;
+  writeTargets?: ModelWriteTarget[];
 }
 
-export interface ModelWriteTarget {
-  path: string;
-  backupPath: string;
-  exists: boolean;
-}
+export type ModelWriteTarget = FileWriteTarget;
 
 export type ProviderSummaryMap = Record<string, ProviderSummary>;
 export interface ProviderSummaryQueryData {

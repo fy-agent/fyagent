@@ -1,0 +1,33 @@
+.fy-file-write-disclosure {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fy-file-write-disclosure p {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.fy-file-write-target {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.fy-file-write-path-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fy-file-write-path-label {
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+}

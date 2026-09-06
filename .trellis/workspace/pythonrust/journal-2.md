@@ -5,9 +5,8 @@
 
 ---
 
-
-
 ## Session 62: Windows vendor installer handoff
+
 <!-- trellis-session: v=2 fp=39c31055b13cbd37 -->
 
 **Date**: 2026-09-02
@@ -28,11 +27,11 @@ Windows Qoder/TRAE/WorkBuddy 一点安装在 ShellExecute 成功后交接官方�
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
-| `780b5eb8` | fix(windows): hand off vendor EXE install after ShellExecute |
+| Hash       | Message                                                             |
+| ---------- | ------------------------------------------------------------------- |
+| `780b5eb8` | fix(windows): hand off vendor EXE install after ShellExecute        |
 | `d1152999` | fix(v2): show vendor-wizard handoff copy instead of installed proof |
-| `e533e848` | docs(spec): record Windows vendor-installer handoff contracts |
+| `e533e848` | docs(spec): record Windows vendor-installer handoff contracts       |
 
 ### Testing
 
@@ -50,8 +49,8 @@ Windows Qoder/TRAE/WorkBuddy 一点安装在 ShellExecute 成功后交接官方�
 - Windows 原生 HIL：真实官方窗口、UAC 取消、安装完成后库存回读
 - 未推送远程
 
-
 ## Session 63: Comprehensive Trellis Spec refresh
+
 <!-- trellis-session: v=2 fp=9f9124142986f04c -->
 
 **Date**: 2026-09-02
@@ -64,8 +63,8 @@ Audited all 43 pre-refresh Specs; split three cross-domain monoliths into focuse
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
+| Hash                                       | Message                                               |
+| ------------------------------------------ | ----------------------------------------------------- |
 | `c3899e1282882ea09aa3e64ccea788ea0bb9ab8c` | chore(task): archive 09-02-comprehensive-spec-refresh |
 
 ### Status
@@ -76,8 +75,8 @@ Audited all 43 pre-refresh Specs; split three cross-domain monoliths into focuse
 
 - Use the focused backend/frontend indexes for task-scoped Spec discovery; compatibility router paths remain historical references only.
 
-
 ## Session 64: 全面刷新并校准 Trellis Spec
+
 <!-- trellis-session: v=2 fp=7d9cef5d5a975bd0 -->
 
 **Date**: 2026-09-02
@@ -90,16 +89,16 @@ Audited all 43 pre-refresh Specs; split three cross-domain monoliths into focuse
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
+| Hash       | Message                                             |
+| ---------- | --------------------------------------------------- |
 | `f0479ac1` | docs: align Trellis specs with implementation facts |
 
 ### Status
 
 [OK] **Completed**
 
-
 ## Session 65: Grok 大陆 npm 一键安装与 OpenCode Windows 源
+
 <!-- trellis-session: v=2 fp=66ea120882cabf9c -->
 
 **Date**: 2026-09-03
@@ -118,12 +117,12 @@ Audited all 43 pre-refresh Specs; split three cross-domain monoliths into focuse
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
+| Hash       | Message                                                             |
+| ---------- | ------------------------------------------------------------------- |
 | `a189ff40` | feat: install Grok via official npm and add OpenCode Windows source |
-| `7dd216ab` | style: format Grok owner panel for prettier |
-| `0f766831` | fix: keep Grok npm plans on product hosts |
-| `c7cd6906` | fix: split Grok platform package lookup by product OS |
+| `7dd216ab` | style: format Grok owner panel for prettier                         |
+| `0f766831` | fix: keep Grok npm plans on product hosts                           |
+| `c7cd6906` | fix: split Grok platform package lookup by product OS               |
 
 ### Testing
 
@@ -138,8 +137,8 @@ Audited all 43 pre-refresh Specs; split three cross-domain monoliths into focuse
 
 - macOS 实装、Windows 11 helper npm、阻断 x.ai/GCS、OpenCode WinVerifyTrust 仍待 HIL；未推送
 
-
 ## Session 66: Managed Auth core vault migration
+
 <!-- trellis-session: v=2 fp=3aefb90654473ed5 -->
 
 **Date**: 2026-09-03
@@ -152,16 +151,16 @@ Completed 09-03-managed-auth-core-vault-migration: ManagedAuthService + SecretRe
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
+| Hash       | Message                                                                     |
+| ---------- | --------------------------------------------------------------------------- |
 | `d82ffed8` | feat(auth): activate Managed Auth core, SecretRef vault, and JSON migration |
 
 ### Status
 
 [OK] **Completed**
 
-
 ## Session 67: 收敛 leftover Auth 并归档统一认证任务
+
 <!-- trellis-session: v=2 fp=5d505773efbb449d -->
 
 **Date**: 2026-09-03
@@ -170,21 +169,21 @@ Completed 09-03-managed-auth-core-vault-migration: ManagedAuthService + SecretRe
 
 ### Summary
 
-Leftover auth_* 与 Copilot 登录/删除 IPC 永久 fail-closed，Provider 表单只选已保存绑定；check:prearchive 通过后归档 hardening 与父任务。未密封 JSON、故障恢复 UX、a11y 自动化与 macOS/Windows HIL 保持未勾，生产投影门禁仍关闭。
+Leftover auth\_\* 与 Copilot 登录/删除 IPC 永久 fail-closed，Provider 表单只选已保存绑定；check:prearchive 通过后归档 hardening 与父任务。未密封 JSON、故障恢复 UX、a11y 自动化与 macOS/Windows HIL 保持未勾，生产投影门禁仍关闭。
 
 ### Main Changes
 
-- leftover auth_* 与 Copilot 登录/轮询/删除/设默认/注销返回 legacy_auth_mutation_disabled
+- leftover auth\_\* 与 Copilot 登录/轮询/删除/设默认/注销返回 legacy_auth_mutation_disabled
 - leftover Provider OAuth 区块改为只读 picker；Copilot 迁移失败改闭集文案
-- copilot_get_token* 对 renderer 保持 copilot_token_not_exposed
+- copilot_get_token\* 对 renderer 保持 copilot_token_not_exposed
 - updated managed-auth、codex-provider-configuration、v2-managed-auth specs 与诚实 PRD
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
+| Hash       | Message                                                                      |
+| ---------- | ---------------------------------------------------------------------------- |
 | `53476b86` | fix(auth): fail-close leftover login IPC and keep Provider forms picker-only |
-| `cbb8d7a5` | fix(auth): fail-close Copilot token IPC and collapse leftover Auth Center |
+| `cbb8d7a5` | fix(auth): fail-close Copilot token IPC and collapse leftover Auth Center    |
 
 ### Testing
 
@@ -201,8 +200,8 @@ Leftover auth_* 与 Copilot 登录/删除 IPC 永久 fail-closed，Provider 表�
 - macOS/Windows 真机 HIL 未做；Codex/Grok 生产投影与 OpenCode 热加载保持关闭
 - 故障恢复 UX、键盘/a11y 自动化与 NOTICE 完整性仍待后续；未推送
 
-
 ## Session 68: Auth recovery copy and dialog focus
+
 <!-- trellis-session: v=2 fp=8239f3483b1d7052 -->
 
 **Date**: 2026-09-03
@@ -221,8 +220,8 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
+| Hash       | Message                                                      |
+| ---------- | ------------------------------------------------------------ |
 | `e8807cde` | fix(auth): surface recovery reasons and restore dialog focus |
 
 ### Testing
@@ -240,8 +239,8 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 - leftover JSON 密封、Codex/Grok 生产投影、OpenCode 热加载、NOTICE 与 macOS/Windows HIL 仍未做
 - 不要打开生产投影或把 mock 当成 HIL
 
-
 ## Session 69: Codex 官方账号与第三方 API 凭据切换实现与归档
+
 <!-- trellis-session: v=2 fp=e6636eae98cdabeb -->
 
 **Date**: 2026-09-04
@@ -254,8 +253,8 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
+| Hash       | Message                                                                   |
+| ---------- | ------------------------------------------------------------------------- |
 | `f76f3ab1` | feat(auth): simplify codex auth provider switching and minimal projection |
 | `a10e4b9f` | docs(spec): update codex auth projection and provider configuration specs |
 
@@ -263,8 +262,8 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 
 [OK] **Completed**
 
-
 ## Session 70: 架构债务审查与成熟实现复用
+
 <!-- trellis-session: v=2 fp=717ac3123013e6f0 -->
 
 **Date**: 2026-09-05
@@ -283,8 +282,8 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
+| Hash       | Message                                              |
+| ---------- | ---------------------------------------------------- |
 | `a051c098` | refactor: consolidate shared architecture mechanisms |
 
 ### Testing
@@ -296,8 +295,8 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 
 [OK] **Completed**
 
-
 ## Session 71: 第二轮安全与架构治理
+
 <!-- trellis-session: v=2 fp=fad2344673a647db -->
 
 **Date**: 2026-09-05
@@ -315,8 +314,8 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
+| Hash       | Message                                               |
+| ---------- | ----------------------------------------------------- |
 | `5bbfb24d` | refactor: harden security and architecture boundaries |
 
 ### Testing
@@ -332,8 +331,8 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 
 - 合并后重新扫描远端告警；凭证所有者核查Context7历史样例并按需轮换；保留Windows等原生验收边界。
 
-
 ## Session 72: 第三轮前端体验与架构整合
+
 <!-- trellis-session: v=2 fp=e1737fd848f692ad -->
 
 **Date**: 2026-09-05
@@ -346,19 +345,19 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
-| `c27c9bd536c352c8a8184e1cccd127d2582c5498` | refactor(ui): unify desktop hierarchy and dialog interaction |
+| Hash                                       | Message                                                          |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| `c27c9bd536c352c8a8184e1cccd127d2582c5498` | refactor(ui): unify desktop hierarchy and dialog interaction     |
 | `54b1c0f666afa28d580112746778e3e458c6abd9` | refactor(ui): unify account and configuration workflow ownership |
-| `a239fe0d6799e1a747995ed496cef1f46d8b3ff2` | fix(ui): reveal the main window after initial content is ready |
-| `463962bd32a61613461fc74112409901c23cba67` | fix(ui): preserve dialog focus across guarded transitions |
+| `a239fe0d6799e1a747995ed496cef1f46d8b3ff2` | fix(ui): reveal the main window after initial content is ready   |
+| `463962bd32a61613461fc74112409901c23cba67` | fix(ui): preserve dialog focus across guarded transitions        |
 
 ### Status
 
 [OK] **Completed**
 
-
 ## Session 73: 第四轮前端性能、玻璃材质与来源动效整合
+
 <!-- trellis-session: v=2 fp=25b5cfd3e1385b2d -->
 
 **Date**: 2026-09-05
@@ -371,12 +370,12 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 
 ### Git Commits
 
-| Hash | Message |
-|------|---------|
-| `bfa5bef80e1cec47ebcdbeef1b1adf1e1d953c8c` | fix(ui): repair production chunks and isolate route rendering |
-| `1edbb6faaa7c529e5cb3a2bf589a0bf592dfaa6b` | refactor(ui): unify frosted surfaces and container readability |
+| Hash                                       | Message                                                         |
+| ------------------------------------------ | --------------------------------------------------------------- |
+| `bfa5bef80e1cec47ebcdbeef1b1adf1e1d953c8c` | fix(ui): repair production chunks and isolate route rendering   |
+| `1edbb6faaa7c529e5cb3a2bf589a0bf592dfaa6b` | refactor(ui): unify frosted surfaces and container readability  |
 | `d50c8bb4eb89ca31fb701b16264a527b257c5042` | refactor(ui): centralize source-aware motion and press feedback |
-| `87654f0745bea54e9defe2adf792ac5388d5b3f2` | docs(ui): align round-four integration contracts and evidence |
+| `87654f0745bea54e9defe2adf792ac5388d5b3f2` | docs(ui): align round-four integration contracts and evidence   |
 
 ### Status
 
@@ -401,7 +400,41 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 | `097dd80f0798cffc2336c0229fa939fe09ce212d` | refactor(ui): brighten paired surfaces and stabilize glass material |
 | `04485a9473f28fea6cdb8e5a160f12817253429e` | fix(ui): preserve production timing and continuous presentation handoff |
 | `7908893efd881b88b150068c3a8bdeb68fd0d7e5` | docs(ui): complete round-five integration review and evidence |
+## Session 75: Claude CLI and reversible user configuration
+
+<!-- trellis-session: v=2 fp=676f3c7f6f3bb030 -->
+
+**Date**: 2026-09-06
+**Task**: Claude CLI and reversible user configuration
+**Branch**: `feat/claude-cli-safe-auth`
+
+### Summary
+
+Completed CLI-only Claude mirror installation and explicit official-login handoff, separated Codex account projection from request-source changes, and added shared backup-before-write plus guarded file recovery. Archived the parent and both children after SPEC updates and exact full prearchive checks; no main-checkout merge or remote push.
+
+### Main Changes
+
+- Reused Grok npm plans, scoped registry policy, bounded processes and ordinary-user helper; official root/platform manifest and executable readback.
+- Native single-use Auth file-impact previews; login saves credentials without silently connecting consumer files; shared disclosure and recovery controls.
+- Default atomic writer now retains a private rolling preimage and receipt; protected restore rejects external drift and architecture tests constrain bypass owners.
+
+### Git Commits
+
+| Hash                                       | Message                                                   |
+| ------------------------------------------ | --------------------------------------------------------- |
+| `6d8ffc9cb841e54f4ef8ea82bc7a8dbe661a2198` | feat: add Claude CLI and reversible configuration changes |
+
+### Testing
+
+- [OK] mise run check passed; Cargo 3495 passed / 6 pre-existing ignored; main Vitest 1621 passed / 1 pre-existing skipped.
+- [OK] V2 typecheck and lint passed; 561 tests passed; 80 browser cases and seven-page production bootstrap passed without increasing budgets.
+- [OK] Isolated macOS arm64 Tencent-mirror install ran Claude Code 2.1.261 --version; temporary home/prefix/cache removed, no real login or inference.
+- [OK] All three exact full prearchive gates and postarchive check:contracts passed.
 
 ### Status
 
 [OK] **Completed**
+
+### Next Steps
+
+- Windows native helper/UAC/signer execution and real vendor OAuth/hot-reload remain separate verification boundaries before release.

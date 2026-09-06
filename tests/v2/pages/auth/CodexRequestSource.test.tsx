@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -27,7 +33,13 @@ function setup() {
       before: { id: "before", name: "Original API" },
       "provider-1": { id: "provider-1", name: "Provider One" },
     },
-    writeTargets: [],
+    writeTargets: [
+      {
+        path: "~/.codex/config.toml",
+        backupPath: "~/.codex/config.toml.fyagent.backup",
+        exists: true,
+      },
+    ],
   }));
   ports.providers.getSummary = getSummary;
   ports.changePlans.createCodexProviderSwitchPlan = vi.fn(
@@ -72,13 +84,51 @@ function setup() {
 }
 
 async function confirmSwitch() {
-  fireEvent.click(await screen.findByRole("button", { name: "预览更改" }));
+  const preview = await screen.findByRole("button", { name: "预览更改" });
+  await act(async () => {
+    fireEvent.click(preview);
+  });
   const confirm = await screen.findByRole("button", { name: "应用更改" });
-  fireEvent.click(confirm);
-  fireEvent.click(confirm);
+  await act(async () => {
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+  });
 }
 
 describe("central Codex request source", () => {
+  it("discloses the selected source's model catalog without executing it", async () => {
+    const { ports, getSummary, renderSource } = setup();
+    const summary = await getSummary();
+    ports.providers.getSummary = vi.fn(async () => ({
+      ...summary,
+      providers: {
+        ...summary.providers,
+        "provider-1": {
+          ...summary.providers["provider-1"],
+          writeTargets: [
+            ...summary.writeTargets,
+            {
+              path: "~/.codex/fyagent-model-catalog.json",
+              backupPath: "~/.codex/fyagent-model-catalog.json.fyagent.backup",
+              exists: true,
+            },
+          ],
+        },
+      },
+    }));
+    render(renderSource());
+    const preview = await screen.findByRole("button", { name: "预览更改" });
+    await act(async () => {
+      fireEvent.click(preview);
+    });
+    expect(
+      await screen.findByText(
+        "~/.codex/fyagent-model-catalog.json.fyagent.backup",
+      ),
+    ).toBeVisible();
+    expect(ports.changePlans.applyChangePlan).not.toHaveBeenCalled();
+  });
+
   it("switches once, rereads both owners and retains the result after currentId changes", async () => {
     const { ports, getSummary, refreshOverview, onBusyChange, renderSource } =
       setup();
@@ -112,7 +162,9 @@ describe("central Codex request source", () => {
     expect(screen.getByRole("button", { name: "预览更改" })).toBeDisabled();
     expect(onBusyChange).toHaveBeenLastCalledWith(true);
     expect(screen.queryByText("private upstream failure")).toBeNull();
-    fireEvent.click(retry);
+    await act(async () => {
+      fireEvent.click(retry);
+    });
     await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
     expect(ports.changePlans.applyChangePlan).toHaveBeenCalledTimes(1);
     expect(refreshOverview).toHaveBeenCalledTimes(2);

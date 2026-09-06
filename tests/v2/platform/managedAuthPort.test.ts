@@ -99,15 +99,19 @@ describe("Tauri managed auth port", () => {
     });
 
     invoke.mockResolvedValueOnce(mutationResultFixture());
-    await port.applyConnectionAction({
-      connectionId: CODEX_CONNECTION_ID,
-      expectedRevision: CONNECTION_REVISION,
-      action: "disconnect",
-      accountId: null,
-    });
+    await port.applyConnectionAction(
+      {
+        connectionId: CODEX_CONNECTION_ID,
+        expectedRevision: CONNECTION_REVISION,
+        action: "disconnect",
+        accountId: null,
+      },
+      "323e4567-e89b-42d3-a456-426614174000",
+    );
     expect(invoke).toHaveBeenLastCalledWith(
       "managed_auth_apply_connection_action",
       {
+        previewId: "323e4567-e89b-42d3-a456-426614174000",
         request: {
           connectionId: CODEX_CONNECTION_ID,
           expectedRevision: CONNECTION_REVISION,

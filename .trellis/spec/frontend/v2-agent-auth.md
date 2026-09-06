@@ -174,6 +174,17 @@ The page never invokes native Auth commands directly.
 
 ### Session lifecycle
 
+- Claude login/logout first uses the shared Dialog to explain the official CLI
+  operation and require explicit confirmation. Cancelling calls no session
+  mutation; rapid confirmation admits only one start. The dialog stays mounted
+  for presence/focus restoration and uses the initiating control's origin ref.
+- The notice distinguishes vendor authorization from FyAgent file replacement:
+  Claude manages its credential storage (including macOS Keychain); FyAgent
+  does not copy those credentials or claim a backup can revoke/reverse an
+  official grant. No Claude Desktop install or launch occurs. Formal Windows
+  CLI authentication remains unavailable without the reviewed ordinary-user
+  auth boundary, independently of CLI installation support.
+
 - When enabled, the hook first calls `getActiveSession(agentId)` so a remounted
   page resumes a native session instead of launching a duplicate flow.
 - A non-terminal snapshot is polled with `getSession(sessionId)` until its stage
