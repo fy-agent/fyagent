@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 
 import { SKILL_TARGETS, type SkillTargetId } from "../directory";
 import { AssignmentPanel } from "../../ui/AssignmentPanel";
@@ -51,7 +51,10 @@ export function InstallTargetDialog({
   pathForTarget: (target: SkillTargetId) => string;
   pathNote?: string;
   onCancel: () => void;
-  onConfirm: (target: SkillTargetId) => void;
+  onConfirm: (
+    target: SkillTargetId,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => void;
 }) {
   const [chosenTarget, setChosenTarget] = useState(defaultTarget);
   const [step, setStep] = useState<"pick" | "path">("pick");
@@ -61,6 +64,7 @@ export function InstallTargetDialog({
     <Dialog
       open
       originRef={originRef}
+      presentationKey={step}
       title={title}
       description={
         picking
@@ -92,7 +96,7 @@ export function InstallTargetDialog({
             <Button
               className="fy-control-button-primary"
               disabled={busy}
-              onClick={() => onConfirm(chosenTarget)}
+              onClick={(event) => onConfirm(chosenTarget, event)}
             >
               {busy ? "安装中…" : confirmVerb}
             </Button>

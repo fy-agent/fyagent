@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { getSupportedAppIcon } from "../../shared/assets/apps";
 import {
@@ -28,7 +28,10 @@ import {
 } from "../../shared/features/types";
 import { Button } from "../../shared/ui/Button";
 import { AnimatePresence } from "../../shared/ui/motion";
-import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import {
+  captureDialogOrigin,
+  type DialogOriginRef,
+} from "../../shared/ui/dialogOrigin";
 import { useDialogState } from "../../shared/ui/useDialogState";
 import { ConfirmDialog, Dialog } from "../../shared/ui/Dialog";
 import {
@@ -249,6 +252,7 @@ function ServerDetail({
       {showAssignment && (
         <div className="fy-feature-inline-assignment">
           <AssignmentPanel
+            dialogOriginRef={originRef}
             apps={server.apps}
             disabled={busy}
             labelSuffix="MCP 分配"
@@ -275,6 +279,9 @@ export function McpPage() {
   const [deleteTarget, setDeleteTarget] = useState<McpServer | null>(null);
   const [busy, setBusy] = useState(false);
   const [workbuddyTrustOpen, setWorkbuddyTrustOpen] = useState(false);
+  const [trustOrigin, setTrustOrigin] = useState<DialogOriginRef>({
+    current: null,
+  });
   const [progress, setProgress] = useState<{
     done: number;
     total: number;
@@ -317,7 +324,14 @@ export function McpPage() {
       writeLock.current = false;
     }
   };
-  const noteWorkBuddyTrust = () => setWorkbuddyTrustOpen(true);
+  const noteWorkBuddyTrust = (origin: DialogOriginRef = dialogOriginRef) => {
+    // Follow-up notices adopt the initiating operation's source, not another
+    // page-level action. The next Dialog consumes its own one-use capture.
+    setTrustOrigin({ ...origin });
+    delete origin.snapshot;
+    delete origin.returnTarget;
+    setWorkbuddyTrustOpen(true);
+  };
   const toggle = (server: McpServer, app: McpTargetId, enabled: boolean) =>
     write(
       "分配已更新",
@@ -428,7 +442,7 @@ export function McpPage() {
               busy={busy}
               defaultTarget={installTarget}
               onPickTarget={setInstallTarget}
-              onInstall={async (server) =>
+              onInstall={async (server, origin) =>
                 write(
                   "MCP 已安装",
                   async () => {
@@ -436,7 +450,7 @@ export function McpPage() {
                     setSelectedId(server.id);
                   },
                   () => {
-                    if (server.apps.workbuddy) noteWorkBuddyTrust();
+                    if (server.apps.workbuddy) noteWorkBuddyTrust(origin);
                   },
                 )
               }
@@ -542,6 +556,7 @@ export function McpPage() {
                 {selected && wideLayout && (
                   <section className="fy-feature-panel fy-feature-assign-scroll">
                     <AssignmentPanel
+                      dialogOriginRef={dialogOriginRef}
                       apps={selected.apps}
                       disabled={busy}
                       labelSuffix="MCP 分配"
@@ -559,12 +574,14 @@ export function McpPage() {
                           <Button
                             disabled={busy}
                             onClick={() => bulkAssign(app.id, true)}
+                            dialogOriginRef={dialogOriginRef}
                           >
                             全开
                           </Button>{" "}
                           <Button
                             disabled={busy}
                             onClick={() => bulkAssign(app.id, false)}
+                            dialogOriginRef={dialogOriginRef}
                           >
                             全关
                           </Button>
@@ -587,9 +604,17 @@ export function McpPage() {
             existingIds={new Set(servers.map((server) => server.id))}
             busy={busy}
             onClose={() => setEditing(null)}
-            onSave={(server) => {
+            onSave={(server, event) => {
               const wasAssigned =
                 editing !== "new" && Boolean(editing.apps.workbuddy);
+              if (server.apps.workbuddy && !wasAssigned) {
+                const source: DialogOriginRef = dialogOriginRef;
+                captureDialogOrigin(
+                  source,
+                  event.currentTarget,
+                  source.returnTarget ?? source.current,
+                );
+              }
               void write(
                 editing === "new" ? "MCP 已添加" : "MCP 已更新",
                 async () => {
@@ -606,6 +631,7 @@ export function McpPage() {
         )}
       </AnimatePresence>
       <WorkBuddyTrustDialog
+        originRef={trustOrigin}
         open={workbuddyTrustOpen}
         onOpenChange={(open) => {
           if (!open) setWorkbuddyTrustOpen(false);
@@ -646,7 +672,7 @@ function McpEditor({
   existingIds: Set<string>;
   busy: boolean;
   onClose: () => void;
-  onSave: (server: McpServer) => void;
+  onSave: (server: McpServer, event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const spec = initial?.server ?? {};
   const [id, setId] = useState(initial?.id ?? "");
@@ -777,7 +803,7 @@ function McpEditor({
       setErrors([errorMessage(error)]);
     }
   };
-  const submit = () => {
+  const submit = (event: MouseEvent<HTMLButtonElement>) => {
     const nextErrors: string[] = [];
     const trimmedId = id.trim();
     if (!trimmedId) nextErrors.push("ID 为必填项");
@@ -797,20 +823,23 @@ function McpEditor({
       return;
     }
     const base = original.current ?? {};
-    onSave({
-      ...base,
-      id: initial?.id ?? trimmedId,
-      name: name.trim(),
-      server: spec,
-      apps: { ...(initial?.apps ?? {}), ...apps },
-      description: description.trim() || undefined,
-      tags: tags
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean),
-      homepage: homepage.trim() || undefined,
-      docs: docs.trim() || undefined,
-    } as McpServer);
+    onSave(
+      {
+        ...base,
+        id: initial?.id ?? trimmedId,
+        name: name.trim(),
+        server: spec,
+        apps: { ...(initial?.apps ?? {}), ...apps },
+        description: description.trim() || undefined,
+        tags: tags
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+        homepage: homepage.trim() || undefined,
+        docs: docs.trim() || undefined,
+      } as McpServer,
+      event,
+    );
   };
   return (
     <Dialog

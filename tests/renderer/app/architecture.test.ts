@@ -156,6 +156,43 @@ const allowedLayerDependencies: Record<string, ReadonlySet<string>> = {
 };
 
 describe("FyAgent single renderer architecture boundary", () => {
+  it("requires an explicit origin contract at every production dialog and wrapper call", () => {
+    const violations: string[] = [];
+    let count = 0;
+    for (const module of parsedModules) {
+      if (relativeSourcePath(module.file).startsWith("dev/")) continue;
+      const aliases = new Set<string>();
+      for (const statement of module.sourceFile.statements) {
+        if (!ts.isImportDeclaration(statement)) continue;
+        const bindings = statement.importClause?.namedBindings;
+        if (bindings && ts.isNamedImports(bindings))
+          for (const specifier of bindings.elements)
+            if (/Dialog$/.test((specifier.propertyName ?? specifier.name).text))
+              aliases.add(specifier.name.text);
+      }
+      const visit = (node: ts.Node) => {
+        if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+          const name = node.tagName.getText(module.sourceFile);
+          if (/^[A-Z]\w*Dialog$|^Dialog$/.test(name) || aliases.has(name)) {
+            count++;
+            const hasOrigin = node.attributes.properties.some(
+              (attribute) =>
+                ts.isJsxAttribute(attribute) &&
+                attribute.name.getText(module.sourceFile) === "originRef",
+            );
+            if (!hasOrigin)
+              violations.push(
+                `${relativeSourcePath(module.file)}:${lineNumber(module.sourceFile, node)} ${name}`,
+              );
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(module.sourceFile);
+    }
+    expect(count).toBeGreaterThan(30);
+    expect(violations).toEqual([]);
+  });
   it("really scans the current renderer and domain rather than an empty retired directory", () => {
     const files = parsedModules.map((module) =>
       relativeSourcePath(module.file),

@@ -44,6 +44,8 @@ export default defineConfig({
     {
       name: "webkit-1232x700",
       testMatch: [
+        "mcp-followup-origins.spec.ts",
+        "dialog-origins.spec.ts",
         "scroll-ownership.spec.ts",
         "state-motion.spec.ts",
         "press-feedback.spec.ts",

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import {
@@ -194,6 +194,7 @@ export function AgentMcpSection({
   const [search, setSearch] = useState("");
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [workbuddyTrustOpen, setWorkbuddyTrustOpen] = useState(false);
+  const trustOriginRef = useRef<HTMLElement | null>(null);
   const servers = Object.values(query.data ?? {});
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const filtered = servers.filter((server) =>
@@ -312,6 +313,7 @@ export function AgentMcpSection({
                 </div>
                 <div className="fy-agent-assignment-card-action">
                   <Switch
+                    dialogOriginRef={trustOriginRef}
                     checked={isAssigned}
                     disabled={assignment.busy}
                     label={`在 ${entry.displayName} 中使用 ${server.name}`}
@@ -326,6 +328,7 @@ export function AgentMcpSection({
         </div>
       )}
       <WorkBuddyTrustDialog
+        originRef={trustOriginRef}
         open={workbuddyTrustOpen}
         onOpenChange={setWorkbuddyTrustOpen}
       />

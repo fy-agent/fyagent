@@ -13,8 +13,75 @@ import { Button } from "@/shared/ui/Button";
 import { ConfirmDialog, Dialog } from "@/shared/ui/Dialog";
 import { PersistentSurface } from "@/shared/ui/PersistentSurface";
 import { TabsPrimitive } from "@/shared/ui/vendor";
+import { AnimatePresence } from "@/shared/ui/motion";
 
 describe("shared desktop dialog", () => {
+  it("does not let a never-opened sibling retain an exiting modal owner", async () => {
+    const user = userEvent.setup();
+    function Pane({ close }: { close: () => void }) {
+      return (
+        <>
+          <Dialog originRef={undefined} open title="设置" onOpenChange={close}>
+            <Button onClick={close}>关闭设置</Button>
+          </Dialog>
+          <Dialog
+            originRef={undefined}
+            open={false}
+            title="尚未打开的确认"
+            onOpenChange={() => undefined}
+          />
+        </>
+      );
+    }
+    function Example() {
+      const [show, setShow] = useState(true);
+      return (
+        <AnimatePresence>
+          {show && <Pane key="pane" close={() => setShow(false)} />}
+        </AnimatePresence>
+      );
+    }
+    render(<Example />);
+    await user.click(screen.getByRole("button", { name: "关闭设置" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.body.style.pointerEvents).not.toBe("none");
+  });
+
+  it("does not take focus back after the user focuses an editor following dismissal", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const user = userEvent.setup();
+    function Example() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <Button onClick={() => setOpen(true)}>打开确认</Button>
+          <input aria-label="继续编辑" />
+          <Dialog
+            originRef={undefined}
+            open={open}
+            onOpenChange={setOpen}
+            title="确认"
+          >
+            <Button onClick={() => setOpen(false)}>取消</Button>
+          </Dialog>
+        </>
+      );
+    }
+    render(<Example />);
+    await user.click(screen.getByRole("button", { name: "打开确认" }));
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const editor = screen.getByRole("textbox", { name: "继续编辑" });
+    editor.focus();
+    await act(async () => {
+      frames.splice(0).forEach((callback) => callback(0));
+    });
+    expect(editor).toHaveFocus();
+  });
   it("returns a rejected automatic tab change to the selected tab without reopening confirmation", async () => {
     const user = userEvent.setup();
     const frames: FrameRequestCallback[] = [];
@@ -85,7 +152,12 @@ describe("shared desktop dialog", () => {
       return (
         <>
           <Button onClick={() => setFirst(true)}>打开第一个</Button>
-          <Dialog open={first} onOpenChange={setFirst} title="第一个">
+          <Dialog
+            originRef={undefined}
+            open={first}
+            onOpenChange={setFirst}
+            title="第一个"
+          >
             <Button
               onClick={() => {
                 setFirst(false);
@@ -95,7 +167,12 @@ describe("shared desktop dialog", () => {
               转到第二个
             </Button>
           </Dialog>
-          <Dialog open={second} onOpenChange={setSecond} title="第二个">
+          <Dialog
+            originRef={undefined}
+            open={second}
+            onOpenChange={setSecond}
+            title="第二个"
+          >
             <input aria-label="第二个输入" />
           </Dialog>
         </>
@@ -169,7 +246,13 @@ describe("shared desktop dialog", () => {
   it("supports a title-only dialog and never presents a hidden route's portal", () => {
     const { rerender } = render(
       <PersistentSurface active>
-        <Dialog open title="详细信息" onOpenChange={vi.fn()} size="comfortable">
+        <Dialog
+          originRef={undefined}
+          open
+          title="详细信息"
+          onOpenChange={vi.fn()}
+          size="comfortable"
+        >
           <p>内容</p>
         </Dialog>
       </PersistentSurface>,
@@ -180,7 +263,12 @@ describe("shared desktop dialog", () => {
     );
     rerender(
       <PersistentSurface active={false}>
-        <Dialog open title="详细信息" onOpenChange={vi.fn()}>
+        <Dialog
+          originRef={undefined}
+          open
+          title="详细信息"
+          onOpenChange={vi.fn()}
+        >
           <p>内容</p>
         </Dialog>
       </PersistentSurface>,

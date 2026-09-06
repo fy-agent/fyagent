@@ -3,7 +3,7 @@
   "name": "frontend-dialog-origins",
   "title": "补齐模态来源与瞬态触发链路",
   "description": "全量盘点 Dialog 包装与触发入口，补齐异步、菜单及嵌套场景的显式来源，并验证回到持久触发器",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "pythonrust",
   "createdAt": "2026-09-06",
   "completedAt": null,
-  "branch": null,
+  "branch": "dev/laiyongjie",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -22,5 +22,7 @@
   "parent": "09-06-frontend-experience-round7",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "execution_owner": "main checkout ws_0f6a1c0bb5 / fyagent-round7-origins-owner; implementing origin-retarget/capture/WorkBuddy/focus; leave these source files to this owner"
+  }
 }

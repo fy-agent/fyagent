@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { dialogOriginGeometry } from "@/shared/ui/dialogOrigin";
+import {
+  captureDialogOrigin,
+  dialogOriginGeometry,
+  type DialogOriginRef,
+} from "@/shared/ui/dialogOrigin";
 
 function measuredElement(box: DOMRect, tag = "button"): HTMLElement {
   const element = document.createElement(tag);
@@ -16,6 +20,38 @@ afterEach(() => {
 });
 
 describe("explicit dialog origin geometry", () => {
+  it("captures only geometry and allowlisted non-resource material for a transient trigger", () => {
+    const source = measuredElement(new DOMRect(600, 60, 100, 40));
+    const anchor = measuredElement(new DOMRect(700, 40, 80, 32));
+    source.textContent = "private-label-not-for-animation";
+    source.style.backgroundImage = 'url("https://example.invalid/private.png")';
+    const ref: DialogOriginRef = { current: null };
+    captureDialogOrigin(ref, source, anchor);
+    expect(ref.returnTarget).toBe(anchor);
+    expect(ref.snapshot?.box).toEqual({
+      left: 600,
+      top: 60,
+      width: 100,
+      height: 40,
+    });
+    expect(ref.snapshot?.material.backgroundImage).toBe("none");
+    expect(Object.keys(ref.snapshot!).sort()).toEqual([
+      "box",
+      "element",
+      "material",
+      "radius",
+    ]);
+    const { element, ...data } = ref.snapshot!;
+    expect(element).toBe(source);
+    expect(JSON.stringify(data)).not.toMatch(
+      /private-label|private\.png|innerHTML/,
+    );
+    source.remove();
+    expect(ref.snapshot?.box.width).toBe(100);
+    captureDialogOrigin(ref, anchor);
+    expect(ref.snapshot).toBeUndefined();
+    expect(ref.returnTarget).toBeUndefined();
+  });
   it("maps the material centre and dimensions to the real source without copying content", () => {
     const source = measuredElement(new DOMRect(800, 50, 100, 40));
     source.textContent = "Never copy source text";

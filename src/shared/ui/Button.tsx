@@ -6,11 +6,13 @@ import {
   type RefObject,
 } from "react";
 import { classNames } from "../design-system/classNames";
-import type { DialogOriginRef } from "./dialogOrigin";
+import { captureDialogOrigin, type DialogOriginRef } from "./dialogOrigin";
 import { usePressFeedback } from "./usePressFeedback";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   dialogOriginRef?: DialogOriginRef;
+  /** Transient/async-reflow controls supply their explicit persistent return anchor. */
+  dialogReturnRef?: RefObject<HTMLElement>;
   /** Keep positioned or measured hosts stable; animate only their visual child. */
   pressVisualRef?: RefObject<HTMLElement>;
 }
@@ -20,6 +22,7 @@ export const PressableButton = forwardRef<HTMLButtonElement, ButtonProps>(
   (
     {
       dialogOriginRef,
+      dialogReturnRef,
       pressVisualRef,
       onClick,
       type = "button",
@@ -40,7 +43,12 @@ export const PressableButton = forwardRef<HTMLButtonElement, ButtonProps>(
         data-pressable="true"
         onClick={(event) => {
           if (disabled) return;
-          if (dialogOriginRef) dialogOriginRef.current = event.currentTarget;
+          if (dialogOriginRef)
+            captureDialogOrigin(
+              dialogOriginRef,
+              event.currentTarget,
+              dialogReturnRef?.current,
+            );
           onClick?.(event);
         }}
       />

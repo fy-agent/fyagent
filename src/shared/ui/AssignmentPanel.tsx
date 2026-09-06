@@ -2,10 +2,12 @@ import { getSkillTargetIcon } from "../assets/apps";
 import type { SkillTargetId } from "../features/types";
 import { Switch } from "./primitives";
 import { PressableButton } from "./Button";
+import type { DialogOriginRef } from "./dialogOrigin";
 
 type TargetOption<T extends SkillTargetId> = { id: T; label: string };
 
 type SwitchAssignmentPanelProps<T extends SkillTargetId> = {
+  dialogOriginRef?: DialogOriginRef;
   mode?: "switch";
   apps: Record<string, boolean | undefined>;
   disabled?: boolean;
@@ -79,6 +81,7 @@ export function AssignmentPanel<T extends SkillTargetId>(
             <span>{app.label}</span>
           </span>
           <Switch
+            dialogOriginRef={props.dialogOriginRef}
             checked={Boolean(props.apps[app.id])}
             onCheckedChange={(checked) => props.onToggle(app.id, checked)}
             label={`${app.label} ${props.labelSuffix}`}

@@ -228,6 +228,11 @@ listed in
 - Account removal requires a backend impact preview. Failure to disconnect all
   dependents keeps the account visible and recoverable; the page never hides a
   still-referenced account.
+- Removal-preview completion is scoped to its requesting generation. Cancel,
+  replacement and unmount invalidate the old generation so late success/error
+  cannot overwrite the next dialog. This does not change native revision,
+  previewId or canApply admission. Fast preview delivery updates content without
+  cancelling shared source entrance; no minimum loading timer is permitted.
 - `pendingRestart`, partial completion, external change, unavailable authority
   and recovery-required remain explicit states. Starting a browser, writing a
   credential or launching software is not sufficient to paint success.

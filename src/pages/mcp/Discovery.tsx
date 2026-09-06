@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type MouseEvent } from "react";
 
 import {
   MCP_CATALOG,
@@ -23,6 +23,10 @@ import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { InstallTargetDialog } from "../../shared/features/controls/InstallTargetDialog";
 import { Button } from "../../shared/ui/Button";
 import { ConfirmDialog } from "../../shared/ui/Dialog";
+import {
+  captureDialogOrigin,
+  type DialogOriginRef,
+} from "../../shared/ui/dialogOrigin";
 import { useDialogState } from "../../shared/ui/useDialogState";
 import { AnimatePresence } from "../../shared/ui/motion";
 import { Badge, EmptyState } from "../../shared/ui/primitives";
@@ -54,11 +58,15 @@ export function McpDiscovery({
   servers: readonly McpServer[];
   busy: boolean;
   defaultTarget: McpTargetId;
-  onInstall: (server: McpServer) => Promise<boolean>;
+  onInstall: (
+    server: McpServer,
+    originRef: DialogOriginRef,
+  ) => Promise<boolean>;
   onPickTarget: (target: McpTargetId) => void;
   onViewInstalled: (id: string) => void;
 }) {
   const originRef = useRef<HTMLElement | null>(null);
+  const catalogReturnRef = useRef<HTMLElement | null>(null);
   const platform = currentMcpLaunchPlatform();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<McpCatalogFilterId>("all");
@@ -97,7 +105,7 @@ export function McpDiscovery({
     setInstallingId(server.id);
     try {
       onPickTarget(target);
-      const installed = await onInstall(server);
+      const installed = await onInstall(server, originRef);
       if (installed) closeDialog();
     } finally {
       setInstallingId(null);
@@ -109,6 +117,7 @@ export function McpDiscovery({
     values: McpInstallValues,
     apps: readonly McpTargetId[],
     replaceExisting: boolean,
+    event: MouseEvent<HTMLButtonElement>,
   ) => {
     if (!item.installable) {
       throw new Error(item.disabledReason ?? "暂未开放安装");
@@ -121,6 +130,12 @@ export function McpDiscovery({
     if (!target) {
       throw new Error("请选择至少一个 Agent");
     }
+    if (target === "workbuddy")
+      captureDialogOrigin(
+        originRef,
+        event.currentTarget,
+        catalogReturnRef.current,
+      );
     void installBuilt(item.build(values, [target], platform), target);
   };
 
@@ -227,7 +242,10 @@ export function McpDiscovery({
                       <Button
                         className="fy-control-button-primary"
                         disabled={pending}
-                        onClick={() => setConfirmItem(item)}
+                        onClick={(event) => {
+                          catalogReturnRef.current = event.currentTarget;
+                          setConfirmItem(item);
+                        }}
                         dialogOriginRef={originRef}
                       >
                         重新配置
@@ -237,7 +255,10 @@ export function McpDiscovery({
                     <Button
                       className="fy-control-button-primary"
                       disabled={pending}
-                      onClick={() => startInstall(item, false)}
+                      onClick={(event) => {
+                        catalogReturnRef.current = event.currentTarget;
+                        startInstall(item, false);
+                      }}
                       dialogOriginRef={originRef}
                     >
                       {pending
@@ -273,8 +294,8 @@ export function McpDiscovery({
             overwrite={overwrite}
             defaultTarget={defaultTarget}
             onClose={closeDialog}
-            onInstall={(values, apps) =>
-              installWithValues(dialogItem, values, apps, overwrite)
+            onInstall={(values, apps, event) =>
+              installWithValues(dialogItem, values, apps, overwrite, event)
             }
           />
         )}
@@ -294,8 +315,14 @@ export function McpDiscovery({
             confirmVerb={pendingTarget.overwrite ? "确认覆盖安装" : "确认安装"}
             pathForTarget={(target) => mcpInstallDestination(target, platform)}
             onCancel={() => setPendingTarget(null)}
-            onConfirm={(target) => {
+            onConfirm={(target, event) => {
               const { item } = pendingTarget;
+              if (target === "workbuddy")
+                captureDialogOrigin(
+                  originRef,
+                  event.currentTarget,
+                  catalogReturnRef.current,
+                );
               setPendingTarget(null);
               void installBuilt(item.build({}, [target], platform), target);
             }}
@@ -309,7 +336,14 @@ export function McpDiscovery({
         description="将覆盖现有配置。已填写的密钥以外的手动修改不会保留。"
         pending={busy}
         onCancel={() => setConfirmItem(null)}
-        onConfirm={() => {
+        onConfirm={(event) => {
+          // The confirmation button, not the earlier catalog action, opens
+          // the next dialog. Its outgoing owner is transient; return to catalog.
+          captureDialogOrigin(
+            originRef,
+            event.currentTarget,
+            originRef.current,
+          );
           const item = confirmItem;
           setConfirmItem(null);
           if (item) startInstall(item, true);

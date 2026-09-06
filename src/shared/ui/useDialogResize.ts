@@ -16,6 +16,7 @@ export function useDialogResize({
   bodyRef,
   lastBoxRef,
   originSettler,
+  originRetargetRef,
   present,
   settled,
   reduce,
@@ -27,6 +28,7 @@ export function useDialogResize({
   bodyRef: RefObject<HTMLElement>;
   lastBoxRef: MutableRefObject<DOMRect | null>;
   originSettler: MutableRefObject<(() => void) | null>;
+  originRetargetRef: MutableRefObject<(() => void) | null>;
   present: boolean;
   settled: boolean;
   reduce: boolean;
@@ -84,6 +86,18 @@ export function useDialogResize({
           Math.abs(from.height - target.height) > 0.5);
       if (!from || (!changed && !semantic)) return;
       const duration = motionDuration("dialog-resize") * 1000;
+      if (
+        !settled &&
+        !reduce &&
+        !document.hidden &&
+        nativeAnimation &&
+        duration
+      ) {
+        // A fast preview is not a viewport resize. Keep the original entry
+        // deadline/content handoff and retarget its decorative geometry only.
+        originRetargetRef.current?.();
+        return;
+      }
       if (
         !settled ||
         reduce ||
@@ -157,6 +171,7 @@ export function useDialogResize({
     bodyRef,
     lastBoxRef,
     originSettler,
+    originRetargetRef,
     cancel,
     settle,
   ]);

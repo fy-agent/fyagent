@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 
 import type {
   McpCatalogItem,
@@ -52,7 +52,11 @@ export function InstallDialog({
   overwrite: boolean;
   defaultTarget: McpTargetId;
   onClose: () => void;
-  onInstall: (values: McpInstallValues, apps: readonly McpTargetId[]) => void;
+  onInstall: (
+    values: McpInstallValues,
+    apps: readonly McpTargetId[],
+    event: MouseEvent<HTMLButtonElement>,
+  ) => void;
 }) {
   const [values, setValues] = useState(() => emptyValues(item.fields));
   const [chosenTarget, setChosenTarget] = useState(defaultTarget);
@@ -78,9 +82,9 @@ export function InstallDialog({
     setStep("path");
   };
 
-  const submit = () => {
+  const submit = (event: MouseEvent<HTMLButtonElement>) => {
     try {
-      onInstall(values, [chosenTarget]);
+      onInstall(values, [chosenTarget], event);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "安装失败");
     }
@@ -90,6 +94,7 @@ export function InstallDialog({
     <Dialog
       open
       originRef={originRef}
+      presentationKey={step}
       onOpenChange={(next) => {
         if (!next && !busy) onClose();
       }}

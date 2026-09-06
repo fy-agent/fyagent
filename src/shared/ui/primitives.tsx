@@ -1,6 +1,12 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  useRef,
+  type InputHTMLAttributes,
+  type ReactNode,
+} from "react";
 import { classNames } from "../design-system/classNames";
 import { PressableButton } from "./Button";
+import type { DialogOriginRef } from "./dialogOrigin";
 import { CheckboxPrimitive, SwitchPrimitive, TooltipPrimitive } from "./vendor";
 
 export function Tooltip({
@@ -62,12 +68,15 @@ export function Switch({
   onCheckedChange,
   label,
   disabled,
+  dialogOriginRef,
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: string;
   disabled?: boolean;
+  dialogOriginRef?: DialogOriginRef;
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   return (
     <SwitchPrimitive.Root
       asChild
@@ -77,7 +86,11 @@ export function Switch({
       aria-label={label}
       disabled={disabled}
     >
-      <PressableButton>
+      <PressableButton
+        ref={triggerRef}
+        dialogOriginRef={dialogOriginRef}
+        dialogReturnRef={dialogOriginRef ? triggerRef : undefined}
+      >
         <SwitchPrimitive.Thumb className="fy-control-switch-thumb" />
       </PressableButton>
     </SwitchPrimitive.Root>

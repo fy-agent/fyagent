@@ -16,20 +16,27 @@ typography and focus-return rules remain in [Visual Language](./visual-language.
 ## 2. Signatures
 
 ```ts
-interface DialogOriginRef { current: HTMLElement | null }
+interface DialogOriginRef {
+  current: HTMLElement | null;
+  snapshot?: DialogOriginSnapshot; // one-use transient opening geometry/material only
+  returnTarget?: HTMLElement | null; // explicitly supplied persistent control
+}
 
 Button / GlassButton / IconButton / PressableButton({
   ...nativeButtonProps, dialogOriginRef?: DialogOriginRef,
+  dialogReturnRef?: RefObject<HTMLElement>,
   pressVisualRef?: RefObject<HTMLElement>,
 })
 Dialog({
   open, onOpenChange, title, description?, children?, actions?,
   size?: "standard" | "comfortable" | "wide",
-  initialFocusRef?: RefObject<HTMLElement>, originRef?: DialogOriginRef,
+  initialFocusRef?: RefObject<HTMLElement>, originRef: DialogOriginRef | undefined,
   presentationKey?: string | number, // content stage, never editor/session identity
   exitContent?: "clear" | "fade", // clear by default; reviewed non-credential content only
 })
 ConfirmDialog({ open, title, description, pending?, onConfirm, onCancel, originRef? })
+  // onConfirm: MouseEventHandler<HTMLButtonElement>; native click, no synthetic dispatch
+captureDialogOrigin(ref: DialogOriginRef, source: HTMLElement, returnTarget?: HTMLElement | null): void
 useDialogState<T>(initial?: T | null)
   // -> [value, stable React setter, fresh-session key]
 dialogOriginGeometry(source: HTMLElement | null, destination: DOMRect)
@@ -39,8 +46,8 @@ useReducedMotion(): boolean
 parseMotionDuration(value: string): number // seconds; invalid input -> 0
 motionDuration(role: "press" | "dialog-enter" | "dialog-exit" | "dialog-resize" | "content" | "toast" | "theme"): number
 fySelectionTransition // tween; shared spatial curve, not a spring
-runDialogPresentation({ planes, source, windowNode, entering, first, duration })
-  // duration is milliseconds; -> { finished, contentFinished, cancel }
+runDialogPresentation({ planes, source, windowNode, entering, first, duration, capturedOrigin? })
+  // duration is milliseconds; -> { finished, contentFinished, retarget, cancel }
 runDialogResize({ windowNode, contentNode, from, target, duration })
   // -> { finished, cancel(freeze?: boolean) }; same session, no scale/copy
 ToastViewport({ messages: readonly ToastMessage[] })
@@ -108,6 +115,37 @@ stiffness/damping/mass with duration/bounce within a spring definition.
   may resolve their own exact semantic trigger. An asynchronous dialog keeps
   that original reference. No document-wide last-click cache or arbitrary
   `activeElement` guess supplies animation geometry.
+- Every production Dialog/wrapper call supplies `originRef` explicitly; automatic
+  cases pass undefined deliberately, not by an omitted prop. The TypeScript/AST
+  coverage check complements physical frame tests; a trigger data attribute
+  alone cannot prove that its animation was not immediately cancelled.
+- Transient menu or asynchronous-reflow controls may call `captureDialogOrigin` with their explicitly
+  owned persistent return control (`Button.dialogReturnRef`). Only a finite
+  visible rectangle, four corner radii and allowlisted non-resource CSS material
+  are retained. No DOM clone, text, identity label, credential value or image is
+  copied. The first matching opening consumes the capture once. Exits remeasure
+  the real source or explicit return target; invalid targets remain neutral.
+  Revalidate captured finite geometry against the current viewport at consumption:
+  an async picker/preview can outlive a resize, so old snapshot admission is not
+  permanent permission to fly outside the visible window.
+- Switch uses the existing PressableButton asChild capture before Radix's
+  checked-change handler. A modal-producing switch opts into bounded click
+  geometry with its own element as the return anchor: async status feedback can
+  move the live control outside a compact viewport before the dialog opens.
+  This does not relax capture or return bounds. WorkBuddy assignment/trust and bulk controls carry
+  the actual initiating ref through async work. A chained confirmation captures
+  its own confirm control before it unmounts, with the original persistent
+  control as its return anchor, rather than attributing the next dialog to an
+  unrelated last click.
+- MCP discovery install and editor save explicitly hand their final submit
+  source into the follow-up trust notice. `InstallTargetDialog.onConfirm`
+  receives `(target, MouseEvent<HTMLButtonElement>)`; MCP InstallDialog's
+  `onInstall` receives `(values, apps, event)`. Business owners capture that
+  control with the known catalog/editor return anchor before awaiting writes.
+  The notice consumes an operation-owned origin copy, not an unrelated page
+  ref. Ordinary callbacks may ignore the event; no duplicate click or new
+  native authorization is introduced. Multi-step install dialogs supply
+  `presentationKey={step}` just as the login dialog does.
 - Guarded sidebar navigation carries one explicit destination-matched intent
   through the existing PrimaryBlocker context. `usePrimaryNavigationOrigin`
   records the actual owned link, the blocker consumes it once, and
@@ -162,6 +200,11 @@ stiffness/damping/mass with duration/bounce within a spring definition.
   editor; retaining an old exiting component must not resurrect discarded
   field values. Permanent controlled dialogs retain only their existing,
   explicitly owned reset/recovery policy.
+- A closed, empty Dialog does not enroll in its ancestor's propagation barrier.
+  Keep participation while an actual layer opens/exits and release it from
+  onExitComplete. Otherwise a never-opened sibling confirmation can retain an
+  invisible, completed modal and its scroll lock forever. Prop-state adjustment
+  is guarded before children render, not a cascading synchronization effect.
 - `data-motion-phase` reports open/exit and `data-motion-settled="true"`
   identifies a settled open surface for geometry/contrast evidence. Neither
   attribute is a native success or security signal.
@@ -183,6 +226,12 @@ stiffness/damping/mass with duration/bounce within a spring definition.
   Notifications caused by the current size animation update observations but
   do not start another animation. On completion reconcile natural content once.
   Explicit stage changes work even without ResizeObserver.
+- During source entrance, intrinsic async content changes retarget the existing
+  geometry track instead of invoking the viewport-settle shortcut. Rebase local
+  coordinates against old/new centered window positions before paint; preserve
+  the remaining entry deadline and independent foreground/overlay handoff.
+  Do not cancel/recreate all tracks, restart 420ms, delay native preview delivery
+  or add a minimum loading timer. Real viewport changes still settle promptly.
 - Reversal captures the intermediate rect before cancelling old effects.
   Closing freezes current size for the existing return track while immediately
   revoking actions and sensitive content. Resize, reduced motion and document
@@ -199,6 +248,9 @@ stiffness/damping/mass with duration/bounce within a spring definition.
   navigation, and protection against an old close frame stealing focus from
   a newer modal. Focus restoration uses `preventScroll` and rejects hidden,
   disconnected or disabled targets.
+- A queued close-focus callback cannot override an explicit newer editor focus,
+  even when there is no newer modal. Keep the original focus-at-close identity
+  and check before applying deferred restoration.
 - Engine failure settles the surface with a bounded diagnostic. It must not
   strand a modal lock, fabricate action success or expose raw business errors.
 
@@ -233,6 +285,21 @@ screen capture of a password form, or wait for an animation before admitting
 the actual business action.
 
 ## 6. Tests Required
+
+- `mcp-followup-origins.spec.ts` exercises catalog installation and editor-save
+  follow-up notices with one synthetic authoritative write, actual sourced
+  presentation and complete modal cleanup in Chromium and WebKit.
+
+- `dialog-origins.spec.ts` checks immediate/120/300ms removal preview delivery,
+  actual completed entry duration, zero unintended mutations, cancelled preview
+  isolation, both WorkBuddy assignment paths and transient-menu return/focus in
+  Chromium/WebKit. Cover chained confirmation handoff as well as persistent
+  buttons. The production wrapper inventory must remain nonempty and complete.
+- `dialogPresentation.test.ts` verifies viewport-coordinate rebasing, remaining
+  duration, same-track ownership and cancellation. Dialog tests verify a
+  never-opened sibling cannot hold the outer presence barrier, and an old close
+  frame cannot steal newly chosen editor focus. No warning suppression replaces
+  these lifetime assertions.
 
 - Shared origin/session tests cover exact geometry, clipping, hidden/removal,
   remeasurement and fresh conditional sessions.

@@ -344,6 +344,7 @@ function Detail({
 
 export function SkillsPage() {
   const dialogOriginRef = useRef<HTMLElement | null>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const queryClient = useQueryClient();
   const { ports, installTarget, setInstallTarget, notify } = useFeatures();
   const wideLayout = useWideFeatureLayout();
@@ -529,7 +530,7 @@ export function SkillsPage() {
             }
           >
             <PopoverPrimitive.Trigger asChild>
-              <Button>更多</Button>
+              <Button ref={menuTriggerRef}>更多</Button>
             </PopoverPrimitive.Trigger>
             <PopoverPrimitive.Portal>
               <PopoverPrimitive.Content
@@ -540,6 +541,7 @@ export function SkillsPage() {
               >
                 <Button
                   dialogOriginRef={dialogOriginRef}
+                  dialogReturnRef={menuTriggerRef}
                   onClick={() => setDialog("unmanaged")}
                 >
                   导入本地 Skill
@@ -548,17 +550,20 @@ export function SkillsPage() {
                   disabled={busy}
                   onClick={() => void pickAndInstallZip()}
                   dialogOriginRef={dialogOriginRef}
+                  dialogReturnRef={menuTriggerRef}
                 >
                   从 ZIP 安装
                 </Button>
                 <Button
                   dialogOriginRef={dialogOriginRef}
+                  dialogReturnRef={menuTriggerRef}
                   onClick={() => setDialog("backups")}
                 >
                   备份恢复
                 </Button>
                 <Button
                   dialogOriginRef={dialogOriginRef}
+                  dialogReturnRef={menuTriggerRef}
                   onClick={() => setDialog("settings")}
                 >
                   Skill 设置

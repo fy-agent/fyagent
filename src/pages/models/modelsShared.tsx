@@ -11,7 +11,10 @@ export { FileWriteDisclosure as ModelsWriteDisclosure } from "../../shared/featu
 import { Button, PressableButton } from "../../shared/ui/Button";
 import { Collapsible, CollapsibleContent } from "../../shared/ui/Collapsible";
 import { Dialog } from "../../shared/ui/Dialog";
-import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import {
+  captureDialogOrigin,
+  type DialogOriginRef,
+} from "../../shared/ui/dialogOrigin";
 import { Badge, Checkbox, Tooltip } from "../../shared/ui/primitives";
 import { FieldFeedback, type Notice } from "./feedback";
 import type {
@@ -106,7 +109,20 @@ export function ModelsWriteConfirmDialog({
           <Button ref={cancelRef} onClick={onCancel}>
             取消
           </Button>
-          <Button className="fy-control-button-primary" onClick={onConfirm}>
+          <Button
+            className="fy-control-button-primary"
+            onClick={(event) => {
+              // A native result can require a second overwrite confirmation.
+              // Preserve this exact, soon-to-unmount initiating control.
+              if (originRef)
+                captureDialogOrigin(
+                  originRef,
+                  event.currentTarget,
+                  originRef.current,
+                );
+              onConfirm();
+            }}
+          >
             确认保存
           </Button>
         </>

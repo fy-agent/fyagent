@@ -1,4 +1,10 @@
-import { dialogOriginGeometry } from "./dialogOrigin";
+import {
+  dialogOriginGeometry,
+  isDialogOriginSnapshotUsable,
+  readDialogMaterial,
+  type DialogOriginSnapshot,
+  type DialogRadius,
+} from "./dialogOrigin";
 import { fySpatialEasing } from "./motion";
 
 export interface DialogPlanes {
@@ -29,32 +35,11 @@ const geometryProperties = [
   "borderBottomRightRadius",
   "borderBottomLeftRadius",
 ] as const;
-const materialProperties = [
-  "backgroundColor",
-  "backgroundImage",
-  "boxShadow",
-  "borderTopColor",
-  "borderRightColor",
-  "borderBottomColor",
-  "borderLeftColor",
-  "borderTopWidth",
-  "borderRightWidth",
-  "borderBottomWidth",
-  "borderLeftWidth",
-  "borderTopStyle",
-  "borderRightStyle",
-  "borderBottomStyle",
-  "borderLeftStyle",
-] as const;
 
 /** Only allowlisted material strings are read. No source content, form value,
  * label, arbitrary attribute, clone, screenshot or URL resource is retained. */
 function copyMaterial(source: HTMLElement, target: HTMLElement): void {
-  const style = getComputedStyle(source);
-  for (const key of materialProperties) {
-    const value = style[key];
-    target.style[key] = /url\(/i.test(value) ? "none" : value;
-  }
+  Object.assign(target.style, readDialogMaterial(source));
 }
 
 function rectFrame(
@@ -62,7 +47,7 @@ function rectFrame(
   top: number,
   width: number,
   height: number,
-  style: CSSStyleDeclaration,
+  style: DialogRadius,
 ): Keyframe {
   return {
     left: `${left}px`,
@@ -85,6 +70,7 @@ export function runDialogPresentation({
   entering,
   first,
   duration,
+  capturedOrigin,
 }: {
   planes: DialogPlanes;
   source: HTMLElement | null;
@@ -92,12 +78,25 @@ export function runDialogPresentation({
   entering: boolean;
   first: boolean;
   duration: number; // milliseconds at the native animation boundary
+  capturedOrigin?: DialogOriginSnapshot;
 }) {
   const { material, sourceMaterial, targetMaterial, foreground, overlay } =
     planes;
   const box = windowNode.getBoundingClientRect();
-  const origin = dialogOriginGeometry(source, box);
-  const originBox = origin.sourced ? source?.getBoundingClientRect() : null;
+  let destination = box;
+  const capture =
+    entering &&
+    first &&
+    capturedOrigin?.element === source &&
+    isDialogOriginSnapshotUsable(capturedOrigin)
+      ? capturedOrigin
+      : undefined;
+  const origin = {
+    ...dialogOriginGeometry(source, box),
+    ...(capture ? { sourced: true } : {}),
+  };
+  const originBox =
+    capture?.box ?? (origin.sourced ? source?.getBoundingClientRect() : null);
   const style = getComputedStyle(windowNode);
   const resting = rectFrame(-1, -1, box.width, box.height, style);
   const sourceFrame =
@@ -107,7 +106,7 @@ export function runDialogPresentation({
           originBox.top - box.top - 1,
           originBox.width,
           originBox.height,
-          getComputedStyle(source),
+          capture?.radius ?? getComputedStyle(source),
         )
       : rectFrame(
           box.width * 0.02 - 1,
@@ -117,7 +116,8 @@ export function runDialogPresentation({
           style,
         );
   windowNode.dataset.motionOrigin = origin.sourced ? "trigger" : "neutral";
-  if (origin.sourced && source) copyMaterial(source, sourceMaterial);
+  if (capture) Object.assign(sourceMaterial.style, capture.material);
+  else if (origin.sourced && source) copyMaterial(source, sourceMaterial);
   const animations: Animation[] = [];
   let cancelled = false;
   const play = (
@@ -176,12 +176,16 @@ export function runDialogPresentation({
         ? Math.min(100, duration * presentationTracks.pressLead)
         : 0;
     const sourceOpacity = getComputedStyle(sourceMaterial).opacity;
-    play(material, [current, entering ? resting : sourceFrame], {
-      duration:
-        duration - (entering ? lead : duration * presentationTracks.returnAt),
-      delay: entering ? lead : duration * presentationTracks.returnAt,
-      easing: fySpatialEasing,
-    });
+    const geometry = play(
+      material,
+      [current, entering ? resting : sourceFrame],
+      {
+        duration:
+          duration - (entering ? lead : duration * presentationTracks.returnAt),
+        delay: entering ? lead : duration * presentationTracks.returnAt,
+        easing: fySpatialEasing,
+      },
+    );
     play(
       material,
       entering
@@ -267,6 +271,44 @@ export function runDialogPresentation({
       },
     );
     return {
+      retarget: () => {
+        if (cancelled || !entering || geometry.playState === "finished") return;
+        const next = windowNode.getBoundingClientRect();
+        if (!next.width || !next.height) return;
+        const effect = geometry.effect as KeyframeEffect | null;
+        if (!effect) return;
+        const timing = effect.getTiming();
+        const elapsed = Number(geometry.currentTime ?? 0);
+        const remaining = Math.max(
+          0,
+          Number(timing.duration) + (timing.delay ?? 0) - elapsed,
+        );
+        if (!remaining) return;
+        const delay = Math.max(0, (timing.delay ?? 0) - elapsed);
+        const computed = getComputedStyle(material);
+        // Intrinsic content has already changed the centered root's position.
+        // Rebase the *same* decorative track in viewport coordinates before paint.
+        const from = rectFrame(
+          parseFloat(computed.left) + destination.left - next.left,
+          parseFloat(computed.top) + destination.top - next.top,
+          parseFloat(computed.width),
+          parseFloat(computed.height),
+          computed,
+        );
+        effect.setKeyframes([
+          from,
+          rectFrame(
+            -1,
+            -1,
+            next.width,
+            next.height,
+            getComputedStyle(windowNode),
+          ),
+        ]);
+        geometry.currentTime = 0;
+        effect.updateTiming({ duration: remaining - delay, delay });
+        destination = next;
+      },
       finished: Promise.all(animations.map(done)).then(
         (results) => !cancelled && results.every(Boolean),
       ),

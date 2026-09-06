@@ -1,15 +1,19 @@
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
+import type { DialogOriginRef } from "./dialogOrigin";
 
 export function WorkBuddyTrustDialog({
   open,
   onOpenChange,
+  originRef,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  originRef: DialogOriginRef;
 }) {
   return (
     <Dialog
+      originRef={originRef}
       open={open}
       title="需要在 WorkBuddy 中信任 MCP"
       description="请到「连接器 → 自定义连接器」中信任该 MCP 后才能使用。"

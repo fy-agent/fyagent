@@ -1,5 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  captureDialogOrigin,
+  type DialogOriginRef,
+} from "@/shared/ui/dialogOrigin";
+import {
   runDialogPresentation,
   runDialogResize,
   settleDialogPlanes,
@@ -141,6 +145,80 @@ it("caps opt-in content exit at 80ms even when a caller retunes shell duration",
   ).toBe(80);
   run.cancel(false);
   await expect(run.finished).resolves.toBe(false);
+});
+
+it("retargets the existing entry in viewport space without restarting its deadline or content tracks", async () => {
+  const f = fixture();
+  const run = runDialogPresentation({
+    ...f,
+    entering: true,
+    first: true,
+    duration: 420,
+  });
+  const effect = {
+    getTiming: () => ({ duration: 340, delay: 80 }),
+    setKeyframes: vi.fn(),
+    updateTiming: vi.fn(),
+  };
+  const geometry = Object.assign(f.animate.mock.results[0].value, {
+    effect,
+    currentTime: 120,
+    playState: "running",
+  });
+  f.planes.material.style.left = "300px";
+  f.planes.material.style.top = "-50px";
+  f.planes.material.style.width = "200px";
+  f.planes.material.style.height = "80px";
+  vi.mocked(f.windowNode.getBoundingClientRect).mockReturnValue(
+    new DOMRect(300, 100, 600, 400),
+  );
+  run.retarget();
+  expect(effect.setKeyframes).toHaveBeenCalledWith([
+    expect.objectContaining({
+      left: "200px",
+      top: "0px",
+      width: "200px",
+      height: "80px",
+    }),
+    expect.objectContaining({
+      left: "-1px",
+      top: "-1px",
+      width: "600px",
+      height: "400px",
+    }),
+  ]);
+  expect(effect.updateTiming).toHaveBeenCalledWith({ duration: 300, delay: 0 });
+  expect(geometry.currentTime).toBe(0);
+  expect(f.calls).toHaveLength(6);
+  expect(f.calls.every((call) => call.cancel.mock.calls.length === 0)).toBe(
+    true,
+  );
+  run.cancel(false);
+  await expect(run.finished).resolves.toBe(false);
+});
+
+it("rejects a transient captured origin that no longer fits after an asynchronous window resize", async () => {
+  const f = fixture();
+  const ref: DialogOriginRef = { current: null };
+  captureDialogOrigin(ref, f.source, f.windowNode);
+  expect(ref.snapshot).toBeDefined();
+  f.source.remove();
+  vi.stubGlobal("innerWidth", 400);
+  try {
+    const run = runDialogPresentation({
+      ...f,
+      capturedOrigin: ref.snapshot,
+      entering: true,
+      first: true,
+      duration: 420,
+    });
+    expect(f.windowNode.dataset.motionOrigin).toBe("neutral");
+    expect(f.calls[0].options.delay).toBe(0);
+    run.cancel(false);
+    await expect(run.finished).resolves.toBe(false);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 it("resizes one real window and fades only the content without scaling or retaining a form", async () => {

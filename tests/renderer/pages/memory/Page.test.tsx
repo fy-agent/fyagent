@@ -592,6 +592,7 @@ describe("MemoryPage native business management", () => {
   });
 
   it("guards dirty long-term document and tab changes with the shared dialog", async () => {
+    const diagnostics = vi.spyOn(console, "error");
     const { ports } = statefulMemoryPorts({
       "openclaw-memory": "memory",
       "openclaw-user": "user",
@@ -602,47 +603,34 @@ describe("MemoryPage native business management", () => {
     await user.type(editor, " dirty");
 
     let resources = screen.getByRole("region", { name: "长期记忆资源" });
-    await act(async () => {
-      await user.click(
-        within(resources).getByRole("button", { name: /OpenClaw · USER\.md/ }),
-      );
-      await Promise.resolve();
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-    });
+    await user.click(
+      within(resources).getByRole("button", { name: /OpenClaw · USER\.md/ }),
+    );
     await cancelDialog(user, "放弃未保存的更改？");
     expect(editor).toHaveValue("memory dirty");
 
     resources = screen.getByRole("region", { name: "长期记忆资源" });
-    await act(async () => {
-      await user.click(
-        within(resources).getByRole("button", { name: /OpenClaw · USER\.md/ }),
-      );
-      await Promise.resolve();
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-    });
+    await user.click(
+      within(resources).getByRole("button", { name: /OpenClaw · USER\.md/ }),
+    );
     await confirmDialog(user, "放弃未保存的更改？");
     const userEditor = await screen.findByRole("textbox", { name: "记忆内容" });
     expect(userEditor).toHaveValue("user");
 
     await user.type(userEditor, " dirty");
-    await act(async () => {
-      await user.click(screen.getByRole("tab", { name: "每日记忆" }));
-      await Promise.resolve();
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-    });
+    await user.click(screen.getByRole("tab", { name: "每日记忆" }));
     await cancelDialog(user, "放弃未保存的更改？");
     expect(
       screen.getByRole("tab", { name: "长期记忆", selected: true }),
     ).toBeVisible();
-    await act(async () => {
-      await user.click(screen.getByRole("tab", { name: "每日记忆" }));
-      await Promise.resolve();
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-    });
+    await user.click(screen.getByRole("tab", { name: "每日记忆" }));
     await confirmDialog(user, "放弃未保存的更改？");
     expect(
       await screen.findByRole("tab", { name: "每日记忆", selected: true }),
     ).toBeVisible();
+    expect(diagnostics.mock.calls.flat().map(String).join(" ")).not.toMatch(
+      /not configured to support act|not wrapped in act/,
+    );
   });
 
   it("guards dirty daily file changes", async () => {

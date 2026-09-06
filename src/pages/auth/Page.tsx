@@ -110,6 +110,13 @@ export function AuthPage() {
   const [removalPreview, setRemovalPreview] =
     useState<ManagedAuthAccountRemovalPreview | null>(null);
   const [removalPreviewLoading, setRemovalPreviewLoading] = useState(false);
+  const removalGenerationRef = useRef(0);
+  useEffect(
+    () => () => {
+      removalGenerationRef.current += 1;
+    },
+    [],
+  );
   const [connectionAction, setConnectionAction, connectionActionKey] =
     useDialogState<{
       connection: ManagedAuthConnectionSummary;
@@ -271,6 +278,7 @@ export function AuthPage() {
   };
 
   const beginRemoveAccount = async (account: ManagedAuthAccountSummary) => {
+    const generation = ++removalGenerationRef.current;
     setRemovalAccount(account);
     setRemovalPreview(null);
     setRemovalPreviewLoading(true);
@@ -280,11 +288,14 @@ export function AuthPage() {
         account.accountId,
         account.revision,
       );
-      setRemovalPreview(preview);
+      if (generation === removalGenerationRef.current)
+        setRemovalPreview(preview);
     } catch (cause) {
-      setMutationError(managedAuthCommandErrorCopy(cause));
+      if (generation === removalGenerationRef.current)
+        setMutationError(managedAuthCommandErrorCopy(cause));
     } finally {
-      setRemovalPreviewLoading(false);
+      if (generation === removalGenerationRef.current)
+        setRemovalPreviewLoading(false);
     }
   };
 
@@ -620,6 +631,7 @@ export function AuthPage() {
         pending={mutationBusy}
         error={mutationError}
         onCancel={() => {
+          removalGenerationRef.current += 1;
           setRemovalAccount(null);
           setRemovalPreview(null);
           setMutationError(null);

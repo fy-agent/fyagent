@@ -12,6 +12,7 @@ describe("PersistentSurface", () => {
       return (
         <PersistentSurface active={active}>
           <Dialog
+            originRef={undefined}
             open
             title="待保存草稿"
             description="保活隐藏时不应关闭这份草稿。"
@@ -39,6 +40,7 @@ describe("PersistentSurface", () => {
       <PersistentSurface active={false}>
         <PersistentSurface active>
           <Dialog
+            originRef={undefined}
             open
             title="内层弹窗"
             description="祖先隐藏时内层弹窗也必须关掉。"

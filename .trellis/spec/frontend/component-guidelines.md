@@ -32,6 +32,10 @@ technology and pointer hit testing. Text must be actually painted above the
 selection glass; a declared CSS contrast value is not proof of readability.
 
 The shared Dialog owns portals, modal focus, source origin and exit lifetime.
+Its origin prop is explicit at every call. Transient menu items use the shared
+capture plus an owned persistent return anchor; switches use the existing
+asChild capture. Never duplicate this lifecycle in feature pages. Async content
+arrival must not cancel source entry; see [Motion](./motion-system.md).
 Do not wrap it in a second presence engine or copy input DOM into an animation
 layer. Closing or hiding immediately revokes business actions and clears secrets;
 visual exit may finish afterwards. Feature tabs reuse Radix keyboard semantics.

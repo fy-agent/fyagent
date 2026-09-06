@@ -6,11 +6,16 @@ import {
   useState,
   type ReactNode,
   type RefObject,
+  type MouseEventHandler,
 } from "react";
 import { classNames } from "../design-system/classNames";
 import { Button } from "./Button";
 import { FrostedSurface } from "./GlassMaterial";
-import { dialogOriginGeometry, type DialogOriginRef } from "./dialogOrigin";
+import {
+  dialogOriginGeometry,
+  type DialogOriginRef,
+  type DialogOriginSnapshot,
+} from "./dialogOrigin";
 import {
   runDialogPresentation,
   settleDialogPlanes,
@@ -35,7 +40,7 @@ export interface DialogProps {
   actions?: ReactNode;
   size?: "standard" | "comfortable" | "wide";
   initialFocusRef?: RefObject<HTMLElement>;
-  originRef?: DialogOriginRef;
+  originRef: DialogOriginRef | undefined;
   /** Closed presentation stage, not a new editor/session identity. */
   presentationKey?: string | number;
   /** Only reviewed non-credential presentation can opt in. Interaction is
@@ -45,9 +50,29 @@ export interface DialogProps {
 
 export function Dialog(props: DialogProps) {
   const visible = usePersistentVisibility();
+  const [lifetime, setLifetime] = useState({
+    open: props.open,
+    visible,
+    hasLayer: props.open && visible,
+  });
+  // Preserve participation through a real exit, but never enroll an empty,
+  // closed sibling in its parent's completion barrier. Adjust before children
+  // render, rather than cascading an effect or changing the editor's key.
+  if (lifetime.open !== props.open || lifetime.visible !== visible) {
+    setLifetime({
+      open: props.open,
+      visible,
+      hasLayer: visible && (props.open || lifetime.hasLayer),
+    });
+  }
   if (!visible) return null;
   return (
-    <AnimatePresence propagate>
+    <AnimatePresence
+      propagate={props.open || lifetime.hasLayer}
+      onExitComplete={() =>
+        setLifetime((current) => ({ ...current, hasLayer: false }))
+      }
+    >
       {props.open && <DialogLayer key="dialog" {...props} />}
     </AnimatePresence>
   );
@@ -86,10 +111,13 @@ function DialogLayer({
   const overlayRef = useRef<HTMLDivElement>(null);
   const lastBox = useRef<DOMRect | null>(null);
   const source = useRef<HTMLElement | null>(null);
+  const returnSource = useRef<HTMLElement | null>(null);
+  const capturedSource = useRef<DialogOriginSnapshot>();
   const wasPresent = useRef(false);
   const hasAnimated = useRef(false);
   const epoch = useRef(0);
   const resizeTransition = useRef<(() => void) | null>(null);
+  const originRetargetRef = useRef<(() => void) | null>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
   // A true→false→true cycle must not reuse an already-settled boolean key.
@@ -113,6 +141,7 @@ function DialogLayer({
     bodyRef: bodyPresentationRef,
     lastBoxRef: lastBox,
     originSettler: resizeTransition,
+    originRetargetRef,
     present,
     settled,
     reduce,
@@ -149,8 +178,15 @@ function DialogLayer({
       overlay: overlayRef.current,
     };
     const revision = ++epoch.current;
-    if (present && !wasPresent.current)
+    if (present && !wasPresent.current) {
       source.current = requestedSource.current?.current ?? null;
+      capturedSource.current = requestedSource.current?.snapshot;
+      returnSource.current = requestedSource.current?.returnTarget ?? null;
+      if (requestedSource.current) {
+        delete requestedSource.current.snapshot;
+        delete requestedSource.current.returnTarget;
+      }
+    }
     wasPresent.current = present;
     if (!present && lastBox.current?.height) {
       element.style.height = `${lastBox.current.height}px`;
@@ -199,13 +235,25 @@ function DialogLayer({
     try {
       handle = runDialogPresentation({
         planes,
-        source: source.current,
+        source:
+          !present && !dialogOriginGeometry(source.current, box).sourced
+            ? returnSource.current
+            : source.current,
         windowNode: element,
         entering: present,
         first: !hasAnimated.current,
         duration,
+        capturedOrigin: capturedSource.current,
       });
       hasAnimated.current = true;
+      capturedSource.current = undefined;
+      originRetargetRef.current = () => {
+        try {
+          handle?.retarget();
+        } catch {
+          settle();
+        }
+      };
       void handle.contentFinished.then((completed) => {
         if (completed && !present && revision === epoch.current)
           setRetiredPhase(phase);
@@ -228,6 +276,7 @@ function DialogLayer({
       freezeContentResize();
       handle?.cancel();
       resizeTransition.current = null;
+      originRetargetRef.current = null;
       window.removeEventListener("resize", settle);
       document.removeEventListener("visibilitychange", visibility);
     };
@@ -297,7 +346,11 @@ function DialogLayer({
           onOpenAutoFocus={(event) => {
             if (restoreFrameRef.current !== null)
               window.cancelAnimationFrame(restoreFrameRef.current);
-            const focused = originRef?.current ?? document.activeElement;
+            const focused =
+              returnSource.current ??
+              originRef?.returnTarget ??
+              originRef?.current ??
+              document.activeElement;
             if (focused instanceof HTMLElement && focused !== document.body)
               restoreFocusRef.current = focused;
             if (nativeAnimation && !reduce) {
@@ -314,10 +367,18 @@ function DialogLayer({
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             const origin = restoreFocusRef.current;
+            const focusAtClose = document.activeElement;
             if (restoreFrameRef.current !== null)
               window.cancelAnimationFrame(restoreFrameRef.current);
             restoreFrameRef.current = window.requestAnimationFrame(() => {
               restoreFrameRef.current = null;
+              // A user may already have focused an editor after dismissal.
+              // An older decorative close must not take that explicit focus back.
+              if (
+                document.activeElement !== focusAtClose &&
+                document.activeElement !== document.body
+              )
+                return;
               const node = origin?.matches(
                 '[role="tab"][aria-selected="false"]',
               )
@@ -397,7 +458,7 @@ export function ConfirmDialog({
   title: string;
   description: string;
   pending?: boolean;
-  onConfirm: () => void;
+  onConfirm: MouseEventHandler<HTMLButtonElement>;
   onCancel: () => void;
   originRef?: DialogOriginRef;
 }) {

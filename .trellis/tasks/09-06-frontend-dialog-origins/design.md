@@ -24,7 +24,7 @@ finished-promise handling. No second animation queue, spring solver or focus tra
 
 Keep explicit feature-owned origin refs. Capture the real element before state
 changes or asynchronous work. Add a narrowly scoped capture to the existing
-origin adapter for transient controls: finite viewport rectangle, corner radii
+origin adapter for transient controls and explicitly opted-in async controls: finite viewport rectangle, corner radii
 and existing allowlisted material strings only. The capture is one-use and
 owned by the initiating open intent/session; discard on close/cancel/supersede.
 Never retain labels, innerHTML, images, input values, secret data or URL resources.
@@ -60,3 +60,21 @@ rectangles across the handoff, not only data-motion-origin. Cover all parent
 matrix categories; file pickers use synthetic controlled responses and do not
 pretend to prove native picker HIL. Keep existing reduced-motion neutral behavior.
 Rollback as one source-lifecycle/adapter/caller change set, with its SPEC/tests.
+
+## Additional verified lifecycle gaps
+
+The real Skill settings owner has a never-opened sibling ConfirmDialog. In the
+locked Motion implementation an empty propagate boundary registers its parent
+but has no child completion event. The open modal finished all six tracks yet
+remained in exit with a modal lock. Keep propagation only for an open/exiting
+real layer; do not remove parent presence or patch the library. A deterministic
+unit and physical Skill-menu regression cover this condition.
+
+Deferred focus return also checks that focus has not been explicitly moved
+to another editor after dismissal. This complements the existing newer-modal
+and rejected-tab checks; it does not defer business cancellation.
+
+Primary references reviewed during implementation:
+
+- https://motion.dev/docs/react-animate-presence — propagate/onExitComplete and presence ownership.
+- https://react.dev/learn/you-might-not-need-an-effect — guarded local prop-state adjustment before child rendering, rather than cascading effects.
