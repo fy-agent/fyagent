@@ -18,6 +18,7 @@ request_main_window_focus(app: &tauri::AppHandle)
 prepare_main_webview(window: &tauri::WebviewWindow)
 ActivationInbox::{mark_ready, mark_window_prepared, mark_unready}
 ActivationInbox::{arm_recovery, can_recover, finish_recovery}
+native FeatureProvider QueryClient: focusManager.setFocused(true)
 ```
 
 `ActivationInbox` owns renderer-ready, window-prepared, drain state, existing
@@ -51,6 +52,16 @@ wait for all installed-software scans, remote models, accounts' network work,
 animation frames or document visibility. The first route module loads before
 other optional modules are prefetched. No unconditional success delay.
 
+Those gating queries run while the configured WebView is still `document.hidden`.
+TanStack Query's default retry path pauses when `focusManager.isFocused()` is
+false (`document.visibilityState === "hidden"`), leaving `isPending` true and
+blocking `useFrontendReady(!query.isPending)`. Native `FeatureProvider` therefore
+calls `focusManager.setFocused(true)` when creating the QueryClient. Route
+isolation still uses `PersistentSurface` / `usePersistentVisibility()` to disable
+hidden-page queries; do not treat `document.hidden` as a Query pause signal
+before `frontend-deeplink-ready`. Browser previews keep the default focus
+manager.
+
 Shared local brand images carry `data-fy-startup-image`. Before the first
 acknowledgement, use the browser's `decode()` for already-mounted, non-hidden,
 non-lazy same-origin/data artwork. Remote/unmarked images do not gate startup.
@@ -75,7 +86,8 @@ user declines. No credential, configuration or background service is reset.
 | Layout finishes before chunk/local snapshot          | Preserve hidden window; wait for committed surface.            |
 | Duplicate readiness/Focus                            | No duplicate drain; reuse existing coalescing.                 |
 | Silent startup without explicit wake                 | No automatic show or watchdog dialog.                          |
-| Module/local snapshot fails                          | Show recoverable error content when committed.                 |
+| Module/local snapshot fails                          | Show recoverable error content when committed. Query must settle to error while the WebView is still hidden; do not remain `fetchStatus: paused`. |
+| Catalog/overview fetch fails before reveal           | `useFrontendReady(!isPending)` still acknowledges the error surface; the 15s watchdog is not the success path. |
 | Renderer never acknowledges                          | Native recovery dialog for pending wake, not a success reveal. |
 | User reloads/destroys WebView while watchdog waits   | Old generation cannot act on replacement.                      |
 | Renderer becomes ready while recovery dialog is open | Late retry does not reload the ready page.                     |
@@ -90,7 +102,8 @@ Base: a failed chunk renders a reloadable error surface and acknowledges that
 surface. Browser tests prove ordering, not native compositor timing.
 
 Bad: reveal after a fixed sleep, signal from shell mount, wait for hidden
-animation frames, bypass silent mode, or discard queued deep-link semantics.
+animation frames, wait for `visibilitychange` to unpause a gating Query retry,
+bypass silent mode, or discard queued deep-link semantics.
 
 ## 6. Tests Required
 
@@ -102,7 +115,10 @@ and the full active-task prearchive gate.
   recovery admission, generation supersession, repeated readiness and no
   success reveal from timeout.
 - `tests/frontendStartupContract.test.ts` guards entry ordering, no shell
-  readiness, centralized native show and failure-only recovery.
+  readiness, centralized native show, failure-only recovery, and native
+  `focusManager.setFocused(true)` on the FeatureProvider QueryClient.
+- `tests/v2/platform/featurePorts.test.ts` freezes catalog official-link IDs
+  against the native v5 table, including Claude `product` (not Desktop).
 - `tests/v2/platform/frontendReady.test.tsx` guards suspended/hidden content,
   local pending, error fallback and closed hash selection.
 - `tests/v2/pages/agents/Page.test.tsx` delays the local catalog snapshot.
@@ -114,7 +130,10 @@ and the full active-task prearchive gate.
 
 ## 7. Wrong vs Correct
 
-Wrong: `setup -> window.show()` or `AppShell.useEffect -> ready`.
+Wrong: `setup -> window.show()`, `AppShell.useEffect -> ready`, or letting a
+gating catalog/overview Query stay `paused` because the still-hidden WebView
+reports `document.hidden`.
 
 Correct: `prepare geometry + committed usable/error surface -> activation
-queue drain -> show/focus`; failed startup offers explicit bounded recovery.
+queue drain -> show/focus`; native QueryClient pins focus so a failed local
+snapshot can settle; failed startup offers explicit bounded recovery.

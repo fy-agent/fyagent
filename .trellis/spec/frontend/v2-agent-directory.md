@@ -75,8 +75,13 @@ or bypass flag.
 - An unknown route ID renders the existing unavailable/not-found state and
   starts no native scan or action.
 - Catalog parse is all-or-nothing. Wrong version/order, duplicate IDs,
-  unknown/excess keys or invalid capability mode/reason/evidence does not
-  degrade to partially trusted cards.
+  unknown/excess keys, invalid capability mode/reason/evidence, or official
+  link ID/order drift against the native v5 table does not degrade to
+  partially trusted cards.
+- Official link IDs for the current catalog are: QoderWork/TRAE Work/WorkBuddy/
+  Grok Build `product`; Codex empty; Claude Code `product` (CLI setup, not
+  Desktop); OpenCode `product` then `desktop`. The platform parser owns this
+  allowlist; page copy must not invent a second link table.
 - Pi is not an Agent product. It must not appear in types, filters, fixtures,
   navigation or empty states.
 - Official links are rendered only from the validated catalog and open through
@@ -217,6 +222,7 @@ mise run test:unit
 Required assertions:
 
 - exact seven-product catalog/version/order/capability parsing and no Pi;
+- official-link ID allowlist matches native v5 (Claude `product`, not Desktop);
 - unknown/excess/duplicate/future/legacy catalog values fail closed;
 - runtime tri-state and every readiness/inventory/action/job enum render
   evidence-correct states;

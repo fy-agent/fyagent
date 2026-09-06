@@ -43,6 +43,13 @@ surface accepts/derives an `enabled`/`active` condition. Disabling a query must
 also stop its automatic fetch/refetch/poll behavior; explicit user refetch may
 remain available only when the owning surface is active.
 
+Native `FeatureProvider` pins TanStack `focusManager.setFocused(true)` so a
+catalog or Auth overview query that gates
+[Main Window Presentation](../backend/window-presentation.md) can settle while
+the WebView is still `document.hidden`. `PersistentSurface` remains the enabled
+gate for visited-but-hidden routes. Do not use `document.visibilityState` to
+pause queries that must acknowledge frontend-ready.
+
 Change Plan save/switch workspaces use the shared Query-owned job observer,
 not component intervals. Their zero-retention cache, multi-observer cancellation,
 revision ordering, and explicit secret-bearing write boundary are defined by

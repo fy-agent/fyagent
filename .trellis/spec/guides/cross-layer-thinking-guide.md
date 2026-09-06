@@ -66,6 +66,13 @@ semantics. Do not put those details into this guide.
   lifecycle cleanup.
 - Verify browser fixtures remain non-authoritative and native evidence is not
   inferred from portable tests.
+- If a renderer query gates native window reveal, confirm it can settle while
+  `document.hidden` is true. TanStack Query retry pause is not a ready
+  acknowledgement; see
+  [Main Window Presentation](../backend/window-presentation.md).
+- When changing catalog official links, update the native table and
+  `EXPECTED_AGENT_LINK_IDS` together; see
+  [External Agent Catalog and Runtime](../backend/external-agent-catalog-runtime.md).
 - Verify version/path/history facts come from their owning configuration,
   provenance ledger, or Git history rather than a parallel guide matrix.
 - For Agent install/update/launch: consult the lifecycle policy owner rather

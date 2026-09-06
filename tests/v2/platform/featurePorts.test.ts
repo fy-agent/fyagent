@@ -180,9 +180,9 @@ function catalogFixture(): AgentCatalogResult {
       catalogEntry("codex", "Codex", []),
       catalogEntry("claude-code", "Claude Code", [
         {
-          id: "desktop",
-          label: "Claude Desktop",
-          url: "https://claude.com/download",
+          id: "product",
+          label: "Claude Code CLI 安装说明",
+          url: "https://code.claude.com/docs/en/setup",
         },
       ]),
       catalogEntry("opencode", "OpenCode", [
@@ -903,6 +903,16 @@ describe("V2 feature ports", () => {
       },
     ];
     invalidPayloads.push(legacyClaudeCliLinks);
+
+    const legacyClaudeDesktopLink = structuredClone(expected);
+    legacyClaudeDesktopLink.agents[5].officialLinks = [
+      {
+        id: "desktop",
+        label: "Claude Desktop",
+        url: "https://claude.com/download",
+      },
+    ];
+    invalidPayloads.push(legacyClaudeDesktopLink);
 
     const legacyOpenCodeCliLinks = structuredClone(expected);
     legacyOpenCodeCliLinks.agents[6].officialLinks = [

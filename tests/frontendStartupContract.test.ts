@@ -19,6 +19,12 @@ describe("main-window presentation ownership", () => {
       /requestAnimationFrame|visibilityState|setTimeout/,
     );
     expect(read("src/v2/app/RootError.tsx")).toContain("useFrontendReady()");
+    expect(read("src/v2/shared/features/provider.tsx")).toContain(
+      "focusManager.setFocused(true)",
+    );
+    expect(
+      read("src/v2/shared/platform/tauri/feature-ports/agents.ts"),
+    ).toMatch(/"claude-code": \["product"\]/);
   });
 
   it("keeps ordinary reveals behind the existing activation gate", () => {

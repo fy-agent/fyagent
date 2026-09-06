@@ -1,4 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  focusManager,
+} from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -11,6 +15,7 @@ import {
 } from "react";
 
 import { createFeaturePorts } from "../platform/features";
+import { detectRuntime } from "../platform/runtime";
 import { errorMessage } from "./helpers";
 import type { FeaturePorts } from "./ports";
 import type { SkillTargetId } from "./types";
@@ -38,6 +43,12 @@ const ExternalOpenContext = createContext<ExternalOpenContextValue | null>(
 );
 
 function createFeatureQueryClient(): QueryClient {
+  if (detectRuntime().isNative) {
+    // The main WebView stays document.hidden until frontend-ready. TanStack
+    // Query otherwise pauses retries on that visibility state and deadlocks
+    // the native reveal watchdog.
+    focusManager.setFocused(true);
+  }
   return new QueryClient({
     defaultOptions: {
       queries: { staleTime: 15_000, retry: 1, refetchOnWindowFocus: false },

@@ -63,6 +63,24 @@ hooks.read hooks.write models.validate models.write mcp.validate mcp.write
 Capability mode/reason/evidence enums are closed in Rust and parsed strictly
 at `src/v2/shared/features/agents.ts`.
 
+Official link IDs are frozen per product and must match
+`EXPECTED_AGENT_LINK_IDS` in `src/v2/shared/platform/tauri/feature-ports/agents.ts`:
+
+```text
+qoderwork     ["product"]
+trae-work     ["product"]
+workbuddy     ["product"]
+grokbuild     ["product"]
+codex         []
+claude-code   ["product"]
+opencode      ["product", "desktop"]
+```
+
+`claude-code` exposes the reviewed CLI setup document as `product`. It must
+not carry a Claude Desktop download `desktop` link or a legacy `cli` link.
+OpenCode keeps product plus desktop. Codex has no official catalog link.
+Parser drift against this table rejects the whole catalog.
+
 ## 3. Contracts
 
 ### Static catalog
@@ -77,6 +95,9 @@ at `src/v2/shared/features/agents.ts`.
   version.
 - Official links are exact reviewed HTTPS links. The catalog never accepts a
   renderer URL or derives an install artifact from documentation links.
+- Claude catalog authority is the CLI product. Desktop download URLs and the
+  removed Claude Desktop Agent surface are not catalog official links; CLI
+  install/update remains in [Claude Code CLI](./claude-code-cli.md).
 - Capability declarations describe reviewed FyAgent authority. They are not
   upgraded from local runtime observations or a successful browser/app handoff.
 
@@ -130,6 +151,7 @@ at `src/v2/shared/features/agents.ts`.
 | Catalog version, product order, capability order or enum drifts | Strict Rust/TypeScript parser rejects the whole catalog. |
 | Duplicate product/capability/link ID | Reject the catalog; do not deduplicate in the UI. |
 | Official link is non-HTTPS, unexpected or malformed | Reject the catalog entry/catalog according to the strict parser. |
+| Claude official link is `desktop`, `cli`, or both   | Reject the whole catalog. Native v5 is one `product` CLI setup link. |
 | Runtime adapter cannot answer | Return `null`/closed unknown reason; never manufacture `false`. |
 | Renderer supplies path, URL, command, executable or extra field | Reject before filesystem/process/network side effect. |
 | Launch identity is missing, ambiguous or untrusted | Controlled unavailable/unverified result; start nothing. |
@@ -164,6 +186,8 @@ Required assertion points:
 
 - exact contract version, product order, capability order, link IDs and closed
   enums in Rust and `src/v2/shared/features/agents.ts`;
+- `EXPECTED_AGENT_LINK_IDS` matches the native v5 table; Claude Desktop and
+  Claude CLI+Desktop payloads fail closed;
 - unknown/excess fields, duplicate IDs and legacy/future versions fail closed;
 - no Pi and no second renderer catalog;
 - runtime unknown remains `null`, and sanitized DTOs contain no path,
