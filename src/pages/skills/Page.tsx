@@ -53,6 +53,7 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
+import { BulkAssignmentPanel } from "../../shared/ui/BulkAssignmentPanel";
 import { InstallTargetDialog } from "../../shared/features/controls/InstallTargetDialog";
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import { ExternalLinkButton } from "../../shared/features/controls/ExternalLinkButton";
@@ -61,6 +62,7 @@ import { FeaturePagination } from "../../shared/ui/FeaturePagination";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
+import { DETAIL_PANE_SIZING } from "../../shared/ui/split/sizing";
 
 import "./page.css";
 
@@ -650,7 +652,10 @@ export function SkillsPage() {
                   description="请调整搜索关键词"
                 />
               ) : (
-                <SplitPanes separatorLabels={INSTALLED_SPLIT_LABELS}>
+                <SplitPanes
+                  {...DETAIL_PANE_SIZING}
+                  separatorLabels={INSTALLED_SPLIT_LABELS}
+                >
                   <section
                     className="fy-feature-panel fy-feature-list-panel"
                     aria-label="已安装 Skills 列表"
@@ -702,26 +707,11 @@ export function SkillsPage() {
                         targets={SKILL_TARGETS}
                       />
                       <hr />
-                      <h3>全量分配</h3>
-                      {SKILL_TARGETS.map((app) => (
-                        <div key={app.id} className="fy-feature-assignment">
-                          <span>{app.label}</span>
-                          <span>
-                            <Button
-                              disabled={busy}
-                              onClick={() => bulkAssign(app.id, true)}
-                            >
-                              全开
-                            </Button>{" "}
-                            <Button
-                              disabled={busy}
-                              onClick={() => bulkAssign(app.id, false)}
-                            >
-                              全关
-                            </Button>
-                          </span>
-                        </div>
-                      ))}
+                      <BulkAssignmentPanel
+                        targets={SKILL_TARGETS}
+                        disabled={busy}
+                        onToggle={bulkAssign}
+                      />
                     </section>
                   )}
                 </SplitPanes>

@@ -15,6 +15,7 @@ import {
   type PanelImperativeHandle,
 } from "./vendor";
 import "./split.css";
+import type { SplitSizing } from "./sizing";
 
 export const SPLIT_GAP = 14;
 const TWO_MINIMUMS = [220, 360];
@@ -22,11 +23,9 @@ const THREE_MINIMUMS = [220, 330, 220];
 const NO_MAXIMUMS: Array<number | undefined> = [];
 const NO_ALIASES: string[] = [];
 
-interface SplitPanesProps {
+interface SplitPanesProps extends SplitSizing {
   children: ReactNode;
   className?: string;
-  minWidths?: number[];
-  maxWidths?: Array<number | undefined>;
   separatorLabels?: string[];
   paneCssVars?: string[];
 }
@@ -38,6 +37,8 @@ export function SplitPanes({
   className,
   minWidths: requestedMinimums,
   maxWidths = NO_MAXIMUMS,
+  defaultWidths = NO_MAXIMUMS,
+  flexiblePane,
   separatorLabels,
   paneCssVars = NO_ALIASES,
 }: SplitPanesProps) {
@@ -45,6 +46,7 @@ export function SplitPanes({
   const id = useId();
   const panelsRef = useRef<Array<PanelImperativeHandle | null>>([]);
   const panes = Children.toArray(children);
+  const flexibleIndex = flexiblePane ?? panes.length - 1;
   const minimums =
     requestedMinimums ?? (panes.length === 3 ? THREE_MINIMUMS : TWO_MINIMUMS);
   const requiredWidth =
@@ -72,13 +74,15 @@ export function SplitPanes({
   const defaultWidth = (index: number) =>
     Math.min(
       maxWidths[index] ?? Infinity,
-      (minimums[index] ?? 220) + (index === 0 ? 48 : 70),
+      defaultWidths[index] ??
+        (minimums[index] ?? 220) + (index === 0 ? 48 : 70),
     );
   return (
     <div
       ref={rootRef}
       className={classNames("fy-split-panes", className)}
       data-panes={panes.length}
+      data-flexible-pane={flexibleIndex}
       data-stacked={stacked || !canResize ? "true" : "false"}
       data-resize-fallback={!canResize ? "static" : undefined}
     >
@@ -106,10 +110,13 @@ export function SplitPanes({
                   }
                   data-index={index - 1}
                   disabled={stacked || !hasLayout}
+                  disableDoubleClick
                   onDoubleClick={() => {
+                    const resetIndex =
+                      index - 1 === flexibleIndex ? index : index - 1;
                     if (!stacked && hasLayout)
-                      panelsRef.current[index - 1]?.resize(
-                        defaultWidth(index - 1),
+                      panelsRef.current[resetIndex]?.resize(
+                        defaultWidth(resetIndex),
                       );
                   }}
                 />
@@ -126,12 +133,12 @@ export function SplitPanes({
                 defaultSize={
                   stacked
                     ? `${100 / panes.length}%`
-                    : index < panes.length - 1
+                    : index !== flexibleIndex
                       ? defaultWidth(index)
                       : undefined
                 }
                 groupResizeBehavior={
-                  !stacked && index < panes.length - 1
+                  !stacked && index !== flexibleIndex
                     ? "preserve-pixel-size"
                     : "preserve-relative-size"
                 }

@@ -55,6 +55,13 @@ Component tests use React Testing Library (`render`, `screen`, events, and
 role-based queries). Hook tests use `renderHook` and `act`. Tests that need
 TanStack Query create a client with retries disabled so failures are immediate.
 
+Responsive density verification includes continuous large→small→large viewport
+sequences and real pane dragging, not only fresh loads at preset sizes.
+`responsive-density.spec.ts` checks intrinsic row heights, grouped actions,
+flexible-detail growth, local card/metadata widths and real draft-node identity
+in Chromium/WebKit. Its failing baseline and final production runs belong in
+the task review; an empty overflow/error report alone is not layout evidence.
+
 Reusable motion/observer tests must also cover lifecycle isolation: dispose one
 control while another still updates, and re-register a selected host after its
 decorative overlay already exists. Passing initial-mount geometry alone does

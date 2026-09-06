@@ -14,7 +14,9 @@ does not redesign the seven primary routes or native window geometry.
 FrostedSurface({ enhanced?: boolean }): JSX.Element // stable CSS backing, true by default
 LiquidGlassLens({ children, className? }): JSX.Element // UI Lab specimen
 // shared/ui/split/SplitPanes.tsx — product adapter; split/vendor.ts owns the library import
-SplitPanes({ children, className?, minWidths?, maxWidths?, separatorLabels?, paneCssVars? })
+SplitPanes({ children, className?, minWidths?, maxWidths?, defaultWidths?, flexiblePane?, separatorLabels?, paneCssVars? })
+// Size arrays are readonly pixel constraints; flexiblePane defaults to last.
+// split/sizing.ts: DETAIL_PANE_SIZING selects middle index 1 for Skills/MCP.
 FeatureTabPanel({ tabsId, value, active, layout: "flow" | "workspace", ... })
 ```
 
@@ -59,8 +61,16 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
 - Insufficient width stacks the same Panel tree vertically with local scrolling;
   it does not remount editors or assume the viewport is as wide as a nested
   pane. Zero-size/hidden groups cannot admit resize gestures and retain their
-  last orientation until measurable. Leading columns preserve pixels, the
-  final column consumes remaining space. Keep the vendor import at the split
+  last orientation until measurable. Non-flexible columns preserve pixels;
+  the selected flexible column consumes remaining space. The default remains
+  the final column for ordinary two-pane consumers. Skills/MCP share
+  `DETAIL_PANE_SIZING`: list min/default/max 220/268/420px, middle detail min
+  360px and flexible, assignment min/default/max 220/280/360px. These are
+  product roles, not universal percentages or a second stored layout. Retain
+  library constraints and users' drag choices across ordinary group resizing.
+  Double-click resets the adjacent auxiliary rail, not the flexible detail;
+  the adapter disables the library's competing default reset for that action.
+  Keep the vendor import at the split
   boundary rather than the eagerly imported global primitive facade.
 - If ResizeObserver is unavailable, do not mount the library's observer-dependent
   Group. Render readable stacked static panes, no resize handles, retaining the
@@ -95,6 +105,20 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
   container queries enhance stacked fields and headers at constrained widths.
 - `.fy-control-dialog-content` is the `fy-dialog` container. A constrained
   account picker stacks options; actions stay in the nonshrinking footer.
+- Assignment grids use explicit `grid-auto-rows:max-content`; never fixed
+  heights or leftover-space automatic rows. Continuous narrow/wide re-entry
+  must not inflate a 31px row to hundreds of pixels in WebKit. Shared bulk
+  presentation uses explicit name/action slots and one content-box breakpoint;
+  see [Assignments](./assignments.md). No repaint timer or route remount is a fix.
+- Info cards use `--fy-info-card-min:256px` and `--fy-info-card-gap` with
+  intrinsic Grid sizing, capped at two columns. Admission depends on the actual
+  grid width, not a window breakpoint; a full-span item must not keep a blank
+  third column. `align-items:start` preserves natural short-card height.
+  Metadata uses `fit-content(var(--fy-definition-label-cap)) minmax(0,1fr)`;
+  the shared label cap is `min(30%,8em)`, with `--fy-definition-gap` between
+  name and value. The `fy-info-card` content container stacks definitions at
+  210px or less. Existing Auth 500px and form-specific floors retain their roles.
+  Copy-only paths remain copy-only; do not reveal hidden data to fill space.
 - Flexible text/actions need `min-width:0`, bounded width, wrapping and
   `overflow-wrap:anywhere` where URLs/identities can be long. Editable code and
   path/list previews may have explicit local scrolling/ellipsis; do not add
@@ -108,6 +132,9 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
 | Condition                                            | Required result                                                                     |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | Pane is narrow in a wide window                      | Form stacks based on container; long text remains within its pane.                  |
+| Three-pane window grows after shrinking              | Middle detail absorbs growth; auxiliary rails obey pixel bounds and drag choices.   |
+| Detail has less than two card floors plus one gap    | One full-width card column, regardless of viewport width.                           |
+| WebKit crosses two/three-pane admission repeatedly   | Rows remain intrinsic; no accumulated height or force-remounted content.            |
 | URL/identity has no natural breaks                   | Wrap in detail; no horizontal escape or lost action.                                |
 | Standard/comfortable dialog at small viewport        | Body scrolls as needed; footer actions remain reachable.                            |
 | Canvas/ResizeObserver is absent                      | Same stable CSS material, not startup failure.                                      |
@@ -127,6 +154,11 @@ glass.
 
 ## 6. Tests Required
 
+- `responsive-density.spec.ts` exercises Skills/MCP in both themes and engines:
+  1564→1232→1180→900→1181→1564, content-relative row heights, uniform atomic
+  bulk pairs, width growth, real drag/keyboard/reset, bounded long metadata,
+  616px/font-enlargement pressure and draft/hidden-route lifetime. Check both
+  initial and post-resize geometry; no-overflow alone misses inflated rows.
 - `scroll-ownership.spec.ts` covers long Skills/MCP installed lists with wheel
   and End, discovery scrolling, revisits, both themes and Chromium/WebKit. Static
   type checking requires every FeatureTabPanel to choose its layout role.

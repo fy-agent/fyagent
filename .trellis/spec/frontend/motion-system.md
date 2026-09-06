@@ -232,6 +232,12 @@ stiffness/damping/mass with duration/bounce within a spring definition.
   the remaining entry deadline and independent foreground/overlay handoff.
   Do not cancel/recreate all tracks, restart 420ms, delay native preview delivery
   or add a minimum loading timer. Real viewport changes still settle promptly.
+- A settled dialog's non-semantic width change is a CSS viewport clamp, not a
+  content-height transition. `useDialogResize` settles it without tweening back
+  to the old width. WebKit may deliver this observation before the window resize
+  event; writing the old width inside that delivery would resize the observed
+  body again and report an observer loop. Explicit size/presentationKey changes
+  and intrinsic height changes still animate; entry retargeting is unchanged.
 - Reversal captures the intermediate rect before cancelling old effects.
   Closing freezes current size for the existing return track while immediately
   revoking actions and sensitive content. Resize, reduced motion and document

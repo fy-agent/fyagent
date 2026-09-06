@@ -27,8 +27,8 @@ describe("Skills management layout", () => {
     expect(pageCss).toMatch(
       /\.fy-skills-page\s*>\s*\.fy-feature-header\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto;/s,
     );
-    expect(pageCss).toMatch(
-      /\.fy-skills-page\s+\.fy-split-panes\[data-panes="3"\]\s*\{[^}]*--fy-split-pane-0:\s*clamp\(230px,\s*22vw,\s*292px\);[^}]*--fy-split-pane-1:\s*clamp\(350px,\s*31vw,\s*470px\);/s,
-    );
+    expect(pageSource).toMatch(/<SplitPanes\s+\{\.\.\.DETAIL_PANE_SIZING\}/);
+    expect(pageSource).toContain("<BulkAssignmentPanel");
+    expect(pageCss).not.toContain("--fy-split-pane-");
   });
 });

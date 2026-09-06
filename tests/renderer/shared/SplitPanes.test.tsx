@@ -1,10 +1,47 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { SplitPanes } from "@/shared/ui/split";
+import { DETAIL_PANE_SIZING } from "@/shared/ui/split/sizing";
 
 // Pointer/keyboard constraints and resize interruption require real layout;
 // those former mocked-pixel cases live in browser/layout-integrity.spec.ts.
 describe("SplitPanes adapter", () => {
+  it("keeps detail identity when the shared middle-flexible profile adds or removes its rail", () => {
+    const content = <input aria-label="detail draft" defaultValue="" />;
+    const { rerender } = render(
+      <SplitPanes {...DETAIL_PANE_SIZING}>
+        <section>list</section>
+        {content}
+      </SplitPanes>,
+    );
+    const editor = screen.getByRole("textbox");
+    fireEvent.change(editor, {
+      target: { value: "unchanged across admission" },
+    });
+    rerender(
+      <SplitPanes {...DETAIL_PANE_SIZING}>
+        <section>list</section>
+        {content}
+        <section>assignment</section>
+      </SplitPanes>,
+    );
+    expect(screen.getByRole("textbox")).toBe(editor);
+    expect(editor).toHaveValue("unchanged across admission");
+    expect(document.querySelector("[data-flexible-pane='1']")).not.toBeNull();
+    rerender(
+      <SplitPanes {...DETAIL_PANE_SIZING}>
+        <section>list</section>
+        {content}
+      </SplitPanes>,
+    );
+    expect(screen.getByRole("textbox")).toBe(editor);
+    expect(DETAIL_PANE_SIZING).toEqual({
+      minWidths: [220, 360, 220],
+      maxWidths: [420, undefined, 360],
+      defaultWidths: [268, undefined, 280],
+      flexiblePane: 1,
+    });
+  });
   it("keeps content and drafts usable without an observer rather than mounting an unsupported resize engine", () => {
     vi.stubGlobal("ResizeObserver", undefined);
     try {

@@ -42,6 +42,14 @@ the actual library source. No dependency upgrade is selected.
 
 ## Alternatives rejected
 
+Implementation follow-up: MDN ResizeObserver observation errors
+https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserver#observation_errors
+explains same-delivery writes to observed geometry and their error event. The
+new resize/draft regression exposed an actual 900→868px viewport clamp being
+tweened back by the content-resize owner. Prevent that unintended write rather
+than suppressing the observer error or adding a repaint polling loop. Explicit
+content-height and size-stage transitions retain their existing animation.
+
 - A new split/grid component library: current dependency already supplies the
   required sizing and resize lifecycle. The failures reproduce in our shared
   styles and adapter policy, not a missing library capability.

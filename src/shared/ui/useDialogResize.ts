@@ -111,6 +111,15 @@ export function useDialogResize({
         originSettler.current?.();
         return;
       }
+      // CSS owns viewport-clamped widths. WebKit can deliver that observation
+      // before the window resize event; tweening from the old width would
+      // resize our observed body again in the same delivery and form a loop.
+      // Explicit size/step changes still animate through presentationKey.
+      if (!semantic && Math.abs(from.width - target.width) > 0.5) {
+        settle();
+        originSettler.current?.();
+        return;
+      }
       try {
         const handle = runDialogResize({
           windowNode: root,

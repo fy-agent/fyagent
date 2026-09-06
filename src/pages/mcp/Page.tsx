@@ -42,12 +42,14 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
+import { BulkAssignmentPanel } from "../../shared/ui/BulkAssignmentPanel";
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import { ExternalLinkButton } from "../../shared/features/controls/ExternalLinkButton";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
+import { DETAIL_PANE_SIZING } from "../../shared/ui/split/sizing";
 import { WorkBuddyTrustDialog } from "../../shared/ui/WorkBuddyTrustDialog";
 import { findCatalogItem, MCP_PROVENANCE_LABEL } from "./catalog";
 import { DEFAULT_NEW_APPS } from "./constants";
@@ -513,7 +515,10 @@ export function McpPage() {
                 description="为保护敏感信息，密钥和请求头不会参与搜索。"
               />
             ) : (
-              <SplitPanes separatorLabels={INSTALLED_SPLIT_LABELS}>
+              <SplitPanes
+                {...DETAIL_PANE_SIZING}
+                separatorLabels={INSTALLED_SPLIT_LABELS}
+              >
                 <section
                   className="fy-feature-panel fy-feature-list-panel"
                   aria-label="MCP 列表"
@@ -566,28 +571,12 @@ export function McpPage() {
                       targets={MCP_TARGETS}
                     />
                     <hr />
-                    <h3>全量分配</h3>
-                    {MCP_TARGETS.map((app) => (
-                      <div key={app.id} className="fy-feature-assignment">
-                        <span>{app.label}</span>
-                        <span>
-                          <Button
-                            disabled={busy}
-                            onClick={() => bulkAssign(app.id, true)}
-                            dialogOriginRef={dialogOriginRef}
-                          >
-                            全开
-                          </Button>{" "}
-                          <Button
-                            disabled={busy}
-                            onClick={() => bulkAssign(app.id, false)}
-                            dialogOriginRef={dialogOriginRef}
-                          >
-                            全关
-                          </Button>
-                        </span>
-                      </div>
-                    ))}
+                    <BulkAssignmentPanel
+                      targets={MCP_TARGETS}
+                      disabled={busy}
+                      onToggle={bulkAssign}
+                      dialogOriginRef={dialogOriginRef}
+                    />
                   </section>
                 )}
               </SplitPanes>

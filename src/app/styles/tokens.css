@@ -86,6 +86,11 @@
   --fy-space-md: 12px;
   --fy-space-lg: 16px;
   --fy-space-xl: 24px;
+  --fy-info-card-min: 256px;
+  --fy-info-card-gap: var(--fy-space-md);
+  --fy-definition-label-cap: min(30%, 8em);
+  --fy-definition-gap: var(--fy-space-md);
+  --fy-assignment-row-gap: var(--fy-space-sm);
   --fy-motion-press: 80ms;
   --fy-motion-control: 160ms;
   --fy-motion-content: 240ms;

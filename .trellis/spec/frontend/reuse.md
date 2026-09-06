@@ -67,7 +67,7 @@ through a UI barrel to conceal that dependency.
 
 - feature controls and lists: `FeatureTabs`, `FeatureSearch`, `FeatureList`,
   `FeaturePagination`;
-- assignment/install flows: `AssignmentPanel`, `InstallTargetDialog`, shared
+- assignment/install flows: `AssignmentPanel`, `BulkAssignmentPanel`, `InstallTargetDialog`, shared
   confirmation/dialog primitives;
 - Change Plan workflows: Models-specific `SavePlanWorkspace` adapters plus
   shared `ApplyWorkspace`, `ChangePlanWorkspace`, and `useChangeJob`; see

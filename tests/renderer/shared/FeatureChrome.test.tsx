@@ -201,7 +201,7 @@ describe("FeatureList", () => {
     const definitionBlock =
       featuresCss.match(/\.fy-feature-definition\s*\{[^}]*\}/s)?.[0] ?? "";
     expect(definitionBlock).toMatch(
-      /grid-template-columns:\s*minmax\(0,\s*max-content\)\s+minmax\(0,\s*1fr\)/,
+      /grid-template-columns:\s*fit-content\(var\(--fy-definition-label-cap\)\)\s+minmax\(\s*0,\s*1fr\s*\)/,
     );
     expect(definitionBlock).not.toMatch(/minmax\(90px/);
     expect(featuresCss).toMatch(

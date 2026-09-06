@@ -13,7 +13,7 @@ content and `flow` for ordinary forms. Shared height/scroll ownership lives in
 [Surfaces](./surfaces-responsive.md); do not drop a plain block into that chain.
 
 Use the existing `Button`, `Dialog`, `FeatureTabs`, `FeatureList`, `FeatureSearch`,
-`FeaturePagination`, `AssignmentPanel`, `SecretInput`, `CatalogMasterDetail` and
+`FeaturePagination`, `AssignmentPanel`, `BulkAssignmentPanel`, `SecretInput`, `CatalogMasterDetail` and
 `SplitPanes` owners. Reuse Phosphor icons, adopted Radix primitives, semantic
 tokens and `classNames` from `shared/design-system/classNames.ts`. Do not restore
 retired Tailwind/Lucide wrappers or a second UI framework.
@@ -43,6 +43,9 @@ visual exit may finish afterwards. Feature tabs reuse Radix keyboard semantics.
 Split panes delegate pointer, keyboard and constraint mechanics to
 `react-resizable-panels` through `shared/ui/split/vendor.ts`. Route props supply
 minimum/maximum dimensions; direction changes retain editor nodes/drafts.
+Skills/MCP reuse the `split/sizing.ts` middle-flexible profile, not page-local
+width variables. Bulk actions use one presentation owner with explicit name
+and action slots. Intrinsic card/metadata roles belong in shared tokens/styles.
 
 ## Copy, CSS and verification
 

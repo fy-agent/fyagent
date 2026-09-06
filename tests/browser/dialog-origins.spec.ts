@@ -193,6 +193,15 @@ test("a cancelled removal preview cannot overwrite the next removal session", as
   await expect
     .poll(() => page.evaluate(() => Boolean(window.__releaseRemovalPreview)))
     .toBe(true);
+  // The held IPC request does not prove Radix has committed its keyboard owner.
+  // This case cancels a pending preview; interrupted entry has separate coverage.
+  await expect(page.getByRole("dialog")).toHaveAttribute(
+    "data-motion-settled",
+    "true",
+  );
+  await expect(
+    page.getByRole("button", { name: "取消", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await source.click();

@@ -34,7 +34,7 @@ export function monitorPageHealth(page: Page): PageHealthMonitor {
     }
   });
   page.on("pageerror", (error) => {
-    monitor.pageErrors.push(error.stack ?? error.message);
+    monitor.pageErrors.push(error.stack || error.message);
   });
 
   return monitor;

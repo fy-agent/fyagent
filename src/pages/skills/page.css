@@ -62,13 +62,6 @@
   font-weight: 650;
 }
 
-@media (min-width: 1181px) {
-  .fy-skills-page .fy-split-panes[data-panes="3"] {
-    --fy-split-pane-0: clamp(230px, 22vw, 292px);
-    --fy-split-pane-1: clamp(350px, 31vw, 470px);
-  }
-}
-
 @media (max-width: 760px) {
   .fy-skills-page > .fy-feature-header {
     grid-template-columns: minmax(0, 1fr);

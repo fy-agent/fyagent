@@ -216,8 +216,11 @@
 }
 .fy-feature-definition {
   display: grid;
-  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
-  gap: 8px 12px;
+  grid-template-columns: fit-content(var(--fy-definition-label-cap)) minmax(
+      0,
+      1fr
+    );
+  gap: var(--fy-space-sm) var(--fy-definition-gap);
   margin: 0;
   font-size: 12px;
 }
@@ -261,6 +264,9 @@
 }
 .fy-feature-assignments {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  /* Explicit intrinsic tracks prevent stale automatic row growth on WebKit re-entry. */
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 11px;
 }
@@ -277,11 +283,38 @@
 .fy-feature-assignment > span {
   min-width: 0;
 }
-.fy-feature-assignment > span:last-child {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
+.fy-feature-bulk-assignments {
+  container: fy-bulk-assignments / inline-size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: var(--fy-assignment-row-gap);
+  min-width: 0;
+}
+.fy-feature-bulk-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--fy-space-sm) var(--fy-space-md);
+}
+.fy-feature-assignment-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--fy-space-sm);
+  max-width: 100%;
+  justify-self: start;
+}
+.fy-feature-assignment-actions > .fy-control-button {
+  flex: 1 1 auto;
+}
+/* One local admission point for the entire group, not a per-name wrapping decision. */
+@container fy-bulk-assignments (min-width: 231px) {
+  .fy-feature-bulk-row {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+  .fy-feature-assignment-actions {
+    justify-self: end;
+  }
 }
 .fy-feature-assignment-label {
   display: flex;
@@ -378,10 +411,26 @@
 }
 .fy-feature-info-grid {
   display: grid;
-  gap: 12px;
+  /* Fill the real detail box, with a meaningful floor and no phantom third column. */
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(
+      min(
+        100%,
+        max(var(--fy-info-card-min), calc((100% - var(--fy-info-card-gap)) / 2))
+      ),
+      1fr
+    )
+  );
+  gap: var(--fy-info-card-gap);
   align-content: start;
+  align-items: start;
+}
+.fy-feature-info-span {
+  grid-column: 1 / -1;
 }
 .fy-feature-info-card {
+  container: fy-info-card / inline-size;
   display: grid;
   align-content: start;
   gap: 10px;
@@ -408,6 +457,14 @@
 .fy-feature-info-card .fy-feature-definition dd {
   color: var(--fy-text);
   font-size: 13px;
+}
+@container fy-info-card (max-width: 210px) {
+  .fy-feature-definition {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fy-feature-definition dd {
+    margin-bottom: var(--fy-space-sm);
+  }
 }
 .fy-feature-app-chips {
   display: flex;
@@ -593,14 +650,6 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-}
-@media (min-width: 1181px) {
-  .fy-feature-info-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .fy-feature-info-span {
-    grid-column: 1 / -1;
-  }
 }
 @media (max-width: 1180px) {
   .fy-feature-master {

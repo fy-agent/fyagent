@@ -13,6 +13,7 @@ Primary owners are:
 - `src/shared/features/authoritative-assignment.ts` for serialized mutation
   and readback confirmation;
 - `src/shared/ui/AssignmentPanel.tsx` for shared switch/radio rendering;
+- `src/shared/ui/BulkAssignmentPanel.tsx` for shared bulk action presentation;
 - `src/shared/features/ports.ts` for `SkillsPort` and `McpPort`;
 - `src/pages/agents/AgentAssignmentSections.tsx` for the current
   target-bound Skill/MCP mutation composition.
@@ -41,12 +42,13 @@ The shared panel has two explicit modes:
 ```ts
 type AssignmentPanelProps =
   | {
-      mode: "switch";
+      mode?: "switch";
       targets: readonly { id: AssignmentTargetId; label: string }[];
-      apps: Record<string, boolean>;
+      apps: Record<string, boolean | undefined>;
       onToggle(id: AssignmentTargetId, enabled: boolean): void;
       disabled?: boolean;
-      labelSuffix?: (id: AssignmentTargetId) => string | undefined;
+      labelSuffix: string;
+      dialogOriginRef?: DialogOriginRef;
     }
   | {
       mode: "radio";
@@ -57,6 +59,10 @@ type AssignmentPanelProps =
       ariaLabel: string;
     };
 ```
+
+`BulkAssignmentPanel<T extends SkillTargetId>` receives the same readonly target
+list, `disabled?`, `onToggle(target:T, enabled:boolean):void` and optional
+`dialogOriginRef`. It has no state/port authority.
 
 The mutation owner is:
 
@@ -99,12 +105,23 @@ McpPort.toggleApp(serverId, targetId, enabled) -> void
 - Native DTOs can round-trip nine target flags, while Renderer deliberately displays
   seven. Gemini/Hermes or compatibility fields must not appear merely because
   they exist in a native row.
-- `AssignmentPanel` renders semantic checkboxes for switch mode and one
+- `AssignmentPanel` renders semantic switches for switch mode and one
   radiogroup for radio mode. Labels are visible, inputs remain accessible, and
   the whole panel honors its `disabled` prop.
 - The shared component has no native-path, installation, persistence, or
   per-target capability logic. Feature pages decide whether it is available and
   supply any `labelSuffix` evidence.
+- `BulkAssignmentPanel` composes existing Buttons and target order. Each target
+  has a named group and one atomic enable/disable pair. Native mutations,
+  serialization, progress and readback remain in the page; resizing never
+  invokes callbacks or resets assignment state. Optional origin refs reach
+  both real buttons before the callback runs.
+- Shared bulk rows default to name-above-actions, including without container
+  queries. At `fy-bulk-assignments` content widths of 231px and above they all
+  use name/action columns. This one threshold replaces per-name Flex wrapping;
+  one short label must not stay inline while peers wrap. Button pairs never
+  split independently and labels may wrap naturally. `features.css` owns the
+  rule; spacing uses `--fy-assignment-row-gap` and shared space tokens.
 
 ### Serialized authoritative mutation
 
@@ -182,8 +199,11 @@ Required assertion owners include:
   concurrent `busy`, confirmation only after exact readback, two rereads on a
   mismatch, rejected outcome, and pending cleanup;
 - shared assignment/component tests: exact seven-target order, compatibility
-  fields excluded from rendering, checkbox/radiogroup semantics, disabled
+  fields excluded from rendering, switch/radiogroup semantics, disabled
   behavior, and accessible labels;
+- `BulkAssignmentPanel.test.tsx`: seven-target order, two actions per target,
+  one callback with correct ID/value/source, and disabled behavior. Browser
+  density tests verify actual sizing, grouping and repeated transitions;
 - Agent Skill/MCP section tests: domain Port wiring, fixed assignment target,
   stable resource IDs, feature-specific reread/readValue, warning copy, and no
   direct native invocation;

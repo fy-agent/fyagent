@@ -10,6 +10,7 @@ const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 export default defineConfig({
   testDir: path.join(repositoryRoot, "tests/browser"),
   testMatch: [
+    "responsive-density.spec.ts",
     "mcp-followup-origins.spec.ts",
     "navigation-performance.spec.ts",
     "presentation-performance.spec.ts",
