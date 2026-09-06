@@ -3,7 +3,7 @@
   "name": "frontend-blue-themes",
   "title": "亮蓝与雾蓝双主题及原点扩散",
   "description": "建立成套亮暗蓝色令牌和右上角切换，复用主题状态及原生视图过渡，验证启动偏好、对比度和中段帧成本",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "pythonrust",
   "assignee": "pythonrust",
   "createdAt": "2026-09-06",
-  "completedAt": null,
+  "completedAt": "2026-09-06",
   "branch": "dev/laiyongjie",
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,7 @@
   "parent": "09-06-frontend-experience-round6",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "work_commit": "081d5d49951bd0d4780c0bb90654b8d85c212061"
+  }
 }
