@@ -788,7 +788,13 @@ describe("Models page", () => {
     expect(existingToggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("配置状态")).not.toBeInTheDocument();
     expect(screen.queryByText("备份")).not.toBeInTheDocument();
-    expect(screen.queryByText("gpt-4o")).not.toBeInTheDocument();
+    expect(screen.getByText("gpt-4o").closest("[inert]")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(
+      screen.getByText("gpt-4o").closest("[inert]"),
+    ).toHaveStyle({ height: "0px" });
 
     await user.click(
       screen.getByRole("heading", { name: "当前已有的第三方模型 ID" }),

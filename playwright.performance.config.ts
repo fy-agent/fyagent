@@ -10,6 +10,7 @@ export default defineConfig({
     "navigation-performance.spec.ts",
     "presentation-performance.spec.ts",
     "theme-performance.spec.ts",
+    "state-performance.spec.ts",
   ],
   outputDir: path.join(os.tmpdir(), "fyagent-performance"),
   workers: 1,

@@ -1,6 +1,7 @@
 import { getSkillTargetIcon } from "../assets/apps";
 import type { SkillTargetId } from "../features/types";
 import { Switch } from "./primitives";
+import { PressableButton } from "./Button";
 
 type TargetOption<T extends SkillTargetId> = { id: T; label: string };
 
@@ -50,7 +51,7 @@ export function AssignmentPanel<T extends SkillTargetId>(
         {props.targets.map((app) => {
           const selected = app.id === props.value;
           return (
-            <button
+            <PressableButton
               key={app.id}
               type="button"
               role="radio"
@@ -61,7 +62,7 @@ export function AssignmentPanel<T extends SkillTargetId>(
             >
               <TargetIcon id={app.id} />
               <span>{app.label}</span>
-            </button>
+            </PressableButton>
           );
         })}
       </div>

@@ -74,7 +74,7 @@
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-log": "2.8.0",
     "clsx": "^2.1.1",
-    "framer-motion": "^12.23.25",
+    "framer-motion": "^12.43.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-resizable-panels": "4.12.3",

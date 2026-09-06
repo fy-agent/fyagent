@@ -91,6 +91,7 @@
   --fy-motion-content: 240ms;
   --fy-motion-dialog-enter: 420ms;
   --fy-motion-dialog-exit: 360ms;
+  --fy-motion-dialog-resize: 320ms;
   --fy-motion-toast: 240ms;
   --fy-motion-theme: 560ms;
   --fy-motion-spinner: 900ms;

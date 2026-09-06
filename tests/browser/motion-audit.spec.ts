@@ -72,7 +72,7 @@ test("shared press feedback is bounded, leaves adjacent layout still and preserv
   await expect
     .poll(async () => (await renderedWidth(button)) / width)
     .toBeLessThan(0.99);
-  expect((await renderedWidth(button)) / width).toBeGreaterThanOrEqual(0.965);
+  expect((await renderedWidth(button)) / width).toBeGreaterThanOrEqual(0.955);
   expect(
     await button.evaluate((node) => (node as HTMLElement).offsetWidth),
   ).toBe(layoutWidth);

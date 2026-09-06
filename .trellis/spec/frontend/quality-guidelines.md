@@ -107,6 +107,10 @@ dispatch, data freshness and animation settling. Report those limits, not a
 claim about all native WebViews. Do not raise the existing build budgets.
 
 The same production configuration also runs `presentation-performance.spec.ts`.
+`state-performance.spec.ts` independently exercises one cold and twenty warm
+next/back pairs in the same login dialog at 1x/4x CPU cost, requiring real
+intermediate heights and cleanup. Normal frame p95 remains 33.4ms. Layout
+measurements are reported, not conflated with route activation latency.
 `theme-performance.spec.ts` separately records capture preparation and each
 third of the radial reveal. Functional browser configuration excludes all
 `*-performance.spec.ts` files: a parallel development-server run cannot serve

@@ -8,7 +8,6 @@ import {
   SelectionLens,
   SelectionLensGroup,
   SelectionLensTrack,
-  selectionLensCollapsedOrigin,
   selectionLensTransition,
 } from "@/shared/ui/SelectionLens";
 
@@ -19,21 +18,6 @@ describe("SelectionLens", () => {
       type: "tween",
       duration: 0.3,
       ease: [0.32, 0.72, 0, 1],
-    });
-  });
-
-  it("collapses appear origin to the active host top-left, not the track origin", () => {
-    expect(selectionLensCollapsedOrigin({ x: 24, y: 88 })).toEqual({
-      x: 24,
-      y: 88,
-      width: 0,
-      height: 0,
-    });
-    expect(selectionLensCollapsedOrigin({ x: 24, y: 88 })).not.toEqual({
-      x: 0,
-      y: 0,
-      width: 0,
-      height: 0,
     });
   });
 
@@ -96,7 +80,7 @@ describe("SelectionLens", () => {
     expect(screen.getByTestId("selection-lens")).toBeVisible();
   });
 
-  it("replays the appearance transition after a hidden ancestor is shown again", async () => {
+  it("remeasures after a hidden ancestor is shown again without a new overlay", async () => {
     function Track({ hide }: { hide: boolean }) {
       return (
         <div hidden={hide ? true : undefined}>
@@ -111,6 +95,7 @@ describe("SelectionLens", () => {
     }
 
     const { rerender } = render(<Track hide={false} />);
+    const original = screen.getByTestId("selection-lens");
     expect(screen.getByTestId("selection-lens")).toHaveAttribute(
       "data-selection-lens-reveal",
       "0",
@@ -124,9 +109,10 @@ describe("SelectionLens", () => {
         "1",
       );
     });
+    expect(screen.getByTestId("selection-lens")).toBe(original);
   });
 
-  it("observes only the active host and track instead of the layout subtree", () => {
+  it("observes the active host, track and direct layout blocks, never its own overlay", () => {
     const observed = new Set<Element>();
 
     class RecordingResizeObserver {
@@ -141,21 +127,36 @@ describe("SelectionLens", () => {
 
     vi.stubGlobal("ResizeObserver", RecordingResizeObserver);
 
-    try {
-      render(
+    function Track({ second = false }: { second?: boolean }) {
+      return (
         <SelectionLensGroup id="reflow-track" data-testid="reflow-scope">
           <div data-testid="reflow-spacer" />
           <button type="button" data-testid="reflow-host">
-            <SelectionLens active />
-            Current
+            <SelectionLens active={!second} />
+            First
           </button>
-        </SelectionLensGroup>,
+          <button type="button" data-testid="reflow-second">
+            <SelectionLens active={second} />
+            Second
+          </button>
+        </SelectionLensGroup>
       );
+    }
+
+    try {
+      const { rerender } = render(<Track />);
 
       expect(observed.has(screen.getByTestId("reflow-scope"))).toBe(true);
-      expect(observed.has(screen.getByTestId("reflow-spacer"))).toBe(false);
+      expect(observed.has(screen.getByTestId("reflow-spacer"))).toBe(true);
       expect(observed.has(screen.getByTestId("reflow-host"))).toBe(true);
       expect(observed.has(screen.getByTestId("selection-lens"))).toBe(false);
+      // The overlay does not exist at the first observer setup. Switching the
+      // host reinstalls that observer after it exists: never observe our output.
+      const lens = screen.getByTestId("selection-lens");
+      rerender(<Track second />);
+      expect(screen.getByTestId("selection-lens")).toBe(lens);
+      expect(observed.has(screen.getByTestId("reflow-second"))).toBe(true);
+      expect(observed.has(lens)).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -222,6 +223,8 @@ describe("SelectionLens", () => {
       await waitFor(() => {
         expect(lens.style.transform).toContain("translateY(40px)");
       });
+      expect(lens.style.width).toBe("184px");
+      expect(lens.style.height).toBe("36px");
 
       mockBox(host, { x: 8, y: 120, width: 184, height: 36 });
       act(() => {

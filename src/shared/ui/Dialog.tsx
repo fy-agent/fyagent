@@ -24,6 +24,7 @@ import {
 } from "./motion";
 import { usePersistentVisibility } from "./PersistentSurface";
 import { DialogPrimitive } from "./vendor";
+import { useDialogResize } from "./useDialogResize";
 
 export interface DialogProps {
   open: boolean;
@@ -35,6 +36,8 @@ export interface DialogProps {
   size?: "standard" | "comfortable" | "wide";
   initialFocusRef?: RefObject<HTMLElement>;
   originRef?: DialogOriginRef;
+  /** Closed presentation stage, not a new editor/session identity. */
+  presentationKey?: string | number;
   /** Only reviewed non-credential presentation can opt in. Interaction is
    * revoked immediately; original content may fade for at most 80ms. */
   exitContent?: "clear" | "fade";
@@ -59,6 +62,7 @@ function DialogLayer({
   size = "standard",
   initialFocusRef,
   originRef,
+  presentationKey,
   exitContent = "clear",
 }: DialogProps) {
   const [present, safeToRemove] = usePresence();
@@ -78,6 +82,7 @@ function DialogLayer({
   const sourceMaterialRef = useRef<HTMLDivElement>(null);
   const targetMaterialRef = useRef<HTMLDivElement>(null);
   const foregroundRef = useRef<HTMLDivElement>(null);
+  const bodyPresentationRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const lastBox = useRef<DOMRect | null>(null);
   const source = useRef<HTMLElement | null>(null);
@@ -99,6 +104,22 @@ function DialogLayer({
     typeof Element !== "undefined" &&
     typeof Element.prototype.animate === "function";
   const interactive = present && (settled || reduce || !nativeAnimation);
+  const {
+    resizing,
+    settle: settleContentResize,
+    freeze: freezeContentResize,
+  } = useDialogResize({
+    rootRef: contentRef,
+    bodyRef: bodyPresentationRef,
+    lastBoxRef: lastBox,
+    originSettler: resizeTransition,
+    present,
+    settled,
+    reduce,
+    nativeAnimation,
+    mountVersion,
+    presentationKey: `${size}:${presentationKey ?? ""}`,
+  });
   const keepBody =
     present || (exitContent === "fade" && retiredPhase !== phase);
   const remove = useRef(safeToRemove);
@@ -107,27 +128,6 @@ function DialogLayer({
     remove.current = safeToRemove;
     requestedSource.current = originRef;
   }, [safeToRemove, originRef]);
-
-  useLayoutEffect(() => {
-    const element = contentRef.current;
-    if (!element || !present) return;
-    const measure = () => {
-      const next = element.getBoundingClientRect();
-      const previous = lastBox.current;
-      lastBox.current = next;
-      if (
-        previous &&
-        (Math.abs(previous.width - next.width) > 0.5 ||
-          Math.abs(previous.height - next.height) > 0.5)
-      )
-        resizeTransition.current?.();
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [present, mountVersion]);
 
   useLayoutEffect(() => {
     const element = contentRef.current;
@@ -168,6 +168,7 @@ function DialogLayer({
       motionDuration(present ? "dialog-enter" : "dialog-exit") * 1000;
     let handle: ReturnType<typeof runDialogPresentation> | null = null;
     const settle = () => {
+      settleContentResize();
       handle?.cancel(false);
       if (present) settleDialogPlanes(planes);
       else {
@@ -224,12 +225,21 @@ function DialogLayer({
     document.addEventListener("visibilitychange", visibility);
     return () => {
       epoch.current += 1;
+      freezeContentResize();
       handle?.cancel();
       resizeTransition.current = null;
       window.removeEventListener("resize", settle);
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [present, reduce, mountVersion, nativeAnimation, phase]);
+  }, [
+    present,
+    reduce,
+    mountVersion,
+    nativeAnimation,
+    phase,
+    settleContentResize,
+    freezeContentResize,
+  ]);
 
   useLayoutEffect(() => {
     const root = contentRef.current;
@@ -257,7 +267,10 @@ function DialogLayer({
         <DialogPrimitive.Content
           ref={setContent}
           data-motion-phase={present ? "open" : "exit"}
-          data-motion-settled={present && settled ? "true" : undefined}
+          data-motion-settled={
+            present && settled && !resizing ? "true" : undefined
+          }
+          data-content-motion={present && resizing ? "resizing" : undefined}
           className={classNames(
             "fy-control-dialog",
             size !== "standard" && `fy-control-dialog-${size}`,
@@ -343,7 +356,10 @@ function DialogLayer({
             className="fy-dialog-foreground"
             {...(!interactive ? { inert: "", "aria-hidden": true } : {})}
           >
-            <div className="fy-control-dialog-content">
+            <div
+              className="fy-control-dialog-content"
+              ref={bodyPresentationRef}
+            >
               <header className="fy-control-dialog-header">
                 <DialogPrimitive.Title className="fy-control-dialog-title">
                   {title}

@@ -1,8 +1,9 @@
 import { EyeIcon } from "@phosphor-icons/react/dist/csr/Eye";
 import { EyeSlashIcon } from "@phosphor-icons/react/dist/csr/EyeSlash";
-import { forwardRef, useState, type InputHTMLAttributes } from "react";
+import { forwardRef, useRef, useState, type InputHTMLAttributes } from "react";
 
 import { classNames } from "../design-system/classNames";
+import { PressableButton } from "./Button";
 
 export type SecretInputProps = Omit<
   InputHTMLAttributes<HTMLInputElement>,
@@ -18,6 +19,7 @@ export const SecretInput = forwardRef<HTMLInputElement, SecretInputProps>(
     ref,
   ) => {
     const [visible, setVisible] = useState(false);
+    const visualRef = useRef<HTMLSpanElement>(null);
     const toggleLabel = visible ? hideLabel : revealLabel;
 
     return (
@@ -29,7 +31,8 @@ export const SecretInput = forwardRef<HTMLInputElement, SecretInputProps>(
           {...props}
           type={visible ? "text" : "password"}
         />
-        <button
+        <PressableButton
+          pressVisualRef={visualRef}
           type="button"
           className="fy-control-secret-toggle"
           aria-label={toggleLabel}
@@ -37,12 +40,14 @@ export const SecretInput = forwardRef<HTMLInputElement, SecretInputProps>(
           disabled={disabled}
           onClick={() => setVisible((current) => !current)}
         >
-          {visible ? (
-            <EyeSlashIcon size={16} weight="regular" aria-hidden />
-          ) : (
-            <EyeIcon size={16} weight="regular" aria-hidden />
-          )}
-        </button>
+          <span ref={visualRef} className="fy-control-icon-feedback">
+            {visible ? (
+              <EyeSlashIcon size={16} weight="regular" aria-hidden />
+            ) : (
+              <EyeIcon size={16} weight="regular" aria-hidden />
+            )}
+          </span>
+        </PressableButton>
       </div>
     );
   },

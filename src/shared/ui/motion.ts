@@ -27,14 +27,14 @@ export const fySelectionTransition = {
 
 export const fyPressRecovery = {
   type: "spring",
-  stiffness: 280,
-  damping: 18,
-  mass: 0.7,
+  stiffness: 260,
+  damping: 17,
+  mass: 0.72,
 } as const;
 
 export const fyPressScale = {
-  target: 0.975,
-  minimum: 0.96,
+  target: 0.96,
+  minimum: 0.95,
   maximum: 1.004,
 } as const;
 
@@ -56,6 +56,7 @@ export function motionDuration(
     | "press"
     | "dialog-enter"
     | "dialog-exit"
+    | "dialog-resize"
     | "content"
     | "toast"
     | "theme",

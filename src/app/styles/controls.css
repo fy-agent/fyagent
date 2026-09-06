@@ -111,6 +111,11 @@
 .fy-feature-search-clear svg {
   display: block;
 }
+.fy-control-icon-feedback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .fy-control-secret-toggle:hover:not(:disabled),
 .fy-control-secret-toggle:focus-visible,
 .fy-feature-search-clear:hover:not(:disabled),

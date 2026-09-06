@@ -292,3 +292,69 @@ export function settleDialogPlanes(planes: DialogPlanes): void {
   planes.foreground.style.opacity = "1";
   planes.overlay.style.opacity = "1";
 }
+
+/** Same-session layout, not another source entrance. Native interpolation
+ * changes only the fixed dialog's size; content/footer are not scale-distorted. */
+export function runDialogResize({
+  windowNode,
+  contentNode,
+  from,
+  target,
+  duration,
+}: {
+  windowNode: HTMLElement;
+  contentNode: HTMLElement;
+  from: Pick<DOMRect, "width" | "height">;
+  target: Pick<DOMRect, "width" | "height">;
+  duration: number;
+}) {
+  const animations: Animation[] = [];
+  let cancelled = false;
+  const done = (animation: Animation) =>
+    animation.finished.then(
+      () => true,
+      () => false,
+    );
+  const cancel = (freeze = false) => {
+    if (cancelled) return;
+    cancelled = true;
+    const box = freeze ? windowNode.getBoundingClientRect() : null;
+    animations.forEach((animation) => animation.cancel());
+    if (box) {
+      windowNode.style.width = `${box.width}px`;
+      windowNode.style.height = `${box.height}px`;
+    }
+  };
+  try {
+    animations.push(
+      windowNode.animate(
+        [
+          { width: `${from.width}px`, height: `${from.height}px` },
+          { width: `${target.width}px`, height: `${target.height}px` },
+        ],
+        { duration, easing: fySpatialEasing, fill: "both" },
+      ),
+    );
+    // The action row stays visible, so its real press feedback is not covered
+    // by a full-dialog fade. No outgoing form/tree is retained for crossfade.
+    animations.push(
+      contentNode.animate([{ opacity: 0.5 }, { opacity: 1 }], {
+        duration,
+        easing: fySpatialEasing,
+        fill: "both",
+      }),
+    );
+    return {
+      cancel,
+      finished: Promise.all(animations.map(done)).then(
+        (results) => !cancelled && results.every(Boolean),
+      ),
+    };
+  } catch (error) {
+    animations.forEach((animation) => {
+      void done(animation);
+    });
+    cancel();
+    throw error;
+  }
+}

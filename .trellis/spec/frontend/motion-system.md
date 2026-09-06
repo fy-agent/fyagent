@@ -8,7 +8,7 @@ tokens. Geometry and navigation authority remain with their existing owners;
 animation never controls whether a native operation succeeded.
 
 Owners are `shared/ui/motion.ts`, `Button.tsx`, `usePressFeedback.ts`,
-`Dialog.tsx`, `dialogPresentation.ts`, `dialogOrigin.ts`, `useDialogState.ts`, `useMediaQuery.ts`, `ToastViewport.tsx`, and
+`Dialog.tsx`, `dialogPresentation.ts`, `useDialogResize.ts`, `dialogOrigin.ts`, `useDialogState.ts`, `useMediaQuery.ts`, `ToastViewport.tsx`, and
 `app/styles/{tokens,motion,controls}.css`. Glass optics and readable backing
 remain in [Surfaces and Container Response](./surfaces-responsive.md);
 typography and focus-return rules remain in [Visual Language](./visual-language.md).
@@ -20,11 +20,13 @@ interface DialogOriginRef { current: HTMLElement | null }
 
 Button / GlassButton / IconButton / PressableButton({
   ...nativeButtonProps, dialogOriginRef?: DialogOriginRef,
+  pressVisualRef?: RefObject<HTMLElement>,
 })
 Dialog({
   open, onOpenChange, title, description?, children?, actions?,
   size?: "standard" | "comfortable" | "wide",
   initialFocusRef?: RefObject<HTMLElement>, originRef?: DialogOriginRef,
+  presentationKey?: string | number, // content stage, never editor/session identity
   exitContent?: "clear" | "fade", // clear by default; reviewed non-credential content only
 })
 ConfirmDialog({ open, title, description, pending?, onConfirm, onCancel, originRef? })
@@ -35,10 +37,12 @@ dialogOriginGeometry(source: HTMLElement | null, destination: DOMRect)
 useMediaQuery(query: string, fallback?: boolean): boolean
 useReducedMotion(): boolean
 parseMotionDuration(value: string): number // seconds; invalid input -> 0
-motionDuration(role: "press" | "dialog-enter" | "dialog-exit" | "content" | "toast"): number
+motionDuration(role: "press" | "dialog-enter" | "dialog-exit" | "dialog-resize" | "content" | "toast" | "theme"): number
 fySelectionTransition // tween; shared spatial curve, not a spring
 runDialogPresentation({ planes, source, windowNode, entering, first, duration })
   // duration is milliseconds; -> { finished, contentFinished, cancel }
+runDialogResize({ windowNode, contentNode, from, target, duration })
+  // -> { finished, cancel(freeze?: boolean) }; same session, no scale/copy
 ToastViewport({ messages: readonly ToastMessage[] })
 ```
 
@@ -65,14 +69,34 @@ stiffness/damping/mass with duration/bounce within a spring definition.
   separate visual target allows a navigation label to compress without
   corrupting its measured SelectionLens host rectangle.
 - Press target and hard visual limits come from `fyPressScale`; release uses
-  `fyPressRecovery`. The accepted maximum is below 1.005. Transform changes
+  `fyPressRecovery`. Target is 0.96 with bounded maximum 1.004; a fast press
+  must visibly dip and recover, not only a long hold. Transform changes
   must not change layout slots or move neighbouring controls. A quick click
   may finish a small dip visually, but the action is not delayed until rebound.
+- A positioned/geometry-measured host uses `pressVisualRef` for its existing
+  inner visual element. SecretInput and search clear controls retain their
+  centering transform; list hosts retain SelectionLens geometry. Feature
+  buttons reuse PressableButton rather than duplicating pointer/key handlers.
+- Motion style subscriptions must be per element: disposing one control must
+  not cancel another control's ongoing styles. The locked same-major upstream
+  dependency fixes an older shared-cleanup closure defect. Keep
+  `pressIsolation.test.tsx` when changing dependencies; do not patch node_modules
+  or write a replacement interpolation engine.
 - Selection/collapse use `fySelectionTransition` (300ms tween) and the shared
   spatial curve. Do not retain a misleading spring alias. Tooltips/popovers use
   Radix CSS presence with their own transform origins. Content arrival does
   not delay route commit or keep an outgoing page interactive. Window resize
   is not slowed by a decorative transition.
+- Persistent page/tab arrival uses opacity only; a second ancestor position
+  tween must not move measured selection hosts during route re-entry. Initial
+  or re-shown lenses adopt actual geometry without growing from zero. Actual
+  selection changes travel; resize/reflow observations correct geometry without
+  restarting a tween for every new frame of a sibling collapse.
+- Collapsible reuses Motion's declarative `height: open ? "auto" : 0`, with
+  `initial={false}` and the shared spatial transition. Do not restore a local
+  scrollHeight cache, generation loop or Promise that writes auto at the end.
+  Radix retains the same content tree; closed content is immediately inert and
+  aria-hidden. Read-only model-ID disclosures share ModelsExistingSection.
 - `ToastViewport` owns presentation only. FeatureProvider retains its timer,
   message state and cleanup; exiting messages stop accessibility announcements.
   Zero-duration and reduced-motion toasts appear without an invisible frame.
@@ -145,6 +169,27 @@ stiffness/damping/mass with duration/bounce within a spring definition.
   changes rim emphasis only. Never swap in a displacement renderer at the last
   frame or copy page/form content into the optical layer.
 
+### Same-session content changes
+
+- Login `presentationKey` identifies the step/session stage; a changed stage
+  or dialog size variant does not reopen/remount the session. `useDialogResize`
+  captures actual current size, measures the new natural target and invokes
+  `runDialogResize` for 320ms from the shared token.
+- Unlike source opening, the fixed dialog's actual width/height change here.
+  Foreground text is never scale-projected. Only body opacity moves from 0.5 to
+  1; actions stay visible, usable and within the window while their own press
+  feedback plays. No outgoing input/value/DOM snapshot is retained.
+- Observe intrinsic header/body/action rows, not the animated root itself.
+  Notifications caused by the current size animation update observations but
+  do not start another animation. On completion reconcile natural content once.
+  Explicit stage changes work even without ResizeObserver.
+- Reversal captures the intermediate rect before cancelling old effects.
+  Closing freezes current size for the existing return track while immediately
+  revoking actions and sensitive content. Resize, reduced motion and document
+  hiding settle; old completions cannot alter a newer session.
+- `data-content-motion="resizing"` and absence of `data-motion-settled` expose
+  presentation state for evidence only. They confer no business write authority.
+
 ### Accessibility and failure behavior
 
 - Live system reduced-motion changes settle travel/rebound immediately; use
@@ -159,21 +204,24 @@ stiffness/damping/mass with duration/bounce within a spring definition.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                             | Required result                                                                |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Source control opens a dialog after async work        | Use that explicit original source, not whichever element is now focused.       |
-| Source moved, vanished or scrolled out before close   | Re-measure; return to the current valid box or use neutral exit.               |
-| Close occurs while entering                           | Freeze current geometry, revoke interaction/secrets and finish one exit.       |
-| Explicit non-credential fade exit                     | Inert/aria-hidden body retires within 80ms; action DOM disappears immediately. |
-| CSS optimizer emits seconds instead of milliseconds   | Preserve physical duration; production timing test must still see 420ms.       |
-| A later native animation track throws                 | Cancel all started tracks, handle rejection and settle safely.                 |
-| Same conditional editor is reopened                   | Fresh session key; no old draft/secret resurrection.                           |
-| System reduced-motion changes during travel           | Settle current visuals and release any completed exit.                         |
-| Portal commits after parent mount                     | Committed node starts the animation; no silent skipped entrance.               |
-| Zero-duration exit                                    | Complete after presence bookkeeping; do not leave a focus/scroll lock.         |
-| Right click, secondary touch, disabled/hidden control | No duplicate action or new press admission.                                    |
-| Another modal opens during old focus return           | Never focus outside the newer modal.                                           |
-| Navigation occurs during a transition                 | Preserve URL/selection authority and hidden-route query isolation.             |
+| Condition                                             | Required result                                                                   |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Source control opens a dialog after async work        | Use that explicit original source, not whichever element is now focused.          |
+| Source moved, vanished or scrolled out before close   | Re-measure; return to the current valid box or use neutral exit.                  |
+| Close occurs while entering                           | Freeze current geometry, revoke interaction/secrets and finish one exit.          |
+| Explicit non-credential fade exit                     | Inert/aria-hidden body retires within 80ms; action DOM disappears immediately.    |
+| CSS optimizer emits seconds instead of milliseconds   | Preserve physical duration; production timing test must still see 420ms.          |
+| A later native animation track throws                 | Cancel all started tracks, handle rejection and settle safely.                    |
+| Same conditional editor is reopened                   | Fresh session key; no old draft/secret resurrection.                              |
+| System reduced-motion changes during travel           | Settle current visuals and release any completed exit.                            |
+| Portal commits after parent mount                     | Committed node starts the animation; no silent skipped entrance.                  |
+| Zero-duration exit                                    | Complete after presence bookkeeping; do not leave a focus/scroll lock.            |
+| Right click, secondary touch, disabled/hidden control | No duplicate action or new press admission.                                       |
+| Another modal opens during old focus return           | Never focus outside the newer modal.                                              |
+| Navigation occurs during a transition                 | Preserve URL/selection authority and hidden-route query isolation.                |
+| A step changes inside an open dialog                  | Keep session identity; animate actual size with unscaled text and bounded footer. |
+| Step reverses or closes during size change            | Continue from current geometry; revoke cancelled interactions immediately.        |
+| One button unmounts                                   | Other controls keep their independent Motion style subscriptions.                 |
 
 ## 5. Good / Base / Bad Cases
 
@@ -198,6 +246,15 @@ the actual business action.
 - Browser motion tests sample material geometry, verify unscaled foreground,
   press limits and unchanged neighbour boxes, and exercise mouse, Enter,
   Space, touch, reduced motion, invalid sources and interrupted exits.
+- `pressIsolation.test.tsx` reproduces independent cleanup using two real
+  styleEffect subscriptions. Fast pointer/Enter/Space browser tests require
+  a perceptible dip/rebound and one click. Compare fractional bounding boxes,
+  not integer offsetWidth, when the rebound budget is below half a percent.
+- `state-motion.spec.ts` covers intermediate step frames, unchanged dialog
+  identity/choice, reverse/close, missing observer, declarative disclosure and
+  lens revisit versus true tab travel. `state-performance.spec.ts` samples a
+  cold and twenty warm next/back pairs at 1x/4x, separately from opening/closing;
+  normal warm frame p95 remains 33.4ms, with layout costs reported explicitly.
 - `presentation-choreography.spec.ts` pauses real native tracks at source,
   handoff and return frames. `presentation-performance.spec.ts` runs the actual
   production build, verifies physical time units, separates cold entry from

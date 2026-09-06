@@ -58,7 +58,6 @@ type SelectionLensGeometry = "size-and-position" | "position";
 SelectionLensGroup({ id, inset?, geometry?, layoutKey?, children })
 SelectionLensTrack({ id, geometry?, layoutKey?, children })
 SelectionLens({ active })
-selectionLensCollapsedOrigin({ x, y })
 selectionLensTransition // alias of fySelectionTransition
 
 fySelectionTransition
@@ -134,12 +133,19 @@ opener, or direct `@tauri-apps/*` capability through these components.
   distortion during collapse/reflow.
 - Lens movement uses Motion `x`/`y` transforms rather than updating CSS
   `left`/`top` each frame. Width/height remain fixed in position-only mode.
+  Exclude `.fy-selection-lens` from sibling observation, including after a new
+  selected host registers while the overlay already exists. Never observe an
+  animated output as an input to its own geometry calculation.
   The registration context is memoized, so a measured box update does not
   unregister and register every active marker again. Geometry/hidden/reduced-
   motion behavior remains covered by the existing browser and unit tests.
-- First positioning and reveal after a hidden ancestor collapse begin at the
-  selected host's own origin via `selectionLensCollapsedOrigin`; they do not
-  collapse to the track's top-left corner.
+- First positioning and reveal after a hidden ancestor adopt the selected
+  host's actual size/position immediately. They never grow from zero or from
+  the track corner. Only an actual host selection changes with travel.
+- ResizeObserver watches direct layout blocks as well as the active host and
+  track, excluding its own overlay. A missing observer uses style mutations of
+  real collapse panels; no fixed-frame settling loop. A delayed old observer
+  notification cannot misclassify a newly selected host as simple reflow.
 - `SelectionLens` must not use Framer Motion `layoutId` scale projection. One
   shared measured overlay and a stable `layoutKey` are the reviewed ownership
   model.
@@ -156,10 +162,9 @@ opener, or direct `@tauri-apps/*` capability through these components.
 - `Collapsible` wraps the Radix primitive. Its content remains mounted for
   measured animation, but a closed panel is inert and `aria-hidden`; hidden
   controls must not remain reachable by pointer, focus, or assistive technology.
-- Height transitions preserve the last measured open height, settle to `auto`
-  after opening, cancel superseded animation generations, and honor reduced
-  motion. Consumers own open state and semantic labels; they do not directly
-  manipulate the motion value.
+- Height transitions delegate `auto`/zero conversion and interruption to Motion's
+  declarative animation. There is no independent height cache or completion write.
+  Consumers own open state and semantic labels, not interpolation internals.
 - `@samasante/liquid-glass` is imported only by
   `shared/ui/GlassMaterial.tsx`. Production callers use the adapter so optics,
   live/filter behavior, accessibility and future dependency replacement remain
@@ -202,8 +207,8 @@ opener, or direct `@tauri-apps/*` capability through these components.
 | runtime is native macOS                                                                                  | Render the reviewed traffic-light reserve and one TopBar drag surface; do not add custom caption buttons.       |
 | a feature tries to declare `data-tauri-drag-region`                                                      | Architecture check fails; move the drag region to the shell owner.                                              |
 | active selection host changes                                                                            | Register one host and move one lens; retain selected semantics on the host.                                     |
-| selected host or ancestor is hidden then revealed                                                        | Re-measure after reveal and animate/snap from the host origin without stale track geometry.                     |
-| `layoutKey` changes during collapse/reflow                                                               | Re-sample through the bounded settle loop; cancel the superseded loop on cleanup.                               |
+| selected host or ancestor is hidden then revealed                                                        | Re-measure at full host geometry without zero-size re-entry.                                                    |
+| `layoutKey` changes during collapse/reflow                                                               | Coalesce a measurement and observe real layout changes; no fixed-frame polling.                                 |
 | reduced motion is enabled                                                                                | Settle lens/collapse geometry without spring travel while preserving state and accessibility.                   |
 | collapsible content is closed                                                                            | Keep measured content mounted only behind inert and aria-hidden state; remove hidden controls from interaction. |
 | liquid-glass or Framer Motion is imported outside its shared owner                                       | Architecture check fails; use the reviewed adapter/export.                                                      |
@@ -236,17 +241,17 @@ opener, or direct `@tauri-apps/*` capability through these components.
   of removed page-local/tool chrome; route lifetime itself is owned by
   [Renderer Navigation and Persistent Route](./navigation.md).
 - `tests/renderer/shared/SelectionLens.test.tsx` covers host registration, one overlay,
-  size-and-position versus position-only geometry, host-origin reveal,
+  size-and-position versus position-only geometry, non-collapsing re-entry,
   layout-key settling, hidden ancestors, cleanup, pixel rounding, and reduced
   motion.
 - Shared collapsible tests cover force-mounted height animation, rapid
-  generation changes, final `auto`, closed inert/aria-hidden state, caret
+  state changes, final `auto`, closed inert/aria-hidden state, caret
   rotation, and reduced motion.
 - `tests/renderer/shared/ExternalLinkButton.test.tsx` covers undefined URLs, the one
   in-flight lock, busy labels/aria state, duplicate-click suppression, native
   success/failure, toast reporting, and lock cleanup.
-- `tests/renderer/app/architecture.test.ts` enforces layer direction, the exact
-  neutral Codex Desktop exception, direct-Tauri ownership, static imports,
+- `tests/renderer/app/architecture.test.ts` enforces layer direction, the pure
+  domain boundary, direct-Tauri ownership, static imports,
   Framer Motion/liquid-glass adapters, no selection `layoutId`, TopBar-only drag
   regions, and shared external-link usage.
 - Browser shell/UI-Lab coverage verifies visual composition, focus, collapse,

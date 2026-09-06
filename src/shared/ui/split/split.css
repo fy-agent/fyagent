@@ -17,6 +17,13 @@
   overflow: auto;
   overscroll-behavior: contain;
 }
+.fy-split-panes[data-resize-fallback="static"] {
+  gap: var(--fy-split-gap);
+}
+.fy-split-panes[data-resize-fallback="static"] > .fy-split-pane {
+  flex: 0 0 260px;
+  height: 260px;
+}
 .fy-content-viewport:has(> :not([hidden]) .fy-split-page) {
   overflow: hidden;
   scrollbar-gutter: stable;

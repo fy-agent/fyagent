@@ -3,6 +3,7 @@ import {
   useImperativeHandle,
   useRef,
   type ButtonHTMLAttributes,
+  type RefObject,
 } from "react";
 import { classNames } from "../design-system/classNames";
 import type { DialogOriginRef } from "./dialogOrigin";
@@ -10,17 +11,26 @@ import { usePressFeedback } from "./usePressFeedback";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   dialogOriginRef?: DialogOriginRef;
+  /** Keep positioned or measured hosts stable; animate only their visual child. */
+  pressVisualRef?: RefObject<HTMLElement>;
 }
 
 /** Unstyled semantic button, also composed under Radix's asChild controls. */
 export const PressableButton = forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    { dialogOriginRef, onClick, type = "button", disabled, ...props },
+    {
+      dialogOriginRef,
+      pressVisualRef,
+      onClick,
+      type = "button",
+      disabled,
+      ...props
+    },
     forwardedRef,
   ) => {
     const ref = useRef<HTMLButtonElement>(null);
     useImperativeHandle(forwardedRef, () => ref.current!);
-    usePressFeedback(ref, disabled);
+    usePressFeedback(ref, disabled, pressVisualRef);
     return (
       <button
         {...props}

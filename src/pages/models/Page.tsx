@@ -1,4 +1,3 @@
-import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -7,7 +6,6 @@ import {
 } from "../../shared/features/agent-navigation";
 
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
-import { classNames } from "../../shared/design-system/classNames";
 import type {
   ChangeJobSnapshot,
   ChangePlan,
@@ -75,6 +73,7 @@ import {
 import { ModelConnectivityTest } from "./ModelConnectivityTest";
 import {
   ModelsPanelHeader,
+  ModelsExistingSection,
   ModelsWriteConfirmDialog,
   NoApiKeyOption,
   NoticeView,
@@ -624,67 +623,45 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           暂时无法读取 WorkBuddy 配置，请重试。
         </InlineNotice>
       )}
-      <section
-        className="fy-models-existing"
-        data-testid="workbuddy-model-ids"
-        data-invalid={isErrorNotice(notices.existing) || undefined}
-        aria-label="当前已有的第三方模型 ID"
+      <ModelsExistingSection
+        title="当前已有的第三方模型 ID"
+        countLabel="已有第三方模型数量"
+        count={modelIds.length}
+        open={existingOpen}
+        onOpenChange={setExistingOpen}
+        testId="workbuddy-model-ids"
+        toggleTestId="workbuddy-status"
+        invalid={isErrorNotice(notices.existing)}
+        ariaLabel="当前已有的第三方模型 ID"
       >
-        <button
-          type="button"
-          className="fy-models-existing-toggle"
-          data-testid="workbuddy-status"
-          aria-expanded={existingOpen}
-          onClick={() => setExistingOpen((open) => !open)}
-        >
-          <h3>当前已有的第三方模型 ID</h3>
-          <span className="fy-models-existing-meta">
-            <span>已有第三方模型数量</span>
-            <strong className="fy-models-existing-count">
-              {modelIds.length}
-            </strong>
-            <CaretDownIcon
-              className={classNames(
-                "fy-models-caret",
-                existingOpen && "fy-models-caret-open",
-              )}
-              size={18}
-              aria-hidden
-            />
-          </span>
-        </button>
-        {existingOpen ? (
-          <>
-            {modelIds.length > 0 ? (
-              <ModelSearchField
-                id="workbuddy-existing-search"
-                label="搜索已有模型"
-                value={existingSearch}
-                onChange={setExistingSearch}
-              />
-            ) : null}
-            <GroupedModelChips
-              ids={filteredExistingIds}
-              removable
-              removeDisabled={busy !== null || loading || readFailed}
-              removeOriginRef={deleteOriginRef}
-              onRemove={(modelId) => {
-                if (busy !== null || writeLock.current) return;
-                setPendingDeleteId(modelId);
-              }}
-              emptyLabel={
-                existingSearch.trim()
-                  ? "没有匹配的模型 ID"
-                  : "还没有找到已配置的模型 ID"
-              }
-            />
-            <FieldFeedback
-              id="workbuddy-existing-error"
-              notice={notices.existing}
-            />
-          </>
+        {modelIds.length > 0 ? (
+          <ModelSearchField
+            id="workbuddy-existing-search"
+            label="搜索已有模型"
+            value={existingSearch}
+            onChange={setExistingSearch}
+          />
         ) : null}
-      </section>
+        <GroupedModelChips
+          ids={filteredExistingIds}
+          removable
+          removeDisabled={busy !== null || loading || readFailed}
+          removeOriginRef={deleteOriginRef}
+          onRemove={(modelId) => {
+            if (busy !== null || writeLock.current) return;
+            setPendingDeleteId(modelId);
+          }}
+          emptyLabel={
+            existingSearch.trim()
+              ? "没有匹配的模型 ID"
+              : "还没有找到已配置的模型 ID"
+          }
+        />
+        <FieldFeedback
+          id="workbuddy-existing-error"
+          notice={notices.existing}
+        />
+      </ModelsExistingSection>
 
       <ModelsSection
         title="连接设置"

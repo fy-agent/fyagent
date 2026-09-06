@@ -338,7 +338,10 @@ describe("FyAgent single renderer architecture boundary", () => {
       "utf8",
     );
 
-    expect(source).toMatch(/\bselectionLensCollapsedOrigin\b/);
+    expect(source).not.toMatch(
+      /selectionLensCollapsedOrigin|layoutSettleFrameCount|width\.set\(0\)|height\.set\(0\)/,
+    );
+    expect(source).toContain("box.layoutChange");
     expect(source).not.toMatch(/left\.set\(inset\)/);
     expect(source).not.toMatch(/top\.set\(inset\)/);
   });

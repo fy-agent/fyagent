@@ -50,6 +50,10 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
   last orientation until measurable. Leading columns preserve pixels, the
   final column consumes remaining space. Keep the vendor import at the split
   boundary rather than the eagerly imported global primitive facade.
+- If ResizeObserver is unavailable, do not mount the library's observer-dependent
+  Group. Render readable stacked static panes, no resize handles, retaining the
+  same content within that fallback. No custom resize engine/polyfill is added.
+  This is a capability fallback, not a viewport breakpoint remount strategy.
 - Selection material is a decorative sibling below the real controls. A
   `display:contents` semantic wrapper is not a stacking box; assign content
   stacking to the real buttons/labels. A pointer-inert backdrop can still
@@ -89,15 +93,16 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                            | Required result                                                                    |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Pane is narrow in a wide window                      | Form stacks based on container; long text remains within its pane.                 |
-| URL/identity has no natural breaks                   | Wrap in detail; no horizontal escape or lost action.                               |
-| Standard/comfortable dialog at small viewport        | Body scrolls as needed; footer actions remain reachable.                           |
-| Canvas/ResizeObserver is absent                      | Same stable CSS material, not startup failure.                                     |
-| Filter absent, reduced transparency or forced colors | Readable backing, native semantic colors where appropriate, no invisible controls. |
-| Transparent/gradient background                      | Review composited result, not just isolated token color values.                    |
-| New raw radius declaration outside tokens            | `designTokens.test.ts` fails; assign the appropriate role.                         |
+| Condition                                            | Required result                                                                     |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Pane is narrow in a wide window                      | Form stacks based on container; long text remains within its pane.                  |
+| URL/identity has no natural breaks                   | Wrap in detail; no horizontal escape or lost action.                                |
+| Standard/comfortable dialog at small viewport        | Body scrolls as needed; footer actions remain reachable.                            |
+| Canvas/ResizeObserver is absent                      | Same stable CSS material, not startup failure.                                      |
+| ResizeObserver is unavailable to split-pane library  | Use static stacked readable panes without pointer/keyboard resizing; retain drafts. |
+| Filter absent, reduced transparency or forced colors | Readable backing, native semantic colors where appropriate, no invisible controls.  |
+| Transparent/gradient background                      | Review composited result, not just isolated token color values.                     |
+| New raw radius declaration outside tokens            | `designTokens.test.ts` fails; assign the appropriate role.                          |
 
 ## 5. Good / Base / Bad Cases
 

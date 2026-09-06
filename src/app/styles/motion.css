@@ -20,11 +20,22 @@
 }
 
 .fy-persistent-surface:not([hidden]),
-.fy-feature-tab-panel:not([hidden]),
+.fy-feature-tab-panel:not([hidden]) {
+  animation: fy-surface-arrive var(--fy-motion-content) var(--fy-motion-ease)
+    both;
+}
 .fy-control-notice,
 .fy-apply-workspace {
   animation: fy-content-arrive var(--fy-motion-content) var(--fy-motion-ease)
     both;
+}
+@keyframes fy-surface-arrive {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .fy-tooltip[data-state="delayed-open"],
 .fy-tooltip[data-state="instant-open"],

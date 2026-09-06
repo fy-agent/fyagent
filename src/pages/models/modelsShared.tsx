@@ -1,14 +1,15 @@
 /* eslint-disable react-refresh/only-export-components */
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 
 import { classNames } from "../../shared/design-system/classNames";
 import type { ModelWriteTarget } from "../../shared/features/types";
 import { CatalogDetail } from "../../shared/ui/catalog";
 import { FileWriteDisclosure as ModelsWriteDisclosure } from "../../shared/features/controls/FileWriteDisclosure";
 export { FileWriteDisclosure as ModelsWriteDisclosure } from "../../shared/features/controls/FileWriteDisclosure";
-import { Button } from "../../shared/ui/Button";
+import { Button, PressableButton } from "../../shared/ui/Button";
+import { Collapsible, CollapsibleContent } from "../../shared/ui/Collapsible";
 import { Dialog } from "../../shared/ui/Dialog";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import { Badge, Checkbox, Tooltip } from "../../shared/ui/primitives";
@@ -220,26 +221,29 @@ function ModelsSurfaceToggle({
   expanded,
   testId,
   trailing,
+  controlsId,
 }: {
   title: string;
   onClick: () => void;
   expanded?: boolean;
   testId?: string;
   trailing?: ReactNode;
+  controlsId?: string;
 }) {
   return (
-    <button
+    <PressableButton
       type="button"
       className="fy-models-existing-toggle"
       data-testid={testId}
       aria-expanded={expanded}
+      aria-controls={controlsId}
       onClick={onClick}
     >
       <h3>{title}</h3>
       {trailing ? (
         <span className="fy-models-existing-meta">{trailing}</span>
       ) : null}
-    </button>
+    </PressableButton>
   );
 }
 
@@ -266,35 +270,41 @@ export function ModelsExistingSection({
   invalid?: boolean;
   children?: ReactNode;
 }) {
+  const contentId = useId();
   return (
-    <section
-      className="fy-models-existing"
-      data-testid={testId}
-      data-invalid={invalid || undefined}
-      aria-label={ariaLabel}
-    >
-      <ModelsSurfaceToggle
-        title={title}
-        expanded={open}
-        testId={toggleTestId}
-        onClick={() => onOpenChange(!open)}
-        trailing={
-          <>
-            <span>{countLabel}</span>
-            <strong className="fy-models-existing-count">{count}</strong>
-            <CaretDownIcon
-              className={classNames(
-                "fy-models-caret",
-                open && "fy-models-caret-open",
-              )}
-              size={18}
-              aria-hidden
-            />
-          </>
-        }
-      />
-      {open ? children : null}
-    </section>
+    <Collapsible open={open} onOpenChange={onOpenChange} asChild>
+      <section
+        className="fy-models-existing"
+        data-testid={testId}
+        data-invalid={invalid || undefined}
+        aria-label={ariaLabel}
+      >
+        <ModelsSurfaceToggle
+          title={title}
+          expanded={open}
+          controlsId={contentId}
+          testId={toggleTestId}
+          onClick={() => onOpenChange(!open)}
+          trailing={
+            <>
+              <span>{countLabel}</span>
+              <strong className="fy-models-existing-count">{count}</strong>
+              <CaretDownIcon
+                className={classNames(
+                  "fy-models-caret",
+                  open && "fy-models-caret-open",
+                )}
+                size={18}
+                aria-hidden
+              />
+            </>
+          }
+        />
+        <CollapsibleContent open={open} id={contentId}>
+          {children}
+        </CollapsibleContent>
+      </section>
+    </Collapsible>
   );
 }
 
@@ -324,13 +334,13 @@ export function NoApiKeyOption({
           </span>
         }
       >
-        <button
+        <PressableButton
           type="button"
           className="fy-models-help"
           aria-label="不使用 API Key 说明"
         >
           <QuestionIcon size={16} weight="regular" aria-hidden />
-        </button>
+        </PressableButton>
       </Tooltip>
     </div>
   );

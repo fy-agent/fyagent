@@ -3,20 +3,13 @@ import {
   Root as CollapsibleRootPrimitive,
   Trigger as CollapsibleTriggerPrimitive,
 } from "@radix-ui/react-collapsible";
-import {
-  useLayoutEffect,
-  useRef,
-  type HTMLAttributes,
-  type ReactNode,
-} from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 import { classNames } from "../design-system/classNames";
 import {
-  animate,
   fyMotionTransition,
   fySelectionTransition,
   motion,
-  useMotionValue,
   useReducedMotion,
 } from "./motion";
 
@@ -62,62 +55,6 @@ function CollapsibleMotionPanel({
   children: ReactNode;
 }) {
   const reduceMotion = useReducedMotion() === true;
-  const panelRef = useRef<HTMLDivElement>(null);
-  const height = useMotionValue<number | "auto">(open ? "auto" : 0);
-  const lastOpenHeightRef = useRef(0);
-  const hasMountedRef = useRef(false);
-  const generationRef = useRef(0);
-
-  useLayoutEffect(() => {
-    const panel = panelRef.current;
-    if (!panel) {
-      return;
-    }
-
-    if (open) {
-      const measured = panel.scrollHeight;
-      if (measured > 0) {
-        lastOpenHeightRef.current = measured;
-      }
-    }
-
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true;
-      height.set(open ? "auto" : 0);
-      return;
-    }
-
-    if (reduceMotion) {
-      height.set(open ? "auto" : 0);
-      return;
-    }
-
-    const generation = ++generationRef.current;
-
-    if (open) {
-      const target = panel.scrollHeight || lastOpenHeightRef.current;
-      if (height.get() === "auto") {
-        height.set(0);
-      }
-      const controls = animate(height, target, fySelectionTransition);
-      void controls.then(() => {
-        if (generationRef.current !== generation) {
-          return;
-        }
-        height.set("auto");
-      });
-      return () => {
-        controls.stop();
-      };
-    }
-
-    const current = height.get();
-    height.set(current === "auto" ? lastOpenHeightRef.current : current);
-    const controls = animate(height, 0, fySelectionTransition);
-    return () => {
-      controls.stop();
-    };
-  }, [height, open, reduceMotion]);
 
   const closedProps: CollapsibleClosedProps = open
     ? {}
@@ -125,9 +62,10 @@ function CollapsibleMotionPanel({
 
   return (
     <motion.div
-      ref={panelRef}
       className="fy-collapsible-panel"
-      style={{ height }}
+      initial={false}
+      animate={{ height: open ? "auto" : 0 }}
+      transition={reduceMotion ? { duration: 0 } : fySelectionTransition}
       {...closedProps}
     >
       {children}

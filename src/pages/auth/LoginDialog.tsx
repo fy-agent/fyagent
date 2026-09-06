@@ -8,7 +8,7 @@ import type {
   ManagedAuthProviderSummary,
 } from "../../shared/features/managed-auth";
 import { useFeatures, useOpenExternal } from "../../shared/features/provider";
-import { Button } from "../../shared/ui/Button";
+import { Button, PressableButton } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import { InlineNotice, Spinner } from "../../shared/ui/primitives";
@@ -273,6 +273,7 @@ function LoginDialogContent({
   return (
     <Dialog
       originRef={originRef}
+      presentationKey={session ? `session:${session.stage}` : `step:${step}`}
       exitContent={session ? "clear" : "fade"}
       open={open}
       initialFocusRef={session?.terminal ? finishRef : undefined}
@@ -362,7 +363,7 @@ function LoginDialogContent({
           aria-label="账号类型"
         >
           {providers.map((item) => (
-            <button
+            <PressableButton
               key={item.provider}
               type="button"
               aria-pressed={provider === item.provider}
@@ -375,7 +376,7 @@ function LoginDialogContent({
                 <small>{providerDescriptions[item.provider]}</small>
                 {!item.available ? <small>当前不可用</small> : null}
               </span>
-            </button>
+            </PressableButton>
           ))}
         </div>
       ) : step === 2 && provider ? (

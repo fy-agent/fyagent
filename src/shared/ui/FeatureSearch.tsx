@@ -1,8 +1,10 @@
 import { MagnifyingGlassIcon } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
+import { useRef } from "react";
 
 import { classNames } from "../design-system/classNames";
 import { Input } from "./primitives";
+import { PressableButton } from "./Button";
 
 export function FeatureSearch({
   value,
@@ -23,6 +25,7 @@ export function FeatureSearch({
   disabled?: boolean;
   id?: string;
 }) {
+  const clearVisualRef = useRef<HTMLSpanElement>(null);
   return (
     <div role="search" className={classNames("fy-feature-search", className)}>
       <MagnifyingGlassIcon
@@ -49,7 +52,8 @@ export function FeatureSearch({
         }}
       />
       {value ? (
-        <button
+        <PressableButton
+          pressVisualRef={clearVisualRef}
           type="button"
           className="fy-feature-search-clear"
           aria-label={clearLabel}
@@ -57,8 +61,10 @@ export function FeatureSearch({
           disabled={disabled}
           onClick={() => onValueChange("")}
         >
-          <XIcon size={14} aria-hidden />
-        </button>
+          <span ref={clearVisualRef} className="fy-control-icon-feedback">
+            <XIcon size={14} aria-hidden />
+          </span>
+        </PressableButton>
       ) : null}
     </div>
   );

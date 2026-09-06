@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
   runDialogPresentation,
+  runDialogResize,
   settleDialogPlanes,
   type DialogPlanes,
 } from "@/shared/ui/dialogPresentation";
@@ -140,4 +141,70 @@ it("caps opt-in content exit at 80ms even when a caller retunes shell duration",
   ).toBe(80);
   run.cancel(false);
   await expect(run.finished).resolves.toBe(false);
+});
+
+it("resizes one real window and fades only the content without scaling or retaining a form", async () => {
+  const { windowNode, planes, calls } = fixture();
+  const run = runDialogResize({
+    windowNode,
+    contentNode: planes.foreground,
+    from: { width: 500, height: 574 },
+    target: { width: 500, height: 319 },
+    duration: 320,
+  });
+  expect(calls).toHaveLength(2);
+  expect(calls[0].target).toBe(windowNode);
+  expect(calls[0].frames).toEqual([
+    { width: "500px", height: "574px" },
+    { width: "500px", height: "319px" },
+  ]);
+  expect(calls[0].options).toMatchObject({
+    duration: 320,
+    easing: "cubic-bezier(0.32,0.72,0,1)",
+    fill: "both",
+  });
+  expect(calls[1].target).toBe(planes.foreground);
+  expect(calls[1].frames).toEqual([{ opacity: 0.5 }, { opacity: 1 }]);
+  expect(
+    calls.some((call) => JSON.stringify(call.frames).includes("scale")),
+  ).toBe(false);
+  calls.forEach((call) => call.complete());
+  await expect(run.finished).resolves.toBe(true);
+  run.cancel();
+});
+
+it("freezes the actual intermediate size for close and ignores cancelled completion", async () => {
+  const { windowNode, planes, calls } = fixture();
+  const run = runDialogResize({
+    windowNode,
+    contentNode: planes.foreground,
+    from: { width: 500, height: 574 },
+    target: { width: 500, height: 319 },
+    duration: 320,
+  });
+  vi.mocked(windowNode.getBoundingClientRect).mockReturnValue(
+    new DOMRect(200, 150, 500, 401),
+  );
+  run.cancel(true);
+  run.cancel(true);
+  expect(windowNode.style.height).toBe("401px");
+  expect(windowNode.style.width).toBe("500px");
+  await expect(run.finished).resolves.toBe(false);
+  calls.forEach((call) => expect(call.cancel).toHaveBeenCalledTimes(1));
+});
+
+it("rolls back a partially started size animation if content animation fails", async () => {
+  const { windowNode, planes, calls } = fixture(1);
+  expect(() =>
+    runDialogResize({
+      windowNode,
+      contentNode: planes.foreground,
+      from: { width: 500, height: 574 },
+      target: { width: 500, height: 319 },
+      duration: 320,
+    }),
+  ).toThrow("Native animation rejected");
+  expect(calls[0].cancel).toHaveBeenCalledOnce();
+  expect(windowNode.style.height).toBe("");
+  await Promise.resolve();
 });

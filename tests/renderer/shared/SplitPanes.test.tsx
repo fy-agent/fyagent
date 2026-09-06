@@ -1,10 +1,38 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SplitPanes } from "@/shared/ui/split";
 
 // Pointer/keyboard constraints and resize interruption require real layout;
 // those former mocked-pixel cases live in browser/layout-integrity.spec.ts.
 describe("SplitPanes adapter", () => {
+  it("keeps content and drafts usable without an observer rather than mounting an unsupported resize engine", () => {
+    vi.stubGlobal("ResizeObserver", undefined);
+    try {
+      const { rerender, unmount } = render(
+        <SplitPanes>
+          <section>list</section>
+          <input aria-label="fallback draft" />
+        </SplitPanes>,
+      );
+      const input = screen.getByRole("textbox", { name: "fallback draft" });
+      fireEvent.change(input, { target: { value: "not discarded" } });
+      expect(
+        document.querySelector("[data-resize-fallback='static']"),
+      ).not.toBeNull();
+      expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+      rerender(
+        <SplitPanes minWidths={[240, 420]}>
+          <section>list</section>
+          <input aria-label="fallback draft" />
+        </SplitPanes>,
+      );
+      expect(screen.getByRole("textbox")).toBe(input);
+      expect(input).toHaveValue("not discarded");
+      unmount();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("delegates semantics and maintains explicit accessible separator labels", () => {
     render(
       <SplitPanes separatorLabels={["调整两栏宽度"]}>

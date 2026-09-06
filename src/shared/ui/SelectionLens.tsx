@@ -28,25 +28,10 @@ type LensBox = {
   width: number;
   height: number;
   borderRadius: string;
+  layoutChange?: boolean;
 };
 
 export type SelectionLensGeometry = "size-and-position" | "position";
-
-const layoutSettleFrameCount = 48;
-
-export function selectionLensCollapsedOrigin(box: Pick<LensBox, "x" | "y">): {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-} {
-  return {
-    x: box.x,
-    y: box.y,
-    width: 0,
-    height: 0,
-  };
-}
 
 type SelectionLensContextValue = {
   register: (host: HTMLElement | null) => void;
@@ -69,6 +54,7 @@ function roundBox(box: LensBox): LensBox {
     width: snap(box.width),
     height: snap(box.height),
     borderRadius: box.borderRadius,
+    layoutChange: box.layoutChange,
   };
 }
 
@@ -116,10 +102,9 @@ export function SelectionLensGroup({
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLElement | null>(null);
+  const measuredHostRef = useRef<HTMLElement | null>(null);
   const hostGenerationRef = useRef(0);
   const frameRef = useRef<number | null>(null);
-  const layoutSettleFrameRef = useRef<number | null>(null);
-  const previousLayoutKeyRef = useRef(layoutKey);
   const hiddenRef = useRef(false);
   const positionedRef = useRef(false);
   const revealSeenRef = useRef(0);
@@ -132,54 +117,64 @@ export function SelectionLensGroup({
   const width = useMotionValue(0);
   const height = useMotionValue(0);
 
-  const syncBox = useCallback(() => {
-    const scope = scopeRef.current;
-    const nextHost = hostRef.current;
-    if (!scope || !nextHost) {
-      return;
-    }
+  const syncBox = useCallback(
+    (layoutChange = false) => {
+      const scope = scopeRef.current;
+      const nextHost = hostRef.current;
+      if (!scope || !nextHost) {
+        return;
+      }
 
-    if (isHiddenFromLayout(scope)) {
-      hiddenRef.current = true;
-      return;
-    }
+      if (isHiddenFromLayout(scope)) {
+        hiddenRef.current = true;
+        return;
+      }
 
-    const scopeRect = scope.getBoundingClientRect();
-    const hostRect = nextHost.getBoundingClientRect();
-    if (hiddenRef.current) {
-      hiddenRef.current = false;
-      setRevealKey((key) => key + 1);
-    }
-    const nextBox = roundBox({
-      x: hostRect.left - scopeRect.left + inset,
-      y: hostRect.top - scopeRect.top + inset,
-      width: Math.max(0, hostRect.width - inset * 2),
-      height: Math.max(0, hostRect.height - inset * 2),
-      borderRadius: getComputedStyle(nextHost).borderRadius,
-    });
-    setBox((current) =>
-      current &&
-      current.x === nextBox.x &&
-      current.y === nextBox.y &&
-      current.width === nextBox.width &&
-      current.height === nextBox.height &&
-      current.borderRadius === nextBox.borderRadius
-        ? current
-        : nextBox,
-    );
-  }, [inset]);
+      const scopeRect = scope.getBoundingClientRect();
+      const hostRect = nextHost.getBoundingClientRect();
+      const selectionChanged = measuredHostRef.current !== nextHost;
+      measuredHostRef.current = nextHost;
+      const wasHidden = hiddenRef.current;
+      if (wasHidden) {
+        hiddenRef.current = false;
+        setRevealKey((key) => key + 1);
+      }
+      const nextBox = roundBox({
+        x: hostRect.left - scopeRect.left + inset,
+        y: hostRect.top - scopeRect.top + inset,
+        width: Math.max(0, hostRect.width - inset * 2),
+        height: Math.max(0, hostRect.height - inset * 2),
+        borderRadius: getComputedStyle(nextHost).borderRadius,
+        // An observer scheduled for the old selection can fire after a new host
+        // registers. Its first measurement is still selection travel, not reflow.
+        layoutChange: (layoutChange && !selectionChanged) || wasHidden,
+      });
+      setBox((current) =>
+        current &&
+        current.x === nextBox.x &&
+        current.y === nextBox.y &&
+        current.width === nextBox.width &&
+        current.height === nextBox.height &&
+        current.borderRadius === nextBox.borderRadius
+          ? current
+          : nextBox,
+      );
+    },
+    [inset],
+  );
 
   const scheduleSync = useCallback(() => {
     const scope = scopeRef.current;
     if (scope && isHiddenFromLayout(scope)) {
       hiddenRef.current = true;
+      return;
     }
     if (frameRef.current !== null) {
       return;
     }
     frameRef.current = window.requestAnimationFrame(() => {
       frameRef.current = null;
-      syncBox();
+      syncBox(true);
     });
   }, [syncBox]);
 
@@ -222,31 +217,8 @@ export function SelectionLensGroup({
   });
 
   useLayoutEffect(() => {
-    const layoutChanged = previousLayoutKeyRef.current !== layoutKey;
-    previousLayoutKeyRef.current = layoutKey;
-    if (!layoutChanged) {
-      scheduleSync();
-      return;
-    }
-
-    let remainingFrames = reduceMotion ? 1 : layoutSettleFrameCount;
-    const settle = () => {
-      layoutSettleFrameRef.current = null;
-      syncBox();
-      remainingFrames -= 1;
-      if (remainingFrames > 0) {
-        layoutSettleFrameRef.current = window.requestAnimationFrame(settle);
-      }
-    };
-    layoutSettleFrameRef.current = window.requestAnimationFrame(settle);
-
-    return () => {
-      if (layoutSettleFrameRef.current !== null) {
-        window.cancelAnimationFrame(layoutSettleFrameRef.current);
-        layoutSettleFrameRef.current = null;
-      }
-    };
-  }, [layoutKey, reduceMotion, scheduleSync, syncBox]);
+    scheduleSync();
+  }, [layoutKey, scheduleSync]);
 
   useLayoutEffect(() => {
     const scope = scopeRef.current;
@@ -262,6 +234,22 @@ export function SelectionLensGroup({
           });
     observer?.observe(scope);
     observer?.observe(host);
+    // A sibling section can move a selected link without resizing the outer
+    // track or the link. Observe actual layout blocks, not a fixed RAF budget.
+    Array.from(scope.children).forEach((child) => {
+      if (!child.classList.contains("fy-selection-lens"))
+        observer?.observe(child);
+    });
+    const collapseObserver =
+      !observer && typeof MutationObserver !== "undefined"
+        ? new MutationObserver(scheduleSync)
+        : null;
+    scope.querySelectorAll(".fy-collapsible-panel").forEach((panel) => {
+      collapseObserver?.observe(panel, {
+        attributes: true,
+        attributeFilter: ["style"],
+      });
+    });
     window.addEventListener("resize", scheduleSync);
     scope.addEventListener("scroll", scheduleSync, true);
     const stopHiddenWatch = observeHiddenAncestors(scope, scheduleSync);
@@ -269,6 +257,7 @@ export function SelectionLensGroup({
 
     return () => {
       observer?.disconnect();
+      collapseObserver?.disconnect();
       window.removeEventListener("resize", scheduleSync);
       scope.removeEventListener("scroll", scheduleSync, true);
       stopHiddenWatch();
@@ -284,15 +273,15 @@ export function SelectionLensGroup({
       return;
     }
 
-    const collapseToOrigin = () => {
-      const origin = selectionLensCollapsedOrigin(box);
-      left.set(origin.x);
-      top.set(origin.y);
-      width.set(geometry === "position" ? box.width : origin.width);
-      height.set(geometry === "position" ? box.height : origin.height);
-    };
-
-    if (reduceMotion === true) {
+    // Only an actual selection moves between hosts. Initial/revisited geometry
+    // and layout corrections must not replay a zero-size grow or restart a
+    // tween on every frame of a neighbouring collapse.
+    if (
+      reduceMotion ||
+      !positionedRef.current ||
+      box.layoutChange ||
+      revealKey !== revealSeenRef.current
+    ) {
       left.set(box.x);
       top.set(box.y);
       width.set(box.width);
@@ -300,15 +289,6 @@ export function SelectionLensGroup({
       positionedRef.current = true;
       revealSeenRef.current = revealKey;
       return;
-    }
-
-    if (revealKey !== revealSeenRef.current) {
-      revealSeenRef.current = revealKey;
-      collapseToOrigin();
-      positionedRef.current = true;
-    } else if (!positionedRef.current) {
-      collapseToOrigin();
-      positionedRef.current = true;
     }
 
     if (geometry === "position") {

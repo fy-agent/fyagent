@@ -44,6 +44,8 @@ export default defineConfig({
     {
       name: "webkit-1232x700",
       testMatch: [
+        "state-motion.spec.ts",
+        "press-feedback.spec.ts",
         "blue-themes.spec.ts",
         "layout-integrity.spec.ts",
         "auth.spec.ts",

@@ -43,6 +43,13 @@ tests live in `domain`. Do not restore old UI/state/i18n facades as bridges.
 
 Current shared owner families include:
 
+WorkBuddy and OpenCode model-ID disclosures share `ModelsExistingSection`,
+which composes the shared Radix/Motion Collapsible and PressableButton. Other
+readonly model sections use that same chassis; no page-local instant toggle or
+duplicated height controller. Positioned search/secret controls animate their
+existing inner visual via `PressableButton.pressVisualRef` rather than replacing
+the host centering transform or duplicating gestures.
+
 File-impact and recovery controls (`FileWriteDisclosure`, `FileRecoveryButton`)
 live under `shared/features/controls`; Models, Auth and Change Plan reuse their
 ports/parsers and presentation rather than importing a Models page component.

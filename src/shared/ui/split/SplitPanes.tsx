@@ -52,6 +52,7 @@ export function SplitPanes({
     SPLIT_GAP * Math.max(0, panes.length - 1);
   const [stacked, setStacked] = useState(false);
   const [hasLayout, setHasLayout] = useState(false);
+  const canResize = typeof ResizeObserver !== "undefined";
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -78,69 +79,78 @@ export function SplitPanes({
       ref={rootRef}
       className={classNames("fy-split-panes", className)}
       data-panes={panes.length}
-      data-stacked={stacked ? "true" : "false"}
+      data-stacked={stacked || !canResize ? "true" : "false"}
+      data-resize-fallback={!canResize ? "static" : undefined}
     >
-      <ResizableGroup
-        className="fy-split-group"
-        orientation={stacked ? "vertical" : "horizontal"}
-        disabled={stacked || !hasLayout}
-        style={stacked ? { minHeight: `${panes.length * 260}px` } : undefined}
-        resizeTargetMinimumSize={{ fine: SPLIT_GAP, coarse: 28 }}
-      >
-        {panes.map((pane, index) => (
-          <Fragment key={index}>
-            {index > 0 && (
-              <ResizeSeparator
-                className="fy-split-resize-handle"
-                aria-label={
-                  separatorLabels?.[index - 1] ?? `调整第 ${index} 栏宽度`
+      {!canResize ? (
+        panes.map((pane, index) => (
+          <div key={index} className="fy-split-pane" data-index={index}>
+            {pane}
+          </div>
+        ))
+      ) : (
+        <ResizableGroup
+          className="fy-split-group"
+          orientation={stacked ? "vertical" : "horizontal"}
+          disabled={stacked || !hasLayout}
+          style={stacked ? { minHeight: `${panes.length * 260}px` } : undefined}
+          resizeTargetMinimumSize={{ fine: SPLIT_GAP, coarse: 28 }}
+        >
+          {panes.map((pane, index) => (
+            <Fragment key={index}>
+              {index > 0 && (
+                <ResizeSeparator
+                  className="fy-split-resize-handle"
+                  aria-label={
+                    separatorLabels?.[index - 1] ?? `调整第 ${index} 栏宽度`
+                  }
+                  data-index={index - 1}
+                  disabled={stacked || !hasLayout}
+                  onDoubleClick={() => {
+                    if (!stacked && hasLayout)
+                      panelsRef.current[index - 1]?.resize(
+                        defaultWidth(index - 1),
+                      );
+                  }}
+                />
+              )}
+              <ResizablePanel
+                id={`${id}-pane-${index}`}
+                className="fy-split-pane"
+                data-index={index}
+                panelRef={(panel) => {
+                  panelsRef.current[index] = panel;
+                }}
+                minSize={stacked ? 220 : (minimums[index] ?? 220)}
+                maxSize={stacked ? undefined : maxWidths[index]}
+                defaultSize={
+                  stacked
+                    ? `${100 / panes.length}%`
+                    : index < panes.length - 1
+                      ? defaultWidth(index)
+                      : undefined
                 }
-                data-index={index - 1}
-                disabled={stacked || !hasLayout}
-                onDoubleClick={() => {
-                  if (!stacked && hasLayout)
-                    panelsRef.current[index - 1]?.resize(
-                      defaultWidth(index - 1),
+                groupResizeBehavior={
+                  !stacked && index < panes.length - 1
+                    ? "preserve-pixel-size"
+                    : "preserve-relative-size"
+                }
+                onResize={(size) => {
+                  // Compatibility styling aliases report library state; they do not
+                  // drive another resize loop or store a second layout authority.
+                  if (!stacked && paneCssVars[index])
+                    rootRef.current?.style.setProperty(
+                      paneCssVars[index],
+                      `${size.inPixels}px`,
                     );
                 }}
-              />
-            )}
-            <ResizablePanel
-              id={`${id}-pane-${index}`}
-              className="fy-split-pane"
-              data-index={index}
-              panelRef={(panel) => {
-                panelsRef.current[index] = panel;
-              }}
-              minSize={stacked ? 220 : (minimums[index] ?? 220)}
-              maxSize={stacked ? undefined : maxWidths[index]}
-              defaultSize={
-                stacked
-                  ? `${100 / panes.length}%`
-                  : index < panes.length - 1
-                    ? defaultWidth(index)
-                    : undefined
-              }
-              groupResizeBehavior={
-                !stacked && index < panes.length - 1
-                  ? "preserve-pixel-size"
-                  : "preserve-relative-size"
-              }
-              onResize={(size) => {
-                // Compatibility styling aliases report library state; they do not
-                // drive another resize loop or store a second layout authority.
-                if (!stacked && paneCssVars[index])
-                  rootRef.current?.style.setProperty(
-                    paneCssVars[index],
-                    `${size.inPixels}px`,
-                  );
-              }}
-            >
-              {pane}
-            </ResizablePanel>
-          </Fragment>
-        ))}
-      </ResizableGroup>
+              >
+                {pane}
+              </ResizablePanel>
+            </Fragment>
+          ))}
+        </ResizableGroup>
+      )}
     </div>
   );
 }

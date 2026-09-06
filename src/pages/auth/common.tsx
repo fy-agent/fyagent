@@ -1,5 +1,5 @@
 import { GithubLogoIcon } from "@phosphor-icons/react/dist/csr/GithubLogo";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { resolveModelVendorIcon } from "../../shared/assets/models";
 import type {
@@ -7,6 +7,7 @@ import type {
   ManagedAuthReasonCode,
 } from "../../shared/features/managed-auth";
 import { SelectionLens } from "../../shared/ui/SelectionLens";
+import { usePressFeedback } from "../../shared/ui/usePressFeedback";
 import { Badge } from "../../shared/ui/primitives";
 import {
   accountHealthPresentation,
@@ -77,9 +78,13 @@ export function AuthListItem({
   onSelect: () => void;
   testId?: string;
 }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  usePressFeedback(ref, false, labelRef);
   return (
     <div role="listitem">
       <button
+        ref={ref}
         type="button"
         className="fy-auth-list-item"
         aria-current={selected ? "true" : undefined}
@@ -91,7 +96,7 @@ export function AuthListItem({
       >
         <SelectionLens active={selected} />
         {leading}
-        <span className="fy-auth-list-item-copy">
+        <span ref={labelRef} className="fy-auth-list-item-copy">
           <strong title={label}>{label}</strong>
           <span>{summary}</span>
         </span>

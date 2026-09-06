@@ -12,7 +12,7 @@ import {
   CatalogMasterDetail,
   CatalogRail,
 } from "../../shared/ui/catalog";
-import { Button } from "../../shared/ui/Button";
+import { Button, PressableButton } from "../../shared/ui/Button";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import { EmptyState, Input, InlineNotice } from "../../shared/ui/primitives";
 import {
@@ -437,7 +437,7 @@ export function AccountView({
           />
           <div className="fy-auth-filter-row" aria-label="按账号类型筛选">
             {PROVIDER_FILTERS.map((provider) => (
-              <button
+              <PressableButton
                 key={provider}
                 type="button"
                 aria-pressed={providerFilter === provider}
@@ -446,7 +446,7 @@ export function AccountView({
                 {provider === "all"
                   ? "全部"
                   : managedAuthProviderLabel(provider)}
-              </button>
+              </PressableButton>
             ))}
           </div>
         </div>

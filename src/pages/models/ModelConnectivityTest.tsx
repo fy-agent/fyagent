@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 
 import { classNames } from "../../shared/design-system/classNames";
 import type { ModelProbeResult } from "../../shared/features/types";
-import { Button } from "../../shared/ui/Button";
+import { Button, PressableButton } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
 import { FieldFeedback, type Notice } from "./feedback";
 import { GroupedModelChips, ModelSearchField } from "./modelChips";
@@ -148,7 +148,7 @@ export function ModelConnectivityTest({
           role="toolbar"
           aria-label="按分组过滤"
         >
-          <button
+          <PressableButton
             type="button"
             className={classNames(
               "fy-models-probe-filter",
@@ -158,9 +158,9 @@ export function ModelConnectivityTest({
             onClick={() => setGroupFilter(null)}
           >
             全部
-          </button>
+          </PressableButton>
           {groups.map((group) => (
-            <button
+            <PressableButton
               key={group.type}
               type="button"
               className={classNames(
@@ -172,7 +172,7 @@ export function ModelConnectivityTest({
             >
               {group.type}
               <span className="fy-models-group-count">{group.ids.length}</span>
-            </button>
+            </PressableButton>
           ))}
         </div>
         <div className="fy-models-probe-list">
