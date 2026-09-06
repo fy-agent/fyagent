@@ -130,6 +130,10 @@ glass.
 - `scroll-ownership.spec.ts` covers long Skills/MCP installed lists with wheel
   and End, discovery scrolling, revisits, both themes and Chromium/WebKit. Static
   type checking requires every FeatureTabPanel to choose its layout role.
+  Other route fixtures exercise actual native owners, including the ancestor
+  viewport for flow pages and textareas for long documents. Wait for real
+  content-size transitions before checking the bottom; do not invent nested
+  scrolling merely because a test only searched descendants.
 - `tests/renderer/shared/designTokens.test.ts` uses PostCSS to reject scattered radius
   literals; do not invent a CSS parser or skip component files.
 - `tests/renderer/shared/GlassMaterial.test.tsx` proves stable node identity across
