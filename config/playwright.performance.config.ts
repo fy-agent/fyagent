@@ -1,11 +1,14 @@
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+
+const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 
 // A production build, one worker and a fixed viewport keep comparisons useful.
 // This is supplemental profiling, not a substitute for native WebView evidence.
 export default defineConfig({
-  testDir: "./tests/browser",
+  testDir: path.join(repositoryRoot, "tests/browser"),
   testMatch: [
     "mcp-followup-origins.spec.ts",
     "navigation-performance.spec.ts",
@@ -25,8 +28,9 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
+    cwd: repositoryRoot,
     command:
-      "pnpm exec vite build && node scripts/verify-route-chunks.mjs && pnpm exec vite preview --host 127.0.0.1 --port 4175 --strictPort",
+      "pnpm build:renderer && pnpm exec vite preview --config config/vite.config.ts --host 127.0.0.1 --port 4175 --strictPort",
     url: "http://127.0.0.1:4175",
     reuseExistingServer: false,
     timeout: 120_000,

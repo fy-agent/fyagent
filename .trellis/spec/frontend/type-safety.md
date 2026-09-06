@@ -8,7 +8,7 @@ entry; independent configuration/domain code is not an alternative renderer.
 
 ## 2. Signatures and owners
 
-`tsconfig.json` covers `src/**/*`, `tests/**/*` and root `*.config.ts`, with
+`tsconfig.json` covers `src/**/*`, `tests/**/*` and `config/**/*.ts`, with
 `strict`, unused-symbol checks, switch fallthrough checks and `@/* -> src/*`.
 `shared/features/ports.ts` composes typed feature ports; capability modules own
 DTOs and parsers. `directory.ts` owns the closed catalogue/assignment/model/

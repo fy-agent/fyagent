@@ -25,15 +25,13 @@ const WATCHED_GRAPH_PACKAGES = new Set([
   "tr46",
   "punycode",
 ]);
-const ACTIVE_MODULE_ROOTS = Object.freeze(["src", "tests", "scripts"]);
-const ACTIVE_ROOT_MODULES = Object.freeze([
-  "postcss.config.cjs",
-  "eslint.config.mjs",
-  "playwright.config.ts",
-  "playwright.performance.config.ts",
-  "vite.config.ts",
-  "vitest.config.ts",
+const ACTIVE_MODULE_ROOTS = Object.freeze([
+  "src",
+  "tests",
+  "scripts",
+  "config",
 ]);
+const ACTIVE_ROOT_MODULES = Object.freeze(["eslint.config.mjs"]);
 const MODULE_EXTENSIONS = new Set([
   ".js",
   ".jsx",

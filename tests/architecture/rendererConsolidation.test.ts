@@ -48,12 +48,12 @@ describe("one product renderer", () => {
       scripts: Record<string, string>;
     };
     expect(manifest.scripts["test:unit"]).toBe(
-      "node --throw-deprecation ./node_modules/vitest/vitest.mjs run",
+      "node --throw-deprecation ./node_modules/vitest/vitest.mjs run --config config/vitest.config.ts",
     );
     expect(
       Object.keys(manifest.scripts).filter((name) => /:v\d+(?::|$)/.test(name)),
     ).toEqual([]);
-    const config = read("vitest.config.ts");
+    const config = read("config/vitest.config.ts");
     expect(config).toContain('name: "renderer"');
     expect(config).toContain('name: "contracts"');
     expect(config).toContain("tests/renderer/");

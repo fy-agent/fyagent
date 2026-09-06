@@ -8,8 +8,7 @@ const files = [
   "src/**/*.{ts,tsx}",
   "tests/renderer/**/*.{ts,tsx}",
   "tests/browser/**/*.{ts,tsx}",
-  "vitest.config.ts",
-  "playwright*.config.ts",
+  "config/**/*.ts",
 ];
 const patterns = [
   {
@@ -44,6 +43,11 @@ export default [
     ],
   },
   { ...js.configs.recommended, files },
+  {
+    ...js.configs.recommended,
+    files: ["config/**/*.cjs"],
+    languageOptions: { sourceType: "commonjs", globals: globals.node },
+  },
   ...tseslint.configs.recommended.map((config) => ({ ...config, files })),
   {
     files,

@@ -55,10 +55,15 @@ facts; executable JSONL context references must point to the current contract.
 
 ## Verification and failure behavior
 
-One `tsconfig.json`, `eslint.config.mjs` and `vitest.config.ts` serve the current
+Root `tsconfig.json` and `eslint.config.mjs`, plus `config/vitest.config.ts`, serve the current
 renderer. Vitest projects separate renderer versus contract environment setup,
 not product generations. Browser/performance configs are separate by purpose;
 performance is serial and never concurrent with the full compile gate.
+
+Explicit build/test/graph/PostCSS configurations live in `config/`. Public
+commands keep one entry and use built-in `--config`; the root does not contain
+forwarding copies. [Repository Layout](../backend/repository-layout.md) owns
+root exceptions, configuration-relative paths and the executable inventory.
 
 Run `mise run typecheck`, `mise run lint`, `mise run test:unit`,
 `mise run test:browser` and `mise run build:renderer`; the standard full gate is

@@ -1,4 +1,4 @@
-/** Runtime ownership; type-only contracts are checked separately by TypeScript. */
+/** Runtime ownership; executed from the repository root with an explicit config path. */
 module.exports = {
   forbidden: [
     {

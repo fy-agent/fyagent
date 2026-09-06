@@ -26,6 +26,6 @@
       "@testing-library/jest-dom"
     ]
   },
-  "include": ["src/**/*", "tests/**/*", "*.config.ts"],
+  "include": ["src/**/*", "tests/**/*", "config/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

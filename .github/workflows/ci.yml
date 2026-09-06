@@ -424,7 +424,7 @@ jobs:
       - name: Run mock-only desktop acceptance tests
         id: mock-tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance
+        run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run --config config/vitest.config.ts tests/desktop-acceptance
 
       - name: Verify mock-only desktop acceptance contract
         id: mock-contract

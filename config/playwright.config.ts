@@ -1,8 +1,10 @@
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
 const artifactRoot = path.join(os.tmpdir(), "fyagent-playwright");
+const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 
 const viewports = [
   { name: "900x600", width: 900, height: 600 },
@@ -12,7 +14,7 @@ const viewports = [
 ] as const;
 
 export default defineConfig({
-  testDir: "./tests/browser",
+  testDir: path.join(repositoryRoot, "tests/browser"),
   testIgnore: ["*-performance.spec.ts"],
   outputDir: path.join(artifactRoot, "artifacts"),
   fullyParallel: true,
@@ -61,6 +63,7 @@ export default defineConfig({
     },
   ],
   webServer: {
+    cwd: repositoryRoot,
     command: "pnpm dev:renderer --host 127.0.0.1 --port 4173 --strictPort",
     url: "http://127.0.0.1:4173/#/agents",
     reuseExistingServer: false,

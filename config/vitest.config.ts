@@ -2,12 +2,18 @@ import { fileURLToPath } from "node:url";
 import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
+
 // One runner, split only by environment ownership. Product renderer tests are
 // part of the normal unit/check aggregate, not a parallel generation opt-in.
 export default defineConfig({
+  root: repositoryRoot,
+  css: { postcss: fileURLToPath(new URL(".", import.meta.url)) },
   plugins: [react()],
   build: { assetsInlineLimit: 0 },
-  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("../src", import.meta.url)) },
+  },
   test: {
     projects: [
       {
