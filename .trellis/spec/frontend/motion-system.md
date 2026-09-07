@@ -43,6 +43,14 @@ delay. Do not mix stiffness/damping/mass with duration/bounce in one spring.
 - One `usePressFeedback` registration per host uses live disabled/hidden/reduced
   admission refs and cancels its effects on cleanup. A fast click must visibly
   dip/recover, not only a long hold. Scale must not change layout or neighbours.
+  When the same control becomes `disabled` mid-press, snap `scale` to `1`
+  immediately and stop the recovery spring. Do not let `fyPressRecovery` keep
+  animating a disabled dialog action.
+- Dialog footers (`.fy-control-dialog-actions`) keep buttons on one nowrap row
+  with isolated compositing. Pending label changes must not run opacity or
+  transform CSS transitions on those buttons; disabled footer controls force
+  `transform: none`. Visual overlap of 「取消」 and 「正在处理…」 is a
+  regression even when the DOM boxes do not intersect.
 - Positioned or measured hosts use `pressVisualRef` for the existing inner
   visual. Secret/search controls preserve centering; selection hosts preserve
   lens geometry. Feature buttons reuse PressableButton, not copied gestures.
@@ -74,6 +82,7 @@ delay. Do not mix stiffness/damping/mass with duration/bounce in one spring.
 | ------------------------------------------- | --------------------------------------------------------------- |
 | Optimizer changes `420ms` to `.42s`         | Same physical duration, tested in production assets.            |
 | Disabled/hidden/right-click/secondary touch | No new press admission or duplicate action.                     |
+| A pressed control becomes disabled          | Scale snaps to 1; no lingering recovery spring or transform.    |
 | Positioned control is pressed               | Only its visual scales; centering and neighbours remain stable. |
 | One control unmounts                        | Other style subscriptions still update.                         |
 | Live preference changes mid-motion          | Settle promptly, preserve action semantics and cleanup.         |
@@ -95,7 +104,9 @@ curves; production timing checks preserve optimized 420ms entry/360ms exit.
 `pressIsolation.test.tsx` uses two real style subscriptions. Browser press tests
 sample fractional bounding boxes for quick pointer/Enter/Space/touch, clipping,
 disabled/hidden state, adjacent geometry and live preferences. Integer
-offsetWidth cannot measure a sub-percent rebound budget.
+offsetWidth cannot measure a sub-percent rebound budget. Dialog footer pending
+copy (`正在处理…`) must keep cancel and confirm as separate non-overlapping
+controls without opacity/transform transitions.
 
 `state-motion.spec.ts` proves declarative disclosure and lens revisit versus
 actual selection travel. Dialog tests and 320ms same-session resize belong to

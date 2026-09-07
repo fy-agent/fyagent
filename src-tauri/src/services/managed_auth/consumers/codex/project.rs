@@ -1,8 +1,10 @@
-//! Codex account projection. This owner never writes model configuration.
+//! Codex account projection. Auth swap plus a top-level `model_provider`
+//! comment so official ChatGPT login uses the built-in openai route.
 
 use std::path::Path;
 
 use crate::app_config::AppType;
+use crate::codex_config::{comment_top_level_model_provider, uncomment_top_level_model_provider};
 use crate::services::managed_auth::{
     ManagedAuthMutationOutcome, ManagedAuthReasonCode, ManagedAuthSecretBundle,
 };
@@ -11,7 +13,9 @@ use crate::store::AppState;
 use super::auth_document::CodexChatGptAuthDocument;
 use super::delta::{plan_codex_managed_auth_delta, CodexDeltaError, CodexManagedAuthDelta};
 use super::observation::{document_from_bundle, observe_managed_auth};
-use super::swap::{auth_path_in, swap_codex_chatgpt_auth, CodexAuthSwapError};
+use super::swap::{
+    auth_path_in, swap_codex_chatgpt_auth, CodexAuthSwapError, CodexAuthSwapReceipt,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct CodexProjectionOutcome {
@@ -59,7 +63,10 @@ fn project_under_guard(
     }
     let delta = plan_codex_managed_auth_delta(&live, target_provider_subject)
         .map_err(CodexDeltaError::reason_code)?;
-    if delta == CodexManagedAuthDelta::Noop {
+    let config_path = codex_home.join("config.toml");
+    let config_text = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let commented_config = comment_top_level_model_provider(&config_text);
+    if delta == CodexManagedAuthDelta::Noop && commented_config.is_none() {
         return Ok(CodexProjectionOutcome {
             outcome: ManagedAuthMutationOutcome::Completed,
             reason: None,
@@ -67,31 +74,63 @@ fn project_under_guard(
             wrote_auth: false,
         });
     }
-    // The shared writer retains the exact old auth file even when it contains
-    // only a legacy API key. No hidden Provider backfill or config write is
-    // needed to make that credential recoverable.
-    let receipt = swap_codex_chatgpt_auth(
-        &auth_path_in(codex_home),
-        live.auth_revision.as_deref(),
-        target_document,
-    )
-    .map_err(|error| match error {
-        CodexAuthSwapError::Stale | CodexAuthSwapError::ExternalChange => {
-            ManagedAuthReasonCode::ExternalChangeDetected
+    let _scope = crate::config::file_mutation_scope();
+    let original_config = commented_config.as_ref().map(|_| config_text.into_bytes());
+    if let Some(next) = commented_config.as_ref() {
+        crate::config::atomic_write(&config_path, next.as_bytes())
+            .map_err(|_| ManagedAuthReasonCode::PartialCompletion)?;
+    }
+    let receipt = if delta == CodexManagedAuthDelta::Noop {
+        CodexAuthSwapReceipt {
+            revision: live.auth_revision.clone().unwrap_or_default(),
+            account_id: target_provider_subject.to_string(),
+            changed: false,
+            pending_restart: commented_config.is_some(),
         }
-        CodexAuthSwapError::IdentityMismatch => ManagedAuthReasonCode::IdentityMismatch,
-        CodexAuthSwapError::Invalid | CodexAuthSwapError::Io => {
-            ManagedAuthReasonCode::PartialCompletion
+    } else {
+        match swap_codex_chatgpt_auth(
+            &auth_path_in(codex_home),
+            live.auth_revision.as_deref(),
+            target_document,
+        ) {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                if let Some(original) = original_config.as_deref() {
+                    let _ = crate::config::atomic_write(&config_path, original);
+                }
+                return Err(match error {
+                    CodexAuthSwapError::Stale | CodexAuthSwapError::ExternalChange => {
+                        ManagedAuthReasonCode::ExternalChangeDetected
+                    }
+                    CodexAuthSwapError::IdentityMismatch => ManagedAuthReasonCode::IdentityMismatch,
+                    CodexAuthSwapError::Invalid | CodexAuthSwapError::Io => {
+                        ManagedAuthReasonCode::PartialCompletion
+                    }
+                });
+            }
         }
-    })?;
+    };
+    let pending_restart = receipt.pending_restart || commented_config.is_some();
     Ok(CodexProjectionOutcome {
         outcome: ManagedAuthMutationOutcome::Completed,
-        reason: receipt
-            .pending_restart
-            .then_some(ManagedAuthReasonCode::PendingRestart),
-        pending_restart: receipt.pending_restart,
+        reason: pending_restart.then_some(ManagedAuthReasonCode::PendingRestart),
+        pending_restart,
         wrote_auth: receipt.changed,
     })
+}
+
+pub(crate) fn restore_unofficial_codex_selector(
+    codex_home: &Path,
+) -> Result<bool, ManagedAuthReasonCode> {
+    let config_path = codex_home.join("config.toml");
+    let config_text = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let Some(next) = uncomment_top_level_model_provider(&config_text) else {
+        return Ok(false);
+    };
+    let _scope = crate::config::file_mutation_scope();
+    crate::config::atomic_write(&config_path, next.as_bytes())
+        .map_err(|_| ManagedAuthReasonCode::PartialCompletion)?;
+    Ok(true)
 }
 
 pub(crate) fn materialize_from_bundle(
@@ -122,7 +161,7 @@ mod tests {
     }
 
     #[test]
-    fn account_switch_preserves_commented_custom_config_without_provider_rows() {
+    fn account_switch_comments_top_level_selector_and_keeps_provider_tables() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config.toml");
         let original = b"# user configuration\r\nmodel_provider = 'custom'\r\nmodel = 'user-model'\r\n[model_providers.custom]\r\nname = 'User provider'\r\nbase_url = 'https://example.test/v1'\r\nwire_api = 'responses'\r\n[mcp_servers.example]\r\ncommand = 'keep-me'\r\n[features]\r\nmulti_agent = true\r\n";
@@ -134,13 +173,16 @@ mod tests {
         let result =
             project_under_guard(dir.path(), "acct-a", &account("acct-a"), &revision).unwrap();
         assert!(result.wrote_auth && result.pending_restart);
-        assert_eq!(std::fs::read(&config).unwrap(), original);
-        assert!(!crate::config::rolling_backup_path(&config).exists());
+        let after = String::from_utf8(std::fs::read(&config).unwrap()).unwrap();
+        assert!(after.contains("#model_provider = 'custom'"));
+        assert!(after.contains("[model_providers.custom]"));
+        assert!(after.contains("[mcp_servers.example]"));
+        assert!(crate::config::rolling_backup_path(&config).exists());
         assert_eq!(
             std::fs::read(crate::config::rolling_backup_path(&auth)).unwrap(),
             before_auth
         );
-        assert!(!observe_managed_auth(dir.path())
+        assert!(observe_managed_auth(dir.path())
             .provider_route
             .is_official());
     }
@@ -175,11 +217,10 @@ mod tests {
     }
 
     #[test]
-    fn existing_matching_account_never_changes_route_or_rotates_auth_backup() {
+    fn existing_matching_account_comments_selector_without_rotating_auth() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config.toml");
-        let config_bytes = b"# keep\nmodel_provider = 'custom'\n";
-        std::fs::write(&config, config_bytes).unwrap();
+        std::fs::write(&config, b"# keep\nmodel_provider = 'custom'\n").unwrap();
         let auth = auth_path_in(dir.path());
         let document = account("acct-a");
         std::fs::write(&auth, document.serialize_bytes().unwrap()).unwrap();
@@ -187,8 +228,50 @@ mod tests {
         let revision = observe_managed_auth(dir.path()).connection_revision();
         let result = project_under_guard(dir.path(), "acct-a", &document, &revision).unwrap();
         assert!(!result.wrote_auth);
+        assert!(result.pending_restart);
         assert_eq!(std::fs::read(&auth).unwrap(), before);
-        assert_eq!(std::fs::read(&config).unwrap(), config_bytes);
+        assert_eq!(
+            std::fs::read_to_string(&config).unwrap(),
+            "# keep\n#model_provider = 'custom'\n"
+        );
         assert!(!crate::config::rolling_backup_path(&auth).exists());
+        assert!(observe_managed_auth(dir.path())
+            .provider_route
+            .is_official());
+    }
+
+    #[test]
+    fn already_commented_selector_is_a_config_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.toml");
+        let config_bytes = b"#model_provider = \"OpenAI\"\n[model_providers.OpenAI]\nbase_url = \"https://example.test/v1\"\n";
+        std::fs::write(&config, config_bytes).unwrap();
+        let auth = auth_path_in(dir.path());
+        let document = account("acct-a");
+        std::fs::write(&auth, document.serialize_bytes().unwrap()).unwrap();
+        let revision = observe_managed_auth(dir.path()).connection_revision();
+        let result = project_under_guard(dir.path(), "acct-a", &document, &revision).unwrap();
+        assert!(!result.wrote_auth);
+        assert!(!result.pending_restart);
+        assert_eq!(std::fs::read(&config).unwrap(), config_bytes);
+        assert!(observe_managed_auth(dir.path())
+            .provider_route
+            .is_official());
+    }
+
+    #[test]
+    fn restore_uncomments_openai_selector_and_keeps_provider_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.toml");
+        std::fs::write(
+            &config,
+            b"#model_provider = \"OpenAI\"\nmodel = \"gpt\"\n[model_providers.OpenAI]\nbase_url = \"https://example.test/v1\"\n",
+        )
+        .unwrap();
+        assert!(restore_unofficial_codex_selector(dir.path()).unwrap());
+        let after = std::fs::read_to_string(&config).unwrap();
+        assert!(after.starts_with("model_provider = \"OpenAI\"\n"));
+        assert!(after.contains("[model_providers.OpenAI]"));
+        assert!(!restore_unofficial_codex_selector(dir.path()).unwrap());
     }
 }

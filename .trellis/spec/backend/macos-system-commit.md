@@ -98,7 +98,7 @@ Product integers (C ABI / XPC; display names never travel):
 | 2     | OpenCodeDesktop | `ai.opencode.desktop`     | `OpenCode.app`                 | none                      |
 | 3     | QoderWork       | `com.qoder.work.cn`       | `QoderWork CN.app`             | none                      |
 | 4     | TraeWork        | `cn.trae.solo.app`        | `TRAE SOLO CN.app`             | none                      |
-| 5     | WorkBuddy       | `com.workbuddy.workbuddy` | `WorkBuddy.app`                | none                      |
+| 5     | WorkBuddy       | `com.tencent.workbuddy.mac` | `WorkBuddy.app`                | none                      |
 
 Codex slots: `1` = ChatGPT.app (fresh default), `2` = Codex.app (existing
 only). Every other product uses slot `1` as its single fresh-default basename.
@@ -154,6 +154,10 @@ this table or the admitted Agent lifecycle; Claude Code is CLI-only under
   is local/diagnostic only.
 - `.build/` and `dist/` under `src-tauri/macos-privileged-helper/` are
   gitignored build outputs.
+- WorkBuddy's expected bundle ID is `com.tencent.workbuddy.mac`. Keep
+  `agent_install/desktop.rs` `DESKTOP_PRODUCTS` / `macos_bundle_id_for`,
+  `macos_system_commit/policy.rs`, and privileged helper `Policy.swift` equal.
+  Do not admit stale `com.workbuddy.workbuddy`.
 
 ## 4. Validation & Error Matrix
 
@@ -191,6 +195,9 @@ this table or the admitted Agent lifecycle; Claude Code is CLI-only under
 - `mise run rust:test -- macos_system_commit`: product/slot table, production
   `production_enabled() == false`, `system_scope_rejection()` is
   `authorization_required`.
+- `mise run rust:test -- helper_policy_bundle_ids_match_macos_bundle_id_for`:
+  helper slot bundle IDs equal `macos_bundle_id_for` for OpenCode, QoderWork,
+  TraeWork, and WorkBuddy (`com.tencent.workbuddy.mac`).
 - `swift run PrivilegedHelperTests` in `src-tauri/macos-privileged-helper`
   (custom test executable; do not treat `swift test` XCTest discovery as the
   owner).
@@ -235,6 +242,18 @@ typedef struct {
 /* product + target_slot integers only; no path/command/URL */
 uint32_t product;
 uint32_t target_slot;
+```
+
+#### Wrong
+
+```rust
+macos_bundle_id: "com.workbuddy.workbuddy",
+```
+
+#### Correct
+
+```rust
+macos_bundle_id: "com.tencent.workbuddy.mac", // lockstep with Policy.swift
 ```
 
 #### Wrong

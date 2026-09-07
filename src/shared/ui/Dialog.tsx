@@ -196,10 +196,8 @@ function DialogLayer({
       element.style.removeProperty("width");
     }
     const box = element.getBoundingClientRect();
-    element.dataset.motionOrigin = dialogOriginGeometry(source.current, box)
-      .sourced
-      ? "trigger"
-      : "neutral";
+    const liveOrigin = dialogOriginGeometry(source.current, box);
+    element.dataset.motionOrigin = liveOrigin.sourced ? "trigger" : "neutral";
     const duration =
       motionDuration(present ? "dialog-enter" : "dialog-exit") * 1000;
     let handle: ReturnType<typeof runDialogPresentation> | null = null;

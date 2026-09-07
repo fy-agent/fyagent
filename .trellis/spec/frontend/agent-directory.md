@@ -153,6 +153,16 @@ the selected Models/Skills/MCP/Prompts section and authentication handoff.
 Managed consumers show one compact status plus the central Auth entry, not
 stacked duplicate descriptions. Back returns to the existing directory and its
 installation controls. Configuration navigation never starts an installation.
+When inventory reports more than one eligible install destination, the directory
+card opens a shared `Dialog` from the 「选择安装目标」 control (origin animation
+returns to that control) and reuses `LifecycleTargetPicker` with opaque
+`targetId` values. A `locationLabel` that starts with `/Applications` shows a
+small 「推荐」 mark; confirmation still requires an explicit dialog confirm.
+Confirming a destination starts the native action and immediately dismisses the
+dialog back to the originating control so the card can show transfer progress.
+Do not keep the picker open until the job finishes, and do not unmount the
+return anchor when the slot switches to busy status.
+Do not send the user to the Models section to pick a filesystem destination.
 
 - “Open product” calls the closed native launch destination; it never sends a
   path/URL or shells out from the renderer.
@@ -213,6 +223,7 @@ installation controls. Configuration navigation never starts an installation.
 | Cancel is no longer permitted                                       | Disable cancel and preserve active/terminal state.                                                     |
 | Windows vendor wizard handoff succeeds but inventory remains absent | Explain handoff/completion scope; do not paint installed.                                              |
 | Native DTO contains unknown/excess/forbidden field                  | Strict parser failure; never spread raw object into UI.                                                |
+| Inventory is `multiple` and the user confirms a destination         | Start the native action and immediately dismiss the picker back to the originating control; the card shows job progress. Do not keep 「安装中…」 on the dialog until the job finishes. |
 | Claude/Grok compact CLI readiness uses `cli_tooling`                | Parse and project install/update; do not fail the directory scan.                                      |
 | Claude/Grok readiness uses `managed_desktop` or `desktop` surface   | Fail closed at the parser; do not render a Desktop install card.                                       |
 | Route changes/unmounts                                              | Clear transient selection/confirmation; do not cancel native work unless user explicitly requested it. |
@@ -220,7 +231,9 @@ installation controls. Configuration navigation never starts an installation.
 ## 5. Good / Base / Bad Cases
 
 - **Good:** catalog v5 drives the seven cards; inventory reports two apps; the
-  user selects one opaque target; native revalidates and launches it.
+  user confirms a destination in the directory picker; the dialog returns to
+  the originating control and the card shows transfer progress while the job
+  runs.
 - **Good:** a job has unknown total bytes; the UI shows stage and completed
   bytes without fabricated percentage.
 - **Base:** a Windows vendor installer was opened. The UI reports vendor handoff
@@ -257,6 +270,10 @@ Required assertions:
   evidence-correct states;
 - multiple target selection, opaque capability forwarding, expiry/drift refresh
   and no path/URL/command fields;
+- directory 「选择安装目标」 opens a Dialog picker instead of navigating to
+  configuration; `/Applications` labels render 「推荐」; confirming a
+  destination dismisses that dialog immediately and the card shows
+  「正在检查来源」 (or later transfer copy) without waiting for job terminal;
 - allowed-actions projection, Codex owner routing, Auth/lifecycle separation and
   feature-navigation capability checks;
 - polling survives active native jobs without synthetic failure, transfer
@@ -319,3 +336,19 @@ parseAgentInstallReadiness admits sourceKind === "cli_tooling"
 
 Native owns identity, legality and side effects; the page owns strict
 projection, explicit user selection and evidence-correct wording.
+
+Wrong:
+
+```tsx
+void lifecycle.run(action, selectedTarget).then(() => setPickingTarget(null));
+if (lifecycle.busy) return { kind: "status", label };
+```
+
+Correct:
+
+```tsx
+setPickingTarget(null);
+void lifecycle.run(action, selectedTarget);
+// AgentLifecycleActionSlot keeps a connected host for dialogReturnRef
+// while the inner control swaps from 「选择安装目标」 to busy status.
+```

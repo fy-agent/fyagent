@@ -691,6 +691,124 @@ describe("V3 Agent directory and configuration shell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("opens an install-target dialog from the directory instead of leaving the list", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    const actionJob = deferred<AgentActionJobSnapshot>();
+    const dests: AgentInstallationInventory = {
+      ...installationInventory("qoderwork"),
+      state: "not_observed",
+      candidates: [],
+      freshDestinations: [
+        {
+          destinationId: `d1:${"d".repeat(32)}`,
+          destinationRevision: `r1:${"e".repeat(64)}`,
+          scope: "current_user",
+          owner: "vendor_installer",
+          packageKind: "app_bundle",
+          requiresElevation: false,
+          writable: true,
+          eligible: true,
+          reasonCodes: [],
+          locationLabel: "当前用户应用目录",
+        },
+        {
+          destinationId: `d1:${"f".repeat(32)}`,
+          destinationRevision: `r1:${"g".repeat(64)}`,
+          scope: "all_users",
+          owner: "vendor_installer",
+          packageKind: "app_bundle",
+          requiresElevation: false,
+          writable: true,
+          eligible: true,
+          reasonCodes: [],
+          locationLabel: "/Applications",
+        },
+      ],
+    };
+    ports.agentInstallReadiness.get = vi.fn(async (agentId: AgentCatalogId) => {
+      if (agentId === "qoderwork") {
+        return readiness("qoderwork", "not_installed", {
+          allowedActions: ["install"],
+          releaseId: `v1:${"a".repeat(64)}`,
+          inventoryState: "multiple",
+          requiresTargetSelection: true,
+        });
+      }
+      return readiness(agentId, "installed");
+    });
+    ports.agentInstallReadiness.getInventory = vi.fn(async (agentId) =>
+      agentId === "qoderwork" ? dests : installationInventory(agentId),
+    );
+    ports.agentInstallReadiness.startAction = vi.fn(
+      async (): Promise<AgentActionResult> => ({
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+        agentId: "qoderwork",
+        action: "install",
+        jobId: "job-1",
+        stage: "checking",
+        reasonCode: null,
+      }),
+    );
+    ports.agentInstallReadiness.getActionJob = vi.fn(
+      async () => actionJob.promise,
+    );
+    renderPage(ports);
+
+    expect(
+      await screen.findByRole("button", { name: "重新扫描" }),
+    ).toBeEnabled();
+    await user.click(
+      within(directoryArticle("QoderWork CN")).getByRole("button", {
+        name: "选择安装目标",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "选择 QoderWork CN 的安装位置",
+    });
+    expect(within(dialog).getByText("推荐")).toBeVisible();
+    expect(
+      within(dialog).getByRole("radio", { name: /\/Applications/ }),
+    ).toBeChecked();
+    expect(screen.getByTestId("agents-page")).toHaveAttribute(
+      "data-view",
+      "directory",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "确认安装" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", {
+          name: "选择 QoderWork CN 的安装位置",
+        }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      await within(directoryArticle("QoderWork CN")).findByText(
+        "正在检查来源",
+      ),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(ports.agentInstallReadiness.startAction).toHaveBeenCalledWith({
+        agentId: "qoderwork",
+        action: "install",
+        expectedReleaseId: `v1:${"a".repeat(64)}`,
+        inventoryId: `i1:${"a".repeat(32)}`,
+        targetId: `d1:${"f".repeat(32)}`,
+        expectedTargetRevision: `r1:${"g".repeat(64)}`,
+      }),
+    );
+    actionJob.resolve({
+      contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+      jobId: "job-1",
+      agentId: "qoderwork",
+      action: "install",
+      stage: "succeeded",
+      cancellable: false,
+      reasonCode: null,
+      transfer: null,
+    });
+  });
+
   it("does not enable configure after a succeeded job until readback proves installation", async () => {
     const user = userEvent.setup();
     const ports = configuredPorts();

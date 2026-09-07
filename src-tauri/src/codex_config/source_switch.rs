@@ -78,6 +78,12 @@ pub(crate) fn patch_source(
     unify_sessions: bool,
 ) -> Result<String, AppError> {
     validate_source(category, auth, desired_config)?;
+    let owned_current = if category == Some("official") {
+        super::comment_top_level_model_provider(current_config)
+    } else {
+        super::uncomment_top_level_model_provider(current_config)
+    };
+    let current_config = owned_current.as_deref().unwrap_or(current_config);
     let mut current = current_config
         .parse::<DocumentMut>()
         .map_err(|_| invalid("现有 Codex 配置格式无效，请先检查原文件"))?;
@@ -211,6 +217,7 @@ mod tests {
         }
         assert!(after.get("model_provider").is_none());
         assert!(after.get("model").is_none());
+        assert!(result.contains("#model_provider"));
     }
 
     #[test]
@@ -245,6 +252,32 @@ mod tests {
             after["model_providers"]["new-api"]["experimental_bearer_token"].as_str(),
             Some("new-fixture")
         );
+    }
+
+    #[test]
+    fn third_party_source_uncomments_existing_selector_instead_of_duplicating() {
+        let dir = tempfile::tempdir().unwrap();
+        let current = "#model_provider = \"OpenAI\"\nmodel = \"gpt\"\n[model_providers.OpenAI]\nname = \"OpenAI\"\nbase_url = \"https://example.test/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = false\n";
+        let desired = "model_provider = \"OpenAI\"\nmodel = \"gpt\"\n[model_providers.OpenAI]\nname = \"OpenAI\"\nbase_url = \"https://example.test/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = false\n";
+        let result = patch_source(
+            current,
+            None,
+            &json!({"OPENAI_API_KEY": "fixture"}),
+            desired,
+            dir.path(),
+            false,
+        )
+        .unwrap();
+        let selector_lines = result
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim_start();
+                trimmed.starts_with("model_provider") || trimmed.starts_with("#model_provider")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(selector_lines.len(), 1);
+        assert!(selector_lines[0].trim_start().starts_with("model_provider"));
+        assert!(!result.contains("#model_provider"));
     }
 
     #[test]

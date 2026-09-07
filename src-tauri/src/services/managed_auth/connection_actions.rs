@@ -229,14 +229,25 @@ impl<B: SecretBackend + 'static> ManagedAuthService<B> {
                 | ManagedAuthConnectionAction::SwitchAccount,
             ) => {
                 let home = self.codex_home();
-                Ok((vec![home.join("auth.json")], vec![home.join("config.toml")]))
+                let auth = home.join("auth.json");
+                let config = home.join("config.toml");
+                let config_text = std::fs::read_to_string(&config).unwrap_or_default();
+                if crate::codex_config::top_level_model_provider_is_active(&config_text) {
+                    Ok((vec![auth, config], Vec::new()))
+                } else {
+                    Ok((vec![auth], vec![config]))
+                }
             }
             (ManagedAuthConsumer::Codex, ManagedAuthConnectionAction::Disconnect) => {
                 let home = self.codex_home();
-                Ok((
-                    Vec::new(),
-                    vec![home.join("auth.json"), home.join("config.toml")],
-                ))
+                let auth = home.join("auth.json");
+                let config = home.join("config.toml");
+                let config_text = std::fs::read_to_string(&config).unwrap_or_default();
+                if crate::codex_config::uncomment_top_level_model_provider(&config_text).is_some() {
+                    Ok((vec![config], vec![auth]))
+                } else {
+                    Ok((Vec::new(), vec![auth, config]))
+                }
             }
             (
                 ManagedAuthConsumer::Opencode,

@@ -33,12 +33,12 @@ export function usePressFeedback<T extends HTMLElement>(
 
   useLayoutEffect(() => {
     gate.current = { disabled, reduce, visible };
-    if (reduce || !visible) {
+    if (reduce || !visible || disabled) {
       epoch.current += 1;
       animation.current?.stop();
       held.current = false;
       scale.set(1);
-    } else if (disabled && held.current) releaseRef.current?.();
+    }
   }, [disabled, reduce, visible, scale]);
 
   useEffect(() => {
@@ -55,8 +55,12 @@ export function usePressFeedback<T extends HTMLElement>(
         return;
       }
       const recover = () => {
-        if (epoch.current === revision)
-          animation.current = animate(scale, 1, fyPressRecovery);
+        if (epoch.current !== revision) return;
+        if (gate.current.disabled) {
+          scale.set(1);
+          return;
+        }
+        animation.current = animate(scale, 1, fyPressRecovery);
       };
       // Down/up within one frame still receives a short dip. The native click
       // and business action never wait for this decorative recovery.

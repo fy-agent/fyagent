@@ -11,6 +11,7 @@ Primary owners:
 
 - `src-tauri/src/services/managed_auth/consumers/codex/mod.rs`
 - `src-tauri/src/services/managed_auth/consumers/codex/{auth_document,delta,observation,project,swap}.rs`
+- `src-tauri/src/codex_config/model_provider_line.rs`
 - `src-tauri/src/services/managed_auth/consumers/grok.rs`
 - `src-tauri/src/services/managed_auth/consumers/opencode.rs`
 - consumer orchestration in
@@ -141,7 +142,7 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 - Codex file-store projection is capability-gated by machine-checkable facts:
   effective store is unset/default-file or explicit file; complete identity-
   matched ChatGPT auth material; revision CAS; mandatory backup and atomic
-  private write; auth readback with an unchanged config document. Matching-host HIL is optional smoke
+  private write; auth readback. Matching-host HIL is optional smoke
   evidence and does not control a production boolean gate.
 - Effective defaults follow the pinned OpenAI Codex contract: unset
   `cli_auth_credentials_store` → file; missing `model_provider` → openai.
@@ -150,24 +151,35 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 - Connected status requires live ChatGPT identity to match the connection-
   bound credential. A ready SecretRef alone is saved-not-projected /
   disconnected, never connected.
-- Minimum write delta is independent of request route: a matching account is
-  a no-op; another or missing account replaces only `auth.json`. All config
-  bytes, including model, MCP, features and provider tables, remain unchanged.
+- Auth write delta is independent of request route: a matching account is an
+  auth no-op; another or missing account replaces only `auth.json`. Official
+  `connect_account` / `switch_account` comments the first top-level
+  `model_provider = …` line (keep the user's value and comment style, e.g.
+  `#model_provider = "OpenAI"`) so Codex falls back to built-in openai. If
+  that line is already commented or absent, config is a no-op. Never delete
+  the selector, never rewrite it to `openai`, and never touch
+  `[model_providers.*]`, MCP, features, model, or other bytes. Disconnect, or
+  a disconnected slot whose selector is still commented, uncomments that same
+  line so unofficial routing returns. Auth.json is not deleted.
 - Auth projection takes the existing Codex Provider guard but does not call a
   Provider writer or backfill credentials into Provider rows. The shared file
   recovery owner preserves the exact outgoing auth preimage, including legacy
-  API-key-only documents. An account change must not silently change routing.
+  API-key-only documents. Commenting the selector is the intended official
+  ChatGPT routing change; it is not permission to rewrite provider tables.
 - Switching to an official or third-party request source is a separate,
   explicitly confirmed Provider/Change Plan operation. It preserves auth
-  bytes and patches only the source-owned config fields. Replacing auth does
-  not imply that a configured third-party endpoint stopped being used.
+  bytes. Official source comments the existing selector; unofficial source
+  uncomments that same line instead of inserting a duplicate. Replacing auth
+  does not imply that a configured third-party endpoint stopped being used.
 - After a successful auth write while hot reload is unproven, return
   `completed` + `pending_restart`, and persist the Codex connection itself as
   pending in the authoritative overview. Do not emit
   `native_projection_unavailable` for a successful write, and do not translate
   this positive state into a generic retry failure.
 - Codex disconnect clears FyAgent connection metadata, not the user's auth
-  file. The preview therefore lists the existing auth/config as unchanged.
+  file. If the top-level selector is commented, the preview lists `config.toml`
+  as a write target and `auth.json` as unchanged. A successful uncomment is
+  `pending_restart` until Codex rereads the file.
 
 ### Grok fail-closed consumer
 
@@ -239,15 +251,20 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 | token, SecretRef, auth bytes, or raw helper output reaches DTO/log/DOM    | security regression                                                                                                  |
 | Display paths arrive outside explicit impact/recovery metadata            | security regression                                                                                                  |
 | Connection mutation lacks a matching fresh single-use preview             | reject before vendor write                                                                                           |
-| Codex account change also rewrites config.toml                            | contract regression                                                                                                  |
+| Codex official connect/switch comments an active top-level `model_provider` and keeps provider tables | required; deleting the selector, rewriting it to `openai`, or editing model/MCP/features/provider tables is a regression |
+| Codex account change uncomments `model_provider` or inserts a second selector | contract regression                                                                                                  |
+| Codex disconnect leaves a commented top-level `model_provider` in place   | contract regression                                                                                                  |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** OpenCode replaces only the `openai` entry, preserves unknown keys,
   writes atomically with `0600`, rereads equal bytes, transfers ownership, and
   reports `pending_restart` until Desktop pickup is HIL-proven.
-- **Good:** Codex A→B swaps only `auth.json` on either request route; an
-  explicit source change separately patches config while auth stays equal.
+- **Good:** Codex A→B swaps only `auth.json`; if the live top-level
+  `model_provider` is active, official connect comments that one line and
+  leaves `[model_providers.*]` intact. Disconnect or a disconnected slot with
+  that line still commented uncomments the same selector. An explicit unofficial
+  source change also uncomments it instead of duplicating it.
 - **Base:** OpenCode has no `auth.json`; observation returns an empty provider
   set without requiring a CLI.
 - **Base:** Codex unset store and missing `model_provider` are effective file
@@ -263,6 +280,8 @@ mise run rust:fmt:check
 mise run rust:check
 mise run rust:clippy
 mise run rust:test -- managed_auth
+mise run rust:test -- model_provider_line
+mise run rust:test -- source_switch
 mise run rust:test -- opencode
 mise run typecheck
 mise run test:unit -- tests/renderer/features/managed-auth.test.ts \
@@ -274,8 +293,9 @@ Required assertions:
 - the native command validates before `spawn_blocking`, does not run the
   synchronous service on the IPC command thread, and maps blocking-task join
   failure to `invalid_response`;
-- Codex effective file defaults, route-independent auth-only delta, private
-  backup/readback/CAS, config byte-equality, and saved-not-projected status;
+- Codex effective file defaults, auth delta plus top-level `model_provider`
+  comment/uncomment, private backup/readback/CAS, provider-table
+  preservation, and saved-not-projected status;
 - previews bind account/action/revision/path, expire, supersede and consume
   once; absent confirmation or changed overrides authorize zero vendor writes;
 - Grok production gates remain false and write zero vendor bytes;
@@ -301,6 +321,7 @@ Wrong:
 select any ready account -> copy its refresh token into consumer auth.json
 atomic_write Ok -> connected
 credential present -> Codex connected
+official connect -> leave active model_provider = "OpenAI"
 CODEX_FILE_PROJECTION_PRODUCTION_ENABLED=false forever
 sync Tauri command -> blocking credential/file coordinator
 ```
@@ -312,6 +333,9 @@ OpenCode selects a purpose-compatible credential under auth.json revision
 consumer-specific write -> readback -> refresh-owner transfer
 external pickup unproven -> pending_restart
 Codex live identity match -> connected; otherwise saved-not-projected
+official connect -> comment first top-level model_provider; keep [model_providers.*]
+disconnect / disconnected+commented -> uncomment the same selector; keep [model_providers.*]
+unofficial source -> uncomment the same selector; never a second model_provider line
 Codex capability from effective store + complete material + readback
 async Tauri command -> validate -> spawn_blocking(sync service) -> strict result
 ```

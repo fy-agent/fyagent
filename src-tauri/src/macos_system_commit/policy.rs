@@ -41,7 +41,7 @@ const CODEX_BUNDLE_ID: &str = "com.openai.codex";
 const OPENCODE_BUNDLE_ID: &str = "ai.opencode.desktop";
 const QODERWORK_BUNDLE_ID: &str = "com.qoder.work.cn";
 const TRAEWORK_BUNDLE_ID: &str = "cn.trae.solo.app";
-const WORKBUDDY_BUNDLE_ID: &str = "com.workbuddy.workbuddy";
+const WORKBUDDY_BUNDLE_ID: &str = "com.tencent.workbuddy.mac";
 
 impl KnownSystemProduct {
     pub const fn as_u32(self) -> u32 {
@@ -210,7 +210,7 @@ mod tests {
         assert_eq!(OPENCODE_BUNDLE_ID, "ai.opencode.desktop");
         assert_eq!(QODERWORK_BUNDLE_ID, "com.qoder.work.cn");
         assert_eq!(TRAEWORK_BUNDLE_ID, "cn.trae.solo.app");
-        assert_eq!(WORKBUDDY_BUNDLE_ID, "com.workbuddy.workbuddy");
+        assert_eq!(WORKBUDDY_BUNDLE_ID, "com.tencent.workbuddy.mac");
     }
 
     #[test]

@@ -135,6 +135,12 @@
   min-width: 0;
 }
 
+.fy-agent-directory-lifecycle-host {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
 .fy-agent-directory-lifecycle-status {
   display: inline-flex;
   align-items: center;
@@ -738,8 +744,23 @@
 }
 
 .fy-agent-target-option-copy strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   overflow-wrap: anywhere;
   font-size: 12px;
+}
+.fy-agent-target-recommend {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--fy-accent-ink);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  background: var(--fy-accent);
 }
 
 .fy-agent-target-option-copy small {
@@ -1077,8 +1098,14 @@
     justify-self: stretch;
   }
 
-  .fy-agent-directory-card-actions > .fy-control-button {
+  .fy-agent-directory-card-actions > .fy-control-button,
+  .fy-agent-directory-card-actions > .fy-agent-directory-lifecycle-host {
     flex: 1 1 auto;
+  }
+
+  .fy-agent-directory-card-actions > .fy-control-button,
+  .fy-agent-directory-card-actions > .fy-agent-directory-lifecycle-host > .fy-control-button {
+    width: 100%;
     justify-content: center;
   }
 

@@ -69,6 +69,12 @@ duration parser; WAAPI accepts milliseconds only at this presentation boundary.
   Revalidate captured finite geometry against the current viewport at consumption:
   an async picker/preview can outlive a resize, so old snapshot admission is not
   permanent permission to fly outside the visible window.
+- Directory install-target pickers stay mounted with `open={pickingTarget !== null}`.
+  Confirm starts the native job and sets open false in the same click; do not
+  wait for `run()` to settle. `dialogReturnRef` must point at a host that remains
+  connected while the slot swaps from the trigger button to busy status. Putting
+  the return ref on the button that unmounts on busy yields a disconnected
+  source and a neutral fade, which hides the card progress the user needs.
 - Switch uses the existing PressableButton asChild capture before Radix's
   checked-change handler. A modal-producing switch opts into bounded click
   geometry with its own element as the return anchor: async status feedback can
@@ -207,6 +213,7 @@ duration parser; WAAPI accepts milliseconds only at this presentation boundary.
 | ----------------------------------------------------- | --------------------------------------------------------------------------------- |
 | Source control opens a dialog after async work        | Use that explicit original source, not whichever element is now focused.          |
 | Source moved, vanished or scrolled out before close   | Re-measure; return to the current valid box or use neutral exit.                  |
+| Confirm starts work that replaces the trigger with status | Keep a connected `dialogReturnRef` host; fly back to that host, not a fade.   |
 | Close occurs while entering                           | Freeze current geometry, revoke interaction/secrets and finish one exit.          |
 | Explicit non-credential fade exit                     | Inert/aria-hidden body retires within 80ms; action DOM disappears immediately.    |
 | CSS optimizer emits seconds instead of milliseconds   | Preserve physical duration; production timing test must still see 420ms.          |

@@ -24,7 +24,6 @@ import {
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { usePersistentSearchParams } from "../../shared/ui/usePersistentSearchParams";
 import { Button } from "../../shared/ui/Button";
-import { AnimatePresence } from "../../shared/ui/motion";
 import { useDialogState } from "../../shared/ui/useDialogState";
 import { EmptyState, InlineNotice, Spinner } from "../../shared/ui/primitives";
 import { AccountView } from "./AccountView";
@@ -117,8 +116,7 @@ export function AuthPage() {
     },
     [],
   );
-  const [connectionAction, setConnectionAction, connectionActionKey] =
-    useDialogState<{
+  const [connectionAction, setConnectionAction] = useDialogState<{
       connection: ManagedAuthConnectionSummary;
       action: ManagedAuthConnectionAction;
       preferredAccountId?: string | null;
@@ -638,29 +636,24 @@ export function AuthPage() {
         }}
         onConfirm={() => void confirmRemoveAccount()}
       />
-      <AnimatePresence>
-        {connectionAction && (
-          <ConnectionActionDialog
-            key={connectionActionKey}
-            originRef={dialogOriginRef}
-            connection={connectionAction?.connection ?? null}
-            action={connectionAction?.action ?? null}
-            overview={overview}
-            pending={mutationBusy}
-            preferredAccountId={connectionAction?.preferredAccountId}
-            onCancel={() => setConnectionAction(null)}
-            onConfirm={(accountId, previewId) => {
-              if (!connectionAction) return;
-              void applyConnectionAction(
-                connectionAction.connection,
-                connectionAction.action,
-                accountId,
-                previewId,
-              );
-            }}
-          />
-        )}
-      </AnimatePresence>
+      <ConnectionActionDialog
+        originRef={dialogOriginRef}
+        connection={connectionAction?.connection ?? null}
+        action={connectionAction?.action ?? null}
+        overview={overview}
+        pending={mutationBusy}
+        preferredAccountId={connectionAction?.preferredAccountId}
+        onCancel={() => setConnectionAction(null)}
+        onConfirm={(accountId, previewId) => {
+          if (!connectionAction) return;
+          void applyConnectionAction(
+            connectionAction.connection,
+            connectionAction.action,
+            accountId,
+            previewId,
+          );
+        }}
+      />
     </div>
   );
 }

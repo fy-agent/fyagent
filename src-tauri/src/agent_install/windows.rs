@@ -1144,7 +1144,7 @@ mod tests {
     fn product() -> DesktopProduct {
         DesktopProduct {
             agent_id: AgentCatalogId::WorkBuddy,
-            macos_bundle_id: "com.workbuddy.workbuddy",
+            macos_bundle_id: "com.tencent.workbuddy.mac",
             windows_product_names: &["WorkBuddy"],
             windows_relative_exes: &["WorkBuddy/WorkBuddy.exe"],
         }

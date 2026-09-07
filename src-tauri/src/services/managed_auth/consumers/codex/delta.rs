@@ -69,9 +69,8 @@ pub(crate) fn plan_codex_managed_auth_delta(
     }
 
     let account_matches = auth_matches_account(&live.auth_state, target_provider_subject);
-    // Credentials do not own model routing. A custom route remains custom
-    // even after an official account is selected; only an explicit source
-    // operation may change config.toml.
+    // Credentials do not own model routing tables. Official account projection
+    // comments the top-level model_provider selector; provider tables stay put.
     Ok(if account_matches {
         CodexManagedAuthDelta::Noop
     } else {
@@ -112,6 +111,7 @@ mod tests {
                     revision: "mr1:auth".into(),
                 },
             },
+            selector_commented: false,
             may_need_restart: false,
         }
     }

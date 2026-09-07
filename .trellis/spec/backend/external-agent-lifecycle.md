@@ -204,7 +204,7 @@ identity examples include:
 
 | Product                       | macOS bundle ID                  | Windows closed identity summary                                                                                                                                                                                                               |
 | ----------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| WorkBuddy                     | `com.workbuddy.workbuddy`        | Closed relative `WorkBuddy.exe`, ProductName and reviewed signer.                                                                                                                                                                             |
+| WorkBuddy                     | `com.tencent.workbuddy.mac`      | Closed relative `WorkBuddy.exe`, ProductName and reviewed signer.                                                                                                                                                                             |
 | QoderWork CN                  | `com.qoder.work.cn`              | Closed QoderWork CN relative EXE names, ProductName and signer.                                                                                                                                                                               |
 | TRAE Work CN                  | `cn.trae.solo.app`               | Closed TRAE SOLO/Work CN relative EXE names, ProductName and signer.                                                                                                                                                                          |
 | OpenCode                      | `ai.opencode.desktop`            | Closed relative `@opencode-aidesktop/OpenCode.exe` (and `OpenCode/OpenCode.exe`), ProductName `OpenCode`, reviewed signer `Anomaly Innovations, Inc https://anoma.ly/`, and Uninstall DisplayName `OpenCode` or `OpenCode <bounded-version>`. |
@@ -244,6 +244,12 @@ leaf:
   `WinVerifyTrust`, exactly one signer and reviewed signer leaf.
 - Do not infer installation from `.workbuddy`, `.qoderwork*`, `.trae*` or any
   settings directory.
+- Official WorkBuddy macOS identity is `com.tencent.workbuddy.mac` from the
+  signed Tencent `WorkBuddy.app` package. `com.workbuddy.workbuddy` is a stale
+  closed ID and must not match. `CodeBuddy CN.app` /
+  `com.tencent.codebuddycn` is a different product. Folder names are not
+  identity. Scan, system-commit policy, and privileged helper `Policy.swift`
+  stay in lockstep on this ID.
 
 ### Jobs and platform side effects
 
@@ -371,6 +377,9 @@ Assertion points:
   lifecycle policy: Grok and Claude are compact CLI/`cli_tooling`;
 - macOS exact-path deployment, cancellation boundary, running-app protection,
   rollback/recovery and disabled `/Applications` gate;
+- WorkBuddy macOS scan matches only `com.tencent.workbuddy.mac`; a same-folder
+  `com.workbuddy.workbuddy` fixture stays unmatched; helper/policy/desktop
+  bundle IDs stay equal via `helper_policy_bundle_ids_match_macos_bundle_id_for`;
 - Windows registry access masks/views/link handling, trusted PE identity,
   signer leaf, retained artifact, helper protocol/pipe binding, UAC cancel and
   vendor-wizard handoff with no wait/kill/post-install claim;

@@ -114,13 +114,18 @@ request mode is a third-party API.
   connection count. Quota/profile availability does not redefine login health
   or reorder accounts by short-lived usage.
 - Account detail lists already-linked software and matching unlinked software
-  for the same provider. Linked cards expose the closed connection actions
-  that change the bound account (`switch_account`). `switch_to_official` is a
-  retained wire value, not a currently advertised account mutation. Unlinked
-  matching slots expose `connect_account` when the backend advertises it. A
-  ready account may also start a `connect_consumer` login for a matching
-  consumer that is not yet connectable from the saved credential purpose. The
-  page does not auto-connect on login and does not install software.
+  for the same provider. Linked means live-connected (`accountId` matches and
+  `authStatus` is not `disconnected`). A saved-not-projected Codex slot that
+  already names this account still belongs in the connectable list and still
+  exposes `connect_account` / `switch_account` when the backend advertises
+  them. If that slot also advertises `disconnect` while still disconnected, the
+  account page labels it 「恢复第三方模型来源」: it restores the unofficial
+  top-level selector without connecting official login. Linked cards expose the
+  closed connection actions that change the bound account (`switch_account`).
+  `switch_to_official` is a retained wire value, not a currently advertised
+  account mutation. A ready account may also start a `connect_consumer` login
+  for a matching consumer that is not yet connectable from the saved credential
+  purpose. The page does not auto-connect on login and does not install software.
 - Connection rows show the connected official account/provider slot, current
   request source, whether an official session is preserved, credential-renewal
   owner as user-facing copy, pending restart and closed available actions.
@@ -155,8 +160,10 @@ cache, and terminal-delivery rules are owned by
   does not accept an arbitrary return URL, secret or path.
 - The selected source's native `writeTargets` are frozen with the preview and
   displayed before applying. A generated model catalog is a separate disclosed
-  file. Account selection does not rewrite this config, and source selection
-  does not replace the official account's auth file.
+  file. Official account connect/switch comments only the top-level
+  `model_provider` selector; unofficial source selection uncomments that
+  same line or patches source-owned fields. Source selection does not
+  replace the official account's auth file.
 
 Required regressions: `tests/renderer/pages/auth/CodexRequestSource.test.tsx` covers
 one apply, both readbacks, failure/retry without rewriting, unknown admission,
@@ -274,7 +281,10 @@ listed in
   focus after the backing exits. Do not abruptly `return null` from an
   unprotected login wrapper or add another focus
   owner. Pass the actual action's origin ref before asynchronous work; see
-  [Dialog Lifecycle](./dialog-lifecycle.md).
+  [Dialog Lifecycle](./dialog-lifecycle.md). Connection-action confirmations stay
+  mounted with `open={connection !== null && action !== null}`; the page must
+  not wrap them in `{action && <ConnectionActionDialog>}`. Pending footer copy
+  uses isolated nowrap buttons; see [Motion](./motion-system.md).
 - Copy says what is complete, pending or unknown and gives one safe next step.
   It must not claim login, connection or request routing beyond backend
   readback evidence.
@@ -357,9 +367,15 @@ Required assertions include:
   `pending_restart`, reject every other completed/non-null reason, and keep
   pending restart distinct from generic retry;
 - account detail lists matching unlinked slots and exposes connect/switch from
-  that page; purpose-mismatch Codex slots start `connect_consumer` login with
-  no `accountId`;
+  that page, including a saved-only Codex card that already names this
+  account (“用此账号连接”); purpose-mismatch Codex slots start
+  `connect_consumer` login with no `accountId`;
 - a connection `targetId` of `null` does not render “未检测到可管理的安装实例”;
+- ConnectionActionDialog stays mounted with `open={connection && action}`;
+  the auth page does not wrap it in `{connectionAction && …}`; pending footer
+  copy does not overlap 「取消」;
+- a disconnected Codex slot that advertises `disconnect` is labeled
+  「恢复第三方模型来源」;
 - managed Agent cards navigate to the central page while Claude and desktop
   handoff retain their existing owner;
 - current renderer code has no retired Provider OAuth or Settings account

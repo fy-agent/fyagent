@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -22,7 +22,11 @@ import {
 } from "../../shared/features/types";
 import { BrandIconFrame } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/Button";
+import { Dialog } from "../../shared/ui/Dialog";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import { useDialogState } from "../../shared/ui/useDialogState";
 import { InlineNotice } from "../../shared/ui/primitives";
+import { LifecycleTargetPicker } from "../../shared/ui/LifecycleTargetPicker";
 
 import {
   AgentLifecycleActionSlot,
@@ -200,6 +204,16 @@ function DirectoryActionFeedback({
   );
 }
 
+function preferredInstallTarget(
+  targets: readonly AgentInstallationTarget[],
+): AgentInstallationTarget | null {
+  return (
+    targets.find((target) => target.label.startsWith("/Applications")) ??
+    targets[0] ??
+    null
+  );
+}
+
 function GenericDirectoryCard({
   entry,
   observation,
@@ -213,6 +227,10 @@ function GenericDirectoryCard({
 }) {
   const { ports } = useFeatures();
   const queryClient = useQueryClient();
+  const pickerOriginRef = useRef<HTMLElement | null>(null);
+  const [pickingTarget, setPickingTarget] = useDialogState<true>(null);
+  const [selectedTarget, setSelectedTarget] =
+    useState<AgentInstallationTarget | null>(null);
   const primaryAction = deriveAgentLifecyclePrimaryAction(
     entry.id,
     observation.readiness ?? null,
@@ -253,31 +271,93 @@ function GenericDirectoryCard({
           : eligibleTargets.length === 1
             ? "single"
             : "selection_required";
+  const openTargetPicker = () => {
+    const preferred = preferredInstallTarget(eligibleTargets);
+    setSelectedTarget(preferred);
+    setPickingTarget(true);
+  };
   return (
-    <DirectoryCardShell
-      entry={entry}
-      observation={observation}
-      lifecycleBusy={lifecycle.busy}
-      error={lifecycle.error}
-      success={lifecycle.success}
-      authSlot={
-        <AgentAuthStatusPanel
-          agentId={entry.id}
-          mode="compact"
-          enabled={observation.configurable}
-        />
-      }
-      onConfigure={onConfigure}
-      lifecycleSlot={
-        <GenericLifecycleSlot
-          observation={observation}
-          scanningCopy={scanningCopy}
-          lifecycle={lifecycle}
-          targetStatus={targetStatus}
-          onConfigure={() => onConfigure(entry.id)}
-        />
-      }
-    />
+    <>
+      <DirectoryCardShell
+        entry={entry}
+        observation={observation}
+        lifecycleBusy={lifecycle.busy}
+        error={lifecycle.error}
+        success={lifecycle.success}
+        authSlot={
+          <AgentAuthStatusPanel
+            agentId={entry.id}
+            mode="compact"
+            enabled={observation.configurable}
+          />
+        }
+        onConfigure={onConfigure}
+        lifecycleSlot={
+          <GenericLifecycleSlot
+            observation={observation}
+            scanningCopy={scanningCopy}
+            lifecycle={lifecycle}
+            targetStatus={targetStatus}
+            originRef={pickerOriginRef}
+            onConfigure={openTargetPicker}
+          />
+        }
+      />
+      <Dialog
+        open={pickingTarget !== null}
+        size="comfortable"
+        originRef={pickerOriginRef}
+        title={`选择 ${entry.displayName} 的安装位置`}
+        description="选择要安装到的目录。根目录 Applications 是推荐位置。"
+        onOpenChange={(open) => {
+          if (!open) setPickingTarget(null);
+        }}
+        actions={
+          pickingTarget ? (
+            <>
+              <Button onClick={() => setPickingTarget(null)}>取消</Button>
+              <Button
+                className="fy-control-button-primary"
+                disabled={
+                  selectedTarget === null ||
+                  !lifecycle.primaryAction ||
+                  !selectedTarget.eligibleActions.includes(
+                    lifecycle.primaryAction,
+                  )
+                }
+                onClick={() => {
+                  if (!lifecycle.primaryAction || !selectedTarget) return;
+                  setPickingTarget(null);
+                  void lifecycle.run(lifecycle.primaryAction, selectedTarget);
+                }}
+              >
+                {lifecycle.primaryAction === "update"
+                  ? "确认更新"
+                  : "确认安装"}
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
+        {pickingTarget ? (
+          <LifecycleTargetPicker
+            id={`agent-directory-target-${entry.id}`}
+            action={lifecycle.primaryAction ?? "install"}
+            targets={eligibleTargets}
+            value={selectedTarget?.targetId ?? null}
+            onChange={setSelectedTarget}
+            loading={inventory.isPending}
+            error={
+              inventory.isError
+                ? "暂时无法读取安装位置。请刷新后重试。"
+                : null
+            }
+            disabled={lifecycle.busy}
+            onRefresh={() => void inventory.refetch()}
+          />
+        ) : null}
+      </Dialog>
+    </>
   );
 }
 
@@ -291,6 +371,7 @@ function genericLifecycleSlotView(
     | "unavailable"
     | "single"
     | "selection_required",
+  originRef: DialogOriginRef,
   onConfigure: () => void,
 ): AgentLifecycleActionSlotView {
   if (lifecycle.busy) {
@@ -304,7 +385,7 @@ function genericLifecycleSlotView(
       return { kind: "status", label: "正在读取安装目标" };
     }
     if (targetStatus !== "single") {
-      return { kind: "select_target", onClick: onConfigure };
+      return { kind: "select_target", onClick: onConfigure, originRef };
     }
     return {
       kind: "primary",
@@ -329,6 +410,7 @@ function GenericLifecycleSlot({
   scanningCopy,
   lifecycle,
   targetStatus,
+  originRef,
   onConfigure,
 }: {
   observation: AgentDirectoryRowObservation;
@@ -340,6 +422,7 @@ function GenericLifecycleSlot({
     | "unavailable"
     | "single"
     | "selection_required";
+  originRef: DialogOriginRef;
   onConfigure: () => void;
 }) {
   return (
@@ -349,6 +432,7 @@ function GenericLifecycleSlot({
         scanningCopy,
         lifecycle,
         targetStatus,
+        originRef,
         onConfigure,
       )}
     />

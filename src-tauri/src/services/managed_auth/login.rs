@@ -9,7 +9,8 @@ use chrono::{SecondsFormat, Utc};
 use zeroize::Zeroizing;
 
 use super::consumers::codex::{
-    file_projection_enabled, project_codex_official_account, CodexChatGptAuthDocument,
+    file_projection_enabled, project_codex_official_account, restore_unofficial_codex_selector,
+    CodexChatGptAuthDocument,
 };
 use super::core::{stable_connection_id, stable_revision, ConnectionRecord, ConnectionStatus};
 use super::login_sessions::{map_openai_reason, LoginSessionHandle};
@@ -200,23 +201,38 @@ where
                 Ok(self.mutation_result(ManagedAuthMutationOutcome::Completed, None))
             }
             super::ManagedAuthConnectionAction::Disconnect => {
-                if let Some(connection) = self
+                let rows = self
                     .repository
                     .list_connections()
-                    .map_err(ManagedAuthErrorDto::from_core)?
+                    .map_err(ManagedAuthErrorDto::from_core)?;
+                let is_codex = rows.iter().any(|row| {
+                    row.connection_id == request.connection_id
+                        && row.consumer == ManagedAuthConsumer::Codex
+                }) || request.connection_id
+                    == stable_connection_id(ManagedAuthConsumer::Codex, "", "openai");
+                let restored = if is_codex {
+                    restore_unofficial_codex_selector(&self.codex_home())
+                        .map_err(ManagedAuthErrorDto::from_reason)?
+                } else {
+                    false
+                };
+                if let Some(connection) = rows
                     .into_iter()
                     .find(|row| row.connection_id == request.connection_id)
                 {
                     let mut cleared = connection;
                     cleared.credential_id = None;
                     cleared.status = ConnectionStatus::Disconnected;
-                    cleared.pending_restart = false;
+                    cleared.pending_restart = restored;
                     cleared.updated_at = chrono::Utc::now().timestamp();
                     self.repository
                         .upsert_connection(&cleared)
                         .map_err(ManagedAuthErrorDto::from_core)?;
                 }
-                Ok(self.mutation_result(ManagedAuthMutationOutcome::Completed, None))
+                Ok(self.mutation_result(
+                    ManagedAuthMutationOutcome::Completed,
+                    restored.then_some(ManagedAuthReasonCode::PendingRestart),
+                ))
             }
             super::ManagedAuthConnectionAction::ConnectAccount
             | super::ManagedAuthConnectionAction::SwitchAccount => {
