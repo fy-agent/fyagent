@@ -620,3 +620,39 @@ PR181首轮CI因既有双父merge提交的自定义标题失败；复用现有�
 ### Next Steps
 
 - Record the completed performance repetition in PR 181, verify exact-head hosted CI, then use the normal merge queue and read back main.
+
+
+## Session 82: Keep the scrollbar repair at the original overflow boundary
+<!-- trellis-session: v=2 fp=320a16de27269b61 -->
+
+**Date**: 2026-09-07
+**Task**: Keep the scrollbar repair at the original overflow boundary
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+将布局修复收窄为仅删除Panel重复预留的稳定滚动条槽，保留原有overflow:auto及overscroll行为。15项跨浏览器几何回归通过，1x实时时钟性能连续两次通过原33.4ms门槛。
+
+### Main Changes
+
+- Preserve existing wrapper overflow behavior and reserve the stable gutter only on normal content; update the style guard and owning SPEC together.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f8ee21fb33650f9692b7f46786ff385ee749e944` | fix(ui): preserve pane overflow when removing duplicate gutters |
+
+### Testing
+
+- [OK] All 15 pointer/keyboard/reset rail regressions passed across four Chromium viewports and WebKit, including explicitly allocated 15px scrollbars.
+- [OK] The unchanged production resize benchmark passed twice: frame p95 33.4ms in both runs, 460 and 471 warm frame samples. The threshold and real-clock harness were not changed.
+- [OK] Earlier broader-wrapper iterations reported 33.5ms and 50ms failures; retain them as review evidence rather than claiming every sampling run passed.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Complete final whole-project checks and hosted exact-head PR plus merge-group CI before enabling normal auto-merge.
