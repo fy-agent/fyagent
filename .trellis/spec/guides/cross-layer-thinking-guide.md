@@ -64,9 +64,8 @@ semantics. Do not put those details into this guide.
 - Verify failed/partial writes do not leave optimistic renderer state.
 - Verify event listeners, queries, probes, jobs, and secrets have bounded
   lifecycle cleanup.
-- For shell appearance, persist the closed preference through the existing
-  `set_window_theme` owner; do not add a second settings file or treat WebView
-  `localStorage` as the restart authority. See
+- For shell appearance, distinguish the renderer cache, durable preference and
+  native chrome result, including failure/relaunch evidence; see
   [Blue Appearance](../frontend/appearance.md).
 - Verify browser fixtures remain non-authoritative and native evidence is not
   inferred from portable tests.
@@ -79,19 +78,17 @@ semantics. Do not put those details into this guide.
   [External Agent Catalog and Runtime](../backend/external-agent-catalog-runtime.md).
 - Verify version/path/history facts come from their owning configuration,
   provenance ledger, or Git history rather than a parallel guide matrix.
-- For Agent install/update/launch: consult the lifecycle policy owner rather
-  than a page-local product list; job snapshots are contract v4 with optional
-  `transfer`; do not invent percent in the page. System `/Applications`
-  writes stay `authorization_required` while
-  `macos_system_commit::production_enabled()` is false. Helper code may exist
-  without claiming a delivered system one-click.
-- When changing Agent legal surfaces or `sourceKind`, update
-  `lifecycle_policy.rs` and renderer `surfacesForAgent` /
-  `parseAgentInstallReadiness` together. Claude Code is CLI/`cli_tooling`
-  like Grok Build; a kind mismatch fails the directory scan as 「读取失败」
-  instead of `not_installed`. See
+- For Agent install/update/launch, check native capability, progress and
+  authorization evidence rather than deriving them in the page; see
+  [External Agent Lifecycle](../backend/external-agent-lifecycle.md).
+- When changing legal surfaces or source kinds, verify the native policy and
+  strict renderer parser admit the same payloads; see
   [Agent Directory](../frontend/agent-directory.md) and
   [Claude Code CLI](../backend/claude-code-cli.md).
+- For account or request-source switching, separate credential changes,
+  configuration changes and live-process pickup; see
+  [Codex Request-Source Selection](../backend/codex-source-selection.md) and
+  [Managed Auth Consumers](../backend/managed-auth-consumers.md).
 - Before claiming a Windows desktop product is installed or missing: freeze
   the installed current-user relative and Uninstall DisplayName matching, not
   only the downloaded installer stub. KnownPath Missing is dropped. See

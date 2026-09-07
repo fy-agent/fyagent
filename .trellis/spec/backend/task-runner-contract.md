@@ -345,6 +345,11 @@ Adding, removing, renaming, moving, changing, or changing the mode of a
 candidate fails until the source diff is reviewed and the identity inventory
 is deliberately updated. A digest-only update is not evidence that a platform
 dispatch remains safe.
+Review the final source bytes before updating individual digests, including
+changes that do not add a new platform branch. Recompute after formatting and
+rerun `supported-platform:check`; a previously green manifest does not cover
+later source edits. Do not bulk-refresh unreviewed entries or disable the seal
+to unblock the always-running CI Changes job.
 
 The checker and both inventories must remain runnable from a clean checkout
 using only Node built-ins. The always-running CI Changes job invokes this path

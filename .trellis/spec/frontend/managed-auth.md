@@ -161,9 +161,10 @@ cache, and terminal-delivery rules are owned by
 - The selected source's native `writeTargets` are frozen with the preview and
   displayed before applying. A generated model catalog is a separate disclosed
   file. Official account connect/switch comments only the top-level
-  `model_provider` selector; unofficial source selection uncomments that
-  same line or patches source-owned fields. Source selection does not
-  replace the official account's auth file.
+  `model_provider` selector in config, independently of its auth-file delta.
+  Saved source selection can also patch source-owned model/provider fields,
+  but never replaces the official account's auth file. The exact ownership
+  split is in [Codex Request-Source Selection](../backend/codex-source-selection.md).
 
 Required regressions: `tests/renderer/pages/auth/CodexRequestSource.test.tsx` covers
 one apply, both readbacks, failure/retry without rewriting, unknown admission,
@@ -310,6 +311,7 @@ listed in
 | Completed login/mutation has another non-null reason                                                                  | Reject the response as invalid managed-auth data.                                                                                                       |
 | Account removal preview fails                                                                                         | Do not expose the destructive confirmation.                                                                                                             |
 | Connection needs restart                                                                                              | Show saved/pending-restart separately; do not say the consumer is already using it.                                                                     |
+| Codex mutation completes with no pending restart                                                                      | Render the returned binding state; no Restart action does not itself mean connected, especially after disconnect.                                      |
 | Managed Agent summary is clicked                                                                                      | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session.                                                                      |
 | Access/refresh token, OAuth authorization code, PKCE verifier, raw state/command or unapproved path escapes its owner | Security regression; allowlisted device `userCode`/verification URI and parsed file-impact display metadata are intentional, not credentials to replay. |
 
@@ -372,6 +374,10 @@ Required assertions include:
   `connect_consumer` login with no `accountId`;
 - a connection `targetId` of `null` does not render “未检测到可管理的安装实例”;
 - ConnectionActionDialog stays mounted with `open={connection && action}`;
+  its account selection resets only when connection/action/preferred-account
+  scope changes, without a state-setting layout effect or remounting Dialog.
+  `MutationDialogs.test.tsx` covers reopen selection, same-tick double confirm,
+  consumed-preview rejection across reopen and a fresh-preview retry;
   the auth page does not wrap it in `{connectionAction && …}`; pending footer
   copy does not overlap 「取消」;
 - a disconnected Codex slot that advertises `disconnect` is labeled

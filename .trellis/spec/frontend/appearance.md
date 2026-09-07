@@ -21,10 +21,10 @@ synchronizeWindowTheme(theme: ThemePreference): Promise<void>;
 ```rust
 // settings.json field appearanceTheme: "light" | "dark" | "system"
 parse_appearance_theme(value: &str) -> Option<&'static str>
-persist_appearance_theme(theme: &str)
+persist_appearance_theme(theme: &str) -> ()
 appearance_theme_preference() -> Option<String>
 appearance_bootstrap_script() -> Option<String>
-set_window_theme({ theme: String }) // existing command; persists then applies chrome
+async set_window_theme(window: tauri::Window, theme: String) -> Result<(), String>
 ```
 
 `shared/design-system/appearance.ts` validates and applies the preference;
@@ -38,6 +38,9 @@ Device restart authority is `~/.fyagent/settings.json` `appearanceTheme`, writte
 only by `persist_appearance_theme`. Renderer `localStorage["fyagent-theme"]` is a
 synchronous cache. `save_settings` snapshots must keep the existing appearance
 field; they are not an appearance writer.
+The native owners are `src-tauri/src/settings.rs`,
+`src-tauri/src/commands/{settings,system}.rs` and the startup wiring in
+`src-tauri/src/lib.rs`.
 
 ## 3. Contracts
 
@@ -48,6 +51,14 @@ field; they are not an appearance writer.
 - On toggle the visible commit writes the renderer cache; native persist and
   chrome IPC stay outside the View Transition snapshot, through the existing
   coalesced `set_window_theme` path. Invalid values are not persisted.
+- Native normalization trims whitespace but accepts only lowercase
+  `light`/`dark`/`system`. Persistence is best-effort: the helper logs a write
+  failure and returns `()`, then the command still attempts window chrome.
+  Command success therefore proves the chrome call, not durable persistence;
+  a failed disk write does not guarantee the new preference survives relaunch.
+  Invalid command input is not saved, but currently selects native system
+  chrome (`None`) rather than returning a validation error. Renderer callers
+  must continue to send only the closed preference set.
 - Process restart restores native window chrome in `prepare_main_webview` from
   the device field, then seeds the renderer cache/`data-theme` on main
   `PageLoadEvent::Started` from the live field. `initializeAppearance` and the
@@ -96,8 +107,10 @@ field; they are not an appearance writer.
 | Arbitrary stored value or denied store                    | Light fallback; controls stay usable.                           |
 | Existing system preference changes                        | Update effective theme, preserve system preference.             |
 | Explicit theme selected                                   | Store the closed choice; stop following system changes.         |
-| Software relaunch after an explicit choice                | Restore that closed preference; do not fall back to light.      |
+| Software relaunch after a successfully persisted choice   | Restore that closed preference; do not replace it with the default. |
 | `save_settings` payload includes a different theme        | Keep the device appearance field; do not clobber it.            |
+| Native input is padded lowercase / unknown or uppercase  | Normalize the valid choice; invalid values leave persistence unchanged and use system chrome. |
+| Disk persistence fails but native chrome succeeds        | UI stays usable; IPC may resolve successfully; durable restart preference is not proven. |
 | Capture throws/rejects or pseudo animation is unavailable | Commit latest choice; release handles/markers.                  |
 | Rapid opposite clicks                                     | Latest intent wins, no queued full-screen transitions.          |
 | Resize/background/live reduced motion                     | Settle; no stuck clip or hit-test lock.                         |
@@ -124,7 +137,9 @@ clip origins and the shared reveal easing. `motionDuration.test.ts` keeps
 cache. `useAppearance.test.tsx` covers system/storage, mount restore and
 subscriptions. Platform tests retain exact IPC and coalescing; the ACL gate
 scans every literal native command. Native tests cover the closed preference
-parser, bootstrap script and `save_settings` merge preservation.
+parser, bootstrap script and `save_settings` merge preservation. These tests
+do not perform a packaged-app relaunch or inject a settings-file write failure;
+do not cite them as evidence of durable persistence under failed I/O.
 
 `blue-themes.spec.ts` covers real pointer/keyboard, drafts, persistence,
 interruption and dark composite text on all seven pages. Existing material tests
