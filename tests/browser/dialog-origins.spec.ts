@@ -78,8 +78,21 @@ test("transient Skill menu dialogs return to the explicitly owned persistent tri
     await expect(dialog).toHaveAttribute("data-motion-origin", "trigger");
     await expect(dialog).toHaveAttribute("data-motion-settled", "true");
     await expect(source).toHaveCount(0);
+    // Record the short-lived exit in-page: a remote assertion may arrive
+    // after the real 360ms exit has already removed the dialog.
+    const exitEvidence = await dialog.evaluateHandle((root) => {
+      const origins: Array<string | null> = [];
+      const observer = new MutationObserver(() => {
+        if (root.getAttribute("data-motion-phase") === "exit")
+          origins.push(root.getAttribute("data-motion-origin"));
+      });
+      observer.observe(root, {
+        attributes: true,
+        attributeFilter: ["data-motion-phase", "data-motion-origin"],
+      });
+      return { origins, observer };
+    });
     await page.keyboard.press("Escape");
-    await expect(dialog).toHaveAttribute("data-motion-origin", "trigger");
     await expect(dialog)
       .toHaveCount(0)
       .catch(async (error) => {
@@ -104,6 +117,13 @@ test("transient Skill menu dialogs return to the explicitly owned persistent tri
         });
         throw error;
       });
+    const exitOrigins = await exitEvidence.evaluate(({ origins, observer }) => {
+      observer.disconnect();
+      return origins;
+    });
+    await exitEvidence.dispose();
+    expect(exitOrigins.length).toBeGreaterThan(0);
+    expect(new Set(exitOrigins)).toEqual(new Set(["trigger"]));
     await expect(trigger).toBeFocused();
   }
   await expectHealthyPage(page, health);

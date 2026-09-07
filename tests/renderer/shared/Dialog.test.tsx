@@ -16,6 +16,55 @@ import { TabsPrimitive } from "@/shared/ui/vendor";
 import { AnimatePresence } from "@/shared/ui/motion";
 
 describe("shared desktop dialog", () => {
+  it.each(["visible", "hidden", "removed"] as const)(
+    "resolves a %s explicit return target before a no-animation exit",
+    async (targetState) => {
+      const source = document.createElement("button");
+      const anchor = document.createElement("button");
+      document.body.append(source, anchor);
+      vi.spyOn(
+        HTMLElement.prototype,
+        "getBoundingClientRect",
+      ).mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute("role") === "dialog"
+          ? new DOMRect(200, 160, 480, 320)
+          : new DOMRect(600, 60, 100, 40);
+      });
+      const originRef = { current: source, returnTarget: anchor };
+      const view = (open: boolean) => (
+        <Dialog
+          open={open}
+          originRef={originRef}
+          title="菜单操作"
+          onOpenChange={() => undefined}
+        />
+      );
+      const result = render(view(true));
+      const dialog = screen.getByRole("dialog");
+      await waitFor(() =>
+        expect(dialog).toHaveAttribute("data-motion-settled", "true"),
+      );
+      source.remove();
+      if (targetState === "hidden") anchor.hidden = true;
+      if (targetState === "removed") anchor.remove();
+      const exitOrigins: Array<string | undefined> = [];
+      const observer = new MutationObserver(() => {
+        if (dialog.dataset.motionPhase === "exit")
+          exitOrigins.push(dialog.dataset.motionOrigin);
+      });
+      observer.observe(dialog, { attributes: true });
+      result.rerender(view(false));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      observer.disconnect();
+      anchor.remove();
+      expect(exitOrigins.length).toBeGreaterThan(0);
+      expect(new Set(exitOrigins)).toEqual(
+        new Set([targetState === "visible" ? "trigger" : "neutral"]),
+      );
+      expect(document.body.style.pointerEvents).not.toBe("none");
+    },
+  );
+
   it("does not let a never-opened sibling retain an exiting modal owner", async () => {
     const user = userEvent.setup();
     function Pane({ close }: { close: () => void }) {
