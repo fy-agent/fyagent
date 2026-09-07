@@ -701,3 +701,25 @@ Continued PR 182 after reading back actual repository state. Reproduced the deta
 ### Status
 
 [OK] **Completed**
+
+
+## Session 85: Verify final contracts and clarify Windows batch evidence
+<!-- trellis-session: v=2 fp=7ec193484419cea7 -->
+
+**Date**: 2026-09-07
+**Task**: Verify final contracts and clarify Windows batch evidence
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Completed full local validation for PR 182: mise run check passed (1582 frontend units, 3511 Rust tests); production build/boot and all 526 browser regressions passed; six serial navigation/presentation profiling checks passed at 1x/4x CPU cost. Retained 4x long-task observations in the PR evidence. Official Rust documentation showed the batch-launch rationale was overstated, so clarified explicit cmd dispatch as project policy and raw_arg as non-escaping rather than claiming std::process::Command cannot start batch files. Runtime, tests and build inputs are unchanged from 79790c39; reran check:contracts successfully. No separate Trellis task.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6efaff0b4aab8659f52e570654fa5c1882657cbb` | docs(spec): clarify explicit Windows batch launch policy |
+
+### Status
+
+[OK] **Completed**
