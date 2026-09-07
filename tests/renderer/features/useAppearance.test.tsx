@@ -14,6 +14,14 @@ afterEach(() => {
 });
 
 describe("shell appearance lifetime", () => {
+  it("restores a stored explicit preference when the shell control mounts", () => {
+    localStorage.setItem(THEME_STORAGE_KEY, "dark");
+    const { result, unmount } = renderHook(useAppearance);
+    expect(result.current.theme).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    unmount();
+  });
+
   it("follows an existing system preference until the user makes an explicit choice", () => {
     let dark = false;
     const listeners = new Map<string, Set<() => void>>();

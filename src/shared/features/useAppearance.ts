@@ -40,7 +40,7 @@ export function useAppearance() {
     const visibility = () => {
       if (document.hidden) controller.settle();
     };
-    refresh(preference.current);
+    refresh(readThemePreference());
     window.addEventListener("resize", controller.settle);
     document.addEventListener("visibilitychange", visibility);
     window.addEventListener("storage", storageChange);

@@ -64,6 +64,10 @@ semantics. Do not put those details into this guide.
 - Verify failed/partial writes do not leave optimistic renderer state.
 - Verify event listeners, queries, probes, jobs, and secrets have bounded
   lifecycle cleanup.
+- For shell appearance, persist the closed preference through the existing
+  `set_window_theme` owner; do not add a second settings file or treat WebView
+  `localStorage` as the restart authority. See
+  [Blue Appearance](../frontend/appearance.md).
 - Verify browser fixtures remain non-authoritative and native evidence is not
   inferred from portable tests.
 - If a renderer query gates native window reveal, confirm it can settle while

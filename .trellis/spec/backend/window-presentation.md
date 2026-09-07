@@ -31,7 +31,10 @@ The configured main WebView starts hidden. Native layout restore/clamp/listener
 installation finishes before `mark_window_prepared`. Ordinary Focus and parsed
 deep-link effects drain only after both preparation and renderer readiness, in
 either arrival order. Existing capacity, focus coalescing and non-waking
-rejection semantics remain unchanged.
+rejection semantics remain unchanged. Shell appearance restore is not a reveal
+gate: `prepare_main_webview` applies the persisted window theme and the main
+page-load start seeds the renderer cache. See
+[Blue Appearance](../frontend/appearance.md).
 
 Normal startup, tray open, Dock reopen and lightweight-mode exit use the same
 `request_main_window_focus` boundary. Only the effect owner shows/unminimizes/

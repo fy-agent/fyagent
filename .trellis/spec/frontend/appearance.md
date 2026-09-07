@@ -18,6 +18,15 @@ useAppearance(): { theme: Theme; toggle(source: HTMLElement, origin?: {x: number
 synchronizeWindowTheme(theme: ThemePreference): Promise<void>;
 ```
 
+```rust
+// settings.json field appearanceTheme: "light" | "dark" | "system"
+parse_appearance_theme(value: &str) -> Option<&'static str>
+persist_appearance_theme(theme: &str)
+appearance_theme_preference() -> Option<String>
+appearance_bootstrap_script() -> Option<String>
+set_window_theme({ theme: String }) // existing command; persists then applies chrome
+```
+
 `shared/design-system/appearance.ts` validates and applies the preference;
 `shared/features/useAppearance.ts` is its single mounted shell owner.
 `widgets/app-shell/ThemeToggle.tsx` composes Button and existing icons outside
@@ -25,14 +34,27 @@ native drag regions. `shared/ui/ThemeReveal.ts` owns only the ephemeral browser
 transition. `shared/platform/tauri/theme.ts` invokes the existing native
 `set_window_theme` command with `{ theme }`; no new native API/permission is added.
 
+Device restart authority is `~/.fyagent/settings.json` `appearanceTheme`, written
+only by `persist_appearance_theme`. Renderer `localStorage["fyagent-theme"]` is a
+synchronous cache. `save_settings` snapshots must keep the existing appearance
+field; they are not an appearance writer.
+
 ## 3. Contracts
 
 - Existing `light`/`dark` are respected; `system` remains live system-following
   until explicit user selection. Missing/invalid/denied storage uses light.
   Preference failures never block startup or a visible switch. Do not add a
   second settings file or store resource/credential data in appearance state.
+- On toggle the visible commit writes the renderer cache; native persist and
+  chrome IPC stay outside the View Transition snapshot, through the existing
+  coalesced `set_window_theme` path. Invalid values are not persisted.
+- Process restart restores native window chrome in `prepare_main_webview` from
+  the device field, then seeds the renderer cache/`data-theme` on main
+  `PageLoadEvent::Started` from the live field. `initializeAppearance` and the
+  shell owner re-read the cache; they do not wait on theme IPC. Native window
+  reveal still belongs to content readiness.
 - Initial root `data-theme` is applied before route loading, including startup
-  errors. Native window reveal still belongs to content readiness, not theme IPC.
+  errors.
 - Both palettes are blue: clear light blue and medium-depth mist/steel blue,
   not black. Roles cover text, status, input, hover, focus, selected, material,
   rim and scrim. Primary button ink and filled background are paired.
@@ -64,25 +86,33 @@ transition. `shared/platform/tauri/theme.ts` invokes the existing native
 | Arbitrary stored value or denied store                    | Light fallback; controls stay usable.                           |
 | Existing system preference changes                        | Update effective theme, preserve system preference.             |
 | Explicit theme selected                                   | Store the closed choice; stop following system changes.         |
+| Software relaunch after an explicit choice                | Restore that closed preference; do not fall back to light.      |
+| `save_settings` payload includes a different theme        | Keep the device appearance field; do not clobber it.            |
 | Capture throws/rejects or pseudo animation is unavailable | Commit latest choice; release handles/markers.                  |
 | Rapid opposite clicks                                     | Latest intent wins, no queued full-screen transitions.          |
 | Resize/background/live reduced motion                     | Settle; no stuck clip or hit-test lock.                         |
 | External storage during capture                           | Cancel stale local commit without overwriting external storage. |
 | Modal exists                                              | No root reveal prolonging sensitive content presentation.       |
-| Native theme command fails                                | Keep CSS/UI usable; no query/startup failure.                   |
+| Native theme command or persist fails                     | Keep CSS/UI usable; no query/startup failure.                   |
 
 ## 5. Good / Base / Bad Cases
 
 Good: update semantic tokens and validate real selected/hovered composites in
-both engines. Base: a WebView lacks View Transitions; the same button switches
-directly. Bad: invert the application, copy account DOM to canvas, import another
-theme framework, or wait for IPC inside capture.
+both engines; relaunch restores the last closed preference from the device
+field. Base: a WebView lacks View Transitions; the same button switches
+directly; browser fixtures keep using the renderer cache. Bad: invert the
+application, copy account DOM to canvas, import another theme framework, wait
+for IPC inside capture, or treat WebView `localStorage` as the only restart
+authority.
 
 ## 6. Tests Required
 
 `ThemeReveal.test.ts` covers request identity, failures, timing and origins.
-`useAppearance.test.tsx` covers system/storage and subscriptions. Platform tests
-retain exact IPC and coalescing; the ACL gate scans every literal native command.
+`tests/renderer/app/appearance.test.ts` covers startup restore from the renderer
+cache. `useAppearance.test.tsx` covers system/storage, mount restore and
+subscriptions. Platform tests retain exact IPC and coalescing; the ACL gate
+scans every literal native command. Native tests cover the closed preference
+parser, bootstrap script and `save_settings` merge preservation.
 
 `blue-themes.spec.ts` covers real pointer/keyboard, drafts, persistence,
 interruption and dark composite text on all seven pages. Existing material tests
@@ -100,7 +130,9 @@ Report each run, middle-third measurements and native/GPU limitations.
 
 ## 7. Wrong vs Correct
 
-Wrong: commit theme context for every page, start competing color transitions
-and native queries, then check only the final theme. Correct: apply closed root
-tokens, keep the browser views stable, reject superseded callbacks and separately
-verify preparation, each reveal third and final cleanup.
+Wrong: keep the preference only in WebView `localStorage`, then treat a missing
+cache on relaunch as a new light default. Correct: persist the closed choice
+through the existing `set_window_theme` owner into `appearanceTheme`, restore
+chrome before reveal, seed the renderer cache from the live field, and apply
+closed root tokens without competing color transitions or theme IPC inside
+capture.

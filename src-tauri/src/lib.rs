@@ -449,7 +449,32 @@ fn install_main_window_layout_listener(window: &tauri::WebviewWindow) {
     });
 }
 
+fn apply_persisted_window_theme(window: &tauri::WebviewWindow) {
+    let preference = crate::settings::appearance_theme_preference();
+    if preference.is_none() {
+        return;
+    }
+    let theme = match preference.as_deref() {
+        Some("dark") => Some(tauri::Theme::Dark),
+        Some("light") => Some(tauri::Theme::Light),
+        _ => None,
+    };
+    if let Err(error) = window.set_theme(theme) {
+        log::debug!("Unable to restore window appearance: {error}");
+    }
+}
+
+fn seed_renderer_appearance<R: tauri::Runtime>(webview: &tauri::Webview<R>) {
+    let Some(script) = crate::settings::appearance_bootstrap_script() else {
+        return;
+    };
+    if let Err(error) = webview.eval(&script) {
+        log::debug!("Unable to restore renderer appearance: {error}");
+    }
+}
+
 pub(crate) fn prepare_main_webview(window: &tauri::WebviewWindow) {
+    apply_persisted_window_theme(window);
     if let Err(error) = restore_hidden_main_window_layout(window) {
         log::warn!("Unable to apply main-window layout policy: {error}");
     }
@@ -952,6 +977,7 @@ pub fn run() {
             if webview.label() == "main"
                 && matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
             {
+                seed_renderer_appearance(webview);
                 mark_activation_renderer_unready();
                 schedule_frontend_recovery(webview.app_handle());
             }
