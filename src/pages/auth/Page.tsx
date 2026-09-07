@@ -117,10 +117,10 @@ export function AuthPage() {
     [],
   );
   const [connectionAction, setConnectionAction] = useDialogState<{
-      connection: ManagedAuthConnectionSummary;
-      action: ManagedAuthConnectionAction;
-      preferredAccountId?: string | null;
-    }>(null);
+    connection: ManagedAuthConnectionSummary;
+    action: ManagedAuthConnectionAction;
+    preferredAccountId?: string | null;
+  }>(null);
 
   const refetchOverview = overviewQuery.refetch;
   const invalidateRequestSources = useCallback(() => {

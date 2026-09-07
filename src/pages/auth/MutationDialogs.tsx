@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import type {
   ManagedAuthAccountRemovalPreview,
@@ -133,7 +133,8 @@ function connectionActionCopy(
     case "switch_account":
       return {
         title: `切换 ${consumer} 账号`,
-        description: "只更换登录凭证，不修改模型来源。请先确认文件和备份位置。",
+        description:
+          "请选择账号，并确认本次认证文件、模型来源和备份位置的影响。",
       };
     case "disconnect":
       return {
@@ -194,9 +195,27 @@ function ConnectionActionDialogContent({
           account.health === "ready",
       )
     : overview.accounts.filter((account) => account.health === "ready");
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
-    null,
-  );
+  const initialAccountId = requiresAccount
+    ? (candidates.find((account) => account.accountId === preferredAccountId)
+        ?.accountId ??
+      candidates.find((account) => account.accountId !== connection?.accountId)
+        ?.accountId ??
+      candidates[0]?.accountId ??
+      null)
+    : null;
+  const selectionScope = JSON.stringify([
+    connection?.connectionId ?? null,
+    action,
+    preferredAccountId ?? null,
+  ]);
+  const [previousScope, setPreviousScope] = useState(selectionScope);
+  const [selectedAccountId, setSelectedAccountId] = useState(initialAccountId);
+  // Reset only the local selection, not the Dialog's presentation lifetime.
+  // The guarded render adjustment prevents committing a stale preview request.
+  if (previousScope !== selectionScope) {
+    setPreviousScope(selectionScope);
+    setSelectedAccountId(initialAccountId);
+  }
   const copy =
     connection && action
       ? connectionActionCopy(connection, action)
@@ -214,6 +233,8 @@ function ConnectionActionDialogContent({
     null,
   );
   const consumedPreviewRef = useRef<string | null>(null);
+  // A preview is single-use across close/reopen too. A fresh native preview,
+  // rather than clearing this guard, authorizes another confirmation.
   const canConfirm =
     open &&
     !pending &&
@@ -222,32 +243,15 @@ function ConnectionActionDialogContent({
     preview.data?.canApply === true &&
     preview.data.previewId !== consumedPreviewId &&
     (!requiresAccount || selectedAccountId !== null);
-  useLayoutEffect(() => {
-    if (!connection || !action) return;
-    consumedPreviewRef.current = null;
-    setConsumedPreviewId(null);
-    setSelectedAccountId(
-      requiresAccount
-        ? (candidates.find((account) => account.accountId === preferredAccountId)
-            ?.accountId ??
-            candidates.find(
-              (account) => account.accountId !== connection.accountId,
-            )?.accountId ??
-            candidates[0]?.accountId ??
-            null)
-        : null,
-    );
-  }, [connection?.connectionId, action, preferredAccountId]);
-  const confirmLabel =
-    pending
-      ? "正在处理…"
-      : action === "disconnect"
-        ? connection?.authStatus === "disconnected"
-          ? "恢复"
-          : "断开"
-        : action === "switch_to_official"
-          ? "切换"
-          : "确认";
+  const confirmLabel = pending
+    ? "正在处理…"
+    : action === "disconnect"
+      ? connection?.authStatus === "disconnected"
+        ? "恢复"
+        : "断开"
+      : action === "switch_to_official"
+        ? "切换"
+        : "确认";
   return (
     <Dialog
       originRef={originRef}
@@ -311,7 +315,9 @@ function ConnectionActionDialogContent({
                     <ProviderMark provider={account.provider} />
                     <span>
                       <strong>{account.login}</strong>
-                      <small>{managedAuthProviderLabel(account.provider)}</small>
+                      <small>
+                        {managedAuthProviderLabel(account.provider)}
+                      </small>
                     </span>
                   </label>
                 ))}
@@ -357,7 +363,8 @@ function ConnectionActionDialogContent({
                 ) : action === "connect_account" ||
                   action === "switch_account" ? (
                   <p>
-                    顶层 model_provider 已是注释状态，Codex 将走官方登录；提供商表和其它配置保持不变。
+                    顶层 model_provider 已是注释状态，Codex
+                    将走官方登录；提供商表和其它配置保持不变。
                   </p>
                 ) : null
               ) : null}

@@ -331,9 +331,7 @@ function GenericDirectoryCard({
                   void lifecycle.run(lifecycle.primaryAction, selectedTarget);
                 }}
               >
-                {lifecycle.primaryAction === "update"
-                  ? "确认更新"
-                  : "确认安装"}
+                {lifecycle.primaryAction === "update" ? "确认更新" : "确认安装"}
               </Button>
             </>
           ) : undefined
@@ -348,9 +346,7 @@ function GenericDirectoryCard({
             onChange={setSelectedTarget}
             loading={inventory.isPending}
             error={
-              inventory.isError
-                ? "暂时无法读取安装位置。请刷新后重试。"
-                : null
+              inventory.isError ? "暂时无法读取安装位置。请刷新后重试。" : null
             }
             disabled={lifecycle.busy}
             onRefresh={() => void inventory.refetch()}

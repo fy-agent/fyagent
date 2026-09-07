@@ -82,11 +82,13 @@ export function themeRevealClipPath(
 
 function revealClipAnimations(): Animation[] {
   if (typeof document.getAnimations !== "function") return [];
-  return document.getAnimations().filter(
-    (animation) =>
-      (animation.effect as KeyframeEffect | null)?.pseudoElement ===
-      "::view-transition-new(root)",
-  );
+  return document
+    .getAnimations()
+    .filter(
+      (animation) =>
+        (animation.effect as KeyframeEffect | null)?.pseudoElement ===
+        "::view-transition-new(root)",
+    );
 }
 
 function releaseRevealClips(): void {

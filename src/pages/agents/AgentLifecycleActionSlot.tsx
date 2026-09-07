@@ -23,7 +23,7 @@ function SelectTargetButton({
   onClick,
 }: {
   originRef?: DialogOriginRef;
-  returnRef: RefObject<HTMLElement | null>;
+  returnRef: RefObject<HTMLElement>;
   onClick: () => void;
 }) {
   return (
@@ -49,7 +49,7 @@ export function AgentLifecycleActionSlot({
 }: {
   view: AgentLifecycleActionSlotView;
 }): ReactNode {
-  const hostRef = useRef<HTMLElement | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
   if (view.kind === "empty") return null;
   return (
     <div ref={hostRef} className="fy-agent-directory-lifecycle-host">

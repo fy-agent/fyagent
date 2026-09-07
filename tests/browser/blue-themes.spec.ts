@@ -200,6 +200,8 @@ test("theme reveal has one real circular track and survives quick reversal and r
     );
     expect(String(frames.frames[0])).toMatch(/^circle\(0% at /);
     const pointer = await trigger.getAttribute("data-test-pointer");
+    if (pointer === null)
+      throw new Error("Theme trigger did not record a pointer");
     const expected = await page.evaluate((pointerText) => {
       const [x, y] = pointerText
         .split(" ")

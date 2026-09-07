@@ -755,7 +755,7 @@
   display: inline-flex;
   align-items: center;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--fy-radius-pill);
   color: var(--fy-accent-ink);
   font-size: 10px;
   font-weight: 650;
@@ -1104,7 +1104,9 @@
   }
 
   .fy-agent-directory-card-actions > .fy-control-button,
-  .fy-agent-directory-card-actions > .fy-agent-directory-lifecycle-host > .fy-control-button {
+  .fy-agent-directory-card-actions
+    > .fy-agent-directory-lifecycle-host
+    > .fy-control-button {
     width: 100%;
     justify-content: center;
   }

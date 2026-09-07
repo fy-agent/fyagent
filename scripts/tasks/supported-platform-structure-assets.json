@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "f28d2783233b27ecb1858db0db83e298fa8f2d580a86937eb5cfba6211370033"
+      "b916b40cdc5449461a25f9d018ac7dc6818f00bb9ad4017c944e3143511ce2a7"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
@@ -75,7 +75,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "02e7baad16d617ba26a80a450d76aca750a7e87fc0a2e5aef53b0b9fd534e065"
+      "6dd173d8bb7e91de223be4eb2c41b2e9616248fb2567ab52c7ab937cedf865fa"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -95,7 +95,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "d8e23a77d82431b65dc380e86a58b32fdd0a40245a4ce6abf4ea4db4a6313a11"
+      "8ddf64ebe7a24f85322e24408dd85532c031765ed87b0480527a42c441fe6df8"
     ],
     [
       "src-tauri/src/codex_config/catalog.rs",
@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "9693dc73fc821f407ceb60373f81ea7cd10ff8122b77d98a6ee844d22d1b02d9"
+      "113591d1e2496b0df2307662ad53870f6a810ff65a4554962512813712bce2a8"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -199,7 +199,7 @@
     ],
     [
       "src-tauri/src/platform/process_launch.rs",
-      "1ca580892134df4fdaf1dec6e06a67c4c319783361d1b75070f419ef677c7661"
+      "48328884f5a82adbb4d8a0d594f0357e722f44c2cf3ae0ec169b3ceddc5a27ff"
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
@@ -227,7 +227,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",
-      "8327871323df55e2ed6e4898473a8e46a1f6db2131e2cf146dc757edf045d7b6"
+      "541aefd34dbf8b9e4276d98607b5bc02c0be66006d5b821fa4c353d526406cb5"
     ],
     [
       "src-tauri/src/services/model_probe.rs",
@@ -315,7 +315,7 @@
     ],
     [
       "src-tauri/src/settings.rs",
-      "7512dc82f3807b0a05f103d9fc8d55f3cf6ad9bc3b53985ceb399a7267a467fe"
+      "5ee6e10af746639c69332cb0b4b9a47473e669e04b037d137742669777c765b8"
     ],
     [
       "src-tauri/src/tray.rs",
@@ -383,7 +383,7 @@
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "53db0643361efdff6c9ec1f60911c5d8a03b09dae4319b71cb95bd1faa7a5eee"
+      "966e056c6655918bb7909c98753ffa1433d0c63ec353711c3062bc94360f8130"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
