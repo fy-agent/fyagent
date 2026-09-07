@@ -144,6 +144,10 @@ for (const route of ["skills", "mcp"] as const) {
     const health = monitorPageHealth(page);
     await resize(page, 1564, 991);
     await openRendererPage(page, `/${route}`);
+    // Do not let macOS overlay scrollbars hide a duplicated gutter.
+    await page.addStyleTag({
+      content: "::-webkit-scrollbar { width: 15px; height: 15px; }",
+    });
     const detail = page.locator(".fy-feature-detail-scroll");
     const detailNode = await detail.elementHandle();
     const rail = page.locator(".fy-feature-assign-scroll");

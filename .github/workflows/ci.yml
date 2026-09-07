@@ -350,16 +350,11 @@ jobs:
       - name: Unit tests
         id: tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        # These five host-integration suites exercise the real local mise API.
-        # Their pure Node contracts still run above; the real mise boundary is
-        # owned by the canonical local check rather than GitHub Actions.
+        # The host-integration project exercises the real local mise API.
+        # The canonical local check still runs it. Select the CI environments
+        # explicitly: Vitest 3 does not forward CLI excludes to child projects.
         run: |
-          pnpm test:unit \
-            --exclude tests/developmentEnvironment.test.ts \
-            --exclude tests/miseTaskContract.test.ts \
-            --exclude tests/systemCheck.test.ts \
-            --exclude tests/taskDocs.test.ts \
-            --exclude tests/windowsMsvcCross.test.ts
+          pnpm test:unit --project contracts --project renderer
 
       - name: Renderer lint
         id: lint

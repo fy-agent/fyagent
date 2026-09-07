@@ -137,6 +137,10 @@ test("real separators clamp pointer and keyboard resizing, reset, and preserve t
   await promptsFixture(page, true);
   const health = monitorPageHealth(page);
   await openRendererPage(page, "/prompts");
+  // Exercise classic scrollbar allocation even on overlay-scrollbar hosts.
+  await page.addStyleTag({
+    content: "::-webkit-scrollbar { width: 15px; height: 15px; }",
+  });
   const rail = page.locator(".fy-prompts-app-rail");
   const handle = page.getByRole("separator", { name: "调整目录与详情的宽度" });
   await expect(handle).toBeVisible();

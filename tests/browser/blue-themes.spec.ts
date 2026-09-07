@@ -68,6 +68,11 @@ test("dark blue text and controls remain readable on actual composited page and 
     "memory",
   ]) {
     await openRendererPage(page, `/${route}`);
+    // Retain contrast coverage with allocated scrollbars, not only macOS's
+    // overlay-scrollbar presentation. The product must work with both.
+    await page.addStyleTag({
+      content: "::-webkit-scrollbar { width: 15px; height: 15px; }",
+    });
     const scope = `[data-testid="${route.split("?")[0]}-page"]`;
     await expect(page.locator(scope)).toBeVisible();
     const samples = await sampleTextContrast(page, scope);
@@ -99,7 +104,12 @@ test("dark blue text and controls remain readable on actual composited page and 
         contentType: "application/json",
       });
     }
-    expect.soft(samples.filter((sample) => sample.ratio < 4.5)).toEqual([]);
+    expect
+      .soft(
+        samples.filter((sample) => sample.ratio < 4.5),
+        route,
+      )
+      .toEqual([]);
     await expectNoHorizontalOverflow(page);
   }
   await openRendererPage(page, "/auth");

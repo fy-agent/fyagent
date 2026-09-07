@@ -56,8 +56,8 @@ facts; executable JSONL context references must point to the current contract.
 ## Verification and failure behavior
 
 Root `tsconfig.json` and `eslint.config.mjs`, plus `config/vitest.config.ts`, serve the current
-renderer. Vitest projects separate renderer versus contract environment setup,
-not product generations. Browser/performance configs are separate by purpose;
+renderer. Vitest projects separate renderer, portable contracts and local
+host-integration setup, not product generations. Browser/performance configs are separate by purpose;
 performance is serial and never concurrent with the full compile gate.
 
 Explicit build/test/graph/PostCSS configurations live in `config/`. Public

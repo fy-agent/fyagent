@@ -27,7 +27,8 @@ const pageCss = ["agents", "models"]
 
 function rule(css: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+  // Match the rule's selector, not the suffix of a more-specific descendant.
+  const match = css.match(new RegExp(`^${escaped}\\s*\\{([^}]*)\\}`, "m"));
   expect(match, `missing CSS rule for ${selector}`).not.toBeNull();
   return match?.[1] ?? "";
 }
@@ -76,7 +77,9 @@ describe("shared catalog presentation styles", () => {
     expect(catalogCss).toMatch(
       /\.fy-catalog-rail,\s*\.fy-catalog-pane\s*\{[^}]*overflow:\s*auto;/s,
     );
-    expect(splitCss).toMatch(/\.fy-split-pane\s*\{[^}]*overflow:\s*auto;/s);
+    const panelWrapper = rule(splitCss, ".fy-split-pane");
+    expect(panelWrapper).toMatch(/overflow:\s*hidden;/);
+    expect(panelWrapper).not.toMatch(/scrollbar-gutter:\s*stable;/);
     expect(splitCss).toMatch(
       /\.fy-split-pane\s*>\s*\*\s*\{[^}]*overflow:\s*auto;/s,
     );
@@ -94,6 +97,7 @@ describe("shared catalog presentation styles", () => {
   it("keeps split-pane children scrolling and assignment rows wrapping", () => {
     const child = rule(splitCss, ".fy-split-pane > *");
     expect(child).toMatch(/overflow:\s*auto;/);
+    expect(child).toMatch(/scrollbar-gutter:\s*stable;/);
     expect(child).toMatch(/min-height:\s*100%;/);
     expect(child).toMatch(/height:\s*100%;/);
     const assignment = rule(featuresCss, ".fy-feature-assignment");

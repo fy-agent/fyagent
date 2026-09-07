@@ -264,7 +264,11 @@ the actual business action.
   [Motion](./motion-system.md); do not duplicate gesture ownership here.
 - `state-motion.spec.ts` covers intermediate step frames, unchanged dialog
   identity/choice, reverse/close, missing observer, declarative disclosure and
-  lens revisit versus true tab travel. `state-performance.spec.ts` samples a
+  lens revisit versus true tab travel. Native resize tracks are captured at
+  creation and sampled at explicit times; JS-driven geometry uses the shared
+  controlled-clock testing policy in [Quality](./quality-guidelines.md).
+  Neither changes the production animation or proves real-time performance.
+  `state-performance.spec.ts` samples a
   cold and twenty warm next/back pairs at 1x/4x, separately from opening/closing;
   normal warm frame p95 remains 33.4ms, with layout costs reported explicitly.
 - `presentation-choreography.spec.ts` pauses real native tracks at source,

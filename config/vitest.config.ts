@@ -3,6 +3,18 @@ import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
+const hostIntegrationFiles = [
+  "tests/developmentEnvironment.test.ts",
+  "tests/miseTaskContract.test.ts",
+  "tests/systemCheck.test.ts",
+  "tests/taskDocs.test.ts",
+  "tests/windowsMsvcCross.test.ts",
+];
+const contractEnvironment = {
+  environment: "jsdom" as const,
+  setupFiles: ["./tests/setupGlobals.ts", "./tests/setupTests.ts"],
+  globals: true,
+};
 
 // One runner, split only by environment ownership. Product renderer tests are
 // part of the normal unit/check aggregate, not a parallel generation opt-in.
@@ -20,9 +32,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "contracts",
-          environment: "jsdom",
-          setupFiles: ["./tests/setupGlobals.ts", "./tests/setupTests.ts"],
-          globals: true,
+          ...contractEnvironment,
           include: [
             "tests/**/*.{test,spec}.{ts,tsx}",
             "src/domain/**/*.{test,spec}.{ts,tsx}",
@@ -33,7 +43,16 @@ export default defineConfig({
             "**/*.test.mjs",
             "tests/renderer/**",
             "tests/browser/**",
+            ...hostIntegrationFiles,
           ],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "host-integration",
+          ...contractEnvironment,
+          include: hostIntegrationFiles,
         },
       },
       {

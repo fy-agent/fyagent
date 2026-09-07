@@ -174,7 +174,7 @@ async function sampleContrast(
     );
   }
   return page.evaluate(
-    async ({ image, records }) => {
+    async ({ image, records, selector }) => {
       const bitmap = new Image();
       bitmap.src = `data:image/png;base64,${image}`;
       await bitmap.decode();
@@ -199,6 +199,16 @@ async function sampleContrast(
           );
       return records.map((record) => ({
         text: record.text,
+        scope: selector,
+        color: record.color,
+        opacity: record.opacity,
+        samples: record.points.map(([x, y]) => ({
+          x,
+          y,
+          background: Array.from(
+            context.getImageData(Math.floor(x), Math.floor(y), 1, 1).data,
+          ).slice(0, 3),
+        })),
         ratio: Math.min(
           ...record.points.map(([x, y]) => {
             const background = Array.from(
@@ -229,6 +239,6 @@ async function sampleContrast(
         ),
       }));
     },
-    { image, records },
+    { image, records, selector },
   );
 }

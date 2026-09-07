@@ -58,6 +58,13 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
   responsibility is product minimum/default sizes, semantic labels and the
   actual available container width. Do not add page-local drag handlers or
   override the library group's layout with Grid/Flex declarations.
+- The library Panel is a clipping/layout wrapper; its content owns native
+  scrolling and the stable scrollbar gutter. Do not reserve a second gutter
+  on `.fy-split-pane`: classic scrollbars would subtract their width from the
+  content even when the library correctly enforces the panel's pixel limits.
+  Pointer/keyboard/reset regressions allocate a 15px scrollbar explicitly so
+  overlay-scrollbar hosts cannot conceal this mismatch. Keep the same editor
+  nodes, role sizes and reachable content rather than lowering width assertions.
 - Insufficient width stacks the same Panel tree vertically with local scrolling;
   it does not remount editors or assume the viewport is as wide as a nested
   pane. Zero-size/hidden groups cannot admit resize gestures and retain their

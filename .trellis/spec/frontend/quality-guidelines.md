@@ -51,6 +51,14 @@ MSW/native-fetch fixtures retain their transport setup and cleanup. The renderer
 project loads `tests/renderer/app/setup.ts`, preserving its jsdom/native signal
 bridge and cleanup. Removed i18n setup must not reappear as a phantom dependency.
 
+The `host-integration` project isolates the five real-mise suites selected by
+`hostIntegrationFiles` in the same config. Ordinary `mise run test:unit` still
+collects all projects once. CI selects `contracts` and `renderer` explicitly;
+the locked Vitest 3 CLI does not propagate `--exclude` into inline projects.
+`tests/ciWorkflow.test.ts` executes real `vitest list --filesOnly` collection to
+prove the local/CI set difference and disjoint file ownership. Do not replace
+this evidence with a workflow substring assertion or disable host checks locally.
+
 Component tests use React Testing Library (`render`, `screen`, events, and
 role-based queries). Hook tests use `renderHook` and `act`. Tests that need
 TanStack Query create a client with retries disabled so failures are immediate.
@@ -66,6 +74,16 @@ Reusable motion/observer tests must also cover lifecycle isolation: dispose one
 control while another still updates, and re-register a selected host after its
 decorative overlay already exists. Passing initial-mount geometry alone does
 not prove independent cleanup or that an observer excludes its own output.
+
+Functional motion assertions must not assume a loaded hosted runner delivers
+enough real RAF callbacks during a short transition. `state-motion.spec.ts`
+captures actual native resize animations at creation, pauses/seeks their original
+keyframes, and checks the unchanged duration, intermediate geometry, unscaled
+text, footer bounds and reversal. JS-driven press/lens/disclosure tests install
+Playwright Clock before module initialization and use `runFor`, not `fastForward`,
+for deterministic frame delivery. Real pointer/keyboard actions and cleanup
+remain covered. Controlled-time results are not FPS or input-latency evidence:
+serial production performance tests keep real clocks and their existing budgets.
 
 ### Renderer Warning and Lifecycle Evidence
 

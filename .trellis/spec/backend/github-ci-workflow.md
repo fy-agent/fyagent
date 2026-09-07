@@ -354,11 +354,17 @@ Windows-native jobs may restore a lockfile-keyed `~/.cargo/registry` and
 `~/.cargo/git` cache; they never cache `src-tauri/target` and must not set
 `RUSTC_WRAPPER` or sccache in repository Cargo config. uv setup pins
 the resolved reviewed version and disables cache. pnpm installation uses the
-frozen lockfile. The frontend full unit suite excludes only the four
-host-mise integration suites (`developmentEnvironment`, `miseTaskContract`,
-`systemCheck`, and `taskDocs`); the contracts job owns their
-pure/static contracts, and the local canonical check owns the real mise
-boundary. Generated task documentation is verified by `task-docs.mjs check`
+frozen lockfile. The frontend unit command selects `--project contracts
+--project renderer` from the one Vitest configuration. The separate
+`host-integration` project owns the five real-mise suites
+(`developmentEnvironment`, `miseTaskContract`, `systemCheck`, `taskDocs`,
+`windowsMsvcCross`) and remains in the unfiltered local canonical check.
+The locked Vitest 3 root `--exclude` option does not reach inline projects;
+it cannot establish this CI boundary. `tests/ciWorkflow.test.ts` compares real
+local/CI file collection, proves positive renderer/contract coverage and rejects
+duplicate ownership or any larger exclusion. The contracts job retains the
+independent pure/static tooling checks without installing mise.
+Generated task documentation is verified by `task-docs.mjs check`
 inside `release-check.mjs --ci`. Maintained-document `mise run` membership
 and standalone setup belong to `docs-contract-check.mjs` on the local
 `tasks:validate` path. Neither CI job freezes protocol names or toolchain

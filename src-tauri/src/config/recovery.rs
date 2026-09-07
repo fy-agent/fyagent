@@ -4,7 +4,7 @@
 //! control data. Its hashes never cross IPC. A crash or external edit cannot
 //! turn a stale backup into permission to overwrite the current file.
 
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -163,7 +163,7 @@ fn replace(path: &Path, bytes: Option<&[u8]>, private: bool) -> Result<(), AppEr
             Ok(()) => {
                 #[cfg(target_os = "macos")]
                 if let Some(parent) = path.parent() {
-                    File::open(parent)
+                    fs::File::open(parent)
                         .and_then(|directory| directory.sync_all())
                         .map_err(|error| AppError::io(parent, error))?;
                 }
