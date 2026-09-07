@@ -205,6 +205,15 @@ describe("FeatureList", () => {
     );
     expect(definitionBlock).not.toMatch(/minmax\(90px/);
     expect(featuresCss).toMatch(
+      /\.fy-feature-definition\s+dt,\s*\.fy-feature-definition\s+dd\s*\{[^}]*border-bottom:\s*var\(--fy-radius-separator\)\s+solid\s+var\(--fy-divider\);/s,
+    );
+    expect(featuresCss).toMatch(
+      /\.fy-feature-definition\s+dt:has\(\+\s*dd\s+\.fy-feature-path\),\s*\.fy-feature-definition\s+dd:has\(\.fy-feature-path\)\s*\{[^}]*border-bottom:\s*none;/s,
+    );
+    expect(featuresCss).toMatch(
+      /\.fy-feature-path:not\(:has\(\.fy-feature-path-value\)\)|\.fy-feature-path\s*\{[^}]*justify-content:\s*flex-end;/s,
+    );
+    expect(featuresCss).not.toMatch(
       /\.fy-feature-definition\s+dd:has\(\s*>\s*\.fy-feature-path:not\(:has\(\.fy-feature-path-value\)\)\s*\)\s*\{[^}]*min-width:\s*min-content;/s,
     );
   });
