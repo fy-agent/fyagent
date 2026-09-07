@@ -723,3 +723,25 @@ Completed full local validation for PR 182: mise run check passed (1582 frontend
 ### Status
 
 [OK] **Completed**
+
+
+## Session 86: Prepare FyAgent 0.4.4 release
+<!-- trellis-session: v=2 fp=10d3a640ca76dbac -->
+
+**Date**: 2026-09-07
+**Task**: Prepare FyAgent 0.4.4 release
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Update canonical and helper package versions, preserve the client compatibility floor, add English/Chinese release notes and changelog. Reuse the canonical version command in the release regression instead of a frozen literal. Version utility 21 tests, check:contracts, typecheck and metadata checks passed; hosted merge and formal publication still require separate evidence.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9c058cee8ae8e29614be14fd3438662b3ff9a521` | chore(release): prepare FyAgent 0.4.4 |
+
+### Status
+
+[OK] **Completed**
