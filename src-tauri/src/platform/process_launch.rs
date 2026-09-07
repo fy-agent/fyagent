@@ -1158,9 +1158,26 @@ mod tests {
 
     #[test]
     fn macos_application_open_adapter_uses_nsworkspace_completion_not_the_open_tool() {
-        let source = include_str!("process_launch.rs");
-        assert!(source.contains("openApplicationAtURL_configuration_completionHandler"));
-        assert!(!source.contains("Command::new(\"open\")"));
+        let source = include_str!("process_launch.rs").replace("\r\n", "\n");
+        let production = source
+            .split_once("\n#[cfg(test)]\nmod tests {")
+            .expect("top-level test module boundary")
+            .0;
+        let (before_http, http_and_after) = production
+            .split_once("fn open_http_url_with_macos_open(")
+            .expect("HTTP-only browser launch helper");
+        let (http, after_http) = http_and_after
+            .split_once("#[cfg(target_os = \"macos\")]\nstruct TauriOpenerInteractiveUserLauncher")
+            .expect("browser helper ends before the platform adapter");
+        assert!(http.contains("Command::new(\"open\")"));
+        assert!(http.contains(".arg(url)"));
+        for other_source in [before_http, after_http] {
+            assert!(
+                !other_source.contains("Command::new(\"open\")"),
+                "only the HTTP browser helper may spawn open; application launch uses NSWorkspace"
+            );
+        }
+        assert!(after_http.contains("openApplicationAtURL_configuration_completionHandler"));
         assert!(
             !source.contains(&format!("{}{}", "request", "Authorization")),
             "application-open must not use privileged file-operations authorization"

@@ -419,6 +419,13 @@ not** call `platform.launch`. Explicit launch and restart remain on
 open uses NSWorkspace completion inside that owner, not `/usr/bin/open`.
 Managed-Agent desktop launch calls `launch_trusted_macos_application_as_user`
 with a backend-validated `.app` path.
+The source regression in `platform/process_launch.rs` distinguishes this
+application boundary from its HTTP-only browser helper: only
+`open_http_url_with_macos_open` may spawn `open` with a single validated URL
+argument. Keep the no-`open` assertion for the remaining production module and
+Codex bundle adapter; a module-wide ban would incorrectly reject the separate
+browser flow, while deleting the assertion would lose application-launch
+protection.
 
 ## 4. Validation & Error Matrix
 

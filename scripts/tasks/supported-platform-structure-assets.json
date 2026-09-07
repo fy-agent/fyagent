@@ -199,7 +199,7 @@
     ],
     [
       "src-tauri/src/platform/process_launch.rs",
-      "48328884f5a82adbb4d8a0d594f0357e722f44c2cf3ae0ec169b3ceddc5a27ff"
+      "b2caea203ee4eb1fcd73d69659d7f7aa9e0a3fd94a7cf145bc1ffd9a7c67a93a"
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
