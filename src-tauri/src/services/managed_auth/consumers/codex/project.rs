@@ -5,6 +5,7 @@ use std::path::Path;
 
 use crate::app_config::AppType;
 use crate::codex_config::{comment_top_level_model_provider, uncomment_top_level_model_provider};
+use crate::codex_desktop::types::CodexDesktopRuntimeStatus;
 use crate::services::managed_auth::{
     ManagedAuthMutationOutcome, ManagedAuthReasonCode, ManagedAuthSecretBundle,
 };
@@ -25,6 +26,24 @@ pub(crate) struct CodexProjectionOutcome {
     pub wrote_auth: bool,
 }
 
+/// A file write only needs `pending_restart` when a live Codex Desktop process
+/// might still be holding the previous credentials. Not installed / not
+/// running means the next launch reads the files we just wrote.
+pub(crate) fn live_codex_requires_restart_after_write(
+    status: Option<&CodexDesktopRuntimeStatus>,
+) -> bool {
+    !matches!(
+        status,
+        Some(CodexDesktopRuntimeStatus::NotRunning) | Some(CodexDesktopRuntimeStatus::NotInstalled)
+    )
+}
+
+pub(crate) fn live_codex_requires_restart_for_app(app_state: &AppState) -> bool {
+    let runtime =
+        tauri::async_runtime::block_on(app_state.codex_desktop_service.get_runtime_status());
+    live_codex_requires_restart_after_write(runtime.as_ref().ok())
+}
+
 /// Serialize with Provider writes, but never invoke a Provider writer from an
 /// account operation. The displayed revision covers both auth and the store/
 /// routing configuration used to decide whether file projection is supported.
@@ -35,17 +54,24 @@ pub(crate) fn project_codex_official_account(
     target_document: &CodexChatGptAuthDocument,
     expected_connection_revision: &str,
 ) -> Result<CodexProjectionOutcome, ManagedAuthReasonCode> {
-    let _guard = futures::executor::block_on(
-        app_state
-            .proxy_service
-            .lock_switch_for_app(AppType::Codex.as_str()),
-    );
-    project_under_guard(
-        codex_home,
-        target_provider_subject,
-        target_document,
-        expected_connection_revision,
-    )
+    let mut outcome = {
+        let _guard = futures::executor::block_on(
+            app_state
+                .proxy_service
+                .lock_switch_for_app(AppType::Codex.as_str()),
+        );
+        project_under_guard(
+            codex_home,
+            target_provider_subject,
+            target_document,
+            expected_connection_revision,
+        )?
+    };
+    if outcome.pending_restart && !live_codex_requires_restart_for_app(app_state) {
+        outcome.pending_restart = false;
+        outcome.reason = None;
+    }
+    Ok(outcome)
 }
 
 fn project_under_guard(
@@ -273,5 +299,22 @@ mod tests {
         assert!(after.starts_with("model_provider = \"OpenAI\"\n"));
         assert!(after.contains("[model_providers.OpenAI]"));
         assert!(!restore_unofficial_codex_selector(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn live_restart_is_only_required_when_desktop_may_be_running() {
+        assert!(!live_codex_requires_restart_after_write(Some(
+            &CodexDesktopRuntimeStatus::NotRunning
+        )));
+        assert!(!live_codex_requires_restart_after_write(Some(
+            &CodexDesktopRuntimeStatus::NotInstalled
+        )));
+        assert!(live_codex_requires_restart_after_write(Some(
+            &CodexDesktopRuntimeStatus::Running
+        )));
+        assert!(live_codex_requires_restart_after_write(Some(
+            &CodexDesktopRuntimeStatus::UntrustedTarget
+        )));
+        assert!(live_codex_requires_restart_after_write(None));
     }
 }

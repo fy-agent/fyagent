@@ -126,11 +126,17 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
   connection.
 - A successful file API call is not enough. Readback, owner transfer, external
   pickup evidence and recovery state jointly determine connection status and
-  mutation outcome. When file write/readback succeeds but live pickup is not
-  proven, the exact positive wire shape is `outcome=completed` with
-  `reasonCode=pending_restart`. The returned overview remains authoritative
-  about which connection is pending; a partial mutation is not a connected
-  state.
+  mutation outcome. When write/readback succeeds, `completed` +
+  `pending_restart` is only for a live consumer process that may still hold
+  previous credentials. Codex apply/disconnect inspect
+  `CodexDesktopRuntimeStatus` via `live_codex_requires_restart_for_app`:
+  `NotRunning` and `NotInstalled` clear the flag (overview is connected);
+  Running / Ambiguous / Unsupported / UntrustedTarget / inspect error keep
+  `pending_restart`. File-layer `project_under_guard` still marks the write
+  pending so tests without AppState stay fail-closed. OpenCode has no desktop
+  runtime inspect yet, so a successful write remains pending. The returned
+  overview is authoritative about which connection is pending; a partial
+  mutation is not a connected state.
 - Codex, Grok, and OpenCode summaries currently emit `target_id: None`. That is
   not lifecycle install discovery and is not evidence the software is missing.
   `requestMode` is observation of the consumer's current model source (for
@@ -171,15 +177,17 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
   bytes. Official source comments the existing selector; unofficial source
   uncomments that same line instead of inserting a duplicate. Replacing auth
   does not imply that a configured third-party endpoint stopped being used.
-- After a successful auth write while hot reload is unproven, return
-  `completed` + `pending_restart`, and persist the Codex connection itself as
-  pending in the authoritative overview. Do not emit
+- After a successful auth or selector write, `project_under_guard` still
+  reports `pending_restart` while `CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN` is
+  false. `project_codex_official_account` then calls
+  `live_codex_requires_restart_for_app` and clears the flag when Desktop is
+  `NotRunning` or `NotInstalled`. Do not emit
   `native_projection_unavailable` for a successful write, and do not translate
   this positive state into a generic retry failure.
 - Codex disconnect clears FyAgent connection metadata, not the user's auth
   file. If the top-level selector is commented, the preview lists `config.toml`
-  as a write target and `auth.json` as unchanged. A successful uncomment is
-  `pending_restart` until Codex rereads the file.
+  as a write target and `auth.json` as unchanged. A successful uncomment uses
+  the same live-runtime gate: pending only when Desktop may still be running.
 
 ### Grok fail-closed consumer
 
@@ -247,7 +255,9 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 | OpenCode data dir exists but PATH CLI does not                            | observe `auth.json`; not `AuthObserverUnavailable`                                                                   |
 | OpenCode `auth.json` is missing                                           | empty provider set; not observer failure                                                                             |
 | OpenCode readback differs                                                 | report stale/uncertain; preserve backup and never blindly overwrite external bytes                                   |
-| OpenCode/Codex write and readback succeed while hot reload is unproven    | `completed` + `pending_restart`; returned overview marks the connection pending; not `native_projection_unavailable` |
+| OpenCode write and readback succeed while hot reload is unproven    | `completed` + `pending_restart`; returned overview marks the connection pending; not `native_projection_unavailable` |
+| Codex write succeeds while Desktop is `NotRunning` or `NotInstalled` | `completed` with no `pending_restart`; overview is connected                                                         |
+| Codex write succeeds while Desktop is Running / Ambiguous / Untrusted / Unsupported / inspect error | `completed` + `pending_restart`; fail closed                                                                         |
 | token, SecretRef, auth bytes, or raw helper output reaches DTO/log/DOM    | security regression                                                                                                  |
 | Display paths arrive outside explicit impact/recovery metadata            | security regression                                                                                                  |
 | Connection mutation lacks a matching fresh single-use preview             | reject before vendor write                                                                                           |
@@ -264,7 +274,9 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
   `model_provider` is active, official connect comments that one line and
   leaves `[model_providers.*]` intact. Disconnect or a disconnected slot with
   that line still commented uncomments the same selector. An explicit unofficial
-  source change also uncomments it instead of duplicating it.
+  source change also uncomments it instead of duplicating it. When Codex
+  Desktop is not running or not installed, the overview is connected without
+  a Restart button.
 - **Base:** OpenCode has no `auth.json`; observation returns an empty provider
   set without requiring a CLI.
 - **Base:** Codex unset store and missing `model_provider` are effective file
@@ -306,7 +318,11 @@ Required assertions:
   `0600`, purpose isolation, and owner transfer only after file readback;
 - OpenCode owner-transfer CAS miss returns partial with pending evidence, while
   a hard repository error keeps its documented recovery residual explicit;
-- Codex and OpenCode positive writes use `completed + pending_restart`, and
+- Codex and OpenCode positive writes use `completed + pending_restart` when a
+  live process may still hold previous credentials; Codex
+  `live_restart_is_only_required_when_desktop_may_be_running` covers
+  NotRunning/NotInstalled vs fail-closed statuses; `project_under_guard` still
+  asserts pending on writes so file-layer tests stay conservative;
   strict renderer parsing rejects every other non-null reason on a completed result;
 - native sidecar/password discovery stays absent, and DTO/log/DOM leak tests
   cover tokens, SecretRef, raw auth bytes and helper output; only the explicit
@@ -320,6 +336,7 @@ Wrong:
 ```text
 select any ready account -> copy its refresh token into consumer auth.json
 atomic_write Ok -> connected
+atomic_write Ok -> always pending_restart even if Codex Desktop is not running
 credential present -> Codex connected
 official connect -> leave active model_provider = "OpenAI"
 CODEX_FILE_PROJECTION_PRODUCTION_ENABLED=false forever
@@ -331,7 +348,8 @@ Correct:
 ```text
 OpenCode selects a purpose-compatible credential under auth.json revision
 consumer-specific write -> readback -> refresh-owner transfer
-external pickup unproven -> pending_restart
+external pickup unproven AND live Codex/OpenCode process may hold old creds -> pending_restart
+Codex Desktop NotRunning/NotInstalled after write -> connected, no Restart
 Codex live identity match -> connected; otherwise saved-not-projected
 official connect -> comment first top-level model_provider; keep [model_providers.*]
 disconnect / disconnected+commented -> uncomment the same selector; keep [model_providers.*]

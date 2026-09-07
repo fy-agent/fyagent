@@ -60,6 +60,10 @@ pub(crate) async fn open_http_url_as_user(
     raw_url: String,
 ) -> Result<(), String>;
 
+pub(crate) fn open_http_url_as_user_sync(
+    raw_url: &str,
+) -> Result<(), ProcessLaunchError>;
+
 #[cfg(target_os = "windows")]
 pub(crate) fn machine_program_files_directories() -> Vec<PathBuf>;
 
@@ -282,6 +286,10 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   executable, current-process browser launch, or `window.open` fallback. If the
   Explorer COM chain is unavailable, fail closed instead of launching as the
   elevated process account or broadening the renderer input.
+- Managed Auth OAuth authorize URLs use the same HTTP owner via
+  `open_http_url_as_user_sync` (login worker has no `AppHandle`). Never
+  `cmd /c start`: unquoted `&` in PKCE query strings is a cmd statement
+  separator and drops `client_id` / `code_challenge` / `state`.
 
 ## 4. Validation & Error Matrix
 
@@ -304,6 +312,7 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Desktop background object is requested directly as `IShellFolderViewDual`                        | Treat as a contract regression; request `IDispatch` first and cast explicitly.                                                                                               |
 | External link is accepted but browser would remain backgrounded                                  | Pass fixed `SW_SHOWNORMAL` for ordinary external links; helper show semantics remain unchanged.                                                                              |
 | Explorer COM acquisition or `ShellExecute` fails                                                 | Return controlled `INTERACTIVE_USER_UNAVAILABLE`; do not try a command, direct shell, renderer, or elevated-user fallback.                                                   |
+| OAuth authorize URL is opened with `cmd /c start`                                                | Contract regression; `&` splits the query. Use `open_http_url_as_user_sync`.                                                                                                 |
 | Closed desktop-agent `.exe` is relative, contains `..` or NUL, or is not `.exe`                  | `external_launch_invalid_windows_exe`; Explorer is not invoked.                                                                                                              |
 | Closed desktop-agent `.exe` is observer-proven under Alice Programs or machine Program Files     | Explorer `ShellExecute` as Alice; never `CreateProcess` / `ShellExecuteW` from Bob.                                                                                          |
 | Formal elevated Windows direct user-CLI execution or CLI-based Auth                              | Fail closed before probing/launching; OpenCode file observation/Desktop handoff is not a CLI exception.                                                                      |
@@ -328,6 +337,9 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 - Good: elevated FyAgent opens an HTTPS catalog link through Explorer's desktop
   automation object. The interactive user's default browser receives a normal-
   show request even when no File Explorer folder window is open.
+- Good: an OpenAI authorize URL with multiple `&`-separated query parameters
+  reaches Explorer `ShellExecute` as one HTTP(S) string through
+  `open_http_url_as_user_sync`.
 - Bad: read `%APPDATA%`, `dirs::home_dir`, Tauri `app_data_dir`, `HKCU`, process
   `PATH`, or a user-tool home variable on Windows and call it Alice's state.
 - Bad: restore `%ProgramData%\FyAgent\runtime`, treat PackageBridge as runtime
@@ -344,6 +356,10 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 - Portable Rust tests cover same-user, Bob/Alice, missing Shell/session/SID,
   noncanonical SID, each missing/non-absolute folder, immutable revalidation,
   redacted debug output, and stable error codes.
+- Process-launch tests prove an OpenAI authorize URL keeps every query
+  parameter through the shared HTTP validator, and that Managed Auth opens
+  the browser only via `open_http_url_as_user_sync` (no `cmd /c start`, no
+  provider-local `open`).
 - Contract tests assert initialization precedes panic/CLI/Tauri, the formal
   process/Shell equality gate and machine-runtime implementation are absent,
   the fixed PackageBridge is referenced only from the shared executable

@@ -12,7 +12,8 @@ pub(crate) use observation::{
     CodexManagedAuthObservation,
 };
 pub(crate) use project::{
-    materialize_from_bundle, project_codex_official_account, restore_unofficial_codex_selector,
+    live_codex_requires_restart_for_app, materialize_from_bundle, project_codex_official_account,
+    restore_unofficial_codex_selector,
 };
 pub(crate) use swap::{auth_path_in, capture_auth_preimage, restore_auth_recovery};
 
