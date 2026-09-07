@@ -8,6 +8,61 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-09-07
+
+FyAgent 0.4.4 adds centralized account management, Claude Code CLI installation,
+and reversible configuration writes, with a consolidated desktop renderer and
+improved startup, navigation, and dialog behavior.
+
+### Added
+
+- Added Managed Auth account and connection management with OpenAI browser and
+  Device Code login, xAI Device Code login, SecretRef-backed credential storage,
+  and migration of supported legacy account metadata.
+- Added separately confirmed Codex and OpenCode Desktop credential projection,
+  with file-impact previews, account-purpose isolation, readback, and explicit
+  pending-restart states.
+- Added Claude Code CLI install/update through reviewed exact-version official
+  npm packages and the shared mirror policy. Claude Code is CLI-only; existing
+  native or other package-manager installations are not silently converted.
+- Added shared configuration preimage backups and guarded recovery for supported
+  user configuration files. Multi-file operations remain separate transactions.
+
+### Changed
+
+- Consolidated the production renderer and validation pipeline; added paired
+  blue themes, native-backed appearance persistence, and continuous theme reveal.
+- Improved content-ready startup, persistent primary navigation, responsive
+  assignment panels, native scrolling, source-aware dialogs, and press feedback.
+- Separated official account connections from saved model-request sources.
+  Codex official connect can comment the top-level provider selector, while
+  third-party source changes preserve the official authentication file.
+- Reused reviewed npm source selection for Grok Build and expanded the Windows
+  OpenCode installation path without treating installer handoff as completion.
+
+### Fixed
+
+- Fixed hidden-window startup retries, route-chunk loading, clipped labels,
+  repeated scroll gutters, and dialog focus/return handling.
+- Corrected WorkBuddy macOS bundle identity and Claude CLI readiness parsing.
+- Preserved complete OAuth browser URLs on Windows, corrected explicit npm
+  batch-shim dispatch, and retained actionable installation-conflict retries.
+- Avoided unnecessary Codex restart prompts when Desktop is not running, and
+  prevented consumed account-connection previews from being confirmed twice.
+- Restored strict renderer, native-launch, and platform-identity checks without
+  disabling required CI or weakening existing test budgets.
+
+### Release contract
+
+- Application and bundled helper versions move to 0.4.4; the helper's existing
+  minimum-client compatibility floor is unchanged.
+- Formal assets remain native Windows x64/ARM64 NSIS installers and one macOS
+  universal DMG, with verified metadata and build attestation. Windows signing
+  status is disclosed from the actual verified release evidence.
+- Grok native credential projection and macOS privileged system commits retain
+  their existing fail-closed production gates. Theme persistence is best-effort;
+  configuration backups do not imply cross-file atomic rollback.
+
 ## [0.4.3] - 2026-09-01
 
 FyAgent 0.4.3 advances the desktop Agent control plane with safer configuration

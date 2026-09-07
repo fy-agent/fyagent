@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -2588,7 +2588,15 @@ jobs:
     expect(macHelperInfoPlist).toContain(
       "<string>com.fyagent.desktop.system-commit-helper</string>",
     );
-    expect(macHelperInfoPlist).toContain("<string>0.4.3</string>");
+    const appVersion = execFileSync(
+      process.execPath,
+      [path.join(ROOT, "scripts", "version.mjs"), "get"],
+      { cwd: ROOT, encoding: "utf8" },
+    ).trim();
+    expect(macHelperInfoPlist).toContain(`<string>${appVersion}</string>`);
+    expect(macInfoPlist).toContain(
+      `info[CFBundleVersion] &gt;= "${appVersion}"`,
+    );
     expect(read(BUILD_RS)).toContain("emit_privileged_client_link");
     expect(read(BUILD_RS)).toContain(
       "macos-privileged-helper/dist/libFyAgentPrivilegedClient.dylib",

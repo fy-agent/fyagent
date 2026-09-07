@@ -47,10 +47,13 @@ version.workspace = true
   package version. The macOS privileged helper is a Swift package under
   `src-tauri/macos-privileged-helper/` and must not be added as a Cargo
   member. Its `CFBundleVersion` and the `info[CFBundleVersion] >= "..."`
-  strings in app `SMPrivilegedExecutables` and helper `SMAuthorizedClients`
-  must equal the canonical workspace version; `version:set` still does not
-  rewrite those plists, so a version bump must update them in the same
-  change. See [macOS Privileged System-Commit Helper](./macos-system-commit.md).
+  requirement in app `SMPrivilegedExecutables` must equal the canonical
+  workspace version; `version:set` still does not rewrite those plists, so
+  a version bump must update them in the same change. The helper's
+  `SMAuthorizedClients` minimum is a separate client-compatibility floor,
+  matched by `Constants.swift#minimumClientVersion` and the helper build
+  verifier. Do not raise that floor as a mechanical version bump. See
+  [macOS Privileged System-Commit Helper](./macos-system-commit.md).
 - `package.json` is private and does not declare an application version.
 - `src-tauri/tauri.conf.json` omits `version`, so Tauri inherits Cargo
   metadata.
@@ -199,6 +202,9 @@ the seventh and final Release attachment and does not attest itself.
   byte-identical.
 - `tests/versionConsistency.test.ts` delegates to the canonical script rather
   than implementing another version parser.
+- `tests/releaseWorkflow.test.ts` reads that same script's `get` value when
+  checking the bundled helper version and app-side helper requirement. Never
+  freeze the current release number as a second authority inside that test.
 - Download/release asset tests assert all three exact names, the two Windows NSIS
   setup executables and architecture mapping, URL shape,
   missing/extra/non-allowlisted/symlink rejection, six attestation subjects,
