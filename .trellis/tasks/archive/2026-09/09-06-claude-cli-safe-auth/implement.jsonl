@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"Integration reuses existing owners"}
+{"file":".trellis/spec/frontend/managed-auth.md","reason":"Account/connection/source separation"}

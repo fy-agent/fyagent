@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 69
-- **Last Active**: 2026-09-04
+- **Total Sessions**: 82
+- **Last Active**: 2026-09-07
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~264 | Active |
+| `journal-2.md` | ~658 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,19 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 82 | 2026-09-07 | Keep the scrollbar repair at the original overflow boundary | `f8ee21fb33650f9692b7f46786ff385ee749e944` | `dev/laiyongjie` |
+| 81 | 2026-09-07 | Repair PR 181 CI discovery and cross-host browser contracts | `ddcf264a07437df787a3b08f3ea23db74d4f1737` | `dev/laiyongjie` |
+| 80 | 2026-09-07 | Validate integration subjects using real Git merge parents | `3a350fa299138b44c63468fc449f8acc930fd72f` | `dev/laiyongjie` |
+| 79 | 2026-09-07 | Review September 6 integration and all executable specifications | `41b700e6cf69115a9eb8665350d0162c6119638e` | `dev/laiyongjie` |
+| 78 | 2026-09-07 | Round-eight responsive assignments and content density | `a929195a`, `b8bdaeba` | `dev/laiyongjie` |
+| 77 | 2026-09-06 | Round-seven scroll, dialog origins and repository governance | `fa2684d0`, `a483d8d9`, `e4c0c038`, `75cc8ed3` | `dev/laiyongjie` |
+| 76 | 2026-09-06 | Round-six single renderer and blue interaction experience | `bcceba7e`, `e7227e8a`, `081d5d49`, `070479bf`, `f98e67f8` | `dev/laiyongjie` |
+| 75 | 2026-09-06 | Claude CLI and reversible user configuration | `6d8ffc9cb841e54f4ef8ea82bc7a8dbe661a2198` | `feat/claude-cli-safe-auth` |
+| 74 | 2026-09-06 | 第五轮明亮玻璃、生产时间单位与连续动效整合 | `097dd80f0798cffc2336c0229fa939fe09ce212d`, `04485a9473f28fea6cdb8e5a160f12817253429e`, `7908893efd881b88b150068c3a8bdeb68fd0d7e5` | `dev/laiyongjie` |
+| 73 | 2026-09-05 | 第四轮前端性能、玻璃材质与来源动效整合 | `bfa5bef80e1cec47ebcdbeef1b1adf1e1d953c8c`, `1edbb6faaa7c529e5cb3a2bf589a0bf592dfaa6b`, `d50c8bb4eb89ca31fb701b16264a527b257c5042`, `87654f0745bea54e9defe2adf792ac5388d5b3f2` | `dev/laiyongjie` |
+| 72 | 2026-09-05 | 第三轮前端体验与架构整合 | `c27c9bd536c352c8a8184e1cccd127d2582c5498`, `54b1c0f666afa28d580112746778e3e458c6abd9`, `a239fe0d6799e1a747995ed496cef1f46d8b3ff2`, `463962bd32a61613461fc74112409901c23cba67` | `dev/laiyongjie` |
+| 71 | 2026-09-05 | 第二轮安全与架构治理 | `5bbfb24d` | `dev/laiyongjie` |
+| 70 | 2026-09-05 | 架构债务审查与成熟实现复用 | `a051c098` | `dev/laiyongjie` |
 | 69 | 2026-09-04 | Codex 官方账号与第三方 API 凭据切换实现与归档 | `f76f3ab1`, `a10e4b9f` | `dev/laiyongjie` |
 | 68 | 2026-09-03 | Auth recovery copy and dialog focus | `e8807cde` | `dev/laiyongjie` |
 | 67 | 2026-09-03 | 收敛 leftover Auth 并归档统一认证任务 | `53476b86`, `cbb8d7a5` | `dev/laiyongjie` |

@@ -1,0 +1,33 @@
+{
+  "id": "frontend-experience-round6",
+  "name": "frontend-experience-round6",
+  "title": "第六轮单一前端与蓝色主题交互整合",
+  "description": "收敛单一前端与自动化验证，修复选中态及提示词布局，加入双蓝色主题与连续状态动效，保护后端合并和启动边界",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-06",
+  "completedAt": "2026-09-06",
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "09-06-frontend-layout-integrity",
+    "09-06-renderer-consolidation",
+    "09-06-frontend-blue-themes",
+    "09-06-frontend-state-motion"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "work_commit": "f98e67f8cc0c6fb23222c9a082f8834522f2f1a6"
+  }
+}

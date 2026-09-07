@@ -62,9 +62,10 @@ mode=formal` or the equivalent Actions API request); dispatching the current
   publication gate; the Release compile is the proof.
 - `main` is the trusted workflow branch for preflight and the observed formal
   mainline branch.
-  Runtime eligibility does not infer publication from branch protection, a
-  ruleset, merge settings, or a separate provenance workflow, and this project
-  does not claim that those administrator controls exist.
+  Runtime eligibility does not infer publication from branch protection,
+  rulesets, merge settings or a separate provenance workflow. Mainline merge
+  protection is independently owned by [Merge Governance](./github-merge-governance.md);
+  those controls are not formal tag-release eligibility evidence.
 - no branch push, manual signed mode, partial target mode, cross-architecture
   substitute, local publish path, or published update-in-place path exists.
 
@@ -271,12 +272,21 @@ signer material remains isolated from the fresh sealing boundary.
 
 Direct third-party Actions use reviewed full commit SHAs. Required jobs do not
 use `*-latest` or execute mise. Node is established after pnpm on native
-build jobs. `setup-node` may restore the lockfile-keyed pnpm store. Rust Action
-caches stay `cache: false`. Native CI backend jobs and Release build jobs may
-restore `~/.cargo/registry` and `~/.cargo/git` through `actions/cache`, keyed
-on `src-tauri/Cargo.lock` plus runner OS/arch. They never cache
-`src-tauri/target`. Repository Cargo config must not set `RUSTC_WRAPPER` or
-sccache.
+build jobs. Release does not restore/save shared dependency or build caches:
+`setup-node` explicitly uses `package-manager-cache: false` without `cache`,
+Rust Action caching stays `cache: false`, uv caching stays disabled, and no
+`actions/cache` or Rust cache step is admitted. Dependencies come from locked
+upstream downloads. Native CI's separate cache policy does not authorize cache
+consumption by Release. Repository Cargo config must not set `RUSTC_WRAPPER`
+or sccache.
+
+This removes the Release cache-consumer path but does not redefine preflight
+trust: manually selected candidate source still runs under the trusted-main
+workflow context described above. A SHA being immutable does not make it
+reviewed code. Do not dispatch unreviewed candidates or describe cache removal
+as full isolation from default-branch cache-token access/other consumers.
+Changing candidate admission or event/ref isolation requires a dedicated
+compatibility and privilege review rather than an implicit cache-key change.
 
 Platform-neutral Release control-plane jobs—eligibility, immutable build-input
 pinning, exact asset/evidence aggregation, attestation, and publication—run on
@@ -284,11 +294,11 @@ the pinned `ubuntu-24.04` hosted runner. They do not compile, execute, sign, or
 package a shipped target. Native build, Windows proof/sign/seal, and macOS
 Developer ID/notarization jobs remain on matching platform runners.
 
-| Target          | Runner/build environment         | Exact installer output              |
-| --------------- | -------------------------------- | ----------------------------------- |
-| Windows x64     | `windows-2025`, native `X64`     | x64 NSIS setup EXE                  |
-| Windows ARM64   | `windows-11-vs2026-arm`, native `ARM64` | ARM64 NSIS setup EXE          |
-| macOS universal | `macos-15`, both Apple targets   | one UDZO DMG from the universal app |
+| Target          | Runner/build environment                | Exact installer output              |
+| --------------- | --------------------------------------- | ----------------------------------- |
+| Windows x64     | `windows-2025`, native `X64`            | x64 NSIS setup EXE                  |
+| Windows ARM64   | `windows-11-vs2026-arm`, native `ARM64` | ARM64 NSIS setup EXE                |
+| macOS universal | `macos-15`, both Apple targets          | one UDZO DMG from the universal app |
 
 Each target verifies documented `runner.os`/`runner.arch`, the requested
 runner label, source HEAD, and the exact Node, pnpm, and Rust selections from
@@ -681,7 +691,8 @@ published Release exists, but a stale draft from another source fails closed.
 Only a same-source failed draft with independently verified Actions
 run/attempt/job provenance can be deleted and recreated. A published Release
 is immutable.
-Cache `~/.cargo/registry` and `~/.cargo/git` from `Cargo.lock`. Submit the
+Release restores/saves no Actions dependency or compiler cache. Download-only
+Cargo caching is a separate CI policy, not a Release exception. Submit the
 signed DMG once without `--wait`, poll `notarytool info` on that submission
 id until `Accepted` / `Invalid` or the wait budget, then staple the DMG and
 the original app from that ticket. Do not emit a ZIP.

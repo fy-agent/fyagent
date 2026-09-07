@@ -1,0 +1,210 @@
+:root {
+  color-scheme: light;
+  --fy-bg: #cbdce9;
+  --fy-bg-mid: #dfebf3;
+  --fy-bg-air: #edf5fa;
+  --fy-ambient-sky: rgba(190, 228, 255, 0.3);
+  --fy-ambient-cyan: rgba(112, 204, 231, 0.22);
+  --fy-text: #183247;
+  --fy-text-secondary: #344f64;
+  --fy-text-tertiary: #496073;
+  --fy-text-disabled: rgba(52, 79, 100, 0.48);
+  --fy-brand-blue: #28658f;
+  --fy-brand-cyan: #216b78;
+  --fy-accent: #236b99;
+  --fy-accent-hover: #195a85;
+  --fy-accent-text: #204f70;
+  --fy-accent-ink: #ffffff;
+  --fy-glass-ambient: rgba(240, 247, 252, 0.42);
+  --fy-glass-structural: rgba(239, 248, 254, 0.58);
+  --fy-glass-interactive: rgba(247, 251, 255, 0.8);
+  --fy-surface: var(--fy-glass-structural);
+  --fy-surface-strong: var(--fy-glass-interactive);
+  --fy-surface-soft: var(--fy-glass-ambient);
+  --fy-border: rgba(73, 107, 133, 0.26);
+  --fy-divider: rgba(73, 107, 133, 0.18);
+  --fy-border-strong: #648198;
+  --fy-highlight: rgba(255, 255, 255, 0.88);
+  --fy-selection-sheen: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.2),
+    rgba(180, 226, 251, 0.05) 58%,
+    rgba(255, 255, 255, 0.12)
+  );
+  --fy-control-sheen: linear-gradient(
+    150deg,
+    rgba(255, 255, 255, 0.13),
+    rgba(183, 221, 245, 0.03)
+  );
+  --fy-selected: rgba(169, 207, 231, 0.56);
+  --fy-selected-bg: rgba(169, 207, 231, 0.42);
+  --fy-selected-border: #467795;
+  --fy-selected-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 5px 14px rgba(39, 79, 109, 0.1);
+  --fy-danger-soft: #f9e7eb;
+  --fy-danger-border: #b96072;
+  --fy-danger-surface: #f8e4e9;
+  --fy-danger-text: #8f253b;
+  --fy-warning-soft: #faf0db;
+  --fy-warning-border: #ab8037;
+  --fy-warning-text: #795016;
+  --fy-warning: #795016;
+  --fy-success: var(--fy-brand-cyan);
+  --fy-shadow-shell: 0 18px 46px rgba(39, 79, 109, 0.13);
+  --fy-shadow-control: 0 6px 18px rgba(39, 79, 109, 0.12);
+  --fy-focus: #246b98;
+  --fy-surface-hover: rgba(182, 214, 236, 0.46);
+  --fy-surface-inset: rgba(204, 223, 237, 0.44);
+  --fy-surface-raised: rgba(249, 252, 255, 0.68);
+  --fy-surface-popup: rgba(237, 246, 253, 0.96);
+  --fy-top-bar-height: 68px;
+  --fy-titlebar-drag-height: 28px;
+  --fy-titlebar-traffic-light-width: 78px;
+  --fy-content-radius: var(--fy-radius-panel);
+  --fy-font-page-title: 22px;
+  --fy-font-section-title: 16px;
+  --fy-font-dialog-title: 16px;
+  --fy-font-body: 14px;
+  --fy-font-control: 13px;
+  --fy-font-caption: 12px;
+  --fy-line-body: 1.6;
+  --fy-line-heading: 1.35;
+  --fy-weight-medium: 500;
+  --fy-weight-semibold: 600;
+  --fy-radius-compact: 8px;
+  --fy-radius-control: 12px;
+  --fy-radius-item: 16px;
+  --fy-radius-panel: 22px;
+  --fy-radius-dialog: 28px;
+  --fy-radius-pill: 999px;
+  --fy-radius-circle: 50%;
+  --fy-radius-brand: 22%;
+  --fy-radius-separator: 1px;
+  --fy-radius-navigation: var(--fy-radius-pill);
+  --fy-space-xs: 4px;
+  --fy-space-sm: 8px;
+  --fy-space-md: 12px;
+  --fy-space-lg: 16px;
+  --fy-space-xl: 24px;
+  --fy-info-card-min: 256px;
+  --fy-info-card-gap: var(--fy-space-md);
+  --fy-definition-label-cap: min(30%, 8em);
+  --fy-definition-gap: var(--fy-space-md);
+  --fy-assignment-row-gap: var(--fy-space-sm);
+  --fy-motion-press: 80ms;
+  --fy-motion-control: 160ms;
+  --fy-motion-content: 240ms;
+  --fy-motion-dialog-enter: 420ms;
+  --fy-motion-dialog-exit: 360ms;
+  --fy-motion-dialog-resize: 320ms;
+  --fy-motion-toast: 240ms;
+  --fy-motion-theme: 560ms;
+  --fy-motion-spinner: 900ms;
+  --fy-motion-spinner-reduced: 1800ms;
+  --fy-motion-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --fy-dialog-surface: rgba(237, 246, 253, 0.74);
+  --fy-surface-opaque: #e8f1f8;
+  --fy-surface-input: rgba(251, 253, 255, 0.82);
+  --fy-modal-scrim: rgba(42, 66, 88, 0.18);
+  --fy-modal-blur: 6px;
+  --fy-surface-blur: 10px;
+  --fy-glass-rim: rgba(255, 255, 255, 0.9);
+  --fy-glass-rim-lower: rgba(100, 146, 179, 0.28);
+  --fy-glass-shadow: 0 22px 65px rgba(30, 65, 91, 0.22);
+  --fy-glass-sheen:
+    radial-gradient(
+      110% 90% at 12% -18%,
+      rgba(255, 255, 255, 0.7),
+      transparent 52%
+    ),
+    radial-gradient(
+      90% 75% at 100% 118%,
+      rgba(140, 193, 226, 0.2),
+      transparent 62%
+    ),
+    linear-gradient(
+      150deg,
+      rgba(255, 255, 255, 0.22),
+      rgba(208, 231, 247, 0.04) 65%
+    );
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --fy-bg: #2c4962;
+  --fy-bg-mid: #345670;
+  --fy-bg-air: #385c75;
+  --fy-ambient-sky: rgba(132, 183, 221, 0.09);
+  --fy-ambient-cyan: rgba(86, 173, 206, 0.08);
+  --fy-text: #ffffff;
+  --fy-text-secondary: #eef6fc;
+  --fy-text-tertiary: #e2eef8;
+  --fy-text-disabled: rgba(219, 234, 247, 0.5);
+  --fy-brand-blue: #b9e6ff;
+  --fy-brand-cyan: #a9e9f0;
+  --fy-accent: #b3e2ff;
+  --fy-accent-hover: #cef0ff;
+  --fy-accent-text: #e8f5ff;
+  --fy-accent-ink: #17384f;
+  --fy-glass-ambient: rgba(107, 154, 192, 0.08);
+  --fy-glass-structural: rgba(100, 150, 188, 0.12);
+  --fy-glass-interactive: rgba(28, 58, 82, 0.7);
+  --fy-border: rgba(193, 218, 235, 0.34);
+  --fy-divider: rgba(193, 218, 235, 0.2);
+  --fy-border-strong: #afcddd;
+  --fy-highlight: rgba(236, 249, 255, 0.3);
+  --fy-selection-sheen: linear-gradient(
+    155deg,
+    rgba(226, 245, 255, 0.055),
+    rgba(149, 202, 234, 0.025) 58%,
+    rgba(226, 245, 255, 0.035)
+  );
+  --fy-control-sheen: linear-gradient(
+    150deg,
+    rgba(226, 245, 255, 0.045),
+    rgba(149, 202, 234, 0.015)
+  );
+  --fy-selected: rgba(28, 67, 95, 0.58);
+  --fy-selected-bg: rgba(29, 62, 87, 0.36);
+  --fy-selected-border: #b3dff6;
+  --fy-selected-shadow:
+    inset 0 1px 0 rgba(240, 251, 255, 0.25), 0 5px 14px rgba(16, 40, 60, 0.18);
+  --fy-danger-soft: #63394d;
+  --fy-danger-border: #efb1c2;
+  --fy-danger-surface: #63394d;
+  --fy-danger-text: #ffe2e9;
+  --fy-warning-soft: #5a4b35;
+  --fy-warning-border: #e9ce9b;
+  --fy-warning-text: #ffebc7;
+  --fy-warning: #ffebc7;
+  --fy-shadow-shell: 0 18px 46px rgba(17, 41, 63, 0.22);
+  --fy-shadow-control: 0 6px 18px rgba(17, 41, 63, 0.2);
+  --fy-focus: #c0eaff;
+  --fy-surface-hover: rgba(94, 157, 197, 0.18);
+  --fy-surface-inset: rgba(20, 46, 68, 0.28);
+  --fy-surface-raised: rgba(69, 109, 143, 0.55);
+  --fy-surface-popup: rgba(43, 73, 99, 0.98);
+  --fy-dialog-surface: rgba(43, 74, 100, 0.88);
+  --fy-surface-opaque: #35556f;
+  --fy-surface-input: rgba(29, 56, 79, 0.86);
+  --fy-modal-scrim: rgba(18, 40, 59, 0.24);
+  --fy-glass-rim: rgba(219, 244, 255, 0.42);
+  --fy-glass-rim-lower: rgba(139, 191, 226, 0.28);
+  --fy-glass-shadow: 0 22px 65px rgba(14, 34, 51, 0.32);
+  --fy-glass-sheen:
+    radial-gradient(
+      110% 90% at 12% -18%,
+      rgba(228, 248, 255, 0.12),
+      transparent 52%
+    ),
+    radial-gradient(
+      90% 75% at 100% 118%,
+      rgba(107, 181, 224, 0.1),
+      transparent 62%
+    ),
+    linear-gradient(
+      150deg,
+      rgba(227, 249, 255, 0.04),
+      rgba(122, 184, 222, 0.02) 65%
+    );
+}

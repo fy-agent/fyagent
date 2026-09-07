@@ -1,3 +1,4 @@
+mod auto_sync;
 pub(crate) mod balance;
 pub(crate) mod change_plan;
 pub(crate) mod codex_desktop;

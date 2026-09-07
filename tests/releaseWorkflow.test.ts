@@ -1472,11 +1472,12 @@ describe("FyAgent release workflow", () => {
     );
     expect(source).not.toContain("windows-2022");
     expect(source).not.toMatch(/runs-on:\s*[^\n]*-latest/);
-    expect(source).toContain(
-      "uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+    expect(source).not.toMatch(
+      /uses:\s*(?:actions\/cache|Swatinem\/rust-cache)(?:\/|@)/,
     );
     expect(source).not.toContain("cache: true");
-    expect(source).toContain("cache: pnpm");
+    expect(source).not.toContain("cache: pnpm");
+    expect(source.match(/package-manager-cache: false/g)).toHaveLength(2);
     expect(source.match(/uses: actions\/checkout@/g)).toHaveLength(
       source.match(/persist-credentials: false/g)?.length ?? 0,
     );
@@ -1550,7 +1551,9 @@ describe("FyAgent release workflow", () => {
       expect(namedStepBlock(block, "Setup Node.js")).toContain(
         "uses: actions/setup-node@",
       );
-      expect(namedStepBlock(block, "Setup Node.js")).toContain("cache: pnpm");
+      expect(namedStepBlock(block, "Setup Node.js")).toContain(
+        "package-manager-cache: false",
+      );
       const pnpmStep = namedStepBlock(block, "Setup pnpm");
       expectExactLine(pnpmStep, "          run_install: false");
       expect(pnpmStep).not.toContain("cache: false");
@@ -1559,14 +1562,8 @@ describe("FyAgent release workflow", () => {
         "uses: actions-rust-lang/setup-rust-toolchain@",
       );
       expectExactLine(rustSetupStep, "          cache: false");
-      const cargoCacheStep = namedStepBlock(block, "Cache Cargo registry");
-      expect(cargoCacheStep).toContain(
-        "uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
-      );
-      expect(cargoCacheStep).toContain("~/.cargo/registry");
-      expect(cargoCacheStep).toContain("~/.cargo/git");
-      expect(cargoCacheStep).toContain("hashFiles('src-tauri/Cargo.lock')");
-      expect(cargoCacheStep).not.toContain("src-tauri/target");
+      expect(block).not.toContain("Cache Cargo registry");
+      expect(block).not.toContain("restore-keys:");
     }
 
     expect(source).not.toContain("RUSTC_WRAPPER");
@@ -2638,180 +2635,193 @@ jobs:
     );
   });
 
-  it("executes the Developer ID verifiers for both slices and fails closed on trust drift", () => {
-    const accepted = runMacSignedAppVerifier("accepted");
-    expect(accepted.status, accepted.stderr).toBe(0);
-    const displayCalls = accepted.calls.filter((call) =>
-      call.startsWith("--display "),
-    );
-    expect(displayCalls.slice(0, 2)).toEqual([
-      expect.stringContaining("--architecture arm64"),
-      expect.stringContaining("--architecture x86_64"),
-    ]);
-    expect(
-      displayCalls.filter((call) => call.includes("system-commit-helper")),
-    ).toHaveLength(2);
-    expect(
-      displayCalls.filter((call) =>
-        call.includes("libFyAgentPrivilegedClient"),
-      ),
-    ).toHaveLength(2);
-    expect(accepted.calls).toContainEqual(
-      expect.stringContaining("--verify --deep --strict"),
-    );
+  it(
+    "executes the Developer ID verifiers for both slices and fails closed on trust drift",
+    { timeout: 30_000 },
+    () => {
+      const accepted = runMacSignedAppVerifier("accepted");
+      expect(accepted.status, accepted.stderr).toBe(0);
+      const displayCalls = accepted.calls.filter((call) =>
+        call.startsWith("--display "),
+      );
+      expect(displayCalls.slice(0, 2)).toEqual([
+        expect.stringContaining("--architecture arm64"),
+        expect.stringContaining("--architecture x86_64"),
+      ]);
+      expect(
+        displayCalls.filter((call) => call.includes("system-commit-helper")),
+      ).toHaveLength(2);
+      expect(
+        displayCalls.filter((call) =>
+          call.includes("libFyAgentPrivilegedClient"),
+        ),
+      ).toHaveLength(2);
+      expect(accepted.calls).toContainEqual(
+        expect.stringContaining("--verify --deep --strict"),
+      );
 
-    for (const rejected of [
-      "adhoc",
-      "authority",
-      "linker",
-      "not-stapled",
-      "team",
-      "timestamp",
-      "unsealed",
-      "verify-fail",
-    ]) {
-      const result = runMacSignedAppVerifier(rejected);
-      expect(result.status, `${rejected}: ${result.stderr}`).not.toBe(0);
-    }
+      for (const rejected of [
+        "adhoc",
+        "authority",
+        "linker",
+        "not-stapled",
+        "team",
+        "timestamp",
+        "unsealed",
+        "verify-fail",
+      ]) {
+        const result = runMacSignedAppVerifier(rejected);
+        expect(result.status, `${rejected}: ${result.stderr}`).not.toBe(0);
+      }
 
-    const signatureOnlyUnstapled = runMacSignedAppVerifier("not-stapled", [
-      "--signature-only",
-    ]);
-    expect(signatureOnlyUnstapled.status, signatureOnlyUnstapled.stderr).toBe(
-      0,
-    );
+      const signatureOnlyUnstapled = runMacSignedAppVerifier("not-stapled", [
+        "--signature-only",
+      ]);
+      expect(signatureOnlyUnstapled.status, signatureOnlyUnstapled.stderr).toBe(
+        0,
+      );
 
-    const acceptedDmg = runMacSignedDmgVerifier("accepted");
-    expect(acceptedDmg.status, acceptedDmg.stderr).toBe(0);
-    for (const rejected of ["adhoc", "authority", "not-stapled", "team"]) {
-      const result = runMacSignedDmgVerifier(rejected);
-      expect(result.status, `dmg ${rejected}: ${result.stderr}`).not.toBe(0);
-    }
-  });
+      const acceptedDmg = runMacSignedDmgVerifier("accepted");
+      expect(acceptedDmg.status, acceptedDmg.stderr).toBe(0);
+      for (const rejected of ["adhoc", "authority", "not-stapled", "team"]) {
+        const result = runMacSignedDmgVerifier(rejected);
+        expect(result.status, `dmg ${rejected}: ${result.stderr}`).not.toBe(0);
+      }
+    },
+  );
 
-  it("requires nested privileged helper signatures after the main app checks", () => {
-    const missingFormal = runMacSignedAppVerifier("accepted", [], {
-      helper: "absent",
-    });
-    expect(missingFormal.status, missingFormal.stderr).not.toBe(0);
-    expect(missingFormal.stderr).toContain(
-      "formal Developer ID verification requires the nested privileged helper",
-    );
+  it(
+    "requires nested privileged helper signatures after the main app checks",
+    { timeout: 30_000 },
+    () => {
+      const missingFormal = runMacSignedAppVerifier("accepted", [], {
+        helper: "absent",
+      });
+      expect(missingFormal.status, missingFormal.stderr).not.toBe(0);
+      expect(missingFormal.stderr).toContain(
+        "formal Developer ID verification requires the nested privileged helper",
+      );
 
-    const missingSignatureOnly = runMacSignedAppVerifier(
-      "accepted",
-      ["--signature-only"],
-      { helper: "absent" },
-    );
-    expect(missingSignatureOnly.status, missingSignatureOnly.stderr).toBe(0);
-    expect(missingSignatureOnly.stderr).toContain(
-      "nested privileged helper is absent; skipping nested helper verification",
-    );
+      const missingSignatureOnly = runMacSignedAppVerifier(
+        "accepted",
+        ["--signature-only"],
+        { helper: "absent" },
+      );
+      expect(missingSignatureOnly.status, missingSignatureOnly.stderr).toBe(0);
+      expect(missingSignatureOnly.stderr).toContain(
+        "nested privileged helper is absent; skipping nested helper verification",
+      );
 
-    const missingSkipEnv = runMacSignedAppVerifier("accepted", [], {
-      helper: "absent",
-      env: { FYAGENT_REQUIRE_PRIVILEGED_HELPER: "0" },
-    });
-    expect(missingSkipEnv.status, missingSkipEnv.stderr).toBe(0);
-    expect(missingSkipEnv.stderr).toContain(
-      "nested privileged helper is absent; skipping nested helper verification",
-    );
+      const missingSkipEnv = runMacSignedAppVerifier("accepted", [], {
+        helper: "absent",
+        env: { FYAGENT_REQUIRE_PRIVILEGED_HELPER: "0" },
+      });
+      expect(missingSkipEnv.status, missingSkipEnv.stderr).toBe(0);
+      expect(missingSkipEnv.stderr).toContain(
+        "nested privileged helper is absent; skipping nested helper verification",
+      );
 
-    const helperAdhoc = runMacSignedAppVerifier("accepted", [], {
-      env: { FYAGENT_FAKE_HELPER_MODE: "adhoc" },
-    });
-    expect(helperAdhoc.status, helperAdhoc.stderr).not.toBe(0);
-    expect(helperAdhoc.stderr).toContain("ad-hoc");
+      const helperAdhoc = runMacSignedAppVerifier("accepted", [], {
+        env: { FYAGENT_FAKE_HELPER_MODE: "adhoc" },
+      });
+      expect(helperAdhoc.status, helperAdhoc.stderr).not.toBe(0);
+      expect(helperAdhoc.stderr).toContain("ad-hoc");
 
-    const helperThin = runMacSignedAppVerifier("accepted", [], {
-      env: { FYAGENT_FAKE_LIPO_MODE: "arm64-only" },
-    });
-    expect(helperThin.status, helperThin.stderr).not.toBe(0);
-    expect(helperThin.stderr).toContain("universal");
+      const helperThin = runMacSignedAppVerifier("accepted", [], {
+        env: { FYAGENT_FAKE_LIPO_MODE: "arm64-only" },
+      });
+      expect(helperThin.status, helperThin.stderr).not.toBe(0);
+      expect(helperThin.stderr).toContain("universal");
 
-    const structureOnly = runMacPrivilegedHelperVerifier(["--structure-only"], {
-      env: { FYAGENT_FAKE_HELPER_MODE: "adhoc" },
-    });
-    expect(structureOnly.status, structureOnly.stderr).toBe(0);
-    expect(
-      structureOnly.calls.some((call) => call.startsWith("--display ")),
-    ).toBe(false);
+      const structureOnly = runMacPrivilegedHelperVerifier(
+        ["--structure-only"],
+        {
+          env: { FYAGENT_FAKE_HELPER_MODE: "adhoc" },
+        },
+      );
+      expect(structureOnly.status, structureOnly.stderr).toBe(0);
+      expect(
+        structureOnly.calls.some((call) => call.startsWith("--display ")),
+      ).toBe(false);
 
-    const missingLabel = runMacPrivilegedHelperVerifier([], {
-      helper: "no-label",
-    });
-    expect(missingLabel.status, missingLabel.stderr).not.toBe(0);
-    expect(missingLabel.stderr).toContain("Mach service label");
+      const missingLabel = runMacPrivilegedHelperVerifier([], {
+        helper: "no-label",
+      });
+      expect(missingLabel.status, missingLabel.stderr).not.toBe(0);
+      expect(missingLabel.stderr).toContain("Mach service label");
 
-    const extraHelper = runMacPrivilegedHelperVerifier(["--structure-only"], {
-      helper: "extra-helper",
-    });
-    expect(extraHelper.status, extraHelper.stderr).not.toBe(0);
-    expect(extraHelper.stderr).toContain("exactly one privileged helper");
+      const extraHelper = runMacPrivilegedHelperVerifier(["--structure-only"], {
+        helper: "extra-helper",
+      });
+      expect(extraHelper.status, extraHelper.stderr).not.toBe(0);
+      expect(extraHelper.stderr).toContain("exactly one privileged helper");
 
-    const acceptedHelper = runMacPrivilegedHelperVerifier();
-    expect(acceptedHelper.status, acceptedHelper.stderr).toBe(0);
-    expect(
-      acceptedHelper.calls.filter((call) => call.startsWith("--display ")),
-    ).toHaveLength(4);
+      const acceptedHelper = runMacPrivilegedHelperVerifier();
+      expect(acceptedHelper.status, acceptedHelper.stderr).toBe(0);
+      expect(
+        acceptedHelper.calls.filter((call) => call.startsWith("--display ")),
+      ).toHaveLength(4);
 
-    const missingArtifacts = runEmbedPrivilegedHelper();
-    expect(missingArtifacts.status, missingArtifacts.stderr).toBe(0);
-    expect(missingArtifacts.stderr).toContain("leaving FyAgent.app unchanged");
-    expect(
-      fs.existsSync(
-        path.join(missingArtifacts.appPath, PRIVILEGED_HELPER_RELPATH),
-      ),
-    ).toBe(false);
+      const missingArtifacts = runEmbedPrivilegedHelper();
+      expect(missingArtifacts.status, missingArtifacts.stderr).toBe(0);
+      expect(missingArtifacts.stderr).toContain(
+        "leaving FyAgent.app unchanged",
+      );
+      expect(
+        fs.existsSync(
+          path.join(missingArtifacts.appPath, PRIVILEGED_HELPER_RELPATH),
+        ),
+      ).toBe(false);
 
-    const requiredMissing = runEmbedPrivilegedHelper({
-      FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1",
-    });
-    expect(requiredMissing.status, requiredMissing.stderr).not.toBe(0);
-    expect(requiredMissing.stderr).toContain(
-      "formal privileged helper artifacts are required before embedding",
-    );
-    expect(
-      fs.existsSync(
-        path.join(requiredMissing.appPath, PRIVILEGED_HELPER_RELPATH),
-      ),
-    ).toBe(false);
+      const requiredMissing = runEmbedPrivilegedHelper({
+        FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1",
+      });
+      expect(requiredMissing.status, requiredMissing.stderr).not.toBe(0);
+      expect(requiredMissing.stderr).toContain(
+        "formal privileged helper artifacts are required before embedding",
+      );
+      expect(
+        fs.existsSync(
+          path.join(requiredMissing.appPath, PRIVILEGED_HELPER_RELPATH),
+        ),
+      ).toBe(false);
 
-    const sourceRoot = fs.mkdtempSync(
-      path.join(os.tmpdir(), "fyagent-helper-src-"),
-    );
-    temporaryRoots.push(sourceRoot);
-    const helperSrc = path.join(sourceRoot, "helper-bin");
-    const clientSrc = path.join(sourceRoot, "client.dylib");
-    fs.writeFileSync(helperSrc, "helper-bytes");
-    fs.writeFileSync(clientSrc, "client-bytes");
-    const embedded = runEmbedPrivilegedHelper({
-      FYAGENT_PRIVILEGED_HELPER_BIN: helperSrc,
-      FYAGENT_PRIVILEGED_CLIENT_DYLIB: clientSrc,
-    });
-    expect(embedded.status, embedded.stderr).toBe(0);
-    expect(
-      fs.readFileSync(
-        path.join(embedded.appPath, PRIVILEGED_HELPER_RELPATH),
-        "utf8",
-      ),
-    ).toBe("helper-bytes");
-    expect(
-      fs.readFileSync(
-        path.join(embedded.appPath, PRIVILEGED_CLIENT_RELPATH),
-        "utf8",
-      ),
-    ).toBe("client-bytes");
+      const sourceRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), "fyagent-helper-src-"),
+      );
+      temporaryRoots.push(sourceRoot);
+      const helperSrc = path.join(sourceRoot, "helper-bin");
+      const clientSrc = path.join(sourceRoot, "client.dylib");
+      fs.writeFileSync(helperSrc, "helper-bytes");
+      fs.writeFileSync(clientSrc, "client-bytes");
+      const embedded = runEmbedPrivilegedHelper({
+        FYAGENT_PRIVILEGED_HELPER_BIN: helperSrc,
+        FYAGENT_PRIVILEGED_CLIENT_DYLIB: clientSrc,
+      });
+      expect(embedded.status, embedded.stderr).toBe(0);
+      expect(
+        fs.readFileSync(
+          path.join(embedded.appPath, PRIVILEGED_HELPER_RELPATH),
+          "utf8",
+        ),
+      ).toBe("helper-bytes");
+      expect(
+        fs.readFileSync(
+          path.join(embedded.appPath, PRIVILEGED_CLIENT_RELPATH),
+          "utf8",
+        ),
+      ).toBe("client-bytes");
 
-    const partial = runEmbedPrivilegedHelper({
-      FYAGENT_PRIVILEGED_HELPER_BIN: helperSrc,
-    });
-    expect(partial.status, partial.stderr).not.toBe(0);
-    expect(fs.existsSync(partial.appPath)).toBe(true);
-    expect(
-      fs.existsSync(path.join(partial.appPath, PRIVILEGED_HELPER_RELPATH)),
-    ).toBe(false);
-  });
+      const partial = runEmbedPrivilegedHelper({
+        FYAGENT_PRIVILEGED_HELPER_BIN: helperSrc,
+      });
+      expect(partial.status, partial.stderr).not.toBe(0);
+      expect(fs.existsSync(partial.appPath)).toBe(true);
+      expect(
+        fs.existsSync(path.join(partial.appPath, PRIVILEGED_HELPER_RELPATH)),
+      ).toBe(false);
+    },
+  );
 
   it("recovers only an owned failed draft, then publishes once through a fresh verified transaction", () => {
     const publish = source.slice(source.indexOf("\n  publish:\n"));
@@ -2845,7 +2855,9 @@ jobs:
     expect(publish).toContain("for download_attempt in 1 2 3 4; do");
     expect(publish).toContain("sleep 5");
     expect(publish).toContain("downloads_verified=true");
-    const assetDownloadStart = publish.indexOf('download_status="$(curl --silent');
+    const assetDownloadStart = publish.indexOf(
+      'download_status="$(curl --silent',
+    );
     const assetDownloadEnd = publish.indexOf(
       'if [ "$download_status" != 200 ]',
       assetDownloadStart,

@@ -1,0 +1,28 @@
+{
+  "id": "frontend-state-motion",
+  "name": "frontend-state-motion",
+  "title": "状态尺寸过渡与可感知按压",
+  "description": "修复弹窗步骤高度跳变、选中镜片重复展开及按钮快点反馈，复用现有动效所有者并验证取消和性能",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-06",
+  "completedAt": "2026-09-06",
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "09-06-frontend-experience-round6",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "work_commit": "070479bf84c667aa8b090a2f30bb5b63b7643e84"
+  }
+}

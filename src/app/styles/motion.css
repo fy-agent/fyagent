@@ -1,0 +1,109 @@
+.fy-control-button,
+.fy-icon-button,
+.fy-glass-button,
+.fy-feature-tab,
+.fy-lab-tabs [role="tab"] {
+  transition:
+    color var(--fy-motion-control) ease,
+    background-color var(--fy-motion-control) ease,
+    border-color var(--fy-motion-control) ease,
+    box-shadow var(--fy-motion-control) ease,
+    opacity var(--fy-motion-control) ease;
+}
+
+/* Press transforms belong to Motion, not a competing :active translate rule. */
+[data-pressable="true"] {
+  transform-origin: center;
+}
+.fy-feature-progress > span {
+  transition: width var(--fy-motion-content) var(--fy-motion-ease);
+}
+
+.fy-persistent-surface:not([hidden]),
+.fy-feature-tab-panel:not([hidden]) {
+  animation: fy-surface-arrive var(--fy-motion-content) var(--fy-motion-ease)
+    both;
+}
+.fy-control-notice,
+.fy-apply-workspace {
+  animation: fy-content-arrive var(--fy-motion-content) var(--fy-motion-ease)
+    both;
+}
+@keyframes fy-surface-arrive {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fy-tooltip[data-state="delayed-open"],
+.fy-tooltip[data-state="instant-open"],
+.fy-feature-menu-popover[data-state="open"],
+.fy-popover[data-state="open"] {
+  transform-origin: var(
+    --radix-popover-content-transform-origin,
+    var(--radix-tooltip-content-transform-origin, center)
+  );
+  animation: fy-popup-arrive var(--fy-motion-content) var(--fy-motion-ease) both;
+}
+.fy-tooltip[data-state="closed"],
+.fy-feature-menu-popover[data-state="closed"],
+.fy-popover[data-state="closed"] {
+  pointer-events: none;
+  animation: fy-popup-leave var(--fy-motion-control) ease-in both;
+}
+@keyframes fy-content-arrive {
+  from {
+    opacity: 0.85;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fy-popup-arrive {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes fy-popup-leave {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fy-toast {
+    transform: none !important;
+  }
+  .fy-persistent-surface,
+  .fy-feature-tab-panel,
+  .fy-control-notice,
+  .fy-apply-workspace,
+  .fy-tooltip,
+  .fy-popover,
+  .fy-feature-menu-popover {
+    animation: none !important;
+  }
+  .fy-feature-progress > span {
+    transition: none;
+  }
+  .fy-control-button,
+  .fy-icon-button,
+  .fy-glass-button,
+  .fy-feature-tab,
+  .fy-lab-tabs [role="tab"] {
+    transition: none;
+  }
+}

@@ -4,8 +4,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::config::{
-    atomic_write, delete_file, get_home_dir, sanitize_provider_name, write_json_file,
-    write_text_file,
+    delete_file, get_home_dir, sanitize_provider_name, write_json_file, write_text_file,
 };
 use crate::error::AppError;
 
@@ -86,9 +85,9 @@ pub fn write_codex_live_atomic(
     write_json_file(&auth_path, auth)?;
     if let Err(error) = write_text_file(&config_path, &config_text) {
         if let Some(bytes) = old_auth {
-            let _ = atomic_write(&auth_path, &bytes);
+            let _ = crate::config::restore_file_preimage(&auth_path, Some(&bytes));
         } else {
-            let _ = delete_file(&auth_path);
+            let _ = crate::config::restore_file_preimage(&auth_path, None);
         }
         return Err(error);
     }

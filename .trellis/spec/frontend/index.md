@@ -1,85 +1,66 @@
 # Frontend Development Guidelines
 
-This directory defines renderer architecture, state, UI quality, copy,
-localization, and the current V2 feature contracts. The index only routes
-readers; concrete Ports, DTO parsers, page behavior, failure states, and test
-assertions belong in the linked owner.
+The product has one renderer. This index routes to contract owners; it does
+not duplicate DTOs, state machines, filenames or implementation behavior.
 
-## Reading order
+## Reading order / Pre-Development Checklist
 
-1. Read [Directory Structure](./directory-structure.md) and
-   [Renderer Modular Boundaries](./modular-boundaries.md).
-2. Read [Type Safety](./type-safety.md),
-   [State Management](./state-management.md), and
-   [Frontend Reuse](./reuse.md) before adding data flow or shared UI.
-3. Apply [Component Guidelines](./component-guidelines.md),
-   [Hook Guidelines](./hook-guidelines.md),
-   [Quality Guidelines](./quality-guidelines.md), and
-   [User-Facing Copy](./user-facing-copy.md).
-4. For V2 work, read the focused navigation/window-shell contract plus the
-   owning feature contract. Use compatibility routers only for archived broad
-   references.
+Read [Directory Structure](./directory-structure.md),
+[Modular Boundaries](./modular-boundaries.md), [Type Safety](./type-safety.md),
+[State Management](./state-management.md) and [Reuse](./reuse.md), then the
+focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
+[Hook Guidelines](./hook-guidelines.md) and [User-Facing Copy](./user-facing-copy.md).
 
-## Foundation contracts
+## Shared contracts
 
-| Contract                                               | Owns                                                                                                       |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| [Directory Structure](./directory-structure.md)        | Renderer directory roles and placement.                                                                    |
-| [Renderer Modular Boundaries](./modular-boundaries.md) | Renderer/host, V2/leftover, feature/platform, and import boundaries.                                       |
-| [Type Safety](./type-safety.md)                        | `unknown` parsing, DTO validation, exhaustive unions, and prohibition on scattered casts.                  |
-| [State Management](./state-management.md)              | Server, URL, local draft, secret, and derived-state ownership.                                             |
-| [Frontend Reuse](./reuse.md)                           | Reuse order, shared-owner registry, component placement, dependency review, and anti-clone rules.          |
-| [Component Guidelines](./component-guidelines.md)      | Component APIs, semantics, accessibility, composition, and presentation ownership.                         |
-| [Hook Guidelines](./hook-guidelines.md)                | Hook responsibilities, lifecycle, query/effect ownership, and stable return shapes.                        |
-| [Quality Guidelines](./quality-guidelines.md)          | Loading/error/empty states, test levels, deterministic behavior, and acceptance evidence.                  |
-| [User-Facing Copy](./user-facing-copy.md)              | Evidence-correct copy, errors, labels, installer wording, and prohibition on internal/GPT-style narration. |
-| [Frontend Localization](./localization.md)             | Leftover locale authority, exact key parity, detection, fallback, and V2 import boundary.                  |
+| Contract                                                    | Owns                                                                        |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [Directory Structure](./directory-structure.md)             | Single entry, role placement and test environments.                         |
+| [Modular Boundaries](./modular-boundaries.md)               | Domain, renderer layers, native ports and import constraints.               |
+| [Type Safety](./type-safety.md)                             | Unknown input, guards, closed DTOs and exhaustive states.                   |
+| [State Management](./state-management.md)                   | URL/query/draft/secret and native authority ownership.                      |
+| [Reuse](./reuse.md)                                         | Adopted primitive/shared owner registry and anti-clone rules.               |
+| [Security Boundaries](./security-boundaries.md)             | Structured input, production entry, dependency graphs and test boundaries.  |
+| [Quality Guidelines](./quality-guidelines.md)               | Correctness, browser/production measurements and evidence limits.           |
+| [Localization](./localization.md)                           | Current Chinese UI, manual languages and future locale admission.           |
+| [Visual Language](./visual-language.md)                     | Typography, density, focus and shared hierarchy.                            |
+| [Blue Appearance](./appearance.md)                          | Paired themes, preference, native synchronization and radial reveal.        |
+| [Surfaces and Container Response](./surfaces-responsive.md) | Material, contrast, roundness and library-backed stable panes.              |
+| [Shared Motion](./motion-system.md)                         | Time units, press, media preferences, disclosure and notification motion.   |
+| [Dialog Lifecycle](./dialog-lifecycle.md)                   | Source geometry, content resize, session teardown and focus/scroll release. |
 
-## V2 architecture and shell
+## Shell and feature owners
 
-| Contract                                                 | Owns                                                                                                                                                 |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [V2 Navigation and Persistent Route](./v2-navigation.md) | Hash route registry, literal lazy loaders, persistent page lifetime, hidden query isolation, blockers, sidebar state, and closed Agent return state. |
-| [V2 Window Shell and Interaction](./v2-window-shell.md)  | AppShell/TopBar, native-overlay boundary, selection geometry, shared motion/collapse, external opening, and V2 architecture imports.                 |
+| Contract                                              | Owns                                                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------- |
+| [Navigation](./navigation.md)                         | Hash routes, literal loaders, keep-alive lifetime, blockers and return context. |
+| [Window Shell](./window-shell.md)                     | Chrome, native overlay boundary, selection and shared interaction.              |
+| [Change Plan Workspaces](./change-plan-workspaces.md) | Preview/apply, source switching, job observation and reconciliation.            |
+| [Agent Directory](./agent-directory.md)               | Catalog, scan/readiness, cards, installation and capabilities.                  |
+| [External Agent Auth](./agent-auth.md)                | Native auth observations, session ownership and safe handoff.                   |
+| [Managed Auth](./managed-auth.md)                     | Accounts/connections/request sources, login and impact confirmation.            |
+| [Models](./models.md)                                 | Drafts, connectivity, native save and existing model workflows.                 |
+| [Assignments](./assignments.md)                       | Shared seven-target selection and serialized mutations.                         |
+| [Skills](./skills.md)                                 | Discovery, installed items, backups and assignment.                             |
+| [MCP](./mcp.md)                                       | Catalog/launch validation, CRUD, installation and assignment.                   |
+| [Prompts and Memory](./prompts-memory.md)             | Native content CRUD, editor/dirty state and directory operations.               |
 
-## V2 feature contracts
+## Historical discovery routers
 
-| Contract                                                       | Owns                                                                                                                                       |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| [V2 Agent Directory](./v2-agent-directory.md)                  | Catalog/readiness scan, order, cards, capability projection, lifecycle UI, and Agent return links.                                         |
-| [V2 External Agent Auth UI](./v2-agent-auth.md)                | Agent-card Auth summaries, Agent-owned session recovery/polling, desktop target selection, and managed-account routing.                    |
-| [V2 Managed Accounts and Authentication](./v2-managed-auth.md) | Central `/auth` account/connection/request-source UI, strict ManagedAuthPort, login sessions, impact previews, and responsive interaction. |
-| [V2 Models](./v2-models.md)                                    | Target selection, drafts/tests, typed preview/apply, quick setup, WorkBuddy, TRAE, OpenCode, and Codex model flows.                        |
-| [V2 Shared Assignment](./v2-assignments.md)                    | Seven-target presentation order, shared AssignmentPanel API, serialized mutation, and authoritative reread.                                |
-| [V2 Skills](./v2-skills.md)                                    | Installed/discovery views, SkillHub/repository sources, pagination, install targets, backups, and Skill assignments.                       |
-| [V2 MCP](./v2-mcp.md)                                          | Installed/discovery views, launch parsing, security projection, presets, install, and MCP assignments.                                     |
-| [V2 Prompts and Memory](./v2-prompts-memory.md)                | Prompt/native-memory Ports, CRUD/enable flows, directory operations, and Agent prompt delegation.                                          |
-
-## Compatibility routers
-
-- [V2 Shell](./v2-shell.md)
-- [V2 Agents and Models](./v2-agent-models.md)
-- [V2 Skills and MCP](./v2-skills-mcp.md)
-
-These paths preserve archived references only. New work cites the focused
-contract above and must not add detailed behavior back to a router.
-
-## Maintenance rules
-
-- A feature contract owns its exact UI/Port behavior. Foundation specs state
-  reusable rules and link instead of copying feature matrices.
-- Integrate the current rule into the owning body; do not stack dated override
-  blocks above contradictory text.
-- V2 production code uses approved shared/platform boundaries. A test fixture
-  or browser preview never becomes desktop authority.
-- Keep native-only, readback, partial-result, accessibility, responsive, and
-  secret/error-redaction cases explicit even when a feature contract is longer.
+[Shell](./shell.md), [Agents and Models](./agent-models.md) and
+[Skills and MCP](./skills-mcp.md) only point to focused contracts. They are not
+alternative implementations. New work cites the focused owner.
 
 ## Quality Check
 
-Use every affected contract's **Tests Required** section. Focused renderer work
-may start with `mise run check:frontend` or the owning V2 type/lint/test tasks;
-the standard local implementation gate is `mise run check`. Documentation-only
-spec/task changes still run `mise run check:contracts`, and active Trellis work
-uses the exact prearchive exclusion before archival. Browser fixtures and mock
-IPC prove only their declared scope; they do not become native desktop evidence.
+Every changed owner supplies its required behavior tests. `mise run check`
+includes the single strict type/lint pipeline and renderer/domain/contract
+unit tests. Run `mise run test:browser` for production boot and browser behavior,
+and `mise run test:performance` serially for actual motion/navigation costs.
+Task/SPEC-only edits still run `mise run check:contracts`; active tasks use the
+exact task exclusion at prearchive, then validate effective context references.
+
+Migrations preserve native commands and persisted identities, update effective
+source/SPEC/CI/test references and explicitly account for retired UI assertions.
+Historical prose/commit hashes are evidence, not live paths to mass-rewrite.
+Browser/mock fixtures never become native, signature or real-account evidence.

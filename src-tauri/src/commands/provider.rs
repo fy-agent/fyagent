@@ -20,6 +20,8 @@ use std::str::FromStr;
 pub struct ProviderPublicSummary {
     id: String,
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    write_targets: Option<Vec<QuickSetupWriteTarget>>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -195,6 +197,7 @@ fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary,
     Ok(ProviderPublicSummary {
         id: provider.id.clone(),
         name: provider.name.clone(),
+        write_targets: None,
     })
 }
 
@@ -390,7 +393,11 @@ pub async fn get_provider_summary(
             .map_err(|_| "Provider public summary is unavailable".to_string())?;
         let mut providers = IndexMap::new();
         for (key, provider) in all {
-            let summary = provider_public_summary(&provider)?;
+            let mut summary = provider_public_summary(&provider)?;
+            summary.write_targets = Some(
+                ProviderService::source_write_targets(&app_type, &provider)
+                    .map_err(|_| "Provider public summary is unavailable".to_string())?,
+            );
             if key != summary.id {
                 return Err("Provider public summary is unavailable".to_string());
             }

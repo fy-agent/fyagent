@@ -1,0 +1,28 @@
+{
+  "id": "frontend-scroll-ownership",
+  "name": "frontend-scroll-ownership",
+  "title": "恢复页面与页签的实际滚动可达性",
+  "description": "核对七路由和页签的高度约束及滚动所有权，复用原生滚动与现有容器修复 Skills 等页面不可达长内容",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-06",
+  "completedAt": "2026-09-06",
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "fa2684d04d7457319274261d858fcc6237268e9a",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "09-06-frontend-experience-round7",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "work_commit": "fa2684d04d7457319274261d858fcc6237268e9a"
+  }
+}

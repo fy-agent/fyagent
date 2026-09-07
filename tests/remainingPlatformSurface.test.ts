@@ -504,16 +504,12 @@ describe("durable supported-platform surface contract", () => {
     expect(checker.isTextExcludedPath("src-tauri/Cargo.lock")).toBe(true);
     expect(checker.isTextExcludedPath("mise.lock")).toBe(false);
 
-    const standalone = checker.GENERATED_STANDALONE_PREVIEW_PATH;
-    expect(standalone).toBe("FyAgent-前端交互预览.html");
-    expect(checker.listCurrentFiles(ROOT)).not.toContain(standalone);
-    expect(checker.isExcludedPath(standalone)).toBe(false);
-    expect(checker.isTextExcludedPath(standalone)).toBe(true);
-    expect(checker.isTextExcludedPath(`nested/${standalone}`)).toBe(false);
-    expect(checker.isTextExcludedPath("scripts/build-v2-preview.mjs")).toBe(
-      false,
-    );
-    expect(checker.isTextExcludedPath("src/v2/main.tsx")).toBe(false);
+    for (const retired of ["deplink.html", "FyAgent-前端交互预览.html"]) {
+      expect(checker.listCurrentFiles(ROOT)).not.toContain(retired);
+      expect(checker.isExcludedPath(retired)).toBe(false);
+      expect(checker.isTextExcludedPath(retired)).toBe(false);
+    }
+    expect(checker.isTextExcludedPath("src/main.tsx")).toBe(false);
 
     const fixture = activeTaskFixture();
     const directSession = () => fixture.relative;
@@ -727,7 +723,7 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", () => {
     const entries = permittedRustEntries();
-    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(35);
+    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(33);
     expect(checker.scanRustImplicitPredicates(entries)).toEqual([]);
 
     const first = checker.RUST_ALLOWANCE_CONTRACT[0];
@@ -1148,6 +1144,22 @@ describe("durable supported-platform surface contract", () => {
     ).toEqual([]);
   });
 
+  it("recognizes whitespace around a computed platform switch selector", () => {
+    const result = checker.scanJavaScriptImplicitPredicates([
+      {
+        path: "src/whitespace-switch.ts",
+        source:
+          'switch ( \n process["platform"] \t ) { case "win32": return windows(); default: return generic(); }',
+      },
+    ]);
+    expect(result).toContainEqual(
+      expect.objectContaining({
+        path: "src/whitespace-switch.ts",
+        rule: "js:implicit-target",
+      }),
+    );
+  });
+
   it("runs every production scanner against the current repository snapshot without lifecycle exclusions", () => {
     const indexModes = checker.listCurrentIndexModes(ROOT);
     const runner = (
@@ -1276,7 +1288,8 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes the decoded and visually reviewed raster inventory by path and digest", () => {
     const currentPaths = checker.listCurrentFiles(ROOT);
-    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(148);
+    // 27 retired-only rasters removed; five production assets moved unchanged.
+    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(121);
     expect(checker.validateRasterAssetInventory(currentPaths)).toEqual([]);
 
     const first = checker.RASTER_ASSET_CONTRACT[0];
@@ -1385,7 +1398,7 @@ describe("durable supported-platform surface contract", () => {
         "if (isMac() !== true) generic();",
         'if (process.platform === "win32") windows(); else throw generic();',
       ].map((snippet): [string, (source: string) => string] => [
-        "src/lib/platform.ts",
+        "scripts/ci/verify-toolchain.mjs",
         append(snippet),
       ]),
     ];
@@ -1499,7 +1512,7 @@ describe("durable supported-platform surface contract", () => {
         ),
       );
       fs.writeFileSync(manifestPath, JSON.stringify(current));
-      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(148);
+      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(121);
 
       fs.writeFileSync(
         manifestPath,

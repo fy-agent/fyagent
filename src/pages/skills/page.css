@@ -1,0 +1,77 @@
+.fy-skills-page > .fy-feature-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px 16px;
+}
+
+.fy-skills-page-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--fy-text);
+  font-size: var(--fy-font-page-title);
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+.fy-skills-page > .fy-feature-header > .fy-feature-tabs {
+  grid-column: 1;
+  margin-bottom: 0;
+}
+
+.fy-skills-page > .fy-feature-header > .fy-feature-actions {
+  grid-column: 2;
+  justify-content: flex-end;
+}
+
+.fy-skills-page .fy-feature-toolbar > .fy-feature-tabs {
+  flex-wrap: wrap;
+  width: auto;
+  max-width: 100%;
+}
+
+.fy-skills-page .fy-feature-toolbar {
+  align-items: flex-start;
+}
+
+.fy-skills-page .fy-feature-toolbar > .fy-feature-tabs {
+  flex: 1 1 100%;
+}
+
+.fy-skills-page .fy-feature-workspace > .fy-feature-discovery-scroll {
+  display: grid;
+  gap: 18px;
+  min-height: 0;
+}
+
+.fy-skills-page
+  .fy-feature-workspace
+  > .fy-feature-discovery-scroll
+  > .fy-feature-description {
+  margin: 0;
+}
+
+.fy-skills-page
+  .fy-feature-workspace
+  > .fy-feature-discovery-scroll
+  > section
+  > h3 {
+  margin: 0 0 10px;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+@media (max-width: 760px) {
+  .fy-skills-page > .fy-feature-header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .fy-skills-page > .fy-feature-header > .fy-feature-tabs,
+  .fy-skills-page > .fy-feature-header > .fy-feature-actions {
+    grid-column: 1;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+}

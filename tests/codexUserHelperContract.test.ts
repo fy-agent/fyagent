@@ -46,7 +46,7 @@ function count(source: string, literal: string): number {
 }
 
 function grokHelperRuntime(runtimeSource: string): string {
-  const grokStart = runtimeSource.indexOf("fn run_grok_tool_session");
+  const grokStart = runtimeSource.indexOf("fn run_cli_tool_session");
   const grokEnd = runtimeSource.indexOf("\nfn deploy_fixed_package");
   expect(grokStart).toBeGreaterThan(0);
   expect(grokEnd).toBeGreaterThan(grokStart);
@@ -54,7 +54,7 @@ function grokHelperRuntime(runtimeSource: string): string {
 }
 
 function installerHelperRuntime(runtimeSource: string): string {
-  const grokStart = runtimeSource.indexOf("fn run_grok_tool_session");
+  const grokStart = runtimeSource.indexOf("fn run_cli_tool_session");
   const grokEnd = runtimeSource.indexOf("\nfn deploy_fixed_package");
   const installStart = runtimeSource.indexOf("pub(crate) fn run_install");
   expect(grokStart).toBeGreaterThan(0);
@@ -253,9 +253,7 @@ describe("Codex current-user helper static contract", () => {
       /pub enum HelperMessage\s*\{([\s\S]*?)\n\}/u,
     )?.[1];
     expect(messageEnum).toBeDefined();
-    expect(messageEnum).toMatch(
-      /\bHello\b[\s\S]*action:\s*UserHelperAction/u,
-    );
+    expect(messageEnum).toMatch(/\bHello\b[\s\S]*action:\s*UserHelperAction/u);
     expect(messageEnum).toMatch(
       /\bStarted\b[\s\S]*package:\s*PinnedPackageIdentity/u,
     );
@@ -446,7 +444,7 @@ describe("Codex current-user helper static contract", () => {
         "PipeChannel::connect",
         "channel.send_hello(action)",
         "UserHelperAction::GrokTool",
-        "run_grok_tool_session",
+        "run_cli_tool_session",
         "channel.read_bridge_control",
         "PinnedPackageFile::open(bridge_control, action.artifact_kind())",
         "package_pin.recheck_for_helper()",
@@ -494,11 +492,11 @@ describe("Codex current-user helper static contract", () => {
       /if action == UserHelperAction::CodexMsixInstall[\s\S]*channel\.send_progress\(0\)/u,
     );
     expect(runInstall).toMatch(
-      /if matches!\(action, UserHelperAction::GrokTool \{ \.\. \}\)[\s\S]*run_grok_tool_session/u,
+      /if matches!\([\s\S]*?UserHelperAction::GrokTool \{ \.\. \} \| UserHelperAction::ClaudeTool \{ \.\. \}[\s\S]*?run_cli_tool_session/u,
     );
     const grokSession = section(
       runtime,
-      "fn run_grok_tool_session",
+      "fn run_cli_tool_session",
       "\nfn execute_grok_tool",
     );
     expect(grokSession).toContain("read_grok_npm_plan");
@@ -506,6 +504,17 @@ describe("Codex current-user helper static contract", () => {
     expect(grokSession).not.toContain("acknowledge_tool_control");
     expect(grokSession).not.toContain("PinnedPackageFile");
     expect(grokSession).not.toContain("read_bridge_control");
+    expectInOrder(
+      grokSession,
+      [
+        "read_grok_npm_plan",
+        "channel.send_started",
+        "controls.wait_for_admission",
+        "channel.mark_admitted()",
+        "claude::execute",
+      ],
+      "ordinary-user Claude admission ordering",
+    );
   });
 
   it("resolves and pins only the fixed protected ProgramData file", () => {
@@ -728,7 +737,7 @@ describe("Codex current-user helper static contract", () => {
       "acl.Sbz1 != 0",
       "acl.Sbz2 != 0",
       "information.AceCount != expected.len()",
-      "ace.Header.AceFlags != 0",
+      "header.AceFlags != 0",
       "sid_length != encoded_sid_length",
       "length != ace_size",
     ]) {

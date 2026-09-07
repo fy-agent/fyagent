@@ -18,7 +18,7 @@ Primary owners:
 [Managed Auth Core](./managed-auth.md) owns SecretRef admission, credential
 metadata, refresh CAS, and legacy migration. [Managed Auth Consumers](./managed-auth-consumers.md)
 owns Codex/Grok/OpenCode connection projection after a login grant has been
-stored. [V2 Managed Accounts](../frontend/v2-managed-auth.md) owns renderer
+stored. [Managed Accounts](../frontend/managed-auth.md) owns renderer
 polling and presentation. Do not duplicate provider protocol state in either
 consumer adapters or the renderer.
 
@@ -59,11 +59,11 @@ Request shape is closed:
 
 The advertised `connect_consumer` pairs are also closed:
 
-| Provider | Admitted consumers |
-| --- | --- |
-| `openai` | `codex`, `opencode`, `fyagent_proxy` |
-| `xai` | `grokbuild`, `opencode`, `fyagent_proxy` |
-| `github_copilot` | none; provider login is unavailable |
+| Provider         | Admitted consumers                       |
+| ---------------- | ---------------------------------------- |
+| `openai`         | `codex`, `opencode`, `fyagent_proxy`     |
+| `xai`            | `grokbuild`, `opencode`, `fyagent_proxy` |
+| `github_copilot` | none; provider login is unavailable      |
 
 The renderer derives these choices from `ManagedAuthProviderSummary`; it must
 not synthesize a cross-provider pair. xAI repeats this compatibility check in
@@ -105,15 +105,17 @@ malformed or zero-version UUID.
   the versioned bundle to the OS vault, performs typed readback, and marks the
   credential ready. Opening a browser or receiving a provider grant is not
   success by itself.
-- After account storage, an unavailable Codex/Grok native projection ends
-  `partial` with its consumer-owned reason. A successful Codex or OpenCode file
-  write and readback may instead end `completed` with `pending_restart`,
-  because persistence is proven while live consumer pickup is not.
+- After account storage, login completes with the account ID and no consumer
+  connection ID. `connect_consumer` selects an independent credential purpose;
+  it does not authorize an automatic external auth/config write. Connection
+  projection requires the separate file-impact preview and confirmation owned
+  by [Managed Auth Consumers](./managed-auth-consumers.md). An unavailable
+  consumer does not turn successful credential storage into a failed login.
 - A `completed` login snapshot may carry only `reasonCode=null` or
   `reasonCode=pending_restart`. The latter is a positive terminal state: the
-  account and projection readback completed, but the consumer may need a
-  restart. Every other non-null reason requires a non-completed stage and is a
-  wire-contract violation.
+  older consumer-write result may need a restart. Current save-only completion
+  emits no reason and never manufactures `pending_restart` without a write.
+  Every other non-null reason requires a non-completed stage.
 
 ### OpenAI browser loopback and Device Code
 
@@ -160,28 +162,28 @@ malformed or zero-version UUID.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| vault unavailable | `secret_unavailable`; no provider worker |
-| login vault create is denied before a Keychain item exists | `secret_unavailable`; credential stays `secret_missing`; never `migration_blocked` |
-| migration blocks admission | `migration_blocked`; no provider worker |
-| OpenAI loopback ports `1455` and `1457` are busy | switch to Device Code; do not kill listeners or bind an arbitrary port |
-| `TcpListener::from_std` runs on the IPC command thread | panic `there is no reactor running`; convert only inside the async accept worker |
-| callback host/path/state/PKCE/body/deadline is invalid | fail the session; store no grant |
-| user cancels while callback/poll is in flight | generation changes; late result is discarded |
-| switch method is not OpenAI browser-loopback → Device Code | `invalid_response`; session unchanged |
-| xAI requests browser loopback | reject before session creation |
-| xAI discovery or token endpoint leaves `auth.x.ai:443` | fail closed; send no credential request to that endpoint |
-| GitHub Copilot + Device Code | `provider_not_supported` |
-| renderer is offered a consumer outside the provider summary | contract regression; do not submit the request |
-| second non-terminal session for the same provider | `operation_conflict`; return no new session |
-| OpenAI and xAI each have one non-terminal session | both may coexist; retain unique backend UUIDs |
-| grant is received but SecretRef readback fails | never publish `completed`; retain the core recovery state |
-| JWT identity parses but the encoded vault bundle still exceeds 2560 after omitting optional tokens | `login_failed`; never publish `completed` |
-| Codex/Grok native projection is unavailable after storage | `partial` with the consumer-owned reason |
-| Codex/OpenCode file write/readback succeeds but live pickup is unproven | `completed` + `pending_restart`; do not relabel the write unavailable or ask for a generic retry |
-| completed snapshot carries a non-null reason other than `pending_restart` | reject the wire shape; do not render success |
-| snapshot/error/log contains URL secrets, codes, tokens, verifier, SecretRef, or HTTP body | security regression |
+| Condition                                                                                          | Required result                                                                    |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| vault unavailable                                                                                  | `secret_unavailable`; no provider worker                                           |
+| login vault create is denied before a Keychain item exists                                         | `secret_unavailable`; credential stays `secret_missing`; never `migration_blocked` |
+| migration blocks admission                                                                         | `migration_blocked`; no provider worker                                            |
+| OpenAI loopback ports `1455` and `1457` are busy                                                   | switch to Device Code; do not kill listeners or bind an arbitrary port             |
+| `TcpListener::from_std` runs on the IPC command thread                                             | panic `there is no reactor running`; convert only inside the async accept worker   |
+| callback host/path/state/PKCE/body/deadline is invalid                                             | fail the session; store no grant                                                   |
+| user cancels while callback/poll is in flight                                                      | generation changes; late result is discarded                                       |
+| switch method is not OpenAI browser-loopback → Device Code                                         | `invalid_response`; session unchanged                                              |
+| xAI requests browser loopback                                                                      | reject before session creation                                                     |
+| xAI discovery or token endpoint leaves `auth.x.ai:443`                                             | fail closed; send no credential request to that endpoint                           |
+| GitHub Copilot + Device Code                                                                       | `provider_not_supported`                                                           |
+| renderer is offered a consumer outside the provider summary                                        | contract regression; do not submit the request                                     |
+| second non-terminal session for the same provider                                                  | `operation_conflict`; return no new session                                        |
+| OpenAI and xAI each have one non-terminal session                                                  | both may coexist; retain unique backend UUIDs                                      |
+| grant is received but SecretRef readback fails                                                     | never publish `completed`; retain the core recovery state                          |
+| JWT identity parses but the encoded vault bundle still exceeds 2560 after omitting optional tokens | `login_failed`; never publish `completed`                                          |
+| `connect_consumer` login stores a ready credential                                                 | `completed`, account ID, null connection ID; no external file mutation             |
+| Consumer projection is unavailable                                                                 | Account storage may complete; consumer remains disconnected/unavailable            |
+| completed snapshot carries a non-null reason other than `pending_restart`                          | reject the wire shape; do not render success                                       |
+| snapshot/error/log contains URL secrets, codes, tokens, verifier, SecretRef, or HTTP body          | security regression                                                                |
 
 ## 5. Good / Base / Bad Cases
 
@@ -192,7 +194,7 @@ malformed or zero-version UUID.
 - **Good:** both registered loopback ports are occupied, so the same request
   becomes a Device Code session without touching either process.
 - **Base:** a valid xAI Device Code flow stores a separate `grok_native`
-  credential, then finishes partial because Grok projection is not HIL-proven.
+  credential and completes; the Grok connection remains unavailable.
 - **Base:** cancel succeeds while an HTTP poll is outstanding; the later grant
   is ignored because its generation is stale.
 - **Bad:** return the authorize URL to React, let React poll the token endpoint,
@@ -205,9 +207,9 @@ mise run rust:fmt:check
 mise run rust:check
 mise run rust:clippy
 mise run rust:test -- managed_auth
-mise run typecheck:v2
-mise run test:v2 -- tests/v2/features/managed-auth.test.ts \
-  tests/v2/platform/managedAuthPort.test.ts
+mise run typecheck
+mise run test:unit -- tests/renderer/features/managed-auth.test.ts \
+  tests/renderer/platform/managedAuthPort.test.ts
 ```
 
 Required assertions:
@@ -225,10 +227,10 @@ Required assertions:
 - reopen uses the process-private official URL and the snapshot has no URL;
 - xAI origin allowlist and pending/slow-down/deny/expiry classification;
 - `grok_native` versus `proxy_upstream` isolation;
-- SecretRef readback gates success and a failed consumer projection remains
-  partial rather than completed;
-- Codex/OpenCode projection readback may finish `completed` with only
-  `pending_restart`; every other completed/non-null reason is rejected;
+- SecretRef readback gates success; all `connect_consumer` login completions
+  leave external auth/config files unchanged and refresh ownership with FyAgent;
+- current success is account saved, not consumer connected; the parser retains
+  compatibility for `completed + pending_restart` but rejects other reasons;
 - DTO/Debug/log leak scans cover callback/code/state/verifier/device/token and
   raw HTTP body fields.
 
@@ -253,7 +255,8 @@ Correct:
 ```text
 backend owns URL, callback, polling, verifier, and generation
 grant -> reserve metadata -> native vault write -> typed readback
-consumer projection/readback -> completed, completed + pending_restart, or partial
+credential readback -> completed account storage, no automatic consumer write
+separate connection preview + confirmation -> consumer write/readback
 cancel/switch bumps generation so late work cannot commit
 hold std::net::TcpListener across IPC; from_std only inside accept_one_callback
 ```

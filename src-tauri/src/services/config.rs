@@ -7,6 +7,13 @@ use serde_json::Value;
 use std::fs;
 use std::path::Path;
 
+mod recovery;
+
+pub use recovery::{
+    ConfigFileRecoveryError, ConfigFileRecoveryRequest, ConfigFileRecoverySnapshot,
+    ConfigFileRecoveryTarget,
+};
+
 const MAX_BACKUPS: usize = 10;
 
 /// 配置导入导出相关业务逻辑

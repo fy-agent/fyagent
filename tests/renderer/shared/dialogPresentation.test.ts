@@ -1,0 +1,288 @@
+import { afterEach, expect, it, vi } from "vitest";
+import {
+  captureDialogOrigin,
+  type DialogOriginRef,
+} from "@/shared/ui/dialogOrigin";
+import {
+  runDialogPresentation,
+  runDialogResize,
+  settleDialogPlanes,
+  type DialogPlanes,
+} from "@/shared/ui/dialogPresentation";
+
+const originalAnimate = Object.getOwnPropertyDescriptor(
+  Element.prototype,
+  "animate",
+);
+afterEach(() => {
+  if (originalAnimate)
+    Object.defineProperty(Element.prototype, "animate", originalAnimate);
+  else Reflect.deleteProperty(Element.prototype, "animate");
+  document.body.replaceChildren();
+  vi.restoreAllMocks();
+});
+
+function fixture(failAt?: number) {
+  const calls: {
+    target: Element;
+    frames: Keyframe[];
+    options: KeyframeAnimationOptions;
+    cancel: ReturnType<typeof vi.fn>;
+    complete: () => void;
+  }[] = [];
+  const animate = vi.fn(function (
+    this: Element,
+    frames: Keyframe[],
+    options: KeyframeAnimationOptions,
+  ) {
+    if (calls.length === failAt) throw new Error("Native animation rejected");
+    let complete!: () => void;
+    let reject!: (error: Error) => void;
+    const finished = new Promise<void>((resolve, fail) => {
+      complete = resolve;
+      reject = fail;
+    });
+    const cancel = vi.fn(() =>
+      reject(new DOMException("Cancelled", "AbortError")),
+    );
+    calls.push({ target: this, frames, options, cancel, complete });
+    return { finished, cancel };
+  });
+  Object.defineProperty(Element.prototype, "animate", {
+    configurable: true,
+    value: animate,
+  });
+  const windowNode = document.createElement("div");
+  vi.spyOn(windowNode, "getBoundingClientRect").mockReturnValue(
+    new DOMRect(200, 150, 500, 300),
+  );
+  document.body.append(windowNode);
+  const source = document.createElement("button");
+  source.textContent = "Do not copy identity";
+  source.style.backgroundImage =
+    'url("https://not-requested.invalid/image.png")';
+  vi.spyOn(source, "getBoundingClientRect").mockReturnValue(
+    new DOMRect(800, 50, 100, 36),
+  );
+  document.body.append(source);
+  const planes: DialogPlanes = {
+    material: document.createElement("div"),
+    sourceMaterial: document.createElement("div"),
+    targetMaterial: document.createElement("div"),
+    foreground: document.createElement("div"),
+    overlay: document.createElement("div"),
+  };
+  Object.values(planes).forEach((node) => windowNode.append(node));
+  return { planes, source, windowNode, calls, animate };
+}
+
+it("preserves the 420ms geometry and 252/168ms content overlap without copying DOM or resources", async () => {
+  const f = fixture();
+  const run = runDialogPresentation({
+    ...f,
+    entering: true,
+    first: true,
+    duration: 420,
+  });
+  expect(f.calls[0].options).toMatchObject({
+    delay: 80,
+    duration: 340,
+    easing: "cubic-bezier(0.32,0.72,0,1)",
+  });
+  const content = f.calls.find((call) => call.target === f.planes.foreground)!;
+  expect(content.options.delay).toBe(252);
+  expect(content.options.duration).toBeCloseTo(168);
+  expect(f.planes.sourceMaterial.textContent).toBe("");
+  expect(f.planes.sourceMaterial.childNodes).toHaveLength(0);
+  expect(f.planes.sourceMaterial.style.backgroundImage).toBe("none");
+  f.calls.forEach((call) => call.complete());
+  await expect(run.finished).resolves.toBe(true);
+  run.cancel(false);
+  settleDialogPlanes(f.planes);
+  expect(f.planes.material.style.width).toBe("");
+  expect(f.planes.foreground.style.opacity).toBe("1");
+});
+
+it("cancels every already-started native track if a later layer fails", async () => {
+  const f = fixture(2);
+  expect(() =>
+    runDialogPresentation({ ...f, entering: true, first: true, duration: 420 }),
+  ).toThrow("Native animation rejected");
+  expect(f.calls).toHaveLength(2);
+  f.calls.forEach((call) => expect(call.cancel).toHaveBeenCalledTimes(1));
+  await Promise.resolve(); // handled rejection must not escape after this test
+});
+
+it("treats cancellation as incomplete and freezes current values for reversal", async () => {
+  const f = fixture();
+  const run = runDialogPresentation({
+    ...f,
+    entering: true,
+    first: true,
+    duration: 420,
+  });
+  f.planes.material.style.width = "240px";
+  f.planes.foreground.style.opacity = ".4";
+  run.cancel();
+  run.cancel();
+  await expect(run.finished).resolves.toBe(false);
+  f.calls.forEach((call) => expect(call.cancel).toHaveBeenCalledTimes(1));
+  expect(f.planes.material.style.width).toBe("240px");
+  expect(f.planes.foreground.style.opacity).toBe("0.4");
+});
+
+it("caps opt-in content exit at 80ms even when a caller retunes shell duration", async () => {
+  const f = fixture();
+  const run = runDialogPresentation({
+    ...f,
+    entering: false,
+    first: false,
+    duration: 900,
+  });
+  expect(
+    f.calls.find((call) => call.target === f.planes.foreground)?.options
+      .duration,
+  ).toBe(80);
+  run.cancel(false);
+  await expect(run.finished).resolves.toBe(false);
+});
+
+it("retargets the existing entry in viewport space without restarting its deadline or content tracks", async () => {
+  const f = fixture();
+  const run = runDialogPresentation({
+    ...f,
+    entering: true,
+    first: true,
+    duration: 420,
+  });
+  const effect = {
+    getTiming: () => ({ duration: 340, delay: 80 }),
+    setKeyframes: vi.fn(),
+    updateTiming: vi.fn(),
+  };
+  const geometry = Object.assign(f.animate.mock.results[0].value, {
+    effect,
+    currentTime: 120,
+    playState: "running",
+  });
+  f.planes.material.style.left = "300px";
+  f.planes.material.style.top = "-50px";
+  f.planes.material.style.width = "200px";
+  f.planes.material.style.height = "80px";
+  vi.mocked(f.windowNode.getBoundingClientRect).mockReturnValue(
+    new DOMRect(300, 100, 600, 400),
+  );
+  run.retarget();
+  expect(effect.setKeyframes).toHaveBeenCalledWith([
+    expect.objectContaining({
+      left: "200px",
+      top: "0px",
+      width: "200px",
+      height: "80px",
+    }),
+    expect.objectContaining({
+      left: "-1px",
+      top: "-1px",
+      width: "600px",
+      height: "400px",
+    }),
+  ]);
+  expect(effect.updateTiming).toHaveBeenCalledWith({ duration: 300, delay: 0 });
+  expect(geometry.currentTime).toBe(0);
+  expect(f.calls).toHaveLength(6);
+  expect(f.calls.every((call) => call.cancel.mock.calls.length === 0)).toBe(
+    true,
+  );
+  run.cancel(false);
+  await expect(run.finished).resolves.toBe(false);
+});
+
+it("rejects a transient captured origin that no longer fits after an asynchronous window resize", async () => {
+  const f = fixture();
+  const ref: DialogOriginRef = { current: null };
+  captureDialogOrigin(ref, f.source, f.windowNode);
+  expect(ref.snapshot).toBeDefined();
+  f.source.remove();
+  vi.stubGlobal("innerWidth", 400);
+  try {
+    const run = runDialogPresentation({
+      ...f,
+      capturedOrigin: ref.snapshot,
+      entering: true,
+      first: true,
+      duration: 420,
+    });
+    expect(f.windowNode.dataset.motionOrigin).toBe("neutral");
+    expect(f.calls[0].options.delay).toBe(0);
+    run.cancel(false);
+    await expect(run.finished).resolves.toBe(false);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("resizes one real window and fades only the content without scaling or retaining a form", async () => {
+  const { windowNode, planes, calls } = fixture();
+  const run = runDialogResize({
+    windowNode,
+    contentNode: planes.foreground,
+    from: { width: 500, height: 574 },
+    target: { width: 500, height: 319 },
+    duration: 320,
+  });
+  expect(calls).toHaveLength(2);
+  expect(calls[0].target).toBe(windowNode);
+  expect(calls[0].frames).toEqual([
+    { width: "500px", height: "574px" },
+    { width: "500px", height: "319px" },
+  ]);
+  expect(calls[0].options).toMatchObject({
+    duration: 320,
+    easing: "cubic-bezier(0.32,0.72,0,1)",
+    fill: "both",
+  });
+  expect(calls[1].target).toBe(planes.foreground);
+  expect(calls[1].frames).toEqual([{ opacity: 0.5 }, { opacity: 1 }]);
+  expect(
+    calls.some((call) => JSON.stringify(call.frames).includes("scale")),
+  ).toBe(false);
+  calls.forEach((call) => call.complete());
+  await expect(run.finished).resolves.toBe(true);
+  run.cancel();
+});
+
+it("freezes the actual intermediate size for close and ignores cancelled completion", async () => {
+  const { windowNode, planes, calls } = fixture();
+  const run = runDialogResize({
+    windowNode,
+    contentNode: planes.foreground,
+    from: { width: 500, height: 574 },
+    target: { width: 500, height: 319 },
+    duration: 320,
+  });
+  vi.mocked(windowNode.getBoundingClientRect).mockReturnValue(
+    new DOMRect(200, 150, 500, 401),
+  );
+  run.cancel(true);
+  run.cancel(true);
+  expect(windowNode.style.height).toBe("401px");
+  expect(windowNode.style.width).toBe("500px");
+  await expect(run.finished).resolves.toBe(false);
+  calls.forEach((call) => expect(call.cancel).toHaveBeenCalledTimes(1));
+});
+
+it("rolls back a partially started size animation if content animation fails", async () => {
+  const { windowNode, planes, calls } = fixture(1);
+  expect(() =>
+    runDialogResize({
+      windowNode,
+      contentNode: planes.foreground,
+      from: { width: 500, height: 574 },
+      target: { width: 500, height: 319 },
+      duration: 320,
+    }),
+  ).toThrow("Native animation rejected");
+  expect(calls[0].cancel).toHaveBeenCalledOnce();
+  expect(windowNode.style.height).toBe("");
+  await Promise.resolve();
+});

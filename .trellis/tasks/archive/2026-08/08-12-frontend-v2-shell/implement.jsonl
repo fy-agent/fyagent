@@ -7,4 +7,4 @@
 {"file":".trellis/spec/backend/task-runner-contract.md","reason":"Add canonical V2 task definitions without weakening the task API or full-check contract."}
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace the renderer-to-Tauri lifecycle and window boundary without changing the host contract."}
 {"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse existing dependencies and patterns without importing legacy UI or adding redundant abstractions."}
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"Implement the isolated Phase 1 route, layer, styling, platform, and verification contracts."}
+{"file":".trellis/spec/frontend/shell.md","reason":"Implement the isolated Phase 1 route, layer, styling, platform, and verification contracts."}

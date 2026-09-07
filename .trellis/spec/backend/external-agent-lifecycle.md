@@ -103,9 +103,9 @@ command, argument vector, token, hash, package format, signer or bypass flags.
   filesystem, helper or process side effects. The renderer and catalog copy do
   not maintain a second allowlist.
 - Legal defaults are currently:
-  - Grok Build: CLI;
-  - QoderWork, TRAE Work, WorkBuddy, Codex, Claude and OpenCode: Desktop.
-  OpenCode and Claude reject the Agent `cli` surface.
+  - Grok Build and Claude Code: CLI;
+  - QoderWork, TRAE Work, WorkBuddy, Codex and OpenCode: Desktop.
+    OpenCode rejects CLI; Claude rejects Desktop and generic launch.
 - `inventory.rs` is the only owner of candidate normalization, provenance
   union, deduplication, stable identity, opaque snapshot/target/revision IDs,
   expiry, stale revalidation and implicit-selection policy.
@@ -138,20 +138,21 @@ command, argument vector, token, hash, package format, signer or bypass flags.
 
 ### Product and source policy
 
-| Product | Owner and current lifecycle policy |
-| --- | --- |
-| Grok Build | CLI Tooling owner; default fresh install uses the official `@xai-official/grok` npm package, a bundled exact-version manifest, and a mainland-first registry chain. Native `x.ai` install is an explicit secondary action. Updates preserve the observed `native_internal` or `official_npm` owner. |
-| Codex | Dedicated Codex Desktop installer; Agent action returns `managed_by_codex_desktop` and does not occupy the Agent job slot. |
-| QoderWork CN | Managed desktop; install/launch admitted, FyAgent update disabled. Source is the reviewed first-party `/qoder-work-cn/releases/latest/` aliases and same-host Electron-builder version feed. |
-| TRAE Work CN | Managed desktop; install/launch admitted, FyAgent update disabled. Resolve `data.solo` with `region=cn`; never TRAE Code/`data.manifest`. |
-| WorkBuddy | Managed desktop; install/launch admitted, FyAgent update disabled. Resolve the closed `/v2/update` platform IDs and reviewed macOS suffix rewrite. |
-| Claude Desktop | Desktop only; use the reviewed source and closed bundle identity on supported hosts. No public Claude CLI installer. |
-| OpenCode Desktop | Desktop only; use reviewed stable desktop artifacts and closed bundle identity on supported hosts. No public OpenCode CLI installer. |
+| Product          | Owner and current lifecycle policy                                                                                                                                                                                                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grok Build       | CLI Tooling owner; default fresh install uses the official `@xai-official/grok` npm package, a bundled exact-version manifest, and a mainland-first registry chain. Native `x.ai` install is an explicit secondary action. Updates preserve the observed `native_internal` or `official_npm` owner. |
+| Codex            | Dedicated Codex Desktop installer; Agent action returns `managed_by_codex_desktop` and does not occupy the Agent job slot.                                                                                                                                                                          |
+| QoderWork CN     | Managed desktop; install/launch admitted, FyAgent update disabled. Source is the reviewed first-party `/qoder-work-cn/releases/latest/` aliases and same-host Electron-builder version feed.                                                                                                        |
+| TRAE Work CN     | Managed desktop; install/launch admitted, FyAgent update disabled. Resolve `data.solo` with `region=cn`; never TRAE Code/`data.manifest`.                                                                                                                                                           |
+| WorkBuddy        | Managed desktop; install/launch admitted, FyAgent update disabled. Resolve the closed `/v2/update` platform IDs and reviewed macOS suffix rewrite.                                                                                                                                                  |
+| Claude Code      | CLI only; exact official npm manifest, shared verified mirrors, owner-preserving updates and ordinary-user execution. See [Claude Code CLI](./claude-code-cli.md).                                                                                                                                  |
+| OpenCode Desktop | Desktop only; use reviewed stable desktop artifacts and closed bundle identity on supported hosts. No public OpenCode CLI installer.                                                                                                                                                                |
 
 - Grok npm optional-package admission is resolved by the signed product on the
   product host. The closed mappings are Darwin x64/arm64 and Windows x64/arm64;
-  an unsupported architecture produces no install plan, while a product build
-  for an operating system other than macOS/Windows is rejected at compile time.
+  an unsupported architecture produces no install plan. The current helper's
+  platform selector is defined only for macOS/Windows; Linux compilation and
+  package support cannot be inferred from these product-host tests.
   The bundled manifest contains no Linux optional package and no generic
   `std::env::consts::OS` fallback.
 - Before execution, the product matches both `@xai-official/grok` and the
@@ -171,8 +172,8 @@ command, argument vector, token, hash, package format, signer or bypass flags.
   rewrite only the validated terminal `.zip` suffix to `.dmg`. A shorter local
   dotted marketing version may equal a longer remote product-version prefix;
   same-length differing segments remain an update.
-- Claude metadata cannot replace the code-owned artifact authority. OpenCode
-  uses the reviewed locale-neutral stable Desktop aliases, including
+- Claude has no public Desktop download resolver. OpenCode uses the reviewed
+  locale-neutral stable Desktop aliases, including
   `windows-x64-nsis` on Windows x64. GitHub latest is display-only and must not
   gate installability. Windows x64 OpenCode install is admitted after the
   reviewed WinVerifyTrust identity contract; ARM64 remains unsupported.
@@ -197,13 +198,13 @@ command, argument vector, token, hash, package format, signer or bypass flags.
 Folder names and vendor config directories are not identity. Current closed
 identity examples include:
 
-| Product | macOS bundle ID | Windows closed identity summary |
-| --- | --- | --- |
-| WorkBuddy | `com.workbuddy.workbuddy` | Closed relative `WorkBuddy.exe`, ProductName and reviewed signer. |
-| QoderWork CN | `com.qoder.work.cn` | Closed QoderWork CN relative EXE names, ProductName and signer. |
-| TRAE Work CN | `cn.trae.solo.app` | Closed TRAE SOLO/Work CN relative EXE names, ProductName and signer. |
-| OpenCode | `ai.opencode.desktop` | Closed relative `@opencode-aidesktop/OpenCode.exe` (and `OpenCode/OpenCode.exe`), ProductName `OpenCode`, reviewed signer `Anomaly Innovations, Inc https://anoma.ly/`, and Uninstall DisplayName `OpenCode` or `OpenCode <bounded-version>`. |
-| Claude | `com.anthropic.claudefordesktop` | Windows fails closed until reviewed package/PE identity exists. |
+| Product                       | macOS bundle ID                  | Windows closed identity summary                                                                                                                                                                                                               |
+| ----------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WorkBuddy                     | `com.workbuddy.workbuddy`        | Closed relative `WorkBuddy.exe`, ProductName and reviewed signer.                                                                                                                                                                             |
+| QoderWork CN                  | `com.qoder.work.cn`              | Closed QoderWork CN relative EXE names, ProductName and signer.                                                                                                                                                                               |
+| TRAE Work CN                  | `cn.trae.solo.app`               | Closed TRAE SOLO/Work CN relative EXE names, ProductName and signer.                                                                                                                                                                          |
+| OpenCode                      | `ai.opencode.desktop`            | Closed relative `@opencode-aidesktop/OpenCode.exe` (and `OpenCode/OpenCode.exe`), ProductName `OpenCode`, reviewed signer `Anomaly Innovations, Inc https://anoma.ly/`, and Uninstall DisplayName `OpenCode` or `OpenCode <bounded-version>`. |
+| Claude (legacy identity only) | `com.anthropic.claudefordesktop` | Not an admitted Agent lifecycle target; current Claude support is CLI-only.                                                                                                                                                                   |
 
 Windows scan identity is the installed target, not the downloaded installer
 leaf:
@@ -279,38 +280,38 @@ leaf:
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Unknown Agent/action/surface or excess request field | Reject; no job. |
-| Product/surface is illegal | `surface_not_supported`; no source or side effect. |
-| Product action is disabled | `action_not_supported` before target/network/write. |
-| Renderer supplies URL/path/command/token/hash/package/signer/bypass | Reject; no job. |
-| Target triplet is partial or malformed | `refresh_required`; no side effect. |
-| Inventory expired or selected identity/revision/scope changed | Closed inventory/target error; no launch/write. |
-| Multiple candidates and no selected target | `target_selection_required`; never choose first. |
-| Managed desktop update is disabled/up-to-date/non-single/ineligible | Omit `update`; refuse the job. |
-| Codex install/update uses Agent action | `managed_by_codex_desktop`; Agent slot stays free. |
-| Source host/schema/redirect/port/body grammar fails | `source_not_verified`/official-page fallback; no stale pin. |
-| Fetch is cancelled | `cancelled`; do not remap to source failure. |
-| Selected macOS system target while helper gate is closed | `authorization_required`; zero write/fallback. |
-| App is running or staging permission denied | Closed running/permission error; preserve original target. |
-| macOS post-install identity/path/scope/version check fails | Restore/reverify; `rollback_restored` or `recovery_required`. |
-| Windows inventory view is incomplete | `unknown` + native projection reason; no fresh destination. |
-| Windows EXE product/signer/trust/arch/helper/pipe binding fails | Fail before installer launch. |
-| User cancels Windows UAC/vendor launch | Cancelled/installer-user-cancelled result. |
-| Windows official EXE ShellExecute succeeds | Job succeeded as handoff; do not claim installed proof. |
-| OpenCode Windows x64 identity is complete | Admit current-user NSIS handoff; GitHub latest must not gate the stable source. |
-| OpenCode Windows ProductName/relative EXE/signer is empty | Reject EXE download/install; do not claim supported. |
-| OpenCode known-path `@opencode-aidesktop\OpenCode.exe` exists with closed ProductName and reviewed signer | Inventory `installed`; `launch` is legal. Manual NSIS uses the same scan as in-app handoff. |
-| OpenCode Uninstall DisplayName is `OpenCode <bounded-version>` | Keep the ARP hint; do not require exact `OpenCode`. |
-| OpenCode Uninstall DisplayName is `OpenCode Dev`, `OpenCodeAI`, or a prerelease version | Skip that ARP entry. |
-| OpenCode KnownPath relative is missing | Drop the observation; do not retain KnownPath Missing. |
-| Grok default install has no native expected owner | Plan official npm from the bundled exact-version manifest; never `@latest`. |
-| Grok macOS/Windows architecture has no closed platform package or manifest integrity | Produce no npm plan/action; do not fall back to Linux or another product package. |
-| Grok product is compiled for a non-macOS/non-Windows target | Compile-time rejection; do not add a generic OS fallback. |
-| Grok registry metadata does not match both root and current-platform SHA-512 | Skip that registry; fail with source exhaustion when none match. |
-| Cancel after `launching_installer`/`installing` | `operation_conflict`; do not kill external/commit operation. |
-| Secret/path/raw native identity reaches DTO/log/DOM | Security regression. |
+| Condition                                                                                                 | Required result                                                                                                                                                             |
+| --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unknown Agent/action/surface or excess request field                                                      | Reject; no job.                                                                                                                                                             |
+| Product/surface is illegal                                                                                | `surface_not_supported`; no source or side effect.                                                                                                                          |
+| Product action is disabled                                                                                | `action_not_supported` before target/network/write.                                                                                                                         |
+| Renderer supplies URL/path/command/token/hash/package/signer/bypass                                       | Reject; no job.                                                                                                                                                             |
+| Target triplet is partial or malformed                                                                    | `refresh_required`; no side effect.                                                                                                                                         |
+| Inventory expired or selected identity/revision/scope changed                                             | Closed inventory/target error; no launch/write.                                                                                                                             |
+| Multiple candidates and no selected target                                                                | `target_selection_required`; never choose first.                                                                                                                            |
+| Managed desktop update is disabled/up-to-date/non-single/ineligible                                       | Omit `update`; refuse the job.                                                                                                                                              |
+| Codex install/update uses Agent action                                                                    | `managed_by_codex_desktop`; Agent slot stays free.                                                                                                                          |
+| Source host/schema/redirect/port/body grammar fails                                                       | `source_not_verified`/official-page fallback; no stale pin.                                                                                                                 |
+| Fetch is cancelled                                                                                        | `cancelled`; do not remap to source failure.                                                                                                                                |
+| Selected macOS system target while helper gate is closed                                                  | `authorization_required`; zero write/fallback.                                                                                                                              |
+| App is running or staging permission denied                                                               | Closed running/permission error; preserve original target.                                                                                                                  |
+| macOS post-install identity/path/scope/version check fails                                                | Restore/reverify; `rollback_restored` or `recovery_required`.                                                                                                               |
+| Windows inventory view is incomplete                                                                      | `unknown` + native projection reason; no fresh destination.                                                                                                                 |
+| Windows EXE product/signer/trust/arch/helper/pipe binding fails                                           | Fail before installer launch.                                                                                                                                               |
+| User cancels Windows UAC/vendor launch                                                                    | Cancelled/installer-user-cancelled result.                                                                                                                                  |
+| Windows official EXE ShellExecute succeeds                                                                | Job succeeded as handoff; do not claim installed proof.                                                                                                                     |
+| OpenCode Windows x64 identity is complete                                                                 | Admit current-user NSIS handoff; GitHub latest must not gate the stable source.                                                                                             |
+| OpenCode Windows ProductName/relative EXE/signer is empty                                                 | Reject EXE download/install; do not claim supported.                                                                                                                        |
+| OpenCode known-path `@opencode-aidesktop\OpenCode.exe` exists with closed ProductName and reviewed signer | Inventory `installed`; `launch` is legal. Manual NSIS uses the same scan as in-app handoff.                                                                                 |
+| OpenCode Uninstall DisplayName is `OpenCode <bounded-version>`                                            | Keep the ARP hint; do not require exact `OpenCode`.                                                                                                                         |
+| OpenCode Uninstall DisplayName is `OpenCode Dev`, `OpenCodeAI`, or a prerelease version                   | Skip that ARP entry.                                                                                                                                                        |
+| OpenCode KnownPath relative is missing                                                                    | Drop the observation; do not retain KnownPath Missing.                                                                                                                      |
+| Grok default install has no native expected owner                                                         | Plan official npm from the bundled exact-version manifest; never `@latest`.                                                                                                 |
+| Grok macOS/Windows architecture has no closed platform package or manifest integrity                      | Produce no npm plan/action; do not fall back to Linux or another product package.                                                                                           |
+| Non-macOS/non-Windows development host                                                                    | No admitted CLI package; verify host compilation separately under the development-environment contract, without inventing a Linux installer or crate-wide rejection policy. |
+| Grok registry metadata does not match both root and current-platform SHA-512                              | Skip that registry; fail with source exhaustion when none match.                                                                                                            |
+| Cancel after `launching_installer`/`installing`                                                           | `operation_conflict`; do not kill external/commit operation.                                                                                                                |
+| Secret/path/raw native identity reaches DTO/log/DOM                                                       | Security regression.                                                                                                                                                        |
 
 ## 5. Good / Base / Bad Cases
 
@@ -345,9 +346,9 @@ leaf:
 mise run rust:fmt:check
 mise run rust:clippy
 mise run rust:test
-mise run typecheck:v2
-mise run test:v2
-mise run test:v2:browser
+mise run typecheck
+mise run test:unit
+mise run test:browser
 ```
 
 Assertion points:
@@ -358,8 +359,10 @@ Assertion points:
   no source lookup or side effect;
 - inventory merges duplicate provenance but preserves multiple/conflicting/
   incomplete evidence, expires capabilities and rejects drift;
-- Qoder/Trae/WorkBuddy/Claude/OpenCode source parsers enforce exact host,
+- Qoder/Trae/WorkBuddy/OpenCode source parsers enforce exact host,
   platform, schema, redirect and version rules without stale URL fallback;
+- Claude CLI tests cover the compiled npm manifest, shared registry/argv/helper,
+  actual version/owner verification, and rejection of the retired Desktop path;
 - macOS exact-path deployment, cancellation boundary, running-app protection,
   rollback/recovery and disabled `/Applications` gate;
 - Windows registry access masks/views/link handling, trusted PE identity,
@@ -484,13 +487,13 @@ capabilities.
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Identity fields empty | No Install; catalog may not claim local recognition |
-| Installed `@opencode-aidesktop\OpenCode.exe` Valid | `installed` + Launch |
-| DisplayName `OpenCode 1.18.27`, InstallLocation empty, DisplayIcon points at that EXE | Keep Uninstall hint; inspect the icon/derived path |
-| DisplayName `OpenCode Dev` / `OpenCodeAI` | Skip |
-| KnownPath `OpenCode\OpenCode.exe` missing | Drop; do not fail the aggregate |
+| Condition                                                                             | Required result                                     |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Identity fields empty                                                                 | No Install; catalog may not claim local recognition |
+| Installed `@opencode-aidesktop\OpenCode.exe` Valid                                    | `installed` + Launch                                |
+| DisplayName `OpenCode 1.18.27`, InstallLocation empty, DisplayIcon points at that EXE | Keep Uninstall hint; inspect the icon/derived path  |
+| DisplayName `OpenCode Dev` / `OpenCodeAI`                                             | Skip                                                |
+| KnownPath `OpenCode\OpenCode.exe` missing                                             | Drop; do not fail the aggregate                     |
 
 ### 5. Good / Base / Bad Cases
 

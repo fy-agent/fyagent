@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const ROOT = path.resolve(__dirname, "..");
@@ -182,9 +183,7 @@ describe("automatic CI workflow", () => {
       "runs-on: ubuntu-24.04",
     );
     expect(jobBlock("changes")).toContain("runs-on: ubuntu-24.04");
-    expect(jobBlock("commit-convention")).toContain(
-      "runs-on: ubuntu-24.04",
-    );
+    expect(jobBlock("commit-convention")).toContain("runs-on: ubuntu-24.04");
     expect(jobBlock("backend-windows")).toContain("runs-on: windows-2025");
     expect(jobBlock("windows-native-contracts")).toContain(
       "runs-on: ${{ matrix.runner }}",
@@ -323,10 +322,11 @@ describe("automatic CI workflow", () => {
 
     expect(contracts).not.toContain("scripts/trellis/");
     expect(contracts).toContain("node scripts/tasks/release-check.mjs --ci");
-    expect(frontend).toContain("pnpm test:unit");
-    expect(frontend).not.toContain("run: pnpm test:unit");
+    expect(frontend).toContain(
+      "pnpm test:unit --project contracts --project renderer",
+    );
+    expect(frontend).not.toContain("--exclude");
     for (const test of LOCAL_MISE_TESTS) {
-      expect(frontend, test).toContain(`--exclude ${test}`);
       expect(releaseCheck, test).toContain(`\"${test}\"`);
     }
     expect(frontend).not.toContain("tests/developmentHooks.test.ts");
@@ -339,6 +339,46 @@ describe("automatic CI workflow", () => {
     expect(releaseCheck).toContain("for (const [id, command, args] of plan)");
     expect(releaseCheck).toContain("throw new AggregateError(");
   });
+
+  it("collects every unit file once locally and excludes only real mise suites in CI", () => {
+    const collect = (...projects: string[]) => {
+      const output = execFileSync(
+        process.execPath,
+        [
+          path.join(ROOT, "node_modules/vitest/vitest.mjs"),
+          "list",
+          "--config",
+          "config/vitest.config.ts",
+          "--filesOnly",
+          ...projects.flatMap((project) => ["--project", project]),
+        ],
+        { cwd: ROOT, encoding: "utf8", timeout: 30_000 },
+      );
+      const files = output.split("\n").flatMap((line) => {
+        const match = /^\[([^\]]+)\] (tests\/.*|src\/.*)$/u.exec(line.trim());
+        return match ? [{ project: match[1], file: match[2] }] : [];
+      });
+      expect(files.length).toBeGreaterThan(0);
+      expect(new Set(files.map(({ file }) => file)).size).toBe(files.length);
+      return files;
+    };
+    const local = collect();
+    const ci = collect("contracts", "renderer");
+    expect(ci.some(({ project }) => project === "renderer")).toBe(true);
+    expect(ci.some(({ project }) => project === "contracts")).toBe(true);
+    expect(
+      local
+        .filter(({ project }) => project === "host-integration")
+        .map(({ file }) => file)
+        .sort(),
+    ).toEqual([...LOCAL_MISE_TESTS].sort());
+    expect(ci.map(({ file }) => file).sort()).toEqual(
+      local
+        .filter(({ project }) => project !== "host-integration")
+        .map(({ file }) => file)
+        .sort(),
+    );
+  }, 90_000);
 
   it("runs locked Rust checks on Windows and macOS", () => {
     for (const id of ["backend-windows", "backend-macos"]) {
@@ -435,7 +475,9 @@ describe("automatic CI workflow", () => {
         "TypeScript type check",
         "Check formatting",
         "Unit tests",
-        "Locale key parity",
+        "Renderer lint",
+        "Install browser engines",
+        "Production boot and browser regressions",
       ],
       "desktop-acceptance-contract": [
         "Setup pnpm",

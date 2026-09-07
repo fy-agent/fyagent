@@ -1,2 +1,2 @@
-{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "No package-hash admission"}
-{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "v1 warn and connectivity-before-save"}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"No package-hash admission"}
+{"file":".trellis/spec/frontend/agent-models.md","reason":"v1 warn and connectivity-before-save"}

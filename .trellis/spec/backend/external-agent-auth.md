@@ -5,16 +5,16 @@
 Read this contract before changing external-Agent login/logout/provider
 handoff, Auth observation, session polling, desktop target selection, or Auth
 result wording. Auth is a separate bounded façade from Agent install jobs and
-from FyAgent's central V2 `/auth` page owned by
-[V2 Managed Accounts](../frontend/v2-managed-auth.md).
+from FyAgent's central `/auth` page owned by
+[Managed Accounts](../frontend/managed-auth.md).
 
 Primary owners:
 
 - `src-tauri/src/agent_install/auth_actions.rs`
 - `src-tauri/src/agent_install/auth_sessions.rs`
 - `src-tauri/src/commands/agent_auth.rs`
-- `src/v2/shared/features/agent-auth.ts`
-- `src/v2/pages/agents/useAgentAuthSession.ts`
+- `src/shared/features/agent-auth.ts`
+- `src/pages/agents/useAgentAuthSession.ts`
 
 Desktop target capability and launch admission are shared with
 [External Agent Lifecycle](./external-agent-lifecycle.md). Secret material
@@ -74,8 +74,8 @@ verified | handoff_complete | failed | cancelled | timed_out
 
 - `start_agent_action` does not implement Auth actions and must return the
   closed unsupported/executor reason without launching a session.
-- Codex Auth remains `fyagent_managed` and routes the user to the V2 `/auth`
-  page owned by [V2 Managed Accounts](../frontend/v2-managed-auth.md). Native
+- Codex Auth remains `fyagent_managed` and routes the user to the central `/auth`
+  page owned by [Managed Accounts](../frontend/managed-auth.md). Native
   account/secret ownership is [Managed Auth Core](./managed-auth.md), provider
   login is [Managed Auth Login](./managed-auth-login.md), and connection
   projection is [Managed Auth Consumers](./managed-auth-consumers.md). This
@@ -89,9 +89,14 @@ verified | handoff_complete | failed | cancelled | timed_out
 
 - Claude may invoke only the reviewed official `claude auth login/logout`
   flow. A positive result requires the bounded official
-  `claude auth status --json` output plus its documented exit semantics to
+  `claude auth status` default-JSON output plus its documented exit semantics to
   reach the requested state. Launching a terminal/browser alone remains
   `awaiting_user`.
+- Claude login/logout requires a renderer confirmation explaining the vendor
+  credential/keychain effects. FyAgent invokes the official command; it does
+  not synthesize an auth file or read/copy the Keychain. Vendor login/logout
+  cannot be promised as reversible file undo; re-login is the recovery path.
+  Installation is owned by the CLI-only lifecycle, never Claude Desktop.
 - OpenCode observation is Desktop-first. The Agent Auth façade reads
   sanitized provider metadata produced by
   [Managed Auth Consumers](./managed-auth-consumers.md) from official
@@ -115,8 +120,11 @@ verified | handoff_complete | failed | cancelled | timed_out
 - QoderWork, TRAE Work and WorkBuddy open one selected trusted desktop target
   and are also handoff-only. Opening the application does not prove account
   state.
-- Formal elevated Windows Claude/OpenCode CLI/Auth automation stays
-  unavailable until a separately reviewed ordinary-user boundary exists.
+- Formal elevated Windows CLI-based Auth automation remains unavailable.
+  OpenCode's bounded file observation and trusted Desktop provider handoff are
+  separate paths, not user-CLI execution. Claude's ordinary-user helper admits
+  lifecycle observe/install/update only; it does not authorize login/logout,
+  CLI account-status commands or generic execution.
 
 ### Observation, target and secret boundaries
 
@@ -139,20 +147,20 @@ verified | handoff_complete | failed | cancelled | timed_out
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Unknown Agent, intent or extra request field | Reject; no process/session. |
-| URL/path/command/token/env/hash/bypass supplied | Reject; no process/session. |
-| Desktop target triplet is partial, malformed, expired or changed | Closed refresh/target error; zero launch. |
-| Multiple desktop candidates and no selected target | `target_selection_required`; never launch the first. |
-| Second non-terminal session for the same Agent | Return the existing/conflict result; do not start another flow. |
-| Claude command opens but structured status never reaches requested state | Remain awaiting/verifying, then `timed_out`; never verified. |
-| OpenCode provider list is unavailable or provider set drifts | Closed observer/provider-changed error; never global success. |
-| Grok or desktop app opens | `handoff_complete` + handoff-only authority. |
-| Codex session requested through this façade | `managed_by_auth_center`; no external session. |
-| User stops waiting | Session becomes cancelled/monitoring-stopped; external flow may continue. |
-| Terminal snapshot is updated again | Contract regression; terminal state is immutable. |
-| Secret/raw auth output reaches DTO, log, DOM or persisted query cache | Security regression. |
+| Condition                                                                | Required result                                                           |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| Unknown Agent, intent or extra request field                             | Reject; no process/session.                                               |
+| URL/path/command/token/env/hash/bypass supplied                          | Reject; no process/session.                                               |
+| Desktop target triplet is partial, malformed, expired or changed         | Closed refresh/target error; zero launch.                                 |
+| Multiple desktop candidates and no selected target                       | `target_selection_required`; never launch the first.                      |
+| Second non-terminal session for the same Agent                           | Return the existing/conflict result; do not start another flow.           |
+| Claude command opens but structured status never reaches requested state | Remain awaiting/verifying, then `timed_out`; never verified.              |
+| OpenCode provider list is unavailable or provider set drifts             | Closed observer/provider-changed error; never global success.             |
+| Grok or desktop app opens                                                | `handoff_complete` + handoff-only authority.                              |
+| Codex session requested through this façade                              | `managed_by_auth_center`; no external session.                            |
+| User stops waiting                                                       | Session becomes cancelled/monitoring-stopped; external flow may continue. |
+| Terminal snapshot is updated again                                       | Contract regression; terminal state is immutable.                         |
+| Secret/raw auth output reaches DTO, log, DOM or persisted query cache    | Security regression.                                                      |
 
 ## 5. Good / Base / Bad Cases
 
@@ -175,8 +183,8 @@ verified | handoff_complete | failed | cancelled | timed_out
 mise run rust:fmt:check
 mise run rust:clippy
 mise run rust:test
-mise run typecheck:v2
-mise run test:v2
+mise run typecheck
+mise run test:unit
 ```
 
 Required assertions:
@@ -222,7 +230,7 @@ setStatus("logged_in");
 Correct:
 
 ```ts
-const session = await ports.agentAuth.start({
+const session = await ports.agentAuth.startSession({
   agentId: "claude-code",
   intent: "login",
 });

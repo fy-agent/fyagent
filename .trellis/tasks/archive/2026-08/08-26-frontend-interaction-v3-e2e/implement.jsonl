@@ -1,8 +1,8 @@
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 production entry, six-route shell, keep-alive and navigation contract; V3 supersedes its top-navigation clause."}
+{"file":".trellis/spec/frontend/shell.md","reason":"V2 production entry, six-route shell, keep-alive and navigation contract; V3 supersedes its top-navigation clause."}
 {"file":".trellis/spec/frontend/reuse.md","reason":"Shared UI ownership and reuse-before-create rules for the shell and management pages."}
-{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Current Agent and model capability contracts, including unsupported and assisted paths."}
-{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Authoritative Skills/MCP assignment owners, discovery flows and target constraints."}
-{"file":".trellis/spec/frontend/v2-prompts-memory.md","reason":"Prompt target support and memory data-owner boundaries."}
+{"file":".trellis/spec/frontend/agent-models.md","reason":"Current Agent and model capability contracts, including unsupported and assisted paths."}
+{"file":".trellis/spec/frontend/skills-mcp.md","reason":"Authoritative Skills/MCP assignment owners, discovery flows and target constraints."}
+{"file":".trellis/spec/frontend/prompts-memory.md","reason":"Prompt target support and memory data-owner boundaries."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Typed navigation tree, state machine and capability matrix requirements."}
 {"file":".trellis/spec/frontend/state-management.md","reason":"Async scan state, stale response and authoritative readback rules."}
 {"file":".trellis/spec/frontend/modular-boundaries.md","reason":"V2 import direction and Tauri platform boundary."}

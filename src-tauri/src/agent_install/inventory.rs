@@ -638,7 +638,9 @@ async fn probe_inventory(
             | AgentCatalogId::ClaudeCode,
             AgentSurface::Desktop,
         ) => probe_desktop(agent_id),
-        (AgentCatalogId::GrokBuild, AgentSurface::Cli) => probe_cli(agent_id).await,
+        (AgentCatalogId::GrokBuild | AgentCatalogId::ClaudeCode, AgentSurface::Cli) => {
+            probe_cli(agent_id).await
+        }
         (AgentCatalogId::Codex, AgentSurface::Desktop) => probe_codex(state).await,
         _ => InventoryProbe {
             state_override: Some(InstallationInventoryState::Unsupported),
@@ -880,7 +882,7 @@ async fn probe_cli(agent_id: AgentCatalogId) -> InventoryProbe {
             local_version: observation.local_version,
             launch_eligible: false,
             install_eligible: false,
-            update_eligible: runnable,
+            update_eligible: runnable && observation.update_supported,
             reason_codes: if runnable {
                 Vec::new()
             } else {
@@ -1524,7 +1526,7 @@ mod tests {
     }
 
     #[test]
-    fn opencode_and_claude_keep_update_eligibility_when_evidence_allows_it() {
+    fn desktop_opencode_keeps_update_eligibility_but_retired_claude_desktop_does_not() {
         let store = AgentInstallationInventoryStore::new();
         for agent_id in [AgentCatalogId::OpenCode, AgentCatalogId::ClaudeCode] {
             let mut installed = candidate("app", InstallationEvidenceCode::BundleIdentity);
@@ -1541,9 +1543,10 @@ mod tests {
                 },
                 &store,
             );
-            assert!(
+            assert_eq!(
                 dto.candidates[0].update_eligible,
-                "{agent_id:?} should keep update eligibility"
+                agent_id == AgentCatalogId::OpenCode,
+                "desktop evidence must not authorize a Claude CLI mutation"
             );
             assert!(dto.surface.is_none());
         }

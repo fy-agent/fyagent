@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Real frames and unchanged budgets, no fake deterministic animation success"}
+{"file":".trellis/spec/frontend/visual-language.md","reason":"Cancel-first and old-close/new-dialog focus safeguards"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"No duplicated secret or native-job authority in animation state"}
+{"file":".trellis/spec/frontend/navigation.md","reason":"Source intent and hidden route cleanup remain authoritative"}
+{"file":".trellis/tasks/archive/2026-09/09-06-frontend-presentation-choreography/research/implementation-review.md","reason":"Verify timing, safe content retirement, source rounding and real browser regressions"}
+

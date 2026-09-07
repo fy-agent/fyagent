@@ -46,5 +46,6 @@ commands.allow = [
   "managed_auth_set_default_account",
   "managed_auth_preview_account_removal",
   "managed_auth_remove_account",
+  "managed_auth_preview_connection_action",
   "managed_auth_apply_connection_action",
 ]

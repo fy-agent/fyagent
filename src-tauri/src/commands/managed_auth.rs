@@ -6,10 +6,10 @@ use tauri::State;
 
 use crate::services::managed_auth::{
     validate_session_id, ManagedAuthAccountMutationRequest, ManagedAuthAccountRemovalPreview,
-    ManagedAuthAccountRemovalRequest, ManagedAuthConnectionActionRequest, ManagedAuthErrorDto,
-    ManagedAuthLoginMethod, ManagedAuthLoginSessionSnapshot, ManagedAuthMutationResult,
-    ManagedAuthOverview, ManagedAuthReasonCode, NativeManagedAuthService,
-    StartManagedAuthLoginRequest,
+    ManagedAuthAccountRemovalRequest, ManagedAuthConnectionActionPreview,
+    ManagedAuthConnectionActionRequest, ManagedAuthErrorDto, ManagedAuthLoginMethod,
+    ManagedAuthLoginSessionSnapshot, ManagedAuthMutationResult, ManagedAuthOverview,
+    ManagedAuthReasonCode, NativeManagedAuthService, StartManagedAuthLoginRequest,
 };
 
 pub struct ManagedAuthState(pub(crate) Arc<NativeManagedAuthService>);
@@ -106,13 +106,28 @@ pub fn managed_auth_remove_account(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+pub async fn managed_auth_preview_connection_action(
+    request: ManagedAuthConnectionActionRequest,
+    state: State<'_, ManagedAuthState>,
+) -> Result<ManagedAuthConnectionActionPreview, ManagedAuthErrorDto> {
+    request.validate()?;
+    let service = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || service.preview_connection_action(&request))
+        .await
+        .map_err(|_| ManagedAuthErrorDto::from_reason(ManagedAuthReasonCode::InvalidResponse))?
+}
+
+#[tauri::command(rename_all = "camelCase")]
 pub async fn managed_auth_apply_connection_action(
     request: ManagedAuthConnectionActionRequest,
+    preview_id: Option<String>,
     state: State<'_, ManagedAuthState>,
 ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
     request.validate()?;
     let service = state.0.clone();
-    tauri::async_runtime::spawn_blocking(move || service.apply_connection_action(&request))
-        .await
-        .map_err(|_| ManagedAuthErrorDto::from_reason(ManagedAuthReasonCode::InvalidResponse))?
+    tauri::async_runtime::spawn_blocking(move || {
+        service.apply_connection_action(&request, preview_id.as_deref())
+    })
+    .await
+    .map_err(|_| ManagedAuthErrorDto::from_reason(ManagedAuthReasonCode::InvalidResponse))?
 }

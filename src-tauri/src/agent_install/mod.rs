@@ -82,9 +82,8 @@ pub async fn readiness_for(agent_id: AgentCatalogId, state: &AppState) -> AgentI
     let inventory = inventory_readiness_projection(agent_id, state).await;
     let mut readiness = match agent_id {
         AgentCatalogId::Codex => codex_readiness(state).await,
-        AgentCatalogId::GrokBuild => cli_readiness(agent_id).await,
-        AgentCatalogId::ClaudeCode
-        | AgentCatalogId::OpenCode
+        AgentCatalogId::GrokBuild | AgentCatalogId::ClaudeCode => cli_readiness(agent_id).await,
+        AgentCatalogId::OpenCode
         | AgentCatalogId::QoderWork
         | AgentCatalogId::TraeWork
         | AgentCatalogId::WorkBuddy => desktop_readiness(agent_id, &inventory).await,
@@ -183,6 +182,9 @@ async fn cli_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto {
             update_state,
             AgentUpdateState::UpdateAvailable | AgentUpdateState::LatestUnknown
         ) && install_state != AgentInstallState::NotInstalled
+            && observation
+                .as_ref()
+                .is_some_and(|value| value.update_supported)
         {
             allowed_actions.push(AgentActionId::Update);
         }
@@ -528,7 +530,7 @@ pub async fn start_agent_action(
             ))
         }
         (
-            AgentCatalogId::GrokBuild,
+            AgentCatalogId::GrokBuild | AgentCatalogId::ClaudeCode,
             AgentSurface::Cli,
             AgentActionId::Install | AgentActionId::Update,
         ) => {
@@ -545,8 +547,7 @@ pub async fn start_agent_action(
             AgentCatalogId::QoderWork
             | AgentCatalogId::TraeWork
             | AgentCatalogId::WorkBuddy
-            | AgentCatalogId::OpenCode
-            | AgentCatalogId::ClaudeCode,
+            | AgentCatalogId::OpenCode,
             AgentSurface::Desktop,
             AgentActionId::Install | AgentActionId::Update,
         ) => start_desktop_job(request, surface, state, target).await,
@@ -554,8 +555,7 @@ pub async fn start_agent_action(
             AgentCatalogId::QoderWork
             | AgentCatalogId::TraeWork
             | AgentCatalogId::WorkBuddy
-            | AgentCatalogId::OpenCode
-            | AgentCatalogId::ClaudeCode,
+            | AgentCatalogId::OpenCode,
             AgentSurface::Desktop,
             AgentActionId::Launch,
         ) => {
@@ -1522,7 +1522,8 @@ mod tests {
                 vec![AgentActionId::Launch]
             );
         }
-        for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::OpenCode] {
+        {
+            let agent_id = AgentCatalogId::OpenCode;
             let policy = lifecycle_policy::lifecycle_policy(agent_id, AgentSurface::Desktop)
                 .expect("updatable desktop policy");
             let update_state = desktop_update_state(
@@ -1585,9 +1586,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn claude_and_opencode_cli_requests_are_surface_not_supported() {
+    async fn opencode_cli_requests_are_surface_not_supported() {
         let state = test_app_state();
-        for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::OpenCode] {
+        {
+            let agent_id = AgentCatalogId::OpenCode;
             let result = start_agent_action(
                 start_request(agent_id, AgentActionId::Install, Some(AgentSurface::Cli)),
                 &state,
@@ -1617,7 +1619,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn claude_desktop_install_without_target_is_target_selection_not_unimplemented() {
+    async fn claude_desktop_install_is_rejected_before_target_or_source_lookup() {
         let state = test_app_state();
         let result = start_agent_action(
             start_request(
@@ -1628,7 +1630,7 @@ mod tests {
             &state,
         )
         .await;
-        assert_eq!(result, Err(AgentReasonCode::TargetSelectionRequired));
+        assert_eq!(result, Err(AgentReasonCode::SurfaceNotSupported));
     }
 
     #[tokio::test]

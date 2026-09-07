@@ -52,7 +52,9 @@ ProviderAdapter::get_auth_headers(...)
 ProviderAdapter::transform_request(...) / transform_response(...)
 ```
 
-The Renderer controls proxy settings through typed commands/services. It does
+Proxy control commands/services remain registered, but the current renderer
+has no general Proxy settings Port or panel. Managed Auth's Local Proxy account
+connection is a separate feature, not that retired UI. Any command caller must
 not supply an arbitrary adapter implementation, retry classifier, upstream
 socket, database handle, or raw response-success override.
 
@@ -123,19 +125,19 @@ socket, database handle, or raw response-success override.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| listener cannot bind or report its local address | Start fails and status does not claim a running server. |
-| failover is off and current Provider is absent | `NoProvidersConfigured`; do not consult the queue as fallback. |
-| failover is on and every queued Provider is open | `AllProvidersCircuitOpen`; do not try an unqueued Provider. |
-| a half-open permit is acquired but an attempt exits early | Settle it once with failure or neutral release; never leak the slot. |
-| client request/history is invalid | Return the mapped client error; do not retry another Provider. |
-| upstream transport or reviewed retryable semantic failure occurs | Record the failed attempt and try only the next selected Provider. |
-| non-streaming body read fails after 2xx headers | Treat the attempt as failure before recording Provider success. |
-| streaming first event proves failure or cannot be read | Do not record success; apply the reviewed retry/failover rule. |
-| response body is rebuilt | Remove stale hop-by-hop/entity metadata and emit metadata for the rebuilt body only. |
-| usage is missing, duplicated, malformed, or pricing is unavailable | Preserve the response; persist only parser-proved facts. |
-| a diagnostic contains sensitive request or response data | Redact/drop it and keep only bounded safe context. |
+| Condition                                                          | Required result                                                                      |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| listener cannot bind or report its local address                   | Start fails and status does not claim a running server.                              |
+| failover is off and current Provider is absent                     | `NoProvidersConfigured`; do not consult the queue as fallback.                       |
+| failover is on and every queued Provider is open                   | `AllProvidersCircuitOpen`; do not try an unqueued Provider.                          |
+| a half-open permit is acquired but an attempt exits early          | Settle it once with failure or neutral release; never leak the slot.                 |
+| client request/history is invalid                                  | Return the mapped client error; do not retry another Provider.                       |
+| upstream transport or reviewed retryable semantic failure occurs   | Record the failed attempt and try only the next selected Provider.                   |
+| non-streaming body read fails after 2xx headers                    | Treat the attempt as failure before recording Provider success.                      |
+| streaming first event proves failure or cannot be read             | Do not record success; apply the reviewed retry/failover rule.                       |
+| response body is rebuilt                                           | Remove stale hop-by-hop/entity metadata and emit metadata for the rebuilt body only. |
+| usage is missing, duplicated, malformed, or pricing is unavailable | Preserve the response; persist only parser-proved facts.                             |
+| a diagnostic contains sensitive request or response data           | Redact/drop it and keep only bounded safe context.                                   |
 
 ## 5. Good / Base / Bad Cases
 

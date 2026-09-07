@@ -1,0 +1,680 @@
+.fy-feature-page {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+  padding: 20px;
+  overflow-wrap: anywhere;
+}
+
+.fy-feature-route-loading {
+  display: grid;
+  min-height: 12rem;
+  place-items: center;
+  color: var(--fy-text-secondary);
+}
+.fy-feature-page:has(.fy-feature-workspace) {
+  flex: 1 1 auto;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.fy-feature-page:has(.fy-feature-workspace)
+  > :not(.fy-feature-workspace):not(
+    .fy-feature-tab-panel[data-layout="workspace"]
+  ) {
+  flex: 0 0 auto;
+}
+/* Preserve the bounded height through the semantic tabpanel wrapper. A plain
+   block here expands to its list and leaves clipping ancestors unscrollable. */
+.fy-feature-tab-panel[data-layout="workspace"]:not([hidden]) {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.fy-feature-tab-panel[data-layout="workspace"] > .fy-feature-workspace {
+  flex: 1 1 0;
+  overflow: hidden;
+}
+.fy-feature-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.fy-feature-header > *,
+.fy-feature-detail-title > *,
+.fy-feature-actions > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.fy-feature-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fy-feature-header > .fy-feature-actions {
+  margin-left: auto;
+}
+.fy-feature-header > .fy-feature-tabs {
+  margin-bottom: 0;
+}
+.fy-feature-header > .fy-feature-tabs-root > .fy-feature-tabs {
+  margin-bottom: 0;
+}
+.fy-feature-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+.fy-feature-toolbar > * {
+  flex: 1 1 170px;
+}
+.fy-feature-toolbar > .fy-control-button {
+  flex: 0 0 auto;
+}
+.fy-feature-toolbar > .fy-feature-search {
+  flex: 1 1 240px;
+}
+.fy-feature-toolbar > .fy-feature-tabs {
+  flex: 0 1 auto;
+  margin-bottom: 0;
+}
+.fy-feature-toolbar > .fy-feature-tabs-root {
+  flex: 0 1 auto;
+}
+.fy-feature-toolbar > .fy-feature-tabs-root > .fy-feature-tabs {
+  margin-bottom: 0;
+}
+.fy-feature-tabs-root {
+  width: max-content;
+  max-width: 100%;
+}
+.fy-feature-tabs {
+  margin-bottom: 14px;
+  padding: 4px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-item);
+  background: var(--fy-surface-soft);
+  width: max-content;
+  max-width: 100%;
+}
+.fy-feature-tabs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.fy-feature-tabs-list-semantic {
+  display: contents;
+}
+.fy-feature-tab {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  min-height: 34px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: var(--fy-radius-control);
+  color: var(--fy-text-secondary);
+  background: transparent;
+}
+.fy-feature-tab[aria-selected="true"],
+.fy-feature-tab[data-state="active"] {
+  border-color: var(--fy-selected-border);
+  color: var(--fy-accent-text);
+  font-weight: 650;
+  background-color: var(--fy-selected-bg);
+  box-shadow: var(--fy-selected-shadow);
+}
+.fy-feature-master {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.75fr) minmax(330px, 1.2fr) minmax(
+      220px,
+      0.7fr
+    );
+  gap: 12px;
+  min-width: 0;
+  min-height: 450px;
+}
+.fy-feature-panel {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-panel);
+  background: var(--fy-surface-soft);
+  overflow-wrap: anywhere;
+}
+.fy-feature-panel h2,
+.fy-feature-panel h3 {
+  margin: 0;
+}
+.fy-feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 12px;
+}
+.fy-feature-list-item {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--fy-radius-item);
+  color: var(--fy-text);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+.fy-feature-list-item:hover {
+  background: var(--fy-surface-hover);
+}
+.fy-feature-list-item[aria-current="true"],
+.fy-feature-list-item[aria-current="true"]:hover {
+  border-color: var(--fy-selected-border);
+  background-color: var(--fy-selected-bg);
+  box-shadow: var(--fy-selected-shadow);
+}
+.fy-feature-list-item strong,
+.fy-feature-list-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fy-feature-list-copy > span {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+.fy-feature-list-copy > strong {
+  color: var(--fy-text);
+  font-size: var(--fy-font-control);
+}
+.fy-feature-detail {
+  display: grid;
+  align-content: start;
+  gap: 15px;
+}
+.fy-feature-detail-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.fy-feature-description {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.fy-feature-definition {
+  display: grid;
+  grid-template-columns: fit-content(var(--fy-definition-label-cap)) minmax(
+      0,
+      1fr
+    );
+  gap: var(--fy-space-sm) var(--fy-definition-gap);
+  margin: 0;
+  font-size: 12px;
+}
+.fy-feature-definition dt {
+  min-width: 0;
+  color: var(--fy-text-secondary);
+  overflow-wrap: anywhere;
+}
+.fy-feature-definition dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.fy-feature-definition
+  dd:has(> .fy-feature-path:not(:has(.fy-feature-path-value))) {
+  min-width: min-content;
+}
+.fy-feature-code {
+  font-family: ui-monospace, Consolas, monospace;
+}
+.fy-feature-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.fy-feature-path-value {
+  flex: 1 1 auto;
+  display: block;
+  min-width: 0;
+  margin: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fy-feature-path .fy-control-button {
+  flex: 0 0 auto;
+}
+.fy-feature-assignments {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  /* Explicit intrinsic tracks prevent stale automatic row growth on WebKit re-entry. */
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 11px;
+}
+.fy-feature-assignment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  min-width: 0;
+  min-height: 31px;
+  font-size: 13px;
+}
+.fy-feature-assignment > span {
+  min-width: 0;
+}
+.fy-feature-bulk-assignments {
+  container: fy-bulk-assignments / inline-size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: var(--fy-assignment-row-gap);
+  min-width: 0;
+}
+.fy-feature-bulk-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--fy-space-sm) var(--fy-space-md);
+}
+.fy-feature-assignment-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--fy-space-sm);
+  max-width: 100%;
+  justify-self: start;
+}
+.fy-feature-assignment-actions > .fy-control-button {
+  flex: 1 1 auto;
+}
+/* One local admission point for the entire group, not a per-name wrapping decision. */
+@container fy-bulk-assignments (min-width: 231px) {
+  .fy-feature-bulk-row {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+  .fy-feature-assignment-actions {
+    justify-self: end;
+  }
+}
+.fy-feature-assignment-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.fy-feature-assignment-icon {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+.fy-feature-target-picker {
+  display: grid;
+  gap: 4px;
+}
+.fy-feature-target-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--fy-radius-item);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fy-feature-target-option[aria-checked="true"] {
+  border-color: var(--fy-border);
+  background: var(--fy-surface-soft);
+}
+.fy-feature-inline-assignment {
+  display: grid;
+}
+.fy-feature-workspace {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+.fy-feature-workspace > .fy-feature-toolbar {
+  flex: 0 0 auto;
+}
+.fy-feature-workspace > .fy-feature-tabs,
+.fy-feature-workspace > .fy-feature-pagination {
+  flex: 0 0 auto;
+}
+.fy-feature-workspace > .fy-feature-master,
+.fy-feature-workspace > .fy-split-panes {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+}
+.fy-feature-list-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.fy-feature-list-panel > h2 {
+  flex: 0 0 auto;
+}
+.fy-feature-detail-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+.fy-feature-discovery-scroll {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.fy-feature-detail-header {
+  display: grid;
+  gap: 10px;
+}
+.fy-feature-intro {
+  margin: 0;
+  color: var(--fy-text);
+  font-size: 16px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.fy-feature-info-grid {
+  display: grid;
+  /* Fill the real detail box, with a meaningful floor and no phantom third column. */
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(
+      min(
+        100%,
+        max(var(--fy-info-card-min), calc((100% - var(--fy-info-card-gap)) / 2))
+      ),
+      1fr
+    )
+  );
+  gap: var(--fy-info-card-gap);
+  align-content: start;
+  align-items: start;
+}
+.fy-feature-info-span {
+  grid-column: 1 / -1;
+}
+.fy-feature-info-card {
+  container: fy-info-card / inline-size;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-panel);
+  background: rgba(229, 246, 255, 0.06);
+}
+.fy-feature-info-card h3 {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.fy-feature-info-lead {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.fy-feature-info-card .fy-feature-definition {
+  font-size: 13px;
+}
+.fy-feature-info-card .fy-feature-definition dd {
+  color: var(--fy-text);
+  font-size: 13px;
+}
+@container fy-info-card (max-width: 210px) {
+  .fy-feature-definition {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fy-feature-definition dd {
+    margin-bottom: var(--fy-space-sm);
+  }
+}
+.fy-feature-app-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fy-feature-app-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 4px 10px 4px 7px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-pill);
+  background: var(--fy-surface-hover);
+  color: var(--fy-text);
+  font-size: 13px;
+}
+.fy-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+.fy-feature-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  height: 100%;
+  padding: 15px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-panel);
+  background: var(--fy-surface-soft);
+}
+.fy-feature-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.fy-feature-card-meta h3 {
+  margin-right: 4px;
+}
+.fy-feature-card h3,
+.fy-feature-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.fy-feature-card p {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.fy-feature-card-note {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.fy-feature-card-body {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  flex: 1 1 auto;
+  min-height: 4.5em;
+}
+.fy-feature-card footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: auto;
+}
+.fy-feature-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 16px;
+  margin-top: 18px;
+}
+.fy-feature-pagination-status {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.fy-feature-pagination-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.fy-feature-pagination-page {
+  min-width: 36px;
+  padding: 0 10px;
+}
+.fy-feature-pagination-ellipsis {
+  display: inline-flex;
+  min-width: 28px;
+  justify-content: center;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+.fy-feature-pagination .fy-control-button[aria-current="page"] {
+  color: var(--fy-accent-ink);
+  background: var(--fy-accent);
+}
+.fy-feature-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--fy-radius-pill);
+  background: var(--fy-surface-inset);
+}
+.fy-feature-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--fy-accent);
+}
+.fy-feature-menu {
+  position: relative;
+}
+.fy-feature-menu-popover {
+  z-index: 20;
+  display: grid;
+  width: 190px;
+  padding: 6px;
+  border: 1px solid var(--fy-border-strong);
+  border-radius: var(--fy-radius-panel);
+  background-color: var(--fy-surface-popup);
+  background-image: linear-gradient(
+    155deg,
+    rgba(238, 249, 255, 0.13),
+    rgba(164, 207, 235, 0.04)
+  );
+  box-shadow: 0 12px 30px rgba(8, 25, 42, 0.34);
+  backdrop-filter: blur(18px) saturate(1.16);
+  -webkit-backdrop-filter: blur(18px) saturate(1.16);
+}
+.fy-feature-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.fy-feature-list-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.fy-feature-menu-popover button {
+  justify-content: flex-start;
+  border: 0;
+  background: transparent;
+}
+.fy-feature-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+.fy-feature-form-span {
+  grid-column: 1/-1;
+}
+.fy-feature-form-tab-panel {
+  display: grid;
+  grid-column: 1/-1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+  min-width: 0;
+}
+.fy-feature-check-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+.fy-feature-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+@media (max-width: 1180px) {
+  .fy-feature-master {
+    grid-template-columns: minmax(220px, 0.72fr) minmax(350px, 1.28fr);
+  }
+  .fy-feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .fy-feature-page {
+    padding: 14px;
+  }
+  .fy-feature-master {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fy-feature-grid,
+  .fy-feature-form-grid,
+  .fy-feature-form-tab-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fy-feature-form-span {
+    grid-column: auto;
+  }
+  .fy-feature-check-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

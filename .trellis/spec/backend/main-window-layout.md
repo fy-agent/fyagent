@@ -7,16 +7,17 @@ Read this contract before changing `src-tauri/src/window_layout.rs`,
 `Moved` / DPI layout listener in `src-tauri/src/lib.rs`, or Windows
 `windows_window_state` restore/save.
 
-The V2 app-shell Overlay chrome is a renderer React widget under
-`src/v2/widgets/app-shell/` (window chrome, not a feature route). The
-[V2 Shell Contract](../frontend/v2-shell.md) owns that composition,
-including the macOS Overlay drag strip. **V2-owned chrome** means that
-React widget only. It does not mean V2 owns host geometry, and it does
-not place Overlay outside the V2 tree.
+The app-shell Overlay chrome is a React widget under `src/widgets/app-shell/`,
+not a feature route or another renderer. [Window Shell](../frontend/window-shell.md)
+owns its composition and macOS drag strip, not native geometry.
 
 This is a host geometry contract. Do not fix native window overflow in
-Overlay, React, or CSS. The V2 shell does not own maximize, restore,
+Overlay, React, or CSS. The renderer shell does not own maximize, restore,
 min-size, or work-area clamping.
+
+The separate [Window Presentation](./window-presentation.md) contract waits
+for this hidden-window preparation and committed renderer content before
+ordinary show/focus. It does not change geometry or persistence policy.
 
 ## 2. Signatures
 
@@ -64,9 +65,9 @@ debounce: 150ms after Moved or ScaleFactorChanged
 - `MAXIMUM_WORK_AREA_SHARE` (90%) clamps **normal** rectangles only. Do not
   rewrite a maximized client area into a 90% pseudo-maximized window.
 - macOS keeps the native Tauri title bar (`titleBarStyle: Overlay`). That
-  native Overlay style is host chrome. The V2 app-shell Overlay widget may
+  native Overlay style is host chrome. The app-shell Overlay widget may
   add the inert drag strip in the React tree; it is not a feature page and
-  it is not outside V2. Windows keeps a Visible system title bar and no
+  it is part of the single renderer. Windows keeps a Visible system title bar and no
   Overlay drag strip. Do not switch either `titleBarStyle` to compensate
   for drag or maximize bugs, and do not treat the React Overlay chrome as
   a geometry owner.
@@ -76,14 +77,14 @@ debounce: 150ms after Moved or ScaleFactorChanged
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --------- | --------------- |
-| `maximized == true` or `fullscreen == true` | `should_apply_runtime_geometry_constraints` is false; no `set_min_size` / `set_size` / `set_position` |
-| User maximizes on Windows | Window stays maximized; origin stays the system maximize origin (about `-8,-8`); UI remains in the work area |
-| User restores from maximize | Previous normal rectangle returns; not the maximized client size at the old origin |
-| `Moved` / DPI while maximized | Emit `layout-mode-changed` only; skip geometry mutation |
-| Saved geometry off-screen or non-finite | `clamp_window_geometry` keeps `maximized` and fits the **normal** rect into the work area |
-| Layout refresh error | Log at debug; do not panic or force-unmaximize |
+| Condition                                   | Required result                                                                                              |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `maximized == true` or `fullscreen == true` | `should_apply_runtime_geometry_constraints` is false; no `set_min_size` / `set_size` / `set_position`        |
+| User maximizes on Windows                   | Window stays maximized; origin stays the system maximize origin (about `-8,-8`); UI remains in the work area |
+| User restores from maximize                 | Previous normal rectangle returns; not the maximized client size at the old origin                           |
+| `Moved` / DPI while maximized               | Emit `layout-mode-changed` only; skip geometry mutation                                                      |
+| Saved geometry off-screen or non-finite     | `clamp_window_geometry` keeps `maximized` and fits the **normal** rect into the work area                    |
+| Layout refresh error                        | Log at debug; do not panic or force-unmaximize                                                               |
 
 ## 5. Good / Base / Bad Cases
 

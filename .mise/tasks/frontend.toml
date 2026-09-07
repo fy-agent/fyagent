@@ -15,15 +15,10 @@ description = "Run strict TypeScript type checking without emitting files"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = "pnpm typecheck"
 
-["lint:v2"]
-description = "Lint only the isolated V2 renderer and its focused tests"
+[lint]
+description = "Lint the production renderer, domain and focused tests"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
-run = "pnpm lint:v2"
-
-["typecheck:v2"]
-description = "Type-check only the isolated V2 renderer and focused tests"
-env = { FYAGENT_TASK_EFFECT = "read-only" }
-run = "pnpm typecheck:v2"
+run = "pnpm lint"
 
 [format]
 description = "Apply the repository Prettier configuration to frontend sources"
@@ -48,7 +43,6 @@ description = "Run the non-interactive frontend and desktop mock test aggregate"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = [
   { task = "test:unit" },
-  { task = "test:i18n" },
   { task = "test:desktop:mock" },
   { task = "test:desktop:visual:preflight" },
 ]
@@ -71,27 +65,15 @@ interactive = true
 raw = true
 run = "node scripts/tasks/frontend.mjs test-watch"
 
-["test:v2"]
-description = "Run the isolated V2 renderer unit and architecture tests"
+["test:browser"]
+description = "Run production boot and Chromium/WebKit renderer regressions"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
-run = "pnpm test:v2"
+run = "pnpm test:browser"
 
-["test:v2:watch"]
-description = "Run isolated V2 renderer tests in interactive watch mode"
-env = { FYAGENT_TASK_EFFECT = "interactive" }
-interactive = true
-raw = true
-run = "pnpm test:v2:watch"
-
-["test:v2:browser"]
-description = "Run the V2 Chromium geometry and interaction smoke suite"
+["test:performance"]
+description = "Profile the production renderer serially with real animations"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
-run = "pnpm test:v2:browser"
-
-["test:i18n"]
-description = "Verify locale key and schema parity"
-env = { FYAGENT_TASK_EFFECT = "read-only" }
-run = "pnpm test:i18n"
+run = "pnpm test:performance"
 
 ["test:desktop:mock"]
 description = "Run desktop acceptance fake-IPC contract tests (not native evidence)"
@@ -116,7 +98,7 @@ run = "node scripts/tasks/frontend.mjs visual-update"
 description = "Preview or regenerate every application-brand icon consumer from the reviewed Y source"
 usage = '''
 flag "--source <file>" help="Canonical 1024 RGBA package source path" default="assets/fyagent.png"
-flag "--apply" help="Regenerate canonical PNG, Tauri, About, and macOS tray assets; otherwise print the plan"
+flag "--apply" help="Regenerate canonical PNG, Tauri and macOS tray assets; otherwise print the plan"
 '''
 env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
 run = "node scripts/tasks/frontend.mjs assets-icons"

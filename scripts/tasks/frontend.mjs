@@ -96,7 +96,6 @@ const TRAY_ICONS = Object.freeze([
 ]);
 
 const EXPECTED_ICO_SIZES = Object.freeze([16, 24, 32, 48, 64, 256]);
-const ABOUT_ICON = "src/assets/icons/app-icon.png";
 
 function sha256(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
@@ -649,15 +648,6 @@ function validateStoredAssets(canonicalBytes, generated, trays) {
     assertEqualBytes(actual, expected, destination);
   }
 
-  const generatedAbout = generated.get("32x32.png");
-  if (!generatedAbout)
-    throw new Error("Tauri output has no 32x32 About source");
-  assertEqualBytes(
-    fs.readFileSync(repositoryPath(ABOUT_ICON)),
-    generatedAbout,
-    ABOUT_ICON,
-  );
-
   for (const [destination, expected] of trays) {
     const actual = fs.readFileSync(repositoryPath(destination));
     validateTrayPng(
@@ -678,7 +668,6 @@ function validateStoredAssets(canonicalBytes, generated, trays) {
       mode: "RGBA",
     },
     generated: generated.size,
-    about: ABOUT_ICON,
     trays: trays.size,
     icoFrames: parseIcoFrames(generated.get("icon.ico")).map(
       ({ width }) => width,
@@ -741,7 +730,6 @@ export function applyApplicationBrandAssets() {
     for (const [relativePath, bytes] of generated) {
       changes.push([`src-tauri/icons/${relativePath}`, bytes]);
     }
-    changes.push([ABOUT_ICON, generated.get("32x32.png")]);
     changes.push(...trays);
     writeFilesAtomically(changes);
 
@@ -799,7 +787,7 @@ function assetsIcons() {
           steps: [
             "render reviewed vector to canonical 1024 RGBA PNG",
             "generate the complete Tauri icon inventory from canonical PNG",
-            "synchronize About 32px and macOS 1x/2x/3x tray templates",
+            "synchronize macOS 1x/2x/3x tray templates",
           ],
         },
         null,

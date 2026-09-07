@@ -968,6 +968,9 @@ fn parse_gemini_file_json(content: &str) -> GeminiCredentials {
 // ── Gemini Token 刷新 ──────────────────────────────────────
 
 /// Gemini OAuth Client 凭据（公开值，来自 Gemini CLI 源码 google-gemini/gemini-cli）
+// Public installed-application identity from the upstream Gemini CLI, not a user credential.
+// See google-gemini/gemini-cli packages/core/src/code_assist/oauth2.ts.
+// Access and refresh tokens remain confidential; these public client identifiers do not.
 const GEMINI_OAUTH_CLIENT_ID: &str =
     "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
 const GEMINI_OAUTH_CLIENT_SECRET: &str = "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";

@@ -6,6 +6,7 @@
 //! Windows module, so a normal library dependency cannot reach deployment.
 
 pub mod bridge_control;
+pub mod claude;
 pub mod cli;
 pub mod grok;
 pub mod grok_npm;

@@ -9,6 +9,6 @@
 {"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/execution-context.md","reason":"执行方需要的精简产品矩阵、source、顺序、依赖、stop conditions 和串行阶段"}
 {"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/execution-context.md","reason":"系统 /Applications 提交由独立 closed helper owner 负责；本任务只能通过其稳定 port 集成"}
 
-{"file": ".trellis/tasks/08-31-macos-agent-directory-install-policy/research/parallel-with-helper.md", "reason": "与 helper 任务并行时的文件所有权和禁止碰撞清单。"}
-{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Agent catalog/surface/action 与 deferred /Applications 的 owning spec。"}
-{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Agent Directory 与 lifecycle UI 合同。"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/parallel-with-helper.md","reason":"与 helper 任务并行时的文件所有权和禁止碰撞清单。"}
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"Agent catalog/surface/action 与 deferred /Applications 的 owning spec。"}
+{"file":".trellis/spec/frontend/agent-models.md","reason":"Agent Directory 与 lifecycle UI 合同。"}

@@ -4,9 +4,9 @@
 {"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Review process, identity and path boundaries on Windows."}
 {"file":".trellis/spec/backend/external-agent-p0.md","reason":"Review the completed cross-layer P0 safety contract and its automated-evidence limits."}
 {"file":".trellis/spec/frontend/index.md","reason":"Frontend full-scope quality checklist."}
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"Review V2 isolation, ports, UI state and responsive behavior."}
-{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Detect regressions to catalog order, links, installer and existing model flows."}
-{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Verify target separation, authoritative state and secret lifecycle."}
+{"file":".trellis/spec/frontend/shell.md","reason":"Review V2 isolation, ports, UI state and responsive behavior."}
+{"file":".trellis/spec/frontend/agent-models.md","reason":"Detect regressions to catalog order, links, installer and existing model flows."}
+{"file":".trellis/spec/frontend/skills-mcp.md","reason":"Verify target separation, authoritative state and secret lifecycle."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Verify exact DTO runtime validation and closed unions."}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Focused and full renderer/browser/desktop acceptance requirements."}
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review end-to-end DTO and state consistency."}

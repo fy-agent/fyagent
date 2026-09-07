@@ -6,5 +6,5 @@
 {"file":".trellis/spec/frontend/index.md","reason":"核对前端索引覆盖和 owner 路由。"}
 {"file":".trellis/spec/guides/index.md","reason":"核对 Guide 仍短小且不承载实现权威。"}
 {"file":"tests/architecture/rustModuleBoundaries.test.ts","reason":"核对 Rust 模块可见性和 transport/service 边界。"}
-{"file":"tests/config/localeKeyParity.test.ts","reason":"核对支持语言的键集合和 leaf schema。"}
+{"file":"docs/fyagent/development/renderer-migration.md","reason":"核对支持语言的键集合和 leaf schema。"}
 {"file":"tests/classifyChanges.test.ts","reason":"核对旧兼容路径仍满足变更分类 fixture。"}

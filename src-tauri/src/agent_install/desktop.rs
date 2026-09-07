@@ -14,10 +14,9 @@ use super::lifecycle_policy::{lifecycle_policy, ManagedDesktopSourceId};
 #[cfg(target_os = "windows")]
 use super::sources::PackageFormat;
 use super::sources::{
-    bounded_version, claude_manifest_url, current_host_target, parse_claude_desktop_manifest,
-    parse_qoderwork_latest, parse_traework_latest, parse_workbuddy_update,
-    qoderwork_latest_yml_url, resolve_opencode_desktop_latest, workbuddy_update_url, AgentArch,
-    AgentPlatform, ResolvedDesktopSource, SourceResolveError, CLAUDE_METADATA_HOSTS,
+    bounded_version, current_host_target, parse_qoderwork_latest, parse_traework_latest,
+    parse_workbuddy_update, qoderwork_latest_yml_url, resolve_opencode_desktop_latest,
+    workbuddy_update_url, AgentArch, AgentPlatform, ResolvedDesktopSource, SourceResolveError,
     QODERWORK_METADATA_HOSTS, TRAEWORK_METADATA_ENDPOINTS, TRAEWORK_METADATA_HOSTS,
     WORKBUDDY_METADATA_HOSTS,
 };
@@ -182,9 +181,9 @@ pub async fn resolve_desktop_source(
         Some(ManagedDesktopSourceId::OpenCodeDesktop) => {
             resolve_opencode_desktop_latest(platform, arch).await
         }
-        Some(ManagedDesktopSourceId::ClaudeDesktop) => resolve_claude_desktop(platform, arch).await,
         Some(ManagedDesktopSourceId::CodexDesktopDedicated)
         | Some(ManagedDesktopSourceId::GrokCliTooling)
+        | Some(ManagedDesktopSourceId::ClaudeCliTooling)
         | None => Err(SourceResolveError::PlatformUnsupported),
     }
 }
@@ -220,15 +219,6 @@ async fn resolve_workbuddy(
     let url = workbuddy_update_url(platform, arch)?;
     let body = fetch_metadata_bytes(url, WORKBUDDY_METADATA_HOSTS).await?;
     parse_workbuddy_update(&body, platform, arch)
-}
-
-async fn resolve_claude_desktop(
-    platform: AgentPlatform,
-    arch: AgentArch,
-) -> Result<ResolvedDesktopSource, SourceResolveError> {
-    let url = claude_manifest_url()?;
-    let body = fetch_metadata_bytes(url, CLAUDE_METADATA_HOSTS).await?;
-    parse_claude_desktop_manifest(&body, platform, arch)
 }
 
 pub fn source_reason(error: SourceResolveError) -> AgentReasonCode {
@@ -1172,7 +1162,10 @@ mod tests {
         assert!(!discovered_update_eligible(AgentCatalogId::TraeWork, true));
         assert!(!discovered_update_eligible(AgentCatalogId::WorkBuddy, true));
         assert!(discovered_update_eligible(AgentCatalogId::OpenCode, true));
-        assert!(discovered_update_eligible(AgentCatalogId::ClaudeCode, true));
+        assert!(!discovered_update_eligible(
+            AgentCatalogId::ClaudeCode,
+            true
+        ));
         assert!(!discovered_update_eligible(
             AgentCatalogId::WorkBuddy,
             false

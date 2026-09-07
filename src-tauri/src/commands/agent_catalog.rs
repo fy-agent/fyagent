@@ -100,9 +100,9 @@ const GROKBUILD_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
 )];
 
 const CLAUDE_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
-    AgentOfficialLinkId::Desktop,
-    "Claude Desktop",
-    "https://claude.com/download",
+    AgentOfficialLinkId::Product,
+    "Claude Code CLI 安装说明",
+    "https://code.claude.com/docs/en/setup",
 )];
 
 const OPENCODE_OFFICIAL_LINKS: [AgentOfficialLink; 2] = [
@@ -685,7 +685,8 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::ClaudeCode,
         variant_id: AgentVariantId::ClaudeCode,
         display_name: "Claude Code",
-        description: "支持 Skills、模型配置与 MCP；不支持 Hooks。本机识别和启动暂无法确认。",
+        description:
+            "支持 Claude Code CLI 安装、官方登录、Skills、模型配置与 MCP；不安装 Claude Desktop。",
         official_links: &CLAUDE_OFFICIAL_LINKS,
         capabilities: &CLAUDE_CODE_CAPABILITIES,
     },
@@ -1054,9 +1055,9 @@ mod tests {
                 .map(|link| (link.id, link.label, link.url))
                 .collect::<Vec<_>>(),
             [(
-                AgentOfficialLinkId::Desktop,
-                "Claude Desktop",
-                "https://claude.com/download",
+                AgentOfficialLinkId::Product,
+                "Claude Code CLI 安装说明",
+                "https://code.claude.com/docs/en/setup",
             )]
         );
         assert_eq!(
@@ -1180,7 +1181,6 @@ mod tests {
             "~/.",
             "docs/cli",
             "claude-code/getting-started",
-            "claude code cli",
             "opencode cli",
         ] {
             assert!(!serialized.contains(prohibited));
@@ -1278,6 +1278,10 @@ mod tests {
         let mut allowed = legacy_commands;
         allowed.extend(external_commands);
         allowed.extend(change_plan_commands);
+        let recovery_commands =
+            allowed_commands(include_str!("../../permissions/user-config-recovery.toml"));
+        assert!(allowed.is_disjoint(&recovery_commands));
+        allowed.extend(recovery_commands);
 
         let handler = include_str!("../lib.rs");
         let registered = handler
@@ -1292,7 +1296,7 @@ mod tests {
             })
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(registered.len(), 364, "review intentional handler changes");
+        assert_eq!(registered.len(), 367, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }

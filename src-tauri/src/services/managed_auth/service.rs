@@ -30,11 +30,10 @@ use super::{
     ManagedAuthConnectionAction, ManagedAuthConnectionActionRequest, ManagedAuthConnectionState,
     ManagedAuthConnectionSummary, ManagedAuthConsumer, ManagedAuthCoreError,
     ManagedAuthCredentialManager, ManagedAuthErrorDto, ManagedAuthHealth, ManagedAuthLoginMethod,
-    ManagedAuthLoginStage, ManagedAuthMutationOutcome, ManagedAuthMutationResult,
-    ManagedAuthOverview, ManagedAuthProvider, ManagedAuthProviderSummary, ManagedAuthReasonCode,
-    ManagedAuthRepository, ManagedAuthRequestMode, ManagedAuthSecretBundle,
-    ManagedAuthSecretBundleParts, MigrationStatus, NewCredential, RefreshOwner,
-    MANAGED_AUTH_CONTRACT_VERSION,
+    ManagedAuthMutationOutcome, ManagedAuthMutationResult, ManagedAuthOverview,
+    ManagedAuthProvider, ManagedAuthProviderSummary, ManagedAuthReasonCode, ManagedAuthRepository,
+    ManagedAuthRequestMode, ManagedAuthSecretBundle, ManagedAuthSecretBundleParts, MigrationStatus,
+    NewCredential, RefreshOwner, MANAGED_AUTH_CONTRACT_VERSION,
 };
 
 pub(crate) type NativeManagedAuthService =
@@ -121,6 +120,7 @@ where
     pub(crate) login_sessions: LoginSessionStore,
     pub(crate) login_hooks: Mutex<LoginHooks>,
     pub(crate) xai_hooks: Mutex<XaiLoginHooks>,
+    pub(super) connection_previews: super::connection_actions::ConnectionActionPreviews,
     app_handle: Mutex<Option<tauri::AppHandle>>,
 }
 
@@ -141,6 +141,7 @@ where
             login_sessions: LoginSessionStore::default(),
             login_hooks: Mutex::new(LoginHooks::default()),
             xai_hooks: Mutex::new(XaiLoginHooks::default()),
+            connection_previews: super::connection_actions::ConnectionActionPreviews::default(),
             app_handle: Mutex::new(None),
         }
     }
@@ -1251,7 +1252,7 @@ where
         Ok(())
     }
 
-    fn opencode_auth_path(&self) -> PathBuf {
+    pub(super) fn opencode_auth_path(&self) -> PathBuf {
         #[cfg(test)]
         {
             self.config_dir.join("opencode-data").join("auth.json")
@@ -1363,65 +1364,6 @@ where
             ));
         }
         Ok(self.opencode_write_result(receipt.pending_restart))
-    }
-
-    pub(crate) fn finish_opencode_connect_after_login(
-        &self,
-        provider: ManagedAuthProvider,
-        account_id: &str,
-    ) -> (
-        Option<String>,
-        ManagedAuthLoginStage,
-        Option<ManagedAuthReasonCode>,
-    ) {
-        match self.project_saved_opencode_session(provider, account_id) {
-            Ok(result) => {
-                let connection_id = Some(opencode::slot_connection_id(provider));
-                if result.outcome == ManagedAuthMutationOutcome::Partial {
-                    (
-                        connection_id,
-                        ManagedAuthLoginStage::Partial,
-                        result
-                            .reason_code
-                            .or(Some(ManagedAuthReasonCode::PartialCompletion)),
-                    )
-                } else if result
-                    .pending_restart_consumers
-                    .contains(&ManagedAuthConsumer::Opencode)
-                    || result.reason_code == Some(ManagedAuthReasonCode::PendingRestart)
-                {
-                    (
-                        connection_id,
-                        ManagedAuthLoginStage::Completed,
-                        Some(ManagedAuthReasonCode::PendingRestart),
-                    )
-                } else {
-                    (connection_id, ManagedAuthLoginStage::Completed, None)
-                }
-            }
-            Err(error) => (
-                None,
-                ManagedAuthLoginStage::Partial,
-                Some(error.reason_code),
-            ),
-        }
-    }
-
-    fn project_saved_opencode_session(
-        &self,
-        provider: ManagedAuthProvider,
-        account_id: &str,
-    ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
-        let observed = opencode::observe_auth_store(&self.opencode_auth_path());
-        self.opencode_connect(
-            provider,
-            &ManagedAuthConnectionActionRequest {
-                connection_id: opencode::slot_connection_id(provider),
-                expected_revision: observed.revision,
-                action: ManagedAuthConnectionAction::ConnectAccount,
-                account_id: Some(account_id.to_string()),
-            },
-        )
     }
 
     fn opencode_write_result(&self, pending_restart: bool) -> ManagedAuthMutationResult {
@@ -2572,7 +2514,7 @@ mod tests {
             })
             .expect("openai slot");
         let proxy_err = service
-            .apply_connection_action(&ManagedAuthConnectionActionRequest {
+            .preview_connection_action(&ManagedAuthConnectionActionRequest {
                 connection_id: openai.connection_id.clone(),
                 expected_revision: openai.revision.clone(),
                 action: ManagedAuthConnectionAction::ConnectAccount,
@@ -2604,7 +2546,7 @@ mod tests {
             })
             .expect("github slot");
         let copilot_err = service
-            .apply_connection_action(&ManagedAuthConnectionActionRequest {
+            .preview_connection_action(&ManagedAuthConnectionActionRequest {
                 connection_id: github.connection_id.clone(),
                 expected_revision: github.revision.clone(),
                 action: ManagedAuthConnectionAction::ConnectAccount,
@@ -2616,14 +2558,29 @@ mod tests {
             ManagedAuthReasonCode::ProviderNotSupported
         );
 
+        let request = ManagedAuthConnectionActionRequest {
+            connection_id: openai.connection_id.clone(),
+            expected_revision: openai.revision.clone(),
+            action: ManagedAuthConnectionAction::ConnectAccount,
+            account_id: Some(independent.identity_id.clone()),
+        };
+        assert!(service.apply_connection_action(&request, None).is_err());
+        assert!(!dir.path().join("opencode-data").join("auth.json").exists());
+        let preview = service
+            .preview_connection_action(&request)
+            .expect("preview");
+        assert_eq!(preview.write_targets.len(), 1);
+        assert!(preview.write_targets[0].path.ends_with("auth.json"));
+        assert!(preview.write_targets[0]
+            .backup_path
+            .ends_with("auth.json.fyagent.backup"));
+        assert!(!dir.path().join("opencode-data").join("auth.json").exists());
         let result = service
-            .apply_connection_action(&ManagedAuthConnectionActionRequest {
-                connection_id: openai.connection_id.clone(),
-                expected_revision: openai.revision.clone(),
-                action: ManagedAuthConnectionAction::ConnectAccount,
-                account_id: Some(independent.identity_id.clone()),
-            })
+            .apply_connection_action(&request, Some(&preview.preview_id))
             .expect("project");
+        assert!(service
+            .apply_connection_action(&request, Some(&preview.preview_id))
+            .is_err());
         assert_eq!(result.outcome, ManagedAuthMutationOutcome::Completed);
         assert!(result
             .pending_restart_consumers

@@ -502,7 +502,7 @@ impl CodexOAuthManager {
             }
         }
 
-        log::info!("[CodexOAuth] 账号 {account_id} 的 access_token 需要刷新");
+        log::info!("[CodexOAuth] 所选账号的 access_token 需要刷新");
 
         let refresh_lock = self.get_refresh_lock(account_id).await;
         let _guard = refresh_lock.lock().await;
@@ -601,7 +601,7 @@ impl CodexOAuthManager {
     }
 
     pub async fn remove_account(&self, account_id: &str) -> Result<(), CodexOAuthError> {
-        log::info!("[CodexOAuth] 移除账号: {account_id}");
+        log::info!("[CodexOAuth] 移除所选账号");
 
         {
             let mut accounts = self.accounts.write().await;

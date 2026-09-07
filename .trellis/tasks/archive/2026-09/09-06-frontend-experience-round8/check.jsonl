@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Full correctness/browser and isolated production performance gates without budget changes"}
+{"file":".trellis/spec/frontend/surfaces-responsive.md","reason":"Real scrolling, clipping, container bounds and stable editor node acceptance"}
+{"file":".trellis/spec/frontend/motion-system.md","reason":"Preserve round-seven explicit origins, focus, press and teardown behavior"}
+{"file":".trellis/tasks/archive/2026-09/09-06-frontend-experience-round8/research/layout-evidence.md","reason":"Require failing A-B-A regression rather than static width/no-overflow proof"}
+

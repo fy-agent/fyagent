@@ -4,17 +4,20 @@
 //! Skip writes when neither the User directory nor the file exists.
 //! TRAE Work is not an [`AppType`](crate::app_config::AppType).
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::collections::HashMap;
+#[cfg(test)]
 use std::fs;
-use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::path::Path;
+use std::path::PathBuf;
 
 use crate::app_config::{McpApps, McpServer, MultiAppConfig};
-use crate::config::atomic_write;
 #[cfg(target_os = "macos")]
 use crate::config::get_home_dir;
 use crate::error::AppError;
 
+use super::json_document::{read_servers as read_mcp_servers_map_from, write_servers};
 use super::validation::validate_server_spec;
 
 fn trae_user_dir() -> PathBuf {
@@ -46,83 +49,17 @@ fn should_sync_traework_mcp() -> bool {
     trae_user_dir().exists() || canonical_mcp_path().exists()
 }
 
-fn read_json_value(path: &Path) -> Result<Value, AppError> {
-    if !path.exists() {
-        return Ok(serde_json::json!({}));
-    }
-    let content = fs::read_to_string(path).map_err(|e| AppError::io(path, e))?;
-    serde_json::from_str(&content).map_err(|e| AppError::json(path, e))
-}
-
-fn backup_canonical_if_present() -> Result<(), AppError> {
-    let path = canonical_mcp_path();
-    if !path.exists() {
-        return Ok(());
-    }
-    let backup = backup_mcp_path();
-    fs::copy(&path, &backup).map_err(|e| AppError::io(&backup, e))?;
-    Ok(())
-}
-
-fn write_json_value(path: &Path, value: &Value) -> Result<(), AppError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
-    }
-    let json =
-        serde_json::to_string_pretty(value).map_err(|e| AppError::JsonSerialize { source: e })?;
-    backup_canonical_if_present()?;
-    atomic_write(path, json.as_bytes())
-}
-
-fn read_mcp_servers_map_from(path: &Path) -> Result<HashMap<String, Value>, AppError> {
-    if !path.exists() {
-        return Ok(HashMap::new());
-    }
-    let root = read_json_value(path)?;
-    Ok(root
-        .get("mcpServers")
-        .and_then(|value| value.as_object())
-        .map(|object| {
-            object
-                .iter()
-                .map(|(id, spec)| (id.clone(), spec.clone()))
-                .collect()
-        })
-        .unwrap_or_default())
-}
-
 fn read_live_mcp_servers_map() -> Result<HashMap<String, Value>, AppError> {
     read_mcp_servers_map_from(&canonical_mcp_path())
 }
 
 fn set_live_mcp_servers_map(servers: &HashMap<String, Value>) -> Result<(), AppError> {
-    let path = canonical_mcp_path();
-    let mut root = if path.exists() {
-        read_json_value(&path)?
-    } else {
-        serde_json::json!({})
-    };
-    let obj = root
-        .as_object_mut()
-        .ok_or_else(|| AppError::Config("TRAE SOLO CN User/mcp.json 根必须是对象".into()))?;
-    let mut out = Map::new();
-    for (id, spec) in servers {
-        let mut object = spec
-            .as_object()
-            .cloned()
-            .ok_or_else(|| AppError::McpValidation(format!("MCP 服务器 '{id}' 不是对象")))?;
-        object.remove("enabled");
-        object.remove("source");
-        object.remove("id");
-        object.remove("name");
-        object.remove("description");
-        object.remove("tags");
-        object.remove("homepage");
-        object.remove("docs");
-        out.insert(id.clone(), Value::Object(object));
-    }
-    obj.insert("mcpServers".into(), Value::Object(out));
-    write_json_value(&path, &root)
+    write_servers(
+        &canonical_mcp_path(),
+        &backup_mcp_path(),
+        "TRAE SOLO CN User/mcp.json 根必须是对象",
+        servers,
+    )
 }
 
 /// 从 TRAE Work CN live 配置导入 mcpServers。

@@ -1,123 +1,88 @@
 # State Management
 
-This page describes the leftover V1 renderer (`src/App.tsx`, `src/hooks/`,
-`src/lib/query/`). Production V2 owns selection in the hash router, keeps
-session-only feature state in `FeatureProvider`, and uses a V2-owned
-QueryClient; see [V2 Shell](./v2-shell.md) and the feature contracts.
+## 1. Scope / Trigger
 
-The leftover renderer uses React local state and Context for UI state, plus
-TanStack React Query for data read from or written to the Tauri backend. There
-is no Zustand or Jotai dependency in `package.json`.
+Read before adding route state, caches, drafts, persistence or polling. The hash
+router is the sole navigation state owner; `FeatureProvider` owns the product
+QueryClient and session feature context. There is no parallel application store.
 
-## V2 Route and Resource Lifecycle
+## 2. Signatures and owners
 
-Production V2 lazy-loads an unvisited primary route so it does not create DOM,
-queries, observers, timers, subscriptions, or effects until first visit.
-After a primary route has been visited, `PersistentPrimaryOutlet` keeps that
-tree mounted behind `PersistentSurface`. Hidden trees are not job daemons:
-`queries.ts` ANDs `usePersistentVisibility()`, scan UI dispatch pauses, and
-`usePersistentSearchParams` freezes route-owned search so a hidden page cannot
-rewrite the active URL. A cross-route native job remains backend-owned.
+`app/PersistentPrimaryOutlet.tsx` keeps visited primary routes behind
+`shared/ui/PersistentSurface.tsx`. `usePersistentVisibility()` exposes actual
+surface activity; `usePersistentSearchParams` freezes a hidden route's last URL.
+`shared/features/queries.ts` owns `featureKeys`, including prefix invalidations
+such as `featureKeys.dailyMemorySearches`.
 
-V2 classifies state before choosing persistence:
+| State                        | Owner                       | Route-leave behavior                                                                       |
+| ---------------------------- | --------------------------- | ------------------------------------------------------------------------------------------ |
+| Route, shareable target/tab  | Hash URL                    | Hidden pages freeze their own search; active route remains authoritative.                  |
+| Backend resource             | Query + FeaturePort/backend | Cache/reread according to the owner; automatic queries stop while hidden.                  |
+| Install/Auth/Change Plan job | Native job/session          | Native operation may continue without a visible page.                                      |
+| Non-secret unsaved draft     | Route-local controller      | Visited keep-alive may retain it; target/session change follows its explicit draft policy. |
+| Transient visual state       | Component                   | Never becomes business authority or delays revocation.                                     |
+| Secret input                 | Narrow local lifetime       | Clear immediately under the owning security contract.                                      |
 
-| State | Owner | Route-leave behavior |
-| --- | --- | --- |
-| current route, target or shareable tab | hash router/query parameter | restored from URL when the page is visible; hidden pages freeze their last search |
-| backend resource | TanStack Query + FeaturePort/backend | cached/reread authoritatively; queries disabled while hidden |
-| install/Auth/change-plan job | backend job/session + query | continues without the page being visible |
-| unsaved non-secret business draft | route/domain draft controller | keep-alive may retain it on a visited primary route; in-page target switches still unmount |
-| transient visual state | local component | may reset on unmount |
-| secret input | narrow local state | clear according to the owning security contract |
+## 3. Contracts
 
-Do not synchronize a derived router value with `setState` during render except
-the reviewed keep-alive path registration and hidden-search snapshot in
-`PersistentPrimaryOutlet` / `usePersistentSearchParams`. Use a derived value
-directly when possible. Visited-route keep-alive is an explicit shell policy
-with visibility gating; it is not a second `currentView` store.
+Unvisited routes create no DOM/query/observer effects. Preloading a module is
+not mounting it. A visited hidden route is not a background job daemon: its
+automatic queries, scan dispatch and polling derive `enabled` from persistent
+visibility. Manual refetch requires an active owning surface. Freeze hidden URL
+observations so hidden pages cannot rewrite the current route's query string.
 
-Every V2 query or polling hook that can remain mounted behind a conditional
-surface accepts/derives an `enabled`/`active` condition. Disabling a query must
-also stop its automatic fetch/refetch/poll behavior; explicit user refetch may
-remain available only when the owning surface is active.
+Native `FeatureProvider` intentionally pins `focusManager.setFocused(true)`:
+catalog/Auth queries gating frontend-ready must settle while the native WebView
+is still `document.hidden`. Do not gate startup authority on document visibility
+or RAF; this would reintroduce a hidden-window startup deadlock. Route visibility
+is a different lifecycle boundary and continues to gate nonvisible pages.
 
-## State Categories
+Use shared key factories for reads and mutation invalidation, including prefixes.
+The current in-memory namespace is `fyagent`, owned by `featureKeys` in
+`shared/features/queries.ts`; consumers use that factory rather than literals.
+Persisted provider identifiers,
+native jobs and wire versions are not renamed with the cache namespace.
+Wait for authoritative rereads where the feature requires them; a successful
+mutation promise alone does not prove the effective configuration changed.
 
-- **Local UI state:** leftover components and feature hooks use `useState`,
-  `useEffect`, and refs. `App.tsx` keeps the selected application and view
-  locally, then persists those UI preferences in `localStorage`. V2 must not
-  add a parallel `currentView` store.
-- **Small cross-tree UI state:** Context providers own values used by unrelated
-  descendants. `ThemeProvider` owns the selected theme and its persistence and
-  is composed in `main.tsx`. The host updater is intentionally not renderer
-  state: V1 has no `UpdateProvider`, updater query, or updater capability.
-- **Backend/resource state:** TanStack Query owns results obtained through
-  `src/lib/api/*`. The shared `queryClient` provides the renderer defaults;
-  feature query and mutation hooks live under both `src/lib/query/` and
-  `src/hooks/`.
+Change Plan's Query-owned observer has its own zero-retention, revision ordering,
+multi-observer cancellation and secret-write rules in
+[Change Plan Workspaces](./change-plan-workspaces.md). Do not generalize that
+resource-specific cache policy to every query or add component interval owners.
 
-## Host-Synchronized UI State
+Avoid render-phase state synchronization except the reviewed keep-alive route,
+hidden-search snapshot and Dialog presence-registration owners. Their guarded
+adjustments preserve a specific lifetime, not a second `currentView` store.
+The host updater remains removed: do not add an update provider, automatic
+download, migration bypass or renderer-written native settings during cleanup.
 
-`src/lib/layout/useWindowLayoutMode.ts` keeps a renderer state value for
-rendering, but accepts the validated native `layout-mode-changed` work-area mode
-when available. The normal/constrained policy remains pure and testable in
-`src/lib/layout/`; browser previews and fake tests fall back to renderer width.
-Do not put this host-synchronized state in the Query cache or persist it as an
-application preference.
+## 4. Validation & Error Matrix
 
-## Query Key and Invalidation Pattern
+| Condition                              | Required result                                                                   |
+| -------------------------------------- | --------------------------------------------------------------------------------- |
+| A route is preloaded but never visited | No mounted page effects or native observation.                                    |
+| A visited route becomes hidden         | Preserve permitted draft state; stop automatic work and revoke active UI/portals. |
+| Hidden page sees another route's query | Keep its previous search; do not write the active URL.                            |
+| Native startup WebView is hidden       | Required authority queries can settle and acknowledge readiness.                  |
+| Save succeeds but reread fails         | Show unknown/refresh failure, not an invented successful effective state.         |
+| Key prefix changes                     | Update readers, mutations and prefix consumers together with behavior tests.      |
 
-When several hooks share a resource family, centralize their query keys in the
-domain module and invalidate the affected keys from successful mutations.
-`useOpenClaw.ts` is the clearest current example:
+## 5. Good / Base / Bad Cases
 
-```tsx
-export const openclawKeys = {
-  env: ["openclaw", "env"] as const,
-  health: ["openclaw", "health"] as const,
-};
+Good: invalidate `featureKeys.dailyMemorySearches` after a native memory write.
+Base: a native job continues while the route stops polling and reconciles on
+return. Bad: use `document.hidden` for startup or retain credentials in a global
+Query/store for animation convenience.
 
-return useMutation({
-  mutationFn: (env: OpenClawEnvConfig) => openclawApi.setEnv(env),
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: openclawKeys.env });
-    queryClient.invalidateQueries({ queryKey: openclawKeys.health });
-  },
-});
-```
+## 6. Tests Required
 
-Not every existing query key is centralized: `src/lib/query/queries.ts` also
-uses short array keys directly for resources such as providers and settings.
-Match the local resource module instead of introducing a new application-wide
-key factory.
+Run unit and browser gates. `tests/renderer/app/route-render-isolation.test.tsx`,
+router-shell, PersistentSurface and persistent-search tests prove hidden-route
+isolation. Frontend-ready tests retain native-hidden startup coverage. Feature
+tests cover dirty navigation, secret clearing, failed rereads and exact keys.
 
-## Persistence Boundary
+## 7. Wrong vs Correct
 
-`localStorage` is currently used for renderer preferences such as theme and
-last view. Most feature data reaches native commands through typed Tauri API
-facades and is frequently represented in the Query cache; `main.tsx` retains a
-bootstrap-time direct `invoke` call. Keep the renderer-preference boundary
-distinct from native configuration data when extending existing behavior.
-
-## Host Updater Boundary
-
-FyAgent V1 removes the host application's upstream updater end to end. Do not
-add a global update context, update-check query, background download action, or
-DatabaseUpgrade-to-updater bridge. `main.tsx` may render `DatabaseUpgrade` when
-the native host reports `db_version_too_new`, but that recovery surface must
-remain a local, no-network support or controlled-distribution prompt and must
-not mutate the database.
-
-## Evidence
-
-- [src/v2/shared/features/provider.tsx](../../../src/v2/shared/features/provider.tsx)
-  owns the production QueryClient and session install target.
-- [src/main.tsx](../../../src/main.tsx) still composes leftover
-  `QueryClientProvider` and `ThemeProvider` and renders the database-too-new
-  recovery branch without an updater provider.
-- [src/lib/query/queryClient.ts](../../../src/lib/query/queryClient.ts)
-  defines the shared TanStack Query defaults.
-- [src/hooks/useOpenClaw.ts](../../../src/hooks/useOpenClaw.ts) centralizes
-  one resource family's keys, query hooks, mutations, and invalidation.
-- [src/lib/layout/useWindowLayoutMode.ts](../../../src/lib/layout/useWindowLayoutMode.ts)
-  accepts a validated native layout mode while retaining a renderer fallback.
+Wrong: `queryKey: ["v2", "memory", "daily", "search"]` in a page.
+Correct: `queryKey: featureKeys.dailyMemorySearches`, shared with the resource
+queries. Read [Navigation](./navigation.md) for the exact route lifetime.

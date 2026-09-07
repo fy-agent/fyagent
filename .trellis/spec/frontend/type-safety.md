@@ -1,84 +1,83 @@
 # Type Safety
 
-Leftover renderer types live in `src/types.ts` and `src/lib/`. V2 feature
-wire types live in `src/v2/shared/features/types.ts` and must be parsed at
-the platform adapter before React Query sees them. Do not treat leftover
-facades as the V2 port contract. Closed V2 catalog, assignment, model, and
-prompt ID unions are sourced from `src/v2/shared/features/directory.ts` and
-re-exported by `types.ts`; do not widen those unions in a page-local type.
+## 1. Scope / Trigger
 
-## Compiler Contract
+Read before changing a feature DTO, native port, dynamic configuration parser,
+identifier union or compiler boundary. The product has one strict TypeScript
+entry; independent configuration/domain code is not an alternative renderer.
 
-The renderer compiles with TypeScript strict mode. `tsconfig.json` also enables
-`noUnusedLocals`, `noUnusedParameters`, and `noFallthroughCasesInSwitch`, and
-maps `@/*` to `src/*`. Type-check renderer and test code with
-`mise run typecheck`.
+## 2. Signatures and owners
 
-## Type Ownership
+`tsconfig.json` covers `src/**/*`, `tests/**/*` and `config/**/*.ts`, with
+`strict`, unused-symbol checks, switch fallthrough checks and `@/* -> src/*`.
+`shared/features/ports.ts` composes typed feature ports; capability modules own
+DTOs and parsers. `directory.ts` owns the closed catalogue/assignment/model/
+prompt identifiers, re-exported by the named `types.ts` facade.
 
-- Shared frontend domain interfaces and unions live in `src/types.ts` and the
-  smaller `src/types/` modules. Components import those with `import type` when
-  they only need a type.
-- Most feature-level API facades in `src/lib/api/` expose explicit parameter
-  and `Promise` return types around Tauri `invoke` calls. Prefer the relevant
-  facade when extending a facade-driven feature, but follow the nearest
-  established boundary: `src/main.tsx`, `src/components/theme-provider.tsx`,
-  and `src/components/DatabaseUpgrade.tsx` are narrow direct-`invoke` paths,
-  not a blanket pattern for unrelated features.
-- Forms use Zod schemas in `src/lib/schemas/` and infer their form data from
-  the schema rather than maintaining a parallel form-only interface.
+Portable configuration types and serialization live in `domain/configuration`.
+`Provider.settingsConfig` and extension fields use `Record<string, unknown>`;
+dynamic input is not permission to replace validation with `any`.
 
-```tsx
-// src/lib/schemas/provider.ts
-export const providerSchema = z.object({
-  name: z.string(),
-  websiteUrl: z.string().url().optional().or(z.literal("")),
-  notes: z.string().optional(),
-  settingsConfig: z.string().min(1), // also JSON.parse-checked
-  icon: z.string().optional(),
-  iconColor: z.string().optional(),
-});
-
-export type ProviderFormData = z.infer<typeof providerSchema>;
+```ts
+import { isPlainObject } from "@/domain/configuration/serialization/providerConfigStructural";
+// Narrow an unknown child before reading a provider-specific field.
+const env = isPlainObject(config.env) ? config.env : undefined;
+const baseUrl =
+  typeof env?.ANTHROPIC_BASE_URL === "string"
+    ? env.ANTHROPIC_BASE_URL
+    : undefined;
 ```
 
-## Dynamic and Cross-Layer Data
+## 3. Contracts
 
-The existing `Provider.settingsConfig` is deliberately dynamic
-(`Record<string, any>`), and several UI paths parse editable JSON before
-applying a narrow assertion. This means the repository does not currently
-enforce a blanket ban on `any` or type assertions. For a stable new shape,
-extend the existing domain type or a Zod schema; retain a narrow boundary for
-provider-specific JSON instead of claiming it is universally validated.
+New or changed untrusted native response boundaries start as `unknown` at
+`shared/platform/tauri/feature-ports`. Parse before exposing them to components;
+reuse the owner's schema, including excess-field rejection where required.
+This is not a claim that every existing Port already parses at runtime:
+Skills/MCP `simple.ts` and the WorkBuddy/direct-provider methods enumerated in
+[Models](./models.md#runtime-parsing-boundary) retain typed-only boundaries.
+Their focused specs name the gap; do not manufacture validation evidence from
+TypeScript annotations or broaden those exceptions to new inputs.
+Closed discriminants, reason codes, revision ordering and opaque IDs retain
+their native wire meaning during source moves. `v1:` IDs and versioned DTO
+schemas are protocols, not renderer-generation names to replace.
 
-The Tauri wire boundary uses camelCase names on the TypeScript side and
-`serde(rename = "...")` on Rust fields where needed. A command payload change
-must be checked against both sides of that boundary.
+Keep camelCase command arguments synchronized with the Rust serialization.
+Do not add filesystem paths, command argv, executable URLs or broad locator
+fields to an existing opaque request. `zod/mini` is the adopted strict-schema
+subpath for file recovery and managed write contracts; preserve bundle budgets.
 
-V2 Agent install/action wires are owned by
-`src/v2/shared/features/agent-install-readiness.ts` and parsed in
-`src/v2/shared/platform/tauri/feature-ports/agentInstallReadiness.ts`
-before React Query. Pages must not locally cast `invoke` results or add
-URL/path/command fields. Exact keys, opaque `v1:` release IDs, and the
-forbidden-wire scan are part of that owner. See
-[External Agent P0 Safety](../backend/external-agent-p0.md) and
-[V2 Agent and Models](./v2-agent-models.md).
+Use `import type` for types, meaningful discriminated unions for variants and
+runtime narrowing for dynamic objects. A type assertion is not validation.
+No broad `any`, `ts-ignore` or weakened compiler settings to make migration pass.
 
-```rust
-// src-tauri/src/provider.rs
-#[serde(rename = "settingsConfig")]
-pub settings_config: Value,
-```
+## 4. Validation & Error Matrix
 
-## Evidence
+| Condition                                          | Required result                                                                 |
+| -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Unknown child is null, array or primitive          | Reject or use the explicitly documented fallback; do not access guessed fields. |
+| Native enum/contract version is unrecognized       | Owning parser rejects it; no optimistic capability/success state.               |
+| Request contains forbidden locator/extra fields    | Exact native/renderer contract tests reject it.                                 |
+| DTO field changes on one side only                 | Fix both owners and shared fixture; do not cast through unknown.                |
+| UI needs an identifier outside the closed registry | Review the registry/native contract together, not a page-local widening.        |
 
-- [tsconfig.json](../../../tsconfig.json) defines strict renderer/test compiler
-  options and the `@/*` alias.
-- [src/lib/schemas/provider.ts](../../../src/lib/schemas/provider.ts) derives
-  `ProviderFormData` from the runtime Zod schema.
-- [src-tauri/src/provider.rs](../../../src-tauri/src/provider.rs) shows the
-  serialized Rust companion for frontend provider data.
-- [src/v2/shared/features/agent-install-readiness.ts](../../../src/v2/shared/features/agent-install-readiness.ts)
-  owns the Agent install/action wire parser.
-- [src/components/theme-provider.tsx](../../../src/components/theme-provider.tsx)
-  shows a narrow direct-`invoke` boundary alongside the facade-based paths.
+## 5. Good / Base / Bad Cases
+
+Good: decode `parseJobSnapshot` in the native adapter and pass its typed result
+to the installer UI. Base: editable malformed TOML retains the existing explicit
+line-scanning fallback. Bad: `invoke(...) as Result` in a component or converting
+an unknown state into logged-in/installed.
+
+## 6. Tests Required
+
+Run `mise run typecheck`, `mise run lint` and `mise run test:unit`.
+Port/DTO tests must cover invalid discriminants, null/missing/excess fields,
+malformed opaque IDs and exact command payloads. Domain serialization tests
+retain prototype safety, literal token replacement and TOML escaping cases.
+The architecture suite must scan actual production files, not an empty old tree.
+
+## 7. Wrong vs Correct
+
+Wrong: widen a response to `Record<string, any>` and read nested fields.
+Correct: retain unknown input, reuse its owning parser/guard, then expose a
+closed typed value. See [Modular Boundaries](./modular-boundaries.md).

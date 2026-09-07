@@ -12,5 +12,11 @@ FyAgent contains portions derived from CC Switch.
 FyAgent is an independent project. This attribution does not imply endorsement
 by the CC Switch author or project.
 
+## React Resizable Panels
+
+The shared pane adapter uses React Resizable Panels by Brian Vaughn, under
+the MIT License. The full notice is retained in
+[`LICENSES/MIT-REACT-RESIZABLE-PANELS.txt`](LICENSES/MIT-REACT-RESIZABLE-PANELS.txt).
+
 Other third-party dependencies, assets, and contents remain subject to their
 respective license terms and notices.

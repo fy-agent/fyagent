@@ -74,6 +74,9 @@ describe("commit message convention", () => {
       "Conventional Commits",
     );
     expect(validateCommitSubject("feat: ")).toContain("Conventional Commits");
+    expect(validateCommitSubject("merge: ordinary subject")).toContain(
+      "Conventional Commits",
+    );
     const longSubject = `fix(ci): ${"x".repeat(240)}`;
     expect(longSubject.length).toBeGreaterThan(200);
     expect(isConventionalCommitSubject(longSubject)).toBe(true);
@@ -111,6 +114,107 @@ describe("commit message range verification", () => {
   afterAll(() => {
     for (const root of temporaryRoots) {
       fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  function mergedFixture(
+    sideSubject = "feat: side branch change",
+    mergeSubject = "merge: integrate tested changes",
+  ) {
+    const root = fs.mkdtempSync(
+      path.join(os.tmpdir(), "fyagent-commit-topology-"),
+    );
+    temporaryRoots.push(root);
+    git(root, "init", "--quiet");
+    git(root, "config", "user.name", "FyAgent Tests");
+    git(root, "config", "user.email", "tests@fyagent.invalid");
+    git(root, "commit", "--allow-empty", "-m", "chore: baseline");
+    const base = git(root, "rev-parse", "HEAD");
+    const branch = git(root, "branch", "--show-current");
+    git(root, "checkout", "-b", "topic");
+    git(root, "commit", "--allow-empty", "-m", sideSubject);
+    git(root, "checkout", branch);
+    git(root, "commit", "--allow-empty", "-m", "chore: primary branch change");
+    git(root, "merge", "--no-ff", "topic", "-m", mergeSubject);
+    const head = git(root, "rev-parse", "HEAD");
+    return { root, base, head };
+  }
+
+  function verifyRange(
+    root: string,
+    base: string,
+    head: string,
+    prTitle?: string,
+  ) {
+    return spawnSync(
+      process.execPath,
+      [
+        VERIFY_COMMIT_MESSAGES,
+        "--base",
+        base,
+        "--head",
+        head,
+        ...(prTitle ? ["--pr-title", prTitle] : []),
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+  }
+
+  it("accepts an explicit integration subject only with real merge parents, including HEAD-only checks", () => {
+    const { root, base, head } = mergedFixture();
+    expect(
+      git(root, "show", "-s", "--format=%P", head).split(" "),
+    ).toHaveLength(2);
+    for (const [from, count] of [
+      [base, 3],
+      [head, 1],
+    ] as const) {
+      const result = verifyRange(root, from, head);
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({
+        ok: true,
+        commitCount: count,
+        errors: [],
+      });
+    }
+    const title = verifyRange(
+      root,
+      base,
+      head,
+      "merge: not a pull request type",
+    );
+    expect(title.status).toBe(1);
+    expect(title.stderr).toContain("pull request title");
+  });
+
+  it("rejects a single-parent commit pretending to be an integration", () => {
+    const { root, head: base } = mergedFixture();
+    git(root, "commit", "--allow-empty", "-m", "merge: pretend integration");
+    const head = git(root, "rev-parse", "HEAD");
+    const result = verifyRange(root, base, head);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("merge: pretend integration");
+  });
+
+  it("still inspects invalid side-branch commits behind a valid merge", () => {
+    const { root, base, head } = mergedFixture("invalid side change");
+    const result = verifyRange(root, base, head);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout) as {
+      commitCount: number;
+      errors: string[];
+    };
+    expect(report.commitCount).toBe(3);
+    expect(report.errors).toHaveLength(1);
+    expect(report.errors[0]).toContain("invalid side change");
+  });
+
+  it("does not exempt arbitrary or empty integration subjects even on merge objects", () => {
+    for (const subject of ["untyped integration", "merge: "]) {
+      const { root, base, head } = mergedFixture(undefined, subject);
+      const result = verifyRange(root, base, head);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Conventional Commits");
     }
   });
 

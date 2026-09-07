@@ -1,0 +1,30 @@
+/* Suppress competing color interpolations for the entire reveal, not just
+ * the DOM update callback. The new root snapshot stays stable at mid-flight. */
+html[data-theme-reveal="active"],
+html[data-theme-reveal="active"] *,
+html[data-theme-reveal="active"] *::before,
+html[data-theme-reveal="active"] *::after {
+  transition: none !important;
+}
+
+html[data-theme-reveal="active"]::view-transition {
+  pointer-events: none;
+}
+
+html[data-theme-reveal="active"]::view-transition-image-pair(root) {
+  isolation: auto;
+}
+
+html[data-theme-reveal="active"]::view-transition-group(root),
+html[data-theme-reveal="active"]::view-transition-old(root),
+html[data-theme-reveal="active"]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+html[data-theme-reveal="active"]::view-transition-old(root) {
+  z-index: 1;
+}
+html[data-theme-reveal="active"]::view-transition-new(root) {
+  z-index: 2;
+}

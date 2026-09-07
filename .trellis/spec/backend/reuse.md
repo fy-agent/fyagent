@@ -85,6 +85,19 @@ database access, platform/runtime orchestration, and Skill filesystem safety.
 Do not create parallel protocol, archive, path-safety, or transaction logic
 merely because a new feature is implemented in another service.
 
+Tooling's `versions::compare_semver(a, b)` delegates parsing to `semver::Version`
+after trimming the two inputs, and compares with `cmp_precedence`, not `Ord`:
+build metadata must not cause an upgrade. Invalid SemVer returns `None`; do not
+restore permissive hand-written parsing for leading zeros or empty prerelease/
+build identifiers. This primitive does not parse npm ranges or Windows MSIX
+four-part versions. The existing locked semver node is a direct dependency;
+changing this relationship is not an excuse to upgrade unrelated dependencies.
+
+Shared [automatic sync scheduling](./auto-sync.md) composes the adopted Tokio
+channel/time APIs; [MCP document projection](./mcp-management.md) reuses the
+existing JSON reader and atomic writer. Backend-specific transport policy and
+vendor import/path rules remain outside these private mechanism owners.
+
 macOS privileged helper Bless / Authorization / XPC wrapping reuses the
 pinned Swift packages Blessed `0.6.0`, Authorized `1.0.0`, and SecureXPC at
 revision `1cece54562c7626d042f007d2f38cfe325565850`. Do not rewrite
@@ -142,17 +155,18 @@ design, research, or review artifact.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| A service duplicates an existing parser/archive/path/security/transaction owner | Reject; delegate to the established owner |
-| A new crate is added without checking current `src-tauri/Cargo.toml` capabilities | Reject; perform the adopted-dependency search first |
-| No current capability exists and non-trivial bespoke code is added without open-source candidate review | Reject or record why external reuse is inapplicable before merge |
-| A new crate duplicates the existing HTTP/TLS/serialization/runtime stack without a concrete gap | Reject; reuse the current stack |
-| A dependency has incompatible license/platform/toolchain/security characteristics | Reject that candidate |
-| A second real backend consumer appears but the first implementation remains domain-local | Promote/propose one crate-scoped owner before merge |
-| Shared code is made broadly `pub` only to enable reuse inside the crate | Reject; keep modules `pub(crate)`/private and re-export the minimum facade |
-| A one-off helper is generalized with speculative parameters and no second consumer | Keep it local; avoid premature abstraction |
-| Existing safety/rollback/validation ordering would be weakened by extraction | Keep the cohesive owner; reuse through delegation rather than splitting the invariant |
+| Condition                                                                                               | Required result                                                                       |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| A service duplicates an existing parser/archive/path/security/transaction owner                         | Reject; delegate to the established owner                                             |
+| A new crate is added without checking current `src-tauri/Cargo.toml` capabilities                       | Reject; perform the adopted-dependency search first                                   |
+| No current capability exists and non-trivial bespoke code is added without open-source candidate review | Reject or record why external reuse is inapplicable before merge                      |
+| A new crate duplicates the existing HTTP/TLS/serialization/runtime stack without a concrete gap         | Reject; reuse the current stack                                                       |
+| A dependency has incompatible license/platform/toolchain/security characteristics                       | Reject that candidate                                                                 |
+| A second real backend consumer appears but the first implementation remains domain-local                | Promote/propose one crate-scoped owner before merge                                   |
+| Shared code is made broadly `pub` only to enable reuse inside the crate                                 | Reject; keep modules `pub(crate)`/private and re-export the minimum facade            |
+| A one-off helper is generalized with speculative parameters and no second consumer                      | Keep it local; avoid premature abstraction                                            |
+| Tooling compares build metadata for upgrade precedence or reintroduces a bespoke SemVer parser          | Use `Version::parse` plus `cmp_precedence`; reject invalid operands.                  |
+| Existing safety/rollback/validation ordering would be weakened by extraction                            | Keep the cohesive owner; reuse through delegation rather than splitting the invariant |
 
 ## 5. Good / Base / Bad Cases
 

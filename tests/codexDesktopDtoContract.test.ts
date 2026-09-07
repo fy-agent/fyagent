@@ -13,7 +13,7 @@ import type {
   ProgressPhase,
   SuggestedAction,
   UnsupportedReason,
-} from "@/types/codexDesktop";
+} from "@/domain/codex-desktop/types";
 
 const desktopPlatforms = [
   "windows",

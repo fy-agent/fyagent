@@ -9,6 +9,82 @@ function read(relativePath: string): string {
 }
 
 describe("Rust modular architecture boundaries", () => {
+  it("keeps backup and undo below ordinary configuration writers and bounds bypass owners", () => {
+    const config = read("src-tauri/src/config.rs");
+    expect(config).toMatch(
+      /pub fn atomic_write\([^}]+recovery::write\(path, Some\(data\), false\)/su,
+    );
+    expect(config).toMatch(
+      /pub\(crate\) fn atomic_write_private\([^}]+recovery::write\(path, Some\(data\), true\)/su,
+    );
+    expect(config).toMatch(
+      /pub fn delete_file\([^}]+recovery::write\(path, None, false\)/su,
+    );
+    expect(config).toContain("atomic_write(path, &contents)?");
+    expect(config).toContain("atomic_write(path, data.as_bytes())");
+    expect(config).not.toMatch(/pub(?:\(crate\))? fn atomic_write_unbacked/u);
+    const root = path.join(repositoryRoot, "src-tauri/src");
+    const bypassOwners = fs
+      .readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((entry) => entry.endsWith(".rs"))
+      .filter((entry) =>
+        /\b(?:atomic_write_unbacked|write_backup_file|restore_file_preimage)\b/u.test(
+          fs.readFileSync(path.join(root, entry), "utf8"),
+        ),
+      )
+      .map((entry) => entry.split(path.sep).join("/"))
+      .sort();
+    expect(bypassOwners).toEqual(
+      [
+        "codex_config/storage.rs",
+        "codex_history_migration.rs",
+        "config.rs",
+        "config/recovery.rs",
+        "database/backup.rs",
+        "hermes_config.rs",
+        "openclaw_config.rs",
+        "services/managed_auth/consumers/codex/swap.rs",
+        "services/provider/mod.rs",
+      ].sort(),
+    );
+    expect(
+      read("src-tauri/src/services/managed_auth/consumers/codex/project.rs"),
+    ).not.toMatch(/ProviderService|switch_with_lock|write_text_file/u);
+  });
+
+  it("keeps sync scheduling out of adapters and cloud consumers out of SQLite", () => {
+    const database = read("src-tauri/src/database/mod.rs");
+    expect(database).toContain("fn set_change_listener");
+    expect(database).not.toMatch(/services::(?:s3|webdav)_auto_sync/u);
+    expect(read("src-tauri/src/lib.rs")).toContain("db.set_change_listener");
+    expect(read("src-tauri/src/services/mod.rs")).toMatch(/^mod auto_sync;$/mu);
+    for (const name of ["s3_auto_sync", "webdav_auto_sync"]) {
+      const source = read(`src-tauri/src/services/${name}.rs`);
+      expect(source).toContain("AUTO_SYNC.start(");
+      expect(source).not.toMatch(
+        /tokio::(?:sync|time)|AtomicUsize|OnceLock|crate::commands::/u,
+      );
+    }
+  });
+
+  it("requires mature version parsing and one private MCP document owner", () => {
+    const versions = read("src-tauri/src/services/tooling/versions.rs");
+    expect(versions).toContain("semver::Version::parse");
+    expect(versions).toContain("cmp_precedence");
+    expect(versions).not.toMatch(/fn parse_semver/u);
+    expect(read("src-tauri/src/mcp/mod.rs")).toMatch(/^mod json_document;$/mu);
+    for (const name of ["workbuddy", "qoderwork", "traework"]) {
+      const source = read(`src-tauri/src/mcp/${name}.rs`).split(
+        "#[cfg(test)]\nmod tests",
+      )[0];
+      expect(source).toContain("super::json_document::");
+      expect(source).toContain("write_servers(");
+      expect(source).not.toMatch(
+        /serde_json::(?:from_str|to_string_pretty)|atomic_write\(|object\.remove\(/u,
+      );
+    }
+  });
+
   it("keeps service implementation modules crate-scoped", () => {
     const services = read("src-tauri/src/services/mod.rs");
     const declarations = [
@@ -75,7 +151,9 @@ describe("Rust modular architecture boundaries", () => {
       "open_provider_terminal",
     ]);
     expect(services).toContain("pub(crate) mod tooling;");
-    for (const implementationMarker of ["ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE"]) {
+    for (const implementationMarker of [
+      "ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE",
+    ]) {
       expect(toolingCommands).not.toContain(implementationMarker);
       expect(toolingService).toContain(implementationMarker);
     }
@@ -164,7 +242,9 @@ describe("Rust modular architecture boundaries", () => {
     expect(codex).toContain("mod storage;");
     expect(codexCatalog).toContain("CODEX_MODEL_CATALOG_TEMPLATE_CACHE");
     expect(codexCatalog).toContain("fn codex_model_catalog_from_settings");
-    expect(codexCatalog).toContain("fn prepare_codex_config_text_with_model_catalog");
+    expect(codexCatalog).toContain(
+      "fn prepare_codex_config_text_with_model_catalog",
+    );
     expect(codex).not.toMatch(/\bfn codex_model_catalog_from_settings\b/u);
     expect(codex).not.toMatch(
       /\bfn prepare_codex_config_text_with_model_catalog\b/u,

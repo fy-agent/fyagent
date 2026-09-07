@@ -65,7 +65,9 @@ export const REQUIRED_TASKS = Object.freeze([
   "test:desktop:mock",
   "test:desktop:visual:preflight",
   "test:desktop:visual:update",
-  "test:i18n",
+  "lint",
+  "test:browser",
+  "test:performance",
   "test:unit",
   "test:unit:watch",
   "toolchain:lock",
@@ -131,7 +133,6 @@ export const RAW_TASKS = Object.freeze([
   "dev",
   "dev:renderer",
   "test:unit:watch",
-  "test:v2:watch",
 ]);
 
 const RETIRED_TASKS = Object.freeze([

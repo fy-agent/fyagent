@@ -126,7 +126,7 @@ pub fn sync_opencode_usage(db: &Database) -> Result<SessionSyncResult, AppError>
                         Ok(false) => result.skipped += 1,
                         Err(e) => {
                             let msg = format!("OpenCode 消息插入失败 {request_id}: {e}");
-                            log::warn!("[OPENCODE-SYNC] {msg}");
+                            log::warn!("[OPENCODE-SYNC] 消息插入失败；详细信息仅返回当前同步结果");
                             result.errors.push(msg);
                             result.skipped += 1;
                             session_had_error = true;
@@ -136,7 +136,7 @@ pub fn sync_opencode_usage(db: &Database) -> Result<SessionSyncResult, AppError>
             }
             Err(e) => {
                 let msg = format!("OpenCode 会话消息查询失败 {session_id}: {e}");
-                log::warn!("[OPENCODE-SYNC] {msg}");
+                log::warn!("[OPENCODE-SYNC] 会话消息查询失败；详细信息仅返回当前同步结果");
                 result.errors.push(msg);
                 session_had_error = true;
             }
@@ -154,7 +154,7 @@ pub fn sync_opencode_usage(db: &Database) -> Result<SessionSyncResult, AppError>
         // 更新会话级同步状态。失败时不要推进文件级状态，确保下次可重试。
         if let Err(e) = update_sync_state(db, &sync_key, *time_updated, 0) {
             let msg = format!("OpenCode 会话同步状态更新失败 {session_id}: {e}");
-            log::warn!("[OPENCODE-SYNC] {msg}");
+            log::warn!("[OPENCODE-SYNC] 会话同步状态更新失败；详细信息仅返回当前同步结果");
             result.errors.push(msg);
             has_sync_errors = true;
         }

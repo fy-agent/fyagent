@@ -1529,17 +1529,17 @@ fn verify_exact_descriptor(
                 "a package bridge ACE was unavailable",
             ));
         }
-        let ace = unsafe { &*raw_ace.cast::<ACCESS_ALLOWED_ACE>() };
-        if ace.Header.AceType != ACCESS_ALLOWED_ACE_TYPE_VALUE
-            || ace.Header.AceFlags != 0
-            || ace.Mask != expected.mask
-        {
+        // GetAce borrows this entry from the still-owned security descriptor.
+        // Inspect the common header and record size before creating a reference
+        // to the larger allowed-ACE layout (the helper applies the same order).
+        let header = unsafe { &*raw_ace.cast::<windows::Win32::Security::ACE_HEADER>() };
+        if header.AceType != ACCESS_ALLOWED_ACE_TYPE_VALUE || header.AceFlags != 0 {
             return Err(bridge_integrity_error(
-                "a package bridge ACE type, flags, or mask was invalid",
+                "a package bridge ACE type or flags were invalid",
             ));
         }
         let sid_offset = offset_of!(ACCESS_ALLOWED_ACE, SidStart);
-        let ace_size = usize::from(ace.Header.AceSize);
+        let ace_size = usize::from(header.AceSize);
         let minimum_sid_bytes = 8_usize;
         if sid_offset
             .checked_add(minimum_sid_bytes)
@@ -1547,6 +1547,12 @@ fn verify_exact_descriptor(
         {
             return Err(bridge_integrity_error(
                 "a package bridge ACE SID was truncated",
+            ));
+        }
+        let ace = unsafe { &*raw_ace.cast::<ACCESS_ALLOWED_ACE>() };
+        if ace.Mask != expected.mask {
+            return Err(bridge_integrity_error(
+                "a package bridge ACE mask was invalid",
             ));
         }
         let sid = PSID((&raw const ace.SidStart).cast_mut().cast());

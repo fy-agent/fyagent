@@ -194,8 +194,11 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
     let channel = PipeChannel::connect(&pipe_name(request.pipe_nonce()))?;
     let channel = Arc::new(channel);
     channel.send_hello(action)?;
-    if matches!(action, UserHelperAction::GrokTool { .. }) {
-        return run_grok_tool_session(&controls, channel, action);
+    if matches!(
+        action,
+        UserHelperAction::GrokTool { .. } | UserHelperAction::ClaudeTool { .. }
+    ) {
+        return run_cli_tool_session(&controls, channel, action);
     }
 
     let bridge_control = match channel.read_bridge_control(ADMISSION_TIMEOUT) {
@@ -238,9 +241,9 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
         UserHelperAction::AgentExeInstall(product) => {
             run_verified_exe_installer(&package_pin, product, &channel)
         }
-        UserHelperAction::GrokTool { .. } => Err(DeploymentFailure::Operation(
-            HelperErrorCode::InstallLayoutInvalid,
-        )),
+        UserHelperAction::GrokTool { .. } | UserHelperAction::ClaudeTool { .. } => Err(
+            DeploymentFailure::Operation(HelperErrorCode::InstallLayoutInvalid),
+        ),
     };
 
     match result {
@@ -256,19 +259,25 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
     }
 }
 
-fn run_grok_tool_session(
+mod claude;
+
+fn run_cli_tool_session(
     controls: &ParentControls,
     channel: Arc<PipeChannel>,
     action: UserHelperAction,
 ) -> Result<(), HelperRunError> {
-    let UserHelperAction::GrokTool {
-        action: tool_action,
-        expected_owner,
-    } = action
-    else {
-        return Err(HelperRunError::OperationFailed(
-            HelperErrorCode::InstallLayoutInvalid,
-        ));
+    use fyagent_user_helper::grok_npm::OfficialNpmTool;
+    let (tool, tool_action, expected_owner) = match action {
+        UserHelperAction::GrokTool {
+            action,
+            expected_owner,
+        } => (OfficialNpmTool::Grok, action, expected_owner),
+        UserHelperAction::ClaudeTool { action } => (OfficialNpmTool::Claude, action, None),
+        _ => {
+            return Err(HelperRunError::OperationFailed(
+                HelperErrorCode::InstallLayoutInvalid,
+            ))
+        }
     };
     let npm_plan = match channel.read_grok_npm_plan() {
         Ok(plan) => plan,
@@ -283,7 +292,11 @@ fn run_grok_tool_session(
         return Err(HelperRunError::OperationFailed(code));
     }
     channel.mark_admitted()?;
-    match execute_grok_tool(tool_action, expected_owner, npm_plan) {
+    let result = match tool {
+        OfficialNpmTool::Grok => execute_grok_tool(tool_action, expected_owner, npm_plan),
+        OfficialNpmTool::Claude => claude::execute(tool_action, npm_plan),
+    };
+    match result {
         Ok(result) => {
             let _ = channel.send_progress(100);
             channel.send_terminal(HelperMessage::ToolResult(result))
@@ -393,14 +406,8 @@ fn discover_grok_candidates() -> Result<
     HelperErrorCode,
 > {
     let profile = known_user_folder(&FOLDERID_Profile)?;
-    let local = known_user_folder(&FOLDERID_LocalAppData)?;
-    let roaming = known_user_folder(&FOLDERID_RoamingAppData)?;
     let config_owner = read_grok_config_owner(&profile);
-    let mut paths = Vec::new();
-    collect_segment_binaries(&profile, GROK_PROFILE_BIN_SEGMENTS, &mut paths);
-    collect_segment_binaries(&local, GROK_LOCAL_APP_DATA_BIN_SEGMENTS, &mut paths);
-    collect_segment_binaries(&roaming, GROK_ROAMING_APP_DATA_BIN_SEGMENTS, &mut paths);
-    collect_path_binaries(&mut paths)?;
+    let paths = discover_tool_paths(fyagent_user_helper::grok_npm::OfficialNpmTool::Grok)?;
 
     let mut unique = Vec::new();
     for path in paths {
@@ -419,17 +426,54 @@ fn discover_grok_candidates() -> Result<
     Ok((observation, unique))
 }
 
-fn collect_segment_binaries(root: &Path, segments: &[&[&str]], into: &mut Vec<PathBuf>) {
+fn discover_tool_paths(
+    tool: fyagent_user_helper::grok_npm::OfficialNpmTool,
+) -> Result<Vec<PathBuf>, HelperErrorCode> {
+    use fyagent_user_helper::grok_npm::OfficialNpmTool;
+    let profile = known_user_folder(&FOLDERID_Profile)?;
+    let local = known_user_folder(&FOLDERID_LocalAppData)?;
+    let roaming = known_user_folder(&FOLDERID_RoamingAppData)?;
+    let profile_segments: &[&[&str]] = match tool {
+        OfficialNpmTool::Grok => GROK_PROFILE_BIN_SEGMENTS,
+        OfficialNpmTool::Claude => &[
+            &[".local", "bin"],
+            &[".npm-global"],
+            &[".npm-global", "bin"],
+            &[".volta", "bin"],
+        ],
+    };
+    let mut paths = Vec::new();
+    collect_segment_binaries(&profile, profile_segments, tool, &mut paths);
+    collect_segment_binaries(&local, GROK_LOCAL_APP_DATA_BIN_SEGMENTS, tool, &mut paths);
+    collect_segment_binaries(
+        &roaming,
+        GROK_ROAMING_APP_DATA_BIN_SEGMENTS,
+        tool,
+        &mut paths,
+    );
+    collect_path_binaries(tool, &mut paths)?;
+    Ok(paths)
+}
+
+fn collect_segment_binaries(
+    root: &Path,
+    segments: &[&[&str]],
+    tool: fyagent_user_helper::grok_npm::OfficialNpmTool,
+    into: &mut Vec<PathBuf>,
+) {
     for segments in segments {
         let mut directory = root.to_path_buf();
         for segment in *segments {
             directory.push(segment);
         }
-        push_grok_executables(&directory, into);
+        push_tool_executables(&directory, tool, into);
     }
 }
 
-fn collect_path_binaries(into: &mut Vec<PathBuf>) -> Result<(), HelperErrorCode> {
+fn collect_path_binaries(
+    tool: fyagent_user_helper::grok_npm::OfficialNpmTool,
+    into: &mut Vec<PathBuf>,
+) -> Result<(), HelperErrorCode> {
     for directory in interactive_path_directories()? {
         if directory
             .to_string_lossy()
@@ -438,13 +482,23 @@ fn collect_path_binaries(into: &mut Vec<PathBuf>) -> Result<(), HelperErrorCode>
         {
             continue;
         }
-        push_grok_executables(&directory, into);
+        push_tool_executables(&directory, tool, into);
     }
     Ok(())
 }
 
-fn push_grok_executables(directory: &Path, into: &mut Vec<PathBuf>) {
-    for name in grok_windows_executable_names() {
+fn push_tool_executables(
+    directory: &Path,
+    tool: fyagent_user_helper::grok_npm::OfficialNpmTool,
+    into: &mut Vec<PathBuf>,
+) {
+    let names = match tool {
+        fyagent_user_helper::grok_npm::OfficialNpmTool::Grok => grok_windows_executable_names(),
+        fyagent_user_helper::grok_npm::OfficialNpmTool::Claude => {
+            fyagent_user_helper::claude::windows_executable_names()
+        }
+    };
+    for name in names {
         let candidate = directory.join(name);
         if candidate.is_file() {
             into.push(candidate);
@@ -498,10 +552,6 @@ fn run_official_npm_install(
     } else {
         find_path_program(&["npm.cmd", "npm.exe"]).ok_or(HelperErrorCode::ToolHostMissing)?
     };
-    let major = npm_major_from(&npm)?;
-    let plan = plan.clone().with_npm_major(major);
-    let argv = npm_install_argv_or_reject(Some(&plan))
-        .map_err(|_| HelperErrorCode::ToolExecutionFailed)?;
     if is_update {
         if let Some(local) = preferred_candidate(candidates, GrokOwner::Npm).and_then(|candidate| {
             run_grok_binary(&candidate.path, &["--version"], grok_version_timeout())
@@ -513,12 +563,10 @@ fn run_official_npm_install(
             }
         }
     }
-    let arg_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
-    run_grok_binary_with_env(
+    execute_npm_plan(
         &npm,
-        &arg_refs,
-        grok_lifecycle_timeout(),
-        &[(GROK_NPM_REGISTRY_ENV, plan.registry_url())],
+        fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
+        plan,
     )?;
     let (_, after) = discover_grok_candidates()?;
     let observed = preferred_candidate(&after, GrokOwner::Npm).and_then(|candidate| {
@@ -541,6 +589,26 @@ fn sibling_npm(grok_path: &Path) -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn execute_npm_plan(
+    npm: &Path,
+    tool: fyagent_user_helper::grok_npm::OfficialNpmTool,
+    plan: &GrokNpmInstallPlan,
+) -> Result<(), HelperErrorCode> {
+    use fyagent_user_helper::grok_npm::OfficialNpmTool;
+    let plan = plan.clone().with_npm_major(npm_major_from(npm)?);
+    let argv = match tool {
+        OfficialNpmTool::Grok => npm_install_argv_or_reject(Some(&plan))
+            .map_err(|_| HelperErrorCode::ToolExecutionFailed)?,
+        OfficialNpmTool::Claude => plan.npm_argv_for(tool),
+    };
+    let refs = argv.iter().map(String::as_str).collect::<Vec<_>>();
+    let env = match tool {
+        OfficialNpmTool::Grok => vec![(GROK_NPM_REGISTRY_ENV, plan.registry_url())],
+        OfficialNpmTool::Claude => Vec::new(),
+    };
+    run_grok_binary_with_env(npm, &refs, grok_lifecycle_timeout(), &env).map(|_| ())
 }
 
 fn npm_major_from(npm: &Path) -> Result<u32, HelperErrorCode> {

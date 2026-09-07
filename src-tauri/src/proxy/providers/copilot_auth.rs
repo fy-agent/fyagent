@@ -485,7 +485,7 @@ impl CopilotAuthManager {
 
     /// 移除指定账号
     pub async fn remove_account(&self, account_id: &str) -> Result<(), CopilotAuthError> {
-        log::info!("[CopilotAuth] 移除账号: {account_id}");
+        log::info!("[CopilotAuth] 移除所选账号");
 
         {
             let mut accounts = self.accounts.write().await;
@@ -751,7 +751,7 @@ impl CopilotAuthManager {
         }
 
         // 需要刷新
-        log::info!("[CopilotAuth] 账号 {account_id} 的 Copilot Token 需要刷新");
+        log::info!("[CopilotAuth] 所选账号的 Copilot Token 需要刷新");
 
         let refresh_lock = self.get_refresh_lock(account_id).await;
         let _refresh_guard = refresh_lock.lock().await;
@@ -835,7 +835,7 @@ impl CopilotAuthManager {
         let api_base = self.get_api_endpoint(account_id).await;
         let models_url = format!("{}/models", api_base);
 
-        log::info!("[CopilotAuth] 获取账号 {account_id} 的 Copilot 可用模型");
+        log::info!("[CopilotAuth] 获取所选账号的可用模型");
 
         let response = crate::proxy::http_client::get()
             .get(&models_url)
@@ -922,7 +922,7 @@ impl CopilotAuthManager {
             (account.github_token.clone(), account.github_domain.clone())
         };
 
-        log::info!("[CopilotAuth] 获取账号 {account_id} 的 Copilot 使用量");
+        log::info!("[CopilotAuth] 获取所选账号的使用量");
 
         let response = crate::proxy::http_client::get()
             .get(copilot_usage_url(&domain))
@@ -957,7 +957,7 @@ impl CopilotAuthManager {
             let mut api_endpoints = self.api_endpoints.write().await;
             api_endpoints.insert(account_id.to_string(), endpoints.api.clone());
             // 使用 debug 级别避免在日志中暴露企业内部域名
-            log::debug!("[CopilotAuth] 账号 {account_id} 已保存动态 API 端点");
+            log::debug!("[CopilotAuth] 已保存动态 API 端点");
         }
 
         log::info!(
@@ -1004,10 +1004,8 @@ impl CopilotAuthManager {
 
         match self.fetch_and_cache_endpoint(account_id).await {
             Ok(endpoint) => endpoint,
-            Err(e) => {
-                log::debug!(
-                    "[CopilotAuth] 获取账号 {account_id} 动态 API 端点失败: {e}，使用默认值"
-                );
+            Err(_) => {
+                log::debug!("[CopilotAuth] 获取动态 API 端点失败，使用默认值");
                 let domain = self.get_account_domain(account_id).await;
                 copilot_api_base(&domain)
             }
@@ -1036,7 +1034,7 @@ impl CopilotAuthManager {
             (account.github_token.clone(), account.github_domain.clone())
         };
 
-        log::debug!("[CopilotAuth] 为账号 {account_id} 惰性拉取动态 API 端点");
+        log::debug!("[CopilotAuth] 惰性拉取动态 API 端点");
 
         let response = crate::proxy::http_client::get()
             .get(copilot_usage_url(&domain))
@@ -1073,7 +1071,7 @@ impl CopilotAuthManager {
         // 缓存端点（包括默认值），避免重复请求
         let mut api_endpoints = self.api_endpoints.write().await;
         api_endpoints.insert(account_id.to_string(), endpoint.clone());
-        log::debug!("[CopilotAuth] 账号 {account_id} 已缓存 API 端点");
+        log::debug!("[CopilotAuth] 已缓存 API 端点");
 
         Ok(endpoint)
     }
@@ -1345,13 +1343,12 @@ impl CopilotAuthManager {
         account_id: &str,
         domain: &str,
     ) -> Result<(), CopilotAuthError> {
-        log::debug!("[CopilotAuth] 获取账号 {account_id} 的 Copilot Token (domain: {domain})");
+        log::debug!("[CopilotAuth] 获取所选账号的 Copilot Token");
 
         let token_response = exchange_github_token_for_copilot(github_token, domain).await?;
 
         log::info!(
-            "[CopilotAuth] 账号 {} 的 Copilot Token 获取成功，过期时间: {}",
-            account_id,
+            "[CopilotAuth] Copilot Token 获取成功，过期时间: {}",
             token_response.expires_at
         );
 

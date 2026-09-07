@@ -2,9 +2,9 @@
 
 This contract applies to text that a product user or repository visitor reads:
 
-- production V2 headings, descriptions, notices, dialogs, progress text,
+- production Renderer headings, descriptions, notices, dialogs, progress text,
   controls, tooltips, and accessible names;
-- leftover renderer translations in the four registered locales;
+- future localization only through the explicit [Localization](./localization.md) contract;
 - root READMEs and public documentation under `docs/**`.
 
 It does not prohibit precise engineering terminology in source identifiers,
@@ -82,11 +82,12 @@ not user copy.
 - Do not expose raw backend errors unless the contract explicitly marks them as
   safe, actionable display text.
 
-### Settings and user-manual installer copy
+### Agent lifecycle and user-manual installer copy
 
-- Settings/Tooling may show install/update controls only for Grok Build.
-  Claude, Gemini, OpenCode, OpenClaw, Hermes, and Codex must not present
-  npm, Shell, PowerShell, WinGet, copy-all, or remote-script install bundles.
+- The Agent directory is the current install/update/launch UI. Its closed
+  Tooling-backed Claude Code and Grok Build CLI actions do not justify a
+  second Settings command table. No product exposes npm, Shell, PowerShell,
+  WinGet, copy-all or remote-script installation bundles to the user.
 - Grok default install copy may say the official npm package is used. It must
   not claim that Grok sign-in or inference works on mainland networks. Do not
   show registry URLs, integrity hashes, or npm command lines.
@@ -95,8 +96,8 @@ not user copy.
   user should finish it, then refresh. It must not say the product is installed.
 - OpenCode Windows x64 may be offered as a current-user official installer.
   ARM64 remains unavailable. Catalog description states Skills/MCP/Hooks
-  only; do not add 「本机识别和启动暂无法确认」. Claude still uses that
-  sentence until its Windows identity exists. Destination labels may use the
+  only; do not add 「本机识别和启动暂无法确认」. Claude Code now uses its
+  CLI-only lifecycle and must not promise Claude Desktop support. Destination labels may use the
   display name and must not be treated as the scanned folder
   (`@opencode-aidesktop`).
 - Conflict and upgrade dialogs may show source/version/default, never an
@@ -124,6 +125,14 @@ Examples:
   technology.
 
 ### Confirmation and safety copy
+
+Claude's Agent card may offer the closed CLI installer and official login
+confirmation. A completed managed login says the account is saved and requires
+separate confirmation before replacing consumer credentials. File-impact
+dialogs show actual changed/created and preserved paths plus backup locations.
+File undo must not be described as server-side OAuth revocation, and a
+vendor-owned login/logout must not be promised to be reversible by FyAgent's
+file backup.
 
 Explain:
 
@@ -192,10 +201,11 @@ on those facts.
 
 ## Translation rules
 
-- Production V2 remains hardcoded Chinese until an explicit i18n migration is
+- Production Renderer remains hardcoded Chinese until an explicit i18n migration is
   approved.
-- Leftover renderer copy must update `en`, `ja`, `zh`, and `zh-TW` keys
-  together.
+- Chinese/English/Japanese manuals must preserve equivalent current capability
+  and safety meaning when the affected topic exists in all three. There are
+  no retained four-locale renderer bundles to synchronize or restore.
 - Translations should preserve the same user decision, not mirror sentence
   structure word for word.
 - Product names, commands, configuration keys, and serialized values remain
@@ -210,14 +220,15 @@ Before merging user-visible text, verify:
 - [ ] Errors and uncertain states include a safe next step.
 - [ ] Copy does not reveal an opaque token, event sequence, adapter, projection,
       baseline, internal state machine, or implementation proof mechanism.
-- [ ] Settings/user-manual copy does not restore non-Grok CLI install/update
-      command tables or display absolute install paths.
+- [ ] Installer/user-manual copy follows the Agent directory's admitted
+      lifecycle actions, not a duplicated command table or raw install path.
 - [ ] The text does not claim a capability, platform, signing state, or
       successful result beyond available evidence.
 - [ ] A README/document section serves a reader task rather than explaining the
       author's framing or writing process.
-- [ ] Leftover locale changes are complete in all four languages.
-- [ ] Relevant unit/browser assertions and the V2 user-facing copy contract
+- [ ] Affected manual translations remain consistent; no deleted locale runtime
+      is described as a current feature.
+- [ ] Relevant unit/browser assertions and the Renderer user-facing copy contract
       pass.
 
 ## Validation
@@ -225,14 +236,14 @@ Before merging user-visible text, verify:
 Run the checks that cover the changed surface:
 
 ```bash
-mise run lint:v2
-mise run typecheck:v2
-mise run test:v2
-mise run test:v2:browser
+mise run lint
+mise run typecheck
+mise run test:unit
+mise run test:browser
 mise run build:renderer
 mise run format:check
 ```
 
-The V2 test suite contains a focused source contract for reviewed forbidden
+The Renderer test suite contains a focused source contract for reviewed forbidden
 phrases. It is a regression guard for known implementation narration, not a
 substitute for human review of meaning and context.

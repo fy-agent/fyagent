@@ -1,10 +1,10 @@
 {"file":".trellis/tasks/08-26-frontend-interaction-v3-1/source-feishu-verbatim.md","reason":"Final review must cover every user-authored completion condition and prohibition."}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Fresh lint, typecheck, unit, browser and renderer-build expectations."}
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"Verify six routes, keep-alive, shell layout and responsive behavior remain intact."}
+{"file":".trellis/spec/frontend/shell.md","reason":"Verify six routes, keep-alive, shell layout and responsive behavior remain intact."}
 {"file":".trellis/spec/frontend/reuse.md","reason":"Reject duplicate components, global CSS patches and speculative shared abstractions."}
-{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Verify scan projection and model surfaces preserve real capability/data semantics."}
-{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Verify Skills and MCP operations retain authoritative readback and target isolation."}
-{"file":".trellis/spec/frontend/v2-prompts-memory.md","reason":"Verify Prompt and Memory structural changes preserve native ports, write locks and dirty guards."}
+{"file":".trellis/spec/frontend/agent-models.md","reason":"Verify scan projection and model surfaces preserve real capability/data semantics."}
+{"file":".trellis/spec/frontend/skills-mcp.md","reason":"Verify Skills and MCP operations retain authoritative readback and target isolation."}
+{"file":".trellis/spec/frontend/prompts-memory.md","reason":"Verify Prompt and Memory structural changes preserve native ports, write locks and dirty guards."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Verify typed filtering, sorting and state mapping without casts or duplicated domain types."}
 {"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Verify V2 imports and platform adapter boundaries remain intact."}
 {"file":".trellis/tasks/08-26-frontend-interaction-v3-1/research/grok-planning-gate-round-1.md","reason":"Verify frozen-state, negative-test and geometry blockers remain closed; ignore historical executor wording and use only the latest Gemini-primary authority file for routing."}

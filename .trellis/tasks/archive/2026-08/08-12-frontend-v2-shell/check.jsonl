@@ -6,4 +6,4 @@
 {"file":".trellis/spec/backend/application-brand-assets.md","reason":"Prove the header-only transparent mark did not alter the application icon generation contract."}
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review the Tauri ready/window call path and explicit non-release boundary end to end."}
 {"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Review new helpers and dependencies for duplication and boundary leakage."}
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"Verify the final renderer against the authoritative V2 Phase 1 contract."}
+{"file":".trellis/spec/frontend/shell.md","reason":"Verify the final renderer against the authoritative V2 Phase 1 contract."}

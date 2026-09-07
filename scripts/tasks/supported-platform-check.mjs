@@ -227,15 +227,7 @@ const DIRECTORY_PATH_RULE = Object.freeze({
 });
 
 const ARCHIVE_PREFIX = ".trellis/tasks/archive/";
-export const GENERATED_STANDALONE_PREVIEW_PATH = "FyAgent-前端交互预览.html";
-// The standalone preview is deterministic compiled output. Exclude only its
-// generated body; its exact root filename is still inspected, while the V2
-// source tree and build generator remain in the ordinary text scan.
-const TEXT_EXCLUSIONS = new Set([
-  "pnpm-lock.yaml",
-  "src-tauri/Cargo.lock",
-  GENERATED_STANDALONE_PREVIEW_PATH,
-]);
+const TEXT_EXCLUSIONS = new Set(["pnpm-lock.yaml", "src-tauri/Cargo.lock"]);
 export const ACTIVE_TASK_ENV = "FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK";
 export const DEVELOPMENT_HOST_ADMISSION_PATHS = Object.freeze([
   "mise.lock",
@@ -430,20 +422,8 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     next: "{",
   }),
   Object.freeze({
-    id: "opencode-auth-json-mode-unix",
-    file: "src-tauri/src/services/managed_auth/consumers/opencode.rs",
-    condition: "#[cfg(unix)]",
-    next: "{",
-  }),
-  Object.freeze({
     id: "opencode-auth-json-mode-assert-unix",
     file: "src-tauri/src/services/managed_auth/consumers/opencode.rs",
-    condition: "#[cfg(unix)]",
-    next: "{",
-  }),
-  Object.freeze({
-    id: "codex-auth-json-mode-unix",
-    file: "src-tauri/src/services/managed_auth/consumers/codex/swap.rs",
     condition: "#[cfg(unix)]",
     next: "{",
   }),
@@ -2804,16 +2784,7 @@ const WINDOWS_HELPER_SELECTOR =
 const MACOS_HELPER_SELECTOR =
   "(?:[A-Za-z_$][\\w$]*\\s*(?:\\?\\.|\\.)\\s*)*isMac(?:OS)?\\s*(?:\\?\\.)?\\s*\\([^)]*\\)";
 
-const JAVASCRIPT_PLATFORM_EXPRESSION_CONTRACT = Object.freeze([
-  Object.freeze({
-    file: "src/App.tsx",
-    expression: "const DEFAULT_DRAG_BAR_HEIGHT = isMac() ? 28 : 0",
-  }),
-  Object.freeze({
-    file: "src/components/common/FullScreenPanel.tsx",
-    expression: "const DRAG_BAR_HEIGHT = isMac() ? 28 : 0",
-  }),
-]);
+const JAVASCRIPT_PLATFORM_EXPRESSION_CONTRACT = Object.freeze([]);
 
 function isApprovedJavaScriptPlatformExpression(entry, expression) {
   const normalizedExpression = expression.replace(/\s+/gu, " ").trim();
@@ -3086,7 +3057,9 @@ export function scanJavaScriptImplicitPredicates(entries) {
       if (conditionEnd === undefined) continue;
       const condition = source.slice(conditionStart + 1, conditionEnd);
       if (
-        !new RegExp(`^\s*${PROCESS_PLATFORM_SELECTOR}\s*$`, "u").test(condition)
+        !new RegExp(`^\\s*${PROCESS_PLATFORM_SELECTOR}\\s*$`, "u").test(
+          condition,
+        )
       ) {
         continue;
       }

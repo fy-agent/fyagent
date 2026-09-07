@@ -1,5 +1,5 @@
 {"file":".trellis/spec/frontend/index.md","reason":"Renderer pre-development checklist and V2/spec routing."}
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"Authoritative V2 route, dependency, styling, platform-port, and executable test boundary that this task intentionally expands."}
+{"file":".trellis/spec/frontend/shell.md","reason":"Authoritative V2 route, dependency, styling, platform-port, and executable test boundary that this task intentionally expands."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Typed Tauri wire DTO and strict TypeScript rules for new catalog/model ports."}
 {"file":".trellis/spec/backend/index.md","reason":"Native command/service and validation routing for the cross-layer implementation."}
 {"file":".trellis/spec/backend/workbuddy-configuration.md","reason":"Credential, revision, overwrite-token, bounded fetch, persistence, and query-isolation contract."}

@@ -17,7 +17,7 @@ WorkBuddy model persistence is defined by
 [WorkBuddy Configuration](./workbuddy-configuration.md). Claude/Codex/Grok
 Provider quick setup is defined by
 [Codex/Provider Configuration](./codex-provider-configuration.md). Renderer
-composition is defined by [V2 Models](../frontend/v2-models.md).
+composition is defined by [Models](../frontend/models.md).
 
 ## 2. Signatures
 
@@ -102,20 +102,20 @@ authorization headers, or private config fragments. User-visible `path` /
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| TRAE endpoint is malformed, non-HTTP(S), credential-bearing, or resolves unsafe | Reject before request; no fallback address/proxy |
-| DNS/address changes outside the validated binding | Request fails closed; do not reconnect to an unchecked address |
-| TRAE request is cancelled, times out, or exceeds body cap | Controlled non-success with secret-safe bounded error |
-| TRAE cache contains both colon and underscore keys | Use the reviewed colon key; do not merge stale duplicate records |
-| TRAE cache contains credentials/private fields | Project only sanitized model IDs; fail on credential collision |
-| Caller asks to save/fetch TRAE models | No such native command; renderer stays guidance/observation only |
-| OpenCode snapshot/config is malformed | Controlled failure; never replace with a minimal file |
-| OpenCode expected revision is stale | Conflict plus exact overwrite capability; no write |
-| OpenCode backup fails | Abort before primary mutation |
-| OpenCode reread differs | Non-success/recovery result; do not claim applied |
-| GET/query/log/error contains API key or auth header | Secret-safety test fails |
-| Renderer supplies an OpenCode config/backup path | API review fails; paths are native-owned output metadata only |
+| Condition                                                                       | Required result                                                  |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| TRAE endpoint is malformed, non-HTTP(S), credential-bearing, or resolves unsafe | Reject before request; no fallback address/proxy                 |
+| DNS/address changes outside the validated binding                               | Request fails closed; do not reconnect to an unchecked address   |
+| TRAE request is cancelled, times out, or exceeds body cap                       | Controlled non-success with secret-safe bounded error            |
+| TRAE cache contains both colon and underscore keys                              | Use the reviewed colon key; do not merge stale duplicate records |
+| TRAE cache contains credentials/private fields                                  | Project only sanitized model IDs; fail on credential collision   |
+| Caller asks to save/fetch TRAE models                                           | No such native command; renderer stays guidance/observation only |
+| OpenCode snapshot/config is malformed                                           | Controlled failure; never replace with a minimal file            |
+| OpenCode expected revision is stale                                             | Conflict plus exact overwrite capability; no write               |
+| OpenCode backup fails                                                           | Abort before primary mutation                                    |
+| OpenCode reread differs                                                         | Non-success/recovery result; do not claim applied                |
+| GET/query/log/error contains API key or auth header                             | Secret-safety test fails                                         |
+| Renderer supplies an OpenCode config/backup path                                | API review fails; paths are native-owned output metadata only    |
 
 ## 5. Good / Base / Bad Cases
 
@@ -142,7 +142,7 @@ authorization headers, or private config fragments. User-visible `path` /
   preservation, rolling backup, atomic replacement, and authoritative reread.
 - Command/ACL tests freeze the exact native command set and reject generic
   filesystem/network/process permission widening.
-- V2 Models port/page tests prove TRAE is observation/vendor-guidance only,
+- Renderer Models port/page tests prove TRAE is observation/vendor-guidance only,
   OpenCode uses its dedicated port, and credentials never enter query cache or
   public snapshots.
 

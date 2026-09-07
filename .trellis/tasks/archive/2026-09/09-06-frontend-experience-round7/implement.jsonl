@@ -1,0 +1,3 @@
+{"file":".trellis/tasks/archive/2026-09/09-06-frontend-experience-round7/research/current-audit.md","reason":"Source requirement mapping and actual production defect baselines"}
+{"file":".trellis/tasks/archive/2026-09/09-06-frontend-experience-round7/research/root-files.md","reason":"Explicit root configuration disposition and consumers"}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Preserve single-renderer module and tooling ownership"}

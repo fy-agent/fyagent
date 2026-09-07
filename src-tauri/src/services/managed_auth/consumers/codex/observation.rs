@@ -44,6 +44,17 @@ pub(crate) struct CodexManagedAuthObservation {
     pub may_need_restart: bool,
 }
 
+impl CodexManagedAuthObservation {
+    pub(crate) fn connection_revision(&self) -> String {
+        crate::services::managed_auth::stable_revision(&[
+            "codex-connection-files",
+            &self.config_revision,
+            self.auth_revision.as_deref().unwrap_or("missing-auth"),
+            self.effective_store.as_str(),
+        ])
+    }
+}
+
 impl Default for CodexManagedAuthObservation {
     fn default() -> Self {
         Self {

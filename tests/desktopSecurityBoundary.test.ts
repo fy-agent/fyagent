@@ -63,21 +63,6 @@ const appLibraryPath = path.resolve(
   "lib.rs",
 );
 const rendererBootstrapPath = path.resolve(__dirname, "..", "src", "main.tsx");
-const databaseUpgradePath = path.resolve(
-  __dirname,
-  "..",
-  "src",
-  "components",
-  "DatabaseUpgrade.tsx",
-);
-const systemApiPath = path.resolve(
-  __dirname,
-  "..",
-  "src",
-  "lib",
-  "api",
-  "system.ts",
-);
 
 describe("desktop IPC capability and CSP boundary", () => {
   it("keeps generic opener and broad plugin defaults out of the renderer capability", () => {
@@ -97,20 +82,19 @@ describe("desktop IPC capability and CSP boundary", () => {
     expect(capability.permissions).not.toContain("process:allow-restart");
   });
 
-  it("routes renderer exits through the fixed-code lifecycle command", () => {
+  it("retains the fixed-code native exit command without a generic renderer process API", () => {
     const bootstrap = fs.readFileSync(rendererBootstrapPath, "utf8");
-    const databaseUpgrade = fs.readFileSync(databaseUpgradePath, "utf8");
-    const systemApi = fs.readFileSync(systemApiPath, "utf8");
+    const settings = fs.readFileSync(settingsCommandsPath, "utf8");
 
     expect(bootstrap).not.toContain("@tauri-apps/plugin-process");
-    expect(bootstrap).toContain('invoke("exit_app")');
-
-    expect(databaseUpgrade).not.toContain("@tauri-apps/");
-    expect(databaseUpgrade).not.toContain('invoke("exit_app")');
-    expect(databaseUpgrade).toContain("systemApi.exit()");
-
-    expect(systemApi).not.toContain("@tauri-apps/plugin-process");
-    expect(systemApi).toContain('invoke("exit_app")');
+    expect(bootstrap).not.toMatch(/invoke\(|process\.exit/);
+    expect(settings).toContain(
+      "pub fn exit_app(app: AppHandle) -> Result<(), String>",
+    );
+    expect(settings).toContain(
+      "claim_process_lifecycle_transition(&app, ProcessLifecycleTransition::Exit)",
+    );
+    expect(settings).not.toContain("pub fn exit_app(app: AppHandle, code:");
   });
 
   it("keeps exit and restart cleanup on one first-wins lifecycle owner", () => {

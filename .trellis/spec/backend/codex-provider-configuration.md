@@ -52,7 +52,10 @@ patch_codex_provider_features(app: "codex", provider, intent, isNew?)
 
 get_provider_summary({ app: "codex" })
   -> {
-       providers: Record<string, { id: string; name: string }>;
+       providers: Record<string, {
+         id: string; name: string;
+         writeTargets?: Array<{ path: string; backupPath: string; exists: boolean }>;
+       }>;
        currentId: string;
        writeTargets: Array<{ path: string; backupPath: string; exists: boolean }>;
      }
@@ -61,7 +64,7 @@ get_provider_summary({ app: "codex" })
 Feature commands reject every `app` other than Codex. No provider command may
 accept a renderer-controlled filesystem path. Generic mutation results never
 return a filesystem path, process identifier, launch command,
-credential-bearing diagnostic, or generic application-version field. The V2
+credential-bearing diagnostic, or generic application-version field. The renderer
 sanitized summary is the narrow exception: it may return user-visible
 `writeTargets` path/backup metadata owned by native path resolution. Paths under
 the frozen user home use `~`; the DTO contains no file bytes, digest, Provider
@@ -78,8 +81,9 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 
 ### Lossless TOML and native capabilities
 
-- Every Codex Provider exposes image-extension and WebSocket controls in the
-  existing, initially collapsed advanced region. Provider ID, `base_url`,
+- The native analysis/patch capability applies to every valid Codex Provider,
+  not only the current Quick Setup form's initially collapsed controls. The
+  retired general Provider editor is not a second current renderer. Provider ID, `base_url`,
   credentials, official/managed classification, OAuth type, proxy takeover,
   `wire_api`, and `meta.apiFormat` do not make a valid TOML draft ineligible.
 - A fixed official Provider is identified only by `category == "official"` or
@@ -119,10 +123,17 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   material may rewrite `auth.json`; any other stored `auth.OPENAI_API_KEY`
   is projected onto live `experimental_bearer_token` and must not recreate
   `auth.json`.
-- Official live writes with ChatGPT login material may still write `auth.json`
-  only when the live credential store is an explicit `file` store.
-  `project_codex_live_config_when_openai_auth_disabled` injects a bearer token
-  only when that official table sets `requires_openai_auth = false`.
+- Provider/source writes are config-only for official and third-party targets.
+  They never project a saved Provider's login into `auth.json`. Managed Auth's
+  separately confirmed account connection owns auth replacement. Proxy recovery
+  remains a distinct exact-preimage operation under its own contract.
+- `codex_config/source_switch.rs` validates the intended source before any
+  catalog/config side effect, then patches only source-owned fields into the
+  live `toml_edit` document. Missing third-party setup is rejected, not treated
+  as an empty replacement document. A meaningful API-key configuration using
+  Codex's built-in default source remains valid. Preserve unrelated user tables,
+  MCP, profiles, features, preferences and comments, including comments attached
+  to a removed root key.
 
 ### Migration metadata and official-provider ownership
 
@@ -217,7 +228,7 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   digest requests invoke it zero times. A same-digest replay of a consumed v2
   plan returns the existing execution snapshot as an idempotent replay and
   likewise invokes the writer zero additional times.
-- When the target is the fixed V2 Codex Quick Setup Provider, Change Plan must
+- When the target is the reserved Codex Quick Setup Provider, Change Plan must
   derive `target_projection_digest` from the **same pure targeted-patch
   projection** consumed by the real Quick Setup writer. The current live
   document is part of that projection so unrelated user comments, fields,
@@ -247,22 +258,23 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 | A DeepSeek-looking URL has HTTP, user information, a suffix-confusion hostname, or only a path match | Use the neutral template; grant no vendor behavior.                                                                     |
 | A mutation succeeds but final live Codex bytes do not change                                         | Return `liveConfigChanged: false`; do not offer an automatic restart.                                                   |
 | A mutation fails                                                                                     | Preserve prior live bytes and omit risk/restart success signals.                                                        |
-| Change Plan admission is invalid, expired, stale, secret-blocked, or uses a changed digest          | Return a closed error code and invoke the Provider writer zero times.                                                   |
-| A consumed v2 Change Plan is reapplied with the exact same digest                                   | Return the already-created execution as `idempotent_replay`; invoke the Provider writer zero additional times.          |
+| Change Plan admission is invalid, expired, stale, secret-blocked, or uses a changed digest           | Return a closed error code and invoke the Provider writer zero times.                                                   |
+| A consumed v2 Change Plan is reapplied with the exact same digest                                    | Return the already-created execution as `idempotent_replay`; invoke the Provider writer zero additional times.          |
 | Change Plan readback is mixed/unavailable                                                            | Persist `recovery_required`; later recovery performs readback only and never replays the writer.                        |
 | Change Plan targets the fixed Quick Setup row while live TOML contains unrelated user content        | Preview and writer use the same targeted projection; preserved content does not create a false readback mismatch.       |
 | Codex image-extension is enabled (`requires_openai_auth = false`) and the Provider has an API key    | Stored and live `[model_providers.<id>]` contain `experimental_bearer_token` equal to `auth.OPENAI_API_KEY`.            |
 | Codex image-extension is disabled (`requires_openai_auth = true`)                                    | Stored TOML has no image-mode bearer token; the stored Provider still keeps `auth.OPENAI_API_KEY`.                      |
 | Third-party Codex live write (any leftover preserve setting)                                         | Config-only; live `auth.json` bytes unchanged; API key projected to `experimental_bearer_token`.                        |
 | Restore a third-party Codex backup whose `auth` is only `OPENAI_API_KEY`                             | Config-only; do not write `auth.json`; project the key onto live `experimental_bearer_token`.                           |
-| Official live write, `requires_openai_auth` missing or `true`                                        | Do not inject a bearer token via the official helper; file-store official writes may still update `auth.json`.          |
+| Official Provider/source switch                                                                      | Config-only; preserve the current auth bytes; do not project a saved Provider credential                                |
+| Missing third-party configuration or credentials                                                     | Reject before config/catalog write; preserve original bytes                                                             |
 | Two ChatGPT users share one workspace/account routing ID                                             | Store two `credential_id` rows; never use the workspace ID as the HashMap key.                                          |
 | Provider `authBinding.accountId` still holds a v1 workspace ID that maps to exactly one credential   | Remap that binding to the new `credential_id`.                                                                          |
 | Provider `authBinding.accountId` is missing, already a credential, or maps to multiple credentials   | Unbind; never guess the default or another account.                                                                     |
 | Codex compatibility OAuth store parse/I/O load fails before binding remap                            | Skip remap and preserve every existing Provider binding; empty memory is not evidence of an empty store.                |
 | Bound managed credential is missing/expired during proxy forwarding                                  | Fail closed; do not send another account's token.                                                                       |
-| Live `cli_auth_credentials_store` is unset or explicitly `file`                                     | Report a file-capable store; Managed Auth still owns credential/identity admission, and unset does not backfill a key.   |
-| Live `cli_auth_credentials_store` is `keyring`, `auto`, `ephemeral`, invalid, or unknown             | Report a non-file-capable store; do not write `auth.json` or rewrite the store to fake a switch.                          |
+| Live `cli_auth_credentials_store` is unset or explicitly `file`                                      | Report a file-capable store; Managed Auth still owns credential/identity admission, and unset does not backfill a key.  |
+| Live `cli_auth_credentials_store` is `keyring`, `auto`, `ephemeral`, invalid, or unknown             | Report a non-file-capable store; do not write `auth.json` or rewrite the store to fake a switch.                        |
 | Native projection writes `auth.json` because the file already exists                                 | Contract regression; file existence is not a store hint.                                                                |
 | Auth DTO/log/Debug serializes access/refresh tokens                                                  | Security regression.                                                                                                    |
 
@@ -278,7 +290,7 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 - Bad: derive official-provider identity from display name, rewrite invalid TOML
   from form state, use proxy preservation as proof of WebSocket transport, or
   quote an unsafe persisted session ID into a command string.
-- Good: V2 Codex quick setup with `codexFeatures.imageExtension = true` writes
+- Good: Codex quick setup with `codexFeatures.imageExtension = true` writes
   `requires_openai_auth = false`, the managed image header, and
   `experimental_bearer_token` equal to the request `apiKey`, while still
   storing `auth.OPENAI_API_KEY`.
@@ -313,8 +325,8 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   rewriting `auth.json` while projecting the key to
   `experimental_bearer_token`, Proxy `write_codex_live_verbatim` restore of a
   third-party `OPENAI_API_KEY` backup leaving ChatGPT `auth.json` unchanged,
-  the official helper injecting the token only when `requires_openai_auth =
-  false`, and leftover preserve=false not restoring overwrite.
+  official source switching preserving auth bytes, and leftover preserve=false
+  not restoring overwrite. Auth account projection is tested by Managed Auth.
 - Change Plan tests cover 0/v19 to schema 20, sync skip/local preserve,
   zero-side-effect planning, 15-minute expiry, concurrent single admission,
   writer exactly once/zero on rejection, same-plan idempotent replay,
@@ -329,9 +341,10 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   users, v1 backup + idempotent migrate, unique vs ambiguous Provider binding
   remap, corrupt/I/O load failure keeping `store_loaded=false` and preserving
   all bindings, bound-missing fail-closed forwarding, leftover `auth_*` mutations
-  returning `legacy_auth_mutation_disabled`, Debug/DTO token redaction, explicit `file`
-  native projection, and fail-closed `keyring`/`auto`/`ephemeral`/unset/unknown
-  without consulting `auth.json` existence.
+  returning `legacy_auth_mutation_disabled`, Debug/DTO token redaction, explicit
+  `file` or unset effective-store capability, and fail-closed
+  `keyring`/`auto`/`ephemeral`/invalid/unknown without consulting `auth.json`
+  existence. File capability alone still does not admit an account projection.
 
 ## 7. Wrong vs Correct
 
@@ -366,15 +379,18 @@ successful OAuth store load -> remap legacy Provider bindings
 OAuth store load failure -> preserve all bindings; do not treat memory as empty authority
 ```
 
-## Scenario: V2 Codex Quick Setup targeted live write
+## Scenario: Codex Quick Setup targeted live write
 
 ### 1. Scope / Trigger
 
-- Trigger: the fixed V2 Quick Setup Provider ID is written or switched to live.
+- Trigger: the reserved Quick Setup Provider ID is written or switched to live.
+  Its persisted `fyagent-v2-*` identifier is compatibility identity, not a
+  second renderer generation; this documentation cleanup does not rename it.
 - The stored Provider remains a minimum snapshot. It is **not** the authority
   for unrelated user-owned `config.toml` or `auth.json` fields.
-- Generic imported Providers keep their existing snapshot semantics; do not
-  broaden this patch mode to every Codex Provider.
+- Imported/saved request-source switches also preserve unowned live content
+  through the focused `source_switch` projection. Quick Setup retains its
+  narrower form-field ownership; do not use a full snapshot as the live file.
 
 ### 2. Signatures
 
@@ -416,24 +432,37 @@ write_live_with_common_config(Codex, fixedQuickSetupProvider)
 - The pure final-state projection is shared with Change Plan. Do not duplicate
   Quick Setup patch logic in the planner/readback owner: otherwise unrelated
   preserved TOML can make a successful targeted write look like drift.
-- Before each existing physical file is mutated, replace exactly one adjacent
-  `.fyagent.backup` with that file's exact preimage. No source file means no
-  fake empty backup. Backup creation/permission failure aborts before the
-  primary write. Backups inherit the source permission boundary.
+- Physical writes use [Reversible User Configuration](./reversible-user-config.md).
+  One synchronous Provider operation retains each file's first preimage across
+  internal writes such as MCP reconciliation. Backups are private and backup
+  failure blocks mutation; no source means no fabricated original backup.
 - `writeTargets` must list exactly the physical files the current mode can
   mutate. Renderer code displays it but never supplies a path back to Rust.
+- `get_provider_summary` retains root `writeTargets` for Quick Setup and adds
+  per-Provider `writeTargets` for saved source selection. A non-Quick-Setup
+  Codex source with a generated model catalog also lists
+  `fyagent-model-catalog.json` and its backup. A config-only Quick Setup does
+  not claim that extra write. The runtime parser requires the per-source list;
+  the selected plan freezes the matching disclosure before confirmation.
+- Change Plan current/target projection digests bind the native Codex home in
+  addition to the credential-neutral routing shape. Changing an override to a
+  same-content directory invalidates admission; a raw path is never persisted
+  in the public plan. Old incompatible digest evidence fails closed.
+- Official source admission requires an already-preserved strict consumer
+  login, not credentials stored on the selected Provider. Establishing or
+  changing that account uses the independent Auth confirmation flow.
 
 ### 4. Validation & Error Matrix
 
-| Condition                                                                   | Required result                                                        |
-| --------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Current `config.toml` is invalid or `model_providers` is not editable       | Reject; no backup/primary rewrite from the minimum snapshot            |
-| Quick Setup would need `auth.json` to be a JSON object                      | Do not parse or write it; continue the config-only path                |
-| Required backup cannot be created or source permissions cannot be preserved | Reject; primary file remains byte-for-byte unchanged                   |
-| Config exists for a third-party Quick Setup write                           | Back up/write config only; leave auth bytes untouched                  |
+| Condition                                                                   | Required result                                                                 |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Current `config.toml` is invalid or `model_providers` is not editable       | Reject; no backup/primary rewrite from the minimum snapshot                     |
+| Quick Setup would need `auth.json` to be a JSON object                      | Do not parse or write it; continue the config-only path                         |
+| Required backup cannot be created or source permissions cannot be preserved | Reject; primary file remains byte-for-byte unchanged                            |
+| Config exists for a third-party Quick Setup write                           | Back up/write config only; leave auth bytes untouched                           |
 | Untouched `auth.json` is missing or not parseable                           | Config-only Quick Setup still does not parse/write auth; preserve bytes exactly |
-| Existing unrelated provider/header/MCP/feature fields are present           | Preserve them while changing only owned Quick Setup fields             |
-| Fixed historical row omits a modern optional owned field                    | Preserve the corresponding current live field; do not invent a default |
+| Existing unrelated provider/header/MCP/feature fields are present           | Preserve them while changing only owned Quick Setup fields                      |
+| Fixed historical row omits a modern optional owned field                    | Preserve the corresponding current live field; do not invent a default          |
 
 ### 5. Good / Base / Bad Cases
 
@@ -452,7 +481,8 @@ write_live_with_common_config(Codex, fixedQuickSetupProvider)
 - Large TOML fixture: assert comments, unrelated top-level keys, other provider,
   custom provider field/header, MCP and features survive while owned route
   fields change.
-- Assert config/auth rolling backups equal their exact immediate preimages.
+- Assert each mutated file's rolling backup equals its operation preimage;
+  untouched auth is byte-identical and has no new backup.
 - Assert backup failure leaves the primary unchanged.
 - Assert Claude/Codex/Grok fixed Quick Setup rows all use targeted projection,
   so switching back to a saved reserved row cannot reintroduce full-file
@@ -503,7 +533,7 @@ project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config
 
 ### 3. Contracts
 
-- Request: V2 `apiKey` plus optional `codexFeatures.imageExtension`.
+- Request: Quick Setup `apiKey` plus optional `codexFeatures.imageExtension`.
 - Stored Codex shape always keeps `auth.OPENAI_API_KEY`.
 - Image on: `[model_providers.custom].requires_openai_auth = false` and
   stored `experimental_bearer_token` equals the same `apiKey`.
@@ -512,11 +542,10 @@ project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config
 - Third-party live write: never write `auth.json`. Always run
   `prepare_codex_provider_live_config` so the stored API key is projected
   onto live `experimental_bearer_token`.
-- Official live write: if the active table's `requires_openai_auth` is
-  explicitly `false`, `project_codex_live_config_when_openai_auth_disabled`
-  injects `auth.OPENAI_API_KEY` onto `experimental_bearer_token`. Missing or
-  `true` leaves that official TOML unchanged. File-store official writes may
-  still update `auth.json`.
+- Official Provider/source writes never replace `auth.json` from a stored row.
+  Source validation and targeted config projection are independent of account
+  projection; authentication changes use Managed Auth's preview and file store
+  checks. This does not alter exact-preimage Proxy recovery semantics.
 - Environment: live files remain `~/.codex/auth.json` and
   `~/.codex/config.toml`. No new env key.
 
@@ -534,17 +563,15 @@ project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config
   as `experimental_bearer_token` without rewriting `auth.json`.
 - Base: image-off quick setup is still config-only; live `auth.json` stays
   byte-identical and the live provider table receives the bearer projection.
-- Bad: write third-party `OPENAI_API_KEY` into live `auth.json`, or inject a
-  bearer token onto an official file-store write merely because an image
-  header is present while `requires_openai_auth` remains `true`.
+- Bad: write third-party `OPENAI_API_KEY` or a saved official Provider token
+  into live `auth.json` as a side effect of selecting a model source.
 
 ### 6. Tests Required
 
 - `quick_setup_request_writes_image_extension_and_websocket_features`
 - `quick_setup_request_disabling_image_keeps_requires_openai_auth_true`
 - `quick_setup_request_derives_the_fixed_provider_shape` (no bearer token)
-- `active_provider_disables_openai_auth_only_for_explicit_false`
-- `project_live_config_injects_bearer_token_only_when_openai_auth_is_disabled`
+- `source_switch` validation and comment-preserving targeted-patch tests
 - `provider_service_switch_codex_projects_bearer_token_when_openai_auth_disabled`
 - `provider_service_switch_codex_default_preserves_official_auth`
 - `hot_switch_codex_provider_preserves_provider_model_provider_in_backup_and_restore`
