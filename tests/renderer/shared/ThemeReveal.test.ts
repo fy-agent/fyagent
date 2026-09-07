@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ThemeReveal, themeRevealGeometry } from "@/shared/ui/ThemeReveal";
+import { ThemeReveal, themeRevealClipPath, themeRevealGeometry } from "@/shared/ui/ThemeReveal";
 import {
   applyTheme,
   parseThemePreference,
@@ -67,11 +67,21 @@ function setup() {
   });
   const animationDone = deferred();
   const cancel = vi.fn();
-  const animate = vi.fn(() => ({
+  const animation: {
+    effect: { pseudoElement: string };
+    playState: AnimationPlayState;
+    finished: Promise<void>;
+    cancel: ReturnType<typeof vi.fn>;
+  } = {
     effect: { pseudoElement: "::view-transition-new(root)" },
-    finished: animationDone.promise,
+    playState: "running",
+    finished: Promise.resolve(),
     cancel,
-  }));
+  };
+  animation.finished = animationDone.promise.then(() => {
+    animation.playState = "finished";
+  });
+  const animate = vi.fn(() => animation);
   Object.defineProperty(document.documentElement, "animate", {
     configurable: true,
     value: animate,
@@ -111,9 +121,19 @@ describe("appearance preference and browser-owned reveal", () => {
     expect(result.radius).toBeGreaterThan(
       Math.hypot(innerWidth - 18, innerHeight - 26),
     );
+    const clip = themeRevealClipPath(
+      result.x,
+      result.y,
+      result.radius,
+      innerWidth,
+      innerHeight,
+    );
+    expect(clip.start).toMatch(/^circle\(0% at /);
+    expect(clip.xPercent).toBeCloseTo((18 / innerWidth) * 100);
+    expect(clip.yPercent).toBeCloseTo((26 / innerHeight) * 100);
   });
   it("commits once and holds CSS suppression through the whole reveal", async () => {
-    const { controller, source, cycles, animate, animationDone } = setup();
+    const { controller, source, cycles, animate, animationDone, cancel } = setup();
     const commit = vi.fn();
     controller.run(commit, source);
     cycles[0].update();
@@ -122,16 +142,24 @@ describe("appearance preference and browser-owned reveal", () => {
     await Promise.resolve();
     expect(commit).toHaveBeenCalledTimes(1);
     expect(animate).toHaveBeenCalledWith(
-      expect.anything(),
+      expect.objectContaining({
+        clipPath: [
+          expect.stringMatching(/^circle\(0% at /),
+          expect.stringMatching(/^circle\([\d.]+% at /),
+        ],
+      }),
       expect.objectContaining({
         duration: 560,
+        easing: "cubic-bezier(0.25,0.08,0.25,1)",
         pseudoElement: "::view-transition-new(root)",
       }),
     );
     expect(document.documentElement.dataset.themeReveal).toBe("active");
     animationDone.resolve();
     await Promise.resolve();
+    await Promise.resolve();
     expect(document.documentElement.dataset.themeReveal).toBeUndefined();
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
   it("rejects stale update/ready/finished callbacks after rapid reversal", async () => {
     const { controller, source, cycles, animate } = setup();

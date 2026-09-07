@@ -99,6 +99,7 @@
   --fy-motion-dialog-resize: 320ms;
   --fy-motion-toast: 240ms;
   --fy-motion-theme: 560ms;
+  --fy-motion-theme-ease: cubic-bezier(0.25, 0.08, 0.25, 1);
   --fy-motion-spinner: 900ms;
   --fy-motion-spinner-reduced: 1800ms;
   --fy-motion-ease: cubic-bezier(0.32, 0.72, 0, 1);

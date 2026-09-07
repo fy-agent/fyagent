@@ -191,12 +191,29 @@ test("theme reveal has one real circular track and survives quick reversal and r
       return {
         frames: effect.getKeyframes().map((frame) => frame.clipPath),
         duration: effect.getTiming().duration,
+        easing: effect.getTiming().easing,
       };
     });
     expect(frames.duration).toBe(560);
-    expect(frames.frames[0]).toBe(
-      `circle(0px at ${await trigger.getAttribute("data-test-pointer")})`,
+    expect(String(frames.easing).replace(/\s/g, "")).toBe(
+      "cubic-bezier(0.25,0.08,0.25,1)",
     );
+    expect(String(frames.frames[0])).toMatch(/^circle\(0% at /);
+    const pointer = await trigger.getAttribute("data-test-pointer");
+    const expected = await page.evaluate((pointerText) => {
+      const [x, y] = pointerText
+        .split(" ")
+        .map((part) => Number.parseFloat(part));
+      return {
+        xPercent: (x / window.innerWidth) * 100,
+        yPercent: (y / window.innerHeight) * 100,
+      };
+    }, pointer);
+    const startClip = String(frames.frames[0]);
+    const parsed = /^circle\(0% at ([\d.]+)% ([\d.]+)%\)/.exec(startClip);
+    expect(parsed).toBeTruthy();
+    expect(Number(parsed?.[1])).toBeCloseTo(expected.xPercent, 1);
+    expect(Number(parsed?.[2])).toBeCloseTo(expected.yPercent, 1);
     await trigger.evaluate((element) => (element as HTMLButtonElement).click());
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await page.setViewportSize({ width: 1000, height: 700 });

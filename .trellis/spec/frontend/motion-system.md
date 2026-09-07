@@ -27,7 +27,9 @@ ToastViewport({ messages: readonly ToastMessage[] })
 ```
 
 `fySpatialEasing` derives a native CSS curve from the shared `.32,.72,0,1`
-tuple; the CSS easing token must match. CSS owns duration tokens. The parser
+tuple; the CSS easing token must match. Root theme reveal uses
+`fyThemeRevealEasing` / `--fy-motion-theme-ease` instead: a full-window radius
+must not reuse the spatial curve. CSS owns duration tokens. The parser
 accepts one finite, nonnegative `ms` or `s` value and returns seconds; native
 WAAPI converts to milliseconds at its adapter, exactly once. Unitless,
 compound, negative, nonfinite or missing values mean no travel, not a guessed
@@ -87,8 +89,9 @@ route CPU work, duplicate click handling or scale the whole credential form.
 
 ## 6. Tests Required
 
-`motionDuration.test.ts` covers both units, exponents and invalid values;
-production timing checks preserve optimized 420ms entry/360ms exit.
+`motionDuration.test.ts` covers both units, exponents and invalid values,
+and keeps `--fy-motion-ease` / `--fy-motion-theme-ease` aligned with the JS
+curves; production timing checks preserve optimized 420ms entry/360ms exit.
 `pressIsolation.test.tsx` uses two real style subscriptions. Browser press tests
 sample fractional bounding boxes for quick pointer/Enter/Space/touch, clipping,
 disabled/hidden state, adjacent geometry and live preferences. Integer

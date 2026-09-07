@@ -62,11 +62,21 @@ field; they are not an appearance writer.
   update together via root CSS variables. No route reconstruction/query
   invalidation, page-wide React theme context or global color interpolation.
 - A user reveal uses one native View Transition and one WAAPI circle on
-  `::view-transition-new(root)`. Pointer uses exact viewport coordinates;
-  keyboard uses the current trigger center. Radius covers the farthest corner.
-  CSS owns `--fy-motion-theme` (560ms); reuse the unit-aware parser and spatial
-  curve. Suppress competing CSS transitions throughout capture and reveal,
-  not only until the update callback resolves.
+  `::view-transition-new(root)`. `shared/ui/ThemeReveal.ts` is the only owner;
+  Mac and Windows share that path. Pointer uses exact viewport coordinates;
+  keyboard uses the current trigger center. Radius covers the farthest corner
+  of the reference box, with padding for subpixel snapshot height. Clip
+  geometry is a percentage `circle()` of that box. CSS owns `--fy-motion-theme`
+  (560ms) and `--fy-motion-theme-ease`; JS reads the duration through the
+  unit-aware parser and uses the matching `fyThemeRevealEasing` curve. Do not
+  reuse `fySpatialEasing` here: that front-loaded curve spends most of the
+  duration on the last slice of radius and reads as a stuck far corner.
+  Active reveal layers keep `transform: none` and `transform-origin: 0 0` so a
+  centered view-transition origin cannot shift the circle off the trigger. A
+  finished reveal skips the view transition before cancelling its clip
+  animation so the next toggle cannot inherit a full-circle mask. Suppress
+  competing CSS transitions throughout capture and reveal, not only until the
+  update callback resolves.
 - New requests cancel old presentation. Old update/ready/finished callbacks
   cannot commit or clear the new one. Resize, hidden document and live reduced
   motion/forced colors settle the latest intent. External storage supersedes
@@ -107,7 +117,9 @@ authority.
 
 ## 6. Tests Required
 
-`ThemeReveal.test.ts` covers request identity, failures, timing and origins.
+`ThemeReveal.test.ts` covers request identity, failures, timing, percentage
+clip origins and the shared reveal easing. `motionDuration.test.ts` keeps
+`--fy-motion-theme-ease` aligned with `fyThemeRevealEasing`.
 `tests/renderer/app/appearance.test.ts` covers startup restore from the renderer
 cache. `useAppearance.test.tsx` covers system/storage, mount restore and
 subscriptions. Platform tests retain exact IPC and coalescing; the ACL gate
@@ -136,3 +148,9 @@ through the existing `set_window_theme` owner into `appearanceTheme`, restore
 chrome before reveal, seed the renderer cache from the live field, and apply
 closed root tokens without competing color transitions or theme IPC inside
 capture.
+
+Wrong: scale clip coordinates by `devicePixelRatio`, leave a `fill: both`
+circle after the transition, or branch Mac/Windows playback. Correct: keep
+one `ThemeReveal` path, percentage clip on the CSS-pixel reference box, skip
+then cancel leftover `::view-transition-new(root)` animations, and use
+`fyThemeRevealEasing` on every platform.

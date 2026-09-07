@@ -1,4 +1,4 @@
-import { fySpatialEasing, motionDuration } from "./motion";
+import { fyThemeRevealEasing, motionDuration } from "./motion";
 
 type NativeTransition = {
   ready: Promise<void>;
@@ -12,28 +12,85 @@ type RevealRequest = {
   animation?: Animation;
 };
 
+function themeRevealReferenceBox() {
+  const root = document.documentElement;
+  const viewport = window.visualViewport;
+  return {
+    width: Math.max(
+      window.innerWidth || 0,
+      root.clientWidth || 0,
+      root.getBoundingClientRect().width || 0,
+      viewport?.width ?? 0,
+    ),
+    height: Math.max(
+      window.innerHeight || 0,
+      root.clientHeight || 0,
+      root.getBoundingClientRect().height || 0,
+      viewport?.height ?? 0,
+    ),
+  };
+}
+
+function themeRevealRadiusPadding() {
+  return Math.max(24, (window.devicePixelRatio || 1) * 8);
+}
+
 export function themeRevealGeometry(
   source: HTMLElement,
   origin?: { x: number; y: number },
 ) {
   const rect = source.getBoundingClientRect();
+  const { width, height } = themeRevealReferenceBox();
   const x = Math.min(
-    window.innerWidth,
+    width,
     Math.max(0, origin?.x ?? rect.left + rect.width / 2),
   );
   const y = Math.min(
-    window.innerHeight,
+    height,
     Math.max(0, origin?.y ?? rect.top + rect.height / 2),
   );
   return {
     x,
     y,
     radius:
-      Math.hypot(
-        Math.max(x, window.innerWidth - x),
-        Math.max(y, window.innerHeight - y),
-      ) + 1,
+      Math.hypot(Math.max(x, width - x), Math.max(y, height - y)) +
+      themeRevealRadiusPadding(),
   };
+}
+
+export function themeRevealClipPath(
+  x: number,
+  y: number,
+  radius: number,
+  width: number,
+  height: number,
+) {
+  const safeWidth = width > 0 ? width : 1;
+  const safeHeight = height > 0 ? height : 1;
+  const xPercent = (x / safeWidth) * 100;
+  const yPercent = (y / safeHeight) * 100;
+  const radiusPercent =
+    (radius / (Math.hypot(safeWidth, safeHeight) / Math.SQRT2)) * 100;
+  return {
+    xPercent,
+    yPercent,
+    radiusPercent,
+    start: `circle(0% at ${xPercent}% ${yPercent}%)`,
+    end: `circle(${radiusPercent}% at ${xPercent}% ${yPercent}%)`,
+  };
+}
+
+function revealClipAnimations(): Animation[] {
+  if (typeof document.getAnimations !== "function") return [];
+  return document.getAnimations().filter(
+    (animation) =>
+      (animation.effect as KeyframeEffect | null)?.pseudoElement ===
+      "::view-transition-new(root)",
+  );
+}
+
+function releaseRevealClips(): void {
+  for (const animation of revealClipAnimations()) animation.cancel();
 }
 
 /** Only presentation: preference, routing and native synchronization have other owners.
@@ -48,8 +105,9 @@ export class ThemeReveal {
     const request = this.active;
     if (commit) request?.commit();
     this.active = undefined;
-    request?.animation?.cancel();
     request?.transition?.skipTransition();
+    request?.animation?.cancel();
+    releaseRevealClips();
     delete document.documentElement.dataset.themeReveal;
   }
 
@@ -77,7 +135,6 @@ export class ThemeReveal {
       commit();
       return;
     }
-    const { x, y, radius } = themeRevealGeometry(source, origin);
     let committed = false;
     const request: RevealRequest = {
       commit: () => {
@@ -98,16 +155,16 @@ export class ThemeReveal {
       void transition.ready.then(() => {
         if (this.active !== request) return;
         try {
+          const { x, y, radius } = themeRevealGeometry(source, origin);
+          const { width, height } = themeRevealReferenceBox();
+          const clip = themeRevealClipPath(x, y, radius, width, height);
           const animation = root.animate(
             {
-              clipPath: [
-                `circle(0px at ${x}px ${y}px)`,
-                `circle(${radius}px at ${x}px ${y}px)`,
-              ],
+              clipPath: [clip.start, clip.end],
             },
             {
               duration,
-              easing: fySpatialEasing,
+              easing: fyThemeRevealEasing,
               fill: "both",
               pseudoElement: "::view-transition-new(root)",
             },
