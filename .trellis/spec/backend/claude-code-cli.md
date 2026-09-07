@@ -92,9 +92,15 @@ generic command execution capability is added.
   signed helper and admission ordering remain unchanged.
 - Windows discovers `npm.cmd` then `npm.exe`. `.cmd` / `.bat` shims are
   launched as `cmd.exe /D /S /C call "{quoted-program}" …` via `CommandExt::raw_arg`.
-  Do not `Command::new("npm.cmd")`: CreateProcess treats the application name
-  as a PE image, so the shim never runs. macOS keeps the existing Tooling
-  child-process owner and does not use cmd shims.
+  Keep this explicit shared dispatch as project policy, not a claim that
+  standard-library `Command` can never start batch files. The
+  [Rust process contract](https://doc.rust-lang.org/std/process/index.html)
+  documents special batch handling and warns against depending on it.
+  `raw_arg` bypasses standard escaping: it receives only the native-owned
+  program and closed npm plan, never an arbitrary renderer command or argument.
+  Static routing assertions do not prove arbitrary batch quoting is safe.
+  macOS keeps the existing Tooling child-process owner and does not use cmd
+  shims.
 - The Windows action carries independent Claude identity, while sharing npm
   plan decoding and execution. It discovers closed Claude executable names,
   inspects npm's actual prefix, checks ownership/Node/architecture, rechecks
