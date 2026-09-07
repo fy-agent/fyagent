@@ -135,6 +135,10 @@ command, argument vector, token, hash, package format, signer or bypass flags.
 - Compact single-surface products omit the `surfaces` readiness array and the
   inventory `surface` field. A multi-surface product must make each surface
   explicit instead of collapsing status.
+- Compact CLI readiness uses `sourceKind=cli_tooling`. The renderer
+  `parseAgentInstallReadiness` / `surfacesForAgent` table must stay aligned
+  with `lifecycle_policy.rs`. Treating Claude Code as `managed_desktop` is
+  not a product-absent signal; it is a contract parse failure.
 
 ### Product and source policy
 
@@ -363,6 +367,8 @@ Assertion points:
   platform, schema, redirect and version rules without stale URL fallback;
 - Claude CLI tests cover the compiled npm manifest, shared registry/argv/helper,
   actual version/owner verification, and rejection of the retired Desktop path;
+- renderer `surfacesForAgent` / readiness `sourceKind` stay aligned with
+  lifecycle policy: Grok and Claude are compact CLI/`cli_tooling`;
 - macOS exact-path deployment, cancellation boundary, running-app protection,
   rollback/recovery and disabled `/Applications` gate;
 - Windows registry access masks/views/link handling, trusted PE identity,
@@ -412,6 +418,20 @@ await ports.agentInstallReadiness.startAction({
   targetId: destination.destinationId,
   expectedTargetRevision: destination.destinationRevision,
 });
+```
+
+Wrong:
+
+```ts
+surfacesForAgent("claude-code") === ["desktop"]
+sourceKind === "managed_desktop"
+```
+
+Correct:
+
+```ts
+surfacesForAgent("claude-code") === ["cli"]
+sourceKind === "cli_tooling"
 ```
 
 Wrong:

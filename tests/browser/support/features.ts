@@ -1480,7 +1480,7 @@ export async function installRichTauriFeatureFixture(
             return [];
           case "get_agent_install_readiness": {
             const agentId = String(payload.agentId);
-            const grokCli = agentId === "grokbuild";
+            const grokCli = agentId === "grokbuild" || agentId === "claude-code";
             return {
               contractVersion: 4,
               agentId,

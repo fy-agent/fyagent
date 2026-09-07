@@ -58,7 +58,7 @@ async function installAgentDirectoryOverrides(page: Page): Promise<void> {
           : agentId === "qoderwork" || agentId === "opencode"
             ? "not_installed"
             : "installed";
-      const grokCli = agentId === "grokbuild";
+      const grokCli = agentId === "grokbuild" || agentId === "claude-code";
       return {
         contractVersion: 4,
         agentId,

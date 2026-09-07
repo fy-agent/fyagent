@@ -12,6 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 function wire(agentId = "qoderwork") {
   const codex = agentId === "codex";
   const grok = agentId === "grokbuild";
+  const claudeCli = agentId === "claude-code";
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId,
@@ -31,7 +32,7 @@ function wire(agentId = "qoderwork") {
     authState: "unknown",
     sourceKind: codex
       ? "codex_desktop"
-      : grok
+      : grok || claudeCli
         ? "cli_tooling"
         : "managed_desktop",
     allowedActions: [],

@@ -49,6 +49,7 @@ function readiness(
 ): AgentInstallReadiness {
   const codex = agentId === "codex";
   const grok = agentId === "grokbuild";
+  const claudeCli = agentId === "claude-code";
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId,
@@ -69,7 +70,7 @@ function readiness(
       agentId === "opencode" ? "provider_connection_required" : "unknown",
     sourceKind: codex
       ? "codex_desktop"
-      : grok
+      : grok || claudeCli
         ? "cli_tooling"
         : "managed_desktop",
     allowedActions: [],
@@ -328,32 +329,44 @@ describe("Agent install readiness wire contract", () => {
     ).toThrow("Agent action job is unavailable");
   });
 
-  it("maps desktop-only Agent lifecycle surfaces except Grok CLI", () => {
+  it("maps desktop-only Agent lifecycle surfaces except Grok and Claude CLI", () => {
     expect(AGENT_CATALOG_IDS.map(surfacesForAgent)).toEqual([
       ["desktop"],
       ["desktop"],
       ["desktop"],
       ["cli"],
       ["desktop"],
-      ["desktop"],
+      ["cli"],
       ["desktop"],
     ]);
     expect(isLegalAgentSurface("qoderwork", "cli")).toBe(false);
-    expect(isLegalAgentSurface("claude-code", "cli")).toBe(false);
+    expect(isLegalAgentSurface("claude-code", "cli")).toBe(true);
     expect(isLegalAgentSurface("opencode", "cli")).toBe(false);
-    expect(isLegalAgentSurface("claude-code", "desktop")).toBe(true);
+    expect(isLegalAgentSurface("claude-code", "desktop")).toBe(false);
     expect(isLegalAgentSurface("opencode", "desktop")).toBe(true);
     expect(isLegalAgentSurface("grokbuild", "desktop")).toBe(false);
     expect(isLegalAgentSurface("grokbuild", "cli")).toBe(true);
   });
 
-  it("parses compact Claude and OpenCode desktop readiness without dual-surface aggregation", () => {
+  it("parses compact Claude CLI and OpenCode desktop readiness without dual-surface aggregation", () => {
     const claude = parseAgentInstallReadiness(
       readiness("claude-code"),
       "claude-code",
     );
-    expect(claude.sourceKind).toBe("managed_desktop");
+    expect(claude.sourceKind).toBe("cli_tooling");
     expect(claude.surfaces).toBeUndefined();
+    expect(
+      parseAgentInstallReadiness(
+        {
+          ...readiness("claude-code"),
+          installState: "not_installed",
+          updateState: "update_available",
+          remoteVersion: "2.1.261",
+          allowedActions: ["install"],
+        },
+        "claude-code",
+      ).allowedActions,
+    ).toEqual(["install"]);
 
     const openCode = parseAgentInstallReadiness(
       {
@@ -395,7 +408,8 @@ describe("Agent install readiness wire contract", () => {
       parseAgentInstallReadiness(
         {
           ...readiness("claude-code"),
-          surfaces: [surfaceRow("cli", "installed")],
+          sourceKind: "managed_desktop",
+          surfaces: [surfaceRow("desktop", "installed")],
         },
         "claude-code",
       ),
@@ -481,7 +495,7 @@ describe("Agent install readiness wire contract", () => {
         surface: "cli",
       }),
     ).toThrow("Agent action job is unavailable");
-    expect(() =>
+    expect(
       parseAgentActionJobSnapshot({
         contractVersion: AGENT_ACTION_CONTRACT_VERSION,
         jobId: "job-1",
@@ -492,6 +506,19 @@ describe("Agent install readiness wire contract", () => {
         reasonCode: null,
         transfer: null,
         surface: "cli",
+      }).surface,
+    ).toBe("cli");
+    expect(() =>
+      parseAgentActionJobSnapshot({
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+        jobId: "job-1",
+        agentId: "claude-code",
+        action: "install",
+        stage: "checking",
+        cancellable: true,
+        reasonCode: null,
+        transfer: null,
+        surface: "desktop",
       }),
     ).toThrow("Agent action job is unavailable");
     expect(() =>

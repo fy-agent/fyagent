@@ -81,6 +81,13 @@ semantics. Do not put those details into this guide.
   writes stay `authorization_required` while
   `macos_system_commit::production_enabled()` is false. Helper code may exist
   without claiming a delivered system one-click.
+- When changing Agent legal surfaces or `sourceKind`, update
+  `lifecycle_policy.rs` and renderer `surfacesForAgent` /
+  `parseAgentInstallReadiness` together. Claude Code is CLI/`cli_tooling`
+  like Grok Build; a kind mismatch fails the directory scan as 「读取失败」
+  instead of `not_installed`. See
+  [Agent Directory](../frontend/agent-directory.md) and
+  [Claude Code CLI](../backend/claude-code-cli.md).
 - Before claiming a Windows desktop product is installed or missing: freeze
   the installed current-user relative and Uninstall DisplayName matching, not
   only the downloaded installer stub. KnownPath Missing is dropped. See

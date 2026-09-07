@@ -98,6 +98,19 @@ or bypass flag.
 - Readiness and inventory are separate queries keyed by canonical Agent ID and
   optional legal surface. Runtime scan must not overwrite catalog capability
   review or synthesize installation state from configuration directories.
+- Renderer `surfacesForAgent` / readiness `sourceKind` must match
+  `lifecycle_policy.rs`. Compact CLI products currently are:
+
+```text
+grokbuild    surface=cli  sourceKind=cli_tooling
+claude-code  surface=cli  sourceKind=cli_tooling
+```
+
+  Desktop products use `surface=desktop` and `managed_desktop` except Codex
+  (`codex_desktop` plus `fyagent_managed`). Compact single-surface payloads
+  omit `surfaces`. A legal CLI `not_installed` + `install` payload must parse;
+  requiring `managed_desktop` or treating `cli` as illegal for Claude Code
+  fails the directory scan as 「读取失败」 instead of showing install.
 - Inventory states remain exact: `not_observed`, `single`, `multiple`,
   `unsupported`, `unknown`. Multiple candidates show a selection surface and
   never choose the first item automatically.
@@ -154,8 +167,11 @@ installation controls. Configuration navigation never starts an installation.
 - Claude Code is CLI-only: its Agent lifecycle actions reuse Tooling and the
   Agent job observer. Backend readiness/inventory determines install/update;
   the page does not offer Claude Desktop or infer CLI presence from an app
-  bundle. Missing Node/npm or an unconfirmed installation owner produces the
-  actionable closed reason; npm success alone is not installation proof.
+  bundle. The install-readiness parser and `surfacesForAgent` must admit
+  `cli` / `cli_tooling` like Grok Build. Install chrome must not title the
+  component 「Claude Desktop」. Missing Node/npm or an unconfirmed
+  installation owner produces the actionable closed reason; npm success
+  alone is not installation proof.
 - Grok CLI install/update stays on the Tooling owner. The Agent Grok panel
   must not send a registry, version, hash, or npm command. Default one-click
   install is official npm; official CLI is an explicit secondary control.
@@ -197,6 +213,8 @@ installation controls. Configuration navigation never starts an installation.
 | Cancel is no longer permitted                                       | Disable cancel and preserve active/terminal state.                                                     |
 | Windows vendor wizard handoff succeeds but inventory remains absent | Explain handoff/completion scope; do not paint installed.                                              |
 | Native DTO contains unknown/excess/forbidden field                  | Strict parser failure; never spread raw object into UI.                                                |
+| Claude/Grok compact CLI readiness uses `cli_tooling`                | Parse and project install/update; do not fail the directory scan.                                      |
+| Claude/Grok readiness uses `managed_desktop` or `desktop` surface   | Fail closed at the parser; do not render a Desktop install card.                                       |
 | Route changes/unmounts                                              | Clear transient selection/confirmation; do not cancel native work unless user explicitly requested it. |
 
 ## 5. Good / Base / Bad Cases
@@ -212,6 +230,11 @@ installation controls. Configuration navigation never starts an installation.
 - **Bad:** hard-code product order/actions, infer installation from settings,
   store a target ID in local storage, send a URL/path, select the first target,
   or treat a browser/app/installer handoff as verified completion.
+- **Bad:** treat Claude Code as `managed_desktop` / `desktop` in the
+  renderer parser, or label its install chrome 「Claude Desktop」. The native
+  compact payload is `sourceKind=cli_tooling` with no `surfaces` array; a
+  kind mismatch throws and the directory shows 「读取失败」 while the host
+  still reports `not_installed` plus `install`.
 
 ## 6. Tests Required
 
@@ -226,6 +249,9 @@ Required assertions:
 
 - exact seven-product catalog/version/order/capability parsing and no Pi;
 - official-link ID allowlist matches native v5 (Claude `product`, not Desktop);
+- Claude Code and Grok Build share CLI `surfacesForAgent` and `cli_tooling`
+  sourceKind; compact Claude `not_installed` + `install` parses; Claude
+  `managed_desktop` / `desktop` and CLI `launch` fail closed;
 - unknown/excess/duplicate/future/legacy catalog values fail closed;
 - runtime tri-state and every readiness/inventory/action/job enum render
   evidence-correct states;
@@ -274,6 +300,21 @@ await ports.agentInstallReadiness.startAction({
   targetId: selectedTarget?.targetId,
   expectedTargetRevision: selectedTarget?.expectedTargetRevision,
 });
+```
+
+Wrong:
+
+```ts
+surfacesForAgent("claude-code") === ["desktop"]
+parseAgentInstallReadiness requires sourceKind === "managed_desktop"
+```
+
+Correct:
+
+```ts
+surfacesForAgent("grokbuild") === ["cli"]
+surfacesForAgent("claude-code") === ["cli"]
+parseAgentInstallReadiness admits sourceKind === "cli_tooling"
 ```
 
 Native owns identity, legality and side effects; the page owns strict

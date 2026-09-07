@@ -25,6 +25,7 @@ function readiness(
 ): AgentInstallReadiness {
   const codex = agentId === "codex";
   const grok = agentId === "grokbuild";
+  const claudeCli = agentId === "claude-code";
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId,
@@ -44,7 +45,7 @@ function readiness(
     authState: "unknown",
     sourceKind: codex
       ? "codex_desktop"
-      : grok
+      : grok || claudeCli
         ? "cli_tooling"
         : "managed_desktop",
     allowedActions: codex ? [] : ["install", "auth_login"],
@@ -355,22 +356,23 @@ describe("AgentInstallReadinessSection", () => {
     expect(port.getInventory).not.toHaveBeenCalledWith("opencode", "cli");
   });
 
-  it("labels the Claude physical component Claude Desktop", async () => {
-    const port = portFor(
-      desktopReadiness("claude-code", {
-        installState: "not_installed",
-        allowedActions: ["install"],
-      }),
-    );
+  it("shows Claude Code as CLI install without Desktop chrome", async () => {
+    const port = portFor({
+      ...readiness("claude-code"),
+      installState: "not_installed",
+      allowedActions: ["install"],
+    });
     render(<AgentInstallReadinessSection agentId="claude-code" port={port} />);
     const region = await screen.findByRole("region", { name: "安装与更新" });
     expect(
-      within(region).getByRole("heading", { name: "Claude Desktop" }),
-    ).toBeVisible();
+      within(region).queryByRole("heading", { name: "Claude Desktop" }),
+    ).not.toBeInTheDocument();
     expect(
       within(region).queryByRole("heading", { name: "命令行" }),
     ).not.toBeInTheDocument();
     expect(within(region).getByRole("button", { name: "安装" })).toBeVisible();
+    expect(region.querySelector('[data-surface="cli"]')).not.toBeNull();
+    expect(region.querySelector('[data-surface="desktop"]')).toBeNull();
   });
 
   it.each([

@@ -32,8 +32,12 @@ UserHelperAction::ClaudeTool { action } -> independent wire identities 15–17
 The renderer supplies only Agent/action and existing opaque inventory fields.
 It never supplies a package, registry, version, path, command or installer URL.
 `tool_host_missing` and `tool_owner_unsupported` are closed Agent reason codes.
-The existing compact npm-plan control and authenticated helper session are
-reused; no generic command execution capability is added.
+Compact readiness is `surface=cli`, `sourceKind=cli_tooling`, no `surfaces`
+array. The renderer parser in `agent-install-readiness.ts` must admit that
+shape; requiring `managed_desktop` or treating `cli` as illegal fails the
+Agent directory scan as 「读取失败」 without reaching install. The existing
+compact npm-plan control and authenticated helper session are reused; no
+generic command execution capability is added.
 
 ## 3. Contracts
 
@@ -108,14 +112,16 @@ reused; no generic command execution capability is added.
 | Windows helper identity/admission/result is uncertain           | Fail closed; no elevated fallback                                      |
 | Any request supplies a command/package/path/registry            | Reject at the closed boundary                                          |
 | CLI install succeeds                                            | Installation only; no claim of successful login or inference           |
+| Renderer requires `managed_desktop` or treats `cli` as illegal  | Directory scan fails; host still emitted CLI not_installed + install   |
 
 ## 5. Good / Base / Bad Cases
 
 Good: a verified mirror installs the exact official optional package and the
 actual CLI reports the expected version. Base: a native installation remains
 usable/readable but must update through its original owner. Bad: `npm @latest`,
-global mirror changes, treating an npm success exit as runnable proof, or
-executing a user-writable npm from the elevated Windows parent.
+global mirror changes, treating an npm success exit as runnable proof,
+executing a user-writable npm from the elevated Windows parent, or a renderer
+parser that still expects Claude Desktop/`managed_desktop`.
 
 ## 6. Tests Required
 
@@ -123,8 +129,10 @@ Run `mise run rust:test`, `mise run rust:clippy`, `mise run typecheck`,
 `mise run test:unit`, and the existing user-helper/ACL/architecture suites.
 Assert product-specific wire identity, closed arguments, exact package and
 scope registry, narrow script allowance, platform/SRI admission, no downgrade,
-owner/prefix rejection, CLI-only policy and post-install observation. Mirror
-smoke uses an isolated temporary home/prefix/cache and no login or inference.
+owner/prefix rejection, CLI-only policy and post-install observation. Renderer
+tests must parse compact `claude-code` readiness as `cli` / `cli_tooling` and
+reject Desktop/`managed_desktop`. Mirror smoke uses an isolated temporary
+home/prefix/cache and no login or inference.
 Windows native helper execution and real vendor login require their own
 matching-host evidence; macOS and portable tests do not establish it.
 
@@ -133,6 +141,8 @@ matching-host evidence; macOS and portable tests do not establish it.
 ```text
 wrong: install latest from any mirror; npm exit 0 -> installed
 wrong: run user npm from the elevated desktop process
+wrong: renderer surfacesForAgent(claude-code)=desktop; sourceKind=managed_desktop
 correct: compiled manifest -> matching registry/root/platform -> closed plan
          -> ordinary-user execution -> actual CLI version/owner readback
+correct: renderer admits compact CLI readiness (cli_tooling, no surfaces array)
 ```
