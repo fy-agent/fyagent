@@ -45,9 +45,10 @@
   min-width: 0;
   min-height: 0;
   height: 100%;
-  /* The content below owns scrolling. A second stable gutter here steals
-     pixels from the library's min/default/max sizes on classic-scrollbar hosts. */
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
+  /* Only the content below reserves a stable gutter. Keep the wrapper's
+     existing overflow fallback without subtracting a second scrollbar width. */
 }
 .fy-split-pane > * {
   box-sizing: border-box;

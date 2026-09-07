@@ -78,7 +78,7 @@ describe("shared catalog presentation styles", () => {
       /\.fy-catalog-rail,\s*\.fy-catalog-pane\s*\{[^}]*overflow:\s*auto;/s,
     );
     const panelWrapper = rule(splitCss, ".fy-split-pane");
-    expect(panelWrapper).toMatch(/overflow:\s*hidden;/);
+    expect(panelWrapper).toMatch(/overflow:\s*auto;/);
     expect(panelWrapper).not.toMatch(/scrollbar-gutter:\s*stable;/);
     expect(splitCss).toMatch(
       /\.fy-split-pane\s*>\s*\*\s*\{[^}]*overflow:\s*auto;/s,
