@@ -19,6 +19,7 @@ import {
   AGENT_LIFECYCLE_SUCCEEDED_COPY,
   AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY,
   AGENT_LIFECYCLE_TIMEOUT_COPY,
+  agentLifecycleFailureCopy,
   deriveAgentLifecyclePrimaryAction,
   isTerminalAgentJobStage,
   jobStageCopy,
@@ -325,6 +326,12 @@ describe("Windows external-installer state copy", () => {
     );
     expect(reasonCopy("installer_timed_out")).toContain("完成或关闭向导");
     expect(reasonCopy("installer_exited_nonzero")).toContain("未能完成");
+    expect(
+      agentLifecycleFailureCopy("installer_exited_nonzero", "cli_tooling"),
+    ).toContain("网络");
+    expect(
+      agentLifecycleFailureCopy("installer_exited_nonzero", "cli_tooling"),
+    ).not.toContain("安装向导");
     expect(isTerminalAgentJobStage("incomplete")).toBe(true);
     expect(isTerminalAgentJobStage("awaiting_user")).toBe(false);
   });
@@ -718,6 +725,52 @@ describe("useAgentLifecycleAction", () => {
     });
     expect(startAction).toHaveBeenCalledTimes(2);
     expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
+  });
+
+  it("retries the last action after operation_conflict even if reread omitted it", async () => {
+    const poisoned = readiness({
+      installState: "unknown",
+      allowedActions: [],
+      reasonCodes: ["interactive_user_unavailable"],
+    });
+    const startAction = vi
+      .fn<AgentInstallReadinessPort["startAction"]>()
+      .mockRejectedValueOnce(
+        Object.assign(new Error("conflict"), {
+          reasonCode: "operation_conflict",
+        }),
+      )
+      .mockResolvedValueOnce(actionResult({ jobId: null, stage: "succeeded" }));
+    const port = createPort({
+      get: vi.fn(async () => poisoned),
+      startAction,
+    });
+    const { result, rerender } = renderHook(
+      ({ data }) =>
+        useAgentLifecycleAction({
+          agentId: "qoderwork",
+          port,
+          readiness: data,
+          target: lifecycleTarget(),
+        }),
+      { initialProps: { data: readiness() } },
+    );
+
+    await act(async () => {
+      await result.current.run("install");
+    });
+    expect(result.current.canRetry).toBe(true);
+
+    rerender({ data: poisoned });
+    expect(result.current.primaryAction).toBeNull();
+
+    await act(async () => {
+      await result.current.retry();
+    });
+    expect(startAction).toHaveBeenCalledTimes(2);
+    expect(startAction).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agentId: "qoderwork", action: "install" }),
+    );
   });
 
   it("cancels a cancellable job and rereads after the poll observes it", async () => {

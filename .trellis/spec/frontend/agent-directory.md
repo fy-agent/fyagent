@@ -132,7 +132,10 @@ claude-code  surface=cli  sourceKind=cli_tooling
   action rather than inventing defaults.
 - One action mutation is active per current Agent view. Native
   `operation_conflict` remains authoritative if another page/window/job is
-  active.
+  active. After that conflict, keep the last requested action for Retry even
+  if a later readiness reread omits it from `allowedActions`. Generic and
+  Codex directory slots show Retry before a scanning-only status so a
+  recoverable conflict is not hidden behind 「正在扫描」.
 - A returned terminal action result is rendered immediately. A background job
   is polled through `get_agent_action_job` until its native terminal stage.
 - The renderer may stop polling when the route unmounts, but it must not paint
@@ -217,8 +220,8 @@ Do not send the user to the Models section to pick a filesystem destination.
 | Runtime value is `null`                                             | Render unknown/unverified, not absent/stopped.                                                         |
 | Inventory is `multiple`                                             | Require explicit target selection; no implicit first candidate.                                        |
 | Inventory is `unknown`/expired or target drifts                     | Refresh guidance; no action retry with stale capability.                                               |
-| Action is absent from `allowedActions`                              | Hide/disable with closed reason; do not call native.                                                   |
-| Native returns `operation_conflict`                                 | Preserve native job/other-operation state; do not create a local parallel action.                      |
+| Action is absent from `allowedActions`                              | Hide/disable with closed reason; do not call native except Retry of the last `operation_conflict` action. |
+| Native returns `operation_conflict`                                 | Preserve native job/other-operation state; keep last action for Retry; do not create a local parallel action. |
 | Background job remains active after UI poll budget                  | Stop/slow UI polling as designed, but do not mark failed.                                              |
 | Cancel is no longer permitted                                       | Disable cancel and preserve active/terminal state.                                                     |
 | Windows vendor wizard handoff succeeds but inventory remains absent | Explain handoff/completion scope; do not paint installed.                                              |
@@ -276,6 +279,8 @@ Required assertions:
   「正在检查来源」 (or later transfer copy) without waiting for job terminal;
 - allowed-actions projection, Codex owner routing, Auth/lifecycle separation and
   feature-navigation capability checks;
+- Retry remains after `operation_conflict` even when reread omits the action,
+  and directory slots show Retry before scanning-only status;
 - polling survives active native jobs without synthetic failure, transfer
   totals remain raw, and cancel respects `cancellable`;
 - success/error invalidation/reread clears stale installed/update state;

@@ -377,6 +377,9 @@ function genericLifecycleSlotView(
   if (lifecycle.busy) {
     return { kind: "status", label: genericBusyCopy(lifecycle) };
   }
+  if (lifecycle.canRetry) {
+    return { kind: "retry", onClick: () => void lifecycle.retry() };
+  }
   if (scanningCopy && !lifecycle.primaryAction) {
     return { kind: "status", label: scanningCopy };
   }
@@ -392,9 +395,6 @@ function genericLifecycleSlotView(
       action: lifecycle.primaryAction,
       onClick: () => void lifecycle.runPrimary(),
     };
-  }
-  if (lifecycle.canRetry) {
-    return { kind: "retry", onClick: () => void lifecycle.retry() };
   }
   if (scanningCopy) {
     return { kind: "status", label: scanningCopy };
@@ -489,6 +489,9 @@ function codexLifecycleSlotView(
   if (projection.busy) {
     return { kind: "status", label: codexBusyCopy(projection) };
   }
+  if (projection.canRetry) {
+    return { kind: "retry", onClick: () => void onRun() };
+  }
   if (observation.kind === "pending" && !observation.refreshing) {
     return { kind: "status", label: "正在扫描" };
   }
@@ -498,9 +501,6 @@ function codexLifecycleSlotView(
       action: projection.primaryAction,
       onClick: () => void onRun(),
     };
-  }
-  if (projection.canRetry) {
-    return { kind: "retry", onClick: () => void onRun() };
   }
   if (scanningCopy) {
     return { kind: "status", label: scanningCopy };

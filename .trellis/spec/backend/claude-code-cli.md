@@ -90,6 +90,11 @@ generic command execution capability is added.
 - Windows always uses the existing Explorer-user helper boundary, never
   elevated PATH/npm execution. Frozen user, authenticated pipe, job nonce,
   signed helper and admission ordering remain unchanged.
+- Windows discovers `npm.cmd` then `npm.exe`. `.cmd` / `.bat` shims are
+  launched as `cmd.exe /D /S /C call "{quoted-program}" …` via `CommandExt::raw_arg`.
+  Do not `Command::new("npm.cmd")`: CreateProcess treats the application name
+  as a PE image, so the shim never runs. macOS keeps the existing Tooling
+  child-process owner and does not use cmd shims.
 - The Windows action carries independent Claude identity, while sharing npm
   plan decoding and execution. It discovers closed Claude executable names,
   inspects npm's actual prefix, checks ownership/Node/architecture, rechecks
@@ -110,6 +115,7 @@ generic command execution capability is added.
 | Already same/newer npm install on update                        | No-op; never downgrade                                                 |
 | npm exits successfully but CLI is stub/wrong version/unrunnable | Verification failure, not installed success                            |
 | Windows helper identity/admission/result is uncertain           | Fail closed; no elevated fallback                                      |
+| Windows npm is a `.cmd` / `.bat` shim launched via `Command::new(path)` | Contract regression; use quoted `cmd /C call` through `raw_arg`     |
 | Any request supplies a command/package/path/registry            | Reject at the closed boundary                                          |
 | CLI install succeeds                                            | Installation only; no claim of successful login or inference           |
 | Renderer requires `managed_desktop` or treats `cli` as illegal  | Directory scan fails; host still emitted CLI not_installed + install   |
@@ -135,14 +141,19 @@ reject Desktop/`managed_desktop`. Mirror smoke uses an isolated temporary
 home/prefix/cache and no login or inference.
 Windows native helper execution and real vendor login require their own
 matching-host evidence; macOS and portable tests do not establish it.
+Helper contract tests must require `npm.cmd` discovery plus
+`.raw_arg(&command_line)` / `call {quoted_program}` and must not accept
+`Command::new(npm.cmd)`.
 
 ## 7. Wrong vs Correct
 
 ```text
 wrong: install latest from any mirror; npm exit 0 -> installed
 wrong: run user npm from the elevated desktop process
+wrong: Command::new("npm.cmd") as the helper application name
 wrong: renderer surfacesForAgent(claude-code)=desktop; sourceKind=managed_desktop
 correct: compiled manifest -> matching registry/root/platform -> closed plan
          -> ordinary-user execution -> actual CLI version/owner readback
+correct: Windows .cmd shim -> cmd /D /S /C call "{quoted}" via raw_arg
 correct: renderer admits compact CLI readiness (cli_tooling, no surfaces array)
 ```

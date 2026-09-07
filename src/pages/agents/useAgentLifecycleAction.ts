@@ -278,7 +278,11 @@ export function lifecycleSuccessCopy(vendorHandoff: boolean): string {
 
 export function agentLifecycleFailureCopy(
   code: AgentReasonCode | null,
+  sourceKind?: AgentSourceKind | null,
 ): string {
+  if (code === "installer_exited_nonzero" && sourceKind === "cli_tooling") {
+    return "安装未完成，请检查网络及当前用户的安装权限后重试。";
+  }
   return (code && reasonCopy(code)) || AGENT_LIFECYCLE_INCOMPLETE_COPY;
 }
 
@@ -337,6 +341,7 @@ export function useAgentLifecycleAction({
   const runningRef = useRef(false);
   const lastActionRef = useRef<AgentActionId | null>(null);
   const lastSurfaceRef = useRef<AgentSurface | undefined>(undefined);
+  const admitRetryRef = useRef(false);
   const vendorHandoffRef = useRef(false);
   const speedRef = useRef(createDownloadSpeedState());
   const readinessRef = useRef(readiness);
@@ -383,6 +388,7 @@ export function useAgentLifecycleAction({
         ),
       ]);
       if (generationRef.current !== generation) return false;
+      readinessRef.current = data;
       onReadinessChangeRef.current?.(data);
       onInventoryChangeRef.current?.(inventory);
       return true;
@@ -418,8 +424,13 @@ export function useAgentLifecycleAction({
       targetOverride?: AgentInstallationTarget | null,
       nextSurface?: AgentSurface,
     ) => {
+      const admitRetry = admitRetryRef.current;
+      admitRetryRef.current = false;
       const current = readinessRef.current;
-      if (!current || runningRef.current) {
+      if (runningRef.current) {
+        return;
+      }
+      if (!current) {
         return;
       }
       if (action !== "install" && action !== "update" && action !== "launch") {
@@ -427,7 +438,7 @@ export function useAgentLifecycleAction({
       }
       const resolvedSurface = nextSurface ?? surfaceRef.current;
       const gate = resolveLifecycleReadiness(current, resolvedSurface);
-      if (!gate.allowedActions.includes(action)) {
+      if (!gate.allowedActions.includes(action) && !admitRetry) {
         return;
       }
       const previousTarget = targetOverride ?? targetRef.current ?? null;
@@ -483,7 +494,7 @@ export function useAgentLifecycleAction({
           setStage(null);
           const reason = actionErrorReason(caught) ?? "inventory_expired";
           setReasonCode(reason);
-          setError(agentLifecycleFailureCopy(reason));
+          setError(agentLifecycleFailureCopy(reason, gate.sourceKind));
           return;
         }
       }
@@ -584,7 +595,7 @@ export function useAgentLifecycleAction({
         setError(AGENT_LIFECYCLE_TIMEOUT_COPY);
       } else {
         setSuccess(null);
-        setError(agentLifecycleFailureCopy(outcomeReason));
+        setError(agentLifecycleFailureCopy(outcomeReason, gate.sourceKind));
       }
       runningRef.current = false;
       setBusy(false);
@@ -607,18 +618,22 @@ export function useAgentLifecycleAction({
 
   const retry = useCallback(async () => {
     const last = lastActionRef.current;
-    const current = readinessRef.current;
-    if (!last || !current) {
+    const lastSurface = lastSurfaceRef.current;
+    if (runningRef.current) {
+      return;
+    }
+    const generation = generationRef.current;
+    await reread(generation);
+    if (generationRef.current !== generation) {
+      return;
+    }
+    if (!last) {
       await runPrimary();
       return;
     }
-    const gate = resolveLifecycleReadiness(current, lastSurfaceRef.current);
-    if (gate.allowedActions.includes(last)) {
-      await run(last, undefined, lastSurfaceRef.current);
-      return;
-    }
-    await runPrimary();
-  }, [run, runPrimary]);
+    admitRetryRef.current = true;
+    await run(last, undefined, lastSurface);
+  }, [reread, run, runPrimary]);
 
   const cancel = useCallback(async () => {
     if (!jobId || !cancellable) return;
@@ -631,7 +646,15 @@ export function useAgentLifecycleAction({
     } catch (caught) {
       if (generationRef.current !== generation) return;
       setReasonCode(actionErrorReason(caught));
-      setError(agentLifecycleFailureCopy(actionErrorReason(caught)));
+      const sourceKind = readinessRef.current
+        ? resolveLifecycleReadiness(
+            readinessRef.current,
+            lastSurfaceRef.current,
+          ).sourceKind
+        : undefined;
+      setError(
+        agentLifecycleFailureCopy(actionErrorReason(caught), sourceKind),
+      );
     }
   }, [applyJobSnapshot, cancellable, jobId]);
 
