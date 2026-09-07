@@ -166,6 +166,124 @@ describe("AuthPage", () => {
     );
   });
 
+  it("lets a saved-only Codex account connect even when the card still names that account", async () => {
+    const user = userEvent.setup();
+    const overview = managedAuthOverviewFixture();
+    overview.connections[0] = {
+      ...overview.connections[0],
+      accountId: OPENAI_ACCOUNT_ID,
+      authStatus: "disconnected",
+      requestMode: "official_subscription",
+      requestProviderLabel: "openai",
+      allowedActions: ["connect_account", "refresh"],
+    };
+    overview.accounts[0] = {
+      ...overview.accounts[0],
+      connectedConsumerCount: 1,
+    };
+    const applyConnectionAction = vi.fn(async () => {
+      const next = managedAuthOverviewFixture();
+      return mutationResultFixture(next);
+    });
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => overview),
+        applyConnectionAction,
+      }),
+    );
+
+    const connectSection = (
+      await screen.findByRole("heading", { name: "连接到软件" })
+    ).closest("section");
+    expect(connectSection).not.toBeNull();
+    await user.click(
+      within(connectSection!).getByRole("button", { name: "用此账号连接" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "连接 Codex 账号" });
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+
+    expect(applyConnectionAction).toHaveBeenCalledWith(
+      {
+        connectionId: CODEX_CONNECTION_ID,
+        expectedRevision: CONNECTION_REVISION,
+        action: "connect_account",
+        accountId: OPENAI_ACCOUNT_ID,
+      },
+      "323e4567-e89b-42d3-a456-426614174000",
+    );
+  });
+
+  it("lets a disconnected Codex slot restore the unofficial model source", async () => {
+    const user = userEvent.setup();
+    const overview = managedAuthOverviewFixture();
+    overview.connections[0] = {
+      ...overview.connections[0],
+      accountId: OPENAI_ACCOUNT_ID,
+      authStatus: "disconnected",
+      requestMode: "official_subscription",
+      requestProviderLabel: "openai",
+      allowedActions: ["connect_account", "disconnect", "refresh"],
+    };
+    overview.accounts[0] = {
+      ...overview.accounts[0],
+      connectedConsumerCount: 1,
+    };
+    const applyConnectionAction = vi.fn(async () => {
+      const next = managedAuthOverviewFixture();
+      return mutationResultFixture(next);
+    });
+    const previewConnectionAction = vi.fn(async (request) => ({
+      ...connectionPreviewFixture(request),
+      writeTargets:
+        request.action === "disconnect"
+          ? [
+              {
+                path: "~/.codex/config.toml",
+                backupPath: "~/.codex/config.toml.fyagent.backup",
+                exists: true,
+              },
+            ]
+          : connectionPreviewFixture(request).writeTargets,
+      preservedPaths:
+        request.action === "disconnect"
+          ? ["~/.codex/auth.json"]
+          : connectionPreviewFixture(request).preservedPaths,
+    }));
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => overview),
+        applyConnectionAction,
+        previewConnectionAction,
+      }),
+    );
+
+    const connectSection = (
+      await screen.findByRole("heading", { name: "连接到软件" })
+    ).closest("section");
+    expect(connectSection).not.toBeNull();
+    await user.click(
+      within(connectSection!).getByRole("button", {
+        name: "恢复第三方模型来源",
+      }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "恢复 Codex 的第三方模型来源？",
+    });
+    expect(await within(dialog).findByText("将修改")).toBeVisible();
+    expect(within(dialog).getByText("~/.codex/config.toml")).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "恢复" }));
+
+    expect(applyConnectionAction).toHaveBeenCalledWith(
+      {
+        connectionId: CODEX_CONNECTION_ID,
+        expectedRevision: CONNECTION_REVISION,
+        action: "disconnect",
+        accountId: null,
+      },
+      "323e4567-e89b-42d3-a456-426614174000",
+    );
+  });
+
   it("starts a Codex connection login when the saved account cannot connect yet", async () => {
     const user = userEvent.setup();
     const overview = managedAuthOverviewFixture();

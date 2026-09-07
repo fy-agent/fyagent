@@ -663,6 +663,8 @@ describe("Codex current-user helper static contract", () => {
     const installerRuntime = installerHelperRuntime(runtime);
     expect(grokRuntime).toContain("Command::new");
     expect(grokRuntime).toContain("powershell.exe");
+    expect(grokRuntime).toContain(".raw_arg(&command_line)");
+    expect(grokRuntime).toContain("call {quoted_program}");
     expect(grokRuntime).not.toContain("std::env::var");
     expect(installerRuntime).not.toMatch(
       /std::process::Command|Command::new|CreateProcess|cmd\.exe|powershell|tauri/iu,

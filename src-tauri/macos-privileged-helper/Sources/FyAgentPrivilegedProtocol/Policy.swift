@@ -68,7 +68,7 @@ public enum KnownApplicationPolicyTable {
         ),
         KnownApplicationPolicy(
             product: .workBuddy,
-            bundleIdentifier: "com.workbuddy.workbuddy",
+            bundleIdentifier: "com.tencent.workbuddy.mac",
             versionSource: .infoPlist,
             slots: [
                 TargetSlotPolicy(slot: 1, basename: "WorkBuddy.app", allowsFreshInstall: true),

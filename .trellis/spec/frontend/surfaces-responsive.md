@@ -124,9 +124,13 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
   third column. `align-items:start` preserves natural short-card height.
   Metadata uses `fit-content(var(--fy-definition-label-cap)) minmax(0,1fr)`;
   the shared label cap is `min(30%,8em)`, with `--fy-definition-gap` between
-  name and value. The `fy-info-card` content container stacks definitions at
-  210px or less. Existing Auth 500px and form-specific floors retain their roles.
-  Copy-only paths remain copy-only; do not reveal hidden data to fill space.
+  name and value. Caption-level definition rows span the card: values sit on
+  the trailing edge, and a faint `--fy-divider` hairline separates text rows.
+  Copy-only path rows keep horizontal label/action alignment, pin the copy
+  control to the trailing edge, and omit the hairline. Copy-only paths remain
+  copy-only; do not reveal hidden data to fill space. The `fy-info-card`
+  content container stacks definitions at 210px or less. Existing Auth 500px
+  and form-specific floors retain their roles.
 - Flexible text/actions need `min-width:0`, bounded width, wrapping and
   `overflow-wrap:anywhere` where URLs/identities can be long. Editable code and
   path/list previews may have explicit local scrolling/ellipsis; do not add

@@ -127,13 +127,12 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   They never project a saved Provider's login into `auth.json`. Managed Auth's
   separately confirmed account connection owns auth replacement. Proxy recovery
   remains a distinct exact-preimage operation under its own contract.
-- `codex_config/source_switch.rs` validates the intended source before any
-  catalog/config side effect, then patches only source-owned fields into the
-  live `toml_edit` document. Missing third-party setup is rejected, not treated
-  as an empty replacement document. A meaningful API-key configuration using
-  Codex's built-in default source remains valid. Preserve unrelated user tables,
-  MCP, profiles, features, preferences and comments, including comments attached
-  to a removed root key.
+- [Codex Request-Source Selection](./codex-source-selection.md) owns desired
+  source validation, selector comment/uncomment and the pure targeted TOML
+  patch in `codex_config/source_switch.rs`. This writer persists that result
+  through the existing guard/backup/readback path. A Provider source switch
+  may change its owned model and selected provider table; it is not the
+  selector-only config edit performed by an official account connection.
 
 ### Migration metadata and official-provider ownership
 

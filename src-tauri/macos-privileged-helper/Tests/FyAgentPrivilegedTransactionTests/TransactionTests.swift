@@ -83,7 +83,7 @@ struct TransactionTests {
         let existing = try FakeApp.make(
             in: env.apps,
             basename: "WorkBuddy.app",
-            bundleId: "com.workbuddy.workbuddy",
+            bundleId: "com.tencent.workbuddy.mac",
             version: "5.0.0",
             executable: "WorkBuddy"
         )
@@ -91,7 +91,7 @@ struct TransactionTests {
         let source = try FakeApp.make(
             in: env.root.appendingPathComponent("source"),
             basename: "WorkBuddy.app",
-            bundleId: "com.workbuddy.workbuddy",
+            bundleId: "com.tencent.workbuddy.mac",
             version: "5.1.0",
             executable: "WorkBuddy"
         )

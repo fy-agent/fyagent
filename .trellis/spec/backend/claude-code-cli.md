@@ -32,8 +32,12 @@ UserHelperAction::ClaudeTool { action } -> independent wire identities 15–17
 The renderer supplies only Agent/action and existing opaque inventory fields.
 It never supplies a package, registry, version, path, command or installer URL.
 `tool_host_missing` and `tool_owner_unsupported` are closed Agent reason codes.
-The existing compact npm-plan control and authenticated helper session are
-reused; no generic command execution capability is added.
+Compact readiness is `surface=cli`, `sourceKind=cli_tooling`, no `surfaces`
+array. The renderer parser in `agent-install-readiness.ts` must admit that
+shape; requiring `managed_desktop` or treating `cli` as illegal fails the
+Agent directory scan as 「读取失败」 without reaching install. The existing
+compact npm-plan control and authenticated helper session are reused; no
+generic command execution capability is added.
 
 ## 3. Contracts
 
@@ -86,6 +90,17 @@ reused; no generic command execution capability is added.
 - Windows always uses the existing Explorer-user helper boundary, never
   elevated PATH/npm execution. Frozen user, authenticated pipe, job nonce,
   signed helper and admission ordering remain unchanged.
+- Windows discovers `npm.cmd` then `npm.exe`. `.cmd` / `.bat` shims are
+  launched as `cmd.exe /D /S /C call "{quoted-program}" …` via `CommandExt::raw_arg`.
+  Keep this explicit shared dispatch as project policy, not a claim that
+  standard-library `Command` can never start batch files. The
+  [Rust process contract](https://doc.rust-lang.org/std/process/index.html)
+  documents special batch handling and warns against depending on it.
+  `raw_arg` bypasses standard escaping: it receives only the native-owned
+  program and closed npm plan, never an arbitrary renderer command or argument.
+  Static routing assertions do not prove arbitrary batch quoting is safe.
+  macOS keeps the existing Tooling child-process owner and does not use cmd
+  shims.
 - The Windows action carries independent Claude identity, while sharing npm
   plan decoding and execution. It discovers closed Claude executable names,
   inspects npm's actual prefix, checks ownership/Node/architecture, rechecks
@@ -106,16 +121,19 @@ reused; no generic command execution capability is added.
 | Already same/newer npm install on update                        | No-op; never downgrade                                                 |
 | npm exits successfully but CLI is stub/wrong version/unrunnable | Verification failure, not installed success                            |
 | Windows helper identity/admission/result is uncertain           | Fail closed; no elevated fallback                                      |
+| Windows npm is a `.cmd` / `.bat` shim launched via `Command::new(path)` | Contract regression; use quoted `cmd /C call` through `raw_arg`     |
 | Any request supplies a command/package/path/registry            | Reject at the closed boundary                                          |
 | CLI install succeeds                                            | Installation only; no claim of successful login or inference           |
+| Renderer requires `managed_desktop` or treats `cli` as illegal  | Directory scan fails; host still emitted CLI not_installed + install   |
 
 ## 5. Good / Base / Bad Cases
 
 Good: a verified mirror installs the exact official optional package and the
 actual CLI reports the expected version. Base: a native installation remains
 usable/readable but must update through its original owner. Bad: `npm @latest`,
-global mirror changes, treating an npm success exit as runnable proof, or
-executing a user-writable npm from the elevated Windows parent.
+global mirror changes, treating an npm success exit as runnable proof,
+executing a user-writable npm from the elevated Windows parent, or a renderer
+parser that still expects Claude Desktop/`managed_desktop`.
 
 ## 6. Tests Required
 
@@ -123,16 +141,25 @@ Run `mise run rust:test`, `mise run rust:clippy`, `mise run typecheck`,
 `mise run test:unit`, and the existing user-helper/ACL/architecture suites.
 Assert product-specific wire identity, closed arguments, exact package and
 scope registry, narrow script allowance, platform/SRI admission, no downgrade,
-owner/prefix rejection, CLI-only policy and post-install observation. Mirror
-smoke uses an isolated temporary home/prefix/cache and no login or inference.
+owner/prefix rejection, CLI-only policy and post-install observation. Renderer
+tests must parse compact `claude-code` readiness as `cli` / `cli_tooling` and
+reject Desktop/`managed_desktop`. Mirror smoke uses an isolated temporary
+home/prefix/cache and no login or inference.
 Windows native helper execution and real vendor login require their own
 matching-host evidence; macOS and portable tests do not establish it.
+Helper contract tests must require `npm.cmd` discovery plus
+`.raw_arg(&command_line)` / `call {quoted_program}` and must not accept
+`Command::new(npm.cmd)`.
 
 ## 7. Wrong vs Correct
 
 ```text
 wrong: install latest from any mirror; npm exit 0 -> installed
 wrong: run user npm from the elevated desktop process
+wrong: Command::new("npm.cmd") as the helper application name
+wrong: renderer surfacesForAgent(claude-code)=desktop; sourceKind=managed_desktop
 correct: compiled manifest -> matching registry/root/platform -> closed plan
          -> ordinary-user execution -> actual CLI version/owner readback
+correct: Windows .cmd shim -> cmd /D /S /C call "{quoted}" via raw_arg
+correct: renderer admits compact CLI readiness (cli_tooling, no surfaces array)
 ```

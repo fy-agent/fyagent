@@ -17,8 +17,13 @@ mod auth;
 mod catalog;
 mod credential_store;
 mod features;
+mod model_provider_line;
 mod source_switch;
 mod storage;
+pub(crate) use model_provider_line::{
+    comment_top_level_model_provider, top_level_model_provider_is_active,
+    uncomment_top_level_model_provider,
+};
 pub(crate) use source_switch::{
     patch_source as patch_codex_source_config, validate_source as validate_codex_source_config,
 };

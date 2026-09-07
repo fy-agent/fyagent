@@ -196,10 +196,14 @@ function DialogLayer({
       element.style.removeProperty("width");
     }
     const box = element.getBoundingClientRect();
-    element.dataset.motionOrigin = dialogOriginGeometry(source.current, box)
-      .sourced
-      ? "trigger"
-      : "neutral";
+    // Resolve the explicit return anchor before every exit path, including
+    // immediate settlement when native animation cannot run.
+    const presentationSource =
+      !present && !dialogOriginGeometry(source.current, box).sourced
+        ? returnSource.current
+        : source.current;
+    const liveOrigin = dialogOriginGeometry(presentationSource, box);
+    element.dataset.motionOrigin = liveOrigin.sourced ? "trigger" : "neutral";
     const duration =
       motionDuration(present ? "dialog-enter" : "dialog-exit") * 1000;
     let handle: ReturnType<typeof runDialogPresentation> | null = null;
@@ -235,10 +239,7 @@ function DialogLayer({
     try {
       handle = runDialogPresentation({
         planes,
-        source:
-          !present && !dialogOriginGeometry(source.current, box).sourced
-            ? returnSource.current
-            : source.current,
+        source: presentationSource,
         windowNode: element,
         entering: present,
         first: !hasAnimated.current,

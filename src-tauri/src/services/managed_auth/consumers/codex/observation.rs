@@ -6,10 +6,13 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 
 use crate::codex_config::is_custom_codex_model_provider_id;
-use crate::codex_config::{parse_cli_auth_credentials_store, CodexCredentialStore};
+use crate::codex_config::{
+    parse_cli_auth_credentials_store, uncomment_top_level_model_provider, CodexCredentialStore,
+};
 use crate::services::managed_auth::{
     providers::openai, ManagedAuthRequestMode, ManagedAuthSecretBundle,
 };
+use toml_edit::Item;
 
 use super::auth_document::{
     classify_auth_bytes, CodexChatGptAuthDocument, CodexNativeAuthState, MAX_AUTH_JSON_BYTES,
@@ -39,6 +42,7 @@ pub(crate) struct CodexManagedAuthObservation {
     pub request_mode: ManagedAuthRequestMode,
     pub request_provider_label: Option<String>,
     pub auth_state: CodexNativeAuthState,
+    pub selector_commented: bool,
     /// Conservative: true when Desktop hot-reload is unproven after a write.
     #[allow(dead_code)]
     pub may_need_restart: bool,
@@ -65,6 +69,7 @@ impl Default for CodexManagedAuthObservation {
             request_mode: ManagedAuthRequestMode::OfficialSubscription,
             request_provider_label: Some("openai".to_string()),
             auth_state: CodexNativeAuthState::Missing,
+            selector_commented: false,
             may_need_restart: false,
         }
     }
@@ -88,6 +93,7 @@ pub(crate) fn observe_managed_auth(codex_home: &Path) -> CodexManagedAuthObserva
                 request_mode: ManagedAuthRequestMode::Unknown,
                 request_provider_label: None,
                 auth_state: observe_auth_file(&auth_path).1,
+                selector_commented: false,
                 may_need_restart: false,
             };
         }
@@ -112,6 +118,7 @@ pub(crate) fn observe_managed_auth(codex_home: &Path) -> CodexManagedAuthObserva
         request_mode,
         request_provider_label,
         auth_state,
+        selector_commented: uncomment_top_level_model_provider(&config_text).is_some(),
         may_need_restart: false,
     }
 }
@@ -148,16 +155,25 @@ fn classify_provider_route(
             None,
         );
     };
-    if !is_custom_codex_model_provider_id(id) {
+    // A matching [model_providers.<id>] table overrides the built-in route,
+    // including reserved names such as OpenAI that users reuse for a custom
+    // endpoint. Commenting the top-level selector restores official openai.
+    let has_override_table = document
+        .get("model_providers")
+        .and_then(Item::as_table_like)
+        .and_then(|providers| providers.get(id))
+        .and_then(|entry| entry.as_table_like())
+        .is_some();
+    if has_override_table || is_custom_codex_model_provider_id(id) {
         (
-            CodexProviderRoute::Official,
-            ManagedAuthRequestMode::OfficialSubscription,
+            CodexProviderRoute::ThirdParty,
+            ManagedAuthRequestMode::ThirdPartyApi,
             Some(id.to_string()),
         )
     } else {
         (
-            CodexProviderRoute::ThirdParty,
-            ManagedAuthRequestMode::ThirdPartyApi,
+            CodexProviderRoute::Official,
+            ManagedAuthRequestMode::OfficialSubscription,
             Some(id.to_string()),
         )
     }
@@ -286,5 +302,35 @@ mod tests {
         let observed = observe_managed_auth(dir.path());
         assert_eq!(observed.provider_route, CodexProviderRoute::ThirdParty);
         assert_eq!(observed.request_mode, ManagedAuthRequestMode::ThirdPartyApi);
+    }
+
+    #[test]
+    fn commented_openai_selector_is_official_even_with_override_table() {
+        let dir = tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("config.toml"),
+            "#model_provider = \"OpenAI\"\n[model_providers.OpenAI]\nbase_url = \"https://example.test/v1\"\n",
+        )
+        .unwrap();
+        let observed = observe_managed_auth(dir.path());
+        assert_eq!(observed.provider_route, CodexProviderRoute::Official);
+        assert_eq!(
+            observed.request_mode,
+            ManagedAuthRequestMode::OfficialSubscription
+        );
+    }
+
+    #[test]
+    fn reserved_name_with_override_table_is_third_party() {
+        let dir = tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("config.toml"),
+            "model_provider = \"OpenAI\"\n[model_providers.OpenAI]\nbase_url = \"https://example.test/v1\"\n",
+        )
+        .unwrap();
+        let observed = observe_managed_auth(dir.path());
+        assert_eq!(observed.provider_route, CodexProviderRoute::ThirdParty);
+        assert_eq!(observed.request_mode, ManagedAuthRequestMode::ThirdPartyApi);
+        assert_eq!(observed.request_provider_label.as_deref(), Some("OpenAI"));
     }
 }

@@ -178,7 +178,7 @@ function ConnectionCard({
               disabled={mutationBusy}
               onClick={() => onAction(connection, action)}
             >
-              {connectionActionLabel(action)}
+              {connectionActionLabel(action, connection)}
             </Button>
           ))}
         </div>

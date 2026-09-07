@@ -422,7 +422,8 @@
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   scrollbar-gutter: stable;
 }
 .fy-control-dialog-content {
@@ -458,7 +459,8 @@
   color: var(--fy-text-secondary);
   font-size: var(--fy-font-control);
   line-height: var(--fy-line-body);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 .fy-control-dialog-body {
   padding: 16px 24px 0;
@@ -472,13 +474,29 @@
 .fy-control-dialog-actions {
   display: flex;
   flex: 0 0 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  align-items: center;
   gap: 8px;
   padding: 20px 24px;
+  overflow: visible;
+  isolation: isolate;
 }
-.fy-control-dialog-actions > .fy-control-button {
-  min-width: 72px;
+.fy-control-dialog-actions .fy-control-button {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  min-width: 92px;
+  max-width: none;
+  width: auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  line-height: 1.2;
+  isolation: isolate;
+  transition: none;
+}
+.fy-control-dialog-actions .fy-control-button:disabled {
+  transform: none !important;
 }
 .fy-toast-host {
   position: fixed;

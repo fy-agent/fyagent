@@ -296,6 +296,7 @@ export function loginStagePresentation(stage: ManagedAuthLoginStage): {
 
 export function connectionActionLabel(
   action: ManagedAuthConnectionAction,
+  connection?: Pick<ManagedAuthConnectionSummary, "authStatus">,
 ): string {
   switch (action) {
     case "connect_account":
@@ -303,7 +304,9 @@ export function connectionActionLabel(
     case "switch_account":
       return "切换账号";
     case "disconnect":
-      return "断开";
+      return connection?.authStatus === "disconnected"
+        ? "恢复第三方模型来源"
+        : "断开";
     case "refresh":
       return "刷新状态";
     case "restart":
@@ -317,6 +320,7 @@ export function connectionActionLabel(
 
 export function accountPageConnectionActionLabel(
   action: ManagedAuthConnectionAction,
+  connection?: Pick<ManagedAuthConnectionSummary, "authStatus">,
 ): string {
   switch (action) {
     case "connect_account":
@@ -326,7 +330,7 @@ export function accountPageConnectionActionLabel(
     case "switch_to_official":
       return "切回官方";
     default:
-      return connectionActionLabel(action);
+      return connectionActionLabel(action, connection);
   }
 }
 
@@ -334,19 +338,42 @@ const ACCOUNT_PAGE_CONNECTION_ACTIONS: ManagedAuthConnectionAction[] = [
   "switch_to_official",
   "connect_account",
   "switch_account",
+  "disconnect",
 ];
 
 export function accountPageConnectionActions(
   connection: ManagedAuthConnectionSummary,
   accountId: string,
 ): ManagedAuthConnectionAction[] {
-  return ACCOUNT_PAGE_CONNECTION_ACTIONS.filter((action) => {
+  const actions = ACCOUNT_PAGE_CONNECTION_ACTIONS.filter((action) => {
     if (!connection.allowedActions.includes(action)) return false;
     if (action === "switch_to_official") {
       return connection.accountId === accountId;
     }
+    if (
+      connection.accountId === accountId &&
+      connection.authStatus === "disconnected"
+    ) {
+      return (
+        action === "connect_account" ||
+        action === "switch_account" ||
+        action === "disconnect"
+      );
+    }
     return connection.accountId !== accountId;
   });
+  return actions;
+}
+
+export function linkedConnectionsForAccount(
+  account: ManagedAuthAccountSummary,
+  connections: ManagedAuthConnectionSummary[],
+): ManagedAuthConnectionSummary[] {
+  return connections.filter(
+    (connection) =>
+      connection.accountId === account.accountId &&
+      connection.authStatus !== "disconnected",
+  );
 }
 
 export function connectableConnectionsForAccount(
@@ -356,7 +383,10 @@ export function connectableConnectionsForAccount(
   if (account.health !== "ready") return [];
   return connections.filter((connection) => {
     if (connection.provider !== account.provider) return false;
-    if (connection.accountId === account.accountId) return false;
+    const alreadyLive =
+      connection.accountId === account.accountId &&
+      connection.authStatus !== "disconnected";
+    if (alreadyLive) return false;
     return (
       connection.allowedActions.includes("connect_account") ||
       connection.allowedActions.includes("switch_account")

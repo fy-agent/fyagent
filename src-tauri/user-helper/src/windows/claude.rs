@@ -82,6 +82,13 @@ pub(super) fn execute(
     action: GrokToolAction,
     plan: Option<GrokNpmInstallPlan>,
 ) -> Result<ToolOperationResult, HelperErrorCode> {
+    execute_inner(action, plan)
+}
+
+fn execute_inner(
+    action: GrokToolAction,
+    plan: Option<GrokNpmInstallPlan>,
+) -> Result<ToolOperationResult, HelperErrorCode> {
     let before = observe_candidate()?;
     if action == GrokToolAction::Observe {
         return Ok(ToolOperationResult::observed(
@@ -105,7 +112,9 @@ pub(super) fn execute(
             }
         }
         (GrokToolAction::Update, None) => return Err(HelperErrorCode::ToolNotDetected),
-        _ => return Err(HelperErrorCode::ToolOwnerMismatch),
+        _ => {
+            return Err(HelperErrorCode::ToolOwnerMismatch);
+        }
     }
     let npm = find_path_program(&["npm.cmd", "npm.exe"]).ok_or(HelperErrorCode::ToolHostMissing)?;
     let node = npm
@@ -145,7 +154,9 @@ pub(super) fn execute(
     if observe_candidate()? != before {
         return Err(HelperErrorCode::ToolOwnerMismatch);
     }
-    execute_npm_plan(&npm, OfficialNpmTool::Claude, &plan)?;
+    if let Err(code) = execute_npm_plan(&npm, OfficialNpmTool::Claude, &plan) {
+        return Err(code);
+    }
     // Inspect the admitted npm prefix even when a newly installed launcher has
     // not yet appeared on a reopened terminal's PATH.
     let binary = prefix

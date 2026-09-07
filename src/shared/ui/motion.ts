@@ -19,6 +19,9 @@ export function useReducedMotion(): boolean {
 
 export const fySpatialEase = [0.32, 0.72, 0, 1] as const;
 export const fySpatialEasing = `cubic-bezier(${fySpatialEase.join(",")})`;
+/** Full-window radius travel; the spatial curve crawls the last corner. */
+export const fyThemeRevealEase = [0.25, 0.08, 0.25, 1] as const;
+export const fyThemeRevealEasing = `cubic-bezier(${fyThemeRevealEase.join(",")})`;
 export const fySelectionTransition = {
   type: "tween",
   duration: 0.3,

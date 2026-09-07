@@ -66,9 +66,18 @@ duration parser; WAAPI accepts milliseconds only at this presentation boundary.
   are retained. No DOM clone, text, identity label, credential value or image is
   copied. The first matching opening consumes the capture once. Exits remeasure
   the real source or explicit return target; invalid targets remain neutral.
+  Resolve that target before both animation and immediate-settlement branches;
+  `data-motion-origin` describes the same admitted target in each branch, not
+  a detached menu item. A sourced marker alone does not prove motion occurred.
   Revalidate captured finite geometry against the current viewport at consumption:
   an async picker/preview can outlive a resize, so old snapshot admission is not
   permanent permission to fly outside the visible window.
+- Directory install-target pickers stay mounted with `open={pickingTarget !== null}`.
+  Confirm starts the native job and sets open false in the same click; do not
+  wait for `run()` to settle. `dialogReturnRef` must point at a host that remains
+  connected while the slot swaps from the trigger button to busy status. Putting
+  the return ref on the button that unmounts on busy yields a disconnected
+  source and a neutral fade, which hides the card progress the user needs.
 - Switch uses the existing PressableButton asChild capture before Radix's
   checked-change handler. A modal-producing switch opts into bounded click
   geometry with its own element as the return anchor: async status feedback can
@@ -207,6 +216,7 @@ duration parser; WAAPI accepts milliseconds only at this presentation boundary.
 | ----------------------------------------------------- | --------------------------------------------------------------------------------- |
 | Source control opens a dialog after async work        | Use that explicit original source, not whichever element is now focused.          |
 | Source moved, vanished or scrolled out before close   | Re-measure; return to the current valid box or use neutral exit.                  |
+| Confirm starts work that replaces the trigger with status | Keep a connected `dialogReturnRef` host; fly back to that host, not a fade.   |
 | Close occurs while entering                           | Freeze current geometry, revoke interaction/secrets and finish one exit.          |
 | Explicit non-credential fade exit                     | Inert/aria-hidden body retires within 80ms; action DOM disappears immediately.    |
 | CSS optimizer emits seconds instead of milliseconds   | Preserve physical duration; production timing test must still see 420ms.          |
@@ -215,6 +225,7 @@ duration parser; WAAPI accepts milliseconds only at this presentation boundary.
 | System reduced-motion changes during travel           | Settle current visuals and release any completed exit.                            |
 | Portal commits after parent mount                     | Committed node starts the animation; no silent skipped entrance.                  |
 | Zero-duration exit                                    | Complete after presence bookkeeping; do not leave a focus/scroll lock.            |
+| Transient source disappeared but explicit return target remains visible | Resolve that target before immediate settlement as well as animation; hidden/removed targets remain neutral. |
 | Right click, secondary touch, disabled/hidden control | No duplicate action or new press admission.                                       |
 | Another modal opens during old focus return           | Never focus outside the newer modal.                                              |
 | Navigation occurs during a transition                 | Preserve URL/selection authority and hidden-route query isolation.                |
@@ -242,6 +253,9 @@ the actual business action.
   isolation, both WorkBuddy assignment paths and transient-menu return/focus in
   Chromium/WebKit. Cover chained confirmation handoff as well as persistent
   buttons. The production wrapper inventory must remain nonempty and complete.
+  Record short-lived exit origin evidence in-page before dismissal; remote
+  polling after Escape can miss the entire exit. Keep exact source, actual
+  cleanup and focus assertions; never extend production duration for a test.
 - `dialogPresentation.test.ts` verifies viewport-coordinate rebasing, remaining
   duration, same-track ownership and cancellation. Dialog tests verify a
   never-opened sibling cannot hold the outer presence barrier, and an old close
@@ -254,6 +268,9 @@ the actual business action.
   programmatic neutral fallback and unchanged blocked navigation.
 - Dialog tests retain third-round keyboard/focus safeguards and zero-duration
   unmount. Tests must verify actual modal/scroll cleanup, not only callbacks.
+  `Dialog.test.tsx` also records immediate exit origins after a transient source
+  disappears: visible return target remains sourced; hidden/removed targets
+  remain neutral, and all three cases release the modal lock.
 - `motionDuration.test.ts` covers ms/s/exponents and invalid input;
   `dialogPresentation.test.ts` checks track endpoints, no content/resource
   copying, cancellation, partial-start failures and the 80ms exit cap.

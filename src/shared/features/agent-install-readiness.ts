@@ -108,8 +108,12 @@ export type AgentActionId = (typeof AGENT_ACTION_IDS)[number];
 export const AGENT_SURFACES = ["cli", "desktop"] as const;
 export type AgentSurface = (typeof AGENT_SURFACES)[number];
 
+function isCliToolingAgent(agentId: AgentCatalogId): boolean {
+  return agentId === "grokbuild" || agentId === "claude-code";
+}
+
 export function surfacesForAgent(agentId: AgentCatalogId): AgentSurface[] {
-  if (agentId === "grokbuild") {
+  if (isCliToolingAgent(agentId)) {
     return ["cli"];
   }
   return ["desktop"];
@@ -485,7 +489,7 @@ export function parseAgentInstallReadiness(
     expectedAgentId === "codex"
       ? value.sourceKind === "codex_desktop" &&
         value.authOwnership === "fyagent_managed"
-      : expectedAgentId === "grokbuild"
+      : isCliToolingAgent(expectedAgentId)
         ? value.sourceKind === "cli_tooling"
         : value.sourceKind === "managed_desktop";
   if (!matchesKind) {

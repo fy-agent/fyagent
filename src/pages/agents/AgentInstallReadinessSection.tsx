@@ -163,13 +163,10 @@ function orderedLifecycleActions(
   });
 }
 
-function componentTitle(
-  agentId: AgentCatalogId,
-  surface: SurfaceKind,
-): { title: string; showTitle: boolean } {
-  if (agentId === "claude-code") {
-    return { title: "Claude Desktop", showTitle: true };
-  }
+function componentTitle(surface: SurfaceKind): {
+  title: string;
+  showTitle: boolean;
+} {
   return {
     title: surface === "cli" ? "命令行" : "桌面应用",
     showTitle: false,
@@ -180,7 +177,7 @@ function projectionFromSurface(
   agentId: AgentCatalogId,
   item: AgentSurfaceReadiness,
 ): SurfaceProjection {
-  const { title, showTitle } = componentTitle(agentId, item.surface);
+  const { title, showTitle } = componentTitle(item.surface);
   return {
     surface: item.surface,
     title,
@@ -228,7 +225,7 @@ function surfacesForProduct(
     ];
   }
   const surface: SurfaceKind = hideLaunch ? "cli" : "desktop";
-  const { title, showTitle } = componentTitle(agentId, surface);
+  const { title, showTitle } = componentTitle(surface);
   return [
     {
       surface,

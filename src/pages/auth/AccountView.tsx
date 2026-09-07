@@ -28,6 +28,7 @@ import {
   accountPageConnectionActionLabel,
   accountPageConnectionActions,
   connectableConnectionsForAccount,
+  linkedConnectionsForAccount,
   connectionStatusPresentation,
   loginRequiredConnectionsForAccount,
   formatAuthenticatedAt,
@@ -106,7 +107,7 @@ function AccountConnection({
               disabled={mutationBusy}
               onClick={() => onAction(connection, action)}
             >
-              {accountPageConnectionActionLabel(action)}
+              {accountPageConnectionActionLabel(action, connection)}
             </Button>
           ))}
           {loginConnectLabel ? (
@@ -153,9 +154,7 @@ function AccountDetail({
   const canReauthenticate = account.allowedActions.includes("reauthenticate");
   const canSetDefault = account.allowedActions.includes("set_default");
   const canRemove = account.allowedActions.includes("remove");
-  const linkedConnections = connections.filter(
-    (connection) => connection.accountId === account.accountId,
-  );
+  const linkedConnections = linkedConnectionsForAccount(account, connections);
   const connectableConnections = connectableConnectionsForAccount(
     account,
     connections,

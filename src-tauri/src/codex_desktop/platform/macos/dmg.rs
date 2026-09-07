@@ -2573,7 +2573,7 @@ mod tests {
 
     #[test]
     fn managed_update_preserves_the_selected_bundle_path_without_scope_fallback() {
-        const BUNDLE_ID: &str = "com.workbuddy.workbuddy";
+        const BUNDLE_ID: &str = "com.tencent.workbuddy.mac";
         let (filesystem, _) = fixture_filesystem();
         let target = Path::new(USER_APPLICATIONS).join("Existing WorkBuddy.app");
         add_bundle(filesystem.as_ref(), &target);
@@ -2737,7 +2737,7 @@ mod tests {
 
     #[test]
     fn managed_running_application_blocks_before_any_staging_write() {
-        const BUNDLE_ID: &str = "com.workbuddy.workbuddy";
+        const BUNDLE_ID: &str = "com.tencent.workbuddy.mac";
         let (filesystem, _) = fixture_filesystem();
         let target = Path::new(USER_APPLICATIONS).join("WorkBuddy.app");
         add_bundle(filesystem.as_ref(), &target);

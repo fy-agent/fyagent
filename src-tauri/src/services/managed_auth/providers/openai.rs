@@ -379,21 +379,16 @@ async fn write_callback_response(
 }
 
 pub(crate) fn open_system_browser(url: &str) -> Result<(), ErrorKind> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        std::process::Command::new("open")
-            .arg(url)
-            .spawn()
-            .map(|_| ())
-            .map_err(|error| error.kind())
-    }
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", url])
-            .spawn()
-            .map(|_| ())
-            .map_err(|error| error.kind())
+        crate::platform::process_launch::open_http_url_as_user_sync(url).map_err(
+            |error| match error {
+                crate::platform::process_launch::ProcessLaunchError::InvalidHttpUrl => {
+                    ErrorKind::InvalidInput
+                }
+                _ => ErrorKind::Other,
+            },
+        )
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
@@ -729,6 +724,10 @@ mod tests {
         assert_eq!(query.get("originator").unwrap(), OPENAI_ORIGINATOR);
         assert_eq!(query.get("scope").unwrap(), OPENAI_SCOPE);
         assert!(!url.contains("code_verifier"));
+        assert!(
+            url.matches('&').count() >= 8,
+            "authorize URL must carry the full first-party query"
+        );
     }
 
     #[test]

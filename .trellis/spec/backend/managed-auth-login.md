@@ -136,6 +136,11 @@ malformed or zero-version UUID.
   `device_code`.
 - Browser reopen uses the process-private official authorize URL. That URL
   never crosses IPC or enters Query/route state.
+- Initial open and reopen both call `open_http_url_as_user_sync` after the
+  shared HTTP(S) validator. The provider does not spawn `open` or
+  `cmd /c start`. Windows uses Explorer COM; macOS uses `open` with a single
+  argv so `&` in PKCE query strings is not a shell separator. Catalog
+  `open_external` uses the same validator and the same macOS `open` helper.
 
 ### xAI Device Code
 
@@ -184,6 +189,7 @@ malformed or zero-version UUID.
 | Consumer projection is unavailable                                                                 | Account storage may complete; consumer remains disconnected/unavailable            |
 | completed snapshot carries a non-null reason other than `pending_restart`                          | reject the wire shape; do not render success                                       |
 | snapshot/error/log contains URL secrets, codes, tokens, verifier, SecretRef, or HTTP body          | security regression                                                                |
+| OpenAI browser open uses `cmd /c start` or a provider-local `Command::new("open")`                 | contract regression; use `process_launch::open_http_url_as_user_sync`              |
 
 ## 5. Good / Base / Bad Cases
 
@@ -198,7 +204,8 @@ malformed or zero-version UUID.
 - **Base:** cancel succeeds while an HTTP poll is outstanding; the later grant
   is ignored because its generation is stale.
 - **Bad:** return the authorize URL to React, let React poll the token endpoint,
-  reuse a Proxy credential for Grok, or mark completion before vault readback.
+  reuse a Proxy credential for Grok, mark completion before vault readback, or
+  open the authorize URL with `cmd /c start`.
 
 ## 6. Tests Required
 
@@ -225,6 +232,8 @@ Required assertions:
 - `1455` → `1457` → Device Code fallback without process cancellation;
 - Device Code interval/expiry plus cancel/switch generation races;
 - reopen uses the process-private official URL and the snapshot has no URL;
+- browser open goes through `open_http_url_as_user_sync` on both macOS and
+  Windows; provider source must not contain `cmd /c start` or `Command::new("open")`;
 - xAI origin allowlist and pending/slow-down/deny/expiry classification;
 - `grok_native` versus `proxy_upstream` isolation;
 - SecretRef readback gates success; all `connect_consumer` login completions
@@ -259,4 +268,5 @@ credential readback -> completed account storage, no automatic consumer write
 separate connection preview + confirmation -> consumer write/readback
 cancel/switch bumps generation so late work cannot commit
 hold std::net::TcpListener across IPC; from_std only inside accept_one_callback
+open authorize URL via process_launch HTTP owner (Explorer / macOS open)
 ```

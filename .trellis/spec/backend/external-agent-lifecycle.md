@@ -135,6 +135,10 @@ command, argument vector, token, hash, package format, signer or bypass flags.
 - Compact single-surface products omit the `surfaces` readiness array and the
   inventory `surface` field. A multi-surface product must make each surface
   explicit instead of collapsing status.
+- Compact CLI readiness uses `sourceKind=cli_tooling`. The renderer
+  `parseAgentInstallReadiness` / `surfacesForAgent` table must stay aligned
+  with `lifecycle_policy.rs`. Treating Claude Code as `managed_desktop` is
+  not a product-absent signal; it is a contract parse failure.
 
 ### Product and source policy
 
@@ -200,7 +204,7 @@ identity examples include:
 
 | Product                       | macOS bundle ID                  | Windows closed identity summary                                                                                                                                                                                                               |
 | ----------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| WorkBuddy                     | `com.workbuddy.workbuddy`        | Closed relative `WorkBuddy.exe`, ProductName and reviewed signer.                                                                                                                                                                             |
+| WorkBuddy                     | `com.tencent.workbuddy.mac`      | Closed relative `WorkBuddy.exe`, ProductName and reviewed signer.                                                                                                                                                                             |
 | QoderWork CN                  | `com.qoder.work.cn`              | Closed QoderWork CN relative EXE names, ProductName and signer.                                                                                                                                                                               |
 | TRAE Work CN                  | `cn.trae.solo.app`               | Closed TRAE SOLO/Work CN relative EXE names, ProductName and signer.                                                                                                                                                                          |
 | OpenCode                      | `ai.opencode.desktop`            | Closed relative `@opencode-aidesktop/OpenCode.exe` (and `OpenCode/OpenCode.exe`), ProductName `OpenCode`, reviewed signer `Anomaly Innovations, Inc https://anoma.ly/`, and Uninstall DisplayName `OpenCode` or `OpenCode <bounded-version>`. |
@@ -240,6 +244,12 @@ leaf:
   `WinVerifyTrust`, exactly one signer and reviewed signer leaf.
 - Do not infer installation from `.workbuddy`, `.qoderwork*`, `.trae*` or any
   settings directory.
+- Official WorkBuddy macOS identity is `com.tencent.workbuddy.mac` from the
+  signed Tencent `WorkBuddy.app` package. `com.workbuddy.workbuddy` is a stale
+  closed ID and must not match. `CodeBuddy CN.app` /
+  `com.tencent.codebuddycn` is a different product. Folder names are not
+  identity. Scan, system-commit policy, and privileged helper `Policy.swift`
+  stay in lockstep on this ID.
 
 ### Jobs and platform side effects
 
@@ -363,8 +373,13 @@ Assertion points:
   platform, schema, redirect and version rules without stale URL fallback;
 - Claude CLI tests cover the compiled npm manifest, shared registry/argv/helper,
   actual version/owner verification, and rejection of the retired Desktop path;
+- renderer `surfacesForAgent` / readiness `sourceKind` stay aligned with
+  lifecycle policy: Grok and Claude are compact CLI/`cli_tooling`;
 - macOS exact-path deployment, cancellation boundary, running-app protection,
   rollback/recovery and disabled `/Applications` gate;
+- WorkBuddy macOS scan matches only `com.tencent.workbuddy.mac`; a same-folder
+  `com.workbuddy.workbuddy` fixture stays unmatched; helper/policy/desktop
+  bundle IDs stay equal via `helper_policy_bundle_ids_match_macos_bundle_id_for`;
 - Windows registry access masks/views/link handling, trusted PE identity,
   signer leaf, retained artifact, helper protocol/pipe binding, UAC cancel and
   vendor-wizard handoff with no wait/kill/post-install claim;
@@ -412,6 +427,20 @@ await ports.agentInstallReadiness.startAction({
   targetId: destination.destinationId,
   expectedTargetRevision: destination.destinationRevision,
 });
+```
+
+Wrong:
+
+```ts
+surfacesForAgent("claude-code") === ["desktop"]
+sourceKind === "managed_desktop"
+```
+
+Correct:
+
+```ts
+surfacesForAgent("claude-code") === ["cli"]
+sourceKind === "cli_tooling"
 ```
 
 Wrong:

@@ -616,21 +616,47 @@ fn npm_major_from(npm: &Path) -> Result<u32, HelperErrorCode> {
     parse_npm_major(&output).ok_or(HelperErrorCode::ToolHostMissing)
 }
 
+fn is_windows_command_script(path: &Path) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat"))
+}
+
+fn command_script_line(program: &Path, args: &[&str]) -> String {
+    let quoted_program = quote_windows_path(program);
+    if args.is_empty() {
+        format!("call {quoted_program}")
+    } else {
+        let quoted_args = args
+            .iter()
+            .map(|arg| quote_windows_cmd_arg(arg))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("call {quoted_program} {quoted_args}")
+    }
+}
+
+fn quote_windows_cmd_arg(value: &str) -> String {
+    if value.chars().any(|c| {
+        matches!(
+            c,
+            ' ' | '"' | '&' | '(' | ')' | '^' | ';' | '<' | '>' | '|' | ','
+        )
+    }) {
+        format!("\"{}\"", value.replace('"', "\\\""))
+    } else {
+        value.to_string()
+    }
+}
+
 fn run_grok_binary_with_env(
     program: &Path,
     args: &[&str],
     timeout: Duration,
     extra_env: &[(&str, &str)],
 ) -> Result<(String, i32), HelperErrorCode> {
-    let extension = program
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("")
-        .eq_ignore_ascii_case("cmd");
-    if extension {
-        let cmd = system_command_processor()?;
-        let command_line = format!("{} {}", quote_windows_path(program), args.join(" "));
-        run_program_with_env(&cmd, &["/D", "/S", "/C", &command_line], timeout, extra_env)
+    if is_windows_command_script(program) {
+        run_command_script(program, args, timeout, extra_env)
     } else {
         run_program_with_env(program, args, timeout, extra_env)
     }
@@ -641,18 +667,20 @@ fn run_grok_binary(
     args: &[&str],
     timeout: Duration,
 ) -> Result<(String, i32), HelperErrorCode> {
-    let extension = program
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("")
-        .eq_ignore_ascii_case("cmd");
-    if extension {
-        let cmd = system_command_processor()?;
-        let command_line = format!("{} {}", quote_windows_path(program), args.join(" "));
-        run_program(&cmd, &["/D", "/S", "/C", &command_line], timeout)
-    } else {
-        run_program(program, args, timeout)
-    }
+    run_grok_binary_with_env(program, args, timeout, &[])
+}
+
+fn run_command_script(
+    program: &Path,
+    args: &[&str],
+    timeout: Duration,
+    extra_env: &[(&str, &str)],
+) -> Result<(String, i32), HelperErrorCode> {
+    let cmd = system_command_processor()?;
+    let command_line = command_script_line(program, args);
+    let mut command = Command::new(&cmd);
+    command.args(["/D", "/S", "/C"]).raw_arg(&command_line);
+    run_spawned_command(command, timeout, extra_env)
 }
 
 fn run_program(
@@ -670,8 +698,16 @@ fn run_program_with_env(
     extra_env: &[(&str, &str)],
 ) -> Result<(String, i32), HelperErrorCode> {
     let mut command = Command::new(program);
+    command.args(args);
+    run_spawned_command(command, timeout, extra_env)
+}
+
+fn run_spawned_command(
+    mut command: Command,
+    timeout: Duration,
+    extra_env: &[(&str, &str)],
+) -> Result<(String, i32), HelperErrorCode> {
     command
-        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -2641,6 +2677,22 @@ mod tests {
             ANCESTOR_DANGEROUS_ACCESS,
             false
         ));
+    }
+
+    #[test]
+    fn command_script_line_keeps_spaced_npm_shim_callable() {
+        assert_eq!(
+            command_script_line(
+                Path::new(r"C:\Program Files\nodejs\npm.cmd"),
+                &["prefix", "-g"],
+            ),
+            r#"call "C:\Program Files\nodejs\npm.cmd" prefix -g"#
+        );
+        assert!(!command_script_line(
+            Path::new(r"C:\Program Files\nodejs\npm.cmd"),
+            &["i", "-g", "@anthropic-ai/claude-code@2.1.261"],
+        )
+        .contains(r#"\""#));
     }
 
     fn wide(value: &str) -> Vec<u16> {

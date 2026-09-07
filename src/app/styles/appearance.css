@@ -15,11 +15,15 @@ html[data-theme-reveal="active"]::view-transition-image-pair(root) {
   isolation: auto;
 }
 
+/* Keep the snapshot in the viewport's own space. A centered view-transition
+ * origin would shift a circular clip off the theme control. */
 html[data-theme-reveal="active"]::view-transition-group(root),
 html[data-theme-reveal="active"]::view-transition-old(root),
 html[data-theme-reveal="active"]::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
+  transform: none;
+  transform-origin: 0 0;
 }
 
 html[data-theme-reveal="active"]::view-transition-old(root) {

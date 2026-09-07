@@ -51,6 +51,14 @@ Use `import type` for types, meaningful discriminated unions for variants and
 runtime narrowing for dynamic objects. A type assertion is not validation.
 No broad `any`, `ts-ignore` or weakened compiler settings to make migration pass.
 
+Use the concrete DOM type for a mounted host ref, such as
+`useRef<HTMLDivElement>(null)` in `AgentLifecycleActionSlot`. The installed
+React type definitions already make `RefObject<T>.current` nullable; shared
+return-anchor props use `RefObject<HTMLElement>`, not an extra nullable generic
+or a cast from a generic element onto a div. Browser test attributes also need
+an explicit null guard before crossing `page.evaluate`; an assertion that does
+not narrow the type is not a substitute.
+
 ## 4. Validation & Error Matrix
 
 | Condition                                          | Required result                                                                 |

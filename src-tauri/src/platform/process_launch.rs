@@ -331,14 +331,26 @@ pub(crate) fn launch_fyagent_user_helper_as_user(
 /// Opens an HTTP(S) URL through the interactive user's shell.
 ///
 /// On Windows this takes the Explorer COM route and deliberately fails when
-/// Explorer cannot supply the interactive shell. macOS retains the
-/// existing Tauri opener behavior.
+/// Explorer cannot supply the interactive shell. On macOS, validated HTTP(S)
+/// URLs use `open` with a single argv so OAuth query strings stay intact;
+/// directories still use the Tauri opener.
 pub(crate) async fn open_http_url_as_user(app: AppHandle, raw_url: String) -> Result<(), String> {
     let request = InteractiveUserLaunch::http_url(&raw_url)
         .map_err(|error| error.public_code().to_owned())?;
     dispatch_with_platform_launcher(app, request)
         .await
         .map_err(|error| error.public_code().to_owned())
+}
+
+/// Same HTTP open as [`open_http_url_as_user`], for callers that already run
+/// off the UI thread and have no `AppHandle`. macOS and Windows share the
+/// HTTP(S) validator, then the interactive-user launcher: Explorer COM on
+/// Windows, `open` on macOS. There is no `cmd /c start` fallback, because
+/// unquoted `&` in OAuth query strings is a cmd statement separator.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) fn open_http_url_as_user_sync(raw_url: &str) -> Result<(), ProcessLaunchError> {
+    let request = InteractiveUserLaunch::http_url(raw_url)?;
+    dispatch_sync_with_platform_launcher(request)
 }
 
 /// Opens a backend-derived directory through the interactive user's shell.
@@ -468,6 +480,15 @@ fn dispatch_blocking_with_platform_launcher(
 }
 
 #[cfg(target_os = "macos")]
+fn open_http_url_with_macos_open(url: &str) -> Result<(), ProcessLaunchError> {
+    std::process::Command::new("open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|_| ProcessLaunchError::PlatformLaunchFailed)
+}
+
+#[cfg(target_os = "macos")]
 struct TauriOpenerInteractiveUserLauncher {
     app: AppHandle,
 }
@@ -475,10 +496,7 @@ struct TauriOpenerInteractiveUserLauncher {
 #[cfg(target_os = "macos")]
 impl InteractiveUserLauncher for TauriOpenerInteractiveUserLauncher {
     fn open_http_url(&self, url: &str) -> Result<(), ProcessLaunchError> {
-        self.app
-            .opener()
-            .open_url(url, None::<String>)
-            .map_err(|_| ProcessLaunchError::PlatformLaunchFailed)
+        open_http_url_with_macos_open(url)
     }
 
     fn open_directory(&self, directory: &Path) -> Result<(), ProcessLaunchError> {
@@ -510,8 +528,8 @@ struct MacosWorkspaceApplicationLauncher;
 
 #[cfg(target_os = "macos")]
 impl InteractiveUserLauncher for MacosWorkspaceApplicationLauncher {
-    fn open_http_url(&self, _url: &str) -> Result<(), ProcessLaunchError> {
-        Err(ProcessLaunchError::InteractiveUserUnavailable)
+    fn open_http_url(&self, url: &str) -> Result<(), ProcessLaunchError> {
+        open_http_url_with_macos_open(url)
     }
 
     fn open_directory(&self, _directory: &Path) -> Result<(), ProcessLaunchError> {
@@ -830,6 +848,43 @@ mod tests {
     }
 
     #[test]
+    fn https_oauth_query_ampersands_reach_the_launcher() {
+        let launcher = FakeInteractiveUserLauncher::default();
+        let service = ProcessLaunchService::new(launcher.clone());
+        let url = "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_x&redirect_uri=http://localhost:1455/auth/callback&state=s";
+
+        service
+            .open_http_url_as_user(url)
+            .expect("valid HTTPS authorize URL");
+
+        let recorded = launcher.recorded_calls();
+        let RecordedLaunch::HttpUrl(opened) = &recorded[0] else {
+            panic!("expected HTTP URL");
+        };
+        let parsed = url::Url::parse(opened).expect("opened URL");
+        let query: std::collections::HashMap<_, _> = parsed.query_pairs().into_owned().collect();
+        assert_eq!(parsed.path(), "/oauth/authorize");
+        assert_eq!(query.get("response_type").map(String::as_str), Some("code"));
+        assert_eq!(query.get("client_id").map(String::as_str), Some("app_x"));
+        assert_eq!(
+            query.get("redirect_uri").map(String::as_str),
+            Some("http://localhost:1455/auth/callback")
+        );
+        assert_eq!(query.get("state").map(String::as_str), Some("s"));
+    }
+
+    #[test]
+    fn managed_auth_browser_open_uses_shared_http_launch() {
+        let provider = include_str!("../services/managed_auth/providers/openai.rs");
+        let launch = include_str!("process_launch.rs");
+        assert!(provider.contains("open_http_url_as_user_sync"));
+        assert!(launch.contains("open_http_url_with_macos_open"));
+        assert!(!provider.contains(r#"Command::new("cmd")"#));
+        assert!(!provider.contains(r#"Command::new("open")"#));
+        assert!(!provider.contains(r#"args(["/C", "start""#));
+    }
+
+    #[test]
     fn http_shorthand_is_normalized_before_the_fake_launcher_receives_it() {
         let launcher = FakeInteractiveUserLauncher::default();
         let service = ProcessLaunchService::new(launcher.clone());
@@ -1103,9 +1158,26 @@ mod tests {
 
     #[test]
     fn macos_application_open_adapter_uses_nsworkspace_completion_not_the_open_tool() {
-        let source = include_str!("process_launch.rs");
-        assert!(source.contains("openApplicationAtURL_configuration_completionHandler"));
-        assert!(!source.contains("Command::new(\"open\")"));
+        let source = include_str!("process_launch.rs").replace("\r\n", "\n");
+        let production = source
+            .split_once("\n#[cfg(test)]\nmod tests {")
+            .expect("top-level test module boundary")
+            .0;
+        let (before_http, http_and_after) = production
+            .split_once("fn open_http_url_with_macos_open(")
+            .expect("HTTP-only browser launch helper");
+        let (http, after_http) = http_and_after
+            .split_once("#[cfg(target_os = \"macos\")]\nstruct TauriOpenerInteractiveUserLauncher")
+            .expect("browser helper ends before the platform adapter");
+        assert!(http.contains("Command::new(\"open\")"));
+        assert!(http.contains(".arg(url)"));
+        for other_source in [before_http, after_http] {
+            assert!(
+                !other_source.contains("Command::new(\"open\")"),
+                "only the HTTP browser helper may spawn open; application launch uses NSWorkspace"
+            );
+        }
+        assert!(after_http.contains("openApplicationAtURL_configuration_completionHandler"));
         assert!(
             !source.contains(&format!("{}{}", "request", "Authorization")),
             "application-open must not use privileged file-operations authorization"

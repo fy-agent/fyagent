@@ -4,6 +4,8 @@ import {
   parseMotionDuration,
   fySpatialEase,
   fySpatialEasing,
+  fyThemeRevealEase,
+  fyThemeRevealEasing,
 } from "@/shared/ui/motion";
 import fs from "node:fs";
 
@@ -58,4 +60,13 @@ it("keeps CSS and native/Motion spatial curves aligned", () => {
     .map(Number);
   expect(curve).toEqual(fySpatialEase);
   expect(fySpatialEasing).toBe("cubic-bezier(0.32,0.72,0,1)");
+});
+it("keeps the shared theme-reveal curve aligned with its CSS token", () => {
+  const css = fs.readFileSync("src/app/styles/tokens.css", "utf8");
+  const curve = css
+    .match(/--fy-motion-theme-ease:\s*cubic-bezier\(([^)]+)\)/)?.[1]
+    .split(",")
+    .map(Number);
+  expect(curve).toEqual(fyThemeRevealEase);
+  expect(fyThemeRevealEasing).toBe("cubic-bezier(0.25,0.08,0.25,1)");
 });

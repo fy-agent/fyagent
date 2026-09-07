@@ -38,6 +38,8 @@ use crate::services::external_agents::AgentCatalogId;
 const MAX_TRAE_PRODUCT_JSON_BYTES: usize = 256 * 1024;
 const MAX_WINDOWS_IDENTITY_WINDOW: usize = 512 * 1024;
 const MAX_WINDOWS_IDENTITY_FILE: u64 = 512 * 1024 * 1024;
+/// Official WorkBuddy macOS identity from the signed 5.5.3 package.
+const WORKBUDDY_MACOS_BUNDLE_ID: &str = "com.tencent.workbuddy.mac";
 
 pub(super) struct DesktopProduct {
     pub(super) agent_id: AgentCatalogId,
@@ -49,7 +51,7 @@ pub(super) struct DesktopProduct {
 const DESKTOP_PRODUCTS: &[DesktopProduct] = &[
     DesktopProduct {
         agent_id: AgentCatalogId::WorkBuddy,
-        macos_bundle_id: "com.workbuddy.workbuddy",
+        macos_bundle_id: WORKBUDDY_MACOS_BUNDLE_ID,
         windows_product_names: &["WorkBuddy"],
         windows_relative_exes: &["WorkBuddy/WorkBuddy.exe"],
     },
@@ -1102,10 +1104,16 @@ mod tests {
         write_fake_macos_app(
             &apps,
             "NotTheProductName",
-            "com.workbuddy.workbuddy",
-            "5.3.14",
+            WORKBUDDY_MACOS_BUNDLE_ID,
+            "5.5.3",
         );
         write_fake_macos_app(&apps, "WorkBuddy", "com.evil.workbuddy", "9.9.9");
+        write_fake_macos_app(
+            &apps,
+            "WorkBuddy Legacy",
+            "com.workbuddy.workbuddy",
+            "1.0.0",
+        );
         write_fake_macos_app(&apps, "QoderWork CN", "com.qoder.work.cn", "0.9.12");
         write_fake_macos_app(&apps, "TRAE SOLO CN", "cn.trae.solo.app", "0.1.51");
 
@@ -1114,7 +1122,7 @@ mod tests {
             std::slice::from_ref(&apps),
         );
         assert_eq!(workbuddy.len(), 1);
-        assert_eq!(workbuddy[0].local_version.as_deref(), Some("5.3.14"));
+        assert_eq!(workbuddy[0].local_version.as_deref(), Some("5.5.3"));
 
         let qoder = discover_macos_installations(
             product(AgentCatalogId::QoderWork),

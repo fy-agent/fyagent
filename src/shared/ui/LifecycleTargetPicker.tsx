@@ -18,6 +18,10 @@ function scopeCopy(scope: AgentInstallationTarget["scope"]): string {
   }
 }
 
+function isRootApplications(target: AgentInstallationTarget): boolean {
+  return target.label.startsWith("/Applications");
+}
+
 export function LifecycleTargetPicker({
   id,
   action,
@@ -98,7 +102,12 @@ export function LifecycleTargetPicker({
                 onChange={() => onChange(target)}
               />
               <span className="fy-agent-target-option-copy">
-                <strong>{target.label}</strong>
+                <strong>
+                  {target.label}
+                  {isRootApplications(target) ? (
+                    <span className="fy-agent-target-recommend">推荐</span>
+                  ) : null}
+                </strong>
                 <small>{scopeCopy(target.scope)}</small>
               </span>
             </label>

@@ -11,7 +11,10 @@ pub(crate) use observation::{
     auth_matches_account, live_chatgpt_account_id, observe_managed_auth,
     CodexManagedAuthObservation,
 };
-pub(crate) use project::{materialize_from_bundle, project_codex_official_account};
+pub(crate) use project::{
+    live_codex_requires_restart_for_app, materialize_from_bundle, project_codex_official_account,
+    restore_unofficial_codex_selector,
+};
 pub(crate) use swap::{auth_path_in, capture_auth_preimage, restore_auth_recovery};
 
 use crate::services::managed_auth::{
@@ -122,6 +125,9 @@ pub(crate) fn connection_summary(
     } else if account_connectable(ready_saved) && store_ready {
         allowed_actions.push(ManagedAuthConnectionAction::ConnectAccount);
     }
+    if !live_matches_bound && observation.selector_commented && store_ready {
+        allowed_actions.push(ManagedAuthConnectionAction::Disconnect);
+    }
     if pending_restart {
         allowed_actions.push(ManagedAuthConnectionAction::Restart);
     }
@@ -205,6 +211,32 @@ mod tests {
         assert!(!summary
             .allowed_actions
             .contains(&ManagedAuthConnectionAction::SwitchToOfficial));
+        assert!(!summary
+            .allowed_actions
+            .contains(&ManagedAuthConnectionAction::Disconnect));
+    }
+
+    #[test]
+    fn commented_selector_while_disconnected_offers_disconnect() {
+        let dir = tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("config.toml"),
+            "#model_provider = \"OpenAI\"\n[model_providers.OpenAI]\nbase_url = \"https://example.test/v1\"\n",
+        )
+        .unwrap();
+        let observed = observe_codex_home(dir.path());
+        assert!(observed.selector_commented);
+        let summary = connection_summary(&observed, None, None, &[], now_timestamp());
+        assert_eq!(
+            summary.auth_status,
+            ManagedAuthConnectionState::Disconnected
+        );
+        assert!(summary
+            .allowed_actions
+            .contains(&ManagedAuthConnectionAction::Disconnect));
+        assert!(!summary
+            .allowed_actions
+            .contains(&ManagedAuthConnectionAction::ConnectAccount));
     }
 
     #[test]

@@ -656,3 +656,70 @@ PR181首轮CI因既有双父merge提交的自定义标题失败；复用现有�
 ### Next Steps
 
 - Complete final whole-project checks and hosted exact-head PR plus merge-group CI before enabling normal auto-merge.
+
+
+## Session 83: Review September 6-7 specs and restore integration checks
+<!-- trellis-session: v=2 fp=eb8bf687d6915f1a -->
+
+**Date**: 2026-09-07
+**Task**: Review September 6-7 specs and restore integration checks
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Reviewed 64 non-merge commits using UTC+8 committer dates and validated all 82 current SPEC navigation entries. Centralized Codex source-selection ownership, corrected auth/config/no-op/restart and best-effort persistence/rollback claims, and reduced guide duplication. Restored 8 reviewed platform digests, concrete DOM ref and nullable browser types, stable auth-dialog selection with single-use preview regression, shared radius token, and formatting. Local frontend: 179 files, 1579 passing and 1 existing skip; desktop mock: 7 passing. Contracts, lint, typecheck, Rust check and Clippy passed. Full native tests are still running; exact-head PR and merge-group checks must pass before merge. No Trellis task was created, as requested.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ee5745ca` | docs(spec): reconcile Codex source and runtime evidence contracts |
+| `77e50e83` | fix(ci): restore renderer checks and reviewed platform identities |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 84: Finish dialog return regression before main integration
+<!-- trellis-session: v=2 fp=f79abeff791da1b0 -->
+
+**Date**: 2026-09-07
+**Task**: Finish dialog return regression before main integration
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Continued PR 182 after reading back actual repository state. Reproduced the detached-menu/visible-return-target immediate-exit mismatch with a failing test; resolved the return anchor before all presentation branches. Retained hidden/removed rejection and recorded transient browser exit evidence in-page without changing animation timing, retries or CI gates. Updated dialog lifecycle SPEC. Passed 30 focused units, typecheck, lint, formatting, and 10 Chromium/WebKit repeated return tests. Whole-project and exact-head hosted merge checks remain to be completed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `61986e6921c18eaa9f952857ce10344dd007afa5` | fix(ui): resolve dialog return anchors before immediate settlement |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 85: Verify final contracts and clarify Windows batch evidence
+<!-- trellis-session: v=2 fp=7ec193484419cea7 -->
+
+**Date**: 2026-09-07
+**Task**: Verify final contracts and clarify Windows batch evidence
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Completed full local validation for PR 182: mise run check passed (1582 frontend units, 3511 Rust tests); production build/boot and all 526 browser regressions passed; six serial navigation/presentation profiling checks passed at 1x/4x CPU cost. Retained 4x long-task observations in the PR evidence. Official Rust documentation showed the batch-launch rationale was overstated, so clarified explicit cmd dispatch as project policy and raw_arg as non-escaping rather than claiming std::process::Command cannot start batch files. Runtime, tests and build inputs are unchanged from 79790c39; reran check:contracts successfully. No separate Trellis task.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6efaff0b4aab8659f52e570654fa5c1882657cbb` | docs(spec): clarify explicit Windows batch launch policy |
+
+### Status
+
+[OK] **Completed**
