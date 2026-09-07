@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 82
+- **Total Sessions**: 83
 - **Last Active**: 2026-09-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~658 | Active |
+| `journal-2.md` | ~681 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 83 | 2026-09-07 | Review September 6-7 specs and restore integration checks | `ee5745ca`, `77e50e83` | `dev/laiyongjie` |
 | 82 | 2026-09-07 | Keep the scrollbar repair at the original overflow boundary | `f8ee21fb33650f9692b7f46786ff385ee749e944` | `dev/laiyongjie` |
 | 81 | 2026-09-07 | Repair PR 181 CI discovery and cross-host browser contracts | `ddcf264a07437df787a3b08f3ea23db74d4f1737` | `dev/laiyongjie` |
 | 80 | 2026-09-07 | Validate integration subjects using real Git merge parents | `3a350fa299138b44c63468fc449f8acc930fd72f` | `dev/laiyongjie` |

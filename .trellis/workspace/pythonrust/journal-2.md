@@ -656,3 +656,26 @@ PR181首轮CI因既有双父merge提交的自定义标题失败；复用现有�
 ### Next Steps
 
 - Complete final whole-project checks and hosted exact-head PR plus merge-group CI before enabling normal auto-merge.
+
+
+## Session 83: Review September 6-7 specs and restore integration checks
+<!-- trellis-session: v=2 fp=eb8bf687d6915f1a -->
+
+**Date**: 2026-09-07
+**Task**: Review September 6-7 specs and restore integration checks
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Reviewed 64 non-merge commits using UTC+8 committer dates and validated all 82 current SPEC navigation entries. Centralized Codex source-selection ownership, corrected auth/config/no-op/restart and best-effort persistence/rollback claims, and reduced guide duplication. Restored 8 reviewed platform digests, concrete DOM ref and nullable browser types, stable auth-dialog selection with single-use preview regression, shared radius token, and formatting. Local frontend: 179 files, 1579 passing and 1 existing skip; desktop mock: 7 passing. Contracts, lint, typecheck, Rust check and Clippy passed. Full native tests are still running; exact-head PR and merge-group checks must pass before merge. No Trellis task was created, as requested.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ee5745ca` | docs(spec): reconcile Codex source and runtime evidence contracts |
+| `77e50e83` | fix(ci): restore renderer checks and reviewed platform identities |
+
+### Status
+
+[OK] **Completed**
