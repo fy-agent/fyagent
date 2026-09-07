@@ -581,3 +581,42 @@ PR181首轮CI因既有双父merge提交的自定义标题失败；复用现有�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 81: Repair PR 181 CI discovery and cross-host browser contracts
+<!-- trellis-session: v=2 fp=14f46eec5e70436d -->
+
+**Date**: 2026-09-07
+**Task**: Repair PR 181 CI discovery and cross-host browser contracts
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+核对已结束CI全部诊断，修复Vitest子项目漏传排除规则、重复滚动条槽、短动效采样及Windows未使用导入；不降低测试阈值。完整本机检查与526项浏览器回归通过，托管PR/合并队列验证待完成。
+
+### Main Changes
+
+- Reuse the single Vitest configuration with a distinct real-mise project; prove exact local/CI collection instead of trusting CLI excludes.
+- One content scrollbar owner preserves the existing pane pixel constraints; native/controlled-clock functional probes retain original motion, geometry and cleanup assertions.
+- Update owning SPECs and the reviewed native source seal; preserve permissions, dependencies and merge protection.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ddcf264a07437df787a3b08f3ea23db74d4f1737` | fix(ci): isolate host tests and correct cross-host browser validation |
+
+### Testing
+
+- [OK] Full mise run check: 177 unit files, 1570 passed and one existing skip; Rust 3495 passed, zero failed, 6 existing ignored.
+- [OK] Both production boot cases and all 526 functional browser cases passed; focused Chromium/WebKit subset 58 passed. The forced 15px scrollbar reproduces the original 205px rail failure.
+- [OK] 81 specifications, 416 local links: no broken paths, unreachable documents or unresolved anchor candidates.
+- [OK] Initial real-time production profile: 34 passed, one failed (resize 1x frame p95 33.5ms versus 33.4ms). Same-code repeat measured 33.4ms before process interruption; preserve both records. Final serial repetition and hosted checks are still pending.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Record the completed performance repetition in PR 181, verify exact-head hosted CI, then use the normal merge queue and read back main.
