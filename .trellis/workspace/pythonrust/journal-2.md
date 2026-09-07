@@ -679,3 +679,25 @@ Reviewed 64 non-merge commits using UTC+8 committer dates and validated all 82 c
 ### Status
 
 [OK] **Completed**
+
+
+## Session 84: Finish dialog return regression before main integration
+<!-- trellis-session: v=2 fp=f79abeff791da1b0 -->
+
+**Date**: 2026-09-07
+**Task**: Finish dialog return regression before main integration
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Continued PR 182 after reading back actual repository state. Reproduced the detached-menu/visible-return-target immediate-exit mismatch with a failing test; resolved the return anchor before all presentation branches. Retained hidden/removed rejection and recorded transient browser exit evidence in-page without changing animation timing, retries or CI gates. Updated dialog lifecycle SPEC. Passed 30 focused units, typecheck, lint, formatting, and 10 Chromium/WebKit repeated return tests. Whole-project and exact-head hosted merge checks remain to be completed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `61986e6921c18eaa9f952857ce10344dd007afa5` | fix(ui): resolve dialog return anchors before immediate settlement |
+
+### Status
+
+[OK] **Completed**

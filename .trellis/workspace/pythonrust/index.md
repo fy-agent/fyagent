@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 83
+- **Total Sessions**: 84
 - **Last Active**: 2026-09-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~681 | Active |
+| `journal-2.md` | ~703 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 84 | 2026-09-07 | Finish dialog return regression before main integration | `61986e6921c18eaa9f952857ce10344dd007afa5` | `dev/laiyongjie` |
 | 83 | 2026-09-07 | Review September 6-7 specs and restore integration checks | `ee5745ca`, `77e50e83` | `dev/laiyongjie` |
 | 82 | 2026-09-07 | Keep the scrollbar repair at the original overflow boundary | `f8ee21fb33650f9692b7f46786ff385ee749e944` | `dev/laiyongjie` |
 | 81 | 2026-09-07 | Repair PR 181 CI discovery and cross-host browser contracts | `ddcf264a07437df787a3b08f3ea23db74d4f1737` | `dev/laiyongjie` |
