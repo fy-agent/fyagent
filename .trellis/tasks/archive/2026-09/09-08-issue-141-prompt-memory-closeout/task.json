@@ -16,7 +16,7 @@
   "base_branch": "main",
   "worktree_path": null,
   "commit": "c6303266b41e96e16322b065a379e097a0835ffd",
-  "pr_url": null,
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/184",
   "subtasks": [],
   "children": [],
   "parent": null,
