@@ -15,7 +15,7 @@
   "branch": "codex/issue-141-prompt-memory-closeout",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
+  "commit": "c6303266b41e96e16322b065a379e097a0835ffd",
   "pr_url": null,
   "subtasks": [],
   "children": [],
@@ -24,6 +24,6 @@
     "src-tauri/src/services/prompt.rs",
     "src-tauri/src/commands/workspace.rs"
   ],
-  "notes": "",
+  "notes": "Two scoped P1 defects fixed and verified in isolated macOS debug app. Full gate passed. Issue 141 remains open; Windows native acceptance and other findings are outside this closeout.",
   "meta": {}
 }
