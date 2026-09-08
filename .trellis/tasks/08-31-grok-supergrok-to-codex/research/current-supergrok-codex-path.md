@@ -169,7 +169,7 @@ Contract + fixture can prove admission, reserved-id, no-secret-in-plan, and sing
 
 - `.trellis/spec/backend/change-plan-executor.md` — closed adapters; no renderer-supplied write target; plans stay credential-free.
 - `.trellis/spec/frontend/v2-agent-models.md` — Codex Models = Quick Setup + Change Plan; Agent Codex auth stays Auth Center.
-- Parent research: `.trellis/tasks/08-31-grok-first-class-iteration/research/github-decision-106.md`, `github-decision-42.md`.
+- Parent research: `.trellis/tasks/archive/2026-09/08-31-grok-first-class-iteration/research/github-decision-106.md`, `github-decision-42.md`.
 
 ## Confirmed facts
 

@@ -14,7 +14,7 @@
 - 续作分支：`codex/grok-auth-reuse-completion`。原分支 `feat/grok-first-class-iteration` / 原 PR #172 保持 `b8b15dbaf141f7c7fbd7816914fda59a07a2208a`。
 - 整合主线 0.4.4：`2f264d2f89326601a33f610c72a9f0143306d066`。13 个主线冲突按当前 `src/` 入口与 Managed Auth 合同解决；未恢复退役 renderer。
 - 原提交标题不符合当前 Conventional Commit CI。本续作仅规范化私有新分支上的来源标题；来源副本 `55cea0b506139892720f1ce3f82a73622a6c4d7f` 与原提交具有相同 tree `a26537cac0c97389fafc34d27c8a26c338300fef`、相同父提交 `790922210d21144d63982d8bd6e873bf4c59de1a` 和相同作者元数据，保留 Original-Commit 来源。原远端分支不改写。
-- 代码与任务文档先提交，再归档当前父任务和记录本轮 journal。三个旧子计划保留 planning，更新归档链接，不把四目标/双机 HIL 标为已完成。
+- 代码与任务文档先提交，再归档当前父任务和记录本轮 journal。三个旧子计划保留原提交的 in_progress 状态，更新归档链接，不把四目标/双机 HIL 标为已完成。
 - 不合并 PR、不发布版本、不覆盖正式安装，不更改真实用户的 Agent 配置或锁文件。
 
 ## 环境与执行方式

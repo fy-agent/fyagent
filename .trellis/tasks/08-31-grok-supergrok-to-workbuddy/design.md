@@ -2,7 +2,7 @@
 
 # Design — SuperGrok to WorkBuddy
 
-先读父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md)。事实见 `research/current-workbuddy-save-path.md`。合同见 `.trellis/spec/backend/workbuddy-configuration.md`。用例见 [use-cases.md](./use-cases.md)。
+先读父任务 [summary.md](../archive/2026-09/08-31-grok-first-class-iteration/summary.md)。事实见 `research/current-workbuddy-save-path.md`。合同见 `.trellis/spec/backend/workbuddy-configuration.md`。用例见 [use-cases.md](./use-cases.md)。
 
 本子任务不管登录路标，不管 Claude / Desktop / Codex 的 Provider 绑定。
 

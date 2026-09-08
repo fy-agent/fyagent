@@ -3,7 +3,7 @@
 - **Query**: Where V2 Agent / Models / Auth start Grok login, logout, and xAI device-code; post-#167 copy/states; trichotomy in presets/seeds/quota/i18n; official Grok CLI status + `~/.grok/auth.json` rule; #141 B7 untouched-validation if Grok Build drafts are touched.
 - **Scope**: mixed (internal code + current specs + parent GitHub notes)
 - **Date**: 2026-08-31
-- **Parent**: `.trellis/tasks/08-31-grok-first-class-iteration`
+- **Parent**: `.trellis/tasks/archive/2026-09/08-31-grok-first-class-iteration`
 - **Related**: Discussion #106, Issue #43, closed #107, UAT #141 B7, PR #167 (Agent auth state machine)
 
 ## Findings
@@ -148,7 +148,7 @@ Claude contrast: bounded `claude auth status` JSON with allowlisted fields (`aut
 
 - `.trellis/spec/backend/external-agent-p0.md:508-509`: Grok Build has no reviewed structured status, so official login/logout ends in `handoff_complete`, not `verified`.
 - Same spec `:518-519`: “Never read vendor token files, Keychain, browser cookies, or credential-store entries to infer state.”
-- Parent decision notes: `#43` / `#106` — do not read `~/.grok/auth.json` to fake logged-in (`.trellis/tasks/08-31-grok-first-class-iteration/research/github-decision-43.md:7-8`, `github-decision-106.md:7`).
+- Parent decision notes: `#43` / `#106` — do not read `~/.grok/auth.json` to fake logged-in (`.trellis/tasks/archive/2026-09/08-31-grok-first-class-iteration/research/github-decision-43.md:7-8`, `github-decision-106.md:7`).
 - Product copy already tells the user FyAgent will not write that file (`providerForm.grokOfficialHint`).
 - Unavailable-observation copy: will not read vendor credential files (`AgentAuthStatusPanel.tsx:67-68`).
 
@@ -160,7 +160,7 @@ Claude contrast: bounded `claude auth status` JSON with allowlisted fields (`aut
 
 B7 (UAT #141): empty drafts must not show submit/validation errors on route mount; fetch / probe / save own validation; corrected paths clear it.
 
-Classification on 2026-08-30: **fixed (automated)** for the shared Models page (`.trellis/tasks/archive/2026-08/08-29-frontend-reliability-architecture/research/uat-current-main-mapping.md:28`). Parent iteration note: if Grok Build drafts are touched, re-verify B7 on latest main and mark `fixed` / `still applies` / `not touched` (`.trellis/tasks/08-31-grok-first-class-iteration/research/github-decision-141.md`).
+Classification on 2026-08-30: **fixed (automated)** for the shared Models page (`.trellis/tasks/archive/2026-08/08-29-frontend-reliability-architecture/research/uat-current-main-mapping.md:28`). Parent iteration note: if Grok Build drafts are touched, re-verify B7 on latest main and mark `fixed` / `still applies` / `not touched` (`.trellis/tasks/archive/2026-09/08-31-grok-first-class-iteration/research/github-decision-141.md`).
 
 Current Grok Build draft surface is the **shared** `ProviderPanel` (`Page.tsx:932+`), not a Grok-only draft widget.
 

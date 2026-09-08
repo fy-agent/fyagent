@@ -2,7 +2,7 @@
 
 # Place SuperGrok into Claude Code, Claude Desktop, and Codex
 
-先读父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md)。用例：[use-cases.md](./use-cases.md)。本子任务不管三条登录路标，也不管 WorkBuddy。
+先读父任务 [summary.md](../archive/2026-09/08-31-grok-first-class-iteration/summary.md)。用例：[use-cases.md](./use-cases.md)。本子任务不管三条登录路标，也不管 WorkBuddy。
 
 目录名仍是 `08-31-grok-supergrok-to-codex`，名称是历史留下的，范围以标题和本文为准。
 
