@@ -17,7 +17,7 @@
 
 ## 恢复与隔离
 
-- Git：使用独立修复工作树，分支 codex/issue-141-prompt-memory-closeout。用户交接树保留。以独立修复提交为回退单元；需要回退时 revert 对应提交，不 reset 共享目录。
+- Git：使用独立修复工作树，分支 codex/issue-141-prompt-memory-closeout。用户交接树保留。以独立修复提交为回退单元；回退差异取自对应提交，不 reset 共享目录；最终经过只读预检的五文件回退范围见 research/acceptance.md，保留后续归档资料。
 - 运行：原 /Applications/FyAgent.app 保持。测试构建通过 mise run build:debug 从本分支产出，以独立 FYAGENT_TEST_HOME 启动；启动前检查全局路径覆盖不会将数据库指向真实资料，启动后核对进程与打开数据库。
 - 资料：测试输入全为无敏感哨兵值。先保存基线摘要，验证后读取原文件/数据库；只恢复本轮测试 fixture，不自动覆盖用户历史内容。正常用户文件仅做摘要比较。
 - 出错：停止相关测试实例，保留失败产物和恢复副本；修复后重建再验。测试结束退出独立实例，恢复正常应用。

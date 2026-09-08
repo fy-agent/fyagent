@@ -38,4 +38,4 @@
 
 完整日志、合成资料快照、进程与构建回执仅保存在本机外部证据包 `fyagent-issue141-fix`（2026-09-08），不把用户路径、原始日志或截图提交到仓库。主要回执：`full-prearchive-managed-python.result.json`、`native-build-retry.result.json`、`native-app-artifact.json`、`native-isolation.json`、`native-verification.json`、`native-restoration.json`。
 
-代码回退单元为上述修复提交，合入后需要恢复时 revert 该提交；证据与任务归档提交独立保留。无数据库迁移，不需要数据降级操作。运行回退已实际完成：退出测试构建，重新打开原安装版。测试资料不混入交接目录。
+修复差异取自 `c6303266`。后续任务资料已经归档，最终回退方式收敛为：仅对两个 Rust 源文件、现行 Prompt/Memory 合同、开发文档索引和新增维护说明这五个文件生成该提交的反向补丁，保留归档证据。已经在交付分支用 `git apply --reverse --check` 只检查，退出码 0，未实际回滚。执行回退时应在新分支应用该范围补丁、重跑检查并提交；无数据库迁移，不需要数据降级。完整五文件清单与反向检查回执存于外部 `rollback-dry-run.json`，补丁存于 `scoped-fix.patch`。运行回退已实际完成：退出测试构建，重新打开原安装版。测试资料不混入交接目录。
