@@ -2,7 +2,7 @@ use super::*;
 use std::str::FromStr;
 
 pub(super) fn is_lifecycle_writable(tool: &str) -> bool {
-    tool != "codex"
+    tool == "grok"
 }
 
 pub(super) fn normalize_requested_tools(tools: &[String]) -> Vec<&'static str> {
@@ -14,10 +14,12 @@ pub(super) fn normalize_requested_tools(tools: &[String]) -> Vec<&'static str> {
         .collect()
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ToolLifecycleAction {
     Install,
     Update,
+    InstallOfficialNpm,
+    InstallNative,
 }
 
 impl FromStr for ToolLifecycleAction {
@@ -27,11 +29,14 @@ impl FromStr for ToolLifecycleAction {
         match value {
             "install" => Ok(Self::Install),
             "update" => Ok(Self::Update),
+            "install_official_npm" => Ok(Self::InstallOfficialNpm),
+            "install_native" => Ok(Self::InstallNative),
             _ => Err(format!("Unsupported tool action: {value}")),
         }
     }
 }
 
+#[cfg(any(test, target_os = "windows"))]
 pub(super) fn build_tool_lifecycle_command(
     tools: &[&str],
     action: ToolLifecycleAction,
@@ -70,6 +75,7 @@ pub(super) fn build_tool_lifecycle_command(
     }))
 }
 
+#[cfg(any(test, target_os = "windows"))]
 pub(super) fn tool_display_name(tool: &str) -> &'static str {
     match tool {
         "claude" => "Claude Code",
@@ -83,66 +89,11 @@ pub(super) fn tool_display_name(tool: &str) -> &'static str {
     }
 }
 
-#[cfg(target_os = "macos")]
-pub(super) const CLAUDE_INSTALL_UNIX: &str =
-    "bash -c 'tmp=$(mktemp) && curl -fsSL https://claude.ai/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
-#[cfg(target_os = "macos")]
-pub(super) const OPENCODE_INSTALL_UNIX: &str =
-    "bash -c 'tmp=$(mktemp) && curl -fsSL https://opencode.ai/install -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
-#[cfg(target_os = "macos")]
 pub(super) const GROK_INSTALL_UNIX: &str =
     "bash -c 'tmp=$(mktemp) && curl -fsSL https://x.ai/cli/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
-pub(super) const HERMES_INSTALL_UNIX: &str =
-    "bash -c 'tmp=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
-const HERMES_UPDATE_UNIX: &str =
-    "hermes update || bash -c 'tmp=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
 
-#[cfg(target_os = "windows")]
-const HERMES_INSTALL_WINDOWS_SCRIPT: &str =
-    "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex";
-#[cfg(target_os = "windows")]
-const GROK_INSTALL_WINDOWS_SCRIPT: &str = "irm https://x.ai/cli/install.ps1 | iex";
-#[cfg(target_os = "windows")]
-const CLAUDE_INSTALL_WINDOWS_SCRIPT: &str = "irm https://claude.ai/install.ps1 | iex";
-
-#[cfg(target_os = "windows")]
-fn powershell_encoded_command(script: &str) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
-
-    let mut bytes = Vec::with_capacity(script.len() * 2);
-    for unit in script.encode_utf16() {
-        bytes.extend_from_slice(&unit.to_le_bytes());
-    }
-    STANDARD.encode(bytes)
-}
-
-#[cfg(target_os = "windows")]
-fn hermes_install_windows_command() -> String {
-    format!(
-        "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
-        powershell_encoded_command(HERMES_INSTALL_WINDOWS_SCRIPT)
-    )
-}
-
-#[cfg(target_os = "windows")]
 pub(super) fn grok_install_windows_command() -> String {
-    format!(
-        "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
-        powershell_encoded_command(GROK_INSTALL_WINDOWS_SCRIPT)
-    )
-}
-
-#[cfg(target_os = "windows")]
-pub(super) fn claude_install_windows_command() -> String {
-    format!(
-        "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
-        powershell_encoded_command(CLAUDE_INSTALL_WINDOWS_SCRIPT)
-    )
-}
-
-#[cfg(target_os = "windows")]
-fn hermes_update_windows_command() -> String {
-    format!("hermes update || {}", hermes_install_windows_command())
+    fyagent_user_helper::grok::grok_native_windows_powershell_command()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -153,26 +104,20 @@ pub(super) enum LifecycleCommandShell {
     WindowsBatch,
 }
 
-pub(super) fn npm_install_command_for(tool: &str) -> Option<&'static str> {
+pub(super) fn npm_install_command_for(tool: &str) -> Option<String> {
     if !is_lifecycle_writable(tool) {
         return None;
     }
 
     match tool {
-        "claude" => Some("npm i -g @anthropic-ai/claude-code@latest"),
-        "gemini" => Some("npm i -g @google/gemini-cli@latest"),
-        "grok" => Some("npm i -g @xai-official/grok@latest"),
-        "opencode" => Some("npm i -g opencode-ai@latest"),
-        "openclaw" => Some("npm i -g openclaw@latest"),
+        "grok" => super::grok_npm::default_install_command(),
         _ => None,
     }
 }
 
 pub(super) fn official_update_args(tool: &str) -> Option<&'static str> {
     match tool {
-        "claude" | "grok" | "hermes" => Some("update"),
-        "openclaw" => Some("update --yes"),
-        "opencode" => Some("upgrade"),
+        "grok" => Some("update"),
         _ => None,
     }
 }
@@ -204,52 +149,23 @@ pub(super) fn tool_action_shell_command_for_shell(
         return None;
     }
 
-    #[cfg(target_os = "windows")]
-    if matches!(tool, "grok" | "claude")
-        && matches!(action, ToolLifecycleAction::Install)
-        && matches!(shell, LifecycleCommandShell::WindowsBatch)
-    {
-        let native = if tool == "claude" {
-            claude_install_windows_command()
-        } else {
-            grok_install_windows_command()
-        };
-        return Some(chain_update_commands(
-            native,
-            npm_install_command_for(tool)?.to_string(),
-            shell,
-        ));
-    }
-
-    if tool == "hermes" {
-        return Some(
-            match (action, shell) {
-                (ToolLifecycleAction::Install, LifecycleCommandShell::Posix) => HERMES_INSTALL_UNIX,
-                (ToolLifecycleAction::Update, LifecycleCommandShell::Posix) => HERMES_UPDATE_UNIX,
-                #[cfg(target_os = "windows")]
-                (ToolLifecycleAction::Install, LifecycleCommandShell::WindowsBatch) => {
-                    return Some(hermes_install_windows_command());
-                }
-                #[cfg(target_os = "windows")]
-                (ToolLifecycleAction::Update, LifecycleCommandShell::WindowsBatch) => {
-                    return Some(hermes_update_windows_command());
-                }
-                #[cfg(target_os = "macos")]
-                (_, LifecycleCommandShell::WindowsBatch) => return None,
-            }
-            .to_string(),
-        );
+    if tool == "grok" && matches!(action, ToolLifecycleAction::InstallNative) {
+        return Some(match shell {
+            LifecycleCommandShell::Posix => GROK_INSTALL_UNIX.to_string(),
+            LifecycleCommandShell::WindowsBatch => grok_install_windows_command(),
+        });
     }
 
     let install = npm_install_command_for(tool)?;
     match action {
-        ToolLifecycleAction::Install => Some(install.to_string()),
+        ToolLifecycleAction::Install | ToolLifecycleAction::InstallOfficialNpm => Some(install),
+        ToolLifecycleAction::InstallNative => None,
         ToolLifecycleAction::Update => match prefers_official_update(tool, shell)
             .then(|| bare_official_update_command(tool))
             .flatten()
         {
-            Some(update) => Some(chain_update_commands(update, install.to_string(), shell)),
-            None => Some(install.to_string()),
+            Some(update) => Some(chain_update_commands(update, install, shell)),
+            None => Some(install),
         },
     }
 }
@@ -263,6 +179,16 @@ pub(super) fn tool_action_shell_command(tool: &str, action: ToolLifecycleAction)
     tool_action_shell_command_for_shell(tool, action, shell)
 }
 
+#[cfg(any(test, target_os = "windows"))]
+fn grok_official_npm_command(tool: &str) -> Result<String, String> {
+    if tool != "grok" {
+        return Err("install_official_npm is only valid for Grok Build".to_string());
+    }
+    npm_install_command_for("grok")
+        .ok_or_else(|| "Official npm install is unavailable for Grok Build".to_string())
+}
+
+#[cfg(any(test, target_os = "windows"))]
 fn build_tool_action_line(tool: &str, action: ToolLifecycleAction) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
@@ -275,6 +201,8 @@ fn build_tool_action_line(tool: &str, action: ToolLifecycleAction) -> Result<Str
             ToolLifecycleAction::Install => {
                 static_fallback_command_for(tool, ToolLifecycleAction::Install)
             }
+            ToolLifecycleAction::InstallOfficialNpm => grok_official_npm_command(tool)?,
+            ToolLifecycleAction::InstallNative => grok_install_windows_command(),
         };
         if command.is_empty() {
             return Err(format!("Unsupported tool action target: {tool}"));
@@ -290,7 +218,9 @@ fn build_tool_action_line(tool: &str, action: ToolLifecycleAction) -> Result<Str
                 installs_anchored_command(tool, &installs)
                     .unwrap_or_else(|| static_fallback_command(tool))
             }
-            ToolLifecycleAction::Install => install_command_for(tool),
+            ToolLifecycleAction::Install => npm_install_command_for(tool).unwrap_or_default(),
+            ToolLifecycleAction::InstallOfficialNpm => grok_official_npm_command(tool)?,
+            ToolLifecycleAction::InstallNative => GROK_INSTALL_UNIX.to_string(),
         };
         if command.is_empty() {
             return Err(format!("Unsupported tool action target: {tool}"));
@@ -315,96 +245,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn grok_windows_install_prefers_powershell_with_npm_fallback() {
+    fn grok_windows_default_install_uses_npm_plan_not_powershell() {
         let install = static_fallback_command_for("grok", ToolLifecycleAction::Install);
-        let native = grok_install_windows_command();
-        assert!(
-            install.starts_with(&native),
-            "native installer first: {install}"
-        );
-        assert!(
-            install.ends_with("|| call npm i -g @xai-official/grok@latest"),
-            "npm fallback should remain available: {install}"
-        );
-        let expected_encoded = powershell_encoded_command(GROK_INSTALL_WINDOWS_SCRIPT);
+        assert!(install.contains("@xai-official/grok@"));
+        assert!(install.contains("--registry="));
+        assert!(!install.contains("@latest"));
+        assert!(!install.contains("powershell"));
+    }
+
+    #[test]
+    fn grok_windows_explicit_native_install_uses_official_powershell() {
+        let native = static_fallback_command_for("grok", ToolLifecycleAction::InstallNative);
+        assert_eq!(native, grok_install_windows_command());
+        assert!(!native.contains("npm"));
         assert_eq!(
-            native
-                .split_once("-EncodedCommand ")
-                .map(|(_, encoded)| encoded),
-            Some(expected_encoded.as_str())
+            native,
+            fyagent_user_helper::grok::grok_native_windows_powershell_command()
         );
     }
 
     #[test]
-    fn claude_windows_install_prefers_powershell_with_npm_fallback() {
-        let install = static_fallback_command_for("claude", ToolLifecycleAction::Install);
-        let native = claude_install_windows_command();
-        assert!(
-            install.starts_with(&native),
-            "native installer first: {install}"
-        );
-        assert!(
-            install.ends_with("|| call npm i -g @anthropic-ai/claude-code@latest"),
-            "npm fallback should remain available: {install}"
-        );
-        let expected_encoded = powershell_encoded_command(CLAUDE_INSTALL_WINDOWS_SCRIPT);
-        assert_eq!(
-            native
-                .split_once("-EncodedCommand ")
-                .map(|(_, encoded)| encoded),
-            Some(expected_encoded.as_str())
-        );
-    }
-
-    #[test]
-    fn hermes_windows_static_fallback_uses_powershell_installer_without_pip() {
-        let install = static_fallback_command_for("hermes", ToolLifecycleAction::Install);
-        assert!(
-            install.starts_with("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "),
-            "should use PowerShell EncodedCommand installer: {install}"
-        );
-        let encoded = install
-            .split_once("-EncodedCommand ")
-            .map(|(_, encoded)| encoded)
-            .expect("installer should include encoded command");
-        assert_eq!(
-            encoded,
-            powershell_encoded_command(HERMES_INSTALL_WINDOWS_SCRIPT)
-        );
-        let install_prefix = install
-            .split_once("-EncodedCommand ")
-            .map(|(prefix, _)| prefix)
-            .expect("installer should include encoded command");
-        assert!(
-            !install_prefix.contains("|")
-                && !install_prefix.contains("-Command")
-                && !install_prefix.contains("python")
-                && !install_prefix.contains("pip"),
-            "should hide PowerShell pipe from cmd.exe and avoid system Python/pip: {install}"
-        );
-
-        let update = static_fallback_command("hermes");
-        assert!(
-            update.starts_with(
-                "hermes update || powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "
-            ),
-            "should try CLI update before PowerShell installer: {update}"
-        );
-        let fallback = update
-            .split_once("||")
-            .map(|(_, fallback)| fallback)
-            .expect("update should include a fallback command");
-        let fallback_prefix = fallback
-            .split_once("-EncodedCommand ")
-            .map(|(prefix, _)| prefix)
-            .expect("fallback should include encoded command");
-        assert!(
-            !fallback_prefix.contains('|')
-                && !fallback_prefix.contains("-Command")
-                && !update.contains("call powershell")
-                && !fallback_prefix.contains("python")
-                && !fallback_prefix.contains("pip"),
-            "PowerShell fallback should be encoded, not called like a batch file or use pip: {update}"
-        );
+    fn non_grok_windows_lifecycle_commands_are_empty() {
+        for tool in [
+            "claude", "gemini", "opencode", "openclaw", "hermes", "codex",
+        ] {
+            assert!(
+                static_fallback_command_for(tool, ToolLifecycleAction::Install).is_empty(),
+                "{tool} install must not construct a command"
+            );
+            assert!(
+                static_fallback_command(tool).is_empty(),
+                "{tool} update must not construct a command"
+            );
+        }
     }
 }

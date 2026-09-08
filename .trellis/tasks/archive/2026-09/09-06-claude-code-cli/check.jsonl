@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/claude-code-cli.md","reason":"Closed source, ownership and platform checks"}
+{"file":".trellis/spec/backend/external-agent-auth.md","reason":"Login verification and secret redaction"}

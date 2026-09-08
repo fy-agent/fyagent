@@ -1,0 +1,32 @@
+{
+  "id": "frontend-experience-round7",
+  "name": "frontend-experience-round7",
+  "title": "第七轮滚动与弹窗来源完整性及根目录治理",
+  "description": "恢复所有页面实际滚动可达性，补齐弹窗来源链路并按工具发现合同治理仓库根目录",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-06",
+  "completedAt": "2026-09-06",
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "75cc8ed3537e866fb9329c8602fc83b96550e521",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "09-06-frontend-scroll-ownership",
+    "09-06-frontend-dialog-origins",
+    "09-06-repository-root-governance"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "work_commit": "75cc8ed3537e866fb9329c8602fc83b96550e521"
+  }
+}

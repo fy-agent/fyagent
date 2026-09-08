@@ -1,3 +1,5 @@
+> Historical subplan: the 2026-09-08 parent task artifacts supersede these execution instructions. Retained acceptance items are not evidence of completion.
+
 # Implement — SuperGrok to Claude / Desktop / Codex
 
 先读 [design.md](./design.md) 和 [use-cases.md](./use-cases.md)。对齐源：父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md)。

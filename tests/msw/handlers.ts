@@ -1,6 +1,10 @@
 import { http, HttpResponse } from "msw";
-import type { AppId } from "@/lib/api/types";
-import type { McpServer, Provider, Settings } from "@/types";
+import type { AppId } from "@/domain/configuration/appId";
+import type {
+  McpServer,
+  Provider,
+  Settings,
+} from "@/domain/configuration/types";
 import {
   addProvider,
   deleteProvider,

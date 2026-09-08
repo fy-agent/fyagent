@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/development-environment.md","reason":"Preserve canonical environment and task API guardrails"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify collection, actual production boot and combined gates after moves"}

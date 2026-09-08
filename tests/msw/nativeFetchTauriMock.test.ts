@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-// @ts-expect-error jsdom is a test dependency without bundled declarations.
 import { JSDOM } from "jsdom";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";

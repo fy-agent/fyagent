@@ -1,13 +1,22 @@
-# One-click Executable Software Installer Contract
+# One-click Desktop Installer Contract
 
 ## 1. Scope / Trigger
 
-This contract owns every current and future FyAgent one-click install or upgrade
-flow for executable software, regardless of product or platform. Codex Desktop
+This contract owns FyAgent's shared desktop-package install or upgrade
+infrastructure. Codex Desktop
 is the first implementation, not a policy exception. QoderWork CN, TRAE Work CN,
-and WorkBuddy reuse the same source/download/job/cancel/temp/post-install
-orchestration policy through the Agent install façade; they must not grow a
-second downloader. Codex remains the golden MSIX/DMG regression fixture.
+WorkBuddy and OpenCode Desktop reuse the same
+source/download/job/cancel/temp/post-install orchestration policy through the
+Agent install façade; they must not grow a second downloader. OpenCode is
+Desktop-only; Claude Desktop is retired. The separate exact-version npm
+admission used by Grok and [Claude Code CLI](./claude-code-cli.md) does not
+inherit Codex's publication-agnostic desktop-package policy. Generic Tooling
+is Grok-only and Claude has a dedicated lifecycle façade. `/Applications`
+last write is owned by
+[macOS Privileged System-Commit Helper](./macos-system-commit.md) and stays
+disabled until that contract's production gate is flipped.
+Bounded `Info.plist` reads go through the Codex `plutil -> JSON -> typed fields`
+owner (binary and XML). Codex remains the golden MSIX/DMG regression fixture.
 Windows EXE/NSIS artifacts in this iteration are not deployed from elevated
 FyAgent directly. They reuse the authenticated ordinary-user helper through a
 second closed action, while Codex remains the only PackageManager/MSIX action.
@@ -40,14 +49,14 @@ signature/trust, dependencies, compatibility, and deployment result. After a
 native install, FyAgent still verifies that one operational result exists and
 can be represented for subsequent existence/version/runnable checks.
 
-This policy applies only to executable software installers and updaters. It
+This policy applies to these desktop-package installers and updaters. It
 does not apply to Skills, plugins, MCP packages, configuration packs, or other
 extension/configuration data; their independently owned validation rules remain
 unchanged.
 
-Existing generic CLI install/update flows remain operational and MUST NOT gain
-hash, identity, publication-field, or package-content admission validation as a
-side effect of this contract.
+CLI registry/optional-package integrity, owner preservation and helper plan
+validation stay with their actual Tooling owners. This desktop policy must
+not remove those checks or create a public raw-command installer.
 
 ### Preserved security and reliability boundaries
 
@@ -235,9 +244,16 @@ Fixed Stable identity remains allowed only for discovery and lifecycle actions
 against an already installed known product. Launch/restart still re-enumerates
 the same frozen context and proves the selected local record/AUMID did not drift.
 
+New ChatGPT Desktop (Codex-in-ChatGPT) and ChatGPT Classic may coexist. Any
+migration set must be a small first-party exact package name/publisher/family/
+application ID/AUMID list proven by native HIL of clean install, official Codex
+upgrade, and Classic coexistence. Display names, window titles, and process
+names are not identity. Until that HIL exists, keep the current exact Codex
+owner and fail closed on ambiguity.
+
 ### Windows vendor EXE installation (Agent Catalog)
 
-QoderWork CN, TRAE Work CN, and WorkBuddy reuse the same downloader-owned job
+QoderWork CN, TRAE Work CN, WorkBuddy and OpenCode reuse the same downloader-owned job
 directory, retained artifact, pin factory, PackageBridge, fixed helper image,
 authenticated named pipe, admission/cancel events, and settlement/quarantine
 rules as Codex. The Agent job slot remains separate from the Codex installer
@@ -247,7 +263,7 @@ The only additional helper command shape is:
 
 ```text
 fyagent-user-helper.exe agent-exe-install
-  --product qoderwork|trae-work|workbuddy
+  --product qoderwork|trae-work|workbuddy|opencode
   --job-id <uuid>
   --pipe <nonce>
 ```
@@ -272,38 +288,44 @@ Before helper launch, the parent:
 5. revalidates Alice's frozen context and bridges only the pinned file.
 
 The helper rechecks the bridge/action, then invokes `ShellExecuteExW` with
-`SEE_MASK_NOCLOSEPROCESS`, fixed `open`, no arguments, and the bridge-owned
-path. Windows owns UAC. `ERROR_CANCELLED` is user cancellation. Missing
-`hProcess` is `installer_process_unobservable`; it is never immediate success.
-When a handle exists, the helper waits within the bounded operation deadline,
-does not kill the vendor installer, reads `GetExitCodeProcess`, and returns one
-closed terminal hint. A nonzero exit is a failure hint, not installation
-authority.
+`SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE`, `lpVerb` exactly `open`
+(not a null default verb), no arguments, `SW_SHOWNORMAL`, and the
+bridge-owned path. `SEE_MASK_NO_CONSOLE` is required: Qoder's NSIS
+`System.dll` access-violates (`0xC0000005`) when it inherits the helper's
+Explorer-launched console. The parent helper operation deadline is five
+minutes (launch/UAC bound), not a wizard-duration wait. Windows owns UAC.
+`ERROR_CANCELLED` is user cancellation. Successful `ShellExecute` is
+vendor-wizard handoff: the helper closes any process handle without waiting,
+does not read `GetExitCodeProcess`, and does not treat a missing handle,
+timeout, or later nonzero exit as installation authority. FyAgent must not
+kill the vendor installer. Successful vendor EXE settlement must not delete
+the PackageBridge EXE leaf; the official NSIS stub can still be reading that
+file after `ShellExecute` returns. Opportunistic orphan cleanup may remove an
+unused leaf later. Immediate settlement cleanup stays on MSIX and on failed
+or cancelled helper runs.
 
-Agent job stages are:
+Agent job stages on Windows EXE install are:
 
 ```text
 checking -> downloading -> staging -> launching_installer
-         -> awaiting_user -> verifying_installation
-         -> succeeded | failed | cancelled | incomplete
+         -> awaiting_user -> succeeded | failed | cancelled | incomplete
 ```
 
 `launching_installer` is the non-cancellable side-effect boundary.
 `awaiting_user` means the vendor UI/UAC owns interaction. `incomplete` is a
-terminal, non-green outcome used when the installer may still be running or
-the result cannot be observed uniquely. “Cancel” before launch cancels waiting
-and download; after launch FyAgent offers no false “cancel installation”.
+terminal, non-green outcome used when launch itself could not be confirmed.
+“Cancel” before launch cancels waiting and download; after launch FyAgent
+offers no false “cancel installation”.
 
-Every helper outcome is followed by a fresh Agent inventory readback. Fresh
-Qoder install requires one new current-user trusted candidate. TRAE/WorkBuddy
-vendor-choice install requires exactly one new trusted candidate in any
-observed scope. Update requires the selected candidate to remain at the same
-canonical path/scope and change authoritative identity/version. An absent,
-unchanged, duplicate, scope-drifted, or version-incompatible result cannot
-succeed even when the helper reports exit 0. EXE vendor UI is assisted and has
-no rollback claim.
+Every helper launch success is job `succeeded`. It is not proof that a trusted
+candidate exists. The directory rereads inventory afterward and may still show
+`not_installed` until a later scan observes the closed identity. Fresh Qoder /
+TRAE / WorkBuddy inventory rules are unchanged for discovery and launch. Update
+still requires a selected candidate when that action exists. An assisted EXE
+vendor UI has no rollback claim. macOS DMG install still verifies the deployed
+bundle before `succeeded`.
 
-The three current products have no reviewed MSIX/PFN/AUMID contract, so Agent
+These managed desktop products have no reviewed MSIX/PFN/AUMID contract, so Agent
 inventory does not query or guess PackageManager identities for them. Codex is
 the sole MSIX consumer. Qoder's reviewed artifact is the User x64 installer;
 TRAE and WorkBuddy remain vendor-choice/unknown-scope. Windows ARM64 remains
@@ -354,10 +376,19 @@ second DMG deployer. The product adapter supplies only:
 For managed-Agent updates, source/staging/installed copies must match exactly,
 the selected existing canonical path and basename are retained, and no
 permission failure may redirect an update to another Applications scope. A
-system `/Applications` target is disabled with `authorization_required` until
-a separately reviewed authorization adapter exists. Fresh user-scope install
+system `/Applications` target is disabled with `authorization_required` while
+`macos_system_commit::production_enabled()` is false. The privileged helper
+exists as code and nested packaging, but it is not a production commit owner
+until signed/notarized HIL flips that gate. Fresh user-scope install
 may target `~/Applications`; it is never an implicit fallback from a selected
-system target.
+system target and must never be labeled as a system Applications install.
+See [macOS Privileged System-Commit Helper](./macos-system-commit.md).
+
+macOS Agent DMG download reuses the Codex streaming persist path
+(`prepare_transport_download` / `persist_transport_response`, `.part`,
+job-local `installer.dmg`). It must not buffer the full artifact as `Vec<u8>`
+or write a second complete DMG. Bounded `Info.plist` reads use the Codex
+`plutil → JSON → typed fields` owner (binary and XML).
 
 ### Lifecycle and post-install verification
 
@@ -381,6 +412,21 @@ path, scope, product-comparable version, and no newly introduced cross-scope
 copy. A failed update verification restores and re-verifies the old bundle;
 an unproven restore is recovery-required rather than success.
 
+Equal-or-newer Codex Desktop (local ≥ selected release) is `AlreadyCurrent`:
+inventory readback only. Install, update, check, and already-current **must
+not** call `platform.launch`. Explicit launch and restart remain on
+`CodexDesktopService::launch` / `platform::process_launch`. macOS application
+open uses NSWorkspace completion inside that owner, not `/usr/bin/open`.
+Managed-Agent desktop launch calls `launch_trusted_macos_application_as_user`
+with a backend-validated `.app` path.
+The source regression in `platform/process_launch.rs` distinguishes this
+application boundary from its HTTP-only browser helper: only
+`open_http_url_with_macos_open` may spawn `open` with a single validated URL
+argument. Keep the no-`open` assertion for the remaining production module and
+Codex bundle adapter; a module-wide ban would incorrectly reject the separate
+browser flow, while deleting the assertion would lose application-launch
+protection.
+
 ## 4. Validation & Error Matrix
 
 Obsolete remote-content errors such as missing checksum, Team-ID mismatch, and
@@ -395,28 +441,31 @@ Renderer wording must describe the actual remaining condition and must not say
 that an upstream hash, identity, Team ID, or package publication field was
 required or rejected.
 
-| Condition | Required result |
-| --- | --- |
-| Remote/manifest hash, size, identity, publisher/team, version, architecture, minimum OS, signature, or Gatekeeper field drifts | Do not reject based on that remote field; fixed local Agent EXE product/signer routing gates still apply. |
-| Manifest body/schema/platform branch/status or fixed-endpoint selection is unusable | Fail with a bounded metadata/source error; never accept a remote URL or caller-provided locator. |
-| Download is empty, exceeds the absolute cap, is cancelled, or hits HTTP/redirect/timeout/disk/write/finalize/reopen failure | Fail with the existing structured transport/storage error and clean up only known task-owned artifacts. |
-| Metadata or `Content-Length` size hint differs from actual bytes | Keep the actual byte count; do not fail content admission or discard a valid progress snapshot. |
-| Locally finalized artifact changes size, path, capability, or file identity before platform or bridge handoff | Fail closed with the local identity error; do not invoke the native installer with a different object. Same-size content drift is not a package-hash admission gate. |
-| PackageBridge hash-while-copy digest does not match the download-stream digest | Fail closed with `CHECKSUM_MISMATCH`; do not add a second full-file SHA pass after copy. |
-| Windows post-install inventory has exactly one changed record | Select that dynamic record after operational shape validation, without comparing it to maintained publication constants. |
-| Windows post-install inventory has multiple changed records or no unique usable result | Fail with structured ambiguity/installation verification error; never guess. |
-| Agent EXE local ProductName, architecture, WinVerifyTrust, signer count, or signer leaf subject fails | `source_not_verified` / `platform_unsupported`; do not launch the helper. |
-| Helper Hello action/product differs from the parent request | Fail before bridge control/admission; zero installer launch. |
-| User cancels UAC/vendor launch | `installer_user_cancelled`; inventory reread still determines whether an install actually appeared. |
-| ShellExecuteEx returns no process handle or the wait deadline expires | `installer_process_unobservable` / `installer_timed_out`; stop waiting without killing the installer, then reread inventory. |
-| Vendor EXE exits zero/nonzero | Treat only as a hint; authoritative Agent inventory readback decides success. |
-| macOS mount has no unique direct top-level `.app`, escapes containment, or staged/installed local identity changes | Fail with the corresponding local mount/path/transaction error and run the bounded detach/rollback path. |
-| Managed-Agent DMG resolves another product identity or the reviewed local version does not match the selected release | `source_not_verified`; do not move the selected target. |
-| Managed-Agent update targets `/Applications` without a reviewed authorization adapter | `authorization_required`; do not fall back to `~/Applications`. |
-| Managed-Agent app is running or the selected target drifts before commit | `application_running` / `target_changed`; no replacement write. |
-| Managed-Agent post-install path/scope/version/duplicate readback fails | restore and reverify the prior bundle; report `rollback_restored` or `recovery_required`. |
-| Native installer rejects signature, dependencies, OS compatibility, or deployment | Surface the native structured result; FyAgent must not reinterpret it as an upstream-field mismatch. |
-| Renderer/helper request contains URL, path, hash, identity, scope, or bypass input | Contract/static test fails; no installation side effect is allowed. |
+| Condition                                                                                                                      | Required result                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Remote/manifest hash, size, identity, publisher/team, version, architecture, minimum OS, signature, or Gatekeeper field drifts | Do not reject based on that remote field; fixed local Agent EXE product/signer routing gates still apply.                                                                                                      |
+| Manifest body/schema/platform branch/status or fixed-endpoint selection is unusable                                            | Fail with a bounded metadata/source error; never accept a remote URL or caller-provided locator.                                                                                                               |
+| Download is empty, exceeds the absolute cap, is cancelled, or hits HTTP/redirect/timeout/disk/write/finalize/reopen failure    | Fail with the existing structured transport/storage error and clean up only known task-owned artifacts.                                                                                                        |
+| Metadata or `Content-Length` size hint differs from actual bytes                                                               | Keep the actual byte count; do not fail content admission or discard a valid progress snapshot.                                                                                                                |
+| Locally finalized artifact changes size, path, capability, or file identity before platform or bridge handoff                  | Fail closed with the local identity error; do not invoke the native installer with a different object. Same-size content drift is not a package-hash admission gate.                                           |
+| PackageBridge hash-while-copy digest does not match the download-stream digest                                                 | Fail closed with `CHECKSUM_MISMATCH`; do not add a second full-file SHA pass after copy.                                                                                                                       |
+| Windows post-install inventory has exactly one changed record                                                                  | Select that dynamic record after operational shape validation, without comparing it to maintained publication constants.                                                                                       |
+| Windows post-install inventory has multiple changed records or no unique usable result                                         | Fail with structured ambiguity/installation verification error; never guess.                                                                                                                                   |
+| Agent EXE local ProductName, WinVerifyTrust, signer count, or signer leaf subject fails                                        | `source_not_verified`; do not launch the helper.                                                                                                                                                               |
+| Official x64/User-x64 vendor setup EXE is PE32 i386 NSIS/electron-builder stub on an x64 or ARM64 host                         | Admit as installer only; installed-app discovery still requires AMD64/ARM64.                                                                                                                                   |
+| Cross-arch AMD64 vs ARM64 vendor installer, or a 32-bit host                                                                   | `platform_unsupported`; do not launch the helper.                                                                                                                                                              |
+| Helper Hello action/product differs from the parent request                                                                    | Fail before bridge control/admission; zero installer launch.                                                                                                                                                   |
+| User cancels UAC/vendor launch                                                                                                 | `installer_user_cancelled`.                                                                                                                                                                                    |
+| ShellExecuteEx succeeds, including a missing process handle                                                                    | Job `succeeded` (vendor-wizard handoff); do not wait, do not read exit code, do not delete the PackageBridge EXE leaf.                                                                                         |
+| Helper launch fails (not user cancel)                                                                                          | Internal `HelperErrorCode::InstallerLaunchFailed` maps to `InstallerErrorCode::LaunchFailed`; the Agent action exposes `interactive_user_unavailable`. Failed/cancelled settlement may still clean the bridge. |
+| Vendor EXE later exits zero/nonzero                                                                                            | Not installation authority; a later inventory scan may still show `not_installed`.                                                                                                                             |
+| macOS mount has no unique direct top-level `.app`, escapes containment, or staged/installed local identity changes             | Fail with the corresponding local mount/path/transaction error and run the bounded detach/rollback path.                                                                                                       |
+| Managed-Agent DMG resolves another product identity or the reviewed local version does not match the selected release          | `source_not_verified`; do not move the selected target.                                                                                                                                                        |
+| Managed-Agent update targets `/Applications` without a reviewed authorization adapter                                          | `authorization_required`; do not fall back to `~/Applications`.                                                                                                                                                |
+| Managed-Agent app is running or the selected target drifts before commit                                                       | `application_running` / `target_changed`; no replacement write.                                                                                                                                                |
+| Managed-Agent post-install path/scope/version/duplicate readback fails                                                         | restore and reverify the prior bundle; report `rollback_restored` or `recovery_required`.                                                                                                                      |
+| Native installer rejects signature, dependencies, OS compatibility, or deployment                                              | Surface the native structured result; FyAgent must not reinterpret it as an upstream-field mismatch.                                                                                                           |
+| Renderer/helper request contains URL, path, hash, identity, scope, or bypass input                                             | Contract/static test fails; no installation side effect is allowed.                                                                                                                                            |
 
 ## 5. Good / Base / Bad Cases
 
@@ -458,9 +507,10 @@ Tests must prove:
 - helper authentication, action-bound Hello v3, ACL, no-follow, file-ID,
   PackageBridge, terminal, quarantine, and cleanup protections remain covered;
 - Agent EXE tests cover signer-leaf resolution, wrong signer/product/arch,
-  Qoder current-user versus TRAE/WorkBuddy vendor-choice policy, UAC cancel,
-  missing process handle, timeout, nonzero exit, no-kill behavior, and
-  post-install unique-candidate readback;
+  PE32 i386 NSIS stub admitted only as a vendor installer, Qoder current-user
+  versus TRAE/WorkBuddy vendor-choice policy, UAC cancel, no-wait handoff,
+  no-kill behavior, retained PackageBridge EXE leaf on helper success, and
+  that missing handle/timeout/exit code is not install authority;
 - macOS mount discovery, executable containment, generated path safety, atomic
   replacement, exact expected cleanup, rollback, and detach remain covered;
 - managed-Agent exact selected-path update, no scope fallback, bundle identity,
@@ -470,11 +520,14 @@ Tests must prove:
   covered by the same macOS transaction tests;
 - DTO/parser/fixture/UI/i18n contracts omit download verification stage and
   obsolete content-admission errors;
-- generic CLI install/update flows are unchanged and contain no new validator.
+- generic Tooling remains Grok-only; Claude's dedicated CLI lifecycle retains
+  its separate npm-integrity and helper-plan tests. No retired Desktop route
+  or raw command bundle is restored.
 - Agent Catalog desktop adapters reuse this policy without a second downloader
   and without occupying the Codex job slot. Windows EXE uses the closed Agent
-  helper action; formal elevated Claude/Grok/OpenCode CLI/auth remains
-  `interactive_user_unavailable` and is not routed through that helper.
+  helper action. Direct CLI/Auth execution remains unavailable in the elevated
+  parent. Admitted Grok and Claude lifecycles use their distinct closed tool
+  actions on the helper executable without PackageBridge; OpenCode CLI is unsupported.
 
 Portable tests and Windows-host compilation do not establish real Windows or
 macOS native compatibility. Unless native HIL is actually run, report
@@ -512,6 +565,20 @@ let installed = select_unique_dynamic_install_result(before, after)?;
 verify_operational_shape(&installed)?;
 ```
 
+Wrong: wait on the vendor wizard, treat a missing process handle as
+`installer_process_unobservable`, map a later exit code to job failure, reject
+a PE32 i386 NSIS stub as `platform_unsupported`, or delete the PackageBridge
+EXE leaf as soon as `ShellExecute` returns.
+
+```rust
+WaitForSingleObject(h_process, THIRTY_MINUTES)?;
+bridge.cleanup()?;
+```
+
+Correct: `ShellExecuteExW` with `SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE`
+and verb `open` is handoff; close the handle without waiting; retain the EXE
+leaf on helper success; admit i386 stubs only as installers.
+
 ## Scenario: Agent Catalog managed-desktop reuse
 
 ### 1. Scope / Trigger
@@ -545,9 +612,11 @@ Rust-only field and is never on the Agent DTO.
   settlement, and cleanup owners through a closed Agent product action.
 - A managed update binds the inventory-selected existing path and keeps that
   exact path/basename. A fresh install binds one backend-projected destination.
-  The transaction never guesses another scope. Because no reviewed privileged
-  helper is present, system targets remain visible but blocked with
-  `authorization_required`.
+  The transaction never guesses another scope. The reviewed helper is present
+  as packaging and a crate-private port, but production system commits stay
+  blocked with `authorization_required` until
+  [macOS Privileged System-Commit Helper](./macos-system-commit.md) enables
+  `production_enabled()`.
 - The shared transaction invokes the Agent commit gate after staging validation
   and before the old target moves. It invokes the Agent inventory readback
   after the new target is locally verified and before the backup is deleted.
@@ -555,7 +624,7 @@ Rust-only field and is never on the Agent DTO.
 - Windows EXE/NSIS for Catalog desktop agents is a closed recognized format.
   It reuses the PackageBridge/helper infrastructure but never the Codex
   PackageManager operation or Codex job slot. The helper product is exactly
-  `qoderwork | trae-work | workbuddy`; no generic executable/path runner or
+  `qoderwork | trae-work | workbuddy | opencode`; no generic executable/path runner or
   renderer-provided installer argument exists. Qoder is current-user User-x64;
   TRAE/WorkBuddy remain vendor-choice and may show UAC.
 - Codex `install`/`update` stay on this service. The Agent façade must not
@@ -564,20 +633,21 @@ Rust-only field and is never on the Agent DTO.
   an Agent job. Qoder's versionless `/latest/` alias is the documented
   exception in the Agent contract, not a license to skip Codex
   `expectedReleaseId` checks.
-- Publication-field admission remains forbidden for every product that
-  inherits this contract.
+- Codex remains publication-agnostic. Managed desktop products retain the
+  narrower local identity/version/signer routing gates defined above; neither
+  policy overrides the separate CLI npm integrity contract.
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Agent façade starts Codex install/update | `managed_by_codex_desktop`; Codex job unchanged |
-| Catalog desktop EXE uses a reviewed product action | Protected bridge + Alice helper + vendor UI + authoritative inventory reread |
-| Catalog desktop EXE lacks matching ProductName/trusted signer/architecture | Zero helper launch; fail closed |
-| Renderer supplies a download URL to either installer | Contract/static test fails |
-| A second downloader module is added for Qoder/TRAE/WorkBuddy | Architecture regression |
-| Managed macOS update writes a different path/scope than the selected candidate | Transaction/readback failure; restore the original target |
-| System target lacks reviewed authorization | `authorization_required`; zero write, no user-scope fallback |
+| Condition                                                                      | Required result                                                              |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Agent façade starts Codex install/update                                       | `managed_by_codex_desktop`; Codex job unchanged                              |
+| Catalog desktop EXE uses a reviewed product action                             | Protected bridge + Alice helper + vendor UI + authoritative inventory reread |
+| Catalog desktop EXE lacks matching ProductName/trusted signer/architecture     | Zero helper launch; fail closed                                              |
+| Renderer supplies a download URL to either installer                           | Contract/static test fails                                                   |
+| A second downloader module is added for Qoder/TRAE/WorkBuddy                   | Architecture regression                                                      |
+| Managed macOS update writes a different path/scope than the selected candidate | Transaction/readback failure; restore the original target                    |
+| System target is selected while `production_enabled()` is false                | `authorization_required`; zero write, no user-scope fallback                 |
 
 ### 5. Good/Base/Bad Cases
 
@@ -595,7 +665,9 @@ Rust-only field and is never on the Agent DTO.
 - Agent source/job tests live under `agent_install` and must not weaken
   Codex `expectedReleaseId` or helper-CLI contracts.
 - Helper tests prove exact CLI/action codes, Hello-action binding, bridge
-  artifact kind, process-handle/exit mapping, and no arbitrary arguments.
+  artifact kind, `SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE` plus fixed
+  `open`, no wait/`GetExitCodeProcess` on vendor EXE launch, EXE settlement
+  retains the PackageBridge leaf, and no arbitrary arguments.
 - Negative scan: no renderer/helper URL/path/hash/bypass input on either
   surface.
 
@@ -616,5 +688,5 @@ if agent_id == AgentCatalogId::Codex && matches!(action, Install | Update) {
 }
 let product = AgentInstallerProduct::try_from(agent_id)?;
 run_verified_agent_exe_installer(product, prepared_package, progress)?;
-verify_agent_inventory_readback(agent_id, selected_target)?;
+// ShellExecute success is terminal. Do not wait or reread inventory here.
 ```

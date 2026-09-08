@@ -151,7 +151,7 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
   `existingIds`. This preflight creates neither backup nor primary write.
   Chip-remove (existing-model delete) still calls `save_workbuddy_models`
   directly: the UI confirms once, then may auto-replay that token so the user
-  is not asked a second time. V2 Models 「保存并应用」 does not surface that
+  is not asked a second time. Models 「保存并应用」 does not surface that
   token. It creates a zero-write Change Plan through `create_workbuddy_save_plan`
   and confirms with `{planId, planDigest}` only. The adapter holds the
   WorkBuddy write lock and consumes any overwrite capability internally.
@@ -199,43 +199,44 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
   non-secret DTO is constructed. This protects data written by older versions
   or another process; opening the page must not place such a value in Query
   cache or the DOM.
-- `TopLevelAppId = AppId | "workbuddy"`; `AppId` remains the Provider-domain
-  type. WorkBuddy follows Codex and precedes Gemini in the app switcher.
-- Missing legacy `visibleApps.workbuddy` resolves to `true`. Entering WorkBuddy
-  mounts only its status/configuration surface and performs no Provider,
-  current-provider, MCP, Skills, profile, usage, environment/migration, or proxy
-  query. The API key is never refilled from disk. V2 discovery fetch keeps the
-  in-memory key; save terminal outcomes still clear it. The V2 Models page keeps
-  that key while it stays mounted across sidebar navigation and target switches.
-  Actual unmount of the persistent Models page still clears it.
+- Current WorkBuddy models are composed by `WorkBuddyPanel` in the single
+  Models route and Agent configuration. Target order comes from the shared
+  renderer directory registry, not a former `TopLevelAppId` switcher or
+  `visibleApps.workbuddy` setting. WorkBuddy is not a Provider `AppType`.
+- WorkBuddy's model owner reads its own status/configuration instead of a
+  Provider/current-provider query. Other mounted page owners retain their own
+  query contracts. The API key is never refilled from disk. Discovery fetch keeps the
+  in-memory key while the active WorkBuddy panel remains mounted; save terminal
+  outcomes clear it. Switching Models target or leaving the Models route
+  unmounts the panel and clears unsaved component-memory credentials.
 - A truncated-fetch warning remains visible until a later successful,
   non-truncated fetch replaces it. Failed or stale requests do not silently
   convert the warning into a complete result.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                                       | Required result                                                                                                                 |
-| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| URL is non-HTTP(S), lacks a host, or contains credentials, query, or fragment                                   | Return `WORKBUDDY_INVALID_URL`; send no request.                                                                                |
-| Redirect exceeds three hops, changes origin, downgrades HTTPS, has query/fragment/userinfo, or contains the key | Return `WORKBUDDY_FETCH_REDIRECT_REJECTED`; issue no next request.                                                              |
-| Fetch exceeds 15 seconds or 2 MiB, or `data[]` is malformed                                                     | Return the bounded fetch error and retain no model IDs from that response.                                                      |
-| Remote or local model ID contains a complete request/document API key                                           | Fail closed with a generic error; return, cache, render, and write none of the colliding values.                                |
-| Empty API key is explicitly allowed                                                                             | Omit Authorization; do not synthesize an empty bearer value.                                                                    |
-| Base URL hostname/path contains the complete submitted API key                                                  | Return a generic invalid-request error before network, token, backup, or primary-file activity.                                 |
-| Existing JSON root is neither an array nor an object, object-root `models` exists but is not an array, or a model entry is invalid | Return a safe configuration error, with only an index when useful; do not repair or overwrite it.                               |
-| Object-root `availableModels` exists but is not a string array                                                | Return a safe configuration error before backup or primary mutation; do not repair the field.                                  |
-| Revision changes before save or confirmed overwrite                                                             | Return `concurrent_modification`; write neither backup nor primary.                                                             |
-| Windows profile, `.workbuddy`, primary, or backup resolves through a reparse point or changes identity          | Fail closed before the target, backup, or any temporary leaf is mutated.                                                        |
-| A Windows writer already owns, or tries to acquire, a write-compatible primary handle                           | Reject the snapshot/save; create neither backup nor temporary leaf.                                                             |
-| Target IDs already exist without a matching overwrite token                                                     | Direct `save_workbuddy_models` returns one confirmation requirement and writes nothing. Change Plan apply consumes the capability internally; the renderer never sees the token. |
-| Change Plan apply sees revision/file baseline drift                                                             | `stale`; no write; UI regenerates the plan.                                                                                    |
-| A failed Change Plan write restores the pre-apply backup                                                        | Failed job with `writer_failed_baseline_restored`, compensated managed-write, and `recoveryState=succeeded`.                    |
-| `removedModelIds` match existing entries without a matching overwrite token                                     | Return one confirmation requirement listing those IDs; write neither backup nor primary.                                        |
-| A removal-only save commits with a valid token                                                                  | Delete matching entries and prune populated `availableModels`; URL/key are not required.                                        |
-| Token is malformed, expired, mismatched, or reused                                                              | Consume/reject it, expose no credential or target contents, and write nothing.                                                  |
-| A save updates an existing target                                                                               | Preserve entry position, unknown fields, and unrelated entries; update only documented fields.                                  |
-| WorkBuddy view unmounts                                                                                         | Clear the in-memory API key and cancel/isolate its queries from other app domains. V2 Models keep-alive hide is not an unmount. |
-| Renderer cannot obtain valid status/path metadata                                                               | Disable the write UI; never guess `.workbuddy` or a backup path in React.                                                       |
+| Condition                                                                                                                          | Required result                                                                                                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| URL is non-HTTP(S), lacks a host, or contains credentials, query, or fragment                                                      | Return `WORKBUDDY_INVALID_URL`; send no request.                                                                                                                                 |
+| Redirect exceeds three hops, changes origin, downgrades HTTPS, has query/fragment/userinfo, or contains the key                    | Return `WORKBUDDY_FETCH_REDIRECT_REJECTED`; issue no next request.                                                                                                               |
+| Fetch exceeds 15 seconds or 2 MiB, or `data[]` is malformed                                                                        | Return the bounded fetch error and retain no model IDs from that response.                                                                                                       |
+| Remote or local model ID contains a complete request/document API key                                                              | Fail closed with a generic error; return, cache, render, and write none of the colliding values.                                                                                 |
+| Empty API key is explicitly allowed                                                                                                | Omit Authorization; do not synthesize an empty bearer value.                                                                                                                     |
+| Base URL hostname/path contains the complete submitted API key                                                                     | Return a generic invalid-request error before network, token, backup, or primary-file activity.                                                                                  |
+| Existing JSON root is neither an array nor an object, object-root `models` exists but is not an array, or a model entry is invalid | Return a safe configuration error, with only an index when useful; do not repair or overwrite it.                                                                                |
+| Object-root `availableModels` exists but is not a string array                                                                     | Return a safe configuration error before backup or primary mutation; do not repair the field.                                                                                    |
+| Revision changes before save or confirmed overwrite                                                                                | Return `concurrent_modification`; write neither backup nor primary.                                                                                                              |
+| Windows profile, `.workbuddy`, primary, or backup resolves through a reparse point or changes identity                             | Fail closed before the target, backup, or any temporary leaf is mutated.                                                                                                         |
+| A Windows writer already owns, or tries to acquire, a write-compatible primary handle                                              | Reject the snapshot/save; create neither backup nor temporary leaf.                                                                                                              |
+| Target IDs already exist without a matching overwrite token                                                                        | Direct `save_workbuddy_models` returns one confirmation requirement and writes nothing. Change Plan apply consumes the capability internally; the renderer never sees the token. |
+| Change Plan apply sees revision/file baseline drift                                                                                | `stale`; no write; UI regenerates the plan.                                                                                                                                      |
+| A failed Change Plan write restores the pre-apply backup                                                                           | Failed job with `writer_failed_baseline_restored`, compensated managed-write, and `recoveryState=succeeded`.                                                                     |
+| `removedModelIds` match existing entries without a matching overwrite token                                                        | Return one confirmation requirement listing those IDs; write neither backup nor primary.                                                                                         |
+| A removal-only save commits with a valid token                                                                                     | Delete matching entries and prune populated `availableModels`; URL/key are not required.                                                                                         |
+| Token is malformed, expired, mismatched, or reused                                                                                 | Consume/reject it, expose no credential or target contents, and write nothing.                                                                                                   |
+| A save updates an existing target                                                                                                  | Preserve entry position, unknown fields, and unrelated entries; update only documented fields.                                                                                   |
+| WorkBuddy panel unmounts after a target switch or route exit                                                                       | Clear the in-memory API key and cancel/isolate its UI work from other app domains.                                                                                               |
+| Renderer cannot obtain valid status/path metadata                                                                                  | Disable the write UI; never guess `.workbuddy` or a backup path in React.                                                                                                        |
 
 ## 5. Good / Base / Bad Cases
 
@@ -261,6 +262,9 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
   case-sensitive IDs, stable first occurrence, exactly 1,000/1,001 IDs,
   truncation plus a later malformed element, empty-key header omission, and a
   malicious successful response that echoes the submitted credential as an ID.
+  Total-timeout mapping coverage must be deterministic: it may inject a pending
+  fetch future, but it must not require loopback I/O to be scheduled before a
+  deliberately short timeout expires.
 - Persistence tests cover empty/new files, legacy-array input and root-shape
   preservation, object-root input including a missing `models` field,
   top-level/model-key ordering and unknown-field preservation, invalid roots /

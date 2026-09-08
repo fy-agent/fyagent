@@ -66,8 +66,9 @@ background file .background/background.png
 - `retry-hdiutil.sh` allows `create`, `convert`, and `verify`. `create` and
   `convert` delete only their destination on failure. Convert must not delete
   the UDRW source. Attach/detach retries have no `-force`.
-- `build-macos` uses the same pinned `astral-sh/setup-uv` and Python 3.14.7 as
-  CI, then `uv sync --locked --group dmg-layout`. `dmg-layout` pins
+- `build-macos` uses the same pinned `astral-sh/setup-uv` and managed Python
+  selected by `.python-version` as CI, then
+  `uv sync --locked --group dmg-layout`. `dmg-layout` pins
   `ds-store==1.3.3`. `pyproject.toml` `default-groups = ["dev"]`, so default
   `uv sync --locked` does not install that group.
 - Final attach of the notarized DMG must see `FyAgent.app`, Applications

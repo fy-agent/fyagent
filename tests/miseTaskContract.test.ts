@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -87,6 +88,14 @@ function taskEnvironment(overrides: Record<string, string>) {
       "DYLD_FALLBACK_LIBRARY_PATH",
       "NODE_OPTIONS",
       "NODE_PATH",
+      "DEVELOPER_DIR",
+      "FYAGENT_MACOS_SYSTEM_COMMIT_MODE",
+      "FYAGENT_PRIVILEGED_CLIENT_DYLIB",
+      "FYAGENT_PRIVILEGED_MANIFEST",
+      "FYAGENT_SIGNED_DEV_APP_RUNNER",
+      "FYAGENT_SIGNED_DEV_CARGO",
+      "FYAGENT_SIGNED_DEV_NODE",
+      "FYAGENT_SIGNED_DEV_TARGET",
     ].map((name) => name.toUpperCase()),
   );
   for (const name of Object.keys(environment)) {
@@ -439,6 +448,107 @@ describe("canonical mise task API", () => {
     ).toThrow(/Unsupported task host: freebsd/);
   });
 
+  it("maps POSIX termination signals to standard exit codes", () => {
+    const signalExitCode = taskLibModule.signalExitCode as (
+      signal?: string,
+    ) => number;
+    expect(signalExitCode("SIGHUP")).toBe(129);
+    expect(signalExitCode("SIGINT")).toBe(130);
+    expect(signalExitCode("SIGQUIT")).toBe(131);
+    expect(signalExitCode("SIGKILL")).toBe(137);
+    expect(signalExitCode("SIGTERM")).toBe(143);
+    expect(signalExitCode("UNKNOWN")).toBe(1);
+    expect(signalExitCode(undefined)).toBe(1);
+  });
+
+  it("handles foreground interrupts, force-kills on repeated SIGINT, and exits with 130", () => {
+    const runForeground = taskLibModule.runForeground as (
+      command: string,
+      args?: string[],
+      options?: Record<string, unknown>,
+    ) => unknown;
+
+    class MockChild extends EventEmitter {
+      pid = 8888;
+    }
+
+    const mockChild = new MockChild();
+    const posixSignals: Array<{ pid: number; signal: string }> = [];
+    let exitCodeCalled: number | null = null;
+
+    runForeground("node", ["mock-server.js"], {
+      platform: "darwin",
+      spawn: () => mockChild,
+      exit: (code: number) => {
+        exitCodeCalled = code;
+      },
+      posixKill: (pid: number, signal: string) => {
+        posixSignals.push({ pid, signal });
+      },
+    });
+
+    // First SIGINT: triggers process group kill
+    process.emit("SIGINT", "SIGINT");
+    expect(posixSignals).toEqual([
+      { pid: -8888, signal: "SIGTERM" },
+      { pid: -8888, signal: "SIGKILL" },
+    ]);
+    expect(exitCodeCalled).toBeNull();
+
+    // Second SIGINT: immediate force-kill and exit(130)
+    process.emit("SIGINT", "SIGINT");
+    expect(exitCodeCalled).toBe(130);
+    expect(posixSignals.length).toBe(4);
+  });
+
+  it("assigns standard signal exit code 130 when child terminates on SIGINT", () => {
+    const runForeground = taskLibModule.runForeground as (
+      command: string,
+      args?: string[],
+      options?: Record<string, unknown>,
+    ) => unknown;
+
+    class MockChild extends EventEmitter {
+      pid = 9999;
+    }
+
+    const mockChild = new MockChild();
+    const originalExitCode = process.exitCode;
+
+    try {
+      runForeground("node", ["mock-server.js"], {
+        platform: "darwin",
+        spawn: () => mockChild,
+        exit: () => {},
+        posixKill: () => {},
+      });
+
+      // Child terminates by signal SIGINT
+      mockChild.emit("exit", null, "SIGINT");
+      expect(process.exitCode).toBe(130);
+    } finally {
+      process.exitCode = originalExitCode;
+    }
+  });
+
+  it("handles interrupted synchronous run commands with standard exit code", () => {
+    const run = taskLibModule.run as (
+      command: string,
+      args?: string[],
+      options?: Record<string, unknown>,
+    ) => { status: number };
+
+    let exitCalledWith: number | null = null;
+    const result = run("node", ["-e", "process.kill(process.pid, 'SIGINT')"], {
+      allowSignal: true,
+      exit: (code: number) => {
+        exitCalledWith = code;
+      },
+    });
+    expect(result.status).toBe(130);
+    expect(exitCalledWith).toBeNull();
+  });
+
   it("forwards a unit-test file filter through the real mise usage parser", () => {
     const result = mise("test:unit", "tests/developmentEnvironment.test.ts");
     expect(result.status, output(result)).toBe(0);
@@ -652,6 +762,7 @@ describe("canonical mise task API", () => {
 
     calls.length = 0;
     let foregroundCalls = 0;
+    let setupCalls = 0;
     const tauriDev = hostNativeModule.executeTauriTask({
       operation: "dev",
       environment: {},
@@ -660,6 +771,14 @@ describe("canonical mise task API", () => {
       captureCommand,
       runCommand: () => {
         throw new Error("dev must not use spawnSync run()");
+      },
+      runSetupCommand: (
+        command: string,
+        args: string[],
+        options: { env: Record<string, string> },
+      ) => {
+        setupCalls += 1;
+        calls.push({ command, args, environment: options.env });
       },
       runForegroundCommand: (
         command: string,
@@ -672,17 +791,103 @@ describe("canonical mise task API", () => {
       resolveToolCommand,
       resolveMsvcEnvironment: () => ({}),
     }) as { command: string; args: string[]; target: string };
+    const signedDevCargoRunner = path.join(
+      ROOT,
+      "scripts",
+      "tasks",
+      "macos-signed-dev-cargo.mjs",
+    );
+    const signedDevAppRunner = path.join(
+      ROOT,
+      "scripts",
+      "tasks",
+      "macos-signed-dev.mjs",
+    );
+    const privilegedBuildScript = path.join(
+      ROOT,
+      "scripts",
+      "release",
+      "build-macos-privileged-helper.sh",
+    );
+    const currentHostIsDarwin = process.platform === "darwin";
+    const expectedDevArgs = currentHostIsDarwin
+      ? [
+          "tauri",
+          "dev",
+          "--target",
+          target,
+          "--runner",
+          signedDevCargoRunner,
+          "--features",
+          "macos-privileged-client",
+          "--config",
+          JSON.stringify({
+            productName: "FyAgent Dev",
+            identifier: "com.fyagent.desktop.dev",
+          }),
+        ]
+      : ["tauri", "dev", "--target", target];
     expect(tauriDev).toMatchObject({
       command: "pnpm",
-      args: ["tauri", "dev", "--target", target],
+      args: expectedDevArgs,
       target,
     });
     expect(foregroundCalls).toBe(1);
-    expect(calls.map(({ command, args }) => ({ command, args }))).toEqual([
+    expect(setupCalls).toBe(currentHostIsDarwin ? 3 : 0);
+    const expectedDevCalls = [
       { command: rustcExecutable, args: ["-vV"] },
       { command: rustdocExecutable, args: ["-vV"] },
-      { command: "pnpm", args: tauriDev.args },
-    ]);
+    ];
+    if (currentHostIsDarwin) {
+      expectedDevCalls.push(
+        {
+          command: process.execPath,
+          args: [signedDevAppRunner, "machine-preflight", "--keep-session"],
+        },
+        {
+          command: "/bin/bash",
+          args: [privilegedBuildScript, "--variant", "development"],
+        },
+        {
+          command: process.execPath,
+          args: [signedDevAppRunner, "verify-artifacts"],
+        },
+      );
+    }
+    expectedDevCalls.push({ command: "pnpm", args: tauriDev.args });
+    expect(calls.map(({ command, args }) => ({ command, args }))).toEqual(
+      expectedDevCalls,
+    );
+    if (currentHostIsDarwin) {
+      const setupEnvironment = calls[2].environment;
+      expect(setupEnvironment).toMatchObject({
+        DEVELOPER_DIR: "/Applications/Xcode.app/Contents/Developer",
+        FYAGENT_MACOS_SYSTEM_COMMIT_MODE: "development",
+        FYAGENT_PRIVILEGED_CLIENT_DYLIB: path.join(
+          ROOT,
+          "src-tauri",
+          "macos-privileged-helper",
+          "dist",
+          "development",
+          "libFyAgentPrivilegedClient.dylib",
+        ),
+        FYAGENT_PRIVILEGED_MANIFEST: path.join(
+          ROOT,
+          "src-tauri",
+          "macos-privileged-helper",
+          "dist",
+          "development",
+          "manifest.json",
+        ),
+        FYAGENT_SIGNED_DEV_APP_RUNNER: signedDevAppRunner,
+        FYAGENT_SIGNED_DEV_CARGO: "/verified/toolchain/bin/cargo",
+        FYAGENT_SIGNED_DEV_NODE: process.execPath,
+        FYAGENT_SIGNED_DEV_TARGET: target,
+      });
+      expect(calls[3].environment).toEqual(setupEnvironment);
+      expect(calls[4].environment).toEqual(setupEnvironment);
+      expect(calls[5].environment).toEqual(setupEnvironment);
+    }
 
     calls.length = 0;
     const cargo = hostNativeModule.executeCargoTask({
@@ -738,6 +943,86 @@ describe("canonical mise task API", () => {
       RUSTC: rustcExecutable,
       RUSTDOC: rustdocExecutable,
     });
+  });
+
+  it("keeps signed macOS development on an isolated Developer ID keychain and the closed helper bridge", () => {
+    const appRunner = fs.readFileSync(
+      path.join(ROOT, "scripts", "tasks", "macos-signed-dev.mjs"),
+      "utf8",
+    );
+    const cargoRunner = fs.readFileSync(
+      path.join(ROOT, "scripts", "tasks", "macos-signed-dev-cargo.mjs"),
+      "utf8",
+    );
+    const hostNative = fs.readFileSync(
+      path.join(ROOT, "scripts", "tasks", "host-native.mjs"),
+      "utf8",
+    );
+    const helperBuild = fs.readFileSync(
+      path.join(ROOT, "scripts", "release", "build-macos-privileged-helper.sh"),
+      "utf8",
+    );
+
+    expect(appRunner).toContain(
+      'const XCODE_DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer";',
+    );
+    expect(appRunner).toContain(
+      '"Developer ID Application: William Wang (HY446996QX)"',
+    );
+    expect(appRunner).toContain('const TEAM_ID = "HY446996QX";');
+    expect(appRunner).toContain("@rpath/${CLIENT_FILE}");
+    expect(appRunner).toContain("@executable_path\\/\\.\\.\\/Frameworks");
+    expect(appRunner).toContain('"apple-developer-id-g2-ca.cer"');
+    expect(appRunner).toContain('"apple-root-ca.cer"');
+    expect(appRunner).toContain('"/usr/bin/openssl"');
+    expect(appRunner).toContain('"rsa"');
+    expect(appRunner).toContain('"pemseq"');
+    expect(appRunner).toContain('"openssl"');
+    expect(appRunner).toContain('"create-keychain"');
+    expect(appRunner).not.toContain('"delete-keychain"');
+    expect(appRunner).toContain('"default-keychain"');
+    expect(appRunner).toContain("signing.keychain-db");
+    expect(appRunner).toContain('"set-key-partition-list"');
+    expect(appRunner).toContain("isTransientCodesignFailure");
+    expect(appRunner).toContain("--keep-session");
+    expect(appRunner).toContain("restore-session");
+    expect(appRunner).not.toContain("reactivateSigningKeychain");
+    expect(appRunner).toContain('"p12_password"');
+    expect(appRunner).not.toMatch(/\/Users\/[^/"']+\/Documents(?:\/|["'])/u);
+    for (const forbidden of [
+      "Apple Development:",
+      "p12密码和 apple相关.txt",
+      "osascript",
+      "sudo",
+    ]) {
+      expect(appRunner, forbidden).not.toContain(forbidden);
+    }
+
+    expect(cargoRunner).toContain('if (args[0] !== "run")');
+    expect(cargoRunner).toContain("target.${target}.runner=");
+    expect(cargoRunner).not.toMatch(/sudo|osascript|DYLD_/u);
+
+    const machinePreflight = hostNative.indexOf('"machine-preflight"');
+    const helperBuildCall = hostNative.indexOf(
+      'MACOS_PRIVILEGED_BUILD_SCRIPT, "--variant", "development"',
+    );
+    const artifactPreflight = hostNative.indexOf(
+      '[MACOS_SIGNED_DEV_APP_RUNNER, "verify-artifacts"]',
+    );
+    expect(machinePreflight).toBeGreaterThanOrEqual(0);
+    expect(helperBuildCall).toBeGreaterThan(machinePreflight);
+    expect(artifactPreflight).toBeGreaterThan(helperBuildCall);
+    expect(hostNative).toContain("restore-session");
+    expect(hostNative).toContain("--keep-session");
+    expect(hostNative).toContain('child.on("exit"');
+
+    expect(helperBuild).toContain("BUILD_FINGERPRINT=");
+    expect(helperBuild).toContain("version-specific compiler define");
+    expect(helperBuild).toContain(
+      '"otool", "-arch", architecture, "-P", helper',
+    );
+    expect(helperBuild).toContain("privileged helper version is stale");
+    expect(helperBuild).not.toMatch(/sudo|osascript/u);
   });
 
   it.each(["check", "clippy", "test"])(
@@ -1305,6 +1590,14 @@ describe("canonical mise task API", () => {
       { DYLD_INSERT_LIBRARIES: "/tmp/inject.dylib" },
       { dyld_library_path: "/tmp/inject" },
       { NODE_OPTIONS: "--require=/tmp/inject.js" },
+      { DEVELOPER_DIR: "/tmp/FakeXcode.app/Contents/Developer" },
+      { FYAGENT_MACOS_SYSTEM_COMMIT_MODE: "formal" },
+      { FYAGENT_PRIVILEGED_CLIENT_DYLIB: "/tmp/inject.dylib" },
+      { FYAGENT_PRIVILEGED_MANIFEST: "/tmp/inject.json" },
+      { FYAGENT_SIGNED_DEV_APP_RUNNER: "/tmp/runner.mjs" },
+      { FYAGENT_SIGNED_DEV_CARGO: "/tmp/cargo" },
+      { FYAGENT_SIGNED_DEV_NODE: "/tmp/node" },
+      { FYAGENT_SIGNED_DEV_TARGET: foreignRustTarget() },
       { RUSTFLAGS: `--target ${foreignRustTarget()}` },
       { CARGO_BUILD_RUSTFLAGS: `--target=${foreignRustTarget()}` },
       {

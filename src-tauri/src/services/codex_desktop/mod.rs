@@ -222,7 +222,7 @@ pub struct CodexDesktopService {
 
 enum InstallFlowOutcome {
     Installed(InstalledApplication),
-    LaunchedExisting(InstalledApplication),
+    AlreadyCurrent(InstalledApplication),
 }
 
 enum RestartPlanInspection {
@@ -854,9 +854,9 @@ impl CodexDesktopService {
 
         match outcome {
             Ok(Ok(outcome)) => {
-                let (application, launched_existing) = match outcome {
+                let (application, already_current) = match outcome {
                     InstallFlowOutcome::Installed(application) => (application, false),
-                    InstallFlowOutcome::LaunchedExisting(application) => (application, true),
+                    InstallFlowOutcome::AlreadyCurrent(application) => (application, true),
                 };
                 let warnings = temporary_directory
                     .as_ref()
@@ -868,8 +868,8 @@ impl CodexDesktopService {
                     installed: (&application).into(),
                     warnings,
                 };
-                if launched_existing {
-                    self.settle_launched_existing(&job_id, result);
+                if already_current {
+                    self.settle_already_current(&job_id, result);
                 } else {
                     self.settle_success(&job_id, result);
                 }
@@ -919,9 +919,8 @@ impl CodexDesktopService {
         }
 
         // Treat a direct IPC invocation exactly like the renderer's version
-        // decision: an already-installed equal or newer Stable app is launched
-        // instead of reaching download or deployment. The platform adapter
-        // re-detects only trusted Stable identity before returning this status.
+        // decision: an already-installed equal or newer Stable app is a pure
+        // readback no-op. Install/update never launches the application.
         match self.platform.inspect_local().await? {
             LocalInstallStatus::Installed { application } => {
                 if application
@@ -929,9 +928,7 @@ impl CodexDesktopService {
                     .is_at_least(&release.platform_version)?
                 {
                     self.ensure_not_cancelled(cancellation)?;
-                    self.platform.launch(&application).await?;
-                    self.ensure_not_cancelled(cancellation)?;
-                    return Ok(InstallFlowOutcome::LaunchedExisting(application));
+                    return Ok(InstallFlowOutcome::AlreadyCurrent(application));
                 }
             }
             LocalInstallStatus::Unsupported { reason } => {
@@ -1169,13 +1166,13 @@ impl CodexDesktopService {
         }
     }
 
-    fn settle_launched_existing(&self, job_id: &str, result: InstallResult) {
+    fn settle_already_current(&self, job_id: &str, result: InstallResult) {
         if let Err(error) =
             self.job_store
-                .succeed_after_launch(job_id, result, self.clock.now_rfc3339())
+                .succeed_already_current(job_id, result, self.clock.now_rfc3339())
         {
             log::warn!(
-                "Codex desktop installer could not publish launched-existing success with {:?}",
+                "Codex desktop installer could not publish already-current success with {:?}",
                 error.code()
             );
         }
@@ -2202,6 +2199,7 @@ mod tests {
         assert_eq!(terminal.result.as_ref().unwrap().warnings, Vec::new());
         assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 1);
         assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
 
         let disk_paths = harness.disk_probe.paths();
         assert_eq!(disk_paths.len(), 2);
@@ -2341,7 +2339,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn direct_install_request_launches_an_equal_local_version_without_downloading() {
+    async fn direct_install_request_treats_an_equal_local_version_as_already_current_without_launching(
+    ) {
         let artifact = b"fixture installer package".to_vec();
         let release = release_for(&artifact, "1.2.3.4");
         let harness = harness(release.clone(), artifact, None);
@@ -2361,7 +2360,7 @@ mod tests {
         let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
 
         assert_eq!(terminal.stage, JobStage::Succeeded);
-        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
         assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 0);
         assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
         assert!(harness.disk_probe.paths().is_empty());
@@ -2373,7 +2372,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn direct_install_request_launches_a_newer_local_version_without_downgrading() {
+    async fn direct_install_request_keeps_a_newer_local_version_without_downgrading_or_launching() {
         let artifact = b"fixture installer package".to_vec();
         let release = release_for(&artifact, "1.2.3.4");
         let local_newer = release_for(&artifact, "1.2.3.5");
@@ -2401,7 +2400,7 @@ mod tests {
                 .map(|result| &result.installed.platform_version),
             Some(&local_newer.platform_version)
         );
-        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
         assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 0);
         assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
         assert!(harness.disk_probe.paths().is_empty());

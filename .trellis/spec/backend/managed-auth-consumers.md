@@ -1,0 +1,362 @@
+# Managed Auth Consumer Projection Contract
+
+## 1. Scope / Trigger
+
+Read this contract before changing managed account connections to Codex, Grok
+Build, or OpenCode Desktop; connection observation; native auth-file
+projection; refresh-owner transfer; pending-restart behavior; or
+`managed_auth_apply_connection_action`.
+
+Primary owners:
+
+- `src-tauri/src/services/managed_auth/consumers/codex/mod.rs`
+- `src-tauri/src/services/managed_auth/consumers/codex/{auth_document,delta,observation,project,swap}.rs`
+- `src-tauri/src/services/managed_auth/consumers/grok.rs`
+- `src-tauri/src/services/managed_auth/consumers/opencode.rs`
+- consumer orchestration in
+  `src-tauri/src/services/managed_auth/{login,service,providers/xai}.rs`
+- the connection action in `src-tauri/src/commands/managed_auth.rs`
+- preview admission in `src-tauri/src/services/managed_auth/connection_actions.rs`
+
+[Managed Auth Core](./managed-auth.md) owns account/credential metadata,
+SecretRef material and refresh CAS. [Managed Auth Login](./managed-auth-login.md)
+owns provider grants and backend login sessions. Codex Provider TOML and its
+config-only third-party writer are owned by
+[Codex Provider Configuration](./codex-provider-configuration.md). Agent-card
+observation and handoff semantics remain in
+[External Agent Auth](./external-agent-auth.md).
+The shared selector and pure source-patch behavior are owned by
+[Codex Request-Source Selection](./codex-source-selection.md); do not duplicate
+their implementation or extend account operations to Provider-table writes.
+
+## 2. Signatures
+
+```text
+request = {
+  connectionId: mc1:<32-lowercase-hex>,
+  expectedRevision: mr1:<64-lowercase-hex>,
+  action: connect_account | switch_account | disconnect | refresh |
+          restart | open_consumer | switch_to_official,
+  accountId?: ma1:<32-lowercase-hex>
+}
+async managed_auth_preview_connection_action({ request })
+  -> ManagedAuthConnectionActionPreview | ManagedAuthErrorDto
+async managed_auth_apply_connection_action({ request, previewId? })
+  -> ManagedAuthMutationResult | ManagedAuthErrorDto
+```
+
+`accountId` is required only for `connect_account` and `switch_account`.
+`switch_to_official` remains a wire compatibility value but is not advertised
+or executed as an Auth file mutation. Request-source changes use the existing
+Provider Change Plan. Every positive result contains a freshly
+reread overview; the renderer does not patch a connection optimistically.
+The command validates the closed request before offloading the synchronous
+service call through `tauri::async_runtime::spawn_blocking`. The Tauri command
+thread must not directly run the blocking credential locks, filesystem work,
+or nested runtime bridge used by the consumer coordinator. A blocking-task
+join failure maps to source-free `invalid_response`.
+
+Consumer boundaries:
+
+```text
+codex::observe_codex_home(path) -> CodexManagedAuthObservation
+codex::plan_codex_managed_auth_delta(live, target)
+  -> Result<Noop|AuthOnly, CodexDeltaError> // auth-file delta only
+codex::project_codex_official_account(app_state, home, subject, doc, expected_rev)
+  -> CodexProjectionOutcome
+codex::file_projection_enabled() -> true when capability is generally available;
+  unsupported effective stores still fail closed at plan time
+
+grok::project_grok_native(home, store) -> Result<(), GrokStoreError>
+grok::auth_provider_command_enabled() -> false until matching-host HIL
+grok::file_projection_enabled() -> false until matching-host HIL
+
+opencode::observe_auth_store(path) -> OpencodeAuthObservation
+opencode::upsert_projection(path, provider, entry, expectedRevision?)
+  -> AuthJsonWriteReceipt | OpencodeAuthError
+opencode::remove_file_key(path, officialKey, expectedRevision?)
+  -> AuthJsonWriteReceipt | OpencodeAuthError
+opencode::remove_capability(path, capabilityId, expectedRevision?)
+  -> AuthJsonWriteReceipt | OpencodeAuthError
+opencode::connection_summaries(
+  observation, credentialRows, connectionRows, checkedAt
+) -> ManagedAuthConnectionSummary[]
+OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
+CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
+```
+
+## 3. Contracts
+
+### Shared connection boundary
+
+- Mutating connection actions require a native file-impact preview bound to
+  the complete request and resolved write/preserved paths. The process-local
+  store retains at most 32 five-minute UUID-v4 previews. A newer preview for
+  the same connection supersedes the old one. Apply consumes exactly once;
+  missing, changed, expired, used or redirected previews authorize no write.
+  Refresh/restart acknowledgements do not require a file-write preview.
+- The preview v1 contains `contractVersion`, `previewId`, `connectionId`,
+  `expectedRevision`, `action`, `accountId`, `writeTargets`, `preservedPaths`,
+  `canApply`, `reasonCodes`. File display paths and backup paths are the narrow
+  metadata exception defined by [Reversible User Configuration](./reversible-user-config.md).
+  Overview/login snapshots still contain no filesystem paths or credentials.
+- OAuth completion saves an independent credential only. Even a
+  `connect_consumer` login must wait for this separate connection preview and
+  explicit confirmation before changing an external software file.
+
+- A managed account and a software connection are separate resources. A ready
+  credential does not prove that the consumer has accepted or is using it.
+- The connection-action IPC boundary is asynchronous, but the service method
+  remains synchronous. Validate before `spawn_blocking`; run the complete
+  service call inside that worker; and never move secret material or native
+  paths into an async/renderer payload merely to avoid blocking the command
+  thread.
+- Every connection request carries a syntactically valid `expectedRevision`,
+  but enforcement is consumer-specific. OpenCode connect/switch/disconnect
+  compares the current `auth.json` revision under its process-wide writer lock,
+  and restart acknowledgement compares the latest observation before updating
+  metadata. Codex official projection compares live auth revision under the
+  Codex auth writer lock and serializes with the existing Provider mutation
+  guard. Its displayed revision binds both live config and auth observations;
+  OpenCode always publishes the current file revision, not a stale persisted
+  connection revision.
+- Consumer adapters receive secret material only inside native code. Tokens,
+  SecretRef, raw auth-file bytes, helper output and provider sidecar details
+  never cross IPC. Only the explicit impact/recovery DTOs disclose display
+  paths, never renderer-controlled write destinations.
+- Credential purpose and refresh owner are explicit. Never copy one refresh
+  lineage among Proxy, Codex, Grok, OpenCode, or Copilot to simulate a
+  connection.
+- A successful file API call is not enough. Readback, owner transfer, external
+  pickup evidence and recovery state jointly determine connection status and
+  mutation outcome. After write/readback, restart evidence is consumer-specific.
+  Codex apply/disconnect inspect
+  `CodexDesktopRuntimeStatus` via `live_codex_requires_restart_for_app`:
+  `NotRunning` and `NotInstalled` clear the flag;
+  Running / Ambiguous / Unsupported / UntrustedTarget / inspect error keep
+  `pending_restart`. File-layer `project_under_guard` still marks the write
+  pending so tests without AppState stay fail-closed. Clearing the flag does
+  not itself mean connected: connect/switch still needs identity readback,
+  while disconnect clears the managed binding. OpenCode has no desktop
+  runtime inspect yet, so a successful write remains pending. The returned
+  overview is authoritative about which connection is pending; a partial
+  mutation is not a connected state.
+- Codex, Grok, and OpenCode summaries currently emit `target_id: None`. That is
+  not lifecycle install discovery and is not evidence the software is missing.
+  `requestMode` is observation of the consumer's current model source (for
+  Codex, `config.toml`); it does not alone prove that managed auth rewrote
+  `auth.json`.
+
+### Codex managed connection
+
+- Codex file-store projection is capability-gated by machine-checkable facts:
+  effective store is unset/default-file or explicit file; complete identity-
+  matched ChatGPT auth material; revision CAS; mandatory backup and atomic
+  private write; auth readback. Matching-host HIL is optional smoke
+  evidence and does not control a production boolean gate.
+- Effective defaults follow the pinned OpenAI Codex contract: unset
+  `cli_auth_credentials_store` → file; missing `model_provider` → openai.
+  Explicit `auto` / `keyring` / `ephemeral` / unknown values fail closed with
+  zero auth writes and are not silently rewritten to file.
+- Connected status requires live ChatGPT identity to match the connection-
+  bound credential. A ready SecretRef alone is saved-not-projected /
+  disconnected, never connected.
+- Auth delta and selector delta are independent: a matching account leaves
+  auth bytes unchanged but can still require a selector write. Official
+  connect/switch and disconnect use the bounded edits in
+  [Codex Request-Source Selection](./codex-source-selection.md). Neither
+  operation owns provider tables, model, MCP or features; disconnect does not
+  delete `auth.json`.
+- Auth projection takes the existing Codex Provider guard but does not call a
+  Provider writer or backfill credentials into Provider rows. The shared file
+  recovery owner preserves the exact outgoing auth preimage, including legacy
+  API-key-only documents. Commenting the selector is the intended official
+  ChatGPT routing change; it is not permission to rewrite provider tables.
+- A saved request-source change is a separate, explicitly confirmed
+  Provider/Change Plan operation and preserves auth bytes. Do not confuse a
+  low-level auth swap with full official connection: the latter can also
+  change routing through the selector. The actual selected source and live
+  process pickup still require their own observations.
+- `project_under_guard` writes a changed selector before swapping auth. An
+  auth-swap error attempts to restore the config preimage; that compensation
+  currently ignores its own write error. This is not an atomic two-file
+  transaction or proof of successful rollback. Preserve the recovery receipts
+  and require reread after a failed operation; never report both files restored
+  from the auth error alone.
+- Apply the shared runtime/restart rule above after an auth or selector write.
+  Do not emit `native_projection_unavailable` for a successful write, or turn
+  positive `completed + pending_restart` into a generic retry failure.
+- Codex disconnect clears FyAgent connection metadata, not the user's auth
+  file. If the top-level selector is commented, the preview lists `config.toml`
+  as a write target and `auth.json` as unchanged. A successful uncomment uses
+  the same live-runtime gate: pending only when Desktop may still be running.
+
+### Grok fail-closed consumer
+
+- `GROK_AUTH_PROVIDER_COMMAND_ENABLED` and
+  `GROK_FILE_PROJECTION_PRODUCTION_ENABLED` remain `false` until matching-host
+  helper/file-lock/home-selection HIL exists.
+- A Grok connection uses a separate `purpose=grok_native` credential. It is
+  never Proxy-resolved and is not copied from `purpose=proxy_upstream`.
+- `project_grok_native` returns `Unsupported` while the gate is closed and
+  writes no `auth.json`. Login can complete credential storage without a file
+  projection; the consumer remains unavailable, not connected.
+- When Grok tooling is available, Agent Auth observation stays
+  `handoff_only`; unavailable tooling yields an unavailable observation. In
+  neither case are CLI installation, a vault row, or opening a vendor page
+  verified Grok login evidence.
+
+### OpenCode Desktop `auth.json`
+
+- Resolve the official Desktop data path through
+  `opencode_config::get_opencode_auth_json_path`; observation and Path B writes
+  do not require a PATH `opencode` CLI.
+- Closed file keys are `openai`, `xai`, and `github-copilot`. Preserve every
+  unrelated provider, undecodable value, `wellknown` entry, and extra official
+  field not owned by the replacement operation.
+- Environment/`OPENCODE_AUTH_CONTENT` providers are not file rows. Do not
+  invent, delete, or claim to observe them through `auth.json`.
+- The private Desktop sidecar and `OPENCODE_SERVER_PASSWORD` are not a control
+  plane. Do not scan, guess, persist, or probe loopback ports/passwords.
+- Writes use the shared mandatory backup/private atomic writer and require
+  byte/semantic readback. If a later readback differs, return stale/uncertain
+  rather than blindly overwriting another writer's contents. Core write
+  failures use guarded compensation; later recovery uses the durable receipt.
+- `consumer=opencode` creates an independent
+  `purpose=opencode_provider` credential. Proxy/Codex/Grok/Copilot purposes are
+  rejected rather than copied. After successful file readback, the service
+  attempts to transfer refresh ownership to `opencode`.
+- External-write hot reload is not proven. A successful FyAgent write remains
+  `pending_restart`; do not also emit `native_projection_unavailable`, which
+  means the write itself was unavailable.
+- Owner transfer occurs after file readback. A CAS miss (`Ok(false)`) records
+  the connection with `pending_restart` evidence and returns `partial` /
+  `partial_completion`. A hard repository error currently returns before that
+  connection metadata upsert even though the official file may already have
+  changed. This is a known recovery residual, not an atomic rollback.
+- Copilot login is not provided by Managed Auth. A legacy Copilot row without
+  stable identity remains blocked and must not be projected.
+
+## 4. Validation & Error Matrix
+
+| Condition                                                                 | Required result                                                                                                      |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| connection/account/revision is malformed                                  | reject before dispatch; no file or metadata mutation                                                                 |
+| synchronous connection service runs directly on the Tauri command thread  | contract regression; validate first, then use `spawn_blocking`; map join failure to `invalid_response`               |
+| OpenCode write/delete/restart sees a stale revision                       | reject; leave the official file and connection metadata unchanged                                                    |
+| Codex auth swap sees a stale auth revision                                | reject; zero auth write                                                                                              |
+| OpenCode is offered Proxy/Codex/Grok/Copilot lineage                      | `provider_not_supported`; do not copy lineage                                                                        |
+| Codex has no purpose-compatible ready credential                          | `target_selection_required` / unavailable; no vendor file write                                                      |
+| Codex effective store is explicit auto/keyring/ephemeral/unknown          | store unsupported; zero auth write                                                                                   |
+| Codex/Grok/OpenCode summary has `target_id: None`                         | slot is unbound to a lifecycle install; not missing-install evidence                                                 |
+| ready CodexNative credential while live identity differs                  | disconnected / saved-not-projected; not connected                                                                    |
+| live Codex identity matches bound credential and no restart is pending     | connected; may still be third-party route with session preserved                                                     |
+| Grok has a ready `grok_native` credential while projection is unavailable | current summary is `unavailable` + `native_projection_unavailable`; not native pickup                                |
+| Grok helper/file gate is false                                            | `Unsupported` / `partial`; no vendor file write                                                                      |
+| Proxy tries to resolve `purpose=grok_native`                              | conflict; no refresh                                                                                                 |
+| OpenCode data dir exists but PATH CLI does not                            | observe `auth.json`; not `AuthObserverUnavailable`                                                                   |
+| OpenCode `auth.json` is missing                                           | empty provider set; not observer failure                                                                             |
+| OpenCode readback differs                                                 | report stale/uncertain; preserve backup and never blindly overwrite external bytes                                   |
+| OpenCode write and readback succeed while hot reload is unproven    | `completed` + `pending_restart`; returned overview marks the connection pending; not `native_projection_unavailable` |
+| Codex write succeeds while Desktop is `NotRunning` or `NotInstalled` | `completed` with no `pending_restart`; connect/switch status follows identity readback, disconnect clears the binding |
+| Codex write succeeds while Desktop is Running / Ambiguous / Untrusted / Unsupported / inspect error | `completed` + `pending_restart`; fail closed                                                                         |
+| token, SecretRef, auth bytes, or raw helper output reaches DTO/log/DOM    | security regression                                                                                                  |
+| Display paths arrive outside explicit impact/recovery metadata            | security regression                                                                                                  |
+| Connection mutation lacks a matching fresh single-use preview             | reject before vendor write                                                                                           |
+| Codex official connect/switch comments an active top-level `model_provider` and keeps provider tables | required; deleting the selector, rewriting it to `openai`, or editing model/MCP/features/provider tables is a regression |
+| Codex account change uncomments `model_provider` or inserts a second selector | contract regression                                                                                                  |
+| Codex disconnect leaves a commented top-level `model_provider` in place   | contract regression                                                                                                  |
+
+## 5. Good / Base / Bad Cases
+
+- **Good:** OpenCode replaces only the `openai` entry, preserves unknown keys,
+  writes atomically with `0600`, rereads equal bytes, transfers ownership, and
+  reports `pending_restart` until Desktop pickup is HIL-proven.
+- **Good:** Codex A→B replaces the auth file; if the live top-level
+  `model_provider` is active, official connect comments that one line and
+  leaves `[model_providers.*]` intact. Disconnect or a disconnected slot with
+  that line still commented uncomments the same selector. An explicit unofficial
+  source change also uncomments it instead of duplicating it. When Codex
+  Desktop is not running or not installed, no Restart action is needed.
+  Connect/switch and disconnect still produce different binding states.
+- **Base:** OpenCode has no `auth.json`; observation returns an empty provider
+  set without requiring a CLI.
+- **Base:** Codex unset store and missing `model_provider` are effective file
+  and openai; explicit keyring remains unavailable with zero write.
+- **Bad:** infer Codex connected from credential presence alone, copy a Proxy
+  refresh token into OpenCode/Grok, treat CLI installation as auth evidence, or
+  paint a file write as a live connection without readback evidence.
+
+## 6. Tests Required
+
+```bash
+mise run rust:fmt:check
+mise run rust:check
+mise run rust:clippy
+mise run rust:test -- managed_auth
+mise run rust:test -- model_provider_line
+mise run rust:test -- source_switch
+mise run rust:test -- opencode
+mise run typecheck
+mise run test:unit -- tests/renderer/features/managed-auth.test.ts \
+  tests/renderer/pages/agents/AgentAuthStatusPanel.test.tsx
+```
+
+Required assertions:
+
+- the native command validates before `spawn_blocking`, does not run the
+  synchronous service on the IPC command thread, and maps blocking-task join
+  failure to `invalid_response`;
+- Codex effective file defaults, independent auth/selector deltas (including
+  matching-account selector-only writes), private backup/readback/CAS and
+  saved-not-projected status; selector/source preservation assertions belong
+  to [Codex Request-Source Selection](./codex-source-selection.md);
+- previews bind account/action/revision/path, expire, supersede and consume
+  once; absent confirmation or changed overrides authorize zero vendor writes;
+- Grok production gates remain false and write zero vendor bytes;
+- Codex/Grok/OpenCode `target_id` is currently `None`;
+- OpenCode missing-file and no-PATH observation; closed-key read/modify/write
+  preserves unrelated, undecodable, `wellknown`, and extra official fields;
+- OpenCode current observation revisions, readback mismatch refusal, exact-preimage recovery, Unix
+  `0600`, purpose isolation, and owner transfer only after file readback;
+- OpenCode owner-transfer CAS miss returns partial with pending evidence, while
+  a hard repository error keeps its documented recovery residual explicit;
+- Codex and OpenCode positive writes use `completed + pending_restart` when a
+  live process may still hold previous credentials; Codex
+  `live_restart_is_only_required_when_desktop_may_be_running` covers
+  NotRunning/NotInstalled vs fail-closed statuses; `project_under_guard` still
+  asserts pending on writes so file-layer tests stay conservative;
+  strict renderer parsing rejects every other non-null reason on a completed result;
+- native sidecar/password discovery stays absent, and DTO/log/DOM leak tests
+  cover tokens, SecretRef, raw auth bytes and helper output; only the explicit
+  impact/recovery DTO permits native-owned display paths;
+- Codex HIL remains optional smoke evidence, not a runtime production gate.
+
+## 7. Wrong vs Correct
+
+Wrong:
+
+```text
+select any ready account -> copy its refresh token into consumer auth.json
+atomic_write Ok -> connected
+atomic_write Ok -> always pending_restart even if Codex Desktop is not running
+credential present -> Codex connected
+official connect -> leave active model_provider = "OpenAI"
+CODEX_FILE_PROJECTION_PRODUCTION_ENABLED=false forever
+sync Tauri command -> blocking credential/file coordinator
+```
+
+Correct:
+
+```text
+OpenCode selects a purpose-compatible credential under auth.json revision
+consumer-specific write -> readback -> refresh-owner transfer
+Codex runtime may hold old credentials, or OpenCode runtime unobserved -> pending_restart
+Codex Desktop NotRunning/NotInstalled after write -> no Restart; reread binding state
+Codex live identity match -> connected; otherwise saved-not-projected
+official connect -> comment first top-level model_provider; keep [model_providers.*]
+disconnect / disconnected+commented -> uncomment the same selector; keep [model_providers.*]
+unofficial source -> uncomment the same selector; never a second model_provider line
+Codex capability from effective store + complete material + readback
+async Tauri command -> validate -> spawn_blocking(sync service) -> strict result
+```

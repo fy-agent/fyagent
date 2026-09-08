@@ -1,3 +1,5 @@
+> Historical subplan: the 2026-09-08 parent task artifacts supersede these execution instructions. Retained acceptance items are not evidence of completion.
+
 # Clarify Grok login trichotomy
 
 先读父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md)。用例：[use-cases.md](./use-cases.md)。本子任务只立登录路标，不把 SuperGrok 写进 Claude / Codex / WorkBuddy。

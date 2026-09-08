@@ -350,25 +350,31 @@ jobs:
       - name: Unit tests
         id: tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        # These four host-integration suites exercise the real local mise API.
-        # Their pure Node contracts still run above; the real mise boundary is
-        # owned by the canonical local check rather than GitHub Actions.
+        # The host-integration project exercises the real local mise API.
+        # The canonical local check still runs it. Select the CI environments
+        # explicitly: Vitest 3 does not forward CLI excludes to child projects.
         run: |
-          pnpm test:unit \
-            --exclude tests/developmentEnvironment.test.ts \
-            --exclude tests/miseTaskContract.test.ts \
-            --exclude tests/systemCheck.test.ts \
-            --exclude tests/taskDocs.test.ts
+          pnpm test:unit --project contracts --project renderer
 
-      - name: Locale key parity
-        id: locale
+      - name: Renderer lint
+        id: lint
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: pnpm test:i18n
+        run: pnpm lint
+
+      - name: Install browser engines
+        id: browsers
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Production boot and browser regressions
+        id: browser-tests
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: pnpm test:browser
 
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
-          CI_REQUIRED_STEPS: setup-pnpm,setup-node,toolchain-facts,setup-uv,sync-python,install-frontend,toolchains,version,typecheck,formatting,tests,locale
+          CI_REQUIRED_STEPS: setup-pnpm,setup-node,toolchain-facts,setup-uv,sync-python,install-frontend,toolchains,version,typecheck,formatting,tests,lint,browsers,browser-tests
           CI_STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/ci/evaluate-step-outcomes.mjs
 
@@ -413,7 +419,7 @@ jobs:
       - name: Run mock-only desktop acceptance tests
         id: mock-tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance
+        run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run --config config/vitest.config.ts tests/desktop-acceptance
 
       - name: Verify mock-only desktop acceptance contract
         id: mock-contract

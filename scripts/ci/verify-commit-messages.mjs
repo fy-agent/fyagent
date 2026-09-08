@@ -105,30 +105,34 @@ export function validateCommitSubject(subject) {
 export function listCommitSubjectsInRange(baseSha, headSha) {
   assertCommitSha(baseSha, "base");
   assertCommitSha(headSha, "head");
-  if (baseSha === headSha) {
-    return [
-      {
-        sha: headSha,
-        subject: git(["show", "-s", "--format=%s", headSha]).trim(),
-      },
-    ];
-  }
-  const output = git([
-    "log",
-    "--format=%H%x09%s",
-    `${baseSha}..${headSha}`,
-  ]).trim();
+  const format = "--format=%H%x09%P%x09%s";
+  const output = git(
+    baseSha === headSha
+      ? ["show", "-s", format, headSha]
+      : ["log", format, `${baseSha}..${headSha}`],
+  ).trim();
   if (output.length === 0) {
     return [];
   }
   return output.split("\n").map((line) => {
     const separator = line.indexOf("\t");
-    if (separator <= 0) {
+    const subjectStart = line.indexOf("\t", separator + 1);
+    const parents = line
+      .slice(separator + 1, subjectStart)
+      .split(" ")
+      .filter(Boolean);
+    if (
+      separator <= 0 ||
+      subjectStart < 0 ||
+      !/^[0-9a-f]{40}$/u.test(line.slice(0, separator)) ||
+      parents.some((parent) => !/^[0-9a-f]{40}$/u.test(parent))
+    ) {
       throw new Error(`malformed git log output: ${line}`);
     }
     return {
       sha: line.slice(0, separator),
-      subject: line.slice(separator + 1),
+      parents,
+      subject: line.slice(subjectStart + 1),
     };
   });
 }
@@ -137,6 +141,13 @@ export function verifyCommitMessages({ baseSha, headSha, prTitle = null }) {
   const errors = [];
   const commits = listCommitSubjectsInRange(baseSha, headSha);
   for (const commit of commits) {
+    // Custom integration subjects are meaningful only on real merge objects.
+    // Keep normal commits/PR titles strict and still inspect every side commit.
+    if (
+      new Set(commit.parents).size >= 2 &&
+      /^merge: \S.*$/u.test(commit.subject)
+    )
+      continue;
     const violation = validateCommitSubject(commit.subject);
     if (violation) {
       errors.push(

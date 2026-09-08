@@ -353,8 +353,7 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
+          package-manager-cache: false
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
@@ -362,16 +361,6 @@ jobs:
           toolchain: 1.97.1
           target: ${{ matrix.rust_target }}
           cache: false
-
-      - name: Cache Cargo registry
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-registry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            cargo-registry-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Verify native runner and frozen toolchain
         shell: pwsh
@@ -1175,8 +1164,7 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
+          package-manager-cache: false
 
       - name: Resolve locked toolchain facts
         id: toolchain-facts
@@ -1196,16 +1184,6 @@ jobs:
           toolchain: 1.97.1
           target: aarch64-apple-darwin,x86_64-apple-darwin
           cache: false
-
-      - name: Cache Cargo registry
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-registry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            cargo-registry-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Verify frozen source and toolchain
         shell: bash
@@ -1231,8 +1209,42 @@ jobs:
       - name: Install locked frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build universal macOS app
-        run: pnpm tauri build --target universal-apple-darwin --bundles app
+      - name: Build nested privileged helper and client
+        shell: bash
+        env:
+          FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1"
+        run: |
+          set -euo pipefail
+          scripts/release/build-macos-privileged-helper.sh
+
+      - name: Build universal macOS app with privileged client linkage
+        env:
+          FYAGENT_PRIVILEGED_CLIENT_DYLIB: ${{ github.workspace }}/src-tauri/macos-privileged-helper/dist/libFyAgentPrivilegedClient.dylib
+        run: |
+          set -euo pipefail
+          # The helper/client are sealed into formal artifacts now, but the
+          # production runtime remains compile-time disabled until a dedicated
+          # notarized HIL candidate proves Bless/XPC/rollback on real hardware.
+          pnpm tauri build \
+            --target universal-apple-darwin \
+            --bundles app \
+            --features macos-privileged-client
+
+      - name: Embed nested privileged helper
+        shell: bash
+        env:
+          FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1"
+        run: |
+          set -euo pipefail
+          bundle_root='src-tauri/target/universal-apple-darwin/release/bundle/macos'
+          shopt -s nullglob
+          app_paths=("$bundle_root"/*.app)
+          [ "${#app_paths[@]}" -eq 1 ] && [ -d "${app_paths[0]}" ] && [ "$(basename "${app_paths[0]}")" = 'FyAgent.app' ] || {
+            echo "Expected exactly one raw universal FyAgent.app before embedding the privileged helper" >&2
+            exit 1
+          }
+          scripts/release/embed-macos-privileged-helper.sh "${app_paths[0]}"
+          scripts/release/verify-macos-privileged-helper.sh --structure-only "${app_paths[0]}"
 
       - name: Seal and verify the Developer ID app
         id: app
@@ -2032,21 +2044,41 @@ jobs:
 
           remote_root="$transaction_root/remote-release-attachments"
           mkdir "$remote_root"
-          while IFS=$'\t' read -r asset_id asset_name; do
-            [[ "$asset_id" =~ ^[1-9][0-9]*$ ]]
-            [[ "$asset_name" =~ ^[A-Za-z0-9._-]+$ ]]
-            download_status="$(curl --silent --show-error --location \
-              --output "$remote_root/$asset_name" --write-out '%{http_code}' \
-              "${api_headers[@]}" -H 'Accept: application/octet-stream' \
-              "$api_root/repos/$repository/releases/assets/$asset_id")"
-            [ "$download_status" = 200 ] || {
-              echo "Re-download failed for $asset_name with HTTP $download_status" >&2
-              exit 1
-            }
+          downloads_verified=false
+          for download_attempt in 1 2 3 4; do
+            rm -f "$remote_root"/*
+            download_failed=false
+            while IFS=$'\t' read -r asset_id asset_name; do
+              [[ "$asset_id" =~ ^[1-9][0-9]*$ ]]
+              [[ "$asset_name" =~ ^[A-Za-z0-9._-]+$ ]]
+              download_status="$(curl --silent --show-error --location \
+                --output "$remote_root/$asset_name" --write-out '%{http_code}' \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                -H 'Accept: application/octet-stream' \
+                "$api_root/repos/$repository/releases/assets/$asset_id")"
+              if [ "$download_status" != 200 ]; then
+                echo "Re-download attempt $download_attempt failed for $asset_name with HTTP $download_status" >&2
+                download_failed=true
+                break
+              fi
+            done < <(jq -r '.[] | [.id, .name] | @tsv' "$assets_json")
 
-          done < <(jq -r '.[] | [.id, .name] | @tsv' "$assets_json")
-          node scripts/release/prepare-release-publication.mjs verify-downloads \
-            release-attachments "$remote_root" "$APP_VERSION"
+            if [ "$download_failed" = false ] &&
+              node scripts/release/prepare-release-publication.mjs verify-downloads \
+                release-attachments "$remote_root" "$APP_VERSION"; then
+              downloads_verified=true
+              break
+            fi
+            if [ "$download_attempt" -lt 4 ]; then
+              echo "Release asset re-download is not stable yet; retrying after a bounded delay" >&2
+              sleep 5
+            fi
+          done
+          [ "$downloads_verified" = true ] || {
+            echo 'Re-downloaded Release attachments did not converge to the verified local payload' >&2
+            exit 1
+          }
 
           prepublish_json="$transaction_root/prepublish.json"
           prepublish_status="$(curl --silent --show-error \

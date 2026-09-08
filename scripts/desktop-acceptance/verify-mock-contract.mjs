@@ -31,7 +31,7 @@ const gitAttributes = fs.readFileSync(
 
 requireCondition(
   packageJson.scripts["test:desktop:mock"] ===
-    "node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance && node --throw-deprecation scripts/desktop-acceptance/verify-mock-contract.mjs",
+    "node --throw-deprecation ./node_modules/vitest/vitest.mjs run --config config/vitest.config.ts tests/desktop-acceptance && node --throw-deprecation scripts/desktop-acceptance/verify-mock-contract.mjs",
   "test:desktop:mock must run the isolated Vitest contract before this verifier",
 );
 requireCondition(
@@ -45,7 +45,7 @@ requireCondition(
 );
 requireCondition(
   workflow.includes(
-    "run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance",
+    "run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run --config config/vitest.config.ts tests/desktop-acceptance",
   ) &&
     workflow.includes(
       "run: node --throw-deprecation scripts/desktop-acceptance/verify-mock-contract.mjs",

@@ -1,59 +1,36 @@
-# Finish Grok login and SuperGrok placement into supported tools
+# 单机订阅跨 Agent：原分支续作
 
-先读 [summary.md](./summary.md)。用例总表：[use-cases.md](./use-cases.md)。亲测勾选：[research/hil-matrix.md](./research/hil-matrix.md)。
+日期：2026-09-08。用户已授权创建隔离分支、review 原分支、实施、测试、提交 PR；本次授权取代此前“先不测试”的阶段限制。
 
-## Goal
+## 目标
 
-分清三种 Grok 登录；扫码一次 SuperGrok，能用到 Claude Code、Claude Desktop、Codex 和 WorkBuddy。William 在 Windows 和 Mac mini 上亲自走完才算完成。
+复用 FyAgent 当前已集成的 Grok/SuperGrok 登录态，把本机 Claude Code 与 Codex 的配置应用、内置转发和订阅调用链路接通。面向小白用户，使用一个 FyAgent 安装包，不引入云账号、远端平台、同步或 Docker。
 
-## Background
+## 范围与来源
 
-- 意图：[Discussion #106](https://github.com/fy-agent/fyagent/discussions/106)。登录回写 [#43](https://github.com/fy-agent/fyagent/issues/43)，投放回写 [#42](https://github.com/fy-agent/fyagent/issues/42)。
-- 2026-08-31：William 决定关联投放一起做，不拆成「先只做 Codex」。
-- 子任务：登录路标；Claude/Desktop/Codex 投放；WorkBuddy 投放。
+- 延续 `feat/grok-first-class-iteration` 的 `b8b15dbaf141f7c7fbd7816914fda59a07a2208a`；在独立 worktree、新分支中整合 0.4.4 主线。保留原分支历史，不修改主工作目录或他人分支。
+- 复用当前 Managed Auth 登录、SecretRef 和内置 Proxy；不重建授权系统，不依赖已退役的旧认证页面。
+- 必须完成 Grok 订阅到 Claude Code 与 Codex；保留原分支其他目标的可用能力并纠正虚假支持文案。WorkBuddy 拉模型名单不等于订阅调用；Claude Desktop 依当前目标契约处理，不制造新的产品目录。
+- 其他已经集成的登录来源保持兼容，不把此次目标扩大成所有供应商的任意跨协议转换。
 
-## Confirmed facts
+## 用户行为
 
-登录（`08-31-grok-login-trichotomy/research/current-login-surfaces.md`）：
+1. 用户能够从现有认证入口登录或选择已有 Grok 订阅账号。
+2. 用户选择目标和模型，确认后应用到该目标；不能静默改动其他 Agent 或现有其他来源。
+3. 配置应用结果来自 native 保存/回读；页面明确本机转发运行依赖，不把“已保存”称为真实额度验证。
+4. 用户能够继续使用现有配置恢复/来源切换路径；授权失效、端口冲突和写入失败有真实错误提示。
 
-- 三条路散在三处。官方登录只交接，不验证。没有 Grok 登录状态命令。不能用 `~/.grok/auth.json` 证明已登录。
-- ChatGPT 登录是 `codex_oauth`，和 SuperGrok 扫码不是一把钥匙。
+## 验收
 
-投放（`08-31-grok-supergrok-to-codex/research/current-supergrok-codex-path.md`）：
+- [x] 原分支 review、合并取舍、技术设计和行动计划落盘；原提交来源可核验且原分支不改写；若仅规范化提交标题，新旧代码树与父提交必须相同。
+- [x] vault 中已有 Grok 账号可用于绑定，不需要旧 JSON 文件或重新登录；不把上游 token 交给 renderer/目标配置。
+- [x] Claude Code 和 Codex 分别应用到本机转发入口，保留各自协议/备份/恢复，Codex 继续通过现有 Change Plan。
+- [x] 账号/模型选择明确；无缺省账号串用、无固定 Provider ID 覆盖他人数据、无 API 计费静默兜底。
+- [x] 本机监听启动、失败和既有关闭/恢复行为可解释；无需第二个服务或系统级代理。
+- [x] 相关后端/前端/集成测试、标准检查和生产浏览器检查通过；测试使用隔离目录及合成凭据。
+- [x] 可获得的真实 native/订阅证据单独记录；缺少真实账号或 Windows 环境时明确标记，不以 mock 代替。
+- 交付关闭条件：代码复核完成后，提交并推送新分支、创建 PR、回读其分支/提交/检查状态；以最终 Git/PR 回执确认，不把提交前记录当作远端执行结果，不合并 PR、不发布版本。
 
-- SuperGrok 扫码是共用认证中心。旧界面已能绑 Claude Code / Claude Desktop / Codex 的 `xai_oauth` 预设。
-- 新界面 Change Plan / Quick Setup 只认 API 钥匙，会拒绝托管扫码。有没有账号，页面长得一样。
-- Claude Desktop 不在新界面 Agent 目录里，亲测走旧界面。
+## 非目标
 
-WorkBuddy：
-
-- 目录允许自己换模型。保存走自己的 Change Plan（地址 + 钥匙 + 模型名），不是 Provider Quick Setup。
-- 现在没有 `xai_oauth` 预设。Qoder 不能配第三方模型；TRAE 不能代写模型。
-
-## Requirements
-
-- R1. 三种登录路标分开。官方登录不说已登录。
-- R2. SuperGrok 扫码仍只在认证中心。
-- R3. 同一份已登录 SuperGrok，能分别写进 Claude Code、Claude Desktop、Codex。每家一张独立预览/保存。失败不连累别人。
-- R4. 同一份脑子能写进 WorkBuddy。优先用已扫码账号，不要无故再要一把钥匙。走 WorkBuddy 自己的保存。
-- R5. Qoder / TRAE 不写第三方模型。ChatGPT 登录这轮不做。
-- R6. 双机亲测全部路径。密码不进仓库。
-
-## Acceptance Criteria
-
-- [ ] AC1. 人能分清官方登录、扫码、API 钥匙。
-- [ ] AC2. 官方登录不出现「已验证」。Claude 原来能验证的路还在。
-- [ ] AC3. SuperGrok → Claude Code、Claude Desktop、Codex 都能先看再改再检查（Desktop 可在旧界面完成）。
-- [ ] AC4. SuperGrok → WorkBuddy 能保存并回读。
-- [ ] AC5. 一家失败不谎报另一家成功。
-- [ ] AC6. 不关 #42 / #43 整张工单。#141 B7 按有没有改草稿标记。
-- [ ] AC7. Windows 和 Mac mini 都按 `research/hil-matrix.md` 走完。
-
-## Out of scope
-
-- 安装升级 Grok（#31、#32）
-- 新界面额度看板
-- ChatGPT 登录
-- Qoder / TRAE 模型写入
-- 总门卫
-- 写 `~/.grok/auth.json` 冒充登录
+新 OAuth 提供商、云账号/同步、Docker/外部平台、系统全局代理、跨设备 token 拷贝、复制 refresh token 到 CLI、关闭整张 #42/#43、安装升级其他 Agent。

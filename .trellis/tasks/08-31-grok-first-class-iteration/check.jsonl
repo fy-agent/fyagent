@@ -1,8 +1,14 @@
-{"file": ".trellis/tasks/08-31-grok-first-class-iteration/summary.md", "reason": "Reject work that drifts from the shared plain plan"}
-{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Reject verified Grok login or auth.json inference"}
-{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Reject login controls on Models Quick Setup"}
-{"file": ".trellis/spec/frontend/reuse.md", "reason": "Reject page-local OAuth or Settings rewrite"}
-{"file": ".trellis/tasks/08-31-grok-first-class-iteration/research/hil-matrix.md", "reason": "Both machines and all live cases required"}
-{"file": ".trellis/tasks/08-31-grok-login-trichotomy/research/current-login-surfaces.md", "reason": "Three roads must stay on their current owners"}
-{"file": ".trellis/spec/backend/workbuddy-configuration.md", "reason": "Reject treating WorkBuddy as a Provider write"}
-{"file": ".trellis/tasks/08-31-grok-supergrok-to-workbuddy/research/current-workbuddy-save-path.md", "reason": "Reject refresh-token copy into models.json"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Native command and service ownership"}
+{"file":".trellis/spec/backend/reuse.md","reason":"Reuse current owners"}
+{"file":".trellis/spec/backend/managed-auth.md","reason":"Vault and proxy credential ownership"}
+{"file":".trellis/spec/backend/managed-auth-consumers.md","reason":"Purpose and consumer isolation"}
+{"file":".trellis/spec/backend/proxy-runtime.md","reason":"Single local engine lifecycle"}
+{"file":".trellis/spec/backend/local-proxy-pipeline.md","reason":"Routing and protocol behavior"}
+{"file":".trellis/spec/backend/change-plan-executor.md","reason":"Existing preview/apply contracts"}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Codex config and restoration"}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Current single renderer entry"}
+{"file":".trellis/spec/frontend/managed-auth.md","reason":"Current authorization UI"}
+{"file":".trellis/spec/frontend/models.md","reason":"Model and provider workflow"}
+{"file":".trellis/spec/frontend/change-plan-workspaces.md","reason":"Preview and apply behavior"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"DTO and native evidence"}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Current toolchain and isolated validation"}

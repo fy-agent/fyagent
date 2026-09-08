@@ -37,6 +37,25 @@ function trackedDocumentationFiles(): string[] {
     .sort();
 }
 
+function readTrackedDocumentationFile(file: string): string {
+  try {
+    return fs.readFileSync(path.join(ROOT, file), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const result = spawnSync("git", ["show", `:${file}`], {
+    cwd: ROOT,
+    encoding: "utf8",
+    shell: false,
+    windowsHide: true,
+  });
+  if (result.status !== 0 || result.error !== undefined) {
+    throw new Error(`failed to read tracked documentation file: ${file}`);
+  }
+  return result.stdout;
+}
+
 function concreteWorkstationHomeLocations(
   file: string,
   source: string,
@@ -76,7 +95,7 @@ describe("repository workstation path privacy contract", () => {
     const violations = trackedDocumentationFiles().flatMap((file) =>
       concreteWorkstationHomeLocations(
         file,
-        fs.readFileSync(path.join(ROOT, file), "utf8"),
+        readTrackedDocumentationFile(file),
       ),
     );
 

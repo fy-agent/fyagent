@@ -48,9 +48,9 @@
       ],
       "validation": "existing-test",
       "evidence": [
-        "tests/components/workbuddy/WorkBuddyPage.test.tsx",
-        "tests/components/workbuddy/WorkBuddyDuplicateConflictDialog.test.tsx",
-        "tests/components/workbuddy/urlSafety.test.ts"
+        "tests/renderer/pages/models/Page.test.tsx",
+        "tests/renderer/pages/models/apply/WorkBuddySavePlanWorkspace.test.tsx",
+        "tests/renderer/platform/featurePorts.test.ts"
       ]
     },
     {
@@ -68,7 +68,17 @@
         "CR-T10",
         "CR-T11",
         "CR-T12",
-        "CR-T13",
+        "CR-T13"
+      ],
+      "validation": "existing-test",
+      "evidence": [
+        "src-tauri/src/services/codex_desktop/mod.rs",
+        "src-tauri/src/services/codex_desktop/restart_plan.rs"
+      ]
+    },
+    {
+      "id": "codex-restart-ui-candidate",
+      "requirements": [
         "CR-UI01",
         "CR-UI02",
         "CR-UI03",
@@ -76,21 +86,16 @@
         "CR-UI05",
         "CR-UI06"
       ],
-      "validation": "existing-test",
-      "evidence": [
-        "src-tauri/src/services/codex_desktop/mod.rs",
-        "src-tauri/src/services/codex_desktop/restart_plan.rs",
-        "tests/components/codex/CodexRestartDialog.test.tsx",
-        "tests/hooks/useCodexRestartCoordinator.test.tsx"
-      ]
+      "validation": "candidate-only",
+      "evidence": ["src-tauri/src/services/codex_desktop/restart_plan.rs"]
     },
     {
       "id": "codex-version-renderer",
       "requirements": ["CV-T01", "CV-T02", "CV-T03", "CV-T04", "CV-T05"],
       "validation": "existing-test",
       "evidence": [
-        "tests/components/CodexDesktopInstallerCard.test.tsx",
-        "tests/hooks/useCodexDesktopInstaller.test.tsx"
+        "tests/renderer/pages/agents/CodexDesktopInstallerPanel.test.tsx",
+        "tests/shared/codexDesktopCore.test.ts"
       ]
     },
     {
@@ -108,9 +113,9 @@
       ],
       "validation": "supporting-test",
       "evidence": [
-        "tests/components/AppSwitcher.test.tsx",
-        "tests/components/topbar/TopLevelHeader.test.tsx",
-        "tests/hooks/useWindowLayoutMode.test.tsx",
+        "tests/renderer/widgets/app-shell/SideNavigation.test.tsx",
+        "tests/renderer/widgets/app-shell/TopBar.test.tsx",
+        "tests/browser/shell.spec.ts",
         "src-tauri/tests/window_layout.rs"
       ]
     },
@@ -136,8 +141,8 @@
     {
       "id": "locale-schema",
       "requirements": ["I18N-T01", "I18N-T03"],
-      "validation": "existing-test",
-      "evidence": ["tests/config/localeKeyParity.test.ts"]
+      "validation": "candidate-only",
+      "evidence": [".trellis/spec/frontend/localization.md"]
     },
     {
       "id": "desktop-candidate-e2e",

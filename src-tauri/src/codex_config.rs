@@ -17,25 +17,34 @@ mod auth;
 mod catalog;
 mod credential_store;
 mod features;
+mod model_provider_line;
+mod source_switch;
 mod storage;
+pub(crate) use model_provider_line::{
+    comment_top_level_model_provider, top_level_model_provider_is_active,
+    uncomment_top_level_model_provider,
+};
+pub(crate) use source_switch::{
+    patch_source as patch_codex_source_config, validate_source as validate_codex_source_config,
+};
 
 pub(crate) use auth::codex_auth_has_credential_login_material;
 #[cfg(test)]
 use auth::codex_live_auth_is_stale_third_party_residue;
 pub use auth::{
     clear_stale_codex_live_auth_after_official_switch, codex_auth_has_login_material,
-    extract_codex_auth_api_key, should_restore_codex_provider_token_for_backfill,
+    codex_auth_has_oauth_login_material, extract_codex_auth_api_key,
+    should_restore_codex_provider_token_for_backfill,
 };
 pub(crate) use credential_store::{
-    native_file_projection_allowed, overlay_cli_auth_credentials_store,
-    parse_cli_auth_credentials_store, CodexCredentialStore,
+    native_file_projection_allowed, parse_cli_auth_credentials_store, CodexCredentialStore,
 };
 
 #[cfg(test)]
 use catalog::*;
 pub(crate) use catalog::{
-    codex_top_level_model, read_codex_model_catalog_text, resolve_fyagent_catalog_path,
-    CODEX_WEB_SEARCH_DISABLED, CODEX_WEB_SEARCH_FIELD,
+    codex_model_catalog_write_required, codex_top_level_model, read_codex_model_catalog_text,
+    resolve_fyagent_catalog_path, CODEX_WEB_SEARCH_DISABLED, CODEX_WEB_SEARCH_FIELD,
 };
 pub use catalog::{
     prepare_codex_config_text_with_model_catalog, read_codex_model_catalog_simplified_from_live,
@@ -197,6 +206,10 @@ pub fn write_codex_provider_live_with_catalog(
     config_text: Option<&str>,
     profile: CodexCatalogToolProfile,
 ) -> Result<(), AppError> {
+    // Reject incomplete destinations before catalog preparation can create a
+    // file. A missing API configuration must never become an empty live TOML.
+    source_switch::validate_source(category, auth, config_text.unwrap_or(""))?;
+    read_and_validate_codex_config_text()?;
     let prepared_config = config_text
         .map(|text| prepare_codex_config_text_with_model_catalog(settings, text, profile))
         .transpose()?;
@@ -702,82 +715,24 @@ pub fn strip_codex_mcp_servers_from_settings(settings: &mut Value) -> Result<(),
     Ok(())
 }
 
-/// Route a Codex live write between full auth+config or config-only.
-///
-/// Official providers with usable login material own `auth.json`. Third-party
-/// providers only touch `config.toml` when the compatibility setting is enabled
-/// so the user's ChatGPT login cache survives provider switches.
-///
-/// 统一会话开关开启时，官方配置在落盘前注入共享的 `custom` 路由
-/// （见 `inject_codex_unified_session_bucket`）。
+/// A request-source switch owns routing/model fields, not account credentials
+/// or the rest of the user's configuration. Login projection has a separate
+/// consent and revision boundary in Managed Auth.
 pub fn write_codex_live_for_provider(
     category: Option<&str>,
     auth: &Value,
     config_text: Option<&str>,
 ) -> Result<(), AppError> {
-    let unified_official_config =
-        if category == Some("official") && crate::settings::unify_codex_session_history() {
-            Some(inject_codex_unified_session_bucket(
-                config_text.unwrap_or(""),
-            )?)
-        } else {
-            None
-        };
-    let config_text = unified_official_config.as_deref().or(config_text);
-
-    let oauth_native_projection =
-        category == Some("official") && auth::codex_auth_has_oauth_login_material(auth);
-    let current_live = fs::read_to_string(get_codex_config_path()).unwrap_or_default();
-    let native_file_store = parse_cli_auth_credentials_store(&current_live)
-        .map(CodexCredentialStore::allows_native_file_projection)
-        .unwrap_or(false);
-    let should_write_auth = ((category == Some("official") && codex_auth_has_login_material(auth))
-        || (category != Some("official")
-            && !crate::settings::preserve_codex_official_auth_on_switch()))
-        && (!oauth_native_projection || native_file_store);
-
-    if should_write_auth {
-        let projected_config = match config_text {
-            Some(text) => {
-                let projected = project_codex_live_config_when_openai_auth_disabled(auth, text)?;
-                Some(overlay_cli_auth_credentials_store(
-                    &projected,
-                    &current_live,
-                ))
-            }
-            None => None,
-        };
-        write_codex_live_atomic(auth, projected_config.as_deref())
-    } else {
-        let live_config = prepare_codex_provider_live_config(auth, config_text.unwrap_or(""))?;
-        let live_config = overlay_cli_auth_credentials_store(&live_config, &current_live);
-        write_codex_live_config_atomic(Some(&live_config))
-    }
-}
-
-/// Current Codex ignores `auth.json` when the active provider sets
-/// `requires_openai_auth = false`. Project the stored `OPENAI_API_KEY` into
-/// provider-scoped `experimental_bearer_token` so live requests still authenticate.
-/// `requires_openai_auth = true` or a missing field keeps the stored TOML as-is
-/// so the API key continues to live only in `auth.json`.
-fn project_codex_live_config_when_openai_auth_disabled(
-    auth: &Value,
-    config_text: &str,
-) -> Result<String, AppError> {
-    if active_codex_provider_disables_openai_auth(config_text) {
-        prepare_codex_provider_live_config(auth, config_text)
-    } else {
-        Ok(config_text.to_string())
-    }
-}
-
-fn active_codex_provider_disables_openai_auth(config_text: &str) -> bool {
-    let Ok(doc) = config_text.parse::<DocumentMut>() else {
-        return false;
-    };
-    active_codex_provider_table(&doc)
-        .and_then(|(_, table)| table.get("requires_openai_auth").and_then(Item::as_bool))
-        == Some(false)
+    let current_live = read_and_validate_codex_config_text()?;
+    let config = source_switch::patch_source(
+        &current_live,
+        category,
+        auth,
+        config_text.unwrap_or(""),
+        &get_codex_config_dir(),
+        crate::settings::unify_codex_session_history(),
+    )?;
+    write_codex_live_config_atomic(Some(&config))
 }
 
 /// Build the live Codex config for provider switching.
@@ -2244,67 +2199,6 @@ model = "gpt-5"
         assert!(
             parsed.get("model_providers").is_none(),
             "reserved provider tables should not be synthesized"
-        );
-    }
-
-    #[test]
-    fn active_provider_disables_openai_auth_only_for_explicit_false() {
-        let disabled = r#"model_provider = "custom"
-
-[model_providers.custom]
-requires_openai_auth = false
-"#;
-        let enabled = r#"model_provider = "custom"
-
-[model_providers.custom]
-requires_openai_auth = true
-"#;
-        let missing = r#"model_provider = "custom"
-
-[model_providers.custom]
-name = "Gateway"
-"#;
-        assert!(active_codex_provider_disables_openai_auth(disabled));
-        assert!(!active_codex_provider_disables_openai_auth(enabled));
-        assert!(!active_codex_provider_disables_openai_auth(missing));
-        assert!(!active_codex_provider_disables_openai_auth("not toml {"));
-    }
-
-    #[test]
-    fn project_live_config_injects_bearer_token_only_when_openai_auth_is_disabled() {
-        let disabled = r#"model_provider = "custom"
-model = "gpt-5.4"
-
-[model_providers.custom]
-name = "Gateway"
-base_url = "https://gateway.example/v1"
-wire_api = "responses"
-requires_openai_auth = false
-"#;
-        let enabled = disabled.replace(
-            "requires_openai_auth = false",
-            "requires_openai_auth = true",
-        );
-        let auth = json!({ "OPENAI_API_KEY": "sk-image" });
-
-        let projected =
-            project_codex_live_config_when_openai_auth_disabled(&auth, disabled).expect("project");
-        let parsed: toml::Value = toml::from_str(&projected).expect("parse projected");
-        assert_eq!(
-            parsed
-                .get("model_providers")
-                .and_then(|v| v.get("custom"))
-                .and_then(|v| v.get("experimental_bearer_token"))
-                .and_then(|v| v.as_str()),
-            Some("sk-image")
-        );
-
-        let unchanged =
-            project_codex_live_config_when_openai_auth_disabled(&auth, &enabled).expect("keep");
-        assert_eq!(unchanged, enabled);
-        assert!(
-            !unchanged.contains("experimental_bearer_token"),
-            "requires_openai_auth=true must keep the API key in auth.json only"
         );
     }
 

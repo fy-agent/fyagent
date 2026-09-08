@@ -9,6 +9,7 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.txt text eol=lf
+mise.lock text eol=lf
 
 # TypeScript/JavaScript files
 *.ts text eol=lf

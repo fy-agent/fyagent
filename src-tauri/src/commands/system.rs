@@ -48,9 +48,11 @@ pub async fn get_skills_migration_result() -> Result<Option<SkillsMigrationPaylo
 pub async fn set_window_theme(window: tauri::Window, theme: String) -> Result<(), String> {
     use tauri::Theme;
 
-    let tauri_theme = match theme.as_str() {
-        "dark" => Some(Theme::Dark),
-        "light" => Some(Theme::Light),
+    crate::settings::persist_appearance_theme(&theme);
+
+    let tauri_theme = match crate::settings::parse_appearance_theme(&theme) {
+        Some("dark") => Some(Theme::Dark),
+        Some("light") => Some(Theme::Light),
         _ => None,
     };
 

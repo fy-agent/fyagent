@@ -1,0 +1,29 @@
+{
+  "id": "frontend-experience-round8",
+  "name": "frontend-experience-round8",
+  "title": "第八轮分配面板响应式与内容密度修复",
+  "description": "修复 Skills/MCP 分配区在窗口及分栏缩放后的错排，统一共享详情内容的宽度与紧凑布局规则，保留既有滚动、草稿、主题与动效合同",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-06",
+  "completedAt": "2026-09-07",
+  "branch": "fix/round8-responsive-layout",
+  "base_branch": "dev/laiyongjie",
+  "worktree_path": null,
+  "commit": "a929195aeaef7756266d503f6f3f8302d260b017",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "execution_owner": "merged dev/laiyongjie; linked worktrees safely removed; final acceptance and archive",
+    "work_commit": "a929195aeaef7756266d503f6f3f8302d260b017"
+  }
+}

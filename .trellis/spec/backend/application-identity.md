@@ -8,7 +8,7 @@ markers, synchronization namespaces, autostart registration, release artifact
 names, or public installation instructions. These values form one cross-layer
 identity and must move together.
 
-The 2026 FyAgent identity change is an intentional clean break from the former
+The FyAgent identity transition is an intentional clean break from the former
 application identity. It does not migrate, alias, discover, import, or clean up
 the former application's local state. This boundary prevents an incomplete
 compatibility layer from making old and new state appear interchangeable.
@@ -31,6 +31,9 @@ The active application identity is:
 | npm package, Cargo package, executable, portable binary | `fyagent` / `fyagent.exe`                |
 | Rust library target and call site                       | `fyagent_lib` / `fyagent_lib::run()`     |
 | Tauri and macOS identifier                              | `com.fyagent.desktop`                    |
+| Nested privileged helper identifier / Mach service      | `com.fyagent.desktop.system-commit-helper` |
+| Privileged commit Authorization right                   | `com.fyagent.desktop.system-application.commit` |
+| Privileged helper removal Authorization right           | `com.fyagent.desktop.privileged-helper.remove` |
 | Deep-link scheme                                        | `fyagent://`                             |
 | Application state root                                  | `~/.fyagent`                             |
 | Database and application log                            | `fyagent.db` / `logs/fyagent.log`        |
@@ -74,6 +77,12 @@ releases:   https://github.com/fy-agent/fyagent/releases
   `com.fyagent.desktop`, the `fyagent` executable, and the `FyAgent` autostart
   entry. Do not remove or rewrite a former installation's registration as a
   side effect of launching FyAgent.
+- The nested privileged helper is `com.fyagent.desktop.system-commit-helper`
+  under `Contents/Library/LaunchServices/`, with the in-process client at
+  `Contents/Frameworks/libFyAgentPrivilegedClient.dylib`. App
+  `SMPrivilegedExecutables` and helper `SMAuthorizedClients` must name those
+  identifiers and team `HY446996QX`. Helper behavior is owned by
+  [macOS Privileged System-Commit Helper](./macos-system-commit.md).
 - Persisted application-owned enums, sync roots, local-storage keys, proxy
   markers, reasoning/tool sentinels, generated Codex projections, and release
   artifact names use FyAgent-owned values. Do not add dual-read or dual-write

@@ -1,0 +1,16 @@
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/prd.md","reason":"逐项核对需求、非目标、门禁与可验收结果。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/design.md","reason":"确认唯一 owner、system-commit 选型、来源策略和状态机不变量。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/implement.md","reason":"核对每阶段退出条件、负向扫描、HIL 和停止条件。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/acceptance-evidence.md","reason":"只凭自动化和签名 HIL 关闭 G1-G6。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/current-implementation-audit.md","reason":"负向确认已清除完整内存下载、手写 plist、隐式启动与跨 owner fallback。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/reuse-options.md","reason":"最终检查没有可由现有 owner、Apple API 或成熟组件替代的自研轮子。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/source-and-network-strategy.md","reason":"复核来源仍为官方或显式审查配置，无未知镜像和自动 owner 切换。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/macos-authorization-options.md","reason":"启用系统目标前必须选定唯一 adapter 并具备签名包证据。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/spec-constraints.md","reason":"检查 catalog、target、installer non-admission 与 dedicated-port 兼容。"}
+{"file":".trellis/spec/backend/reuse.md","reason":"最终后端复用与依赖审查。"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"最终模块边界和 IPC 审查。"}
+{"file":".trellis/spec/backend/macos-dmg-layout.md","reason":"最终 DMG 事务和回滚审查。"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"最终共享 transfer projector 和状态 owner 审查。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"最终进度、终态、可访问性和浏览器审查。"}
+{"file":".trellis/spec/frontend/user-facing-copy.md","reason":"最终“打开软件”、授权、进度与错误文案审查。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"最终跨层 DTO、事件顺序、刷新与错误传播审查。"}

@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
@@ -310,10 +311,10 @@ impl CopilotToken {
 }
 
 /// Copilot Token API 响应
-#[derive(Debug, Deserialize)]
-struct CopilotTokenResponse {
-    token: String,
-    expires_at: i64,
+#[derive(Deserialize)]
+pub(crate) struct CopilotTokenResponse {
+    pub(crate) token: String,
+    pub(crate) expires_at: i64,
     #[allow(dead_code)]
     refresh_in: Option<i64>,
 }
@@ -433,6 +434,7 @@ pub struct CopilotAuthManager {
     pending_migration: Arc<RwLock<Option<String>>>,
     /// 旧认证数据迁移失败时的状态消息
     migration_error: Arc<RwLock<Option<String>>>,
+    json_store_sealed: AtomicBool,
 }
 
 impl CopilotAuthManager {
@@ -451,6 +453,7 @@ impl CopilotAuthManager {
             storage_path,
             pending_migration: Arc::new(RwLock::new(None)),
             migration_error: Arc::new(RwLock::new(None)),
+            json_store_sealed: AtomicBool::new(false),
         };
 
         // 尝试从磁盘加载（同步，不发起网络请求）
@@ -459,6 +462,10 @@ impl CopilotAuthManager {
         }
 
         manager
+    }
+
+    pub fn seal_json_store(&self) {
+        self.json_store_sealed.store(true, Ordering::SeqCst);
     }
 
     // ==================== 多账号管理方法 ====================
@@ -478,7 +485,7 @@ impl CopilotAuthManager {
 
     /// 移除指定账号
     pub async fn remove_account(&self, account_id: &str) -> Result<(), CopilotAuthError> {
-        log::info!("[CopilotAuth] 移除账号: {account_id}");
+        log::info!("[CopilotAuth] 移除所选账号");
 
         {
             let mut accounts = self.accounts.write().await;
@@ -744,7 +751,7 @@ impl CopilotAuthManager {
         }
 
         // 需要刷新
-        log::info!("[CopilotAuth] 账号 {account_id} 的 Copilot Token 需要刷新");
+        log::info!("[CopilotAuth] 所选账号的 Copilot Token 需要刷新");
 
         let refresh_lock = self.get_refresh_lock(account_id).await;
         let _refresh_guard = refresh_lock.lock().await;
@@ -828,7 +835,7 @@ impl CopilotAuthManager {
         let api_base = self.get_api_endpoint(account_id).await;
         let models_url = format!("{}/models", api_base);
 
-        log::info!("[CopilotAuth] 获取账号 {account_id} 的 Copilot 可用模型");
+        log::info!("[CopilotAuth] 获取所选账号的可用模型");
 
         let response = crate::proxy::http_client::get()
             .get(&models_url)
@@ -915,7 +922,7 @@ impl CopilotAuthManager {
             (account.github_token.clone(), account.github_domain.clone())
         };
 
-        log::info!("[CopilotAuth] 获取账号 {account_id} 的 Copilot 使用量");
+        log::info!("[CopilotAuth] 获取所选账号的使用量");
 
         let response = crate::proxy::http_client::get()
             .get(copilot_usage_url(&domain))
@@ -950,7 +957,7 @@ impl CopilotAuthManager {
             let mut api_endpoints = self.api_endpoints.write().await;
             api_endpoints.insert(account_id.to_string(), endpoints.api.clone());
             // 使用 debug 级别避免在日志中暴露企业内部域名
-            log::debug!("[CopilotAuth] 账号 {account_id} 已保存动态 API 端点");
+            log::debug!("[CopilotAuth] 已保存动态 API 端点");
         }
 
         log::info!(
@@ -997,10 +1004,8 @@ impl CopilotAuthManager {
 
         match self.fetch_and_cache_endpoint(account_id).await {
             Ok(endpoint) => endpoint,
-            Err(e) => {
-                log::debug!(
-                    "[CopilotAuth] 获取账号 {account_id} 动态 API 端点失败: {e}，使用默认值"
-                );
+            Err(_) => {
+                log::debug!("[CopilotAuth] 获取动态 API 端点失败，使用默认值");
                 let domain = self.get_account_domain(account_id).await;
                 copilot_api_base(&domain)
             }
@@ -1029,7 +1034,7 @@ impl CopilotAuthManager {
             (account.github_token.clone(), account.github_domain.clone())
         };
 
-        log::debug!("[CopilotAuth] 为账号 {account_id} 惰性拉取动态 API 端点");
+        log::debug!("[CopilotAuth] 惰性拉取动态 API 端点");
 
         let response = crate::proxy::http_client::get()
             .get(copilot_usage_url(&domain))
@@ -1066,7 +1071,7 @@ impl CopilotAuthManager {
         // 缓存端点（包括默认值），避免重复请求
         let mut api_endpoints = self.api_endpoints.write().await;
         api_endpoints.insert(account_id.to_string(), endpoint.clone());
-        log::debug!("[CopilotAuth] 账号 {account_id} 已缓存 API 端点");
+        log::debug!("[CopilotAuth] 已缓存 API 端点");
 
         Ok(endpoint)
     }
@@ -1338,41 +1343,12 @@ impl CopilotAuthManager {
         account_id: &str,
         domain: &str,
     ) -> Result<(), CopilotAuthError> {
-        log::debug!("[CopilotAuth] 获取账号 {account_id} 的 Copilot Token (domain: {domain})");
+        log::debug!("[CopilotAuth] 获取所选账号的 Copilot Token");
 
-        let response = crate::proxy::http_client::get()
-            .get(copilot_token_url(domain))
-            .header("Authorization", format!("token {github_token}"))
-            .header("User-Agent", COPILOT_USER_AGENT)
-            .header("Editor-Version", COPILOT_EDITOR_VERSION)
-            .header("Editor-Plugin-Version", COPILOT_PLUGIN_VERSION)
-            .send()
-            .await?;
-
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(CopilotAuthError::GitHubTokenInvalid);
-        }
-
-        if response.status() == reqwest::StatusCode::FORBIDDEN {
-            return Err(CopilotAuthError::NoCopilotSubscription);
-        }
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(CopilotAuthError::CopilotTokenFetchFailed(format!(
-                "{status}: {text}"
-            )));
-        }
-
-        let token_response: CopilotTokenResponse = response
-            .json()
-            .await
-            .map_err(|e| CopilotAuthError::ParseError(e.to_string()))?;
+        let token_response = exchange_github_token_for_copilot(github_token, domain).await?;
 
         log::info!(
-            "[CopilotAuth] 账号 {} 的 Copilot Token 获取成功，过期时间: {}",
-            account_id,
+            "[CopilotAuth] Copilot Token 获取成功，过期时间: {}",
             token_response.expires_at
         );
 
@@ -1486,6 +1462,10 @@ impl CopilotAuthManager {
 
     /// 保存到磁盘
     async fn save_to_disk(&self) -> Result<(), CopilotAuthError> {
+        if self.json_store_sealed.load(Ordering::SeqCst) {
+            log::info!("[CopilotAuth] vault owns credentials; skipping plaintext store write");
+            return Ok(());
+        }
         let accounts = self.accounts.read().await.clone();
         let default_account_id = self.resolve_default_account_id().await;
 
@@ -1509,6 +1489,41 @@ impl CopilotAuthManager {
 
         Ok(())
     }
+}
+
+pub(crate) async fn exchange_github_token_for_copilot(
+    github_token: &str,
+    domain: &str,
+) -> Result<CopilotTokenResponse, CopilotAuthError> {
+    let response = crate::proxy::http_client::get()
+        .get(copilot_token_url(domain))
+        .header("Authorization", format!("token {github_token}"))
+        .header("User-Agent", COPILOT_USER_AGENT)
+        .header("Editor-Version", COPILOT_EDITOR_VERSION)
+        .header("Editor-Plugin-Version", COPILOT_PLUGIN_VERSION)
+        .send()
+        .await?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(CopilotAuthError::GitHubTokenInvalid);
+    }
+
+    if response.status() == reqwest::StatusCode::FORBIDDEN {
+        return Err(CopilotAuthError::NoCopilotSubscription);
+    }
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(CopilotAuthError::CopilotTokenFetchFailed(format!(
+            "{status}: {text}"
+        )));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| CopilotAuthError::ParseError(e.to_string()))
 }
 
 #[cfg(test)]

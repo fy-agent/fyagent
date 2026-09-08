@@ -1,9 +1,9 @@
 {
   "id": "grok-first-class-iteration",
   "name": "grok-first-class-iteration",
-  "title": "Finish Grok login and SuperGrok placement into supported tools",
+  "title": "Complete local Grok subscription reuse in supported Agents",
   "description": "",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "codex",
   "createdAt": "2026-08-31",
   "completedAt": null,
-  "branch": null,
+  "branch": "codex/grok-auth-reuse-completion",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -25,6 +25,6 @@
   ],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "2026-09-08: resume original branch; local-only existing engine; implementation/tests/PR authorized. Current parent artifacts supersede old child execution instructions.",
   "meta": {}
 }

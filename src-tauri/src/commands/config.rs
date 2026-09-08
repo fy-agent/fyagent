@@ -1,13 +1,38 @@
 #![allow(non_snake_case)]
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::app_config::AppType;
 use crate::codex_config;
 use crate::config::{self, get_claude_settings_path, ConfigStatus};
+use crate::services::config::{
+    ConfigFileRecoveryError, ConfigFileRecoveryRequest, ConfigFileRecoverySnapshot,
+    ConfigFileRecoveryTarget, ConfigService,
+};
 use crate::settings;
 use crate::store::AppState;
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_config_file_recoveries(
+    targets: Vec<ConfigFileRecoveryTarget>,
+) -> Result<Vec<ConfigFileRecoverySnapshot>, ConfigFileRecoveryError> {
+    tauri::async_runtime::spawn_blocking(move || ConfigService::file_recoveries(&targets))
+        .await
+        .map_err(|_| ConfigFileRecoveryError::unavailable())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn restore_config_file_recovery(
+    app: AppHandle,
+    request: ConfigFileRecoveryRequest,
+) -> Result<ConfigFileRecoverySnapshot, ConfigFileRecoveryError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        ConfigService::restore_file_recovery(&app.state::<AppState>(), &request)
+    })
+    .await
+    .map_err(|_| ConfigFileRecoveryError::unavailable())?
+}
 
 #[tauri::command]
 pub async fn get_claude_config_status() -> Result<ConfigStatus, String> {

@@ -65,6 +65,36 @@ afterAll(() => {
 });
 
 describe("repository change classifier", () => {
+  it("schedules frontend checks for each standalone and architecture boundary file", () => {
+    for (const file of [
+      "config/dependency-cruiser.cjs",
+      "config/vite.config.ts",
+      "config/vitest.config.ts",
+      "config/playwright.config.ts",
+      "config/playwright.performance.config.ts",
+      "config/postcss.config.cjs",
+      ".dependency-cruiser.cjs",
+      "scripts/build-v2-preview.d.mts",
+      "scripts/preview-html.mjs",
+      "scripts/preview-html.d.mts",
+      "tests/deeplinkPlayground.test.ts",
+      "tests/previewHtml.test.ts",
+    ]) {
+      expect(classifyChangedPaths([file]), file).toEqual({
+        domains: domains("contracts", "frontend"),
+        unknownPaths: [],
+        forceFull: false,
+      });
+    }
+    expect(
+      classifyChangedPaths(["tests/architecture/dependencyGraph.test.ts"]),
+    ).toEqual({
+      domains: domains("frontend"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
   it("uses the stable public domain shape for an empty diff", () => {
     expect(CHANGE_DOMAINS).toEqual([
       "contracts",
@@ -93,6 +123,7 @@ describe("repository change classifier", () => {
       [
         "eslint.v2.config.mjs",
         "playwright.v2.config.ts",
+        "playwright.v2-performance.config.ts",
         "scripts/build-v2-preview.mjs",
         "scripts/verify-v2-route-chunks.d.mts",
         "scripts/verify-v2-route-chunks.mjs",
@@ -221,6 +252,7 @@ describe("repository change classifier", () => {
       "GitHub repository automation",
       [
         ".github/labeler.yml",
+        ".github/workflows/codeql-security.yml",
         ".github/workflows/labeler.yml",
         ".github/workflows/star-history.yml",
       ],
@@ -243,7 +275,7 @@ describe("repository change classifier", () => {
     ],
     [
       "backend repository task",
-      ["scripts/tasks/rust.mjs"],
+      ["scripts/tasks/rust.mjs", "scripts/tasks/windows-msvc-cross.mjs"],
       domains("contracts", "backend", "windowsNative"),
     ],
     [

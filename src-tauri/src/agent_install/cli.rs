@@ -26,21 +26,41 @@ pub struct CliObservation {
     pub local_version: Option<String>,
     pub latest_version: Option<String>,
     pub unavailable: bool,
+    pub update_supported: bool,
 }
 
 impl CliObservation {
     pub fn from_tool_version(version: &ToolVersion) -> Self {
-        let unavailable = version.error().is_some()
-            && version.local_version().is_none()
-            && !version.installed_but_broken();
+        let unavailable = cli_unavailable(
+            version.error(),
+            version.local_version().is_some(),
+            version.installed_but_broken(),
+        );
         Self {
             detected: version.is_detected(),
             runnable: version.local_version().is_some() && !version.installed_but_broken(),
             local_version: version.local_version().map(str::to_string),
             latest_version: version.latest_version().map(str::to_string),
             unavailable,
+            update_supported: version.name() != CLAUDE_TOOL_ID
+                || version.distribution_owner() == Some("official_npm"),
         }
     }
+}
+
+fn cli_unavailable(error: Option<&str>, has_local: bool, installed_but_broken: bool) -> bool {
+    if has_local || installed_but_broken {
+        return false;
+    }
+    match error {
+        Some(message) if cli_error_is_absence(message) => false,
+        Some(_) => true,
+        None => false,
+    }
+}
+
+fn cli_error_is_absence(message: &str) -> bool {
+    message.to_ascii_lowercase().contains("not installed")
 }
 
 pub async fn observe_cli(agent_id: AgentCatalogId) -> Option<CliObservation> {
@@ -65,12 +85,37 @@ pub async fn run_cli_lifecycle(
         super::types::AgentActionId::Update => "update",
         _ => return Err(super::types::AgentReasonCode::ExecutorNotImplemented),
     };
+    if agent_id == AgentCatalogId::ClaudeCode {
+        return tooling::run_claude_cli_lifecycle(lifecycle)
+            .await
+            .map_err(|error| {
+                use super::types::AgentReasonCode;
+                use tooling::ClaudeLifecycleError;
+                match error {
+                    ClaudeLifecycleError::UnsupportedAction => AgentReasonCode::ActionNotSupported,
+                    ClaudeLifecycleError::OperationConflict => AgentReasonCode::OperationConflict,
+                    ClaudeLifecycleError::HostMissing => AgentReasonCode::ToolHostMissing,
+                    ClaudeLifecycleError::OwnerUnsupported => AgentReasonCode::ToolOwnerUnsupported,
+                    ClaudeLifecycleError::SourceUnverified => AgentReasonCode::SourceNotVerified,
+                    ClaudeLifecycleError::ExecutionFailed => {
+                        AgentReasonCode::InstallerExitedNonzero
+                    }
+                    ClaudeLifecycleError::VerificationFailed => {
+                        AgentReasonCode::InstallationVerificationFailed
+                    }
+                }
+            });
+    }
     tooling::run_tool_lifecycle_action(vec![tool.to_string()], lifecycle.to_string())
         .await
         .map_err(|error| {
-            if error.contains("elevated Windows") {
+            if error.contains("elevated Windows")
+                || error.contains("unavailable for the current Windows user")
+            {
                 super::types::AgentReasonCode::InteractiveUserUnavailable
-            } else if error.contains("Codex CLI lifecycle") {
+            } else if error.contains("Codex CLI lifecycle")
+                || error.contains("only available for Grok Build")
+            {
                 super::types::AgentReasonCode::ExecutorNotImplemented
             } else {
                 super::types::AgentReasonCode::SourceNotVerified
@@ -106,5 +151,43 @@ mod tests {
             assert_ne!(tool, "openclaw");
             assert_ne!(tool, "codex");
         }
+    }
+
+    #[test]
+    fn absent_cli_is_installable_not_unavailable() {
+        assert!(!cli_unavailable(
+            Some("not installed or not executable"),
+            false,
+            false
+        ));
+        assert!(!cli_unavailable(
+            Some("Grok Build is not installed for the current user"),
+            false,
+            false
+        ));
+        assert!(!cli_unavailable(None, false, false));
+        assert!(!cli_unavailable(Some("host missing"), true, false));
+        assert!(!cli_unavailable(Some("host missing"), false, true));
+    }
+
+    #[test]
+    fn inspection_boundary_errors_stay_unavailable() {
+        assert!(cli_unavailable(
+            Some(
+                "CLI inspection and lifecycle actions are unavailable in the elevated Windows release."
+            ),
+            false,
+            false
+        ));
+        assert!(cli_unavailable(
+            Some("Grok Build is unavailable for the current Windows user."),
+            false,
+            false
+        ));
+        assert!(cli_unavailable(
+            Some("The official Grok Build host is unavailable"),
+            false,
+            false
+        ));
     }
 }

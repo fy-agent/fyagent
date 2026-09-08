@@ -8,7 +8,7 @@
 
 - 还没装好 FyAgent：看[安装说明](./1-getting-started/1.2-installation.md)。
 - 想先跑通一个供应商：看[五分钟快速上手](./1-getting-started/1.4-quickstart.md)。
-- 需要安装或升级 Claude Code 等工具：看[工具安装](./2-agent-tools/2.1-install.md)和[冲突诊断](./2-agent-tools/2.2-update-diagnose.md)。
+- 需要查看 CLI 版本或安装 **Grok Build**：看[工具安装](./2-agent-tools/2.1-install.md)和[冲突诊断](./2-agent-tools/2.2-update-diagnose.md)。Claude Desktop、Codex Desktop、OpenCode Desktop 请到 Agent 页面管理。
 - 想集中管理接口和模型：从[添加供应商](./3-providers/3.1-add.md)开始。
 - 想使用 MCP、Prompts 或 Skills：进入[扩展功能](#4-扩展功能)。
 - WorkBuddy 模型列表需要写入本地配置：看[WorkBuddy 模型配置](./4-extensions/4.6-workbuddy.md)。

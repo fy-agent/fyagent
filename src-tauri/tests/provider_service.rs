@@ -709,13 +709,11 @@ wire_api = "responses"
 }
 
 #[test]
-fn provider_service_switch_codex_default_overwrites_official_auth_when_preservation_off() {
+fn provider_service_switch_codex_default_preserves_official_auth() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
-    // Intentionally do NOT enable preservation: this locks the default opt-out
-    // behavior where switching to a third-party provider rewrites auth.json,
-    // discarding the user's ChatGPT OAuth login. It is the dual of
-    // `provider_service_switch_codex_preserves_oauth_and_backfills_api_key_from_live_token`.
+    // Official ChatGPT login is a hard invariant: third-party switches are
+    // config-only even when the legacy preserve field is absent/false.
     let _home = ensure_test_home();
 
     let live_auth = json!({
@@ -786,13 +784,15 @@ requires_openai_auth = true
     let auth_value: serde_json::Value =
         read_json_file(&fyagent_lib::get_codex_auth_path()).expect("read auth.json");
     assert_eq!(
-        auth_value.get("OPENAI_API_KEY").and_then(|v| v.as_str()),
-        Some("third-party-key"),
-        "default (preservation off) should overwrite auth.json with the third-party API key"
+        auth_value, live_auth,
+        "third-party switches must keep the official ChatGPT login in auth.json"
     );
-    assert!(
-        auth_value.pointer("/tokens/access_token").is_none(),
-        "default switch must clear the official ChatGPT OAuth token from live auth.json"
+    assert_eq!(
+        auth_value
+            .pointer("/tokens/access_token")
+            .and_then(|v| v.as_str()),
+        Some("official-oauth-token"),
+        "official OAuth tokens must survive a third-party provider switch"
     );
 }
 
@@ -846,8 +846,8 @@ http_headers = { "x-openai-actor-authorization" = "local-image-extension" }
         read_json_file(&fyagent_lib::get_codex_auth_path()).expect("read auth.json");
     assert_eq!(
         auth_value.get("OPENAI_API_KEY").and_then(|v| v.as_str()),
-        Some("image-mode-key"),
-        "image mode still writes OPENAI_API_KEY to live auth.json"
+        Some("stale-key"),
+        "image mode must not overwrite live auth.json"
     );
 
     let live_config =
@@ -1464,7 +1464,7 @@ fn sync_all_enabled_reports_broken_app_but_projects_the_rest() {
 }
 
 #[test]
-fn provider_service_switch_codex_official_accounts_write_auth_json() {
+fn provider_service_official_source_switch_preserves_live_auth_json() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
     let _home = ensure_test_home();
@@ -1536,15 +1536,15 @@ fn provider_service_switch_codex_official_accounts_write_auth_json() {
     let state = create_test_state_with_config(&initial_config).expect("create test state");
 
     ProviderService::switch(&state, AppType::Codex, "official-b")
-        .expect("switch to official account B should write auth.json");
+        .expect("switch official request source without changing login identity");
     let auth_b: serde_json::Value =
         read_json_file(&fyagent_lib::get_codex_auth_path()).expect("read auth B");
     assert_eq!(
         auth_b
             .pointer("/tokens/access_token")
             .and_then(|v| v.as_str()),
-        Some("official-b-token"),
-        "switching official accounts must replace auth.json with the selected account"
+        Some("official-a-live-token"),
+        "source selection must not replace the official account from a saved Provider"
     );
 
     ProviderService::switch(&state, AppType::Codex, "official-a")
@@ -1682,8 +1682,8 @@ requires_openai_auth = true
             .and_then(|v| v.get("work"))
             .and_then(|v| v.get("model_provider"))
             .and_then(|v| v.as_str()),
-        Some("aihubmix"),
-        "profile overrides should be restored to provider b's storage-specific id"
+        None,
+        "a source switch must not install a snapshot's unrelated profile overrides"
     );
 }
 
@@ -2571,12 +2571,12 @@ command = "ghost-cmd"
         "provider A's bearer token must not leak into B's live, got: {live_after}"
     );
     assert!(
-        !live_after.contains("mcp_servers"),
-        "no DB-enabled MCP servers, so live must not resurrect stale entries, got: {live_after}"
+        live_after.contains("mcp_servers.echo"),
+        "source switching must preserve the user's existing unmanaged MCP, got: {live_after}"
     );
     assert!(
-        !live_after.contains("ghost-legacy"),
-        "the legacy [mcp.servers] orphan must not propagate to B's live, got: {live_after}"
+        live_after.contains("ghost-legacy"),
+        "unrelated legacy user tables are not owned by request-source selection, got: {live_after}"
     );
     assert!(
         !live_after.contains("wire_api = \"chat\""),

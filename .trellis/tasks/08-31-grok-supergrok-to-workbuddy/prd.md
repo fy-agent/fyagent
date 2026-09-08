@@ -1,3 +1,5 @@
+> Historical subplan: the 2026-09-08 parent task artifacts supersede these execution instructions. Retained acceptance items are not evidence of completion.
+
 # Place SuperGrok into WorkBuddy models
 
 先读父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md)。用例：[use-cases.md](./use-cases.md)。本子任务不管三条登录路标，也不管 Claude / Desktop / Codex 的 Provider 绑定。

@@ -1,3 +1,5 @@
+> Historical subplan: the 2026-09-08 parent task artifacts supersede these execution instructions. Retained acceptance items are not evidence of completion.
+
 # Design — SuperGrok to WorkBuddy
 
 先读父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md)。事实见 `research/current-workbuddy-save-path.md`。合同见 `.trellis/spec/backend/workbuddy-configuration.md`。用例见 [use-cases.md](./use-cases.md)。

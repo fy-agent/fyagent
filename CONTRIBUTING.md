@@ -12,7 +12,7 @@ There are many ways to contribute:
 - **Suggest features** — Have an idea? [Submit a feature request](https://github.com/fy-agent/fyagent/issues/new?template=feature_request.yml).
 - **Improve docs** — Spot a typo or missing info? [Report a doc issue](https://github.com/fy-agent/fyagent/issues/new?template=doc_issue.yml).
 - **Contribute code** — Fix bugs or implement features via pull requests.
-- **Translate** — Help us improve English, Simplified Chinese, Traditional Chinese, and Japanese translations.
+- **Translate documentation** — Help improve the multilingual manuals; runtime localization is separate, explicitly reviewed product work.
 
 > **Security vulnerabilities**: Please do NOT use public issues. See our [Security Policy](./SECURITY.md) instead.
 
@@ -53,9 +53,10 @@ Useful focused tasks include:
 
 ```bash
 mise run typecheck
+mise run lint
 mise run format:check
 mise run test:unit
-mise run test:i18n
+mise run test:browser
 mise run test:desktop:mock
 mise run rust:fmt:check
 mise run rust:check
@@ -131,10 +132,10 @@ contributor's remotes.
 
 - **Frontend**: Prettier formatting and strict TypeScript
 - **Backend**: rustfmt, locked Cargo checks, Clippy with warnings denied, and tests
-- **Tauri 2.0**: Command names must use camelCase
+- **Tauri 2.0**: Preserve registered snake_case commands and their exact camelCase argument keys
 - **Runtime tests**: Node 24 native Fetch with MSW/Tauri fakes; do not restore a
   Fetch polyfill or suppress deprecation warnings
-- **User-visible text**: update all four registered locales and preserve
+- **User-visible text**: follow the current Simplified Chinese copy contract and preserve
   accessibility roles, keyboard/focus behavior, labels, and error states
 
 Run all checks before submitting:
@@ -159,7 +160,7 @@ and reviewed; they do not belong in ordinary read-only checks.
 ### PR Checklist
 
 - [ ] `mise run check` passes on the current host
-- [ ] Updated i18n files if user-facing text changed
+- [ ] Reviewed user-facing copy, accessible names and affected manual instructions
 - [ ] Exact tests, platform limitations, risk, and rollback are recorded
 - [ ] Durable behavior changes update executable tests and maintained docs
 - [ ] Upstream tag/SHA/conflict or Release asset/permission impact is recorded
@@ -246,15 +247,12 @@ CC Switch-derived portions, including the original attribution to Jason Young.
 
 ## Internationalization (i18n)
 
-FyAgent maintains four locale resources. When modifying user-facing text:
-
-1. Update **all four** locale files:
-   - `src/i18n/locales/en.json`
-   - `src/i18n/locales/ja.json`
-   - `src/i18n/locales/zh.json`
-   - `src/i18n/locales/zh-TW.json`
-2. Use the `t()` function from i18next for all UI text.
-3. Never hardcode user-facing strings.
+The current product renderer uses Simplified Chinese. Its retired translation
+runtime is not restored by adding text or translating a manual. Preserve shared
+accessible labels and closed error/state mappings, and follow the
+[localization contract](.trellis/spec/frontend/localization.md). A future runtime
+language selector requires a coordinated design, resource schema, persistence,
+fallback, layout and test change; multilingual manuals alone do not add it.
 
 ## Questions?
 
@@ -277,7 +275,7 @@ FyAgent maintains four locale resources. When modifying user-facing text:
 - **建议功能** — 有想法？[提交功能请求](https://github.com/fy-agent/fyagent/issues/new?template=feature_request.yml)。
 - **改进文档** — 发现错误或缺失？[报告文档问题](https://github.com/fy-agent/fyagent/issues/new?template=doc_issue.yml)。
 - **贡献代码** — 通过 Pull Request 修复 Bug 或实现新功能。
-- **翻译** — 帮助改进英文、简体中文、繁体中文和日文翻译。
+- **文档翻译** — 帮助完善多语言手册；运行时多语言支持需要单独评审产品方案。
 
 > **安全漏洞**：请不要使用公开 Issue 报告。请参阅我们的[安全策略](./SECURITY.md)。
 
@@ -314,9 +312,10 @@ mise run check
 
 ```bash
 mise run typecheck
+mise run lint
 mise run format:check
 mise run test:unit
-mise run test:i18n
+mise run test:browser
 mise run test:desktop:mock
 mise run rust:fmt:check
 mise run rust:check
@@ -477,15 +476,10 @@ FyAgent 计划为 FyAgent 自有代码提供商业许可。在经过法律审查
 
 ## 国际化（i18n）
 
-FyAgent 维护四份 locale 资源。修改用户可见文本时：
-
-1. **同时更新四份**语言文件：
-   - `src/i18n/locales/en.json`
-   - `src/i18n/locales/ja.json`
-   - `src/i18n/locales/zh.json`
-   - `src/i18n/locales/zh-TW.json`
-2. 所有 UI 文本使用 i18next 的 `t()` 函数。
-3. 不要硬编码用户可见的字符串。
+当前产品界面使用简体中文。新增文案或翻译手册不应恢复已退役的翻译运行时。
+保持共享可访问名称及封闭的状态/错误文案映射，并遵循
+[语言契约](.trellis/spec/frontend/localization.md)。未来增加运行时语言切换，需要
+同时设计资源结构、偏好存储、回退、布局和测试；多语言手册不代表已有语言选择器。
 
 ## 有疑问？
 

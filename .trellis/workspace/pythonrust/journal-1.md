@@ -1773,3 +1773,215 @@ Catalog-first Agent directory with auto scan, honest install/update progress, sh
 ### Status
 
 [OK] **Completed**
+
+
+## Session 55: Humanize user-facing copy and persist copy SPEC
+
+**Date**: 2026-08-31
+**Task**: Humanize user-facing copy and persist copy SPEC
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Rewrote audited frontend and public-documentation copy, added an indexed user-facing copy SPEC and AST regression guard, passed full V2/browser/repository checks, and archived the Trellis task.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `40a844c796b1dcd92f7d215d3e6bf77dd14676a2` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 56: 精简并校准全部 Trellis spec
+
+**Date**: 2026-08-31
+**Task**: 精简并校准全部 Trellis spec
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+审查全部 41 份 spec，收敛索引、通用指南、工具链权威、上游 provenance 与 V2 当前合同；完成三轮评审及完整 prearchive 门禁。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2391e2aa` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 57: 完善 macOS Agent 安装更新与启动体验
+<!-- trellis-session: v=2 fp=6a3ab1aa71401896 -->
+
+**Date**: 2026-08-31
+**Task**: 完善 macOS Agent 安装更新与启动体验
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+复用 Codex 流式下载、plist 与 NSWorkspace 启动，补齐 OpenCode cli/desktop surfaces、Grok owner 显式 npm，以及 job v3 transfer 进度；系统 /Applications 提交延期。完成 spec 对齐、prearchive 与归档。
+
+### Main Changes
+
+- Agent job 合同升到 v3，下载走 Codex persist 流并投影 transfer 进度
+- OpenCode 保持单一产品，CLI 与 Desktop 独立 surface；桌面动作用 opaque path + NSWorkspace
+- Grok macOS 禁止 installer||npm 自动回退，官方 npm 需显式 install_official_npm
+- owning spec 写明 surfaces、job v3 transfer，以及系统 /Applications 提交延期
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1b6e2aab95fd4ca4947a6aa356644a56747e88f0` | feat: unify macOS Agent install, OpenCode surfaces, and Grok owners |
+| `2405b0ecd5f91268ab807fc8c5fe25adde8ad90c` | fix: drop unused Codex desktop test import |
+| `14ee2290a9c5d6efe08a15be70b0bc382ab6c010` | style: format Agent install and Grok owner UI files |
+| `ccbf7520ed237601ecc2c8fc08f82f5cb5edbd39` | fix: refresh About structure digest and isolate Grok npm test |
+
+### Testing
+
+- [OK] mise run check:prearchive --exclude-active-task .trellis/tasks/08-31-macos-agent-install-update-experience 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 系统 /Applications 特权提交仍保持 OPEN，由后续独立 helper 任务承接；本会话未提交未跟踪的 helper 规划目录
+
+
+## Session 58: macOS 特权 Helper 与 Agent 目录安装策略
+<!-- trellis-session: v=2 fp=6e6869253475af29 -->
+
+**Date**: 2026-08-31
+**Task**: macOS 特权 Helper 与 Agent 目录安装策略
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+并行交付封闭 macOS 特权提交 helper（生产 /Applications 仍禁用）以及 Agent 目录四桶排序、国产仅安装、Claude/OpenCode desktop-only 生命周期；已回写长期 spec 并归档两个任务。
+
+### Main Changes
+
+- 新增 Blessed/SMJobBless Swift helper、C ABI 与 crate-private MacSystemCommitPort；production_enabled 保持 false
+- Agent 目录按扫描结果四桶排序；QoderWork/TRAE Work/WorkBuddy 禁止 FyAgent 更新
+- Claude Desktop 固定镜像 source；OpenCode 复用 GitHub latest + 固定 stable DMG；Catalog v5
+- 发布流程在 sign-app 前 embed 并 inside-out 签名 nested helper；owning spec 已对齐
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bf30861826a3095203802340c4a359ab807d3aa6` | feat: add macOS privileged helper and Agent directory install policy |
+
+### Testing
+
+- [OK] mise run check:prearchive --exclude-active-task .trellis/tasks/08-31-macos-agent-directory-install-policy 通过
+- [OK] cargo test --lib agent_install macos_system_commit、pnpm test:v2、swift PrivilegedHelperTests 已在实施/检查阶段通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 正式 Developer ID 签名、公证与真机 /Applications HIL 之后才能打开 production_enabled
+- Claude Desktop 尚未进入 helper KnownSystemProduct 表；Windows 桌面安装器仍推迟
+
+
+## Session 59: Windows Agent 安装面统一与 Codex 日志治理
+<!-- trellis-session: v=2 fp=e4d3d60a6ba19457 -->
+
+**Date**: 2026-09-01
+**Task**: Windows Agent 安装面统一与 Codex 日志治理
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+并行完成 Grok-only Tooling 退场、正式 Windows Grok 闭集 helper、Codex deferred 日志预算，并更新 spec。Claude/OpenCode Windows 身份与正式包 HIL 仍 fail-closed，未宣称已支持。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `40eeaa6f` | feat: retire non-Grok CLI installers and route formal Windows Grok through the closed user helper |
+| `f32787da` | fix(codex): stop repeating expected deferred usage-sync logs |
+| `4dd7668e` | docs(spec): record Grok-only Tooling, closed helper protocol, and Codex log budget |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 60: 跨平台 AI 软件生命周期与开发检查
+<!-- trellis-session: v=2 fp=1f3157b9067996ff -->
+
+**Date**: 2026-09-01
+**Task**: 跨平台 AI 软件生命周期与开发检查
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+补齐 Windows inventory 父键枚举权限、bootstrap 不失败的 Windows-MSVC advisory 与显式 Clippy 诊断、侧栏 position-only Lens，并更新 owning spec。Qoder/TRAE/WorkBuddy 走既有精确目标 verified update；Windows 原生 HIL 仍未执行，未宣称已验收。
+
+### Main Changes
+
+- 修复 Uninstall/App Paths 父键 query+enumerate，complete/empty 投影为 not_installed
+- bootstrap advisory 退出 0；strict preflight/Clippy 保持显式且不进 check/CI
+- SelectionLens geometry=position，折叠活动组只保留一层 frame
+- 把 registry/task-runner/dev-env/v2-shell 合同写成可执行签名、错误矩阵和 Wrong vs Correct
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cbd01281` | feat(agent): complete managed desktop lifecycle diagnostics |
+| `c9e3e571` | docs(spec): define bootstrap cross-msvc advisory |
+| `37fb36b7` | docs(spec): separate advisory and strict cross diagnostics |
+| `b975bfc3` | docs(spec): enable verified managed desktop updates |
+| `a5fac9d8` | docs(task): align lifecycle task with verified update policy |
+| `cd96bdd0` | fix(dev): seal Windows MSVC cross advisory for platform scanners |
+| `c4512808` | chore(task): archive 09-01-windows-software-lifecycle-crosscheck-ui |
+| `047622dc` | docs(spec): skip Windows-MSVC advisory through the host map |
+
+### Testing
+
+- [OK] mise run check:prearchive -- --exclude-active-task .trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui
+- [OK] 归档后在最终 HEAD 复跑 mise run check：前端、3033 项 Rust 测试、52 项 user-helper 测试、任务/文档/平台与 Release 合同全部通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Windows 原生 HIL：真实已安装/未安装、UAC/vendor UI、自定义路径和桌面启动
+
+
+## Session 61: Nav jank and domestic update
+<!-- trellis-session: v=2 fp=c58e7c1ab93cd3d5 -->
+
+**Date**: 2026-09-02
+**Task**: Nav jank and domestic update
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Visited primary routes stay mounted with visibility-gated queries so leaving AI software config no longer hitch-unloads the scan tree. Primary-nav lens no longer paints a scan-time highlight. Qoder/TRAE/WorkBuddy FyAgent one-click update is closed in lifecycle_policy plus a shared directory capability slot.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `34359cae` | fix(v2): keep visited config pages alive and close domestic one-click update |
+
+### Status
+
+[OK] **Completed**

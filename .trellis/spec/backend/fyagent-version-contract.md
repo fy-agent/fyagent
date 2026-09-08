@@ -39,12 +39,21 @@ name = "fyagent-user-helper"
 version.workspace = true
 ```
 
-- `src-tauri/Cargo.toml [workspace.package].version` is the only manually
+- `src-tauri/Cargo.toml` at `[workspace.package].version` is the only manually
   maintained application-version literal.
 - The workspace contains exactly the root package and `user-helper`, in that
   order. Both package manifests inherit `workspace.package.version` through
   exactly one `version.workspace = true` assignment and contain no literal
-  package version.
+  package version. The macOS privileged helper is a Swift package under
+  `src-tauri/macos-privileged-helper/` and must not be added as a Cargo
+  member. Its `CFBundleVersion` and the `info[CFBundleVersion] >= "..."`
+  requirement in app `SMPrivilegedExecutables` must equal the canonical
+  workspace version; `version:set` still does not rewrite those plists, so
+  a version bump must update them in the same change. The helper's
+  `SMAuthorizedClients` minimum is a separate client-compatibility floor,
+  matched by `Constants.swift#minimumClientVersion` and the helper build
+  verifier. Do not raise that floor as a mechanical version bump. See
+  [macOS Privileged System-Commit Helper](./macos-system-commit.md).
 - `package.json` is private and does not declare an application version.
 - `src-tauri/tauri.conf.json` omits `version`, so Tauri inherits Cargo
   metadata.
@@ -168,6 +177,7 @@ the seventh and final Release attachment and does not attest itself.
 | Condition                                                                                                                                         | Required result                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Workspace member, resolver, inherited version, private package flag, or duplicate version field drifts                                            | `version:check` fails before release or version writes.                                                                         |
+| Swift privileged helper is added as a Cargo workspace member                                                                                      | Reject; workspace members stay `[".", "user-helper"]`. Helper `CFBundleVersion` is updated beside the Cargo bump, not via `version:set`. |
 | Version is not stable `X.Y.Z`                                                                                                                     | `get`, `set`, `bump`, or `check` fails without writes.                                                                          |
 | A component exceeds `65535` while entering a Windows bundle or formal Release                                                                     | The NSIS/release contract fails before packaging; the canonical Cargo value is not rewritten.                                   |
 | Either local `fyagent` / `fyagent-user-helper` lock block is missing, duplicated, sourced, or mismatched                                          | `version:check` fails; `set` may repair only version drift in both local blocks after every other preflight passes.             |
@@ -192,6 +202,9 @@ the seventh and final Release attachment and does not attest itself.
   byte-identical.
 - `tests/versionConsistency.test.ts` delegates to the canonical script rather
   than implementing another version parser.
+- `tests/releaseWorkflow.test.ts` reads that same script's `get` value when
+  checking the bundled helper version and app-side helper requirement. Never
+  freeze the current release number as a second authority inside that test.
 - Download/release asset tests assert all three exact names, the two Windows NSIS
   setup executables and architecture mapping, URL shape,
   missing/extra/non-allowlisted/symlink rejection, six attestation subjects,

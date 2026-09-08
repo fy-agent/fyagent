@@ -10,13 +10,25 @@ function read(relativePath: string): string {
 
 describe("frontend modular architecture boundaries", () => {
   it("keeps provider config compatibility exports separate from implementations", () => {
-    const facade = read("src/utils/providerConfigUtils.ts");
-    const json = read("src/utils/providerConfigJsonUtils.ts");
-    const codex = read("src/utils/codexConfigUtils.ts");
-    const structural = read("src/utils/providerConfigStructural.ts");
+    const facade = read(
+      "src/domain/configuration/serialization/providerConfigUtils.ts",
+    );
+    const json = read(
+      "src/domain/configuration/serialization/providerConfigJsonUtils.ts",
+    );
+    const codex = read(
+      "src/domain/configuration/serialization/codexConfigUtils.ts",
+    );
+    const structural = read(
+      "src/domain/configuration/serialization/providerConfigStructural.ts",
+    );
 
-    expect(facade).toContain('from "@/utils/providerConfigJsonUtils"');
-    expect(facade).toContain('from "@/utils/codexConfigUtils"');
+    expect(facade).toContain(
+      'from "@/domain/configuration/serialization/providerConfigJsonUtils"',
+    );
+    expect(facade).toContain(
+      'from "@/domain/configuration/serialization/codexConfigUtils"',
+    );
     expect(facade).not.toContain("JSON.parse(");
     expect(facade).not.toContain("parseToml(");
     expect(facade).not.toContain("TOML_SECTION_HEADER_PATTERN");

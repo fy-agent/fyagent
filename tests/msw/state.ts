@@ -1,12 +1,12 @@
-import type { AppId } from "@/lib/api/types";
+import type { AppId } from "@/domain/configuration/appId";
 import type {
   McpServer,
   Provider,
   SessionMessage,
   SessionMeta,
   Settings,
-} from "@/types";
-import { deepClone } from "@/utils/deepClone";
+} from "@/domain/configuration/types";
+import { deepClone } from "@/domain/configuration/serialization/deepClone";
 
 type ProvidersByApp = Record<AppId, Record<string, Provider>>;
 type CurrentProviderState = Record<AppId, string>;

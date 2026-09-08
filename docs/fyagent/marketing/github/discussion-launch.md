@@ -13,8 +13,8 @@ source: current GitHub Discussions configuration and repository support contract
 
 - [Welcome to FyAgent Discussions / 欢迎来到 FyAgent 讨论区](https://github.com/fy-agent/fyagent/discussions/94) — Announcements, pinned globally
 - [How to ask a question that is easier to solve / 怎样让问题更容易得到解决](https://github.com/fy-agent/fyagent/discussions/95) — Q&A, pinned in category
-- [What should your AI Worker make easier next? / 你最希望自己的 AI Worker 简化什么？](https://github.com/fy-agent/fyagent/discussions/96) — Ideas
-- [Show how you make AI your own / 分享你怎样把 AI 变成自己的](https://github.com/fy-agent/fyagent/discussions/97) — Show and tell
+- [Which workflow should FyAgent support next? / 你希望 FyAgent 接下来支持哪个工作流？](https://github.com/fy-agent/fyagent/discussions/96) — Ideas
+- [Share your FyAgent setup / 分享你的 FyAgent 配置](https://github.com/fy-agent/fyagent/discussions/97) — Show and tell
 
 ## Category contract
 
@@ -41,9 +41,9 @@ Keep the existing category names and slugs so the files under `.github/DISCUSSIO
 >
 > FyAgent 讨论区用于使用帮助、早期产品想法和真实工作流分享。
 >
-> FyAgent helps people own, shape, and manage their AI. Today, the desktop app brings models, tool connections, Skills, working instructions, configuration, and usage records into one place. Its long-term vision is a portable digital persona that remains under user control.
+> FyAgent is a local desktop tool for managing models, Skills, MCP servers, prompts, and memory files for supported AI applications.
 >
-> FyAgent 希望帮助每个人拥有、培养和管理自己的 AI。当前桌面应用先统一管理模型、工具连接、Skills、行为指令、配置和使用记录；长期愿景是成为始终由用户掌控的随身数字人格。
+> FyAgent 是一款本地桌面配置工具，用于管理受支持 AI 软件的模型、Skills、MCP、提示词和记忆文件。
 >
 > - Ask installation or configuration questions in **Q&A**.
 > - Test an early proposal with the community in **Ideas**.
@@ -73,32 +73,32 @@ Keep the existing category names and slugs so the files under `.github/DISCUSSIO
 
 ### 3. Ideas
 
-**Title:** What should your AI Worker make easier next? / 你最希望自己的 AI Worker 简化什么？
+**Title:** Which workflow should FyAgent support next? / 你希望 FyAgent 接下来支持哪个工作流？
 
 **Body:**
 
-> FyAgent's long-term goal is to help each person own, shape, and manage their AI. The most useful product ideas start with a real workflow, not a feature name.
+> Start with the task you are trying to complete, not a feature name.
 >
 > Tell us:
 >
 > - what you are trying to accomplish;
 > - where the current workflow becomes repetitive, unclear, or fragile;
-> - what a good outcome would feel like;
+> - what result you need;
 > - whether you can help validate or implement it.
 >
-> FyAgent 希望帮助每个人拥有、培养和管理自己的 AI。好的产品想法从真实工作流开始：请先说清楚你要完成什么、目前卡在哪里、理想结果是什么，以及你是否愿意参与验证或实现。
+> 请先说明你要完成什么、目前卡在哪里、需要什么结果，以及你是否愿意参与验证或实现。
 
 ### 4. Show and tell
 
-**Title:** Show how you make AI your own / 分享你怎样把 AI 变成自己的
+**Title:** Share your FyAgent setup / 分享你的 FyAgent 配置
 
 **Body:**
 
-> How are you using FyAgent to keep your models, tool connections, Skills, and working instructions under your control across Claude Code, Codex, Gemini CLI, OpenClaw, or another supported tool?
+> Which FyAgent settings are you using, and which application do they affect?
 >
 > Share the setup, the problem it solves, and one lesson others can reuse. Screenshots, small diagrams, and configuration excerpts are welcome—remove credentials before posting.
 >
-> 欢迎分享你怎样管理 AI 的模型、工具连接、Skills 和行为指令，以及一条别人可以复用的经验。可以附截图、流程图或配置片段；发布前请移除凭据。
+> 欢迎分享你使用的模型、Skills、MCP 或提示词配置，以及一条别人可以复用的经验。可以附截图、流程图或配置片段；发布前请移除凭据。
 
 ## Operating rhythm
 

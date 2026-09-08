@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/task-runner-contract.md", "reason": "定义任务运行器进程控制、Ctrl+C 交互式所有权与跨平台进程终止契约"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "确保跨平台与脚本层改动保持边界隔离与契约对齐"}

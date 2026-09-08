@@ -1,9 +1,9 @@
 {"file":".trellis/tasks/08-26-frontend-interaction-v3-1/source-feishu-verbatim.md","reason":"User-authoritative V3.1 product requirements, historical collaboration inputs, Grok gate and outbound copy prohibition; read in full without rewriting, then resolve executor routing through the current authority record."}
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"Production V2 shell, route, keep-alive and page-structure contract for all affected renderer pages."}
+{"file":".trellis/spec/frontend/shell.md","reason":"Production V2 shell, route, keep-alive and page-structure contract for all affected renderer pages."}
 {"file":".trellis/spec/frontend/reuse.md","reason":"Reuse-first component ownership and narrow shared-variant rules."}
-{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Authoritative Agent readiness and model capability/data-owner contracts."}
-{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Authoritative Skills and MCP assignment, discovery and readback contracts."}
-{"file":".trellis/spec/frontend/v2-prompts-memory.md","reason":"Prompt and Memory ports, query isolation, write locks, dirty guards and native-data boundaries."}
+{"file":".trellis/spec/frontend/agent-models.md","reason":"Authoritative Agent readiness and model capability/data-owner contracts."}
+{"file":".trellis/spec/frontend/skills-mcp.md","reason":"Authoritative Skills and MCP assignment, discovery and readback contracts."}
+{"file":".trellis/spec/frontend/prompts-memory.md","reason":"Prompt and Memory ports, query isolation, write locks, dirty guards and native-data boundaries."}
 {"file":".trellis/spec/frontend/state-management.md","reason":"Async scan state, stale-response handling and authoritative resource state."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Typed scan projection and shared variant requirements."}
 {"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Prevents speculative components and abstractions during high-fidelity refactor."}

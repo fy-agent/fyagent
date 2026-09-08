@@ -106,7 +106,7 @@ pub fn sync_grokbuild_usage(db: &Database) -> Result<SessionSyncResult, AppError
             Ok(file_result) => result.merge(file_result),
             Err(e) => {
                 let msg = format!("Grok Build 会话文件解析失败 {}: {e}", file_path.display());
-                log::warn!("[GROK-SYNC] {msg}");
+                log::warn!("[GROK-SYNC] 会话文件解析失败；详细信息仅返回当前同步结果");
                 result.errors.push(msg);
             }
         }
@@ -185,9 +185,8 @@ fn sync_single_grok_file(db: &Database, file_path: &Path) -> Result<SessionSyncR
     // 异常大文件直接跳过，避免一次性读取耗尽内存。
     if metadata.len() > MAX_GROK_FILE_BYTES {
         log::warn!(
-            "Grok session log too large ({} bytes), skipping: {}",
-            metadata.len(),
-            file_path.display()
+            "Grok session log too large ({} bytes), skipping",
+            metadata.len()
         );
         return Ok(SessionSyncResult::default());
     }
@@ -277,8 +276,8 @@ fn sync_single_grok_file(db: &Database, file_path: &Path) -> Result<SessionSyncR
             ) {
                 Ok(true) => result.imported += 1,
                 Ok(false) => result.skipped += 1,
-                Err(e) => {
-                    log::warn!("[GROK-SYNC] 插入失败 ({request_id}): {e}");
+                Err(_) => {
+                    log::warn!("[GROK-SYNC] 会话用量记录插入失败");
                     result.skipped += 1;
                 }
             }
@@ -445,10 +444,10 @@ fn insert_grok_session_entry(
                     // 最早的可观测信号，提醒更新 seed/repair。
                     let tolerance = (reported * Decimal::new(1, 2)).max(Decimal::new(1, 6));
                     if (cost.total_cost - reported).abs() > tolerance {
-                        deferred_warn = Some(format!(
-                            "本地定价与 CLI 自报成本偏差超阈值，total 已以自报为准，请更新本地定价: model={model} local={} reported={reported} request_id={request_id}",
-                            cost.total_cost
-                        ));
+                        deferred_warn = Some(
+                            "本地定价与 CLI 自报成本偏差超阈值，total 已以自报为准，请更新本地定价"
+                                .to_string(),
+                        );
                     }
                     reported
                 }
@@ -475,16 +474,14 @@ fn insert_grok_session_entry(
                             ""
                         };
                         deferred_warn = Some(format!(
-                            "模型定价未找到，采用 CLI 自报成本入账{partial_note}: model={model} total={reported} request_id={request_id}"
+                            "模型定价未找到，采用 CLI 自报成本入账{partial_note}"
                         ));
                     }
                     reported.to_string()
                 }
                 None => {
                     if model != "unknown" {
-                        deferred_warn = Some(format!(
-                            "模型定价未找到且无自报成本，成本记 0: model={model} request_id={request_id}"
-                        ));
+                        deferred_warn = Some("模型定价未找到且无自报成本，成本记 0".to_string());
                     }
                     "0".to_string()
                 }

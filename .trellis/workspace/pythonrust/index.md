@@ -7,9 +7,9 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-1.md`
-- **Total Sessions**: 54
-- **Last Active**: 2026-08-26
+- **Active File**: `journal-2.md`
+- **Total Sessions**: 86
+- **Last Active**: 2026-09-07
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1775 | Active |
+| `journal-2.md` | ~747 | Active |
+| `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +30,38 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 86 | 2026-09-07 | Prepare FyAgent 0.4.4 release | `9c058cee8ae8e29614be14fd3438662b3ff9a521` | `dev/laiyongjie` |
+| 85 | 2026-09-07 | Verify final contracts and clarify Windows batch evidence | `6efaff0b4aab8659f52e570654fa5c1882657cbb` | `dev/laiyongjie` |
+| 84 | 2026-09-07 | Finish dialog return regression before main integration | `61986e6921c18eaa9f952857ce10344dd007afa5` | `dev/laiyongjie` |
+| 83 | 2026-09-07 | Review September 6-7 specs and restore integration checks | `ee5745ca`, `77e50e83` | `dev/laiyongjie` |
+| 82 | 2026-09-07 | Keep the scrollbar repair at the original overflow boundary | `f8ee21fb33650f9692b7f46786ff385ee749e944` | `dev/laiyongjie` |
+| 81 | 2026-09-07 | Repair PR 181 CI discovery and cross-host browser contracts | `ddcf264a07437df787a3b08f3ea23db74d4f1737` | `dev/laiyongjie` |
+| 80 | 2026-09-07 | Validate integration subjects using real Git merge parents | `3a350fa299138b44c63468fc449f8acc930fd72f` | `dev/laiyongjie` |
+| 79 | 2026-09-07 | Review September 6 integration and all executable specifications | `41b700e6cf69115a9eb8665350d0162c6119638e` | `dev/laiyongjie` |
+| 78 | 2026-09-07 | Round-eight responsive assignments and content density | `a929195a`, `b8bdaeba` | `dev/laiyongjie` |
+| 77 | 2026-09-06 | Round-seven scroll, dialog origins and repository governance | `fa2684d0`, `a483d8d9`, `e4c0c038`, `75cc8ed3` | `dev/laiyongjie` |
+| 76 | 2026-09-06 | Round-six single renderer and blue interaction experience | `bcceba7e`, `e7227e8a`, `081d5d49`, `070479bf`, `f98e67f8` | `dev/laiyongjie` |
+| 75 | 2026-09-06 | Claude CLI and reversible user configuration | `6d8ffc9cb841e54f4ef8ea82bc7a8dbe661a2198` | `feat/claude-cli-safe-auth` |
+| 74 | 2026-09-06 | 第五轮明亮玻璃、生产时间单位与连续动效整合 | `097dd80f0798cffc2336c0229fa939fe09ce212d`, `04485a9473f28fea6cdb8e5a160f12817253429e`, `7908893efd881b88b150068c3a8bdeb68fd0d7e5` | `dev/laiyongjie` |
+| 73 | 2026-09-05 | 第四轮前端性能、玻璃材质与来源动效整合 | `bfa5bef80e1cec47ebcdbeef1b1adf1e1d953c8c`, `1edbb6faaa7c529e5cb3a2bf589a0bf592dfaa6b`, `d50c8bb4eb89ca31fb701b16264a527b257c5042`, `87654f0745bea54e9defe2adf792ac5388d5b3f2` | `dev/laiyongjie` |
+| 72 | 2026-09-05 | 第三轮前端体验与架构整合 | `c27c9bd536c352c8a8184e1cccd127d2582c5498`, `54b1c0f666afa28d580112746778e3e458c6abd9`, `a239fe0d6799e1a747995ed496cef1f46d8b3ff2`, `463962bd32a61613461fc74112409901c23cba67` | `dev/laiyongjie` |
+| 71 | 2026-09-05 | 第二轮安全与架构治理 | `5bbfb24d` | `dev/laiyongjie` |
+| 70 | 2026-09-05 | 架构债务审查与成熟实现复用 | `a051c098` | `dev/laiyongjie` |
+| 69 | 2026-09-04 | Codex 官方账号与第三方 API 凭据切换实现与归档 | `f76f3ab1`, `a10e4b9f` | `dev/laiyongjie` |
+| 68 | 2026-09-03 | Auth recovery copy and dialog focus | `e8807cde` | `dev/laiyongjie` |
+| 67 | 2026-09-03 | 收敛 leftover Auth 并归档统一认证任务 | `53476b86`, `cbb8d7a5` | `dev/laiyongjie` |
+| 66 | 2026-09-03 | Managed Auth core vault migration | `d82ffed8` | `dev/laiyongjie` |
+| 65 | 2026-09-03 | Grok 大陆 npm 一键安装与 OpenCode Windows 源 | `a189ff40`, `7dd216ab`, `0f766831`, `c7cd6906` | `dev/laiyongjie` |
+| 64 | 2026-09-02 | 全面刷新并校准 Trellis Spec | `f0479ac1` | `dev/laiyongjie` |
+| 63 | 2026-09-02 | Comprehensive Trellis Spec refresh | `c3899e1282882ea09aa3e64ccea788ea0bb9ab8c` | `dev/laiyongjie` |
+| 62 | 2026-09-02 | Windows vendor installer handoff | `780b5eb8`, `d1152999`, `e533e848` | `dev/laiyongjie` |
+| 61 | 2026-09-02 | Nav jank and domestic update | `34359cae` | `dev/laiyongjie` |
+| 60 | 2026-09-01 | 跨平台 AI 软件生命周期与开发检查 | `cbd01281`, `c9e3e571`, `37fb36b7`, `b975bfc3`, `a5fac9d8`, `cd96bdd0` | `dev/laiyongjie` |
+| 59 | 2026-09-01 | Windows Agent 安装面统一与 Codex 日志治理 | `40eeaa6f`, `f32787da`, `4dd7668e` | `dev/laiyongjie` |
+| 58 | 2026-08-31 | macOS 特权 Helper 与 Agent 目录安装策略 | `bf30861826a3095203802340c4a359ab807d3aa6` | `dev/laiyongjie` |
+| 57 | 2026-08-31 | 完善 macOS Agent 安装更新与启动体验 | `1b6e2aab95fd4ca4947a6aa356644a56747e88f0`, `2405b0ecd5f91268ab807fc8c5fe25adde8ad90c`, `14ee2290a9c5d6efe08a15be70b0bc382ab6c010`, `ccbf7520ed237601ecc2c8fc08f82f5cb5edbd39` | `dev/laiyongjie` |
+| 56 | 2026-08-31 | 精简并校准全部 Trellis spec | `2391e2aa` | `dev/laiyongjie` |
+| 55 | 2026-08-31 | Humanize user-facing copy and persist copy SPEC | `40a844c796b1dcd92f7d215d3e6bf77dd14676a2` | `dev/laiyongjie` |
 | 54 | 2026-08-26 | Agent directory lifecycle UX | `7725099b`, `92d97cf7` | `dev/laiyongjie` |
 | 53 | 2026-08-26 | Reuse-first specs and release preflight decoupling | `83724a38`, `4db05412` | `docs/reuse-first-spec` |
 | 53 | 2026-08-25 | Agent one-click install and Codex multi-account auth | `2f468156`, `d9c582b5` | `feat/agent-install-auth` |

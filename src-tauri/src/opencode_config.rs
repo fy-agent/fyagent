@@ -117,6 +117,15 @@ pub(crate) fn get_opencode_data_dir() -> PathBuf {
     resolve_opencode_data_dir(&crate::config::get_home_dir(), None)
 }
 
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub(crate) fn get_opencode_data_dir() -> PathBuf {
+    resolve_opencode_data_dir(&crate::config::get_home_dir(), None)
+}
+
+pub(crate) fn get_opencode_auth_json_path() -> PathBuf {
+    get_opencode_data_dir().join("auth.json")
+}
+
 #[allow(dead_code)]
 pub fn get_opencode_env_path() -> PathBuf {
     get_opencode_dir().join(".env")

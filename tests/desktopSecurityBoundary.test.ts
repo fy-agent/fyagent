@@ -63,21 +63,6 @@ const appLibraryPath = path.resolve(
   "lib.rs",
 );
 const rendererBootstrapPath = path.resolve(__dirname, "..", "src", "main.tsx");
-const databaseUpgradePath = path.resolve(
-  __dirname,
-  "..",
-  "src",
-  "components",
-  "DatabaseUpgrade.tsx",
-);
-const systemApiPath = path.resolve(
-  __dirname,
-  "..",
-  "src",
-  "lib",
-  "api",
-  "system.ts",
-);
 
 describe("desktop IPC capability and CSP boundary", () => {
   it("keeps generic opener and broad plugin defaults out of the renderer capability", () => {
@@ -97,20 +82,19 @@ describe("desktop IPC capability and CSP boundary", () => {
     expect(capability.permissions).not.toContain("process:allow-restart");
   });
 
-  it("routes renderer exits through the fixed-code lifecycle command", () => {
+  it("retains the fixed-code native exit command without a generic renderer process API", () => {
     const bootstrap = fs.readFileSync(rendererBootstrapPath, "utf8");
-    const databaseUpgrade = fs.readFileSync(databaseUpgradePath, "utf8");
-    const systemApi = fs.readFileSync(systemApiPath, "utf8");
+    const settings = fs.readFileSync(settingsCommandsPath, "utf8");
 
     expect(bootstrap).not.toContain("@tauri-apps/plugin-process");
-    expect(bootstrap).toContain('invoke("exit_app")');
-
-    expect(databaseUpgrade).not.toContain("@tauri-apps/");
-    expect(databaseUpgrade).not.toContain('invoke("exit_app")');
-    expect(databaseUpgrade).toContain("systemApi.exit()");
-
-    expect(systemApi).not.toContain("@tauri-apps/plugin-process");
-    expect(systemApi).toContain('invoke("exit_app")');
+    expect(bootstrap).not.toMatch(/invoke\(|process\.exit/);
+    expect(settings).toContain(
+      "pub fn exit_app(app: AppHandle) -> Result<(), String>",
+    );
+    expect(settings).toContain(
+      "claim_process_lifecycle_transition(&app, ProcessLifecycleTransition::Exit)",
+    );
+    expect(settings).not.toContain("pub fn exit_app(app: AppHandle, code:");
   });
 
   it("keeps exit and restart cleanup on one first-wins lifecycle owner", () => {
@@ -193,13 +177,22 @@ describe("desktop IPC capability and CSP boundary", () => {
     expect(source).toContain(
       "elevated_windows_cli_boundary_active_for(crate::windows_runtime::formal_windows_build())",
     );
-    for (const commandStart of [versionCommand, lifecycleCommand]) {
-      expect(commandStart).toBeGreaterThan(-1);
-      const commandSource = source.slice(commandStart, commandStart + 1200);
-      expect(commandSource).toContain(
-        "if elevated_windows_cli_boundary_active()",
-      );
-    }
+    expect(versionCommand).toBeGreaterThan(-1);
+    expect(source.slice(versionCommand, versionCommand + 1200)).toContain(
+      "if elevated_windows_cli_boundary_active()",
+    );
+    expect(lifecycleCommand).toBeGreaterThan(-1);
+    const lifecycleSource = source.slice(
+      lifecycleCommand,
+      lifecycleCommand + 1800,
+    );
+    expect(lifecycleSource).toContain("is_lifecycle_writable");
+    expect(lifecycleSource).toContain("GROK_CLI_LIFECYCLE_ONLY_MESSAGE");
+    expect(lifecycleSource).toContain("grok_windows_uses_ordinary_user_helper");
+    expect(lifecycleSource).toContain("run_windows_grok_helper_lifecycle");
+    expect(lifecycleSource).not.toMatch(
+      /CreateProcess|cmd\.exe|powershell\.exe/iu,
+    );
     expect(installationProbe).toBeGreaterThan(-1);
     expect(
       discovery.slice(installationProbe, installationProbe + 1200),
@@ -212,12 +205,10 @@ describe("desktop IPC capability and CSP boundary", () => {
       "run_detected_tool_command_with_timeout_impl(tool, args, timeout, None, extra_env, working_dir)",
     );
     expect(discovery).toContain("Some(output_limit)");
-    expect(source).toContain(
-      "Do not let a release build reach build_tool_lifecycle_command",
-    );
+    expect(source).toContain("GrokWindowsExecution::OrdinaryUserHelper");
   });
 
-  it("keeps generic CLI install and update flows independent of package validation", () => {
+  it("keeps Grok CLI install and update independent of package validation", () => {
     const source = fs.readFileSync(toolingServicePath, "utf8");
     const start = source.indexOf("pub async fn run_tool_lifecycle_action");
     const end = source.indexOf("\n///", start);
@@ -225,6 +216,7 @@ describe("desktop IPC capability and CSP boundary", () => {
     expect(end).toBeGreaterThan(start);
 
     const lifecycleCommand = source.slice(start, end);
+    expect(lifecycleCommand).toContain("run_windows_grok_helper_lifecycle");
     expect(lifecycleCommand).toContain("build_tool_lifecycle_command");
     expect(lifecycleCommand).toContain("run_elevated_cli_lifecycle_whitelist");
     expect(lifecycleCommand).not.toMatch(

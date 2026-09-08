@@ -5,6 +5,22 @@
 //! already verified handle with `REG_OPTION_OPEN_LINK` so a registry link
 //! cannot redirect an elevated operation into another hive.
 
+use std::io;
+
+pub(crate) const REJECTED_SYMBOLIC_LINK_COMPONENT: &str =
+    "registry symbolic-link component rejected";
+
+/// WOW64 shared keys (notably HKLM App Paths) surface as registry links when
+/// opened with `REG_OPTION_OPEN_LINK` in the 32-bit view. That is the same
+/// location already enumerated in the 64-bit view, not an access failure.
+pub(crate) fn is_rejected_symbolic_link_component(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::PermissionDenied
+        && error.raw_os_error().is_none()
+        && error
+            .get_ref()
+            .is_some_and(|inner| inner.to_string() == REJECTED_SYMBOLIC_LINK_COMPONENT)
+}
+
 #[cfg(any(target_os = "windows", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ShellUserRegistryLocation {
@@ -110,6 +126,16 @@ impl RegistryRights {
     };
 
     const TRAVERSE: Self = Self {
+        query_value: true,
+        enumerate_subkeys: true,
+        create_subkey: false,
+        set_value: false,
+    };
+
+    /// Read-only access for an inventory parent whose direct children must be
+    /// enumerated. Keep this semantic capability separate from traversal so a
+    /// caller cannot accidentally downgrade the leaf to query-only access.
+    const INVENTORY_PARENT_READ: Self = Self {
         query_value: true,
         enumerate_subkeys: true,
         create_subkey: false,
@@ -356,7 +382,7 @@ mod windows {
             RegistryTraversalError::Backend(error) => error,
             RegistryTraversalError::SymbolicLinkComponent => io::Error::new(
                 io::ErrorKind::PermissionDenied,
-                "registry symbolic-link component rejected",
+                super::REJECTED_SYMBOLIC_LINK_COMPONENT,
             ),
         }
     }
@@ -423,7 +449,7 @@ mod windows {
             &mut backend,
             canonical_sid,
             location,
-            RegistryRights::READ_VALUES,
+            RegistryRights::INVENTORY_PARENT_READ,
             false,
         )
         .map_err(map_security_error)
@@ -437,7 +463,7 @@ mod windows {
         traverse_components(
             &mut backend,
             location.components(),
-            RegistryRights::READ_VALUES,
+            RegistryRights::INVENTORY_PARENT_READ,
             false,
         )
         .map_err(map_security_error)
@@ -464,7 +490,7 @@ mod windows {
             Ok(false) => Ok(child),
             Ok(true) => Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
-                "registry symbolic-link component rejected",
+                super::REJECTED_SYMBOLIC_LINK_COMPONENT,
             )),
             Err(error) => Err(error),
         }
@@ -918,18 +944,30 @@ mod tests {
                 &mut backend,
                 SID,
                 location,
-                RegistryRights::READ_VALUES,
+                RegistryRights::INVENTORY_PARENT_READ,
                 false,
             )
             .expect("fixed inventory parent should open");
             assert_eq!(handle, expected);
-            assert!(backend.events.iter().all(|event| match event {
-                Event::Open { rights, .. } => {
-                    *rights == RegistryRights::TRAVERSE || *rights == RegistryRights::READ_VALUES
-                }
-                Event::Inspect(_) => true,
-                Event::Create { .. } => false,
-            }));
+            let opens: Vec<_> = backend
+                .events
+                .iter()
+                .filter_map(|event| match event {
+                    Event::Open { path, rights } => Some((path, rights)),
+                    Event::Inspect(_) => None,
+                    Event::Create { .. } => panic!("inventory traversal must stay read-only"),
+                })
+                .collect();
+            let (leaf_path, leaf_rights) = opens.last().expect("inventory leaf must open");
+            assert_eq!(leaf_path.as_str(), expected);
+            assert_eq!(**leaf_rights, RegistryRights::INVENTORY_PARENT_READ);
+            assert!(leaf_rights.query_value);
+            assert!(leaf_rights.enumerate_subkeys);
+            assert!(!leaf_rights.create_subkey);
+            assert!(!leaf_rights.set_value);
+            assert!(opens[..opens.len() - 1]
+                .iter()
+                .all(|(_, rights)| **rights == RegistryRights::TRAVERSE));
         }
 
         assert_eq!(
@@ -1147,5 +1185,26 @@ mod tests {
             ),
             Err(RegistryTraversalError::Backend("inspection failed"))
         );
+    }
+}
+
+#[cfg(test)]
+mod rejected_link_classification_tests {
+    use super::{is_rejected_symbolic_link_component, REJECTED_SYMBOLIC_LINK_COMPONENT};
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn rejected_symbolic_link_is_not_a_raw_access_denied() {
+        let rejected = Error::new(
+            ErrorKind::PermissionDenied,
+            REJECTED_SYMBOLIC_LINK_COMPONENT,
+        );
+        assert!(is_rejected_symbolic_link_component(&rejected));
+        assert!(!is_rejected_symbolic_link_component(&Error::from(
+            ErrorKind::NotFound
+        )));
+        assert!(!is_rejected_symbolic_link_component(
+            &Error::from_raw_os_error(5)
+        ));
     }
 }

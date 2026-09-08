@@ -464,12 +464,12 @@ impl JobStore {
         })
     }
 
-    /// Completes a no-download path after the service has freshly verified and
-    /// launched an equal-or-newer local Stable application. This is deliberately
-    /// narrower than `succeed`: only the cancellable Checking stage may take
-    /// this path, so an install can never be reported as complete without its
-    /// normal post-install verification.
-    pub fn succeed_after_launch(
+    /// Completes a no-download path after the service has freshly verified an
+    /// equal-or-newer local Stable application. This is deliberately narrower
+    /// than `succeed`: only the cancellable Checking stage may take this path,
+    /// so an install can never be reported as complete without its normal
+    /// post-install verification. Launch is not part of this settlement.
+    pub fn succeed_already_current(
         &self,
         job_id: &str,
         result: InstallResult,
@@ -484,7 +484,7 @@ impl JobStore {
                 return Err(invalid_transition(
                     controller.snapshot.stage,
                     JobStage::Succeeded,
-                    "launch-only success is allowed only while checking local state",
+                    "already-current success is allowed only while checking local state",
                 ));
             }
             if controller.cancellation.is_requested() {
@@ -1200,7 +1200,7 @@ mod tests {
     }
 
     #[test]
-    fn launch_only_success_is_limited_to_checking_and_honors_cancellation() {
+    fn already_current_success_is_limited_to_checking_and_honors_cancellation() {
         let result = InstallResult {
             installed: InstalledApplicationSummary {
                 stable_identity: "fixture.identity".to_owned(),
@@ -1219,7 +1219,7 @@ mod tests {
         let store = JobStore::new();
         let job = store.try_start(release(), "t0").unwrap();
         let succeeded = store
-            .succeed_after_launch(&job.job_id, result.clone(), "t1")
+            .succeed_already_current(&job.job_id, result.clone(), "t1")
             .unwrap();
         assert_eq!(succeeded.stage, JobStage::Succeeded);
         assert_eq!(succeeded.result, Some(result.clone()));
@@ -1230,7 +1230,7 @@ mod tests {
             .request_cancel(&cancelled_job.job_id, "t1")
             .unwrap();
         let cancelled = cancelled_store
-            .succeed_after_launch(&cancelled_job.job_id, result, "t2")
+            .succeed_already_current(&cancelled_job.job_id, result, "t2")
             .unwrap();
         assert_eq!(cancelled.stage, JobStage::Cancelled);
         assert!(cancelled.result.is_none());

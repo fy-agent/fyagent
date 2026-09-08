@@ -262,7 +262,7 @@ impl ChangePlanService {
         let _provider_guard = ProviderService::lock_provider_mutation(state, &AppType::Codex);
         let adapter = CodexProviderSwitchAdapter::for_plan(state, target_provider_id);
         let inspection = adapter.inspect()?;
-        let secret_capability = prove_codex_target_credential_capability(&inspection);
+        let secret_capability = prove_codex_target_credential_capability(state, &inspection);
         if secret_capability != SecretCapabilityResult::NoNewCredentialMaterial {
             return Err(ChangePlanErrorCode::SecretDependencyUnavailable);
         }
@@ -348,7 +348,7 @@ impl ChangePlanService {
         let adapter =
             CodexProviderUpsertAdapter::for_plan(state, provider.clone(), existing_reserved_row);
         let inspection = adapter.inspect()?;
-        let secret_capability = prove_codex_target_credential_capability(&inspection);
+        let secret_capability = prove_codex_target_credential_capability(state, &inspection);
         if secret_capability != SecretCapabilityResult::NoNewCredentialMaterial {
             return Err(ChangePlanErrorCode::SecretDependencyUnavailable);
         }
@@ -720,8 +720,11 @@ impl ChangePlanService {
                 ));
             }
         };
-        let observed = adapter.precheck()?;
-        if prove_codex_target_credential_capability(&observed)
+        let observed = match adapter.precheck() {
+            Ok(observed) => observed,
+            Err(error) => return Ok(ApplyChangePlanOutcome::rejected(error)),
+        };
+        if prove_codex_target_credential_capability(state, &observed)
             != SecretCapabilityResult::NoNewCredentialMaterial
         {
             return Ok(ApplyChangePlanOutcome::rejected(
@@ -1391,6 +1394,20 @@ impl CodexSwitchInspection {
     }
 }
 
+fn codex_live_projection_digest(home: &std::path::Path, projection: &Value) -> String {
+    // A configuration-directory change must invalidate a preview even when the
+    // new directory happens to contain the same routing/model values. Neither
+    // the physical path nor credential bytes are persisted in the public plan.
+    let destination = digest_json(
+        "fyagent.change-plan.codex-destination.v1",
+        &json!(home.to_string_lossy()),
+    );
+    digest_json(
+        "fyagent.change-plan.codex-live.v3",
+        &json!({ "destination": destination, "projection": projection }),
+    )
+}
+
 pub(crate) fn inspect_codex_switch(
     state: &AppState,
     target_provider_id: &str,
@@ -1448,14 +1465,14 @@ pub(crate) fn inspect_codex_intended_provider(
     let environment = inspect_codex_switch_environment(state)
         .map_err(|_| ChangePlanErrorCode::SecretDependencyUnavailable)?;
     let live_projection = credential_neutral_codex_projection(&environment.live_settings)?;
-    let live_projection_digest = digest_json("fyagent.change-plan.codex-live.v2", &live_projection);
+    let codex_home = crate::codex_config::get_codex_config_dir();
+    let live_projection_digest = codex_live_projection_digest(&codex_home, &live_projection);
     let live_projection_available = true;
     let target_live_projection =
         build_codex_switch_target_live_projection(state, &target, &environment)
-            .map_err(|_| ChangePlanErrorCode::Internal)?;
+            .map_err(|_| ChangePlanErrorCode::SecretDependencyUnavailable)?;
     let target_projection = credential_neutral_codex_projection(&target_live_projection)?;
-    let target_projection_digest =
-        digest_json("fyagent.change-plan.codex-live.v2", &target_projection);
+    let target_projection_digest = codex_live_projection_digest(&codex_home, &target_projection);
     let baseline_digest = digest_serializable(
         "fyagent.change-plan.baseline.v2",
         &BaselineDigestInput {
@@ -1591,10 +1608,11 @@ pub(crate) fn write_workbuddy_save_locked(
 }
 
 fn prove_codex_target_credential_capability(
+    state: &AppState,
     inspection: &CodexSwitchInspection,
 ) -> SecretCapabilityResult {
     let provider = &inspection.target;
-    if xai_oauth_managed_account_is_ready(provider) {
+    if ProviderService::xai_managed_account_is_ready(state, provider) {
         return prove_xai_oauth_switch_shape(provider);
     }
     if provider
@@ -1630,14 +1648,10 @@ fn prove_codex_target_credential_capability(
     let target_has_key =
         crate::codex_config::extract_codex_api_key(Some(auth), Some(config_text)).is_some();
     if crate::proxy::providers::is_codex_official_provider(provider) {
-        let target_has_strict_login =
-            crate::codex_config::codex_auth_has_credential_login_material(auth);
-        let target_auth_would_replace_preserved_login =
-            crate::codex_config::codex_auth_has_login_material(auth);
-        return if target_has_key
-            || target_has_strict_login
-            || (!target_auth_would_replace_preserved_login && inspection.preserved_strict_login)
-        {
+        // Request-source selection never projects a Provider's saved login.
+        // Official credentials must already exist in the consumer; selecting a
+        // different account goes through the separately confirmed Auth action.
+        return if inspection.preserved_strict_login {
             SecretCapabilityResult::NoNewCredentialMaterial
         } else {
             SecretCapabilityResult::SecretDependencyUnavailable
@@ -1655,41 +1669,12 @@ fn prove_codex_target_credential_capability(
     }
 }
 
-fn xai_oauth_managed_account_is_ready(provider: &Provider) -> bool {
-    if !provider.is_xai_oauth() {
-        return false;
-    }
-    let Some(binding) = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.auth_binding.as_ref())
-    else {
-        return false;
-    };
-    if binding.source != crate::provider::AuthBindingSource::ManagedAccount {
-        return false;
-    }
-    if binding.auth_provider.as_deref() != Some("xai_oauth") {
-        return false;
-    }
-    binding.account_id.as_deref().is_some_and(|account_id| {
-        crate::proxy::providers::xai_oauth_auth::XaiOAuthManager::stored_account_is_usable(
-            account_id,
-        )
-    })
-}
-
 fn prove_xai_oauth_switch_shape(provider: &Provider) -> SecretCapabilityResult {
-    let Some(settings) = provider.settings_config.as_object() else {
-        return SecretCapabilityResult::SecretDependencyUnavailable;
-    };
-    let Some(config_text) = settings.get("config").and_then(Value::as_str) else {
-        return SecretCapabilityResult::SecretDependencyUnavailable;
-    };
-    if config_text.parse::<toml::Table>().is_err() {
-        return SecretCapabilityResult::SecretDependencyUnavailable;
+    if ProviderService::xai_managed_codex_shape_is_valid(provider) {
+        SecretCapabilityResult::NoNewCredentialMaterial
+    } else {
+        SecretCapabilityResult::SecretDependencyUnavailable
     }
-    SecretCapabilityResult::NoNewCredentialMaterial
 }
 
 fn validate_optional_provider_id(
@@ -2460,7 +2445,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn credential_capability_admits_usable_xai_oauth_managed_account() {
+    fn credential_capability_rejects_legacy_json_without_vault_account() {
         let (home, _guard, db, state, _current, target) = setup_switch_state();
         let store_dir = home.path().join(".fyagent");
         std::fs::create_dir_all(&store_dir).unwrap();
@@ -2482,17 +2467,18 @@ mod tests {
             ..Default::default()
         });
         db.save_provider(AppType::Codex.as_str(), &xai).unwrap();
-        let plan = ChangePlanService::plan_codex_switch_at(&state, &xai.id, 300).unwrap();
         assert_eq!(
-            plan.secret_capability,
-            SecretCapabilityResult::NoNewCredentialMaterial
+            ChangePlanService::plan_codex_switch_at(&state, &xai.id, 300),
+            Err(ChangePlanErrorCode::SecretDependencyUnavailable)
         );
-        let persisted = serde_json::to_string(&plan).unwrap();
-        assert!(!persisted.contains("fixture-refresh"));
-        assert!(!persisted.contains("acct-xai"));
 
-        xai.meta.as_mut().unwrap().auth_binding.as_mut().unwrap().account_id =
-            Some("missing-account".to_string());
+        xai.meta
+            .as_mut()
+            .unwrap()
+            .auth_binding
+            .as_mut()
+            .unwrap()
+            .account_id = Some("missing-account".to_string());
         db.save_provider(AppType::Codex.as_str(), &xai).unwrap();
         assert_eq!(
             ChangePlanService::plan_codex_switch_at(&state, &xai.id, 301),
@@ -2570,7 +2556,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn official_target_requires_own_material_or_strict_preserved_login() {
+    fn official_source_requires_preserved_login_and_never_uses_saved_provider_credentials() {
         let (_home, _guard, db, state, _current, _target) = setup_switch_state();
         let mut official = provider(
             crate::database::CODEX_OFFICIAL_PROVIDER_ID,
@@ -2578,6 +2564,7 @@ mod tests {
             "gpt-official",
         );
         official.category = Some("official".to_string());
+        official.settings_config["config"] = json!("model = 'gpt-official'\n");
         official.settings_config["auth"] = json!({});
         db.save_provider(AppType::Codex.as_str(), &official)
             .unwrap();
@@ -2599,29 +2586,7 @@ mod tests {
             json!({"last_refresh": "metadata", "tokens": {"account_id": "metadata-only"}});
         db.save_provider(AppType::Codex.as_str(), &official)
             .unwrap();
-        assert_eq!(
-            ChangePlanService::plan_codex_switch_at(&state, &official.id, 102),
-            Err(ChangePlanErrorCode::SecretDependencyUnavailable)
-        );
-        let metadata_calls = AtomicUsize::new(0);
-        let metadata_outcome = ChangePlanService::apply_codex_switch_at_with_writer(
-            &state,
-            &plan.plan_id,
-            &plan.plan_digest,
-            103,
-            |_| {
-                metadata_calls.fetch_add(1, Ordering::SeqCst);
-                Ok::<_, ()>(WriterReceipt {
-                    live_config_changed: false,
-                })
-            },
-        )
-        .unwrap();
-        assert_eq!(
-            metadata_outcome.error_code,
-            Some(ChangePlanErrorCode::SecretDependencyUnavailable)
-        );
-        assert_eq!(metadata_calls.load(Ordering::SeqCst), 0);
+        assert!(ChangePlanService::plan_codex_switch_at(&state, &official.id, 102).is_ok());
 
         official.settings_config["auth"] = json!({});
         db.save_provider(AppType::Codex.as_str(), &official)
@@ -2662,12 +2627,18 @@ mod tests {
         official.settings_config["auth"] = json!({"tokens": {"refresh_token": "target-login"}});
         db.save_provider(AppType::Codex.as_str(), &official)
             .unwrap();
-        assert!(ChangePlanService::plan_codex_switch_at(&state, &official.id, 200).is_ok());
+        assert_eq!(
+            ChangePlanService::plan_codex_switch_at(&state, &official.id, 200),
+            Err(ChangePlanErrorCode::SecretDependencyUnavailable)
+        );
 
         official.settings_config["auth"] = json!({"OPENAI_API_KEY": "target-key"});
         db.save_provider(AppType::Codex.as_str(), &official)
             .unwrap();
-        assert!(ChangePlanService::plan_codex_switch_at(&state, &official.id, 201).is_ok());
+        assert_eq!(
+            ChangePlanService::plan_codex_switch_at(&state, &official.id, 201),
+            Err(ChangePlanErrorCode::SecretDependencyUnavailable)
+        );
 
         official.settings_config["auth"] = json!({});
         official.meta = Some(crate::provider::ProviderMeta {

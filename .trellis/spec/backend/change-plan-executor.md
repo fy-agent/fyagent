@@ -19,6 +19,10 @@ never appear in plan, job, event, or log payloads.
 
 Schema v20 remains canonical. `change_plans`, `change_jobs`, and
 `change_job_events` stay local-only and are not redefined by executor changes.
+Renderer preview/apply presentation, Query-owned job observation, and
+Models/Auth workflow placement are defined by
+[Change Plan Workspaces](../frontend/change-plan-workspaces.md); that UI
+contract does not redefine native execution authority.
 
 ## 2. Signatures
 
@@ -82,6 +86,23 @@ faultPoints        = before_managed_write,
 ```
 
 ## 3. Contracts
+
+### Grok managed Codex source admission
+
+- Codex switch admits a managed xAI source only when its explicit bound vault
+  record is ready, has Proxy purpose/consumer, and is FyAgent-owned. Recheck on
+  plan creation and apply; JSON token-file existence grants no capability.
+- The closed managed shape has an empty auth object, selected `xai` provider,
+  local Responses wire protocol, canonical Grok CLI subscription base URL and
+  an explicit bounded model. The native proxy converts to the vendor's Chat
+  Completions protocol; the local wire declaration is not the upstream protocol.
+  Credentials remain in the vault. Preview uses the same local proxy projection
+  as the existing Provider writer; apply starts/adopts that listener and retains
+  target rollback and readback. No fourth adapter or new schema is introduced.
+- A plan/configuration success proves native configuration, not live upstream
+  quota consumption. Synthetic vault + loopback upstream integration is separate
+  from actual subscription and Windows acceptance evidence.
+
 
 ### Wire version and phase model
 
@@ -181,19 +202,19 @@ faultPoints        = before_managed_write,
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| unknown adapter/operation/resource/cancel enum | Reject at Rust registry or V2 strict parser; do not execute |
-| same plan + same digest after admission | Return existing execution as `idempotent_replay`; writer +0 |
-| same plan + changed digest | `invalid_digest`; writer +0 |
-| old contract/adapter after executor version change | `stale`; writer +0 |
-| cancel wins before managed-write claim | `cancelled_before_write`; public `cancelled`; stored v20 status stays legal; writer 0 |
-| cancel arrives after managed-write claim | `commit_point_passed`; execution continues authoritatively |
-| crash before managed write; baseline confirmed | `interrupted_before_write`; no replay |
-| crash after write; target confirmed | warning `recovered_target_reached`; no replay |
-| writer fails and writer-owned rollback is confirmed | failed + `writer_failed_baseline_restored`; `managed_write=compensated` |
-| target/readback mixed or unavailable | `recovery_required`; partial result lists unverified/remaining work |
-| observer receives `{jobId,eventSeq}` | the matching SQLite snapshot/event sequence is already committed |
+| Condition                                           | Required result                                                                       |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| unknown adapter/operation/resource/cancel enum      | Reject at Rust registry or renderer strict parser; do not execute                     |
+| same plan + same digest after admission             | Return existing execution as `idempotent_replay`; writer +0                           |
+| same plan + changed digest                          | `invalid_digest`; writer +0                                                           |
+| old contract/adapter after executor version change  | `stale`; writer +0                                                                    |
+| cancel wins before managed-write claim              | `cancelled_before_write`; public `cancelled`; stored v20 status stays legal; writer 0 |
+| cancel arrives after managed-write claim            | `commit_point_passed`; execution continues authoritatively                            |
+| crash before managed write; baseline confirmed      | `interrupted_before_write`; no replay                                                 |
+| crash after write; target confirmed                 | warning `recovered_target_reached`; no replay                                         |
+| writer fails and writer-owned rollback is confirmed | failed + `writer_failed_baseline_restored`; `managed_write=compensated`               |
+| target/readback mixed or unavailable                | `recovery_required`; partial result lists unverified/remaining work                   |
+| observer receives `{jobId,eventSeq}`                | the matching SQLite snapshot/event sequence is already committed                      |
 
 ## 5. Good / Base / Bad Cases
 
@@ -223,12 +244,13 @@ faultPoints        = before_managed_write,
 - DAO tests insert legacy v1 `apply/reconcile` JSON/events directly and prove
   public normalization without rewriting the raw row.
 - Shared `tests/fixtures/changePlanDtoContract.v2.json` must match Rust serde
-  and pass the V2 strict parser for plan/job/cancel/event-hint fields.
-- V2 tests cover idempotent replay, cancel DTO validation, five-phase labels,
+  and pass the renderer strict parser for plan/job/cancel/event-hint fields.
+  Its `v2` suffix names the wire protocol, not a second frontend generation.
+- Renderer tests cover idempotent replay, cancel DTO validation, five-phase labels,
   compensated state, cancelled/interrupted/recovered result copy, and browser
   native-only behavior.
 - Run `mise run rust:fmt:check`, `mise run rust:clippy`, `mise run rust:test`,
-  `mise run typecheck:v2`, `mise run test:v2`, browser tests, repository
+  `mise run typecheck`, `mise run test:unit`, browser tests, repository
   contracts, then the full prearchive gate.
 
 ## 7. Wrong vs Correct

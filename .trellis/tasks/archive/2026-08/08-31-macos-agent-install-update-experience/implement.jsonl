@@ -1,0 +1,20 @@
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/prd.md","reason":"权威范围、产品决策、门禁与验收标准。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/design.md","reason":"唯一 owner、数据流、system-commit 选型、来源与失败语义。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/implement.md","reason":"串行实施阶段、删除清单、评审、HIL 与停止条件。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/current-implementation-audit.md","reason":"已验证的代码缺口与本机 OpenCode、Codex、Grok 证据。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/repository-gap-analysis.md","reason":"现有 target authority、作业与前端能力的缺口及复用地图。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/reuse-options.md","reason":"现有 FyAgent owner、Apple API 与成熟开源组件的选型。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/source-and-network-strategy.md","reason":"OpenCode/Grok 官方来源、分发 owner、中国网络与镜像治理。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/upstream-distribution-and-macos.md","reason":"OpenAI、OpenCode、xAI、Apple 与开源参考的交叉证据。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/macos-authorization-options.md","reason":"单一 system-commit port 的原生授权优先与条件式 helper 门禁。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/spec-constraints.md","reason":"大型现有规范的聚焦硬约束，避免上下文截断。"}
+{"file":".trellis/tasks/08-31-macos-agent-install-update-experience/research/acceptance-evidence.md","reason":"G1-G6 的自动化与签名 HIL 证据账本。"}
+{"file":".trellis/spec/backend/reuse.md","reason":"后端复用、依赖准入和 owner 收敛规则。"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"共享下载、平台 adapter、Tooling 与 IPC 模块边界。"}
+{"file":".trellis/spec/backend/macos-dmg-layout.md","reason":"DMG 挂载、应用选择、替换、回滚和清理不变量。"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"前端共享状态、transfer projector 与格式化 owner。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"进度、错误终态、可访问性与浏览器验收。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"组件边界和交互一致性。"}
+{"file":".trellis/spec/frontend/user-facing-copy.md","reason":"“打开软件”、授权、进度和错误文案约束。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"实现前复用审计与不造轮子决策。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Rust、IPC、TypeScript、React 跨层合同审查。"}

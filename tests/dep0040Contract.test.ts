@@ -327,7 +327,6 @@ describe("DEP0040 dependency and deprecation contract", () => {
     for (const name of [
       "test:unit",
       "test:unit:watch",
-      "test:i18n",
       "test:desktop:mock",
       "test:desktop:visual:preflight",
       "test:desktop:visual:update",

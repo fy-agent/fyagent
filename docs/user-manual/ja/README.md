@@ -8,7 +8,7 @@
 
 - FyAgent をまだ導入していない：[インストール](./1-getting-started/1.2-installation.md)を読む。
 - まず 1 つのプロバイダーを動かしたい：[クイックスタート](./1-getting-started/1.4-quickstart.md)を進める。
-- Claude Code などをインストール・更新したい：[ツールのインストール](./2-agent-tools/2.1-install.md)と[競合診断](./2-agent-tools/2.2-update-diagnose.md)を見る。
+- CLI のバージョン確認や **Grok Build** の導入が必要なら：[ツールのインストール](./2-agent-tools/2.1-install.md)と[競合診断](./2-agent-tools/2.2-update-diagnose.md)を見る。Claude Desktop、Codex Desktop、OpenCode Desktop は Agent ページで管理する。
 - エンドポイントやモデルをまとめて管理したい：[プロバイダーの追加](./3-providers/3.1-add.md)から始める。
 - MCP、Prompts、Skills を使いたい：[拡張機能](#4-拡張機能)へ進む。
 - WorkBuddy のモデル一覧を書き込みたい：[WorkBuddy のモデル設定](./4-extensions/4.6-workbuddy.md)を読む。

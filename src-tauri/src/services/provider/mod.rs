@@ -6,8 +6,11 @@ mod common_config;
 mod endpoints;
 mod gemini_auth;
 mod live;
+mod managed_xai;
 mod universal;
 mod usage;
+
+pub use managed_xai::{BindXaiManagedError, BindXaiManagedRequest, BindXaiManagedResult};
 
 use indexmap::IndexMap;
 use regex::Regex;
@@ -104,7 +107,7 @@ pub(crate) fn build_codex_switch_target_live_projection(
     provider: &Provider,
     environment: &CodexSwitchEnvironment,
 ) -> Result<Value, AppError> {
-    if environment.should_hot_switch() {
+    if environment.should_hot_switch() || provider.is_xai_oauth() {
         return futures::executor::block_on(
             state
                 .proxy_service
@@ -126,10 +129,27 @@ pub(crate) fn build_codex_switch_target_live_projection(
         );
     }
     let mut effective_settings = effective_provider.settings_config;
-    crate::codex_config::apply_codex_unified_session_bucket_to_settings(
+    let config = crate::codex_config::patch_codex_source_config(
+        environment
+            .live_settings
+            .get("config")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
         provider.category.as_deref(),
-        &mut effective_settings,
+        effective_settings.get("auth").unwrap_or(&Value::Null),
+        effective_settings
+            .get("config")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        &crate::codex_config::get_codex_config_dir(),
+        crate::settings::unify_codex_session_history(),
     )?;
+    effective_settings["config"] = Value::String(config);
+    effective_settings["auth"] = environment
+        .live_settings
+        .get("auth")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
     Ok(effective_settings)
 }
 
@@ -199,22 +219,7 @@ const QUICK_SETUP_CLAUDE_PROVIDER_ID: &str = "fyagent-v2-quick-setup-claude";
 pub(crate) const QUICK_SETUP_CODEX_PROVIDER_ID: &str = "fyagent-v2-quick-setup-codex";
 const QUICK_SETUP_GROKBUILD_PROVIDER_ID: &str = "fyagent-v2-quick-setup-grokbuild";
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QuickSetupWriteTarget {
-    pub path: String,
-    pub backup_path: String,
-    pub exists: bool,
-}
-
-fn quick_setup_write_target(path: PathBuf) -> QuickSetupWriteTarget {
-    let backup_path = crate::config::rolling_backup_path(&path);
-    QuickSetupWriteTarget {
-        exists: path.exists(),
-        path: crate::config::display_user_path(&path),
-        backup_path: crate::config::display_user_path(&backup_path),
-    }
-}
+pub use crate::config::FileWriteTarget as QuickSetupWriteTarget;
 
 fn is_quick_setup_provider_id(app_type: &AppType, provider_id: &str) -> bool {
     matches!(
@@ -347,10 +352,7 @@ impl QuickSetupFileSnapshot {
     }
 
     fn restore(&self) -> Result<(), AppError> {
-        match &self.bytes {
-            Some(bytes) => crate::config::atomic_write(&self.path, bytes),
-            None => crate::config::delete_file(&self.path),
-        }
+        crate::config::restore_file_preimage(&self.path, self.bytes.as_deref())
     }
 
     fn matches_current(&self) -> Result<bool, AppError> {
@@ -411,10 +413,7 @@ fn clear_codex_live_config(snapshot: &CodexLiveConfigSnapshot) -> Result<(), App
 }
 
 fn restore_codex_live_config(snapshot: &CodexLiveConfigSnapshot) -> Result<(), AppError> {
-    match &snapshot.bytes {
-        Some(bytes) => crate::config::atomic_write(&snapshot.path, bytes),
-        None => crate::config::delete_file(&snapshot.path),
-    }
+    crate::config::restore_file_preimage(&snapshot.path, snapshot.bytes.as_deref())
 }
 
 fn rollback_current_codex_delete(
@@ -758,6 +757,40 @@ mod tests {
             .expect("set database current provider");
         crate::settings::set_current_provider(&AppType::Codex, Some(id))
             .expect("set local current provider");
+    }
+
+    #[test]
+    #[serial]
+    fn source_targets_disclose_catalog_without_adding_it_to_config_only_quick_setup() {
+        with_test_home(|_, _| {
+            let mut provider = Provider::with_id(
+                "catalog-source".to_string(),
+                "Catalog source".to_string(),
+                json!({"auth": {"OPENAI_API_KEY": "test-key"}, "config": "model = 'test-model'\n", "modelCatalog": {"models": [{"model": "test-model"}]}}),
+                None,
+            );
+            let targets =
+                ProviderService::source_write_targets(&AppType::Codex, &provider).unwrap();
+            assert_eq!(targets.len(), 2);
+            assert!(targets[0].path.ends_with("config.toml"));
+            assert!(targets[1].path.ends_with("fyagent-model-catalog.json"));
+            assert!(targets
+                .iter()
+                .all(|target| !target.path.ends_with("auth.json")));
+            provider.id = QUICK_SETUP_CODEX_PROVIDER_ID.to_string();
+            assert_eq!(
+                ProviderService::source_write_targets(&AppType::Codex, &provider)
+                    .unwrap()
+                    .len(),
+                1
+            );
+            assert_eq!(
+                ProviderService::quick_setup_write_targets(&AppType::Codex)
+                    .unwrap()
+                    .len(),
+                1
+            );
+        });
     }
 
     fn write_test_codex_live_config(bytes: &[u8]) {
@@ -1554,6 +1587,7 @@ mod tests {
                 None,
             );
             provider.category = Some("official".to_string());
+            provider.settings_config["config"] = json!("model = 'gpt-5'\n");
             state.db.save_provider("codex", &provider).unwrap();
             state
                 .db
@@ -1744,8 +1778,10 @@ mod tests {
             let stored_key = stored.settings_config["auth"]["OPENAI_API_KEY"]
                 .as_str()
                 .unwrap();
-            let live_auth: Value =
-                serde_json::from_slice(&fs::read(get_codex_auth_path()).unwrap()).unwrap();
+            assert!(
+                !get_codex_auth_path().exists(),
+                "Quick Setup must not create auth.json for a third-party key"
+            );
             for candidate in ["first.example.test", "second.example.test"] {
                 assert_eq!(
                     stored_config.contains(candidate),
@@ -1753,7 +1789,10 @@ mod tests {
                     "DB and live must describe the same winning request"
                 );
             }
-            assert_eq!(live_auth["OPENAI_API_KEY"], stored_key);
+            assert!(
+                live_config.contains(&format!("experimental_bearer_token = \"{stored_key}\"")),
+                "Quick Setup must project the provider key into config.toml"
+            );
         });
     }
 
@@ -1896,10 +1935,13 @@ requires_openai_auth = true
                 Some("keep-me")
             );
             assert!(custom.get("supports_websockets").is_none());
-            assert!(custom.get("experimental_bearer_token").is_none());
+            assert_eq!(
+                custom["experimental_bearer_token"].as_str(),
+                Some("new-key")
+            );
 
             let live_auth: Value = serde_json::from_slice(&fs::read(&auth_path).unwrap()).unwrap();
-            assert_eq!(live_auth["OPENAI_API_KEY"], "new-key");
+            assert_eq!(live_auth["OPENAI_API_KEY"], "old-key");
             assert_eq!(live_auth["tokens"]["access_token"], "keep-login");
             assert_eq!(live_auth["account_id"], "keep-account");
 
@@ -1907,9 +1949,9 @@ requires_openai_auth = true
                 fs::read(crate::config::rolling_backup_path(&config_path)).unwrap(),
                 original_config.as_bytes()
             );
-            assert_eq!(
-                fs::read(crate::config::rolling_backup_path(&auth_path)).unwrap(),
-                original_auth_bytes
+            assert!(
+                !crate::config::rolling_backup_path(&auth_path).exists(),
+                "config-only Quick Setup must not rewrite or back up auth.json"
             );
         });
     }
@@ -4180,11 +4222,7 @@ impl ProviderService {
         let paths = match app_type {
             AppType::Claude => vec![crate::config::get_claude_settings_path()],
             AppType::Codex => {
-                let mut paths = vec![crate::codex_config::get_codex_config_path()];
-                if !crate::settings::preserve_codex_official_auth_on_switch() {
-                    paths.push(crate::codex_config::get_codex_auth_path());
-                }
-                paths
+                vec![crate::codex_config::get_codex_config_path()]
             }
             AppType::GrokBuild => vec![crate::grok_config::get_grok_config_path()],
             _ => {
@@ -4193,7 +4231,26 @@ impl ProviderService {
                 ))
             }
         };
-        Ok(paths.into_iter().map(quick_setup_write_target).collect())
+        paths
+            .into_iter()
+            .map(|path| crate::config::file_write_target(&path))
+            .collect()
+    }
+
+    pub(crate) fn source_write_targets(
+        app_type: &AppType,
+        provider: &Provider,
+    ) -> Result<Vec<QuickSetupWriteTarget>, AppError> {
+        let mut targets = Self::quick_setup_write_targets(app_type)?;
+        if matches!(app_type, AppType::Codex)
+            && !is_quick_setup_provider_id(app_type, &provider.id)
+            && crate::codex_config::codex_model_catalog_write_required(&provider.settings_config)
+        {
+            targets.push(crate::config::file_write_target(
+                &crate::codex_config::get_codex_model_catalog_path(),
+            )?);
+        }
+        Ok(targets)
     }
 
     /// Execute a provider mutation and derive the restart-relevant live result
@@ -4209,6 +4266,7 @@ impl ProviderService {
         app_type: AppType,
         mutation: impl FnOnce() -> Result<T, AppError>,
     ) -> Result<ProviderMutationResult<T>, AppError> {
+        let _file_scope = crate::config::file_mutation_scope();
         let before = matches!(app_type, AppType::Codex)
             .then(read_codex_live_config_bytes)
             .transpose()?;
@@ -4640,6 +4698,10 @@ impl ProviderService {
         app_type: AppType,
         mut provider: Provider,
     ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        let _managed_activation = provider.is_xai_oauth().then(|| {
+            futures::executor::block_on(state.proxy_service.lock_managed_activation(&app_type))
+        });
+        let _file_scope = crate::config::file_mutation_scope();
         let existing_provider = state
             .db
             .get_provider_by_id(&provider.id, app_type.as_str())
@@ -4679,6 +4741,26 @@ impl ProviderService {
             provider.in_failover_queue = existing.in_failover_queue;
         }
 
+        let managed_subscription = provider.is_xai_oauth();
+        if managed_subscription
+            && (!Self::xai_managed_account_is_ready(state, &provider)
+                || (app_type == AppType::Codex
+                    && !Self::xai_managed_codex_shape_is_valid(&provider)))
+        {
+            return Err(QuickSetupApplyError::rolled_back(
+                "Managed subscription account is unavailable",
+            ));
+        }
+        let managed_runtime = managed_subscription
+            .then(|| {
+                futures::executor::block_on(
+                    state
+                        .proxy_service
+                        .snapshot_managed_takeover_runtime(&app_type),
+                )
+            })
+            .transpose()
+            .map_err(QuickSetupApplyError::rolled_back)?;
         let has_live_backup = backup_before.is_some();
         let live_taken_over = state
             .proxy_service
@@ -4686,7 +4768,14 @@ impl ProviderService {
         let should_prepare_takeover = has_live_backup || live_taken_over;
 
         let mutation = (|| -> Result<(SwitchResult, Option<Vec<u8>>), AppError> {
-            if should_prepare_takeover {
+            if managed_subscription {
+                futures::executor::block_on(
+                    state
+                        .proxy_service
+                        .prepare_managed_takeover(&app_type, &provider),
+                )
+                .map_err(AppError::Message)?;
+            } else if should_prepare_takeover {
                 futures::executor::block_on(
                     state
                         .proxy_service
@@ -4733,7 +4822,7 @@ impl ProviderService {
                 .set_current_provider(app_type.as_str(), &provider.id)?;
 
             let mut result = SwitchResult::default();
-            if !should_prepare_takeover {
+            if !should_prepare_takeover && !managed_subscription {
                 if let Err(error) = McpService::sync_enabled_for_app_inner(state, &app_type) {
                     log::warn!(
                         "quick setup 后重投影 {app_type:?} MCP 失败（将在下次同步时自愈）: {error}"
@@ -4818,6 +4907,15 @@ impl ProviderService {
                     }
                 }
                 rollback_errors.extend(restore_quick_setup_live(&live_snapshots));
+                if let Some(snapshot) = &managed_runtime {
+                    if let Err(error) = futures::executor::block_on(
+                        state
+                            .proxy_service
+                            .restore_managed_takeover_runtime(snapshot),
+                    ) {
+                        rollback_errors.push(format!("restore subscription runtime: {error}"));
+                    }
+                }
 
                 match state.db.get_provider_by_id(&provider.id, app_type.as_str()) {
                     Ok(restored) => {
@@ -5440,6 +5538,47 @@ impl ProviderService {
         Self::switch_with_lock_held(state, app_type, id)
     }
 
+    fn backfill_current_provider_from_live(
+        state: &AppState,
+        app_type: &AppType,
+        providers: &IndexMap<String, Provider>,
+        current_id: &str,
+        result: &mut SwitchResult,
+    ) -> bool {
+        let Ok(live_config) = read_live_settings(app_type.clone()) else {
+            return false;
+        };
+        let Some(mut current_provider) = providers.get(current_id).cloned() else {
+            return false;
+        };
+        // 切走前先把 live 里的可共享改动（含用户直接在应用内
+        // 装插件/加 hook/改偏好）同步进通用配置片段，再做剥离回填。
+        // 详见 sync_common_config_snippet_from_live 的文档。
+        Self::sync_common_config_snippet_from_live(
+            state,
+            app_type,
+            &current_provider,
+            &live_config,
+            result,
+        );
+
+        current_provider.settings_config = strip_common_config_from_live_settings(
+            state.db.as_ref(),
+            app_type,
+            &current_provider,
+            live_config,
+        );
+        if let Err(e) = state.db.save_provider(app_type.as_str(), &current_provider) {
+            log::warn!("Backfill failed: {e}");
+            result
+                .warnings
+                .push(format!("backfill_failed:{current_id}"));
+            false
+        } else {
+            true
+        }
+    }
+
     /// Provider switch implementation for callers that already hold the
     /// per-app mutation guard. This is crate-visible only so Change Plan can
     /// keep admission, the single writer call and readback under one guard.
@@ -5448,26 +5587,61 @@ impl ProviderService {
         app_type: AppType,
         id: &str,
     ) -> Result<SwitchResult, AppError> {
+        let _file_scope = crate::config::file_mutation_scope();
+        Self::switch_with_lock_held_inner(state, app_type, id, true)
+    }
+
+    fn switch_with_lock_held_inner(
+        state: &AppState,
+        app_type: AppType,
+        id: &str,
+        perform_backfill: bool,
+    ) -> Result<SwitchResult, AppError> {
         // Check if provider exists
         let providers = state.db.get_all_providers(app_type.as_str())?;
         let _provider = providers
             .get(id)
             .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?;
 
+        if matches!(app_type, AppType::Codex)
+            && !is_quick_setup_provider_id(&app_type, id)
+            && !_provider.is_xai_oauth()
+        {
+            let settings = build_effective_settings_with_common_config(
+                state.db.as_ref(),
+                &app_type,
+                _provider,
+            )?;
+            crate::codex_config::validate_codex_source_config(
+                _provider.category.as_deref(),
+                settings.get("auth").unwrap_or(&Value::Null),
+                settings
+                    .get("config")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            )?;
+        }
+
+        if _provider.is_xai_oauth() && matches!(app_type, AppType::Claude | AppType::Codex) {
+            return Self::apply_quick_setup_locked(state, app_type, _provider.clone())
+                .map(|result| result.value)
+                .map_err(|error| AppError::Message(error.to_string()));
+        }
+
         // OMO providers are switched through their own exclusive path.
         if matches!(app_type, AppType::OpenCode) && _provider.category.as_deref() == Some("omo") {
-            return Self::switch_normal(state, app_type, id, &providers);
+            return Self::switch_normal(state, app_type, id, &providers, perform_backfill);
         }
 
         // OMO Slim providers are switched through their own exclusive path.
         if matches!(app_type, AppType::OpenCode)
             && _provider.category.as_deref() == Some("omo-slim")
         {
-            return Self::switch_normal(state, app_type, id, &providers);
+            return Self::switch_normal(state, app_type, id, &providers, perform_backfill);
         }
 
         if matches!(app_type, AppType::ClaudeDesktop) {
-            return Self::switch_normal(state, app_type, id, &providers);
+            return Self::switch_normal(state, app_type, id, &providers, perform_backfill);
         }
 
         // Backup or live placeholders mean the live file is owned by proxy
@@ -5529,7 +5703,7 @@ impl ProviderService {
         }
 
         // Normal mode: full switch with Live config write
-        Self::switch_normal(state, app_type, id, &providers)
+        Self::switch_normal(state, app_type, id, &providers, perform_backfill)
     }
 
     /// Normal switch flow (non-proxy mode)
@@ -5538,6 +5712,7 @@ impl ProviderService {
         app_type: AppType,
         id: &str,
         providers: &indexmap::IndexMap<String, Provider>,
+        perform_backfill: bool,
     ) -> Result<SwitchResult, AppError> {
         let provider = providers
             .get(id)
@@ -5569,46 +5744,24 @@ impl ProviderService {
         let current_id = crate::settings::get_effective_current_provider(&state.db, &app_type)?;
 
         let mut backfill_completed = false;
-        if let Some(current_id) = current_id {
-            if current_id != id {
-                // Additive mode apps - all providers coexist in the same file,
-                // no backfill needed (backfill is for exclusive mode apps like Claude/Codex/Gemini)
-                if !app_type.is_additive_mode() {
-                    // Only backfill when switching to a different provider
-                    if let Ok(live_config) = read_live_settings(app_type.clone()) {
-                        if let Some(mut current_provider) = providers.get(&current_id).cloned() {
-                            // 切走前先把 live 里的可共享改动（含用户直接在应用内
-                            // 装插件/加 hook/改偏好）同步进通用配置片段，再做剥离回填。
-                            // 详见 sync_common_config_snippet_from_live 的文档。
-                            Self::sync_common_config_snippet_from_live(
-                                state,
-                                &app_type,
-                                &current_provider,
-                                &live_config,
-                                &mut result,
-                            );
-
-                            current_provider.settings_config =
-                                strip_common_config_from_live_settings(
-                                    state.db.as_ref(),
-                                    &app_type,
-                                    &current_provider,
-                                    live_config,
-                                );
-                            if let Err(e) =
-                                state.db.save_provider(app_type.as_str(), &current_provider)
-                            {
-                                log::warn!("Backfill failed: {e}");
-                                result
-                                    .warnings
-                                    .push(format!("backfill_failed:{current_id}"));
-                            } else {
-                                backfill_completed = true;
-                            }
-                        }
-                    }
+        if perform_backfill {
+            if let Some(current_id) = current_id {
+                if current_id != id && !app_type.is_additive_mode() {
+                    // Only backfill when switching to a different exclusive-mode provider.
+                    backfill_completed = Self::backfill_current_provider_from_live(
+                        state,
+                        &app_type,
+                        providers,
+                        &current_id,
+                        &mut result,
+                    );
                 }
             }
+        } else if matches!(app_type, AppType::Codex) {
+            // Managed Auth already proved recoverability before replacing auth.json.
+            // Treat backfill as completed so stale third-party auth cleanup can run
+            // when the target is official and the live file is now ChatGPT material.
+            backfill_completed = true;
         }
 
         // Additive mode apps skip setting is_current (no such concept)

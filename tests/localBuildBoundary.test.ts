@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
+// @ts-expect-error The task runner executes this JavaScript helper directly.
+import * as taskContractModule from "../scripts/tasks/task-contract-check.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
 const read = (relative: string) =>
@@ -57,6 +59,18 @@ type HostNativeModule = {
 };
 
 let hostNative: HostNativeModule;
+
+type TaskDefinition = {
+  run?: string | Array<string | { task: string }>;
+  env?: Record<string, string>;
+  confirm?: { default?: string; message?: string };
+};
+
+const loadTaskDefinitions =
+  taskContractModule.loadTaskDefinitions as () => Record<
+    string,
+    TaskDefinition
+  >;
 
 beforeAll(async () => {
   hostNative = (await import(
@@ -200,10 +214,50 @@ describe("local build boundary", () => {
       );
     }
 
-    const localEntryPoints = localTaskConfiguration();
+    const taskDefinitions = loadTaskDefinitions();
+    const standardTaskNames = [
+      "dev",
+      "build",
+      "build:binary",
+      "build:debug",
+      "check",
+      "check:backend",
+      "rust:check",
+      "rust:clippy",
+      "rust:test",
+    ];
+    const localEntryPoints = JSON.stringify({
+      packageScripts: {
+        dev: packageJson.scripts.dev,
+        build: packageJson.scripts.build,
+        tauri: packageJson.scripts.tauri,
+      },
+      tasks: Object.fromEntries(
+        standardTaskNames.map((name) => [name, taskDefinitions[name]]),
+      ),
+    });
     for (const marker of LOCAL_CROSS_EXECUTION_MARKERS) {
       expect(localEntryPoints, marker).not.toContain(marker);
     }
+
+    expect(taskDefinitions["system:check:windows-msvc-cross"]).toMatchObject({
+      run: "node scripts/tasks/windows-msvc-cross.mjs check",
+      env: { FYAGENT_TASK_EFFECT: "read-only" },
+    });
+    expect(
+      taskDefinitions["system:check:windows-msvc-cross:advisory"],
+    ).toMatchObject({
+      run: "node scripts/tasks/windows-msvc-cross.mjs advisory",
+      env: { FYAGENT_TASK_EFFECT: "read-only" },
+    });
+    expect(JSON.stringify(taskDefinitions.bootstrap)).toContain(
+      "system:check:windows-msvc-cross:advisory",
+    );
+    expect(taskDefinitions["rust:clippy:windows-msvc-cross"]).toMatchObject({
+      run: "node scripts/tasks/windows-msvc-cross.mjs clippy",
+      env: { FYAGENT_TASK_EFFECT: "dependency-environment" },
+      confirm: { default: "no" },
+    });
 
     for (const document of CURRENT_DOCUMENTS.slice(0, 4)) {
       const content = read(document);
@@ -315,9 +369,29 @@ describe("local build boundary", () => {
         'target.x86_64-apple-darwin.runner=["/usr/bin/node","/repo/scripts/tasks/host-native.mjs","native-runner","x86_64-apple-darwin"]',
     };
     const dev = hostNative.planTauriTask({ ...base, operation: "dev" });
+    const signedDevCargoRunner = path.join(
+      ROOT,
+      "scripts",
+      "tasks",
+      "macos-signed-dev-cargo.mjs",
+    );
     expect(dev).toMatchObject({
       command: "pnpm",
-      args: ["tauri", "dev", "--target", "x86_64-apple-darwin"],
+      args: [
+        "tauri",
+        "dev",
+        "--target",
+        "x86_64-apple-darwin",
+        "--runner",
+        signedDevCargoRunner,
+        "--features",
+        "macos-privileged-client",
+        "--config",
+        JSON.stringify({
+          productName: "FyAgent Dev",
+          identifier: "com.fyagent.desktop.dev",
+        }),
+      ],
       target: "x86_64-apple-darwin",
     });
     expect(dev.environment).toMatchObject({
@@ -458,9 +532,9 @@ describe("local build boundary", () => {
 
     expect(release).toContain("aarch64-pc-windows-msvc");
     expect(release).toContain("pnpm tauri build --no-bundle");
-    expect(release).toContain(
-      "pnpm tauri build --target universal-apple-darwin",
-    );
+    expect(release).toContain("pnpm tauri build \\");
+    expect(release).toContain("--target universal-apple-darwin \\");
+    expect(release).toContain("--features macos-privileged-client");
     expect(release).toContain("FYAGENT_WINDOWS_MANIFEST: release");
   });
 });

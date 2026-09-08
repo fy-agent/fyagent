@@ -8,8 +8,8 @@ const read = (relativePath: string) =>
 
 const host = read("src-tauri/src/lib.rs");
 const cargo = read("src-tauri/Cargo.toml");
-const dialog = read("src/components/DeepLinkImportDialog.tsx");
-const deeplinkApi = read("src/lib/api/deeplink.ts");
+const readiness = read("src/shared/platform/useFrontendReady.ts");
+const lifecycle = read("src/shared/platform/tauri/lifecycle.ts");
 
 const desktopTargetCfg = 'any(target_os = "macos", target_os = "windows")';
 
@@ -39,7 +39,7 @@ describe("single-instance semantic activation contract", () => {
     );
   });
 
-  it("queues only parsed semantics until both renderer listeners are ready", () => {
+  it("queues only parsed semantics until the current renderer's readiness signal", () => {
     const semanticQueue = host.slice(
       host.indexOf("enum PendingActivation"),
       host.indexOf("fn emit_safe_deeplink_error"),
@@ -55,9 +55,13 @@ describe("single-instance semantic activation contract", () => {
       'const FRONTEND_DEEPLINK_READY_EVENT: &str = "frontend-deeplink-ready"',
     );
     expect(host).toContain("mark_activation_renderer_ready(&activation_app)");
-    expect(dialog).toContain("Promise.all([unlistenImport, unlistenError])");
-    expect(dialog).toContain("await deeplinkApi.notifyFrontendReady()");
-    expect(deeplinkApi).toContain('await emit("frontend-deeplink-ready")');
+    // The retired import-dialog bootstrap was never the production entry.
+    // Assert the real content-readiness owner, not nonexistent listeners.
+    expect(readiness).toContain("signalFrontendReady");
+    expect(lifecycle).toContain(
+      'const FRONTEND_DEEPLINK_READY_EVENT = "frontend-deeplink-ready"',
+    );
+    expect(lifecycle).toContain("return emit(FRONTEND_DEEPLINK_READY_EVENT)");
   });
 
   it("does not rebuild lightweight mode for a non-focusing Windows rejection", () => {

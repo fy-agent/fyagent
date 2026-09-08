@@ -379,9 +379,9 @@ pub struct AppSettings {
     /// Whether to show the project profile switcher on the main page header
     #[serde(default = "default_show_profile_switcher")]
     pub show_profile_switcher: bool,
-    /// Keep Codex ChatGPT login material in auth.json when switching to third-party providers.
-    /// Opt-in: defaults to false so third-party switches cleanly overwrite auth.json.
-    #[serde(default)]
+    /// Legacy compatibility field. Third-party Codex switches always preserve
+    /// official ChatGPT login material; this value is ignored.
+    #[serde(default = "default_preserve_codex_official_auth_on_switch")]
     pub preserve_codex_official_auth_on_switch: bool,
     /// Run official Codex providers under the shared "custom" model_provider id
     /// so official sessions share one resume-history bucket with third-party
@@ -404,6 +404,11 @@ pub struct AppSettings {
     pub common_config_confirmed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Closed shell appearance preference. Renderer localStorage is a cache;
+    /// this device file is the restart authority. `save_settings` snapshots
+    /// cannot clobber it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appearance_theme: Option<String>,
 
     // ===== 主页面显示的应用 =====
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -503,6 +508,10 @@ fn default_show_profile_switcher() -> bool {
     true
 }
 
+fn default_preserve_codex_official_auth_on_switch() -> bool {
+    true
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -518,13 +527,14 @@ impl Default for AppSettings {
             usage_dashboard_refresh_interval_ms: None,
             enable_failover_toggle: false,
             show_profile_switcher: true,
-            preserve_codex_official_auth_on_switch: false,
+            preserve_codex_official_auth_on_switch: true,
             unify_codex_session_history: false,
             unify_codex_migrate_existing: None,
             failover_confirmed: None,
             first_run_notice_confirmed: None,
             common_config_confirmed: None,
             language: None,
+            appearance_theme: None,
             visible_apps: None,
             claude_config_dir: None,
             codex_config_dir: None,
@@ -686,6 +696,12 @@ impl AppSettings {
             .filter(|s| matches!(*s, "en" | "zh" | "zh-TW" | "ja"))
             .map(|s| s.to_string());
 
+        self.appearance_theme = self
+            .appearance_theme
+            .as_deref()
+            .and_then(parse_appearance_theme)
+            .map(str::to_string);
+
         if let Some(sync) = &mut self.webdav_sync {
             sync.normalize();
             if sync.is_empty() {
@@ -809,6 +825,49 @@ pub fn get_settings_for_frontend() -> AppSettings {
     }
     settings.webdav_backup = None;
     settings
+}
+
+pub(crate) fn parse_appearance_theme(value: &str) -> Option<&'static str> {
+    match value.trim() {
+        "light" => Some("light"),
+        "dark" => Some("dark"),
+        "system" => Some("system"),
+        _ => None,
+    }
+}
+
+pub(crate) fn appearance_theme_preference() -> Option<String> {
+    get_settings()
+        .appearance_theme
+        .as_deref()
+        .and_then(parse_appearance_theme)
+        .map(str::to_string)
+}
+
+pub(crate) fn persist_appearance_theme(theme: &str) {
+    let Some(theme) = parse_appearance_theme(theme) else {
+        return;
+    };
+    if appearance_theme_preference().as_deref() == Some(theme) {
+        return;
+    }
+    if let Err(error) = mutate_settings(|settings| {
+        settings.appearance_theme = Some(theme.to_string());
+    }) {
+        log::warn!("Unable to persist appearance preference: {error}");
+    }
+}
+
+pub(crate) fn appearance_bootstrap_script() -> Option<String> {
+    appearance_bootstrap_script_for(appearance_theme_preference().as_deref())
+}
+
+pub(crate) fn appearance_bootstrap_script_for(preference: Option<&str>) -> Option<String> {
+    let preference = parse_appearance_theme(preference?)?;
+    let encoded = serde_json::to_string(preference).ok()?;
+    Some(format!(
+        r#"try{{var key="fyagent-theme";var preference={encoded};try{{localStorage.setItem(key,preference);}}catch(e){{}}var theme=preference==="system"?((window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"):preference;document.documentElement.setAttribute("data-theme",theme);}}catch(e){{}}"#,
+    ))
 }
 
 pub fn update_settings(mut new_settings: AppSettings) -> Result<(), AppError> {
@@ -1026,14 +1085,16 @@ pub fn get_hermes_override_dir() -> Option<PathBuf> {
         .map(|p| resolve_override_path(p))
 }
 
+#[allow(dead_code)]
 pub fn preserve_codex_official_auth_on_switch() -> bool {
-    settings_store()
+    let _ = settings_store()
         .read()
         .unwrap_or_else(|e| {
             log::warn!("设置锁已毒化，使用恢复值: {e}");
             e.into_inner()
         })
-        .preserve_codex_official_auth_on_switch
+        .preserve_codex_official_auth_on_switch;
+    true
 }
 
 pub fn unify_codex_session_history() -> bool {
@@ -1368,5 +1429,44 @@ mod tests {
         .expect("visible apps");
 
         assert!(!visible.is_visible(&AppType::ClaudeDesktop));
+    }
+
+    #[test]
+    fn appearance_theme_accepts_only_the_closed_preference_set() {
+        assert_eq!(parse_appearance_theme(" dark "), Some("dark"));
+        assert_eq!(parse_appearance_theme("light"), Some("light"));
+        assert_eq!(parse_appearance_theme("system"), Some("system"));
+        assert_eq!(parse_appearance_theme("not-a-theme"), None);
+        assert_eq!(parse_appearance_theme(""), None);
+
+        let mut settings = AppSettings {
+            appearance_theme: Some("  DARK  ".to_string()),
+            ..AppSettings::default()
+        };
+        settings.normalize_paths();
+        assert_eq!(settings.appearance_theme.as_deref(), None);
+
+        settings.appearance_theme = Some("dark".to_string());
+        settings.normalize_paths();
+        assert_eq!(settings.appearance_theme.as_deref(), Some("dark"));
+
+        let serialized = serde_json::to_value(AppSettings::default()).expect("default settings");
+        assert!(!serialized
+            .as_object()
+            .expect("settings object")
+            .contains_key("appearanceTheme"));
+    }
+
+    #[test]
+    fn appearance_bootstrap_script_seeds_only_a_closed_preference() {
+        assert!(appearance_bootstrap_script_for(None).is_none());
+        assert!(appearance_bootstrap_script_for(Some("nope")).is_none());
+
+        let script = appearance_bootstrap_script_for(Some("dark")).expect("dark bootstrap");
+        assert!(script.contains("fyagent-theme"));
+        assert!(script.contains("\"dark\""));
+        assert!(script.contains("data-theme"));
+        assert!(!script.contains("password"));
+        assert!(!script.contains("secret"));
     }
 }

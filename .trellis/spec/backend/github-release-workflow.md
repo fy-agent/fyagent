@@ -62,9 +62,10 @@ mode=formal` or the equivalent Actions API request); dispatching the current
   publication gate; the Release compile is the proof.
 - `main` is the trusted workflow branch for preflight and the observed formal
   mainline branch.
-  Runtime eligibility does not infer publication from branch protection, a
-  ruleset, merge settings, or a separate provenance workflow, and this project
-  does not claim that those administrator controls exist.
+  Runtime eligibility does not infer publication from branch protection,
+  rulesets, merge settings or a separate provenance workflow. Mainline merge
+  protection is independently owned by [Merge Governance](./github-merge-governance.md);
+  those controls are not formal tag-release eligibility evidence.
 - no branch push, manual signed mode, partial target mode, cross-architecture
   substitute, local publish path, or published update-in-place path exists.
 
@@ -155,17 +156,28 @@ exact-source push CI does not fail eligibility.
 
 ### Repository owner-transfer boundary
 
-Before the 2026-08-10 owner transfer, the factual repository URL was
-`https://github.com/NongHua123/fyagent`. GitHub now redirects that URL with
-HTTP 301 to `https://github.com/fy-agent/fyagent`, and both locations resolve
-to numeric repository ID `1313497021`. That continuity preserves historical
-run and source evidence only. It is not an eligibility alias: current
-collection and evaluation require the exact canonical name
-`fy-agent/fyagent`, and a payload, workflow reference, metadata URL, or
-head-repository name that still presents the former owner fails closed.
+The former-owner repository URL was
+`https://github.com/NongHua123/fyagent`. Redirect continuity and historical
+source references preserve old run/source evidence only; they are not
+eligibility aliases. Current collection and evaluation require the exact
+canonical name `fy-agent/fyagent` and numeric repository ID `1313497021`; a
+payload, workflow reference, metadata URL, or head-repository name that still
+presents the former owner fails closed.
 
 Initial eligibility freezes the decision before any build. Formal publication
-then performs two independent live rechecks with the same collector and exact
+re-downloads every private-draft attachment and requires the complete remote
+set to match the verified local payload byte-for-byte before publication.
+Binary asset reads use an asset-specific request header set with exactly the
+`application/octet-stream` media type; they must not inherit the JSON API
+`Accept` header, because multiple `Accept` headers can make GitHub return asset
+metadata JSON with HTTP 200 instead of the uploaded bytes. Because GitHub
+Release asset reads can also be briefly inconsistent immediately after upload,
+this re-download proof may retry the complete set a small bounded number of
+times with a fixed delay. Every attempt still uses the same exact asset IDs and
+the same byte-level verifier; exhaustion is a hard failure and never weakens or
+skips the publication gate.
+
+Formal publication then performs two independent live rechecks with the same collector and exact
 frozen value:
 
 - once when the publish job begins, before creating a draft;
@@ -260,12 +272,21 @@ signer material remains isolated from the fresh sealing boundary.
 
 Direct third-party Actions use reviewed full commit SHAs. Required jobs do not
 use `*-latest` or execute mise. Node is established after pnpm on native
-build jobs. `setup-node` may restore the lockfile-keyed pnpm store. Rust Action
-caches stay `cache: false`. Native CI backend jobs and Release build jobs may
-restore `~/.cargo/registry` and `~/.cargo/git` through `actions/cache`, keyed
-on `src-tauri/Cargo.lock` plus runner OS/arch. They never cache
-`src-tauri/target`. Repository Cargo config must not set `RUSTC_WRAPPER` or
-sccache.
+build jobs. Release does not restore/save shared dependency or build caches:
+`setup-node` explicitly uses `package-manager-cache: false` without `cache`,
+Rust Action caching stays `cache: false`, uv caching stays disabled, and no
+`actions/cache` or Rust cache step is admitted. Dependencies come from locked
+upstream downloads. Native CI's separate cache policy does not authorize cache
+consumption by Release. Repository Cargo config must not set `RUSTC_WRAPPER`
+or sccache.
+
+This removes the Release cache-consumer path but does not redefine preflight
+trust: manually selected candidate source still runs under the trusted-main
+workflow context described above. A SHA being immutable does not make it
+reviewed code. Do not dispatch unreviewed candidates or describe cache removal
+as full isolation from default-branch cache-token access/other consumers.
+Changing candidate admission or event/ref isolation requires a dedicated
+compatibility and privilege review rather than an implicit cache-key change.
 
 Platform-neutral Release control-plane jobs—eligibility, immutable build-input
 pinning, exact asset/evidence aggregation, attestation, and publication—run on
@@ -273,14 +294,15 @@ the pinned `ubuntu-24.04` hosted runner. They do not compile, execute, sign, or
 package a shipped target. Native build, Windows proof/sign/seal, and macOS
 Developer ID/notarization jobs remain on matching platform runners.
 
-| Target          | Runner/build environment         | Exact installer output              |
-| --------------- | -------------------------------- | ----------------------------------- |
-| Windows x64     | `windows-2025`, native `X64`     | x64 NSIS setup EXE                  |
-| Windows ARM64   | `windows-11-vs2026-arm`, native `ARM64` | ARM64 NSIS setup EXE          |
-| macOS universal | `macos-15`, both Apple targets   | one UDZO DMG from the universal app |
+| Target          | Runner/build environment                | Exact installer output              |
+| --------------- | --------------------------------------- | ----------------------------------- |
+| Windows x64     | `windows-2025`, native `X64`            | x64 NSIS setup EXE                  |
+| Windows ARM64   | `windows-11-vs2026-arm`, native `ARM64` | ARM64 NSIS setup EXE                |
+| macOS universal | `macos-15`, both Apple targets          | one UDZO DMG from the universal app |
 
 Each target verifies documented `runner.os`/`runner.arch`, the requested
-runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. Windows
+runner label, source HEAD, and the exact Node, pnpm, and Rust selections from
+`.node-version`, `package.json#packageManager`, and `rust-toolchain.toml`. Windows
 builders additionally resolve a bounded Visual Studio 2022/2026 installation
 through `vswhere`, require the host-architecture VC tools component, load the
 matching `VsDevCmd` environment, and record the selected Visual Studio
@@ -330,13 +352,24 @@ unavailability blocks acceptance.
   version, bundle identifier, both architectures, DMG layout, and byte
   preservation, but does not claim Developer ID signature or notarization;
 - formal-mode Apple Developer ID secrets exist only in the guarded signing /
-  notarization steps inside `build-macos`. Those steps import a
+  notarization steps inside `build-macos`. Before `sign-app`, the job builds
+  the Swift privileged helper, embeds it at the frozen LaunchServices and
+  Frameworks paths, and runs
+  `verify-macos-privileged-helper.sh --structure-only`. `sign-app` then signs
+  inside-out: `libFyAgentPrivilegedClient.dylib`, then
+  `com.fyagent.desktop.system-commit-helper`, then `FyAgent.app`. Do not use
+  `--deep` for nested helper code. Formal signing requires both nested
+  binaries; `FYAGENT_ALLOW_APP_ONLY_SIGN=1` is local/diagnostic only. Helper
+  identity and the production enablement gate are owned by
+  [macOS Privileged System-Commit Helper](./macos-system-commit.md). Those
+  steps import a
   temporary keychain, re-seals the complete app with
   `Developer ID Application: William Wang (HY446996QX)` / team `HY446996QX`,
   the hardened runtime, a secure timestamp, and the checked-in entitlements,
   then verifies that identity without requiring a stapler ticket yet. The job
   packages a signed DMG from that app and submits only the DMG to Apple
-  notarization. The helper submits without `--wait`, then polls
+  notarization. The nested privileged helper is not a second Apple
+  submission. The notarization step submits without `--wait`, then polls
   `notarytool info` until `Accepted` / `Invalid` or a multi-hour budget;
   `notarytool wait --timeout` is not used because it exits 124 with JSON on
   stderr while Apple may still be In Progress. After Apple accepts that one
@@ -381,7 +414,8 @@ unavailability blocks acceptance.
   original `hdiutil` status immediately. The workflow does not pipe
   `hdiutil`, force-detach images, or kill disk-image helpers.
 - `build-macos` installs the same pinned `astral-sh/setup-uv` and managed
-  Python 3.14.7 as CI, then `uv sync --locked --group dmg-layout`. Default
+  Python selected by `.python-version` as CI, then
+  `uv sync --locked --group dmg-layout`. Default
   `uv sync --locked` on Linux/Windows must not install that group.
 
 ## 7. Assets, metadata, signing disclosure, and attestation
@@ -549,6 +583,7 @@ until the Release is again provably an owned private draft.
 | Preflight reaches a publish path or Windows provider secret                                                             | Static/remote gate fails.                                                                            |
 | Native runner, architecture, toolchain, or source drifts                                                                | Fail that target; no fallback.                                                                       |
 | Pinned build input ID/digest/manifest/file set drifts                                                                   | Fail before provider or trusted consumption.                                                         |
+| Formal `sign-app` is missing the nested helper, the client dylib, or structure-only helper verification                 | Fail before Developer ID; do not sign an app-only bundle.                                            |
 | Signer configuration is partial/invalid, Apple notarization is denied, or fresh signature proof fails                   | Fail; do not downgrade to unsigned.                                                                  |
 | `notarytool wait --timeout` exits 124 or writes JSON only to stderr                                                     | Must not fail the job; poll `notarytool info` on the same submission id.                             |
 | Apple status remains `In Progress` / `UNKNOWN` inside `FYAGENT_NOTARY_WAIT_SECONDS`                                     | Continue polling; log at least every `FYAGENT_NOTARY_HEARTBEAT_SECONDS`.                             |
@@ -587,6 +622,10 @@ submission, `FYAGENT_NOTARY_WAIT_SECONDS`, `build-macos`
 root `.DS_Store`, `create-macos-dmg.sh`, `write-dmg-layout.py`, `dmg-layout`
 uv group, changelog heading contract, and the
 absence of a macOS ZIP installer.
+
+`tests/releaseWorkflow.test.ts` must keep `build-macos-privileged-helper.sh`,
+`embed-macos-privileged-helper.sh`, and
+`verify-macos-privileged-helper.sh --structure-only` before `sign-app`.
 
 Local execution cannot establish another platform's PowerShell/NSIS/
 Authenticode, native build/package output, macOS bundle, GitHub attestation, or
@@ -652,7 +691,8 @@ published Release exists, but a stale draft from another source fails closed.
 Only a same-source failed draft with independently verified Actions
 run/attempt/job provenance can be deleted and recreated. A published Release
 is immutable.
-Cache `~/.cargo/registry` and `~/.cargo/git` from `Cargo.lock`. Submit the
+Release restores/saves no Actions dependency or compiler cache. Download-only
+Cargo caching is a separate CI policy, not a Release exception. Submit the
 signed DMG once without `--wait`, poll `notarytool info` on that submission
 id until `Accepted` / `Invalid` or the wait budget, then staple the DMG and
 the original app from that ticket. Do not emit a ZIP.
@@ -715,7 +755,7 @@ the original app from that ticket. Do not emit a ZIP.
 - `tests/releaseWorkflow.test.ts` asserts exactly one `notarytool submit`,
   presence of `notarytool info` and `notarytool log`, no `xcrun notarytool wait`
   invocation, `FYAGENT_NOTARY_WAIT_SECONDS`,
-  `scripts/release/macos-developer-id.sh notarize-dmg`,
+  `scripts/release/macos-developer-id.sh` subcommand `notarize-dmg`,
   `staple-app`, `timeout-minutes: 360` on `build-macos`, the DMG Applications
   symlink, styled layout scripts, and the absence of `macOS.zip`.
 - Local tests do not call Apple; a successful unit run is not notarization

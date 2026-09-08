@@ -1,3 +1,4 @@
+#[cfg(test)]
 use subtle::ConstantTimeEq;
 
 use super::{
@@ -17,8 +18,16 @@ pub(crate) trait SecretBackend: Send + Sync {
         secret_ref: &SecretRef,
         material: &SecretMaterial,
     ) -> Result<(), SecretServiceError>;
-    fn read(&self, secret_ref: &SecretRef) -> Result<SecretMaterial, SecretServiceError>;
-    fn probe(&self, secret_ref: &SecretRef) -> Result<BackendProbe, SecretServiceError>;
+    fn read(
+        &self,
+        secret_ref: &SecretRef,
+        purpose: SecretPurpose,
+    ) -> Result<SecretMaterial, SecretServiceError>;
+    fn probe(
+        &self,
+        secret_ref: &SecretRef,
+        purpose: SecretPurpose,
+    ) -> Result<BackendProbe, SecretServiceError>;
     fn delete(&self, secret_ref: &SecretRef) -> Result<(), SecretServiceError>;
 }
 
@@ -29,6 +38,30 @@ mod callback_sealed {
 pub(crate) trait SecretMaterialCallback: callback_sealed::Sealed {
     type Output;
     fn consume(self, material: &[u8]) -> Self::Output;
+}
+
+/// Runs one typed decoder while the secret material is borrowed. The raw
+/// bytes cannot be returned by `SecretService`; callers receive only the
+/// decoder output and the backing buffer is zeroized immediately afterwards.
+pub(crate) struct DecodeSecret<F>(F);
+
+impl<F> DecodeSecret<F> {
+    pub(crate) fn new(callback: F) -> Self {
+        Self(callback)
+    }
+}
+
+impl<F> callback_sealed::Sealed for DecodeSecret<F> {}
+
+impl<F, O> SecretMaterialCallback for DecodeSecret<F>
+where
+    F: FnOnce(&[u8]) -> O,
+{
+    type Output = O;
+
+    fn consume(self, material: &[u8]) -> Self::Output {
+        (self.0)(material)
+    }
 }
 
 pub(crate) struct SecretService<B> {
@@ -43,32 +76,60 @@ where
         Self { backend }
     }
 
-    pub(crate) fn create(
+    pub(crate) fn reserve(&self) -> SecretHandle {
+        SecretHandle::new(SecretRef::generate(), SecretVersion::generate())
+    }
+
+    pub(crate) fn create_reserved(
         &self,
+        handle: &SecretHandle,
         material: SecretMaterial,
         purpose: SecretPurpose,
     ) -> Result<SecretSummaryDto, SecretServiceError> {
-        let secret_ref = SecretRef::generate();
-        self.backend.create_new(&secret_ref, &material)?;
-        let handle = SecretHandle::new(secret_ref, SecretVersion::generate());
+        self.backend.create_new(handle.secret_ref(), &material)?;
         Ok(SecretSummaryDto::from_probe(
-            &handle,
+            handle,
             purpose,
             self.backend.kind(),
             BackendProbe::ready(),
         ))
     }
 
+    #[cfg(test)]
+    pub(crate) fn create(
+        &self,
+        material: SecretMaterial,
+        purpose: SecretPurpose,
+    ) -> Result<SecretSummaryDto, SecretServiceError> {
+        let handle = self.reserve();
+        self.create_reserved(&handle, material, purpose)
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn replace(
         &self,
         handle: &SecretHandle,
         material: SecretMaterial,
         purpose: SecretPurpose,
     ) -> Result<SecretSummaryDto, SecretServiceError> {
-        self.backend.replace(handle.secret_ref(), &material)?;
-        let next = SecretHandle::new(handle.secret_ref().clone(), SecretVersion::generate());
+        let next = handle.rotate();
+        self.replace_reserved(handle, &next, material, purpose)
+    }
+
+    pub(crate) fn replace_reserved(
+        &self,
+        current: &SecretHandle,
+        next: &SecretHandle,
+        material: SecretMaterial,
+        purpose: SecretPurpose,
+    ) -> Result<SecretSummaryDto, SecretServiceError> {
+        if current.secret_ref() != next.secret_ref() || current.version() == next.version() {
+            return Err(SecretServiceError::invalid_input());
+        }
+        self.backend.replace(current.secret_ref(), &material)?;
         Ok(SecretSummaryDto::from_probe(
-            &next,
+            next,
             purpose,
             self.backend.kind(),
             BackendProbe::ready(),
@@ -80,7 +141,7 @@ where
         handle: &SecretHandle,
         purpose: SecretPurpose,
     ) -> Result<SecretSummaryDto, SecretServiceError> {
-        let probe = match self.backend.probe(handle.secret_ref()) {
+        let probe = match self.backend.probe(handle.secret_ref(), purpose) {
             Ok(probe) => probe,
             Err(error) => error.as_probe().ok_or(error)?,
         };
@@ -95,12 +156,13 @@ where
     pub(crate) fn with_material<C>(
         &self,
         handle: &SecretHandle,
+        purpose: SecretPurpose,
         callback: C,
     ) -> Result<C::Output, SecretServiceError>
     where
         C: SecretMaterialCallback,
     {
-        let material = self.backend.read(handle.secret_ref())?;
+        let material = self.backend.read(handle.secret_ref(), purpose)?;
         Ok(callback.consume(material.as_bytes()))
     }
 
@@ -114,11 +176,13 @@ where
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) struct MaterialMatches<'a> {
     expected: &'a [u8],
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 impl<'a> MaterialMatches<'a> {
     pub(crate) fn new(expected: &'a [u8]) -> Self {
         Self { expected }

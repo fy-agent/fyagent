@@ -102,7 +102,33 @@ such a command cannot provide project acceptance evidence.
 Portable policy tests can run on the current host, but their result remains a
 portable contract result. Windows, macOS, ARM64, and any other non-host native
 gate runs only on its matching GitHub Actions runner. Repository tasks never
-install or activate a non-host Rust target as part of local execution.
+install or activate a non-host Rust target as part of the standard local
+execution path.
+
+There is one explicit non-acceptance exception for early diagnostics on macOS:
+`system:check:windows-msvc-cross`,
+`system:check:windows-msvc-cross:advisory`, and
+`rust:clippy:windows-msvc-cross`. The strict preflight is read-only and reports
+the complete bounded prerequisite set. The advisory task is also read-only and
+is the only one allowed in `bootstrap`: missing tools print `ADVISORY` and
+exit 0, so onboarding never fails. The Clippy task is
+`FYAGENT_TASK_EFFECT=dependency-environment`, requires a default-no
+confirmation because cargo-xwin may download/cache Microsoft CRT/SDK content,
+and runs only after the same preflight passes. All three tasks fix cargo-xwin
+to the reviewed version, target only `x86_64-pc-windows-msvc`, use the clang-cl
+backend and reviewed xwin toolset, accept no forwarded argument, reject caller
+Rust/C/CMake/xwin controls and effective Cargo target/toolchain config, and
+invoke a fixed workspace/all-targets/locked Clippy argv with `-D warnings`.
+They never install the Rust target, LLVM, CMake, Ninja, a system package, or
+accept a license on the developer's behalf. Strict preflight and Clippy are
+never reachable from `bootstrap`, `check`, `check:backend`, CI release gates,
+or a standard dev/build/test alias. Advisory is bootstrap-only and is also
+absent from `check`. The result is cross-compilation diagnostics only; native
+Windows CI/HIL remains the authority for registry, PackageManager, WebView2,
+installer, UAC, launch, runtime, signing, packaging, and release behavior.
+The executable signatures, JSON report, frozen argv, and override matrix for
+this exception live in **Scenario: Optional macOS Windows-MSVC Clippy
+diagnostic** below.
 Linux x64/arm64 is a development host for `check` and other current-host
 tasks; it is not a shipped product platform and does not add a local
 cross-compile or Actions job.
@@ -119,10 +145,18 @@ together, not inferred as “not Windows means POSIX”.
 #### 2. Signatures
 
 ```text
-RAW_TASKS = dev | dev:renderer | test:unit:watch | test:v2:watch
+RAW_TASKS = dev | dev:renderer | test:unit:watch
 
 executeTauriTask({ operation: "dev", runForegroundCommand })
   -> runForeground(pnpm, ["exec", "tauri", "dev", ...])
+
+signalExitCode(signal)
+  SIGINT  -> 130
+  SIGTERM -> 143
+  SIGHUP  -> 129
+  SIGQUIT -> 131
+  SIGKILL -> 137
+  other   -> 1
 
 killProcessTree(pid, platform)
   win32  -> spawnSync("taskkill.exe", ["/pid", pid, "/t", "/f"])
@@ -138,6 +172,21 @@ killProcessTree(pid, platform)
 - `dev` uses `runForeground` (`spawn`, `stdio: "inherit"`,
   `windowsHide: false`). Other Tauri operations keep `run` /
   `spawnSync` / `windowsHide: true`.
+- On first interrupt signal (`SIGINT` / `SIGTERM`), `runForeground` initiates
+  graceful shutdown via `killProcessTree` and starts an unref fallback force-kill
+  timer (default 3000ms).
+- Repeated interrupt signals (such as a second `Ctrl+C`) during shutdown
+  immediately re-signal the tree and force-exit the process with standard exit
+  code (130 for `SIGINT`).
+- Normal signal exits assign standard exit codes (`signalExitCode`, e.g. 130
+  for `SIGINT`, 143 for `SIGTERM`) instead of generic failure exit code 1.
+- Synchronous task runner `run()` terminates with `signalExitCode` on `SIGINT`
+  (130) and `SIGTERM` (143) instead of throwing unhandled signal errors.
+- The macOS development helper build script
+  (`build-macos-privileged-helper.sh`) traps `INT` and `TERM` and exits
+  promptly, preventing orphaned build children during `mise run dev`
+  preflight. The outer task runner still owns the user-visible standard signal
+  exit code.
 - POSIX hosts (`darwin`, `linux`) start a new process group with
   `detached: true` and kill `-pid`. Windows stays attached
   (`detached: false`) and
@@ -159,6 +208,8 @@ killProcessTree(pid, platform)
 | `dev` uses `run` / `spawnSync`                       | `miseTaskContract` fails                       |
 | Windows tree kill uses POSIX `kill(-pid)`            | Child GUI survives; contract test fails        |
 | POSIX group kill uses `taskkill.exe`                 | Contract test fails                            |
+| Repeated Ctrl+C during dev task shutdown             | Immediate termination with exit code 130       |
+| Child process terminated by SIGINT                   | Process exitCode set to 130                    |
 | `platform !== "win32"` fallback                      | `supported-platform:check` fails               |
 | NSIS script contains `taskkill`                      | Windows installer contract fails               |
 | Unsupported `process.platform`                       | Throw `Unsupported task host`; no silent POSIX |
@@ -166,17 +217,22 @@ killProcessTree(pid, platform)
 #### 5. Good/Base/Bad Cases
 
 - Good: `mise run dev` on macOS or Windows; Ctrl+C or closing the terminal
-  stops Tauri and its children.
+  stops Tauri and its children. A second Ctrl+C immediately force-quits with code 130.
 - Base: `mise run build` still uses the hidden `run()` helper.
 - Bad: only fix Darwin because the author is on a Mac; Windows keeps
   `spawnSync` / `windowsHide: true`.
 
 #### 6. Tests Required
 
-- `RAW_TASKS` equals the four interactive tasks; every interactive task has
+- `RAW_TASKS` equals the three interactive tasks above; every interactive task has
   `raw=true`.
 - `executeTauriTask({ operation: "dev" })` calls `runForegroundCommand`,
   not `run`.
+- `signalExitCode` maps signals to standard exit codes (130 for SIGINT, 143 for SIGTERM).
+- `runForeground` force-kills and exits with 130 on repeated SIGINT.
+- Child exit on signal yields standard signal exit code.
+- the macOS helper source traps INT/TERM, while the outer runner remains the
+  owner of final `signalExitCode` mapping;
 - `killProcessTree` on `win32` records `taskkill.exe /pid /t /f`; on
   `darwin` and `linux` signals `-pid`; on any other host throws.
 - `supported-platform:check` rejects implicit non-Windows branches in
@@ -279,12 +335,21 @@ and structure scanners.
 
 The source inventory is recomputed bidirectionally from all tracked Cargo
 manifests and build scripts plus executable/configuration files containing
-platform selectors. The candidate set, canonical paths, Git index mode
-`100644`, regular non-symlink file type, and SHA-256 digest must match exactly.
+platform selectors. The candidate set, canonical paths, reviewed Git index
+mode, regular non-symlink file type, and SHA-256 digest must match exactly.
+Platform-sensitive source is `100644` except the single Tauri Cargo runner
+`scripts/tasks/macos-signed-dev-cargo.mjs`, which is deliberately `100755`
+because Tauri invokes `--runner` directly as `<runner> run ...`; making that
+file non-executable is a runtime failure, not a hardening improvement.
 Adding, removing, renaming, moving, changing, or changing the mode of a
 candidate fails until the source diff is reviewed and the identity inventory
 is deliberately updated. A digest-only update is not evidence that a platform
 dispatch remains safe.
+Review the final source bytes before updating individual digests, including
+changes that do not add a new platform branch. Recompute after formatting and
+rerun `supported-platform:check`; a previously green manifest does not cover
+later source edits. Do not bulk-refresh unreviewed entries or disable the seal
+to unblock the always-running CI Changes job.
 
 The checker and both inventories must remain runnable from a clean checkout
 using only Node built-ins. The always-running CI Changes job invokes this path
@@ -354,8 +419,10 @@ values reach the wrapper.
 
 ## 5. Mutation Policies
 
-- `bootstrap` may install locked tools/dependencies but may not trust, install
-  system packages, change Git, refresh locks, build, or publish.
+- `bootstrap` may install locked repository tools/dependencies and run the
+  read-only cross-MSVC advisory, but may not install system packages, execute
+  strict cross Clippy, accept licenses, trust, change Git, refresh locks,
+  build, or publish.
 - Formatting is an explicit source-modifying leaf and does not prompt. The
   full `format` task retains its frontend-wide behavior; `format:files` is the
   safe reviewed-subset entrypoint. Its JSONL record normalization does not
@@ -373,9 +440,13 @@ values reach the wrapper.
   conflicts, commit, tag, or push.
 - `release:check` is read-only; no local task signs, uploads, creates, edits, or
   deletes a GitHub Release.
-- No local task compiles, packages, or verifies a non-host OS/architecture.
-  Release helpers may be referenced by matching native Actions jobs, but no
-  local alias or wrapper turns them into a cross-platform acceptance path.
+- No standard local task compiles, packages, or verifies a non-host
+  OS/architecture. The exact macOS Windows-MSVC exception above is
+  diagnostics-only, cannot package/run/accept Windows, keeps strict
+  preflight/Clippy outside the default DAG, and allows only the non-failing
+  advisory inside `bootstrap`. Release helpers may be referenced by matching
+  native Actions jobs, but no local alias or wrapper turns them into a
+  cross-platform acceptance path.
 
 ## 6. Generated Documentation
 
@@ -414,38 +485,44 @@ does not turn them into contribution, build, CI, or release prerequisites.
 
 ## 7. Validation / Error Matrix
 
-| Condition                                                              | Required result                                                                         |
-| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Missing description/effect/usage                                       | `tasks:validate` fails                                                                  |
-| Interactive task lacks `raw=true`                                      | `tasks:validate` fails                                                                  |
-| `dev` does not spawn foreground / kill the host process tree           | `miseTaskContract` fails                                                                |
-| Missing task reference or DAG cycle                                    | mise/task contract fails                                                                |
-| `check` reaches a non-read-only effect                                 | Fail closed                                                                             |
-| A parameter is interpolated into a shell command                       | Reject; spawn validated argv instead                                                    |
-| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`   | Task-runner and DEP0040 contracts fail                                                  |
-| Supported Windows VS 2022/2026 or native VC tools component is missing | Fail with a bounded `vswhere` hint naming "Desktop development with C++"; never elevate |
-| MSVC env load mutates `process.env` or the user/system environment     | Reject; the loader is child-env-only and additive only                                  |
-| `-arch`/`-host_arch` is hard-coded or an unsupported architecture      | Reject; derive from `process.arch` (x64/arm64 only)                                     |
-| A Rust filter begins with `-` or contains `--target`                   | Reject before rustc or Cargo starts                                                     |
-| A fixed native operation receives forwarded argv                       | Reject before rustc or Tauri starts                                                     |
-| Caller compiler/wrapper/runner/linker/target env redirects a task      | Reject before rustc/rustdoc starts                                                      |
-| Any Rust/rustdoc flag env contains a target token                      | Reject before rustc/rustdoc starts                                                      |
-| Target-specific flags or process-loader/runtime injection are set      | Reject before rustc/rustdoc starts                                                      |
-| Absolute rustc/rustdoc identity and process host disagree              | Reject before Cargo/Tauri starts                                                        |
-| User Cargo config selects target/compiler/wrapper/flags/runner/linker  | Reject before the toolchain starts                                                      |
-| A standard task selects a non-host OS/architecture                     | Reject before any toolchain starts                                                      |
-| A local wrapper bridges to a foreign executable/emulator               | Reject; require a native Actions job                                                    |
-| Mutation task has neither preview default nor explicit confirmation    | Reject                                                                                  |
-| Clean path resolves outside the repository                             | Reject without deletion                                                                 |
-| Upstream safety/remotes/worktree do not match                          | Reject before fetch/merge                                                               |
-| Generated task reference differs by one byte                           | `tasks:docs:check` fails                                                                |
-| New active doc uses a legacy entrypoint                                | `docs-contract-check.mjs` fails                                                         |
-| Standalone setup order or manual trust guidance disappears             | `docs-contract-check.mjs` fails                                                         |
-| `format:files` receives an option, directory, symlink, or escape       | Reject before Prettier or JSONL writes                                                  |
-| A reviewed `.jsonl` target is not valid UTF-8                          | Identify the file; no Prettier or JSONL write                                           |
-| A nonblank reviewed `.jsonl` record is invalid JSON                    | Identify file and line; no Prettier or JSONL write                                      |
-| A changed JSONL target no longer matches its preflight bytes           | Preserve the newer bytes and fail                                                       |
-| A formatted JSONL file violates a consumer-specific schema             | The consumer's executable validation still fails                                        |
+| Condition                                                                | Required result                                                                                                   |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Missing description/effect/usage                                         | `tasks:validate` fails                                                                                            |
+| Interactive task lacks `raw=true`                                        | `tasks:validate` fails                                                                                            |
+| `dev` does not spawn foreground / kill the host process tree             | `miseTaskContract` fails                                                                                          |
+| Missing task reference or DAG cycle                                      | mise/task contract fails                                                                                          |
+| `check` reaches a non-read-only effect                                   | Fail closed                                                                                                       |
+| A parameter is interpolated into a shell command                         | Reject; spawn validated argv instead                                                                              |
+| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`     | Task-runner and DEP0040 contracts fail                                                                            |
+| Supported Windows VS 2022/2026 or native VC tools component is missing   | Fail with a bounded `vswhere` hint naming "Desktop development with C++"; never elevate                           |
+| MSVC env load mutates `process.env` or the user/system environment       | Reject; the loader is child-env-only and additive only                                                            |
+| `-arch`/`-host_arch` is hard-coded or an unsupported architecture        | Reject; derive from `process.arch` (x64/arm64 only)                                                               |
+| A Rust filter begins with `-` or contains `--target`                     | Reject before rustc or Cargo starts                                                                               |
+| A fixed native operation receives forwarded argv                         | Reject before rustc or Tauri starts                                                                               |
+| Caller compiler/wrapper/runner/linker/target env redirects a task        | Reject before rustc/rustdoc starts                                                                                |
+| Any Rust/rustdoc flag env contains a target token                        | Reject before rustc/rustdoc starts                                                                                |
+| Target-specific flags or process-loader/runtime injection are set        | Reject before rustc/rustdoc starts                                                                                |
+| Absolute rustc/rustdoc identity and process host disagree                | Reject before Cargo/Tauri starts                                                                                  |
+| User Cargo config selects target/compiler/wrapper/flags/runner/linker    | Reject before the toolchain starts                                                                                |
+| A standard task selects a non-host OS/architecture                       | Reject before any toolchain starts                                                                                |
+| Optional Windows-MSVC preflight is run off macOS                         | Strict `check` fails before probing; `advisory` prints SKIP and exits 0                                           |
+| Optional cross prerequisite/version is missing                           | Strict preflight reports every bounded failure and exits 1; advisory prints ADVISORY and exits 0; start no Clippy |
+| Optional cross Clippy receives argv/env/Cargo-config override            | Reject before Cargo/cargo-xwin starts                                                                             |
+| Strict preflight or Clippy becomes reachable from `bootstrap` or `check` | Task-contract failure                                                                                             |
+| Advisory missing from `bootstrap` or present in `check`                  | Task-contract failure                                                                                             |
+| Optional cross result is cited as native Windows acceptance              | Keep the native gate pending                                                                                      |
+| A local wrapper bridges to a foreign executable/emulator                 | Reject; require a native Actions job                                                                              |
+| Mutation task has neither preview default nor explicit confirmation      | Reject                                                                                                            |
+| Clean path resolves outside the repository                               | Reject without deletion                                                                                           |
+| Upstream safety/remotes/worktree do not match                            | Reject before fetch/merge                                                                                         |
+| Generated task reference differs by one byte                             | `tasks:docs:check` fails                                                                                          |
+| New active doc uses a legacy entrypoint                                  | `docs-contract-check.mjs` fails                                                                                   |
+| Standalone setup order or manual trust guidance disappears               | `docs-contract-check.mjs` fails                                                                                   |
+| `format:files` receives an option, directory, symlink, or escape         | Reject before Prettier or JSONL writes                                                                            |
+| A reviewed `.jsonl` target is not valid UTF-8                            | Identify the file; no Prettier or JSONL write                                                                     |
+| A nonblank reviewed `.jsonl` record is invalid JSON                      | Identify file and line; no Prettier or JSONL write                                                                |
+| A changed JSONL target no longer matches its preflight bytes             | Preserve the newer bytes and fail                                                                                 |
+| A formatted JSONL file violates a consumer-specific schema               | The consumer's executable validation still fails                                                                  |
 
 ## 8. Tests Required
 
@@ -484,10 +561,17 @@ does not turn them into contribution, build, CI, or release prerequisites.
 - Require the aggregate `check` task to begin with the subprocess-free
   host-native guard before `env:check`, so caller compiler/runner/target
   controls cannot reach its rustc toolchain probe.
-- Active local-entrypoint scans must cover package scripts and all included
-  task TOMLs, reject cross-target/cross-tool execution markers, and leave
-  `.github/workflows/**` outside that negative set so native runner targets
-  remain required and testable.
+- Active standard-entrypoint scans must cover package scripts and the exact
+  dev/build/check/current-host Rust tasks, reject cross-target/cross-tool
+  execution markers there, and validate the three named optional cross tasks
+  separately for fixed metadata, argv, confirmation, host and DAG isolation.
+  `.github/workflows/**` stays outside the negative local set so native runner
+  targets remain required and testable.
+- Cross-diagnostic tests cover exact cargo-xwin version parsing, complete
+  prerequisite reporting, advisory success/host skip, strict unsupported-host
+  and override rejection before child process launch, fixed x64 clang-cl argv,
+  default-no metadata, bootstrap/check DAG membership, no package
+  manager/elevation command, and real JSON strict-preflight output.
 - Clean preview tests proving canonical repository-only targets and zero writes.
 - Docs generation/check tests including a description containing `|` to prove
   table escaping. Live committed-file identity belongs to `tasks:docs:check`
@@ -519,3 +603,221 @@ current host, and executable tests prove both metadata and real argument flow.
 Interactive tasks set `raw` and tear down the POSIX group or Windows tree
 explicitly. Generated `mise-tasks.md` identity is `tasks:docs:check` /
 `docs-contract-check.mjs` only.
+
+## Scenario: Optional macOS Windows-MSVC Clippy diagnostic
+
+### 1. Scope / Trigger
+
+- Trigger: new public `mise run` names, a foreign-target argv, a
+  `dependency-environment` confirmation, and a JSON report that must not be
+  confused with Windows native acceptance. Code-spec depth is mandatory.
+- Owner: `scripts/tasks/windows-msvc-cross.mjs` plus the two mise task tables.
+  Host-native override rejection is reused from `host-native.mjs`; this owner
+  adds C/CMake/xwin/native-dependency prefixes. Semantic Windows runtime
+  evidence stays in [Windows Shell-user Runtime](./windows-runtime-security.md)
+  and native CI/Release.
+
+### 2. Signatures
+
+```text
+mise run system:check:windows-msvc-cross:advisory
+  env.FYAGENT_TASK_EFFECT = read-only
+  run = node scripts/tasks/windows-msvc-cross.mjs advisory
+  bootstrap DAG only; never check/CI/Release
+
+mise run system:check:windows-msvc-cross [--json]
+  env.FYAGENT_TASK_EFFECT = read-only
+  run = node scripts/tasks/windows-msvc-cross.mjs check
+
+mise run rust:clippy:windows-msvc-cross
+  env.FYAGENT_TASK_EFFECT = dependency-environment
+  confirm.default = no
+  run = node scripts/tasks/windows-msvc-cross.mjs clippy
+
+CARGO_XWIN_VERSION            # exact string in windows-msvc-cross.mjs
+WINDOWS_MSVC_CROSS_TARGET     = x86_64-pc-windows-msvc
+WINDOWS_MSVC_CROSS_HOST_TARGETS = darwin-x64 | darwin-arm64 -> that target
+```
+
+JSON report (`--json` or `usageBoolean("json")`):
+
+```text
+{
+  ok: boolean,
+  platform: Node process.platform,
+  target: "x86_64-pc-windows-msvc",
+  checks: [{
+    id: "supported-host" | "caller-environment" | "cargo-xwin" | "clippy"
+        | "rust-target" | "clang-cl" | "lld-link" | "llvm-lib"
+        | "cmake" | "ninja",
+    name: string,
+    ok: boolean,
+    hint?: string,
+    detail?: string   # first captured line, truncated to 240 chars
+  }]
+}
+```
+
+Frozen Clippy plan from `planWindowsMsvcCrossClippy` (`shell: false`):
+
+```text
+cargo xwin clippy
+  --cross-compiler clang-cl
+  --xwin-version 17
+  --target x86_64-pc-windows-msvc
+  --workspace --all-targets --locked
+  --manifest-path src-tauri/Cargo.toml
+  -- -D warnings
+```
+
+Exact cargo-xwin version equality is against `CARGO_XWIN_VERSION` in the
+script. Do not copy that literal into this spec or into generic docs.
+
+### 3. Contracts
+
+- `advisory` is read-only bootstrap reporting. Unsupported hosts print SKIP
+  and exit 0 without probing. Detect that skip by catching
+  `expectedWindowsMsvcCrossTarget(process.platform, process.arch)` against
+  `WINDOWS_MSVC_CROSS_HOST_TARGETS`. Do not write
+  `process.platform !== "darwin"` or `platform !== "darwin"`: the
+  `js:implicit-target` scanner treats a negated Darwin predicate as an
+  implicit non-macOS branch and fails `supported-platform:check`. On a
+  reviewed macOS host it prints the same complete report as `check`; missing
+  tools add an `ADVISORY` line and still exit 0. It never starts Clippy,
+  downloads CRT/SDK, or fails `bootstrap`.
+- `check` is the explicit strict preflight: probe every bounded prerequisite
+  and print the complete report. Incomplete or unsupported-host results exit 1.
+  It never installs, downloads, caches CRT/SDK, accepts a license, or starts
+  Clippy, and it is not in `bootstrap`.
+- `clippy` runs only after the same preflight is fully green. Mise owns the
+  default-no confirmation because cargo-xwin may download/cache Microsoft
+  CRT/SDK. The Node owner still prints the license note, then runs the frozen
+  argv. It does not prompt a second time.
+- Hosts other than `darwin-x64` / `darwin-arm64` fail the strict preflight
+  before probing tools, with a single `supported-host` check. Windows
+  developers use native CI/HIL.
+- Caller overrides are rejected before any toolchain child: reuse the
+  host-native Rust target/compiler/wrapper/runner/linker/Cargo-config scan,
+  plus exact names `AR`, `CC`, `CXX`, `CFLAGS`, `CXXFLAGS`, `LDFLAGS`,
+  `CMAKE`, `CMAKE_GENERATOR`, `CMAKE_PREFIX_PATH`, `CMAKE_TOOLCHAIN_FILE`,
+  `RUSTFLAGS`, `RUSTDOCFLAGS`, and prefixes `CARGO_XWIN_`, `XWIN_`, `CMAKE_`,
+  `CC_`, `CXX_`, `AWS_LC_`, `RING_`.
+- No forwarded arguments. `clippy` with extra argv fails before Cargo.
+- Strict preflight and Clippy are absent from `bootstrap`, `check`,
+  `check:backend`, `check:frontend`, `check:contracts`, `dev`, `build`, and
+  CI/Release. Advisory is required in the `bootstrap` closure and forbidden
+  in the `check` closure.
+- Passing Clippy is compile diagnostics only. It does not claim registry,
+  PackageManager, WebView2, installer, UAC, launch, signing, packaging, or
+  HIL.
+
+### 4. Validation & Error Matrix
+
+| Condition                                                               | Required result                                                   |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Advisory on non-macOS                                                   | Print SKIP; exit 0; no tool probe                                 |
+| Advisory skip uses `process.platform !== "darwin"`                      | `js:implicit-target` / `supported-platform:check` fails           |
+| Advisory on macOS with missing tools                                    | Print complete report + `ADVISORY`; exit 0; bootstrap continues   |
+| Strict preflight host is not macOS x64/arm64                            | `ok=false`, `checks=[{id:supported-host}]`; exit 1; no tool probe |
+| Caller env/Cargo-config override is set                                 | `ok=false`, `checks=[{id:caller-environment}]`; no Cargo          |
+| Any bounded prerequisite missing or cargo-xwin version ≠ owner constant | Report every remaining check; strict preflight exit 1; no Clippy  |
+| `clippy` invoked without mise confirmation                              | Mise does not start the task; no download/cache                   |
+| Forwarded Clippy argv                                                   | Throw before `cargo`; no child                                    |
+| Strict preflight or Clippy referenced from `bootstrap` / `check` / CI   | Task-contract failure                                             |
+| Advisory missing from `bootstrap` or present in `check`                 | Task-contract failure                                             |
+| Result cited as native Windows acceptance                               | Keep the native gate pending                                      |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** `bootstrap` prints the advisory without failing. A macOS developer
+  who wants the diagnostic then runs `system:check:windows-msvc-cross --json`
+  and explicitly confirms `rust:clippy:windows-msvc-cross`. Default `check` is
+  unchanged.
+- **Base:** Windows or Linux `bootstrap` prints SKIP for the advisory. The
+  strict preflight on those hosts exits 1 with `supported-host`. Native
+  Windows CI/HIL remains the authority.
+- **Bad:** let advisory exit 1, put strict preflight or Clippy in bootstrap,
+  skip hosts with `process.platform !== "darwin"`, accept forwarded
+  `--target`, pin a second cargo-xwin version in a spec/workflow, or treat a
+  green report as Windows installer/registry evidence.
+
+### 6. Tests Required
+
+- `tests/windowsMsvcCross.test.ts`: exact version parse, complete missing-
+  tool reporting, unsupported-host and override rejection before spawn,
+  frozen argv, default-no metadata, no package-manager/elevation command,
+  live `--json` preflight shape, advisory in bootstrap with exit 0, and
+  strict preflight/Clippy absent from bootstrap/check.
+- `supported-platform:check` / `tests/remainingPlatformSurface.test.ts`: the
+  owner has no negated Darwin/`!== "win32"` fallback; advisory skip is the
+  reviewed host-map throw, not an implicit-target branch.
+- `tests/localBuildBoundary.test.ts` and `miseTaskContract`: the three named
+  tasks exist with the signatures above; standard entrypoints still reject
+  other cross-target markers.
+- `tests/classifyChanges.test.ts`: the new script is classified with other
+  task-runner sources, not as a native Windows acceptance path.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+bootstrap -> system:check:windows-msvc-cross   # exit 1 blocks onboarding
+check -> rust:clippy:windows-msvc-cross
+cite macOS cargo-xwin as Windows HIL
+if (process.platform !== "darwin") { SKIP; return }
+```
+
+#### Correct
+
+```text
+bootstrap -> system:check:windows-msvc-cross:advisory   # never fails
+mise run system:check:windows-msvc-cross --json         # explicit, may fail
+mise run rust:clippy:windows-msvc-cross                 # default-no, frozen argv
+native Windows CI/HIL                                   # remaining acceptance
+try { expectedWindowsMsvcCrossTarget(process.platform, process.arch) }
+catch { print SKIP; return }
+```
+
+## macOS signed development runner
+
+On macOS, the canonical `dev` task remains current-host-only, interactive, and
+raw. It keeps Tauri dev/HMR, but supplies a fixed Cargo runner chain that wraps
+the emitted debug executable in a real development app bundle before launch.
+The chain performs, in order:
+
+1. fixed-path full-Xcode plus user-local Developer ID PKCS#12 preflight through
+   a reusable 0700 cache keychain. The task extracts the same certificate and
+   private key into a temporary 0700 directory, imports the leaf and traditional
+   RSA private key alongside the pinned Apple Root and Developer ID G2 public
+   certificates, never installs the release private key permanently in the
+   login keychain, and smoke-signs a copy of `/usr/bin/true` before the Swift
+   helper build. `machine-preflight --keep-session` keeps the cache keychain as
+   the user default through the detached Tauri spawn and nested app-runner
+   signing. App-runner or `restore-session` restores the original default and
+   search list after nested signing, setup failure, or Tauri process exit. A
+   standalone preflight restores immediately, and `restore-session` is
+   idempotent when no session is active. Never restore early or delete a
+   keychain after it has signed with this identity; delete only the temporary
+   extracted PEM files after import.
+2. development-flavor universal privileged helper/client build and embedded
+   plist verification;
+3. Tauri dev compilation with the privileged-client Cargo feature;
+4. app bundle assembly, client/helper embedding, inside-out signing with the
+   frozen `Developer ID Application: William Wang (HY446996QX)` identity,
+   strict signature/link/rpath verification, and direct bundle executable
+   launch. Development does not notarize or staple the app.
+
+The runner accepts only Tauri/Cargo's fixed protocol arguments and rejects
+forwarded application arguments. The task owns and sanitizes
+`DEVELOPER_DIR`, Cargo/rustc runner settings, privileged artifact variables,
+`DYLD_*`, `RUSTFLAGS`, `NODE_OPTIONS`, and related injection surfaces. Ctrl+C
+continues to terminate the complete child process group. Linux and Windows keep
+their previous native task behavior.
+
+The repository does not contain a developer-machine PKCS#12 path or password.
+`scripts/tasks/macos-signed-dev.mjs` subcommand `configure` writes a mode-0600 configuration
+under the user's FyAgent Application Support directory that references a local
+PKCS#12 and credentials file. `mise run dev` consumes only that fixed local
+configuration; callers cannot override signing paths or credentials through
+task arguments or environment variables.

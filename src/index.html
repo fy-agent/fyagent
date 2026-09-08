@@ -6,27 +6,12 @@
     <link
       rel="icon"
       type="image/png"
-      href="./v2/shared/assets/fyagent-y-mark-transparent-128.png"
+      href="./shared/assets/fyagent-y-mark-transparent-128.png"
     />
     <title>FyAgent</title>
-    <script>
-      if (window.location.protocol === "file:") {
-        const previewUrl = new URL(
-          "../FyAgent-前端交互预览.html",
-          window.location.href,
-        );
-        previewUrl.hash = "/prompts";
-        window.location.replace(previewUrl.href);
-      }
-    </script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module">
-      if (window.location.protocol !== "file:") {
-        void import("./v2/main.tsx");
-        void import("./legacy-auth-boot.ts");
-      }
-    </script>
+    <script type="module" src="./main.tsx"></script>
   </body>
 </html>

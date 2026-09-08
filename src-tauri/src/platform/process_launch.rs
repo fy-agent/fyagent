@@ -3,8 +3,8 @@
 //! The renderer never receives a generic executable, argument, working
 //! directory, or privilege selector. Callers can only ask this module to open
 //! an HTTP(S) URL, a host-owned directory, a backend-generated terminal
-//! script, a verified Windows application AUMID, or a shape-validated Windows
-//! `.exe` as the interactive user.
+//! script, a verified Windows application AUMID, a shape-validated Windows
+//! `.exe`, or a shape-validated macOS `.app` bundle as the interactive user.
 
 use std::path::{Path, PathBuf};
 
@@ -33,6 +33,7 @@ pub(crate) enum ProcessLaunchError {
     InvalidTerminalScript,
     InvalidWindowsAppAumid,
     InvalidWindowsExe,
+    InvalidMacosApplication,
     #[cfg(target_os = "windows")]
     InvalidUserHelper,
     InteractiveUserUnavailable,
@@ -62,6 +63,7 @@ impl ProcessLaunchError {
             Self::InvalidTerminalScript => "external_launch_invalid_terminal_script",
             Self::InvalidWindowsAppAumid => "external_launch_invalid_windows_app_aumid",
             Self::InvalidWindowsExe => "external_launch_invalid_windows_exe",
+            Self::InvalidMacosApplication => "external_launch_invalid_macos_application",
             #[cfg(target_os = "windows")]
             Self::InvalidUserHelper => "fyagent_user_helper_invalid",
             Self::InteractiveUserUnavailable => "interactive_user_launcher_unavailable",
@@ -92,6 +94,16 @@ pub(crate) trait InteractiveUserLauncher: Send + Sync {
     /// Opens a shape-validated `.exe` that the caller already bound to a
     /// closed desktop-agent identity. This boundary never accepts arguments.
     fn open_trusted_windows_exe(&self, executable: &Path) -> Result<(), ProcessLaunchError>;
+
+    /// Opens a shape-validated macOS `.app` that the caller already bound to a
+    /// trusted installed identity. This boundary never accepts a bundle ID,
+    /// arguments, or environment.
+    fn open_trusted_macos_application(
+        &self,
+        _application: &Path,
+    ) -> Result<(), ProcessLaunchError> {
+        Err(ProcessLaunchError::InteractiveUserUnavailable)
+    }
 
     /// Starts only FyAgent's installed sibling helper with the fixed package
     /// action and shape-validated capability arguments.
@@ -171,6 +183,15 @@ where
         self.dispatch(request)
     }
 
+    #[cfg(test)]
+    fn open_trusted_macos_application_as_user(
+        &self,
+        application: &Path,
+    ) -> Result<(), ProcessLaunchError> {
+        let request = InteractiveUserLaunch::trusted_macos_application(application)?;
+        self.dispatch(request)
+    }
+
     fn dispatch(&self, request: InteractiveUserLaunch) -> Result<(), ProcessLaunchError> {
         match request {
             InteractiveUserLaunch::HttpUrl(url) => self.launcher.open_http_url(&url),
@@ -183,6 +204,9 @@ where
             }
             InteractiveUserLaunch::TrustedWindowsExe(executable) => {
                 self.launcher.open_trusted_windows_exe(&executable)
+            }
+            InteractiveUserLaunch::TrustedMacosApplication(application) => {
+                self.launcher.open_trusted_macos_application(&application)
             }
         }
     }
@@ -206,6 +230,7 @@ enum InteractiveUserLaunch {
     TerminalScript(PathBuf),
     TrustedWindowsAppAumid(String),
     TrustedWindowsExe(PathBuf),
+    TrustedMacosApplication(PathBuf),
 }
 
 impl InteractiveUserLaunch {
@@ -254,6 +279,14 @@ impl InteractiveUserLaunch {
 
         Ok(Self::TrustedWindowsExe(executable.to_path_buf()))
     }
+
+    fn trusted_macos_application(application: &Path) -> Result<Self, ProcessLaunchError> {
+        if !is_valid_macos_application_path(application) {
+            return Err(ProcessLaunchError::InvalidMacosApplication);
+        }
+
+        Ok(Self::TrustedMacosApplication(application.to_path_buf()))
+    }
 }
 
 /// Resolves the only helper image accepted by both the Explorer launcher and
@@ -298,14 +331,26 @@ pub(crate) fn launch_fyagent_user_helper_as_user(
 /// Opens an HTTP(S) URL through the interactive user's shell.
 ///
 /// On Windows this takes the Explorer COM route and deliberately fails when
-/// Explorer cannot supply the interactive shell. macOS retains the
-/// existing Tauri opener behavior.
+/// Explorer cannot supply the interactive shell. On macOS, validated HTTP(S)
+/// URLs use `open` with a single argv so OAuth query strings stay intact;
+/// directories still use the Tauri opener.
 pub(crate) async fn open_http_url_as_user(app: AppHandle, raw_url: String) -> Result<(), String> {
     let request = InteractiveUserLaunch::http_url(&raw_url)
         .map_err(|error| error.public_code().to_owned())?;
     dispatch_with_platform_launcher(app, request)
         .await
         .map_err(|error| error.public_code().to_owned())
+}
+
+/// Same HTTP open as [`open_http_url_as_user`], for callers that already run
+/// off the UI thread and have no `AppHandle`. macOS and Windows share the
+/// HTTP(S) validator, then the interactive-user launcher: Explorer COM on
+/// Windows, `open` on macOS. There is no `cmd /c start` fallback, because
+/// unquoted `&` in OAuth query strings is a cmd statement separator.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) fn open_http_url_as_user_sync(raw_url: &str) -> Result<(), ProcessLaunchError> {
+    let request = InteractiveUserLaunch::http_url(raw_url)?;
+    dispatch_sync_with_platform_launcher(request)
 }
 
 /// Opens a backend-derived directory through the interactive user's shell.
@@ -368,6 +413,16 @@ pub(crate) fn launch_trusted_windows_exe_as_user(executable: &Path) -> Result<()
     dispatch_sync_with_platform_launcher(request).map_err(|error| error.public_code().to_owned())
 }
 
+/// Opens a caller-verified macOS `.app` through NSWorkspace's application-open
+/// completion API. Identity proof stays in the desktop observer; this
+/// boundary only accepts an absolute `.app` path with no arguments.
+#[allow(dead_code)]
+pub(crate) fn launch_trusted_macos_application_as_user(application: &Path) -> Result<(), String> {
+    let request = InteractiveUserLaunch::trusted_macos_application(application)
+        .map_err(|error| error.public_code().to_owned())?;
+    dispatch_sync_with_platform_launcher(request).map_err(|error| error.public_code().to_owned())
+}
+
 #[cfg(target_os = "windows")]
 async fn dispatch_with_platform_launcher(
     _app: AppHandle,
@@ -402,11 +457,10 @@ fn dispatch_blocking_with_platform_launcher(
 }
 
 #[cfg(target_os = "macos")]
-#[allow(dead_code)]
 fn dispatch_sync_with_platform_launcher(
-    _request: InteractiveUserLaunch,
+    request: InteractiveUserLaunch,
 ) -> Result<(), ProcessLaunchError> {
-    Err(ProcessLaunchError::InteractiveUserUnavailable)
+    ProcessLaunchService::new(MacosWorkspaceApplicationLauncher).dispatch(request)
 }
 
 #[cfg(target_os = "macos")]
@@ -426,6 +480,15 @@ fn dispatch_blocking_with_platform_launcher(
 }
 
 #[cfg(target_os = "macos")]
+fn open_http_url_with_macos_open(url: &str) -> Result<(), ProcessLaunchError> {
+    std::process::Command::new("open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|_| ProcessLaunchError::PlatformLaunchFailed)
+}
+
+#[cfg(target_os = "macos")]
 struct TauriOpenerInteractiveUserLauncher {
     app: AppHandle,
 }
@@ -433,10 +496,7 @@ struct TauriOpenerInteractiveUserLauncher {
 #[cfg(target_os = "macos")]
 impl InteractiveUserLauncher for TauriOpenerInteractiveUserLauncher {
     fn open_http_url(&self, url: &str) -> Result<(), ProcessLaunchError> {
-        self.app
-            .opener()
-            .open_url(url, None::<String>)
-            .map_err(|_| ProcessLaunchError::PlatformLaunchFailed)
+        open_http_url_with_macos_open(url)
     }
 
     fn open_directory(&self, directory: &Path) -> Result<(), ProcessLaunchError> {
@@ -457,6 +517,108 @@ impl InteractiveUserLauncher for TauriOpenerInteractiveUserLauncher {
     fn open_trusted_windows_exe(&self, _executable: &Path) -> Result<(), ProcessLaunchError> {
         Err(ProcessLaunchError::InteractiveUserUnavailable)
     }
+
+    fn open_trusted_macos_application(&self, application: &Path) -> Result<(), ProcessLaunchError> {
+        open_trusted_macos_application_with_workspace(application)
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct MacosWorkspaceApplicationLauncher;
+
+#[cfg(target_os = "macos")]
+impl InteractiveUserLauncher for MacosWorkspaceApplicationLauncher {
+    fn open_http_url(&self, url: &str) -> Result<(), ProcessLaunchError> {
+        open_http_url_with_macos_open(url)
+    }
+
+    fn open_directory(&self, _directory: &Path) -> Result<(), ProcessLaunchError> {
+        Err(ProcessLaunchError::InteractiveUserUnavailable)
+    }
+
+    fn open_terminal_script(&self, _script: &Path) -> Result<(), ProcessLaunchError> {
+        Err(ProcessLaunchError::InteractiveUserUnavailable)
+    }
+
+    fn open_trusted_windows_app_aumid(&self, _aumid: &str) -> Result<(), ProcessLaunchError> {
+        Err(ProcessLaunchError::InteractiveUserUnavailable)
+    }
+
+    fn open_trusted_windows_exe(&self, _executable: &Path) -> Result<(), ProcessLaunchError> {
+        Err(ProcessLaunchError::InteractiveUserUnavailable)
+    }
+
+    fn open_trusted_macos_application(&self, application: &Path) -> Result<(), ProcessLaunchError> {
+        open_trusted_macos_application_with_workspace(application)
+    }
+}
+
+#[cfg(target_os = "macos")]
+const MACOS_APPLICATION_OPEN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+#[cfg(target_os = "macos")]
+fn open_trusted_macos_application_with_workspace(
+    application: &Path,
+) -> Result<(), ProcessLaunchError> {
+    use std::sync::mpsc;
+
+    use block2::RcBlock;
+    use objc2_app_kit::{NSRunningApplication, NSWorkspace, NSWorkspaceOpenConfiguration};
+    use objc2_foundation::{NSError, NSString, NSURL};
+
+    let path = application
+        .to_str()
+        .ok_or(ProcessLaunchError::InvalidMacosApplication)?;
+    let ns_path = NSString::from_str(path);
+    // SAFETY: fileURLWithPath:isDirectory: copies the path; `.app` bundles are directories.
+    let url = unsafe { NSURL::fileURLWithPath_isDirectory(&ns_path, true) };
+    // SAFETY: configuration() returns a new independent object.
+    let configuration = unsafe { NSWorkspaceOpenConfiguration::configuration() };
+    // SAFETY: sharedWorkspace is a process-wide singleton.
+    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+
+    let (tx, rx) = mpsc::channel();
+    let block = RcBlock::new(move |app: *mut NSRunningApplication, err: *mut NSError| {
+        let outcome = if !err.is_null() {
+            // SAFETY: NSWorkspace retains the NSError for this callback only.
+            let error = unsafe { &*err };
+            log_macos_application_open_error(error);
+            Err(ProcessLaunchError::PlatformLaunchFailed)
+        } else if app.is_null() {
+            log::warn!("macOS application-open failed with category=unknown code=0");
+            Err(ProcessLaunchError::PlatformLaunchFailed)
+        } else {
+            Ok(())
+        };
+        let _ = tx.send(outcome);
+    });
+
+    // SAFETY: `url` and `configuration` outlive the call. `block` is heap-copied
+    // and stays alive until we finish waiting for the completion handler.
+    unsafe {
+        workspace.openApplicationAtURL_configuration_completionHandler(
+            &url,
+            &configuration,
+            Some(&block),
+        );
+    }
+
+    match rx.recv_timeout(MACOS_APPLICATION_OPEN_TIMEOUT) {
+        Ok(outcome) => outcome,
+        Err(_) => {
+            log::warn!("macOS application-open failed with category=timeout code=0");
+            Err(ProcessLaunchError::PlatformLaunchFailed)
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn log_macos_application_open_error(error: &objc2_foundation::NSError) {
+    let category = macos_nserror_category(&error.domain().to_string(), error.code() as i64);
+    log::warn!(
+        "macOS application-open failed with category={category} code={}",
+        error.code()
+    );
 }
 
 fn normalize_http_url(raw_url: &str) -> Result<String, ProcessLaunchError> {
@@ -539,6 +701,30 @@ fn is_valid_windows_exe_path(value: &Path) -> bool {
             .all(|component| !matches!(component, std::path::Component::ParentDir))
 }
 
+fn is_valid_macos_application_path(value: &Path) -> bool {
+    let extension_is_app = value
+        .extension()
+        .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("app"));
+    !value.as_os_str().is_empty()
+        && value.is_absolute()
+        && !value.to_string_lossy().contains('\0')
+        && extension_is_app
+        && value
+            .components()
+            .all(|component| !matches!(component, std::path::Component::ParentDir))
+}
+
+#[allow(dead_code)]
+fn macos_nserror_category(domain: &str, code: i64) -> &'static str {
+    match domain {
+        "NSCocoaErrorDomain" => "cocoa",
+        "NSPOSIXErrorDomain" => "posix",
+        "NSOSStatusErrorDomain" => "os_status",
+        _ if (67_328..=67_455).contains(&code) => "workspace",
+        _ => "other",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -549,7 +735,9 @@ mod tests {
     #[cfg(target_os = "windows")]
     use fyagent_user_helper::{CanonicalJobId, PipeNonce, UserHelperAction};
 
-    use super::{InteractiveUserLauncher, ProcessLaunchError, ProcessLaunchService};
+    use super::{
+        macos_nserror_category, InteractiveUserLauncher, ProcessLaunchError, ProcessLaunchService,
+    };
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum RecordedLaunch {
@@ -558,6 +746,7 @@ mod tests {
         TerminalScript(String),
         WindowsAppAumid(String),
         WindowsExe(String),
+        MacosApplication(String),
         #[cfg(target_os = "windows")]
         FyAgentUserHelper {
             action: UserHelperAction,
@@ -626,6 +815,19 @@ mod tests {
             self.failure.map_or(Ok(()), Err)
         }
 
+        fn open_trusted_macos_application(
+            &self,
+            application: &Path,
+        ) -> Result<(), ProcessLaunchError> {
+            self.calls
+                .lock()
+                .expect("fake lock")
+                .push(RecordedLaunch::MacosApplication(
+                    application.display().to_string(),
+                ));
+            self.failure.map_or(Ok(()), Err)
+        }
+
         #[cfg(target_os = "windows")]
         fn launch_fyagent_user_helper(
             &self,
@@ -643,6 +845,43 @@ mod tests {
                 });
             self.failure.map_or(Ok(()), Err)
         }
+    }
+
+    #[test]
+    fn https_oauth_query_ampersands_reach_the_launcher() {
+        let launcher = FakeInteractiveUserLauncher::default();
+        let service = ProcessLaunchService::new(launcher.clone());
+        let url = "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_x&redirect_uri=http://localhost:1455/auth/callback&state=s";
+
+        service
+            .open_http_url_as_user(url)
+            .expect("valid HTTPS authorize URL");
+
+        let recorded = launcher.recorded_calls();
+        let RecordedLaunch::HttpUrl(opened) = &recorded[0] else {
+            panic!("expected HTTP URL");
+        };
+        let parsed = url::Url::parse(opened).expect("opened URL");
+        let query: std::collections::HashMap<_, _> = parsed.query_pairs().into_owned().collect();
+        assert_eq!(parsed.path(), "/oauth/authorize");
+        assert_eq!(query.get("response_type").map(String::as_str), Some("code"));
+        assert_eq!(query.get("client_id").map(String::as_str), Some("app_x"));
+        assert_eq!(
+            query.get("redirect_uri").map(String::as_str),
+            Some("http://localhost:1455/auth/callback")
+        );
+        assert_eq!(query.get("state").map(String::as_str), Some("s"));
+    }
+
+    #[test]
+    fn managed_auth_browser_open_uses_shared_http_launch() {
+        let provider = include_str!("../services/managed_auth/providers/openai.rs");
+        let launch = include_str!("process_launch.rs");
+        assert!(provider.contains("open_http_url_as_user_sync"));
+        assert!(launch.contains("open_http_url_with_macos_open"));
+        assert!(!provider.contains(r#"Command::new("cmd")"#));
+        assert!(!provider.contains(r#"Command::new("open")"#));
+        assert!(!provider.contains(r#"args(["/C", "start""#));
     }
 
     #[test]
@@ -825,6 +1064,130 @@ mod tests {
             );
         }
         assert_eq!(launcher.recorded_calls().len(), 1);
+    }
+
+    #[test]
+    fn verified_macos_application_launch_rejects_non_app_input_before_the_fake_runs() {
+        let launcher = FakeInteractiveUserLauncher::default();
+        let service = ProcessLaunchService::new(launcher.clone());
+        let temporary = tempfile::tempdir().expect("test directory");
+        let application = temporary.path().join("ChatGPT.app");
+
+        service
+            .open_trusted_macos_application_as_user(&application)
+            .expect("shape-valid macOS application");
+        assert_eq!(
+            launcher.recorded_calls(),
+            vec![RecordedLaunch::MacosApplication(
+                application.display().to_string()
+            )]
+        );
+
+        let executable = temporary.path().join("ChatGPT.exe");
+        let parent = temporary
+            .path()
+            .join("nested")
+            .join("..")
+            .join("ChatGPT.app");
+        for invalid in [
+            Path::new("ChatGPT.app"),
+            executable.as_path(),
+            parent.as_path(),
+            Path::new("/tmp/contains\0nul.app"),
+        ] {
+            assert_eq!(
+                service.open_trusted_macos_application_as_user(invalid),
+                Err(ProcessLaunchError::InvalidMacosApplication),
+                "invalid macOS application {invalid:?} must not reach a launcher"
+            );
+        }
+        assert_eq!(launcher.recorded_calls().len(), 1);
+    }
+
+    #[test]
+    fn macos_application_open_failure_maps_to_a_stable_code_without_a_path() {
+        let launcher = FakeInteractiveUserLauncher::failing_with(
+            ProcessLaunchError::InteractiveUserUnavailable,
+        );
+        let service = ProcessLaunchService::new(launcher.clone());
+        let temporary = tempfile::tempdir().expect("test directory");
+        let application = temporary.path().join("ChatGPT.app");
+
+        assert_eq!(
+            service.open_trusted_macos_application_as_user(&application),
+            Err(ProcessLaunchError::InteractiveUserUnavailable)
+        );
+        assert_eq!(
+            ProcessLaunchError::InteractiveUserUnavailable.public_code(),
+            "interactive_user_launcher_unavailable"
+        );
+        assert_eq!(
+            ProcessLaunchError::InvalidMacosApplication.public_code(),
+            "external_launch_invalid_macos_application"
+        );
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            ProcessLaunchError::PlatformLaunchFailed.public_code(),
+            "external_launch_failed"
+        );
+        assert_eq!(
+            launcher.recorded_calls(),
+            vec![RecordedLaunch::MacosApplication(
+                application.display().to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn macos_nserror_categories_are_closed_and_do_not_use_paths() {
+        assert_eq!(macos_nserror_category("NSCocoaErrorDomain", 4), "cocoa");
+        assert_eq!(macos_nserror_category("NSPOSIXErrorDomain", 2), "posix");
+        assert_eq!(
+            macos_nserror_category("NSOSStatusErrorDomain", -43),
+            "os_status"
+        );
+        assert_eq!(
+            macos_nserror_category("NSWorkspaceErrorDomain", 67_328),
+            "workspace"
+        );
+        assert_eq!(
+            macos_nserror_category("NSWorkspaceErrorDomain", 12),
+            "other"
+        );
+    }
+
+    #[test]
+    fn macos_application_open_adapter_uses_nsworkspace_completion_not_the_open_tool() {
+        let source = include_str!("process_launch.rs").replace("\r\n", "\n");
+        let production = source
+            .split_once("\n#[cfg(test)]\nmod tests {")
+            .expect("top-level test module boundary")
+            .0;
+        let (before_http, http_and_after) = production
+            .split_once("fn open_http_url_with_macos_open(")
+            .expect("HTTP-only browser launch helper");
+        let (http, after_http) = http_and_after
+            .split_once("#[cfg(target_os = \"macos\")]\nstruct TauriOpenerInteractiveUserLauncher")
+            .expect("browser helper ends before the platform adapter");
+        assert!(http.contains("Command::new(\"open\")"));
+        assert!(http.contains(".arg(url)"));
+        for other_source in [before_http, after_http] {
+            assert!(
+                !other_source.contains("Command::new(\"open\")"),
+                "only the HTTP browser helper may spawn open; application launch uses NSWorkspace"
+            );
+        }
+        assert!(after_http.contains("openApplicationAtURL_configuration_completionHandler"));
+        assert!(
+            !source.contains(&format!("{}{}", "request", "Authorization")),
+            "application-open must not use privileged file-operations authorization"
+        );
+        let bundle_source = include_str!("../codex_desktop/platform/macos/bundle.rs");
+        assert!(bundle_source.contains("launch_trusted_macos_application_as_user"));
+        assert!(
+            !bundle_source.contains("Command::new(\"open\")"),
+            "Codex desktop launch must not spawn /usr/bin/open"
+        );
     }
 
     #[cfg(target_os = "windows")]

@@ -2,21 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  comparePlatformVersions as compareLegacyPlatformVersions,
-  displayPlatformVersion as displayLegacyPlatformVersion,
-} from "@/types/codexDesktop";
-import {
-  deriveLocalVersionState as deriveLegacyLocalVersionState,
-  deriveRemoteVersionState as deriveLegacyRemoteVersionState,
-} from "@/components/codex/versionState";
-import {
-  comparePlatformVersions,
   createDownloadSpeedState,
   deriveInstallerActionState,
   deriveInstallerViewState,
   deriveLocalVersionState,
   deriveRemoteVersionState,
-  displayPlatformVersion,
   parseJobSnapshot,
   projectInstallerProgress,
   shouldAcceptJobSnapshot,
@@ -24,7 +14,7 @@ import {
   type JobSnapshot,
   type LocalInstallStatus,
   type RemoteReleaseStatus,
-} from "@/shared/codex-desktop";
+} from "@/domain/codex-desktop";
 
 const remote: RemoteReleaseStatus = {
   releaseId: `v1:${"a".repeat(64)}`,
@@ -86,15 +76,8 @@ function makeDownloadJob(
 }
 
 describe("neutral Codex Desktop core", () => {
-  it("keeps legacy imports as compatibility re-exports", () => {
-    expect(compareLegacyPlatformVersions).toBe(comparePlatformVersions);
-    expect(displayLegacyPlatformVersion).toBe(displayPlatformVersion);
-    expect(deriveLegacyLocalVersionState).toBe(deriveLocalVersionState);
-    expect(deriveLegacyRemoteVersionState).toBe(deriveRemoteVersionState);
-  });
-
   it("contains no Tauri, React, UI, i18n, toast, or platform imports", () => {
-    const root = path.resolve("src/shared/codex-desktop");
+    const root = path.resolve("src/domain/codex-desktop");
     const sources = fs
       .readdirSync(root)
       .filter((file) => file.endsWith(".ts"))
@@ -298,5 +281,99 @@ describe("neutral Codex Desktop core", () => {
       percent: 50,
       bytesPerSecond: null,
     });
+  });
+});
+
+describe("shared transfer projector", () => {
+  it("formats percent with at most one decimal and hides unknown or zero speed", async () => {
+    const {
+      formatTransferPercent,
+      formatTransferSpeed,
+      projectTransferPresentation,
+      selectDownloadBytesPerSecondFromSample,
+      updateDownloadSpeedFromSample,
+    } = await import("@/domain/codex-desktop");
+
+    expect(formatTransferPercent(37.44)).toBe("37.4%");
+    expect(formatTransferPercent(50)).toBe("50%");
+    expect(formatTransferPercent(100.9)).toBe("100%");
+    expect(formatTransferSpeed(0)).toBeNull();
+    expect(formatTransferSpeed(null)).toBeNull();
+    expect(formatTransferSpeed(4 * 1024 * 1024)).toBe("4.0 MB/s");
+    expect(formatTransferSpeed(1024)).toBe("1.0 KB/s");
+
+    const known = projectTransferPresentation({
+      downloading: true,
+      terminal: false,
+      completedBytes: 3744,
+      totalBytes: 10_000,
+      percent: null,
+      bytesPerSecond: 8.3 * 1024 * 1024,
+    });
+    expect(known.percentLabel).toBe("37.4%");
+    expect(known.downloadLine).toBe("下载中 37.4% · 8.3 MB/s");
+
+    const unknownTotal = projectTransferPresentation({
+      downloading: true,
+      terminal: false,
+      completedBytes: 126 * 1024 * 1024,
+      totalBytes: null,
+      percent: null,
+      bytesPerSecond: 8.3 * 1024 * 1024,
+    });
+    expect(unknownTotal.percent).toBeNull();
+    expect(unknownTotal.indeterminate).toBe(true);
+    expect(unknownTotal.downloadLine).toBe("已下载 126 MB · 8.3 MB/s");
+
+    const terminal = projectTransferPresentation({
+      downloading: false,
+      terminal: true,
+      completedBytes: 4096,
+      totalBytes: 4096,
+      percent: 100,
+      bytesPerSecond: 1024,
+    });
+    expect(terminal.speedLabel).toBeNull();
+    expect(terminal.downloadLine).toBeNull();
+    expect(terminal.percent).toBeNull();
+
+    let speed = createDownloadSpeedState();
+    const first = {
+      jobId: "job-1:1",
+      sequence: 1,
+      downloading: true,
+      downloadPhase: true,
+      completedBytes: 1024,
+      updatedAtMs: Date.parse("2026-08-14T00:00:01.000Z"),
+    };
+    const second = {
+      ...first,
+      sequence: 2,
+      completedBytes: 2048,
+      updatedAtMs: Date.parse("2026-08-14T00:00:02.000Z"),
+    };
+    speed = updateDownloadSpeedFromSample(speed, first);
+    speed = updateDownloadSpeedFromSample(speed, second);
+    expect(selectDownloadBytesPerSecondFromSample(speed, second)).toBe(1024);
+    expect(
+      selectDownloadBytesPerSecondFromSample(speed, {
+        ...second,
+        downloading: false,
+      }),
+    ).toBeNull();
+
+    let sameSecond = createDownloadSpeedState();
+    const laterSameSecond = {
+      ...second,
+      sequence: 3,
+      completedBytes: 3072,
+      updatedAtMs: Date.parse("2026-08-14T00:00:02.000Z"),
+    };
+    sameSecond = updateDownloadSpeedFromSample(sameSecond, first);
+    sameSecond = updateDownloadSpeedFromSample(sameSecond, second);
+    sameSecond = updateDownloadSpeedFromSample(sameSecond, laterSameSecond);
+    expect(
+      selectDownloadBytesPerSecondFromSample(sameSecond, laterSameSecond),
+    ).toBe(1024);
   });
 });

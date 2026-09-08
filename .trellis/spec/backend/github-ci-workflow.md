@@ -4,10 +4,11 @@
 
 This contract owns `.github/workflows/ci.yml`,
 `.github/workflows/commit-convention-push.yml`,
-`scripts/ci/classify-changes.mjs`, `scripts/ci/required-gate.mjs`,
-`scripts/ci/verify-commit-messages.mjs`, and their fixture suites. It applies to
-pull requests, merge queue candidates, lightweight branch-push commit policy,
-and manual diagnostics.
+`.github/workflows/codeql-security.yml`, `scripts/ci/classify-changes.mjs`,
+`scripts/ci/required-gate.mjs`, `scripts/ci/verify-commit-messages.mjs`, and their
+fixture suites. It applies to pull requests, merge queue candidates, lightweight
+branch-push commit policy, scheduled/manual security scanning, and manual
+diagnostics.
 
 This workflow owns scheduling and aggregation, not the underlying product
 behavior. Windows installer/runtime review guidance is recorded in
@@ -51,6 +52,19 @@ It checks only Conventional Commit history and emits `Commit Convention / Push`.
 It does not classify domains, install frontend/Python/Rust dependencies, run
 product tests, or emit `CI / Required`. Queue-ref pushes are excluded because
 `merge_group` is the sole Required CI authority for Merge Queue candidates.
+
+Security CodeQL is deliberately outside the PR/merge-queue hot path. The
+repository-owned advanced workflow runs only on a weekly schedule and explicit
+`workflow_dispatch`; it has no `pull_request`, `push`, or `merge_group` trigger
+and never emits `CI / Required`. GitHub CodeQL default setup and GitHub Code
+Quality repository setup remain disabled while this workflow owns scanning,
+because either managed setup would independently create dynamic PR analyses.
+The scheduled matrix scans `rust`, `javascript-typescript`, and `actions` using
+no-build mode on Linux. Swift is intentionally excluded from this low-frequency
+workflow because its CodeQL analysis requires macOS autobuild/manual build,
+which is materially more expensive and is not part of merge-readiness evidence.
+Existing code-scanning findings remain security-review inputs; moving scanning
+off the hot path does not reclassify or dismiss those findings.
 
 Repository branch protection, rulesets, merge methods, and the Trellis
 merge-readiness lifecycle are outside this workflow and are owned by
@@ -96,6 +110,18 @@ path-derived Full CI reason. This diagnostic output never changes the stable
 JSON plan consumed by Required CI.
 
 Classification invariants:
+
+- renderer graph configuration (`config/dependency-cruiser.cjs`) and standalone
+  parser/builder modules/declarations trigger contracts plus frontend, as do
+  retained deletion/rename names for the retired preview/deep-link inspector
+  tests. No offline preview is a current product deliverable. `tests/architecture/**`
+  triggers the frontend unit-test owner, not only the smaller release-contract
+  test subset. Adding a new guard must include an isolated-path scheduling test;
+  other files in the same PR cannot be relied on to enable its job;
+
+- the six explicit `config/` files individually reach contracts plus frontend;
+  their retired root names remain recognized for deletion/rename sides. Active
+  source/deprecation scans include the directory. See [Repository Layout](./repository-layout.md);
 
 - CI authority that can change Required CI scheduling, classification,
   aggregation, collected step outcomes, or CI toolchain admission sets
@@ -149,11 +175,9 @@ Classification invariants:
 
 `star-history.yml` is repository automation rather than Required CI authority.
 It calls the public SHA-pinned `xpzouying/star-history` Action instead of
-re-cloning that generator. Hosted `api.star-history.com` README embeds are not
-used: after GitHub's June 2026 stargazers restriction they render a placeholder
-rather than a live chart, and the official workaround puts an encrypted
-contents-write token in the public README. The Action publishes only the chart
-files to the unprotected `star-history` data branch. New stars refresh the
+re-cloning that generator. The README does not depend on a mutable hosted chart
+or token-bearing embed URL; the Action publishes only the generated chart files
+to the unprotected `star-history` data branch. New stars refresh the
 chart through the `watch` `started` event. GitHub's `schedule` trigger is
 best-effort and can skip slots, so it remains the periodic reconciliation path
 (including unstars), every three hours at minute 17. Manual `workflow_dispatch`
@@ -235,7 +259,11 @@ The requested job mapping is exact:
 | `windows-native-contracts`    | `windowsNative`              |
 | `backend-macos`               | `backend`                    |
 
-Every domain job needs `changes` and may run only after classifier success.
+Every domain job needs `changes`. After classifier success, the table above
+selects its domains; a non-cancelled classifier failure instead admits all
+domain jobs for independent diagnostics, but Required still fails. See
+[Job and toolchain contracts](#7-job-and-toolchain-contracts) for the execution
+and aggregation rules.
 `changes` needs `commit-convention` and may run only after commit validation
 success. Docs/spec-only changes therefore execute the repository contracts gate
 but do not start frontend, Rust, macOS, or Windows-heavy jobs. The contracts
@@ -326,11 +354,17 @@ Windows-native jobs may restore a lockfile-keyed `~/.cargo/registry` and
 `~/.cargo/git` cache; they never cache `src-tauri/target` and must not set
 `RUSTC_WRAPPER` or sccache in repository Cargo config. uv setup pins
 the resolved reviewed version and disables cache. pnpm installation uses the
-frozen lockfile. The frontend full unit suite excludes only the four
-host-mise integration suites (`developmentEnvironment`, `miseTaskContract`,
-`systemCheck`, and `taskDocs`); the contracts job owns their
-pure/static contracts, and the local canonical check owns the real mise
-boundary. Generated task documentation is verified by `task-docs.mjs check`
+frozen lockfile. The frontend unit command selects `--project contracts
+--project renderer` from the one Vitest configuration. The separate
+`host-integration` project owns the five real-mise suites
+(`developmentEnvironment`, `miseTaskContract`, `systemCheck`, `taskDocs`,
+`windowsMsvcCross`) and remains in the unfiltered local canonical check.
+The locked Vitest 3 root `--exclude` option does not reach inline projects;
+it cannot establish this CI boundary. `tests/ciWorkflow.test.ts` compares real
+local/CI file collection, proves positive renderer/contract coverage and rejects
+duplicate ownership or any larger exclusion. The contracts job retains the
+independent pure/static tooling checks without installing mise.
+Generated task documentation is verified by `task-docs.mjs check`
 inside `release-check.mjs --ci`. Maintained-document `mise run` membership
 and standalone setup belong to `docs-contract-check.mjs` on the local
 `tasks:validate` path. Neither CI job freezes protocol names or toolchain
@@ -552,11 +586,16 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   branch synchronization contract; branch maintenance is outside Required CI.
 - Owner: `.github/workflows/commit-convention-push.yml` before
   `scripts/ci/verify-commit-messages.mjs`.
+- The same verifier checks PR/merge-group ranges. It distinguishes a real
+  integration object from an ordinary commit that merely claims to be a merge;
+  this avoids rewriting shared history to normalize an integration title.
 
 ### 2. Signatures
 
 - Workflow resolves `base_sha` / `head_sha`, then
   `node scripts/ci/verify-commit-messages.mjs --base <sha> --head <sha>`.
+- `listCommitSubjectsInRange` returns `{sha, parents: string[], subject}` from
+  Git `%H`, `%P`, `%s` for the full range or the current HEAD-only comparison.
 
 ### 3. Contracts
 
@@ -564,6 +603,13 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
 - `push` event `before` that is not `${base_sha}^{commit}` in the clone ->
   `base_sha = head_sha` (empty comparison).
 - this fallback never invokes the domain classifier or `CI / Required`.
+- Normal commit types and PR-title validation remain unchanged. An explicit
+  `merge: <nonempty description>` integration subject is accepted only on a
+  Git object with at least two distinct parents. It is not a general allowed
+  type, a subject-only exemption or an allowlist of historical hashes.
+- All side-branch commits remain enumerated and validated; no first-parent or
+  no-merges filter hides bad subjects. Existing generated merge/revert subject
+  rules remain separate. New merges may simply use a conventional `chore:` title.
 
 ### 4. Validation & Error Matrix
 
@@ -571,6 +617,10 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   commit subject validation only.
 - Missing PR/merge-group SHA remains a Required classifier failure in
   `.github/workflows/ci.yml`.
+- Real multi-parent object with the explicit integration subject -> accept;
+  the same subject on a single-parent commit or a PR title -> reject.
+- An empty/nonstandard merge subject or an invalid side-branch commit -> reject;
+  a valid integration header never exempts the merged work itself.
 
 ### 5. Good / Base / Bad Cases
 
@@ -580,6 +630,8 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   not a commit in the clone and validates `head` against `head`.
 - Bad: use branch push as a second Required CI authority or start product-domain
   jobs merely to enforce commit-message policy.
+- Bad: add `merge` to all normal commit types or disable convention checks to
+  admit an existing integration; use verified topology for the narrow case.
 
 ### 6. Tests Required
 
@@ -587,6 +639,9 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   fallback, queue-ref exclusion, and absence of `CI / Required` in the push
   workflow.
 - Local tests do not clone GitHub's unreachable `before` objects.
+- `tests/verifyCommitMessages.test.ts` creates real temporary Git histories to
+  check genuine merge parents, HEAD-only merge checks, single-parent impostors,
+  PR titles, empty/nonstandard merge subjects and invalid side-branch commits.
 
 ### 7. Wrong vs Correct
 

@@ -1,9 +1,15 @@
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]
+mod unavailable;
 #[cfg(target_os = "windows")]
 mod windows;
 
 #[cfg(target_os = "macos")]
 pub(crate) use macos::MacOsSecretBackend as NativeSecretBackend;
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub(crate) use unavailable::UnavailableSecretBackend as NativeSecretBackend;
+#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]
+pub(crate) use unavailable::UnavailableSecretBackend;
 #[cfg(target_os = "windows")]
 pub(crate) use windows::WindowsSecretBackend as NativeSecretBackend;

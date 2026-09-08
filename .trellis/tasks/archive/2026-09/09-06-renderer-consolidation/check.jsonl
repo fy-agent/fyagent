@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Current renderer placement and unified tooling entry contracts; replaces oversized injected general task-runner context, whose full reference remains available in backend specs"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Executable renderer/domain test environments and complete check, browser and serial performance gates"}
+{"file":".trellis/spec/backend/deeplink-import-security.md","reason":"Retain native security tests despite offline tool retirement"}
+

@@ -291,10 +291,53 @@ prepare() {
   write_state
 }
 
+sign_nested_privileged_code() {
+  local app_path="$1"
+  local client_path="$app_path/$EXPECTED_PRIVILEGED_CLIENT_RELPATH"
+  local helper_path="$app_path/$EXPECTED_PRIVILEGED_HELPER_RELPATH"
+  local client_present=0
+  local helper_present=0
+
+  if [ -f "$client_path" ] && [ ! -L "$client_path" ]; then
+    client_present=1
+  fi
+  if [ -f "$helper_path" ] && [ ! -L "$helper_path" ]; then
+    helper_present=1
+  fi
+
+  if [ "$client_present" -eq 0 ] && [ "$helper_present" -eq 0 ]; then
+    if [ "${FYAGENT_ALLOW_APP_ONLY_SIGN:-0}" = "1" ]; then
+      echo "nested privileged helper is absent; signing $EXPECTED_BUNDLE_NAME only" >&2
+      return 0
+    fi
+    echo "formal Developer ID signing requires the nested privileged helper and client" >&2
+    exit 1
+  fi
+  if [ "$client_present" -eq 0 ] || [ "$helper_present" -eq 0 ]; then
+    echo "nested privileged helper and client must both be present before signing" >&2
+    exit 1
+  fi
+
+  # Inside-out: sign the in-process client, then the helper, then the main app.
+  # Do not use --deep to sign nested code, and do not apply app entitlements here.
+  codesign --force \
+    --sign "$EXPECTED_AUTHORITY" \
+    --options runtime \
+    --timestamp \
+    "$client_path"
+  codesign --force \
+    --sign "$EXPECTED_AUTHORITY" \
+    --identifier "$EXPECTED_HELPER_IDENTIFIER" \
+    --options runtime \
+    --timestamp \
+    "$helper_path"
+}
+
 sign_app() {
   local app_path="$1"
   require_app_bundle "$app_path"
   load_state
+  sign_nested_privileged_code "$app_path"
   codesign --force \
     --sign "$EXPECTED_AUTHORITY" \
     --options runtime \

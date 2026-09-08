@@ -11,6 +11,8 @@ pub mod error;
 pub mod error_mapper;
 pub(crate) mod failover_switch;
 mod forwarder;
+#[cfg(test)]
+pub(crate) use forwarder::{set_xai_integration_fixture, XaiIntegrationFixture};
 pub mod gemini_url;
 pub mod handler_config;
 pub mod handler_context;

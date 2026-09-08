@@ -12,6 +12,7 @@ use std::{
     collections::HashMap,
     ffi::OsString,
     fs,
+    io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{Arc, Mutex},
@@ -154,30 +155,53 @@ impl CommandRunner for SystemCommandRunner {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(command_runner_error_from_io)?;
+        // Drain stdout/stderr on side threads while waiting. The previous
+        // try_wait loop only called wait_with_output after exit, which deadlocks
+        // once the OS pipe buffer fills (this host: Xcode Info.plist JSON is
+        // 74 KiB). Same drain-while-wait shape as
+        // services::tooling::wait_child_output_with_limit; overflow still
+        // truncates via bounded_output rather than failing the scan.
+        let stdout_handle = child.stdout.take().map(|mut pipe| {
+            thread::spawn(move || {
+                let mut bytes = Vec::new();
+                let _ = pipe.read_to_end(&mut bytes);
+                bytes
+            })
+        });
+        let stderr_handle = child.stderr.take().map(|mut pipe| {
+            thread::spawn(move || {
+                let mut bytes = Vec::new();
+                let _ = pipe.read_to_end(&mut bytes);
+                bytes
+            })
+        });
         let deadline = Instant::now() + invocation.timeout;
-
-        loop {
+        let status_code = loop {
             match child.try_wait().map_err(command_runner_error_from_io)? {
-                Some(_) => {
-                    let output = child
-                        .wait_with_output()
-                        .map_err(command_runner_error_from_io)?;
-                    return Ok(CommandOutput {
-                        status_code: output.status.code(),
-                        stdout: bounded_output(output.stdout),
-                        stderr: bounded_output(output.stderr),
-                    });
-                }
+                Some(status) => break status.code(),
                 None if Instant::now() >= deadline => {
                     let _ = child.kill();
                     let _ = child.wait();
+                    drop(stdout_handle);
+                    drop(stderr_handle);
                     return Err(CommandRunnerError {
                         kind: CommandRunnerErrorKind::Timeout,
                     });
                 }
                 None => thread::sleep(Duration::from_millis(10)),
             }
-        }
+        };
+        let stdout = stdout_handle
+            .map(|handle| handle.join().unwrap_or_default())
+            .unwrap_or_default();
+        let stderr = stderr_handle
+            .map(|handle| handle.join().unwrap_or_default())
+            .unwrap_or_default();
+        Ok(CommandOutput {
+            status_code,
+            stdout: bounded_output(stdout),
+            stderr: bounded_output(stderr),
+        })
     }
 }
 

@@ -1,3 +1,5 @@
+> Historical subplan: the 2026-09-08 parent task artifacts supersede these execution instructions. Retained acceptance items are not evidence of completion.
+
 # Design — Grok login trichotomy
 
 先读父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md)。事实和行号见 `research/current-login-surfaces.md`。用例见 [use-cases.md](./use-cases.md)。

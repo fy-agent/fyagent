@@ -30,7 +30,7 @@ const SECTIONS = Object.freeze([
         "check:contracts:prearchive",
         "check:prearchive",
         "supported-platform:check",
-      ].includes(name),
+      ].includes(name) || name.startsWith("system:check:"),
   ],
   [
     "Development and Native Build",
@@ -67,6 +67,7 @@ const SECTIONS = Object.freeze([
 export function escapeMarkdownCell(value) {
   return String(value ?? "")
     .replace(/\r?\n/g, " ")
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
     .replace(/\s+/g, " ")
     .trim();

@@ -41,6 +41,7 @@ mod xai_oauth;
 
 mod agent_install_readiness;
 mod lightweight;
+mod managed_auth;
 mod s3_sync;
 mod usage;
 mod webdav_sync;
@@ -87,6 +88,7 @@ pub use xai_oauth::*;
 
 pub use agent_install_readiness::*;
 pub use lightweight::*;
+pub use managed_auth::*;
 pub use s3_sync::*;
 pub use usage::*;
 pub use webdav_sync::*;

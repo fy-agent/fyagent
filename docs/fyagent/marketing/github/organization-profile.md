@@ -14,7 +14,7 @@ This page is the copy-ready source for a future public `fy-agent/.github` reposi
 ## Recommended organization metadata
 
 - **Display name:** FyAgent
-- **Description:** Own your AI. A personal control center for the AI era.
+- **Description:** Manage AI software configuration from one local desktop app.
 - **Website:** `https://github.com/fy-agent/fyagent`
 - **Public email and social links:** leave empty until an official support address or account exists.
 
@@ -24,11 +24,10 @@ This page is the copy-ready source for a future public `fy-agent/.github` reposi
 <div align="center">
   <img src="https://raw.githubusercontent.com/fy-agent/fyagent/main/assets/brand/github/for-you-gate.svg" width="88" alt="FyAgent For You Gate">
   <h1>FyAgent</h1>
-  <p><strong>Own your AI.</strong></p>
-  <p>A personal control center that keeps you in charge of the AI Workers and Agents you use.</p>
+  <p>Manage AI software configuration from one local desktop app.</p>
 </div>
 
-FyAgent helps people own, shape, and manage their AI. Today, the desktop app brings models, tool connections, Skills, working instructions, configuration, and usage records into one place. Its long-term vision is a portable digital persona that remains under the user's control.
+FyAgent manages models, Skills, MCP servers, prompts, and memory files for supported AI applications. It shows the affected settings before a write.
 
 ### Start here
 

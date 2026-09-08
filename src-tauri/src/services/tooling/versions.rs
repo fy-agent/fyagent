@@ -27,13 +27,20 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
     };
 
     let local = local_version.as_deref();
+    let mut distribution_owner = None;
+    let mut latest_source = None;
     let latest_version = match tool {
         "claude" => {
             fetch_npm_latest_for_tool(&client, "@anthropic-ai/claude-code", tool, local).await
         }
         "codex" => fetch_npm_latest_for_tool(&client, "@openai/codex", tool, local).await,
         "gemini" => fetch_npm_latest_for_tool(&client, "@google/gemini-cli", tool, local).await,
-        "grok" => fetch_npm_latest_for_tool(&client, "@xai-official/grok", tool, local).await,
+        "grok" => {
+            let (latest, owner) = fetch_grok_latest_with_owner(&client, local).await;
+            distribution_owner = owner.clone();
+            latest_source = owner;
+            latest
+        }
         "opencode" => {
             if let Some(version) =
                 fetch_npm_latest_for_tool(&client, "opencode-ai", tool, local).await
@@ -52,8 +59,42 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
         name: tool.to_string(),
         version: local_version,
         latest_version,
-        error: local_error,
+        error: if tool == "grok" {
+            super::grok::last_grok_lifecycle_error().or(local_error)
+        } else {
+            local_error
+        },
         installed_but_broken,
+        distribution_owner,
+        latest_source,
+    }
+}
+
+pub(super) async fn fetch_grok_latest_with_owner(
+    client: &reqwest::Client,
+    local: Option<&str>,
+) -> (Option<String>, Option<String>) {
+    #[cfg(target_os = "macos")]
+    {
+        let observation = super::grok::observe_installed_grok_owner();
+        let owner = super::grok::owner_observation_wire(observation).map(str::to_string);
+        let _ = client;
+        let latest = match observation {
+            super::grok::GrokOwnerObservation::NativeInternal => {
+                super::grok::native_latest_from_update_check(local)
+            }
+            super::grok::GrokOwnerObservation::OfficialNpm
+            | super::grok::GrokOwnerObservation::Absent => {
+                super::grok_npm::bundled_manifest_version()
+            }
+            super::grok::GrokOwnerObservation::Ambiguous => None,
+        };
+        (latest, owner)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (client, local);
+        (super::grok_npm::bundled_manifest_version(), None)
     }
 }
 
@@ -64,6 +105,8 @@ pub(super) fn elevated_windows_tool_version_unavailable(tool: &str) -> ToolVersi
         latest_version: None,
         error: Some(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string()),
         installed_but_broken: false,
+        distribution_owner: None,
+        latest_source: None,
     }
 }
 
@@ -74,53 +117,11 @@ fn npm_prerelease_tags(tool: &str) -> &'static [&'static str] {
     }
 }
 
-fn parse_semver(v: &str) -> Option<([u64; 3], Vec<String>)> {
-    let core_and_pre = v.trim().split('+').next().unwrap_or("");
-    let (core, pre) = match core_and_pre.split_once('-') {
-        Some((c, p)) => (c, Some(p)),
-        None => (core_and_pre, None),
-    };
-    let mut parts = core.split('.');
-    let major = parts.next()?.parse::<u64>().ok()?;
-    let minor = parts.next()?.parse::<u64>().ok()?;
-    let patch = parts.next()?.parse::<u64>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    let pre_segments = pre
-        .map(|p| p.split('.').map(|s| s.to_string()).collect())
-        .unwrap_or_default();
-    Some(([major, minor, patch], pre_segments))
-}
-
 pub(super) fn compare_semver(a: &str, b: &str) -> Option<std::cmp::Ordering> {
-    use std::cmp::Ordering;
-    let (ac, ap) = parse_semver(a)?;
-    let (bc, bp) = parse_semver(b)?;
-    for i in 0..3 {
-        match ac[i].cmp(&bc[i]) {
-            Ordering::Equal => continue,
-            other => return Some(other),
-        }
-    }
-    match (ap.is_empty(), bp.is_empty()) {
-        (true, true) => return Some(Ordering::Equal),
-        (true, false) => return Some(Ordering::Greater),
-        (false, true) => return Some(Ordering::Less),
-        (false, false) => {}
-    }
-    for (x, y) in ap.iter().zip(bp.iter()) {
-        let ord = match (x.parse::<u64>(), y.parse::<u64>()) {
-            (Ok(xv), Ok(yv)) => xv.cmp(&yv),
-            (Ok(_), Err(_)) => Ordering::Less,
-            (Err(_), Ok(_)) => Ordering::Greater,
-            (Err(_), Err(_)) => x.as_str().cmp(y.as_str()),
-        };
-        if ord != Ordering::Equal {
-            return Some(ord);
-        }
-    }
-    Some(ap.len().cmp(&bp.len()))
+    let a = semver::Version::parse(a.trim()).ok()?;
+    let b = semver::Version::parse(b.trim()).ok()?;
+    // Version's total ordering includes build metadata; upgrade precedence must not.
+    Some(a.cmp_precedence(&b))
 }
 
 pub(super) fn pick_latest_version(
@@ -159,6 +160,14 @@ async fn fetch_npm_dist_tags(
     json.get("dist-tags")?.as_object().cloned()
 }
 
+#[allow(dead_code)]
+pub(super) async fn fetch_npm_latest_for_package(
+    client: &reqwest::Client,
+    package: &str,
+) -> Option<String> {
+    fetch_npm_latest_for_tool(client, package, "", None).await
+}
+
 async fn fetch_npm_latest_for_tool(
     client: &reqwest::Client,
     package: &str,
@@ -169,26 +178,52 @@ async fn fetch_npm_latest_for_tool(
     pick_latest_version(&dist_tags, npm_prerelease_tags(tool), local_version)
 }
 
-async fn fetch_github_latest_version(client: &reqwest::Client, repo: &str) -> Option<String> {
-    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    match client
+pub(crate) const FIXED_GITHUB_OPENCODE_REPO: &str = "anomalyco/opencode";
+const MAX_GITHUB_LATEST_BYTES: usize = 1024 * 1024;
+
+pub(crate) fn github_latest_release_url(repo: &str) -> Option<String> {
+    if repo != FIXED_GITHUB_OPENCODE_REPO {
+        return None;
+    }
+    Some(format!(
+        "https://api.github.com/repos/{repo}/releases/latest"
+    ))
+}
+
+pub(crate) fn parse_github_latest_release_tag(body: &[u8]) -> Option<String> {
+    if body.is_empty() || body.len() > MAX_GITHUB_LATEST_BYTES {
+        return None;
+    }
+    let json: serde_json::Value = serde_json::from_slice(body).ok()?;
+    if json.get("draft").and_then(|value| value.as_bool()) == Some(true)
+        || json.get("prerelease").and_then(|value| value.as_bool()) == Some(true)
+    {
+        return None;
+    }
+    let tag = json.get("tag_name")?.as_str()?;
+    if tag.is_empty() || tag.len() > 64 {
+        return None;
+    }
+    Some(tag.strip_prefix('v').unwrap_or(tag).to_string())
+}
+
+pub(crate) async fn fetch_github_latest_version(
+    client: &reqwest::Client,
+    repo: &str,
+) -> Option<String> {
+    let url = github_latest_release_url(repo)?;
+    let resp = client
         .get(&url)
         .header("User-Agent", "fyagent")
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
-    {
-        Ok(resp) => {
-            if let Ok(json) = resp.json::<serde_json::Value>().await {
-                json.get("tag_name")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.strip_prefix('v').unwrap_or(s).to_string())
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
     }
+    let bytes = resp.bytes().await.ok()?;
+    parse_github_latest_release_tag(&bytes)
 }
 
 async fn fetch_pypi_latest_version(client: &reqwest::Client, package: &str) -> Option<String> {
@@ -216,4 +251,86 @@ pub(super) fn extract_version(raw: &str) -> String {
         .find(raw)
         .map(|m| m.as_str().to_string())
         .unwrap_or_else(|| raw.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn semver_precedence_matches_the_standard_and_ignores_build_metadata() {
+        use std::cmp::Ordering;
+        let versions = [
+            "1.0.0-alpha",
+            "1.0.0-alpha.1",
+            "1.0.0-alpha.beta",
+            "1.0.0-beta",
+            "1.0.0-beta.2",
+            "1.0.0-beta.11",
+            "1.0.0-rc.1",
+            "1.0.0",
+        ];
+        for pair in versions.windows(2) {
+            assert_eq!(compare_semver(pair[0], pair[1]), Some(Ordering::Less));
+            assert_eq!(compare_semver(pair[1], pair[0]), Some(Ordering::Greater));
+        }
+        assert_eq!(
+            compare_semver(" 1.2.3+build.9 ", "1.2.3+build.1"),
+            Some(Ordering::Equal)
+        );
+        assert_eq!(
+            compare_semver("1.0.0-99999999999999999999", "1.0.0-100000000000000000000"),
+            Some(Ordering::Less)
+        );
+    }
+
+    #[test]
+    fn semver_rejects_invalid_versions_in_either_operand() {
+        for invalid in [
+            "",
+            "1.0",
+            "1.2.3.4",
+            "01.2.3",
+            "1.2.3-",
+            "1.2.3+",
+            "1.2.3-01",
+            "1.2.3-a..b",
+            "1.2.3-a_b",
+            "1.2.3+bad+metadata",
+            "v1.2.3",
+        ] {
+            assert_eq!(compare_semver(invalid, "1.2.3"), None, "{invalid}");
+            assert_eq!(compare_semver("1.2.3", invalid), None, "{invalid}");
+        }
+    }
+
+    #[test]
+    fn github_latest_tag_parser_is_fixed_repo_and_rejects_drafts() {
+        assert_eq!(
+            parse_github_latest_release_tag(br#"{"tag_name":"v1.2.3"}"#).as_deref(),
+            Some("1.2.3")
+        );
+        assert_eq!(
+            parse_github_latest_release_tag(br#"{"tag_name":"1.2.3"}"#).as_deref(),
+            Some("1.2.3")
+        );
+        assert_eq!(
+            parse_github_latest_release_tag(br#"{"tag_name":"v1.2.3","draft":true}"#),
+            None
+        );
+        assert_eq!(
+            parse_github_latest_release_tag(br#"{"tag_name":"v1.2.3","prerelease":true}"#),
+            None
+        );
+        assert_eq!(parse_github_latest_release_tag(&[]), None);
+        assert_eq!(
+            parse_github_latest_release_tag(&vec![b'{'; MAX_GITHUB_LATEST_BYTES + 1]),
+            None
+        );
+        assert_eq!(
+            github_latest_release_url(FIXED_GITHUB_OPENCODE_REPO).as_deref(),
+            Some("https://api.github.com/repos/anomalyco/opencode/releases/latest")
+        );
+        assert_eq!(github_latest_release_url("some/other"), None);
+    }
 }

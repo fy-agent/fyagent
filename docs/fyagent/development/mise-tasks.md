@@ -12,19 +12,21 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 
 ## Setup and Checks
 
-| Task                         | Description                                                                                  | Usage                        | Effect                 |
-| ---------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------- |
-| `bootstrap`                  | Install locked repository tools and dependencies, then run strict environment checks         | —                            | dependency-environment |
-| `check`                      | Run the complete current-host environment, frontend, backend, and contract gate              | —                            | read-only              |
-| `check:backend`              | Run Rust formatting, check, Clippy, and tests in fail-fast order                             | —                            | read-only              |
-| `check:contracts`            | Run task, docs, Python lock, version, and release contract checks                            | —                            | read-only              |
-| `check:contracts:prearchive` | Run contract checks with this change task's exact Trellis record excluded before archival    | --exclude-active-task <path> | read-only              |
-| `check:frontend`             | Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks         | —                            | read-only              |
-| `check:prearchive`           | Run the complete check with this change task's exact Trellis record excluded before archival | --exclude-active-task <path> | read-only              |
-| `deps:install`               | Install frozen pnpm dependencies and synchronize the locked uv environment                   | —                            | dependency-environment |
-| `env:check`                  | Verify exact tools, ownership, lockfiles, Python environment, and task metadata              | --json                       | read-only              |
-| `supported-platform:check`   | Reject unsupported first-party platform surfaces and implicit native target admission        | --exclude-active-task <path> | read-only              |
-| `system:check`               | Check current-host Tauri prerequisites without installing or elevating anything              | --json                       | read-only              |
+| Task                                       | Description                                                                                            | Usage                        | Effect                 |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ---------------------------- | ---------------------- |
+| `bootstrap`                                | Install locked repository tools and dependencies, then run strict environment checks                   | —                            | dependency-environment |
+| `check`                                    | Run the complete current-host environment, frontend, backend, and contract gate                        | —                            | read-only              |
+| `check:backend`                            | Run Rust formatting, check, Clippy, and tests in fail-fast order                                       | —                            | read-only              |
+| `check:contracts`                          | Run task, docs, Python lock, version, and release contract checks                                      | —                            | read-only              |
+| `check:contracts:prearchive`               | Run contract checks with this change task's exact Trellis record excluded before archival              | --exclude-active-task <path> | read-only              |
+| `check:frontend`                           | Run unified frontend type, lint, formatting, renderer/domain units, desktop mocks and visual preflight | —                            | read-only              |
+| `check:prearchive`                         | Run the complete check with this change task's exact Trellis record excluded before archival           | --exclude-active-task <path> | read-only              |
+| `deps:install`                             | Install frozen pnpm dependencies and synchronize the locked uv environment                             | —                            | dependency-environment |
+| `env:check`                                | Verify exact tools, ownership, lockfiles, Python environment, and task metadata                        | --json                       | read-only              |
+| `supported-platform:check`                 | Reject unsupported first-party platform surfaces and implicit native target admission                  | --exclude-active-task <path> | read-only              |
+| `system:check`                             | Check current-host Tauri prerequisites without installing or elevating anything                        | --json                       | read-only              |
+| `system:check:windows-msvc-cross`          | Check optional macOS prerequisites for the bounded Windows MSVC cross-Clippy diagnostic                | --json                       | read-only              |
+| `system:check:windows-msvc-cross:advisory` | Report optional macOS Windows MSVC cross-Clippy prerequisites without failing bootstrap                | —                            | read-only              |
 
 ## Development and Native Build
 
@@ -44,26 +46,25 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 | `format`                        | Apply the repository Prettier configuration to frontend sources                | —          | source-modifying |
 | `format:check`                  | Verify frontend formatting without writing files                               | —          | read-only        |
 | `test`                          | Run the non-interactive frontend and desktop mock test aggregate               | —          | read-only        |
+| `test:browser`                  | Run production boot and Chromium/WebKit renderer regressions                   | —          | read-only        |
 | `test:desktop:mock`             | Run desktop acceptance fake-IPC contract tests (not native evidence)           | —          | read-only        |
 | `test:desktop:visual:preflight` | Validate visual baseline manifest and candidate policy without updating images | —          | read-only        |
 | `test:desktop:visual:update`    | Validate reviewed visual evidence before a separate human Git LFS update       | <evidence> | source-modifying |
-| `test:i18n`                     | Verify locale key and schema parity                                            | —          | read-only        |
+| `test:performance`              | Profile the production renderer serially with real animations                  | —          | read-only        |
 | `test:unit`                     | Run Vitest unit and integration tests with optional controlled filters         | [filters]  | read-only        |
 | `test:unit:watch`               | Run Vitest in interactive watch mode with optional controlled filters          | [filters]  | interactive      |
-| `test:v2`                       | Run the isolated V2 renderer unit and architecture tests                       | —          | read-only        |
-| `test:v2:browser`               | Run the V2 Chromium geometry and interaction smoke suite                       | —          | read-only        |
-| `test:v2:watch`                 | Run isolated V2 renderer tests in interactive watch mode                       | —          | interactive      |
 | `typecheck`                     | Run strict TypeScript type checking without emitting files                     | —          | read-only        |
 
 ## Rust
 
-| Task             | Description                                                             | Usage     | Effect           |
-| ---------------- | ----------------------------------------------------------------------- | --------- | ---------------- |
-| `rust:check`     | Run locked Cargo check for every target kind on the current host        | —         | read-only        |
-| `rust:clippy`    | Run locked current-host Clippy for the workspace and deny every warning | —         | read-only        |
-| `rust:fmt`       | Apply rustfmt to the complete Cargo workspace                           | —         | source-modifying |
-| `rust:fmt:check` | Verify rustfmt for the complete Cargo workspace                         | —         | read-only        |
-| `rust:test`      | Run locked current-host Cargo tests with optional controlled filters    | [filters] | read-only        |
+| Task                             | Description                                                             | Usage     | Effect                 |
+| -------------------------------- | ----------------------------------------------------------------------- | --------- | ---------------------- |
+| `rust:check`                     | Run locked Cargo check for every target kind on the current host        | —         | read-only              |
+| `rust:clippy`                    | Run locked current-host Clippy for the workspace and deny every warning | —         | read-only              |
+| `rust:clippy:windows-msvc-cross` | Run the optional macOS-to-Windows MSVC cargo-xwin Clippy diagnostic     | —         | dependency-environment |
+| `rust:fmt`                       | Apply rustfmt to the complete Cargo workspace                           | —         | source-modifying       |
+| `rust:fmt:check`                 | Verify rustfmt for the complete Cargo workspace                         | —         | read-only              |
+| `rust:test`                      | Run locked current-host Cargo tests with optional controlled filters    | [filters] | read-only              |
 
 ## Python and uv
 
@@ -142,8 +143,7 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 | Task           | Description                                                                 | Usage   | Effect           |
 | -------------- | --------------------------------------------------------------------------- | ------- | ---------------- |
 | `format:files` | Format reviewed files with locked Prettier and lossless JSONL normalization | <files> | source-modifying |
-| `lint:v2`      | Lint only the isolated V2 renderer and its focused tests                    | —       | read-only        |
-| `typecheck:v2` | Type-check only the isolated V2 renderer and focused tests                  | —       | read-only        |
+| `lint`         | Lint the production renderer, domain and focused tests                      | —       | read-only        |
 
 ## Safety Boundaries
 

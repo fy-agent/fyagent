@@ -1,0 +1,109 @@
+.fy-split-panes {
+  --fy-split-gap: 14px;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.fy-split-group {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+.fy-split-panes[data-stacked="true"] {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.fy-split-panes[data-resize-fallback="static"] {
+  gap: var(--fy-split-gap);
+}
+.fy-split-panes[data-resize-fallback="static"] > .fy-split-pane {
+  flex: 0 0 260px;
+  height: 260px;
+}
+.fy-content-viewport:has(> :not([hidden]) .fy-split-page) {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+.fy-content-viewport > :has(> .fy-split-page):not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.fy-feature-page.fy-split-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  gap: 0;
+}
+.fy-split-pane {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  /* Only the content below reserves a stable gutter. Keep the wrapper's
+     existing overflow fallback without subtracting a second scrollbar width. */
+}
+.fy-split-pane > * {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 100%;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.fy-split-resize-handle {
+  position: relative;
+  flex-basis: var(--fy-split-gap);
+  width: var(--fy-split-gap);
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+}
+.fy-split-resize-handle[aria-orientation="horizontal"] {
+  height: var(--fy-split-gap);
+  width: 100%;
+}
+.fy-split-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 1px;
+  border-radius: var(--fy-radius-separator);
+  background: var(--fy-border);
+  transform: translateX(-50%);
+}
+.fy-split-resize-handle:hover::before,
+.fy-split-resize-handle:focus-visible::before,
+.fy-split-resize-handle[data-separator="active"]::before {
+  width: 2px;
+  background: var(--fy-accent);
+}
+.fy-split-resize-handle:focus-visible {
+  outline: 2px solid var(--fy-focus);
+  outline-offset: -2px;
+}
+.fy-split-panes[data-stacked="true"]
+  > .fy-split-group
+  > .fy-split-resize-handle {
+  visibility: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fy-split-panes,
+  .fy-split-pane,
+  .fy-split-resize-handle {
+    animation: none;
+    scroll-behavior: auto;
+    transition: none;
+  }
+}

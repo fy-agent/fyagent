@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/managed-auth-consumers.md","reason":"Auth no-clobber, purpose isolation and revision checks"}
+{"file":".trellis/spec/frontend/managed-auth.md","reason":"Strict IPC and user-visible outcomes"}

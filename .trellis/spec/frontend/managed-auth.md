@@ -1,0 +1,455 @@
+# Renderer Managed Account and Authentication Contract
+
+## 1. Scope / Trigger
+
+Read this contract before changing the Renderer `/auth` route, managed official
+accounts, software connections, model-request source presentation, managed
+login sessions, account removal previews, or the Codex/Grok Build/OpenCode
+entry points that route users into the central account surface.
+
+Primary renderer owners:
+
+- `src/shared/features/managed-auth.ts`
+- `src/shared/platform/tauri/feature-ports/managedAuth.ts`
+- `src/shared/features/queries.ts`
+- `src/pages/auth/**`
+- `src/shared/config/navigation.ts`
+- `src/app/primaryPages.tsx`
+
+External Agent-owned authentication remains under
+[Renderer External Agent Auth UI](./agent-auth.md). Native credential, OAuth,
+refresh ownership and recovery semantics are owned by
+[Managed Auth Core](../backend/managed-auth.md); provider login sessions by
+[Managed Auth Login](../backend/managed-auth-login.md); and software projection
+by [Managed Auth Consumers](../backend/managed-auth-consumers.md). This
+frontend contract does not make browser fixtures or mock IPC into native
+authentication evidence.
+
+## 2. Signatures
+
+`ManagedAuthPort` is the only Renderer transport surface for managed accounts:
+
+```ts
+interface ManagedAuthPort {
+  getOverview(): Promise<ManagedAuthOverview>;
+  startLogin(
+    request: StartManagedAuthLoginRequest,
+  ): Promise<ManagedAuthLoginSessionSnapshot>;
+  getLoginSession(sessionId: string): Promise<ManagedAuthLoginSessionSnapshot>;
+  cancelLogin(sessionId: string): Promise<ManagedAuthLoginSessionSnapshot>;
+  reopenLogin(sessionId: string): Promise<ManagedAuthLoginSessionSnapshot>;
+  switchLoginMethod(
+    sessionId: string,
+    method: ManagedAuthLoginMethod,
+  ): Promise<ManagedAuthLoginSessionSnapshot>;
+  setDefaultAccount(
+    accountId: string,
+    expectedRevision: string,
+  ): Promise<ManagedAuthMutationResult>;
+  previewAccountRemoval(
+    accountId: string,
+    expectedRevision: string,
+  ): Promise<ManagedAuthAccountRemovalPreview>;
+  removeAccount(
+    previewId: string,
+    accountId: string,
+    expectedRevision: string,
+  ): Promise<ManagedAuthMutationResult>;
+  applyConnectionAction(
+    request: ManagedAuthConnectionActionRequest,
+    previewId?: string,
+  ): Promise<ManagedAuthMutationResult>;
+  previewConnectionAction(
+    request: ManagedAuthConnectionActionRequest,
+  ): Promise<ManagedAuthConnectionActionPreview>;
+}
+```
+
+There is no `getActiveLoginSession`, `mutateAccount`, or `mutateConnection`
+method. Active login sessions arrive on `overview.activeSessions`. Mutation
+`operationId` is a hyphenated UUID v4.
+
+The closed provider set is:
+
+```text
+openai | xai | github_copilot
+```
+
+The closed consumer set is:
+
+```text
+codex | grokbuild | opencode | fyagent_proxy
+```
+
+The overview keeps three separate resource families:
+
+```text
+accounts      // official account identities and account health
+connections   // one software/provider-slot connection to a managed credential
+requestMode   // where a consumer currently sends model requests
+```
+
+These are not interchangeable. An account can be ready while one connection
+needs restart, and Codex can retain an official account while its current
+request mode is a third-party API.
+
+## 3. Contracts
+
+### Central route and navigation
+
+- `/auth` is a first-class lazy-loaded primary route. It participates in the
+  same visited-route keep-alive, visibility gating, prefetch and selection
+  rules as Agents, Models, Skills, MCP, Prompts and Memory.
+- The primary navigation label is `账号与认证`. Direct links may carry only the
+  closed view, account ID, consumer ID and existing closed Agent-return tuple.
+  Free-form return URLs, native paths, commands and provider URLs are invalid.
+- Wide layouts use the existing master-detail/split primitives. Narrow layouts
+  expose a list view and an explicit detail/back transition; operations must
+  not be hidden in horizontal overflow.
+
+### Information architecture
+
+- The first user-level distinction is `账号` versus `软件连接`.
+- Account rows show provider identity, login label, health, default state and
+  connection count. Quota/profile availability does not redefine login health
+  or reorder accounts by short-lived usage.
+- Account detail lists already-linked software and matching unlinked software
+  for the same provider. Linked means live-connected (`accountId` matches and
+  `authStatus` is not `disconnected`). A saved-not-projected Codex slot that
+  already names this account still belongs in the connectable list and still
+  exposes `connect_account` / `switch_account` when the backend advertises
+  them. If that slot also advertises `disconnect` while still disconnected, the
+  account page labels it 「恢复第三方模型来源」: it restores the unofficial
+  top-level selector without connecting official login. Linked cards expose the
+  closed connection actions that change the bound account (`switch_account`).
+  `switch_to_official` is a retained wire value, not a currently advertised
+  account mutation. A ready account may also start a `connect_consumer` login
+  for a matching consumer that is not yet connectable from the saved credential
+  purpose. The page does not auto-connect on login and does not install software.
+- Connection rows show the connected official account/provider slot, current
+  request source, whether an official session is preserved, credential-renewal
+  owner as user-facing copy, pending restart and closed available actions.
+- A connection `targetId` of `null` means the slot is not bound to a lifecycle
+  install target. It is not evidence that the software is missing. Do not show
+  “未检测到可管理的安装实例” from that null; the auth page still never
+  installs software as a side effect.
+- Internal terms such as SecretRef, credential ID, refresh-token lineage,
+  projection generation never appear in product copy or DOM. Native-resolved
+  display paths are shown only by explicit file-impact/recovery controls;
+  paths never become renderer-controlled write destinations.
+
+### Saved Codex request source
+
+`pages/auth/CodexRequestSource.tsx` composes the provider-summary query and
+`shared/features/change-plans-ui/ChangePlanWorkspace.tsx`. It is the sole
+saved Codex Provider-switch entry; Models remains the editor, not a second
+account manager. A source switch does not itself change the official login
+identity. Shared preview/apply admission, Query observation, cancellation,
+cache, and terminal-delivery rules are owned by
+[Renderer Change Plan Workspaces](./change-plan-workspaces.md).
+
+- ConnectionsView keeps the Codex workspace mounted across consumer/tab
+  changes under `PersistentSurface`; automatic reads stop when hidden.
+- A terminal job rereads both provider summary and managed-auth overview.
+  Either failure retains the job, blocking state and a read-only retry action.
+  A changed `currentId` must not hide the job that caused the change.
+- Official-account mutations/login invalidate affected provider summaries and
+  OpenCode model snapshots. Active owners reread; hidden owners stay stale
+  until reactivated. Cached errors do not tear down an in-flight source job.
+- Models/Auth navigation carries only the validated Agent-return tuple. It
+  does not accept an arbitrary return URL, secret or path.
+- The selected source's native `writeTargets` are frozen with the preview and
+  displayed before applying. A generated model catalog is a separate disclosed
+  file. Official account connect/switch comments only the top-level
+  `model_provider` selector in config, independently of its auth-file delta.
+  Saved source selection can also patch source-owned model/provider fields,
+  but never replaces the official account's auth file. The exact ownership
+  split is in [Codex Request-Source Selection](../backend/codex-source-selection.md).
+
+Required regressions: `tests/renderer/pages/auth/CodexRequestSource.test.tsx` covers
+one apply, both readbacks, failure/retry without rewriting, unknown admission,
+hidden reads and return context. `AuthPage` tests verify reverse invalidation
+after switching back to official. Shared workspace and observer regressions are
+listed in
+[Renderer Change Plan Workspaces](./change-plan-workspaces.md#6-tests-required).
+
+### Strict wire boundary
+
+- `managed-auth.ts` parses every native response from `unknown`, requires the
+  exact contract version and exact key set, and accepts only closed enums,
+  bounded labels, canonical opaque IDs/revisions and valid timestamps.
+- The overview parser validates cross-resource references, unique IDs,
+  connected-account counts, at most eight uniquely identified active sessions,
+  and provider/consumer compatibility. The backend admits at most one
+  non-terminal session per provider, while one OpenAI and one xAI session may
+  coexist. A malformed reference rejects the complete snapshot.
+- Login snapshots never expose authorization URLs, callback URLs, OAuth code,
+  state, verifier, device authorization ID, token, native path or raw error.
+  A device-code snapshot may expose only a bounded user code and a validated
+  query-free HTTPS verification URI whose host matches the closed provider
+  summary.
+- Request payloads contain opaque IDs, expected revisions and closed actions.
+  The renderer does not send credentials, filesystem locations, commands,
+  arguments, environment variables or arbitrary URLs.
+- A completed login stage or completed mutation outcome accepts only
+  `reasonCode=null` or `reasonCode=pending_restart`. `pending_restart` is a
+  successful save/readback that still awaits consumer pickup, not a failed
+  operation. Any other non-null completed reason rejects the whole response.
+  The freshly parsed overview, not `pendingRestartConsumers` alone, decides
+  which connection is pending.
+
+### State and mutations
+
+- Connecting, switching or disconnecting an account first requests a native
+  impact preview. The dialog shows changed/created files, backup locations and
+  unchanged paths through shared `FileWriteDisclosure`. It cannot confirm
+  while the preview is absent, stale, failed or disallowed. The one-shot
+  confirmation submits the same request plus its opaque `previewId`; neither
+  selection nor opening/cancelling the dialog performs a file write.
+- A changed account selection gets a new Query-owned preview. Previews stop
+  fetching when hidden and are not reused after confirmation. The native
+  owner independently enforces expiry, request/path binding and single use.
+- OAuth completion says `账号已保存`, not connected. A consumer-purpose login
+  still requires a separate impact preview and explicit connection action.
+- `FileRecoveryButton` composes the closed recovery port. It loads only on
+  request, shows actual source/backup paths, explicitly distinguishes restoring
+  an old file from deleting a first-created file, and requires confirmation.
+  Changed external files or backups disable automatic restore. Successful
+  restore rereads affected feature state; it is not account deletion, Provider
+  deletion, server-side token revocation or proven live consumer pickup.
+  The native contract is [Reversible User Configuration](../backend/reversible-user-config.md).
+
+- TanStack Query owns the overview and active-session snapshots. URL state owns
+  the selected view/account/consumer. Secret or OAuth material never enters
+  Query state, route state or localStorage.
+- Login-session polling/recovery is owned by one hook. Remount resumes the
+  backend session instead of starting a duplicate. Polling stops while the
+  persistent route is hidden and on terminal/unmount.
+- Account default/removal and connection actions are revision-checked by
+  their native owners. Codex uses the combined observed config/auth revision;
+  OpenCode uses the current auth-file observation rather than an old persisted
+  revision. Positive UI state still comes only from the freshly parsed
+  overview/readback; a preview is not proof the external process picked up a
+  file, and the UI does not manufacture connected state.
+- `reopenLogin` asks the backend to open the official page for the current
+  non-terminal session. The renderer never receives an authorization URL.
+- Account removal requires a backend impact preview. Failure to disconnect all
+  dependents keeps the account visible and recoverable; the page never hides a
+  still-referenced account.
+- Removal-preview completion is scoped to its requesting generation. Cancel,
+  replacement and unmount invalidate the old generation so late success/error
+  cannot overwrite the next dialog. This does not change native revision,
+  previewId or canApply admission. Fast preview delivery updates content without
+  cancelling shared source entrance; no minimum loading timer is permitted.
+- `pendingRestart`, partial completion, external change, unavailable authority
+  and recovery-required remain explicit states. Starting a browser, writing a
+  credential or launching software is not sufficient to paint success.
+- `completed + pending_restart` keeps the positive result and presents a
+  restart-specific next step. It must not become “请稍后重试”, an optimistic
+  connected badge, or a generic failure banner.
+- The current backend reports Codex `connected` only when live ChatGPT
+  identity matches the connection-bound credential. A ready SecretRef with a
+  different or missing live identity is saved-not-projected / disconnected.
+  Explicit non-file stores still surface `native_projection_unavailable`.
+  The renderer must not use credential presence alone for HIL or stronger
+  success claims.
+
+### Agent integration
+
+- Codex, Grok Build and OpenCode Agent cards are summary/entry surfaces for
+  managed authentication. Their main action routes to `/auth` with the closed
+  consumer ID; they do not duplicate account lists, OAuth controls or managed
+  connection mutations.
+- Claude continues its reviewed Agent-owned login/logout session. QoderWork,
+  TRAE Work and WorkBuddy continue trusted desktop handoff. The central page
+  does not absorb those flows without a separately reviewed managed adapter.
+- Agent install/lifecycle and managed authentication remain separate. The auth
+  page never installs software as a side effect.
+
+### Accessibility, responsive behavior and copy
+
+- Tabs, list selection, dialogs, radio groups, code-copy controls and dangerous
+  actions use semantic roles, visible focus, keyboard operation and translated
+  or stable Chinese accessible names according to the current Renderer language
+  policy.
+- Dialog focus is restored to the invoking control. Copy feedback does not move
+  focus. Reduced-motion mode disables non-essential animation. Keep controlled
+  Dialog wrappers mounted, or use the reviewed `AnimatePresence` boundary with
+  a fresh conditional session key. Close immediately removes actions and clears
+  session/device-code content. The non-credential provider/purpose chooser may
+  use `exitContent="fade"` for at most 80ms of original inert/aria-hidden content,
+  never a DOM copy or delayed session cancellation. Radix releases modality and
+  focus after the backing exits. Do not abruptly `return null` from an
+  unprotected login wrapper or add another focus
+  owner. Pass the actual action's origin ref before asynchronous work; see
+  [Dialog Lifecycle](./dialog-lifecycle.md). Connection-action confirmations stay
+  mounted with `open={connection !== null && action !== null}`; the page must
+  not wrap them in `{action && <ConnectionActionDialog>}`. Pending footer copy
+  uses isolated nowrap buttons; see [Motion](./motion-system.md).
+- Copy says what is complete, pending or unknown and gives one safe next step.
+  It must not claim login, connection or request routing beyond backend
+  readback evidence.
+
+## 4. Validation & Error Matrix
+
+| Condition                                                                                                             | Required result                                                                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser/non-native runtime                                                                                            | Render the controlled desktop-only state; never seed authenticated accounts.                                                                            |
+| Overview has an extra token/path/raw-error field                                                                      | Reject the complete response.                                                                                                                           |
+| Connection references a missing account/provider                                                                      | Reject the complete response.                                                                                                                           |
+| Account says two connections but only one references it                                                               | Reject the complete response.                                                                                                                           |
+| Device verification URI has query, fragment, wrong host or non-HTTPS scheme                                           | Reject the login snapshot.                                                                                                                              |
+| More than eight active sessions or a duplicate session ID appears                                                     | Reject the overview/session chain.                                                                                                                      |
+| OpenAI and xAI each have one active session                                                                           | Accept both; the UI follows the selected opaque session ID and must not merge them.                                                                     |
+| A second start is attempted for a provider with a non-terminal session                                                | Preserve `operation_conflict`; recover the existing provider session.                                                                                   |
+| Page is hidden by persistent routing                                                                                  | Pause automatic queries and polling; retain selected UI state.                                                                                          |
+| Mutation returns no authoritative overview/readback                                                                   | Keep prior state and show uncertainty; do not claim success.                                                                                            |
+| Account/default/removal or OpenCode file mutation has a stale revision                                                | Preserve stale error, reread, and require an explicit retry.                                                                                            |
+| Displayed connection revision or native preview no longer matches                                                     | Reject/reread and require a fresh explicit confirmation; no optimistic success                                                                          |
+| Codex is `disconnected` with a saved account but live identity is absent or different                                 | Present “账号已保存”, not “已连接”; never count it as proven native pickup.                                                                             |
+| Completed login/mutation has `reasonCode=pending_restart`                                                             | Accept the response, render the returned overview, and offer restart-specific guidance; do not show a generic retry.                                    |
+| Completed login/mutation has another non-null reason                                                                  | Reject the response as invalid managed-auth data.                                                                                                       |
+| Account removal preview fails                                                                                         | Do not expose the destructive confirmation.                                                                                                             |
+| Connection needs restart                                                                                              | Show saved/pending-restart separately; do not say the consumer is already using it.                                                                     |
+| Codex mutation completes with no pending restart                                                                      | Render the returned binding state; no Restart action does not itself mean connected, especially after disconnect.                                      |
+| Managed Agent summary is clicked                                                                                      | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session.                                                                      |
+| Access/refresh token, OAuth authorization code, PKCE verifier, raw state/command or unapproved path escapes its owner | Security regression; allowlisted device `userCode`/verification URI and parsed file-impact display metadata are intentional, not credentials to replay. |
+
+## 5. Good / Base / Bad Cases
+
+- **Good:** Codex displays selected OpenAI account metadata, `DeepSeek API` as
+  the current request source and `官方登录已保留` as separate facts; it does not
+  use credential presence alone as proof of native Codex pickup.
+- **Good:** login stores and reads back the credential, reports an account
+  saved with no connection ID, and performs no consumer-file projection. A
+  separately confirmed connection can then report `pending_restart`; storage,
+  connection and live consumer pickup remain distinct facts.
+- **Base:** OpenAI login snapshots come from backend sessions. Browser PKCE and
+  Device Code can complete an account after SecretRef readback. Codex file
+  projection is capability-gated by effective store, complete material, and
+  live identity readback. A ready credential with a different or missing live
+  identity is saved-not-projected / disconnected, never connected.
+- **Base:** OpenCode Path B file write + readback is not a live Desktop
+  connection. Show `pending_restart` / “等待重启”. Do not show `已连接`
+  while `OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN` is false.
+- **Bad:** display `已登录` because an account record exists, display `已连接`
+  because a file write returned, or display `OpenAI Official` while the active
+  provider is third-party.
+- **Bad:** restore the deleted AuthCenterPanel, Settings auth tab or Provider
+  OAuth sections as a second account owner. Only retained native compatibility
+  commands remain; mutation commands fail with `legacy_auth_mutation_disabled`.
+  A compatibility API is not evidence of an existing renderer picker or login UI.
+
+## 6. Tests Required
+
+```bash
+mise run lint
+mise run typecheck
+mise run test:unit
+mise run test:browser
+mise run build:renderer
+```
+
+Required assertions include:
+
+- all valid closed overview/session/mutation variants and strict rejection of
+  unknown keys, invalid references, malformed revisions and forbidden fields;
+- maximum-eight/unique session parsing plus backend per-provider single-flight
+  and cross-provider coexistence;
+- Tauri command/payload mapping and request/response identity binding;
+- `/auth` routing, navigation selection, primary-route keep-alive and browser
+  native-only behavior;
+- account/connection/request-source separation, login recovery, device-code
+  copy, destructive preview, readback-only success and pending-restart states;
+- stale account/OpenCode mutations reread before retry; Codex/Grok metadata
+  actions render only the returned overview and tests do not claim full CAS;
+- Codex `disconnected` with a saved account is presented as “账号已保存”, not
+  “已连接”, and is never counted as native pickup/HIL;
+- strict parsers accept completed login/mutation responses with only null or
+  `pending_restart`, reject every other completed/non-null reason, and keep
+  pending restart distinct from generic retry;
+- account detail lists matching unlinked slots and exposes connect/switch from
+  that page, including a saved-only Codex card that already names this
+  account (“用此账号连接”); purpose-mismatch Codex slots start
+  `connect_consumer` login with no `accountId`;
+- a connection `targetId` of `null` does not render “未检测到可管理的安装实例”;
+- ConnectionActionDialog stays mounted with `open={connection && action}`;
+  its account selection resets only when connection/action/preferred-account
+  scope changes, without a state-setting layout effect or remounting Dialog.
+  `MutationDialogs.test.tsx` covers reopen selection, same-tick double confirm,
+  consumed-preview rejection across reopen and a fresh-preview retry;
+  the auth page does not wrap it in `{connectionAction && …}`; pending footer
+  copy does not overlap 「取消」;
+- a disconnected Codex slot that advertises `disconnect` is labeled
+  「恢复第三方模型来源」;
+- managed Agent cards navigate to the central page while Claude and desktop
+  handoff retain their existing owner;
+- current renderer code has no retired Provider OAuth or Settings account
+  entry; native `commands/auth.rs` and `commands/copilot.rs` tests prove retained
+  mutation compatibility commands fail closed with `legacy_auth_mutation_disabled`;
+- keyboard/focus/ARIA, narrow viewport and reduced-motion behavior;
+- overview `reasonCodes` render closed-set recovery copy
+  (`secret_unavailable`, `migration_blocked`, `pending_restart`,
+  `external_change_detected`) plus a refresh action, never a generic
+  “temporarily unavailable” banner;
+- login-session polling stops while the persistent `/auth` route is hidden
+  and resumes without starting a second session.
+
+Browser and mock tests prove renderer behavior only. Real OAuth, OS keyring,
+consumer projection, token renewal and restart evidence require the native/HIL
+matrix in the backend owner.
+
+## 7. Wrong vs Correct
+
+Wrong:
+
+```ts
+const result = await invoke("login", { url, callback, token });
+queryClient.setQueryData(["auth"], { loggedIn: true });
+```
+
+Correct:
+
+```ts
+const session = await ports.managedAuth.startLogin({
+  provider: "openai",
+  purpose: "connect_consumer",
+  consumer: "codex",
+  method: "browser_loopback",
+  accountId: null,
+});
+
+// One session hook resumes/polls the opaque session ID. A terminal mutation
+// result replaces the overview only after strict parsing of native readback.
+```
+
+Wrong:
+
+```tsx
+if (!open) return null;
+return (
+  <Dialog
+    open={open}
+    originRef={originRef}
+    onOpenChange={onOpenChange}
+    title="确认操作"
+  />
+);
+```
+
+Correct:
+
+```tsx
+return (
+  <Dialog
+    open={open}
+    originRef={originRef}
+    onOpenChange={onOpenChange}
+    title="确认操作"
+  />
+);
+```
+
+Abruptly unmounting an unprotected wrapper bypasses the reviewed exit lifetime.
+Controlled wrappers stay mounted; conditional editors follow the propagated
+presence/fresh-session rules in [Dialog Lifecycle](./dialog-lifecycle.md).

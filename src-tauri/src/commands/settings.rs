@@ -53,6 +53,7 @@ fn merge_settings_for_save(
     incoming.current_provider_opencode = existing.current_provider_opencode.clone();
     incoming.current_provider_openclaw = existing.current_provider_openclaw.clone();
     incoming.current_provider_hermes = existing.current_provider_hermes.clone();
+    incoming.appearance_theme = existing.appearance_theme.clone();
     incoming
 }
 
@@ -641,6 +642,22 @@ mod tests {
             merged.current_provider_hermes.as_deref(),
             Some("latest-hermes")
         );
+    }
+
+    #[test]
+    fn save_settings_should_preserve_existing_appearance_theme() {
+        let existing = AppSettings {
+            appearance_theme: Some("dark".to_string()),
+            ..AppSettings::default()
+        };
+        let incoming = AppSettings {
+            appearance_theme: Some("light".to_string()),
+            ..AppSettings::default()
+        };
+
+        let merged = merge_settings_for_save(incoming, &existing);
+
+        assert_eq!(merged.appearance_theme.as_deref(), Some("dark"));
     }
 
     #[test]

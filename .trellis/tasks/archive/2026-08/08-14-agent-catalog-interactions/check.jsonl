@@ -1,6 +1,6 @@
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"Check V2 dependency direction, platform-only Tauri imports, responsive geometry and non-authoritative browser behavior."}
-{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Check exact catalog contract, official actions, local assets, five-candidate order and Models integration."}
-{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Check six-app assignment IDs, exactly one panel, icons, switches and responsive behavior."}
+{"file":".trellis/spec/frontend/shell.md","reason":"Check V2 dependency direction, platform-only Tauri imports, responsive geometry and non-authoritative browser behavior."}
+{"file":".trellis/spec/frontend/agent-models.md","reason":"Check exact catalog contract, official actions, local assets, five-candidate order and Models integration."}
+{"file":".trellis/spec/frontend/skills-mcp.md","reason":"Check six-app assignment IDs, exactly one panel, icons, switches and responsive behavior."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Check Rust/TypeScript wire agreement and runtime parsing at the owner boundary."}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check accessibility, focused/full tests, desktop mock claims and visual evidence boundaries."}
 {"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Check fixed installer command surface, snapshot ordering, progress units, redaction and security invariants."}

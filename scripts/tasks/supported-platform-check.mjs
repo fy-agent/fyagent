@@ -227,15 +227,7 @@ const DIRECTORY_PATH_RULE = Object.freeze({
 });
 
 const ARCHIVE_PREFIX = ".trellis/tasks/archive/";
-export const GENERATED_STANDALONE_PREVIEW_PATH = "FyAgent-前端交互预览.html";
-// The standalone preview is deterministic compiled output. Exclude only its
-// generated body; its exact root filename is still inspected, while the V2
-// source tree and build generator remain in the ordinary text scan.
-const TEXT_EXCLUSIONS = new Set([
-  "pnpm-lock.yaml",
-  "src-tauri/Cargo.lock",
-  GENERATED_STANDALONE_PREVIEW_PATH,
-]);
+const TEXT_EXCLUSIONS = new Set(["pnpm-lock.yaml", "src-tauri/Cargo.lock"]);
 export const ACTIVE_TASK_ENV = "FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK";
 export const DEVELOPMENT_HOST_ADMISSION_PATHS = Object.freeze([
   "mise.lock",
@@ -340,8 +332,45 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     id: "macos-deployer-non-macos-rejection",
     file: "src-tauri/src/agent_install/macos.rs",
     condition: '#[cfg(not(target_os = "macos"))]',
-    next: "pub(super) fn deploy_macos_dmg<BeforeCommit, BeforeVerify>(",
+    next: "pub(super) fn deploy_macos_dmg<CommitStage, BeforeVerify>(",
     nextPrefix: true,
+  }),
+  Object.freeze({
+    id: "macos-system-commit-unlinked-fallback",
+    file: "src-tauri/src/macos_system_commit/ffi.rs",
+    condition:
+      '#[cfg(not(all( target_os = "macos", feature = "macos-privileged-client", any( fyagent_macos_system_commit_mode = "development", fyagent_macos_system_commit_mode = "formal" ) )))]',
+    next: 'target_os = "macos",',
+  }),
+  Object.freeze({
+    id: "desktop-plist-non-macos-stub",
+    file: "src-tauri/src/agent_install/desktop.rs",
+    condition: '#[cfg(not(any(target_os = "macos", test)))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "codex-bundle-plist-non-macos-stub",
+    file: "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
+    condition: '#[cfg(not(target_os = "macos"))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "codex-bundle-launch-test-or-non-macos",
+    file: "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
+    condition: '#[cfg(any(not(target_os = "macos"), test))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-latest-non-macos-npm",
+    file: "src-tauri/src/services/tooling/versions.rs",
+    condition: '#[cfg(not(target_os = "macos"))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-native-install-unsupported-host",
+    file: "src-tauri/src/services/tooling.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "{",
   }),
   Object.freeze({
     id: "windows-inventory-test-host-fallback",
@@ -349,6 +378,93 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     condition: '#[cfg(not(target_os = "windows"))]',
     next: "pub(super) fn discover_windows_installations(",
     nextPrefix: true,
+  }),
+  Object.freeze({
+    id: "opencode-data-dir-unsupported-host",
+    file: "src-tauri/src/opencode_config.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "pub(crate) fn get_opencode_data_dir() -> PathBuf {",
+  }),
+  Object.freeze({
+    id: "grok-auth-lock-acquire-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-auth-lock-try-acquire-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-auth-lock-drop-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-auth-json-atomic-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-auth-lock-contention-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-auth-lock-contention-non-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(not(unix))]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "opencode-auth-json-mode-assert-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/opencode.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "codex-auth-json-mode-assert-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/codex/swap.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "openai-browser-unsupported-host",
+    file: "src-tauri/src/services/managed_auth/providers/openai.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "secret-unavailable-backend-export",
+    file: "src-tauri/src/services/secret/mod.rs",
+    condition:
+      '#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]',
+    next: "pub(crate) use platform::UnavailableSecretBackend;",
+  }),
+  Object.freeze({
+    id: "secret-unavailable-platform-mod",
+    file: "src-tauri/src/services/secret/platform/mod.rs",
+    condition:
+      '#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]',
+    next: "mod unavailable;",
+  }),
+  Object.freeze({
+    id: "secret-native-backend-unsupported-host",
+    file: "src-tauri/src/services/secret/platform/mod.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "pub(crate) use unavailable::UnavailableSecretBackend as NativeSecretBackend;",
+  }),
+  Object.freeze({
+    id: "secret-unavailable-backend-reexport",
+    file: "src-tauri/src/services/secret/platform/mod.rs",
+    condition:
+      '#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]',
+    next: "pub(crate) use unavailable::UnavailableSecretBackend;",
   }),
 ]);
 const RUST_CFG_MACRO_CONTRACT = Object.freeze(
@@ -474,10 +590,18 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      'cfg!(target_os="macos")',
+      '!cfg!(target_os="macos")',
       1,
       [
-        'let update_requires_authorization = cfg!(target_os = "macos") && evidence.scope == InstallationScope::AllUsers;',
+        'if !cfg!(target_os = "macos") || scope != InstallationScope::AllUsers { return (true, None); }',
+      ],
+    ],
+    [
+      "src-tauri/src/macos_system_commit/ffi.rs",
+      'cfg!(all(target_os="macos",feature="macos-privileged-client",any(fyagent_macos_system_commit_mode="development",fyagent_macos_system_commit_mode="formal")))',
+      1,
+      [
+        'pub const fn linked() -> bool { cfg!(all( target_os = "macos", feature = "macos-privileged-client", any( fyagent_macos_system_commit_mode = "development", fyagent_macos_system_commit_mode = "formal" ) )) }',
       ],
     ],
     [
@@ -485,7 +609,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       'cfg!(target_os="macos")',
       1,
       [
-        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows);',
+        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows && desktop::windows_exe_install_admitted(agent_id));',
       ],
     ],
     [
@@ -493,7 +617,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       'cfg!(target_os="windows")',
       1,
       [
-        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows);',
+        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows && desktop::windows_exe_install_admitted(agent_id));',
       ],
     ],
   ].map(([file, expression, count, anchors]) =>
@@ -544,7 +668,7 @@ const MANUAL_TARGET_MARKER = combine("CARGO_CFG_TARGET_", "OS");
 export const RUST_MANUAL_TARGET_CONTRACT = Object.freeze([
   Object.freeze({
     file: "src-tauri/build.rs",
-    count: 1,
+    count: 2,
     snippet: `
       let target_os = std::env::var("${MANUAL_TARGET_MARKER}").unwrap_or_default();
       match target_os.as_str() {
@@ -1085,6 +1209,14 @@ export const STRUCTURE_ASSET_CONTRACT = loadStructureAssetManifest();
 const STRUCTURE_ASSET_DIGESTS = new Map(
   STRUCTURE_ASSET_CONTRACT.map((asset) => [asset.path, asset.digest]),
 );
+export const STRUCTURE_ASSET_EXECUTABLES = Object.freeze([
+  "scripts/tasks/macos-signed-dev-cargo.mjs",
+]);
+const STRUCTURE_ASSET_EXECUTABLE_SET = new Set(STRUCTURE_ASSET_EXECUTABLES);
+
+function expectedStructureAssetMode(relativePath) {
+  return STRUCTURE_ASSET_EXECUTABLE_SET.has(relativePath) ? "100755" : "100644";
+}
 
 function structureSourceCandidate(relativePath, source) {
   const basename = path.posix.basename(relativePath);
@@ -1092,9 +1224,8 @@ function structureSourceCandidate(relativePath, source) {
   return PLATFORM_STRUCTURE_PATTERN.test(source);
 }
 
-export function validateStructureAssetInventory(
+export function collectStructureAssetCandidates(
   currentPaths,
-  indexModes,
   { root = ROOT, io = fs, activeTask } = {},
 ) {
   const candidates = [];
@@ -1114,10 +1245,6 @@ export function validateStructureAssetInventory(
     try {
       stat = io.lstatSync(absolute);
     } catch (error) {
-      // `git ls-files --cached` includes tracked deletions until the caller
-      // stages them. Treat an absent working-tree path as deleted; a deleted
-      // sealed candidate still fails below when the candidate inventory no
-      // longer matches the reviewed manifest.
       if (error && typeof error === "object" && error.code === "ENOENT") {
         continue;
       }
@@ -1135,6 +1262,18 @@ export function validateStructureAssetInventory(
     buffers.set(relativePath, buffer);
   }
   candidates.sort((left, right) => left.localeCompare(right, "en"));
+  return { candidates, buffers };
+}
+
+export function validateStructureAssetInventory(
+  currentPaths,
+  indexModes,
+  { root = ROOT, io = fs, activeTask } = {},
+) {
+  const { candidates, buffers } = collectStructureAssetCandidates(
+    currentPaths,
+    { root, io, activeTask },
+  );
   const expected = STRUCTURE_ASSET_CONTRACT.map((asset) => asset.path);
   if (
     candidates.length !== expected.length ||
@@ -1143,9 +1282,10 @@ export function validateStructureAssetInventory(
     throw new Error("Supported-platform structure candidate inventory drifted");
   }
   for (const relativePath of candidates) {
-    if (indexModes.get(relativePath) !== "100644") {
+    const expectedMode = expectedStructureAssetMode(relativePath);
+    if (indexModes.get(relativePath) !== expectedMode) {
       throw new Error(
-        `Structure asset must have Git index mode 100644: ${relativePath}`,
+        `Structure asset must have Git index mode ${expectedMode}: ${relativePath}`,
       );
     }
     const digest = createHash("sha256")
@@ -2644,16 +2784,7 @@ const WINDOWS_HELPER_SELECTOR =
 const MACOS_HELPER_SELECTOR =
   "(?:[A-Za-z_$][\\w$]*\\s*(?:\\?\\.|\\.)\\s*)*isMac(?:OS)?\\s*(?:\\?\\.)?\\s*\\([^)]*\\)";
 
-const JAVASCRIPT_PLATFORM_EXPRESSION_CONTRACT = Object.freeze([
-  Object.freeze({
-    file: "src/App.tsx",
-    expression: "const DEFAULT_DRAG_BAR_HEIGHT = isMac() ? 28 : 0",
-  }),
-  Object.freeze({
-    file: "src/components/common/FullScreenPanel.tsx",
-    expression: "const DRAG_BAR_HEIGHT = isMac() ? 28 : 0",
-  }),
-]);
+const JAVASCRIPT_PLATFORM_EXPRESSION_CONTRACT = Object.freeze([]);
 
 function isApprovedJavaScriptPlatformExpression(entry, expression) {
   const normalizedExpression = expression.replace(/\s+/gu, " ").trim();
@@ -2926,7 +3057,9 @@ export function scanJavaScriptImplicitPredicates(entries) {
       if (conditionEnd === undefined) continue;
       const condition = source.slice(conditionStart + 1, conditionEnd);
       if (
-        !new RegExp(`^\s*${PROCESS_PLATFORM_SELECTOR}\s*$`, "u").test(condition)
+        !new RegExp(`^\\s*${PROCESS_PLATFORM_SELECTOR}\\s*$`, "u").test(
+          condition,
+        )
       ) {
         continue;
       }
