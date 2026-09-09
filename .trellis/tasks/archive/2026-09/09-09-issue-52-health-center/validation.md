@@ -69,7 +69,7 @@ TRELLIS_CONTEXT_ID=01a086ce-0347-7ce3-827a-018f8952006a mise run python:run -- m
 ## 工作树与交付
 
 原工作树的分支、HEAD、状态列表和 tracked diff 摘要均与任务开始一致，回执见 [original-worktree-readback.json](evidence/original-worktree-readback.json)。
-工作分支提交与 PR 地址在 `task.json` 记录；交付最后一步核对远程 HEAD。
+功能提交 `7bd07e72211dd295cf0c474f40727e0121aba06a` 已推送，交付 [PR #187](https://github.com/fy-agent/fyagent/pull/187)（draft）。最终归档与日志提交也推送同一工作分支；远程 CI 结果以该 PR Checks 为准。
 
 ## 证据边界
 
