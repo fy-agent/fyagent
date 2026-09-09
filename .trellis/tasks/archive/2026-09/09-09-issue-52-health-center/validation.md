@@ -49,7 +49,7 @@ TRELLIS_CONTEXT_ID=01a086ce-0347-7ce3-827a-018f8952006a mise run python:run -- m
 
 以上导航及失败动画采样均无 long task。主线导航 42 次、分支 48 次，差异来自新增第八个主页面。失败动画访问账号页面；本次没有修改该动画实现。保留基线限制，按 PRD 的功能、只读、构建/导航和原生交互范围交付 #52，不扩展修改无关动画。
 
-可移植摘要：[performance-summary.json](evidence/performance-summary.json)。原始日志：`/tmp/fyagent-issue-52-performance-baseline.log`、`/tmp/fyagent-issue-52-performance-final.log`。首次分支采样也失败相同两项，日志和 trace 保留在 `/tmp/fyagent-issue-52-performance.log` 与 `/tmp/fyagent-issue-52-performance-first/`。
+可移植摘要：[performance-summary.json](research/performance-summary.json)。原始日志：`/tmp/fyagent-issue-52-performance-baseline.log`、`/tmp/fyagent-issue-52-performance-final.log`。首次分支采样也失败相同两项，日志和 trace 保留在 `/tmp/fyagent-issue-52-performance.log` 与 `/tmp/fyagent-issue-52-performance-first/`。
 
 ## macOS 原生与独立回读
 
@@ -59,17 +59,17 @@ TRELLIS_CONTEXT_ID=01a086ce-0347-7ce3-827a-018f8952006a mise run python:run -- m
 2. 检查全部软件，7/7 更新：Codex、Claude Code 本机检查正常，其余五项尚未配置。
 3. 外部将测试 TOML 改为无效格式，重新检查后 Codex 变为暂不可用，显示固定配置格式原因；检查没有修改无效文件。
 4. 恢复原测试文件，点击配置处理入口到 `#/models?target=codex`，返回运行状态后自动重读并恢复正常。排序变化后没有错误高亮；滚动到 Codex 时高亮与实际选中项一致。
-5. 独立比对 6 份配置 SHA-256、25 张业务表的数据摘要及 TRAE 目录项，均与本次启动后的基线一致，TRAE 没有生成 WAL/SHM/journal。最终回执见 [native-readback.json](evidence/native-readback.json)。
+5. 独立比对 6 份配置 SHA-256、25 张业务表的数据摘要及 TRAE 目录项，均与本次启动后的基线一致，TRAE 没有生成 WAL/SHM/journal。最终回执见 [native-readback.json](research/native-readback.json)。
 6. 退出隔离测试进程并独立确认退出；重新打开原 `/Applications/FyAgent.app`，没有覆盖安装包。
 
 最终原生截图（隔离测试数据）：
 
-![恢复正常后的 Codex 运行状态与选中高亮](evidence/native-health-recovered.png)
+![恢复正常后的 Codex 运行状态与选中高亮](../../../../../docs/images/health-center/native-health-recovered.png)
 
 ## 工作树与交付
 
-原工作树的分支、HEAD、状态列表和 tracked diff 摘要均与任务开始一致，回执见 [original-worktree-readback.json](evidence/original-worktree-readback.json)。
-功能提交 `7bd07e72211dd295cf0c474f40727e0121aba06a` 已推送，交付 [PR #187](https://github.com/fy-agent/fyagent/pull/187)（draft）。最终归档与日志提交也推送同一工作分支；远程 CI 结果以该 PR Checks 为准。
+原工作树的分支、HEAD、状态列表和 tracked diff 摘要均与任务开始一致，回执见 [original-worktree-readback.json](research/original-worktree-readback.json)。
+功能提交 `7bd07e72211dd295cf0c474f40727e0121aba06a` 已推送，交付 [PR #187](https://github.com/fy-agent/fyagent/pull/187)（draft）。最终归档与日志提交也推送同一工作分支；远程 CI 结果以该 PR Checks 为准。归档格式核对发现附件目录不符合既有白名单，已将 JSON 回执移至 research、原生截图移至 docs/images 并登记准确摘要，未放宽归档或素材检查。归档后的 `mise run python:run -- mise run check:contracts` 已通过，日志为 `/tmp/fyagent-issue-52-postarchive-contracts-final.log`。
 
 ## 证据边界
 
