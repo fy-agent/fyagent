@@ -96,7 +96,8 @@ misrepresented as implemented by administrative task completion.
 
 ## Delivery record
 
-At the time of this work record, GitHub delivery is pending. The replacement
-pull request's checks, merge queue receipt and merge commit are the authority
+The replacement PR is https://github.com/fy-agent/fyagent/pull/186. At the time
+of this work record, GitHub delivery is pending. Its checks, merge queue receipt
+and merge commit are the authority
 for remote delivery. Cleanup must follow actual main inclusion, not a local
 commit or an auto-merge request. Do not infer live-account acceptance from CI.

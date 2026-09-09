@@ -27,6 +27,7 @@
   "relatedFiles": [],
   "notes": "2026-09-08: resume original branch; local-only existing engine; implementation/tests/PR authorized. Current parent artifacts supersede old child execution instructions.",
   "meta": {
+    "delivery_pr": "https://github.com/fy-agent/fyagent/pull/186",
     "child_plan_resolution": "superseded by this task's 2026-09-08 revision",
     "closeout_task": "09-09-pr185-ci-closeout"
   }
