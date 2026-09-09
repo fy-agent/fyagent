@@ -2,7 +2,7 @@
 
 # Design — Grok login trichotomy
 
-先读父任务 [summary.md](../archive/2026-09/08-31-grok-first-class-iteration/summary.md)。事实和行号见 `research/current-login-surfaces.md`。用例见 [use-cases.md](./use-cases.md)。
+先读父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md)。事实和行号见 `research/current-login-surfaces.md`。用例见 [use-cases.md](./use-cases.md)。
 
 ## 边界
 

@@ -2,7 +2,7 @@
 
 # Clarify Grok login trichotomy
 
-先读父任务 [summary.md](../archive/2026-09/08-31-grok-first-class-iteration/summary.md)。用例：[use-cases.md](./use-cases.md)。本子任务只立登录路标，不把 SuperGrok 写进 Claude / Codex / WorkBuddy。
+先读父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md)。用例：[use-cases.md](./use-cases.md)。本子任务只立登录路标，不把 SuperGrok 写进 Claude / Codex / WorkBuddy。
 
 ## Goal
 

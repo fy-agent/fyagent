@@ -2,7 +2,7 @@
 
 # Implement — Grok login trichotomy
 
-先读 [design.md](./design.md) 和 [use-cases.md](./use-cases.md)。父任务 [summary.md](../archive/2026-09/08-31-grok-first-class-iteration/summary.md) 是对齐源。
+先读 [design.md](./design.md) 和 [use-cases.md](./use-cases.md)。父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md) 是对齐源。
 
 依赖：无。投放窗口可以并行读材料，但不要在本窗口的路标立好前，把 Codex 文案改成叫人去跑 `grok login`。
 

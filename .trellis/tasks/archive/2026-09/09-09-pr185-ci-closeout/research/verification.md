@@ -50,6 +50,42 @@ visual preflight also passed. No timeout, concurrency setting or retry policy
 was changed to achieve that result. Prearchive repository contracts exited 0.
 The earlier timed-out run remains a failure in this record.
 
+## Main integration and final browser rerun
+
+Integrated main `5581412ca1850086c103ba1ccbba2eb30f05a50c` (PR #184) with a
+normal merge commit `95ca1e8f`. Only the Codex journal index conflicted; the
+automatic journal body merge had also combined unrelated commit tables.
+Both independently authored session bodies were compared against their branch
+versions and preserved exactly, including separate commits and fingerprints.
+
+The final affected browser rerun, now including the scan lifecycle correction
+and the stronger positive sample-count assertion, passed 64/64. All four
+Chromium viewports and WebKit passed. No timing or contrast threshold changed.
+
+## Archive scope and existing context warning
+
+All three superseded plans and this repair were moved by the existing Trellis
+archive command, after the fix/spec commits. Six historical research manifest
+paths, nine parent-document links and this task's source manifest were updated
+for relocation; original historical evidence and unchecked old acceptance
+items were retained. The original parent was already archived and was not
+archived twice.
+
+All five completed task records, 85 executable manifest references and local
+navigation links resolve. After staging the moved ordinary Git files, the full
+`mise run check:contracts` gate passed with no active-task exclusion: its release
+contract suite passed 616 tests (one existing skip), followed by 4 native-fetch
+tests. The gate checks archive index modes as well as filesystem paths, so an
+untracked archive move is not treated as a valid staged delivery tree.
+
+Parent context validation still reports the pre-existing, unchanged-on-main
+`backend/codex-provider-configuration.md` at 37,994 bytes above the 32,768-byte
+per-file injection limit. Its path remains valid; do not interpret a context
+injection as a full read of that file. This repair splits the Models contract
+grown by #185, but does not restructure unrelated pre-existing backend specs or
+raise the shared limit merely to hide a warning. Recorded source branches not
+checked out locally also warn; their original commit and PR provenance is kept.
+
 ## Scope of evidence
 
 Browser/renderer tests use synthetic IPC/credentials. They do not demonstrate

@@ -8,11 +8,16 @@
 - [x] Update the surface contract and reconcile the original parent/child task metadata.
 - [x] Split the oversized Models owner into a focused Grok subscription spec and update its index/manifests.
 - [x] Add four failing lifecycle regressions and repair the unmounted/StrictMode scan races exposed by full frontend validation.
-- [ ] Rebase executable research references and relative links when the task directories move.
-- [ ] Commit implementation/spec changes before archiving the obsolete child plans and this repair task.
-- [ ] Validate the archived tree with no active-task exclusion; record the session.
-- [ ] Push and open a replacement PR; follow current required checks and merge policy to actual main inclusion.
-- [ ] Close #185 and safely clean only eligible remote refs and local leftovers.
+- [x] Rebase the three historical plans' executable research references and relative links when their task directories move.
+- [x] Commit implementation/spec changes before archiving the obsolete child plans and this repair task.
+- [x] Validate the archived tree with no active-task exclusion.
+
+The journal entry is generated after this archive commit by `add_session.py`,
+using the three implementation/spec commits rather than archival commit IDs.
+Remote delivery after the archive commit: push the replacement PR, follow
+required CI and merge-queue checks through actual main inclusion, close #185,
+then verify eligible ref/worktree cleanup. Record receipts on that PR; none of
+these external operations is claimed by a pre-push checkbox.
 
 ## Validation
 

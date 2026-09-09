@@ -1,0 +1,40 @@
+{
+  "id": "pr185-ci-closeout",
+  "name": "pr185-ci-closeout",
+  "title": "Repair PR 185 CI and close out Grok task records",
+  "description": "Restore the failing WebKit contrast contract without weakening gates, reconcile superseded task records, and deliver a replacement pull request to main.",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "agents",
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-09",
+  "completedAt": "2026-09-09",
+  "branch": "fix/grok-pr185-ci-closeout",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "98d57692",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/pages/agents/Page.css",
+    "src/pages/agents/useAgentDirectoryScan.ts",
+    "tests/browser/blue-themes.spec.ts",
+    "tests/renderer/pages/agents/useAgentDirectoryScan.test.ts",
+    ".trellis/spec/frontend/grok-subscription.md"
+  ],
+  "notes": "Local implementation and task archival are verified here. Remote CI, main inclusion and cleanup receipts are recorded on the replacement PR; an archived local task is not a claim that remote delivery has already occurred.",
+  "meta": {
+    "source_pr": "185",
+    "implementation_commits": [
+      "46e378e8",
+      "ac458fcb",
+      "98d57692"
+    ],
+    "integrated_main": "5581412ca1850086c103ba1ccbba2eb30f05a50c"
+  }
+}

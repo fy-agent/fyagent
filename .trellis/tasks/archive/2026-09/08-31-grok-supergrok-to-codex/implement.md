@@ -2,7 +2,7 @@
 
 # Implement — SuperGrok to Claude / Desktop / Codex
 
-先读 [design.md](./design.md) 和 [use-cases.md](./use-cases.md)。对齐源：父任务 [summary.md](../archive/2026-09/08-31-grok-first-class-iteration/summary.md)。
+先读 [design.md](./design.md) 和 [use-cases.md](./use-cases.md)。对齐源：父任务 [summary.md](../08-31-grok-first-class-iteration/summary.md)。
 
 依赖：登录窗口的路标不要把扫码说成 `grok login`。本窗口可以先改准入，但新界面文案要和登录窗口一致。
 

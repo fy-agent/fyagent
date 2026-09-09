@@ -1,6 +1,6 @@
 {"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "No verified Grok login"}
 {"file": ".trellis/spec/frontend/models.md", "reason": "Reject login controls on Models Quick Setup"}
-{"file": ".trellis/tasks/08-31-grok-login-trichotomy/research/current-login-surfaces.md", "reason": "Do not start device-code from Agent Auth"}
+{"file": ".trellis/tasks/archive/2026-09/08-31-grok-login-trichotomy/research/current-login-surfaces.md", "reason": "Do not start device-code from Agent Auth"}
 {"file": ".trellis/tasks/archive/2026-09/08-31-grok-first-class-iteration/summary.md", "reason": "Reject copy that mixes the three roads"}
 {"file": ".trellis/tasks/archive/2026-09/08-31-grok-first-class-iteration/research/hil-matrix.md", "reason": "Login live cases on both machines"}
 {"file": ".trellis/spec/frontend/grok-subscription.md", "reason": "Current explicit-account Grok binding, readback and supported-target contract"}

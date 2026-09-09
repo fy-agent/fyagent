@@ -14,14 +14,21 @@ Restore the failing WebKit contrast contract without weakening gates, reconcile 
 - Deliver a replacement PR through normal required checks into main; only then close #185 and clean up demonstrably unused branches and this session's worktree.
 - Preserve main, dev/laiyongjie, branches related to open PRs, concurrent work, and active repository infrastructure.
 
-## Acceptance Criteria
+## Local acceptance before archival
 
-- [ ] The original failure is evidenced and an unchanged-threshold regression passes in Chromium and WebKit.
-- [ ] Frontend and repository contract checks pass; the replacement PR's required CI passes without overrides.
-- [ ] Current specs describe the corrected behavior; all four original Grok task records have valid metadata, relationships and explicit dispositions.
-- [ ] The closeout task is verified, committed and archived using the existing Trellis lifecycle.
-- [ ] GitHub confirms the replacement PR is merged into main and #185 is closed with a replacement reference.
-- [ ] Cleanup is verified against fresh PR/ref/worktree state, without deleting concurrent modifications or breaking active repository assets.
+- [x] The original failure is evidenced and an unchanged-threshold regression passes in Chromium and WebKit.
+- [x] Frontend and prearchive repository contract checks pass without weakening a gate.
+- [x] Current specs describe the corrected behavior; all four original Grok task records have valid metadata, relationships and explicit dispositions.
+- [x] Fixes and specs are committed before the existing Trellis archive lifecycle; moved executable references are repaired and revalidated.
+
+## Remote delivery gates
+
+These are completed against GitHub after the archived tree is pushed. Their
+receipts belong to the replacement PR, not a speculative pre-push commit:
+required CI and merge-queue checks pass without overrides; GitHub confirms
+actual main inclusion; #185 is closed with a replacement reference; cleanup is
+checked against fresh PR/ref/worktree state and preserves concurrent work and
+active repository assets. Local task archival is not evidence of remote merge.
 
 ## Scope limits
 
