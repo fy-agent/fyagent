@@ -40,6 +40,7 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 | [External Agent Auth](./agent-auth.md)                | Native auth observations, session ownership and safe handoff.                   |
 | [Managed Auth](./managed-auth.md)                     | Accounts/connections/request sources, login and impact confirmation.            |
 | [Models](./models.md)                                 | Drafts, connectivity, native save and existing model workflows.                 |
+| [Managed Grok Subscriptions](./grok-subscription.md)   | Explicit account/model binding, native readback and subscription scope.         |
 | [Assignments](./assignments.md)                       | Shared seven-target selection and serialized mutations.                         |
 | [Skills](./skills.md)                                 | Discovery, installed items, backups and assignment.                             |
 | [MCP](./mcp.md)                                       | Catalog/launch validation, CRUD, installation and assignment.                   |
@@ -59,6 +60,9 @@ unit tests. Run `mise run test:browser` for production boot and browser behavior
 and `mise run test:performance` serially for actual motion/navigation costs.
 Task/SPEC-only edits still run `mise run check:contracts`; active tasks use the
 exact task exclusion at prearchive, then validate effective context references.
+Required owner documents must fit `context_injection.max_file_bytes`: use
+`task.py validate` to detect truncation and split a cohesive feature contract
+rather than raising the limit or silently losing the end of a required spec.
 
 Migrations preserve native commands and persisted identities, update effective
 source/SPEC/CI/test references and explicitly account for retired UI assertions.

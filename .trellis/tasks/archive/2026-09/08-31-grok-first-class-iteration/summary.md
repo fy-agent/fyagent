@@ -10,6 +10,15 @@
 
 当前需求见 [prd.md](./prd.md)，实现合同见 [design.md](./design.md)，执行与检查见 [实施证据](./research/implementation-evidence-20260908.md)。
 
+## 2026-09-09 子计划结案
+
+原来的登录三分路、Claude/Desktop/Codex 放置、WorkBuddy 放置三个子计划
+已由本任务 2026-09-08 的修订范围取代。本次修复 PR #185 时补充来源分支、
+任务描述与明确的 `superseded` 结案记录，再通过 Trellis 脚本归档。
+旧 PRD 的未完成验收项保留；归档不代表 WorkBuddy 订阅、旧 Desktop 界面
+或双机真人验收已经完成。父任务归档时清空子任务 `parent` 是脚本的正常
+行为，替代关系另记在元数据和各子计划 summary 中。
+
 ---
 
 以下为原分支历史说明，已由上面的续作范围取代；保留用于理解原始意图。

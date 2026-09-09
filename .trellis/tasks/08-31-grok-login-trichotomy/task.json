@@ -2,7 +2,7 @@
   "id": "grok-login-trichotomy",
   "name": "grok-login-trichotomy",
   "title": "Clarify Grok login trichotomy for official subscription gate",
-  "description": "",
+  "description": "Historical plan separating official Grok CLI handoff, managed subscription login and API-key configuration; superseded by the September 8 parent revision.",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,
@@ -12,15 +12,21 @@
   "assignee": "codex",
   "createdAt": "2026-08-31",
   "completedAt": null,
-  "branch": null,
+  "branch": "feat/grok-first-class-iteration",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
-  "pr_url": null,
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/172",
   "subtasks": [],
   "children": [],
   "parent": null,
   "relatedFiles": [],
   "notes": "Historical 2026-08-31 subplan. Execution authority is the 2026-09-08 revision of grok-first-class-iteration. Do not reactivate legacy UI/JSON requirements. Original all-target/HIL acceptance is not claimed complete.",
-  "meta": {}
+  "meta": {
+    "resolution": "superseded",
+    "superseded_by": "08-31-grok-first-class-iteration (2026-09-08 revision)",
+    "source_commit": "b8b15dbaf141f7c7fbd7816914fda59a07a2208a",
+    "closeout_task": "09-09-pr185-ci-closeout",
+    "historical_acceptance_completed": false
+  }
 }

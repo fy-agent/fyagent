@@ -12,3 +12,4 @@
 {"file":".trellis/spec/frontend/change-plan-workspaces.md","reason":"Preview and apply behavior"}
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"DTO and native evidence"}
 {"file":".trellis/spec/backend/development-environment.md","reason":"Current toolchain and isolated validation"}
+{"file": ".trellis/spec/frontend/grok-subscription.md", "reason": "Current explicit-account Grok binding, readback and supported-target contract"}

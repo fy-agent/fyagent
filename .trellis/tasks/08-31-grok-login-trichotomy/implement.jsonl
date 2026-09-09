@@ -3,5 +3,6 @@
 {"file": ".trellis/spec/frontend/reuse.md", "reason": "Edit AgentAuthStatusPanel, do not fork"}
 {"file": ".trellis/spec/frontend/models.md", "reason": "Models Quick Setup is API key only; do not add login"}
 {"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse current auth owners"}
-{"file": ".trellis/tasks/08-31-grok-login-trichotomy/research/current-login-surfaces.md", "reason": "Current login surfaces and copy"}
+{"file": ".trellis/tasks/08-31-grok-login-trichotomy/research/current-login-surfaces.md", "reason": "Historical login research; do not reactivate retired surfaces"}
 {"file": ".trellis/tasks/archive/2026-09/08-31-grok-first-class-iteration/research/hil-matrix.md", "reason": "AT1-AT5 H1-H4 belong to this window"}
+{"file": ".trellis/spec/frontend/grok-subscription.md", "reason": "Current explicit-account Grok binding, readback and supported-target contract"}

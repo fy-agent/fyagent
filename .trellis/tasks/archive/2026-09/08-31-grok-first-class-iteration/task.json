@@ -2,7 +2,7 @@
   "id": "grok-first-class-iteration",
   "name": "grok-first-class-iteration",
   "title": "Complete local Grok subscription reuse in supported Agents",
-  "description": "",
+  "description": "Reuse existing managed Grok subscriptions in Claude Code and Codex through the local vault, native proxy and existing Change Plan workflow.",
   "status": "completed",
   "dev_type": null,
   "scope": null,
@@ -16,7 +16,7 @@
   "base_branch": "main",
   "worktree_path": null,
   "commit": "2e61af91b1677bfe584cc4908b00b53985555a92",
-  "pr_url": null,
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/185",
   "subtasks": [],
   "children": [
     "08-31-grok-login-trichotomy",
@@ -26,5 +26,8 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "2026-09-08: resume original branch; local-only existing engine; implementation/tests/PR authorized. Current parent artifacts supersede old child execution instructions.",
-  "meta": {}
+  "meta": {
+    "child_plan_resolution": "superseded by this task's 2026-09-08 revision",
+    "closeout_task": "09-09-pr185-ci-closeout"
+  }
 }
