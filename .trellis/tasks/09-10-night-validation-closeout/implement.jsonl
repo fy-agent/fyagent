@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Strict frontend test entrypoints and separate evidence layers"}
+{"file":".trellis/spec/backend/github-merge-governance.md","reason":"Exact PR head and protected main integration boundary"}

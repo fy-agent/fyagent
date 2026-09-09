@@ -1,6 +1,6 @@
 # Agent 运行状态与处理入口（#52）
 
-用户已授权拉取分支、比较方案、自主选择、创建目标并完整实现。基于 `11c13339`（与 `81e06aae` 文件树一致） 的隔离分支 `codex/issue-52-health-center`；原 `/Users/serendipity/fyagent` 的未提交工作保留。
+用户已授权拉取分支、比较方案、自主选择、创建目标并完整实现。基于 `11c13339`（与 `81e06aae` 文件树一致） 的隔离分支 `codex/issue-52-health-center`；原 `~/fyagent` 的未提交工作保留。
 
 ## 用户问题
 

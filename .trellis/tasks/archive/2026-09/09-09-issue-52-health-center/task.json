@@ -14,7 +14,7 @@
   "completedAt": "2026-09-10",
   "branch": "codex/issue-52-health-center",
   "base_branch": "main",
-  "worktree_path": "/Users/serendipity/.codex/worktrees/issue-52-health-center/fyagent",
+  "worktree_path": "~/.codex/worktrees/issue-52-health-center/fyagent",
   "commit": "7bd07e72211dd295cf0c474f40727e0121aba06a",
   "pr_url": "https://github.com/fy-agent/fyagent/pull/187",
   "subtasks": [],
