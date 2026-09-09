@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { installRichTauriFeatureFixture } from "./support/features";
 
 const routes = [
+  "health",
   "auth",
   "models",
   "skills",
@@ -12,7 +13,7 @@ const routes = [
   "agents",
 ];
 
-test("production boots all seven primary routes without initialization errors", async ({
+test("production boots all eight primary routes without initialization errors", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -136,7 +137,7 @@ for (const cpuRate of [1, 4]) {
       body: JSON.stringify(result, null, 2),
       contentType: "application/json",
     });
-    expect(returns).toHaveLength(42);
+    expect(returns).toHaveLength(routes.length * 6);
     if (cpuRate === 1) expect(result.p95).toBeLessThanOrEqual(100);
   });
 }

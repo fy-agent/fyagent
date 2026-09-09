@@ -10,7 +10,7 @@ use std::{collections::HashSet, path::PathBuf, sync::OnceLock};
 use std::path::Path;
 
 use hmac::{Hmac, Mac};
-use rusqlite::{params, types::ValueRef, Connection};
+use rusqlite::{params, types::ValueRef, Connection, OpenFlags};
 use serde::Serialize;
 use serde_json::{json, Value};
 use sha2::Sha256;
@@ -43,6 +43,8 @@ const WORK_LISTS: [&str; 10] = [
     CHAT_AGENT_LIST,
 ];
 const MAX_MODELS: usize = 1_000;
+const MAX_MODEL_MAP_BYTES: usize = 2 * 1024 * 1024;
+const MAX_MODEL_MAP_KEYS: usize = 128;
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -103,6 +105,86 @@ pub(crate) async fn get_traework_model_ids() -> Result<TraeWorkModelIdsResult, T
         .map_err(|_| TraeErrorDto::new(TraeErrorCode::StateUnavailable))?
 }
 
+/// Counts only custom-model records in the vendor-owned cache. These facts do
+/// not establish the selected model, vendor login or successful cloud usage.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct TraeWorkHealthMetadata {
+    pub cache_present: bool,
+    pub model_count: usize,
+    pub entry_count: usize,
+    pub credentials_present: usize,
+    pub endpoints_present: usize,
+    pub endpoints_valid: usize,
+}
+
+pub(crate) async fn health_metadata() -> Result<TraeWorkHealthMetadata, TraeErrorDto> {
+    let paths = current_paths();
+    tokio::task::spawn_blocking(move || health_metadata_at(&paths))
+        .await
+        .map_err(|_| TraeErrorDto::new(TraeErrorCode::StateUnavailable))?
+}
+
+fn health_metadata_at(paths: &TraePaths) -> Result<TraeWorkHealthMetadata, TraeErrorDto> {
+    let loaded = load_health_map(paths)?;
+    let mut facts = TraeWorkHealthMetadata {
+        cache_present: loaded.revision.is_some(),
+        model_count: project_custom_ids(&loaded.map)?.len(),
+        entry_count: 0,
+        credentials_present: 0,
+        endpoints_present: 0,
+        endpoints_valid: 0,
+    };
+    for list in present_work_lists(&loaded.map)? {
+        for row in list_rows(&loaded.map, list)? {
+            if is_preset_row(row) || row_model_id(row).is_none() {
+                continue;
+            }
+            facts.entry_count += 1;
+            let has_credential = ["ak", "sk"].iter().any(|key| {
+                row.get(key)
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.trim().is_empty())
+            });
+            if has_credential {
+                facts.credentials_present += 1;
+            }
+            if let Some(endpoint) = row
+                .get("base_url")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                facts.endpoints_present += 1;
+                // Syntax-only projection; no DNS, endpoint request or API-key
+                // resolution. Vendor-owned authentication remains unknown.
+                if url::Url::parse(endpoint).is_ok_and(|url| {
+                    matches!(url.scheme(), "http" | "https")
+                        && url.host_str().is_some()
+                        && url.username().is_empty()
+                        && url.password().is_none()
+                        && url.query().is_none()
+                        && url.fragment().is_none()
+                }) {
+                    facts.endpoints_valid += 1;
+                }
+            }
+        }
+    }
+    Ok(facts)
+}
+
+fn open_model_cache_readonly(paths: &TraePaths) -> Result<Connection, TraeErrorDto> {
+    let connection = Connection::open_with_flags(
+        &paths.db,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|_| TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable))?;
+    connection
+        .busy_timeout(std::time::Duration::from_millis(100))
+        .map_err(|_| TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable))?;
+    Ok(connection)
+}
+
 pub(crate) fn get_traework_model_ids_at(
     paths: &TraePaths,
 ) -> Result<TraeWorkModelIdsResult, TraeErrorDto> {
@@ -122,15 +204,75 @@ struct LoadedMap {
 }
 
 fn load_map(paths: &TraePaths) -> Result<LoadedMap, TraeErrorDto> {
-    if !paths.db.exists() {
+    load_map_with_policy(paths, false)
+}
+
+fn health_cache_fingerprint(
+    paths: &TraePaths,
+) -> Result<Option<(u64, std::time::SystemTime)>, TraeErrorDto> {
+    // A read-only SQLite connection may create or update WAL shared memory.
+    // Reject active/recoverable journals before using immutable mode; never
+    // discard a valid WAL to report the checkpointed main database as current.
+    for suffix in ["-wal", "-journal", "-shm"] {
+        let mut sidecar = paths.db.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        match std::fs::symlink_metadata(PathBuf::from(sidecar)) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            _ => return Err(TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable)),
+        }
+    }
+    match std::fs::metadata(&paths.db) {
+        Ok(metadata) if metadata.is_file() => Ok(Some((
+            metadata.len(),
+            metadata
+                .modified()
+                .map_err(|_| TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable))?,
+        ))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        _ => Err(TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable)),
+    }
+}
+
+fn load_health_map(paths: &TraePaths) -> Result<LoadedMap, TraeErrorDto> {
+    let before = health_cache_fingerprint(paths)?;
+    let result = load_map_with_policy(paths, true)?;
+    if health_cache_fingerprint(paths)? != before {
+        return Err(TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable));
+    }
+    Ok(result)
+}
+
+fn load_map_with_policy(paths: &TraePaths, health: bool) -> Result<LoadedMap, TraeErrorDto> {
+    let exists = match std::fs::metadata(&paths.db) {
+        Ok(metadata) if metadata.is_file() => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        _ => return Err(TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable)),
+    };
+    if !exists {
         return Ok(LoadedMap {
             revision: None,
             map: empty_map(),
         });
     }
-    let connection = Connection::open(&paths.db)
-        .map_err(|_| TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable))?;
-    let keys = map_row_keys(&connection)
+    let connection = if health {
+        // The pre/post sidecar checks above fence immutable reads. This avoids
+        // creating user-side journals even if the vendor starts a WAL concurrently.
+        let mut uri = url::Url::from_file_path(&paths.db)
+            .map_err(|_| TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable))?;
+        uri.query_pairs_mut()
+            .append_pair("immutable", "1")
+            .append_pair("mode", "ro");
+        Connection::open_with_flags(
+            uri.as_str(),
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_URI
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(|_| TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable))?
+    } else {
+        open_model_cache_readonly(paths)?
+    };
+    let keys = map_row_keys(&connection, health)
         .map_err(|_| TraeErrorDto::new(TraeErrorCode::ModelsStoreUnavailable))?;
     let Some(key) = prefer_vendor_map_key(&keys) else {
         return Ok(LoadedMap {
@@ -139,9 +281,19 @@ fn load_map(paths: &TraePaths) -> Result<LoadedMap, TraeErrorDto> {
         });
     };
     let row = match connection.query_row(
-        &format!("SELECT value FROM {ITEM_TABLE} WHERE key = ?1"),
-        params![&key],
+        &format!(
+            "SELECT CASE WHEN ?2 IS NULL OR length(CAST(value AS BLOB)) <= ?2 THEN value END,
+                  length(CAST(value AS BLOB)) FROM {ITEM_TABLE} WHERE key = ?1"
+        ),
+        params![&key, health.then_some(MAX_MODEL_MAP_BYTES)],
         |row| {
+            if health
+                && row
+                    .get::<_, Option<usize>>(1)?
+                    .is_some_and(|length| length > MAX_MODEL_MAP_BYTES)
+            {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
             let value = match row.get_ref(0)? {
                 ValueRef::Null => Vec::new(),
                 ValueRef::Blob(bytes) | ValueRef::Text(bytes) => bytes.to_vec(),
@@ -184,12 +336,32 @@ fn load_map(paths: &TraePaths) -> Result<LoadedMap, TraeErrorDto> {
     })
 }
 
-fn map_row_keys(connection: &Connection) -> Result<Vec<String>, rusqlite::Error> {
-    let mut statement =
-        connection.prepare(&format!("SELECT key FROM {ITEM_TABLE} WHERE key LIKE ?1"))?;
+fn map_row_keys(connection: &Connection, health: bool) -> Result<Vec<String>, rusqlite::Error> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT key FROM {ITEM_TABLE} WHERE key LIKE ?1 ORDER BY key LIMIT ?2"
+    ))?;
     let keys = statement
-        .query_map(params![format!("%{MAP_SUFFIX}")], |row| row.get(0))?
+        .query_map(
+            params![
+                format!("%{MAP_SUFFIX}"),
+                if health {
+                    (MAX_MODEL_MAP_KEYS + 1) as i64
+                } else {
+                    -1
+                }
+            ],
+            |row| {
+                let key: String = row.get(0)?;
+                if health && key.len() > 512 {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                Ok(key)
+            },
+        )?
         .collect::<Result<Vec<String>, _>>()?;
+    if health && keys.len() > MAX_MODEL_MAP_KEYS {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
     Ok(keys)
 }
 
@@ -373,6 +545,193 @@ fn random_mac_key() -> [u8; 32] {
 mod tests {
     use super::*;
     use rusqlite::params;
+
+    #[test]
+    fn health_metadata_opens_readonly_preserves_bytes_and_never_creates_missing_cache() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let paths = TraePaths::from_home(temp.path());
+        let missing = health_metadata_at(&paths).unwrap();
+        assert!(!missing.cache_present);
+        assert!(!paths.db.parent().unwrap().exists());
+        assert!(open_model_cache_readonly(&paths).is_err());
+        assert!(!paths.db.exists());
+        write_fixture(
+            &paths,
+            &preset_and_custom("custom-safe", "fixture-private-key"),
+        );
+        let before = std::fs::read(&paths.db).unwrap();
+        let connection = open_model_cache_readonly(&paths).unwrap();
+        assert!(connection
+            .is_readonly(rusqlite::DatabaseName::Main)
+            .unwrap());
+        assert!(connection.execute("DELETE FROM ItemTable", []).is_err());
+        let facts = health_metadata_at(&paths).unwrap();
+        assert_eq!(
+            facts,
+            TraeWorkHealthMetadata {
+                cache_present: true,
+                model_count: 1,
+                entry_count: 1,
+                credentials_present: 1,
+                endpoints_present: 1,
+                endpoints_valid: 1
+            }
+        );
+        assert_eq!(std::fs::read(&paths.db).unwrap(), before);
+        assert_eq!(
+            std::fs::read_dir(paths.db.parent().unwrap())
+                .unwrap()
+                .count(),
+            1
+        );
+        let debug = format!("{facts:?}");
+        for sensitive in [
+            "fixture-private-key",
+            "PRESET-AK",
+            "PRESET-SK",
+            "custom-safe",
+            "api.example",
+            "machine:",
+            "state.vscdb",
+        ] {
+            assert!(!debug.contains(sensitive));
+        }
+    }
+
+    #[test]
+    fn health_metadata_handles_missing_keys_and_unsafe_connection_fields_without_echoing_them() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let paths = TraePaths::from_home(temp.path());
+        write_fixture(
+            &paths,
+            &json!({"solo_work_lite":[{"is_preset":false,"name":"custom-safe","ak":"","base_url":"https://private-user:private-password@example.test/v1"}],"solo_work_remote":[]}),
+        );
+        let facts = health_metadata_at(&paths).unwrap();
+        assert_eq!(facts.model_count, 1);
+        assert_eq!(facts.credentials_present, 0);
+        assert_eq!(facts.endpoints_present, 1);
+        assert_eq!(facts.endpoints_valid, 0);
+        let connection = Connection::open(&paths.db).unwrap();
+        connection.execute("DELETE FROM ItemTable", []).unwrap();
+        drop(connection);
+        let before = std::fs::read(&paths.db).unwrap();
+        let missing_key = health_metadata_at(&paths).unwrap();
+        assert!(!missing_key.cache_present);
+        assert_eq!(std::fs::read(&paths.db).unwrap(), before);
+    }
+
+    #[test]
+    fn health_metadata_rejects_oversize_maps_and_credential_model_collisions() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let paths = TraePaths::from_home(temp.path());
+        write_fixture(
+            &paths,
+            &preset_and_custom("fixture-private-key", "fixture-private-key"),
+        );
+        let error = health_metadata_at(&paths).unwrap_err();
+        assert!(!serde_json::to_string(&error)
+            .unwrap()
+            .contains("fixture-private-key"));
+        let connection = Connection::open(&paths.db).unwrap();
+        connection
+            .execute(
+                "UPDATE ItemTable SET value = ?1",
+                params![vec![b' '; MAX_MODEL_MAP_BYTES + 1]],
+            )
+            .unwrap();
+        drop(connection);
+        let before = std::fs::read(&paths.db).unwrap();
+        assert!(health_metadata_at(&paths).is_err());
+        assert_eq!(std::fs::read(&paths.db).unwrap(), before);
+    }
+
+    fn directory_bytes(
+        directory: &std::path::Path,
+    ) -> std::collections::BTreeMap<std::ffi::OsString, Vec<u8>> {
+        std::fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                (entry.file_name(), std::fs::read(entry.path()).unwrap())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn health_metadata_does_not_create_wal_sidecars_or_ignore_uncheckpointed_data() {
+        let temp = tempfile::tempdir().unwrap();
+        let live = TraePaths::from_home(&temp.path().join("live"));
+        write_fixture(&live, &preset_and_custom("checkpointed", "fixture-key"));
+        let writer = Connection::open(&live.db).unwrap();
+        writer.pragma_update(None, "journal_mode", "WAL").unwrap();
+        writer
+            .execute(
+                "UPDATE ItemTable SET value = ?1",
+                params![serde_json::to_vec(&preset_and_custom(
+                    "newer-uncheckpointed",
+                    "fixture-key"
+                ))
+                .unwrap()],
+            )
+            .unwrap();
+        let original = directory_bytes(live.db.parent().unwrap());
+        assert!(health_metadata_at(&live).is_err());
+        assert_eq!(directory_bytes(live.db.parent().unwrap()), original);
+
+        // Model a valid WAL left without its shared-memory index. SQLite RO
+        // can create that index; health must return unknown without touching it.
+        let abandoned = TraePaths::from_home(&temp.path().join("abandoned"));
+        std::fs::create_dir_all(abandoned.db.parent().unwrap()).unwrap();
+        std::fs::copy(&live.db, &abandoned.db).unwrap();
+        let with_suffix = |path: &std::path::Path, suffix: &str| {
+            let mut name = path.as_os_str().to_os_string();
+            name.push(suffix);
+            PathBuf::from(name)
+        };
+        std::fs::copy(
+            with_suffix(&live.db, "-wal"),
+            with_suffix(&abandoned.db, "-wal"),
+        )
+        .unwrap();
+        assert!(!with_suffix(&abandoned.db, "-shm").exists());
+        let original = directory_bytes(abandoned.db.parent().unwrap());
+        assert!(health_metadata_at(&abandoned).is_err());
+        assert_eq!(directory_bytes(abandoned.db.parent().unwrap()), original);
+        drop(writer);
+    }
+
+    #[test]
+    fn health_capacity_limits_do_not_change_existing_model_reads() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = TraePaths::from_home(temp.path());
+        let mut map = preset_and_custom("custom-safe", "fixture-key");
+        map["vendor_metadata"] = Value::String("x".repeat(MAX_MODEL_MAP_BYTES + 1));
+        write_fixture(&paths, &map);
+        assert!(health_metadata_at(&paths).is_err());
+        assert_eq!(
+            get_traework_model_ids_at(&paths).unwrap().model_ids,
+            vec!["custom-safe"]
+        );
+        let connection = Connection::open(&paths.db).unwrap();
+        let small = serde_json::to_vec(&preset_and_custom("custom-safe", "fixture-key")).unwrap();
+        connection
+            .execute("UPDATE ItemTable SET value = ?1", params![&small])
+            .unwrap();
+        for index in 0..MAX_MODEL_MAP_KEYS + 1 {
+            connection
+                .execute(
+                    "INSERT INTO ItemTable (key, value) VALUES (?1, ?2)",
+                    params![format!("extra-{index}:{MAP_SUFFIX}"), &small],
+                )
+                .unwrap();
+        }
+        drop(connection);
+        assert!(health_metadata_at(&paths).is_err());
+        assert_eq!(
+            get_traework_model_ids_at(&paths).unwrap().model_ids,
+            vec!["custom-safe"]
+        );
+    }
 
     fn write_fixture(paths: &TraePaths, map: &Value) {
         std::fs::create_dir_all(paths.db.parent().expect("state.vscdb has a parent")).unwrap();

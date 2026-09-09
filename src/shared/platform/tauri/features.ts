@@ -14,6 +14,12 @@ import { createConfigRecoveryPort } from "./feature-ports/configRecovery";
 
 export function createTauriFeaturePorts(): FeaturePorts {
   return {
+    health: {
+      get: async (agentId) => {
+        const { createHealthPort } = await import("./feature-ports/health");
+        return createHealthPort().get(agentId);
+      },
+    },
     configRecovery: createConfigRecoveryPort(),
     agentAuth: createAgentAuthPort(),
     managedAuth: createManagedAuthPort(),

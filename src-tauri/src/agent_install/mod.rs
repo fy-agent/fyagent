@@ -21,6 +21,7 @@ pub use auth_sessions::{
     auth_observation_for, get_active_agent_auth_session, get_agent_auth_session,
     start_agent_auth_session, stop_waiting_for_agent_auth, AgentAuthSessionStore,
 };
+pub(crate) use inventory::local_health_inventory_for;
 pub use inventory::{inventory_for, AgentInstallationInventoryStore};
 pub use jobs::AgentActionJobStore;
 pub use types::{
@@ -1489,6 +1490,14 @@ mod tests {
         );
         let db = crate::database::Database::memory().expect("memory db");
         AppState::new(std::sync::Arc::new(db))
+    }
+
+    #[tokio::test]
+    async fn local_health_inventory_never_falls_back_to_cli_observation() {
+        let state = test_app_state();
+        for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::GrokBuild] {
+            assert!(local_health_inventory_for(agent_id, &state).await.is_none());
+        }
     }
 
     #[test]

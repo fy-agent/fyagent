@@ -46,6 +46,9 @@ secret handling, native source checks, and residual-risk reporting.
 
 ## Product, configuration, and runtime security
 
+[Agent Health Observation](./health.md) owns the on-demand local status
+snapshot and its read-only installation/configuration/auth/proxy evidence.
+
 [Reversible User Configuration](./reversible-user-config.md) owns the default
 backup/atomic-write/undo mechanism, closed recovery commands and disclosure
 metadata. Read it before any user-file write; domain-specific locks and native

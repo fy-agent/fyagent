@@ -37,10 +37,11 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 | [Window Shell](./window-shell.md)                     | Chrome, native overlay boundary, selection and shared interaction.              |
 | [Change Plan Workspaces](./change-plan-workspaces.md) | Preview/apply, source switching, job observation and reconciliation.            |
 | [Agent Directory](./agent-directory.md)               | Catalog, scan/readiness, cards, installation and capabilities.                  |
+| [Agent Health](./health.md)                           | Local check snapshots, stale facts, serial refresh and existing repair routes.  |
 | [External Agent Auth](./agent-auth.md)                | Native auth observations, session ownership and safe handoff.                   |
 | [Managed Auth](./managed-auth.md)                     | Accounts/connections/request sources, login and impact confirmation.            |
 | [Models](./models.md)                                 | Drafts, connectivity, native save and existing model workflows.                 |
-| [Managed Grok Subscriptions](./grok-subscription.md)   | Explicit account/model binding, native readback and subscription scope.         |
+| [Managed Grok Subscriptions](./grok-subscription.md)  | Explicit account/model binding, native readback and subscription scope.         |
 | [Assignments](./assignments.md)                       | Shared seven-target selection and serialized mutations.                         |
 | [Skills](./skills.md)                                 | Discovery, installed items, backups and assignment.                             |
 | [MCP](./mcp.md)                                       | Catalog/launch validation, CRUD, installation and assignment.                   |

@@ -7,12 +7,19 @@ const repositoryRoot = path.resolve(scriptDirectory, "..");
 
 export const RENDERER_ROUTE_ENTRIES = Object.freeze([
   "pages/agents/Page.tsx",
+  "pages/health/Page.tsx",
   "pages/auth/Page.tsx",
   "pages/models/Page.tsx",
   "pages/skills/Page.tsx",
   "pages/mcp/Page.tsx",
   "pages/prompts/Page.tsx",
   "pages/memory/Page.tsx",
+]);
+
+// These capability adapters are loaded only when their port is first used.
+// Keep the list explicit: additional lazy entries still require review.
+export const RENDERER_DEFERRED_PORT_ENTRIES = Object.freeze([
+  "shared/platform/tauri/feature-ports/health.ts",
 ]);
 
 export const RENDERER_BUILD_BUDGET = Object.freeze({
@@ -75,15 +82,19 @@ export async function verifyRouteChunks({
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const entry = assertManifestRecord(manifest, "index.html");
   const initialKeys = collectStaticClosure(manifest, ["index.html"]);
-  const dynamicRoutes = new Set(
+  const dynamicEntries = new Set(
     [...initialKeys].flatMap((key) => manifest[key].dynamicImports ?? []),
   );
+  const expectedDynamicEntries = [
+    ...RENDERER_ROUTE_ENTRIES,
+    ...RENDERER_DEFERRED_PORT_ENTRIES,
+  ];
   if (
-    dynamicRoutes.size !== RENDERER_ROUTE_ENTRIES.length ||
-    RENDERER_ROUTE_ENTRIES.some((route) => !dynamicRoutes.has(route))
+    dynamicEntries.size !== expectedDynamicEntries.length ||
+    expectedDynamicEntries.some((key) => !dynamicEntries.has(key))
   ) {
     throw new Error(
-      `Renderer bootstrap must dynamically import exactly ${RENDERER_ROUTE_ENTRIES.length} product pages`,
+      `Renderer bootstrap must dynamically import exactly ${RENDERER_ROUTE_ENTRIES.length} product pages and ${RENDERER_DEFERRED_PORT_ENTRIES.length} deferred ports`,
     );
   }
 
@@ -109,6 +120,26 @@ export async function verifyRouteChunks({
       );
     }
     routeChunks.push({ route, file: record.file, bytes });
+  }
+
+  const deferredPortChunks = [];
+  for (const key of RENDERER_DEFERRED_PORT_ENTRIES) {
+    const record = assertManifestRecord(manifest, key);
+    if (record.isDynamicEntry !== true || !record.file.endsWith(".js")) {
+      throw new Error(`Renderer deferred port is not a dynamic entry: ${key}`);
+    }
+    if (initialKeys.has(key)) {
+      throw new Error(
+        `Renderer deferred port leaked into the initial graph: ${key}`,
+      );
+    }
+    const bytes = await assetSize(distributionDirectory, record.file);
+    if (bytes > budget.routeChunkBytes) {
+      throw new Error(
+        `Renderer deferred port exceeds ${budget.routeChunkBytes} bytes: ${key} (${bytes})`,
+      );
+    }
+    deferredPortChunks.push({ key, file: record.file, bytes });
   }
 
   for (const route of RENDERER_ROUTE_ENTRIES) {
@@ -156,6 +187,7 @@ export async function verifyRouteChunks({
     initialCssBytes,
     initialChunks,
     routeChunks,
+    deferredPortChunks,
   };
 }
 

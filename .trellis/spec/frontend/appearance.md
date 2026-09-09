@@ -102,21 +102,21 @@ The native owners are `src-tauri/src/settings.rs`,
 
 ## 4. Validation / Error Matrix
 
-| Condition                                                 | Required result                                                 |
-| --------------------------------------------------------- | --------------------------------------------------------------- |
-| Arbitrary stored value or denied store                    | Light fallback; controls stay usable.                           |
-| Existing system preference changes                        | Update effective theme, preserve system preference.             |
-| Explicit theme selected                                   | Store the closed choice; stop following system changes.         |
-| Software relaunch after a successfully persisted choice   | Restore that closed preference; do not replace it with the default. |
-| `save_settings` payload includes a different theme        | Keep the device appearance field; do not clobber it.            |
-| Native input is padded lowercase / unknown or uppercase  | Normalize the valid choice; invalid values leave persistence unchanged and use system chrome. |
-| Disk persistence fails but native chrome succeeds        | UI stays usable; IPC may resolve successfully; durable restart preference is not proven. |
-| Capture throws/rejects or pseudo animation is unavailable | Commit latest choice; release handles/markers.                  |
-| Rapid opposite clicks                                     | Latest intent wins, no queued full-screen transitions.          |
-| Resize/background/live reduced motion                     | Settle; no stuck clip or hit-test lock.                         |
-| External storage during capture                           | Cancel stale local commit without overwriting external storage. |
-| Modal exists                                              | No root reveal prolonging sensitive content presentation.       |
-| Native theme command or persist fails                     | Keep CSS/UI usable; no query/startup failure.                   |
+| Condition                                                 | Required result                                                                               |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Arbitrary stored value or denied store                    | Light fallback; controls stay usable.                                                         |
+| Existing system preference changes                        | Update effective theme, preserve system preference.                                           |
+| Explicit theme selected                                   | Store the closed choice; stop following system changes.                                       |
+| Software relaunch after a successfully persisted choice   | Restore that closed preference; do not replace it with the default.                           |
+| `save_settings` payload includes a different theme        | Keep the device appearance field; do not clobber it.                                          |
+| Native input is padded lowercase / unknown or uppercase   | Normalize the valid choice; invalid values leave persistence unchanged and use system chrome. |
+| Disk persistence fails but native chrome succeeds         | UI stays usable; IPC may resolve successfully; durable restart preference is not proven.      |
+| Capture throws/rejects or pseudo animation is unavailable | Commit latest choice; release handles/markers.                                                |
+| Rapid opposite clicks                                     | Latest intent wins, no queued full-screen transitions.                                        |
+| Resize/background/live reduced motion                     | Settle; no stuck clip or hit-test lock.                                                       |
+| External storage during capture                           | Cancel stale local commit without overwriting external storage.                               |
+| Modal exists                                              | No root reveal prolonging sensitive content presentation.                                     |
+| Native theme command or persist fails                     | Keep CSS/UI usable; no query/startup failure.                                                 |
 
 ## 5. Good / Base / Bad Cases
 
@@ -142,7 +142,7 @@ do not perform a packaged-app relaunch or inject a settings-file write failure;
 do not cite them as evidence of durable persistence under failed I/O.
 
 `blue-themes.spec.ts` covers real pointer/keyboard, drafts, persistence,
-interruption and dark composite text on all seven pages. Existing material tests
+interruption and dark composite text on all eight pages. Existing material tests
 cover light. Outlined controls require contrast on both sides; opaque filled
 controls are identified by their silhouette against the outside, not a border
 contrasted against identical internal fill. Text samples must intersect overflow

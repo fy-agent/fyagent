@@ -15,6 +15,7 @@ import {
   type SkillHubCategoryFilter,
 } from "./types";
 import type { ProviderAppId } from "./types";
+import { HEALTH_STALE_AFTER_MS, type HealthPort } from "./health";
 
 function useVisibleEnabled(enabled = true): boolean {
   const visible = usePersistentVisibility();
@@ -26,6 +27,7 @@ const changeJobsKey = [scope, "change-plans", "job"] as const;
 const dailyMemorySearchKey = [scope, "memory", "daily", "search"] as const;
 
 export const featureKeys = {
+  agentHealth: (agentId: AgentCatalogId) => [scope, "health", agentId] as const,
   configRecoveries: (targets: readonly ConfigRecoveryTarget[]) =>
     [scope, "config-recoveries", ...targets] as const,
   agentCatalog: [scope, "agents", "catalog"] as const,
@@ -67,6 +69,31 @@ export const featureKeys = {
   dailyMemorySearches: dailyMemorySearchKey,
   settings: [scope, "settings"] as const,
 };
+
+export function agentHealthQueryOptions(
+  port: HealthPort,
+  agentId: AgentCatalogId,
+) {
+  return {
+    queryKey: featureKeys.agentHealth(agentId),
+    queryFn: () => port.get(agentId),
+    staleTime: HEALTH_STALE_AFTER_MS,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  } as const;
+}
+
+/** Subscribe without automatic fan-out; the health controller owns serial dispatch. */
+export function useAgentHealthSnapshots(agentIds: readonly AgentCatalogId[]) {
+  const { ports } = useFeatures();
+  return useQueries({
+    queries: agentIds.map((agentId) => ({
+      ...agentHealthQueryOptions(ports.health, agentId),
+      enabled: false,
+    })),
+  });
+}
 
 export function useManagedAuthOverview(enabled = true) {
   const { ports } = useFeatures();

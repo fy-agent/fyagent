@@ -6,6 +6,7 @@
 pub mod config;
 pub mod document;
 pub mod error;
+mod health;
 pub mod model_fetch;
 pub mod types;
 pub mod url;
@@ -21,6 +22,7 @@ pub(crate) use config::{
 
 #[cfg(test)]
 pub(crate) use config::arm_next_workbuddy_primary_write_fault;
+pub(crate) use health::{health_metadata, WorkBuddyHealthMetadata};
 pub(crate) use model_fetch::fetch_workbuddy_models;
 pub(crate) use types::{SaveWorkBuddyModelsOutcome, SaveWorkBuddyModelsRequest};
 

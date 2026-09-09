@@ -7,6 +7,7 @@ mod claude;
 mod discovery;
 mod grok;
 mod grok_npm;
+mod health;
 mod lifecycle;
 #[cfg(target_os = "macos")]
 mod npm_runtime;
@@ -14,6 +15,7 @@ mod terminal;
 mod versions;
 
 pub(crate) use claude::ClaudeLifecycleError;
+pub(crate) use health::observe_local_tool_health;
 static CLI_LIFECYCLE_WRITER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub(crate) async fn run_claude_cli_lifecycle(action: &str) -> Result<(), ClaudeLifecycleError> {

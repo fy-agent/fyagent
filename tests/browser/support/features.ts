@@ -1,4 +1,10 @@
 import type { Page } from "@playwright/test";
+import {
+  AGENT_CATALOG_IDS,
+  type AgentCatalogId,
+} from "../../../src/shared/features/directory";
+import type { AgentHealthSnapshot } from "../../../src/shared/features/health";
+import { healthSnapshotFixture } from "../../renderer/fixtures/health";
 
 export interface FeatureFixtureCall {
   command: string;
@@ -6,6 +12,8 @@ export interface FeatureFixtureCall {
 }
 
 export interface RichFeatureFixtureOptions {
+  healthFailure?: AgentCatalogId;
+  healthStale?: boolean;
   catalogFailure?: boolean;
   observationFailure?: "workbuddy" | "codex" | "claude";
   openExternalFailure?: boolean;
@@ -23,12 +31,19 @@ export interface RichFeatureFixtureOptions {
   workBuddyWriteDelayMs?: number;
 }
 
+type PreparedFixtureOptions = RichFeatureFixtureOptions & {
+  healthSnapshots: AgentHealthSnapshot[];
+};
+
 declare global {
   interface Window {
     __FYAGENT_FEATURE_FIXTURE__: {
       calls: FeatureFixtureCall[];
       releaseProviderWrite: () => void;
       releaseAgentAuth: () => void;
+      failHealth: (agentId: AgentCatalogId | null) => void;
+      holdHealth: () => void;
+      releaseHealth: () => void;
     };
     __TAURI_INTERNALS__: {
       metadata: {
@@ -51,7 +66,29 @@ export async function installRichTauriFeatureFixture(
   page: Page,
   options: RichFeatureFixtureOptions = {},
 ): Promise<void> {
-  await page.addInitScript((fixtureOptions: RichFeatureFixtureOptions) => {
+  const healthSnapshots = AGENT_CATALOG_IDS.map((id) =>
+    healthSnapshotFixture(
+      id,
+      id === "claude-code"
+        ? {
+            auth: {
+              state: "attention",
+              severity: "warning",
+              reasonCode: "auth_logged_out",
+              action: "authentication",
+            },
+          }
+        : {},
+    ),
+  );
+  const preparedOptions: PreparedFixtureOptions = {
+    ...options,
+    healthSnapshots,
+  };
+  await page.addInitScript((fixtureOptions: PreparedFixtureOptions) => {
+    let healthFailure = fixtureOptions.healthFailure;
+    let healthGate: Promise<void> | null = null;
+    let releaseHealth = () => {};
     let releaseProviderWrite: () => void = () => undefined;
     let agentAuthHeld = fixtureOptions.holdAgentAuth === true;
     const providerWriteGate = new Promise<void>((resolve) => {
@@ -624,7 +661,11 @@ export async function installRichTauriFeatureFixture(
         ? [
             { kind: "precheck", status: "succeeded", code: "ok" },
             { kind: "snapshot", status: "succeeded", code: "ok" },
-            { kind: "managed_write", status: "failed", code: "writer_failed" },
+            {
+              kind: "managed_write",
+              status: "failed",
+              code: "writer_failed",
+            },
             { kind: "readback", status: "skipped", code: "skipped" },
             { kind: "finalize", status: "skipped", code: "skipped" },
           ]
@@ -866,6 +907,18 @@ export async function installRichTauriFeatureFixture(
 
     window.__FYAGENT_FEATURE_FIXTURE__ = {
       calls,
+      failHealth: (agentId) => {
+        healthFailure = agentId ?? undefined;
+      },
+      holdHealth: () => {
+        healthGate = new Promise<void>((resolve) => {
+          releaseHealth = resolve;
+        });
+      },
+      releaseHealth: () => {
+        releaseHealth();
+        healthGate = null;
+      },
       releaseProviderWrite,
       releaseAgentAuth: () => {
         agentAuthHeld = false;
@@ -889,6 +942,24 @@ export async function installRichTauriFeatureFixture(
           payload: structuredClone(payload),
         });
         switch (command) {
+          case "get_agent_health": {
+            await healthGate;
+            if (payload.agentId === healthFailure)
+              throw new Error("fixture health read failed");
+            const fixture = fixtureOptions.healthSnapshots.find(
+              (snapshot) => snapshot.agentId === payload.agentId,
+            );
+            if (!fixture) throw new Error("Unsupported health Agent");
+            const snapshot = structuredClone(fixture);
+            const checkedAt = new Date(
+              Date.now() - (fixtureOptions.healthStale ? 6 * 60_000 : 0),
+            ).toISOString();
+            snapshot.checkedAt = checkedAt;
+            snapshot.checks.forEach((check) => {
+              check.checkedAt = checkedAt;
+            });
+            return snapshot;
+          }
           case "managed_auth_get_overview":
             return structuredClone(managedAuthOverview);
           case "managed_auth_start_login": {
@@ -1681,7 +1752,10 @@ export async function installRichTauriFeatureFixture(
             return structuredClone(record.snapshot);
           }
           case "get_settings":
-            return { skillSyncMethod: "auto", skillStorageLocation: "fyagent" };
+            return {
+              skillSyncMethod: "auto",
+              skillStorageLocation: "fyagent",
+            };
           case "set_window_theme":
             if (!["light", "dark", "system"].includes(String(payload.theme)))
               throw new Error("Invalid theme preference");
@@ -1696,7 +1770,7 @@ export async function installRichTauriFeatureFixture(
         }
       },
     };
-  }, options);
+  }, preparedOptions);
 }
 
 export async function featureFixtureCalls(

@@ -14,6 +14,7 @@ mod deeplink;
 mod env;
 mod failover;
 mod global_proxy;
+mod health;
 mod hermes;
 mod import_export;
 mod mcp;
@@ -47,6 +48,8 @@ mod usage;
 mod webdav_sync;
 mod workbuddy;
 mod workspace;
+
+pub use health::*;
 
 pub use agent_auth::*;
 pub use agent_catalog::*;

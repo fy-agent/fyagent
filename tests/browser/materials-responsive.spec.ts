@@ -15,6 +15,7 @@ test("keeps actual text readable on blended surfaces and dialogs", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
   await installRichTauriFeatureFixture(page);
   for (const route of [
+    "health",
     "models?target=codex",
     "auth",
     "skills",

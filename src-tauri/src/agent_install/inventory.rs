@@ -294,6 +294,24 @@ fn prune_expired(cache: &mut InventoryCache) {
         .retain(|inventory_id| live.contains(inventory_id));
 }
 
+/// Health snapshots can use desktop inventory only. Keep this exhaustive
+/// selection separate from default-surface selection, which permits CLI probes.
+pub(crate) async fn local_health_inventory_for(
+    agent_id: AgentCatalogId,
+    state: &AppState,
+) -> Option<AgentInstallationInventoryDto> {
+    match agent_id {
+        AgentCatalogId::Codex
+        | AgentCatalogId::OpenCode
+        | AgentCatalogId::QoderWork
+        | AgentCatalogId::TraeWork
+        | AgentCatalogId::WorkBuddy => {
+            Some(inventory_for(agent_id, state, Some(AgentSurface::Desktop)).await)
+        }
+        AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild => None,
+    }
+}
+
 pub async fn inventory_for(
     agent_id: AgentCatalogId,
     state: &AppState,

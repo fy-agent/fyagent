@@ -2002,6 +2002,7 @@ pub fn run() {
             commands::get_active_agent_auth_session,
             commands::stop_waiting_for_agent_auth,
             commands::managed_auth_get_overview,
+            commands::get_agent_health,
             commands::managed_auth_start_login,
             commands::managed_auth_get_login_session,
             commands::managed_auth_cancel_login,

@@ -22,9 +22,11 @@ export type RouteChunkVerification = Readonly<{
   initialCssBytes: number;
   initialChunks: InitialChunkRecord[];
   routeChunks: RouteChunkRecord[];
+  deferredPortChunks: InitialChunkRecord[];
 }>;
 
 export const RENDERER_ROUTE_ENTRIES: readonly string[];
+export const RENDERER_DEFERRED_PORT_ENTRIES: readonly string[];
 export const RENDERER_BUILD_BUDGET: RouteChunkBudget;
 
 export function verifyRouteChunks(options?: {

@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/modular-boundaries.md", "reason": "Renderer roles and native port ownership"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Query and hidden surface ownership"}
+{"file": ".trellis/spec/frontend/navigation.md", "reason": "Route registry and closed return paths"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Existing visual primitives and semantics"}
+{"file": ".trellis/spec/frontend/user-facing-copy.md", "reason": "User-centered Chinese copy"}
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "Thin native transport and service ownership"}
+{"file": ".trellis/tasks/09-09-issue-52-health-center/research/current-health-sources.md", "reason": "Current local data sources and side-effect limits"}
+{"file": ".trellis/tasks/09-09-issue-52-health-center/research/health-wire-contract.md", "reason": "Frozen frontend/native contract"}

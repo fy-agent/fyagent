@@ -59,7 +59,7 @@
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "217a3bc2de9c4580fad048671d296f389e76c9b654a9d4b4add31bc8a0ce3989"
+      "7951645132348006d96816be48ec26b22a4a21d0195194c7a71a214073d5d6c1"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
@@ -67,7 +67,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "3387a8fc5bc4dfdeccfb12e01e1f9cd02ea61ca560b27d8cf597e82b7d9d6d4c"
+      "fef1f416810bc2acfc2724f2046bfed4928dce90e9e9e72734813c6b08530bc4"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "17f3b6f495b907d13f93e065c807a350c4e84515dfdcf1eea24519b0d521c0a3"
+      "b2d22ce4e03d7ab5f80bd501b04d9740dc0dfe4a8482dd63e59107eff4ffe2b8"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -235,7 +235,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "ea7bfba8e2562fb7806b0c73345653e9892395bee8c8d84cb14f6f0540dc5458"
+      "62b8a26c833e6e930aac2f29dc0c418123da276f8e6e62b5208df118f121d272"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -267,7 +267,7 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "4e06a30a1934e3b9eeaf7ae21f8bce5544ae6f2f2d85f3a069291cb2e8a6449e"
+      "d9511c27bac9a80f61c117bc4db402f214f5b94b04956f9e0deb4cda1bfa7829"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",
@@ -280,6 +280,10 @@
     [
       "src-tauri/src/services/tooling/grok.rs",
       "e05136958c382c3835fdf2ec755594419494843c69385b826c39f36cea26f4a4"
+    ],
+    [
+      "src-tauri/src/services/tooling/health.rs",
+      "f4aa850d1d21c0662b568c9911b74f0b7744b88f5f760e2bcfc736a415ba6646"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
@@ -295,15 +299,15 @@
     ],
     [
       "src-tauri/src/services/traework_models.rs",
-      "7236e1d471c3bfd7e1d44febbc0fe1fa1bf2d08b438f3ec356894e23ef720f41"
+      "fccb243216fd6143a110b2d6c03bd010d60f0b05616340ba832031b42004a78e"
     ],
     [
       "src-tauri/src/services/workbuddy/config.rs",
-      "97a52e3ebdac72b4f82bd20e039a0f68d82bddd9fd2ec92ecc0eceb3c30e0d73"
+      "29ff2b58fcfbb800a36436d955a97bfff0f8387ef227825a8c7426622a14cf5f"
     ],
     [
       "src-tauri/src/services/workbuddy/mod.rs",
-      "ca870acdfde21ae41f3cf211ee235c1db1f5535c727e9b8613b899cce94b250f"
+      "ede8f4f7afe2e4020b31bd6b141c64690fb92e8fbfed0d66a818653b9709ea91"
     ],
     [
       "src-tauri/src/session_manager/providers/opencode.rs",

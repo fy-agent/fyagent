@@ -1,0 +1,9 @@
+{
+  "filesMatchOriginal": true,
+  "filesUnchanged": true,
+  "businessTablesUnchanged": true,
+  "tableCount": 25,
+  "changedTables": [],
+  "vendorDirectoryUnchanged": true,
+  "vendorEntries": ["state.vscdb"]
+}

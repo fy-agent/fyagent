@@ -1,0 +1,166 @@
+{
+  "performance-baseline": {
+    "passed": 33,
+    "failed": 2,
+    "metrics": [
+      {
+        "metric": "FYAGENT_NAV_PERF",
+        "label": "baseline-11c13339",
+        "cpuRate": 1,
+        "viewport": {
+          "width": 1232,
+          "height": 700
+        },
+        "definition": "semantic NavLink activation to frame after visible destination; excludes OS/driver input latency and animation settling",
+        "count": 42,
+        "longTasks": [],
+        "p50": 20.59999999962747,
+        "p95": 36.899999998509884
+      },
+      {
+        "metric": "FYAGENT_NAV_PERF",
+        "label": "baseline-11c13339",
+        "cpuRate": 4,
+        "viewport": {
+          "width": 1232,
+          "height": 700
+        },
+        "definition": "semantic NavLink activation to frame after visible destination; excludes OS/driver input latency and animation settling",
+        "count": 42,
+        "longTasks": [81],
+        "p50": 34.69999999925494,
+        "p95": 46
+      },
+      {
+        "metric": "FYAGENT_PRESENTATION_PERF",
+        "label": "baseline-11c13339",
+        "cpuRate": 1,
+        "viewport": {
+          "width": 1232,
+          "height": 700
+        },
+        "frameP95": 36.20000000000073,
+        "longTasks": []
+      },
+      {
+        "metric": "FYAGENT_PRESENTATION_PERF",
+        "label": "baseline-11c13339",
+        "cpuRate": 4,
+        "viewport": {
+          "width": 1232,
+          "height": 700
+        },
+        "frameP95": 37.100000000000364,
+        "longTasks": []
+      },
+      {
+        "metric": "FYAGENT_STATE_PERF",
+        "cpuRate": 1,
+        "frameP95": 45.5,
+        "frameMax": 74.80000000000109,
+        "durationP95": 818.8999999985099,
+        "longTasks": []
+      },
+      {
+        "metric": "FYAGENT_STATE_PERF",
+        "cpuRate": 4,
+        "frameP95": 49.5,
+        "frameMax": 71.10000000000036,
+        "durationP95": 818,
+        "longTasks": []
+      },
+      {
+        "metric": "FYAGENT_THEME_PERF",
+        "cpuRate": 1,
+        "prepareP95": 25.100000001490116
+      },
+      {
+        "metric": "FYAGENT_THEME_PERF",
+        "cpuRate": 4,
+        "prepareP95": 34.59999999962747
+      }
+    ]
+  },
+  "performance-final": {
+    "passed": 33,
+    "failed": 2,
+    "metrics": [
+      {
+        "metric": "FYAGENT_NAV_PERF",
+        "label": "issue-52-final",
+        "cpuRate": 1,
+        "viewport": {
+          "width": 1232,
+          "height": 700
+        },
+        "definition": "semantic NavLink activation to frame after visible destination; excludes OS/driver input latency and animation settling",
+        "count": 48,
+        "longTasks": [],
+        "p50": 19.40000000037253,
+        "p95": 38.80000000074506
+      },
+      {
+        "metric": "FYAGENT_NAV_PERF",
+        "label": "issue-52-final",
+        "cpuRate": 4,
+        "viewport": {
+          "width": 1232,
+          "height": 700
+        },
+        "definition": "semantic NavLink activation to frame after visible destination; excludes OS/driver input latency and animation settling",
+        "count": 48,
+        "longTasks": [],
+        "p50": 37.70000000111759,
+        "p95": 51.09999999962747
+      },
+      {
+        "metric": "FYAGENT_PRESENTATION_PERF",
+        "label": "issue-52-final",
+        "cpuRate": 1,
+        "viewport": {
+          "width": 1232,
+          "height": 700
+        },
+        "frameP95": 36.79999999999927,
+        "longTasks": []
+      },
+      {
+        "metric": "FYAGENT_PRESENTATION_PERF",
+        "label": "issue-52-final",
+        "cpuRate": 4,
+        "viewport": {
+          "width": 1232,
+          "height": 700
+        },
+        "frameP95": 36.5,
+        "longTasks": []
+      },
+      {
+        "metric": "FYAGENT_STATE_PERF",
+        "cpuRate": 1,
+        "frameP95": 44.100000000000364,
+        "frameMax": 72.89999999999964,
+        "durationP95": 814.1999999992549,
+        "longTasks": []
+      },
+      {
+        "metric": "FYAGENT_STATE_PERF",
+        "cpuRate": 4,
+        "frameP95": 48.70000000000073,
+        "frameMax": 61.5,
+        "durationP95": 823.5,
+        "longTasks": []
+      },
+      {
+        "metric": "FYAGENT_THEME_PERF",
+        "cpuRate": 1,
+        "prepareP95": 25.59999999962747
+      },
+      {
+        "metric": "FYAGENT_THEME_PERF",
+        "cpuRate": 4,
+        "prepareP95": 28.59999999962747
+      }
+    ]
+  }
+}
