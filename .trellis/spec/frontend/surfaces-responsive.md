@@ -37,6 +37,13 @@ dark palette and preference lifecycle are owned by [Appearance](./appearance.md)
 surfaces with readable text; pages must not hardcode a theme's fills or white
 foreground assumptions. Selection/control sheen also has paired token roles so
 stacked translucent highlights do not wash out dark-mode text.
+Agent directory cards use `--fy-surface-inset` as their readable backing, not
+the low-alpha ambient `--fy-surface-soft`. The dark inset darkens a bright
+composited parent instead of adding another bright translucent layer. Retain
+4.5:1 for both headings and supporting text; `blue-themes.spec.ts` also replays
+the bright RGB(111,141,164) backing observed in Linux WebKit CI. This focused
+material regression supplements, rather than replaces, the unchanged whole-page
+Chromium/WebKit composited contrast checks.
 The content viewport is not a nested backdrop sampler.
 CSS consumes the blur/rim/sheen tokens directly, including preference changes.
 

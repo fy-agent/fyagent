@@ -139,6 +139,38 @@ test("dark blue text and controls remain readable on actual composited page and 
   });
 });
 
+test("Agent directory cards preserve text contrast on the bright CI backing", async ({
+  page,
+}, info) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addInitScript(() => localStorage.setItem("fyagent-theme", "dark"));
+  await installRichTauriFeatureFixture(page);
+  await openRendererPage(page, "/agents");
+  const directory = page.locator(".fy-agent-directory-list");
+  await expect(
+    directory.getByRole("heading", { name: "Grok Build", exact: true }),
+  ).toBeVisible();
+  // WebKit in CI run 34229637275 sampled this composited backing under
+  // white Grok Build text (3.49:1). Exercise that brightness deterministically
+  // without depending on the host's font metrics or compositor presentation.
+  await directory.evaluate((element) => {
+    (element as HTMLElement).style.backgroundColor = "rgb(111, 141, 164)";
+  });
+  const card = directory.locator('[data-agent-id="grokbuild"]');
+  await card.scrollIntoViewIfNeeded();
+  const samples = await sampleTextContrast(
+    page,
+    '.fy-agent-directory-card[data-agent-id="grokbuild"]',
+  );
+  expect(samples.length).toBeGreaterThan(3);
+  expect(samples.some((sample) => sample.text === "Grok Build")).toBe(true);
+  await info.attach("agent-directory-bright-backing", {
+    body: JSON.stringify(samples),
+    contentType: "application/json",
+  });
+  expect(samples.filter((sample) => sample.ratio < 4.5)).toEqual([]);
+});
+
 test("theme reveal has one real circular track and survives quick reversal and resize", async ({
   page,
 }) => {
