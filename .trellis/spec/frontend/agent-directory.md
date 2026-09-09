@@ -93,6 +93,16 @@ or bypass flag.
 
 ### Runtime and readiness projection
 
+- `useAgentDirectoryScan` distinguishes hidden from unmounted owners. Hidden
+  mounted pages buffer settled rows and reconcile on return; unmounted owners
+  ignore late success, rejection and aggregate completion without recording a
+  completion timestamp or dispatching UI state. Retained start/readback callbacks
+  do not restart or update a disposed view. This does not cancel native jobs.
+- The synchronous scan admission ref keeps its newer `requestId` when StrictMode
+  replays an effect from an older render. One pending scan must not issue a second
+  set of readiness requests during effect replay. The existing scan hook tests
+  cover delayed success/rejection after unmount, retained callbacks, StrictMode
+  and hidden-result reconciliation.
 - Runtime `detected`/`running` preserve `true | false | null`. Unknown is
   rendered as unknown/unverified, not “not installed.”
 - Readiness and inventory are separate queries keyed by canonical Agent ID and

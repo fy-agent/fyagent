@@ -162,6 +162,7 @@ export function useAgentDirectoryScan(options?: UseAgentDirectoryScanOptions) {
   const queriesRef = useRef(queries);
   const stateRef = useRef(state);
   const activeRef = useRef(active);
+  const mountedRef = useRef(false);
   const pendingRef = useRef<PendingScanWork>({
     requestId: 0,
     settled: [],
@@ -169,13 +170,24 @@ export function useAgentDirectoryScan(options?: UseAgentDirectoryScanOptions) {
   });
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     queriesRef.current = queries;
-    stateRef.current = state;
+    // StrictMode can replay this effect before the synchronous start dispatch
+    // commits. An older render must not reopen admission for the same scan.
+    if (state.requestId >= stateRef.current.requestId) {
+      stateRef.current = state;
+    }
     activeRef.current = active;
   });
 
   const start = useCallback(() => {
-    if (stateRef.current.status === "scanning") return;
+    if (!mountedRef.current || stateRef.current.status === "scanning") return;
     const requestId = stateRef.current.requestId + 1;
     pendingRef.current = { requestId, settled: [], finishedAt: null };
     stateRef.current = {
@@ -191,6 +203,7 @@ export function useAgentDirectoryScan(options?: UseAgentDirectoryScanOptions) {
       AGENT_CATALOG_IDS.map(async (agentId) => {
         try {
           const result = await queriesRef.current[agentId].refetch();
+          if (!mountedRef.current) return;
           const data = result.error ? undefined : result.data;
           if (!activeRef.current) {
             if (pendingRef.current.requestId === requestId) {
@@ -205,6 +218,7 @@ export function useAgentDirectoryScan(options?: UseAgentDirectoryScanOptions) {
             data,
           });
         } catch {
+          if (!mountedRef.current) return;
           if (!activeRef.current) {
             if (pendingRef.current.requestId === requestId) {
               pendingRef.current.settled.push({ agentId });
@@ -215,6 +229,7 @@ export function useAgentDirectoryScan(options?: UseAgentDirectoryScanOptions) {
         }
       }),
     ).then(() => {
+      if (!mountedRef.current) return;
       if (!activeRef.current) {
         if (pendingRef.current.requestId === requestId) {
           pendingRef.current.finishedAt = Date.now();
@@ -227,6 +242,7 @@ export function useAgentDirectoryScan(options?: UseAgentDirectoryScanOptions) {
 
   const applyReadiness = useCallback(
     (agentId: AgentCatalogId, data: AgentInstallReadiness) => {
+      if (!mountedRef.current) return;
       dispatch({ type: "applyReadiness", agentId, data });
     },
     [],
