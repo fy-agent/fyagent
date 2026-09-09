@@ -66,20 +66,225 @@ pub struct ProxyService {
     /// AppHandle，用于传递给 ProxyServer 以支持故障转移时的 UI 更新
     app_handle: Arc<RwLock<Option<tauri::AppHandle>>>,
     switch_locks: SwitchLockManager,
+    start_lock: Arc<tokio::sync::Mutex<()>>,
+    managed_activation_lock: Arc<tokio::sync::Mutex<()>>,
+    #[cfg(test)]
+    managed_activation_test_hook: Arc<std::sync::Mutex<Option<ManagedActivationTestHook>>>,
 }
+
+#[cfg(test)]
+pub(crate) type ManagedActivationTestHook =
+    Arc<dyn Fn(&str, &str) -> Result<(), String> + Send + Sync>;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HotSwitchOutcome {
     pub logical_target_changed: bool,
 }
 
+pub(crate) struct ManagedTakeoverRuntimeSnapshot {
+    global: GlobalProxyConfig,
+    app: AppProxyConfig,
+    was_running: bool,
+}
+
 impl ProxyService {
+    /// Provider callers already hold their per-app switch guard. The fixed
+    /// app -> activation -> start order serializes ownership of the shared
+    /// listener until both the logical commit and any compensation finish.
+    pub(crate) async fn lock_managed_activation(
+        &self,
+        _app: &AppType,
+    ) -> tokio::sync::OwnedMutexGuard<()> {
+        #[cfg(test)]
+        self.observe_managed_activation(_app, "waiting")
+            .expect("waiting hook must not inject an error");
+        self.managed_activation_lock.clone().lock_owned().await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_managed_activation_test_hook(&self, hook: Option<ManagedActivationTestHook>) {
+        *self.managed_activation_test_hook.lock().unwrap() = hook;
+    }
+
+    #[cfg(test)]
+    fn observe_managed_activation(&self, app: &AppType, phase: &str) -> Result<(), String> {
+        let hook = self.managed_activation_test_hook.lock().unwrap().clone();
+        match hook {
+            Some(hook) => hook(app.as_str(), phase),
+            None => Ok(()),
+        }
+    }
+
+    pub(crate) async fn snapshot_managed_takeover_runtime(
+        &self,
+        app: &AppType,
+    ) -> Result<ManagedTakeoverRuntimeSnapshot, String> {
+        Ok(ManagedTakeoverRuntimeSnapshot {
+            global: self
+                .db
+                .get_global_proxy_config()
+                .await
+                .map_err(|e| e.to_string())?,
+            app: self
+                .db
+                .get_proxy_config_for_app(app.as_str())
+                .await
+                .map_err(|e| e.to_string())?,
+            was_running: self.is_running().await,
+        })
+    }
+
+    /// Called under the Provider guard and its file/DB compensation snapshot.
+    /// Unlike generic takeover, this never backfills outgoing live API keys
+    /// into a newly selected managed Provider.
+    pub(crate) async fn prepare_managed_takeover(
+        &self,
+        app: &AppType,
+        provider: &Provider,
+    ) -> Result<(), String> {
+        let config = self
+            .db
+            .get_global_proxy_config()
+            .await
+            .map_err(|e| e.to_string())?;
+        let loopback = config
+            .listen_address
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback());
+        if !loopback {
+            return Err("Managed subscriptions require a loopback listener".into());
+        }
+        let info = self.start().await?;
+        #[cfg(test)]
+        self.observe_managed_activation(app, "started")?;
+        if !info
+            .address
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+        {
+            return Err("The active subscription listener is not loopback".into());
+        }
+        let existing = match app {
+            AppType::Claude if !get_claude_settings_path().exists() => json!({}),
+            AppType::Claude => self.read_claude_live()?,
+            AppType::Codex => self.read_codex_live()?,
+            _ => return Err("Managed takeover target is unsupported".into()),
+        };
+        if self
+            .db
+            .get_live_backup(app.as_str())
+            .await
+            .map_err(|e| e.to_string())?
+            .is_none()
+        {
+            self.db
+                .save_live_backup(
+                    app.as_str(),
+                    &serde_json::to_string(&existing).map_err(|e| e.to_string())?,
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        match app {
+            AppType::Claude => {
+                let mut projected = existing;
+                let (url, _) = self.build_proxy_urls().await?;
+                Self::apply_claude_takeover_fields_for_provider(&mut projected, &url, provider);
+                self.write_claude_live(&projected)?;
+                if self.read_claude_live()? != projected {
+                    return Err("Claude subscription configuration readback failed".into());
+                }
+            }
+            AppType::Codex => {
+                self.sync_codex_live_from_provider_while_proxy_active(provider)
+                    .await?
+            }
+            _ => unreachable!(),
+        }
+        if !self.live_takeover_matches_current_proxy(app).await? {
+            return Err("Subscription endpoint readback failed".into());
+        }
+        let mut app_config = self
+            .db
+            .get_proxy_config_for_app(app.as_str())
+            .await
+            .map_err(|e| e.to_string())?;
+        app_config.enabled = true;
+        // A subscription binding must not silently fall through to a paid API
+        // key provider when authorization or the subscription upstream fails.
+        app_config.auto_failover_enabled = false;
+        self.db
+            .update_proxy_config_for_app(app_config)
+            .await
+            .map_err(|e| e.to_string())?;
+        let observed = self
+            .db
+            .get_proxy_config_for_app(app.as_str())
+            .await
+            .map_err(|e| e.to_string())?;
+        if !observed.enabled || observed.auto_failover_enabled {
+            return Err("Subscription routing state readback failed".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn restore_managed_takeover_runtime(
+        &self,
+        snapshot: &ManagedTakeoverRuntimeSnapshot,
+    ) -> Result<(), String> {
+        self.db
+            .update_proxy_config_for_app(snapshot.app.clone())
+            .await
+            .map_err(|e| e.to_string())?;
+        let another_active = self
+            .db
+            .is_live_takeover_active()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !snapshot.was_running && !another_active {
+            if self.is_running().await {
+                self.stop().await?;
+            }
+            self.db
+                .update_global_proxy_config(snapshot.global.clone())
+                .await
+                .map_err(|e| e.to_string())?;
+            let observed = self
+                .db
+                .get_global_proxy_config()
+                .await
+                .map_err(|e| e.to_string())?;
+            if serde_json::to_value(observed).map_err(|e| e.to_string())?
+                != serde_json::to_value(&snapshot.global).map_err(|e| e.to_string())?
+                || self.is_running().await
+            {
+                return Err("Subscription global runtime rollback readback failed".into());
+            }
+        } else if snapshot.was_running && !self.is_running().await {
+            return Err("Subscription listener rollback readback failed".into());
+        }
+        let observed = self
+            .db
+            .get_proxy_config_for_app(&snapshot.app.app_type)
+            .await
+            .map_err(|e| e.to_string())?;
+        if serde_json::to_value(observed).map_err(|e| e.to_string())?
+            != serde_json::to_value(&snapshot.app).map_err(|e| e.to_string())?
+        {
+            return Err("Subscription target runtime rollback readback failed".into());
+        }
+        Ok(())
+    }
     pub fn new(db: Arc<Database>) -> Self {
         Self {
             db,
             server: Arc::new(RwLock::new(None)),
             app_handle: Arc::new(RwLock::new(None)),
             switch_locks: SwitchLockManager::new(),
+            start_lock: Arc::new(tokio::sync::Mutex::new(())),
+            managed_activation_lock: Arc::new(tokio::sync::Mutex::new(())),
+            #[cfg(test)]
+            managed_activation_test_hook: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -442,6 +647,26 @@ impl ProxyService {
             &proxy_codex_base_url,
             provider,
         )?;
+        if provider.is_xai_oauth() {
+            if let Some(existing) = existing_live {
+                let patched = crate::codex_config::patch_codex_source_config(
+                    existing
+                        .get("config")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                    provider.category.as_deref(),
+                    effective_settings.get("auth").unwrap_or(&Value::Null),
+                    effective_settings
+                        .get("config")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                    &crate::codex_config::get_codex_config_dir(),
+                    crate::settings::unify_codex_session_history(),
+                )
+                .map_err(|error| error.to_string())?;
+                effective_settings["config"] = Value::String(patched);
+            }
+        }
         Ok(effective_settings)
     }
 
@@ -577,6 +802,7 @@ impl ProxyService {
 
     /// 启动代理服务器
     pub async fn start(&self) -> Result<ProxyServerInfo, String> {
+        let _start_guard = self.start_lock.lock().await;
         // 1. 启动时自动设置 proxy_enabled = true
         let mut global_config = self
             .db
@@ -792,12 +1018,15 @@ impl ProxyService {
         let app = AppType::from_str(app_type).map_err(|e| format!("无效的应用类型: {e}"))?;
         let app_type_str = app.as_str();
         let _guard = self.switch_locks.lock_for_app(app_type_str).await;
+        let _activation_guard = self.lock_managed_activation(&app).await;
 
         if enabled {
             // 1) 代理服务未运行则自动启动
             if !self.is_running().await {
                 self.start().await?;
             }
+            #[cfg(test)]
+            self.observe_managed_activation(&app, "started")?;
 
             // 2) 已接管则直接返回（幂等）；但如果缺少备份或占位符残留，需要重建接管
             let current_config = self
@@ -2874,6 +3103,26 @@ impl ProxyService {
     }
 
     fn write_codex_live(&self, config: &Value) -> Result<(), String> {
+        // Subscription takeover never owns Codex's native login. On restore,
+        // retain its current bytes even if Codex refreshed/switched that login
+        // while the local gateway was active.
+        if self
+            .get_current_provider_for_app(&AppType::Codex)?
+            .is_some_and(|provider| provider.is_xai_oauth())
+        {
+            if let Some(text) = config.get("config").and_then(Value::as_str) {
+                let prepared =
+                    crate::codex_config::prepare_codex_live_config_text_with_optional_catalog(
+                        config,
+                        text,
+                        crate::codex_config::CodexCatalogToolProfile::ProxyChat,
+                    )
+                    .map_err(|error| error.to_string())?;
+                crate::codex_config::write_codex_live_config_atomic(Some(&prepared))
+                    .map_err(|error| error.to_string())?;
+            }
+            return Ok(());
+        }
         self.write_codex_live_verbatim(config)
     }
 

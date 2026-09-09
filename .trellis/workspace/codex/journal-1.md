@@ -87,3 +87,25 @@ Fixed disabled Prompt live-file writes and invalid Daily Memory entries in an is
 ### Status
 
 [OK] **Completed**
+
+
+## Session 6: Grok subscription reuse and local verification
+<!-- trellis-session: v=2 fp=96da6d6be64d8541 -->
+
+**Date**: 2026-09-08
+**Task**: Grok subscription reuse and local verification
+**Branch**: `codex/grok-auth-reuse-completion`
+
+### Summary
+
+完成现有 Grok 订阅登录态到 Claude Code/Codex 的本机转发、恢复与严格账号绑定；独立 review 问题修复。前端 1614+7 通过，Rust 3518 通过，浏览器 534+2 及生产启动 2 项通过；性能首轮边缘失败与原阈值复跑结果保留。真实订阅额度、已安装 CLI 与 Windows 尚未验证。旧子计划状态保留，原 checkout 和原分支未改，续作将独立提交 PR。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2e61af91b1677bfe584cc4908b00b53985555a92` | feat(auth): complete managed Grok subscription reuse |
+
+### Status
+
+[OK] **Completed**

@@ -156,6 +156,9 @@ export type {
   WorkBuddySaveModelsResult,
   WorkBuddySaveModelsSavedResult,
   WorkBuddyStatus,
+  XaiManagedBindApp,
+  BindXaiManagedRequest,
+  BindXaiManagedResult,
 } from "./models";
 
 export type { ManagedPrompt } from "./prompts";

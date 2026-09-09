@@ -14,7 +14,13 @@ import type {
   ProviderSummaryQueryData,
   ReachabilityResult,
   WorkBuddySaveModelsResult,
+  BindXaiManagedRequest,
+  BindXaiManagedResult,
 } from "../../../features/types";
+import {
+  isXaiSubscriptionModelId,
+  xaiBindErrorCode,
+} from "../../../features/xai-subscription";
 import {
   hasExactKeys,
   hasRequiredAndOptionalKeys,
@@ -404,6 +410,76 @@ function assertQuickSetupRequest(
   return request;
 }
 
+function assertBindXaiManagedRequest(
+  request: BindXaiManagedRequest,
+): BindXaiManagedRequest {
+  if (
+    !isRecord(request) ||
+    !hasExactKeys(request, ["app", "accountId", "modelId"]) ||
+    !isOneOf(request.app, ["claude", "claude-desktop", "codex"]) ||
+    typeof request.accountId !== "string" ||
+    !/^ma1:[0-9a-f]{32}$/u.test(request.accountId) ||
+    !isXaiSubscriptionModelId(request.modelId)
+  )
+    throw new Error("SuperGrok bind request is invalid");
+  return {
+    app: request.app,
+    accountId: request.accountId,
+    modelId: request.modelId,
+  };
+}
+
+function parseBindXaiManagedResult(
+  value: unknown,
+  request: BindXaiManagedRequest,
+): BindXaiManagedResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "providerId",
+      "providerName",
+      "app",
+      "alreadyBound",
+      "activated",
+    ]) ||
+    typeof value.providerId !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/u.test(value.providerId) ||
+    typeof value.providerName !== "string" ||
+    !value.providerName.trim() ||
+    value.providerName.length > 200 ||
+    /[\r\n\0]/u.test(value.providerName) ||
+    value.app !== request.app ||
+    typeof value.alreadyBound !== "boolean" ||
+    typeof value.activated !== "boolean" ||
+    value.activated !== (request.app === "claude")
+  )
+    throw new Error("SuperGrok bind result is unavailable");
+  return {
+    providerId: value.providerId,
+    providerName: value.providerName,
+    app: request.app,
+    alreadyBound: value.alreadyBound,
+    activated: value.activated,
+  };
+}
+
+function parseXaiManagedModels(value: unknown): {
+  models: string[];
+  truncated: boolean;
+} {
+  if (!Array.isArray(value) || value.length > 2_000)
+    throw new Error("xAI models are unavailable");
+  const models: string[] = [];
+  for (const entry of value) {
+    const id =
+      typeof entry === "string" ? entry : isRecord(entry) ? entry.id : null;
+    if (!isXaiSubscriptionModelId(id))
+      throw new Error("xAI models are unavailable");
+    if (!models.includes(id)) models.push(id);
+  }
+  return { models, truncated: false };
+}
+
 export function createModelFeaturePorts(): Pick<
   FeaturePorts,
   "providers" | "workbuddy" | "opencodeModels"
@@ -426,6 +502,31 @@ export function createModelFeaturePorts(): Pick<
         ),
       checkReachability: invokeReachability,
       checkModel: invokeModelProbe,
+      bindXaiManaged: async (request) => {
+        const validated = assertBindXaiManagedRequest(request);
+        try {
+          return parseBindXaiManagedResult(
+            await invoke<unknown>("bind_xai_managed_provider", {
+              request: validated,
+            }),
+            validated,
+          );
+        } catch (error) {
+          throw {
+            code: xaiBindErrorCode(error) ?? "rollback_partial_state_unknown",
+          };
+        }
+      },
+      fetchXaiManagedModels: async (accountId) => {
+        if (
+          typeof accountId !== "string" ||
+          !/^ma1:[0-9a-f]{32}$/u.test(accountId)
+        )
+          throw new Error("xAI account selection is invalid");
+        return parseXaiManagedModels(
+          await invoke<unknown>("get_xai_oauth_models", { accountId }),
+        );
+      },
     },
     workbuddy: {
       getStatus: () => invoke("get_workbuddy_status"),

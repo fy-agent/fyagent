@@ -262,7 +262,7 @@ impl ChangePlanService {
         let _provider_guard = ProviderService::lock_provider_mutation(state, &AppType::Codex);
         let adapter = CodexProviderSwitchAdapter::for_plan(state, target_provider_id);
         let inspection = adapter.inspect()?;
-        let secret_capability = prove_codex_target_credential_capability(&inspection);
+        let secret_capability = prove_codex_target_credential_capability(state, &inspection);
         if secret_capability != SecretCapabilityResult::NoNewCredentialMaterial {
             return Err(ChangePlanErrorCode::SecretDependencyUnavailable);
         }
@@ -348,7 +348,7 @@ impl ChangePlanService {
         let adapter =
             CodexProviderUpsertAdapter::for_plan(state, provider.clone(), existing_reserved_row);
         let inspection = adapter.inspect()?;
-        let secret_capability = prove_codex_target_credential_capability(&inspection);
+        let secret_capability = prove_codex_target_credential_capability(state, &inspection);
         if secret_capability != SecretCapabilityResult::NoNewCredentialMaterial {
             return Err(ChangePlanErrorCode::SecretDependencyUnavailable);
         }
@@ -724,7 +724,7 @@ impl ChangePlanService {
             Ok(observed) => observed,
             Err(error) => return Ok(ApplyChangePlanOutcome::rejected(error)),
         };
-        if prove_codex_target_credential_capability(&observed)
+        if prove_codex_target_credential_capability(state, &observed)
             != SecretCapabilityResult::NoNewCredentialMaterial
         {
             return Ok(ApplyChangePlanOutcome::rejected(
@@ -1608,9 +1608,13 @@ pub(crate) fn write_workbuddy_save_locked(
 }
 
 fn prove_codex_target_credential_capability(
+    state: &AppState,
     inspection: &CodexSwitchInspection,
 ) -> SecretCapabilityResult {
     let provider = &inspection.target;
+    if ProviderService::xai_managed_account_is_ready(state, provider) {
+        return prove_xai_oauth_switch_shape(provider);
+    }
     if provider
         .meta
         .as_ref()
@@ -1659,6 +1663,14 @@ fn prove_codex_target_credential_capability(
     }
 
     if target_has_key {
+        SecretCapabilityResult::NoNewCredentialMaterial
+    } else {
+        SecretCapabilityResult::SecretDependencyUnavailable
+    }
+}
+
+fn prove_xai_oauth_switch_shape(provider: &Provider) -> SecretCapabilityResult {
+    if ProviderService::xai_managed_codex_shape_is_valid(provider) {
         SecretCapabilityResult::NoNewCredentialMaterial
     } else {
         SecretCapabilityResult::SecretDependencyUnavailable
@@ -2427,6 +2439,49 @@ mod tests {
         db.save_provider(AppType::Codex.as_str(), &unknown).unwrap();
         assert_eq!(
             ChangePlanService::plan_codex_switch_at(&state, &unknown.id, 103),
+            Err(ChangePlanErrorCode::SecretDependencyUnavailable)
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn credential_capability_rejects_legacy_json_without_vault_account() {
+        let (home, _guard, db, state, _current, target) = setup_switch_state();
+        let store_dir = home.path().join(".fyagent");
+        std::fs::create_dir_all(&store_dir).unwrap();
+        std::fs::write(
+            store_dir.join("xai_oauth_auth.json"),
+            r#"{"version":1,"default_account_id":"acct-xai","accounts":{"acct-xai":{"account_id":"acct-xai","login":"fixture","refresh_token":"fixture-refresh","authenticated_at":1,"requires_reauth":false}}}"#,
+        )
+        .unwrap();
+
+        let mut xai = target.clone();
+        xai.id = "xai-oauth-target".to_string();
+        xai.meta = Some(crate::provider::ProviderMeta {
+            provider_type: Some("xai_oauth".to_string()),
+            auth_binding: Some(crate::provider::AuthBinding {
+                source: crate::provider::AuthBindingSource::ManagedAccount,
+                auth_provider: Some("xai_oauth".to_string()),
+                account_id: Some("acct-xai".to_string()),
+            }),
+            ..Default::default()
+        });
+        db.save_provider(AppType::Codex.as_str(), &xai).unwrap();
+        assert_eq!(
+            ChangePlanService::plan_codex_switch_at(&state, &xai.id, 300),
+            Err(ChangePlanErrorCode::SecretDependencyUnavailable)
+        );
+
+        xai.meta
+            .as_mut()
+            .unwrap()
+            .auth_binding
+            .as_mut()
+            .unwrap()
+            .account_id = Some("missing-account".to_string());
+        db.save_provider(AppType::Codex.as_str(), &xai).unwrap();
+        assert_eq!(
+            ChangePlanService::plan_codex_switch_at(&state, &xai.id, 301),
             Err(ChangePlanErrorCode::SecretDependencyUnavailable)
         );
     }

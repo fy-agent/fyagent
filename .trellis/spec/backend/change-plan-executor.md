@@ -87,6 +87,23 @@ faultPoints        = before_managed_write,
 
 ## 3. Contracts
 
+### Grok managed Codex source admission
+
+- Codex switch admits a managed xAI source only when its explicit bound vault
+  record is ready, has Proxy purpose/consumer, and is FyAgent-owned. Recheck on
+  plan creation and apply; JSON token-file existence grants no capability.
+- The closed managed shape has an empty auth object, selected `xai` provider,
+  local Responses wire protocol, canonical Grok CLI subscription base URL and
+  an explicit bounded model. The native proxy converts to the vendor's Chat
+  Completions protocol; the local wire declaration is not the upstream protocol.
+  Credentials remain in the vault. Preview uses the same local proxy projection
+  as the existing Provider writer; apply starts/adopts that listener and retains
+  target rollback and readback. No fourth adapter or new schema is introduced.
+- A plan/configuration success proves native configuration, not live upstream
+  quota consumption. Synthetic vault + loopback upstream integration is separate
+  from actual subscription and Windows acceptance evidence.
+
+
 ### Wire version and phase model
 
 - `CHANGE_PLAN_CONTRACT_VERSION = fyagent-change-plan/v2`.

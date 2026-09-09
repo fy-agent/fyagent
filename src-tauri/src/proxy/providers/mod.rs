@@ -46,6 +46,8 @@ use serde::{Deserialize, Serialize};
 
 pub const CHATGPT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 pub const XAI_API_BASE_URL: &str = "https://api.x.ai/v1";
+/// Official Grok CLI session-token route; never share the API-key origin.
+pub const XAI_SUBSCRIPTION_BASE_URL: &str = "https://cli-chat-proxy.grok.com/v1";
 
 // 公开导出
 pub use adapter::ProviderAdapter;
@@ -88,7 +90,7 @@ pub enum ProviderType {
     GitHubCopilot,
     /// OpenAI Codex (ChatGPT Plus/Pro OAuth，需要 Anthropic ↔ Responses API 转换)
     CodexOAuth,
-    /// xAI Grok OAuth（需要 Anthropic ↔ Responses API 转换）
+    /// xAI Grok CLI subscription OAuth（复用 Chat Completions 转换）
     XaiOAuth,
 }
 
@@ -121,7 +123,7 @@ impl ProviderType {
             ProviderType::OpenRouter => "https://openrouter.ai/api",
             ProviderType::GitHubCopilot => "https://api.githubcopilot.com",
             ProviderType::CodexOAuth => CHATGPT_CODEX_BASE_URL,
-            ProviderType::XaiOAuth => XAI_API_BASE_URL,
+            ProviderType::XaiOAuth => XAI_SUBSCRIPTION_BASE_URL,
         }
     }
 

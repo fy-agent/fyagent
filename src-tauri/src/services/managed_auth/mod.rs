@@ -19,6 +19,8 @@ pub(crate) mod providers;
 mod repository;
 mod secret_bundle;
 mod service;
+#[cfg(test)]
+mod subscription_tests;
 
 pub(crate) use core::{
     stable_connection_id, stable_credential_id, stable_identity_id, stable_revision,

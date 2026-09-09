@@ -107,6 +107,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       fetchModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
       checkModel: rejectNativeOnly,
+      bindXaiManaged: rejectNativeOnly,
+      fetchXaiManagedModels: rejectNativeOnly,
     },
     workbuddy: {
       getStatus: rejectNativeOnly,

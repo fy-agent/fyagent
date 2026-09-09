@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { createElement, StrictMode, type PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -340,6 +341,86 @@ describe("useAgentDirectoryScan", () => {
       expect(observeAgentDirectoryRow(agentId, result.current.state).kind).toBe(
         "pending",
       );
+    }
+  });
+
+  it.each(["resolve", "reject"] as const)(
+    "drops a pending scan that %s after unmount without recording completion",
+    async (outcome) => {
+      const pending = deferred<RefetchResult>();
+      const refetchById = resolvingRefetch();
+      for (const agentId of AGENT_CATALOG_IDS) {
+        refetchById[agentId].mockReturnValue(pending.promise);
+      }
+      const { unmount } = renderHook(() =>
+        useAgentDirectoryScan({ autoStart: true }),
+      );
+      expect(refetchById.codex).toHaveBeenCalledTimes(1);
+      unmount();
+
+      const readError = vi.fn(() => null);
+      const finishedAt = vi.spyOn(Date, "now");
+      try {
+        if (outcome === "resolve") {
+          pending.resolve({
+            get error() {
+              return readError();
+            },
+          });
+        } else {
+          pending.reject(new Error("late readiness failure"));
+        }
+        // Drain the refetch continuations and their Promise.all completion.
+        // No mounted React tree remains, so no state update needs act().
+        await Promise.allSettled(AGENT_CATALOG_IDS.map(() => pending.promise));
+        await Promise.resolve();
+        expect(readError).not.toHaveBeenCalled();
+        expect(finishedAt).not.toHaveBeenCalled();
+      } finally {
+        finishedAt.mockRestore();
+      }
+    },
+  );
+
+  it("does not start another scan through a retained callback after unmount", () => {
+    const refetchById = resolvingRefetch();
+    const { result, unmount } = renderHook(() => useAgentDirectoryScan());
+    const start = result.current.start;
+    unmount();
+    start();
+    for (const agentId of AGENT_CATALOG_IDS) {
+      expect(refetchById[agentId]).not.toHaveBeenCalled();
+    }
+  });
+
+  it("keeps an in-flight scan across StrictMode replay and reconciles hidden results", async () => {
+    const pending = deferred<RefetchResult>();
+    const refetchById = resolvingRefetch();
+    for (const agentId of AGENT_CATALOG_IDS) {
+      refetchById[agentId].mockReturnValue(pending.promise);
+    }
+    const { result, rerender } = renderHook(
+      ({ active }) => useAgentDirectoryScan({ autoStart: true, active }),
+      {
+        initialProps: { active: true },
+        wrapper: ({ children }: PropsWithChildren) =>
+          createElement(StrictMode, null, children),
+      },
+    );
+    expect(result.current.state.status).toBe("scanning");
+    rerender({ active: false });
+    await act(async () => {
+      pending.resolve({ error: new Error("read unavailable") });
+    });
+    expect(result.current.state.settledIds).toEqual([]);
+    expect(result.current.state.status).toBe("scanning");
+    rerender({ active: true });
+    expect(result.current.state.status).toBe("complete");
+    expect(result.current.state.currentFailureIds).toEqual([
+      ...AGENT_CATALOG_IDS,
+    ]);
+    for (const agentId of AGENT_CATALOG_IDS) {
+      expect(refetchById[agentId]).toHaveBeenCalledTimes(1);
     }
   });
 

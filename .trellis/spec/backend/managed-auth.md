@@ -134,6 +134,38 @@ returns a refresh token or SecretRef.
 
 ## 3. Contracts
 
+### Grok subscription binding to local Agent providers
+
+- `bind_xai_managed_provider` accepts exactly `{ app, accountId, modelId }`.
+  `accountId` is the public overview identity, not a default or caller-supplied
+  legacy token-store ID. Binding resolves an xAI `proxy_upstream` /
+  `fyagent_proxy` credential, requires `ready` and `refresh_owner=fyagent`, and
+  reads the matching SecretRef bundle before Provider mutation.
+- Native Grok/OpenCode lineages are not eligible even when the same account
+  identity is ready. No upstream access/refresh token is copied into a Provider,
+  renderer, Change Plan, or Agent auth file. The existing proxy resolver remains
+  the only refresh owner and rejects credentials whose current status changed.
+- The binding uses a stable target/account/model Provider identity; an existing
+  row with a different definition fails `provider_conflict` instead of being
+  overwritten. A new source name includes a short public account label and a
+  stable identity digest so equal model/display names remain distinguishable.
+  A saved name is preserved and excluded from binding identity; renaming the
+  source or changing an account's display name does not break idempotency.
+  Claude Code activates through the existing Provider transaction;
+  Codex saves a draft and uses Change Plan; Claude Desktop saves a draft for its
+  existing dedicated profile application, with `activated=false`.
+- Result fields remain `providerId`, `providerName`, `app`, `alreadyBound`,
+  `activated`. Errors contain only a closed `code`: `invalid_request`,
+  `account_unavailable`, `provider_conflict`, `apply_failed_rolled_back`, or
+  `rollback_partial_state_unknown`. The last code never means restored.
+- `get_xai_oauth_models(accountId)` checks the same explicit overview identity
+  and vault bundle, then returns the documented `grok-build` route suggestion.
+  No subscription catalog endpoint is established: do not send session tokens
+  to the API-key `/models` endpoint or label suggestions as account entitlement.
+- New vault-created binding IDs never fall back to an in-memory legacy JSON
+  account when the vault account disappears or becomes unavailable.
+
+
 ### Identity versus credential session
 
 - `ManagedIdentity` is keyed by `(provider, provider_subject, provider_tenant)`,

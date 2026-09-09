@@ -55,6 +55,11 @@ test("keeps actual text readable on blended surfaces and dialogs", async ({
     });
     expect.soft(samples.filter((sample) => sample.ratio < 4.5)).toEqual([]);
     if (id === "models") {
+      const configurationName = page
+        .getByRole("region", { name: "Codex 模型配置" })
+        .getByRole("textbox", { name: "配置名称", exact: true });
+      await configurationName.scrollIntoViewIfNeeded();
+      await expect(configurationName).toBeInViewport();
       const boundaries = await sampleControlBoundaryContrast(
         page,
         `${scope} .fy-control-input:not(:disabled)`,

@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/archive/2026-09/08-31-grok-first-class-iteration/summary.md", "reason": "Shared plain-language plan"}
+{"file": ".trellis/spec/backend/reuse.md", "reason": "Reuse Change Plan and Auth Center"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "No second Codex OAuth on Agent"}
+{"file": ".trellis/spec/backend/change-plan-executor.md", "reason": "Keep closed adapters; no fourth operation"}
+{"file": ".trellis/spec/frontend/models.md", "reason": "Codex Change Plan stays the write owner; no V1 form import"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse V1 xai_oauth bind and existing Codex executor"}
+{"file": ".trellis/tasks/archive/2026-09/08-31-grok-first-class-iteration/research/hil-matrix.md", "reason": "H5-H7 H9 live placement"}
+{"file": ".trellis/tasks/archive/2026-09/08-31-grok-supergrok-to-codex/research/current-supergrok-codex-path.md", "reason": "Historical pre-migration placement research; current behavior is owned by grok-subscription.md"}
+{"file": ".trellis/spec/frontend/grok-subscription.md", "reason": "Current explicit-account Grok binding, readback and supported-target contract"}

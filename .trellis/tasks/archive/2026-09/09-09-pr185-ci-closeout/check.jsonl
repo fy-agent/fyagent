@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Owns browser and repository gate evidence"}
+{"file": ".trellis/spec/frontend/surfaces-responsive.md", "reason": "Validate real composited contrast and regression coverage"}
+{"file": ".trellis/spec/frontend/grok-subscription.md", "reason": "Current explicit-account Grok binding, readback and supported-target contract"}
+{"file": ".trellis/spec/frontend/agent-directory.md", "reason": "Validate late completions and preserved hidden-scan behavior"}

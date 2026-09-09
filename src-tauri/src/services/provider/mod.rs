@@ -6,8 +6,11 @@ mod common_config;
 mod endpoints;
 mod gemini_auth;
 mod live;
+mod managed_xai;
 mod universal;
 mod usage;
+
+pub use managed_xai::{BindXaiManagedError, BindXaiManagedRequest, BindXaiManagedResult};
 
 use indexmap::IndexMap;
 use regex::Regex;
@@ -104,7 +107,7 @@ pub(crate) fn build_codex_switch_target_live_projection(
     provider: &Provider,
     environment: &CodexSwitchEnvironment,
 ) -> Result<Value, AppError> {
-    if environment.should_hot_switch() {
+    if environment.should_hot_switch() || provider.is_xai_oauth() {
         return futures::executor::block_on(
             state
                 .proxy_service
@@ -4695,6 +4698,9 @@ impl ProviderService {
         app_type: AppType,
         mut provider: Provider,
     ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        let _managed_activation = provider.is_xai_oauth().then(|| {
+            futures::executor::block_on(state.proxy_service.lock_managed_activation(&app_type))
+        });
         let _file_scope = crate::config::file_mutation_scope();
         let existing_provider = state
             .db
@@ -4735,6 +4741,26 @@ impl ProviderService {
             provider.in_failover_queue = existing.in_failover_queue;
         }
 
+        let managed_subscription = provider.is_xai_oauth();
+        if managed_subscription
+            && (!Self::xai_managed_account_is_ready(state, &provider)
+                || (app_type == AppType::Codex
+                    && !Self::xai_managed_codex_shape_is_valid(&provider)))
+        {
+            return Err(QuickSetupApplyError::rolled_back(
+                "Managed subscription account is unavailable",
+            ));
+        }
+        let managed_runtime = managed_subscription
+            .then(|| {
+                futures::executor::block_on(
+                    state
+                        .proxy_service
+                        .snapshot_managed_takeover_runtime(&app_type),
+                )
+            })
+            .transpose()
+            .map_err(QuickSetupApplyError::rolled_back)?;
         let has_live_backup = backup_before.is_some();
         let live_taken_over = state
             .proxy_service
@@ -4742,7 +4768,14 @@ impl ProviderService {
         let should_prepare_takeover = has_live_backup || live_taken_over;
 
         let mutation = (|| -> Result<(SwitchResult, Option<Vec<u8>>), AppError> {
-            if should_prepare_takeover {
+            if managed_subscription {
+                futures::executor::block_on(
+                    state
+                        .proxy_service
+                        .prepare_managed_takeover(&app_type, &provider),
+                )
+                .map_err(AppError::Message)?;
+            } else if should_prepare_takeover {
                 futures::executor::block_on(
                     state
                         .proxy_service
@@ -4789,7 +4822,7 @@ impl ProviderService {
                 .set_current_provider(app_type.as_str(), &provider.id)?;
 
             let mut result = SwitchResult::default();
-            if !should_prepare_takeover {
+            if !should_prepare_takeover && !managed_subscription {
                 if let Err(error) = McpService::sync_enabled_for_app_inner(state, &app_type) {
                     log::warn!(
                         "quick setup 后重投影 {app_type:?} MCP 失败（将在下次同步时自愈）: {error}"
@@ -4874,6 +4907,15 @@ impl ProviderService {
                     }
                 }
                 rollback_errors.extend(restore_quick_setup_live(&live_snapshots));
+                if let Some(snapshot) = &managed_runtime {
+                    if let Err(error) = futures::executor::block_on(
+                        state
+                            .proxy_service
+                            .restore_managed_takeover_runtime(snapshot),
+                    ) {
+                        rollback_errors.push(format!("restore subscription runtime: {error}"));
+                    }
+                }
 
                 match state.db.get_provider_by_id(&provider.id, app_type.as_str()) {
                     Ok(restored) => {
@@ -5561,7 +5603,10 @@ impl ProviderService {
             .get(id)
             .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?;
 
-        if matches!(app_type, AppType::Codex) && !is_quick_setup_provider_id(&app_type, id) {
+        if matches!(app_type, AppType::Codex)
+            && !is_quick_setup_provider_id(&app_type, id)
+            && !_provider.is_xai_oauth()
+        {
             let settings = build_effective_settings_with_common_config(
                 state.db.as_ref(),
                 &app_type,
@@ -5575,6 +5620,12 @@ impl ProviderService {
                     .and_then(Value::as_str)
                     .unwrap_or_default(),
             )?;
+        }
+
+        if _provider.is_xai_oauth() && matches!(app_type, AppType::Claude | AppType::Codex) {
+            return Self::apply_quick_setup_locked(state, app_type, _provider.clone())
+                .map(|result| result.value)
+                .map_err(|error| AppError::Message(error.to_string()));
         }
 
         // OMO providers are switched through their own exclusive path.

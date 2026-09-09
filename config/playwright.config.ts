@@ -55,6 +55,7 @@ export default defineConfig({
         "blue-themes.spec.ts",
         "layout-integrity.spec.ts",
         "auth.spec.ts",
+        "xai-subscription.spec.ts",
         "presentation-choreography.spec.ts",
       ],
       use: {

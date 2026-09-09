@@ -68,6 +68,8 @@ interface ProvidersPort {
   fetchModels(baseUrl: string, apiKey: string): Promise<FetchedModelRef[]>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  bindXaiManaged(request: BindXaiManagedRequest): Promise<BindXaiManagedResult>;
+  fetchXaiManagedModels(accountId: string): Promise<WorkBuddyFetchModelsResult>;
 }
 
 interface WorkBuddyPort {
@@ -209,6 +211,17 @@ an apply instruction.
 - Codex image-extension and WebSocket choices exist only in the Codex request.
   The page sanitizes returned warning codes against the closed
   `CodexProviderMutationWarning` union.
+
+### Existing Grok subscription to a local Agent
+
+[Managed Grok Subscriptions](./grok-subscription.md) owns the explicit
+account/model picker, binding DTOs, target-local failure/readback rules and
+subscription regression matrix. Read it when changing `bindXaiManaged`,
+`fetchXaiManagedModels` or `XaiSubscriptionSection`. It extends this Models
+contract rather than duplicating authentication or Change Plan ownership.
+Claude Code applies only after confirmation and authoritative rereads; Codex
+binding remains a draft before the existing Auth source-plan flow. WorkBuddy
+keeps its API-key workflow, and a saved source is not live entitlement evidence.
 
 ### WorkBuddy flow
 

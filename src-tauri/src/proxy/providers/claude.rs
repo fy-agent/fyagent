@@ -36,14 +36,12 @@ const CODEX_OAUTH_CLIENT_VERSION: &str = "0.144.1";
 /// 供 handler/forwarder 外部使用的公开函数。
 /// 优先级：meta.apiFormat > settings_config.api_format > openrouter_compat_mode > 默认 "anthropic"
 pub fn get_claude_api_format(provider: &Provider) -> &'static str {
-    // 0) Managed Responses OAuth providers force their wire protocol. This is
-    // an invariant, not a preset default: editable metadata must not be able to
-    // send an Anthropic Messages body to a Responses-only upstream.
+    // Managed OAuth providers pin the vendor's protocol before editable metadata.
+    if provider.is_xai_oauth() {
+        return "openai_chat";
+    }
     if let Some(meta) = provider.meta.as_ref() {
-        if matches!(
-            meta.provider_type.as_deref(),
-            Some("codex_oauth" | "xai_oauth")
-        ) {
+        if matches!(meta.provider_type.as_deref(), Some("codex_oauth")) {
             return "openai_responses";
         }
     }
@@ -709,7 +707,7 @@ impl ProviderAdapter for ClaudeAdapter {
         // xAI OAuth: ignore editable provider base URLs and always use the xAI
         // API origin associated with the managed token.
         if self.is_xai_oauth(provider) {
-            return Ok(super::XAI_API_BASE_URL.to_string());
+            return Ok(super::XAI_SUBSCRIPTION_BASE_URL.to_string());
         }
 
         // 1. 从 env 中获取
@@ -834,6 +832,14 @@ impl ProviderAdapter for ClaudeAdapter {
         }
 
         // Defense in depth for callers that bypass endpoint rewriting.
+        if base_url == super::XAI_SUBSCRIPTION_BASE_URL {
+            return match endpoint.split_once('?') {
+                Some((_, query)) if !query.is_empty() => {
+                    format!("{base_url}/chat/completions?{query}")
+                }
+                _ => format!("{base_url}/chat/completions"),
+            };
+        }
         if base_url == super::XAI_API_BASE_URL {
             let query = endpoint.split_once('?').map(|(_, query)| query);
             return match query {
@@ -1455,11 +1461,11 @@ mod tests {
             },
         );
 
-        assert_eq!(get_claude_api_format(&provider), "openai_responses");
+        assert_eq!(get_claude_api_format(&provider), "openai_chat");
         assert_eq!(adapter.provider_type(&provider), ProviderType::XaiOAuth);
         assert_eq!(
             adapter.extract_base_url(&provider).unwrap(),
-            super::super::XAI_API_BASE_URL
+            super::super::XAI_SUBSCRIPTION_BASE_URL
         );
         assert!(adapter.needs_transform(&provider));
         assert_eq!(
@@ -1470,8 +1476,11 @@ mod tests {
             AuthStrategy::XaiOAuth
         );
         assert_eq!(
-            adapter.build_url(super::super::XAI_API_BASE_URL, "/v1/messages?beta=1"),
-            "https://api.x.ai/v1/responses?beta=1"
+            adapter.build_url(
+                super::super::XAI_SUBSCRIPTION_BASE_URL,
+                "/v1/messages?beta=1"
+            ),
+            "https://cli-chat-proxy.grok.com/v1/chat/completions?beta=1"
         );
 
         let transformed = transform_claude_request_for_api_format(
@@ -1482,17 +1491,13 @@ mod tests {
                 "messages": [{ "role": "user", "content": "hello" }]
             }),
             &provider,
-            "openai_responses",
+            "openai_chat",
             None,
             None,
         )
         .unwrap();
-        assert_eq!(transformed["reasoning"]["effort"], json!("high"));
-        assert_eq!(
-            transformed["include"],
-            json!(["reasoning.encrypted_content"])
-        );
-        assert!(transformed.get("store").is_none());
+        assert!(transformed.get("messages").is_some());
+        assert!(transformed.get("input").is_none());
     }
 
     #[test]

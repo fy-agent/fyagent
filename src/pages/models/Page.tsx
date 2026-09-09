@@ -83,6 +83,7 @@ import {
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
+import { XaiSubscriptionSection } from "./XaiSubscriptionSection";
 import {
   CodexSavePlanWorkspace,
   WorkBuddySavePlanWorkspace,
@@ -949,6 +950,7 @@ function ProviderPanel({
   const [websockets, setWebsockets] = useState(false);
   const [errors, setErrors] = useState<QuickSetupErrors>({});
   const [busy, setBusy] = useState(false);
+  const [subscriptionBusy, setSubscriptionBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [warningCodes, setWarningCodes] = useState<
     CodexProviderMutationWarning[]
@@ -1071,7 +1073,13 @@ function ProviderPanel({
   };
 
   const requestSave = () => {
-    if (writeLock.current || writesBlocked || writeConfirm.open) return;
+    if (
+      writeLock.current ||
+      subscriptionBusy ||
+      writesBlocked ||
+      writeConfirm.open
+    )
+      return;
     const validated = validateQuickSetup(
       {
         name,
@@ -1326,6 +1334,7 @@ function ProviderPanel({
           }
           disabled={
             busy ||
+            subscriptionBusy ||
             probeBusy ||
             writesBlocked ||
             draftCommit.pending ||
@@ -1345,6 +1354,7 @@ function ProviderPanel({
           className="fy-control-button-primary fy-models-commit-button"
           disabled={
             busy ||
+            subscriptionBusy ||
             probeBusy ||
             writesBlocked ||
             queryPending ||
@@ -1362,6 +1372,32 @@ function ProviderPanel({
               : "保存并设为当前配置"}
         </Button>
       </ModelsPanelHeader>
+
+      {app === "claude" || app === "codex" ? (
+        <XaiSubscriptionSection
+          key={app}
+          app={app}
+          active={active}
+          disabled={
+            busy ||
+            writesBlocked ||
+            writeConfirm.open ||
+            Boolean(codexSaveRequest || codexSavePlan)
+          }
+          writeTargets={summaryQuery.data?.writeTargets ?? []}
+          onBeginWrite={() => {
+            if (writeLock.current || writesBlocked) return false;
+            writeLock.current = true;
+            setSubscriptionBusy(true);
+            return true;
+          }}
+          onEndWrite={() => {
+            writeLock.current = false;
+            if (mountedRef.current) setSubscriptionBusy(false);
+          }}
+          onUnconfirmed={() => onBlockWrites(app)}
+        />
+      ) : null}
 
       {queryPending && <Spinner label={`正在读取 ${label} 配置`} />}
       {queryUnavailable && (

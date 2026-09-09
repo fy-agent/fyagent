@@ -14,6 +14,7 @@ export interface RichFeatureFixtureOptions {
   providerWriteDelayMs?: number;
   holdProviderWrite?: boolean;
   holdAgentAuth?: boolean;
+  xaiBindFailure?: boolean;
   workBuddySave?:
     | "saved"
     | "overwrite_then_saved"
@@ -461,6 +462,7 @@ export async function installRichTauriFeatureFixture(
       ],
     };
     let upsertPlan: Record<string, unknown> | null = null;
+    let switchPlan: Record<string, unknown> | null = null;
     let changeJob: Record<string, unknown> | null = null;
     const makeUpsertPlan = (name: string) => {
       const createdAt = changePlanNow();
@@ -1266,6 +1268,39 @@ export async function installRichTauriFeatureFixture(
               updatedEntries: 0,
             };
           }
+          case "get_xai_oauth_models":
+            if (payload.accountId !== managedAuthAccountIds.xai)
+              throw { code: "account_unavailable" };
+            return [
+              { id: "grok-subscription-fixture-1" },
+              { id: "grok-subscription-fixture-2" },
+            ];
+          case "bind_xai_managed_provider": {
+            const request = payload.request as Record<string, unknown>;
+            if (
+              fixtureOptions.xaiBindFailure ||
+              request.accountId !== managedAuthAccountIds.xai
+            )
+              throw { code: "account_unavailable" };
+            const app = String(request.app);
+            const providerApp = app === "claude-desktop" ? "claude" : app;
+            const providerId = `subscription-fixture-${app}`;
+            const alreadyBound = Boolean(providers[providerApp]?.[providerId]);
+            providers[providerApp] ??= {};
+            providers[providerApp][providerId] = {
+              id: providerId,
+              name: `SuperGrok ${app}`,
+              modelId: String(request.modelId),
+            };
+            if (app === "claude") currentProviderIds.claude = providerId;
+            return {
+              providerId,
+              providerName: `SuperGrok ${app}`,
+              app,
+              alreadyBound,
+              activated: app === "claude",
+            };
+          }
           case "get_provider_summary": {
             const app = String(payload.app);
             if (fixtureOptions.observationFailure === app) {
@@ -1295,11 +1330,13 @@ export async function installRichTauriFeatureFixture(
             return [];
           case "create_codex_provider_switch_plan": {
             const createdAt = changePlanNow();
-            return {
+            switchPlan = {
               planId: "plan-codex-switch",
               operation: "codex_provider_switch",
               targetProviderId: String(payload.targetProviderId),
-              targetProviderName: "Fixture Codex Switch",
+              targetProviderName:
+                providers.codex?.[String(payload.targetProviderId)]?.name ??
+                "Fixture Codex Switch",
               planDigest: digest("c"),
               baselineDigest: digest("d"),
               dbBaselineProviderId: currentProviderIds.codex ?? null,
@@ -1321,6 +1358,7 @@ export async function installRichTauriFeatureFixture(
               ],
               evidenceNote: "usage_not_observed",
             };
+            return structuredClone(switchPlan);
           }
           case "create_codex_provider_upsert_plan": {
             if (fixtureOptions.holdProviderWrite) await providerWriteGate;
@@ -1344,6 +1382,21 @@ export async function installRichTauriFeatureFixture(
             return structuredClone(workBuddyPlan);
           }
           case "apply_change_plan": {
+            if (switchPlan && payload.planId === switchPlan.planId) {
+              if (payload.planDigest !== switchPlan.planDigest)
+                return { kind: "rejected", errorCode: "stale" };
+              currentProviderIds.codex = String(switchPlan.targetProviderId);
+              switchPlan = { ...switchPlan, status: "consumed" };
+              changeJob = {
+                ...makeTerminalJob(false),
+                jobId: "job-codex-switch",
+                executionId: "job-codex-switch",
+                planId: switchPlan.planId,
+                idempotencyKey: switchPlan.planId,
+                targetProviderId: switchPlan.targetProviderId,
+              };
+              return { kind: "admitted", job: structuredClone(changeJob) };
+            }
             if (workBuddyPlan && payload.planId === workBuddyPlan.planId) {
               if (payload.planDigest !== workBuddyPlan.planDigest) {
                 return { kind: "rejected", errorCode: "stale" };
@@ -1480,7 +1533,8 @@ export async function installRichTauriFeatureFixture(
             return [];
           case "get_agent_install_readiness": {
             const agentId = String(payload.agentId);
-            const grokCli = agentId === "grokbuild" || agentId === "claude-code";
+            const grokCli =
+              agentId === "grokbuild" || agentId === "claude-code";
             return {
               contractVersion: 4,
               agentId,

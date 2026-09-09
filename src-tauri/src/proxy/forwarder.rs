@@ -1410,6 +1410,17 @@ impl RequestForwarder {
         } else {
             adapter.build_url(&base_url, &effective_endpoint)
         };
+        #[cfg(test)]
+        let url = match xai_integration_fixture(&provider.id) {
+            Some(fixture) if provider.is_xai_oauth() => {
+                let original = url::Url::parse(&url).expect("upstream URL");
+                assert_eq!(original.scheme(), "https");
+                assert_eq!(original.host_str(), Some("cli-chat-proxy.grok.com"));
+                assert_eq!(original.path(), "/v1/chat/completions");
+                format!("{}{}", fixture.upstream, original.path())
+            }
+            _ => url,
+        };
 
         // 记录映射后的出站模型名（此时 mapped_body 已完成接管映射 / [1m] 剥离 /
         // Copilot 归一化）。格式转换后若 body 仍带 model 字段会在下方刷新覆盖；
@@ -1741,7 +1752,32 @@ impl RequestForwarder {
             // sending the request. Invalid refresh credentials are persisted as
             // requiring re-authentication by the manager.
             if auth.strategy == AuthStrategy::XaiOAuth {
-                if let Some(app_handle) = &self.app_handle {
+                #[cfg(test)]
+                let fixture = xai_integration_fixture(&provider.id);
+                #[cfg(not(test))]
+                let fixture: Option<()> = None;
+                if let Some(_fixture) = fixture {
+                    #[cfg(test)]
+                    {
+                        let fixture = _fixture;
+                        let account_id = provider
+                            .meta
+                            .as_ref()
+                            .and_then(|meta| meta.managed_account_id_for("xai_oauth"));
+                        let material = fixture
+                            .auth
+                            .resolve_access_material(
+                                ManagedAuthProvider::Xai,
+                                account_id.as_deref(),
+                            )
+                            .await
+                            .map_err(|_| {
+                                ProxyError::AuthError("Fixture vault credential unavailable".into())
+                            })?;
+                        auth =
+                            AuthInfo::new(material.access_token().into(), AuthStrategy::XaiOAuth);
+                    }
+                } else if let Some(app_handle) = &self.app_handle {
                     let account_id = provider
                         .meta
                         .as_ref()
@@ -1758,6 +1794,11 @@ impl RequestForwarder {
                             AuthStrategy::XaiOAuth,
                         );
                     } else {
+                        if provider.id.starts_with("fyagent-xai-") {
+                            return Err(ProxyError::AuthError(
+                                "Grok subscription vault account is unavailable".into(),
+                            ));
+                        }
                         let xai_state = app_handle.state::<XaiOAuthState>();
                         let xai_auth: tokio::sync::RwLockReadGuard<'_, XaiOAuthManager> =
                             xai_state.0.read().await;
@@ -2191,6 +2232,27 @@ impl RequestForwarder {
                 .and_then(|meta| meta.local_proxy_request_overrides.as_ref()),
             is_copilot,
         );
+
+        if provider.is_xai_oauth() {
+            // The official CLI proxy routes by this header, not the JSON model
+            // alone. Replace all inbound/custom copies after body mapping and
+            // header overrides; the caller cannot choose a different route.
+            let model = filtered_body
+                .get("model")
+                .and_then(Value::as_str)
+                .filter(|model| !model.is_empty())
+                .ok_or_else(|| {
+                    ProxyError::InvalidRequest("Grok subscription model is missing".into())
+                })?;
+            let model = http::HeaderValue::from_str(model).map_err(|_| {
+                ProxyError::InvalidRequest("Grok subscription model is invalid".into())
+            })?;
+            ordered_headers.insert(
+                "x-xai-token-auth",
+                http::HeaderValue::from_static("xai-grok-cli"),
+            );
+            ordered_headers.insert("x-grok-model-override", model);
+        }
 
         reject_proxy_placeholder_for_managed_account_upstream(&url, &ordered_headers)?;
 
@@ -3223,6 +3285,51 @@ fn append_query_to_full_url(base_url: &str, query: Option<&str>) -> String {
         }
         _ => base_url.to_string(),
     }
+}
+
+// Test-only I/O seam: the real listener, router, translators and credential
+// resolver run unchanged; only the OS vault and vendor network are synthetic.
+// The map is keyed by fixture Provider ID and is absent from production builds.
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct XaiIntegrationFixture {
+    pub auth: std::sync::Arc<
+        crate::services::managed_auth::ManagedAuthService<
+            crate::services::secret::MemorySecretBackend,
+        >,
+    >,
+    pub upstream: String,
+}
+
+#[cfg(test)]
+fn xai_integration_fixtures(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, XaiIntegrationFixture>> {
+    static FIXTURES: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, XaiIntegrationFixture>>,
+    > = std::sync::OnceLock::new();
+    FIXTURES.get_or_init(Default::default)
+}
+
+#[cfg(test)]
+pub(crate) fn set_xai_integration_fixture(id: &str, fixture: Option<XaiIntegrationFixture>) {
+    let mut fixtures = xai_integration_fixtures().lock().expect("fixture lock");
+    match fixture {
+        Some(value) => {
+            fixtures.insert(id.into(), value);
+        }
+        None => {
+            fixtures.remove(id);
+        }
+    }
+}
+
+#[cfg(test)]
+fn xai_integration_fixture(id: &str) -> Option<XaiIntegrationFixture> {
+    xai_integration_fixtures()
+        .lock()
+        .expect("fixture lock")
+        .get(id)
+        .cloned()
 }
 
 async fn try_managed_proxy_token(

@@ -467,6 +467,29 @@ pub fn add_provider_with_result(
     Ok(result)
 }
 
+pub use crate::services::provider::{
+    BindXaiManagedError, BindXaiManagedRequest, BindXaiManagedResult,
+};
+
+/// Bind an explicitly selected vault account. All credential and Provider
+/// orchestration stays in the existing native service owners.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn bind_xai_managed_provider(
+    request: BindXaiManagedRequest,
+    app_handle: tauri::AppHandle,
+    auth_state: State<'_, crate::commands::ManagedAuthState>,
+) -> Result<BindXaiManagedResult, BindXaiManagedError> {
+    let auth = auth_state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or(BindXaiManagedError::ApplyFailedRolledBack)?;
+        ProviderService::bind_xai_managed(state.inner(), auth.as_ref(), request)
+    })
+    .await
+    .map_err(|_| BindXaiManagedError::RollbackPartialStateUnknown)?
+}
+
 fn parse_provider_draft_app(app: &str) -> Result<AppType, String> {
     let app_type = AppType::from_str(app).map_err(|e| e.to_string())?;
     if !matches!(
@@ -1563,6 +1586,12 @@ mod provider_draft_command_tests {
         assert_eq!(
             library_source
                 .matches("commands::apply_provider_quick_setup_with_result")
+                .count(),
+            1
+        );
+        assert_eq!(
+            library_source
+                .matches("commands::bind_xai_managed_provider")
                 .count(),
             1
         );

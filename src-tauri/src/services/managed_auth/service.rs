@@ -271,6 +271,55 @@ where
         }
     }
 
+    /// Resolve the public overview identity to the one FyAgent-owned Proxy
+    /// credential. This is an admission/readback check, never a refresh or an
+    /// export of native consumer credentials.
+    pub(crate) fn xai_proxy_account(
+        &self,
+        account_id: &str,
+    ) -> Result<CredentialWithIdentity, ManagedAuthCoreError> {
+        let selected = self
+            .credentials_for_account(account_id)?
+            .into_iter()
+            .find(|row| {
+                row.credential.provider == ManagedAuthProvider::Xai
+                    && row.credential.purpose == CredentialPurpose::ProxyUpstream
+                    && row.credential.consumer == Some(ManagedAuthConsumer::FyagentProxy)
+            })
+            .ok_or(ManagedAuthCoreError::NotFound)?;
+        let credential = &selected.credential;
+        if credential.status != CredentialStatus::Ready
+            || credential.refresh_owner != RefreshOwner::Fyagent
+        {
+            return Err(ManagedAuthCoreError::Conflict);
+        }
+        let bundle = self.readback_bundle(&credential.secret_handle)?;
+        if bundle.credential_id() != credential.credential_id
+            || bundle.provider() != ManagedAuthProvider::Xai
+            || bundle.generation() != credential.generation
+            || (bundle.refresh_token().is_none()
+                && (bundle.access_token().is_none()
+                    || access_expired(credential.access_expires_at)))
+        {
+            return Err(ManagedAuthCoreError::SecretMissing);
+        }
+        Ok(selected)
+    }
+
+    pub(crate) async fn fetch_xai_models(
+        &self,
+        account_id: &str,
+    ) -> Result<Vec<crate::services::model_fetch::FetchedModel>, String> {
+        self.xai_proxy_account(account_id)
+            .map_err(|_| "Grok subscription account is unavailable".to_string())?;
+        // The official CLI documents this routing alias, not an entitlement
+        // catalog. Never send a session token to the API-key /models endpoint.
+        Ok(vec![crate::services::model_fetch::FetchedModel {
+            id: "grok-build".into(),
+            owned_by: Some("xai".into()),
+        }])
+    }
+
     pub(crate) async fn resolve_access_material(
         &self,
         provider: ManagedAuthProvider,
@@ -747,7 +796,9 @@ where
             .repository
             .get_credential(&credential.credential_id)?
             .ok_or(ManagedAuthCoreError::NotFound)?;
-        if current.refresh_owner != RefreshOwner::Fyagent {
+        if current.refresh_owner != RefreshOwner::Fyagent
+            || current.status != CredentialStatus::Ready
+        {
             return Err(ManagedAuthCoreError::Conflict);
         }
         let bundle = self.readback_bundle(&current.secret_handle)?;

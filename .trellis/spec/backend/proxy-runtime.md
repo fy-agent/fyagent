@@ -61,6 +61,46 @@ backup body, or replacement routing implementation.
 
 ## 3. Contracts
 
+### Managed Grok activation
+
+- `xai_oauth` inference is pinned to the official CLI session route
+  `https://cli-chat-proxy.grok.com/v1/chat/completions`. Ordinary API-key
+  providers retain `api.x.ai`. Claude Messages and Codex Responses reuse the
+  existing Chat converters, including streaming tool calls; Codex's tool
+  catalog uses the matching `ProxyChat` profile.
+- After model mapping and header overrides, write `X-XAI-Token-Auth:
+  xai-grok-cli` and `x-grok-model-override` from the final outbound model.
+  Replace incoming copies; JSON `model` alone does not select the CLI route.
+  The integration fixture must assert vendor host/path before redirecting I/O
+  to loopback. Its streaming tests inspect tool arguments and terminal events
+  in both downstream protocols; synthetic success is not real quota evidence.
+- Claude Code/Codex Grok subscription activation composes the existing Provider
+  transaction with the one `ProxyService`. Acquire the target mutation lock,
+  then the shared managed-activation guard, then any listener-start guard.
+  Hold activation ownership from snapshots through commit or compensation;
+  another target cannot adopt a listener whose owner is still rolling back.
+  Manual per-app takeover uses the same guard after its existing app lock.
+  Activation requires a loopback address and
+  a successfully bound listener before publishing local configuration.
+- Capture live file preimages, Provider/current markers, existing backup and
+  the target proxy configuration before mutation. Keep an existing restore
+  backup; otherwise capture the outgoing native configuration. Do not backfill
+  an outgoing API key into the new managed Provider.
+- Write/read back the local endpoint using the target owner. Preserve Claude
+  permissions/unrelated environment and Codex native auth/MCP/unrelated source
+  configuration. Set only the selected target enabled; disable its automatic
+  failover so an expired subscription cannot silently use a paid API source.
+- Failure restores files, row/current selection, backup, and target proxy flags.
+  Stop a newly created listener only when no other takeover uses it; never stop
+  a listener that was already running. Report incomplete compensation as
+  state unknown. Read back restored target/global configuration and listener
+  state before confirming compensation. Port-conflict regression asserts all
+  original flags/files; a gated two-target test proves a failed activation
+  cannot stop the subsequently committed target's listener.
+- Existing quit/restore/next-start behavior stays authoritative; this feature
+  does not add a daemon, Docker, cloud service, or system-wide proxy.
+
+
 ### Command and state ownership
 
 - `commands/proxy.rs` is transport only: parse bounded wire input, acquire

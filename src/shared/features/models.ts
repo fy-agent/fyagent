@@ -78,6 +78,22 @@ export interface WorkBuddyFetchModelsResult {
   truncated: boolean;
 }
 
+export type XaiManagedBindApp = "claude" | "claude-desktop" | "codex";
+
+export interface BindXaiManagedRequest {
+  app: XaiManagedBindApp;
+  accountId: string;
+  modelId: string;
+}
+
+export interface BindXaiManagedResult {
+  providerId: string;
+  providerName: string;
+  app: XaiManagedBindApp;
+  alreadyBound: boolean;
+  activated: boolean;
+}
+
 export interface WorkBuddySaveModelsRequest
   extends WorkBuddyFetchModelsRequest {
   selectedModelIds: string[];

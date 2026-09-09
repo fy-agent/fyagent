@@ -25,6 +25,7 @@ import {
   changePlanUpsertWire,
   changePlanWorkBuddyWire,
 } from "../../fixtures/changePlans";
+import { managedAuthOverviewFixture } from "../../fixtures/managedAuth";
 
 function renderPage(ports: FeaturePorts, target?: string) {
   const initialEntry = target ? `/models?target=${target}` : "/models";
@@ -250,6 +251,43 @@ const TEST_OPENCODE_SNAPSHOT_META = {
 } as const;
 
 describe("Models page", () => {
+  it("keeps Grok subscription selections isolated when switching provider targets", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.managedAuth.getOverview = vi.fn(async () =>
+      managedAuthOverviewFixture(),
+    );
+    ports.providers.fetchXaiManagedModels = vi.fn(async () => ({
+      models: ["grok-selected-fixture"],
+      truncated: false,
+    }));
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {},
+      currentId: "",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+    }));
+    renderPage(ports, "claude");
+    await user.click(
+      await screen.findByRole("radio", { name: "xai@example.com" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "grok-selected-fixture" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "应用到 Claude Code" }),
+    ).toBeEnabled();
+    await user.click(screen.getByTestId("model-target-codex"));
+    expect(
+      await screen.findByRole("radio", { name: "xai@example.com" }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByRole("button", { name: "保存 Codex 订阅配置" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByText("已选模型：grok-selected-fixture"),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders the exact selector order, local decorative icons, and QoderWork default", () => {
     const ports = createBrowserFeaturePorts();
     renderPage(ports);
@@ -515,6 +553,9 @@ describe("Models page", () => {
     renderPage(ports, "workbuddy");
 
     await screen.findByText("已有第三方模型数量");
+    expect(
+      screen.queryByRole("region", { name: "SuperGrok 订阅设置" }),
+    ).not.toBeInTheDocument();
     const heading = screen.getByRole("heading", { name: "WorkBuddy" });
     const header = heading.closest("header");
     expect(header).not.toBeNull();
@@ -792,9 +833,9 @@ describe("Models page", () => {
       "aria-hidden",
       "true",
     );
-    expect(
-      screen.getByText("gpt-4o").closest("[inert]"),
-    ).toHaveStyle({ height: "0px" });
+    expect(screen.getByText("gpt-4o").closest("[inert]")).toHaveStyle({
+      height: "0px",
+    });
 
     await user.click(
       screen.getByRole("heading", { name: "当前已有的第三方模型 ID" }),

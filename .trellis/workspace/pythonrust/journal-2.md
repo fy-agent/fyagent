@@ -745,3 +745,27 @@ Update canonical and helper package versions, preserve the client compatibility 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 87: Repair Grok PR 185 CI and archive superseded plans
+<!-- trellis-session: v=2 fp=457806b1c5b1aa14 -->
+
+**Date**: 2026-09-09
+**Task**: Repair Grok PR 185 CI and archive superseded plans
+**Branch**: `fix/grok-pr185-ci-closeout`
+
+### Summary
+
+保留 PR185 来源，修复目录对比度及扫描卸载/StrictMode竞态；先红后绿回归、完整前端1618通过、最终浏览器64通过、归档后合同616+4通过。拆分超限Models订阅规范，归档三个被替代子计划与修复任务，85条上下文引用有效，整合main PR184且完整保留独立日志。真实订阅、原生Windows真人验收与远端合并不由本地记录宣称；GitHub交付另记于替代PR。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `46e378e8` | fix(agents): preserve directory contrast on bright backing |
+| `ac458fcb` | fix(agents): guard disposed scans and StrictMode admission |
+| `98d57692` | docs(trellis): reconcile Grok contracts and superseded plans |
+
+### Status
+
+[OK] **Completed**
