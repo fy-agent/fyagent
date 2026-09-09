@@ -1,3 +1,4 @@
+use chrono::{Datelike, NaiveDate};
 use regex::Regex;
 use std::sync::LazyLock;
 use tauri::AppHandle;
@@ -31,10 +32,14 @@ fn validate_filename(filename: &str) -> Result<(), String> {
 // --- Daily memory files (memory/YYYY-MM-DD.md) ---
 
 static DAILY_MEMORY_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}\.md$").unwrap());
+    LazyLock::new(|| Regex::new(r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}\.md\z").unwrap());
 
 fn validate_daily_memory_filename(filename: &str) -> Result<(), String> {
-    if !DAILY_MEMORY_RE.is_match(filename) {
+    // Match the renderer's 0001..=9999 Gregorian date domain, including leap days.
+    let valid = DAILY_MEMORY_RE.is_match(filename)
+        && NaiveDate::parse_from_str(&filename[..10], "%Y-%m-%d")
+            .is_ok_and(|date| date.year() >= 1);
+    if !valid {
         return Err(format!(
             "Invalid daily memory filename: {filename}. Expected: YYYY-MM-DD.md"
         ));
@@ -70,7 +75,7 @@ pub async fn list_daily_memory_files() -> Result<Vec<DailyMemoryFileInfo>, Strin
 
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if !name.ends_with(".md") {
+        if validate_daily_memory_filename(&name).is_err() {
             continue;
         }
 
@@ -207,7 +212,7 @@ pub async fn search_daily_memory_files(
 
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if !name.ends_with(".md") {
+        if validate_daily_memory_filename(&name).is_err() {
             continue;
         }
         let meta = match entry.metadata() {
@@ -357,4 +362,236 @@ pub async fn open_workspace_directory(handle: AppHandle, subdir: String) -> Resu
         .map_err(|error| format!("Failed to open directory: {error}"))?;
 
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    struct TestHome(Option<std::ffi::OsString>);
+
+    impl TestHome {
+        fn set(path: &Path) -> Self {
+            let previous = std::env::var_os("FYAGENT_TEST_HOME");
+            std::env::set_var("FYAGENT_TEST_HOME", path);
+            crate::settings::reload_settings().unwrap();
+            Self(previous)
+        }
+    }
+
+    impl Drop for TestHome {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+                None => std::env::remove_var("FYAGENT_TEST_HOME"),
+            }
+            crate::settings::reload_settings().unwrap();
+        }
+    }
+
+    fn setup() -> (tempfile::TempDir, TestHome, PathBuf) {
+        let home = tempfile::tempdir().unwrap();
+        let guard = TestHome::set(home.path());
+        let memory = get_openclaw_dir().join("workspace").join("memory");
+        assert!(memory.starts_with(home.path()));
+        (home, guard, memory)
+    }
+
+    #[test]
+    fn issue_141_daily_filename_matches_renderer_calendar_domain() {
+        for name in [
+            "0001-01-01.md",
+            "9999-12-31.md",
+            "2000-02-29.md",
+            "2024-02-29.md",
+            "2026-09-08.md",
+        ] {
+            assert!(validate_daily_memory_filename(name).is_ok(), "{name}");
+        }
+        for name in [
+            "README.md",
+            "2026-02-30.md",
+            "1900-02-29.md",
+            "2026-04-31.md",
+            "0000-01-01.md",
+            "2026-00-01.md",
+            "2026-01-00.md",
+            "2026-13-01.md",
+            "2026-2-01.md",
+            "２０２６-０９-０８.md",
+            "2026-09-08.md.bak",
+            "2026-09-08.md\n",
+            "../2026-09-08.md",
+            "2026-09-08.md/child",
+        ] {
+            assert!(validate_daily_memory_filename(name).is_err(), "{name}");
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn issue_141_daily_list_and_search_skip_invalid_files_and_directories() {
+        let (_home, _guard, memory) = setup();
+        fs::create_dir_all(&memory).unwrap();
+        let content = format!("{} needle {}", "中文".repeat(40), "日记".repeat(80));
+        for name in [
+            "2026-09-08.md",
+            "2024-02-29.md",
+            "2000-02-29.md",
+            "README.md",
+            "2026-02-30.md",
+            "1900-02-29.md",
+            "0000-01-01.md",
+            "２０２６-０９-０８.md",
+            "2026-09-08.md.fyagent.backup",
+        ] {
+            fs::write(memory.join(name), &content).unwrap();
+        }
+        fs::create_dir(memory.join("2026-09-09.md")).unwrap();
+        let expected = ["2026-09-08.md", "2024-02-29.md", "2000-02-29.md"];
+
+        let listed = list_daily_memory_files().await.unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .map(|file| file.filename.as_str())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        for file in &listed {
+            assert_eq!(file.date, file.filename[..10]);
+            assert_eq!(file.size_bytes, content.len() as u64);
+            assert_eq!(file.preview, content.chars().take(200).collect::<String>());
+            assert_eq!(
+                read_daily_memory_file(file.filename.clone()).await.unwrap(),
+                Some(content.clone())
+            );
+        }
+
+        let found = search_daily_memory_files("NEEDLE".to_string())
+            .await
+            .unwrap();
+        assert_eq!(
+            found
+                .iter()
+                .map(|file| file.filename.as_str())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        for file in found {
+            assert_eq!(file.match_count, 1);
+            assert_eq!(file.date, file.filename[..10]);
+            assert!(file.snippet.contains("needle"));
+            assert!(file.snippet.starts_with("..."));
+            assert!(file.snippet.ends_with("..."));
+        }
+        let date_match = search_daily_memory_files("2024-02-29".to_string())
+            .await
+            .unwrap();
+        assert_eq!(date_match.len(), 1);
+        assert_eq!(date_match[0].filename, "2024-02-29.md");
+        assert_eq!(date_match[0].match_count, 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn issue_141_invalid_daily_crud_does_not_read_create_overwrite_or_delete() {
+        let (_home, _guard, memory) = setup();
+        let invalid = [
+            "README.md",
+            "2026-02-30.md",
+            "0000-01-01.md",
+            "２０２６-０９-０８.md",
+        ];
+
+        for name in invalid {
+            assert!(
+                read_daily_memory_file(name.to_string()).await.is_err(),
+                "{name}"
+            );
+            assert!(
+                write_daily_memory_file(name.to_string(), "new".to_string())
+                    .await
+                    .is_err(),
+                "{name}"
+            );
+            assert!(
+                delete_daily_memory_file(name.to_string()).await.is_err(),
+                "{name}"
+            );
+        }
+        assert!(
+            !memory.exists(),
+            "invalid writes must not create the directory"
+        );
+
+        fs::create_dir_all(&memory).unwrap();
+        for name in invalid {
+            let path = memory.join(name);
+            fs::write(&path, "Existing non-daily data\n").unwrap();
+            assert!(
+                read_daily_memory_file(name.to_string()).await.is_err(),
+                "{name}"
+            );
+            assert!(
+                write_daily_memory_file(name.to_string(), "replacement".to_string())
+                    .await
+                    .is_err(),
+                "{name}"
+            );
+            assert!(
+                delete_daily_memory_file(name.to_string()).await.is_err(),
+                "{name}"
+            );
+            assert_eq!(
+                fs::read_to_string(path).unwrap(),
+                "Existing non-daily data\n"
+            );
+        }
+        assert_eq!(fs::read_dir(&memory).unwrap().count(), invalid.len());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn issue_141_valid_daily_crud_preserves_leap_day_and_backup_semantics() {
+        let (_home, _guard, memory) = setup();
+        let filename = "2024-02-29.md".to_string();
+        assert!(list_daily_memory_files().await.unwrap().is_empty());
+        assert_eq!(
+            read_daily_memory_file(filename.clone()).await.unwrap(),
+            None
+        );
+        write_daily_memory_file(filename.clone(), "闰日日记\n".to_string())
+            .await
+            .unwrap();
+        assert_eq!(
+            read_daily_memory_file(filename.clone())
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("闰日日记\n")
+        );
+
+        write_daily_memory_file(filename.clone(), "更新日记\n".to_string())
+            .await
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(memory.join("2024-02-29.md.fyagent.backup")).unwrap(),
+            "闰日日记\n"
+        );
+        assert_eq!(
+            read_daily_memory_file(filename.clone())
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("更新日记\n")
+        );
+        delete_daily_memory_file(filename.clone()).await.unwrap();
+        delete_daily_memory_file(filename.clone()).await.unwrap();
+        assert_eq!(read_daily_memory_file(filename).await.unwrap(), None);
+        assert!(list_daily_memory_files().await.unwrap().is_empty());
+    }
 }

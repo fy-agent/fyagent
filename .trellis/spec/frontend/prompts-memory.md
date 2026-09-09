@@ -114,6 +114,18 @@ paths above.
   deletion. Do not open a Dialog to read or edit prompt content.
 - Import is explicit. Initial load only reads; it never imports, enables, or
   writes a prompt.
+- `PromptService::upsert_prompt` distinguishes a library-only save from a
+  live-state transition using the persisted `prompt.id` and its prior enabled
+  state. Creating, editing, or importing a disabled entry preserves existing
+  live bytes, metadata, and recovery files; an absent live file stays absent.
+  Saving an enabled entry still writes its content. Only a genuine
+  enabled-to-disabled transition can clear the live file when no other entry
+  remains enabled. Do not infer a disable action merely from a zero enabled
+  count after saving a new library row.
+- Each explicit import allocates a fresh opaque library ID using the existing
+  UUID primitive. A timestamp is display metadata, not uniqueness: repeated
+  imports must not replace an enabled row or change its live projection.
+  Existing persisted IDs remain valid and are not migrated.
 - The live-file inspector is collapsed by default under the editor. It
   reports the current native file content and is not an editable second
   source of truth. Do not keep it as a third always-open column that steals
@@ -145,6 +157,12 @@ The fixed resource mapping is:
   The adapter validates the filename before invoke, and the backend validates
   it again. Long-term vs daily uses `FeatureTabs`; document and daily files
   use `FeatureList`; daily search uses `FeatureSearch`.
+- Daily list and search share the backend's direct read/write/delete filename
+  validation: ASCII digits, a real calendar date, and years 0001–9999, matching
+  the renderer. Skip non-date names, invalid dates, and directories before
+  returning entries. A README or `2026-02-30.md` must not invalidate the whole
+  list or search response; valid leap dates and descending filename order stay
+  supported. Direct access to an invalid filename still fails before I/O.
 - Open-today creates no file until Save. Search is debounced by 300 ms. Daily
   deletion always requires shared confirmation.
 - Opening the OpenClaw workspace or memory folder uses
@@ -194,24 +212,27 @@ The fixed resource mapping is:
 
 ## 4. Validation & Error Matrix
 
-| Condition                                     | Required result                                             |
-| --------------------------------------------- | ----------------------------------------------------------- |
-| Unsupported prompt app                        | Reject before native invoke                                 |
-| Unknown long-term resource                    | Reject before native invoke                                 |
-| Daily filename outside `YYYY-MM-DD.md`        | Reject before native invoke                                 |
-| Malformed prompt, limit, file, or search IPC  | Fail closed; render an error, never typed fake state        |
-| Browser operation                             | Native-only state, not empty success or sample data         |
-| Initial page load                             | Reads only; no import, enable, save, or file creation       |
-| Empty collection                              | Application-specific empty state                            |
-| Search matches nothing                        | No-results state distinct from empty collection             |
-| Missing OpenClaw long-term file               | Not-created state; file remains absent until Save           |
-| Enabled prompt deletion                       | Block deletion and require disable first                    |
-| Mutation is already pending                   | Disable/ignore duplicate action; one native invoke          |
-| Native mutation fails                         | Preserve baseline; report failure; no success claim         |
-| Mutation succeeds, authoritative reread fails | Preserve cached baseline and show refresh warning           |
-| Dirty transition requested                    | Confirm discard before changing app/resource/tab/file/route |
-| Hermes content exceeds native character limit | Warn visibly but allow explicit Save                        |
-| Prompt/Memory page introduces private theme   | Static/style review and browser acceptance fail             |
+| Condition                                      | Required result                                              |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| Unsupported prompt app                         | Reject before native invoke                                  |
+| Unknown long-term resource                     | Reject before native invoke                                  |
+| Daily filename outside `YYYY-MM-DD.md`         | Reject before native invoke                                  |
+| Malformed prompt, limit, file, or search IPC   | Fail closed; render an error, never typed fake state         |
+| Browser operation                              | Native-only state, not empty success or sample data          |
+| Initial page load                              | Reads only; no import, enable, save, or file creation        |
+| Empty collection                               | Application-specific empty state                             |
+| Search matches nothing                         | No-results state distinct from empty collection              |
+| Missing OpenClaw long-term file                | Not-created state; file remains absent until Save            |
+| Enabled prompt deletion                        | Block deletion and require disable first                     |
+| Disabled Prompt create/edit/import             | Save library state without live-file or recovery-file writes |
+| Last enabled Prompt explicitly disabled        | Preserve existing explicit-clear behavior                    |
+| Non-date or invalid-date daily directory entry | Skip in list/search; reject direct read/write/delete         |
+| Mutation is already pending                    | Disable/ignore duplicate action; one native invoke           |
+| Native mutation fails                          | Preserve baseline; report failure; no success claim          |
+| Mutation succeeds, authoritative reread fails  | Preserve cached baseline and show refresh warning            |
+| Dirty transition requested                     | Confirm discard before changing app/resource/tab/file/route  |
+| Hermes content exceeds native character limit  | Warn visibly but allow explicit Save                         |
+| Prompt/Memory page introduces private theme    | Static/style review and browser acceptance fail              |
 
 ## 5. Good / Base / Bad Cases
 
@@ -227,6 +248,14 @@ The fixed resource mapping is:
   independent gradient/card/button theme.
 
 ## 6. Tests Required
+
+Native regressions must check disabled Prompt create/edit/import against real
+temporary files (including metadata, missing files, and existing recovery
+artifacts), enabled edits and explicit disable, and mixed daily directory
+list/search plus invalid CRUD with no file changes. Use the existing isolated
+home/test serialization mechanism. Run `mise run rust:test issue_141_`; these
+tests complement the renderer contracts and do not replace a branch-built
+native application smoke.
 
 Focused Vitest coverage must prove:
 

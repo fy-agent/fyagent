@@ -1,0 +1,29 @@
+{
+  "id": "issue-141-prompt-memory-closeout",
+  "name": "issue-141-prompt-memory-closeout",
+  "title": "Fix issue 141 Prompt data preservation and daily memory listing",
+  "description": "Fix the two reproduced P1 issues: disabled Prompt library operations preserve live files, and daily memory listing accepts only valid date files. Include regression tests, isolated native verification, and rollback evidence.",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": "prompt-memory",
+  "package": null,
+  "priority": "P1",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-09-08",
+  "completedAt": "2026-09-08",
+  "branch": "codex/issue-141-prompt-memory-closeout",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "c6303266b41e96e16322b065a379e097a0835ffd",
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/184",
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/services/prompt.rs",
+    "src-tauri/src/commands/workspace.rs"
+  ],
+  "notes": "Two scoped P1 defects fixed and verified in isolated macOS debug app. Full gate passed. Issue 141 remains open; Windows native acceptance and other findings are outside this closeout.",
+  "meta": {}
+}
