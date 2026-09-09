@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"Reuse the existing owners and adopted date primitive"}
+{"file":".trellis/spec/backend/reversible-user-config.md","reason":"Preserve native file-write/backup semantics"}
+{"file":".trellis/spec/frontend/prompts-memory.md","reason":"Existing Prompt and Daily Memory behavior/validation contract"}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Guarded current-host testing and build commands"}
+{"file":".trellis/tasks/archive/2026-09/09-08-issue-141-prompt-memory-closeout/research/implementation-research.md","reason":"Minimal fix, previous behavior and regression matrix; actual runtime uses branch build"}

@@ -66,6 +66,29 @@ Aligned FyAgent brand positioning, repository entry copy, GitHub community routi
 [OK] **Completed**
 
 
+## Session 5: Close Prompt and Daily Memory P1 defects
+<!-- trellis-session: v=2 fp=35de4bf3da2703ee -->
+
+**Date**: 2026-09-08
+**Task**: Close Prompt and Daily Memory P1 defects
+**Branch**: `codex/issue-141-prompt-memory-closeout`
+
+### Summary
+
+Fixed disabled Prompt live-file writes and invalid Daily Memory entries in an isolated branch. Final 11 focused regressions and full prearchive gate passed. Branch-built macOS debug app passed native create/edit/import/enable/disable and daily list/search/save checks, with independent file/database readback and normal-app restoration. Updated maintained contracts and docs. Issue 141 stays open; Windows native and release acceptance are not claimed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c6303266` | fix: preserve prompt files and validate daily memory entries |
+| `1f7e8542` | docs: record isolated native acceptance for issue 141 fixes |
+
+### Status
+
+[OK] **Completed**
+
+
 ## Session 6: Grok subscription reuse and local verification
 <!-- trellis-session: v=2 fp=96da6d6be64d8541 -->
 
