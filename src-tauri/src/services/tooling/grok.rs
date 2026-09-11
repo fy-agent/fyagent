@@ -1326,6 +1326,15 @@ async fn windows_npm_plans_for_action(
 }
 
 #[cfg(target_os = "windows")]
+pub(super) async fn windows_live_npm_install_commands() -> Vec<String> {
+    windows_npm_plans_for_action(ToolLifecycleAction::Install)
+        .await
+        .iter()
+        .map(super::grok_npm::command_for_plan)
+        .collect()
+}
+
+#[cfg(target_os = "windows")]
 pub(super) async fn observe_windows_grok_via_helper(
 ) -> Result<fyagent_user_helper::ToolOperationResult, String> {
     tokio::task::spawn_blocking(|| {

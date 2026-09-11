@@ -75,6 +75,17 @@ pub(super) fn build_tool_lifecycle_command(
     }))
 }
 
+#[cfg(target_os = "windows")]
+pub(super) fn wrap_windows_lifecycle_bat(command: &str) -> String {
+    [
+        "@echo off",
+        "echo ========== Grok Build ==========",
+        &format!("call {command}"),
+        "if errorlevel 1 exit /b %errorlevel%",
+    ]
+    .join("\r\n")
+}
+
 #[cfg(any(test, target_os = "windows"))]
 pub(super) fn tool_display_name(tool: &str) -> &'static str {
     match tool {
@@ -251,6 +262,17 @@ mod tests {
         assert!(install.contains("--registry="));
         assert!(!install.contains("@latest"));
         assert!(!install.contains("powershell"));
+    }
+
+    #[test]
+    fn grok_windows_live_bat_uses_resolved_version_not_placeholder() {
+        let bat = wrap_windows_lifecycle_bat(
+            "npm i -g @xai-official/grok@1.0.25 --registry=https://registry.npmjs.org/",
+        );
+        assert!(bat.contains("@xai-official/grok@1.0.25"), "{bat}");
+        assert!(!bat.contains("@xai-official/grok@1.2.3"), "{bat}");
+        assert!(bat.contains("@echo off"), "{bat}");
+        assert!(bat.contains("call npm"), "{bat}");
     }
 
     #[test]

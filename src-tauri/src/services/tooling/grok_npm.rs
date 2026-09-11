@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use fyagent_user_helper::grok_npm::{
-    current_platform_package, GrokNpmInstallPlan, GrokNpmPlanError, GrokNpmRegistry,
-    OfficialNpmTool,
+    current_platform_package, npm_major_allows_scripts, GrokNpmInstallPlan, GrokNpmPlanError,
+    GrokNpmRegistry, OfficialNpmTool, GROK_NPM_ALLOW_SCRIPTS_PACKAGE,
 };
 #[cfg(test)]
 use fyagent_user_helper::GROK_NPM_PACKAGE;
@@ -51,7 +51,9 @@ impl GrokNpmManifest {
 pub(super) async fn resolve_published_manifest(
     tool: OfficialNpmTool,
 ) -> Result<GrokNpmManifest, GrokNpmPlanError> {
-    let client = metadata_client().ok_or(GrokNpmPlanError::Missing)?;
+    let Some(client) = metadata_client() else {
+        return Err(GrokNpmPlanError::Missing);
+    };
     let platform = tool
         .current_platform_package()
         .ok_or(GrokNpmPlanError::InvalidPlatformPackage)?;
@@ -94,6 +96,33 @@ pub(super) fn install_command_for_version(version: &str) -> Option<String> {
     )
     .ok()?;
     Some(format!("npm {}", plan.npm_argv().join(" ")))
+}
+
+pub(super) fn command_for_plan(plan: &GrokNpmInstallPlan) -> String {
+    format!("npm {}", plan.npm_argv().join(" "))
+}
+
+/// npm 12+ blocks unlisted lifecycle scripts. Mirror the helper: add a
+/// package-scoped allow-scripts flag only when the executing npm major needs it.
+pub(super) fn command_with_script_policy(command: &str, npm_major: Option<u32>) -> String {
+    let flag = format!("--allow-scripts={GROK_NPM_ALLOW_SCRIPTS_PACKAGE}");
+    if command.contains("--allow-scripts=") {
+        return command.to_string();
+    }
+    if npm_major.is_some_and(npm_major_allows_scripts) {
+        format!("{command} {flag}")
+    } else {
+        command.to_string()
+    }
+}
+
+pub(super) fn exact_install_version(command: &str) -> Option<&str> {
+    let marker = format!("{}@", OfficialNpmTool::Grok.package());
+    command.split_whitespace().find_map(|token| {
+        token
+            .strip_prefix(marker.as_str())
+            .filter(|version| !version.is_empty() && *version != "latest")
+    })
 }
 
 /// Command shape for tests and generic shell fallbacks. Live Grok/Claude
@@ -511,6 +540,32 @@ mod tests {
         assert!(!command.contains("@latest"));
         assert!(!command.contains("npm config"));
         assert!(!command.contains("dangerously-allow-all"));
+    }
+
+    #[test]
+    fn command_for_plan_uses_the_resolved_version() {
+        let plan = GrokNpmInstallPlan::for_execution("1.0.25", GrokNpmRegistry::Npmjs, false)
+            .expect("plan");
+        let command = command_for_plan(&plan);
+        assert!(command.contains("@xai-official/grok@1.0.25"), "{command}");
+        assert!(!command.contains("@xai-official/grok@1.2.3"), "{command}");
+        assert!(command.contains("registry.npmjs.org"), "{command}");
+        assert!(!command.contains("@latest"), "{command}");
+    }
+
+    #[test]
+    fn command_with_script_policy_adds_flag_only_for_npm_12() {
+        let command = "npm i -g @xai-official/grok@1.0.25 --registry=https://registry.npmjs.org/";
+        let with_flag = command_with_script_policy(command, Some(12));
+        assert!(
+            with_flag.contains("--allow-scripts=@xai-official/grok"),
+            "{with_flag}"
+        );
+        assert!(!command_with_script_policy(command, Some(11)).contains("--allow-scripts="));
+        assert!(!command_with_script_policy(command, None).contains("--allow-scripts="));
+        let already = format!("{command} --allow-scripts=@xai-official/grok");
+        assert_eq!(command_with_script_policy(&already, Some(12)), already);
+        assert_eq!(exact_install_version(&with_flag), Some("1.0.25"));
     }
 
     #[test]

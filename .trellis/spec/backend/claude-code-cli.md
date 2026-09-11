@@ -95,8 +95,8 @@ generic command execution capability is added.
   point at an older release; that is why argv never uses the `latest` tag.
 - `default_install_command()` is a command-shape fixture
   (`@xai-official/grok@1.2.3` plus the Tencent registry). It is not version
-  authority. macOS and formal Windows resolve `resolve_published_manifest`
-  before any npm plan.
+  authority. macOS, formal Windows, and development Windows LocalProcess
+  resolve `resolve_published_manifest` before any npm install/update.
 - npm receives exact package/version, general registry and the matching
   `@anthropic-ai:registry` option for that invocation. Scope config must not
   silently redirect the request to a different registry. Global/user npmrc and
@@ -184,7 +184,9 @@ reject Desktop/`managed_desktop`. Mirror smoke uses an isolated temporary
 home/prefix/cache and no login or inference.
 `grok_npm` tests must parse a `/latest` document version, reject
 `version=latest`, keep fixture argv free of `@latest`, and must not
-`include_str!` a version/hash JSON. `default_install` tests must prefer
+`include_str!` a version/hash JSON. `command_with_script_policy` must add
+`--allow-scripts=@xai-official/grok` only for npm ≥ 12 and must not duplicate
+an existing flag. `default_install` tests must prefer
 PATH default over a second copy.
 Windows native helper execution and real vendor login require their own
 matching-host evidence; macOS and portable tests do not establish it.
@@ -201,9 +203,12 @@ wrong: walk ~/.mise / nvm / volta trees; treat any second copy as unsupported
 wrong: run user npm from the elevated desktop process
 wrong: Command::new("npm.cmd") as the helper application name
 wrong: renderer surfacesForAgent(claude-code)=desktop; sourceKind=managed_desktop
+wrong: development Windows LocalProcess `npm i -g @xai-official/grok@1.2.3`
+wrong: npm 12 without --allow-scripts=@xai-official/grok; exit 0 -> succeeded
 correct: login/process PATH + product env -> PATH-default owner
 correct: registry /latest -> exact version + integrity -> matching registry
          -> closed plan -> ordinary-user execution -> actual CLI version/owner
 correct: Windows .cmd shim -> cmd /D /S /C call "{quoted}" via raw_arg
 correct: renderer admits compact CLI readiness (cli_tooling, no surfaces array)
+correct: LocalProcess npm 12 --allow-scripts=@xai-official/grok; reread grok --version
 ```

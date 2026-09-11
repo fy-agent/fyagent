@@ -95,21 +95,24 @@ pub(super) async fn version() -> ToolVersion {
 pub(super) async fn version() -> ToolVersion {
     let observed = windows_operation(fyagent_user_helper::GrokToolAction::Observe, None).await;
     match observed {
-        Ok(observed) => ToolVersion {
-            name: "claude".to_string(),
-            installed_but_broken: observed.detected && observed.normalized_version.is_none(),
-            error: (!observed.detected).then(|| "Claude Code is not installed".to_string()),
-            version: observed.normalized_version,
-            latest_version: super::versions::fetch_npm_latest_for_tool(
+        Ok(observed) => {
+            let latest_version = super::versions::fetch_npm_latest_for_tool(
                 &crate::proxy::http_client::get(),
                 fyagent_user_helper::claude::CLAUDE_NPM_PACKAGE,
                 "claude",
                 observed.normalized_version.as_deref(),
             )
-            .await,
-            distribution_owner: observed.owner.map(|owner| owner.as_str().to_string()),
-            latest_source: Some("npm".to_string()),
-        },
+            .await;
+            ToolVersion {
+                name: "claude".to_string(),
+                installed_but_broken: observed.detected && observed.normalized_version.is_none(),
+                error: (!observed.detected).then(|| "Claude Code is not installed".to_string()),
+                version: observed.normalized_version,
+                latest_version,
+                distribution_owner: observed.owner.map(|owner| owner.as_str().to_string()),
+                latest_source: Some("npm".to_string()),
+            }
+        }
         Err(error) => ToolVersion {
             name: "claude".to_string(),
             version: None,

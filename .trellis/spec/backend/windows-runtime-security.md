@@ -577,7 +577,12 @@ run_tool_lifecycle_action(tools=["grok"], action=install|update|install_official
   formal Windows -> grok-tool helper; no elevated fallback
   default install -> official npm exact-version plan (no @latest)
   install_native -> official x.ai/PowerShell installer
-  development Windows / macOS -> existing Tooling owner, same Grok rules
+  development Windows LocalProcess -> same live npm plan as helper
+    (resolve_published_manifest; never default_install_command 1.2.3)
+    npm 12+ --allow-scripts=@xai-official/grok from the executing npm major
+    exit 0 is not success if postinstall was blocked or PATH-default grok
+    is still below the planned version
+  macOS -> existing Tooling owner, same Grok rules
 
 CLI-backed Auth observation/session
   -> unavailable / interactive_user_unavailable on formal Windows
@@ -611,6 +616,12 @@ fyagent-user-helper.exe
   entry, validates root and platform SHA-512 at an allowed registry, and then
   sends the compact exact-version/registry/allow-scripts control. The helper
   must not select Darwin/Linux packages or fetch registry metadata.
+- Development Windows LocalProcess must apply the same live argv and
+  allow-scripts policy without widening the elevated parent. Detect npm major
+  from the sibling or PATH-default `npm.cmd` that will actually run. npm 11
+  must not receive `--allow-scripts`; npm 12+ uses only
+  `--allow-scripts=@xai-official/grok`. Blocked install scripts or a
+  PATH-default grok version below the planned version fail that attempt.
 - Catalog desktop EXE install uses the separate protected package bridge and
   closed product action; this does not authorize CLI tools. There is no generic
   `ShellExecute` of a renderer/download path from Bob. Launch of an
@@ -624,6 +635,9 @@ fyagent-user-helper.exe
 | Formal elevated Windows direct CLI/Auth execution                                                   | Fail before a user process; dedicated lifecycle helper actions are separate.              |
 | Formal elevated Windows Grok Build lifecycle                                                        | Closed `grok-tool` helper; no elevated fallback                                           |
 | Grok npm helper has no plan, `@latest`, or unknown registry                                         | Fail closed; no npm child process                                                         |
+| Development Windows Grok npm uses `@xai-official/grok@1.2.3` or `@latest`                      | Contract regression; resolve live exact version first                                   |
+| npm 12+ LocalProcess omits `--allow-scripts=@xai-official/grok`                                 | postinstall blocked; treat as failure even if npm exit 0                                |
+| npm exit 0 but PATH-default grok is still below the planned version                                 | Fail that registry attempt; do not report Agent succeeded                                  |
 | Windows product has no matching `grok-win32-*` package/integrity or no registry matches both hashes | Produce no helper plan; no npm child process                                              |
 | OpenCode Windows x64 ProductName/relative EXE/signer is reviewed                                    | Admit current-user NSIS handoff; ARM64 remains unsupported                                |
 | OpenCode Windows ProductName/relative EXE/signer is empty                                           | `windows_exe_install_admitted` rejects download and install; do not claim supported       |
@@ -636,10 +650,16 @@ fyagent-user-helper.exe
 
 - Good: Grok uses generic Tooling, Claude uses its dedicated CLI owner, and
   OpenCode stays Desktop-only; none runs a user CLI in the elevated parent.
+- Good: development Windows LocalProcess npm 12 adds
+  `--allow-scripts=@xai-official/grok` and rereads PATH-default `grok --version`
+  before reporting success.
 - Base: formal Windows CLI-based Auth stays unavailable, while admitted
   lifecycle actions can use their closed helpers when Explorer is available.
 - Bad: `fyagent-user-helper.exe run --cmd <renderer string>`.
 - Bad: helper npm install without a host plan, or with `@latest`.
+- Bad: development Windows LocalProcess `npm i -g @xai-official/grok@1.2.3`,
+  or treating npm exit 0 as success while grok postinstall was blocked or the
+  PATH-default version did not change.
 - Bad: claim OpenCode Windows is supported while identity fields are empty, or
   treat helper product `opencode` as proof that `OpenCode/OpenCode.exe` is the
   installed folder.
@@ -660,6 +680,10 @@ fyagent-user-helper.exe
   carries, besides fixed framing/version bytes, only exact package version,
   registry index and the allow-scripts bit. The helper does not resolve
   optional-package metadata.
+- LocalProcess Grok tests must keep live install argv on the resolved version
+  (not `1.2.3`), add `--allow-scripts=@xai-official/grok` only for npm ≥ 12,
+  preserve an already-present allow-scripts flag, and treat the npm
+  "install scripts blocked" warning as failure.
 - Bob/Alice/UAC HIL remains unverified residual risk.
 
 ### 7. Wrong vs Correct
@@ -669,6 +693,8 @@ fyagent-user-helper.exe
 ```text
 elevated parent -> helper argv includes installer URL or shell command
 helper -> raw child stdout back to renderer
+development Windows LocalProcess -> npm i -g @xai-official/grok@1.2.3
+npm exit 0 / "changed 3 packages" -> Agent succeeded
 ```
 
 #### Correct
@@ -678,6 +704,9 @@ formal elevated Windows direct CLI/Auth -> interactive_user_unavailable
 installer helper -> exact Codex MSIX, Agent EXE, Grok tool, or Claude tool action
 Grok Build lifecycle -> grok-tool helper; no elevated fallback
 Claude lifecycle -> claude-tool helper; no Auth verbs or generic command argv
+development Windows LocalProcess -> live @xai-official/grok@<resolved>
+  + npm 12 --allow-scripts=@xai-official/grok
+  + PATH-default grok --version reaches the planned version
 ```
 
 ## Scenario: Inventory parent registry enumeration rights

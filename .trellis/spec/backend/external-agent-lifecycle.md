@@ -162,10 +162,17 @@ command, argument vector, token, hash, package format, signer or bypass flags.
 - Before execution, the product matches both `@xai-official/grok` and the
   current platform package SHA-512 against one allowed registry. Version
   authority is `resolve_published_manifest` (npmjs `/latest` first, then the
-  mainland chain). The host then sends only the compact exact-version /
+  mainland chain). Formal Windows sends only the compact exact-version /
   registry / allow-scripts control to the ordinary-user helper. The helper
   validates and executes that closed control; it does not resolve registry
   metadata, choose a platform package, or invent `@latest`.
+- Development Windows LocalProcess is not a second product policy. It
+  composes the same live argv in-process: never execute
+  `default_install_command()`'s `@xai-official/grok@1.2.3` fixture, add
+  `--allow-scripts=@xai-official/grok` when the executing npm major is ≥ 12,
+  and do not report Agent success if npm blocked that postinstall or the
+  PATH-default grok version is still below the planned version. Formal
+  Windows stays on the helper; LocalProcess is development builds only.
 - macOS Claude/Grok discovery uses login-shell PATH, process PATH, and product
   env. It does not walk mise/nvm/fnm/Volta trees. `default_install` is the
   PATH-default copy. See [Claude Code CLI](./claude-code-cli.md).
@@ -330,6 +337,9 @@ leaf:
 | Grok macOS/Windows architecture has no closed platform package or manifest integrity                      | Produce no npm plan/action; do not fall back to Linux or another product package.                                                                                           |
 | Non-macOS/non-Windows development host                                                                    | No admitted CLI package; verify host compilation separately under the development-environment contract, without inventing a Linux installer or crate-wide rejection policy. |
 | Grok registry metadata does not match both root and current-platform SHA-512                              | Skip that registry; fail with source exhaustion when none match.                                                                                                            |
+| Development Windows Grok npm argv uses `@xai-official/grok@1.2.3` or `@latest`                         | Contract regression; resolve live exact version first.                                                                                                                    |
+| npm 12+ omits `--allow-scripts=@xai-official/grok` on a Grok install/update                               | postinstall blocked; treat as failure even if npm exit 0.                                                                                                               |
+| npm exit 0 but PATH-default grok is still below the planned version                                          | Fail that registry attempt; do not report Agent `succeeded`.                                                                                                               |
 | Cancel after `launching_installer`/`installing`                                                           | `operation_conflict`; do not kill external/commit operation.                                                                                                                |
 | Secret/path/raw native identity reaches DTO/log/DOM                                                       | Security regression.                                                                                                                                                        |
 
@@ -356,6 +366,10 @@ leaf:
 - **Bad:** install Grok with `@latest`, compile a reviewed npm version JSON,
   change the user's global npmrc, or claim mainland sign-in/inference because
   the CLI installed.
+- **Bad:** on development Windows, run `default_install_command()`'s
+  `@xai-official/grok@1.2.3` fixture, omit npm 12 `--allow-scripts=@xai-official/grok`,
+  or treat npm exit 0 / "changed N packages" as success while PATH-default
+  grok remains the previous version.
 - **Bad:** treat GitHub latest failure as OpenCode uninstallable, freeze only
   the NSIS stub path `OpenCode/OpenCode.exe`, require exact Uninstall
   DisplayName equality, or describe Windows OpenCode as supported while
@@ -407,6 +421,10 @@ Assertion points:
   resolution admits no Linux optional package, registry admission matches both
   package integrities, and the helper receives only the compact host-selected
   plan;
+- development Windows LocalProcess Grok npm uses `resolve_published_manifest`
+  (not `1.2.3`), adds `--allow-scripts=@xai-official/grok` only for npm ≥ 12,
+  treats blocked install scripts as failure, and rereads PATH-default
+  `grok --version` before `succeeded`;
 - renderer polls until a terminal native stage and does not paint a poll cap
   as failure while a job remains active. Browser fixtures do not prove native
   inventory, installer or signing behavior.
@@ -468,6 +486,23 @@ Correct:
 ```rust
 let manifest = grok_npm::resolve_published_manifest(OfficialNpmTool::Claude).await?;
 // npm argv is package@<resolved-version>; never @latest
+```
+
+Wrong:
+
+```text
+development Windows LocalProcess:
+  npm i -g @xai-official/grok@1.2.3
+  npm exit 0 / "changed 3 packages" -> Agent succeeded
+```
+
+Correct:
+
+```text
+development Windows LocalProcess:
+  resolve_published_manifest -> npm i -g @xai-official/grok@<resolved>
+  npm 12+ --allow-scripts=@xai-official/grok
+  PATH-default grok --version must reach the planned version
 ```
 
 Wrong:
