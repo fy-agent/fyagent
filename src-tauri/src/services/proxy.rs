@@ -2533,7 +2533,7 @@ impl ProxyService {
     /// 如果发现，备份不可信，备份路径不能写入（否则会把代理配置固化进备份槽），
     /// 恢复路径不能读取（否则会把代理占位符原样写回 Live，永久卡在代理地址）。
     /// 两种情况下都应该走 SSOT 兜底重建 Live。
-    fn live_has_proxy_placeholder_for_app(app_type: &AppType, config: &Value) -> bool {
+    pub(crate) fn live_has_proxy_placeholder_for_app(app_type: &AppType, config: &Value) -> bool {
         match app_type {
             AppType::Claude => Self::is_claude_live_taken_over(config),
             AppType::Codex => Self::is_codex_live_taken_over(config),

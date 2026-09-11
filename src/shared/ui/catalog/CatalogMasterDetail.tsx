@@ -82,12 +82,19 @@ export function CatalogRail({
   );
 }
 
-export function CatalogList({ children }: { children: ReactNode }) {
+export function CatalogList({
+  children,
+  layoutKey,
+}: {
+  children: ReactNode;
+  layoutKey?: string | number | boolean;
+}) {
   return (
     <SelectionLensGroup
       id="catalog-list"
       className="fy-catalog-list"
       role="list"
+      layoutKey={layoutKey}
     >
       {children}
     </SelectionLensGroup>

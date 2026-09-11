@@ -158,6 +158,16 @@ pub(crate) fn get_workbuddy_status_at(
 pub(crate) fn get_workbuddy_model_ids_at(
     paths: &WorkBuddyPaths,
 ) -> Result<WorkBuddyModelIdsResult, WorkBuddyError> {
+    let loaded = load_readonly_config_at(paths)?;
+    Ok(WorkBuddyModelIdsResult {
+        ids: loaded.document.unique_model_ids(),
+        revision: loaded.revision,
+    })
+}
+
+pub(super) fn load_readonly_config_at(
+    paths: &WorkBuddyPaths,
+) -> Result<LoadedConfig, WorkBuddyError> {
     #[cfg(target_os = "windows")]
     let loaded = match open_windows_storage(paths, false) {
         Ok(storage) => load_config_bytes(
@@ -172,10 +182,7 @@ pub(crate) fn get_workbuddy_model_ids_at(
     #[cfg(target_os = "macos")]
     let loaded = load_config(&paths.models)?;
 
-    Ok(WorkBuddyModelIdsResult {
-        ids: loaded.document.unique_model_ids(),
-        revision: loaded.revision,
-    })
+    Ok(loaded)
 }
 
 pub(crate) fn load_workbuddy_files(
@@ -475,8 +482,24 @@ pub(crate) fn arm_next_workbuddy_primary_write_fault() -> bool {
 
 #[cfg(target_os = "macos")]
 fn load_config(path: &Path) -> Result<LoadedConfig, WorkBuddyError> {
-    let bytes = match fs::read(path) {
-        Ok(bytes) => Some(bytes),
+    use std::io::Read;
+    let bytes = match File::open(path) {
+        Ok(file) => {
+            let metadata = file
+                .metadata()
+                .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+            if !metadata.is_file() || metadata.len() > super::document::MAX_CONFIG_BYTES {
+                return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed));
+            }
+            let mut bytes = Vec::new();
+            file.take(super::document::MAX_CONFIG_BYTES + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+            if bytes.len() as u64 > super::document::MAX_CONFIG_BYTES {
+                return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed));
+            }
+            Some(bytes)
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
     };

@@ -60,6 +60,7 @@ test("dark blue text and controls remain readable on actual composited page and 
   await installRichTauriFeatureFixture(page);
   for (const route of [
     "agents",
+    "health",
     "auth",
     "models?target=codex",
     "skills",

@@ -2,6 +2,7 @@
 identifier = "allow-legacy-application-commands"
 description = "Preserves the complete pre-ACL local application command surface while feature-specific commands migrate to narrow permissions."
 commands.allow = [
+  "get_agent_health",
   "add_custom_endpoint",
   "add_provider",
   "add_provider_with_result",

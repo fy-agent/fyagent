@@ -1297,7 +1297,8 @@ mod tests {
             .collect::<BTreeSet<_>>();
 
         assert!(registered.contains("bind_xai_managed_provider"));
-        assert_eq!(registered.len(), 368, "review intentional handler changes");
+        assert!(registered.contains("get_agent_health"));
+        assert_eq!(registered.len(), 369, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }

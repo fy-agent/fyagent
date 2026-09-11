@@ -109,3 +109,25 @@ Fixed disabled Prompt live-file writes and invalid Daily Memory entries in an is
 ### Status
 
 [OK] **Completed**
+
+
+## Session 7: Issue 52 Agent Health Center
+<!-- trellis-session: v=2 fp=f417a8dc240c698c -->
+
+**Date**: 2026-09-10
+**Task**: Issue 52 Agent Health Center
+**Branch**: `codex/issue-52-health-center`
+
+### Summary
+
+完成七款 Agent 的只读运行状态页、十二项来源检查与处理返回闭环；完整本地门禁、576 浏览器交互、2 生产启动和 macOS 隔离原生回读通过。性能 33 passed / 2 failed，同宿主主线也失败相同两项，预算未改。PR #187 为 draft，无合并发布；原 dirty worktree 保留。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7bd07e72211dd295cf0c474f40727e0121aba06a` | feat(health): add read-only Agent Health Center |
+
+### Status
+
+[OK] **Completed**

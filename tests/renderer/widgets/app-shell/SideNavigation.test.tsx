@@ -31,7 +31,7 @@ function renderNavigation(initialEntry = "/agents") {
 }
 
 describe("SideNavigation", () => {
-  it("derives the stable seven route leaves from three typed groups", () => {
+  it("derives the eight route leaves from three typed groups", () => {
     expect(
       navigationGroups.map(({ id, label, collapsible, items }) => ({
         id,
@@ -46,6 +46,7 @@ describe("SideNavigation", () => {
         collapsible: false,
         items: [
           { id: "agents", label: "AI软件配置" },
+          { id: "health", label: "运行状态" },
           { id: "auth", label: "账号与认证" },
         ],
       },
@@ -69,6 +70,7 @@ describe("SideNavigation", () => {
     ]);
     expect(navigationItems.map(({ id, path }) => ({ id, path }))).toEqual([
       { id: "agents", path: "/agents" },
+      { id: "health", path: "/health" },
       { id: "auth", path: "/auth" },
       { id: "models", path: "/models" },
       { id: "skills", path: "/skills" },
@@ -78,7 +80,7 @@ describe("SideNavigation", () => {
     ]);
   });
 
-  it("renders exactly four approved top-level controls without duplicate copy", () => {
+  it("renders five top-level controls without duplicate copy", () => {
     renderNavigation();
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
@@ -88,7 +90,7 @@ describe("SideNavigation", () => {
 
     expect(
       Array.from(topLevelControls, (control) => control.textContent?.trim()),
-    ).toEqual(["AI软件配置", "账号与认证", "配置管理", "记忆模块"]);
+    ).toEqual(["AI软件配置", "运行状态", "账号与认证", "配置管理", "记忆模块"]);
     expect(
       within(navigation).getByRole("link", { name: "AI软件配置" }),
     ).toHaveAttribute("href", "/agents");
@@ -126,6 +128,9 @@ describe("SideNavigation", () => {
       "href",
       "/agents?target=workbuddy&section=mcp",
     );
+    expect(
+      within(navigation).getByRole("link", { name: "运行状态" }),
+    ).toHaveAttribute("href", "/health?agent=workbuddy");
 
     await user.click(agents);
     expect(agents).toHaveAttribute("aria-current", "page");

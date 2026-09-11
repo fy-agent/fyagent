@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Complete functional checks and retained performance budgets"}
+{"file":".trellis/spec/backend/github-merge-governance.md","reason":"Post-archive checks and exact-head readback"}

@@ -30,6 +30,10 @@ Preserve native button/link/input semantics, accessible names, labels, focus
 order and disabled behavior. Decorative icons/materials are hidden from assistive
 technology and pointer hit testing. Text must be actually painted above the
 selection glass; a declared CSS contrast value is not proof of readability.
+`CatalogList.layoutKey` forwards a caller-owned layout identity to the existing
+selection lens. Pass the visible item order when sorting can move an unchanged
+selection without resizing its host; preserve item keys instead of remounting
+the list or adding a separate observer/animation owner.
 
 The shared Dialog owns portals, modal focus, source origin and exit lifetime.
 Its origin prop is explicit at every call. Transient menu items use the shared

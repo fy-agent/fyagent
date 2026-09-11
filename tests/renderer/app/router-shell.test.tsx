@@ -30,6 +30,7 @@ vi.mock("@samasante/liquid-glass", () => ({
 
 const navigationContract = [
   { path: "/agents", label: "AI软件配置" },
+  { path: "/health", label: "运行状态" },
   { path: "/auth", label: "账号与认证" },
   { path: "/models", label: "模型管理" },
   { path: "/skills", label: "Skills 管理" },
@@ -129,9 +130,10 @@ describe("FyAgent routing", () => {
     },
   );
 
-  it("renders all seven product workspaces", async () => {
+  it("renders all eight product workspaces", async () => {
     const pageTestIds = new Map([
       ["/agents", "agents-page"],
+      ["/health", "health-page"],
       ["/auth", "auth-page"],
       ["/models", "models-page"],
       ["/skills", "skills-page"],
@@ -218,8 +220,9 @@ describe("FyAgent shell accessibility", () => {
       screen.getByRole("button", { name: /切换为.*蓝/ }),
       routeLinks[0],
       routeLinks[1],
+      routeLinks[2],
       configurationToggle,
-      ...routeLinks.slice(2),
+      ...routeLinks.slice(3),
     ];
     for (const control of expectedTabOrder) {
       await user.tab();
@@ -249,7 +252,7 @@ describe("FyAgent shell accessibility", () => {
       navigation.querySelectorAll(
         ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
       ),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
     expect(
       within(navigation).queryByRole("link", { name: "Agent 目录" }),
     ).not.toBeInTheDocument();

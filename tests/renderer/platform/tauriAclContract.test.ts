@@ -124,7 +124,8 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(110);
+    expect(renderer.commands.size).toBe(111);
+    expect(renderer.commands.has("get_agent_health")).toBe(true);
     expect(renderer.commands.has("set_window_theme")).toBe(true);
     expect(
       [...renderer.commands].filter((command) => !registered.has(command)),
@@ -143,6 +144,7 @@ describe("Native ACL contract", () => {
   it("registers Change Plan, Agent action, and Agent auth commands", () => {
     const registered = registeredCommands();
     const expected = [
+      "get_agent_health",
       "create_codex_provider_switch_plan",
       "create_codex_provider_upsert_plan",
       "create_workbuddy_save_plan",

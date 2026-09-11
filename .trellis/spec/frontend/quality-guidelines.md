@@ -128,7 +128,7 @@ initial-chunk budget; do not raise Vite's warning threshold to hide a
 monolithic entry. Vendor budgets must name their source and remain separate
 from the app route budget.
 
-The browser gate also boots the production bundle and visits all seven routes
+The browser gate also boots the production bundle and visits all eight routes
 through `config/playwright.performance.config.ts` (the `production boots` case).
 Passing Vite dev-server tests or producing a manifest does not prove bundled
 module initialization. `config/vite.config.ts` uses Rollup's dependency-aware named

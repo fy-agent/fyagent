@@ -55,7 +55,7 @@ live under `shared/features/controls`; Models, Auth and Change Plan reuse their
 ports/parsers and presentation rather than importing a Models page component.
 Their strict file/recovery schemas use the existing `zod/mini` subpath so the
 native feature-port composition does not pull the classic method surface into
-the startup bundle. Keep the same validation tests, dependency lock and seven
+the startup bundle. Keep the same validation tests, dependency lock and eight
 lazy product-page entrypoints; do not relax the initial-chunk budget.
 
 Feature-aware controls (`ExternalLinkButton`, `CopyablePath`,

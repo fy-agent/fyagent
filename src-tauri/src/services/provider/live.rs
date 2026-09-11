@@ -697,6 +697,38 @@ pub(crate) fn build_effective_settings_with_common_config(
     Ok(effective_settings)
 }
 
+/// Read-only health projection: invalid common settings fail without logging
+/// user-provided TOML/JSON diagnostics or silently falling back to stale data.
+pub(crate) fn build_health_settings_projection(
+    db: &Database,
+    app_type: &AppType,
+    provider: &Provider,
+) -> Result<Value, AppError> {
+    let snippet = db.get_config_snippet(app_type.as_str())?;
+    let mut settings = provider.settings_config.clone();
+    if provider_uses_common_config(app_type, provider, snippet.as_deref()) {
+        if let Some(snippet) = snippet.as_deref() {
+            settings = apply_common_config_to_settings(app_type, &settings, snippet)?;
+        }
+    }
+    if *app_type == AppType::Codex {
+        let config = settings
+            .get("config")
+            .and_then(Value::as_str)
+            .ok_or_else(|| AppError::Config("health_configuration_unreadable".into()))?;
+        let prepared = crate::codex_config::prepare_codex_provider_live_config(
+            settings.get("auth").unwrap_or(&Value::Null),
+            config,
+        )?;
+        settings["config"] = Value::String(prepared);
+        crate::codex_config::apply_codex_unified_session_bucket_to_settings(
+            provider.category.as_deref(),
+            &mut settings,
+        )?;
+    }
+    Ok(settings)
+}
+
 pub(crate) fn write_live_with_common_config(
     db: &Database,
     app_type: &AppType,

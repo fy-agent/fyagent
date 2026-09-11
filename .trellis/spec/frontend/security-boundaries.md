@@ -23,8 +23,10 @@ human consent. Any future UI must meet the linked native contract's explicit
 confirmation and stale-result requirements before introducing an import Port.
 
 Production asset paths remain confined to the Vite distribution. The route
-chunk verifier walks the actual static entry closure, requires exactly seven
-literal product route chunks and rejects a route leaked into eager startup.
+chunk verifier walks the actual static entry closure, requires exactly eight
+literal product route chunks plus the explicitly listed deferred health port.
+It rejects unlisted dynamic entries and routes or deferred ports leaked into
+eager startup; the existing route chunk limit also bounds deferred ports.
 Budget checks still apply after directory moves; removing a redundant entry
 wrapper is not permission to increase JavaScript/CSS thresholds.
 

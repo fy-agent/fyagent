@@ -11,7 +11,7 @@ builds the ordinary multi-chunk application into `dist`.
 src/
   index.html, main.tsx        application entry and composition
   app/                       router, persistent outlet, errors and global styles
-  pages/<route>/             seven product routes and route-local panels/state
+  pages/<route>/             eight product routes and route-local panels/state
   widgets/app-shell/         top bar, navigation and window chrome
   shared/
     assets/, config/, design-system/

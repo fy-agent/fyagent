@@ -1288,8 +1288,13 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes the decoded and visually reviewed raster inventory by path and digest", () => {
     const currentPaths = checker.listCurrentFiles(ROOT);
-    // 27 retired-only rasters removed; five production assets moved unchanged.
-    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(121);
+    // The reviewed health-center native evidence adds one archived raster.
+    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(122);
+    expect(checker.RASTER_ASSET_CONTRACT).toContainEqual({
+      path: "docs/images/health-center/native-health-recovered.png",
+      digest:
+        "cd00af97d5e14304231c747a6994355dae1a5f2e6885b67fc5e551d27fdc3bd5",
+    });
     expect(checker.validateRasterAssetInventory(currentPaths)).toEqual([]);
 
     const first = checker.RASTER_ASSET_CONTRACT[0];
@@ -1512,7 +1517,7 @@ describe("durable supported-platform surface contract", () => {
         ),
       );
       fs.writeFileSync(manifestPath, JSON.stringify(current));
-      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(121);
+      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(122);
 
       fs.writeFileSync(
         manifestPath,

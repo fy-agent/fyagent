@@ -5,7 +5,7 @@
 Read before changing Renderer palette, translucent surfaces, material dependencies,
 radius/spacing, narrow forms or overflow behavior. `tokens.css` owns visual
 roles; `controls.css`, feature CSS and catalog/split CSS compose them. This
-does not redesign the seven primary routes or native window geometry.
+does not redesign the primary routes or native window geometry.
 
 ## 2. Signatures and Owners
 
@@ -189,7 +189,7 @@ glass.
   literals; do not invent a CSS parser or skip component files.
 - `tests/renderer/shared/GlassMaterial.test.tsx` proves stable node identity across
   enhancement and absence of canvas/SVG/form copies in business backing.
-- `tests/browser/materials-responsive.spec.ts`: seven page surfaces, actual
+- `tests/browser/materials-responsive.spec.ts`: eight page surfaces, actual
   composited text samples, axe contrast/label checks, critical input boundaries,
   a 320px detail independent of viewport width, 760px boundary sides, a 616px
   viewport as horizontal 200%-zoom pressure, and forced-color/transparency
