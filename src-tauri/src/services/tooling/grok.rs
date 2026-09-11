@@ -291,26 +291,23 @@ pub(super) fn observe_grok_owner(
     installs: &[ToolInstallation],
     config_toml: Option<&str>,
 ) -> GrokOwnerObservation {
-    if installs.is_empty() {
-        return GrokOwnerObservation::Absent;
-    }
+    let Some(install) = default_install(installs) else {
+        return if installs.is_empty() {
+            GrokOwnerObservation::Absent
+        } else {
+            GrokOwnerObservation::Ambiguous
+        };
+    };
     let config_owner = config_toml.and_then(parse_grok_cli_installer);
-    let mut owners = std::collections::BTreeSet::new();
-    for install in installs {
-        owners.insert(owner_from_install(
-            &install.path,
-            &install.real.to_string_lossy(),
-            &install.source,
-            config_owner,
-        ));
-    }
-    if owners.len() > 1 {
-        return GrokOwnerObservation::Ambiguous;
-    }
-    match owners.iter().next() {
-        Some(GrokDistributionOwner::NativeInternal) => GrokOwnerObservation::NativeInternal,
-        Some(GrokDistributionOwner::OfficialNpm) => GrokOwnerObservation::OfficialNpm,
-        None => GrokOwnerObservation::Absent,
+    let owner = owner_from_install(
+        &install.path,
+        &install.real.to_string_lossy(),
+        &install.source,
+        config_owner,
+    );
+    match owner {
+        GrokDistributionOwner::NativeInternal => GrokOwnerObservation::NativeInternal,
+        GrokDistributionOwner::OfficialNpm => GrokOwnerObservation::OfficialNpm,
     }
 }
 
@@ -875,14 +872,18 @@ async fn run_official_npm(
         ));
     }
 
-    let manifest = match super::grok_npm::bundled_manifest() {
+    let manifest = match super::grok_npm::resolve_published_manifest(
+        fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
+    )
+    .await
+    {
         Ok(manifest) => manifest,
         Err(_) => {
             return Err(fail_job(
                 action,
                 Some(GrokDistributionOwner::OfficialNpm),
                 "official_source_unreachable",
-                "官方 npm 版本清单不可用",
+                "暂时无法读取官方 npm 最新版本",
                 None,
                 false,
                 Some("official_npm"),
@@ -980,7 +981,7 @@ fn execute_official_npm(
                     );
                 }
                 last_detail = format!(
-                    "grok --version 与清单版本 {} 不一致\n{}\n{}",
+                    "grok --version 与目标版本 {} 不一致\n{}\n{}",
                     target_version,
                     decode_command_output(&output.stdout),
                     decode_command_output(&output.stderr)
@@ -1310,7 +1311,11 @@ async fn windows_npm_plans_for_action(
     {
         return Vec::new();
     }
-    let Ok(manifest) = super::grok_npm::bundled_manifest() else {
+    let Ok(manifest) = super::grok_npm::resolve_published_manifest(
+        fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
+    )
+    .await
+    else {
         return Vec::new();
     };
     let matching = super::grok_npm::registries_matching_manifest(&manifest).await;
@@ -1434,13 +1439,35 @@ mod tests {
     }
 
     #[test]
-    fn mixed_native_and_npm_installs_are_ambiguous() {
+    fn mixed_installs_follow_path_default() {
         let installs = [
             install(
                 "/Users/me/.grok/bin/grok",
                 "/Users/me/.grok/downloads/grok-macos-aarch64",
                 "system",
                 true,
+            ),
+            install(
+                "/Users/me/.nvm/versions/node/v22.14.0/bin/grok",
+                "/Users/me/.nvm/versions/node/v22.14.0/lib/node_modules/@xai-official/grok/bin/grok",
+                "nvm",
+                false,
+            ),
+        ];
+        assert_eq!(
+            observe_grok_owner(&installs, Some("[cli]\ninstaller = \"internal\"\n")),
+            GrokOwnerObservation::NativeInternal
+        );
+    }
+
+    #[test]
+    fn mixed_installs_without_path_default_are_ambiguous() {
+        let installs = [
+            install(
+                "/Users/me/.grok/bin/grok",
+                "/Users/me/.grok/downloads/grok-macos-aarch64",
+                "system",
+                false,
             ),
             install(
                 "/Users/me/.nvm/versions/node/v22.14.0/bin/grok",

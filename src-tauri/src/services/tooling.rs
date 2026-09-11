@@ -866,30 +866,9 @@ fn tool_executable_candidates(tool: &str, dir: &Path) -> Vec<std::path::PathBuf>
     }
 }
 
-fn extend_mise_node_search_paths(paths: &mut Vec<std::path::PathBuf>, home: &Path) {
-    if home.as_os_str().is_empty() {
-        return;
-    }
-
-    let mise_base = home.join(".local/share/mise");
-    push_unique_path(paths, mise_base.join("shims"));
-
-    let node_installs = mise_base.join("installs").join("node");
-    if node_installs.exists() {
-        if let Ok(entries) = std::fs::read_dir(&node_installs) {
-            for entry in entries.flatten() {
-                let bin_path = entry.path().join("bin");
-                if bin_path.exists() {
-                    push_unique_path(paths, bin_path);
-                }
-            }
-        }
-    }
-}
-
-/// 构建某工具的候选搜索目录（原生安装优先，PATH 兜底）。
-/// 单探兜底 (`scan_cli_version`) 与全量枚举 (`enumerate_tool_installations`) 共用，
-/// 确保两条路径看到的是同一组安装位置。
+/// 构建某工具的候选搜索目录。识别跟用户环境走：登录 shell 的 PATH、当前进程
+/// PATH、以及产品自己的环境变量（如 `GROK_BIN_DIR`），不遍历 mise/nvm/volta
+/// 的内部安装树。单探兜底与全量枚举共用，确保两条路径看到同一组位置。
 fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
     let resolved_home = crate::config::get_home_dir();
     #[cfg(target_os = "windows")]
@@ -901,7 +880,6 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
     let home = resolved_home;
 
-    // 常见的安装路径（原生安装优先）
     let mut search_paths: Vec<std::path::PathBuf> = Vec::new();
     if tool == "grok" {
         #[cfg(target_os = "windows")]
@@ -915,22 +893,16 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
     }
     if !home.as_os_str().is_empty() {
         push_unique_path(&mut search_paths, home.join(".local/bin"));
-        push_unique_path(&mut search_paths, home.join(".npm-global/bin"));
-        push_unique_path(&mut search_paths, home.join("n/bin"));
-        push_unique_path(&mut search_paths, home.join(".volta/bin"));
-        extend_mise_node_search_paths(&mut search_paths, &home);
+        #[cfg(target_os = "windows")]
+        {
+            push_unique_path(&mut search_paths, home.join(".npm-global/bin"));
+            push_unique_path(&mut search_paths, home.join("n/bin"));
+            push_unique_path(&mut search_paths, home.join(".volta/bin"));
+        }
     }
 
     #[cfg(target_os = "macos")]
     {
-        push_unique_path(
-            &mut search_paths,
-            std::path::PathBuf::from("/opt/homebrew/bin"),
-        );
-        push_unique_path(
-            &mut search_paths,
-            std::path::PathBuf::from("/usr/local/bin"),
-        );
         if tool == "hermes" {
             let python_base = home.join("Library").join("Python");
             if python_base.exists() {
@@ -944,6 +916,10 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
                 }
             }
         }
+        if let Some(login) = login_shell_path() {
+            extend_from_cli_path_env(&mut search_paths, Some(std::ffi::OsString::from(login)));
+        }
+        extend_from_cli_path_env(&mut search_paths, std::env::var_os("PATH"));
     }
 
     #[cfg(target_os = "windows")]
@@ -982,27 +958,25 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
             }
         }
         extend_windows_cli_manager_search_paths(&mut search_paths, &home);
-    }
-
-    let fnm_base = home.join(".local/state/fnm_multishells");
-    if fnm_base.exists() {
-        if let Ok(entries) = std::fs::read_dir(&fnm_base) {
-            for entry in entries.flatten() {
-                let bin_path = entry.path().join("bin");
-                if bin_path.exists() {
-                    push_unique_path(&mut search_paths, bin_path);
+        let fnm_base = home.join(".local/state/fnm_multishells");
+        if fnm_base.exists() {
+            if let Ok(entries) = std::fs::read_dir(&fnm_base) {
+                for entry in entries.flatten() {
+                    let bin_path = entry.path().join("bin");
+                    if bin_path.exists() {
+                        push_unique_path(&mut search_paths, bin_path);
+                    }
                 }
             }
         }
-    }
-
-    let nvm_base = home.join(".nvm/versions/node");
-    if nvm_base.exists() {
-        if let Ok(entries) = std::fs::read_dir(&nvm_base) {
-            for entry in entries.flatten() {
-                let bin_path = entry.path().join("bin");
-                if bin_path.exists() {
-                    push_unique_path(&mut search_paths, bin_path);
+        let nvm_base = home.join(".nvm/versions/node");
+        if nvm_base.exists() {
+            if let Ok(entries) = std::fs::read_dir(&nvm_base) {
+                for entry in entries.flatten() {
+                    let bin_path = entry.path().join("bin");
+                    if bin_path.exists() {
+                        push_unique_path(&mut search_paths, bin_path);
+                    }
                 }
             }
         }
@@ -1025,8 +999,6 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
         }
     }
 
-    #[cfg(target_os = "macos")]
-    extend_from_cli_path_env(&mut search_paths, std::env::var_os("PATH"));
     #[cfg(target_os = "windows")]
     search_paths.retain(|path| crate::windows_runtime::is_local_command_path(path));
     search_paths
@@ -4179,22 +4151,6 @@ mod tests {
         assert!(!is_windows_app_execution_alias_dir(Path::new(
             r"C:\Users\tester\AppData\Roaming\npm"
         )));
-    }
-
-    #[test]
-    fn mise_node_search_paths_include_shims_and_installed_node_bins() {
-        let temp = tempfile::tempdir().expect("temp dir should be created");
-        let home = temp.path();
-        let node_bin = home
-            .join(".local/share/mise/installs/node/25.8.0")
-            .join("bin");
-        std::fs::create_dir_all(&node_bin).expect("node bin should be created");
-
-        let mut paths = Vec::new();
-        extend_mise_node_search_paths(&mut paths, home);
-
-        assert!(paths.contains(&home.join(".local/share/mise/shims")));
-        assert!(paths.contains(&node_bin));
     }
 
     #[cfg(target_os = "macos")]

@@ -55,7 +55,7 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
         _ => None,
     };
 
-    ToolVersion {
+    let mapped = ToolVersion {
         name: tool.to_string(),
         version: local_version,
         latest_version,
@@ -67,7 +67,8 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
         installed_but_broken,
         distribution_owner,
         latest_source,
-    }
+    };
+    mapped
 }
 
 pub(super) async fn fetch_grok_latest_with_owner(
@@ -78,14 +79,13 @@ pub(super) async fn fetch_grok_latest_with_owner(
     {
         let observation = super::grok::observe_installed_grok_owner();
         let owner = super::grok::owner_observation_wire(observation).map(str::to_string);
-        let _ = client;
         let latest = match observation {
             super::grok::GrokOwnerObservation::NativeInternal => {
                 super::grok::native_latest_from_update_check(local)
             }
             super::grok::GrokOwnerObservation::OfficialNpm
             | super::grok::GrokOwnerObservation::Absent => {
-                super::grok_npm::bundled_manifest_version()
+                fetch_npm_latest_for_tool(client, "@xai-official/grok", "grok", local).await
             }
             super::grok::GrokOwnerObservation::Ambiguous => None,
         };
@@ -93,8 +93,10 @@ pub(super) async fn fetch_grok_latest_with_owner(
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (client, local);
-        (super::grok_npm::bundled_manifest_version(), None)
+        (
+            fetch_npm_latest_for_tool(client, "@xai-official/grok", "grok", local).await,
+            None,
+        )
     }
 }
 
@@ -168,14 +170,21 @@ pub(super) async fn fetch_npm_latest_for_package(
     fetch_npm_latest_for_tool(client, package, "", None).await
 }
 
-async fn fetch_npm_latest_for_tool(
+pub(super) async fn fetch_npm_latest_for_tool(
     client: &reqwest::Client,
     package: &str,
     tool: &str,
     local_version: Option<&str>,
 ) -> Option<String> {
-    let dist_tags = fetch_npm_dist_tags(client, package).await?;
-    pick_latest_version(&dist_tags, npm_prerelease_tags(tool), local_version)
+    let from_dist_tags = fetch_npm_dist_tags(client, package)
+        .await
+        .and_then(|dist_tags| {
+            pick_latest_version(&dist_tags, npm_prerelease_tags(tool), local_version)
+        });
+    match from_dist_tags {
+        Some(version) => Some(version),
+        None => super::grok_npm::fetch_published_version(package).await,
+    }
 }
 
 pub(crate) const FIXED_GITHUB_OPENCODE_REPO: &str = "anomalyco/opencode";

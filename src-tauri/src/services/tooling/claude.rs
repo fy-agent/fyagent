@@ -10,7 +10,7 @@ use super::ToolVersion;
 use fyagent_user_helper::claude::CLAUDE_MIN_NODE_MAJOR;
 #[cfg(any(target_os = "macos", test))]
 use fyagent_user_helper::claude::{installation_owner, ClaudeOwner};
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use fyagent_user_helper::grok_npm::OfficialNpmTool;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +35,7 @@ impl ClaudeLifecycleError {
             Self::OwnerUnsupported => {
                 "当前 Claude Code 不是可确认的 npm 安装，请使用原安装方式更新；未更换安装来源。"
             }
-            Self::SourceUnverified => "镜像未能提供与官方清单一致的 Claude Code 版本。",
+            Self::SourceUnverified => "暂时无法从官方 npm 获取可用的 Claude Code 版本。",
             Self::ExecutionFailed => "Claude Code 安装未完成，请检查网络及当前用户的安装权限。",
             Self::VerificationFailed => "无法确认 Claude Code 已安装到指定版本，请刷新安装状态。",
         }
@@ -73,14 +73,21 @@ pub(super) async fn version() -> ToolVersion {
             None,
         ),
     };
+    let latest_version = super::versions::fetch_npm_latest_for_tool(
+        &crate::proxy::http_client::get(),
+        fyagent_user_helper::claude::CLAUDE_NPM_PACKAGE,
+        "claude",
+        version.as_deref(),
+    )
+    .await;
     ToolVersion {
         name: "claude".to_string(),
         version,
         error,
-        latest_version: super::grok_npm::claude_manifest_version(),
+        latest_version,
         installed_but_broken: broken,
         distribution_owner: owner,
-        latest_source: Some("reviewed_npm_manifest".to_string()),
+        latest_source: Some("npm".to_string()),
     }
 }
 
@@ -93,14 +100,26 @@ pub(super) async fn version() -> ToolVersion {
             installed_but_broken: observed.detected && observed.normalized_version.is_none(),
             error: (!observed.detected).then(|| "Claude Code is not installed".to_string()),
             version: observed.normalized_version,
-            latest_version: grok_npm::claude_manifest_version(),
+            latest_version: super::versions::fetch_npm_latest_for_tool(
+                &crate::proxy::http_client::get(),
+                fyagent_user_helper::claude::CLAUDE_NPM_PACKAGE,
+                "claude",
+                observed.normalized_version.as_deref(),
+            )
+            .await,
             distribution_owner: observed.owner.map(|owner| owner.as_str().to_string()),
-            latest_source: Some("reviewed_npm_manifest".to_string()),
+            latest_source: Some("npm".to_string()),
         },
         Err(error) => ToolVersion {
             name: "claude".to_string(),
             version: None,
-            latest_version: grok_npm::claude_manifest_version(),
+            latest_version: super::versions::fetch_npm_latest_for_tool(
+                &crate::proxy::http_client::get(),
+                fyagent_user_helper::claude::CLAUDE_NPM_PACKAGE,
+                "claude",
+                None,
+            )
+            .await,
             error: Some(error.message().to_string()),
             installed_but_broken: false,
             distribution_owner: None,
@@ -121,19 +140,20 @@ struct Installation {
 #[cfg(target_os = "macos")]
 fn observe() -> Result<Option<Installation>, ClaudeLifecycleError> {
     let installs = super::enumerate_tool_installations("claude");
-    if installs.len() > 1 {
-        return Err(ClaudeLifecycleError::OwnerUnsupported);
+    match super::default_install(&installs) {
+        Some(install) => Ok(Some(Installation {
+            owner: installation_owner(
+                &install.path,
+                &install.real.to_string_lossy(),
+                &install.source,
+            ),
+            path: install.path.clone(),
+            real: install.real.clone(),
+            version: install.version.clone(),
+        })),
+        None if installs.is_empty() => Ok(None),
+        None => Err(ClaudeLifecycleError::OwnerUnsupported),
     }
-    Ok(installs.into_iter().next().map(|install| Installation {
-        owner: installation_owner(
-            &install.path,
-            &install.real.to_string_lossy(),
-            &install.source,
-        ),
-        path: install.path,
-        real: install.real,
-        version: install.version,
-    }))
 }
 
 #[cfg(target_os = "macos")]
@@ -147,8 +167,9 @@ pub(super) async fn run(action: ToolLifecycleAction) -> Result<(), ClaudeLifecyc
     let before = tokio::task::spawn_blocking(observe)
         .await
         .map_err(|_| ClaudeLifecycleError::ExecutionFailed)??;
-    let manifest =
-        grok_npm::claude_manifest().map_err(|_| ClaudeLifecycleError::SourceUnverified)?;
+    let manifest = grok_npm::resolve_published_manifest(OfficialNpmTool::Claude)
+        .await
+        .map_err(|_| ClaudeLifecycleError::SourceUnverified)?;
     if let Some(installed) = &before {
         if action == ToolLifecycleAction::Install || installed.owner != ClaudeOwner::Npm {
             return Err(ClaudeLifecycleError::OwnerUnsupported);
@@ -240,8 +261,9 @@ pub(super) async fn run(action: ToolLifecycleAction) -> Result<(), ClaudeLifecyc
     {
         return Err(ClaudeLifecycleError::OwnerUnsupported);
     }
-    let manifest =
-        grok_npm::claude_manifest().map_err(|_| ClaudeLifecycleError::SourceUnverified)?;
+    let manifest = grok_npm::resolve_published_manifest(OfficialNpmTool::Claude)
+        .await
+        .map_err(|_| ClaudeLifecycleError::SourceUnverified)?;
     if action == GrokToolAction::Update
         && before
             .normalized_version

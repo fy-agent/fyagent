@@ -144,12 +144,12 @@ command, argument vector, token, hash, package format, signer or bypass flags.
 
 | Product          | Owner and current lifecycle policy                                                                                                                                                                                                                                                                  |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Grok Build       | CLI Tooling owner; default fresh install uses the official `@xai-official/grok` npm package, a bundled exact-version manifest, and a mainland-first registry chain. Native `x.ai` install is an explicit secondary action. Updates preserve the observed `native_internal` or `official_npm` owner. |
+| Grok Build       | CLI Tooling owner; default fresh install uses the official `@xai-official/grok` npm package, the current registry `latest` resolved at runtime to an exact version + SHA-512, and a mainland-first registry chain. Native `x.ai` install is an explicit secondary action. Updates preserve the observed `native_internal` or `official_npm` owner. |
 | Codex            | Dedicated Codex Desktop installer; Agent action returns `managed_by_codex_desktop` and does not occupy the Agent job slot.                                                                                                                                                                          |
 | QoderWork CN     | Managed desktop; install/launch admitted, FyAgent update disabled. Source is the reviewed first-party `/qoder-work-cn/releases/latest/` aliases and same-host Electron-builder version feed.                                                                                                        |
 | TRAE Work CN     | Managed desktop; install/launch admitted, FyAgent update disabled. Resolve `data.solo` with `region=cn`; never TRAE Code/`data.manifest`.                                                                                                                                                           |
 | WorkBuddy        | Managed desktop; install/launch admitted, FyAgent update disabled. Resolve the closed `/v2/update` platform IDs and reviewed macOS suffix rewrite.                                                                                                                                                  |
-| Claude Code      | CLI only; exact official npm manifest, shared verified mirrors, owner-preserving updates and ordinary-user execution. See [Claude Code CLI](./claude-code-cli.md).                                                                                                                                  |
+| Claude Code      | CLI only; runtime-resolved official npm latest, shared verified mirrors, owner-preserving updates and ordinary-user execution. See [Claude Code CLI](./claude-code-cli.md).                                                                                                                       |
 | OpenCode Desktop | Desktop only; use reviewed stable desktop artifacts and closed bundle identity on supported hosts. No public OpenCode CLI installer.                                                                                                                                                                |
 
 - Grok npm optional-package admission is resolved by the signed product on the
@@ -157,14 +157,22 @@ command, argument vector, token, hash, package format, signer or bypass flags.
   an unsupported architecture produces no install plan. The current helper's
   platform selector is defined only for macOS/Windows; Linux compilation and
   package support cannot be inferred from these product-host tests.
-  The bundled manifest contains no Linux optional package and no generic
-  `std::env::consts::OS` fallback.
+  The runtime-resolved optional-package map admits no Linux package and no
+  generic `std::env::consts::OS` fallback.
 - Before execution, the product matches both `@xai-official/grok` and the
-  current platform package SHA-512 against one allowed registry. On formal
-  Windows it then sends only the compact exact-version/registry/allow-scripts
-  control to the ordinary-user helper. The helper validates and executes that
-  closed control; it does not resolve registry metadata, choose a platform
-  package, or invent `@latest`.
+  current platform package SHA-512 against one allowed registry. Version
+  authority is `resolve_published_manifest` (npmjs `/latest` first, then the
+  mainland chain). The host then sends only the compact exact-version /
+  registry / allow-scripts control to the ordinary-user helper. The helper
+  validates and executes that closed control; it does not resolve registry
+  metadata, choose a platform package, or invent `@latest`.
+- macOS Claude/Grok discovery uses login-shell PATH, process PATH, and product
+  env. It does not walk mise/nvm/fnm/Volta trees. `default_install` is the
+  PATH-default copy. See [Claude Code CLI](./claude-code-cli.md).
+- CLI `ToolVersion.latest_version` is always live: Claude/Grok/Codex/Gemini/
+  OpenClaw from npm registry (OpenCode may fall back to GitHub latest; Hermes
+  from PyPI). Desktop products keep vendor feeds. Do not compile a reviewed
+  CLI version/hash JSON.
 - Qoder display version comes only from an unindented top-level `version:` in
   bounded same-host `latest.yml`/`latest-mac.yml`. The feed ZIP and `sha512`
   are metadata, not admitted artifacts. Windows ARM64 remains unsupported
@@ -316,7 +324,9 @@ leaf:
 | OpenCode Uninstall DisplayName is `OpenCode <bounded-version>`                                            | Keep the ARP hint; do not require exact `OpenCode`.                                                                                                                         |
 | OpenCode Uninstall DisplayName is `OpenCode Dev`, `OpenCodeAI`, or a prerelease version                   | Skip that ARP entry.                                                                                                                                                        |
 | OpenCode KnownPath relative is missing                                                                    | Drop the observation; do not retain KnownPath Missing.                                                                                                                      |
-| Grok default install has no native expected owner                                                         | Plan official npm from the bundled exact-version manifest; never `@latest`.                                                                                                 |
+| Grok default install has no native expected owner                                                         | Resolve official npm `latest` to an exact version + integrity; never install `@latest`.                                                                                   |
+| Multiple PATH-visible Claude/Grok copies, one is PATH default                                          | Use PATH default; do not fail as owner-unsupported.                                                                                                                      |
+| CLI latest display uses a compiled version/hash JSON                                                | Contract regression; resolve live registry/`/latest`.                                                                                                                    |
 | Grok macOS/Windows architecture has no closed platform package or manifest integrity                      | Produce no npm plan/action; do not fall back to Linux or another product package.                                                                                           |
 | Non-macOS/non-Windows development host                                                                    | No admitted CLI package; verify host compilation separately under the development-environment contract, without inventing a Linux installer or crate-wide rejection policy. |
 | Grok registry metadata does not match both root and current-platform SHA-512                              | Skip that registry; fail with source exhaustion when none match.                                                                                                            |
@@ -343,8 +353,9 @@ leaf:
 - **Bad:** use a researched CDN URL, infer install from a config directory,
   update Qoder/TRAE/WorkBuddy, choose the first candidate, fake percent without
   total bytes, or label Windows wizard handoff as installed evidence.
-- **Bad:** install Grok with `@latest`, change the user's global npmrc, or
-  claim mainland sign-in/inference because the CLI installed.
+- **Bad:** install Grok with `@latest`, compile a reviewed npm version JSON,
+  change the user's global npmrc, or claim mainland sign-in/inference because
+  the CLI installed.
 - **Bad:** treat GitHub latest failure as OpenCode uninstallable, freeze only
   the NSIS stub path `OpenCode/OpenCode.exe`, require exact Uninstall
   DisplayName equality, or describe Windows OpenCode as supported while
@@ -371,8 +382,10 @@ Assertion points:
   incomplete evidence, expires capabilities and rejects drift;
 - Qoder/Trae/WorkBuddy/OpenCode source parsers enforce exact host,
   platform, schema, redirect and version rules without stale URL fallback;
-- Claude CLI tests cover the compiled npm manifest, shared registry/argv/helper,
+- Claude CLI tests cover runtime-resolved npm latest, shared registry/argv/helper,
   actual version/owner verification, and rejection of the retired Desktop path;
+  `grok_npm` must reject `version=latest` and must not `include_str!` a
+  version/hash JSON; `default_install` prefers PATH default;
 - renderer `surfacesForAgent` / readiness `sourceKind` stay aligned with
   lifecycle policy: Grok and Claude are compact CLI/`cli_tooling`;
 - macOS exact-path deployment, cancellation boundary, running-app protection,
@@ -390,8 +403,8 @@ Assertion points:
 - job single-flight, terminal slot release, transfer monotonicity, unknown
   total, cancel refusal after side-effect boundary and unknown job ID;
 - Grok owner-preserving lifecycle and ordinary-user helper with no elevated
-  fallback; product-host cfg maps only Darwin/Windows x64/arm64, the bundled
-  manifest has no Linux optional package, registry admission matches both
+  fallback; product-host cfg maps only Darwin/Windows x64/arm64, runtime
+  resolution admits no Linux optional package, registry admission matches both
   package integrities, and the helper receives only the compact host-selected
   plan;
 - renderer polls until a terminal native stage and does not paint a poll cap
@@ -441,6 +454,20 @@ Correct:
 ```ts
 surfacesForAgent("claude-code") === ["cli"]
 sourceKind === "cli_tooling"
+```
+
+Wrong:
+
+```rust
+include_str!("claude_npm_manifest.json");
+npm_argv = ["i", "-g", "@anthropic-ai/claude-code@latest"];
+```
+
+Correct:
+
+```rust
+let manifest = grok_npm::resolve_published_manifest(OfficialNpmTool::Claude).await?;
+// npm argv is package@<resolved-version>; never @latest
 ```
 
 Wrong:

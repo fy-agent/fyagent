@@ -22,8 +22,11 @@ get_tool_versions(["claude"]) -> ToolVersion
 
 OfficialNpmTool = Grok | Claude
 GrokNpmInstallPlan::npm_argv_for(tool) -> closed exact-version argv
-grok_npm::claude_manifest() -> validated bundled manifest
-grok_npm::registries_matching_manifest(manifest) -> reviewed registry list
+grok_npm::resolve_published_manifest(tool) -> live /latest + platform integrity
+grok_npm::registries_matching_manifest(manifest) -> registries whose hashes match
+fetch_npm_latest_for_tool(package, tool, local) -> dist-tags.latest or /latest version
+build_tool_search_paths(tool) -> login PATH + process PATH + product env
+default_install(installs) -> PATH default, else the sole entry
 
 Windows: claude-tool --action observe|install|update --job-id <uuid> --pipe <nonce>
 UserHelperAction::ClaudeTool { action } -> independent wire identities 15–17
@@ -52,19 +55,48 @@ generic command execution capability is added.
 - Fresh install requires absence. Update requires one confirmed official npm
   installation and its actual global prefix. Native, Homebrew and other
   package-manager ownership is not silently converted to npm. A same/newer
-  installed version is not downgraded to the bundled version.
+  installed version is not downgraded to an older published version.
 
-### Reviewed package and shared mirror policy
+### CLI discovery
 
-- Exact version and SHA-512 authority is
-  `tooling/claude_npm_manifest.json`, compiled into the product. It contains
-  `@anthropic-ai/claude-code` plus the reviewed Darwin/Windows x64/arm64 native
-  optional packages. Do not repeat version/hash literals in generic specs.
-- The existing shared registry chain is Tencent, Huawei, npmmirror, npmjs.
-  Each candidate must return matching root and current-platform package name,
+- macOS search directories are the login-shell PATH, the current process
+  PATH, `~/.local/bin`, and product env (`GROK_BIN_DIR` / `~/.grok/bin` for
+  Grok). Do not walk mise, nvm, fnm or Volta internal install trees, and do
+  not add per-manager adapters to make those trees visible. If the CLI is on
+  the user's PATH, that is enough.
+- `is_mise_dispatcher` stays in the health filesystem probe. Enumerate must
+  not use it to drop PATH hits.
+- `default_install` prefers the PATH-default entry. Several copies may exist;
+  that is not `tool_owner_unsupported` when one of them is PATH default. No
+  PATH default and more than one copy remains unsupported.
+- Windows still uses the existing manager search plus the ordinary-user
+  helper; it does not copy the macOS env-only rule onto Alice's PATH.
+
+### Live package and shared mirror policy
+
+- Exact version and SHA-512 authority is the current npm `latest` document,
+  resolved at runtime. Prefer `registry.npmjs.org`; if that host is
+  unreachable, try the shared mainland chain (Tencent, Huawei, npmmirror).
+  The document supplies `@anthropic-ai/claude-code` version, `dist.integrity`,
+  and the current Darwin/Windows x64/arm64 optional package version. Do not
+  compile a reviewed version/hash JSON into the product, and do not repeat
+  version/hash literals in generic specs.
+- Directory `latest_version` display uses `fetch_npm_latest_for_tool`: npmjs
+  packument `dist-tags` first, then the same `/latest` document fallback. Claude
+  may consider the `next` tag only when the local version is already newer
+  than `latest`. Display and install may race; both must resolve live, never
+  a compiled pin.
+- After the published version is known, each candidate in Tencent, Huawei,
+  npmmirror, npmjs must return matching root and current-platform package name,
   exact version and SHA-512. HTTPS-only, no redirects, per-request timeout and
   a streaming 1 MiB metadata limit apply. Missing/mismatching sources fail
-  closed; runtime does not install `latest`.
+  closed. npm argv is always `package@<resolved-version>`; never
+  `package@latest`. A mainland `dist-tags.latest` (for example npmmirror) may
+  point at an older release; that is why argv never uses the `latest` tag.
+- `default_install_command()` is a command-shape fixture
+  (`@xai-official/grok@1.2.3` plus the Tencent registry). It is not version
+  authority. macOS and formal Windows resolve `resolve_published_manifest`
+  before any npm plan.
 - npm receives exact package/version, general registry and the matching
   `@anthropic-ai:registry` option for that invocation. Scope config must not
   silently redirect the request to a different registry. Global/user npmrc and
@@ -115,7 +147,10 @@ generic command execution capability is added.
 | Condition                                                       | Required result                                                        |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | Claude Desktop surface or generic launch requested              | `surface_not_supported` / `action_not_supported`, no source or process |
-| Root/platform metadata differs from manifest                    | Skip source; source failure if none match                              |
+| Root/platform metadata differs from the resolved latest                  | Skip source; source failure if none match                              |
+| `/latest` document version is the tag `latest`                         | Reject; resolve a concrete semver first                              |
+| Multiple PATH-visible copies, one is PATH default                         | Use PATH default; not `tool_owner_unsupported`                          |
+| macOS discovery walks mise/nvm/fnm/Volta install trees                     | Contract regression; env/PATH only                                     |
 | Node/npm missing, too old or wrong architecture                 | `tool_host_missing`; no installer                                      |
 | Multiple installs, unrecognized owner or prefix mismatch        | `tool_owner_unsupported`; no conversion/write                          |
 | Already same/newer npm install on update                        | No-op; never downgrade                                                 |
@@ -131,9 +166,11 @@ generic command execution capability is added.
 Good: a verified mirror installs the exact official optional package and the
 actual CLI reports the expected version. Base: a native installation remains
 usable/readable but must update through its original owner. Bad: `npm @latest`,
-global mirror changes, treating an npm success exit as runnable proof,
-executing a user-writable npm from the elevated Windows parent, or a renderer
-parser that still expects Claude Desktop/`managed_desktop`.
+a compiled reviewed version JSON, walking mise/nvm trees, treating
+`len>1` as unsupported when PATH default exists, global mirror changes,
+treating an npm success exit as runnable proof, executing a user-writable
+npm from the elevated Windows parent, or a renderer parser that still expects
+Claude Desktop/`managed_desktop`.
 
 ## 6. Tests Required
 
@@ -145,6 +182,10 @@ owner/prefix rejection, CLI-only policy and post-install observation. Renderer
 tests must parse compact `claude-code` readiness as `cli` / `cli_tooling` and
 reject Desktop/`managed_desktop`. Mirror smoke uses an isolated temporary
 home/prefix/cache and no login or inference.
+`grok_npm` tests must parse a `/latest` document version, reject
+`version=latest`, keep fixture argv free of `@latest`, and must not
+`include_str!` a version/hash JSON. `default_install` tests must prefer
+PATH default over a second copy.
 Windows native helper execution and real vendor login require their own
 matching-host evidence; macOS and portable tests do not establish it.
 Helper contract tests must require `npm.cmd` discovery plus
@@ -154,12 +195,15 @@ Helper contract tests must require `npm.cmd` discovery plus
 ## 7. Wrong vs Correct
 
 ```text
-wrong: install latest from any mirror; npm exit 0 -> installed
+wrong: install `@latest` from any mirror; npm exit 0 -> installed
+wrong: compile a reviewed version/hash JSON and treat it as latest
+wrong: walk ~/.mise / nvm / volta trees; treat any second copy as unsupported
 wrong: run user npm from the elevated desktop process
 wrong: Command::new("npm.cmd") as the helper application name
 wrong: renderer surfacesForAgent(claude-code)=desktop; sourceKind=managed_desktop
-correct: compiled manifest -> matching registry/root/platform -> closed plan
-         -> ordinary-user execution -> actual CLI version/owner readback
+correct: login/process PATH + product env -> PATH-default owner
+correct: registry /latest -> exact version + integrity -> matching registry
+         -> closed plan -> ordinary-user execution -> actual CLI version/owner
 correct: Windows .cmd shim -> cmd /D /S /C call "{quoted}" via raw_arg
 correct: renderer admits compact CLI readiness (cli_tooling, no surfaces array)
 ```
