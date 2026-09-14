@@ -113,6 +113,16 @@ timers. A dependency warning may be allowlisted only by one exact message and
 reviewed version, with an upstream reference and removal condition; broad
 regular-expression suppression is prohibited.
 
+The shared `console.error` act-warning guard is installed in `beforeEach`, not
+`beforeAll`: the renderer's `restoreMocks: true` restores spies before each
+test, including the first. `actWarningGuard.test.ts` exercises two consecutive
+tests against the real setup so a disabled guard cannot silently pass. Preserve
+the normal console path for messages outside that specific fail-fast guard.
+When a fixture resolves an installation job, await the resulting readiness and
+inventory readback UI before ending the test. Resolving a deferred Promise is
+not proof that its chained state updates have reached the DOM; do not replace
+the wait with a sleep, suppressed warning, or changed product lifecycle.
+
 Route/lifecycle tests prove both sides of lazy ownership: prefetch may request
 an unvisited module, but its page is not mounted and creates no queries/observers; a visited
 primary route stays mounted behind `PersistentSurface` with queries disabled
@@ -137,11 +147,22 @@ initialization from its helpers and produce cross-chunk cycles.
 
 For navigation profiling run `mise exec -- pnpm exec playwright test --config
 config/playwright.performance.config.ts`. It uses a serial production server,
-1232×700 viewport, 42 revisits at 1× and 4× CPU cost, CPU profiles and long-task
+1232×700 viewport, six revisits per route at 1× and 4× CPU cost, CPU profiles and long-task
 records. The normal-speed local target is p95 ≤100ms from semantic link
 activation to the frame after visible destination DOM; it excludes OS input
 dispatch, data freshness and animation settling. Report those limits, not a
 claim about all native WebViews. Do not raise the existing build budgets.
+
+The performance configuration keeps `trace: "off"`, one worker and zero retries.
+Playwright `retain-on-failure` still records every run and adds screenshot/DOM
+capture overhead; it is not a zero-cost recorder activated only after a failure.
+Functional browser checks retain their normal failure traces. For a diagnosis,
+rerun the failing case separately with `--trace on`; label those timings as
+instrumented, not accepted performance measurements. CPU profiles, frame samples,
+long tasks, real resize geometry and cleanup assertions remain enabled in the
+normal benchmark. Do not remove animations or loosen the 33.4ms/100ms budgets.
+`tests/architecture/rootGovernance.test.ts` loads both actual configs in native
+Node and checks this separation while retaining all four timing suites.
 
 The same production configuration also runs `presentation-performance.spec.ts`.
 It also selects `dialog-origins.spec.ts` and `mcp-followup-origins.spec.ts`:

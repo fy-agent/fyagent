@@ -96,6 +96,48 @@ function collectCopy(file: string): CopyOccurrence[] {
 }
 
 describe("FyAgent user-facing copy contract", () => {
+  it("keeps reviewed secondary-page narration out of all eight route families", () => {
+    // These are concrete retired strings, not an AI-authorship detector or
+    // a length limit for useful explanations, warnings or user-authored text.
+    const retiredCopy = [
+      "正在读取已安装的 Skills",
+      "正在读取该应用的提示词",
+      "正在获取应用信息",
+      "从左侧打开提示词后即可直接阅读和编辑正文。",
+      "查看登录状态、软件连接和账号操作。",
+      "查看账号连接、当前模型来源和需要处理的状态。",
+      "登录状态与软件连接分别管理。",
+      "当前搜索条件下没有结果",
+      "并创建可恢复备份",
+    ];
+    const pagesRoot = path.join(rendererRoot, "pages");
+    const files = listSourceFiles(pagesRoot);
+    expect(
+      [
+        ...new Set(
+          files.map(
+            (file) => path.relative(pagesRoot, file).split(path.sep)[0],
+          ),
+        ),
+      ].sort(),
+    ).toEqual([
+      "agents",
+      "auth",
+      "health",
+      "mcp",
+      "memory",
+      "models",
+      "prompts",
+      "skills",
+    ]);
+    const violations = files
+      .flatMap(collectCopy)
+      .filter((item) =>
+        retiredCopy.some((fragment) => item.text.includes(fragment)),
+      );
+    expect(violations).toEqual([]);
+  });
+
   it("does not expose reviewed implementation narration", () => {
     const violations = listSourceFiles(rendererRoot)
       .flatMap(collectCopy)

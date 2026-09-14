@@ -730,9 +730,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
             </Button>
           </>
         }
-      >
-        <p>确认后将使用当前选择覆盖已有模型。</p>
-      </Dialog>
+      />
       <Dialog
         open={pendingDeleteId !== null}
         originRef={deleteOriginRef}
@@ -740,7 +738,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
           if (!open && busy !== "delete") setPendingDeleteId(null);
         }}
         title="确认删除模型"
-        description="此操作将会删除该模型配置，不可恢复，是否确认删除"
+        description="模型配置删除后无法恢复。"
         actions={
           <>
             <Button

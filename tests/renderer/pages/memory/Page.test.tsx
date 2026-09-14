@@ -225,7 +225,7 @@ describe("MemoryPage native business management", () => {
     expect(
       within(pageHeader!).getByRole("heading", {
         level: 1,
-        name: "记忆模块",
+        name: "记忆",
       }),
     ).toBeVisible();
     const resources = await screen.findByRole("region", {

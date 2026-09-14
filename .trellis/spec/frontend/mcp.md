@@ -170,6 +170,13 @@ untrusted or versioned response must add parsing at this adapter boundary.
 
 ### Discovery, import, assignment, and trust copy
 
+- Installed detail shows source and transport once in its header and keeps
+  configuration/provenance in one flat metadata section. Missing optional
+  descriptions and absent local directories do not produce filler rows.
+  Editable assignment switches replace the former read-only assignment card.
+- Copy-only directory assertions target `CopyablePath` itself. An explicitly
+  displayed absolute command can legitimately contain the same directory;
+  combining metadata must not turn that fact into a false redaction failure.
 - Discovery uses the local reviewed catalog and builds an `McpServer` for
   `McpPort.upsert`; it is not a runtime/network test of the recipe.
 - Import delegates to `importFromApps()` and reports the returned imported

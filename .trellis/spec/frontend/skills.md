@@ -159,8 +159,8 @@ Port/query layer but are not the current Skill discovery UI path.
   dialog that does not exist.
 - Uninstall requires the confirmation dialog and calls `uninstall(id)`. Its
   result has optional `backupPath`; UI/spec logic must not treat backup creation
-  as guaranteed evidence. Current confirmation wording is not authority for
-  whether a backup was actually created.
+  as guaranteed evidence. Confirmation describes removal from the managed
+  list and enabled apps, without promising a recoverable backup.
 - Backup deletion requires confirmation. Restore selects one closed target via
   the shared radio panel and calls `restoreBackup(backupId, target)`.
 - Sync method is read from current settings, saved through `SettingsPort`, then
@@ -172,6 +172,10 @@ Port/query layer but are not the current Skill discovery UI path.
 
 ### Paths, links, copy, and evidence
 
+- Installed detail shows source once in a header badge, optional description
+  only when supplied, and one flat installation section containing repository,
+  directory, dates and links. The existing assignment switches are the only
+  detailed assignment presentation; there is no duplicate read-only app card.
 - Installed detail intentionally exposes `skill.path` when observed, otherwise
   `directory`, through `CopyablePath(revealValue=false)`. This is explicit
   user-initiated path UI; do not claim paths never enter the renderer.

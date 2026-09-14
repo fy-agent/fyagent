@@ -392,7 +392,11 @@ describe("Models page", () => {
         "自定义模型需在 TRAE Work CN 中添加。FyAgent 不会写入其本地模型配置。",
       ),
     ).toBeVisible();
-    expect(screen.getByText(/以云端模型列表为准/)).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "自定义模型需在 TRAE Work CN 中添加。FyAgent 不会写入其本地模型配置。",
+      ),
+    ).toHaveLength(1);
     expect(screen.queryByLabelText("服务地址")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
     expect(
@@ -928,9 +932,7 @@ describe("Models page", () => {
     );
     expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
     const dialog = await screen.findByRole("dialog", { name: "确认删除模型" });
-    expect(dialog).toHaveTextContent(
-      "此操作将会删除该模型配置，不可恢复，是否确认删除",
-    );
+    expect(dialog).toHaveTextContent("模型配置删除后无法恢复。");
     expect(within(dialog).getByText("existing-model")).toBeVisible();
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     expect(

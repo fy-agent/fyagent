@@ -194,6 +194,13 @@ Helper contract tests must require `npm.cmd` discovery plus
 `.raw_arg(&command_line)` / `call {quoted_program}` and must not accept
 `Command::new(npm.cmd)`.
 
+Host-side npm command-string adapters used only by Windows are compiled under
+`#[cfg(any(target_os = "windows", test))]`, with matching conditional imports.
+Pure tests still run on the development host; the unused Windows adapters do
+not enter a normal macOS build. Do not add `allow(dead_code)` to silence this
+ownership mismatch. Check both the normal library and all test targets with
+`mise run check:backend`; portable tests do not prove Windows execution.
+
 ## 7. Wrong vs Correct
 
 ```text

@@ -837,7 +837,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
         <FieldFeedback id="workbuddy-draft-error" notice={notices.draft} />
         <p className="fy-models-muted">
           {draftModelIds.length > 0
-            ? `已选择 ${draftModelIds.length} 个模型，保存并应用后才会写入配置。`
+            ? `已选择 ${draftModelIds.length} 个模型，尚未保存。`
             : "已选择 0 个模型"}
         </p>
       </section>
@@ -849,7 +849,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           if (!open && busy !== "delete") setPendingDeleteId(null);
         }}
         title="确认删除模型"
-        description="此操作将会删除该模型配置，不可恢复，是否确认删除"
+        description="模型配置删除后无法恢复。"
         actions={
           <>
             <Button

@@ -55,7 +55,7 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
         _ => None,
     };
 
-    let mapped = ToolVersion {
+    ToolVersion {
         name: tool.to_string(),
         version: local_version,
         latest_version,
@@ -67,8 +67,7 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
         installed_but_broken,
         distribution_owner,
         latest_source,
-    };
-    mapped
+    }
 }
 
 pub(super) async fn fetch_grok_latest_with_owner(

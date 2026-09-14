@@ -361,10 +361,7 @@ export function AuthPage() {
         aria-label="账号与认证"
         data-testid="auth-page"
       >
-        <EmptyState
-          title="正在加载账号与认证"
-          description="正在读取账号和软件连接"
-        >
+        <EmptyState title="正在加载账号与认证">
           <Spinner label="正在加载账号与认证" />
         </EmptyState>
       </div>
@@ -421,7 +418,6 @@ export function AuthPage() {
       <header className="fy-feature-header fy-auth-page-header">
         <div>
           <h1>账号与认证</h1>
-          <p>登录官方账号，切换软件账号与模型来源。</p>
         </div>
         <div className="fy-feature-actions">
           <FileRecoveryButton

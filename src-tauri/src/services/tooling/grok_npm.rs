@@ -7,9 +7,11 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use fyagent_user_helper::grok_npm::{
-    current_platform_package, npm_major_allows_scripts, GrokNpmInstallPlan, GrokNpmPlanError,
-    GrokNpmRegistry, OfficialNpmTool, GROK_NPM_ALLOW_SCRIPTS_PACKAGE,
+    current_platform_package, GrokNpmInstallPlan, GrokNpmPlanError, GrokNpmRegistry,
+    OfficialNpmTool,
 };
+#[cfg(any(target_os = "windows", test))]
+use fyagent_user_helper::grok_npm::{npm_major_allows_scripts, GROK_NPM_ALLOW_SCRIPTS_PACKAGE};
 #[cfg(test)]
 use fyagent_user_helper::GROK_NPM_PACKAGE;
 
@@ -98,12 +100,14 @@ pub(super) fn install_command_for_version(version: &str) -> Option<String> {
     Some(format!("npm {}", plan.npm_argv().join(" ")))
 }
 
+#[cfg(any(target_os = "windows", test))]
 pub(super) fn command_for_plan(plan: &GrokNpmInstallPlan) -> String {
     format!("npm {}", plan.npm_argv().join(" "))
 }
 
 /// npm 12+ blocks unlisted lifecycle scripts. Mirror the helper: add a
 /// package-scoped allow-scripts flag only when the executing npm major needs it.
+#[cfg(any(target_os = "windows", test))]
 pub(super) fn command_with_script_policy(command: &str, npm_major: Option<u32>) -> String {
     let flag = format!("--allow-scripts={GROK_NPM_ALLOW_SCRIPTS_PACKAGE}");
     if command.contains("--allow-scripts=") {
@@ -116,6 +120,7 @@ pub(super) fn command_with_script_policy(command: &str, npm_major: Option<u32>) 
     }
 }
 
+#[cfg(any(target_os = "windows", test))]
 pub(super) fn exact_install_version(command: &str) -> Option<&str> {
     let marker = format!("{}@", OfficialNpmTool::Grok.package());
     command.split_whitespace().find_map(|token| {

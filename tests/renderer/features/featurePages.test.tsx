@@ -154,21 +154,27 @@ describe("MCP management", () => {
         .map((node) => node.getAttribute("aria-label")),
     ).toEqual(MCP_TARGETS.map((app) => `${app.label} MCP 分配`));
     expect(screen.getByText(/stdio · 1 Agent/)).toBeVisible();
-    expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
-      "手动添加",
+    const detail = screen.getByRole("region", { name: "MCP 详情" });
+    expect(
+      within(detail).getAllByText("手动添加", { exact: true }),
+    ).toHaveLength(1);
+    expect(within(detail).getAllByText("stdio", { exact: true })).toHaveLength(
+      1,
     );
-    expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
-      "无本地安装目录",
-    );
-    expect(screen.getByRole("region", { name: "当前分配" })).toHaveTextContent(
-      "Claude Code",
-    );
+    expect(screen.queryByText("无本地安装目录")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "当前分配" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Claude Code MCP 分配" }),
+    ).toBeChecked();
+    expect(detail.querySelectorAll(".fy-feature-info-card")).toHaveLength(1);
     expect(screen.getByRole("region", { name: "安装信息" })).toHaveTextContent(
-      "stdio",
+      "npx",
     );
     appearsBefore(
       screen.getByRole("button", { name: "编辑" }),
-      screen.getByRole("region", { name: "安装来源" }),
+      screen.getByRole("region", { name: "安装信息" }),
     );
     appearsBefore(
       screen.getByRole("button", { name: "删除" }),
@@ -335,7 +341,7 @@ describe("MCP management", () => {
     });
     expect(trust).toHaveTextContent("连接器 → 自定义连接器");
     expect(trust).toHaveTextContent(
-      "WorkBuddy 官方限制第三方 MCP 必须在安装后手动信任授权才能正常使用。",
+      "请到「连接器 → 自定义连接器」中信任该 MCP 后才能使用。",
     );
     await user.click(within(trust).getByRole("button", { name: "知道了" }));
     await waitFor(() =>
@@ -443,18 +449,22 @@ describe("MCP management", () => {
     expect(document.body).toHaveTextContent(
       "https://mcp.amap.com/mcp?key=••••••",
     );
-    expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
-      "精选目录",
-    );
-    expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
-      "无本地安装目录",
-    );
-    expect(screen.getByRole("region", { name: "当前分配" })).toHaveTextContent(
-      "Claude Code",
-    );
+    expect(
+      within(screen.getByRole("region", { name: "MCP 详情" })).getAllByText(
+        "精选目录",
+        { exact: true },
+      ),
+    ).toHaveLength(1);
+    expect(screen.queryByText("无本地安装目录")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "当前分配" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Claude Code MCP 分配" }),
+    ).toBeChecked();
     appearsBefore(
       screen.getByRole("button", { name: "编辑" }),
-      screen.getByRole("region", { name: "安装来源" }),
+      screen.getByRole("region", { name: "安装信息" }),
     );
   });
 
@@ -482,11 +492,16 @@ describe("MCP management", () => {
     expect(
       await screen.findByRole("heading", { name: "node_repl" }),
     ).toBeVisible();
-    expect(
-      screen.getByRole("region", { name: "安装来源" }),
-    ).not.toHaveTextContent(directory);
+    const copyButton = screen.getByRole("button", { name: "复制安装目录" });
+    const pathControl = copyButton.closest(".fy-feature-path");
+    expect(pathControl).not.toBeNull();
+    expect(pathControl).not.toHaveTextContent(directory);
+    expect(pathControl?.querySelector(".fy-feature-path-value")).toBeNull();
+    expect(screen.getByRole("region", { name: "安装信息" })).toHaveTextContent(
+      command,
+    );
     expect(screen.queryByText("无本地安装目录")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "复制安装目录" }));
+    await user.click(copyButton);
     expect(writeText).toHaveBeenCalledWith(directory);
   });
 
@@ -907,7 +922,7 @@ describe("Skills management", () => {
     expect(screen.getByText("1 项失败，1 项成功")).toBeVisible();
   });
 
-  it("shows download source and assigned apps in installed skill details", async () => {
+  it("shows source once, compact metadata and editable assignments in skill details", async () => {
     const user = userEvent.setup();
     const remote: InstalledSkill = {
       ...installedSkill("review-skill", "Review Skill"),
@@ -936,10 +951,12 @@ describe("Skills management", () => {
 
     renderFeature(<SkillsPage />, ports);
 
+    const detail = await screen.findByRole("region", { name: "Skill 详情" });
     expect(
-      await screen.findByRole("region", { name: "下载来源" }),
-    ).toHaveTextContent("GitHub 仓库");
-    expect(screen.getByRole("region", { name: "下载来源" })).toHaveTextContent(
+      within(detail).getAllByText("GitHub 仓库", { exact: true }),
+    ).toHaveLength(1);
+    expect(detail.querySelectorAll(".fy-feature-info-card")).toHaveLength(1);
+    expect(screen.getByRole("region", { name: "安装信息" })).toHaveTextContent(
       "acme/skills",
     );
     expect(
@@ -947,10 +964,18 @@ describe("Skills management", () => {
         "Review changes in pull requests",
       ),
     ).toBeVisible();
-    const assignment = screen.getByRole("region", { name: "当前分配" });
-    expect(assignment).toHaveTextContent("Claude Code");
-    expect(assignment).toHaveTextContent("Codex");
-    expect(assignment).not.toHaveTextContent("Gemini");
+    expect(
+      screen.queryByRole("region", { name: "当前分配" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Claude Code Skill 分配" }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("switch", { name: "Codex Skill 分配" }),
+    ).toBeChecked();
+    expect(
+      screen.queryByRole("switch", { name: /Gemini/ }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "打开仓库" }));
     expect(openExternal).toHaveBeenCalledWith("https://github.com/acme/skills");
@@ -958,7 +983,7 @@ describe("Skills management", () => {
     const installPath =
       "C:\\Users\\xk\\AppData\\Roaming\\fyagent\\skills\\review-skill";
     expect(
-      screen.getByRole("region", { name: "下载来源" }),
+      screen.getByRole("region", { name: "安装信息" }),
     ).not.toHaveTextContent(installPath);
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -975,29 +1000,32 @@ describe("Skills management", () => {
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Local Notes/ }));
-    expect(screen.getByRole("region", { name: "下载来源" })).toHaveTextContent(
-      "本地导入",
-    );
-    expect(screen.getByRole("region", { name: "当前分配" })).toHaveTextContent(
-      "尚未分配到任何应用",
-    );
+    expect(
+      screen.getByRole("region", { name: "Skill 详情" }),
+    ).toHaveTextContent("本地导入");
+    for (const assignment of screen.getAllByRole("switch")) {
+      expect(assignment).not.toBeChecked();
+    }
     expect(
       screen.getByRole("region", { name: "安装信息" }),
     ).not.toHaveTextContent("安装时间");
     appearsBefore(
       screen.getByRole("button", { name: "卸载" }),
-      screen.getByRole("region", { name: "下载来源" }),
+      screen.getByRole("region", { name: "安装信息" }),
     );
 
     await user.click(screen.getByRole("button", { name: /Market Review/ }));
-    expect(screen.getByRole("region", { name: "下载来源" })).toHaveTextContent(
-      "从 Skill 市场安装",
-    );
     expect(
-      screen.getByRole("region", { name: "下载来源" }),
+      within(screen.getByRole("region", { name: "Skill 详情" })).getAllByText(
+        "Skill 市场",
+        { exact: true },
+      ),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("region", { name: "安装信息" }),
     ).not.toHaveTextContent("GitHub 仓库");
     expect(
-      screen.getByRole("region", { name: "下载来源" }),
+      screen.getByRole("region", { name: "安装信息" }),
     ).not.toHaveTextContent(`${SKILLHUB_MARKET_OWNER}/review-skill`);
     expect(
       screen.queryByRole("button", { name: "打开仓库" }),

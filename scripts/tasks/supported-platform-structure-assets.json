@@ -235,7 +235,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "62b8a26c833e6e930aac2f29dc0c418123da276f8e6e62b5208df118f121d272"
+      "1b33761c1ea02ba7b51fad259809c84461d98a6706131adbf348834a681d232a"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -267,19 +267,23 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "d9511c27bac9a80f61c117bc4db402f214f5b94b04956f9e0deb4cda1bfa7829"
+      "bac1492eb395bb9a06fb5ddc3e60e504b89dec46253ba9f2aa8b652962ed5eb2"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",
-      "a4d9c9265eca9d7ecab6d320b6494dadbfb6c42f5a39b27c17788cb84eef5d26"
+      "606c939420f54b3bd4904a2532933b58c3dc77f0b457e63f5e19a0943f30e38c"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
       "5a21aa858566373dddfaf5972391ea0b93746e140d5c557793c5ab277e0250fa"
     ],
     [
+      "src-tauri/src/services/tooling/grok_npm.rs",
+      "a37f390cca12fc938aaf3746bb93221f74002523f7f880168b310e16e692a9f7"
+    ],
+    [
       "src-tauri/src/services/tooling/grok.rs",
-      "e05136958c382c3835fdf2ec755594419494843c69385b826c39f36cea26f4a4"
+      "60b52043f9a4849dea78852a284dacb4d552c3ee76ec62c48f617276f530e182"
     ],
     [
       "src-tauri/src/services/tooling/health.rs",
@@ -287,7 +291,7 @@
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
-      "5394ab12acb1ea5738f62aa994774afd55b11b026a865d5c61d424da8f02924a"
+      "7357a45dcc7d3b413cc9f783cac8d272870407d36b8eed8c7370448bd724b9ec"
     ],
     [
       "src-tauri/src/services/tooling/terminal.rs",
@@ -295,7 +299,7 @@
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
-      "2347eeef354cd9a09008646fc635151de9ececeacbad2c981d89a5970cca2e48"
+      "a8ed5bc583906bb24df881e4e399d91f42401d32401f6dc9ba8a546a9c6c14e1"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
@@ -391,7 +395,7 @@
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
-      "e4e120372e13ce0b34728f14506fc0b6d4629a53265aec16ec73fa4b27e58559"
+      "dd312ed28285c0aa56e7f998b3c3f64095b71c4df0bac4a3e4db7d57c49869cd"
     ],
     [
       "tests/hdiutilRetry.test.ts",

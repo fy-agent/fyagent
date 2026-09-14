@@ -70,12 +70,16 @@ function AccountConnection({
     connection.authStatus,
     connection.reasonCodes,
   );
+  const consumerLabel = managedAuthConsumerLabel(connection.consumer);
+  const targetLabel = connection.targetLabel?.trim();
   return (
     <article className="fy-auth-connection-card">
       <div className="fy-auth-connection-card-heading">
         <div>
-          <h4>{managedAuthConsumerLabel(connection.consumer)}</h4>
-          {connection.targetLabel ? <p>{connection.targetLabel}</p> : null}
+          <h4>{consumerLabel}</h4>
+          {targetLabel && targetLabel !== consumerLabel ? (
+            <p>{targetLabel}</p>
+          ) : null}
         </div>
         <StatusBadge {...status} />
       </div>
@@ -197,7 +201,6 @@ function AccountDetail({
         <div className="fy-auth-section-heading">
           <div>
             <h3 id="fy-auth-account-status">账号状态</h3>
-            <p>登录状态与软件连接分别管理。</p>
           </div>
           <div className="fy-feature-actions">
             {canReauthenticate ? (
@@ -226,11 +229,6 @@ function AccountDetail({
           <DefinitionRow label="上次认证">
             {formatAuthenticatedAt(account.lastAuthenticatedAt)}
           </DefinitionRow>
-          <DefinitionRow label="软件连接">
-            {account.connectedConsumerCount === 0
-              ? "尚未连接软件"
-              : `已连接 ${account.connectedConsumerCount} 个软件`}
-          </DefinitionRow>
           <DefinitionRow label="额度状态">
             {account.quotaSummary ?? "暂时没有额度信息"}
           </DefinitionRow>
@@ -244,7 +242,7 @@ function AccountDetail({
         <div className="fy-auth-section-heading">
           <div>
             <h3 id="fy-auth-account-connections">已连接软件</h3>
-            <p>这里显示账号连接和软件当前请求来源，两者可能不同。</p>
+            <p>连接的账号与当前模型来源可能不同。</p>
           </div>
         </div>
         {linkedConnections.length === 0 ? (
@@ -277,9 +275,7 @@ function AccountDetail({
           <div className="fy-auth-section-heading">
             <div>
               <h3 id="fy-auth-account-connect">连接到软件</h3>
-              <p>
-                登录成功后不会自动改写软件，需要在这里选择要使用此账号的软件。
-              </p>
+              <p>登录不会自动连接软件。</p>
             </div>
           </div>
           <div className="fy-auth-connection-grid">
@@ -312,27 +308,18 @@ function AccountDetail({
         </section>
       ) : null}
 
-      <section
-        className="fy-auth-section fy-auth-danger-section"
-        aria-labelledby="fy-auth-danger-zone"
-      >
-        <div className="fy-auth-section-heading">
-          <div>
-            <h3 id="fy-auth-danger-zone">危险操作</h3>
-            <p>移除账号前会先展示受影响的软件连接。</p>
-          </div>
-          {canRemove ? (
-            <Button
-              className="fy-control-button-danger"
-              disabled={mutationBusy}
-              onClick={() => onRemove(account)}
-              dialogOriginRef={originRef}
-            >
-              移除账号
-            </Button>
-          ) : null}
+      {canRemove ? (
+        <div className="fy-feature-actions">
+          <Button
+            className="fy-control-button-danger"
+            disabled={mutationBusy}
+            onClick={() => onRemove(account)}
+            dialogOriginRef={originRef}
+          >
+            移除账号
+          </Button>
         </div>
-      </section>
+      ) : null}
     </CatalogDetail>
   );
 }
@@ -423,7 +410,11 @@ export function AccountView({
       <CatalogRail
         ariaLabel="官方账号列表"
         title="账号"
-        meta={`${accounts.length} / ${overview.accounts.length}`}
+        meta={
+          accounts.length !== overview.accounts.length
+            ? `${accounts.length} / ${overview.accounts.length}`
+            : undefined
+        }
         className="fy-auth-rail"
       >
         <div className="fy-auth-account-toolbar">
@@ -503,10 +494,7 @@ export function AccountView({
         />
       ) : (
         <CatalogDetail ariaLabel="账号详情" className="fy-auth-detail">
-          <EmptyState
-            title="选择一个账号"
-            description="查看登录状态、软件连接和账号操作。"
-          />
+          <EmptyState title="选择一个账号" />
         </CatalogDetail>
       )}
     </CatalogMasterDetail>

@@ -173,6 +173,16 @@ The fixed resource mapping is:
 
 ### Query, write, and navigation behavior
 
+- Optional list/preview descriptions are omitted when absent. Loading and
+  selection states do not add subtitles repeating their titles. Memory keeps
+  missing-file and dirty badges, not an ordinary `已读取` badge. Failure,
+  stale/refresh warnings, native limits and discard/delete confirmations remain.
+- Memory editor titles use the shared section token. The existing flex header
+  wraps the toolbar as a group before compressing its buttons into unnecessary
+  vertical rows; truly narrow toolbars may still wrap. Content and actions stay
+  within their pane and the editor retains its own scrolling. The toolbar's
+  copy-only `.fy-feature-path` is `width:auto`; the shared metadata-row default
+  `width:100%` would force the surrounding actions into separate rows.
 - Query keys are partitioned by app, document, daily file, search string, and
   Hermes limits. A mutation invalidates only resources it can affect.
 - Each page owns a mutual-exclusion write lock. Repeated clicks while a write is

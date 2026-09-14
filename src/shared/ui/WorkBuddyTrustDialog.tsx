@@ -26,8 +26,6 @@ export function WorkBuddyTrustDialog({
           知道了
         </Button>
       }
-    >
-      <p>WorkBuddy 官方限制第三方 MCP 必须在安装后手动信任授权才能正常使用。</p>
-    </Dialog>
+    />
   );
 }

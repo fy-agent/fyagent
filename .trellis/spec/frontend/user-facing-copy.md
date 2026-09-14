@@ -124,6 +124,38 @@ Examples:
   accessible label may match the visible sentence when needed for assistive
   technology.
 
+### Concise secondary surfaces
+
+The object name, meaningful state and actions are the default hierarchy across
+all eight routes and their details/dialogs. A heading does not require a
+subtitle. Add supporting text only for a non-obvious choice, consequence,
+limitation or recovery step; do not explain an already-labelled control.
+
+- In installed Skills/MCP details, show source/transport once in the header,
+  configuration facts in one metadata section, and assignment state in the
+  existing editable switches. Do not add a second read-only assignment card.
+- Omit absent optional descriptions instead of filling every row with
+  `暂无说明` / `暂无描述`. An unknown operational state is different: preserve
+  unknown authentication, stale reads, missing files and unsupported actions.
+- Ordinary document reads do not need an `已读取` badge. Missing, dirty,
+  failed and stale states remain visible; never remove user-authored content.
+- Omit an optional target subtitle when it exactly repeats the software heading;
+  retain a different target/configuration name. A normal Health badge plus the
+  fixed local-check limitation does not also need a paragraph restating success;
+  non-ready causes and individual check facts remain visible.
+- A removal button does not need its own `危险操作` introduction. Keep the
+  named destructive action and its real impact/confirmation, including affected
+  connections and files. Never infer a guaranteed backup from an optional result.
+- Keep model costs, managed-account versus request-source distinctions,
+  external trust steps, credential impact and cancellation limits at their
+  action points. Concision is not permission to hide these in hover help.
+
+For example, render `<EmptyState title="正在加载 Skills">` with its spinner,
+not an additional `description="正在读取已安装的 Skills"`. For an error, retain
+the specific safe cause/retry path rather than removing every description.
+Use ordinary task-specific words; no rigid character quota, universal paragraph
+ban, or punctuation-based test of authorship is part of this contract.
+
 ### Confirmation and safety copy
 
 Claude's Agent card may offer the closed CLI installer and official login
@@ -215,7 +247,8 @@ on those facts.
 
 Before merging user-visible text, verify:
 
-- [ ] The first sentence says what happened or what the screen is for.
+- [ ] The heading or first sentence identifies the task, object or state without
+      repeating it in a subtitle, summary card and control.
 - [ ] Every technical term is one the target reader must recognize or use.
 - [ ] Errors and uncertain states include a safe next step.
 - [ ] Copy does not reveal an opaque token, event sequence, adapter, projection,
@@ -244,6 +277,10 @@ mise run build:renderer
 mise run format:check
 ```
 
-The Renderer test suite contains a focused source contract for reviewed forbidden
-phrases. It is a regression guard for known implementation narration, not a
-substitute for human review of meaning and context.
+`tests/renderer/app/userFacingCopy.test.ts` checks all eight page families for
+reviewed retired narration, not AI authorship. `featurePages.test.tsx` checks
+single-owner metadata, actual switch state, paths and secrets. Browser
+`responsive-density.spec.ts` and `scroll-ownership.spec.ts` check the compact
+layout, readable body text, controls and document content across themes and
+engines. These are regression guards, not substitutes for reviewing meaning or
+native-platform acceptance.

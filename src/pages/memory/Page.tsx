@@ -203,7 +203,7 @@ export function MemoryPage() {
       aria-label="记忆"
     >
       <header className="fy-feature-header">
-        <h1 className="fy-memory-page-title">记忆模块</h1>
+        <h1 className="fy-memory-page-title">记忆</h1>
       </header>
       <FeatureTabs
         originRef={dialogOriginRef}
@@ -246,7 +246,7 @@ export function MemoryPage() {
         }
         open={activeDiscardIntent !== null}
         title="放弃未保存的更改？"
-        description="当前编辑内容尚未保存，继续后这些更改将丢失。"
+        description="未保存的更改将丢失。"
         onCancel={cancelDiscard}
         onConfirm={confirmDiscard}
       />
@@ -372,7 +372,7 @@ function LongTermView({
 
   if (documentQuery.isLoading) {
     return (
-      <EmptyState title="正在加载长期记忆" description="正在读取所选记忆资源">
+      <EmptyState title="正在加载长期记忆">
         <Spinner />
       </EmptyState>
     );
@@ -504,9 +504,7 @@ function LongTermEditor({
         <div className="fy-memory-editor-header-info">
           <div className="fy-feature-detail-title">
             <h2>{resource.title}</h2>
-            <Badge tone={missing ? "warning" : "accent"}>
-              {missing ? "尚未创建" : "已读取"}
-            </Badge>
+            {missing && <Badge tone="warning">尚未创建</Badge>}
             {dirty && <Badge tone="warning">未保存</Badge>}
           </div>
           <div className="fy-memory-editor-meta-inline">
@@ -757,7 +755,7 @@ function DailyView({
 
   if (listQuery.isLoading) {
     return (
-      <EmptyState title="正在加载每日记忆" description="正在读取每日记录">
+      <EmptyState title="正在加载每日记忆">
         <Spinner />
       </EmptyState>
     );
@@ -902,10 +900,7 @@ function DailyView({
             )
           ) : (
             <section className="fy-feature-panel">
-              <EmptyState
-                title="选择每日记忆"
-                description="从左侧选择一个 OpenClaw 每日文件，或打开今天的记录。"
-              />
+              <EmptyState title="选择每日记忆" />
             </section>
           )}
         </SplitPanes>
@@ -955,9 +950,7 @@ function DailyEditor({
         <div className="fy-memory-editor-header-info">
           <div className="fy-feature-detail-title">
             <h2>{filename}</h2>
-            <Badge tone={missing ? "warning" : "accent"}>
-              {missing ? "尚未创建" : "已读取"}
-            </Badge>
+            {missing && <Badge tone="warning">尚未创建</Badge>}
             {dirty && <Badge tone="warning">未保存</Badge>}
           </div>
           <div className="fy-memory-editor-meta-inline">

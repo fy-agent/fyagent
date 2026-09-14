@@ -2,9 +2,108 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { installRichTauriFeatureFixture } from "./support/features";
 import {
   expectHealthyPage,
+  expectNoHorizontalOverflow,
   monitorPageHealth,
   openRendererPage,
 } from "./support";
+
+const conciseViews = [
+  {
+    id: "agents",
+    route: "/agents?target=codex&section=skills",
+    ready: ".fy-agent-resource-full-list",
+  },
+  { id: "auth", route: "/auth", ready: ".fy-auth-detail-header" },
+  { id: "health", route: "/health", ready: ".fy-health-group" },
+  {
+    id: "models",
+    route: "/models?target=codex",
+    ready: ".fy-models-config-panel",
+  },
+  { id: "skills", route: "/skills", ready: ".fy-feature-detail-header" },
+  { id: "mcp", route: "/mcp", ready: ".fy-feature-detail-header" },
+  { id: "prompts", route: "/prompts", ready: ".fy-prompts-editor-content" },
+  { id: "memory", route: "/memory", ready: ".fy-memory-editor-textarea" },
+] as const;
+
+for (const theme of ["light", "dark"] as const) {
+  test(`${theme} concise secondary views preserve content, controls and readable type`, async ({
+    page,
+  }, info) => {
+    test.setTimeout(60_000);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.addInitScript(
+      (theme) => localStorage.setItem("fyagent-theme", theme),
+      theme,
+    );
+    await installLongFixture(page);
+    const health = monitorPageHealth(page);
+    for (const view of conciseViews) {
+      await openRendererPage(page, view.route);
+      const scope = page.getByTestId(`${view.id}-page`);
+      await expect(scope.locator(view.ready).first()).toBeVisible();
+      // A pending official login is valid fixture state, not page loading.
+      await expect(
+        scope.locator(".fy-control-empty .fy-control-spinner"),
+      ).toHaveCount(0);
+      await expect(scope.getByText("暂无说明", { exact: true })).toHaveCount(0);
+      await expect(scope.getByRole("region", { name: "当前分配" })).toHaveCount(
+        0,
+      );
+      if (view.id === "skills" || view.id === "mcp") {
+        await expect(scope.locator(".fy-feature-intro")).toHaveCSS(
+          "font-size",
+          "14px",
+        );
+        await expect(scope.locator(".fy-feature-info-card")).toHaveCount(1);
+        await expect(
+          scope.locator(".fy-feature-assignments:visible").getByRole("switch"),
+        ).toHaveCount(7);
+      }
+      if (view.id === "memory") {
+        await expect(scope.getByText("已读取", { exact: true })).toHaveCount(0);
+        await expect(scope.locator(".fy-memory-editor-head h2")).toHaveCSS(
+          "font-size",
+          "16px",
+        );
+        const tools = scope.locator(".fy-memory-editor-tools");
+        const panelWidth = await scope
+          .locator(".fy-memory-editor-panel")
+          .evaluate((node) => node.getBoundingClientRect().width);
+        if (panelWidth >= 350) {
+          const tops = await tools
+            .getByRole("button")
+            .evaluateAll((nodes) =>
+              nodes.map((node) => node.getBoundingClientRect().top),
+            );
+          expect(tops.length).toBeGreaterThan(1);
+          expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+        }
+        await expect(
+          scope.getByRole("textbox", { name: "记忆内容", exact: true }),
+        ).toHaveValue(/Long memory fixture line/);
+      }
+      if (view.id === "health") {
+        await expect(scope.locator(".fy-health-summary")).toHaveCount(0);
+        await expect(scope.locator(".fy-health-scope")).toContainText(
+          "不会测试远端服务或额度",
+        );
+      }
+      if (view.id === "prompts") {
+        await expect(
+          scope.getByRole("textbox", { name: "内容", exact: true }),
+        ).toHaveValue(/Long prompt line/);
+      }
+      await expectNoHorizontalOverflow(page);
+      await page.screenshot({
+        path: `node_modules/.cache/concise-renderer/screenshots/${info.project.name}-${theme}-${view.id}.jpg`,
+        type: "jpeg",
+        quality: 75,
+      });
+    }
+    await expectHealthyPage(page, health);
+  });
+}
 
 async function installLongFixture(page: Page) {
   await installRichTauriFeatureFixture(page);

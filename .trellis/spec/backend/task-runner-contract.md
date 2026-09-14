@@ -351,6 +351,13 @@ rerun `supported-platform:check`; a previously green manifest does not cover
 later source edits. Do not bulk-refresh unreviewed entries or disable the seal
 to unblock the always-running CI Changes job.
 
+The manifest's canonical ordering is `path.localeCompare(other, "en")`, not
+raw byte sorting. Adding a platform guard to a previously platform-neutral
+module also adds a candidate: review that file and add its identity rather
+than excluding it. When repairing a stale source-text test, assert the complete
+owning platform block and add negative cases for moving/widening the protected
+operation; attribute/call adjacency alone is not an authority boundary.
+
 The checker and both inventories must remain runnable from a clean checkout
 using only Node built-ins. The always-running CI Changes job invokes this path
 before dependency installation, so importing a package or a helper with a

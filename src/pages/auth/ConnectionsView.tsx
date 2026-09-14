@@ -263,7 +263,6 @@ export function ConnectionsView({
             <header className="fy-auth-consumer-header">
               <div>
                 <h2>{managedAuthConsumerLabel(selectedConsumer)}</h2>
-                <p>选择登录账号，并管理软件当前使用的模型来源。</p>
               </div>
               <StatusBadge {...consumerStatus(selectedConnections)} />
             </header>
@@ -288,10 +287,7 @@ export function ConnectionsView({
             )}
           </>
         ) : (
-          <EmptyState
-            title="选择一个软件"
-            description="查看账号连接、当前模型来源和需要处理的状态。"
-          />
+          <EmptyState title="选择一个软件" />
         )}
         <PersistentSurface active={selectedConsumer === "codex"}>
           {codexSourceControls}

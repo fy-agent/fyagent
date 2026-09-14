@@ -122,4 +122,38 @@ describe("repository configuration ownership", () => {
       "vite preview --config config/vite.config.ts",
     );
   });
+
+  it("separates serial frame measurement from functional trace recording", () => {
+    // Load the actual exported configs in Node, not the jsdom test realm.
+    const settings = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `
+      import performance from './config/playwright.performance.config.ts';
+      import functional from './config/playwright.config.ts';
+      console.log(JSON.stringify({performance, functional}));
+    `,
+        ],
+        { cwd: root, encoding: "utf8" },
+      ),
+    );
+    expect(settings.performance).toMatchObject({
+      workers: 1,
+      retries: 0,
+      use: { trace: "off", viewport: { width: 1232, height: 700 } },
+      webServer: { reuseExistingServer: false },
+    });
+    expect(settings.performance.testMatch).toEqual(
+      expect.arrayContaining([
+        "navigation-performance.spec.ts",
+        "presentation-performance.spec.ts",
+        "state-performance.spec.ts",
+        "theme-performance.spec.ts",
+      ]),
+    );
+    expect(settings.functional.use.trace).toBe("retain-on-failure");
+  });
 });
