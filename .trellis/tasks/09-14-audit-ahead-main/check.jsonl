@@ -1,0 +1,20 @@
+{"file":".trellis/spec/backend/index.md","reason":"Verify owner routing, file-size policy and backend full-scope checks"}
+{"file":".trellis/spec/backend/claude-code-cli.md","reason":"Verify live npm and platform execution assertions remain executable"}
+{"file":".trellis/spec/backend/external-agent-lifecycle.md","reason":"Verify source/identity failures are consumed without duplicate authority"}
+{"file":".trellis/spec/backend/external-agent-sources.md","reason":"Verify live npm, source and closed identity contracts are complete"}
+{"file":".trellis/spec/backend/task-runner-contract.md","reason":"Verify canonical task API still routes to focused owners"}
+{"file":".trellis/spec/backend/trellis-prearchive-gate.md","reason":"Verify exact active-task/session exclusion and postarchive removal"}
+{"file":".trellis/spec/backend/supported-platform-governance.md","reason":"Verify identity inventory, snapshot and dependency-free checker boundaries"}
+{"file":".trellis/spec/backend/native-task-runner.md","reason":"Verify foreground/native child execution and platform ownership"}
+{"file":".trellis/spec/backend/windows-msvc-cross-diagnostic.md","reason":"Verify optional diagnostics do not become acceptance gates"}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Verify general shell-user runtime remains focused and complete"}
+{"file":".trellis/spec/backend/windows-agent-runtime-security.md","reason":"Verify Agent helper, trusted launch and registry rights remain closed"}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Verify local evidence maps to required remote checks"}
+{"file":".trellis/spec/backend/github-push-commit-policy.md","reason":"Verify push fallback stays isolated from Required CI"}
+{"file":".trellis/spec/backend/github-merge-governance.md","reason":"Verify PR and merge-readiness governance"}
+{"file":".trellis/spec/frontend/index.md","reason":"Verify all affected renderer owners and quality checks"}
+{"file":".trellis/spec/frontend/user-facing-copy.md","reason":"Verify concise copy does not erase safety or uncertainty"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify warning guard, browser and performance evidence"}
+{"file":".trellis/tasks/09-14-audit-ahead-main/research/spec-audit.md","reason":"Audit checklist and measured SPEC size findings"}
+{"file":".trellis/tasks/09-14-audit-ahead-main/research/commit-audit.md","reason":"Verify every baseline commit and local gate has explicit review evidence"}
+{"file":".trellis/tasks/09-14-audit-ahead-main/research/merge-handoff.md","reason":"Verify task closure is not confused with later remote merge evidence"}

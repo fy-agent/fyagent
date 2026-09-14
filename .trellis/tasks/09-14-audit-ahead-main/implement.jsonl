@@ -1,0 +1,20 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend semantic owners, maintenance rules and full-scope quality gate"}
+{"file":".trellis/spec/backend/claude-code-cli.md","reason":"Executable live npm, discovery and ordinary-user CLI lifecycle contract"}
+{"file":".trellis/spec/backend/external-agent-lifecycle.md","reason":"Action, inventory, job and recovery owner after source/identity decomposition"}
+{"file":".trellis/spec/backend/external-agent-sources.md","reason":"Shared live npm, product source and closed desktop identity owner"}
+{"file":".trellis/spec/backend/task-runner-contract.md","reason":"Public mise API and canonical task composition after focused owner splits"}
+{"file":".trellis/spec/backend/trellis-prearchive-gate.md","reason":"Direct-session active-task exclusion and archive transition owner"}
+{"file":".trellis/spec/backend/supported-platform-governance.md","reason":"Platform-sensitive identity seals and whole-repository snapshot owner"}
+{"file":".trellis/spec/backend/native-task-runner.md","reason":"Foreground process, Windows MSVC and macOS signed development owner"}
+{"file":".trellis/spec/backend/windows-msvc-cross-diagnostic.md","reason":"Optional macOS cross-compile diagnostic and evidence boundary"}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Frozen Explorer-user and general Windows shell-runtime owner"}
+{"file":".trellis/spec/backend/windows-agent-runtime-security.md","reason":"Agent-specific trusted launch, helper and inventory access owner"}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Required CI jobs, aggregation and failure semantics"}
+{"file":".trellis/spec/backend/github-push-commit-policy.md","reason":"Push-only commit range and topology-aware subject policy"}
+{"file":".trellis/spec/backend/github-merge-governance.md","reason":"PR readiness, Trellis lifecycle and merge policy"}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend owner routing and renderer/browser quality gate"}
+{"file":".trellis/spec/frontend/user-facing-copy.md","reason":"Concise secondary-surface copy and evidence boundaries"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Renderer warning, browser and performance evidence contracts"}
+{"file":".trellis/tasks/09-14-audit-ahead-main/research/spec-audit.md","reason":"Measured size, duplication and review-risk findings for this audit"}
+{"file":".trellis/tasks/09-14-audit-ahead-main/research/commit-audit.md","reason":"Six-commit code-path review and completed local evidence"}
+{"file":".trellis/tasks/09-14-audit-ahead-main/research/merge-handoff.md","reason":"Post-archive exact-head PR, queue and main readback boundary"}

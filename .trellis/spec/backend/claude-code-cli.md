@@ -4,14 +4,16 @@
 
 Read before changing Claude CLI detection, installation, updates, Agent
 surface policy or the ordinary-user Windows helper. Main owners are
-`services/tooling/claude.rs`, shared `tooling/grok_npm.rs`, macOS
-`tooling/npm_runtime.rs`, and `user-helper/src/{claude,grok_npm,cli,windows}.rs`
-with the Windows Claude adapter at `user-helper/src/windows/claude.rs`.
+`services/tooling/claude.rs`, macOS `tooling/npm_runtime.rs`,
+`user-helper/src/{claude,cli,windows}.rs`, and the Windows Claude adapter at
+`user-helper/src/windows/claude.rs`.
 
 [External Agent Lifecycle](./external-agent-lifecycle.md) owns inventory,
 jobs and IPC. [External Agent Auth](./external-agent-auth.md) owns official
-login/logout observation. No new OAuth implementation or package dependency is
-needed for this lifecycle.
+login/logout observation. [External Agent Product Sources and Desktop
+Identity](./external-agent-sources.md) owns shared Claude/Grok live npm
+metadata, mirror/integrity admission and compact exact-version plans. No new
+OAuth implementation or package dependency is needed for this lifecycle.
 
 ## 2. Signatures
 
@@ -22,8 +24,11 @@ get_tool_versions(["claude"]) -> ToolVersion
 
 OfficialNpmTool = Grok | Claude
 GrokNpmInstallPlan::npm_argv_for(tool) -> closed exact-version argv
-grok_npm::resolve_published_manifest(tool) -> live /latest + platform integrity
-grok_npm::registries_matching_manifest(manifest) -> registries whose hashes match
+external source owner:
+  grok_npm::resolve_published_manifest(Claude)
+    -> live root/current-platform manifest
+  grok_npm::registries_matching_manifest(manifest)
+    -> admitted registries
 fetch_npm_latest_for_tool(package, tool, local) -> dist-tags.latest or /latest version
 build_tool_search_paths(tool) -> login PATH + process PATH + product env
 default_install(installs) -> PATH default, else the sole entry
@@ -72,46 +77,30 @@ generic command execution capability is added.
 - Windows still uses the existing manager search plus the ordinary-user
   helper; it does not copy the macOS env-only rule onto Alice's PATH.
 
-### Live package and shared mirror policy
+### Claude projection of the shared npm source
 
-- Exact version and SHA-512 authority is the current npm `latest` document,
-  resolved at runtime. Prefer `registry.npmjs.org`; if that host is
-  unreachable, try the shared mainland chain (Tencent, Huawei, npmmirror).
-  The document supplies `@anthropic-ai/claude-code` version, `dist.integrity`,
-  and the current Darwin/Windows x64/arm64 optional package version. Do not
-  compile a reviewed version/hash JSON into the product, and do not repeat
-  version/hash literals in generic specs.
-- Directory `latest_version` display uses `fetch_npm_latest_for_tool`: npmjs
-  packument `dist-tags` first, then the same `/latest` document fallback. Claude
-  may consider the `next` tag only when the local version is already newer
-  than `latest`. Display and install may race; both must resolve live, never
-  a compiled pin.
-- After the published version is known, each candidate in Tencent, Huawei,
-  npmmirror, npmjs must return matching root and current-platform package name,
-  exact version and SHA-512. HTTPS-only, no redirects, per-request timeout and
-  a streaming 1 MiB metadata limit apply. Missing/mismatching sources fail
-  closed. npm argv is always `package@<resolved-version>`; never
-  `package@latest`. A mainland `dist-tags.latest` (for example npmmirror) may
-  point at an older release; that is why argv never uses the `latest` tag.
-- `default_install_command()` is a command-shape fixture
-  (`@xai-official/grok@1.2.3` plus the Tencent registry). It is not version
-  authority. macOS, formal Windows, and development Windows LocalProcess
-  resolve `resolve_published_manifest` before any npm install/update.
-- npm receives exact package/version, general registry and the matching
-  `@anthropic-ai:registry` option for that invocation. Scope config must not
-  silently redirect the request to a different registry. Global/user npmrc and
-  shell profiles are not rewritten. Grok uses the same scoped-registry owner.
-- Claude retains optional dependencies. Newer npm requires a narrow
-  `--allow-scripts=@anthropic-ai/claude-code` allowance; never allow arbitrary
-  scripts. The reviewed root installer links/copies its matching native
-  optional package; a stub or process exit alone is not install success.
+- Source resolution consumes the exact manifest and admitted registries from
+  [External Agent Product Sources and Desktop Identity](./external-agent-sources.md).
+  Claude lifecycle code must not reimplement mirror ordering, metadata bounds,
+  current-platform package selection or root/platform integrity comparison.
+- Directory `latest_version` uses `fetch_npm_latest_for_tool`: npmjs packument
+  `dist-tags` first, then the shared bounded `/latest` fallback. Claude may
+  consider `next` only when the local version is already newer than `latest`.
+  Display and install may race; install resolves a fresh exact manifest.
+- Claude npm argv contains `@anthropic-ai/claude-code@<exact-version>`, the
+  admitted general registry and the matching `@anthropic-ai:registry` option
+  for that invocation. Global/user npmrc and shell profiles are not rewritten.
+- Claude retains optional dependencies. npm versions requiring script policy
+  receive only `--allow-scripts=@anthropic-ai/claude-code`; arbitrary script
+  allowance is forbidden. The root installer must produce the matching native
+  optional package; process exit or a stub alone is not success.
 - Require the reviewed Node major floor and Node architecture matching the
-  product. Do not automatically install Node, use sudo, switch architecture,
-  or edit PATH. macOS checks an already-discoverable global bin directory;
-  update checks that npm's prefix matches the selected installation.
-- Root/optional metadata comparison and npm's package integrity checks are
-  the inherited distribution contract, not a claim of registry-independent
-  signed artifact verification or of login/inference availability.
+  product. Do not install Node, use sudo, switch architecture or edit PATH.
+  macOS checks an already-discoverable global bin directory; update checks that
+  npm's prefix matches the selected installation.
+- Shared root/optional metadata comparison and npm package-integrity checks are
+  distribution admission, not proof of registry-independent artifact signing,
+  successful login or inference availability.
 
 ### Native execution boundaries
 
@@ -182,12 +171,12 @@ owner/prefix rejection, CLI-only policy and post-install observation. Renderer
 tests must parse compact `claude-code` readiness as `cli` / `cli_tooling` and
 reject Desktop/`managed_desktop`. Mirror smoke uses an isolated temporary
 home/prefix/cache and no login or inference.
-`grok_npm` tests must parse a `/latest` document version, reject
-`version=latest`, keep fixture argv free of `@latest`, and must not
-`include_str!` a version/hash JSON. `command_with_script_policy` must add
-`--allow-scripts=@xai-official/grok` only for npm ≥ 12 and must not duplicate
-an existing flag. `default_install` tests must prefer
-PATH default over a second copy.
+The shared source-owner tests must parse a `/latest` document version, reject
+`version=latest`, keep executable argv free of `@latest`, match root and
+current-platform integrity and prove no compiled version/hash JSON exists.
+Claude tests additionally require its exact scoped-registry option and narrow
+script allowance. `default_install` tests prefer the PATH default over a
+second copy.
 Windows native helper execution and real vendor login require their own
 matching-host evidence; macOS and portable tests do not establish it.
 Helper contract tests must require `npm.cmd` discovery plus
@@ -210,12 +199,10 @@ wrong: walk ~/.mise / nvm / volta trees; treat any second copy as unsupported
 wrong: run user npm from the elevated desktop process
 wrong: Command::new("npm.cmd") as the helper application name
 wrong: renderer surfacesForAgent(claude-code)=desktop; sourceKind=managed_desktop
-wrong: development Windows LocalProcess `npm i -g @xai-official/grok@1.2.3`
-wrong: npm 12 without --allow-scripts=@xai-official/grok; exit 0 -> succeeded
 correct: login/process PATH + product env -> PATH-default owner
 correct: registry /latest -> exact version + integrity -> matching registry
          -> closed plan -> ordinary-user execution -> actual CLI version/owner
 correct: Windows .cmd shim -> cmd /D /S /C call "{quoted}" via raw_arg
 correct: renderer admits compact CLI readiness (cli_tooling, no surfaces array)
-correct: LocalProcess npm 12 --allow-scripts=@xai-official/grok; reread grok --version
+correct: Claude npm script policy allows only @anthropic-ai/claude-code
 ```
