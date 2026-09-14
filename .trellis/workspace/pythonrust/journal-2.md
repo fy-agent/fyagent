@@ -825,3 +825,25 @@ Reviewed the six commits ahead of main, decomposed oversized Trellis SPEC owners
 ### Status
 
 [OK] **Completed**
+
+
+## Session 90: Stabilize merge-queue contrast sampling
+<!-- trellis-session: v=2 fp=0c424a2bec868b98 -->
+
+**Date**: 2026-09-14
+**Task**: Stabilize merge-queue contrast sampling
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Diagnosed PR #188 merge-group WebKit failure as a two-phase raster sampling race on the Health page, added route-owned settled-state synchronization, documented the contract in the frontend quality SPEC, and completed focused browser plus full prearchive validation.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5be5540c` | test(browser): stabilize dynamic contrast sampling |
+
+### Status
+
+[OK] **Completed**
