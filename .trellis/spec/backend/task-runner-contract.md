@@ -333,6 +333,14 @@ tracked raster assets. These inventories are fail-closed review authorities,
 not content exclusions. Every listed file still passes the normal path, text,
 and structure scanners.
 
+The whole-repository integration test captures its Git file list once, then
+runs every scanner against that same snapshot. It has a bounded 15-second test
+watchdog because filesystem enumeration and parsing more than 1,000 files is
+not a product latency benchmark; other tests keep their default timeout.
+Its zero-findings and inspected-file-count assertions remain mandatory, as do
+all negative inventory fixtures. Do not change the production scanner or a
+performance budget to accommodate integration-runner scheduling.
+
 The source inventory is recomputed bidirectionally from all tracked Cargo
 manifests and build scripts plus executable/configuration files containing
 platform selectors. The candidate set, canonical paths, reviewed Git index
