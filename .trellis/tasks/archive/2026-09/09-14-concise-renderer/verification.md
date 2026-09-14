@@ -10,9 +10,9 @@ The user's final completion request supersedes the earlier proposal to archive
 with known baseline failures. The three baseline assertions, React warning
 guard/lifecycle issue and four additional Clippy errors have been resolved.
 The full current-host prearchive check, functional browser repeat and corrected
-canonical production performance suite pass. The final aggregate repeat after
-the timing-harness and native test-port repairs also exits 0. Postarchive
-verification is recorded below after the task move.
+canonical production performance suite pass. The final canonical postarchive
+`mise run check` also passes, including the later scanner-harness correction,
+without an active-task exclusion.
 
 Production native changes are limited to two mechanical repairs: conditional
 compilation of Windows-only npm string adapters (with host unit tests retained),
@@ -39,7 +39,7 @@ configuration format, route, credential or stored user data was changed.
 | Renderer build / full functional browser repeat | Pass; all eight route chunks, 2 production boot cases and 586 functional browser cases |
 | Serial production performance suite | 35 pass in 2.7m, with the corrected dedicated timing configuration; no CLI override |
 | Trellis context | Both manifests resolve all 7 entries within injection limits |
-| Canonical postarchive `mise run check` | Pending archive |
+| Canonical postarchive `mise run check` | Pass; 187 unit files / 1,649 passes, 3,565 native passes, all release/task/source contracts; no task exclusion |
 
 The one unit skip is the existing `it.runIf(process.platform === "win32")`
 host test. Rust's six explicit ignores are two backup performance diagnostics,
@@ -57,6 +57,10 @@ TRELLIS_CONTEXT_ID=fyagent-concise-renderer-20260914 \
 mise run test:browser
 mise run test:performance
 ```
+
+The prearchive command above records the task's historical active location.
+After relocation, use `mise run check` without any exclusion and validate
+`.trellis/tasks/archive/2026-09/09-14-concise-renderer` for the current context.
 
 The last two run sequentially after the first, so compilation and parallel
 functional tests do not contaminate the serial production performance sample.
@@ -81,6 +85,11 @@ recorded as `prearchive-port-isolated.3aiKDV`: 1,649 unit passes and 3,565 Rust
 passes. The earlier timing-config repeat is `prearchive-final.VdiXBx`.
 The complete prearchive log records 0 React act warnings and 0 Rust compiler
 warnings/errors. Generated logs/screenshots are ignored, not committed binaries.
+
+Final postarchive evidence is `postarchive.pf7DQ1`: the complete canonical check
+passes without exclusions, with 1,649 unit passes / 1 existing skip and 3,565
+native passes / 6 existing ignores. Its full log contains no failed-test,
+compiler-warning or unexpected React act-warning markers.
 
 ## Repaired failures and prevention
 
@@ -118,6 +127,16 @@ bound port in the generated profile URL and explicitly stops its own listener.
 No unrelated local process was stopped. The focused native test and subsequent
 complete gate both pass. Details and
 the owning SPEC are in `research/validation-repairs.md`.
+
+### Full-tree scanner test harness
+
+`prearchive-port-repair.log` separately records a 5-second Vitest timeout in
+the integration test that scans the whole repository. The test now enumerates
+one coherent Git snapshot rather than repeatedly enumerating it, and receives
+a bounded 15-second watchdog. This is a test execution deadline adjustment;
+all zero-findings/file-count/negative-case assertions and product performance
+budgets remain unchanged. The fix and owning SPEC are included in the second
+work commit and verified by the canonical postarchive run above.
 
 ### Performance measurement repair
 
@@ -175,10 +194,13 @@ temporary artifact directories.
 
 ## Delivery boundary
 
-SPEC updates are prepared before the work commit and archive. The user's local
-commit/archive authorization is recorded in `commit-plan.md`; no remote push,
-release or publishing action is performed. Archive completion and the canonical
-postarchive result will be recorded after execution.
+Ten owning SPEC files were updated before closeout. Local work commits are
+`379bb0d1` (UI and validation repairs) and `ee475a78` (scanner test harness).
+The task is at `.trellis/tasks/archive/2026-09/09-14-concise-renderer`, marked
+completed, with both seven-entry manifests resolving their relocated references.
+There is no active-task pointer. Archive bookkeeping and the developer journal
+follow the work commits; no amend, remote push, release or publishing action
+is performed. The canonical postarchive check above verifies this relocated tree.
 
 Current-host native tests do not prove Windows runtime, installer/signing,
 real-account login, credential replacement, live model inference or packaged

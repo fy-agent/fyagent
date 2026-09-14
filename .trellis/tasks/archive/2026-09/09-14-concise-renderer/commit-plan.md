@@ -6,13 +6,13 @@ contract and test-warning repairs. No remote publication is authorized.
 
 ## Work commit
 
-Proposed message:
+Primary work commit `379bb0d1`:
 
 ```text
 refactor(ui): simplify secondary pages and close validation gaps
 ```
 
-Include the original 41 tracked UI/SPEC/test paths below, the fourteen explicitly
+Include the original 41 tracked UI/SPEC/test paths below, the fifteen explicitly
 listed completion-repair paths (including performance and native-test isolation),
 and this task's planning/research/review artifacts.
 The previous UI modifications were reviewed as this same task; the completion
@@ -82,6 +82,7 @@ config/playwright.performance.config.ts
 tests/architecture/rootGovernance.test.ts
 .trellis/spec/backend/proxy-runtime.md
 src-tauri/src/services/provider/mod.rs
+tests/remainingPlatformSurface.test.ts
 ```
 
 Do not include generated logs, screenshots, `node_modules`, dependency/API/data
@@ -92,6 +93,12 @@ listener configuration, assert the returned port, and stop that test listener.
 No production Provider behavior is modified.
 
 ## Bookkeeping after the work commit
+
+Supplemental work commit `ee475a78`, before archive bookkeeping:
+`test(contracts): stabilize full-repository snapshot validation`.
+It contains the final scanner test, its reviewed source seal and the owning
+task-runner SPEC. The complete canonical postarchive check passes with this fix;
+see verification.md for the explicit test-watchdog versus performance distinction.
 
 Use the existing `fyagent-concise-renderer-20260914` context identity. Preserve
 work-commit → archive-commit → journal-commit order; no amend and no push.

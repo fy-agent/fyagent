@@ -12,7 +12,7 @@
 - [x] Update frontend copy/visual/feature SPEC owners and validate task context; subsequently resolve the reproduced baseline failures under the user's completion authorization.
 - [x] Record final results and limitations, review the full diff and prepare `commit-plan.md`.
 - [x] Obtain local work-commit/archive approval through the user's request to complete all remaining work.
-- [ ] Commit the reviewed task scope, archive the task, validate archived references and record the session. Do not push.
+- [x] Commit the reviewed task scope, archive the task and validate archived references. No push.
 
 ## Gates
 
@@ -25,8 +25,11 @@
   lifetime, and verify repeated full renderer tests with no unexpected warnings.
 - [x] Execute full local prearchive, release, browser and serial production
   performance checks; fix actionable failures without lowering thresholds.
-- [ ] Update backend/frontend SPEC and final verification/commit plan, commit
-  task-scoped work locally, archive, journal and run canonical postarchive checks.
+- [x] Update backend/frontend SPEC and final verification/commit plan, commit
+  task-scoped work locally, archive and pass canonical postarchive checks.
+
+The developer session is recorded through `add_session.py` after the archive
+bookkeeping commit, using both work-commit hashes. No remote publication occurs.
 
 Use repository-owned `mise` commands. Run compilation/unit gates separately from performance profiling. Use targeted runs while iterating, then the complete frontend and browser gates. Do not update approved visual baselines automatically or weaken budgets/assertions to pass.
 

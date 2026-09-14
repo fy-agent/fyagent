@@ -1,5 +1,20 @@
 # Completion-gate repair review
 
+## Final scanner integration follow-up
+
+The separate `prearchive-port-repair.log` run recorded a 5-second timeout in
+`remainingPlatformSurface.test.ts`'s full-repository scanner case; it was not a
+reported scanner finding. The test repeatedly enumerated Git in its runner
+adapter. Its reviewed follow-up now enumerates one coherent current-file snapshot
+and uses a case-local bounded 15-second allowance for the repository I/O. All
+production scanners, zero findings, the inspected-file floor, identity validation
+and negative tests remain unchanged. No global timeout or product frame/latency
+budget changes. The modified sealed test identity is updated after source review.
+
+This change appeared after the initial work commit and is recorded as a separate
+work commit before archive bookkeeping, never folded into an amend. The canonical
+postarchive check is the acceptance gate for the final combined source.
+
 Reviewed 2026-09-14 after the user's request to resolve every reported blocker.
 This supersedes the earlier proposed baseline-failure exception. No remote write,
 real login, CLI installation, live inference or visual-baseline approval is part
@@ -95,3 +110,25 @@ and https://doc.rust-lang.org/std/net/struct.TcpListener.html specify that bindi
 port 0 lets the OS allocate the bound port, retrievable via `local_addr`. FyAgent's
 existing proxy owner already exposes it in its start result; no new helper is
 needed. The prevention rule is in backend/proxy-runtime.md, Tests Required.
+
+## Whole-repository test watchdog
+
+The `prearchive-port-repair.log` repeat stopped on Vitest's default 5-second
+watchdog in the full-repository scanner test, not on a scanner finding. All
+other 1,648 tests passed and one pre-existing host test was skipped. The native
+port repair's focused test had already passed; this aggregate did not reach
+the native suite and is not recorded as a full success.
+
+The test now captures the real current Git file list once and reuses it for
+its snapshot runner, instead of invoking Git repeatedly while constructing the
+same snapshot. Only this full-tree integration test gets a finite 15-second
+watchdog. It still executes every scanner, requires zero findings and more than
+1,000 inspected files, and retains all negative fixture tests and strict seals.
+The production scanner and all product performance thresholds are unchanged.
+This is an explicit test-harness deadline adjustment, not a performance claim.
+Vitest documents the default at https://v3.vitest.dev/config/#testtimeout.
+
+The UI/native work commit and archive move had already completed while these
+final scanner changes remained uncommitted. They therefore land in a separate
+work commit before the archive bookkeeping commit; the full canonical postarchive
+check is the final acceptance, without a lifecycle exclusion.

@@ -23,7 +23,7 @@ Audit all eight renderer routes and secondary views; remove repetitive UI narrat
 - [x] Renderer-specific checks pass with the repaired warning guard; the previous full functional browser run passed 586 tests. Final repeat results are recorded in `verification.md`.
 - [x] Affected tests, frontend gate, browser checks, build and task/SPEC contracts pass; remaining native/manual limitations are stated.
 - [x] Owning frontend SPEC updates are prepared and reviewed before task archive.
-- [ ] Archive the task after the authorized local work commit and successful full verification.
+- [x] Archive the task after the authorized local work commits; validate the relocated context and pass the canonical full check without exclusions.
 
 ## Non-goals
 
