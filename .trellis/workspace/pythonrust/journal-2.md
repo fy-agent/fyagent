@@ -803,3 +803,25 @@ Simplified all eight renderer route families and secondary surfaces, repaired ba
 ### Status
 
 [OK] **Completed**
+
+
+## Session 89: Audit ahead-of-main commits and split SPEC owners
+<!-- trellis-session: v=2 fp=56e74508cd336911 -->
+
+**Date**: 2026-09-14
+**Task**: Audit ahead-of-main commits and split SPEC owners
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Reviewed the six commits ahead of main, decomposed oversized Trellis SPEC owners, and completed full local, browser, performance, prearchive, and contract gates for exact-head merge readiness.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `20dd6537` | docs(spec): split oversized contract owners |
+
+### Status
+
+[OK] **Completed**
