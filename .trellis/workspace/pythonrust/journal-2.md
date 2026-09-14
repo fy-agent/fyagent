@@ -769,3 +769,37 @@ Update canonical and helper package versions, preserve the client compatibility 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 88: Simplify secondary pages and close validation gaps
+<!-- trellis-session: v=2 fp=0729359afcc067f0 -->
+
+**Date**: 2026-09-14
+**Task**: Simplify secondary pages and close validation gaps
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Simplified all eight renderer route families and secondary surfaces, repaired baseline contracts and test warnings, validated the full local/browser/performance gates, and archived the task after updating ten SPEC owners. No remote push or live-account/native installer acceptance claimed.
+
+### Main Changes
+
+- Consolidated redundant detail metadata, removed repeated UI narration, preserved destructive-action, credential and source boundaries.
+- Repaired act-warning guard lifetime, reviewed native source seals, platform-only helpers, test-port isolation and full-tree scanner snapshot handling.
+- Separated production timing from trace recording without changing product animations, sample counts or performance budgets.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `379bb0d113702421779e01eb4f49f4cf6c13c0aa` | refactor(ui): simplify secondary pages and close validation gaps |
+| `ee475a784f6995ecfd933b3a6b78fe1ae8950193` | test(contracts): stabilize full-repository snapshot validation |
+
+### Testing
+
+- [OK] Canonical postarchive mise run check passed without exclusions: 1649 unit passes, 3565 Rust passes, zero unexpected React or compiler warnings; existing host/live-only skips recorded.
+- [OK] Canonical browser gate: 2 production boot cases and 586 functional cases passed; serial production performance: 35 passed.
+
+### Status
+
+[OK] **Completed**

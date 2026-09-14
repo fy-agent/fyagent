@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 87
-- **Last Active**: 2026-09-09
+- **Total Sessions**: 88
+- **Last Active**: 2026-09-14
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~771 | Active |
+| `journal-2.md` | ~805 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 88 | 2026-09-14 | Simplify secondary pages and close validation gaps | `379bb0d113702421779e01eb4f49f4cf6c13c0aa`, `ee475a784f6995ecfd933b3a6b78fe1ae8950193` | `dev/laiyongjie` |
 | 87 | 2026-09-09 | Repair Grok PR 185 CI and archive superseded plans | `46e378e8`, `ac458fcb`, `98d57692` | `fix/grok-pr185-ci-closeout` |
 | 86 | 2026-09-07 | Prepare FyAgent 0.4.4 release | `9c058cee8ae8e29614be14fd3438662b3ff9a521` | `dev/laiyongjie` |
 | 85 | 2026-09-07 | Verify final contracts and clarify Windows batch evidence | `6efaff0b4aab8659f52e570654fa5c1882657cbb` | `dev/laiyongjie` |
