@@ -86,9 +86,9 @@
 
 .fy-memory-editor-head .fy-feature-detail-title h2 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: var(--fy-font-section-title);
+  font-weight: var(--fy-weight-semibold);
+  line-height: var(--fy-line-heading);
 }
 
 .fy-memory-editor-meta-inline {
@@ -105,10 +105,12 @@
 
 .fy-memory-editor-tools-wrapper {
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
   margin-left: auto;
+  max-width: 100%;
 }
 
 .fy-memory-editor-tools {
@@ -117,6 +119,10 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px 10px;
+}
+
+.fy-memory-editor-tools > .fy-feature-path {
+  width: auto;
 }
 
 .fy-memory-char-count {
@@ -215,10 +221,6 @@
 
   .fy-memory-editor-head {
     align-items: flex-start;
-  }
-
-  .fy-memory-editor-head .fy-feature-detail-title h2 {
-    font-size: 16px;
   }
 
   .fy-memory-editor-tools-wrapper {

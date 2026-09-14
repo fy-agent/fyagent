@@ -94,7 +94,6 @@ function SupportedPromptProjection({
       ) : query.isError && query.data === undefined ? (
         <EmptyState
           title="无法读取提示词"
-          description="暂时无法读取提示词。请重试。"
           actions={<Button onClick={() => void query.refetch()}>重试</Button>}
         />
       ) : prompts.length === 0 ? (
@@ -130,7 +129,7 @@ function SupportedPromptProjection({
                   <div className="fy-feature-detail-title">
                     <h3>{selected.name}</h3>
                   </div>
-                  <p>{selected.description ?? "暂无说明。"}</p>
+                  {selected.description && <p>{selected.description}</p>}
                 </div>
                 <Button
                   className={

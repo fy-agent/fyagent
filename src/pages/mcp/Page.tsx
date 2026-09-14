@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState, type MouseEvent } from "react";
 
-import { getSupportedAppIcon } from "../../shared/assets/apps";
 import {
   buildMcpSearchText,
   convergeSelection,
@@ -63,10 +62,6 @@ function transportOf(server: McpServer): "stdio" | "http" | "sse" {
   return "stdio";
 }
 
-function assignedMcpTargets(server: McpServer) {
-  return MCP_TARGETS.filter((target) => Boolean(server.apps[target.id]));
-}
-
 const INSTALLED_SPLIT_LABELS = ["调整列表与详情的宽度", "调整详情与分配的宽度"];
 
 function ServerDetail({
@@ -88,12 +83,10 @@ function ServerDetail({
 }) {
   const spec = server.server;
   const transport = transportOf(server);
-  const assigned = assignedMcpTargets(server);
   const catalogItem = findCatalogItem(server.id);
   const sourceLabel = catalogItem ? "精选目录" : "手动添加";
   const installDirectory = mcpInstallDirectory(spec);
-  const description =
-    server.description?.trim() || catalogItem?.description || "暂无说明";
+  const description = server.description?.trim() || catalogItem?.description;
   const homepage = server.homepage || catalogItem?.homepage;
   const docs = server.docs || catalogItem?.docs;
 
@@ -108,7 +101,7 @@ function ServerDetail({
           <Badge tone="accent">{transport}</Badge>
           <Badge tone={catalogItem ? "accent" : "neutral"}>{sourceLabel}</Badge>
         </div>
-        <p className="fy-feature-intro">{description}</p>
+        {description && <p className="fy-feature-intro">{description}</p>}
         <div className="fy-feature-actions">
           <Button dialogOriginRef={originRef} onClick={onEdit} disabled={busy}>
             编辑
@@ -124,16 +117,9 @@ function ServerDetail({
         </div>
       </div>
       <div className="fy-feature-info-grid">
-        <section className="fy-feature-info-card" aria-label="安装来源">
-          <h3>安装来源</h3>
-          <p className="fy-feature-info-lead">
-            {catalogItem
-              ? "来自内置精选目录。"
-              : "手动添加或从现有 Agent 配置导入。"}
-          </p>
+        <section className="fy-feature-info-card" aria-label="安装信息">
+          <h3>安装信息</h3>
           <dl className="fy-feature-definition">
-            <dt>来源类型</dt>
-            <dd>{sourceLabel}</dd>
             {catalogItem && (
               <>
                 <dt>发布方</dt>
@@ -146,55 +132,14 @@ function ServerDetail({
             <dd>
               <code className="fy-feature-code">{server.id}</code>
             </dd>
-            <dt>安装目录</dt>
-            <dd>
-              {installDirectory ? (
-                <CopyablePath revealValue={false} value={installDirectory} />
-              ) : (
-                "无本地安装目录"
-              )}
-            </dd>
-          </dl>
-          {(homepage || docs) && (
-            <div className="fy-feature-actions">
-              {homepage && (
-                <ExternalLinkButton url={homepage}>主页</ExternalLinkButton>
-              )}
-              {docs && <ExternalLinkButton url={docs}>说明</ExternalLinkButton>}
-            </div>
-          )}
-        </section>
-        <section className="fy-feature-info-card" aria-label="当前分配">
-          <h3>当前分配</h3>
-          <p className="fy-feature-info-lead">
-            {assigned.length > 0
-              ? `已启用 ${assigned.length} 个应用。`
-              : "尚未分配到任何应用。"}
-          </p>
-          {assigned.length > 0 && (
-            <ul className="fy-feature-app-chips">
-              {assigned.map((app) => (
-                <li key={app.id} className="fy-feature-app-chip">
-                  <img
-                    className="fy-feature-assignment-icon"
-                    src={getSupportedAppIcon(app.id)}
-                    alt=""
-                    aria-hidden="true"
-                  />
-                  {app.label}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <section
-          className="fy-feature-info-card fy-feature-info-span"
-          aria-label="安装信息"
-        >
-          <h3>安装信息</h3>
-          <dl className="fy-feature-definition">
-            <dt>传输类型</dt>
-            <dd>{transport}</dd>
+            {installDirectory && (
+              <>
+                <dt>安装目录</dt>
+                <dd>
+                  <CopyablePath revealValue={false} value={installDirectory} />
+                </dd>
+              </>
+            )}
             {spec.command && (
               <>
                 <dt>命令</dt>
@@ -249,6 +194,14 @@ function ServerDetail({
               </>
             )}
           </dl>
+          {(homepage || docs) && (
+            <div className="fy-feature-actions">
+              {homepage && (
+                <ExternalLinkButton url={homepage}>主页</ExternalLinkButton>
+              )}
+              {docs && <ExternalLinkButton url={docs}>说明</ExternalLinkButton>}
+            </div>
+          )}
         </section>
       </div>
       {showAssignment && (
@@ -434,7 +387,7 @@ export function McpPage() {
         unmountOnExit
       >
         {query.isLoading ? (
-          <EmptyState title="正在加载 MCP" description="正在读取安装状态">
+          <EmptyState title="正在加载 MCP">
             <Spinner />
           </EmptyState>
         ) : (
@@ -472,7 +425,7 @@ export function McpPage() {
         unmountOnExit
       >
         {query.isLoading ? (
-          <EmptyState title="正在加载 MCP" description="正在读取 MCP 服务">
+          <EmptyState title="正在加载 MCP">
             <Spinner />
           </EmptyState>
         ) : query.error && query.data === undefined ? (
@@ -533,15 +486,13 @@ export function McpPage() {
                         onSelect={() => setSelectedId(server.id)}
                       >
                         <span>
-                          {server.description ||
-                            server.tags?.join(" · ") ||
-                            "暂无说明"}{" "}
-                          · {transportOf(server)} ·{" "}
-                          {
-                            MCP_TARGETS.filter((app) => server.apps[app.id])
-                              .length
-                          }{" "}
-                          Agent
+                          {[
+                            server.description || server.tags?.join(" · "),
+                            transportOf(server),
+                            `${MCP_TARGETS.filter((app) => server.apps[app.id]).length} Agent`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </span>
                       </FeatureListItem>
                     ))}
@@ -836,7 +787,7 @@ function McpEditor({
       open
       onOpenChange={(next) => !next && !busy && onClose()}
       title={initial ? `编辑 ${initial.name}` : "添加 MCP"}
-      description="可使用表单或 JSON 编辑服务配置。敏感信息仅在此窗口显示。"
+      description="密钥和请求头仅在此窗口显示。"
       size="wide"
       actions={
         <>

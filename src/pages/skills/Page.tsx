@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getSkillTargetIcon } from "../../shared/assets/apps";
 import {
   buildSkillSearchText,
   convergeSelection,
@@ -103,10 +102,6 @@ function skillCardBody(skill: DiscoverableSkill): string {
   return skillDirectoryNote(skill);
 }
 
-function skillDetailBody(skill: DiscoverableSkill): string {
-  return skillCardBody(skill) || "暂无说明";
-}
-
 type DiscoverySkill = DiscoverableSkill &
   Partial<
     Pick<
@@ -163,10 +158,6 @@ function skillDocsAction(
   return repoUrl ? { url: repoUrl, label: "仓库" } : null;
 }
 
-function assignedSkillTargets(skill: InstalledSkill) {
-  return SKILL_TARGETS.filter((target) => Boolean(skill.apps[target.id]));
-}
-
 const INSTALLED_SPLIT_LABELS = ["调整列表与详情的宽度", "调整详情与分配的宽度"];
 
 const invalidations = [
@@ -195,7 +186,6 @@ function Detail({
   onUninstall: () => void;
   showAssignment: boolean;
 }) {
-  const assigned = assignedSkillTargets(skill);
   const repo =
     skill.repoOwner && skill.repoName
       ? `${skill.repoOwner}/${skill.repoName}`
@@ -205,17 +195,8 @@ function Detail({
     skill.repoOwner && skill.repoName
       ? githubRepoUrl(skill.repoOwner, skill.repoName)
       : null;
-  const sourceLabel = market
-    ? "从 Skill 市场安装"
-    : repo
-      ? "GitHub 仓库"
-      : "本地导入";
-  const sourceLead = market
-    ? "从 Skill 市场安装，保存在本地目录。"
-    : repo
-      ? "来自 GitHub 仓库，保存在本地目录。"
-      : "来自本地导入或 ZIP 安装。";
-  const description = skill.description?.trim() || "暂无说明";
+  const sourceLabel = market ? "Skill 市场" : repo ? "GitHub 仓库" : "本地导入";
+  const description = skill.description?.trim();
 
   return (
     <section
@@ -228,7 +209,7 @@ function Detail({
           {update && <Badge tone="warning">有更新</Badge>}
           <Badge tone={repo ? "accent" : "neutral"}>{sourceLabel}</Badge>
         </div>
-        <p className="fy-feature-intro">{description}</p>
+        {description && <p className="fy-feature-intro">{description}</p>}
         <div className="fy-feature-actions">
           {update && (
             <Button
@@ -250,12 +231,9 @@ function Detail({
         </div>
       </div>
       <div className="fy-feature-info-grid">
-        <section className="fy-feature-info-card" aria-label="下载来源">
-          <h3>下载来源</h3>
-          <p className="fy-feature-info-lead">{sourceLead}</p>
+        <section className="fy-feature-info-card" aria-label="安装信息">
+          <h3>安装信息</h3>
           <dl className="fy-feature-definition">
-            <dt>来源类型</dt>
-            <dd>{sourceLabel}</dd>
             {repo && !market && (
               <>
                 <dt>仓库</dt>
@@ -275,6 +253,14 @@ function Detail({
                 value={skillInstallPath(skill)}
               />
             </dd>
+            {skill.installedAt > 0 && (
+              <>
+                <dt>安装时间</dt>
+                <dd>{formatSkillTimestamp(skill.installedAt)}</dd>
+              </>
+            )}
+            <dt>最近更新</dt>
+            <dd>{formatSkillTimestamp(skill.updatedAt)}</dd>
           </dl>
           {(repoUrl || skill.readmeUrl) && (
             <div className="fy-feature-actions">
@@ -288,45 +274,6 @@ function Detail({
               )}
             </div>
           )}
-        </section>
-        <section className="fy-feature-info-card" aria-label="当前分配">
-          <h3>当前分配</h3>
-          <p className="fy-feature-info-lead">
-            {assigned.length > 0
-              ? `已启用 ${assigned.length} 个应用。`
-              : "尚未分配到任何应用。"}
-          </p>
-          {assigned.length > 0 && (
-            <ul className="fy-feature-app-chips">
-              {assigned.map((app) => (
-                <li key={app.id} className="fy-feature-app-chip">
-                  <img
-                    className="fy-feature-assignment-icon"
-                    src={getSkillTargetIcon(app.id)}
-                    alt=""
-                    aria-hidden="true"
-                  />
-                  {app.label}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <section
-          className="fy-feature-info-card fy-feature-info-span"
-          aria-label="安装信息"
-        >
-          <h3>安装信息</h3>
-          <dl className="fy-feature-definition">
-            {skill.installedAt > 0 && (
-              <>
-                <dt>安装时间</dt>
-                <dd>{formatSkillTimestamp(skill.installedAt)}</dd>
-              </>
-            )}
-            <dt>最近更新</dt>
-            <dd>{formatSkillTimestamp(skill.updatedAt)}</dd>
-          </dl>
         </section>
       </div>
       {showAssignment && (
@@ -607,10 +554,7 @@ export function SkillsPage() {
             </InlineNotice>
           )}
           {installedQuery.isLoading ? (
-            <EmptyState
-              title="正在加载 Skills"
-              description="正在读取已安装的 Skills"
-            >
+            <EmptyState title="正在加载 Skills">
               <Spinner />
             </EmptyState>
           ) : installedQuery.error && installedQuery.data === undefined ? (
@@ -669,7 +613,9 @@ export function SkillsPage() {
                           title={skill.name}
                           onSelect={() => setSelectedId(skill.id)}
                         >
-                          <span>{skill.description || "暂无说明"}</span>
+                          {skill.description && (
+                            <span>{skill.description}</span>
+                          )}
                         </FeatureListItem>
                       ))}
                     </FeatureList>
@@ -787,7 +733,7 @@ export function SkillsPage() {
         }
         description={
           confirm?.kind === "uninstall"
-            ? "将从管理列表及已启用的应用中移除，并创建可恢复备份。"
+            ? "将从管理列表及已启用的应用中移除。"
             : "删除后无法从该备份恢复。"
         }
         pending={busy}
@@ -958,11 +904,11 @@ function Discovery({
         />
       ) : (installed.data === undefined && installed.isPending) ||
         (market.data === undefined && market.isPending) ? (
-        <EmptyState title="正在加载发现内容" description="请稍候">
+        <EmptyState title="正在加载发现内容">
           <Spinner />
         </EmptyState>
       ) : skills.length === 0 ? (
-        <EmptyState title="没有发现结果" description="当前搜索条件下没有结果" />
+        <EmptyState title="没有发现结果" description="试试其他关键词或分类。" />
       ) : (
         <div className="fy-feature-discovery-scroll" aria-label="可发现 Skills">
           <div className="fy-feature-grid">
@@ -995,13 +941,15 @@ function Discovery({
             originRef={originRef}
             open
             title={detailSkill.name}
-            description={skillDetailMeta(detailSkill) || "Skill 详情"}
+            description={skillDetailMeta(detailSkill) || undefined}
             onOpenChange={(open) => {
               if (!open) setDetailSkill(null);
             }}
             actions={<Button onClick={() => setDetailSkill(null)}>关闭</Button>}
           >
-            <p className="fy-feature-intro">{skillDetailBody(detailSkill)}</p>
+            {skillCardBody(detailSkill) && (
+              <p className="fy-feature-intro">{skillCardBody(detailSkill)}</p>
+            )}
           </Dialog>
         ) : null}
       </AnimatePresence>
@@ -1088,7 +1036,7 @@ function AuxiliaryDialogs({
         originRef={originRef}
         open
         title="导入本地 Skills"
-        description="选择要管理的 Skills。系统会根据支持情况预设可用应用，你仍可逐项调整。"
+        description="选择 Skills 和要启用的软件。"
         onOpenChange={(open) => !open && !busy && close()}
         actions={
           <>
@@ -1189,7 +1137,6 @@ function AuxiliaryDialogs({
         originRef={originRef}
         open
         title="备份恢复"
-        description="选择要恢复到的应用。"
         onOpenChange={(open) => !open && !busy && close()}
         actions={
           <Button onClick={close} disabled={busy}>
@@ -1262,7 +1209,6 @@ function AuxiliaryDialogs({
         originRef={originRef}
         open
         title="Skill 设置"
-        description="选择同步方式，并将已安装的 Skills 迁移到所选位置。"
         onOpenChange={(open) => !open && !busy && close()}
         actions={
           <Button onClick={close} disabled={busy}>

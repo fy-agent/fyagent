@@ -208,6 +208,13 @@ backup body, or replacement routing implementation.
   delegation, ACL registration, and secret-negative serialization.
 - Service lifecycle tests cover bind failure, duplicate start, status after
   successful bind, plain stop, explicit stop-with-restore, and repeated stop.
+- Successful listener tests use the existing `ProxyConfig.listen_port = 0`
+  test configuration and assert URLs against the port returned by `start()`.
+  Assert the returned port is nonzero and stop the listener at test completion.
+  Do not assume the product's default port is free, probe-and-release a port,
+  or stop an unrelated local listener. Fixed occupied ports belong only in
+  deliberate bind-failure fixtures; application test serialization is not an
+  OS-wide port reservation.
 - Takeover tests cover each supported application projection, backup reuse and
   mismatch, lock conflicts, write failure, readback mismatch, compensation
   success/failure, and active-state publication only after verification.

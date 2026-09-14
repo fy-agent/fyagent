@@ -423,52 +423,28 @@
 }
 .fy-feature-intro {
   margin: 0;
-  color: var(--fy-text);
-  font-size: 16px;
-  line-height: 1.7;
+  color: var(--fy-text-secondary);
+  font-size: var(--fy-font-body);
+  line-height: var(--fy-line-body);
   overflow-wrap: anywhere;
 }
 .fy-feature-info-grid {
   display: grid;
-  /* Fill the real detail box, with a meaningful floor and no phantom third column. */
-  grid-template-columns: repeat(
-    auto-fit,
-    minmax(
-      min(
-        100%,
-        max(var(--fy-info-card-min), calc((100% - var(--fy-info-card-gap)) / 2))
-      ),
-      1fr
-    )
-  );
-  gap: var(--fy-info-card-gap);
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
-  align-items: start;
-}
-.fy-feature-info-span {
-  grid-column: 1 / -1;
 }
 .fy-feature-info-card {
   container: fy-info-card / inline-size;
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: var(--fy-space-md);
   min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--fy-border);
-  border-radius: var(--fy-radius-panel);
-  background: rgba(229, 246, 255, 0.06);
+  padding-top: var(--fy-space-md);
+  border-top: 1px solid var(--fy-divider);
 }
 .fy-feature-info-card h3 {
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-}
-.fy-feature-info-lead {
-  margin: 0;
-  color: var(--fy-text-secondary);
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: var(--fy-font-control);
+  font-weight: var(--fy-weight-semibold);
 }
 .fy-feature-info-card .fy-feature-definition {
   font-size: 13px;
@@ -491,26 +467,6 @@
   .fy-feature-definition dd:has(> .fy-feature-path) {
     text-align: end;
   }
-}
-.fy-feature-app-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.fy-feature-app-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 32px;
-  padding: 4px 10px 4px 7px;
-  border: 1px solid var(--fy-border);
-  border-radius: var(--fy-radius-pill);
-  background: var(--fy-surface-hover);
-  color: var(--fy-text);
-  font-size: 13px;
 }
 .fy-feature-grid {
   display: grid;

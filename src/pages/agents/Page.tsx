@@ -82,7 +82,7 @@ export function AgentsPage() {
       ) : null}
 
       {catalogQuery.isPending ? (
-        <EmptyState title="正在加载 Agent 目录" description="正在获取应用信息">
+        <EmptyState title="正在加载 Agent 目录">
           <Spinner label="正在加载 Agent 目录" />
         </EmptyState>
       ) : catalogQuery.isError && catalogQuery.data === undefined ? (

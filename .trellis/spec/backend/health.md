@@ -31,8 +31,10 @@ decoration must not turn an unknown fact into a positive result.
 Evidence rules:
 
 - Local file discovery proves presence, not successful execution or login.
-  CLI health uses bounded filesystem/package metadata and never `--version`,
-  login shell, remote release metadata or the regular CLI readiness observer.
+  CLI health may reuse Tooling search directories (login PATH, process PATH,
+  product env) as filesystem roots. It still never executes `--version`,
+  never spawns the CLI through a login shell, never fetches remote release
+  metadata, and never uses the regular CLI readiness observer.
 - Desktop health uses the explicit Desktop-only inventory entry point.
   Existing inventory capabilities remain owned by the installation service;
   the health view cannot manufacture target IDs or invoke a lifecycle action.

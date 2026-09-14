@@ -254,9 +254,13 @@ pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Re
         if grok_windows_uses_ordinary_user_helper() {
             return grok::run_windows_grok_helper_lifecycle(action).await;
         }
+        let live_npm_commands = if matches!(action, ToolLifecycleAction::InstallNative) {
+            Vec::new()
+        } else {
+            grok::windows_live_npm_install_commands().await
+        };
         tokio::task::spawn_blocking(move || {
-            let command_line = build_tool_lifecycle_command(&requested, action)?;
-            run_elevated_cli_lifecycle_whitelist(&command_line, label)
+            windows_local_process_lifecycle(action, &live_npm_commands, label)
         })
         .await
         .map_err(|e| format!("tool lifecycle task join error: {e}"))?
@@ -291,6 +295,136 @@ fn grok_windows_execution_for(formal_windows_build: bool) -> GrokWindowsExecutio
     } else {
         GrokWindowsExecution::LocalProcess
     }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_local_process_lifecycle(
+    action: ToolLifecycleAction,
+    live_npm_commands: &[String],
+    label: &str,
+) -> Result<(), String> {
+    if matches!(action, ToolLifecycleAction::InstallNative) {
+        let command_line = build_tool_lifecycle_command(&["grok"], action)?;
+        return run_elevated_cli_lifecycle_whitelist(&command_line, label);
+    }
+    if live_npm_commands.is_empty()
+        && matches!(
+            action,
+            ToolLifecycleAction::Install | ToolLifecycleAction::InstallOfficialNpm
+        )
+    {
+        return Err("官方 npm 镜像都未能提供匹配的版本".to_string());
+    }
+    if live_npm_commands.is_empty() {
+        let command_line = windows_live_grok_action_command(action, None)?;
+        return run_elevated_cli_lifecycle_whitelist(&command_line, label);
+    }
+    let npm_path = windows_npm_binary_for_grok_action(action);
+    let npm_major = npm_path.as_deref().and_then(windows_npm_major);
+    let mut last_error = None;
+    for npm_install in live_npm_commands {
+        let npm_install = grok_npm::command_with_script_policy(npm_install, npm_major);
+        let command_line = windows_live_grok_action_command(action, Some(&npm_install))?;
+        match run_elevated_cli_lifecycle_whitelist(&command_line, label) {
+            Ok(()) => {
+                if command_line.contains("@xai-official/grok@") {
+                    if let Some(target) = grok_npm::exact_install_version(&npm_install) {
+                        let local = windows_observed_grok_version();
+                        if !local
+                            .as_deref()
+                            .is_some_and(|local| windows_grok_version_matches(local, target))
+                        {
+                            last_error = Some(format!(
+                                "更新完成后本机版本仍为 {}，目标是 {target}",
+                                local.as_deref().unwrap_or("未知")
+                            ));
+                            continue;
+                        }
+                    }
+                }
+                return Ok(());
+            }
+            Err(error) => last_error = Some(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| "官方 npm 镜像都未能提供匹配的版本".to_string()))
+}
+
+#[cfg(target_os = "windows")]
+fn windows_npm_major(npm_path: &Path) -> Option<u32> {
+    let output = run_windows_tool_command(npm_path, &["--version"]).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    fyagent_user_helper::grok_npm::parse_npm_major(&decode_command_output(&output.stdout))
+}
+
+#[cfg(target_os = "windows")]
+fn windows_npm_binary_for_grok_action(action: ToolLifecycleAction) -> Option<PathBuf> {
+    if matches!(action, ToolLifecycleAction::Update) {
+        let installs = enumerate_tool_installations("grok");
+        if let Some(install) = default_install(&installs) {
+            if let Some(npm) = sibling_bin_with_ext(&install.path, "npm", &["cmd", "exe"]) {
+                return Some(PathBuf::from(npm));
+            }
+        }
+    }
+    resolve_path_default("npm", None).ok().flatten()
+}
+
+#[cfg(target_os = "windows")]
+fn windows_observed_grok_version() -> Option<String> {
+    default_install(&enumerate_tool_installations("grok"))
+        .and_then(|install| install.version.clone())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_grok_version_matches(local: &str, target: &str) -> bool {
+    fyagent_user_helper::grok_npm::version_is_at_least(local, target)
+        || fyagent_user_helper::grok::parse_normalized_version(local).as_deref() == Some(target)
+}
+
+#[cfg(target_os = "windows")]
+fn npm_output_blocked_install_scripts(stderr: &str) -> bool {
+    let lower = stderr.to_ascii_lowercase();
+    lower.contains("install scripts blocked") || lower.contains("not covered by allowscripts")
+}
+
+#[cfg(target_os = "windows")]
+fn windows_live_grok_action_command(
+    action: ToolLifecycleAction,
+    npm_install: Option<&str>,
+) -> Result<String, String> {
+    let command = match action {
+        ToolLifecycleAction::InstallNative => grok_install_windows_command(),
+        ToolLifecycleAction::Install | ToolLifecycleAction::InstallOfficialNpm => npm_install
+            .ok_or_else(|| "官方 npm 镜像都未能提供匹配的版本".to_string())?
+            .to_string(),
+        ToolLifecycleAction::Update => {
+            let installs = enumerate_tool_installations("grok");
+            if let Some(inst) = default_install(&installs) {
+                let real = inst.real.to_string_lossy();
+                if is_grok_native_install(&inst.path, &real) {
+                    anchored_official_update_command("grok", &inst.path)
+                        .map(grok_native_update_command)
+                        .ok_or_else(|| "Unsupported tool action target: grok".to_string())?
+                } else if let Some(npm_install) = npm_install {
+                    grok_npm_anchored_command_using(&inst.path, npm_install)
+                        .unwrap_or_else(|| npm_install.to_string())
+                } else {
+                    return Err("官方 npm 镜像都未能提供匹配的版本".to_string());
+                }
+            } else if let Some(npm_install) = npm_install {
+                npm_install.to_string()
+            } else {
+                return Err("官方 npm 镜像都未能提供匹配的版本".to_string());
+            }
+        }
+    };
+    if command.is_empty() {
+        return Err("Unsupported tool action target: grok".to_string());
+    }
+    Ok(lifecycle::wrap_windows_lifecycle_bat(&command))
 }
 
 #[cfg(target_os = "windows")]
@@ -366,8 +500,14 @@ fn run_elevated_cli_lifecycle_whitelist(command_line: &str, label: &str) -> Resu
         .creation_flags(CREATE_NO_WINDOW)
         .output();
     let _ = std::fs::remove_file(&bat_file);
-
-    finish_lifecycle_output(&output.map_err(|e| format!("启动安装进程失败: {e}"))?)
+    let output = output.map_err(|e| format!("启动安装进程失败: {e}"))?;
+    if label.starts_with("tool_") {
+        let stderr = decode_command_output(&output.stderr);
+        if output.status.success() && npm_output_blocked_install_scripts(&stderr) {
+            return Err(last_lines(&stderr, 8));
+        }
+    }
+    finish_lifecycle_output(&output)
 }
 
 /// 把子进程退出结果转成 `Result`：成功返回 `Ok`；失败提取 stderr（空则回退 stdout）
@@ -866,30 +1006,9 @@ fn tool_executable_candidates(tool: &str, dir: &Path) -> Vec<std::path::PathBuf>
     }
 }
 
-fn extend_mise_node_search_paths(paths: &mut Vec<std::path::PathBuf>, home: &Path) {
-    if home.as_os_str().is_empty() {
-        return;
-    }
-
-    let mise_base = home.join(".local/share/mise");
-    push_unique_path(paths, mise_base.join("shims"));
-
-    let node_installs = mise_base.join("installs").join("node");
-    if node_installs.exists() {
-        if let Ok(entries) = std::fs::read_dir(&node_installs) {
-            for entry in entries.flatten() {
-                let bin_path = entry.path().join("bin");
-                if bin_path.exists() {
-                    push_unique_path(paths, bin_path);
-                }
-            }
-        }
-    }
-}
-
-/// 构建某工具的候选搜索目录（原生安装优先，PATH 兜底）。
-/// 单探兜底 (`scan_cli_version`) 与全量枚举 (`enumerate_tool_installations`) 共用，
-/// 确保两条路径看到的是同一组安装位置。
+/// 构建某工具的候选搜索目录。识别跟用户环境走：登录 shell 的 PATH、当前进程
+/// PATH、以及产品自己的环境变量（如 `GROK_BIN_DIR`），不遍历 mise/nvm/volta
+/// 的内部安装树。单探兜底与全量枚举共用，确保两条路径看到同一组位置。
 fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
     let resolved_home = crate::config::get_home_dir();
     #[cfg(target_os = "windows")]
@@ -901,7 +1020,6 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
     let home = resolved_home;
 
-    // 常见的安装路径（原生安装优先）
     let mut search_paths: Vec<std::path::PathBuf> = Vec::new();
     if tool == "grok" {
         #[cfg(target_os = "windows")]
@@ -915,22 +1033,16 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
     }
     if !home.as_os_str().is_empty() {
         push_unique_path(&mut search_paths, home.join(".local/bin"));
-        push_unique_path(&mut search_paths, home.join(".npm-global/bin"));
-        push_unique_path(&mut search_paths, home.join("n/bin"));
-        push_unique_path(&mut search_paths, home.join(".volta/bin"));
-        extend_mise_node_search_paths(&mut search_paths, &home);
+        #[cfg(target_os = "windows")]
+        {
+            push_unique_path(&mut search_paths, home.join(".npm-global/bin"));
+            push_unique_path(&mut search_paths, home.join("n/bin"));
+            push_unique_path(&mut search_paths, home.join(".volta/bin"));
+        }
     }
 
     #[cfg(target_os = "macos")]
     {
-        push_unique_path(
-            &mut search_paths,
-            std::path::PathBuf::from("/opt/homebrew/bin"),
-        );
-        push_unique_path(
-            &mut search_paths,
-            std::path::PathBuf::from("/usr/local/bin"),
-        );
         if tool == "hermes" {
             let python_base = home.join("Library").join("Python");
             if python_base.exists() {
@@ -944,6 +1056,10 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
                 }
             }
         }
+        if let Some(login) = login_shell_path() {
+            extend_from_cli_path_env(&mut search_paths, Some(std::ffi::OsString::from(login)));
+        }
+        extend_from_cli_path_env(&mut search_paths, std::env::var_os("PATH"));
     }
 
     #[cfg(target_os = "windows")]
@@ -982,27 +1098,25 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
             }
         }
         extend_windows_cli_manager_search_paths(&mut search_paths, &home);
-    }
-
-    let fnm_base = home.join(".local/state/fnm_multishells");
-    if fnm_base.exists() {
-        if let Ok(entries) = std::fs::read_dir(&fnm_base) {
-            for entry in entries.flatten() {
-                let bin_path = entry.path().join("bin");
-                if bin_path.exists() {
-                    push_unique_path(&mut search_paths, bin_path);
+        let fnm_base = home.join(".local/state/fnm_multishells");
+        if fnm_base.exists() {
+            if let Ok(entries) = std::fs::read_dir(&fnm_base) {
+                for entry in entries.flatten() {
+                    let bin_path = entry.path().join("bin");
+                    if bin_path.exists() {
+                        push_unique_path(&mut search_paths, bin_path);
+                    }
                 }
             }
         }
-    }
-
-    let nvm_base = home.join(".nvm/versions/node");
-    if nvm_base.exists() {
-        if let Ok(entries) = std::fs::read_dir(&nvm_base) {
-            for entry in entries.flatten() {
-                let bin_path = entry.path().join("bin");
-                if bin_path.exists() {
-                    push_unique_path(&mut search_paths, bin_path);
+        let nvm_base = home.join(".nvm/versions/node");
+        if nvm_base.exists() {
+            if let Ok(entries) = std::fs::read_dir(&nvm_base) {
+                for entry in entries.flatten() {
+                    let bin_path = entry.path().join("bin");
+                    if bin_path.exists() {
+                        push_unique_path(&mut search_paths, bin_path);
+                    }
                 }
             }
         }
@@ -1025,8 +1139,6 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
         }
     }
 
-    #[cfg(target_os = "macos")]
-    extend_from_cli_path_env(&mut search_paths, std::env::var_os("PATH"));
     #[cfg(target_os = "windows")]
     search_paths.retain(|path| crate::windows_runtime::is_local_command_path(path));
     search_paths
@@ -1850,8 +1962,12 @@ fn package_manager_anchored_command_from_paths(tool: &str, bin_path: &str) -> Op
 
 #[cfg(target_os = "windows")]
 fn grok_npm_anchored_command(bin_path: &str) -> Option<String> {
+    grok_npm_anchored_command_using(bin_path, grok_npm::default_install_command()?.as_str())
+}
+
+#[cfg(target_os = "windows")]
+fn grok_npm_anchored_command_using(bin_path: &str, command: &str) -> Option<String> {
     let npm = sibling_bin_with_ext(bin_path, "npm", &["cmd", "exe"])?;
-    let command = grok_npm::default_install_command()?;
     let args = command.strip_prefix("npm ")?;
     Some(format!("{} {args}", win_quote_path_for_batch(&npm)))
 }
@@ -4172,6 +4288,42 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     #[test]
+    fn windows_live_install_command_uses_resolved_npm_version() {
+        let bat = windows_live_grok_action_command(
+            ToolLifecycleAction::Install,
+            Some("npm i -g @xai-official/grok@1.0.25 --registry=https://registry.npmjs.org/"),
+        )
+        .expect("live install");
+        assert!(bat.contains("@xai-official/grok@1.0.25"), "{bat}");
+        assert!(!bat.contains("@xai-official/grok@1.2.3"), "{bat}");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_live_install_command_preserves_allow_scripts_flag() {
+        let bat = windows_live_grok_action_command(
+            ToolLifecycleAction::Install,
+            Some(
+                "npm i -g @xai-official/grok@1.0.25 --registry=https://registry.npmjs.org/ --allow-scripts=@xai-official/grok",
+            ),
+        )
+        .expect("live install");
+        assert!(bat.contains("--allow-scripts=@xai-official/grok"), "{bat}");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn npm_blocked_scripts_warning_is_detected() {
+        assert!(npm_output_blocked_install_scripts(
+            "npm warn install-scripts 1 package had install scripts blocked because they are not covered by allowScripts:\nnpm warn install-scripts   @xai-official/grok@1.0.25 (postinstall: node bin/postinstall.js)"
+        ));
+        assert!(!npm_output_blocked_install_scripts(
+            "========== Grok Build ==========\n\nchanged 3 packages in 1s"
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
     fn cli_path_env_skips_windows_apps_alias_dir() {
         assert!(is_windows_app_execution_alias_dir(Path::new(
             r"C:\Users\tester\AppData\Local\Microsoft\WindowsApps"
@@ -4179,22 +4331,6 @@ mod tests {
         assert!(!is_windows_app_execution_alias_dir(Path::new(
             r"C:\Users\tester\AppData\Roaming\npm"
         )));
-    }
-
-    #[test]
-    fn mise_node_search_paths_include_shims_and_installed_node_bins() {
-        let temp = tempfile::tempdir().expect("temp dir should be created");
-        let home = temp.path();
-        let node_bin = home
-            .join(".local/share/mise/installs/node/25.8.0")
-            .join("bin");
-        std::fs::create_dir_all(&node_bin).expect("node bin should be created");
-
-        let mut paths = Vec::new();
-        extend_mise_node_search_paths(&mut paths, home);
-
-        assert!(paths.contains(&home.join(".local/share/mise/shims")));
-        assert!(paths.contains(&node_bin));
     }
 
     #[cfg(target_os = "macos")]

@@ -34,7 +34,11 @@ secret handling, native source checks, and residual-risk reporting.
 | [Backend Reuse](./reuse.md)                                               | Existing-owner, adopted-dependency, open-source, adapter, and bespoke implementation order.                                     |
 | [Development Environment](./development-environment.md)                   | Toolchain authority, bootstrap, host support, locks, optional macOS Windows-MSVC diagnostics, and environment verification.     |
 | [Optional Codex Development Hooks](./development-hooks.md)                | Optional Codex hook files, timeout/failure behavior, and Trellis-version ownership.                                             |
-| [Repository Task Runner](./task-runner-contract.md)                       | Public `mise run` API, effects, parameter transport, host guards, mutation policy, and platform diagnostics.                    |
+| [Repository Task Runner](./task-runner-contract.md)                       | Public `mise run` API, effects, parameter transport, composition, mutation policy, generated docs, and canonical checks.         |
+| [Native Host Task Execution](./native-task-runner.md)                     | Foreground process trees, Windows executable/MSVC child environment, and macOS signed development runner.                        |
+| [Optional Windows-MSVC Cross Diagnostic](./windows-msvc-cross-diagnostic.md) | macOS advisory/strict preflight/default-no cross Clippy and its non-acceptance evidence boundary.                                |
+| [Trellis Direct-Session Prearchive Gate](./trellis-prearchive-gate.md)     | Exact active-task/session proof and private one-task exclusion before archive.                                                   |
+| [Supported-Platform Governance](./supported-platform-governance.md)        | Platform-sensitive source/raster identities, one-snapshot repository scans, and fail-closed review seals.                        |
 | [Repository Root and Tool Configuration](./repository-layout.md)          | Root discovery exceptions, explicit config locations, cwd/alias invariants and placement verification.                          |
 | [Database Persistence](./database-persistence.md)                         | SQLite path, schema version, startup lifecycle, migrations, import/backup/restore, DAO placement, and transactional boundaries. |
 | [Automatic Cloud Sync Scheduling](./auto-sync.md)                         | Injected database hints, independent S3/WebDAV workers, bounded debounce, suppression, and upload lifecycle.                    |
@@ -71,7 +75,8 @@ and reuse of Grok's npm mirrors and ordinary-user execution boundary.
 | [Codex Session Usage Sync](./codex-session-usage.md)                      | Codex JSONL usage import, typed deferred reasons, retry/fingerprint separation, and bounded logging.                             |
 | [WorkBuddy Configuration](./workbuddy-configuration.md)                   | Revisioned WorkBuddy model/config writes, overwrite capabilities, backup, and reread.                                            |
 | [External Agent Catalog and Runtime](./external-agent-catalog-runtime.md) | Static Agent catalog, capability/evidence projection, runtime observation, trusted launch, and ACL.                              |
-| [External Agent Lifecycle](./external-agent-lifecycle.md)                 | Readiness, inventory, opaque targets, install/update/launch jobs, source verification, and recovery.                             |
+| [External Agent Lifecycle](./external-agent-lifecycle.md)                 | Readiness, inventory, opaque targets, install/update/launch jobs, deployment orchestration, and recovery.                        |
+| [External Agent Product Sources](./external-agent-sources.md)             | Product release discovery, exact npm admission, redirect/artifact bounds, and closed desktop identity.                           |
 | [External Agent Auth](./external-agent-auth.md)                           | Login/logout/provider observation, Auth sessions, desktop target binding, and handoff semantics.                                 |
 | [QoderWork Hooks Configuration](./qoderwork-hooks.md)                     | QoderWork Hooks snapshot, revisioned writes, allowed hooks, backup, and reread.                                                  |
 | [External Agent Model Integration](./external-agent-models.md)            | TRAE model preflight/observation and OpenCode model persistence.                                                                 |
@@ -84,11 +89,13 @@ and reuse of Grok's npm mirrors and ordinary-user execution boundary.
 
 | Contract                                                          | Owns                                                                                                                 |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| [Windows Shell-user Runtime](./windows-runtime-security.md)       | Explorer-user authority, per-user paths/HKU, registry masks, single-instance input, COM launch, and helper boundary. |
+| [Windows Shell-user Runtime](./windows-runtime-security.md)       | Explorer-user authority, per-user paths/HKU, hidden Tauri paths, single-instance input, and interactive HTTP COM launch. |
+| [Windows Agent Runtime Security](./windows-agent-runtime-security.md) | Trusted Agent EXE launch, closed Claude/Grok helper routes, LocalProcess parity, and inventory registry rights.       |
 | [Windows Installer](./windows-installer.md)                       | NSIS mechanics, bounded cleanup, signing evidence, uninstall ownership, and native diagnostics.                      |
 | [macOS Privileged System-Commit Helper](./macos-system-commit.md) | Blessed helper, C ABI, product/slot integers, `MacSystemCommitPort`, and production enablement gates.                |
 | [macOS Styled DMG Layout](./macos-dmg-layout.md)                  | DMG contents, Finder metadata, retries, byte preservation, and layout verification.                                  |
-| [GitHub CI Workflow](./github-ci-workflow.md)                     | Change classification, domain jobs, required aggregation, runner/toolchain evidence, and failure semantics.          |
+| [GitHub CI Workflow](./github-ci-workflow.md)                     | PR/merge-group classification, domain jobs, required aggregation, runner/toolchain evidence, and failure semantics.   |
+| [GitHub Branch-Push Commit Policy](./github-push-commit-policy.md) | Lightweight push-range fallback, topology-aware commit subjects, and queue-ref exclusion.                             |
 | [GitHub Release Workflow](./github-release-workflow.md)           | Release identity, native builds, signing/notarization, assets, attestation, draft recovery, and publication.         |
 | [GitHub Merge Governance](./github-merge-governance.md)           | Merge Queue, merge method, task/spec lifecycle, and merge-readiness governance.                                      |
 | [CC Switch Upstream Synchronization](./upstream-sync.md)          | Immutable upstream identity, ancestry-preserving merge, conflict precedence, and provenance handoff.                 |

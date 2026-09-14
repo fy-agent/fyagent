@@ -72,7 +72,53 @@ function rustFilesUnder(relativeDirectory: string): string[] {
   return files.sort();
 }
 
+function assertMacosPathEnvironmentBoundary(source: string) {
+  // Match rustfmt's complete function/block boundaries, not an attribute next
+  // to a call: the login-shell and ambient PATH reads share one macOS block.
+  const searchFunction = source.match(
+    /^fn build_tool_search_paths\(tool: &str\) -> Vec<std::path::PathBuf> \{[\s\S]*?^\}/mu,
+  )?.[0];
+  expect(searchFunction).toBeDefined();
+  const macosBlock = searchFunction?.match(
+    /^    #\[cfg\(target_os = "macos"\)\]\s*\n    \{[\s\S]*?^    \}/mu,
+  )?.[0];
+  expect(macosBlock).toBeDefined();
+  expect(macosBlock).toContain("login_shell_path()");
+  expect(macosBlock).toContain('std::env::var_os("PATH")');
+  expect(macosBlock?.match(/extend_from_cli_path_env\s*\(/gu)).toHaveLength(2);
+  const otherBranches = searchFunction?.replace(macosBlock ?? "", "");
+  expect(otherBranches).not.toContain("extend_from_cli_path_env");
+  expect(otherBranches).not.toContain("login_shell_path()");
+  expect(otherBranches).not.toMatch(/std::env::var(?:_os)?\("PATH"\)/u);
+}
+
 describe("Codex Windows interactive-user contract", () => {
+  it.each(["moved", "copied"])(
+    "rejects ambient PATH discovery %s outside the macOS-only block",
+    (placement) => {
+      const call =
+        'extend_from_cli_path_env(&mut search_paths, std::env::var_os("PATH"));';
+      expect(commandHost).toContain(call);
+      const originalBlock =
+        placement === "moved" ? commandHost.replace(call, "") : commandHost;
+      const movedOutside = originalBlock.replace(
+        /    search_paths\n\}/u,
+        `    ${call}\n    search_paths\n}`,
+      );
+      expect(movedOutside).not.toBe(commandHost);
+      expect(() => assertMacosPathEnvironmentBoundary(movedOutside)).toThrow();
+    },
+  );
+
+  it("rejects a widened macOS PATH block even when its body is unchanged", () => {
+    const widened = commandHost.replace(
+      /#\[cfg\(target_os = "macos"\)\]\n    \{\n        if tool == "hermes"/u,
+      '#[cfg(any(target_os = "macos", target_os = "windows"))]\n    {\n        if tool == "hermes"',
+    );
+    expect(widened).not.toBe(commandHost);
+    expect(() => assertMacosPathEnvironmentBoundary(widened)).toThrow();
+  });
+
   it("uses the Shell process as the sole ordinary startup identity proof", () => {
     expect(startup).not.toContain("WTSQueryUserToken");
     expect(startup).toContain("GetShellWindow");
@@ -355,9 +401,7 @@ describe("Codex Windows interactive-user contract", () => {
     );
     expect(windowsManagerPaths).toContain("safe_command_search_paths");
     expect(windowsManagerPaths).not.toContain("std::env");
-    expect(commandHost).toContain(
-      '#[cfg(target_os = "macos")]\n    extend_from_cli_path_env',
-    );
+    assertMacosPathEnvironmentBoundary(commandHost);
     expect(commandHost).toContain("configure_shell_user_command");
     expect(
       commandHost.match(/configure_shell_user_command/g)?.length ?? 0,

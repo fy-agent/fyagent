@@ -207,7 +207,6 @@ export function HealthPage() {
       <header className="fy-health-header">
         <div>
           <h1>运行状态</h1>
-          <p>查看本机安装、账号与配置，找到需要处理的地方。</p>
         </div>
         <div className="fy-health-header-actions">
           <Button
@@ -233,7 +232,6 @@ export function HealthPage() {
         </span>
         <span>需要处理 {attention}</span>
         <span>需要重新检查 {stale}</span>
-        <span>尚未检查 {entries.length - processed}</span>
       </div>
       <p className="fy-health-progress" role="status" aria-live="polite">
         {progress?.state === "running"
@@ -244,14 +242,10 @@ export function HealthPage() {
               ? `检查已停止 · 已完成 ${progress.completed} / ${progress.total}${progress.failed ? `，${progress.failed} 个读取失败` : ""}`
               : progress?.state === "complete"
                 ? `检查完成 · ${progress.completed - progress.failed} 个已更新${progress.failed ? `，${progress.failed} 个读取失败，可单独重试` : ""}`
-                : "选择软件即可检查，也可以检查全部软件。"}
+                : null}
       </p>
       <CatalogMasterDetail>
-        <CatalogRail
-          ariaLabel="软件运行状态"
-          title="选择软件"
-          meta="需要处理的软件优先显示"
-        >
+        <CatalogRail ariaLabel="软件运行状态" title="选择软件">
           <div className="fy-health-filters">
             <FeatureSearch
               value={search}
@@ -310,7 +304,6 @@ export function HealthPage() {
           {filtered.length === 0 ? (
             <EmptyState
               title="没有匹配的软件"
-              description="请修改名称或状态筛选。"
               actions={
                 <Button
                   onClick={() => {
@@ -356,9 +349,11 @@ export function HealthPage() {
                     : "检查结果已超过 5 分钟，请重新检查后再判断。"}
                 </InlineNotice>
               ) : null}
-              <p className="fy-health-summary">
-                {healthPrimaryReason(snapshot)}
-              </p>
+              {selectedStatus !== "ready" && (
+                <p className="fy-health-summary">
+                  {healthPrimaryReason(snapshot)}
+                </p>
+              )}
               <p className="fy-health-time">
                 最后检查{" "}
                 <time dateTime={snapshot.checkedAt}>
@@ -399,10 +394,7 @@ export function HealthPage() {
               description="请在 FyAgent 桌面应用中重新检查。当前尚无可显示的结果。"
             />
           ) : (
-            <EmptyState
-              title="正在读取本机状态"
-              description="读取完成后，会显示检查结果和处理入口。"
-            >
+            <EmptyState title="正在读取本机状态">
               <Spinner label="正在读取本机状态" />
             </EmptyState>
           )}

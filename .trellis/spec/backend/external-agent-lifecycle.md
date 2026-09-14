@@ -4,7 +4,8 @@
 
 Read this contract before changing Agent install readiness, installation
 inventory, target selection, install/update/launch admission, vendor source
-resolution, transfer/job state, desktop identity, or platform deployment.
+capability consumption, transfer/job state, deployment orchestration, rollback,
+or recovery.
 
 Primary owners:
 
@@ -12,10 +13,8 @@ Primary owners:
   action matrix and default surface;
 - `src-tauri/src/agent_install/inventory.rs` — normalized candidates,
   destinations, opaque capabilities, freshness and revalidation;
-- `src-tauri/src/agent_install/sources/**` and `fetch.rs` — reviewed source
-  metadata, redirects and artifact transport;
 - `src-tauri/src/agent_install/desktop.rs`, `windows.rs`, `macos.rs`, `cli.rs`
-  — product/platform evidence and execution adapters;
+  — execution adapters consuming already admitted source/identity evidence;
 - `src-tauri/src/agent_install/jobs.rs` and `types.rs` — job slot, snapshots,
   transfer state and closed wire types;
 - `src-tauri/src/commands/agent_install_readiness.rs` — Tauri transport.
@@ -24,7 +23,9 @@ This contract does not own the static catalog/runtime surface
 ([Catalog and Runtime](./external-agent-catalog-runtime.md)), Auth sessions
 ([External Agent Auth](./external-agent-auth.md)), or the reusable Codex
 installer/native helper primitives
-([Codex Desktop Installer](./codex-desktop-installer.md)).
+([Codex Desktop Installer](./codex-desktop-installer.md)). Product source,
+artifact and closed desktop identity rules are owned by
+[External Agent Product Sources and Desktop Identity](./external-agent-sources.md).
 
 ## 2. Signatures
 
@@ -140,116 +141,22 @@ command, argument vector, token, hash, package format, signer or bypass flags.
   with `lifecycle_policy.rs`. Treating Claude Code as `managed_desktop` is
   not a product-absent signal; it is a contract parse failure.
 
-### Product and source policy
+### Source and desktop-identity routing
 
-| Product          | Owner and current lifecycle policy                                                                                                                                                                                                                                                                  |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Grok Build       | CLI Tooling owner; default fresh install uses the official `@xai-official/grok` npm package, a bundled exact-version manifest, and a mainland-first registry chain. Native `x.ai` install is an explicit secondary action. Updates preserve the observed `native_internal` or `official_npm` owner. |
-| Codex            | Dedicated Codex Desktop installer; Agent action returns `managed_by_codex_desktop` and does not occupy the Agent job slot.                                                                                                                                                                          |
-| QoderWork CN     | Managed desktop; install/launch admitted, FyAgent update disabled. Source is the reviewed first-party `/qoder-work-cn/releases/latest/` aliases and same-host Electron-builder version feed.                                                                                                        |
-| TRAE Work CN     | Managed desktop; install/launch admitted, FyAgent update disabled. Resolve `data.solo` with `region=cn`; never TRAE Code/`data.manifest`.                                                                                                                                                           |
-| WorkBuddy        | Managed desktop; install/launch admitted, FyAgent update disabled. Resolve the closed `/v2/update` platform IDs and reviewed macOS suffix rewrite.                                                                                                                                                  |
-| Claude Code      | CLI only; exact official npm manifest, shared verified mirrors, owner-preserving updates and ordinary-user execution. See [Claude Code CLI](./claude-code-cli.md).                                                                                                                                  |
-| OpenCode Desktop | Desktop only; use reviewed stable desktop artifacts and closed bundle identity on supported hosts. No public OpenCode CLI installer.                                                                                                                                                                |
+[External Agent Product Sources and Desktop Identity](./external-agent-sources.md)
+owns product release discovery, exact npm source admission, redirect/artifact
+bounds, closed Desktop identity, and platform scan evidence. This lifecycle
+contract consumes only the resulting release capability or normalized platform
+observation; it does not duplicate product URLs, registry/hash rules, bundle
+IDs, EXE relatives, signer leaves or Uninstall matching.
 
-- Grok npm optional-package admission is resolved by the signed product on the
-  product host. The closed mappings are Darwin x64/arm64 and Windows x64/arm64;
-  an unsupported architecture produces no install plan. The current helper's
-  platform selector is defined only for macOS/Windows; Linux compilation and
-  package support cannot be inferred from these product-host tests.
-  The bundled manifest contains no Linux optional package and no generic
-  `std::env::consts::OS` fallback.
-- Before execution, the product matches both `@xai-official/grok` and the
-  current platform package SHA-512 against one allowed registry. On formal
-  Windows it then sends only the compact exact-version/registry/allow-scripts
-  control to the ordinary-user helper. The helper validates and executes that
-  closed control; it does not resolve registry metadata, choose a platform
-  package, or invent `@latest`.
-- Qoder display version comes only from an unindented top-level `version:` in
-  bounded same-host `latest.yml`/`latest-mac.yml`. The feed ZIP and `sha512`
-  are metadata, not admitted artifacts. Windows ARM64 remains unsupported
-  until a separately reviewed first-party artifact exists.
-- TRAE source selection uses the Work/Solo CN object and closed host/path/
-  filename rules. Local comparable version is `tronBuildVersion` from bounded
-  `product.json`, not the Electron marketing `appVersion`.
-- WorkBuddy uses closed platform IDs and the official download host. On macOS,
-  rewrite only the validated terminal `.zip` suffix to `.dmg`. A shorter local
-  dotted marketing version may equal a longer remote product-version prefix;
-  same-length differing segments remain an update.
-- Claude has no public Desktop download resolver. OpenCode uses the reviewed
-  locale-neutral stable Desktop aliases, including
-  `windows-x64-nsis` on Windows x64. GitHub latest is display-only and must not
-  gate installability. Windows x64 OpenCode install is admitted after the
-  reviewed WinVerifyTrust identity contract; ARM64 remains unsupported.
-- A missing/drifted source schema, host, redirect or release capability returns
-  `source_not_verified`/official-page guidance. Never pin a package URL copied
-  from an investigation or infer a version from ETag, Last-Modified or prose.
+Source and identity failure must remain evidence-strength preserving:
 
-### Fetch and release capability
-
-- HTTPS only; no userinfo and no explicit non-default port.
-- Validate every redirect hop against the product allowlist and bounded hop
-  count. Scheme downgrade or unknown host fails closed.
-- Metadata is bounded to 1 MiB and artifacts to 2 GiB under the current
-  installer transport.
-- `expectedReleaseId` binds the canonical, backend-resolved release fields for
-  products that require source freshness. A forced refresh must match before
-  download. Release IDs never encode or expose a URL.
-- Cancellation maps to `cancelled`, not source/schema failure.
-
-### Closed desktop identity
-
-Folder names and vendor config directories are not identity. Current closed
-identity examples include:
-
-| Product                       | macOS bundle ID                  | Windows closed identity summary                                                                                                                                                                                                               |
-| ----------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| WorkBuddy                     | `com.tencent.workbuddy.mac`      | Closed relative `WorkBuddy.exe`, ProductName and reviewed signer.                                                                                                                                                                             |
-| QoderWork CN                  | `com.qoder.work.cn`              | Closed QoderWork CN relative EXE names, ProductName and signer.                                                                                                                                                                               |
-| TRAE Work CN                  | `cn.trae.solo.app`               | Closed TRAE SOLO/Work CN relative EXE names, ProductName and signer.                                                                                                                                                                          |
-| OpenCode                      | `ai.opencode.desktop`            | Closed relative `@opencode-aidesktop/OpenCode.exe` (and `OpenCode/OpenCode.exe`), ProductName `OpenCode`, reviewed signer `Anomaly Innovations, Inc https://anoma.ly/`, and Uninstall DisplayName `OpenCode` or `OpenCode <bounded-version>`. |
-| Claude (legacy identity only) | `com.anthropic.claudefordesktop` | Not an admitted Agent lifecycle target; current Claude support is CLI-only.                                                                                                                                                                   |
-
-Windows scan identity is the installed target, not the downloaded installer
-leaf:
-
-- Freeze `windows_relative_exes` from a WinVerifyTrust-Valid installed EXE
-  under Alice `LocalAppData\Programs`, plus any reviewed installer-stub
-  relative that still occurs on disk. OpenCode's official `windows-x64-nsis`
-  stub may be i386 `OpenCode/OpenCode.exe` while the current-user install is
-  AMD64 `%LOCALAPPDATA%\Programs\@opencode-aidesktop\OpenCode.exe`. Keep both.
-- KnownPath `Missing` is dropped. It is not retained evidence and cannot
-  become `not_installed` by itself. Uninstall/App Paths hints remain.
-- Uninstall `DisplayName` matches a closed ProductName exactly
-  (ASCII-case-insensitive) or `{name} {bounded_version}`. Reject channel
-  words (`Dev`, `Beta`) and prerelease suffixes (`1.18.27-beta`). Empty
-  `InstallLocation` is allowed; `DisplayIcon` and derived uninstall directories
-  are hints, never commands.
-- Fresh Windows destination for OpenCode is `WindowsCurrentUser` (same
-  family as QoderWork CN). Destination `location_label` uses the catalog
-  display name and is not the known-path folder; do not invent scan relatives
-  from that label.
-- In-app NSIS handoff and a later user-run official installer share this scan.
-  Successful `ShellExecute` still does not prove installed.
-- macOS scans direct-child `.app` bundles in user/system Applications roots,
-  rejects symlinks and verifies plist/bundle identity. Absence on a shipped
-  host is `not_installed`; Linux development remains `unknown`.
-- Windows combines the frozen Explorer user and machine Uninstall/App Paths in
-  explicit registry views with known roots. Registry strings are evidence,
-  never commands. Open inventory parents with query+enumerate rights and
-  children query-only; rejected shared-view links are absence, while access,
-  enumeration, bound or Shell-context failure makes the aggregate unknown.
-- A Windows candidate is actionable only after stable no-reparse file
-  identity, supported application architecture, closed ProductName,
-  `WinVerifyTrust`, exactly one signer and reviewed signer leaf.
-- Do not infer installation from `.workbuddy`, `.qoderwork*`, `.trae*` or any
-  settings directory.
-- Official WorkBuddy macOS identity is `com.tencent.workbuddy.mac` from the
-  signed Tencent `WorkBuddy.app` package. `com.workbuddy.workbuddy` is a stale
-  closed ID and must not match. `CodeBuddy CN.app` /
-  `com.tencent.codebuddycn` is a different product. Folder names are not
-  identity. Scan, system-commit policy, and privileged helper `Policy.swift`
-  stay in lockstep on this ID.
+- missing/drifted source data yields `source_not_verified`, never a stale URL;
+- incomplete native identity yields `unknown`/unsupported, never installed;
+- vendor-wizard handoff is not installed evidence;
+- CLI package resolution supplies an exact plan, while lifecycle owns only the
+  action/job transition around that plan.
 
 ### Jobs and platform side effects
 
@@ -310,16 +217,11 @@ leaf:
 | Windows EXE product/signer/trust/arch/helper/pipe binding fails                                           | Fail before installer launch.                                                                                                                                               |
 | User cancels Windows UAC/vendor launch                                                                    | Cancelled/installer-user-cancelled result.                                                                                                                                  |
 | Windows official EXE ShellExecute succeeds                                                                | Job succeeded as handoff; do not claim installed proof.                                                                                                                     |
-| OpenCode Windows x64 identity is complete                                                                 | Admit current-user NSIS handoff; GitHub latest must not gate the stable source.                                                                                             |
-| OpenCode Windows ProductName/relative EXE/signer is empty                                                 | Reject EXE download/install; do not claim supported.                                                                                                                        |
-| OpenCode known-path `@opencode-aidesktop\OpenCode.exe` exists with closed ProductName and reviewed signer | Inventory `installed`; `launch` is legal. Manual NSIS uses the same scan as in-app handoff.                                                                                 |
-| OpenCode Uninstall DisplayName is `OpenCode <bounded-version>`                                            | Keep the ARP hint; do not require exact `OpenCode`.                                                                                                                         |
-| OpenCode Uninstall DisplayName is `OpenCode Dev`, `OpenCodeAI`, or a prerelease version                   | Skip that ARP entry.                                                                                                                                                        |
-| OpenCode KnownPath relative is missing                                                                    | Drop the observation; do not retain KnownPath Missing.                                                                                                                      |
-| Grok default install has no native expected owner                                                         | Plan official npm from the bundled exact-version manifest; never `@latest`.                                                                                                 |
-| Grok macOS/Windows architecture has no closed platform package or manifest integrity                      | Produce no npm plan/action; do not fall back to Linux or another product package.                                                                                           |
-| Non-macOS/non-Windows development host                                                                    | No admitted CLI package; verify host compilation separately under the development-environment contract, without inventing a Linux installer or crate-wide rejection policy. |
-| Grok registry metadata does not match both root and current-platform SHA-512                              | Skip that registry; fail with source exhaustion when none match.                                                                                                            |
+| Focused source/identity owner emits one complete trusted candidate                                         | Lifecycle may normalize it and expose only policy-legal actions.                                                                                                            |
+| Source/identity evidence is absent, conflicting, stale or incomplete                                       | Preserve unknown/not-installed distinction; do not synthesize a candidate or action.                                                                                        |
+| Source/desktop identity owner cannot produce an admitted release or installed identity                    | Preserve its fail-closed reason; do not create or advance a lifecycle job.                                                                                                  |
+| Claude/Grok source owner cannot produce an exact current-platform npm plan                                | No package action; never substitute a tag, fixture, foreign platform package or stale manifest.                                                                             |
+| CLI execution exits but owner/version verification is not satisfied                                      | Terminal verification failure; do not report Agent `succeeded`.                                                                                                            |
 | Cancel after `launching_installer`/`installing`                                                           | `operation_conflict`; do not kill external/commit operation.                                                                                                                |
 | Secret/path/raw native identity reaches DTO/log/DOM                                                       | Security regression.                                                                                                                                                        |
 
@@ -334,21 +236,18 @@ leaf:
   target or restores the prior bundle.
 - **Base:** Windows vendor wizard opens successfully; the job is a successful
   handoff while installation status stays unchanged until a fresh inventory.
-- **Good:** after a user-run official OpenCode NSIS, a complete scan finds
-  `@opencode-aidesktop\OpenCode.exe` (or an Uninstall DisplayName
-  `OpenCode 1.18.27` plus DisplayIcon) and readiness exposes `launch`.
+- **Good:** after a manual vendor install, the focused identity owner emits one
+  complete trusted candidate and a fresh lifecycle scan exposes only the
+  policy-legal action for that normalized identity.
 - **Base:** complete Windows discovery finds no candidate and exposes an
   eligible reviewed destination; an inaccessible view instead remains
   unknown.
 - **Bad:** use a researched CDN URL, infer install from a config directory,
   update Qoder/TRAE/WorkBuddy, choose the first candidate, fake percent without
   total bytes, or label Windows wizard handoff as installed evidence.
-- **Bad:** install Grok with `@latest`, change the user's global npmrc, or
-  claim mainland sign-in/inference because the CLI installed.
-- **Bad:** treat GitHub latest failure as OpenCode uninstallable, freeze only
-  the NSIS stub path `OpenCode/OpenCode.exe`, require exact Uninstall
-  DisplayName equality, or describe Windows OpenCode as supported while
-  ProductName/relative EXE/signer stay empty.
+- **Bad:** bypass the source/identity owner with a tag, fixture, researched URL,
+  unverified path or stale capability, or treat process exit/vendor handoff as
+  installed evidence without the required post-action inventory/owner check.
 
 ## 6. Tests Required
 
@@ -369,31 +268,23 @@ Assertion points:
   no source lookup or side effect;
 - inventory merges duplicate provenance but preserves multiple/conflicting/
   incomplete evidence, expires capabilities and rejects drift;
-- Qoder/Trae/WorkBuddy/OpenCode source parsers enforce exact host,
-  platform, schema, redirect and version rules without stale URL fallback;
-- Claude CLI tests cover the compiled npm manifest, shared registry/argv/helper,
-  actual version/owner verification, and rejection of the retired Desktop path;
+- source/identity owner tests independently enforce exact host/platform/schema,
+  redirect, current-platform npm admission and closed desktop identity; this
+  lifecycle suite proves those failures prevent job creation or advancement;
+- Claude/Grok lifecycle tests consume only admitted exact plans, preserve the
+  observed owner, require post-action owner/version verification and reject the
+  retired/unsupported surface; source mechanics stay in their focused owner;
 - renderer `surfacesForAgent` / readiness `sourceKind` stay aligned with
   lifecycle policy: Grok and Claude are compact CLI/`cli_tooling`;
 - macOS exact-path deployment, cancellation boundary, running-app protection,
   rollback/recovery and disabled `/Applications` gate;
-- WorkBuddy macOS scan matches only `com.tencent.workbuddy.mac`; a same-folder
-  `com.workbuddy.workbuddy` fixture stays unmatched; helper/policy/desktop
-  bundle IDs stay equal via `helper_policy_bundle_ids_match_macos_bundle_id_for`;
-- Windows registry access masks/views/link handling, trusted PE identity,
-  signer leaf, retained artifact, helper protocol/pipe binding, UAC cancel and
-  vendor-wizard handoff with no wait/kill/post-install claim;
-- OpenCode Windows identity keeps both `@opencode-aidesktop/OpenCode.exe` and
-  `OpenCode/OpenCode.exe`, signer `Anomaly Innovations, Inc https://anoma.ly/`,
-  and Uninstall DisplayName `{name}` or `{name} {bounded_version}`; OpenCode
-  catalog copy must not say 「本机识别和启动暂无法确认」;
+- platform-specific source, desktop identity, registry/signer and helper
+  protocol assertions run in their focused owners; lifecycle integration proves
+  only normalized evidence/capabilities can authorize actions;
 - job single-flight, terminal slot release, transfer monotonicity, unknown
   total, cancel refusal after side-effect boundary and unknown job ID;
-- Grok owner-preserving lifecycle and ordinary-user helper with no elevated
-  fallback; product-host cfg maps only Darwin/Windows x64/arm64, the bundled
-  manifest has no Linux optional package, registry admission matches both
-  package integrities, and the helper receives only the compact host-selected
-  plan;
+- Grok/Claude owner-preserving lifecycle has no elevated fallback and reaches
+  `succeeded` only after the focused execution owner reports verified outcome;
 - renderer polls until a terminal native stage and does not paint a poll cap
   as failure while a job remains active. Browser fixtures do not prove native
   inventory, installer or signing behavior.
@@ -456,103 +347,4 @@ Correct:
 let validated = validate_action_target(&request, state).await?;
 // The validated capability is produced only after fresh re-enumeration.
 dispatch_closed_action(validated, state).await
-```
-
-Wrong:
-
-```rust
-windows_relative_exes: &["OpenCode/OpenCode.exe"];
-if display_name != "OpenCode" { continue; }
-```
-
-Correct:
-
-```rust
-windows_relative_exes: &[
-    "@opencode-aidesktop/OpenCode.exe",
-    "OpenCode/OpenCode.exe",
-];
-uninstall_display_name_matches(display_name, &["OpenCode"])
-// exact name, or `OpenCode` + space + bounded_version
-```
-
-## Scenario: OpenCode Windows scan after vendor or manual NSIS
-
-### 1. Scope / Trigger
-
-- Trigger: OpenCode Windows x64 is installable through the Agent façade, and
-  a later inventory scan must find both in-app handoff and a user-run
-  official NSIS. This is a cross-layer readiness/inventory contract: empty
-  identity hides Install; a stub-only known-path reports `not_installed`
-  after a real current-user install.
-
-### 2. Signatures
-
-```text
-windows_exe_install_admitted(opencode)
-  -> ProductName/relative EXE nonempty
-
-get_agent_install_readiness({ agentId: opencode })
-  -> installState / allowedActions from the same inventory scan
-
-uninstall_display_name_matches(displayName, ["OpenCode"])
-  -> exact ASCII-case-insensitive name
-     OR name + " " + bounded_version
-```
-
-No new wire version. Renderer still sends only `agentId` + action + opaque
-capabilities.
-
-### 3. Contracts
-
-- Request: renderer never sends a path, Uninstall key, or signer.
-- Response: `installState=installed` and `launch` only after a trusted PE at a
-  closed relative or a matching Uninstall/App Paths hint that inspects to the
-  same identity.
-- Helper product `opencode` admits download/handoff. It does not prove the
-  scan relatives. Identity lives in `desktop.rs` / `windows.rs`.
-- Environment: Alice `LocalAppData\Programs` plus frozen Uninstall/App Paths.
-  ARM64 stays `platform_unsupported`.
-
-### 4. Validation & Error Matrix
-
-| Condition                                                                             | Required result                                     |
-| ------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| Identity fields empty                                                                 | No Install; catalog may not claim local recognition |
-| Installed `@opencode-aidesktop\OpenCode.exe` Valid                                    | `installed` + Launch                                |
-| DisplayName `OpenCode 1.18.27`, InstallLocation empty, DisplayIcon points at that EXE | Keep Uninstall hint; inspect the icon/derived path  |
-| DisplayName `OpenCode Dev` / `OpenCodeAI`                                             | Skip                                                |
-| KnownPath `OpenCode\OpenCode.exe` missing                                             | Drop; do not fail the aggregate                     |
-
-### 5. Good / Base / Bad Cases
-
-- Good: user uninstalls, runs official NSIS, reopens Agents; card shows
-  Launch.
-- Base: wizard handoff succeeds; status stays unchanged until the next scan.
-- Bad: exact DisplayName equality, or treating the destination label
-  `Programs\OpenCode` as the known-path.
-
-### 6. Tests Required
-
-- `opencode_windows_identity_is_frozen_from_winverifytrust_hil`
-- `uninstall_display_name_matches_closed_name_or_bounded_version_suffix`
-- OpenCode catalog description omits 「本机识别和启动暂无法确认」
-- complete empty Windows discovery still exposes OpenCode
-  `WindowsCurrentUser`
-
-### 7. Wrong vs Correct
-
-#### Wrong
-
-```text
-installer stub path only -> scan miss after electron-builder current-user install
-DisplayName == "OpenCode" -> drop `OpenCode 1.18.27`
-```
-
-#### Correct
-
-```text
-installed-target relative + stub relative
-DisplayName exact or `{name} {bounded_version}`
-WinVerifyTrust + ProductName + reviewed signer remain admission
 ```

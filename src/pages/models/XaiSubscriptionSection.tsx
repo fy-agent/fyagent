@@ -246,7 +246,7 @@ export function XaiSubscriptionSection(props: Props) {
       ariaLabel="SuperGrok 订阅设置"
     >
       <p className="fy-models-muted">
-        选择在 FyAgent 中登录的账号和模型。使用订阅时，请保持 FyAgent
+        使用订阅时，请保持 FyAgent
         在后台运行；完全退出后会停止转发。账号是否支持调用及额度使用，以 Grok
         服务返回为准。
       </p>
@@ -358,7 +358,7 @@ export function XaiSubscriptionSection(props: Props) {
               aria-describedby={`${id}-model-help`}
             />
             <p id={`${id}-model-help`} className="fy-models-muted">
-              从选项中选择，或输入订阅支持的模型 ID。
+              填写订阅支持的模型 ID。
             </p>
           </div>
         </CollapsibleContent>

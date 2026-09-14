@@ -125,10 +125,11 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
   must not inflate a 31px row to hundreds of pixels in WebKit. Shared bulk
   presentation uses explicit name/action slots and one content-box breakpoint;
   see [Assignments](./assignments.md). No repaint timer or route remount is a fix.
-- Info cards use `--fy-info-card-min:256px` and `--fy-info-card-gap` with
-  intrinsic Grid sizing, capped at two columns. Admission depends on the actual
-  grid width, not a window breakpoint; a full-span item must not keep a blank
-  third column. `align-items:start` preserves natural short-card height.
+- Installed Skills/MCP use one full-width `.fy-feature-info-card` in a
+  single-column `.fy-feature-info-grid`, with a leading hairline rather than
+  another bordered card. The former two-column source/assignment/date cards
+  and their card-floor tokens are retired. Assignment switches own assignment
+  state; header badges own source/transport, without duplicate metadata rows.
   Metadata uses `fit-content(var(--fy-definition-label-cap)) minmax(0,1fr)`;
   the shared label cap is `min(30%,8em)`, with `--fy-definition-gap` between
   name and value. Caption-level definition rows span the card: values sit on
@@ -152,7 +153,7 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | Pane is narrow in a wide window                      | Form stacks based on container; long text remains within its pane.                  |
 | Three-pane window grows after shrinking              | Middle detail absorbs growth; auxiliary rails obey pixel bounds and drag choices.   |
-| Detail has less than two card floors plus one gap    | One full-width card column, regardless of viewport width.                           |
+| Installed Skill/MCP detail grows or shrinks          | One full-width metadata section; no duplicate source or read-only assignment card.  |
 | WebKit crosses two/three-pane admission repeatedly   | Rows remain intrinsic; no accumulated height or force-remounted content.            |
 | URL/identity has no natural breaks                   | Wrap in detail; no horizontal escape or lost action.                                |
 | Standard/comfortable dialog at small viewport        | Body scrolls as needed; footer actions remain reachable.                            |
@@ -175,7 +176,7 @@ glass.
 
 - `responsive-density.spec.ts` exercises Skills/MCP in both themes and engines:
   1564→1232→1180→900→1181→1564, content-relative row heights, uniform atomic
-  bulk pairs, width growth, real drag/keyboard/reset, bounded long metadata,
+  bulk pairs, width growth, one full-width metadata section, real drag/keyboard/reset, bounded long metadata,
   616px/font-enlargement pressure and draft/hidden-route lifetime. Check both
   initial and post-resize geometry; no-overflow alone misses inflated rows.
 - `scroll-ownership.spec.ts` covers long Skills/MCP installed lists with wheel

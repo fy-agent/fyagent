@@ -49,6 +49,12 @@ describe("HealthPage", () => {
     await within(detail).findByText("本机检查正常");
     expect(detail.querySelectorAll("[data-check-id]")).toHaveLength(12);
     expect(detail.querySelectorAll("time")).toHaveLength(13);
+    expect(detail.querySelector(".fy-health-summary")).toBeNull();
+    expect(
+      within(detail).getByText(
+        "本机检查不会测试远端服务或额度。检查结果超过 5 分钟后需要重新检查。",
+      ),
+    ).toBeVisible();
     expect(
       within(detail).getByText(/尚无此软件的本机代理请求记录/),
     ).toBeVisible();

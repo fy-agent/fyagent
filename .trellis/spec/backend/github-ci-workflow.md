@@ -575,88 +575,9 @@ key: Cargo.lock + runner OS/arch
 never src-tauri/target, never RUSTC_WRAPPER / sccache
 ```
 
-## Scenario: Push before SHA missing after history rewrite
+## Branch-push commit-policy routing
 
-### 1. Scope / Trigger
-
-- Trigger: lightweight branch-push commit policy still needs a comparison range.
-  An abnormal history rewrite or force-update can leave `github.event.before`
-  pointing to a commit that `actions/checkout` `fetch-depth: 0` does not clone
-  once no ref points at it. This is defensive commit-policy behavior, not a
-  branch synchronization contract; branch maintenance is outside Required CI.
-- Owner: `.github/workflows/commit-convention-push.yml` before
-  `scripts/ci/verify-commit-messages.mjs`.
-- The same verifier checks PR/merge-group ranges. It distinguishes a real
-  integration object from an ordinary commit that merely claims to be a merge;
-  this avoids rewriting shared history to normalize an integration title.
-
-### 2. Signatures
-
-- Workflow resolves `base_sha` / `head_sha`, then
-  `node scripts/ci/verify-commit-messages.mjs --base <sha> --head <sha>`.
-- `listCommitSubjectsInRange` returns `{sha, parents: string[], subject}` from
-  Git `%H`, `%P`, `%s` for the full range or the current HEAD-only comparison.
-
-### 3. Contracts
-
-- `push` event `before` that is forty zeroes -> `base_sha = head_sha`.
-- `push` event `before` that is not `${base_sha}^{commit}` in the clone ->
-  `base_sha = head_sha` (empty comparison).
-- this fallback never invokes the domain classifier or `CI / Required`.
-- Normal commit types and PR-title validation remain unchanged. An explicit
-  `merge: <nonempty description>` integration subject is accepted only on a
-  Git object with at least two distinct parents. It is not a general allowed
-  type, a subject-only exemption or an allowlist of historical hashes.
-- All side-branch commits remain enumerated and validated; no first-parent or
-  no-merges filter hides bad subjects. Existing generated merge/revert subject
-  rules remain separate. New merges may simply use a conventional `chore:` title.
-
-### 4. Validation & Error Matrix
-
-- Forty-zero or unreachable push `before` -> empty comparison and current-head
-  commit subject validation only.
-- Missing PR/merge-group SHA remains a Required classifier failure in
-  `.github/workflows/ci.yml`.
-- Real multi-parent object with the explicit integration subject -> accept;
-  the same subject on a single-parent commit or a PR title -> reject.
-- An empty/nonstandard merge subject or an invalid side-branch commit -> reject;
-  a valid integration header never exempts the merged work itself.
-
-### 5. Good / Base / Bad Cases
-
-- Good: ordinary push; `before` is an ancestor still fetched by complete
-  history; only the pushed commit range is checked for Conventional Commits.
-- Base: force-update drops the previous tip; workflow logs that `before` is
-  not a commit in the clone and validates `head` against `head`.
-- Bad: use branch push as a second Required CI authority or start product-domain
-  jobs merely to enforce commit-message policy.
-- Bad: add `merge` to all normal commit types or disable convention checks to
-  admit an existing integration; use verified topology for the narrow case.
-
-### 6. Tests Required
-
-- `tests/githubWorkflowTriggers.test.ts` asserts the push-only `git cat-file -e`
-  fallback, queue-ref exclusion, and absence of `CI / Required` in the push
-  workflow.
-- Local tests do not clone GitHub's unreachable `before` objects.
-- `tests/verifyCommitMessages.test.ts` creates real temporary Git histories to
-  check genuine merge parents, HEAD-only merge checks, single-parent impostors,
-  PR titles, empty/nonstandard merge subjects and invalid side-branch commits.
-
-### 7. Wrong vs Correct
-
-#### Wrong
-
-```bash
-node scripts/ci/verify-commit-messages.mjs --base "$PUSH_BASE_SHA" --head "$head_sha"
-# git cat-file: before SHA does not identify a commit object
-```
-
-#### Correct
-
-```bash
-if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
-  base_sha="$head_sha"
-fi
-node scripts/ci/verify-commit-messages.mjs --base "$base_sha" --head "$head_sha"
-```
+[GitHub Branch-Push Commit Policy](./github-push-commit-policy.md) owns the
+unreachable-`before` fallback, topology-aware integration subjects and the
+lightweight `Commit Convention / Push` workflow. This Required CI owner remains
+strict for PR/merge-group identities and never adopts the push fallback.

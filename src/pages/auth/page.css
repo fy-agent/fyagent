@@ -1,12 +1,6 @@
 .fy-auth-page {
   gap: 0;
 }
-.fy-auth-source-help {
-  margin: 14px 0 8px;
-  color: var(--fy-text-secondary);
-  font-size: var(--fy-font-caption);
-}
-
 .fy-auth-page-header {
   flex: 0 0 auto;
   margin-bottom: 12px;
@@ -258,7 +252,6 @@
   overflow-wrap: anywhere;
 }
 
-.fy-auth-section,
 .fy-auth-consumer-connection,
 .fy-auth-connection-card {
   display: grid;
@@ -268,6 +261,14 @@
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-panel);
   background: var(--fy-surface-inset);
+}
+
+.fy-auth-section {
+  display: grid;
+  gap: var(--fy-space-md);
+  min-width: 0;
+  padding-top: var(--fy-space-md);
+  border-top: 1px solid var(--fy-divider);
 }
 
 .fy-auth-section-heading,
@@ -326,10 +327,6 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
-}
-
-.fy-auth-danger-section {
-  border-color: var(--fy-danger-border);
 }
 
 .fy-auth-reason-list {

@@ -44,6 +44,16 @@ Origin geometry, conditional-session keys and enter/exit timing are owned by
 
 ## 3. Contracts
 
+- Secondary details lead with one object title and its actions. Do not stack
+  an introductory heading, explanatory subtitle and summary cards that all
+  repeat the same facts. `.fy-feature-intro` uses the 14px body token and
+  `--fy-line-body`, not section-title sizing.
+- Installed Skills/MCP use one full-width metadata section with a leading
+  hairline, not nested source/assignment/install cards. Account sections use
+  the same flat grouping principle; actual software-connection cards retain
+  their object boundaries. Do not shrink controls or body text to compensate
+  for excessive content. Container/definition behavior remains owned by
+  [Surfaces and Container Response](./surfaces-responsive.md).
 - Dialog title and description have explicit role classes. Keep one scrolling
   content region (header + optional body) and a nonshrinking action footer.
   Long descriptions must not push actions outside the viewport.
@@ -112,6 +122,10 @@ Bad: a page overrides every shared control, adds a second focus trap, or uses
   capped widths, visible footer, selected host/lens geometry and screenshots.
 - Existing multi-viewport shell, account, model/editor and keyboard tests;
   `mise run typecheck`, `mise run lint`, `mise run test:unit`, `mise run test:browser`.
+- `scroll-ownership.spec.ts` captures populated secondary views in both themes
+  and checks body sizing, document content, single metadata ownership and
+  reachable assignment controls; screenshots are review artifacts, not new
+  automatically approved desktop baselines.
 - Browser fixture images do not prove native window chrome, platform fonts on
   every host, all contrast pairs, or subjective final-product acceptance.
 

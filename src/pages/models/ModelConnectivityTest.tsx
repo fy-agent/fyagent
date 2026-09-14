@@ -121,7 +121,7 @@ export function ModelConnectivityTest({
         onOpenChange={closeDialog}
         size="wide"
         title="选择要测试的模型"
-        description="测试会向所选模型发送一条简短请求，可能产生少量用量。完成后会显示响应或错误。"
+        description="将向所选模型发送测试请求，可能产生少量用量。"
         actions={
           <>
             <Button disabled={probing} onClick={() => closeDialog(false)}>

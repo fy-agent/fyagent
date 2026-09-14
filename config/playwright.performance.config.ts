@@ -26,7 +26,9 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
     baseURL: "http://127.0.0.1:4175",
     viewport: { width: 1232, height: 700 },
-    trace: "retain-on-failure",
+    // Tracing records every run, even when only failures are retained, and
+    // perturbs frame timing. Use --trace on for a separate diagnostic run.
+    trace: "off",
   },
   webServer: {
     cwd: repositoryRoot,

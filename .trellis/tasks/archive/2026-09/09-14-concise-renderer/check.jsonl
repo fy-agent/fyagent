@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/user-facing-copy.md", "reason": "Concise copy, actionable states and safety meaning"}
+{"file": ".trellis/spec/frontend/visual-language.md", "reason": "Shared typography and dialog hierarchy"}
+{"file": ".trellis/spec/frontend/surfaces-responsive.md", "reason": "Container sizing, readable metadata and scroll ownership"}
+{"file": ".trellis/tasks/archive/2026-09/09-14-concise-renderer/research.md", "reason": "Community feedback and primary writing guidance"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Full renderer gate and fail-fast warning guard lifecycle"}
+{"file": ".trellis/spec/backend/claude-code-cli.md", "reason": "Native npm adapter scope and unchanged execution authority"}
+{"file": ".trellis/tasks/archive/2026-09/09-14-concise-renderer/research/validation-repairs.md", "reason": "Reviewed native identity changes and reproduced test guard failure"}

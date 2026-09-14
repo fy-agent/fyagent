@@ -431,10 +431,7 @@ export function PromptsPage() {
       description="网页版不能管理提示词。"
     />
   ) : promptsQuery.isPending && promptsQuery.data === undefined ? (
-    <EmptyState
-      title={`正在加载 ${APP_LABELS[app]} 提示词`}
-      description="正在读取该应用的提示词"
-    >
+    <EmptyState title={`正在加载 ${APP_LABELS[app]} 提示词`}>
       <Spinner />
     </EmptyState>
   ) : readFailed ? (
@@ -468,7 +465,6 @@ export function PromptsPage() {
   ) : filtered.length === 0 && activeEditor?.mode !== "new" && !selected ? (
     <EmptyState
       title="没有匹配的提示词"
-      description={`已加载 ${prompts.length} 条 ${APP_LABELS[app]} 提示词，可清空或调整搜索条件。`}
       actions={<Button onClick={() => setSearch("")}>清空搜索</Button>}
     />
   ) : (
@@ -505,9 +501,11 @@ export function PromptsPage() {
                 title={prompt.name}
                 onSelect={() => requestSelect(prompt.id)}
               >
-                <span className="fy-prompts-card-desc">
-                  {prompt.description || "暂无描述"}
-                </span>
+                {prompt.description && (
+                  <span className="fy-prompts-card-desc">
+                    {prompt.description}
+                  </span>
+                )}
               </FeatureListItem>
             ))}
           </FeatureList>
@@ -539,10 +537,7 @@ export function PromptsPage() {
             className="fy-feature-panel fy-prompts-editor-pane"
             aria-label="提示词详情"
           >
-            <EmptyState
-              title="选择一条提示词"
-              description="从左侧打开提示词后即可直接阅读和编辑正文。"
-            />
+            <EmptyState title="选择一条提示词" />
           </section>
         )}
       </SplitPanes>
@@ -663,7 +658,7 @@ export function PromptsPage() {
         }
         open={activeDiscardIntent !== null}
         title="放弃未保存的提示词更改"
-        description="当前编辑内容尚未保存。确认放弃后再继续切换或离开页面。"
+        description="未保存的更改将丢失。"
         pending={busy}
         onCancel={cancelDiscard}
         onConfirm={confirmDiscard}

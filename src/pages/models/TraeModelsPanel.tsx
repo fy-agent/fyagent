@@ -27,11 +27,6 @@ export function TraeModelsPanel({ active }: { active: boolean }) {
       title="TRAE Work CN"
       summary="自定义模型需在 TRAE Work CN 中添加。FyAgent 不会写入其本地模型配置。"
     >
-      <InlineNotice>
-        TRAE Work CN
-        以云端模型列表为准。写入本机缓存的自定义模型会在应用启动时被覆盖，因此无法在此保存或应用。
-      </InlineNotice>
-
       {loading && <Spinner label="正在读取 TRAE 当前模型" />}
       {readFailed && (
         <InlineNotice tone="error">

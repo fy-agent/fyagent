@@ -286,7 +286,7 @@ function LoginDialogContent({
       description={
         session
           ? "登录由官方服务完成；FyAgent 保存账号后，不会自动替换软件的认证文件。连接软件需要另行确认。"
-          : "选择账号类型和这次登录的用途。"
+          : undefined
       }
       actions={actions}
       size="comfortable"

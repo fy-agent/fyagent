@@ -118,7 +118,6 @@ export function AgentSkillsSection({
       ) : query.isError && query.data === undefined ? (
         <EmptyState
           title="无法读取 Skills"
-          description="暂时无法读取已安装的 Skills。请重试。"
           actions={<Button onClick={() => void query.refetch()}>重试</Button>}
         />
       ) : skills.length === 0 ? (
@@ -156,7 +155,7 @@ export function AgentSkillsSection({
                       </span>
                     ) : null}
                   </div>
-                  <p>{skill.description ?? "暂无说明"}</p>
+                  {skill.description && <p>{skill.description}</p>}
                 </div>
                 <div className="fy-agent-assignment-card-action">
                   <Switch
@@ -271,7 +270,6 @@ export function AgentMcpSection({
       ) : query.isError && query.data === undefined ? (
         <EmptyState
           title="无法读取 MCP"
-          description="暂时无法读取 MCP 设置。请重试。"
           actions={<Button onClick={() => void query.refetch()}>重试</Button>}
         />
       ) : servers.length === 0 ? (
@@ -309,7 +307,7 @@ export function AgentMcpSection({
                       </span>
                     ) : null}
                   </div>
-                  <p>{server.description ?? "暂无说明"}</p>
+                  {server.description && <p>{server.description}</p>}
                 </div>
                 <div className="fy-agent-assignment-card-action">
                   <Switch

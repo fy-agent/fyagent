@@ -1161,6 +1161,9 @@ describe("durable supported-platform surface contract", () => {
   });
 
   it("runs every production scanner against the current repository snapshot without lifecycle exclusions", () => {
+    // This is a full-repository integration scan, not a product latency test.
+    // Enumerate one coherent snapshot instead of repeatedly invoking Git.
+    const currentFiles = checker.listCurrentFiles(ROOT);
     const indexModes = checker.listCurrentIndexModes(ROOT);
     const runner = (
       _command: unknown,
@@ -1183,12 +1186,10 @@ describe("durable supported-platform surface contract", () => {
           ),
         };
       }
-      return checker.listCurrentFiles(ROOT).length > 0
+      return currentFiles.length > 0
         ? {
             status: 0,
-            stdout: Buffer.from(
-              `${checker.listCurrentFiles(ROOT).join("\0")}\0`,
-            ),
+            stdout: Buffer.from(`${currentFiles.join("\0")}\0`),
           }
         : { status: 1, stdout: Buffer.alloc(0) };
     };
@@ -1201,7 +1202,7 @@ describe("durable supported-platform surface contract", () => {
     });
     expect(report.findings).toEqual([]);
     expect(report.inspectedFiles).toBeGreaterThan(1_000);
-  });
+  }, 15_000);
 
   it("fails closed when Git enumeration or file reads fail", () => {
     expect(() =>

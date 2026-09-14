@@ -57,9 +57,6 @@ export function CodexRequestSource({
           onTerminal={reconcile}
         />
       ) : null}
-      <p className="fy-auth-source-help">
-        需要添加服务地址、API Key 或修改模型参数？
-      </p>
       <Button disabled={disabled} onClick={openModels}>
         编辑 Codex 模型配置
       </Button>

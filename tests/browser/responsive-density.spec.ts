@@ -130,8 +130,14 @@ for (const route of ["skills", "mcp"] as const) {
             (node) => node.getBoundingClientRect().width,
           ),
         }));
-      for (const card of cards.children)
-        expect(card).toBeGreaterThanOrEqual(Math.min(cards.width, 256) - 1);
+      expect(cards.children).toHaveLength(1);
+      expect(Math.abs(cards.children[0] - cards.width)).toBeLessThanOrEqual(1);
+      await expect(page.getByRole("region", { name: "当前分配" })).toHaveCount(
+        0,
+      );
+      await expect(
+        page.locator(".fy-feature-assignments:visible").getByRole("switch"),
+      ).toHaveCount(7);
     }
     await expectNoHorizontalOverflow(page);
     await expectHealthyPage(page, health);
@@ -224,8 +230,12 @@ test("local Skill metadata, long content and enlarged text use bounded natural s
   const health = monitorPageHealth(page);
   await resize(page, 1564, 991);
   await openRendererPage(page, "/skills");
-  const sourceCard = page.getByRole("region", { name: "下载来源" });
-  await expect(sourceCard).toContainText("本地导入");
+  const sourceCard = page.getByRole("region", { name: "安装信息" });
+  await expect(
+    page
+      .getByRole("region", { name: "Skill 详情" })
+      .getByText("本地导入", { exact: true }),
+  ).toHaveCount(1);
   await expect(sourceCard).not.toContainText("/fixture/private-location/");
   await expect(
     sourceCard.getByRole("button", { name: "复制安装目录", exact: true }),

@@ -30,6 +30,7 @@ test("renders account identity, software connection and current request source a
     .getByRole("heading", { name: "Codex", exact: true })
     .locator("xpath=ancestor::article[1]");
   await expect(codexCard).toContainText("DeepSeek API");
+  await expect(codexCard.getByText("Codex", { exact: true })).toHaveCount(1);
   await expect(codexCard).toContainText("已保留");
   await expect(codexCard).toContainText("由 Codex 自动续期");
   await expect(page.getByText(/access[_ ]?token/iu)).toHaveCount(0);

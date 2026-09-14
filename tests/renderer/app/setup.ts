@@ -1,7 +1,7 @@
 import { transferableAbortController } from "node:util";
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
 const nodeAbortController = transferableAbortController();
 const DOMAbortController = window.AbortController;
@@ -16,6 +16,11 @@ beforeAll(() => {
   // restores scroll after measurement; record that call without claiming a
   // real viewport moved. Browser regressions retain the actual scrolling API.
   window.scrollTo = vi.fn();
+});
+
+beforeEach(() => {
+  // restoreMocks runs before each test, so a beforeAll spy would be removed
+  // before the very first assertion. Reinstall this guard for every test.
   const originalConsoleError = console.error.bind(console);
   consoleErrorGuard = vi
     .spyOn(console, "error")

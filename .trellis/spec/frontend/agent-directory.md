@@ -199,6 +199,8 @@ Do not send the user to the Models section to pick a filesystem destination.
   must not send a registry, version, hash, or npm command. Default one-click
   install is official npm; official CLI is an explicit secondary control.
   Native-owned installs may offer “改用官方 npm 方式”; that must not auto-run.
+  CLI latest/update availability comes from native `latest_version` /
+  `allowedActions`. The renderer never embeds a reviewed npm version.
 - Windows vendor-wizard success uses
   `官方安装窗口已打开。完成安装后请刷新安装状态。` It must not say the product
   is installed. OpenCode Windows ARM64 remains unavailable.
@@ -238,6 +240,7 @@ Do not send the user to the Models section to pick a filesystem destination.
 | Native DTO contains unknown/excess/forbidden field                  | Strict parser failure; never spread raw object into UI.                                                |
 | Inventory is `multiple` and the user confirms a destination         | Start the native action and immediately dismiss the picker back to the originating control; the card shows job progress. Do not keep 「安装中…」 on the dialog until the job finishes. |
 | Claude/Grok compact CLI readiness uses `cli_tooling`                | Parse and project install/update; do not fail the directory scan.                                      |
+| Renderer embeds a reviewed Claude/Grok npm version                 | Contract regression; show native `latest_version` only.                                                 |
 | Claude/Grok readiness uses `managed_desktop` or `desktop` surface   | Fail closed at the parser; do not render a Desktop install card.                                       |
 | Route changes/unmounts                                              | Clear transient selection/confirmation; do not cancel native work unless user explicitly requested it. |
 
@@ -347,6 +350,18 @@ Correct:
 surfacesForAgent("grokbuild") === ["cli"]
 surfacesForAgent("claude-code") === ["cli"]
 parseAgentInstallReadiness admits sourceKind === "cli_tooling"
+```
+
+Wrong:
+
+```ts
+const CLAUDE_REVIEWED_VERSION = "2.1.261";
+```
+
+Correct:
+
+```ts
+readiness.localVersion; // native latest_version / allowedActions decide update
 ```
 
 Native owns identity, legality and side effects; the page owns strict

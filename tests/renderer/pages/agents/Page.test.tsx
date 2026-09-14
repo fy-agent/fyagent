@@ -783,9 +783,7 @@ describe("V3 Agent directory and configuration shell", () => {
       ).not.toBeInTheDocument(),
     );
     expect(
-      await within(directoryArticle("QoderWork CN")).findByText(
-        "正在检查来源",
-      ),
+      await within(directoryArticle("QoderWork CN")).findByText("正在检查来源"),
     ).toBeVisible();
     await waitFor(() =>
       expect(ports.agentInstallReadiness.startAction).toHaveBeenCalledWith({
@@ -807,6 +805,14 @@ describe("V3 Agent directory and configuration shell", () => {
       reasonCode: null,
       transfer: null,
     });
+    // The job completion triggers readiness and inventory readback. Await the
+    // resulting action, not just the deferred promise, before test cleanup.
+    expect(
+      await within(directoryArticle("QoderWork CN")).findByRole("button", {
+        name: "选择安装目标",
+      }),
+    ).toBeEnabled();
+    expect(configureButton("QoderWork CN")).toBeDisabled();
   });
 
   it("does not enable configure after a succeeded job until readback proves installation", async () => {

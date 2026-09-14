@@ -47,6 +47,9 @@
   color: var(--fy-text-secondary);
   font-size: var(--fy-font-caption);
 }
+.fy-health-progress:empty {
+  margin-top: 0;
+}
 .fy-health-filters {
   display: grid;
   gap: var(--fy-space-md);

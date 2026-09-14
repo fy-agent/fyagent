@@ -106,6 +106,9 @@ describe("AuthPage", () => {
     expect(
       within(connectedSection!).getByRole("heading", { name: "Codex" }),
     ).toBeVisible();
+    expect(
+      within(connectedSection!).getAllByText("Codex", { exact: true }),
+    ).toHaveLength(1);
     expect(within(connectedSection!).getByText("DeepSeek API")).toBeVisible();
     expect(within(connectedSection!).getByText("已保留")).toBeVisible();
     expect(
@@ -117,6 +120,24 @@ describe("AuthPage", () => {
     expect(document.body.textContent).not.toMatch(
       /access[_ ]?token|refresh[_ ]?token|authorization[_ ]?code|secretRef/iu,
     );
+  });
+
+  it("retains a connection target that differs from the software name", async () => {
+    const overview = managedAuthOverviewFixture();
+    overview.connections[0] = {
+      ...overview.connections[0],
+      targetLabel: "Codex · 工作配置",
+    };
+    renderPage(managedPorts({ getOverview: vi.fn(async () => overview) }));
+    const detail = await screen.findByRole("region", {
+      name: "person@example.com 账号详情",
+    });
+    expect(
+      within(detail).getByText("Codex · 工作配置", { exact: true }),
+    ).toBeVisible();
+    expect(
+      within(detail).getByRole("heading", { name: "Codex" }),
+    ).toBeVisible();
   });
 
   it("connects matching software from the account detail with this account preselected", async () => {
