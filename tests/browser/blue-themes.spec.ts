@@ -75,7 +75,22 @@ test("dark blue text and controls remain readable on actual composited page and 
       content: "::-webkit-scrollbar { width: 15px; height: 15px; }",
     });
     const scope = `[data-testid="${route.split("?")[0]}-page"]`;
-    await expect(page.locator(scope)).toBeVisible();
+    const routeScope = page.locator(scope);
+    await expect(routeScope).toBeVisible();
+    if (route === "health") {
+      // Raster sampling records glyph geometry before it hides text and takes
+      // the screenshot. Let the initial read and its conditional stop action
+      // settle first, otherwise the primary action can move into stale points.
+      await expect(routeScope.locator(".fy-health-status")).toHaveText(
+        "本机检查正常",
+      );
+      await expect(
+        routeScope.getByRole("button", { name: "检查全部软件" }),
+      ).toBeEnabled();
+      await expect(
+        routeScope.getByRole("button", { name: "停止检查" }),
+      ).toHaveCount(0);
+    }
     const samples = await sampleTextContrast(page, scope);
     expect(samples.length).toBeGreaterThan(3);
     await info.attach(`dark-${route.split("?")[0]}`, {

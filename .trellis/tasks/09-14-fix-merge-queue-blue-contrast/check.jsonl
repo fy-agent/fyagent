@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend quality-check entry point."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify deterministic browser evidence without arbitrary waits."}
+{"file": ".trellis/spec/frontend/appearance.md", "reason": "Verify contrast budgets and route coverage remain unchanged."}
+{"file": ".trellis/spec/frontend/health.md", "reason": "Verify synchronization uses a route-owned settled signal."}

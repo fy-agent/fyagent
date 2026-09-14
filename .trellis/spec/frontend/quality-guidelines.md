@@ -190,11 +190,18 @@ The 1x warm-frame p95 target is 33.4ms. Normalize only sub-nanosecond floating-p
 subtraction noise; never increase the frame budget or replace real motion with
 test-only no-animation code. Background machine load is reported, not hidden.
 
-Static geometry/contrast assertions wait for actual settled state. Paused native
-keyframes verify source/80ms press lead/252–420ms content handoff and reverse
-tracks, alongside real-time mouse/keyboard/touch, interruption and resource checks.
-Event dispatch/focus completion does not imply Router's state commit completed;
-await the exact selected-state assertion rather than arbitrary sleeps.
+Static geometry/contrast assertions wait for actual settled state. Raster
+contrast helpers collect glyph geometry and foreground roles before hiding text
+and capturing the backing pixels. On a page with conditional controls, await a
+route-owned positive settled signal before sampling; an unmount or reflow between
+those phases can otherwise pair stale text coordinates with a different control's
+surface. Absence of a transient control alone is insufficient when it can also be
+absent before work starts. Do not hide this race with a sleep, a lower contrast
+budget or a palette change to the unrelated control. Paused native keyframes
+verify source/80ms press lead/252–420ms content handoff and reverse tracks,
+alongside real-time mouse/keyboard/touch, interruption and resource checks. Event
+dispatch/focus completion does not imply Router's state commit completed; await
+the exact selected-state assertion rather than arbitrary sleeps.
 Startup module delay/abort fixtures match exact URL pathnames independently
 of Vite cache-busting queries; still assert that interception actually occurred.
 Keep production-bundle startup tests separate from those dev-module fixtures.

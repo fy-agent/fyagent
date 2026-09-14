@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Route to the frontend quality, appearance, and health contract owners."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Owns browser synchronization and raster evidence requirements."}
+{"file": ".trellis/spec/frontend/appearance.md", "reason": "Owns dark-theme composited contrast coverage and budgets."}
+{"file": ".trellis/spec/frontend/health.md", "reason": "Owns initial health-read lifecycle and conditional batch controls."}
