@@ -1,7 +1,10 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 
 import { PRODUCT_DIRECTORY } from "../../shared/features/directory";
-import { useAgentCatalog } from "../../shared/features/queries";
+import {
+  useAgentCatalog,
+  useFirstUseGuideState,
+} from "../../shared/features/queries";
 import { useFrontendReady } from "../../shared/platform/useFrontendReady";
 import { usePersistentSearchParams } from "../../shared/ui/usePersistentSearchParams";
 import { Button } from "../../shared/ui/Button";
@@ -13,6 +16,12 @@ import { AGENT_SECTION_IDS, type AgentSection } from "./agentSections";
 import { useAgentDirectoryScan } from "./useAgentDirectoryScan";
 import "./Page.css";
 
+const FirstUseGuide = lazy(() =>
+  import("./FirstUseGuide").then((module) => ({
+    default: module.FirstUseGuide,
+  })),
+);
+
 function agentSection(value: string | null): AgentSection | null {
   return AGENT_SECTION_IDS.find((section) => section === value) ?? null;
 }
@@ -21,11 +30,6 @@ export function AgentsPage() {
   const { visible, searchParams, setSearchParams } =
     usePersistentSearchParams();
   const catalogQuery = useAgentCatalog();
-  useFrontendReady(!catalogQuery.isPending);
-  const scanController = useAgentDirectoryScan({
-    autoStart: true,
-    active: visible,
-  });
   const entries = catalogQuery.data?.agents ?? [];
   const rawTarget = searchParams.get("target");
   const rawSection = searchParams.get("section");
@@ -37,6 +41,35 @@ export function AgentsPage() {
   const catalogEntry = directoryEntry
     ? entries.find((entry) => entry.id === directoryEntry.agentId)
     : undefined;
+  const showDirectory = !directoryEntry;
+  const guideQuery = useFirstUseGuideState(showDirectory);
+  const guideLoading = showDirectory && guideQuery.isPending;
+  const showGuide = showDirectory && guideQuery.data === "pending";
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const guideWasShown = useRef(false);
+  useFrontendReady(
+    !catalogQuery.isPending &&
+      !guideLoading &&
+      (!showGuide || entries.length === 0),
+  );
+  const scanController = useAgentDirectoryScan({
+    autoStart: true,
+    active: visible && !guideLoading && !showGuide,
+  });
+
+  useEffect(() => {
+    if (!visible || !showDirectory) return;
+    if (showGuide) {
+      guideWasShown.current = true;
+    } else if (
+      !guideLoading &&
+      !catalogQuery.isPending &&
+      guideWasShown.current
+    ) {
+      guideWasShown.current = false;
+      headingRef.current?.focus({ preventScroll: true });
+    }
+  }, [catalogQuery.isPending, guideLoading, showDirectory, showGuide, visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -63,7 +96,6 @@ export function AgentsPage() {
     visible,
   ]);
 
-  const showDirectory = !directoryEntry;
   const returnToDirectory = () => {
     setSearchParams({});
   };
@@ -72,7 +104,9 @@ export function AgentsPage() {
     <div
       className="fy-feature-page fy-agents-page"
       data-testid="agents-page"
-      data-view={showDirectory ? "directory" : "configuration"}
+      data-view={
+        showGuide ? "guide" : showDirectory ? "directory" : "configuration"
+      }
       aria-label="AI 软件配置"
     >
       {catalogQuery.error && catalogQuery.data !== undefined ? (
@@ -81,7 +115,7 @@ export function AgentsPage() {
         </InlineNotice>
       ) : null}
 
-      {catalogQuery.isPending ? (
+      {catalogQuery.isPending || guideLoading ? (
         <EmptyState title="正在加载 Agent 目录">
           <Spinner label="正在加载 Agent 目录" />
         </EmptyState>
@@ -107,8 +141,19 @@ export function AgentsPage() {
           description="当前目录没有这个 Agent，请返回软件目录后重试。"
           actions={<Button onClick={returnToDirectory}>返回目录</Button>}
         />
+      ) : showGuide ? (
+        <Suspense
+          fallback={
+            <EmptyState title="正在加载引导">
+              <Spinner label="正在加载引导" />
+            </EmptyState>
+          }
+        >
+          <FirstUseGuide entries={entries} />
+        </Suspense>
       ) : showDirectory ? (
         <AgentDirectory
+          headingRef={headingRef}
           entries={entries}
           scanController={scanController}
           onConfigure={(agentId) =>

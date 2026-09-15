@@ -1,0 +1,106 @@
+.fy-first-use-guide {
+  display: grid;
+  align-content: center;
+  gap: 24px;
+  width: min(100%, 760px);
+  min-width: 0;
+  min-height: 0;
+  margin: auto;
+  padding: 24px;
+  overflow: auto;
+}
+
+.fy-first-use-guide > h1 {
+  margin: 0;
+  color: var(--fy-text);
+  font-size: var(--fy-font-page-title);
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+}
+
+.fy-first-use-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+}
+
+.fy-first-use-choice {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 112px;
+  padding: 18px;
+  text-align: start;
+  color: var(--fy-text);
+  background: var(--fy-surface-inset);
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-panel);
+  cursor: pointer;
+}
+
+.fy-first-use-choice:hover:not(:disabled) {
+  background: var(--fy-surface-hover);
+  border-color: var(--fy-border-strong);
+}
+
+.fy-first-use-choice strong,
+.fy-first-use-recommendation h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.fy-first-use-choice span,
+.fy-first-use-recommendation p {
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.fy-first-use-recommendations {
+  display: grid;
+  gap: 12px;
+}
+
+.fy-first-use-recommendation {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-panel);
+  background: var(--fy-surface-inset);
+}
+
+.fy-first-use-recommendation > div {
+  min-width: 0;
+}
+
+.fy-first-use-recommendation h2,
+.fy-first-use-recommendation p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fy-first-use-recommendation p {
+  margin-top: 4px;
+}
+
+.fy-first-use-actions {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+}
+
+.fy-first-use-completion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.fy-first-use-skip {
+  color: var(--fy-text-secondary);
+  background: transparent;
+  border-color: transparent;
+}

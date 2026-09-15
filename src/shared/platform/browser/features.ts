@@ -183,6 +183,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     settings: {
       get: async () => ({}),
       save: rejectNativeOnly,
+      getFirstUseGuideState: async () => "dismissed",
+      dismissFirstUseGuide: rejectNativeOnly,
       openExternal: rejectNativeOnly,
     },
     tooling: {

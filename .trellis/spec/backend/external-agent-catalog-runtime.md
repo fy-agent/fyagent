@@ -85,6 +85,12 @@ Parser drift against this table rejects the whole catalog.
 
 ### Static catalog
 
+- Directory descriptions state supported capabilities only, without a list of
+  unsupported features or runtime uncertainty. Keep exact capability modes and
+  action-time errors/unknown states unchanged; positive summary prose does not
+  grant new authority. TRAE's model handoff may be described positively with
+  its vendor-owned location.
+
 - The catalog is deterministic and performs no filesystem, process, network,
   registry, database, or credential read.
 - IDs, order, display names, variant IDs, official links, capability order and

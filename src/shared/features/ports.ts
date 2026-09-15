@@ -1,3 +1,4 @@
+import type { FirstUseGuideState } from "./first-use-guide";
 import type {
   JobSnapshot,
   LocalInstallStatus,
@@ -220,6 +221,8 @@ export interface McpPort {
 export interface SettingsPort {
   get(): Promise<FeatureSettings>;
   save(settings: FeatureSettings): Promise<boolean>;
+  getFirstUseGuideState(): Promise<FirstUseGuideState>;
+  dismissFirstUseGuide(): Promise<"dismissed">;
   openExternal(url: string): Promise<void>;
 }
 

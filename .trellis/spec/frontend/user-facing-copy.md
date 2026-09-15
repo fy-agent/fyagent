@@ -95,7 +95,7 @@ not user copy.
 - Windows vendor-wizard success copy states that the installer opened and the
   user should finish it, then refresh. It must not say the product is installed.
 - OpenCode Windows x64 may be offered as a current-user official installer.
-  ARM64 remains unavailable. Catalog description states Skills/MCP/Hooks
+  ARM64 remains unavailable. Catalog description states Skills/model/MCP support
   only; do not add 「本机识别和启动暂无法确认」. Claude Code now uses its
   CLI-only lifecycle and must not promise Claude Desktop support. Destination labels may use the
   display name and must not be treated as the scanned folder
@@ -125,6 +125,12 @@ Examples:
   technology.
 
 ### Concise secondary surfaces
+
+Software-directory summaries describe supported capabilities, not lists of
+unsupported features. Keep capability matrices and real failure/unknown/safety
+messages at their operation points. First-use recommendations use one question,
+three purpose choices and an explicit skip action; see
+[First-use Guide](./first-use-guide.md).
 
 The object name, meaningful state and actions are the default hierarchy across
 all eight routes and their details/dialogs. A heading does not require a

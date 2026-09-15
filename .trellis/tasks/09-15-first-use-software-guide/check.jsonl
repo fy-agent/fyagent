@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/agent-directory.md","reason":"原生目录和浏览器回归"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"类型、测试与真实证据边界"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"窄命令注册、权限和 owner 复用"}
+{"file":".trellis/spec/frontend/first-use-guide.md","reason":"两步引导、推荐、键盘与重启回归"}
+{"file":".trellis/spec/backend/first-use-guide.md","reason":"兼容旧安装和完成状态防覆盖"}

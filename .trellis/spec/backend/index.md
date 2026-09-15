@@ -50,6 +50,9 @@ secret handling, native source checks, and residual-risk reporting.
 
 ## Product, configuration, and runtime security
 
+[Device-local First-use Guide](./first-use-guide.md) owns new-install eligibility,
+settings persistence, narrow commands and protection against stale settings saves.
+
 [Agent Health Observation](./health.md) owns the on-demand local status
 snapshot and its read-only installation/configuration/auth/proxy evidence.
 

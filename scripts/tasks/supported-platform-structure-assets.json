@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "b2d22ce4e03d7ab5f80bd501b04d9740dc0dfe4a8482dd63e59107eff4ffe2b8"
+      "d922fa93a7240fd21fc8ae98c02faebaa128559da8a88a4f942e59092896ef6e"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -323,7 +323,7 @@
     ],
     [
       "src-tauri/src/settings.rs",
-      "5ee6e10af746639c69332cb0b4b9a47473e669e04b037d137742669777c765b8"
+      "02ddcaa503d348a988a17cb9aeee323f2ed6b706aad7f292485b8dfa3261758d"
     ],
     [
       "src-tauri/src/tray.rs",
