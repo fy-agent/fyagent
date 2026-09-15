@@ -21,7 +21,7 @@ const recommendedIds: Record<GuidePurpose, readonly AgentCatalogId[]> = {
   both: ["workbuddy", "codex"],
 };
 
-const reasons: Partial<Record<AgentCatalogId, string>> = {
+const reasons: Record<AgentCatalogId, string> = {
   qoderwork: "整理文件、处理数据与生成文档",
   "trae-work": "文档、演示稿与资料调研",
   workbuddy: "处理日常办公任务",
@@ -39,6 +39,6 @@ export function firstUseRecommendations(
     .filter((entry) => recommendedIds[purpose].includes(entry.id))
     .map((entry) => ({
       entry,
-      reason: reasons[entry.id] ?? entry.description,
+      reason: reasons[entry.id],
     }));
 }

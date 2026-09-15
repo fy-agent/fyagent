@@ -1,0 +1,6 @@
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"复核设备设置、Rust IPC、Renderer 查询与 UI 的完整跨层数据流和 authority。"}
+{"file":".trellis/spec/backend/first-use-guide.md","reason":"首次安装资格、设备持久化、窄命令和普通设置防覆盖的后端 owner。"}
+{"file":".trellis/spec/frontend/first-use-guide.md","reason":"路由门禁、推荐投影、完成生命周期、可访问性与浏览器证据的前端 owner。"}
+{"file":".trellis/spec/backend/external-agent-catalog-runtime.md","reason":"原生七项目录身份、顺序和正向摘要边界。"}
+{"file":".trellis/spec/frontend/user-facing-copy.md","reason":"正向目录摘要与真实错误、未知和安全提示的文案边界。"}
+{"file":".trellis/spec/backend/github-merge-governance.md","reason":"Trellis 归档、精确 PR head、Merge Queue 和最终 main 读回顺序。"}

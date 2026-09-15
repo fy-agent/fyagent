@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/first-use-guide.md","reason":"检查资格失败矩阵、双字段唯一写权限和 required tests 与实现一致。"}
+{"file":".trellis/spec/frontend/first-use-guide.md","reason":"检查三组推荐、目录交集、错误/隐藏行为和生产分包测试契约。"}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"检查 PR/merge-group 域调度、稳定 Required 结果和 CI 证据层级。"}
+{"file":".trellis/spec/backend/github-merge-governance.md","reason":"检查归档、推送、exact-head 自动合并、队列和 post-merge 读回。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"检查单测、浏览器、生产构建和证据边界是否与主张匹配。"}

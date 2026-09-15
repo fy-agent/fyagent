@@ -21,6 +21,15 @@ fn initial_state(settings: &AppSettings, fresh_install: bool) -> FirstUseGuideSt
     })
 }
 
+fn should_initialize_pending(
+    settings: &AppSettings,
+    new_data_dir: bool,
+    no_settings_file: bool,
+) -> bool {
+    settings.first_use_guide_state.is_none()
+        && initial_state(settings, new_data_dir && no_settings_file) == FirstUseGuideState::Pending
+}
+
 /// Persist eligibility before database creation/seeding so an unfinished guide
 /// survives a restart. Missing markers on existing or unreadable data are not
 /// evidence of a new install; those users keep the ordinary directory.
@@ -28,9 +37,7 @@ pub(crate) fn initialize_first_use_guide(new_data_dir: bool) -> Result<(), AppEr
     let settings = get_settings();
     let no_settings_file =
         AppSettings::settings_path().is_some_and(|path| matches!(path.try_exists(), Ok(false)));
-    if settings.first_use_guide_state.is_none()
-        && initial_state(&settings, new_data_dir && no_settings_file) == FirstUseGuideState::Pending
-    {
+    if should_initialize_pending(&settings, new_data_dir, no_settings_file) {
         mutate_settings(|current| {
             current.first_use_guide_state = Some(FirstUseGuideState::Pending);
         })?;
@@ -62,6 +69,34 @@ mod tests {
             initial_state(&settings, false),
             FirstUseGuideState::Dismissed
         );
+    }
+
+    #[test]
+    fn initialization_requires_every_absence_check_and_no_prior_marker() {
+        let settings = AppSettings::default();
+        for (new_data_dir, no_settings_file, expected) in [
+            (true, true, true),
+            (true, false, false),
+            (false, true, false),
+            (false, false, false),
+        ] {
+            assert_eq!(
+                should_initialize_pending(&settings, new_data_dir, no_settings_file),
+                expected
+            );
+        }
+
+        let pending = AppSettings {
+            first_use_guide_state: Some(FirstUseGuideState::Pending),
+            ..AppSettings::default()
+        };
+        assert!(!should_initialize_pending(&pending, true, true));
+
+        let legacy_confirmed = AppSettings {
+            first_run_notice_confirmed: Some(true),
+            ..AppSettings::default()
+        };
+        assert!(!should_initialize_pending(&legacy_confirmed, true, true));
     }
 
     #[test]

@@ -192,6 +192,8 @@ Required assertion points:
 
 - exact contract version, product order, capability order, link IDs and closed
   enums in Rust and `src/shared/features/agents.ts`;
+- every directory description remains positive supported-capability prose while
+  the exact capability modes/reasons stay unchanged and independently asserted;
 - `EXPECTED_AGENT_LINK_IDS` matches the native v5 table; Claude Desktop and
   Claude CLI+Desktop payloads fail closed;
 - unknown/excess fields, duplicate IDs and legacy/future versions fail closed;

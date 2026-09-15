@@ -54,11 +54,11 @@ fn merge_settings_for_save(
     incoming.current_provider_openclaw = existing.current_provider_openclaw.clone();
     incoming.current_provider_hermes = existing.current_provider_hermes.clone();
     incoming.appearance_theme = existing.appearance_theme.clone();
-    // A stale settings snapshot must not reopen a completed first-use guide.
+    // Both first-use fields are native-owned. A full settings snapshot must
+    // neither reopen a completed guide nor dismiss a pending one through the
+    // legacy acknowledgement field; only dismiss_first_use_guide may advance it.
     incoming.first_use_guide_state = existing.first_use_guide_state;
-    if existing.first_run_notice_confirmed == Some(true) {
-        incoming.first_run_notice_confirmed = Some(true);
-    }
+    incoming.first_run_notice_confirmed = existing.first_run_notice_confirmed;
     incoming
 }
 
@@ -660,20 +660,43 @@ mod tests {
     }
 
     #[test]
-    fn save_settings_should_preserve_existing_first_use_guide_state() {
-        let existing = crate::settings::AppSettings {
-            first_use_guide_state: Some(crate::settings::FirstUseGuideState::Dismissed),
-            first_run_notice_confirmed: Some(true),
-            ..crate::settings::AppSettings::default()
-        };
-        let incoming = crate::settings::AppSettings {
-            first_use_guide_state: Some(crate::settings::FirstUseGuideState::Pending),
-            first_run_notice_confirmed: Some(false),
-            ..crate::settings::AppSettings::default()
-        };
-        let merged = merge_settings_for_save(incoming, &existing);
-        assert_eq!(merged.first_use_guide_state, existing.first_use_guide_state);
-        assert_eq!(merged.first_run_notice_confirmed, Some(true));
+    fn save_settings_preserves_native_first_use_fields_in_both_directions() {
+        for (existing_state, existing_legacy, incoming_state, incoming_legacy) in [
+            (
+                Some(crate::settings::FirstUseGuideState::Dismissed),
+                Some(true),
+                Some(crate::settings::FirstUseGuideState::Pending),
+                Some(false),
+            ),
+            (
+                Some(crate::settings::FirstUseGuideState::Pending),
+                None,
+                Some(crate::settings::FirstUseGuideState::Dismissed),
+                Some(true),
+            ),
+            (
+                None,
+                None,
+                Some(crate::settings::FirstUseGuideState::Dismissed),
+                Some(true),
+            ),
+        ] {
+            let existing = crate::settings::AppSettings {
+                first_use_guide_state: existing_state,
+                first_run_notice_confirmed: existing_legacy,
+                ..crate::settings::AppSettings::default()
+            };
+            let incoming = crate::settings::AppSettings {
+                first_use_guide_state: incoming_state,
+                first_run_notice_confirmed: incoming_legacy,
+                ..crate::settings::AppSettings::default()
+            };
+
+            let merged = merge_settings_for_save(incoming, &existing);
+
+            assert_eq!(merged.first_use_guide_state, existing_state);
+            assert_eq!(merged.first_run_notice_confirmed, existing_legacy);
+        }
     }
 
     #[test]
