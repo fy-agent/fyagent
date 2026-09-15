@@ -903,3 +903,40 @@ Diagnosed PR #188 merge-group WebKit failure as a two-phase raster sampling race
 ### Status
 
 [OK] **Completed**
+
+
+## Session 93: 复核首次使用引导 SPEC 与状态所有权
+<!-- trellis-session: v=2 fp=ba4d7b6a9f9c7616 -->
+
+**Date**: 2026-09-15
+**Task**: 复核首次使用引导 SPEC 与状态所有权
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+复核 2026-09-15 首次使用推荐引导提交，修复普通设置保存可绕过窄完成命令的问题，并收敛前后端 SPEC、穷尽推荐说明与验证证据。
+
+### Main Changes
+
+- 普通设置保存原样保留两个原生首次引导字段，专用命令成为唯一完成路径。
+- 推荐说明改为封闭 AgentCatalogId 的穷尽映射，移除通用目录简介兜底。
+- 更新前后端 first-use owner SPEC、目录边界与 Trellis 任务证据。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ebcffdee5ed0684c6364f74922038c10e5f39a76` | fix(agents): enforce first-use guide ownership |
+
+### Testing
+
+- [OK] check:prearchive 通过；Vitest 1680 项通过、Rust 核心 3246 项通过。
+- [OK] test:browser 通过；生产启动 3 项与 Chromium/WebKit 616 项全部通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 推送精确分支 head，创建 PR 并跟进 PR/Merge Queue CI 至 main 合并。
