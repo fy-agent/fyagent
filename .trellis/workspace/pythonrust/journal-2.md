@@ -881,3 +881,25 @@ Diagnosed PR #188 merge-group WebKit failure as a two-phase raster sampling race
 ### Status
 
 [OK] **Completed**
+
+
+## Session 92: 补齐 Grok Build 首次推荐并防遗漏
+<!-- trellis-session: v=2 fp=6828965ddec87cb3 -->
+
+**Date**: 2026-09-15
+**Task**: 补齐 Grok Build 首次推荐并防遗漏
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+修正首次引导编程推荐遗漏 Grok Build，加入简短用途说明；目录七项覆盖与 Grok 当前名称/顺序回归先红后绿。聚焦 49/49、最终浏览器 90/90、生产启动 3/3、完整 prearchive 与归档后不带排除的 check:contracts 均通过。首屏 JS 665004 字节不变，SPEC 更新后已归档 09-15-grok-guide-recommendation。未改原生首次判定、未做真机全新安装验收、未推送远端。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4eb7e346b88b9386710d2b21e5769d8b4d2d3ff7` | fix(agents): include Grok Build in first-use recommendations |
+
+### Status
+
+[OK] **Completed**

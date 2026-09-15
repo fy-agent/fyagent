@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 91
+- **Total Sessions**: 92
 - **Last Active**: 2026-09-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~883 | Active |
+| `journal-2.md` | ~905 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 92 | 2026-09-15 | 补齐 Grok Build 首次推荐并防遗漏 | `4eb7e346b88b9386710d2b21e5769d8b4d2d3ff7` | `dev/laiyongjie` |
 | 91 | 2026-09-15 | AI 软件正向文案与可跳过的首次推荐引导 | `ae1da25a125d23ca7823d3ebc4ac570fd662d020` | `dev/laiyongjie` |
 | 90 | 2026-09-14 | Stabilize merge-queue contrast sampling | `5be5540c` | `dev/laiyongjie` |
 | 89 | 2026-09-14 | Audit ahead-of-main commits and split SPEC owners | `20dd6537` | `dev/laiyongjie` |
