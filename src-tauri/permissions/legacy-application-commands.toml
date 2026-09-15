@@ -158,6 +158,8 @@ commands.allow = [
   "get_runtime_privilege_status",
   "get_session_messages",
   "get_settings",
+  "get_first_use_guide_state",
+  "dismiss_first_use_guide",
   "get_skill_backups",
   "get_skill_repos",
   "get_skills",

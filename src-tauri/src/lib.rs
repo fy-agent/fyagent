@@ -1189,6 +1189,14 @@ pub fn run() {
                 }
             }
 
+            // Only absent local data admits the guide. Inaccessible paths and
+            // legacy JSON migrations are existing/unknown installs, not new ones.
+            let new_data_dir = matches!(db_path.try_exists(), Ok(false))
+                && matches!(json_path.try_exists(), Ok(false));
+            if let Err(error) = crate::settings::initialize_first_use_guide(new_data_dir) {
+                log::warn!("Unable to initialize first-use guide: {error}");
+            }
+
             let db = loop {
                 match crate::database::Database::init() {
                     Ok(db) => break Arc::new(db),
@@ -1346,14 +1354,6 @@ pub fn run() {
             // 落成 "default" provider 设为 current，再追加官方预设（is_current=false）。
             // 这样用户切到官方预设时，回填机制会保护原 live 配置不丢失。
             //
-            // 捕获首次运行快照：所有全新装用户都会看到欢迎弹窗介绍 FyAgent 的工作方式。
-            // 读失败时默认不弹，宁可漏弹也不要因为故障打扰用户。
-            let first_run_already_confirmed = crate::settings::get_settings()
-                .first_run_notice_confirmed
-                .unwrap_or(false);
-            let fresh_install_at_startup =
-                app_state.db.is_providers_empty().unwrap_or(false);
-
             for app_type in
                 crate::app_config::AppType::all().filter(|t| !t.is_additive_mode())
             {
@@ -1457,12 +1457,6 @@ pub fn run() {
                         }
                     }
                 });
-            }
-
-            // 老用户 / 已确认的路径由 `fresh_install_at_startup` 自行拦截，这里不做写入。
-            // 字段只由前端在用户点击"我知道了"时 save_settings 回写，语义是"用户显式确认过"。
-            if !first_run_already_confirmed && fresh_install_at_startup {
-                log::info!("✓ First-run welcome notice pending");
             }
 
             // 1.6. 自动同步 OpenCode / OpenClaw 的 live providers 到数据库
@@ -2081,6 +2075,8 @@ pub fn run() {
             commands::extract_common_config_snippet,
             commands::read_live_provider_settings,
             commands::get_settings,
+            commands::get_first_use_guide_state,
+            commands::dismiss_first_use_guide,
             commands::get_user_home_dir,
             commands::save_settings,
             commands::has_codex_unify_history_backup,

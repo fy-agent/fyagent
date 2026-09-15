@@ -1,4 +1,10 @@
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -537,10 +543,12 @@ function CodexLifecycleSlot({
 }
 
 export function AgentDirectory({
+  headingRef,
   entries,
   scanController,
   onConfigure,
 }: {
+  headingRef?: RefObject<HTMLHeadingElement>;
   entries: readonly AgentCatalogEntry[];
   scanController: AgentDirectoryScanController;
   onConfigure: (agentId: AgentCatalogId) => void;
@@ -579,7 +587,9 @@ export function AgentDirectory({
       <header className="fy-agent-directory-header">
         <div className="fy-agent-directory-title-row">
           <div className="fy-agent-directory-title-group">
-            <h1>我的 AI 软件</h1>
+            <h1 ref={headingRef} tabIndex={-1}>
+              我的 AI 软件
+            </h1>
           </div>
           <Button
             className="fy-control-button-primary fy-agent-scan-button"

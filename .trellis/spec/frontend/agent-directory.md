@@ -18,7 +18,9 @@ Primary owners:
 Native authority is split between
 [Agent Catalog and Runtime](../backend/external-agent-catalog-runtime.md) and
 [Agent Lifecycle](../backend/external-agent-lifecycle.md). Auth UI has its own
-owner: [Renderer Agent Auth](./agent-auth.md).
+owner: [Renderer Agent Auth](./agent-auth.md). First-install eligibility and the
+optional recommendation page belong to [First-use Guide](./first-use-guide.md).
+The ordinary directory scan waits while that guide is active.
 
 ## 2. Signatures
 

@@ -1,0 +1,33 @@
+{
+  "id": "first-use-software-guide",
+  "name": "first-use-software-guide",
+  "title": "AI 软件正向文案与首次使用推荐引导",
+  "description": "调整首页软件能力描述，新增可跳过且仅首次展示的用途推荐引导，验证并更新 SPEC 后归档。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-15",
+  "completedAt": "2026-09-15",
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "ae1da25a125d23ca7823d3ebc4ac570fd662d020",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/pages/agents/Page.tsx",
+    "src/pages/agents/FirstUseGuide.tsx",
+    "src-tauri/src/settings/first_use_guide.rs",
+    "src-tauri/src/commands/agent_catalog.rs",
+    ".trellis/spec/frontend/first-use-guide.md",
+    ".trellis/spec/backend/first-use-guide.md"
+  ],
+  "notes": "R1–R7 已完成。SPEC 与验收记录已随工作提交更新；归档前完整门禁、42 项浏览器回归和 3 项生产启动测试通过。自动化证据不等同于真机全新安装验收；未推送远端。",
+  "meta": {}
+}

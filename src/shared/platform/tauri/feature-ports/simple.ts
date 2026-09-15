@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { FeaturePorts } from "../../../features/ports";
+import { parseFirstUseGuideState } from "../../../features/first-use-guide";
 
 function validateExternalUrl(url: string): void {
   let parsed: URL;
@@ -66,6 +67,18 @@ export function createSimpleFeaturePorts(): Pick<
     settings: {
       get: () => invoke("get_settings"),
       save: (settings) => invoke("save_settings", { settings }),
+      getFirstUseGuideState: async () =>
+        parseFirstUseGuideState(
+          await invoke<unknown>("get_first_use_guide_state"),
+        ),
+      dismissFirstUseGuide: async () => {
+        const state = parseFirstUseGuideState(
+          await invoke<unknown>("dismiss_first_use_guide"),
+        );
+        if (state !== "dismissed")
+          throw new Error("First-use guide was not dismissed");
+        return state;
+      },
       openExternal: async (url) => {
         validateExternalUrl(url);
         await invoke("open_external", { url });

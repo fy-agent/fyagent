@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -31,6 +31,9 @@ import {
   type PromptAppId,
 } from "@/shared/features/types";
 import { createBrowserFeaturePorts } from "@/shared/platform/browser/features";
+import type { FirstUseGuideState } from "@/shared/features/first-use-guide";
+import { firstUseRecommendations } from "@/pages/agents/firstUseRecommendations";
+import { PersistentSurface } from "@/shared/ui/PersistentSurface";
 
 const capabilityIds: readonly AgentCapabilityId[] = [
   "product.open",
@@ -431,6 +434,264 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+describe("first-use software guide", () => {
+  function firstUsePorts() {
+    const ports = configuredPorts();
+    let state: FirstUseGuideState = "pending";
+    ports.settings.getFirstUseGuideState = vi.fn(async () => state);
+    ports.settings.dismissFirstUseGuide = vi.fn(async () => {
+      state = "dismissed";
+      return "dismissed" as const;
+    });
+    ports.settings.save = vi.fn();
+    return ports;
+  }
+
+  it.each([
+    ["日常办公", ["QoderWork CN", "TRAE Work CN", "WorkBuddy"]],
+    ["编程开发", ["Grok Build", "Codex", "Claude Code", "OpenCode"]],
+    ["两者都用", ["WorkBuddy", "Codex"]],
+  ])(
+    "recommends catalog entries for %s without side effects",
+    async (choice, names) => {
+      const user = userEvent.setup();
+      const ports = firstUsePorts();
+      renderPage(ports);
+      expect(
+        await screen.findByRole("heading", { name: "你主要想用 AI 做什么？" }),
+      ).toHaveFocus();
+      await user.click(screen.getByRole("button", { name: choice }));
+      expect(
+        screen.getByRole("heading", { name: "推荐你从这些软件开始" }),
+      ).toHaveFocus();
+      expect(
+        screen
+          .getAllByRole("heading", { level: 2 })
+          .map((node) => node.textContent),
+      ).toEqual(names);
+      expect(screen.getByRole("button", { name: "跳过引导" })).toBeEnabled();
+      expect(ports.settings.save).not.toHaveBeenCalled();
+      expect(ports.settings.dismissFirstUseGuide).not.toHaveBeenCalled();
+      expect(ports.agentInstallReadiness.get).not.toHaveBeenCalled();
+      expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
+      await user.click(screen.getByRole("button", { name: "重新选择" }));
+      expect(
+        screen.getByRole("heading", { name: "你主要想用 AI 做什么？" }),
+      ).toHaveFocus();
+    },
+  );
+
+  it.each(["skip", "complete", "skip-recommendations"])(
+    "persists %s and does not reopen with a new query client",
+    async (action) => {
+      const user = userEvent.setup();
+      const ports = firstUsePorts();
+      const view = renderPage(ports);
+      await screen.findByRole("heading", { name: "你主要想用 AI 做什么？" });
+      if (action !== "skip") {
+        await user.click(screen.getByRole("button", { name: "两者都用" }));
+      }
+      await user.click(
+        screen.getByRole("button", {
+          name: action === "complete" ? "查看全部软件" : "跳过引导",
+        }),
+      );
+      expect(
+        await screen.findByRole("heading", { name: "我的 AI 软件" }),
+      ).toHaveFocus();
+      expect(ports.settings.dismissFirstUseGuide).toHaveBeenCalledTimes(1);
+      expect(ports.settings.save).not.toHaveBeenCalled();
+      expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
+      view.unmount();
+      renderPage(ports);
+      await screen.findByRole("heading", { name: "我的 AI 软件" });
+      expect(
+        screen.queryByRole("region", { name: "首次使用引导" }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("keeps the chosen step after a save failure and allows a safe retry", async () => {
+    const user = userEvent.setup();
+    const ports = firstUsePorts();
+    vi.mocked(ports.settings.dismissFirstUseGuide).mockRejectedValueOnce(
+      new Error("private native path"),
+    );
+    renderPage(ports);
+    await user.click(await screen.findByRole("button", { name: "编程开发" }));
+    await user.click(screen.getByRole("button", { name: "查看全部软件" }));
+    expect(
+      await screen.findByText("暂时无法保存引导状态，请重试。"),
+    ).toBeVisible();
+    expect(screen.queryByText("private native path")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(4);
+    expect(ports.agentInstallReadiness.get).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "查看全部软件" }));
+    await screen.findByRole("heading", { name: "我的 AI 软件" });
+  });
+
+  it("waits for native persistence and admits only one in-flight dismissal", async () => {
+    const user = userEvent.setup();
+    const ports = firstUsePorts();
+    const write = deferred<"dismissed">();
+    ports.settings.dismissFirstUseGuide = vi.fn(() => write.promise);
+    renderPage(ports);
+    await user.dblClick(
+      await screen.findByRole("button", { name: "跳过引导" }),
+    );
+    expect(ports.settings.dismissFirstUseGuide).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "日常办公" })).toBeDisabled();
+    expect(
+      screen.queryByRole("heading", { name: "我的 AI 软件" }),
+    ).not.toBeInTheDocument();
+    await act(async () => write.resolve("dismissed"));
+    await screen.findByRole("heading", { name: "我的 AI 软件" });
+  });
+
+  it("does not flash a directory or signal ready before the first-use read settles", async () => {
+    const ports = firstUsePorts();
+    const read = deferred<FirstUseGuideState>();
+    ports.settings.getFirstUseGuideState = vi.fn(() => read.promise);
+    const signal = vi
+      .spyOn(frontendLifecycle, "signalFrontendReady")
+      .mockResolvedValue(undefined);
+    renderPage(ports);
+    await waitFor(() => expect(ports.catalog.get).toHaveBeenCalled());
+    expect(
+      screen.queryByRole("region", { name: "AI 软件目录" }),
+    ).not.toBeInTheDocument();
+    expect(signal).not.toHaveBeenCalled();
+    await act(async () => read.resolve("pending"));
+    await screen.findByRole("heading", { name: "你主要想用 AI 做什么？" });
+    await waitFor(() => expect(signal).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not treat a failed first-use read as a fresh installation", async () => {
+    const ports = firstUsePorts();
+    ports.settings.getFirstUseGuideState = vi
+      .fn()
+      .mockRejectedValue(new Error("unavailable"));
+    renderPage(ports);
+    await screen.findByRole("heading", { name: "我的 AI 软件" });
+    expect(
+      screen.queryByRole("region", { name: "首次使用引导" }),
+    ).not.toBeInTheDocument();
+    expect(ports.settings.dismissFirstUseGuide).not.toHaveBeenCalled();
+  });
+
+  it("keeps a fresh-user catalog error ready without waiting for guide content", async () => {
+    const ports = firstUsePorts();
+    ports.catalog.get = vi.fn().mockRejectedValue(new Error("unavailable"));
+    const signal = vi
+      .spyOn(frontendLifecycle, "signalFrontendReady")
+      .mockResolvedValue(undefined);
+    renderPage(ports);
+    await screen.findByText("无法加载 Agent 目录", {}, { timeout: 3000 });
+    await waitFor(() => expect(signal).toHaveBeenCalledTimes(1));
+    expect(
+      screen.queryByRole("region", { name: "首次使用引导" }),
+    ).not.toBeInTheDocument();
+    expect(ports.settings.dismissFirstUseGuide).not.toHaveBeenCalled();
+  });
+
+  it("leaves explicit configuration links in control", async () => {
+    const ports = firstUsePorts();
+    renderPage(ports, "/agents?target=codex&section=models");
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-page")).toHaveAttribute(
+        "data-view",
+        "configuration",
+      ),
+    );
+    expect(ports.settings.getFirstUseGuideState).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("region", { name: "首次使用引导" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each(["success", "failure"])(
+    "reconciles hidden dismissal %s without scanning or stealing focus",
+    async (outcome) => {
+      const user = userEvent.setup();
+      const ports = firstUsePorts();
+      const write = deferred<"dismissed">();
+      ports.settings.dismissFirstUseGuide = vi
+        .fn()
+        .mockImplementationOnce(() => write.promise)
+        .mockResolvedValue("dismissed");
+      const view = (active: boolean) => (
+        <MemoryRouter>
+          <FeatureProvider ports={ports}>
+            <button>Other page</button>
+            <PersistentSurface active={active}>
+              <AgentsPage />
+            </PersistentSurface>
+          </FeatureProvider>
+        </MemoryRouter>
+      );
+      const rendered = render(view(true));
+      await user.click(await screen.findByRole("button", { name: "跳过引导" }));
+      rendered.rerender(view(false));
+      await user.click(screen.getByRole("button", { name: "Other page" }));
+      await act(async () => {
+        if (outcome === "success") write.resolve("dismissed");
+        else write.reject(new Error("unavailable"));
+      });
+      expect(screen.getByRole("button", { name: "Other page" })).toHaveFocus();
+      expect(ports.agentInstallReadiness.get).not.toHaveBeenCalled();
+      expect(
+        screen.queryByText("暂时无法保存引导状态，请重试。"),
+      ).not.toBeInTheDocument();
+      rendered.rerender(view(true));
+      if (outcome === "failure") {
+        expect(
+          await screen.findByText("暂时无法保存引导状态，请重试。"),
+        ).toBeVisible();
+        await user.click(screen.getByRole("button", { name: "跳过引导" }));
+      }
+      await screen.findByRole("heading", { name: "我的 AI 软件" });
+      await waitFor(() =>
+        expect(ports.agentInstallReadiness.get).toHaveBeenCalled(),
+      );
+    },
+  );
+
+  it("covers every current catalog identity across the office and coding recommendations", () => {
+    const entries = catalog().agents;
+    expect(entries.map((item) => item.id)).toEqual([...AGENT_CATALOG_IDS]);
+    const recommendations = [
+      ...firstUseRecommendations(entries, "office"),
+      ...firstUseRecommendations(entries, "coding"),
+    ];
+    expect(new Set(recommendations.map((item) => item.entry.id))).toEqual(
+      new Set(AGENT_CATALOG_IDS),
+    );
+    for (const recommendation of recommendations) {
+      expect(recommendation.reason.trim()).not.toBe("");
+      expect(recommendation.reason).not.toBe(recommendation.entry.description);
+    }
+  });
+
+  it("keeps Grok Build coding recommendations in supplied catalog order with current names", () => {
+    const codex = entry("codex", "Current Codex name");
+    const grok = entry("grokbuild", "Current Grok Build name");
+    expect(firstUseRecommendations([codex, grok], "coding")).toEqual([
+      { entry: codex, reason: "开发功能、修复问题与检查代码" },
+      { entry: grok, reason: "在终端中编写代码与运行测试" },
+    ]);
+    expect(firstUseRecommendations([grok], "office")).toEqual([]);
+  });
+
+  it("only recommends supplied catalog identities and uses their current names", () => {
+    const renamed = { ...entry("codex", "Current catalog name") };
+    expect(firstUseRecommendations([renamed], "coding")).toEqual([
+      { entry: renamed, reason: "开发功能、修复问题与检查代码" },
+    ]);
+    expect(firstUseRecommendations([renamed], "office")).toEqual([]);
+    expect(firstUseRecommendations([], "both")).toEqual([]);
+  });
+});
+
 const CATALOG_NAMES = [
   "QoderWork CN",
   "TRAE Work CN",
@@ -634,7 +895,7 @@ describe("V3 Agent directory and configuration shell", () => {
     ).toBeEnabled();
     scanComplete = true;
     expect(
-      within(directoryArticle("QoderWork CN")).getByRole("button", {
+      await within(directoryArticle("QoderWork CN")).findByRole("button", {
         name: "一键安装",
       }),
     ).toBeVisible();
@@ -759,7 +1020,7 @@ describe("V3 Agent directory and configuration shell", () => {
       await screen.findByRole("button", { name: "重新扫描" }),
     ).toBeEnabled();
     await user.click(
-      within(directoryArticle("QoderWork CN")).getByRole("button", {
+      await within(directoryArticle("QoderWork CN")).findByRole("button", {
         name: "选择安装目标",
       }),
     );
@@ -860,7 +1121,7 @@ describe("V3 Agent directory and configuration shell", () => {
     scanComplete = true;
 
     await user.click(
-      within(directoryArticle("QoderWork CN")).getByRole("button", {
+      await within(directoryArticle("QoderWork CN")).findByRole("button", {
         name: "一键安装",
       }),
     );
@@ -929,7 +1190,7 @@ describe("V3 Agent directory and configuration shell", () => {
     scanComplete = true;
 
     await user.click(
-      within(directoryArticle("QoderWork CN")).getByRole("button", {
+      await within(directoryArticle("QoderWork CN")).findByRole("button", {
         name: "一键安装",
       }),
     );
@@ -989,7 +1250,7 @@ describe("V3 Agent directory and configuration shell", () => {
       await screen.findByRole("button", { name: "重新扫描" }),
     ).toBeEnabled();
     expect(
-      within(directoryArticle("OpenCode")).getByRole("button", {
+      await within(directoryArticle("OpenCode")).findByRole("button", {
         name: "一键更新",
       }),
     ).toBeVisible();

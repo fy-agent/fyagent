@@ -54,6 +54,11 @@ fn merge_settings_for_save(
     incoming.current_provider_openclaw = existing.current_provider_openclaw.clone();
     incoming.current_provider_hermes = existing.current_provider_hermes.clone();
     incoming.appearance_theme = existing.appearance_theme.clone();
+    // Both first-use fields are native-owned. A full settings snapshot must
+    // neither reopen a completed guide nor dismiss a pending one through the
+    // legacy acknowledgement field; only dismiss_first_use_guide may advance it.
+    incoming.first_use_guide_state = existing.first_use_guide_state;
+    incoming.first_run_notice_confirmed = existing.first_run_notice_confirmed;
     incoming
 }
 
@@ -61,6 +66,16 @@ fn merge_settings_for_save(
 #[tauri::command]
 pub async fn get_settings() -> Result<crate::settings::AppSettings, String> {
     Ok(crate::settings::get_settings_for_frontend())
+}
+
+#[tauri::command]
+pub async fn get_first_use_guide_state() -> crate::settings::FirstUseGuideState {
+    crate::settings::get_first_use_guide_state()
+}
+
+#[tauri::command]
+pub async fn dismiss_first_use_guide() -> Result<crate::settings::FirstUseGuideState, String> {
+    crate::settings::dismiss_first_use_guide().map_err(|error| error.to_string())
 }
 
 /// Returns the already-frozen host user home used by every default directory.
@@ -642,6 +657,46 @@ mod tests {
             merged.current_provider_hermes.as_deref(),
             Some("latest-hermes")
         );
+    }
+
+    #[test]
+    fn save_settings_preserves_native_first_use_fields_in_both_directions() {
+        for (existing_state, existing_legacy, incoming_state, incoming_legacy) in [
+            (
+                Some(crate::settings::FirstUseGuideState::Dismissed),
+                Some(true),
+                Some(crate::settings::FirstUseGuideState::Pending),
+                Some(false),
+            ),
+            (
+                Some(crate::settings::FirstUseGuideState::Pending),
+                None,
+                Some(crate::settings::FirstUseGuideState::Dismissed),
+                Some(true),
+            ),
+            (
+                None,
+                None,
+                Some(crate::settings::FirstUseGuideState::Dismissed),
+                Some(true),
+            ),
+        ] {
+            let existing = crate::settings::AppSettings {
+                first_use_guide_state: existing_state,
+                first_run_notice_confirmed: existing_legacy,
+                ..crate::settings::AppSettings::default()
+            };
+            let incoming = crate::settings::AppSettings {
+                first_use_guide_state: incoming_state,
+                first_run_notice_confirmed: incoming_legacy,
+                ..crate::settings::AppSettings::default()
+            };
+
+            let merged = merge_settings_for_save(incoming, &existing);
+
+            assert_eq!(merged.first_use_guide_state, existing_state);
+            assert_eq!(merged.first_run_notice_confirmed, existing_legacy);
+        }
     }
 
     #[test]

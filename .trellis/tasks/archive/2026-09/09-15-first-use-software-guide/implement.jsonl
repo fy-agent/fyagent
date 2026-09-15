@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/agent-directory.md","reason":"目录、原生 catalog 与生命周期边界"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"查询状态、启动与隐藏路由约束"}
+{"file":".trellis/spec/frontend/user-facing-copy.md","reason":"轻量文案和真实操作状态"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"settings owner 与命令/权限闭环"}
+{"file":".trellis/spec/frontend/first-use-guide.md","reason":"首次引导、推荐、跳过与隐藏路由边界"}
+{"file":".trellis/spec/backend/first-use-guide.md","reason":"本机首次身份与窄状态写入契约"}

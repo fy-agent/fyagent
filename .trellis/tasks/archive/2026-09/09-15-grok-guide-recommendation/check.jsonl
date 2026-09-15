@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/first-use-guide.md", "reason": "防遗漏、名称顺序与重启行为"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "测试和生产构建证据边界"}

@@ -847,3 +847,96 @@ Diagnosed PR #188 merge-group WebKit failure as a two-phase raster sampling race
 ### Status
 
 [OK] **Completed**
+
+
+## Session 91: AI 软件正向文案与可跳过的首次推荐引导
+<!-- trellis-session: v=2 fp=21f8d57b919c010b -->
+
+**Date**: 2026-09-15
+**Task**: AI 软件正向文案与可跳过的首次推荐引导
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成首页七个软件的正向能力简介与首次用途推荐引导；SPEC 已随工作提交更新，任务已归档。未推送远端、未生成发行安装包，未进行真机全新安装验收。
+
+### Main Changes
+
+- 首次本机状态在数据库初始化前保存；跳过或完成后不再展示，旧设置快照不能覆盖完成状态。
+- 办公、编程、混合用途推荐采用现有目录；引导按需加载，不自动安装、登录或改模型。
+- 新增前后端 first-use-guide SPEC，更新目录与文案约定并完成任务归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ae1da25a125d23ca7823d3ebc4ac570fd662d020` | feat(agents): add skippable first-use software recommendations |
+
+### Testing
+
+- [OK] 归档前完整门禁通过：前端 1678 通过、1 项既有跳过；Rust 3570 通过、6 项既有条件忽略；桌面 mock 7 通过。
+- [OK] Chromium/WebKit 目录及引导 42/42，生产启动 3/3；初始 JS 665004 字节，保持 665600 字节预算。
+- [OK] 聚焦页面、端口与权限单测 47/47；类型、lint、格式、Rust check/Clippy 与契约检查通过。
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 92: 补齐 Grok Build 首次推荐并防遗漏
+<!-- trellis-session: v=2 fp=6828965ddec87cb3 -->
+
+**Date**: 2026-09-15
+**Task**: 补齐 Grok Build 首次推荐并防遗漏
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+修正首次引导编程推荐遗漏 Grok Build，加入简短用途说明；目录七项覆盖与 Grok 当前名称/顺序回归先红后绿。聚焦 49/49、最终浏览器 90/90、生产启动 3/3、完整 prearchive 与归档后不带排除的 check:contracts 均通过。首屏 JS 665004 字节不变，SPEC 更新后已归档 09-15-grok-guide-recommendation。未改原生首次判定、未做真机全新安装验收、未推送远端。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4eb7e346b88b9386710d2b21e5769d8b4d2d3ff7` | fix(agents): include Grok Build in first-use recommendations |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 93: 复核首次使用引导 SPEC 与状态所有权
+<!-- trellis-session: v=2 fp=ba4d7b6a9f9c7616 -->
+
+**Date**: 2026-09-15
+**Task**: 复核首次使用引导 SPEC 与状态所有权
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+复核 2026-09-15 首次使用推荐引导提交，修复普通设置保存可绕过窄完成命令的问题，并收敛前后端 SPEC、穷尽推荐说明与验证证据。
+
+### Main Changes
+
+- 普通设置保存原样保留两个原生首次引导字段，专用命令成为唯一完成路径。
+- 推荐说明改为封闭 AgentCatalogId 的穷尽映射，移除通用目录简介兜底。
+- 更新前后端 first-use owner SPEC、目录边界与 Trellis 任务证据。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ebcffdee5ed0684c6364f74922038c10e5f39a76` | fix(agents): enforce first-use guide ownership |
+
+### Testing
+
+- [OK] check:prearchive 通过；Vitest 1680 项通过、Rust 核心 3246 项通过。
+- [OK] test:browser 通过；生产启动 3 项与 Chromium/WebKit 616 项全部通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 推送精确分支 head，创建 PR 并跟进 PR/Merge Queue CI 至 main 合并。

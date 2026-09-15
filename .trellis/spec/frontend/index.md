@@ -37,6 +37,7 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 | [Window Shell](./window-shell.md)                     | Chrome, native overlay boundary, selection and shared interaction.              |
 | [Change Plan Workspaces](./change-plan-workspaces.md) | Preview/apply, source switching, job observation and reconciliation.            |
 | [Agent Directory](./agent-directory.md)               | Catalog, scan/readiness, cards, installation and capabilities.                  |
+| [First-use Guide](./first-use-guide.md)               | Skippable purpose recommendations, native eligibility and completion.          |
 | [Agent Health](./health.md)                           | Local check snapshots, stale facts, serial refresh and existing repair routes.  |
 | [External Agent Auth](./agent-auth.md)                | Native auth observations, session ownership and safe handoff.                   |
 | [Managed Auth](./managed-auth.md)                     | Accounts/connections/request sources, login and impact confirmation.            |

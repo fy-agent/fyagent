@@ -28,6 +28,38 @@ test("production boots all eight primary routes without initialization errors", 
   expect(errors).toEqual([]);
 });
 
+test("production boots the first-use guide on demand and persists skipping", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  const scripts: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("request", (request) => {
+    if (request.resourceType() === "script") scripts.push(request.url());
+  });
+  await installRichTauriFeatureFixture(page, { firstUseGuideState: "pending" });
+  await page.goto("/#/agents");
+  await expect(
+    page.getByRole("heading", { name: "你主要想用 AI 做什么？" }),
+  ).toBeFocused();
+  const guideScripts = scripts.filter((url) =>
+    /\/FirstUseGuide-[^/]+\.js$/u.test(url),
+  );
+  expect(guideScripts).toHaveLength(1);
+  await page.getByRole("button", { name: "两者都用", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText([
+    "WorkBuddy",
+    "Codex",
+  ]);
+  await page.getByRole("button", { name: "跳过引导" }).click();
+  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+  scripts.length = 0;
+  await page.reload();
+  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+  expect(scripts.some((url) => guideScripts.includes(url))).toBe(false);
+  expect(errors).toEqual([]);
+});
+
 for (const cpuRate of [1, 4]) {
   test(`production navigation at ${cpuRate}x CPU cost`, async ({
     page,

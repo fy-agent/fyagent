@@ -68,7 +68,21 @@ export const featureKeys = {
     [...dailyMemorySearchKey, query] as const,
   dailyMemorySearches: dailyMemorySearchKey,
   settings: [scope, "settings"] as const,
+  firstUseGuide: [scope, "first-use-guide"] as const,
 };
+
+export function useFirstUseGuideState(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.firstUseGuide,
+    queryFn: ports.settings.getFirstUseGuideState,
+    enabled: useVisibleEnabled(enabled),
+    staleTime: Infinity,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}
 
 export function agentHealthQueryOptions(
   port: HealthPort,

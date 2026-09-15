@@ -7,6 +7,12 @@ use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::services::skill::{SkillStorageLocation, SyncMethod};
 
+mod first_use_guide;
+pub use first_use_guide::FirstUseGuideState;
+pub(crate) use first_use_guide::{
+    dismiss_first_use_guide, get_first_use_guide_state, initialize_first_use_guide,
+};
+
 /// 自定义端点配置（历史兼容，实际存储在 provider.meta.custom_endpoints）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -399,6 +405,9 @@ pub struct AppSettings {
     /// User has confirmed the first-run welcome notice
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub first_run_notice_confirmed: Option<bool>,
+    /// Device-local first-use eligibility, maintained only by the native guide owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_use_guide_state: Option<FirstUseGuideState>,
     /// User has confirmed the common config first-run notice
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub common_config_confirmed: Option<bool>,
@@ -532,6 +541,7 @@ impl Default for AppSettings {
             unify_codex_migrate_existing: None,
             failover_confirmed: None,
             first_run_notice_confirmed: None,
+            first_use_guide_state: None,
             common_config_confirmed: None,
             language: None,
             appearance_theme: None,

@@ -85,6 +85,12 @@ Parser drift against this table rejects the whole catalog.
 
 ### Static catalog
 
+- Directory descriptions state supported capabilities only, without a list of
+  unsupported features or runtime uncertainty. Keep exact capability modes and
+  action-time errors/unknown states unchanged; positive summary prose does not
+  grant new authority. TRAE's model handoff may be described positively with
+  its vendor-owned location.
+
 - The catalog is deterministic and performs no filesystem, process, network,
   registry, database, or credential read.
 - IDs, order, display names, variant IDs, official links, capability order and
@@ -186,6 +192,8 @@ Required assertion points:
 
 - exact contract version, product order, capability order, link IDs and closed
   enums in Rust and `src/shared/features/agents.ts`;
+- every directory description remains positive supported-capability prose while
+  the exact capability modes/reasons stay unchanged and independently asserted;
 - `EXPECTED_AGENT_LINK_IDS` matches the native v5 table; Claude Desktop and
   Claude CLI+Desktop payloads fail closed;
 - unknown/excess fields, duplicate IDs and legacy/future versions fail closed;

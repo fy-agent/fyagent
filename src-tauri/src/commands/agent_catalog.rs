@@ -644,7 +644,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::QoderWork,
         variant_id: AgentVariantId::QoderWorkCn,
         display_name: "QoderWork CN",
-        description: "支持 Skills 同步与 MCP 直接分配；不支持第三方模型配置。",
+        description: "支持 Skills 同步与 MCP 直接分配。",
         official_links: &QODERWORK_OFFICIAL_LINKS,
         capabilities: &QODERWORK_CAPABILITIES,
     },
@@ -652,8 +652,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::TraeWork,
         variant_id: AgentVariantId::TraeWorkCn,
         display_name: "TRAE Work CN",
-        description:
-            "支持 Skills 同步与 MCP 直接分配；自定义模型需在 TRAE Work CN 中添加；不支持 Hooks。",
+        description: "支持 Skills 同步与 MCP 直接分配；自定义模型可在 TRAE Work CN 中添加。",
         official_links: &TRAE_WORK_OFFICIAL_LINKS,
         capabilities: &TRAE_WORK_CAPABILITIES,
     },
@@ -661,7 +660,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::WorkBuddy,
         variant_id: AgentVariantId::WorkBuddy,
         display_name: "WorkBuddy",
-        description: "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。",
+        description: "支持 Skills 同步、模型配置与 MCP 直接分配。",
         official_links: &WORKBUDDY_OFFICIAL_LINKS,
         capabilities: &WORKBUDDY_CAPABILITIES,
     },
@@ -669,7 +668,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::GrokBuild,
         variant_id: AgentVariantId::GrokBuild,
         display_name: "Grok Build",
-        description: "支持 Skills 同步、模型配置与 MCP 直接分配。本机识别和启动暂无法确认。",
+        description: "支持 Skills 同步、模型配置与 MCP 直接分配。",
         official_links: &GROKBUILD_OFFICIAL_LINKS,
         capabilities: &GROKBUILD_CAPABILITIES,
     },
@@ -677,7 +676,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::Codex,
         variant_id: AgentVariantId::Codex,
         display_name: "Codex",
-        description: "支持桌面安装、Skills、模型配置与 MCP；不支持 Hooks。",
+        description: "支持桌面安装、Skills、模型配置与 MCP。",
         official_links: &[],
         capabilities: &CODEX_CAPABILITIES,
     },
@@ -685,8 +684,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::ClaudeCode,
         variant_id: AgentVariantId::ClaudeCode,
         display_name: "Claude Code",
-        description:
-            "支持 Claude Code CLI 安装、官方登录、Skills、模型配置与 MCP；不安装 Claude Desktop。",
+        description: "支持 Claude Code CLI 安装、官方登录、Skills、模型配置与 MCP。",
         official_links: &CLAUDE_OFFICIAL_LINKS,
         capabilities: &CLAUDE_CODE_CAPABILITIES,
     },
@@ -694,7 +692,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::OpenCode,
         variant_id: AgentVariantId::OpenCode,
         display_name: "OpenCode",
-        description: "支持 Skills、模型配置与 MCP；不支持 Hooks。",
+        description: "支持 Skills、模型配置与 MCP。",
         official_links: &OPENCODE_OFFICIAL_LINKS,
         capabilities: &OPENCODE_CAPABILITIES,
     },
@@ -996,7 +994,7 @@ mod tests {
         assert!(!trae.description.contains("本机识别和启动暂无法确认"));
         assert!(!workbuddy.description.contains("本机识别和启动暂无法确认"));
         assert!(!opencode.description.contains("本机识别和启动暂无法确认"));
-        assert!(grok.description.contains("本机识别和启动暂无法确认"));
+        assert!(!grok.description.contains("本机识别和启动暂无法确认"));
         assert_eq!(grok.display_name, "Grok Build");
         assert_eq!(grok.official_links[0].label, "打开 Grok Build 官方页面");
         assert_eq!(grok.official_links[0].url, "https://x.ai/grok");
@@ -1005,7 +1003,7 @@ mod tests {
         assert_eq!(trae.display_name, "TRAE Work CN");
         assert_eq!(trae.official_links[0].label, "打开 TRAE Work CN 官方页面");
         assert_eq!(trae.official_links[0].url, "https://www.trae.cn/sem-work");
-        assert!(qoder.description.contains("不支持第三方模型配置"));
+        assert!(!qoder.description.contains("第三方模型配置"));
         assert!(qoder.description.contains("MCP 直接分配"));
         assert!(
             !qoder.description.contains("Hooks") && !qoder.description.contains("hooks"),
@@ -1014,8 +1012,15 @@ mod tests {
         assert!(trae.description.contains("MCP 直接分配"));
         assert!(trae
             .description
-            .contains("自定义模型需在 TRAE Work CN 中添加"));
+            .contains("自定义模型可在 TRAE Work CN 中添加"));
         for entry in &catalog.agents {
+            for retired in ["不支持", "不安装", "暂无法确认"] {
+                assert!(
+                    !entry.description.contains(retired),
+                    "{}: {retired}",
+                    entry.display_name
+                );
+            }
             assert!(
                 !entry.description.contains("可通过 FyAgent"),
                 "{} must not use 可通过 FyAgent",
@@ -1298,7 +1303,9 @@ mod tests {
 
         assert!(registered.contains("bind_xai_managed_provider"));
         assert!(registered.contains("get_agent_health"));
-        assert_eq!(registered.len(), 369, "review intentional handler changes");
+        assert!(registered.contains("get_first_use_guide_state"));
+        assert!(registered.contains("dismiss_first_use_guide"));
+        assert_eq!(registered.len(), 371, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }

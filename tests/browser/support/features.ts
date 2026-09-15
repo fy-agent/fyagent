@@ -12,6 +12,7 @@ export interface FeatureFixtureCall {
 }
 
 export interface RichFeatureFixtureOptions {
+  firstUseGuideState?: "pending" | "dismissed";
   healthFailure?: AgentCatalogId;
   healthStale?: boolean;
   catalogFailure?: boolean;
@@ -86,6 +87,12 @@ export async function installRichTauriFeatureFixture(
     healthSnapshots,
   };
   await page.addInitScript((fixtureOptions: PreparedFixtureOptions) => {
+    // Browser-only persistence models the native device setting across reloads.
+    const guideStorageKey = "fyagent-test-first-use-guide";
+    let firstUseGuideState =
+      localStorage.getItem(guideStorageKey) ??
+      fixtureOptions.firstUseGuideState ??
+      "dismissed";
     let healthFailure = fixtureOptions.healthFailure;
     let healthGate: Promise<void> | null = null;
     let releaseHealth = () => {};
@@ -205,7 +212,7 @@ export async function installRichTauriFeatureFixture(
           id: "qoderwork",
           variantId: "qoderwork-cn",
           displayName: "QoderWork CN",
-          description: "Qoder 家族的桌面工作助手；当前仅提供官方入口。",
+          description: "支持 Skills 同步与 MCP 直接分配。",
           officialLinks: [
             {
               id: "product",
@@ -220,7 +227,7 @@ export async function installRichTauriFeatureFixture(
           variantId: "trae-work-cn",
           displayName: "TRAE Work CN",
           description:
-            "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。",
+            "支持 Skills 同步与 MCP 直接分配；自定义模型可在 TRAE Work CN 中添加。",
           officialLinks: [
             {
               id: "product",
@@ -234,8 +241,7 @@ export async function installRichTauriFeatureFixture(
           id: "workbuddy",
           variantId: "workbuddy",
           displayName: "WorkBuddy",
-          description:
-            "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。",
+          description: "支持 Skills 同步、模型配置与 MCP 直接分配。",
           officialLinks: [
             {
               id: "product",
@@ -249,8 +255,7 @@ export async function installRichTauriFeatureFixture(
           id: "grokbuild",
           variantId: "grokbuild",
           displayName: "Grok Build",
-          description:
-            "支持 Skills 同步、模型配置与 MCP 直接分配。本机识别和启动暂无法确认。",
+          description: "支持 Skills 同步、模型配置与 MCP 直接分配。",
           officialLinks: [
             {
               id: "product",
@@ -264,7 +269,7 @@ export async function installRichTauriFeatureFixture(
           id: "codex",
           variantId: "codex",
           displayName: "Codex",
-          description: "支持桌面安装、Skills、模型配置与 MCP；不支持 Hooks。",
+          description: "支持桌面安装、Skills、模型配置与 MCP。",
           officialLinks: [],
           capabilities: catalogCapabilities("codex"),
         },
@@ -272,7 +277,8 @@ export async function installRichTauriFeatureFixture(
           id: "claude-code",
           variantId: "claude-code",
           displayName: "Claude Code",
-          description: "支持 Skills、模型配置与 MCP；不支持 Hooks。",
+          description:
+            "支持 Claude Code CLI 安装、官方登录、Skills、模型配置与 MCP。",
           officialLinks: [
             {
               id: "product",
@@ -286,7 +292,7 @@ export async function installRichTauriFeatureFixture(
           id: "opencode",
           variantId: "opencode",
           displayName: "OpenCode",
-          description: "支持 Skills、模型配置与 MCP；不支持 Hooks。",
+          description: "支持 Skills、模型配置与 MCP。",
           officialLinks: [
             {
               id: "product",
@@ -1751,6 +1757,12 @@ export async function installRichTauriFeatureFixture(
             };
             return structuredClone(record.snapshot);
           }
+          case "get_first_use_guide_state":
+            return firstUseGuideState;
+          case "dismiss_first_use_guide":
+            firstUseGuideState = "dismissed";
+            localStorage.setItem(guideStorageKey, firstUseGuideState);
+            return firstUseGuideState;
           case "get_settings":
             return {
               skillSyncMethod: "auto",

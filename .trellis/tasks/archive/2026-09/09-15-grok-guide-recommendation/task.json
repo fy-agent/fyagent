@@ -1,0 +1,31 @@
+{
+  "id": "grok-guide-recommendation",
+  "name": "grok-guide-recommendation",
+  "title": "补齐首次引导的 Grok Build 编程推荐",
+  "description": "修正首次软件推荐遗漏 Grok Build，补充目录覆盖与四项推荐回归，更新 SPEC 后归档。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-15",
+  "completedAt": "2026-09-15",
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "4eb7e346b88b9386710d2b21e5769d8b4d2d3ff7",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/pages/agents/firstUseRecommendations.ts",
+    "tests/renderer/pages/agents/Page.test.tsx",
+    "tests/browser/first-use-guide.spec.ts",
+    ".trellis/spec/frontend/first-use-guide.md"
+  ],
+  "notes": "R1–R4 已实现并评审。聚焦 49/49、最终浏览器 90/90、生产启动 3/3 和完整归档前检查通过；SPEC 已更新，初始包预算不变。无原生状态修改，无真机全新安装验收，不推送远端。",
+  "meta": {}
+}
