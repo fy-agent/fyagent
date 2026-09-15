@@ -13,7 +13,10 @@ import {
 
 for (const choice of [
   { label: "日常办公", names: ["QoderWork CN", "TRAE Work CN", "WorkBuddy"] },
-  { label: "编程开发", names: ["Codex", "Claude Code", "OpenCode"] },
+  {
+    label: "编程开发",
+    names: ["Grok Build", "Codex", "Claude Code", "OpenCode"],
+  },
   { label: "两者都用", names: ["WorkBuddy", "Codex"] },
 ]) {
   test(`first use recommends ${choice.label} and persists completion`, async ({
@@ -34,6 +37,28 @@ for (const choice of [
     await expect(guide.getByRole("heading", { level: 2 })).toHaveText(
       choice.names,
     );
+    await expectNoHorizontalOverflow(page);
+    const complete = guide.getByRole("button", { name: "查看全部软件" });
+    const skip = guide.getByRole("button", { name: "跳过引导" });
+    // Center scrolled content instead of leaving it on a fractional clip edge.
+    for (const item of [
+      ...choice.names.map((name) =>
+        guide.getByRole("heading", { name, exact: true }),
+      ),
+      complete,
+      skip,
+    ]) {
+      await item.evaluate((node) =>
+        node.scrollIntoView({
+          block: "center",
+          inline: "nearest",
+          behavior: "instant",
+        }),
+      );
+      await expect(item).toBeInViewport({ ratio: 1 });
+    }
+    await complete.click({ trial: true });
+    await skip.click({ trial: true });
     const calls = await featureFixtureCalls(page);
     expect(calls.map((call) => call.command)).not.toContain(
       "get_agent_install_readiness",

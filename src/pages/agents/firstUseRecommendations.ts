@@ -17,7 +17,7 @@ export const GUIDE_PURPOSES: readonly {
 
 const recommendedIds: Record<GuidePurpose, readonly AgentCatalogId[]> = {
   office: ["qoderwork", "trae-work", "workbuddy"],
-  coding: ["codex", "claude-code", "opencode"],
+  coding: ["grokbuild", "codex", "claude-code", "opencode"],
   both: ["workbuddy", "codex"],
 };
 
@@ -25,6 +25,7 @@ const reasons: Partial<Record<AgentCatalogId, string>> = {
   qoderwork: "整理文件、处理数据与生成文档",
   "trae-work": "文档、演示稿与资料调研",
   workbuddy: "处理日常办公任务",
+  grokbuild: "在终端中编写代码与运行测试",
   codex: "开发功能、修复问题与检查代码",
   "claude-code": "在终端中理解、修改和测试代码",
   opencode: "在桌面或终端中编写代码",

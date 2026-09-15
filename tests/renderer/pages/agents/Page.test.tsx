@@ -449,7 +449,7 @@ describe("first-use software guide", () => {
 
   it.each([
     ["日常办公", ["QoderWork CN", "TRAE Work CN", "WorkBuddy"]],
-    ["编程开发", ["Codex", "Claude Code", "OpenCode"]],
+    ["编程开发", ["Grok Build", "Codex", "Claude Code", "OpenCode"]],
     ["两者都用", ["WorkBuddy", "Codex"]],
   ])(
     "recommends catalog entries for %s without side effects",
@@ -524,7 +524,7 @@ describe("first-use software guide", () => {
       await screen.findByText("暂时无法保存引导状态，请重试。"),
     ).toBeVisible();
     expect(screen.queryByText("private native path")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(screen.getAllByRole("article")).toHaveLength(4);
     expect(ports.agentInstallReadiness.get).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "查看全部软件" }));
     await screen.findByRole("heading", { name: "我的 AI 软件" });
@@ -655,6 +655,32 @@ describe("first-use software guide", () => {
       );
     },
   );
+
+  it("covers every current catalog identity across the office and coding recommendations", () => {
+    const entries = catalog().agents;
+    expect(entries.map((item) => item.id)).toEqual([...AGENT_CATALOG_IDS]);
+    const recommendations = [
+      ...firstUseRecommendations(entries, "office"),
+      ...firstUseRecommendations(entries, "coding"),
+    ];
+    expect(new Set(recommendations.map((item) => item.entry.id))).toEqual(
+      new Set(AGENT_CATALOG_IDS),
+    );
+    for (const recommendation of recommendations) {
+      expect(recommendation.reason.trim()).not.toBe("");
+      expect(recommendation.reason).not.toBe(recommendation.entry.description);
+    }
+  });
+
+  it("keeps Grok Build coding recommendations in supplied catalog order with current names", () => {
+    const codex = entry("codex", "Current Codex name");
+    const grok = entry("grokbuild", "Current Grok Build name");
+    expect(firstUseRecommendations([codex, grok], "coding")).toEqual([
+      { entry: codex, reason: "开发功能、修复问题与检查代码" },
+      { entry: grok, reason: "在终端中编写代码与运行测试" },
+    ]);
+    expect(firstUseRecommendations([grok], "office")).toEqual([]);
+  });
 
   it("only recommends supplied catalog identities and uses their current names", () => {
     const renamed = { ...entry("codex", "Current catalog name") };

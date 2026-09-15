@@ -41,10 +41,16 @@ rejects native-only dismissal instead of pretending to save.
   Both steps expose skip. Selection shows a small set of recommendations, with
   back/reselect and a full-directory action; it is not an installation wizard.
 - Office recommends QoderWork CN, TRAE Work CN and WorkBuddy; coding recommends
-  Codex, Claude Code and OpenCode; combined use recommends WorkBuddy and Codex.
+  Grok Build, Codex, Claude Code and OpenCode; combined use recommends WorkBuddy
+  and Codex.
   These are purpose associations, not capability, platform or quality rankings.
   Intersect IDs with the parsed catalog and preserve its names/order. Do not
   create a fallback catalog or infer installation/action permissions.
+  For the current seven products, the office/coding union covers the complete
+  catalog, with a concise purpose description for each. Cross-check against
+  `AGENT_CATALOG_IDS`; do not silently omit a product by testing only a copied
+  shortlist. Future deliberate exclusions require a recorded product rationale.
+  Combined use remains a curated entry point, not the full catalog union.
 - Purpose is component-local. Choosing it performs no native write, auth,
   install, model change or telemetry. Directory scanning starts only after the
   first-use check settles with no guide or dismissal succeeds.
@@ -82,11 +88,16 @@ existing installations through onboarding after an upgrade.
 completion, new query-client restart, delayed/failed persistence, duplicate
 clicks, unknown startup reads, target links and hidden completion. Native-port
 tests reject unknown states and pending write acknowledgements.
+The office/coding coverage assertion compares recommendation identities with
+the shared catalog IDs, independently of per-choice expected names. Keep Grok
+Build's coding reason, supplied catalog order and current-name regression.
 `browser/first-use-guide.spec.ts` covers keyboard focus, both themes,
 large-small-large viewport changes, real click reachability, persistence and
 positive catalog copy in Chromium/WebKit. Run the existing directory/browser
 regressions and production boot gate. WebKit keyboard tests use its Option-Tab
 all-controls navigation, without changing the host keyboard-access setting.
+The four-item coding result must keep recommendations and completion/skip
+controls reachable at the smallest supported viewport.
 Browser fixtures do not prove native
 first-install or Windows/macOS installer behavior.
 The production navigation smoke test also verifies that a fresh user loads the
