@@ -847,3 +847,37 @@ Diagnosed PR #188 merge-group WebKit failure as a two-phase raster sampling race
 ### Status
 
 [OK] **Completed**
+
+
+## Session 91: AI 软件正向文案与可跳过的首次推荐引导
+<!-- trellis-session: v=2 fp=21f8d57b919c010b -->
+
+**Date**: 2026-09-15
+**Task**: AI 软件正向文案与可跳过的首次推荐引导
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成首页七个软件的正向能力简介与首次用途推荐引导；SPEC 已随工作提交更新，任务已归档。未推送远端、未生成发行安装包，未进行真机全新安装验收。
+
+### Main Changes
+
+- 首次本机状态在数据库初始化前保存；跳过或完成后不再展示，旧设置快照不能覆盖完成状态。
+- 办公、编程、混合用途推荐采用现有目录；引导按需加载，不自动安装、登录或改模型。
+- 新增前后端 first-use-guide SPEC，更新目录与文案约定并完成任务归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ae1da25a125d23ca7823d3ebc4ac570fd662d020` | feat(agents): add skippable first-use software recommendations |
+
+### Testing
+
+- [OK] 归档前完整门禁通过：前端 1678 通过、1 项既有跳过；Rust 3570 通过、6 项既有条件忽略；桌面 mock 7 通过。
+- [OK] Chromium/WebKit 目录及引导 42/42，生产启动 3/3；初始 JS 665004 字节，保持 665600 字节预算。
+- [OK] 聚焦页面、端口与权限单测 47/47；类型、lint、格式、Rust check/Clippy 与契约检查通过。
+
+### Status
+
+[OK] **Completed**

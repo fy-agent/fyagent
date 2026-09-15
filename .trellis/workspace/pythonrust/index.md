@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 90
-- **Last Active**: 2026-09-14
+- **Total Sessions**: 91
+- **Last Active**: 2026-09-15
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~849 | Active |
+| `journal-2.md` | ~883 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 91 | 2026-09-15 | AI 软件正向文案与可跳过的首次推荐引导 | `ae1da25a125d23ca7823d3ebc4ac570fd662d020` | `dev/laiyongjie` |
 | 90 | 2026-09-14 | Stabilize merge-queue contrast sampling | `5be5540c` | `dev/laiyongjie` |
 | 89 | 2026-09-14 | Audit ahead-of-main commits and split SPEC owners | `20dd6537` | `dev/laiyongjie` |
 | 88 | 2026-09-14 | Simplify secondary pages and close validation gaps | `379bb0d113702421779e01eb4f49f4cf6c13c0aa`, `ee475a784f6995ecfd933b3a6b78fe1ae8950193` | `dev/laiyongjie` |
