@@ -1244,6 +1244,15 @@ mod tests {
         assert_ne!(proxy.credential_id, codex.credential_id);
         let overview = service.overview();
         assert_eq!(overview.accounts.len(), 1);
-        assert_eq!(overview.accounts[0].connected_consumer_count, 1);
+        let account_id = overview.accounts[0].account_id.as_str();
+        assert!(overview.connections.iter().any(|connection| {
+            connection.consumer == ManagedAuthConsumer::Codex
+                && connection.account_id.as_deref() == Some(account_id)
+        }));
+        assert!(overview.connections.iter().any(|connection| {
+            connection.consumer == ManagedAuthConsumer::FyagentProxy
+                && connection.account_id.as_deref() == Some(account_id)
+        }));
+        assert_eq!(overview.accounts[0].connected_consumer_count, 2);
     }
 }

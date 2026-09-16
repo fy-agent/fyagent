@@ -200,6 +200,16 @@ returns a refresh token or SecretRef.
   unavailable observation remains unknown and stopped/unadopted routes remain
   disconnected. This is local evidence, never subscription entitlement or a
   successful upstream call. Copilot's independent exchange path is unchanged.
+- Local route observation must still emit a renderer-parseable overview. A
+  stopped/unadopted `fyagent_proxy` slot may keep `accountId` (the selected
+  default identity) while `authStatus=disconnected` and `requestMode=none`.
+  `requestMode=none` requires `requestProviderLabel=null`. `connectedConsumerCount`
+  is the number of unique `connections[].consumer` values whose `accountId`
+  matches that account, including a named but not-currently-routing proxy slot.
+  Do not exclude non-connected `fyagent_proxy` from the count or leave a
+  leftover provider label on `none`: the renderer rejects the complete snapshot
+  as `账号与认证数据不可用`, and `/auth` shows only the generic retry empty
+  state.
 
 ### Identity versus credential session
 
@@ -389,6 +399,8 @@ metadata and must never include token columns.
 | leftover `auth_start_login` / `auth_poll_for_account` / `auth_remove_account` / `auth_set_default_account` / `auth_logout` / `auth_cancel_login` | `legacy_auth_mutation_disabled`; no Device Code, JSON write, or vault delete |
 | leftover `copilot_start_device_flow` / `copilot_poll_for_*` / `copilot_remove_account` / `copilot_set_default_account` / `copilot_logout`        | `legacy_auth_mutation_disabled`; list/status/models/usage remain readable    |
 | `shared` refresh owner in schema or enum                                                                                                         | reject implementation                                                        |
+| `fyagent_proxy` is disconnected/`none` but `requestProviderLabel` is still set                                                                   | renderer rejects the complete overview                                       |
+| `connectedConsumerCount` omits a connection that still names the account, including a non-routing `fyagent_proxy`                                | renderer rejects the complete overview                                       |
 
 ## 5. Good / Base / Bad Cases
 
@@ -407,6 +419,13 @@ metadata and must never include token columns.
 - **Bad:** write refresh tokens back to JSON after that source is sealed.
 - **Bad:** seal every JSON store because one source failed.
 - **Bad:** pre-mark credentials `Ready` in the parser before vault readback.
+- **Good:** a saved OpenAI/xAI default that the local listener is not routing
+  still names `fyagent_proxy` on the account, uses `requestMode=none` with a
+  null label, and keeps `connectedConsumerCount` equal to unique named
+  consumers.
+- **Bad:** drop non-connected `fyagent_proxy` from `connectedConsumerCount`, or
+  keep `requestProviderLabel` after setting `requestMode=none`. The Auth page
+  then fails closed with a generic retry instead of showing accounts.
 
 ## 6. Tests Required
 
@@ -463,6 +482,10 @@ Required assertions:
   evidence, not product acceptance. Matching-host HIL remains `#[ignore]`
   until a signed app with `HY446996QX.com.fyagent.desktop` access-group
   evidence runs.
+- unrouted proxy observation clears `requestProviderLabel` when
+  `requestMode=none`; overview counts named `fyagent_proxy` slots even when
+  they are not currently routing; renderer parser accepts disconnected proxy
+  `none`+null-label and rejects leftover labels / under-counted summaries.
 
 ## 7. Wrong vs Correct
 
@@ -518,4 +541,24 @@ leftover copilot_start_device_flow / poll / remove / set_default / logout
   -> legacy_auth_mutation_disabled
 managed_auth_* owns login, default, and removal with preview
 auth_list_accounts / auth_get_status remain read-only
+```
+
+Wrong:
+
+```text
+observe proxy route = false
+  -> requestMode=none, requestProviderLabel="openai"
+  -> connectedConsumerCount excludes fyagent_proxy because authStatus!=connected
+  -> renderer parseManagedAuthOverview throws
+  -> /auth empty retry state
+```
+
+Correct:
+
+```text
+observe proxy route = false
+  -> requestMode=none, requestProviderLabel=null
+  -> connectedConsumerCount = unique consumers whose accountId matches
+     (including named disconnected fyagent_proxy)
+  -> renderer accepts the snapshot
 ```

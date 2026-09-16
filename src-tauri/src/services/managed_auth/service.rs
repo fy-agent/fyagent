@@ -1148,38 +1148,11 @@ where
                     )
                 })
                 .flatten();
-            let (status, mode, reason) = match observed {
-                Some(true) => (
-                    ManagedAuthConnectionState::Connected,
-                    ManagedAuthRequestMode::OfficialSubscription,
-                    None,
-                ),
-                Some(false) => (
-                    ManagedAuthConnectionState::Disconnected,
-                    ManagedAuthRequestMode::None,
-                    Some(ManagedAuthReasonCode::ConnectionUnavailable),
-                ),
-                None => (
-                    ManagedAuthConnectionState::Checking,
-                    ManagedAuthRequestMode::Unknown,
-                    Some(ManagedAuthReasonCode::ObserverUnavailable),
-                ),
-            };
-            connection.auth_status = status;
-            connection.request_mode = mode;
-            connection.reason_codes = reason.into_iter().collect();
+            apply_proxy_route_observation(connection, observed);
         }
         for account in &mut accounts {
-            account.connected_consumer_count = connection_summaries
-                .iter()
-                .filter(|connection| {
-                    connection.account_id.as_deref() == Some(account.account_id.as_str())
-                        && (connection.consumer != ManagedAuthConsumer::FyagentProxy
-                            || connection.auth_status == ManagedAuthConnectionState::Connected)
-                })
-                .map(|connection| connection.consumer)
-                .collect::<std::collections::HashSet<_>>()
-                .len();
+            account.connected_consumer_count =
+                wire_connected_consumer_count(&account.account_id, &connection_summaries);
         }
         Ok(ManagedAuthOverview {
             contract_version: MANAGED_AUTH_CONTRACT_VERSION,
@@ -2011,6 +1984,57 @@ fn merge_consumer_connections(
     summaries
 }
 
+fn request_provider_label_for(
+    mode: ManagedAuthRequestMode,
+    label: Option<String>,
+) -> Option<String> {
+    if mode == ManagedAuthRequestMode::None {
+        None
+    } else {
+        label
+    }
+}
+
+fn apply_proxy_route_observation(
+    connection: &mut ManagedAuthConnectionSummary,
+    observed: Option<bool>,
+) {
+    let (status, mode, reason) = match observed {
+        Some(true) => (
+            ManagedAuthConnectionState::Connected,
+            ManagedAuthRequestMode::OfficialSubscription,
+            None,
+        ),
+        Some(false) => (
+            ManagedAuthConnectionState::Disconnected,
+            ManagedAuthRequestMode::None,
+            Some(ManagedAuthReasonCode::ConnectionUnavailable),
+        ),
+        None => (
+            ManagedAuthConnectionState::Checking,
+            ManagedAuthRequestMode::Unknown,
+            Some(ManagedAuthReasonCode::ObserverUnavailable),
+        ),
+    };
+    connection.auth_status = status;
+    connection.request_mode = mode;
+    connection.request_provider_label =
+        request_provider_label_for(mode, connection.request_provider_label.clone());
+    connection.reason_codes = reason.into_iter().collect();
+}
+
+fn wire_connected_consumer_count(
+    account_id: &str,
+    connections: &[ManagedAuthConnectionSummary],
+) -> usize {
+    connections
+        .iter()
+        .filter(|connection| connection.account_id.as_deref() == Some(account_id))
+        .map(|connection| connection.consumer)
+        .collect::<std::collections::HashSet<_>>()
+        .len()
+}
+
 fn connection_summary(
     connection: &ConnectionRecord,
     rows: &[CredentialWithIdentity],
@@ -2040,7 +2064,10 @@ fn connection_summary(
         },
         credential_manager: ManagedAuthCredentialManager::Fyagent,
         request_mode: connection.request_mode,
-        request_provider_label: connection.request_provider_label.clone(),
+        request_provider_label: request_provider_label_for(
+            connection.request_mode,
+            connection.request_provider_label.clone(),
+        ),
         official_session_preserved: connection.official_session_preserved,
         pending_restart: connection.pending_restart,
         allowed_actions: Vec::new(),
@@ -2410,6 +2437,62 @@ mod tests {
             "refresh-value",
         ] {
             assert!(!text.contains(forbidden), "leaked {forbidden}");
+        }
+    }
+
+    #[test]
+    fn unrouted_proxy_observation_clears_provider_label() {
+        let record = ConnectionRecord {
+            connection_id: "mc1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            consumer: ManagedAuthConsumer::FyagentProxy,
+            target_id: String::new(),
+            provider_slot: "openai".into(),
+            credential_id: None,
+            desired_revision:
+                "mr1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            observed_revision: None,
+            status: ConnectionStatus::Checking,
+            request_mode: ManagedAuthRequestMode::Unknown,
+            request_provider_label: Some("openai".into()),
+            official_session_preserved: None,
+            pending_restart: false,
+            created_at: 1,
+            updated_at: 1,
+        };
+        let mut summary = connection_summary(&record, &[]);
+        assert_eq!(summary.request_provider_label.as_deref(), Some("openai"));
+        apply_proxy_route_observation(&mut summary, Some(false));
+        assert_eq!(
+            summary.auth_status,
+            ManagedAuthConnectionState::Disconnected
+        );
+        assert_eq!(summary.request_mode, ManagedAuthRequestMode::None);
+        assert_eq!(summary.request_provider_label, None);
+    }
+
+    #[test]
+    fn overview_counts_named_proxy_slots_that_are_not_routing() {
+        let (service, _dir) = service_with_memory();
+        service
+            .provision_legacy_credential(sample_input("legacy-credential", "refresh-value", true))
+            .expect("provision");
+        let overview = service.overview();
+        assert_eq!(overview.accounts.len(), 1);
+        let proxy = overview
+            .connections
+            .iter()
+            .find(|connection| connection.consumer == ManagedAuthConsumer::FyagentProxy)
+            .expect("proxy");
+        assert_eq!(
+            proxy.account_id.as_deref(),
+            Some(overview.accounts[0].account_id.as_str())
+        );
+        assert_ne!(proxy.auth_status, ManagedAuthConnectionState::Connected);
+        assert_eq!(overview.accounts[0].connected_consumer_count, 1);
+        for connection in &overview.connections {
+            if connection.request_mode == ManagedAuthRequestMode::None {
+                assert_eq!(connection.request_provider_label, None);
+            }
         }
     }
 
