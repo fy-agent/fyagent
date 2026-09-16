@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 97
+- **Total Sessions**: 98
 - **Last Active**: 2026-09-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1077 | Active |
+| `journal-2.md` | ~1113 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 98 | 2026-09-16 | 复核 9 月 16 日变更的 SPEC 并准备合并 | `a04f68ff` | `dev/laiyongjie` |
 | 97 | 2026-09-16 | Fix auth overview parse | `a28b8c3a` | `dev/laiyongjie` |
 | 96 | 2026-09-16 | 托管账号本地代理链路与 Cherry 架构适配 | `e26c712d2522907922dffd2f1b09088fb1559fbf` | `dev/laiyongjie` |
 | 95 | 2026-09-16 | FDE 任务归档收尾 | `f84d50fb`, `318ed992e79b45fd956194d85232bf145528d994` | `dev/laiyongjie` |

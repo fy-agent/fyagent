@@ -1075,3 +1075,39 @@ Native idle fyagent_proxy overview now matches the renderer parser, so /auth loa
 ### Status
 
 [OK] **Completed**
+
+
+## Session 98: 复核 9 月 16 日变更的 SPEC 并准备合并
+<!-- trellis-session: v=2 fp=7ac62cff86b822d9 -->
+
+**Date**: 2026-09-16
+**Task**: 复核 9 月 16 日变更的 SPEC 并准备合并
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+复核 FDE、macOS helper、托管账号代理和空闲代理 overview 的今日实现；拆分 Managed Account Proxy owner、泛化前端订阅契约并冻结目录集合，完整归档前门禁通过。
+
+### Main Changes
+
+- 新增后端 Managed Account Proxy 聚焦契约，收敛 Managed Auth、Proxy Runtime 与 HTTP pipeline 的 owner 边界。
+- 将前端通用订阅契约迁移到 managed-account-subscriptions.md，并保留历史 Grok 路由。
+- 冻结 FDE 提示词 6 类/30 项、FDE MCP 20 项有序成员及 macOS SwiftPM 产物优先级。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a04f68ff` | docs(spec): refine today's behavior contracts |
+
+### Testing
+
+- [OK] check:prearchive 退出码 0；Vitest 1713 通过/1 跳过；Rust 主库 3264 通过/5 显式忽略；Clippy、release、platform 与 contracts 全部通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 推送归档后的精确 head，创建 PR，启用 exact-head auto-merge，并跟进 PR 与 merge-group CI 至 main 合并读回。
