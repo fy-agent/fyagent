@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 93
-- **Last Active**: 2026-09-15
+- **Total Sessions**: 94
+- **Last Active**: 2026-09-16
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~942 | Active |
+| `journal-2.md` | ~976 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 94 | 2026-09-16 | 中国市场 FDE 提示词与 MCP 预设 | `f84d50fb` | `dev/laiyongjie` |
 | 93 | 2026-09-15 | 复核首次使用引导 SPEC 与状态所有权 | `ebcffdee5ed0684c6364f74922038c10e5f39a76` | `dev/laiyongjie` |
 | 92 | 2026-09-15 | 补齐 Grok Build 首次推荐并防遗漏 | `4eb7e346b88b9386710d2b21e5769d8b4d2d3ff7` | `dev/laiyongjie` |
 | 91 | 2026-09-15 | AI 软件正向文案与可跳过的首次推荐引导 | `ae1da25a125d23ca7823d3ebc4ac570fd662d020` | `dev/laiyongjie` |

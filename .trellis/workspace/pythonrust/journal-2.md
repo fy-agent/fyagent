@@ -940,3 +940,37 @@ Diagnosed PR #188 merge-group WebKit failure as a two-phase raster sampling race
 ### Next Steps
 
 - 推送精确分支 head，创建 PR 并跟进 PR/Merge Queue CI 至 main 合并。
+
+
+## Session 94: 中国市场 FDE 提示词与 MCP 预设
+<!-- trellis-session: v=2 fp=4d46a3976f5bcfd7 -->
+
+**Date**: 2026-09-16
+**Task**: 中国市场 FDE 提示词与 MCP 预设
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成 30 条领域 FDE 提示词、8 个中国市场相关 MCP 及 FDE 筛选；先更新 SPEC 再归档。完成来源、内容、安全和交互评审，保留真实环境验证边界。
+
+### Main Changes
+
+- 30 条原创预设，预览/草稿/保存/启用分离，七应用隔离与不依赖 randomUUID 的随机 ID。
+- MCP 目录 27→35，FDE 筛选 20 项；新增配置凭据入 env，显式权限风险及待验证状态。
+- 更新提示词、MCP 和滚轮命中契约；修复 WebKit 物理滚轮测试越过矮容器的落点问题。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f84d50fb` | feat(fde): add China-focused prompt and MCP presets |
+
+### Testing
+
+- [OK] 最终串行 check:prearchive 通过：1696 单元测试通过/1原有跳过；Rust 3571通过/6原有忽略；类型、lint、格式、桌面mock、发布契约通过。
+- [OK] 生产构建及3项启动检查通过；首轮浏览器623通过/1失败，修正测试落点后9项WebKit重复验证与70项完整受影响浏览器矩阵全部通过。
+- [OK] 未执行客户凭据联通、真实桌面HIL或LLM质量基准；未推送远端。
+
+### Status
+
+[OK] **Completed**
