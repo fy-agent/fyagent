@@ -1005,3 +1005,43 @@ Diagnosed PR #188 merge-group WebKit failure as a two-phase raster sampling race
 ### Status
 
 [OK] **Completed**
+
+
+## Session 96: 托管账号本地代理链路与 Cherry 架构适配
+<!-- trellis-session: v=2 fp=5df146e9497e2ab1 -->
+
+**Date**: 2026-09-16
+**Task**: 托管账号本地代理链路与 Cherry 架构适配
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成 OpenAI/xAI 代理用途账号到 Claude Code、Codex、Grok Build 的既有链路改造，保留原生账号投影；更新 SPEC，经全量门禁与浏览器验证后归档。
+
+### Main Changes
+
+- 以用户提供的 Cherry Studio 2.0.14 快照和官方配置文档为依据，复用现有 ManagedAuth/SecretRef、Provider、ProxyService、转换器和配置事务；未引入新依赖、令牌存储或守护进程。
+- 统一订阅绑定、Responses 请求整形、凭证世代与单次 401 刷新重试；失效账号不切换到其他账号或 API-key 余额。
+- 代理状态基于实际监听与有效配置采用；覆盖端口冲突、并发补偿、流式工具事件以及原生登录文件不被覆盖的回归。
+- SPEC 在归档前完成更新；任务归档到 .trellis/tasks/archive/2026-09/09-16-managed-account-proxy，归档提交 7d155412。两个既有门禁记录修正在任务 review.md 中单独披露。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e26c712d2522907922dffd2f1b09088fb1559fbf` | feat(proxy): reuse managed subscriptions across local agents |
+
+### Testing
+
+- [OK] 完整 check:prearchive 退出码 0：189 个 unit 文件通过，1711 测试通过、1 个既有跳过；Rust fmt/check/clippy/test 和平台、发布契约门禁全部通过。
+- [OK] mise run test:browser 退出码 0：生产构建与路由检查通过，3 项生产启动检查通过，631 项 Chromium/WebKit 浏览器测试通过。
+- [OK] 归档前 check:contracts:prearchive 和归档后无排除的 mise run check:contracts 均退出码 0；后者 34 个契约测试文件、619 测试通过、1 个既有跳过，native-fetch 4 项通过。
+- [OK] 归档后的两份五条目上下文清单验证通过；暂存 diff 空白检查通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真实账号订阅权益、额度与具体模型可用性，以及外部 CLI、签名桌面运行和 Windows 真机仍需单独验收；本次仅使用合成凭证和合成上游响应，不宣称真实订阅调用成功。
