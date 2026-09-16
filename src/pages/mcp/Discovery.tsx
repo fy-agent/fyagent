@@ -87,6 +87,7 @@ export function McpDiscovery({
   const items = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return MCP_CATALOG.filter((item) => {
+      if (category === "fde" && !item.categories.includes("fde")) return false;
       if (category === "ready" && catalogRequiresConfig(item)) return false;
       if (category === "configure" && !catalogRequiresConfig(item)) {
         return false;

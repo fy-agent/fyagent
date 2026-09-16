@@ -46,7 +46,9 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 | [Assignments](./assignments.md)                       | Shared seven-target selection and serialized mutations.                         |
 | [Skills](./skills.md)                                 | Discovery, installed items, backups and assignment.                             |
 | [MCP](./mcp.md)                                       | Catalog/launch validation, CRUD, installation and assignment.                   |
+| [FDE MCP Catalogue](./mcp-fde-catalog.md)               | China-oriented recipes, restricted tools, env credentials and discovery.      |
 | [Prompts and Memory](./prompts-memory.md)             | Native content CRUD, editor/dirty state and directory operations.               |
+| [Prompt Presets](./prompt-presets.md)                  | Static FDE catalogue, preview, draft copying and disabled library saves.       |
 
 ## Historical discovery routers
 

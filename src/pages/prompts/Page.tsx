@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type MouseEvent,
 } from "react";
 import { type BlockerFunction } from "react-router-dom";
 
@@ -36,7 +37,10 @@ import {
 } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/Button";
 import { ConfirmDialog } from "../../shared/ui/Dialog";
-import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import {
+  captureDialogOrigin,
+  type DialogOriginRef,
+} from "../../shared/ui/dialogOrigin";
 import {
   Badge,
   EmptyState,
@@ -51,7 +55,14 @@ import {
 } from "../../shared/ui/PrimaryBlocker";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
+import {
+  FeatureTabs,
+  FeatureTabPanel,
+  featureTabTriggerId,
+} from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
+import { PresetBrowser } from "./PresetBrowser";
+import { FDE_PROMPT_PRESETS, type PromptPreset } from "./presets";
 
 import "./page.css";
 
@@ -71,6 +82,12 @@ const APP_LABELS = {
 
 const REFRESH_WARNING = "写入可能已完成，但状态刷新失败";
 const PROMPT_SPLIT_LABELS = ["调整列表与编辑的宽度"];
+const PROMPT_TABS_ID = "prompt-views";
+const PROMPT_VIEWS = [
+  { id: "library", label: "我的提示词" },
+  { id: "presets", label: `FDE 预设 · ${FDE_PROMPT_PRESETS.length}` },
+] as const;
+type PromptView = (typeof PROMPT_VIEWS)[number]["id"];
 
 interface PromptDraft {
   name: string;
@@ -90,6 +107,7 @@ type DiscardIntent =
   | { kind: "switch-app"; app: PromptAppId }
   | { kind: "select"; id: string }
   | { kind: "new" }
+  | { kind: "preset"; preset: PromptPreset }
   | { kind: "route" }
   | null;
 
@@ -107,6 +125,13 @@ function isSameDraft(first: PromptDraft, second: PromptDraft): boolean {
     first.description === second.description &&
     first.content === second.content
   );
+}
+
+function createPromptId(): string {
+  // Opaque IDs need uniqueness, not UUID syntax. Avoid a new dependency on
+  // randomUUID's secure-context/WebView availability for native library saves.
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return `prompt-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function createNewEditor(): EditorState {
@@ -174,6 +199,7 @@ export function PromptsPage() {
   const queryClient = useQueryClient();
   const { ports, notify } = useFeatures();
   const [app, setApp] = useState<PromptAppId>("claude");
+  const [view, setView] = useState<PromptView>("library");
   const promptsQuery = usePrompts(app);
   const promptLibraries = usePromptLibraries();
   const liveFileQuery = usePromptLiveFile(app);
@@ -331,6 +357,41 @@ export function PromptsPage() {
     setEditor(selected ? createEditEditor(selected) : null);
   };
 
+  const applyPreset = (preset: PromptPreset) => {
+    setSelectedId(null);
+    setEditor({
+      mode: "new",
+      prompt: null,
+      draft: {
+        name: preset.name,
+        description: preset.description,
+        content: preset.content,
+      },
+      baseline: null,
+    });
+    setWriteError(null);
+    setView("library");
+  };
+
+  const requestPreset = (
+    preset: PromptPreset,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => {
+    if (busy || promptsQuery.data === undefined) return;
+    if (editorDirty) {
+      // The preview button unmounts after confirmation. The shared dialog
+      // returns to the active tab if this persistent source tab changed.
+      captureDialogOrigin(
+        dialogOriginRef,
+        event.currentTarget,
+        document.getElementById(featureTabTriggerId(PROMPT_TABS_ID, "presets")),
+      );
+      setDiscardIntent({ kind: "preset", preset });
+      return;
+    }
+    applyPreset(preset);
+  };
+
   const cancelDiscard = () => {
     if (activeDiscardIntent?.kind === "route" && blocker.state === "blocked") {
       blocker.reset();
@@ -349,6 +410,8 @@ export function PromptsPage() {
     } else if (intent?.kind === "new") {
       setSelectedId(null);
       setEditor(createNewEditor());
+    } else if (intent?.kind === "preset") {
+      applyPreset(intent.preset);
     } else if (intent?.kind === "close-editor") {
       setEditor(selected ? createEditEditor(selected) : null);
     } else if (intent?.kind === "route" && blocker.state === "blocked") {
@@ -375,7 +438,7 @@ export function PromptsPage() {
     if (!activeEditor || busy || !activeEditor.draft.name.trim()) return;
     const now = Math.floor(Date.now() / 1000);
     const prompt: ManagedPrompt = {
-      id: activeEditor.prompt?.id ?? `prompt-${Date.now()}`,
+      id: activeEditor.prompt?.id ?? createPromptId(),
       name: activeEditor.draft.name.trim(),
       description: activeEditor.draft.description.trim() || undefined,
       content: activeEditor.draft.content.trim(),
@@ -553,22 +616,24 @@ export function PromptsPage() {
     >
       <header className="fy-feature-header">
         <h1 className="fy-prompts-page-title">提示词管理</h1>
-        <div className="fy-feature-actions">
-          <Button
-            disabled={busy || nativeUnavailable}
-            onClick={() => void importFromFile()}
-          >
-            从文件导入
-          </Button>
-          <Button
-            className="fy-control-button-primary"
-            disabled={busy || nativeUnavailable}
-            onClick={requestNew}
-            dialogOriginRef={dialogOriginRef}
-          >
-            新建提示词
-          </Button>
-        </div>
+        {view === "library" && (
+          <div className="fy-feature-actions">
+            <Button
+              disabled={busy || nativeUnavailable}
+              onClick={() => void importFromFile()}
+            >
+              从文件导入
+            </Button>
+            <Button
+              className="fy-control-button-primary"
+              disabled={busy || nativeUnavailable}
+              onClick={requestNew}
+              dialogOriginRef={dialogOriginRef}
+            >
+              新建提示词
+            </Button>
+          </div>
+        )}
       </header>
 
       {writeError && <InlineNotice tone="error">{writeError}</InlineNotice>}
@@ -616,19 +681,47 @@ export function PromptsPage() {
             ariaLabel={`${APP_LABELS[app]} 提示词工作区`}
             className="fy-prompts-main-detail"
           >
-            <div className="fy-feature-toolbar fy-prompts-search-toolbar">
-              <label className="fy-control-field">
-                搜索
-                <FeatureSearch
-                  ariaLabel="搜索提示词"
-                  placeholder="搜索名称、描述、内容或 ID"
-                  value={search}
-                  disabled={nativeUnavailable}
-                  onValueChange={setSearch}
-                />
-              </label>
-            </div>
-            {workspaceBody}
+            <FeatureTabs<PromptView>
+              id={PROMPT_TABS_ID}
+              label="提示词来源"
+              value={view}
+              options={PROMPT_VIEWS}
+              onChange={setView}
+            />
+            <FeatureTabPanel
+              tabsId={PROMPT_TABS_ID}
+              value="library"
+              active={view === "library"}
+              layout="workspace"
+            >
+              <div className="fy-feature-toolbar fy-prompts-search-toolbar">
+                <label className="fy-control-field">
+                  搜索
+                  <FeatureSearch
+                    ariaLabel="搜索提示词"
+                    placeholder="搜索名称、描述、内容或 ID"
+                    value={search}
+                    disabled={nativeUnavailable}
+                    onValueChange={setSearch}
+                  />
+                </label>
+              </div>
+              {workspaceBody}
+            </FeatureTabPanel>
+            <FeatureTabPanel
+              tabsId={PROMPT_TABS_ID}
+              value="presets"
+              active={view === "presets"}
+              layout="workspace"
+              unmountOnExit
+            >
+              <PresetBrowser
+                appLabel={APP_LABELS[app]}
+                canUse={!busy && promptsQuery.data !== undefined}
+                originRef={dialogOriginRef}
+                onUse={requestPreset}
+              />
+            </FeatureTabPanel>
           </CatalogDetail>
         </CatalogMasterDetail>
       </div>

@@ -65,6 +65,11 @@ TanStack Query create a client with retries disabled so failures are immediate.
 
 Responsive density verification includes continuous large→small→large viewport
 sequences and real pane dragging, not only fresh loads at preset sizes.
+Physical-wheel tests must choose a point within the owner's actual height and
+verify `elementFromPoint` hits that owner or its descendant before dispatch.
+A fixed 80px vertical offset can miss an otherwise valid shorter textarea;
+do not replace real wheel input with `scrollTop` writes or loosen reachability
+assertions to compensate.
 `responsive-density.spec.ts` checks intrinsic row heights, grouped actions,
 flexible-detail growth, local card/metadata widths and real draft-node identity
 in Chromium/WebKit. Its failing baseline and final production runs belong in

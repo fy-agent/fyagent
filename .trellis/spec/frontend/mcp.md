@@ -26,6 +26,9 @@ live-file ordering, import, and conflict semantics are owned by
 QoderWork/TRAE external MCP preflight is not part of this management page; it
 uses `ExternalMcpPort` in the relevant Agent configuration flow.
 
+FDE discovery membership and cloud/data command/env defaults are owned by
+[FDE MCP Catalogue](./mcp-fde-catalog.md); do not duplicate those recipes here.
+
 ## 2. Signatures
 
 The current management Port is exactly:
