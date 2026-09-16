@@ -940,3 +940,174 @@ Diagnosed PR #188 merge-group WebKit failure as a two-phase raster sampling race
 ### Next Steps
 
 - 推送精确分支 head，创建 PR 并跟进 PR/Merge Queue CI 至 main 合并。
+
+
+## Session 94: 中国市场 FDE 提示词与 MCP 预设
+<!-- trellis-session: v=2 fp=4d46a3976f5bcfd7 -->
+
+**Date**: 2026-09-16
+**Task**: 中国市场 FDE 提示词与 MCP 预设
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成 30 条领域 FDE 提示词、8 个中国市场相关 MCP 及 FDE 筛选；先更新 SPEC 再归档。完成来源、内容、安全和交互评审，保留真实环境验证边界。
+
+### Main Changes
+
+- 30 条原创预设，预览/草稿/保存/启用分离，七应用隔离与不依赖 randomUUID 的随机 ID。
+- MCP 目录 27→35，FDE 筛选 20 项；新增配置凭据入 env，显式权限风险及待验证状态。
+- 更新提示词、MCP 和滚轮命中契约；修复 WebKit 物理滚轮测试越过矮容器的落点问题。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f84d50fb` | feat(fde): add China-focused prompt and MCP presets |
+
+### Testing
+
+- [OK] 最终串行 check:prearchive 通过：1696 单元测试通过/1原有跳过；Rust 3571通过/6原有忽略；类型、lint、格式、桌面mock、发布契约通过。
+- [OK] 生产构建及3项启动检查通过；首轮浏览器623通过/1失败，修正测试落点后9项WebKit重复验证与70项完整受影响浏览器矩阵全部通过。
+- [OK] 未执行客户凭据联通、真实桌面HIL或LLM质量基准；未推送远端。
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 95: FDE 任务归档收尾
+<!-- trellis-session: v=2 fp=0756cbeaa8f802b1 -->
+
+**Date**: 2026-09-16
+**Task**: FDE 任务归档收尾
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+归档目录与 completed 状态已生成；原任务目录未跟踪导致自动提交路径报错，已按归档路径补齐受限提交，未改写历史。功能、SPEC、研究、评审与验证材料均已落库。
+
+### Main Changes
+
+- 完成归档提交并保留初次自动提交警告的真实记录，接续验证不带活动任务豁免的契约。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f84d50fb` | feat(fde): add China-focused prompt and MCP presets |
+| `318ed992e79b45fd956194d85232bf145528d994` | chore(task): archive 09-16-fde-china-presets |
+
+### Testing
+
+- [OK] 最终串行 check:prearchive 通过；1696 单元测试、3571 Rust 测试通过，原有跳过保留；70 项受影响浏览器矩阵和9项WebKit重复验证通过。
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 96: 托管账号本地代理链路与 Cherry 架构适配
+<!-- trellis-session: v=2 fp=5df146e9497e2ab1 -->
+
+**Date**: 2026-09-16
+**Task**: 托管账号本地代理链路与 Cherry 架构适配
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成 OpenAI/xAI 代理用途账号到 Claude Code、Codex、Grok Build 的既有链路改造，保留原生账号投影；更新 SPEC，经全量门禁与浏览器验证后归档。
+
+### Main Changes
+
+- 以用户提供的 Cherry Studio 2.0.14 快照和官方配置文档为依据，复用现有 ManagedAuth/SecretRef、Provider、ProxyService、转换器和配置事务；未引入新依赖、令牌存储或守护进程。
+- 统一订阅绑定、Responses 请求整形、凭证世代与单次 401 刷新重试；失效账号不切换到其他账号或 API-key 余额。
+- 代理状态基于实际监听与有效配置采用；覆盖端口冲突、并发补偿、流式工具事件以及原生登录文件不被覆盖的回归。
+- SPEC 在归档前完成更新；任务归档到 .trellis/tasks/archive/2026-09/09-16-managed-account-proxy，归档提交 7d155412。两个既有门禁记录修正在任务 review.md 中单独披露。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e26c712d2522907922dffd2f1b09088fb1559fbf` | feat(proxy): reuse managed subscriptions across local agents |
+
+### Testing
+
+- [OK] 完整 check:prearchive 退出码 0：189 个 unit 文件通过，1711 测试通过、1 个既有跳过；Rust fmt/check/clippy/test 和平台、发布契约门禁全部通过。
+- [OK] mise run test:browser 退出码 0：生产构建与路由检查通过，3 项生产启动检查通过，631 项 Chromium/WebKit 浏览器测试通过。
+- [OK] 归档前 check:contracts:prearchive 和归档后无排除的 mise run check:contracts 均退出码 0；后者 34 个契约测试文件、619 测试通过、1 个既有跳过，native-fetch 4 项通过。
+- [OK] 归档后的两份五条目上下文清单验证通过；暂存 diff 空白检查通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真实账号订阅权益、额度与具体模型可用性，以及外部 CLI、签名桌面运行和 Windows 真机仍需单独验收；本次仅使用合成凭证和合成上游响应，不宣称真实订阅调用成功。
+
+
+## Session 97: Fix auth overview parse
+<!-- trellis-session: v=2 fp=0ff5d297ddaa90ad -->
+
+**Date**: 2026-09-16
+**Task**: Fix auth overview parse
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Native idle fyagent_proxy overview now matches the renderer parser, so /auth loads instead of failing closed.
+
+### Main Changes
+
+- Cleared requestProviderLabel on requestMode=none and counted named disconnected proxy slots in connectedConsumerCount.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a28b8c3a` | fix(auth): keep idle proxy overview parseable |
+
+### Testing
+
+- [OK] Renderer wire tests plus rust unrouted-proxy/count/shared-identity tests; post-fix runtime logs showed parse accept and Auth page success.
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 98: 复核 9 月 16 日变更的 SPEC 并准备合并
+<!-- trellis-session: v=2 fp=7ac62cff86b822d9 -->
+
+**Date**: 2026-09-16
+**Task**: 复核 9 月 16 日变更的 SPEC 并准备合并
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+复核 FDE、macOS helper、托管账号代理和空闲代理 overview 的今日实现；拆分 Managed Account Proxy owner、泛化前端订阅契约并冻结目录集合，完整归档前门禁通过。
+
+### Main Changes
+
+- 新增后端 Managed Account Proxy 聚焦契约，收敛 Managed Auth、Proxy Runtime 与 HTTP pipeline 的 owner 边界。
+- 将前端通用订阅契约迁移到 managed-account-subscriptions.md，并保留历史 Grok 路由。
+- 冻结 FDE 提示词 6 类/30 项、FDE MCP 20 项有序成员及 macOS SwiftPM 产物优先级。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a04f68ff` | docs(spec): refine today's behavior contracts |
+
+### Testing
+
+- [OK] check:prearchive 退出码 0；Vitest 1713 通过/1 跳过；Rust 主库 3264 通过/5 显式忽略；Clippy、release、platform 与 contracts 全部通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 推送归档后的精确 head，创建 PR，启用 exact-head auto-merge，并跟进 PR 与 merge-group CI 至 main 合并读回。

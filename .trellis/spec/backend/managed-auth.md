@@ -25,6 +25,8 @@ Related owners:
   OpenAI browser/Device Code, xAI Device Code, cancellation and reopen.
 - [Managed Auth Consumers](./managed-auth-consumers.md) owns Codex/Grok/OpenCode
   connection observation, native projection gates, readback and restart state.
+- [Managed Account Proxy](./managed-account-proxy.md) owns explicit OpenAI/xAI
+  binding to local Agent Providers and the `fyagent_proxy` route projection.
 
 This is the first production consumer of `services::secret`. Do not introduce a
 second keyring, a plaintext JSON token authority, or a `shared` refresh owner.
@@ -134,37 +136,41 @@ returns a refresh token or SecretRef.
 
 ## 3. Contracts
 
-### Grok subscription binding to local Agent providers
+### Proxy account boundary
 
-- `bind_xai_managed_provider` accepts exactly `{ app, accountId, modelId }`.
-  `accountId` is the public overview identity, not a default or caller-supplied
-  legacy token-store ID. Binding resolves an xAI `proxy_upstream` /
-  `fyagent_proxy` credential, requires `ready` and `refresh_owner=fyagent`, and
-  reads the matching SecretRef bundle before Provider mutation.
-- Native Grok/OpenCode lineages are not eligible even when the same account
-  identity is ready. No upstream access/refresh token is copied into a Provider,
-  renderer, Change Plan, or Agent auth file. The existing proxy resolver remains
-  the only refresh owner and rejects credentials whose current status changed.
-- The binding uses a stable target/account/model Provider identity; an existing
-  row with a different definition fails `provider_conflict` instead of being
-  overwritten. A new source name includes a short public account label and a
-  stable identity digest so equal model/display names remain distinguishable.
-  A saved name is preserved and excluded from binding identity; renaming the
-  source or changing an account's display name does not break idempotency.
-  Claude Code activates through the existing Provider transaction;
-  Codex saves a draft and uses Change Plan; Claude Desktop saves a draft for its
-  existing dedicated profile application, with `activated=false`.
-- Result fields remain `providerId`, `providerName`, `app`, `alreadyBound`,
-  `activated`. Errors contain only a closed `code`: `invalid_request`,
-  `account_unavailable`, `provider_conflict`, `apply_failed_rolled_back`, or
-  `rollback_partial_state_unknown`. The last code never means restored.
-- `get_xai_oauth_models(accountId)` checks the same explicit overview identity
-  and vault bundle, then returns the documented `grok-build` route suggestion.
-  No subscription catalog endpoint is established: do not send session tokens
-  to the API-key `/models` endpoint or label suggestions as account entitlement.
-- New vault-created binding IDs never fall back to an in-memory legacy JSON
-  account when the vault account disappears or becomes unavailable.
+- This core exposes exact-account credential admission and access-material
+  resolution only. Provider identity, target activation/draft behavior, model
+  suggestions and overview route projection are owned by
+  [Managed Account Proxy](./managed-account-proxy.md).
+- A proxy consumer must present the public account identity and resolve a
+  `Ready` `proxy_upstream` / `fyagent_proxy` credential owned by FyAgent. Native
+  consumer lineages are not interchangeable, and a missing vault credential
+  never falls back to a default or plaintext legacy account.
+- No binding owner may receive a refresh token or SecretRef. The only exported
+  request-time material is the zeroizing access token and optional routing
+  subject described below.
 
+### Proxy access-material refresh
+
+- `resolve_access_material` returns only a zeroizing access token, optional
+  routing subject and private admitted credential lineage. The internal
+  `refresh_rejected_access(&AccessMaterial)` uses that same lineage and rejected
+  token; it never rereads a default account to recover an in-flight request.
+- A credential lock coalesces expiry refresh and simultaneous 401 refreshes.
+  Reuse an already-refreshed token only within the same credential, identity,
+  provider, purpose, consumer, SecretRef and authentication epoch, still owned
+  by FyAgent and Ready. Verify bundle identity and generation before use.
+- Refresh HTTP is bounded to 30 seconds. Recheck the exact generation and
+  lineage after HTTP, on both success and failure, before CAS or status writes.
+  Logout, relogin, deletion or native ownership transfer makes late work stale;
+  do not return an unrelated newer session as fallback. Verify committed vault
+  readback after CAS; a failed CAS is not success.
+- HTTP 400 with an exact `invalid_grant` (or xAI `invalid_token`) code, or a
+  definitive refresh 401/403, requires reauthentication. Network failure,
+  timeout, throttling, server failure and
+  malformed responses preserve the credential for an explicit retry. Missing
+  refresh material when renewal is needed requires reauthentication. The
+  legacy xAI refresh policy and native consumer owners are not rewritten.
 
 ### Identity versus credential session
 
@@ -400,6 +406,15 @@ Required assertions:
   Copilot v1 does not block Codex finalize;
 - vault unavailable does not seal JSON;
 - stale generation cannot overwrite; resolver rejects native refresh owners;
+  concurrent expiry/401 callers share one same-lineage refresh; deletion,
+  relogin and ownership changes reject both late success and terminal failure;
+  terminal errors require reauth while transient errors retain Ready;
+- exact proxy-account lookup rejects defaults, missing vault sessions,
+  non-proxy purposes and native refresh owners. Provider binding, route
+  observation and transport replay assertions are owned by
+  [Managed Account Proxy](./managed-account-proxy.md),
+  [Proxy Runtime](./proxy-runtime.md) and
+  [Local Proxy Pipeline](./local-proxy-pipeline.md);
 - set-default accepts only a ready credential under exact revision;
   removal preview/apply recomputes impact and rejects stale preview IDs;
   native secrets are deleted before credential/identity metadata;

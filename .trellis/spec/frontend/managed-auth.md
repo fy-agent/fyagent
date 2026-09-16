@@ -21,9 +21,11 @@ External Agent-owned authentication remains under
 refresh ownership and recovery semantics are owned by
 [Managed Auth Core](../backend/managed-auth.md); provider login sessions by
 [Managed Auth Login](../backend/managed-auth-login.md); and software projection
-by [Managed Auth Consumers](../backend/managed-auth-consumers.md). This
-frontend contract does not make browser fixtures or mock IPC into native
-authentication evidence.
+by [Managed Auth Consumers](../backend/managed-auth-consumers.md). Explicit
+OpenAI/xAI binding plus `fyagent_proxy` route projection is owned by
+[Managed Account Proxy](../backend/managed-account-proxy.md). This frontend
+contract owns strict wire parsing and presentation; it does not make browser
+fixtures or mock IPC into native authentication evidence.
 
 ## 2. Signatures
 
@@ -180,7 +182,11 @@ listed in
   bounded labels, canonical opaque IDs/revisions and valid timestamps.
 - The overview parser validates cross-resource references, unique IDs,
   connected-account counts, at most eight uniquely identified active sessions,
-  and provider/consumer compatibility. The backend admits at most one
+  and provider/consumer compatibility. `connectedConsumerCount` equals the
+  number of unique `connections[].consumer` values whose `accountId` matches
+  that account, including a `fyagent_proxy` slot that still names the account
+  while `authStatus=disconnected` and `requestMode=none`. `requestMode=none`
+  rejects a leftover `requestProviderLabel`. The backend admits at most one
   non-terminal session per provider, while one OpenAI and one xAI session may
   coexist. A malformed reference rejects the complete snapshot.
 - Login snapshots never expose authorization URLs, callback URLs, OAuth code,
@@ -298,6 +304,8 @@ listed in
 | Overview has an extra token/path/raw-error field                                                                      | Reject the complete response.                                                                                                                           |
 | Connection references a missing account/provider                                                                      | Reject the complete response.                                                                                                                           |
 | Account says two connections but only one references it                                                               | Reject the complete response.                                                                                                                           |
+| `requestMode=none` still carries `requestProviderLabel`                                                               | Reject the complete response.                                                                                                                           |
+| Disconnected `fyagent_proxy` still names the account and the count includes that consumer                             | Accept; disconnected routing is not permission to drop the named slot from the count.                                                                   |
 | Device verification URI has query, fragment, wrong host or non-HTTPS scheme                                           | Reject the login snapshot.                                                                                                                              |
 | More than eight active sessions or a duplicate session ID appears                                                     | Reject the overview/session chain.                                                                                                                      |
 | OpenAI and xAI each have one active session                                                                           | Accept both; the UI follows the selected opaque session ID and must not merge them.                                                                     |
@@ -339,6 +347,12 @@ listed in
   OAuth sections as a second account owner. Only retained native compatibility
   commands remain; mutation commands fail with `legacy_auth_mutation_disabled`.
   A compatibility API is not evidence of an existing renderer picker or login UI.
+- **Good:** a saved official account whose local proxy is not routing still
+  parses: `fyagent_proxy` may be `disconnected`/`none` with a null label, and
+  `connectedConsumerCount` still includes that named slot.
+- **Bad:** treat a non-routing proxy as absent from the count, or keep a
+  provider label on `requestMode=none`. The page then shows only
+  「无法加载账号与认证」 / 「请稍后重试。」.
 
 ## 6. Tests Required
 
@@ -354,6 +368,9 @@ Required assertions include:
 
 - all valid closed overview/session/mutation variants and strict rejection of
   unknown keys, invalid references, malformed revisions and forbidden fields;
+  disconnected `fyagent_proxy` with `requestMode=none` and a null label is
+  accepted when the account count includes that named slot; leftover labels
+  and under-counted summaries are rejected;
 - maximum-eight/unique session parsing plus backend per-provider single-flight
   and cross-provider coexistence;
 - Tauri command/payload mapping and request/response identity binding;

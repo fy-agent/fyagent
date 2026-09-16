@@ -42,17 +42,21 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 | [External Agent Auth](./agent-auth.md)                | Native auth observations, session ownership and safe handoff.                   |
 | [Managed Auth](./managed-auth.md)                     | Accounts/connections/request sources, login and impact confirmation.            |
 | [Models](./models.md)                                 | Drafts, connectivity, native save and existing model workflows.                 |
-| [Managed Grok Subscriptions](./grok-subscription.md)  | Explicit account/model binding, native readback and subscription scope.         |
+| [Managed Account Subscriptions](./managed-account-subscriptions.md) | OpenAI/xAI proxy binding, target readback and subscription scope.                |
 | [Assignments](./assignments.md)                       | Shared seven-target selection and serialized mutations.                         |
 | [Skills](./skills.md)                                 | Discovery, installed items, backups and assignment.                             |
 | [MCP](./mcp.md)                                       | Catalog/launch validation, CRUD, installation and assignment.                   |
+| [FDE MCP Catalogue](./mcp-fde-catalog.md)               | China-oriented recipes, restricted tools, env credentials and discovery.      |
 | [Prompts and Memory](./prompts-memory.md)             | Native content CRUD, editor/dirty state and directory operations.               |
+| [Prompt Presets](./prompt-presets.md)                  | Static FDE catalogue, preview, draft copying and disabled library saves.       |
 
 ## Historical discovery routers
 
-[Shell](./shell.md), [Agents and Models](./agent-models.md) and
-[Skills and MCP](./skills-mcp.md) only point to focused contracts. They are not
-alternative implementations. New work cites the focused owner.
+[Shell](./shell.md), [Agents and Models](./agent-models.md),
+[Skills and MCP](./skills-mcp.md), and the historical
+[Grok subscription filename](./grok-subscription.md) only point to focused
+contracts. They are not alternative implementations. New work cites the
+focused owner.
 
 ## Quality Check
 

@@ -14,7 +14,8 @@ directly; all effects cross `FeaturePorts` and the existing
 `src/shared/platform/**` boundary. Reuse is the default: Prompts and
 Memory share `FeatureSearch`, `FeatureList`, and Memory type `FeatureTabs`.
 New chrome that the other page will need goes in `src/shared/ui` on the
-first commit. See [Frontend Reuse](./reuse.md).
+first commit. See [Frontend Reuse](./reuse.md). Static FDE catalogue and
+draft-only selection are owned by [Prompt Presets](./prompt-presets.md).
 
 The selected-Agent `提示词` section may present the existing prompt library,
 enable one entry, and link to `/prompts`, but it remains a consumer of this
@@ -126,6 +127,9 @@ paths above.
   UUID primitive. A timestamp is display metadata, not uniqueness: repeated
   imports must not replace an enabled row or change its live projection.
   Existing persisted IDs remain valid and are not migrated.
+- Renderer-created entries also use `prompt-` plus a fresh 128-bit random
+  hex ID rather than timestamps; existing records retain IDs when edited. Preset
+  selection creates an unsaved draft and new saves remain disabled.
 - The live-file inspector is collapsed by default under the editor. It
   reports the current native file content and is not an editable second
   source of truth. Do not keep it as a third always-open column that steals
@@ -192,6 +196,8 @@ The fixed resource mapping is:
   completed but refresh failed; do not announce synchronized state.
 - Application, document, tab, daily-file, and route transitions share the same
   dirty-discard confirmation flow. Do not use `window.confirm`.
+  The Prompts library/preset tabs only change the view and preserve the editor;
+  applying a preset, not browsing it, requires dirty-discard confirmation.
 - Prompts select the application with `CatalogMasterDetail`, not a
   `<select>`. The workspace is a two-pane list + inline editor. Memory is
   a two-pane source/file list + inline editor. Do not keep a third
@@ -219,6 +225,8 @@ The fixed resource mapping is:
   error. Browser UI distinguishes that state from a real empty collection.
 - Browser preview data contains no seeded prompts, memories,
   private counts, or simulated successful operations.
+  The explicitly labelled static FDE preset browser is available without
+  native data; using/saving a preset is disabled until library data is read.
 
 ## 4. Validation & Error Matrix
 

@@ -19,6 +19,7 @@ import { createBrowserFeaturePorts } from "@/shared/platform/browser/features";
 import { TooltipProvider } from "@/shared/ui/primitives";
 import {
   managedAuthOverviewFixture,
+  OPENAI_ACCOUNT_ID,
   XAI_ACCOUNT_ID,
 } from "../../fixtures/managedAuth";
 
@@ -48,11 +49,11 @@ function configuredPorts() {
     models: modelIds,
     truncated: false,
   }));
-  ports.providers.bindXaiManaged = vi.fn(async (request) => ({
+  ports.providers.bindManagedProxy = vi.fn(async (request) => ({
     providerId,
     providerName: "My SuperGrok",
     app: request.app,
-    activated: request.app === "claude",
+    activated: request.app !== "codex",
     alreadyBound: false,
   }));
   ports.providers.getSummary = vi.fn(async () => ({
@@ -101,7 +102,7 @@ function LocationAndAuthority() {
 
 function renderSection(
   ports: FeaturePorts,
-  app: "claude" | "codex" = "claude",
+  app: "claude" | "codex" | "grokbuild" = "claude",
   active = true,
 ) {
   const onBegin = vi.fn(() => true);
@@ -149,11 +150,13 @@ async function selectAccountAndModel(
   user: ReturnType<typeof userEvent.setup>,
   account = "xai@example.com",
 ) {
-  await user.click(await screen.findByRole("radio", { name: account }));
+  await user.click(
+    await screen.findByRole("radio", { name: `Grok · ${account}` }),
+  );
   await user.click(await screen.findByRole("button", { name: modelIds[1] }));
 }
 
-describe("Grok subscription selection and application", () => {
+describe("Managed subscription selection and application", () => {
   it("uses an explicitly chosen account and suggested model without claiming entitlement, then rereads both owners", async () => {
     const user = userEvent.setup();
     const ports = configuredPorts();
@@ -182,9 +185,9 @@ describe("Grok subscription selection and application", () => {
     fireEvent.click(confirmation);
     fireEvent.click(confirmation);
     expect(
-      await screen.findByText("已将 SuperGrok 应用到 Claude Code"),
+      await screen.findByText("已将账号订阅应用到 Claude Code"),
     ).toBeVisible();
-    expect(ports.providers.bindXaiManaged).toHaveBeenCalledExactlyOnceWith({
+    expect(ports.providers.bindManagedProxy).toHaveBeenCalledExactlyOnceWith({
       app: "claude",
       accountId: secondAccountId,
       modelId: modelIds[1],
@@ -199,7 +202,9 @@ describe("Grok subscription selection and application", () => {
     const ports = configuredPorts();
     renderSection(ports);
     await selectAccountAndModel(user);
-    await user.click(screen.getByRole("radio", { name: "second@example.com" }));
+    await user.click(
+      screen.getByRole("radio", { name: "Grok · second@example.com" }),
+    );
     await waitFor(() =>
       expect(ports.providers.fetchXaiManagedModels).toHaveBeenCalledTimes(2),
     );
@@ -212,7 +217,7 @@ describe("Grok subscription selection and application", () => {
   it("routes to the current account page with the existing Agent return context", async () => {
     const user = userEvent.setup();
     renderSection(configuredPorts());
-    await user.click(screen.getByRole("button", { name: "管理 Grok 账号" }));
+    await user.click(screen.getByRole("button", { name: "管理订阅账号" }));
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/auth?view=accounts&agentReturn=grokbuild&agentSection=models",
     );
@@ -233,7 +238,7 @@ describe("Grok subscription selection and application", () => {
       }),
     );
     expect(await screen.findByText(/当前请求来源尚未切换/)).toBeVisible();
-    expect(ports.providers.bindXaiManaged).toHaveBeenCalledWith({
+    expect(ports.providers.bindManagedProxy).toHaveBeenCalledWith({
       app: "codex",
       accountId: XAI_ACCOUNT_ID,
       modelId: modelIds[1],
@@ -261,7 +266,7 @@ describe("Grok subscription selection and application", () => {
         name: "确认应用",
       }),
     ).toBeDisabled();
-    expect(ports.providers.bindXaiManaged).not.toHaveBeenCalled();
+    expect(ports.providers.bindManagedProxy).not.toHaveBeenCalled();
   });
 
   it("offers explicit manual input after discovery failure without replacing the selected account", async () => {
@@ -272,7 +277,7 @@ describe("Grok subscription selection and application", () => {
     });
     renderSection(ports);
     await user.click(
-      await screen.findByRole("radio", { name: "xai@example.com" }),
+      await screen.findByRole("radio", { name: "Grok · xai@example.com" }),
     );
     const input = await screen.findByLabelText("订阅模型 ID");
     await user.type(input, "grok-manual-fixture");
@@ -287,7 +292,7 @@ describe("Grok subscription selection and application", () => {
     async (code) => {
       const user = userEvent.setup();
       const ports = configuredPorts();
-      ports.providers.bindXaiManaged = vi.fn(async () => {
+      ports.providers.bindManagedProxy = vi.fn(async () => {
         throw { code };
       });
       const view = renderSection(ports);
@@ -303,7 +308,7 @@ describe("Grok subscription selection and application", () => {
       expect(await screen.findByText("未能应用订阅配置")).toBeVisible();
       expect(view.onUnconfirmed).not.toHaveBeenCalled();
       expect(
-        screen.queryByText("已将 SuperGrok 应用到 Claude Code"),
+        screen.queryByText("已将账号订阅应用到 Claude Code"),
       ).not.toBeInTheDocument();
     },
   );
@@ -341,8 +346,8 @@ describe("Grok subscription selection and application", () => {
     const binding = new Promise<void>((resolve) => {
       finishBinding = resolve;
     });
-    const bind = ports.providers.bindXaiManaged;
-    ports.providers.bindXaiManaged = vi.fn(async (request) => {
+    const bind = ports.providers.bindManagedProxy;
+    ports.providers.bindManagedProxy = vi.fn(async (request) => {
       await binding;
       return bind(request);
     });
@@ -361,7 +366,7 @@ describe("Grok subscription selection and application", () => {
         name: "确认应用",
       }),
     );
-    expect(ports.providers.bindXaiManaged).toHaveBeenCalledOnce();
+    expect(ports.providers.bindManagedProxy).toHaveBeenCalledOnce();
     view.unmount();
     finishBinding();
     await waitFor(() => expect(view.onUnconfirmed).toHaveBeenCalledOnce());
@@ -373,5 +378,76 @@ describe("Grok subscription selection and application", () => {
     const ports = configuredPorts();
     renderSection(ports, "claude", false);
     expect(ports.managedAuth.getOverview).not.toHaveBeenCalled();
+  });
+
+  it.each(["claude", "codex", "grokbuild"] as const)(
+    "binds an explicit ChatGPT model to %s without sending its credential to an API-key catalog",
+    async (app) => {
+      const user = userEvent.setup();
+      const ports = configuredPorts();
+      renderSection(ports, app);
+      await user.click(
+        await screen.findByRole("radio", { name: "ChatGPT · Personal" }),
+      );
+      expect(ports.providers.fetchXaiManagedModels).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("button", { name: "查看模型选项" }),
+      ).toBeDisabled();
+      await user.type(
+        await screen.findByLabelText("订阅模型 ID"),
+        "chatgpt-fixture-model",
+      );
+      const label =
+        app === "codex"
+          ? "保存 Codex 订阅配置"
+          : app === "claude"
+            ? "应用到 Claude Code"
+            : "应用到 Grok Build";
+      await user.click(screen.getByRole("button", { name: label }));
+      const dialog = await screen.findByRole("dialog");
+      if (app !== "codex")
+        expect(within(dialog).getByText(writeTargets[0].path)).toBeVisible();
+      await user.click(
+        within(dialog).getByRole("button", {
+          name: app === "codex" ? "确认保存" : "确认应用",
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          ports.providers.bindManagedProxy,
+        ).toHaveBeenCalledExactlyOnceWith({
+          app,
+          accountId: OPENAI_ACCOUNT_ID,
+          modelId: "chatgpt-fixture-model",
+        }),
+      );
+      await waitFor(() =>
+        expect(ports.providers.getSummary).toHaveBeenCalledWith(app),
+      );
+      expect(ports.providers.fetchXaiManagedModels).not.toHaveBeenCalled();
+    },
+  );
+
+  it("checks Grok Build's current source rather than treating a saved row as activation", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: { [providerId]: { id: providerId, name: "Subscription" } },
+      currentId: "another-provider",
+      writeTargets,
+    }));
+    const view = renderSection(ports, "grokbuild");
+    await selectAccountAndModel(user);
+    await user.click(screen.getByRole("button", { name: "应用到 Grok Build" }));
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "确认应用",
+      }),
+    );
+    expect(await screen.findByText("设置已保存，当前状态待确认")).toBeVisible();
+    expect(view.onUnconfirmed).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByText("已将账号订阅应用到 Grok Build"),
+    ).not.toBeInTheDocument();
   });
 });

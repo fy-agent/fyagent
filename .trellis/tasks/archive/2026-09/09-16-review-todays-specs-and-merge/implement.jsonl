@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/managed-auth.md","reason":"Managed Auth core, refresh ownership, current subscription binding overlap and overview production boundary"}
+{"file":".trellis/spec/backend/managed-account-proxy.md","reason":"Explicit managed account binding, target handoff and fyagent_proxy overview projection owner"}
+{"file":".trellis/spec/backend/proxy-runtime.md","reason":"Managed activation listener, target projection, compensation and local route observation owner"}
+{"file":".trellis/spec/backend/local-proxy-pipeline.md","reason":"Managed Responses normalization, same-account 401 replay, SSE and secret-negative request pipeline"}
+{"file":".trellis/spec/frontend/managed-account-subscriptions.md","reason":"Current explicit-account subscription picker, typed binding Port and target-local readback contract"}
+{"file":".trellis/spec/frontend/prompt-presets.md","reason":"Static FDE prompt catalogue, search, draft-only copying and ID contract"}
+{"file":".trellis/spec/frontend/mcp-fde-catalog.md","reason":"FDE MCP filter membership, exact launch/env defaults and privilege boundary"}

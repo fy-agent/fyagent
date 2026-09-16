@@ -736,6 +736,27 @@ describe("MCP management", () => {
     expect(
       screen.queryByRole("heading", { name: "Playwright MCP" }),
     ).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("分类筛选"), "fde");
+    expect(
+      screen.getByRole("heading", { name: "腾讯云 CloudBase MCP" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "飞书 OpenAPI MCP" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "HowToCook 菜谱 MCP" }),
+    ).not.toBeInTheDocument();
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜索精选 MCP" }),
+      "DMS",
+    );
+    expect(
+      screen.getByRole("heading", { name: "阿里云 DMS MCP" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "腾讯云 CloudBase MCP" }),
+    ).not.toBeInTheDocument();
   });
 });
 

@@ -583,6 +583,29 @@ pub(crate) async fn refresh_oauth_grant_at(
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
         return Err(OpenAiOAuthError::RefreshTokenInvalid);
     }
+    if status == reqwest::StatusCode::BAD_REQUEST {
+        // RFC 6749 §5.2 uses HTTP 400 for invalid_grant. Only the closed
+        // machine-readable code can revoke a session; malformed responses,
+        // throttling and server errors remain retryable. Never retain/log the
+        // response body, which may contain credentials in diagnostics.
+        let body = tokio::time::timeout(
+            OAUTH_HTTP_TIMEOUT,
+            crate::proxy::hyper_client::ProxyResponse::Reqwest(response).bytes_with_limit(8192),
+        )
+        .await
+        .map_err(|_| OpenAiOAuthError::NetworkError)?
+        .map_err(|_| OpenAiOAuthError::TokenFetchFailed)?;
+        let invalid_grant = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .is_some_and(|value| {
+                value.get("error").and_then(serde_json::Value::as_str) == Some("invalid_grant")
+            });
+        return Err(if invalid_grant {
+            OpenAiOAuthError::RefreshTokenInvalid
+        } else {
+            OpenAiOAuthError::TokenFetchFailed
+        });
+    }
     if !status.is_success() {
         return Err(OpenAiOAuthError::TokenFetchFailed);
     }
@@ -688,6 +711,44 @@ async fn send_bounded(
 mod tests {
     use super::*;
     use sha2::Digest;
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn refresh_http_distinguishes_invalid_grant_from_transient_failures() {
+        for (status, body, terminal) in [
+            (400, r#"{"error":"invalid_grant"}"#, true),
+            (400, r#"{"error":"invalid_request"}"#, false),
+            (400, "invalid JSON", false),
+            (401, "invalid JSON", true),
+            (429, r#"{"error":"invalid_grant"}"#, false),
+            (503, r#"{"error":"invalid_grant"}"#, false),
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let router = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move || async move {
+                    (axum::http::StatusCode::from_u16(status).unwrap(), body)
+                }),
+            );
+            let server = tokio::spawn(async move {
+                axum::serve(listener, router).await.unwrap();
+            });
+            let mut endpoints = OpenAiOAuthEndpoints::production();
+            endpoints.token_url = format!("http://{address}/token");
+            let error = refresh_oauth_grant_at(&endpoints, "synthetic-refresh")
+                .await
+                .err()
+                .expect("synthetic error response");
+            assert_eq!(
+                matches!(error, OpenAiOAuthError::RefreshTokenInvalid),
+                terminal,
+                "HTTP {status}"
+            );
+            assert!(!format!("{error:?}").contains("synthetic-refresh"));
+            server.abort();
+        }
+    }
 
     #[test]
     fn pkce_challenge_is_s256_of_verifier() {

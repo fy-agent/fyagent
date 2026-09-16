@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/managed-auth.md","reason":"Proxy credential authority, purpose, refresh and secret boundaries"}
+{"file":".trellis/spec/backend/proxy-runtime.md","reason":"One listener, target activation, readback and compensation"}
+{"file":".trellis/spec/backend/local-proxy-pipeline.md","reason":"Provider routing, protocol transforms, retry and SSE"}
+{"file":".trellis/spec/frontend/grok-subscription.md","reason":"Existing binding UI and typed Port ownership"}
+{"file":".trellis/tasks/09-16-managed-account-proxy/research/cherry-comparison.md","reason":"Pinned source evidence and reuse decisions"}

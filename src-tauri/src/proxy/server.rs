@@ -276,6 +276,17 @@ impl ProxyServer {
         status
     }
 
+    /// Non-blocking listener evidence for synchronous account observations.
+    /// A contended state is unknown, never a guessed running value. This does
+    /// not include the separately owned presentation-only active-target map.
+    pub(crate) fn try_listener_status(&self) -> Option<ProxyStatus> {
+        self.state
+            .status
+            .try_read()
+            .ok()
+            .map(|status| status.clone())
+    }
+
     /// 更新某个应用类型当前“目标供应商”（用于 UI 展示 active_targets）
     ///
     /// 注意：这不代表该供应商一定已经处理过请求，而是用于“热切换/启用故障转移立即切 P1”

@@ -92,9 +92,13 @@ require_universal() {
 find_named_artifact() {
   local name="$1"
   local path
+  # Prefer SwiftPM's current scratch product directory. After a driver switch
+  # (native `out/` vs Xcode `apple/`), both trees can remain under the same
+  # scratch path; taking `apple/Products` first copies a stale universal
+  # helper whose embedded CFBundleVersion no longer matches this build.
   for path in \
-    "$SCRATCH_PATH/apple/Products/Release/$name" \
-    "$SCRATCH_PATH/release/$name"
+    "$SCRATCH_PATH/release/$name" \
+    "$SCRATCH_PATH/apple/Products/Release/$name"
   do
     if is_regular_file "$path" || { [ -f "$path" ] && [ -L "$path" ]; }; then
       printf '%s\n' "$path"

@@ -68,6 +68,33 @@ describe("managed auth wire contract", () => {
     );
   });
 
+  it("accepts a saved proxy slot that is not currently routing", () => {
+    const overview = structuredClone(managedAuthOverviewFixture());
+    const proxy = overview.connections.find(
+      (item) => item.consumer === "fyagent_proxy",
+    );
+    expect(proxy).toBeDefined();
+    proxy!.authStatus = "disconnected";
+    proxy!.requestMode = "none";
+    proxy!.requestProviderLabel = null;
+    expect(
+      parseManagedAuthOverview(overview).accounts[0]?.connectedConsumerCount,
+    ).toBe(2);
+  });
+
+  it("rejects requestMode none with a leftover provider label", () => {
+    const overview = structuredClone(managedAuthOverviewFixture());
+    const proxy = overview.connections.find(
+      (item) => item.consumer === "fyagent_proxy",
+    );
+    expect(proxy).toBeDefined();
+    proxy!.authStatus = "disconnected";
+    proxy!.requestMode = "none";
+    expect(() => parseManagedAuthOverview(overview)).toThrow(
+      "账号与认证数据不可用",
+    );
+  });
+
   it("accepts device-code sessions but never exposes browser callback material", () => {
     expect(
       parseManagedAuthLoginSession(deviceLoginSessionFixture()),

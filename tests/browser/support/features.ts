@@ -1352,11 +1352,14 @@ export async function installRichTauriFeatureFixture(
               { id: "grok-subscription-fixture-1" },
               { id: "grok-subscription-fixture-2" },
             ];
-          case "bind_xai_managed_provider": {
+          case "bind_xai_managed_provider":
+          case "bind_managed_proxy_provider": {
             const request = payload.request as Record<string, unknown>;
             if (
               fixtureOptions.xaiBindFailure ||
-              request.accountId !== managedAuthAccountIds.xai
+              (request.accountId !== managedAuthAccountIds.xai &&
+                (command !== "bind_managed_proxy_provider" ||
+                  request.accountId !== managedAuthAccountIds.openai))
             )
               throw { code: "account_unavailable" };
             const app = String(request.app);
@@ -1369,13 +1372,14 @@ export async function installRichTauriFeatureFixture(
               name: `SuperGrok ${app}`,
               modelId: String(request.modelId),
             };
-            if (app === "claude") currentProviderIds.claude = providerId;
+            if (app === "claude" || app === "grokbuild")
+              currentProviderIds[app] = providerId;
             return {
               providerId,
               providerName: `SuperGrok ${app}`,
               app,
               alreadyBound,
-              activated: app === "claude",
+              activated: app === "claude" || app === "grokbuild",
             };
           }
           case "get_provider_summary": {

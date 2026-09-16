@@ -2,6 +2,31 @@
 //!
 //! 定义认证信息和认证策略，支持多种上游供应商的认证方式。
 
+// Preserve the existing paired compatibility identity for the ChatGPT Codex
+// backend across every consuming Agent (not only the Claude adapter).
+const CODEX_OAUTH_ORIGINATOR: &str = "codex_cli_rs";
+const CODEX_OAUTH_CLIENT_VERSION: &str = "0.144.1";
+
+pub(super) fn codex_oauth_headers(
+    token: &str,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, crate::proxy::ProxyError> {
+    use http::{HeaderName, HeaderValue};
+    Ok(vec![
+        (
+            HeaderName::from_static("authorization"),
+            super::adapter::auth_header_value(&format!("Bearer {token}"))?,
+        ),
+        (
+            HeaderName::from_static("originator"),
+            HeaderValue::from_static(CODEX_OAUTH_ORIGINATOR),
+        ),
+        (
+            HeaderName::from_static("version"),
+            HeaderValue::from_static(CODEX_OAUTH_CLIENT_VERSION),
+        ),
+    ])
+}
+
 /// 认证信息
 ///
 /// 包含 API Key 和对应的认证策略

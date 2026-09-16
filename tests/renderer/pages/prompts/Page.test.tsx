@@ -15,6 +15,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { PromptsPage } from "@/pages/prompts/Page";
+import { FDE_PROMPT_PRESETS } from "@/pages/prompts/presets";
 import type { FeaturePorts } from "@/shared/features/ports";
 import { FeatureProvider } from "@/shared/features/provider";
 import { PrimaryBlockerProvider } from "@/shared/ui/PrimaryBlocker";
@@ -158,6 +159,146 @@ function renderPrompts(
 }
 
 describe("PromptsPage native business management", () => {
+  it("creates collision-resistant library IDs without requiring crypto.randomUUID", async () => {
+    const uuid = vi.spyOn(crypto, "randomUUID").mockImplementation(() => {
+      throw new Error("randomUUID unavailable");
+    });
+    try {
+      const { ports, stores } = statefulPorts();
+      const user = userEvent.setup();
+      renderPrompts(ports);
+      await screen.findByText("Claude Code 还没有提示词");
+      await user.click(screen.getByRole("tab", { name: /FDE 预设/u }));
+      await user.click(screen.getByRole("button", { name: "使用此预设" }));
+      await user.click(screen.getByRole("button", { name: "保存" }));
+      await waitFor(() => expect(stores.claude).toHaveLength(1));
+      expect(stores.claude[0].id).toMatch(/^prompt-[0-9a-f]{32}$/u);
+      expect(uuid).not.toHaveBeenCalled();
+    } finally {
+      uuid.mockRestore();
+    }
+  });
+
+  it("previews presets without writes and saves independent disabled copies without changing the live prompt", async () => {
+    const { ports, stores, liveFiles } = statefulPorts({
+      claude: [prompt("active", "Active", true)],
+    });
+    liveFiles.claude = "Active content";
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "Active" });
+    const preset = FDE_PROMPT_PRESETS[0];
+    for (let copy = 0; copy < 2; copy += 1) {
+      await user.click(screen.getByRole("tab", { name: /FDE 预设/u }));
+      expect(screen.getByRole("textbox", { name: "预设内容" })).toHaveValue(
+        preset.content,
+      );
+      expect(ports.prompts.upsert).toHaveBeenCalledTimes(copy);
+      await user.click(screen.getByRole("button", { name: "使用此预设" }));
+      expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue(
+        preset.content,
+      );
+      expect(ports.prompts.upsert).toHaveBeenCalledTimes(copy);
+      await user.click(screen.getByRole("button", { name: "保存" }));
+      await waitFor(() => expect(stores.claude).toHaveLength(copy + 2));
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
+      );
+    }
+    const copies = stores.claude.filter((item) => item.name === preset.name);
+    expect(copies).toHaveLength(2);
+    expect(new Set(copies.map((item) => item.id)).size).toBe(2);
+    expect(copies.every((item) => !item.enabled && item.id !== preset.id)).toBe(
+      true,
+    );
+    expect(liveFiles.claude).toBe("Active content");
+    expect(ports.prompts.enable).not.toHaveBeenCalled();
+  });
+
+  it("preserves dirty edits while browsing and confirms before replacing them with a preset", async () => {
+    const { ports } = statefulPorts({
+      claude: [prompt("existing", "Existing")],
+    });
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "Existing" });
+    fireEvent.change(screen.getByRole("textbox", { name: "内容" }), {
+      target: { value: "keep my draft" },
+    });
+    await user.click(screen.getByRole("tab", { name: /FDE 预设/u }));
+    await user.click(screen.getByRole("button", { name: "使用此预设" }));
+    let dialog = screen.getByRole("dialog", { name: "放弃未保存的提示词更改" });
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "我的提示词" }));
+    expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue(
+      "keep my draft",
+    );
+    await user.click(screen.getByRole("tab", { name: /FDE 预设/u }));
+    await user.click(screen.getByRole("button", { name: "使用此预设" }));
+    dialog = screen.getByRole("dialog", { name: "放弃未保存的提示词更改" });
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue(
+      FDE_PROMPT_PRESETS[0].content,
+    );
+    expect(ports.prompts.upsert).not.toHaveBeenCalled();
+  });
+
+  it.each(PROMPT_APP_IDS)(
+    "uses presets only in the selected %s library",
+    async (app) => {
+      const { ports, stores } = statefulPorts();
+      const user = userEvent.setup();
+      renderPrompts(ports);
+      await screen.findByText("Claude Code 还没有提示词");
+      await user.click(screen.getByTestId(`prompt-app-${app}`));
+      await user.click(screen.getByRole("tab", { name: /FDE 预设/u }));
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "使用此预设" }),
+        ).toBeEnabled(),
+      );
+      await user.click(screen.getByRole("button", { name: "使用此预设" }));
+      await user.click(screen.getByRole("button", { name: "保存" }));
+      await waitFor(() => expect(stores[app]).toHaveLength(1));
+      for (const other of PROMPT_APP_IDS.filter((id) => id !== app))
+        expect(stores[other]).toEqual([]);
+      expect(stores[app][0].enabled).toBe(false);
+    },
+  );
+
+  it("lets the browser read and filter static presets without pretending native writes are available", async () => {
+    const ports = createBrowserFeaturePorts();
+    const upsert = vi.spyOn(ports.prompts, "upsert");
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByText("请使用 FyAgent 桌面应用", undefined, {
+      timeout: 5_000,
+    });
+    await user.click(screen.getByRole("tab", { name: /FDE 预设/u }));
+    expect(screen.getByRole("button", { name: "使用此预设" })).toBeDisabled();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "预设领域" }),
+      "public",
+    );
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜索 FDE 预设" }),
+      "环保",
+    );
+    expect(
+      screen.getByRole("heading", { name: "FDE · 环保监测与验收材料" }),
+    ).toBeVisible();
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜索 FDE 预设" }),
+      " absent",
+    );
+    expect(screen.getByText("没有匹配的 FDE 预设")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "清空筛选" }));
+    expect(screen.getByText("领域预设 · 30")).toBeVisible();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
   it("loads Claude by default and keeps all seven applications independent", async () => {
     const { ports } = statefulPorts({
       claude: [prompt("claude-one", "Claude rule", true)],
@@ -356,7 +497,7 @@ describe("PromptsPage native business management", () => {
     const created = stores.claude.find(
       (candidate) => candidate.name === "New rule",
     );
-    expect(created?.id).toMatch(/^prompt-\d+$/);
+    expect(created?.id).toMatch(/^prompt-[0-9a-f]{32}$/u);
     expect(created?.createdAt).toEqual(expect.any(Number));
     expect(created?.updatedAt).toEqual(expect.any(Number));
     expect(created?.enabled).toBe(false);

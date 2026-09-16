@@ -19,11 +19,13 @@ test("saved Grok subscription can be selected for Claude and continued through t
   await openRendererPage(page, "/models?target=claude");
   let section = page
     .getByRole("region", { name: "Claude Code 模型配置", exact: true })
-    .getByRole("region", { name: "SuperGrok 订阅设置" });
+    .getByRole("region", { name: "账号订阅设置" });
   await expect(
     section.getByRole("button", { name: "应用到 Claude Code" }),
   ).toBeDisabled();
-  await section.getByRole("radio", { name: "browser-xai@example.com" }).check();
+  await section
+    .getByRole("radio", { name: "Grok · browser-xai@example.com" })
+    .check();
   await section
     .getByRole("button", { name: "grok-subscription-fixture-2" })
     .click();
@@ -34,7 +36,7 @@ test("saved Grok subscription can be selected for Claude and continued through t
   await expect(dialog.getByText(/grok-subscription-fixture-2/)).toBeVisible();
   await dialog.getByRole("button", { name: "确认应用" }).click();
   await expect(
-    section.getByText("已将 SuperGrok 应用到 Claude Code"),
+    section.getByText("已将账号订阅应用到 Claude Code"),
   ).toBeVisible();
   await expect(section.getByText(/保持 FyAgent 在后台运行/)).toBeVisible();
   await expectNoHorizontalOverflow(page);
@@ -42,11 +44,13 @@ test("saved Grok subscription can be selected for Claude and continued through t
   await page.getByRole("button", { name: "Codex", exact: true }).click();
   section = page
     .getByRole("region", { name: "Codex 模型配置", exact: true })
-    .getByRole("region", { name: "SuperGrok 订阅设置" });
+    .getByRole("region", { name: "账号订阅设置" });
   await expect(
     section.getByRole("button", { name: "保存 Codex 订阅配置" }),
   ).toBeDisabled();
-  await section.getByRole("radio", { name: "browser-xai@example.com" }).check();
+  await section
+    .getByRole("radio", { name: "Grok · browser-xai@example.com" })
+    .check();
   await section
     .getByRole("button", { name: "grok-subscription-fixture-1" })
     .click();
@@ -64,7 +68,7 @@ test("saved Grok subscription can be selected for Claude and continued through t
   const calls = await featureFixtureCalls(page);
   expect(
     calls
-      .filter((call) => call.command === "bind_xai_managed_provider")
+      .filter((call) => call.command === "bind_managed_proxy_provider")
       .map((call) => call.payload),
   ).toEqual([
     {
@@ -97,8 +101,10 @@ test("subscription rejection remains local to its target and exposes the account
     page,
     "/models?target=claude&agentReturn=grokbuild&agentSection=models",
   );
-  const section = page.getByRole("region", { name: "SuperGrok 订阅设置" });
-  await section.getByRole("radio", { name: "browser-xai@example.com" }).check();
+  const section = page.getByRole("region", { name: "账号订阅设置" });
+  await section
+    .getByRole("radio", { name: "Grok · browser-xai@example.com" })
+    .check();
   await section
     .getByRole("button", { name: "grok-subscription-fixture-1" })
     .click();
@@ -109,7 +115,7 @@ test("subscription rejection remains local to its target and exposes the account
     .click();
   await expect(section.getByText("未能应用订阅配置")).toBeVisible();
   await expect(section.getByText(/所选账号暂时不能用于本机转发/)).toBeVisible();
-  await section.getByRole("button", { name: "管理 Grok 账号" }).click();
+  await section.getByRole("button", { name: "管理订阅账号" }).click();
   await expect(page).toHaveURL(
     /#\/auth\?view=accounts&agentReturn=grokbuild&agentSection=models$/,
   );
@@ -121,4 +127,53 @@ test("subscription rejection remains local to its target and exposes the account
         call.command === "apply_change_plan",
     ),
   ).toEqual([]);
+});
+
+test("ChatGPT account can be bound to Grok Build through the existing model target", async ({
+  page,
+}) => {
+  await installRichTauriFeatureFixture(page);
+  const health = monitorPageHealth(page);
+  await openRendererPage(page, "/models?target=grokbuild");
+  const section = page
+    .getByRole("region", { name: "Grok Build 模型配置", exact: true })
+    .getByRole("region", { name: "账号订阅设置" });
+  await section
+    .getByRole("radio", { name: "ChatGPT · Browser Fixture" })
+    .check();
+  await section.getByLabel("订阅模型 ID").fill("chatgpt-fixture-model");
+  await section.getByRole("button", { name: "应用到 Grok Build" }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "确认应用 Grok Build 订阅配置",
+  });
+  await expect(
+    dialog.getByText("~/.config/grokbuild/config", { exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "确认应用" }).click();
+  await expect(
+    section.getByText("已将账号订阅应用到 Grok Build"),
+  ).toBeVisible();
+  const calls = await featureFixtureCalls(page);
+  expect(
+    calls
+      .filter((call) => call.command === "bind_managed_proxy_provider")
+      .map((call) => call.payload),
+  ).toEqual([
+    {
+      request: {
+        app: "grokbuild",
+        accountId: `ma1:${"1".repeat(32)}`,
+        modelId: "chatgpt-fixture-model",
+      },
+    },
+  ]);
+  expect(
+    calls.filter(
+      (call) =>
+        call.command === "get_xai_oauth_models" ||
+        call.command === "fetch_models_for_config",
+    ),
+  ).toEqual([]);
+  await expectNoHorizontalOverflow(page);
+  await expectHealthyPage(page, health);
 });

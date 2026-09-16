@@ -202,10 +202,28 @@ async function installLongFixture(page: Page) {
 async function wheelInside(page: Page, area: Locator, delta: number) {
   const box = await area.boundingBox();
   if (!box) throw new Error("Missing visible scroll region");
-  await page.mouse.move(
-    box.x + Math.min(box.width / 2, 100),
-    Math.min(box.y + 80, page.viewportSize()!.height - 50),
-  );
+  const point = {
+    x: box.x + Math.min(box.width / 2, 100),
+    y: Math.min(
+      box.y + Math.min(box.height / 2, 80),
+      page.viewportSize()!.height - 50,
+    ),
+  };
+  // A valid compact owner can be shorter than 80px. Keep the physical wheel
+  // point inside it and verify hit testing, rather than scrolling its neighbour.
+  await expect
+    .poll(
+      () =>
+        area.evaluate((node, point) => {
+          const hit = document.elementFromPoint(point.x, point.y);
+          return hit === node || (hit !== null && node.contains(hit));
+        }, point),
+      {
+        message: `Wheel target must hit its scroll owner: ${JSON.stringify({ box, point })}`,
+      },
+    )
+    .toBe(true);
+  await page.mouse.move(point.x, point.y);
   await page.mouse.wheel(0, delta);
 }
 

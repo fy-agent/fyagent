@@ -88,6 +88,65 @@ pub(crate) struct ManagedTakeoverRuntimeSnapshot {
 }
 
 impl ProxyService {
+    /// Read-only local evidence, not an upstream entitlement/health probe.
+    /// None means a transition/read could not be observed consistently.
+    pub(crate) fn observe_managed_account_route(
+        &self,
+        auth_kind: &str,
+        legacy_account_id: &str,
+        is_default: bool,
+    ) -> Option<bool> {
+        let _activation = self.managed_activation_lock.try_lock().ok()?;
+        let server = self.server.try_read().ok()?;
+        let Some(server) = server.as_ref() else {
+            return Some(false);
+        };
+        let status = server.try_listener_status()?;
+        if !status.running || status.port == 0 {
+            return Some(false);
+        }
+        let address = status.address.parse::<std::net::IpAddr>().ok()?;
+        if !address.is_loopback() {
+            return Some(false);
+        }
+        let proxy_url = format!("http://{}", std::net::SocketAddr::new(address, status.port));
+        let codex_url = format!("{proxy_url}/v1");
+        let mut unreadable = false;
+        for app in [AppType::Claude, AppType::Codex, AppType::GrokBuild] {
+            let Some(provider) = self.get_current_provider_for_app(&app).ok()? else {
+                continue;
+            };
+            let matches_kind = match auth_kind {
+                "codex_oauth" => provider.is_codex_oauth(),
+                "xai_oauth" => provider.is_xai_oauth(),
+                _ => false,
+            };
+            if !matches_kind {
+                continue;
+            }
+            let account = provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.managed_account_id_for(auth_kind));
+            if !account
+                .as_deref()
+                .map_or(is_default, |account| account == legacy_account_id)
+            {
+                continue;
+            }
+            match self.live_takeover_matches_proxy_urls(&app, &proxy_url, &codex_url) {
+                Ok(true) => return Some(true),
+                Ok(false) => {}
+                Err(_) => unreadable = true,
+            }
+        }
+        if unreadable {
+            None
+        } else {
+            Some(false)
+        }
+    }
+
     /// Provider callers already hold their per-app switch guard. The fixed
     /// app -> activation -> start order serializes ownership of the shared
     /// listener until both the logical commit and any compensation finish.
@@ -168,6 +227,10 @@ impl ProxyService {
             AppType::Claude if !get_claude_settings_path().exists() => json!({}),
             AppType::Claude => self.read_claude_live()?,
             AppType::Codex => self.read_codex_live()?,
+            AppType::GrokBuild if !crate::grok_config::get_grok_config_path().exists() => {
+                json!({"config": ""})
+            }
+            AppType::GrokBuild => self.read_grok_live()?,
             _ => return Err("Managed takeover target is unsupported".into()),
         };
         if self
@@ -197,6 +260,10 @@ impl ProxyService {
             }
             AppType::Codex => {
                 self.sync_codex_live_from_provider_while_proxy_active(provider)
+                    .await?
+            }
+            AppType::GrokBuild => {
+                self.sync_grok_live_from_provider_while_proxy_active(provider)
                     .await?
             }
             _ => unreachable!(),
@@ -647,7 +714,7 @@ impl ProxyService {
             &proxy_codex_base_url,
             provider,
         )?;
-        if provider.is_xai_oauth() {
+        if provider.uses_subscription_proxy() {
             if let Some(existing) = existing_live {
                 let patched = crate::codex_config::patch_codex_source_config(
                     existing
@@ -674,14 +741,34 @@ impl ProxyService {
         &self,
         provider: &Provider,
     ) -> Result<(), String> {
-        let existing_live = self.read_grok_live().ok();
+        let managed = provider.uses_subscription_proxy();
+        let existing_live = if managed && crate::grok_config::get_grok_config_path().exists() {
+            // An unreadable/malformed file is not an empty configuration.
+            Some(self.read_grok_live()?)
+        } else {
+            self.read_grok_live().ok()
+        };
         let mut effective_settings = build_effective_settings_with_common_config(
             self.db.as_ref(),
             &AppType::GrokBuild,
             provider,
         )
         .map_err(|e| format!("构建 Grok Build 有效配置失败: {e}"))?;
-        if let Some(existing_live) = existing_live.as_ref() {
+        if managed {
+            let current = existing_live
+                .as_ref()
+                .and_then(|settings| settings.get("config"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let desired = effective_settings
+                .get("config")
+                .and_then(Value::as_str)
+                .ok_or("Managed Grok configuration is missing")?;
+            effective_settings["config"] = Value::String(
+                crate::services::provider::patch_grok_quick_setup_config(current, desired)
+                    .map_err(|error| error.to_string())?,
+            );
+        } else if let Some(existing_live) = existing_live.as_ref() {
             Self::preserve_toml_mcp_servers_from_existing_config(
                 &mut effective_settings,
                 existing_live,
@@ -690,7 +777,11 @@ impl ProxyService {
         let (proxy_url, _) = self.build_proxy_urls().await?;
         let proxy_grok_base_url = format!("{}/grokbuild/v1", proxy_url.trim_end_matches('/'));
         Self::apply_grok_takeover_fields(&mut effective_settings, &proxy_grok_base_url)?;
-        self.write_grok_live(&effective_settings)
+        self.write_grok_live(&effective_settings)?;
+        if managed && self.read_grok_live()?.get("config") != effective_settings.get("config") {
+            return Err("Grok subscription configuration readback failed".into());
+        }
+        Ok(())
     }
 
     fn get_current_provider_for_app(&self, app_type: &AppType) -> Result<Option<Provider>, String> {
@@ -2256,6 +2347,15 @@ impl ProxyService {
         app_type: &AppType,
     ) -> Result<bool, String> {
         let (proxy_url, proxy_codex_base_url) = self.build_proxy_urls().await?;
+        self.live_takeover_matches_proxy_urls(app_type, &proxy_url, &proxy_codex_base_url)
+    }
+
+    fn live_takeover_matches_proxy_urls(
+        &self,
+        app_type: &AppType,
+        proxy_url: &str,
+        proxy_codex_base_url: &str,
+    ) -> Result<bool, String> {
         let proxy_grok_base_url = format!("{}/grokbuild/v1", proxy_url.trim_end_matches('/'));
 
         match app_type {
@@ -2265,7 +2365,7 @@ impl ProxyService {
                     .get("env")
                     .and_then(|value| value.get("ANTHROPIC_BASE_URL"))
                     .and_then(|value| value.as_str())
-                    .is_some_and(|url| proxy_urls_match(url, &proxy_url));
+                    .is_some_and(|url| proxy_urls_match(url, proxy_url));
                 Ok(Self::is_claude_live_taken_over(&config) && base_url_matches)
             }
             AppType::Codex => {
@@ -2275,7 +2375,7 @@ impl ProxyService {
                     .and_then(|value| value.as_str())
                     .is_some_and(|config_text| {
                         codex_config_has_base_url_matching(config_text, |url| {
-                            proxy_urls_match(url, &proxy_codex_base_url)
+                            proxy_urls_match(url, proxy_codex_base_url)
                         })
                     });
                 Ok(Self::is_codex_live_taken_over(&config) && base_url_matches)
@@ -2286,7 +2386,7 @@ impl ProxyService {
                     .get("env")
                     .and_then(|value| value.get("GOOGLE_GEMINI_BASE_URL"))
                     .and_then(|value| value.as_str())
-                    .is_some_and(|url| proxy_urls_match(url, &proxy_url));
+                    .is_some_and(|url| proxy_urls_match(url, proxy_url));
                 Ok(Self::is_gemini_live_taken_over(&config) && base_url_matches)
             }
             AppType::GrokBuild => {
@@ -3108,14 +3208,14 @@ impl ProxyService {
         // while the local gateway was active.
         if self
             .get_current_provider_for_app(&AppType::Codex)?
-            .is_some_and(|provider| provider.is_xai_oauth())
+            .is_some_and(|provider| provider.uses_subscription_proxy())
         {
             if let Some(text) = config.get("config").and_then(Value::as_str) {
                 let prepared =
                     crate::codex_config::prepare_codex_live_config_text_with_optional_catalog(
                         config,
                         text,
-                        crate::codex_config::CodexCatalogToolProfile::ProxyChat,
+                        crate::codex_config::CodexCatalogToolProfile::NativeResponses,
                     )
                     .map_err(|error| error.to_string())?;
                 crate::codex_config::write_codex_live_config_atomic(Some(&prepared))

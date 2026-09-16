@@ -876,6 +876,22 @@ fn write_quick_setup_grok_live(provider: &Provider) -> Result<(), AppError> {
         .get("config")
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::Config("Grok Build Quick Setup config is missing".to_string()))?;
+    let path = crate::grok_config::get_grok_config_path();
+    let current_config = if path.exists() {
+        std::fs::read_to_string(&path).map_err(|error| AppError::io(&path, error))?
+    } else {
+        String::new()
+    };
+    let patched = patch_grok_quick_setup_config(&current_config, desired_config)?;
+    write_text_file(&path, &patched)
+}
+
+/// One model-selection patch for both ordinary Quick Setup and managed Proxy
+/// activation. Preserve other models, MCP, hooks and user settings verbatim.
+pub(crate) fn patch_grok_quick_setup_config(
+    current_config: &str,
+    desired_config: &str,
+) -> Result<String, AppError> {
     let desired = desired_config.parse::<DocumentMut>().map_err(|error| {
         AppError::Message(format!("Invalid Grok Build Quick Setup TOML: {error}"))
     })?;
@@ -892,12 +908,6 @@ fn write_quick_setup_grok_live(provider: &Provider) -> Result<(), AppError> {
             AppError::Config("Grok Build Quick Setup model table is missing".to_string())
         })?;
 
-    let path = crate::grok_config::get_grok_config_path();
-    let current_config = if path.exists() {
-        std::fs::read_to_string(&path).map_err(|error| AppError::io(&path, error))?
-    } else {
-        String::new()
-    };
     let mut target = if current_config.trim().is_empty() {
         DocumentMut::new()
     } else {
@@ -950,7 +960,7 @@ fn write_quick_setup_grok_live(provider: &Provider) -> Result<(), AppError> {
 
     let patched = target.to_string();
     crate::grok_config::validate_config_toml(&patched)?;
-    write_text_file(&path, &patched)
+    Ok(patched)
 }
 
 pub(crate) fn strip_common_config_from_live_settings(

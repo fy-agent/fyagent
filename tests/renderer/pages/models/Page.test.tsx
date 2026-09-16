@@ -268,7 +268,7 @@ describe("Models page", () => {
     }));
     renderPage(ports, "claude");
     await user.click(
-      await screen.findByRole("radio", { name: "xai@example.com" }),
+      await screen.findByRole("radio", { name: "Grok · xai@example.com" }),
     );
     await user.click(
       await screen.findByRole("button", { name: "grok-selected-fixture" }),
@@ -278,7 +278,7 @@ describe("Models page", () => {
     ).toBeEnabled();
     await user.click(screen.getByTestId("model-target-codex"));
     expect(
-      await screen.findByRole("radio", { name: "xai@example.com" }),
+      await screen.findByRole("radio", { name: "Grok · xai@example.com" }),
     ).not.toBeChecked();
     expect(
       screen.getByRole("button", { name: "保存 Codex 订阅配置" }),
@@ -558,7 +558,7 @@ describe("Models page", () => {
 
     await screen.findByText("已有第三方模型数量");
     expect(
-      screen.queryByRole("region", { name: "SuperGrok 订阅设置" }),
+      screen.queryByRole("region", { name: "账号订阅设置" }),
     ).not.toBeInTheDocument();
     const heading = screen.getByRole("heading", { name: "WorkBuddy" });
     const header = heading.closest("header");

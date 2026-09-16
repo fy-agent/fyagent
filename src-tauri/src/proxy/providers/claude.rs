@@ -24,13 +24,6 @@ const ANTHROPIC_REDACTED_THINKING_PLACEHOLDER: &str = "[redacted thinking]";
 // Keep hints lowercase; matching lowercases only the input value.
 const REASONING_VENDOR_HINTS: &[&str] = &["moonshot", "kimi", "deepseek", "mimo", "xiaomimimo"];
 
-// ChatGPT Codex 后端按 originator+version 组合做模型 cohort 路由：非官方身份会把
-// gpt-5.6-luna 解析到未部署的内部引擎（HTTP 404 Model not found，openai/codex#31967，
-// 本机 A/B 实测确认）。两个头必须成对发送，缺一即 404；version 需 ≥ 目标模型
-// catalog 的 minimal_client_version（luna=0.144.0），新模型抬门槛时同步 bump。
-const CODEX_OAUTH_ORIGINATOR: &str = "codex_cli_rs";
-const CODEX_OAUTH_CLIENT_VERSION: &str = "0.144.1";
-
 /// 获取 Claude 供应商的 API 格式
 ///
 /// 供 handler/forwarder 外部使用的公开函数。
@@ -38,7 +31,7 @@ const CODEX_OAUTH_CLIENT_VERSION: &str = "0.144.1";
 pub fn get_claude_api_format(provider: &Provider) -> &'static str {
     // Managed OAuth providers pin the vendor's protocol before editable metadata.
     if provider.is_xai_oauth() {
-        return "openai_chat";
+        return "openai_responses";
     }
     if let Some(meta) = provider.meta.as_ref() {
         if matches!(meta.provider_type.as_deref(), Some("codex_oauth")) {
@@ -403,27 +396,12 @@ pub fn transform_claude_request_for_api_format(
             // Codex OAuth (ChatGPT Plus/Pro 反代) 需要在请求体里强制 store: false
             // + include: ["reasoning.encrypted_content"]，由 transform 层统一处理。
             let codex_fast_mode = provider.codex_fast_mode_enabled();
-            let mut result = super::transform_responses::anthropic_to_responses(
+            let result = super::transform_responses::anthropic_to_responses(
                 body,
                 cache_key,
                 is_codex_oauth,
                 codex_fast_mode,
             )?;
-            if provider.is_xai_oauth() {
-                const REASONING_MARKER: &str = "reasoning.encrypted_content";
-                let mut include = result
-                    .get("include")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default();
-                if !include
-                    .iter()
-                    .any(|item| item.as_str() == Some(REASONING_MARKER))
-                {
-                    include.push(json!(REASONING_MARKER));
-                }
-                result["include"] = json!(include);
-            }
             Ok(result)
         }
         "openai_chat" => {
@@ -835,9 +813,9 @@ impl ProviderAdapter for ClaudeAdapter {
         if base_url == super::XAI_SUBSCRIPTION_BASE_URL {
             return match endpoint.split_once('?') {
                 Some((_, query)) if !query.is_empty() => {
-                    format!("{base_url}/chat/completions?{query}")
+                    format!("{base_url}/responses?{query}")
                 }
-                _ => format!("{base_url}/chat/completions"),
+                _ => format!("{base_url}/responses"),
             };
         }
         if base_url == super::XAI_API_BASE_URL {
@@ -903,21 +881,7 @@ impl ProviderAdapter for ClaudeAdapter {
                     ),
                 ]
             }
-            AuthStrategy::CodexOAuth => {
-                // 注意：bearer token 由 forwarder 动态注入到 auth.api_key
-                // ChatGPT-Account-Id 由 forwarder 注入额外 header
-                vec![
-                    (HeaderName::from_static("authorization"), hv(&bearer)?),
-                    (
-                        HeaderName::from_static("originator"),
-                        HeaderValue::from_static(CODEX_OAUTH_ORIGINATOR),
-                    ),
-                    (
-                        HeaderName::from_static("version"),
-                        HeaderValue::from_static(CODEX_OAUTH_CLIENT_VERSION),
-                    ),
-                ]
-            }
+            AuthStrategy::CodexOAuth => super::auth::codex_oauth_headers(&auth.api_key)?,
             AuthStrategy::XaiOAuth => {
                 vec![(HeaderName::from_static("authorization"), hv(&bearer)?)]
             }
@@ -1461,7 +1425,7 @@ mod tests {
             },
         );
 
-        assert_eq!(get_claude_api_format(&provider), "openai_chat");
+        assert_eq!(get_claude_api_format(&provider), "openai_responses");
         assert_eq!(adapter.provider_type(&provider), ProviderType::XaiOAuth);
         assert_eq!(
             adapter.extract_base_url(&provider).unwrap(),
@@ -1480,7 +1444,7 @@ mod tests {
                 super::super::XAI_SUBSCRIPTION_BASE_URL,
                 "/v1/messages?beta=1"
             ),
-            "https://cli-chat-proxy.grok.com/v1/chat/completions?beta=1"
+            "https://cli-chat-proxy.grok.com/v1/responses?beta=1"
         );
 
         let transformed = transform_claude_request_for_api_format(
@@ -1491,13 +1455,13 @@ mod tests {
                 "messages": [{ "role": "user", "content": "hello" }]
             }),
             &provider,
-            "openai_chat",
+            "openai_responses",
             None,
             None,
         )
         .unwrap();
-        assert!(transformed.get("messages").is_some());
-        assert!(transformed.get("input").is_none());
+        assert!(transformed.get("messages").is_none());
+        assert!(transformed.get("input").is_some());
     }
 
     #[test]

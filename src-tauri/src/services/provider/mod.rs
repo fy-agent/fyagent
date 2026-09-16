@@ -6,11 +6,14 @@ mod common_config;
 mod endpoints;
 mod gemini_auth;
 mod live;
-mod managed_xai;
+mod managed_proxy;
 mod universal;
 mod usage;
 
-pub use managed_xai::{BindXaiManagedError, BindXaiManagedRequest, BindXaiManagedResult};
+pub use managed_proxy::{
+    BindManagedProxyError, BindManagedProxyRequest, BindManagedProxyResult, BindXaiManagedError,
+    BindXaiManagedRequest, BindXaiManagedResult,
+};
 
 use indexmap::IndexMap;
 use regex::Regex;
@@ -43,8 +46,9 @@ pub(crate) use live::sanitize_claude_settings_for_live;
 pub(crate) use live::{
     build_codex_quick_setup_live_projection, build_effective_settings_with_common_config,
     build_health_settings_projection, normalize_provider_common_config_for_storage,
-    provider_exists_in_live_config, strip_common_config_from_live_settings,
-    sync_current_provider_for_app_to_live, write_live_with_common_config,
+    patch_grok_quick_setup_config, provider_exists_in_live_config,
+    strip_common_config_from_live_settings, sync_current_provider_for_app_to_live,
+    write_live_with_common_config,
 };
 
 // Internal re-exports
@@ -107,7 +111,7 @@ pub(crate) fn build_codex_switch_target_live_projection(
     provider: &Provider,
     environment: &CodexSwitchEnvironment,
 ) -> Result<Value, AppError> {
-    if environment.should_hot_switch() || provider.is_xai_oauth() {
+    if environment.should_hot_switch() || provider.uses_subscription_proxy() {
         return futures::executor::block_on(
             state
                 .proxy_service
@@ -4714,7 +4718,7 @@ impl ProviderService {
         app_type: AppType,
         mut provider: Provider,
     ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
-        let _managed_activation = provider.is_xai_oauth().then(|| {
+        let _managed_activation = provider.uses_subscription_proxy().then(|| {
             futures::executor::block_on(state.proxy_service.lock_managed_activation(&app_type))
         });
         let _file_scope = crate::config::file_mutation_scope();
@@ -4757,11 +4761,11 @@ impl ProviderService {
             provider.in_failover_queue = existing.in_failover_queue;
         }
 
-        let managed_subscription = provider.is_xai_oauth();
+        let managed_subscription = provider.uses_subscription_proxy();
         if managed_subscription
-            && (!Self::xai_managed_account_is_ready(state, &provider)
+            && (!Self::managed_proxy_account_is_ready(state, &provider)
                 || (app_type == AppType::Codex
-                    && !Self::xai_managed_codex_shape_is_valid(&provider)))
+                    && !Self::managed_proxy_codex_shape_is_valid(&provider)))
         {
             return Err(QuickSetupApplyError::rolled_back(
                 "Managed subscription account is unavailable",
@@ -5621,7 +5625,7 @@ impl ProviderService {
 
         if matches!(app_type, AppType::Codex)
             && !is_quick_setup_provider_id(&app_type, id)
-            && !_provider.is_xai_oauth()
+            && !_provider.uses_subscription_proxy()
         {
             let settings = build_effective_settings_with_common_config(
                 state.db.as_ref(),
@@ -5638,7 +5642,12 @@ impl ProviderService {
             )?;
         }
 
-        if _provider.is_xai_oauth() && matches!(app_type, AppType::Claude | AppType::Codex) {
+        if _provider.uses_subscription_proxy()
+            && matches!(
+                app_type,
+                AppType::Claude | AppType::Codex | AppType::GrokBuild
+            )
+        {
             return Self::apply_quick_setup_locked(state, app_type, _provider.clone())
                 .map(|result| result.value)
                 .map_err(|error| AppError::Message(error.to_string()));

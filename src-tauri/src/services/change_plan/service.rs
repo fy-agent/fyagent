@@ -1612,8 +1612,8 @@ fn prove_codex_target_credential_capability(
     inspection: &CodexSwitchInspection,
 ) -> SecretCapabilityResult {
     let provider = &inspection.target;
-    if ProviderService::xai_managed_account_is_ready(state, provider) {
-        return prove_xai_oauth_switch_shape(provider);
+    if ProviderService::managed_proxy_account_is_ready(state, provider) {
+        return prove_managed_proxy_switch_shape(provider);
     }
     if provider
         .meta
@@ -1669,8 +1669,8 @@ fn prove_codex_target_credential_capability(
     }
 }
 
-fn prove_xai_oauth_switch_shape(provider: &Provider) -> SecretCapabilityResult {
-    if ProviderService::xai_managed_codex_shape_is_valid(provider) {
+fn prove_managed_proxy_switch_shape(provider: &Provider) -> SecretCapabilityResult {
+    if ProviderService::managed_proxy_codex_shape_is_valid(provider) {
         SecretCapabilityResult::NoNewCredentialMaterial
     } else {
         SecretCapabilityResult::SecretDependencyUnavailable

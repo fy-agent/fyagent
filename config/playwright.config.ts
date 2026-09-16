@@ -57,6 +57,7 @@ export default defineConfig({
         "auth.spec.ts",
         "health.spec.ts",
         "first-use-guide.spec.ts",
+        "fde-presets.spec.ts",
         "xai-subscription.spec.ts",
         "presentation-choreography.spec.ts",
       ],

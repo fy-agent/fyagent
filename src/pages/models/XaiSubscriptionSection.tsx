@@ -7,8 +7,8 @@ import {
   agentReturnDescriptorFromManagementSearch,
 } from "../../shared/features/agent-navigation";
 import type {
-  BindXaiManagedRequest,
-  BindXaiManagedResult,
+  BindManagedProxyRequest,
+  BindManagedProxyResult,
   ModelWriteTarget,
 } from "../../shared/features/models";
 import { useFeatures } from "../../shared/features/provider";
@@ -35,7 +35,7 @@ import { GroupedModelChips } from "./modelChips";
 type Props = {
   active: boolean;
   disabled: boolean;
-  app: "claude" | "codex";
+  app: BindManagedProxyRequest["app"];
   writeTargets: readonly ModelWriteTarget[];
   onBeginWrite: () => boolean;
   onEndWrite: () => void;
@@ -45,11 +45,10 @@ type Props = {
 const TARGET_LABELS = {
   claude: "Claude Code",
   codex: "Codex",
+  grokbuild: "Grok Build",
 };
 
-type CliBindRequest = BindXaiManagedRequest & {
-  app: "claude" | "codex";
-};
+type CliBindRequest = BindManagedProxyRequest;
 
 export function XaiSubscriptionSection(props: Props) {
   const { ports } = useFeatures();
@@ -65,7 +64,7 @@ export function XaiSubscriptionSection(props: Props) {
   const [pending, setPending] = useState<CliBindRequest | null>(null);
   const [busy, setBusy] = useState<"fetch" | "bind" | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [saved, setSaved] = useState<BindXaiManagedResult | null>(null);
+  const [saved, setSaved] = useState<BindManagedProxyResult | null>(null);
   const lock = useRef(false);
   const mounted = useRef(true);
   const originRef = useRef<HTMLElement | null>(null);
@@ -78,7 +77,9 @@ export function XaiSubscriptionSection(props: Props) {
   }, []);
 
   const accounts =
-    overview.data?.accounts.filter((item) => item.provider === "xai") ?? [];
+    overview.data?.accounts.filter(
+      (item) => item.provider === "xai" || item.provider === "openai",
+    ) ?? [];
   const selected = accounts.find((item) => item.accountId === accountId);
   const accountReady = !overview.isError && selected?.health === "ready";
   const locked = !props.active || props.disabled || busy !== null;
@@ -114,6 +115,20 @@ export function XaiSubscriptionSection(props: Props) {
     setBusy("fetch");
     setNotice(null);
     try {
+      if (
+        accounts.find((account) => account.accountId === selectedAccountId)
+          ?.provider === "openai"
+      ) {
+        setModelIds([]);
+        setManualModel(true);
+        setNotice({
+          tone: "info",
+          title: "填写订阅模型 ID",
+          description:
+            "填写该 ChatGPT 账号在 Codex 中可用的模型 ID，实际可用性以服务返回为准。",
+        });
+        return;
+      }
       const result =
         await ports.providers.fetchXaiManagedModels(selectedAccountId);
       if (!mounted.current) return;
@@ -153,7 +168,7 @@ export function XaiSubscriptionSection(props: Props) {
     setPending(null);
     let bindingReturned = false;
     try {
-      const result = await ports.providers.bindXaiManaged(request);
+      const result = await ports.providers.bindManagedProxy(request);
       bindingReturned = true;
       await Promise.all([
         queryClient.invalidateQueries({
@@ -168,10 +183,7 @@ export function XaiSubscriptionSection(props: Props) {
       const [summary] = await Promise.all([
         queryClient.fetchQuery({
           queryKey: featureKeys.providerSummary(props.app),
-          queryFn: () =>
-            ports.providers.getSummary(
-              props.app === "codex" ? "codex" : "claude",
-            ),
+          queryFn: () => ports.providers.getSummary(props.app),
         }),
         queryClient.fetchQuery({
           queryKey: featureKeys.managedAuthOverview,
@@ -180,9 +192,7 @@ export function XaiSubscriptionSection(props: Props) {
       ]);
       if (
         !summary.providers[result.providerId] ||
-        (request.app === "claude" &&
-          result.activated &&
-          summary.currentId !== result.providerId)
+        (result.activated && summary.currentId !== result.providerId)
       ) {
         props.onUnconfirmed();
         if (mounted.current)
@@ -199,7 +209,7 @@ export function XaiSubscriptionSection(props: Props) {
         result.activated
           ? {
               tone: "info",
-              title: `已将 SuperGrok 应用到 ${TARGET_LABELS[request.app]}`,
+              title: `已将账号订阅应用到 ${TARGET_LABELS[request.app]}`,
               description:
                 "本机配置已确认。请重新打开目标软件或新建会话；实际调用与额度使用以服务返回为准。",
             }
@@ -241,14 +251,10 @@ export function XaiSubscriptionSection(props: Props) {
   };
 
   return (
-    <ModelsSection
-      title="使用 Grok 订阅（实验性）"
-      ariaLabel="SuperGrok 订阅设置"
-    >
+    <ModelsSection title="使用账号订阅（实验性）" ariaLabel="账号订阅设置">
       <p className="fy-models-muted">
         使用订阅时，请保持 FyAgent
-        在后台运行；完全退出后会停止转发。账号是否支持调用及额度使用，以 Grok
-        服务返回为准。
+        在后台运行；完全退出后会停止转发。账号是否支持调用及额度使用，以服务返回为准。
       </p>
       {overview.isPending ? <Spinner label="正在读取订阅账号" /> : null}
       {overview.isError ? (
@@ -258,7 +264,7 @@ export function XaiSubscriptionSection(props: Props) {
       ) : null}
       {!overview.isPending && !overview.isError && accounts.length === 0 ? (
         <InlineNotice tone="info">
-          还没有保存的 Grok 账号，请先到账号与认证登录。
+          还没有保存的 ChatGPT 或 Grok 账号，请先到账号与认证登录。
         </InlineNotice>
       ) : null}
       {accounts.length > 0 ? (
@@ -287,6 +293,7 @@ export function XaiSubscriptionSection(props: Props) {
                 }}
               />
               <span>
+                {account.provider === "openai" ? "ChatGPT · " : "Grok · "}
                 {account.displayName ?? account.login}
                 {account.health === "requires_reauth"
                   ? "（需要重新登录）"
@@ -300,7 +307,7 @@ export function XaiSubscriptionSection(props: Props) {
       ) : null}
       <div className="fy-models-inline-fields">
         <Button disabled={locked} onClick={() => openAuth()}>
-          管理 Grok 账号
+          管理订阅账号
         </Button>
         <Button
           disabled={locked || overview.isFetching}
@@ -309,7 +316,7 @@ export function XaiSubscriptionSection(props: Props) {
           刷新订阅账号
         </Button>
         <Button
-          disabled={locked || !accountReady}
+          disabled={locked || !accountReady || selected?.provider !== "xai"}
           onClick={() => void fetchModels()}
         >
           {busy === "fetch" ? "加载中…" : "查看模型选项"}
@@ -369,13 +376,15 @@ export function XaiSubscriptionSection(props: Props) {
           dialogOriginRef={originRef}
           onClick={() =>
             setPending({
-              app: props.app === "codex" ? "codex" : "claude",
+              app: props.app,
               accountId,
               modelId: modelId.trim(),
             })
           }
         >
-          {props.app === "codex" ? "保存 Codex 订阅配置" : "应用到 Claude Code"}
+          {props.app === "codex"
+            ? "保存 Codex 订阅配置"
+            : `应用到 ${TARGET_LABELS[props.app]}`}
         </Button>
       </div>
       <FieldFeedback notice={notice} />
@@ -393,7 +402,7 @@ export function XaiSubscriptionSection(props: Props) {
         }}
         title={
           pending
-            ? `确认${pending.app === "claude" ? "应用" : "保存"} ${TARGET_LABELS[pending.app]} 订阅配置`
+            ? `确认${pending.app === "codex" ? "保存" : "应用"} ${TARGET_LABELS[pending.app]} 订阅配置`
             : "确认订阅配置"
         }
         description={
@@ -415,7 +424,7 @@ export function XaiSubscriptionSection(props: Props) {
               disabled={locked || !pendingAccountReady}
               onClick={() => void confirmBind()}
             >
-              确认{pending?.app === "claude" ? "应用" : "保存"}
+              确认{pending?.app === "codex" ? "保存" : "应用"}
             </Button>
           </>
         }
@@ -432,7 +441,7 @@ export function XaiSubscriptionSection(props: Props) {
             <p>模型：{pending.modelId}</p>
           </>
         ) : null}
-        {pending?.app === "claude" ? (
+        {pending && pending.app !== "codex" ? (
           <FileWriteDisclosure targets={props.writeTargets} />
         ) : null}
       </Dialog>

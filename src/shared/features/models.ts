@@ -94,6 +94,17 @@ export interface BindXaiManagedResult {
   activated: boolean;
 }
 
+export interface BindManagedProxyRequest {
+  app: "claude" | "codex" | "grokbuild";
+  accountId: string;
+  modelId: string;
+}
+
+export interface BindManagedProxyResult
+  extends Omit<BindXaiManagedResult, "app"> {
+  app: BindManagedProxyRequest["app"];
+}
+
 export interface WorkBuddySaveModelsRequest
   extends WorkBuddyFetchModelsRequest {
   selectedModelIds: string[];

@@ -5,6 +5,8 @@ import {
   catalogRequiresConfig,
   catalogSearchText,
   findCatalogItem,
+  catalogRecipeIdentity,
+  type McpInstallValues,
 } from "@/pages/mcp/catalog";
 import { DEFAULT_NEW_APPS } from "@/pages/mcp/constants";
 import { mcpPresets } from "@/shared/features/presets";
@@ -50,8 +52,16 @@ describe("MCP curated catalog", () => {
       "howtocook",
       "train-12306",
       "duckduckgo",
+      "cloudbase",
+      "aliyun-dms",
+      "aliyun-dataworks",
+      "aliyun-ack",
+      "aliyun-rds",
+      "aliyun-cloudops",
+      "dbhub",
+      "starrocks",
     ]);
-    expect(MCP_CATALOG).toHaveLength(27);
+    expect(MCP_CATALOG).toHaveLength(35);
     expect(MCP_CATALOG.every((entry) => entry.installable)).toBe(true);
     expect(catalogRequiresConfig(item("playwright"))).toBe(false);
     expect(catalogRequiresConfig(item("antv-chart"))).toBe(false);
@@ -73,6 +83,169 @@ describe("MCP curated catalog", () => {
       "claude",
       "opencode",
     ]);
+  });
+
+  it("adds eight sourced FDE recipes without conflating configuration review with connectivity", () => {
+    const ids = [
+      "cloudbase",
+      "aliyun-dms",
+      "aliyun-dataworks",
+      "aliyun-ack",
+      "aliyun-rds",
+      "aliyun-cloudops",
+      "dbhub",
+      "starrocks",
+    ];
+    for (const id of ids) {
+      const entry = item(id);
+      expect(entry.provenance).toBe("official");
+      expect(entry.maturity).toBe("verify");
+      expect(entry.categories).toContain("fde");
+      expect(entry.docs).toMatch(/^https:\/\//u);
+      expect(entry.risk).toBeTruthy();
+      const values: McpInstallValues = {};
+      for (const field of entry.fields)
+        values[field.key] = `private-${field.key}`;
+      for (const platform of ["macos", "windows"] as const) {
+        const server = entry.build(values, ["codex"], platform);
+        expect(server.apps.codex).toBe(true);
+        expect(server.apps.claude).toBe(false);
+        expect(catalogRecipeIdentity(entry, platform)).toBeTruthy();
+        const publicText = `${JSON.stringify(server.server.args)} ${catalogSearchText(entry)}`;
+        for (const value of Object.values(values))
+          expect(publicText).not.toContain(value);
+      }
+      if (entry.fields.some((field) => field.required)) {
+        expect(() => entry.build({}, ["codex"], "macos")).toThrow(
+          UserFacingError,
+        );
+      }
+      expect(() => entry.build(values, [], "macos")).toThrow(UserFacingError);
+    }
+    expect(
+      MCP_CATALOG.filter((entry) => entry.categories.includes("fde")).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual([
+      "amap",
+      "feishu",
+      "dingtalk",
+      "yunxiao",
+      "gitee",
+      "tencent-docs",
+      "tapd",
+      "aliyun-websearch",
+      "yuque",
+      "apifox",
+      "antv-chart",
+      "edgeone-pages",
+      "cloudbase",
+      "aliyun-dms",
+      "aliyun-dataworks",
+      "aliyun-ack",
+      "aliyun-rds",
+      "aliyun-cloudops",
+      "dbhub",
+      "starrocks",
+    ]);
+    expect(item("cloudbase").authLabel).toContain("登录");
+  });
+
+  it("keeps least-privilege filters and actual upstream authentication names", () => {
+    const values = {
+      accessKeyId: "id",
+      accessKeySecret: "secret",
+      region: "cn-hangzhou",
+      connectionString: "db@host:3306",
+      securityToken: "sts",
+    };
+    const dms = item("aliyun-dms").build(values, ["codex"], "macos").server;
+    expect(dms.env).toEqual({
+      ALIBABA_CLOUD_ACCESS_KEY_ID: "id",
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: "secret",
+      ALIBABA_CLOUD_SECURITY_TOKEN: "sts",
+      CONNECTION_STRING: "db@host:3306",
+    });
+    expect(
+      item("aliyun-dataworks").build(values, ["codex"], "windows").server.env,
+    ).toEqual({
+      ALIBABA_CLOUD_ACCESS_KEY_ID: "id",
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: "secret",
+      REGION: "cn-hangzhou",
+      TOOL_NAMES: "ListProjects",
+    });
+    const ack = item("aliyun-ack").build(values, ["codex"], "macos").server;
+    expect(ack.env).toEqual({
+      ACCESS_KEY_ID: "id",
+      ACCESS_KEY_SECRET: "secret",
+      KUBECONFIG_MODE: "ACK_PRIVATE",
+    });
+    expect(ack.args).not.toContain("--allow-write");
+    const rds = item("aliyun-rds").build(values, ["codex"], "macos").server;
+    expect(rds.env).toMatchObject({
+      SERVER_TRANSPORT: "stdio",
+      ENABLE_WRITE_TOOLS: "false",
+      ALIBABA_CLOUD_SECURITY_TOKEN: "sts",
+    });
+    expect(item("aliyun-rds").privilege).toBe("cloud");
+    expect(
+      item("aliyun-cloudops").build(values, ["codex"], "windows").server.args,
+    ).toEqual([
+      "alibaba-cloud-ops-mcp-server@latest",
+      "--transport",
+      "stdio",
+      "--env",
+      "domestic",
+      "--services",
+      "ecs",
+      "--visible-tools",
+      "ECS_DescribeInstances",
+    ]);
+  });
+
+  it("keeps database DSNs out of argv and does not invent a readonly flag", () => {
+    const dbhub = item("dbhub").build(
+      { dsn: "postgres://user:secret@host/db" },
+      ["codex"],
+      "windows",
+    ).server;
+    expect(dbhub.args).toEqual([
+      "/c",
+      "npx",
+      "-y",
+      "@bytebase/dbhub@latest",
+      "--transport",
+      "stdio",
+    ]);
+    expect(dbhub.env).toEqual({ DSN: "postgres://user:secret@host/db" });
+    expect(item("dbhub").privilege).toBe("write");
+    const starrocks = item("starrocks").build(
+      { connectionString: "user:secret@host:9030/db", sslCa: "/cert/ca.pem" },
+      ["codex"],
+      "macos",
+    ).server;
+    expect(starrocks.command).toBe("uv");
+    expect(starrocks.args).toEqual([
+      "run",
+      "--with",
+      "mcp-server-starrocks",
+      "mcp-server-starrocks",
+      "--mode",
+      "stdio",
+    ]);
+    expect(starrocks.env).toEqual({
+      STARROCKS_URL: "user:secret@host:9030/db",
+      STARROCKS_SSL_CA: "/cert/ca.pem",
+      STARROCKS_SSL_VERIFY_CERT: "true",
+      STARROCKS_SSL_VERIFY_IDENTITY: "true",
+    });
+    expect(
+      item("starrocks").build(
+        { connectionString: "user:secret@host/db" },
+        ["codex"],
+        "macos",
+      ).server.env,
+    ).not.toHaveProperty("STARROCKS_SSL_VERIFY_CERT");
   });
 
   it("builds Windows and macOS npx commands", () => {

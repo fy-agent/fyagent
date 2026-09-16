@@ -12,6 +12,7 @@ import {
 } from "../../shared/features/types";
 
 export type McpCatalogCategory =
+  | "fde"
   | "china"
   | "devtools"
   | "collab"
@@ -20,7 +21,7 @@ export type McpCatalogCategory =
   | "basics"
   | "cloud";
 
-export type McpCatalogFilterId = "all" | "ready" | "configure";
+export type McpCatalogFilterId = "all" | "ready" | "configure" | "fde";
 
 export type McpProviderGroup =
   | "alibaba"
@@ -87,6 +88,7 @@ export interface McpCatalogItem {
 }
 
 export const MCP_CATEGORY_LABEL: Record<McpCatalogCategory, string> = {
+  fde: "FDE 交付",
   china: "国内服务",
   devtools: "开发工具",
   collab: "办公协作",
@@ -101,6 +103,7 @@ export const MCP_CATALOG_FILTERS: ReadonlyArray<{
   label: string;
 }> = [
   { id: "all", label: "全部" },
+  { id: "fde", label: "FDE 交付" },
   { id: "ready", label: "直接安装" },
   { id: "configure", label: "配置安装" },
 ];
@@ -267,7 +270,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "amap",
     name: "高德地图 MCP",
     description: "地点搜索、路线规划、天气与地理编码。",
-    categories: ["china", "maps"],
+    categories: ["china", "maps", "fde"],
     tags: ["地图", "出行", "HTTP"],
     publisher: "高德开放平台",
     providerGroup: "china-other",
@@ -325,7 +328,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "feishu",
     name: "飞书 OpenAPI MCP",
     description: "文档、消息、日历等企业协作能力。",
-    categories: ["china", "collab"],
+    categories: ["china", "collab", "fde"],
     tags: ["飞书", "办公", "stdio"],
     publisher: "飞书开放平台",
     providerGroup: "china-other",
@@ -362,7 +365,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "dingtalk",
     name: "钉钉 MCP",
     description: "通讯录、日历、机器人与待办等企业协作能力。",
-    categories: ["china", "collab"],
+    categories: ["china", "collab", "fde"],
     tags: ["钉钉", "办公", "stdio"],
     publisher: "钉钉开放平台",
     providerGroup: "china-other",
@@ -412,7 +415,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "yunxiao",
     name: "云效 DevOps MCP",
     description: "阿里云效代码、项目与流水线协作。",
-    categories: ["china", "devtools"],
+    categories: ["china", "devtools", "fde"],
     tags: ["云效", "DevOps", "HTTP"],
     publisher: "阿里云云效",
     providerGroup: "alibaba",
@@ -604,7 +607,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "gitee",
     name: "Gitee MCP",
     description: "国内代码托管：仓库、Issue、Pull Request 与通知。",
-    categories: ["china", "devtools"],
+    categories: ["china", "devtools", "fde"],
     tags: ["Gitee", "代码", "HTTP"],
     publisher: "Gitee",
     providerGroup: "china-other",
@@ -657,7 +660,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "tencent-docs",
     name: "腾讯文档 MCP",
     description: "在线文档与智能表格的查询、创建和编辑。",
-    categories: ["china", "collab"],
+    categories: ["china", "collab", "fde"],
     tags: ["腾讯文档", "办公", "HTTP"],
     publisher: "腾讯文档开放平台",
     providerGroup: "tencent",
@@ -689,7 +692,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "tapd",
     name: "TAPD MCP",
     description: "需求、缺陷、任务与迭代等国内研发协作。",
-    categories: ["china", "devtools"],
+    categories: ["china", "devtools", "fde"],
     tags: ["TAPD", "研发", "stdio"],
     publisher: "腾讯 TAPD",
     providerGroup: "tencent",
@@ -766,7 +769,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "aliyun-websearch",
     name: "阿里云 WebSearch MCP",
     description: "国内联网检索，供编码 Agent 获取实时信息。",
-    categories: ["china", "basics"],
+    categories: ["china", "basics", "fde"],
     tags: ["搜索", "百炼", "HTTP"],
     publisher: "阿里云百炼",
     providerGroup: "alibaba",
@@ -800,7 +803,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "yuque",
     name: "语雀 MCP",
     description: "知识库文档的查询、创建与更新。",
-    categories: ["china", "collab"],
+    categories: ["china", "collab", "fde"],
     tags: ["语雀", "文档", "stdio"],
     publisher: "语雀",
     providerGroup: "china-other",
@@ -832,7 +835,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "apifox",
     name: "Apifox API 文档",
     description: "读取团队 API 文档、数据模型与测试用例。",
-    categories: ["china", "devtools"],
+    categories: ["china", "devtools", "fde"],
     tags: ["Apifox", "API", "stdio"],
     publisher: "Apifox",
     providerGroup: "china-other",
@@ -873,7 +876,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "antv-chart",
     name: "AntV 图表 MCP",
     description: "生成折线、柱状、饼图等图表图片。",
-    categories: ["china", "basics"],
+    categories: ["china", "basics", "fde"],
     tags: ["AntV", "图表", "stdio"],
     publisher: "AntV",
     providerGroup: "alibaba",
@@ -975,7 +978,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     id: "edgeone-pages",
     name: "EdgeOne Pages MCP",
     description: "把 HTML 部署成可公开访问的预览链接，无需登录。",
-    categories: ["china", "cloud"],
+    categories: ["china", "cloud", "fde"],
     tags: ["腾讯云", "部署", "HTTP"],
     publisher: "腾讯云 EdgeOne",
     providerGroup: "tencent",
@@ -1048,6 +1051,408 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
       command: "uvx",
       args: ["duckduckgo-mcp-server"],
       env: { DDG_REGION: "cn-zh" },
+    }),
+  }),
+  catalogItem({
+    id: "cloudbase",
+    name: "腾讯云 CloudBase MCP",
+    description: "小程序与 Web 应用的云开发、数据库和部署。",
+    categories: ["china", "cloud", "fde"],
+    tags: ["腾讯云", "微信小程序", "云开发", "交付", "stdio"],
+    publisher: "腾讯云 CloudBase",
+    providerGroup: "tencent",
+    provenance: "official",
+    homepage: "https://github.com/TencentCloudBase/CloudBase-AI-Toolkit",
+    docs: "https://github.com/TencentCloudBase/CloudBase-AI-Toolkit",
+    requirements: ["node"],
+    fields: [],
+    authLabel: "启动后登录腾讯云并选择环境",
+    privilege: "cloud",
+    maturity: "verify",
+    risk: "可上传文件、修改数据库并部署云资源，可能产生费用。安装配置不代表已登录；先在测试环境确认权限和部署范围。",
+    buildSpec: (_values, platform) =>
+      npxSpec("@cloudbase/cloudbase-mcp@latest", platform),
+  }),
+  catalogItem({
+    id: "aliyun-dms",
+    name: "阿里云 DMS MCP",
+    description: "通过数据管理 DMS 查询数据库、分析数据与核对业务记录。",
+    categories: ["china", "cloud", "fde"],
+    tags: ["DMS", "数据库", "SQL", "对账", "stdio"],
+    publisher: "阿里云 DMS",
+    providerGroup: "alibaba",
+    provenance: "official",
+    homepage: "https://github.com/aliyun/alibabacloud-dms-mcp-server",
+    docs: "https://github.com/aliyun/alibabacloud-dms-mcp-server",
+    requirements: ["uv"],
+    authLabel: "RAM AccessKey / STS",
+    privilege: "write",
+    maturity: "verify",
+    risk: "支持写 SQL 与表结构变更。请使用受限 RAM 身份和只读数据库账号，连接串只限定数据库，不保证只读。",
+    fields: [
+      {
+        key: "accessKeyId",
+        label: "AccessKey ID",
+        type: "password",
+        required: true,
+      },
+      {
+        key: "accessKeySecret",
+        label: "AccessKey Secret",
+        type: "password",
+        required: true,
+      },
+      {
+        key: "securityToken",
+        label: "STS Token",
+        type: "password",
+        help: "使用临时凭据时填写，过期后需更新。",
+      },
+      {
+        key: "connectionString",
+        label: "数据库连接串",
+        type: "text",
+        required: true,
+        placeholder: "数据库名@主机:端口",
+        help: "使用 DMS 已登记且获授权的数据库。",
+      },
+    ],
+    buildSpec: (values) => ({
+      type: "stdio",
+      command: "uvx",
+      args: ["alibabacloud-dms-mcp-server@latest"],
+      env: {
+        ALIBABA_CLOUD_ACCESS_KEY_ID: requiredText(
+          values,
+          "accessKeyId",
+          "AccessKey ID",
+        ),
+        ALIBABA_CLOUD_ACCESS_KEY_SECRET: requiredText(
+          values,
+          "accessKeySecret",
+          "AccessKey Secret",
+        ),
+        CONNECTION_STRING: requiredText(
+          values,
+          "connectionString",
+          "数据库连接串",
+        ),
+        ...(optionalText(values, "securityToken")
+          ? {
+              ALIBABA_CLOUD_SECURITY_TOKEN: optionalText(
+                values,
+                "securityToken",
+              ),
+            }
+          : {}),
+      },
+    }),
+  }),
+  catalogItem({
+    id: "aliyun-dataworks",
+    name: "阿里云 DataWorks MCP",
+    description: "查询数据工作空间，核对数据平台接入范围。",
+    categories: ["china", "cloud", "fde"],
+    tags: ["DataWorks", "数据治理", "工作空间", "stdio"],
+    publisher: "阿里云 DataWorks",
+    providerGroup: "alibaba",
+    provenance: "official",
+    homepage: "https://github.com/aliyun/alibabacloud-dataworks-mcp-server",
+    docs: "https://github.com/aliyun/alibabacloud-dataworks-mcp-server",
+    requirements: ["node"],
+    authLabel: "RAM AccessKey",
+    privilege: "read",
+    maturity: "verify",
+    risk: "此预设仅开放 ListProjects 查询。扩展工具前应核对数据权限；完整服务可创建或修改数据开发任务。",
+    fields: [
+      {
+        key: "accessKeyId",
+        label: "AccessKey ID",
+        type: "password",
+        required: true,
+      },
+      {
+        key: "accessKeySecret",
+        label: "AccessKey Secret",
+        type: "password",
+        required: true,
+      },
+      {
+        key: "region",
+        label: "地域 ID",
+        type: "text",
+        required: true,
+        placeholder: "cn-hangzhou",
+      },
+    ],
+    buildSpec: (values, platform) =>
+      npxSpec("alibabacloud-dataworks-mcp-server@latest", platform, {
+        env: {
+          ALIBABA_CLOUD_ACCESS_KEY_ID: requiredText(
+            values,
+            "accessKeyId",
+            "AccessKey ID",
+          ),
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: requiredText(
+            values,
+            "accessKeySecret",
+            "AccessKey Secret",
+          ),
+          REGION: requiredText(values, "region", "地域 ID"),
+          TOOL_NAMES: "ListProjects",
+        },
+      }),
+  }),
+  catalogItem({
+    id: "aliyun-ack",
+    name: "阿里云 ACK MCP",
+    description: "查看 Kubernetes 集群、工作负载与容器故障信息。",
+    categories: ["china", "cloud", "fde"],
+    tags: ["ACK", "Kubernetes", "容器", "运维", "stdio"],
+    publisher: "阿里云容器服务",
+    providerGroup: "alibaba",
+    provenance: "official",
+    homepage: "https://github.com/aliyun/alibabacloud-ack-mcp-server",
+    docs: "https://github.com/aliyun/alibabacloud-ack-mcp-server",
+    requirements: ["uv"],
+    authLabel: "RAM AccessKey + 集群权限",
+    privilege: "read",
+    maturity: "verify",
+    risk: "需要 Python 3.12 及集群内网连通。未开启 --allow-write；仍须限制 RAM/RBAC 权限，日志和集群配置可能含敏感数据。",
+    fields: [
+      {
+        key: "accessKeyId",
+        label: "AccessKey ID",
+        type: "password",
+        required: true,
+      },
+      {
+        key: "accessKeySecret",
+        label: "AccessKey Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    buildSpec: (values) => ({
+      type: "stdio",
+      command: "uvx",
+      args: ["alibabacloud-ack-mcp-server@latest"],
+      env: {
+        ACCESS_KEY_ID: requiredText(values, "accessKeyId", "AccessKey ID"),
+        ACCESS_KEY_SECRET: requiredText(
+          values,
+          "accessKeySecret",
+          "AccessKey Secret",
+        ),
+        KUBECONFIG_MODE: "ACK_PRIVATE",
+      },
+    }),
+  }),
+  catalogItem({
+    id: "aliyun-rds",
+    name: "阿里云 RDS MCP",
+    description: "查看 RDS 实例、运行状态和数据库运维信息。",
+    categories: ["china", "cloud", "fde"],
+    tags: ["RDS", "数据库", "诊断", "运维", "stdio"],
+    publisher: "阿里云 RDS",
+    providerGroup: "alibaba",
+    provenance: "official",
+    homepage: "https://github.com/aliyun/alibabacloud-rds-openapi-mcp-server",
+    docs: "https://github.com/aliyun/alibabacloud-rds-openapi-mcp-server",
+    requirements: ["uv"],
+    authLabel: "RAM AccessKey / STS",
+    privilege: "cloud",
+    maturity: "verify",
+    risk: "需要 Python 3.12。服务包含实例、账号及网络操作；ENABLE_WRITE_TOOLS=false 不能替代 RAM 权限限制。先在测试实例验证。",
+    fields: [
+      {
+        key: "accessKeyId",
+        label: "AccessKey ID",
+        type: "password",
+        required: true,
+      },
+      {
+        key: "accessKeySecret",
+        label: "AccessKey Secret",
+        type: "password",
+        required: true,
+      },
+      {
+        key: "securityToken",
+        label: "STS Token",
+        type: "password",
+        help: "使用临时凭据时填写。",
+      },
+    ],
+    buildSpec: (values) => ({
+      type: "stdio",
+      command: "uvx",
+      args: ["alibabacloud-rds-openapi-mcp-server@latest"],
+      env: {
+        ALIBABA_CLOUD_ACCESS_KEY_ID: requiredText(
+          values,
+          "accessKeyId",
+          "AccessKey ID",
+        ),
+        ALIBABA_CLOUD_ACCESS_KEY_SECRET: requiredText(
+          values,
+          "accessKeySecret",
+          "AccessKey Secret",
+        ),
+        SERVER_TRANSPORT: "stdio",
+        ENABLE_WRITE_TOOLS: "false",
+        ...(optionalText(values, "securityToken")
+          ? {
+              ALIBABA_CLOUD_SECURITY_TOKEN: optionalText(
+                values,
+                "securityToken",
+              ),
+            }
+          : {}),
+      },
+    }),
+  }),
+  catalogItem({
+    id: "aliyun-cloudops",
+    name: "阿里云 CloudOps 资源盘点",
+    description: "查询国内站 ECS 实例，辅助资源台账与交付核对。",
+    categories: ["china", "cloud", "fde"],
+    tags: ["CloudOps", "ECS", "资源盘点", "FinOps", "stdio"],
+    publisher: "阿里云",
+    providerGroup: "alibaba",
+    provenance: "official",
+    homepage: "https://github.com/aliyun/alibaba-cloud-ops-mcp-server",
+    docs: "https://github.com/aliyun/alibaba-cloud-ops-mcp-server/blob/master/README_mcp_args.md",
+    requirements: ["uv"],
+    authLabel: "RAM AccessKey",
+    privilege: "read",
+    maturity: "verify",
+    risk: "此预设仅开放 ECS_DescribeInstances。完整服务含云资源变更和本地执行能力，扩展参数前须重新审查权限。",
+    fields: [
+      {
+        key: "accessKeyId",
+        label: "AccessKey ID",
+        type: "password",
+        required: true,
+      },
+      {
+        key: "accessKeySecret",
+        label: "AccessKey Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    buildSpec: (values) => ({
+      type: "stdio",
+      command: "uvx",
+      args: [
+        "alibaba-cloud-ops-mcp-server@latest",
+        "--transport",
+        "stdio",
+        "--env",
+        "domestic",
+        "--services",
+        "ecs",
+        "--visible-tools",
+        "ECS_DescribeInstances",
+      ],
+      env: {
+        ALIBABA_CLOUD_ACCESS_KEY_ID: requiredText(
+          values,
+          "accessKeyId",
+          "AccessKey ID",
+        ),
+        ALIBABA_CLOUD_ACCESS_KEY_SECRET: requiredText(
+          values,
+          "accessKeySecret",
+          "AccessKey Secret",
+        ),
+      },
+    }),
+  }),
+  catalogItem({
+    id: "dbhub",
+    name: "DBHub 数据库 MCP",
+    description: "连接 MySQL、PostgreSQL 等数据库，核对结构和业务数据。",
+    categories: ["cloud", "fde"],
+    tags: ["Bytebase", "MySQL", "PostgreSQL", "SQL", "数据集成", "stdio"],
+    publisher: "Bytebase",
+    providerGroup: "general",
+    provenance: "official",
+    homepage: "https://github.com/bytebase/dbhub",
+    docs: "https://dbhub.ai/config/command-line",
+    requirements: ["node"],
+    authLabel: "数据库连接串",
+    privilege: "write",
+    maturity: "verify",
+    risk: "需要 Node.js 22.5 或更高版本。可执行 SQL，请使用数据库强制限制的只读账号；需要写入时另行授权，并按环境配置 TLS。",
+    fields: [
+      {
+        key: "dsn",
+        label: "DSN 连接串",
+        type: "password",
+        required: true,
+        help: "包含账号的连接串仅写入 DSN 环境变量；例如 PostgreSQL 或 MySQL 的连接 URI。",
+      },
+    ],
+    buildSpec: (values, platform) =>
+      npxSpec("@bytebase/dbhub@latest", platform, {
+        extraArgs: ["--transport", "stdio"],
+        env: { DSN: requiredText(values, "dsn", "DSN 连接串") },
+      }),
+  }),
+  catalogItem({
+    id: "starrocks",
+    name: "StarRocks 数据分析 MCP",
+    description: "查询分析仓库、解释 SQL 与核对经营指标。",
+    categories: ["cloud", "fde"],
+    tags: ["StarRocks", "数据仓库", "BI", "SQL", "stdio"],
+    publisher: "StarRocks",
+    providerGroup: "general",
+    provenance: "official",
+    homepage: "https://github.com/StarRocks/mcp-server-starrocks",
+    docs: "https://github.com/StarRocks/mcp-server-starrocks",
+    requirements: ["uv"],
+    authLabel: "数据库连接串",
+    privilege: "write",
+    maturity: "verify",
+    risk: "需要 Python 3.11 或更高版本。服务支持写 SQL、结构变更和本地导出，请限制数据库账号权限；生产环境应提供 CA 并核验证书。",
+    fields: [
+      {
+        key: "connectionString",
+        label: "数据库连接串",
+        type: "password",
+        required: true,
+        help: "格式：用户名:密码@主机:9030/数据库；保存在环境变量中。",
+      },
+      {
+        key: "sslCa",
+        label: "TLS CA 文件",
+        type: "text",
+        help: "本机 CA 文件路径。填写后开启证书与主机名验证；留空不保证传输安全。",
+      },
+    ],
+    buildSpec: (values) => ({
+      type: "stdio",
+      command: "uv",
+      args: [
+        "run",
+        "--with",
+        "mcp-server-starrocks",
+        "mcp-server-starrocks",
+        "--mode",
+        "stdio",
+      ],
+      env: {
+        STARROCKS_URL: requiredText(values, "connectionString", "数据库连接串"),
+        ...(optionalText(values, "sslCa")
+          ? {
+              STARROCKS_SSL_CA: optionalText(values, "sslCa"),
+              STARROCKS_SSL_VERIFY_CERT: "true",
+              STARROCKS_SSL_VERIFY_IDENTITY: "true",
+            }
+          : {}),
+      },
     }),
   }),
 ];

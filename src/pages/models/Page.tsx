@@ -1373,7 +1373,7 @@ function ProviderPanel({
         </Button>
       </ModelsPanelHeader>
 
-      {app === "claude" || app === "codex" ? (
+      {app === "claude" || app === "codex" || app === "grokbuild" ? (
         <XaiSubscriptionSection
           key={app}
           app={app}

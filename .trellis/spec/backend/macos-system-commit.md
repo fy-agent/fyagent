@@ -153,7 +153,10 @@ this table or the admitted Agent lifecycle; Claude Code is CLI-only under
 - Formal signing requires both nested binaries. `FYAGENT_ALLOW_APP_ONLY_SIGN=1`
   is local/diagnostic only.
 - `.build/` and `dist/` under `src-tauri/macos-privileged-helper/` are
-  gitignored build outputs.
+  gitignored build outputs. Development scratch is `.build-development`.
+  Copy the current SwiftPM `release/` product first; a leftover
+  `apple/Products` tree from a previous Xcode driver must not win, or the
+  embedded helper `CFBundleVersion` will fail the stale-version check.
 - WorkBuddy's expected bundle ID is `com.tencent.workbuddy.mac`. Keep
   `agent_install/desktop.rs` `DESKTOP_PRODUCTS` / `macos_bundle_id_for`,
   `macos_system_commit/policy.rs`, and privileged helper `Policy.swift` equal.
@@ -177,6 +180,7 @@ this table or the admitted Agent lifecycle; Claude Code is CLI-only under
 | Renderer sends path/URL/command/Authorization bytes                        | Reject at Agent/Codex IPC; helper never sees it                                                        |
 | Swift package added as a Cargo workspace member                            | `version:check` / workspace contract fails                                                             |
 | Formal `sign-app` without both nested binaries                             | Fail; do not sign an app-only bundle                                                                   |
+| Current SwiftPM `release/` product and leftover `apple/Products` both exist | Copy the current SwiftPM product; the legacy Xcode tree must not win                                   |
 | `sudo`, AppleScript admin, `AuthorizationExecuteWithPrivileges`, or setuid | Forbidden; tests and review reject                                                                     |
 
 ## 5. Good / Base / Bad Cases
@@ -186,9 +190,13 @@ this table or the admitted Agent lifecycle; Claude Code is CLI-only under
   `authorization_required` while production is disabled.
 - Base: portable Swift tests and Rust `macos_system_commit` tests cover the
   product table, ABI layout, and fail-closed port without Blessing a helper.
+- Good: a driver switch leaves an old universal Xcode product under
+  `apple/Products`, but packaging embeds the just-built SwiftPM `release/`
+  helper and its current `CFBundleVersion` passes verification.
 - Bad: enabling `production_enabled()` because the helper compiled; labeling
   `~/Applications` success as a system install; adding Claude to the helper
-  table without a reviewed slot; sending a filesystem path over XPC.
+  table without a reviewed slot; sending a filesystem path over XPC; or
+  selecting an older Xcode product merely because it is already universal.
 
 ## 6. Tests Required
 
@@ -204,6 +212,8 @@ this table or the admitted Agent lifecycle; Claude Code is CLI-only under
 - `tests/releaseWorkflow.test.ts`: `build-macos` runs
   `build-macos-privileged-helper.sh`, `embed-macos-privileged-helper.sh`, and
   `verify-macos-privileged-helper.sh --structure-only` before `sign-app`.
+- `tests/miseTaskContract.test.ts`: the helper build copies the current
+  SwiftPM `release/` product before leftover `apple/Products`.
 - Negative: no renderer path/URL/command; no `sudo` / `osascript` elevation;
   Cargo workspace members stay `[".", "user-helper"]`.
 - Signed/notarized `/Applications` HIL is required before flipping
@@ -254,6 +264,24 @@ macos_bundle_id: "com.workbuddy.workbuddy",
 
 ```rust
 macos_bundle_id: "com.tencent.workbuddy.mac", // lockstep with Policy.swift
+```
+
+#### Wrong
+
+```bash
+find_named_artifact() {
+  try "$SCRATCH_PATH/apple/Products/Release/$name"
+  try "$SCRATCH_PATH/release/$name"
+}
+```
+
+#### Correct
+
+```bash
+find_named_artifact() {
+  try "$SCRATCH_PATH/release/$name"                # current driver output
+  try "$SCRATCH_PATH/apple/Products/Release/$name" # compatibility fallback
+}
 ```
 
 #### Wrong

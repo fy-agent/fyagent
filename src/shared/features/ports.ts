@@ -37,6 +37,8 @@ import type {
   WorkBuddyStatus,
   BindXaiManagedRequest,
   BindXaiManagedResult,
+  BindManagedProxyRequest,
+  BindManagedProxyResult,
   ExternalAgentLaunchDestination,
   ExternalAgentLaunchResult,
   ExternalAgentRuntimeStatus,
@@ -136,6 +138,9 @@ export interface ProvidersPort {
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
   bindXaiManaged(request: BindXaiManagedRequest): Promise<BindXaiManagedResult>;
+  bindManagedProxy(
+    request: BindManagedProxyRequest,
+  ): Promise<BindManagedProxyResult>;
   fetchXaiManagedModels(accountId: string): Promise<WorkBuddyFetchModelsResult>;
 }
 

@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/prompts-memory.md","reason":"Prompt draft/native and dirty-state contract"}
+{"file":".trellis/spec/frontend/mcp.md","reason":"Reviewed MCP recipes, target and secret contract"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Shared UI and ownership boundaries"}
+{"file":".trellis/spec/frontend/prompt-presets.md","reason":"FDE catalogue, draft copy and disabled-save contract"}
+{"file":".trellis/spec/frontend/mcp-fde-catalog.md","reason":"FDE recipe env keys and permission defaults"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Physical wheel hit testing and final frontend verification"}

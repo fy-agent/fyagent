@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/managed-auth-consumers.md","reason":"Negative regression boundary: native credential projection unchanged"}
+{"file":".trellis/spec/backend/proxy-runtime.md","reason":"Activation, bind failures, restore and current-host tests"}
+{"file":".trellis/spec/backend/local-proxy-pipeline.md","reason":"Same-account retry, streaming semantic success and protected auth"}
+{"file":".trellis/spec/frontend/grok-subscription.md","reason":"Authoritative state and Codex draft/activation distinction"}
+{"file":".trellis/tasks/09-16-managed-account-proxy/research/cherry-comparison.md","reason":"Reference behavior versus implementation and evidence limits"}
