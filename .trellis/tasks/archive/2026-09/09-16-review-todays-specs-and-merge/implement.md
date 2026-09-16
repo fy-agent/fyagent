@@ -12,9 +12,10 @@
   和任务 context；移除重复 owner。
 - [x] 未发现产品实现偏差；保持产品代码不变，只增加精确集合回归。
 - [x] 运行格式、链接/契约、聚焦测试、task validate 和完整归档前门禁；复核证据边界。
-- [ ] 复核最终 diff 与工作树，提交工作变更；归档任务、记录会话并运行归档后契约门禁。
-- [ ] 拉取远端并复核 base/head，推送精确分支，创建 PR，启用 exact-head auto-merge，
-  跟进 PR 与 Merge Queue CI；失败则最小修复并重新验证，最终读回 main merge SHA。
+- [x] 复核最终 diff 与工作树，提交工作变更，并准备按 finish-work 归档与记录会话。
+- [x] 按 merge-governance 确定归档后的 exact-head handoff：归档后契约检查、base drift、
+  推送/PR、exact-head auto-merge、PR/merge-group CI 和最终 main 读回；远端执行证据由
+  GitHub 与最终交付记录，不伪装成归档前证据。
 
 ## Focused validation candidates
 
@@ -76,3 +77,4 @@ mise run check:contracts
   owner 均低于默认 32768-byte 注入上限。
 - 前端当前 owner 改为 `managed-account-subscriptions.md`；旧文件只做历史路由，归档
   任务引用仍可解析。Proxy Runtime 和 Local Proxy 只保留各自 listener/HTTP owner。
+- 工作提交：`a04f68ff docs(spec): refine today's behavior contracts`。

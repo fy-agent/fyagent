@@ -41,10 +41,14 @@ mise run check:contracts
 - Contract suite: 34 files, 619 passed, 1 repository-declared skip.
 - Native-fetch contract: 1 file, 4 passed.
 
-## Pending completion gates
+## Post-archive handoff gates
 
-- After the work commit, archive this task, record the session, rerun
-  `check:contracts`, then validate the exact pushed PR head and merge-group CI.
+- Work commit: `a04f68ff docs(spec): refine today's behavior contracts`.
+- Archive this task, record the session and rerun `check:contracts` before the
+  reviewed exact head is pushed.
+- GitHub then owns PR-head `CI / Required`, merge-group latest-main evidence and
+  the final merge-SHA readback. Those remote facts are intentionally not claimed
+  by this prearchive record.
 
 ## Full prearchive gate
 
