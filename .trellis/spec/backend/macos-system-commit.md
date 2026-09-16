@@ -153,7 +153,10 @@ this table or the admitted Agent lifecycle; Claude Code is CLI-only under
 - Formal signing requires both nested binaries. `FYAGENT_ALLOW_APP_ONLY_SIGN=1`
   is local/diagnostic only.
 - `.build/` and `dist/` under `src-tauri/macos-privileged-helper/` are
-  gitignored build outputs.
+  gitignored build outputs. Development scratch is `.build-development`.
+  Copy the current SwiftPM `release/` product first; a leftover
+  `apple/Products` tree from a previous Xcode driver must not win, or the
+  embedded helper `CFBundleVersion` will fail the stale-version check.
 - WorkBuddy's expected bundle ID is `com.tencent.workbuddy.mac`. Keep
   `agent_install/desktop.rs` `DESKTOP_PRODUCTS` / `macos_bundle_id_for`,
   `macos_system_commit/policy.rs`, and privileged helper `Policy.swift` equal.
@@ -204,6 +207,8 @@ this table or the admitted Agent lifecycle; Claude Code is CLI-only under
 - `tests/releaseWorkflow.test.ts`: `build-macos` runs
   `build-macos-privileged-helper.sh`, `embed-macos-privileged-helper.sh`, and
   `verify-macos-privileged-helper.sh --structure-only` before `sign-app`.
+- `tests/miseTaskContract.test.ts`: the helper build copies the current
+  SwiftPM `release/` product before leftover `apple/Products`.
 - Negative: no renderer path/URL/command; no `sudo` / `osascript` elevation;
   Cargo workspace members stay `[".", "user-helper"]`.
 - Signed/notarized `/Applications` HIL is required before flipping

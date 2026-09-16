@@ -1022,6 +1022,14 @@ describe("canonical mise task API", () => {
       '"otool", "-arch", architecture, "-P", helper',
     );
     expect(helperBuild).toContain("privileged helper version is stale");
+    const currentScratchProduct = helperBuild.indexOf(
+      '"$SCRATCH_PATH/release/$name"',
+    );
+    const leftoverXcodeProduct = helperBuild.indexOf(
+      '"$SCRATCH_PATH/apple/Products/Release/$name"',
+    );
+    expect(currentScratchProduct).toBeGreaterThanOrEqual(0);
+    expect(leftoverXcodeProduct).toBeGreaterThan(currentScratchProduct);
     expect(helperBuild).not.toMatch(/sudo|osascript/u);
   });
 
