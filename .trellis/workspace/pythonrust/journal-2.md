@@ -974,3 +974,34 @@ Diagnosed PR #188 merge-group WebKit failure as a two-phase raster sampling race
 ### Status
 
 [OK] **Completed**
+
+
+## Session 95: FDE 任务归档收尾
+<!-- trellis-session: v=2 fp=0756cbeaa8f802b1 -->
+
+**Date**: 2026-09-16
+**Task**: FDE 任务归档收尾
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+归档目录与 completed 状态已生成；原任务目录未跟踪导致自动提交路径报错，已按归档路径补齐受限提交，未改写历史。功能、SPEC、研究、评审与验证材料均已落库。
+
+### Main Changes
+
+- 完成归档提交并保留初次自动提交警告的真实记录，接续验证不带活动任务豁免的契约。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f84d50fb` | feat(fde): add China-focused prompt and MCP presets |
+| `318ed992e79b45fd956194d85232bf145528d994` | chore(task): archive 09-16-fde-china-presets |
+
+### Testing
+
+- [OK] 最终串行 check:prearchive 通过；1696 单元测试、3571 Rust 测试通过，原有跳过保留；70 项受影响浏览器矩阵和9项WebKit重复验证通过。
+
+### Status
+
+[OK] **Completed**
