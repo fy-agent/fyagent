@@ -1045,3 +1045,33 @@ Diagnosed PR #188 merge-group WebKit failure as a two-phase raster sampling race
 ### Next Steps
 
 - 真实账号订阅权益、额度与具体模型可用性，以及外部 CLI、签名桌面运行和 Windows 真机仍需单独验收；本次仅使用合成凭证和合成上游响应，不宣称真实订阅调用成功。
+
+
+## Session 97: Fix auth overview parse
+<!-- trellis-session: v=2 fp=0ff5d297ddaa90ad -->
+
+**Date**: 2026-09-16
+**Task**: Fix auth overview parse
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Native idle fyagent_proxy overview now matches the renderer parser, so /auth loads instead of failing closed.
+
+### Main Changes
+
+- Cleared requestProviderLabel on requestMode=none and counted named disconnected proxy slots in connectedConsumerCount.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a28b8c3a` | fix(auth): keep idle proxy overview parseable |
+
+### Testing
+
+- [OK] Renderer wire tests plus rust unrouted-proxy/count/shared-identity tests; post-fix runtime logs showed parse accept and Auth page success.
+
+### Status
+
+[OK] **Completed**
