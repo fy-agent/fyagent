@@ -108,6 +108,34 @@ socket, database handle, or raw response-success override.
   can prove failure. Unknown or malformed bodies are not rewritten into a
   fabricated success.
 
+### Managed subscription Responses policy
+
+- OpenAI/xAI managed credentials pin vendor origin and Responses protocol before
+  editable metadata. API-key and official native-client auth paths retain their
+  own adapters. Resolve the actual bound upstream model before final headers.
+- `providers/managed_responses::prepare_request(provider, endpoint, body)` runs
+  after editable overrides. OpenAI generation requests force `store=false`,
+  remove `max_output_tokens`, and deduplicate encrypted-reasoning inclusion.
+  Compact requests have a separate schema and must not receive generation-only
+  fields. Existing Claude conversion handles a forced upstream SSE response
+  even when its downstream caller requested non-streaming JSON.
+- xAI reuses namespace/sanitize owners, normalizes the route model, hoists
+  text-only system/developer content into instructions, removes unsupported
+  reasoning/encrypted replay and retention fields, and maps a legacy response
+  format only when no explicit text policy exists. Preserve function calls,
+  call IDs, arguments and empty function-result outputs; reject unsupported
+  instruction content instead of silently deleting it.
+- Request-time vault resolution retains the admitted account lineage. A first
+  upstream 401 drops its response before a single same-account refresh/replay
+  inside the existing attempt and permit. Reuse the buffered request, replace
+  protected bearer/routing headers and bound response-header waits. A second
+  401 is terminal. Do not create another failover loop or retry a different
+  account/API-key balance after subscription 401/403 or credential failure.
+- Shared OpenAI compatibility headers apply to all consuming Agents. Final
+  xAI token-auth, model-override and client headers replace caller copies.
+  Neither upstream credentials nor raw OAuth/upstream error bodies may escape
+  into renderer results, Agent configuration or diagnostics.
+
 ### Response, streaming, and usage
 
 - Rebuilt bodies remove hop-by-hop headers and stale entity headers. Streaming
@@ -163,6 +191,12 @@ socket, database handle, or raw response-success override.
 - Forwarder tests cover retryable/terminal classification, permit settlement,
   non-streaming body-read failure, first-stream-chunk priming/replay, semantic
   2xx failures, timeout/cancellation, and protected overrides.
+- Managed subscription tests cover both providers and all three CLI targets,
+  official host/path assertions before mock I/O, complete stream/tool terminal
+  events, tool-result replay, final policy idempotence, preserved native auth,
+  exact one-401 retry and no default-account/API-key fallback. HTTP fixtures
+  must honor the actual outbound stream flag; a JSON mock is not valid evidence
+  for an adapter expecting `response.completed` in SSE.
 - Response/SSE tests cover LF/CRLF, split multibyte UTF-8, incomplete/trailing
   events, rebuilt headers, disconnect/drop settlement, and bounded diagnostics.
 - Usage tests cover protocol parsers, deduplication, model resolution, cache

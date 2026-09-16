@@ -16,6 +16,7 @@ import type {
   WorkBuddySaveModelsResult,
   BindXaiManagedRequest,
   BindXaiManagedResult,
+  BindManagedProxyRequest,
 } from "../../../features/types";
 import {
   isXaiSubscriptionModelId,
@@ -410,29 +411,33 @@ function assertQuickSetupRequest(
   return request;
 }
 
-function assertBindXaiManagedRequest(
-  request: BindXaiManagedRequest,
-): BindXaiManagedRequest {
+function assertSubscriptionBindRequest<
+  T extends BindXaiManagedRequest | BindManagedProxyRequest,
+>(
+  request: T,
+  apps: readonly (
+    | BindXaiManagedRequest["app"]
+    | BindManagedProxyRequest["app"]
+  )[],
+): T {
   if (
     !isRecord(request) ||
     !hasExactKeys(request, ["app", "accountId", "modelId"]) ||
-    !isOneOf(request.app, ["claude", "claude-desktop", "codex"]) ||
+    !isOneOf(request.app, apps) ||
     typeof request.accountId !== "string" ||
     !/^ma1:[0-9a-f]{32}$/u.test(request.accountId) ||
     !isXaiSubscriptionModelId(request.modelId)
   )
     throw new Error("SuperGrok bind request is invalid");
-  return {
-    app: request.app,
-    accountId: request.accountId,
-    modelId: request.modelId,
-  };
+  return request;
 }
 
-function parseBindXaiManagedResult(
+function parseSubscriptionBindResult<
+  T extends BindXaiManagedRequest | BindManagedProxyRequest,
+>(
   value: unknown,
-  request: BindXaiManagedRequest,
-): BindXaiManagedResult {
+  request: T,
+): Omit<BindXaiManagedResult, "app"> & { app: T["app"] } {
   if (
     !isRecord(value) ||
     !hasExactKeys(value, [
@@ -451,7 +456,8 @@ function parseBindXaiManagedResult(
     value.app !== request.app ||
     typeof value.alreadyBound !== "boolean" ||
     typeof value.activated !== "boolean" ||
-    value.activated !== (request.app === "claude")
+    value.activated !==
+      (request.app === "claude" || request.app === "grokbuild")
   )
     throw new Error("SuperGrok bind result is unavailable");
   return {
@@ -503,10 +509,33 @@ export function createModelFeaturePorts(): Pick<
       checkReachability: invokeReachability,
       checkModel: invokeModelProbe,
       bindXaiManaged: async (request) => {
-        const validated = assertBindXaiManagedRequest(request);
+        const validated = assertSubscriptionBindRequest(request, [
+          "claude",
+          "claude-desktop",
+          "codex",
+        ]);
         try {
-          return parseBindXaiManagedResult(
+          return parseSubscriptionBindResult(
             await invoke<unknown>("bind_xai_managed_provider", {
+              request: validated,
+            }),
+            validated,
+          );
+        } catch (error) {
+          throw {
+            code: xaiBindErrorCode(error) ?? "rollback_partial_state_unknown",
+          };
+        }
+      },
+      bindManagedProxy: async (request) => {
+        const validated = assertSubscriptionBindRequest(request, [
+          "claude",
+          "codex",
+          "grokbuild",
+        ]);
+        try {
+          return parseSubscriptionBindResult(
+            await invoke<unknown>("bind_managed_proxy_provider", {
               request: validated,
             }),
             validated,

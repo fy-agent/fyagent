@@ -97,6 +97,12 @@ impl Provider {
         self.provider_type() == Some("xai_oauth")
     }
 
+    /// Explicit subscription sources require FyAgent's local proxy; they are
+    /// not the built-in official source that uses the consumer's own login.
+    pub(crate) fn uses_subscription_proxy(&self) -> bool {
+        self.is_codex_oauth() || self.is_xai_oauth()
+    }
+
     pub fn is_github_copilot(&self) -> bool {
         self.provider_type() == Some("github_copilot")
             || self.claude_base_url_contains("githubcopilot.com")

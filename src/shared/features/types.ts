@@ -159,6 +159,8 @@ export type {
   XaiManagedBindApp,
   BindXaiManagedRequest,
   BindXaiManagedResult,
+  BindManagedProxyRequest,
+  BindManagedProxyResult,
 } from "./models";
 
 export type { ManagedPrompt } from "./prompts";

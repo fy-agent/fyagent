@@ -42,6 +42,9 @@ pub(crate) type NativeManagedAuthService =
 pub(crate) struct AccessMaterial {
     access_token: Zeroizing<String>,
     routing_subject: Option<String>,
+    // Retain the admitted lineage for a bounded 401 refresh. Never resolve the
+    // default account again after a request has already been authenticated.
+    credential: CredentialRecord,
 }
 
 impl AccessMaterial {
@@ -59,6 +62,11 @@ struct RefreshedGrant {
     refresh_token: Option<String>,
     id_token: Option<String>,
     expires_in: Option<i64>,
+}
+
+enum ProxyRefreshFailure {
+    Terminal,
+    Retriable,
 }
 
 impl std::fmt::Debug for AccessMaterial {
@@ -278,12 +286,25 @@ where
         &self,
         account_id: &str,
     ) -> Result<CredentialWithIdentity, ManagedAuthCoreError> {
+        let selected = self.proxy_account(account_id)?;
+        if selected.credential.provider != ManagedAuthProvider::Xai {
+            return Err(ManagedAuthCoreError::NotFound);
+        }
+        Ok(selected)
+    }
+
+    pub(crate) fn proxy_account(
+        &self,
+        account_id: &str,
+    ) -> Result<CredentialWithIdentity, ManagedAuthCoreError> {
         let selected = self
             .credentials_for_account(account_id)?
             .into_iter()
             .find(|row| {
-                row.credential.provider == ManagedAuthProvider::Xai
-                    && row.credential.purpose == CredentialPurpose::ProxyUpstream
+                matches!(
+                    row.credential.provider,
+                    ManagedAuthProvider::Openai | ManagedAuthProvider::Xai
+                ) && row.credential.purpose == CredentialPurpose::ProxyUpstream
                     && row.credential.consumer == Some(ManagedAuthConsumer::FyagentProxy)
             })
             .ok_or(ManagedAuthCoreError::NotFound)?;
@@ -295,7 +316,7 @@ where
         }
         let bundle = self.readback_bundle(&credential.secret_handle)?;
         if bundle.credential_id() != credential.credential_id
-            || bundle.provider() != ManagedAuthProvider::Xai
+            || bundle.provider() != credential.provider
             || bundle.generation() != credential.generation
             || (bundle.refresh_token().is_none()
                 && (bundle.access_token().is_none()
@@ -774,13 +795,42 @@ where
         &self,
         credential: CredentialRecord,
     ) -> Result<AccessMaterial, ManagedAuthCoreError> {
+        self.resolve_credential_access_with(credential, None, refresh_proxy_grant)
+            .await
+    }
+
+    pub(crate) async fn refresh_rejected_access(
+        &self,
+        rejected: &AccessMaterial,
+    ) -> Result<AccessMaterial, ManagedAuthCoreError> {
+        self.resolve_credential_access_with(
+            rejected.credential.clone(),
+            Some(rejected.access_token()),
+            refresh_proxy_grant,
+        )
+        .await
+    }
+
+    async fn resolve_credential_access_with<F, Fut>(
+        &self,
+        credential: CredentialRecord,
+        rejected_access: Option<&str>,
+        refresh_grant: F,
+    ) -> Result<AccessMaterial, ManagedAuthCoreError>
+    where
+        F: FnOnce(ManagedAuthProvider, Zeroizing<String>) -> Fut + Send,
+        Fut: std::future::Future<Output = Result<RefreshedGrant, ProxyRefreshFailure>> + Send,
+    {
         if !matches!(
             credential.purpose,
             CredentialPurpose::ProxyUpstream | CredentialPurpose::Copilot
         ) {
             return Err(ManagedAuthCoreError::Conflict);
         }
-        if credential.refresh_owner != RefreshOwner::Fyagent {
+        if credential.refresh_owner != RefreshOwner::Fyagent
+            || (credential.purpose == CredentialPurpose::ProxyUpstream
+                && credential.consumer != Some(ManagedAuthConsumer::FyagentProxy))
+        {
             return Err(ManagedAuthCoreError::Conflict);
         }
         let identity = self
@@ -796,12 +846,19 @@ where
             .repository
             .get_credential(&credential.credential_id)?
             .ok_or(ManagedAuthCoreError::NotFound)?;
-        if current.refresh_owner != RefreshOwner::Fyagent
-            || current.status != CredentialStatus::Ready
-        {
+        if !same_proxy_lineage(&credential, &current) {
+            return Err(ManagedAuthCoreError::Stale);
+        }
+        if current.status != CredentialStatus::Ready {
             return Err(ManagedAuthCoreError::Conflict);
         }
         let bundle = self.readback_bundle(&current.secret_handle)?;
+        if bundle.credential_id() != current.credential_id
+            || bundle.provider() != current.provider
+            || bundle.generation() != current.generation
+        {
+            return Err(ManagedAuthCoreError::SecretMissing);
+        }
         if current.provider == ManagedAuthProvider::GithubCopilot {
             let github_token = bundle
                 .access_token()
@@ -817,63 +874,67 @@ where
             return Ok(AccessMaterial {
                 access_token: Zeroizing::new(exchanged.token),
                 routing_subject: None,
+                credential: current,
             });
         }
         if let Some(access) = bundle.access_token() {
-            if !access_expired(current.access_expires_at) {
+            // A concurrent request may already have refreshed this same
+            // lineage. Reuse that token, not another account or a re-login.
+            if !access_expired(current.access_expires_at) && rejected_access != Some(access) {
                 return Ok(AccessMaterial {
                     access_token: Zeroizing::new(access.to_string()),
                     routing_subject: Some(identity.provider_subject.clone()),
+                    credential: current,
                 });
             }
         }
-        let refresh_token = bundle
-            .refresh_token()
-            .ok_or(ManagedAuthCoreError::SecretMissing)?
-            .to_string();
-        let refreshed = match current.provider {
-            ManagedAuthProvider::Openai => {
-                let token = openai::refresh_oauth_grant(&refresh_token)
-                    .await
-                    .map_err(map_refresh_error)?;
-                RefreshedGrant {
-                    access_token: token.access_token,
-                    refresh_token: token.refresh_token,
-                    id_token: token.id_token,
-                    expires_in: token.expires_in,
-                }
-            }
-            ManagedAuthProvider::Xai => {
-                let token = XaiOAuthManager::refresh_oauth_grant(&refresh_token)
-                    .await
-                    .map_err(map_xai_refresh_error)?;
-                RefreshedGrant {
-                    access_token: token.access_token,
-                    refresh_token: token.refresh_token,
-                    id_token: token.id_token,
-                    expires_in: token.expires_in,
-                }
-            }
-            ManagedAuthProvider::GithubCopilot => {
-                return Err(ManagedAuthCoreError::InvalidData);
-            }
+        let Some(refresh_token) = bundle.refresh_token() else {
+            self.repository.set_status(
+                &current.credential_id,
+                CredentialStatus::RequiresReauth,
+                chrono::Utc::now().timestamp(),
+            )?;
+            return Err(ManagedAuthCoreError::Conflict);
         };
+        let refresh_token = Zeroizing::new(refresh_token.to_string());
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            refresh_grant(current.provider, refresh_token.clone()),
+        )
+        .await
+        .unwrap_or(Err(ProxyRefreshFailure::Retriable));
         let latest = self
             .repository
             .get_credential(&current.credential_id)?
             .ok_or(ManagedAuthCoreError::NotFound)?;
-        if latest.generation != current.generation {
-            let latest_bundle = self.readback_bundle(&latest.secret_handle)?;
-            let access = latest_bundle
-                .access_token()
-                .ok_or(ManagedAuthCoreError::SecretMissing)?;
-            return Ok(AccessMaterial {
-                access_token: Zeroizing::new(access.to_string()),
-                routing_subject: Some(identity.provider_subject.clone()),
-            });
+        // Check before processing either success or terminal failure: neither
+        // may overwrite/revoke a session changed while HTTP was in flight.
+        if !same_proxy_lineage(&current, &latest)
+            || latest.generation != current.generation
+            || latest.status != CredentialStatus::Ready
+        {
+            return Err(ManagedAuthCoreError::Stale);
         }
-        let next_generation = current.generation.saturating_add(1);
-        let next_refresh = refreshed.refresh_token.clone().unwrap_or(refresh_token);
+        let refreshed = match result {
+            Ok(grant) => grant,
+            Err(ProxyRefreshFailure::Terminal) => {
+                self.repository.set_status(
+                    &current.credential_id,
+                    CredentialStatus::RequiresReauth,
+                    chrono::Utc::now().timestamp(),
+                )?;
+                return Err(ManagedAuthCoreError::Conflict);
+            }
+            Err(ProxyRefreshFailure::Retriable) => return Err(ManagedAuthCoreError::Io),
+        };
+        let next_generation = current
+            .generation
+            .checked_add(1)
+            .ok_or(ManagedAuthCoreError::InvalidData)?;
+        let next_refresh = refreshed
+            .refresh_token
+            .clone()
+            .unwrap_or_else(|| refresh_token.to_string());
         let expires_at = refreshed.expires_in.map(|seconds| {
             chrono::Utc::now()
                 .timestamp()
@@ -897,22 +958,29 @@ where
             RefreshOwner::Fyagent,
             next_bundle,
         )? {
-            let recovered = self
-                .repository
-                .get_credential(&current.credential_id)?
-                .ok_or(ManagedAuthCoreError::NotFound)?;
-            let recovered_bundle = self.readback_bundle(&recovered.secret_handle)?;
-            let access = recovered_bundle
-                .access_token()
-                .ok_or(ManagedAuthCoreError::SecretMissing)?;
-            return Ok(AccessMaterial {
-                access_token: Zeroizing::new(access.to_string()),
-                routing_subject: Some(identity.provider_subject.clone()),
-            });
+            return Err(ManagedAuthCoreError::Stale);
+        }
+        let committed = self
+            .repository
+            .get_credential(&current.credential_id)?
+            .ok_or(ManagedAuthCoreError::NotFound)?;
+        if !same_proxy_lineage(&current, &committed)
+            || committed.generation != next_generation
+            || committed.status != CredentialStatus::Ready
+        {
+            return Err(ManagedAuthCoreError::Stale);
+        }
+        let readback = self.readback_bundle(&committed.secret_handle)?;
+        if readback.credential_id() != committed.credential_id
+            || readback.provider() != committed.provider
+            || readback.generation() != committed.generation
+        {
+            return Err(ManagedAuthCoreError::SecretMissing);
         }
         Ok(AccessMaterial {
             access_token: Zeroizing::new(refreshed.access_token),
             routing_subject: Some(identity.provider_subject),
+            credential: committed,
         })
     }
 
@@ -947,6 +1015,7 @@ where
     pub(crate) fn upsert_proxy_connections(&self) -> Result<(), ManagedAuthCoreError> {
         let now = chrono::Utc::now().timestamp();
         let rows = self.repository.list_all_credentials()?;
+        let existing = self.repository.list_connections()?;
         for provider in [
             ManagedAuthProvider::Openai,
             ManagedAuthProvider::Xai,
@@ -958,25 +1027,57 @@ where
                     && row.credential.purpose == purpose
                     && row.credential.consumer == consumer
                     && row.is_default
-                    && row.credential.status == CredentialStatus::Ready
             });
-            let Some(selected) = selected else {
-                continue;
+            let mut status = match selected {
+                Some(row) if row.credential.status == CredentialStatus::RequiresReauth => {
+                    ConnectionStatus::RequiresReauth
+                }
+                Some(row)
+                    if row.credential.status == CredentialStatus::Ready
+                        && row.credential.refresh_owner == RefreshOwner::Fyagent =>
+                {
+                    ConnectionStatus::Checking
+                }
+                Some(_) => ConnectionStatus::Unavailable,
+                None => ConnectionStatus::Disconnected,
             };
             let connection_id =
                 stable_connection_id(ManagedAuthConsumer::FyagentProxy, "", provider.as_str());
+            if provider == ManagedAuthProvider::GithubCopilot {
+                // Copilot's existing control-plane projection is outside the
+                // OpenAI/xAI subscription migration.
+                if !selected.is_some_and(|row| row.credential.status == CredentialStatus::Ready) {
+                    continue;
+                }
+                status = ConnectionStatus::Connected;
+            } else if selected.is_none()
+                && !existing
+                    .iter()
+                    .any(|row| row.connection_id == connection_id)
+            {
+                continue;
+            }
+            let copilot = provider == ManagedAuthProvider::GithubCopilot;
             self.repository.upsert_connection(&ConnectionRecord {
                 connection_id: connection_id.clone(),
                 consumer: ManagedAuthConsumer::FyagentProxy,
                 target_id: String::new(),
                 provider_slot: provider.as_str().to_string(),
-                credential_id: Some(selected.credential.credential_id.clone()),
-                desired_revision: stable_revision(&[&connection_id, "proxy"]),
-                observed_revision: Some(stable_revision(&[&connection_id, "proxy"])),
-                status: ConnectionStatus::Connected,
-                request_mode: ManagedAuthRequestMode::OfficialSubscription,
+                credential_id: selected.map(|row| row.credential.credential_id.clone()),
+                desired_revision: stable_revision(&[
+                    &connection_id,
+                    selected.map_or("", |row| row.credential.credential_id.as_str()),
+                    status.as_str(),
+                ]),
+                observed_revision: copilot.then(|| stable_revision(&[&connection_id, "proxy"])),
+                status,
+                request_mode: if copilot {
+                    ManagedAuthRequestMode::OfficialSubscription
+                } else {
+                    ManagedAuthRequestMode::Unknown
+                },
                 request_provider_label: Some(provider.as_str().to_string()),
-                official_session_preserved: Some(true),
+                official_session_preserved: copilot.then_some(true),
                 pending_restart: false,
                 created_at: now,
                 updated_at: now,
@@ -986,6 +1087,9 @@ where
     }
 
     fn overview_inner(&self) -> Result<ManagedAuthOverview, ManagedAuthCoreError> {
+        // Reconcile missing/changed defaults as well as ready accounts. A
+        // persisted login row is never evidence of a running local route.
+        self.upsert_proxy_connections()?;
         let fail = self.fail_closed_snapshot();
         let rows = self.repository.list_all_credentials()?;
         let connections = self.repository.list_connections()?;
@@ -1005,17 +1109,73 @@ where
         if fail.secret_unavailable {
             reason_codes.push(ManagedAuthReasonCode::SecretUnavailable);
         }
-        let connection_summaries = merge_consumer_connections(
+        let mut connection_summaries = merge_consumer_connections(
             &self.codex_home(),
             &self.opencode_auth_path(),
             &rows,
             &connections,
         );
+        for connection in &mut connection_summaries {
+            if connection.consumer != ManagedAuthConsumer::FyagentProxy {
+                continue;
+            }
+            let selected = rows.iter().find(|row| {
+                row.is_default
+                    && Some(row.identity.identity_id.as_str()) == connection.account_id.as_deref()
+                    && row.credential.consumer == Some(ManagedAuthConsumer::FyagentProxy)
+            });
+            let Some(row) = selected else {
+                continue;
+            };
+            if row.credential.status != CredentialStatus::Ready
+                || row.credential.refresh_owner != RefreshOwner::Fyagent
+            {
+                continue;
+            }
+            let auth_kind = match row.credential.provider {
+                ManagedAuthProvider::Openai => "codex_oauth",
+                ManagedAuthProvider::Xai => "xai_oauth",
+                // Preserve Copilot's independent exchange path; its account
+                // readiness is not local listener evidence either.
+                ManagedAuthProvider::GithubCopilot => continue,
+            };
+            let observed = self
+                .with_app_state(|state| {
+                    state.proxy_service.observe_managed_account_route(
+                        auth_kind,
+                        &row.credential.legacy_account_id,
+                        row.is_default,
+                    )
+                })
+                .flatten();
+            let (status, mode, reason) = match observed {
+                Some(true) => (
+                    ManagedAuthConnectionState::Connected,
+                    ManagedAuthRequestMode::OfficialSubscription,
+                    None,
+                ),
+                Some(false) => (
+                    ManagedAuthConnectionState::Disconnected,
+                    ManagedAuthRequestMode::None,
+                    Some(ManagedAuthReasonCode::ConnectionUnavailable),
+                ),
+                None => (
+                    ManagedAuthConnectionState::Checking,
+                    ManagedAuthRequestMode::Unknown,
+                    Some(ManagedAuthReasonCode::ObserverUnavailable),
+                ),
+            };
+            connection.auth_status = status;
+            connection.request_mode = mode;
+            connection.reason_codes = reason.into_iter().collect();
+        }
         for account in &mut accounts {
             account.connected_consumer_count = connection_summaries
                 .iter()
                 .filter(|connection| {
                     connection.account_id.as_deref() == Some(account.account_id.as_str())
+                        && (connection.consumer != ManagedAuthConsumer::FyagentProxy
+                            || connection.auth_status == ManagedAuthConnectionState::Connected)
                 })
                 .map(|connection| connection.consumer)
                 .collect::<std::collections::HashSet<_>>()
@@ -1565,22 +1725,55 @@ fn access_expired(expires_at: Option<i64>) -> bool {
     }
 }
 
-fn map_refresh_error(error: openai::OpenAiOAuthError) -> ManagedAuthCoreError {
-    match error {
-        openai::OpenAiOAuthError::RefreshTokenInvalid => ManagedAuthCoreError::InvalidData,
-        _ => ManagedAuthCoreError::InvalidData,
-    }
+fn same_proxy_lineage(before: &CredentialRecord, after: &CredentialRecord) -> bool {
+    before.credential_id == after.credential_id
+        && before.identity_id == after.identity_id
+        && before.provider == after.provider
+        && before.purpose == after.purpose
+        && before.consumer == after.consumer
+        && before.secret_handle.secret_ref() == after.secret_handle.secret_ref()
+        && before.authenticated_at == after.authenticated_at
+        && after.generation >= before.generation
+        && after.refresh_owner == RefreshOwner::Fyagent
 }
 
-fn map_xai_refresh_error(
-    error: crate::proxy::providers::xai_oauth_auth::XaiOAuthError,
-) -> ManagedAuthCoreError {
-    match error {
-        crate::proxy::providers::xai_oauth_auth::XaiOAuthError::RefreshTokenInvalid
-        | crate::proxy::providers::xai_oauth_auth::XaiOAuthError::ReauthRequired(_) => {
-            ManagedAuthCoreError::InvalidData
+async fn refresh_proxy_grant(
+    provider: ManagedAuthProvider,
+    refresh_token: Zeroizing<String>,
+) -> Result<RefreshedGrant, ProxyRefreshFailure> {
+    match provider {
+        ManagedAuthProvider::Openai => {
+            let token = openai::refresh_oauth_grant(&refresh_token)
+                .await
+                .map_err(|error| match error {
+                    openai::OpenAiOAuthError::RefreshTokenInvalid => ProxyRefreshFailure::Terminal,
+                    _ => ProxyRefreshFailure::Retriable,
+                })?;
+            Ok(RefreshedGrant {
+                access_token: token.access_token,
+                refresh_token: token.refresh_token,
+                id_token: token.id_token,
+                expires_in: token.expires_in,
+            })
         }
-        _ => ManagedAuthCoreError::InvalidData,
+        ManagedAuthProvider::Xai => {
+            use crate::proxy::providers::xai_oauth_auth::XaiOAuthError;
+            let token = XaiOAuthManager::refresh_oauth_grant(&refresh_token)
+                .await
+                .map_err(|error| match error {
+                    XaiOAuthError::RefreshTokenInvalid | XaiOAuthError::ReauthRequired(_) => {
+                        ProxyRefreshFailure::Terminal
+                    }
+                    _ => ProxyRefreshFailure::Retriable,
+                })?;
+            Ok(RefreshedGrant {
+                access_token: token.access_token,
+                refresh_token: token.refresh_token,
+                id_token: token.id_token,
+                expires_in: token.expires_in,
+            })
+        }
+        ManagedAuthProvider::GithubCopilot => Err(ProxyRefreshFailure::Terminal),
     }
 }
 
@@ -1852,7 +2045,15 @@ fn connection_summary(
         pending_restart: connection.pending_restart,
         allowed_actions: Vec::new(),
         checked_at: now_timestamp(),
-        reason_codes: vec![ManagedAuthReasonCode::NativeProjectionUnavailable],
+        reason_codes: if connection.consumer == ManagedAuthConsumer::FyagentProxy {
+            vec![match connection.status {
+                ConnectionStatus::RequiresReauth => ManagedAuthReasonCode::RequiresReauth,
+                ConnectionStatus::Unavailable => ManagedAuthReasonCode::SecretUnavailable,
+                _ => ManagedAuthReasonCode::ConnectionUnavailable,
+            }]
+        } else {
+            vec![ManagedAuthReasonCode::NativeProjectionUnavailable]
+        },
     }
 }
 
@@ -1880,6 +2081,10 @@ fn projection_from_bundle(
 fn map_opencode_error(error: opencode::OpencodeAuthError) -> ManagedAuthErrorDto {
     ManagedAuthErrorDto::from_core(ManagedAuthCoreError::from(error))
 }
+
+#[cfg(test)]
+#[path = "proxy_refresh_tests.rs"]
+mod proxy_refresh_tests;
 
 #[cfg(test)]
 mod tests {

@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "d922fa93a7240fd21fc8ae98c02faebaa128559da8a88a4f942e59092896ef6e"
+      "e2360314d01cbd0d7086b15a15eeb37111f6c98cb9e039e05e2d58a05252650b"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -211,7 +211,7 @@
     ],
     [
       "src-tauri/src/proxy/providers/xai_oauth_auth.rs",
-      "cf3638de8883e45708fbc9de10aed6e346f14c64eb071cb7133070b1bd4b9bd7"
+      "37654d2a840aabdd23cc5aa3cfa2bb4cd7e04d2d413db2e310b752de408403eb"
     ],
     [
       "src-tauri/src/services/env_checker.rs",
@@ -227,7 +227,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",
-      "541aefd34dbf8b9e4276d98607b5bc02c0be66006d5b821fa4c353d526406cb5"
+      "c54bbf91b40da1f3be7a74619ed120571f90c9d0c0ed526fdf2fbd0b43947d91"
     ],
     [
       "src-tauri/src/services/model_probe.rs",
@@ -235,7 +235,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "1b33761c1ea02ba7b51fad259809c84461d98a6706131adbf348834a681d232a"
+      "640f6b6dc65d471506864d7390622fe57880aa76bc12c1cd8595fee7962418b0"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -403,7 +403,7 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "0a6da47b2dde8ef7e670b7b952b6df58656b17d0af96b88084f04c8f036ac98e"
+      "e3b4d0d818956ae8e727236700eb539852f2961dd211e10ee967027eab05cb1c"
     ],
     [
       "tests/releaseWorkflow.test.ts",

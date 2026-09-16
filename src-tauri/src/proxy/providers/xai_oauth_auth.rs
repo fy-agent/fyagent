@@ -498,14 +498,14 @@ impl XaiOAuthManager {
         refresh_token: &str,
     ) -> Result<OAuthTokenResponse, XaiOAuthError> {
         let endpoints = self.discover_endpoints().await?;
-        refresh_xai_grant(&endpoints.token_endpoint, refresh_token).await
+        refresh_xai_grant(&endpoints.token_endpoint, refresh_token, false).await
     }
 
     pub(crate) async fn refresh_oauth_grant(
         refresh_token: &str,
     ) -> Result<OAuthTokenResponse, XaiOAuthError> {
         let endpoints = discover_xai_endpoints().await?;
-        refresh_xai_grant(&endpoints.token_endpoint, refresh_token).await
+        refresh_xai_grant(&endpoints.token_endpoint, refresh_token, true).await
     }
 
     async fn add_account_internal(
@@ -993,6 +993,7 @@ pub(crate) fn next_xai_poll_interval(current: u64) -> u64 {
 async fn refresh_xai_grant(
     token_endpoint: &str,
     refresh_token: &str,
+    managed_proxy_policy: bool,
 ) -> Result<OAuthTokenResponse, XaiOAuthError> {
     let response = crate::proxy::http_client::get()
         .post(token_endpoint)
@@ -1007,15 +1008,21 @@ async fn refresh_xai_grant(
         .await?;
     let status = response.status();
     let value_result = read_json_response(response).await;
-    if refresh_response_requires_reauth(status, value_result.is_err()) {
+    if if managed_proxy_policy {
+        managed_proxy_refresh_is_terminal(status, value_result.as_ref().ok())
+    } else {
+        refresh_response_requires_reauth(status, value_result.is_err())
+    } {
         return Err(XaiOAuthError::RefreshTokenInvalid);
     }
     let value = value_result?;
     let error_code = oauth_error_code(&value);
-    if matches!(
-        error_code.as_deref(),
-        Some("invalid_grant" | "invalid_token")
-    ) {
+    if !managed_proxy_policy
+        && matches!(
+            error_code.as_deref(),
+            Some("invalid_grant" | "invalid_token")
+        )
+    {
         return Err(XaiOAuthError::RefreshTokenInvalid);
     }
     if !status.is_success() || error_code.is_some() {
@@ -1026,6 +1033,22 @@ async fn refresh_xai_grant(
     let tokens = parse_token_response(value)?;
     validate_access_token(&tokens.access_token)?;
     Ok(tokens)
+}
+
+fn managed_proxy_refresh_is_terminal(
+    status: reqwest::StatusCode,
+    value: Option<&serde_json::Value>,
+) -> bool {
+    matches!(
+        status,
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+    ) || (status == reqwest::StatusCode::BAD_REQUEST
+        && matches!(
+            value
+                .and_then(|body| body.get("error"))
+                .and_then(serde_json::Value::as_str),
+            Some("invalid_grant" | "invalid_token")
+        ))
 }
 
 fn parse_device_code_response(
@@ -1142,6 +1165,37 @@ fn format_oauth_error(status: reqwest::StatusCode, value: &serde_json::Value) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn managed_proxy_refresh_never_revokes_on_transient_or_malformed_errors() {
+        let invalid = serde_json::json!({"error": "invalid_grant"});
+        for status in [408, 425, 429, 500, 503] {
+            assert!(!managed_proxy_refresh_is_terminal(
+                reqwest::StatusCode::from_u16(status).unwrap(),
+                Some(&invalid)
+            ));
+        }
+        assert!(managed_proxy_refresh_is_terminal(
+            reqwest::StatusCode::BAD_REQUEST,
+            Some(&invalid)
+        ));
+        assert!(!managed_proxy_refresh_is_terminal(
+            reqwest::StatusCode::BAD_REQUEST,
+            None
+        ));
+        assert!(!managed_proxy_refresh_is_terminal(
+            reqwest::StatusCode::BAD_REQUEST,
+            Some(&serde_json::json!({"error": "invalid_grant<script>"}))
+        ));
+        assert!(managed_proxy_refresh_is_terminal(
+            reqwest::StatusCode::UNAUTHORIZED,
+            None
+        ));
+        assert!(managed_proxy_refresh_is_terminal(
+            reqwest::StatusCode::FORBIDDEN,
+            None
+        ));
+    }
 
     fn unsigned_jwt(payload: &serde_json::Value) -> String {
         let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);

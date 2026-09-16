@@ -1175,7 +1175,9 @@ impl RequestForwarder {
         // Grok Build exposes a stable client-side model profile in config.toml.
         // Route requests to the provider's real upstream model before applying
         // the optional Responses -> Chat/Anthropic bridge.
-        if matches!(app_type, AppType::GrokBuild) {
+        if matches!(app_type, AppType::GrokBuild)
+            || (matches!(app_type, AppType::Codex) && provider.uses_subscription_proxy())
+        {
             super::providers::apply_codex_upstream_model(provider, &mut mapped_body);
         }
 
@@ -1412,11 +1414,17 @@ impl RequestForwarder {
         };
         #[cfg(test)]
         let url = match xai_integration_fixture(&provider.id) {
-            Some(fixture) if provider.is_xai_oauth() => {
+            Some(fixture) if provider.is_xai_oauth() || provider.is_codex_oauth() => {
                 let original = url::Url::parse(&url).expect("upstream URL");
                 assert_eq!(original.scheme(), "https");
-                assert_eq!(original.host_str(), Some("cli-chat-proxy.grok.com"));
-                assert_eq!(original.path(), "/v1/chat/completions");
+                if provider.is_xai_oauth() {
+                    assert_eq!(original.host_str(), Some("cli-chat-proxy.grok.com"));
+                    assert_eq!(original.path(), "/v1/responses");
+                } else {
+                    assert!(provider.is_codex_oauth());
+                    assert_eq!(original.host_str(), Some("chatgpt.com"));
+                    assert_eq!(original.path(), "/backend-api/codex/responses");
+                }
                 format!("{}{}", fixture.upstream, original.path())
             }
             _ => url,
@@ -1603,6 +1611,13 @@ impl RequestForwarder {
             }
         }
         // 出站 body 定稿后刷新真值（覆盖 Codex chat 上游模型覆写、转换层模型改写）
+        // Subscription constraints are final wire policy, not editable defaults.
+        // Apply equally to direct Responses and converted Claude Messages.
+        super::providers::managed_responses::prepare_request(
+            provider,
+            &effective_endpoint,
+            &mut filtered_body,
+        )?;
         if let Some(m) = filtered_body
             .get("model")
             .and_then(|m| m.as_str())
@@ -1628,6 +1643,7 @@ impl RequestForwarder {
         // Codex OAuth 需要注入的 ChatGPT-Account-Id（在动态 token 获取期间填充）
         let mut codex_oauth_account_id: Option<String> = None;
         let mut should_send_codex_oauth_session_headers = false;
+        let mut managed_access: Option<AccessMaterial> = None;
 
         // 获取认证头（提前准备，用于内联替换），同时保留仅用于日志脱敏的
         // 精确认证材料。实际日志永远不输出这些值。
@@ -1679,7 +1695,44 @@ impl RequestForwarder {
 
             // Codex OAuth 特殊处理：从 CodexOAuthManager 获取真实 access_token
             if auth.strategy == AuthStrategy::CodexOAuth {
-                if let Some(app_handle) = &self.app_handle {
+                #[cfg(test)]
+                let fixture = xai_integration_fixture(&provider.id);
+                #[cfg(not(test))]
+                let fixture: Option<()> = None;
+                if let Some(_fixture) = fixture {
+                    #[cfg(test)]
+                    {
+                        let account_id = provider
+                            .meta
+                            .as_ref()
+                            .and_then(|meta| meta.managed_account_id_for("codex_oauth"));
+                        let material = _fixture
+                            .auth
+                            .resolve_access_material(
+                                ManagedAuthProvider::Openai,
+                                account_id.as_deref(),
+                            )
+                            .await
+                            .map_err(|_| {
+                                ProxyError::AuthError("Fixture vault credential unavailable".into())
+                            })?;
+                        codex_oauth_account_id = Some(
+                            material
+                                .routing_subject()
+                                .filter(|subject| !subject.is_empty())
+                                .ok_or_else(|| {
+                                    ProxyError::AuthError(
+                                        "Missing subscription routing identity".into(),
+                                    )
+                                })?
+                                .into(),
+                        );
+                        auth =
+                            AuthInfo::new(material.access_token().into(), AuthStrategy::CodexOAuth);
+                        should_send_codex_oauth_session_headers = true;
+                        managed_access = Some(material);
+                    }
+                } else if let Some(app_handle) = &self.app_handle {
                     let account_id = provider
                         .meta
                         .as_ref()
@@ -1706,7 +1759,13 @@ impl RequestForwarder {
                         );
                         should_send_codex_oauth_session_headers = true;
                         codex_oauth_account_id = Some(routing_id);
+                        managed_access = Some(material);
                     } else {
+                        if provider.id.starts_with("fyagent-openai-") {
+                            return Err(ProxyError::AuthError(
+                                "ChatGPT subscription vault account is unavailable".into(),
+                            ));
+                        }
                         let codex_state = app_handle.state::<CodexOAuthState>();
                         let codex_auth: tokio::sync::RwLockReadGuard<'_, CodexOAuthManager> =
                             codex_state.0.read().await;
@@ -1776,6 +1835,7 @@ impl RequestForwarder {
                             })?;
                         auth =
                             AuthInfo::new(material.access_token().into(), AuthStrategy::XaiOAuth);
+                        managed_access = Some(material);
                     }
                 } else if let Some(app_handle) = &self.app_handle {
                     let account_id = provider
@@ -1793,6 +1853,7 @@ impl RequestForwarder {
                             material.access_token().to_string(),
                             AuthStrategy::XaiOAuth,
                         );
+                        managed_access = Some(material);
                     } else {
                         if provider.id.starts_with("fyagent-xai-") {
                             return Err(ProxyError::AuthError(
@@ -2252,6 +2313,14 @@ impl RequestForwarder {
                 http::HeaderValue::from_static("xai-grok-cli"),
             );
             ordered_headers.insert("x-grok-model-override", model);
+            ordered_headers.insert(
+                "x-grok-client-identifier",
+                http::HeaderValue::from_static("fyagent"),
+            );
+            ordered_headers.insert(
+                "x-grok-client-version",
+                http::HeaderValue::from_static(env!("CARGO_PKG_VERSION")),
+            );
         }
 
         reject_proxy_placeholder_for_managed_account_upstream(&url, &ordered_headers)?;
@@ -2304,7 +2373,8 @@ impl RequestForwarder {
         );
 
         // 发送请求
-        let response = if is_socks_proxy || !preserve_exact_header_case {
+        let response = if is_socks_proxy || !preserve_exact_header_case || managed_access.is_some()
+        {
             // OpenAI / Copilot / Codex 类后端不依赖原始 header 大小写；走 reqwest
             // 连接池，避免 raw TCP/TLS path 每次请求都重新握手。SOCKS5 也只能走 reqwest。
             log::debug!(
@@ -2322,7 +2392,18 @@ impl RequestForwarder {
             for (key, value) in &ordered_headers {
                 request = request.header(key, value);
             }
-            let send = request.body(body_bytes).send();
+            let request = request
+                .body(body_bytes)
+                .build()
+                .map_err(map_reqwest_send_error)?;
+            let retry = if managed_access.is_some() {
+                Some(request.try_clone().ok_or_else(|| {
+                    ProxyError::InvalidRequest("Subscription request cannot be replayed".into())
+                })?)
+            } else {
+                None
+            };
+            let send = client.execute(request);
             let send_result = if request_is_streaming {
                 let header_timeout = if self.streaming_first_byte_timeout.is_zero() {
                     timeout
@@ -2340,7 +2421,70 @@ impl RequestForwarder {
             } else {
                 send.await
             };
-            let reqwest_resp = send_result.map_err(map_reqwest_send_error)?;
+            let mut reqwest_resp = send_result.map_err(map_reqwest_send_error)?;
+            if reqwest_resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                if let (Some(rejected), Some(mut retry)) = (managed_access.as_ref(), retry) {
+                    // Release the first body/connection even when refresh fails.
+                    // Exactly one replay, within this Provider attempt/permit.
+                    drop(reqwest_resp);
+                    let fresh = refresh_managed_proxy_token(
+                        self.app_handle.as_ref(),
+                        &provider.id,
+                        rejected,
+                    )
+                    .await?;
+                    let bearer =
+                        http::HeaderValue::from_str(&format!("Bearer {}", fresh.access_token()))
+                            .map_err(|_| {
+                                ProxyError::AuthError("Invalid subscription access material".into())
+                            })?;
+                    retry
+                        .headers_mut()
+                        .insert(http::header::AUTHORIZATION, bearer);
+                    if provider.is_codex_oauth() {
+                        let subject = fresh
+                            .routing_subject()
+                            .filter(|subject| !subject.is_empty())
+                            .ok_or_else(|| {
+                                ProxyError::AuthError(
+                                    "Missing subscription routing identity".into(),
+                                )
+                            })?;
+                        retry.headers_mut().insert(
+                            "chatgpt-account-id",
+                            http::HeaderValue::from_str(subject).map_err(|_| {
+                                ProxyError::AuthError(
+                                    "Invalid subscription routing identity".into(),
+                                )
+                            })?,
+                        );
+                    }
+                    log_secrets.push(fresh.access_token().to_string());
+                    let resend = client.execute(retry);
+                    let retried = if request_is_streaming {
+                        let header_timeout = if self.streaming_first_byte_timeout.is_zero() {
+                            timeout
+                        } else {
+                            self.streaming_first_byte_timeout
+                        };
+                        tokio::time::timeout(header_timeout, resend)
+                            .await
+                            .map_err(|_| {
+                                ProxyError::Timeout(
+                                    "Subscription retry response-header timeout".into(),
+                                )
+                            })?
+                    } else {
+                        resend.await
+                    };
+                    reqwest_resp = retried.map_err(map_reqwest_send_error)?;
+                    if reqwest_resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                        return Err(ProxyError::AuthError(
+                            "Subscription authorization rejected after refresh".into(),
+                        ));
+                    }
+                }
+            }
             ProxyResponse::Reqwest(reqwest_resp)
         } else {
             // HTTP 代理或直连：走 hyper raw write（保持 header 大小写）
@@ -2751,11 +2895,18 @@ impl RequestForwarder {
             return ErrorCategory::NonRetryable;
         }
 
-        // xAI OAuth mirrors the same rule for token acquisition: a local
-        // AuthError means the managed account needs re-login. Failing over
-        // would silently move the conversation off the selected Grok account
-        // and poison the provider's health state for an account-level issue.
-        if provider.is_xai_oauth() && matches!(error, ProxyError::AuthError(_)) {
+        // Subscription authorization belongs to the selected account. Never
+        // fail over to another account/API-key balance for a credential error.
+        if (provider.is_xai_oauth() || provider.is_codex_oauth())
+            && (matches!(error, ProxyError::AuthError(_))
+                || matches!(
+                    error,
+                    ProxyError::UpstreamError {
+                        status: 401 | 403,
+                        ..
+                    }
+                ))
+        {
             return ErrorCategory::NonRetryable;
         }
 
@@ -3366,6 +3517,38 @@ async fn try_managed_proxy_token(
         Err(_) if known => Err(ProxyError::AuthError("官方登录凭据不可用".to_string())),
         Err(_) => Ok(None),
     }
+}
+
+async fn refresh_managed_proxy_token(
+    app_handle: Option<&tauri::AppHandle>,
+    provider_id: &str,
+    rejected: &AccessMaterial,
+) -> Result<AccessMaterial, ProxyError> {
+    #[cfg(test)]
+    if let Some(fixture) = xai_integration_fixture(provider_id) {
+        return fixture
+            .auth
+            .refresh_rejected_access(rejected)
+            .await
+            .map_err(|_| ProxyError::AuthError("Subscription refresh unavailable".into()));
+    }
+    #[cfg(not(test))]
+    let _ = provider_id;
+    let state = app_handle
+        .and_then(|handle| handle.try_state::<ManagedAuthState>())
+        .ok_or_else(|| ProxyError::AuthError("Subscription credential owner unavailable".into()))?;
+    state
+        .0
+        .refresh_rejected_access(rejected)
+        .await
+        .map_err(|error| match error {
+            ManagedAuthCoreError::Io => ProxyError::AuthError(
+                "Subscription refresh temporarily unavailable; retry later".into(),
+            ),
+            _ => {
+                ProxyError::AuthError("Subscription credential changed or requires sign-in".into())
+            }
+        })
 }
 
 fn build_codex_oauth_session_headers(
@@ -4582,29 +4765,32 @@ mod tests {
     }
 
     #[test]
-    fn xai_oauth_token_auth_failures_are_not_retryable() {
+    fn managed_subscription_auth_failures_never_fail_over_to_another_balance() {
         let forwarder = test_forwarder(Duration::ZERO, Duration::ZERO);
-        let provider = test_provider_with_type(Some("xai_oauth"));
-
-        // 本地取 token 失败 = 账号级问题（需重新登录），failover 无济于事
-        assert_eq!(
-            forwarder.categorize_proxy_error(
-                &ProxyError::AuthError("xAI OAuth 认证失败".to_string()),
-                &provider,
-            ),
-            ErrorCategory::NonRetryable
-        );
-        // 上游 401/403 保持 Retryable：换 provider 可能持有可用的 key
-        assert_eq!(
-            forwarder.categorize_proxy_error(
-                &ProxyError::UpstreamError {
+        for kind in [Some("xai_oauth"), Some("codex_oauth"), None] {
+            let provider = test_provider_with_type(kind);
+            for error in [
+                ProxyError::AuthError("Synthetic credential failure".into()),
+                ProxyError::UpstreamError {
                     status: 401,
                     body: None,
                 },
-                &provider,
-            ),
-            ErrorCategory::Retryable
-        );
+                ProxyError::UpstreamError {
+                    status: 403,
+                    body: None,
+                },
+            ] {
+                assert_eq!(
+                    forwarder.categorize_proxy_error(&error, &provider),
+                    if kind.is_some() {
+                        ErrorCategory::NonRetryable
+                    } else {
+                        // Ordinary API-key Providers keep their existing policy.
+                        ErrorCategory::Retryable
+                    }
+                );
+            }
+        }
     }
 
     #[test]

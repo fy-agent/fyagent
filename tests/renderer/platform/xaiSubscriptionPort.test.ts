@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BindXaiManagedRequest } from "@/shared/features/models";
+import type {
+  BindManagedProxyRequest,
+  BindXaiManagedRequest,
+} from "@/shared/features/models";
 import {
   createBrowserFeaturePorts,
   NATIVE_ONLY_ERROR,
 } from "@/shared/platform/browser/features";
-import { XAI_ACCOUNT_ID } from "../fixtures/managedAuth";
+import { OPENAI_ACCOUNT_ID, XAI_ACCOUNT_ID } from "../fixtures/managedAuth";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -146,5 +149,61 @@ describe("Grok subscription transport", () => {
     await expect(
       browser.providers.fetchXaiManagedModels(XAI_ACCOUNT_ID),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      browser.providers.bindManagedProxy({ ...request, app: "grokbuild" }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+  });
+
+  it.each(["claude", "codex", "grokbuild"] as const)(
+    "uses the shared command with strict %s activation semantics for either account identity",
+    async (app) => {
+      const providerPorts = await ports();
+      for (const accountId of [OPENAI_ACCOUNT_ID, XAI_ACCOUNT_ID]) {
+        invoke.mockReset();
+        const submitted = { ...request, app, accountId };
+        const returned = { ...result, app, activated: app !== "codex" };
+        invoke.mockResolvedValue(returned);
+        await expect(
+          providerPorts.bindManagedProxy(submitted),
+        ).resolves.toEqual(returned);
+        expect(invoke).toHaveBeenCalledExactlyOnceWith(
+          "bind_managed_proxy_provider",
+          { request: submitted },
+        );
+        invoke.mockResolvedValue({
+          ...returned,
+          activated: !returned.activated,
+        });
+        await expect(providerPorts.bindManagedProxy(submitted)).rejects.toEqual(
+          { code: "rollback_partial_state_unknown" },
+        );
+      }
+    },
+  );
+
+  it.each([
+    { ...request, app: "claude-desktop" },
+    { ...request, app: "workbuddy" },
+    { ...request, accountId: "default" },
+    { ...request, token: "SENTINEL-SECRET" },
+    { ...request, modelId: "bad\nmodel" },
+  ])("rejects out-of-scope generic requests before IPC %#", async (invalid) => {
+    await expect(
+      (await ports()).bindManagedProxy(
+        invalid as unknown as BindManagedProxyRequest,
+      ),
+    ).rejects.toThrow();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    null,
+    { ...result, app: "grokbuild" },
+    { ...result, token: "SENTINEL-SECRET" },
+  ])("rejects malformed generic results %#", async (invalid) => {
+    invoke.mockResolvedValue(invalid);
+    await expect(
+      (await ports()).bindManagedProxy({ ...request, app: "claude" }),
+    ).rejects.toEqual({ code: "rollback_partial_state_unknown" });
   });
 });

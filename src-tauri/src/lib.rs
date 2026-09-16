@@ -2036,6 +2036,7 @@ pub fn run() {
             commands::add_provider,
             commands::add_provider_with_result,
             commands::bind_xai_managed_provider,
+            commands::bind_managed_proxy_provider,
             commands::apply_provider_quick_setup_with_result,
             commands::update_provider,
             commands::update_provider_with_result,

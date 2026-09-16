@@ -9,6 +9,9 @@ use crate::services::change_plan::{ChangePlanService, WriterReceipt};
 use crate::services::provider::{BindXaiManagedError, BindXaiManagedRequest, ProviderService};
 use crate::services::secret::{MemorySecretBackend, SecretService};
 use crate::store::AppState;
+
+#[path = "subscription_transport_tests.rs"]
+mod transport_tests;
 use serde_json::{json, Value};
 use serial_test::serial;
 use std::sync::Arc;
@@ -31,10 +34,18 @@ impl Drop for TestHome {
 }
 
 fn seed(auth: &ManagedAuthService<MemorySecretBackend>, account: &str) -> CredentialRecord {
+    seed_provider(auth, account, ManagedAuthProvider::Xai)
+}
+
+fn seed_provider(
+    auth: &ManagedAuthService<MemorySecretBackend>,
+    account: &str,
+    provider: ManagedAuthProvider,
+) -> CredentialRecord {
     let credential = auth
         .provision_legacy_credential(LegacyCredentialInput {
             migration_id: None,
-            provider: ManagedAuthProvider::Xai,
+            provider,
             purpose: CredentialPurpose::ProxyUpstream,
             consumer: Some(ManagedAuthConsumer::FyagentProxy),
             legacy_account_id: account.into(),
@@ -56,7 +67,7 @@ fn seed(auth: &ManagedAuthService<MemorySecretBackend>, account: &str) -> Creden
         .unwrap();
     let bundle = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
         credential_id: credential.credential_id.clone(),
-        provider: ManagedAuthProvider::Xai,
+        provider,
         generation: credential.generation + 1,
         access_token: Some(format!("synthetic-access-{account}")),
         refresh_token: Some(format!("synthetic-refresh-{account}")),
@@ -229,15 +240,24 @@ fn check_concurrent_targets(use_change_plan: bool) {
     let credential = seed(&auth, "selected");
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let _entered = runtime.enter();
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
     let mut global = runtime
         .block_on(state.db.get_global_proxy_config())
         .unwrap();
     global.listen_address = "127.0.0.1".into();
-    global.listen_port = port;
+    global.listen_port = 0;
     global.proxy_enabled = false;
+    runtime
+        .block_on(state.db.update_global_proxy_config(global))
+        .unwrap();
+    // This case deliberately restarts the listener after A's compensation.
+    // A Change Plan must keep its confirmed endpoint across that restart.
+    // Allocate it through the actual ProxyService, not a throwaway port probe.
+    let port = runtime.block_on(state.proxy_service.start()).unwrap().port;
+    runtime.block_on(state.proxy_service.stop()).unwrap();
+    let mut global = runtime
+        .block_on(state.db.get_global_proxy_config())
+        .unwrap();
+    global.listen_port = port;
     runtime
         .block_on(state.db.update_global_proxy_config(global))
         .unwrap();
@@ -338,10 +358,14 @@ fn check_concurrent_targets(use_change_plan: bool) {
             Err(BindXaiManagedError::ApplyFailedRolledBack)
         ));
         if let Some(outcome) = second.join().unwrap() {
-            assert!(matches!(
-                serde_json::to_value(outcome).unwrap()["job"]["resultCode"].as_str(),
-                Some("applied" | "applied_restart_recommended" | "applied_with_warning")
-            ));
+            assert!(
+                matches!(
+                    serde_json::to_value(&outcome).unwrap()["job"]["resultCode"].as_str(),
+                    Some("applied" | "applied_restart_recommended" | "applied_with_warning")
+                ),
+                "unexpected Change Plan result: {:?}",
+                serde_json::to_value(&outcome).unwrap()
+            );
         }
     });
     state.proxy_service.set_managed_activation_test_hook(None);
@@ -364,6 +388,11 @@ fn check_concurrent_targets(use_change_plan: bool) {
         Some(codex.provider_id.as_str())
     );
     assert!(runtime.block_on(state.proxy_service.is_running()));
+    let port = runtime
+        .block_on(state.proxy_service.get_status())
+        .unwrap()
+        .port;
+    assert_ne!(port, 0);
     assert!(std::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).is_ok());
     assert!(std::fs::read_to_string(codex_path)
         .unwrap()
@@ -488,20 +517,37 @@ fn subscription_runtime_rollback_tampering_reports_unknown() {
 #[test]
 #[serial]
 fn subscription_vault_to_both_cli_protocols_and_restore() {
+    verify_subscription_cli_roundtrip(ManagedAuthProvider::Xai);
+}
+
+#[test]
+#[serial]
+fn subscription_openai_vault_to_cli_protocols_and_restore() {
+    verify_subscription_cli_roundtrip(ManagedAuthProvider::Openai);
+}
+
+fn verify_subscription_cli_roundtrip(upstream_provider: ManagedAuthProvider) {
     let (home, _guard, state, auth) = fixture();
-    let selected = seed(&auth, "selected");
-    let _other_default = seed(&auth, "other-default");
+    let selected = seed_provider(&auth, "selected", upstream_provider);
+    let _other_default = seed_provider(&auth, "other-default", upstream_provider);
+    let selected_model = if upstream_provider == ManagedAuthProvider::Xai {
+        "grok-build"
+    } else {
+        "codex-fixture-model"
+    };
+    let bind_request = |app| {
+        let mut value = request(app, &selected.identity_id);
+        value.model_id = selected_model.into();
+        value
+    };
     assert!(!home.path().join("vault-meta/xai_oauth_auth.json").exists());
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let _entered = runtime.enter();
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
     let mut global = runtime
         .block_on(state.db.get_global_proxy_config())
         .unwrap();
     global.listen_address = "127.0.0.1".into();
-    global.listen_port = port;
+    global.listen_port = 0;
     runtime
         .block_on(state.db.update_global_proxy_config(global))
         .unwrap();
@@ -523,13 +569,22 @@ fn subscription_vault_to_both_cli_protocols_and_restore() {
     )
     .unwrap();
     let auth_before = std::fs::read(&auth_path).unwrap();
+    let grok_path = crate::grok_config::get_grok_config_path();
+    std::fs::create_dir_all(grok_path.parent().unwrap()).unwrap();
+    let grok_before = "# preserved user settings\n[models]\ndefault = \"original\"\n[model.original]\nmodel = \"original\"\nbase_url = \"https://fixture.example/v1\"\napi_key = \"synthetic-user-key\"\napi_backend = \"responses\"\ncontext_window = 32000\n[mcp_servers.fixture]\ncommand = \"grok-fixture-command\"\n";
+    std::fs::write(&grok_path, grok_before).unwrap();
+    let grok_auth_path = crate::grok_config::get_grok_config_dir().join("auth.json");
+    let grok_auth_before = b"{\"fixture\":\"preserved-grok-native-login\"}";
+    std::fs::write(&grok_auth_path, grok_auth_before).unwrap();
     let claude =
-        ProviderService::bind_xai_managed(&state, &auth, request("claude", &selected.identity_id))
-            .unwrap();
+        ProviderService::bind_managed_proxy(&state, &auth, bind_request("claude")).unwrap();
     assert!(claude.activated);
-    let codex =
-        ProviderService::bind_xai_managed(&state, &auth, request("codex", &selected.identity_id))
-            .unwrap();
+    let port = runtime
+        .block_on(state.proxy_service.get_status())
+        .unwrap()
+        .port;
+    assert_ne!(port, 0);
+    let codex = ProviderService::bind_managed_proxy(&state, &auth, bind_request("codex")).unwrap();
     assert!(!codex.activated);
     assert_eq!(
         std::fs::read_to_string(&config_path).unwrap(),
@@ -540,11 +595,11 @@ fn subscription_vault_to_both_cli_protocols_and_restore() {
         .get_provider_by_id(&codex.provider_id, "codex")
         .unwrap()
         .unwrap();
-    assert!(ProviderService::xai_managed_account_is_ready(
+    assert!(ProviderService::managed_proxy_account_is_ready(
         &state, &saved
     ));
     assert!(
-        ProviderService::xai_managed_codex_shape_is_valid(&saved),
+        ProviderService::managed_proxy_codex_shape_is_valid(&saved),
         "shape: {}",
         saved.settings_config
     );
@@ -586,6 +641,30 @@ fn subscription_vault_to_both_cli_protocols_and_restore() {
     let claude_live: Value = crate::config::read_json_file(&claude_path).unwrap();
     assert_eq!(claude_live["permissions"], claude_before["permissions"]);
     assert_eq!(claude_live["env"]["CUSTOM"], "kept");
+    let grok =
+        ProviderService::bind_managed_proxy(&state, &auth, bind_request("grokbuild")).unwrap();
+    assert!(grok.activated);
+    let grok_live = std::fs::read_to_string(&grok_path).unwrap();
+    assert!(grok_live.contains(&format!("127.0.0.1:{port}/grokbuild/v1")));
+    assert!(grok_live.contains("grok-fixture-command"));
+    assert_eq!(std::fs::read(&grok_auth_path).unwrap(), grok_auth_before);
+    let auth_kind = if upstream_provider == ManagedAuthProvider::Xai {
+        "xai_oauth"
+    } else {
+        "codex_oauth"
+    };
+    assert_eq!(
+        state
+            .proxy_service
+            .observe_managed_account_route(auth_kind, "selected", false),
+        Some(true)
+    );
+    assert_eq!(
+        state
+            .proxy_service
+            .observe_managed_account_route(auth_kind, "other-default", true),
+        Some(false)
+    );
     let captured = Arc::new(tokio::sync::Mutex::new(
         Vec::<(axum::http::HeaderMap, Value)>::new(),
     ));
@@ -593,31 +672,40 @@ fn subscription_vault_to_both_cli_protocols_and_restore() {
     let (upstream, upstream_task) = runtime.block_on(async move {
         let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = server.local_addr().unwrap();
-        let router = axum::Router::new().route("/v1/chat/completions", axum::routing::post(move |headers: axum::http::HeaderMap, axum::Json(body): axum::Json<Value>| {
-            let capture = capture.clone();
-            async move {
-                use axum::response::IntoResponse;
-                let streaming = body["stream"] == true;
-                capture.lock().await.push((headers, body));
-                if streaming {
-                    // Same split tool-call shape used by streaming_codex_chat's
-                    // converts_tool_call_chat_sse_to_responses_sse regression.
-                    let chunks = [
-                        json!({"id":"chatcmpl_fixture","model":"grok-build","choices":[{"index":0,"delta":{"role":"assistant","content":"fixture-ok"}}]}),
-                        json!({"id":"chatcmpl_fixture","model":"grok-build","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_fixture","type":"function","function":{"name":"get_weather","arguments":""}}]}}]}),
-                        json!({"id":"chatcmpl_fixture","model":"grok-build","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":\"Tokyo\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}),
-                    ];
-                    let events = chunks.into_iter().map(|chunk| format!("data: {chunk}\n\n")).collect::<String>() + "data: [DONE]\n\n";
-                    ([(axum::http::header::CONTENT_TYPE, "text/event-stream")], events).into_response()
-                } else {
-                    axum::Json(json!({"id":"chatcmpl_fixture","object":"chat.completion","created":123,"model":"grok-build","choices":[{"index":0,"message":{"role":"assistant","content":"fixture-ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":2,"total_tokens":4}})).into_response()
-                }
-            }
-        }));
-        let task = tokio::spawn(async move { axum::serve(server, router).await.unwrap(); });
+        let endpoint = if upstream_provider == ManagedAuthProvider::Xai {
+            "/v1/responses"
+        } else {
+            "/backend-api/codex/responses"
+        };
+        let router = axum::Router::new().route(
+            endpoint,
+            axum::routing::post(
+                move |headers: axum::http::HeaderMap, axum::Json(body): axum::Json<Value>| {
+                    let capture = capture.clone();
+                    async move {
+                        use axum::response::IntoResponse;
+                        let streaming = body["stream"] == true;
+                        capture.lock().await.push((headers, body));
+                        let (response, events) = synthetic_responses(selected_model);
+                        if streaming {
+                            (
+                                [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+                                events,
+                            )
+                                .into_response()
+                        } else {
+                            axum::Json(response).into_response()
+                        }
+                    }
+                },
+            ),
+        );
+        let task = tokio::spawn(async move {
+            axum::serve(server, router).await.unwrap();
+        });
         (format!("http://{address}"), task)
     });
-    for id in [&claude.provider_id, &codex.provider_id] {
+    for id in [&claude.provider_id, &codex.provider_id, &grok.provider_id] {
         crate::proxy::set_xai_integration_fixture(
             id,
             Some(crate::proxy::XaiIntegrationFixture {
@@ -662,15 +750,39 @@ fn subscription_vault_to_both_cli_protocols_and_restore() {
         for expected in ["event: response.created", "event: response.function_call_arguments.delta", "event: response.function_call_arguments.done", "get_weather", "call_fixture", "Tokyo", "event: response.completed"] {
             assert!(body.contains(expected), "Missing Codex stream event {expected}: {body}");
         }
+        for streaming in [false, true] {
+            let response = client.post(format!("http://127.0.0.1:{port}/grokbuild/v1/responses"))
+                .bearer_auth("PROXY_MANAGED")
+                .json(&json!({"model":"client-profile","input":[{"type":"function_call","call_id":"call_fixture","name":"get_weather","arguments":"{\"city\":\"Tokyo\"}"},{"type":"function_call_output","call_id":"call_fixture","output":""}],"stream":streaming}))
+                .send().await.unwrap();
+            let status = response.status();
+            let body = response.text().await.unwrap();
+            assert!(status.is_success(), "Grok Build {status}: {body}");
+            assert!(body.contains("fixture-ok"));
+            if streaming { assert!(body.contains("event: response.completed")); }
+        }
         let requests = captured.lock().await;
-        assert_eq!(requests.len(), 4);
+        assert_eq!(requests.len(), 6);
+        for (_, body) in requests.iter().skip(4) {
+            assert!(body["input"].as_array().unwrap().iter().any(|item| item["type"] == "function_call_output" && item["call_id"] == "call_fixture" && item["output"] == ""));
+        }
         for (headers, body) in requests.iter() {
             assert_eq!(headers["authorization"], "Bearer synthetic-access-selected");
-            assert_eq!(headers["x-xai-token-auth"], "xai-grok-cli");
-            assert_eq!(headers["x-grok-model-override"], "grok-build");
-            assert_eq!(body["model"], "grok-build");
-            assert!(body.get("messages").is_some());
-            assert!(body.get("input").is_none());
+            if upstream_provider == ManagedAuthProvider::Xai {
+                assert_eq!(headers["x-xai-token-auth"], "xai-grok-cli");
+                assert_eq!(headers["x-grok-model-override"], selected_model);
+                assert!(body.get("reasoning").is_none());
+            } else {
+                assert_eq!(headers["chatgpt-account-id"], "selected");
+                assert_eq!(headers["originator"], "codex_cli_rs");
+                assert!(headers.contains_key("version"));
+                assert_eq!(body["store"], false);
+                assert!(body.get("max_output_tokens").is_none());
+                assert!(body["include"].as_array().unwrap().iter().any(|value| value == "reasoning.encrypted_content"));
+            }
+            assert_eq!(body["model"], selected_model);
+            assert!(body.get("messages").is_none());
+            assert!(body.get("input").is_some());
         }
     });
     let public = serde_json::to_string(&plan).unwrap()
@@ -678,12 +790,13 @@ fn subscription_vault_to_both_cli_protocols_and_restore() {
         + &serde_json::to_string(&claude).unwrap()
         + &serde_json::to_string(&codex).unwrap()
         + &codex_live
+        + &grok_live
         + &serde_json::to_string(&claude_live).unwrap();
     assert!(!public.contains("synthetic-access"));
     assert!(!public.contains("synthetic-refresh"));
     let mut next_request = request("codex", &selected.identity_id);
     next_request.model_id = "grok-next".into();
-    let next = ProviderService::bind_xai_managed(&state, &auth, next_request).unwrap();
+    let next = ProviderService::bind_managed_proxy(&state, &auth, next_request).unwrap();
     let next_plan = ChangePlanService::plan_codex_switch(&state, &next.provider_id).unwrap();
     auth.repository
         .set_status(
@@ -720,7 +833,7 @@ fn subscription_vault_to_both_cli_protocols_and_restore() {
         assert!(!response.status().is_success());
         assert_eq!(
             captured.lock().await.len(),
-            4,
+            6,
             "revocation must not fall back or call upstream"
         );
     });
@@ -740,8 +853,57 @@ fn subscription_vault_to_both_cli_protocols_and_restore() {
         std::fs::read_to_string(&config_path).unwrap(),
         config_before
     );
-    for id in [&claude.provider_id, &codex.provider_id] {
+    assert_eq!(std::fs::read_to_string(&grok_path).unwrap(), grok_before);
+    assert_eq!(std::fs::read(&grok_auth_path).unwrap(), grok_auth_before);
+    assert_eq!(
+        state
+            .proxy_service
+            .observe_managed_account_route(auth_kind, "selected", false),
+        Some(false)
+    );
+    for id in [&claude.provider_id, &codex.provider_id, &grok.provider_id] {
         crate::proxy::set_xai_integration_fixture(id, None);
     }
     upstream_task.abort();
+}
+
+fn synthetic_responses(model: &str) -> (Value, String) {
+    use crate::proxy::providers::codex_responses_sse as sse;
+    let message = sse::message_item("msg_fixture", "fixture-ok");
+    let tool = json!({"id":"fc_fixture","type":"function_call","status":"completed","call_id":"call_fixture","name":"get_weather","arguments":"{\"city\":\"Tokyo\"}"});
+    let response = json!({"id":"resp_fixture","object":"response","created_at":123,"status":"completed","model":model,"output":[message, tool],"usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5,"input_tokens_details":{"cached_tokens":1}}});
+    let created = json!({"id":"resp_fixture","object":"response","status":"in_progress","model":model,"output":[]});
+    let mut events = vec![
+        sse::response_created(&created),
+        sse::message_item_added(0, "msg_fixture"),
+        sse::message_content_part_added(0, "msg_fixture"),
+        sse::output_text_delta(0, "msg_fixture", "fixture-ok"),
+    ];
+    events.extend(sse::message_close(0, "msg_fixture", "fixture-ok").0);
+    let mut pending_tool = tool.clone();
+    pending_tool["arguments"] = json!("");
+    pending_tool["status"] = json!("in_progress");
+    events.push(sse::output_item_added(1, &pending_tool));
+    events.push(sse::function_call_arguments_delta(
+        1,
+        "fc_fixture",
+        "{\"city\":",
+    ));
+    events.push(sse::function_call_arguments_delta(
+        1,
+        "fc_fixture",
+        "\"Tokyo\"}",
+    ));
+    events.push(sse::function_call_arguments_done(
+        1,
+        "fc_fixture",
+        "{\"city\":\"Tokyo\"}",
+    ));
+    events.push(sse::output_item_done(1, &tool));
+    events.push(sse::response_completed(&response));
+    let text = events
+        .iter()
+        .map(|bytes| std::str::from_utf8(bytes).unwrap())
+        .collect::<String>();
+    (response, text)
 }

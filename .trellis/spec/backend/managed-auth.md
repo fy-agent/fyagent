@@ -134,14 +134,17 @@ returns a refresh token or SecretRef.
 
 ## 3. Contracts
 
-### Grok subscription binding to local Agent providers
+### Subscription binding to local Agent providers
 
-- `bind_xai_managed_provider` accepts exactly `{ app, accountId, modelId }`.
+- `bind_managed_proxy_provider` accepts exactly `{ app, accountId, modelId }`
+  for `claude | codex | grokbuild`. `bind_xai_managed_provider` keeps its
+  xAI-only compatibility facade and Desktop draft behavior. Both delegate to
+  `services/provider/managed_proxy.rs`; neither owns another transaction.
   `accountId` is the public overview identity, not a default or caller-supplied
-  legacy token-store ID. Binding resolves an xAI `proxy_upstream` /
+  legacy token-store ID. Binding resolves an OpenAI/xAI `proxy_upstream` /
   `fyagent_proxy` credential, requires `ready` and `refresh_owner=fyagent`, and
   reads the matching SecretRef bundle before Provider mutation.
-- Native Grok/OpenCode lineages are not eligible even when the same account
+- Native Codex/Grok/OpenCode lineages are not eligible even when the same account
   identity is ready. No upstream access/refresh token is copied into a Provider,
   renderer, Change Plan, or Agent auth file. The existing proxy resolver remains
   the only refresh owner and rejects credentials whose current status changed.
@@ -151,9 +154,13 @@ returns a refresh token or SecretRef.
   stable identity digest so equal model/display names remain distinguishable.
   A saved name is preserved and excluded from binding identity; renaming the
   source or changing an account's display name does not break idempotency.
-  Claude Code activates through the existing Provider transaction;
+  Claude Code and Grok Build activate through the existing Provider transaction;
   Codex saves a draft and uses Change Plan; Claude Desktop saves a draft for its
   existing dedicated profile application, with `activated=false`.
+- OpenAI Codex sources use the custom slot `fyagent_chatgpt`, never the
+  reserved native `openai` provider ID. Existing xAI IDs/definitions remain
+  compatible. Agent configuration contains loopback routing and local markers,
+  not upstream OAuth credentials; native auth files remain unchanged.
 - Result fields remain `providerId`, `providerName`, `app`, `alreadyBound`,
   `activated`. Errors contain only a closed `code`: `invalid_request`,
   `account_unavailable`, `provider_conflict`, `apply_failed_rolled_back`, or
@@ -165,6 +172,34 @@ returns a refresh token or SecretRef.
 - New vault-created binding IDs never fall back to an in-memory legacy JSON
   account when the vault account disappears or becomes unavailable.
 
+### Proxy refresh and local observation
+
+- `resolve_access_material` returns only a zeroizing access token, optional
+  routing subject and private admitted credential lineage. The internal
+  `refresh_rejected_access(&AccessMaterial)` uses that same lineage and rejected
+  token; it never rereads a default account to recover an in-flight request.
+- A credential lock coalesces expiry refresh and simultaneous 401 refreshes.
+  Reuse an already-refreshed token only within the same credential, identity,
+  provider, purpose, consumer, SecretRef and authentication epoch, still owned
+  by FyAgent and Ready. Verify bundle identity and generation before use.
+- Refresh HTTP is bounded to 30 seconds. Recheck the exact generation and
+  lineage after HTTP, on both success and failure, before CAS or status writes.
+  Logout, relogin, deletion or native ownership transfer makes late work stale;
+  do not return an unrelated newer session as fallback. Verify committed vault
+  readback after CAS; a failed CAS is not success.
+- HTTP 400 with an exact `invalid_grant` (or xAI `invalid_token`) code, or a
+  definitive refresh 401/403, requires reauthentication. Network failure,
+  timeout, throttling, server failure and
+  malformed responses preserve the credential for an explicit retry. Missing
+  refresh material when renewal is needed requires reauthentication. The
+  legacy xAI refresh policy and native consumer owners are not rewritten.
+- OpenAI/xAI default proxy connection rows represent credential availability,
+  not proof of a running route. Reconcile changed/missing defaults and revoked
+  credentials before overview. Ready alone is `checking/unknown`. Only the
+  existing ProxyService observer may establish local listener/config adoption;
+  unavailable observation remains unknown and stopped/unadopted routes remain
+  disconnected. This is local evidence, never subscription entitlement or a
+  successful upstream call. Copilot's independent exchange path is unchanged.
 
 ### Identity versus credential session
 
@@ -400,6 +435,15 @@ Required assertions:
   Copilot v1 does not block Codex finalize;
 - vault unavailable does not seal JSON;
 - stale generation cannot overwrite; resolver rejects native refresh owners;
+  concurrent expiry/401 callers share one same-lineage refresh; deletion,
+  relogin and ownership changes reject both late success and terminal failure;
+  terminal errors require reauth while transient errors retain Ready;
+- both account providers bind all three CLI targets through native owners;
+  explicit non-default selection never falls back to the default, and missing
+  vault sessions never fall back to legacy plaintext stores;
+- subscription HTTP fixtures use real ephemeral loopback listeners and fake
+  vault material, assert original vendor origins/paths before redirecting I/O,
+  and cover one 401 replay, second-401 termination and secret-negative output;
 - set-default accepts only a ready credential under exact revision;
   removal preview/apply recomputes impact and rejects stale preview IDs;
   native secrets are deleted before credential/identity metadata;

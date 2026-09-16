@@ -26,8 +26,8 @@ pub struct CodexAdapter;
 /// OpenAI Chat Completions, even if the local Codex client is talking to CC
 /// Switch through the Responses API.
 pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
-    if provider.is_xai_oauth() {
-        return true;
+    if provider.is_xai_oauth() || provider.is_codex_oauth() {
+        return false;
     }
     if let Some(api_format) = provider
         .meta
@@ -169,7 +169,7 @@ pub fn inject_codex_chat_prompt_cache_key(
 /// Determined solely from explicit config (apiFormat / wire_api); no base_url
 /// guessing — Anthropic gateway addresses vary widely and guessing easily misfires.
 pub fn codex_provider_uses_anthropic(provider: &Provider) -> bool {
-    if provider.is_xai_oauth() {
+    if provider.is_xai_oauth() || provider.is_codex_oauth() {
         return false;
     }
     if let Some(api_format) = provider
@@ -232,6 +232,7 @@ pub fn is_codex_official_provider(provider: &Provider) -> bool {
     provider.id == crate::database::CODEX_OFFICIAL_PROVIDER_ID
         && provider.category.as_deref() == Some("official")
         && !provider.is_xai_oauth()
+        && !provider.is_codex_oauth()
 }
 
 /// Resolve the model-catalog tool profile for a Codex provider using the SAME
@@ -245,10 +246,10 @@ pub fn resolve_codex_catalog_tool_profile(
     provider: &Provider,
 ) -> crate::codex_config::CodexCatalogToolProfile {
     use crate::codex_config::CodexCatalogToolProfile;
-    // xAI OAuth pins the Chat conversion profile regardless of editable
-    // api_format, mirroring the Claude-side managed-provider invariant.
-    if provider.is_xai_oauth() {
-        return CodexCatalogToolProfile::ProxyChat;
+    // Subscription gateways speak Responses regardless of editable metadata.
+    // Strict xAI namespace normalization remains in the request pipeline.
+    if provider.is_xai_oauth() || provider.is_codex_oauth() {
+        return CodexCatalogToolProfile::NativeResponses;
     }
     if is_codex_official_provider(provider) {
         return CodexCatalogToolProfile::NativeResponses;
@@ -677,7 +678,7 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        if is_codex_official_provider(provider) {
+        if is_codex_official_provider(provider) || provider.is_codex_oauth() {
             return Ok(super::CHATGPT_CODEX_BASE_URL.to_string());
         }
 
@@ -736,6 +737,12 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<AuthInfo> {
+        if provider.is_codex_oauth() {
+            return Some(AuthInfo::new(
+                "codex_oauth_placeholder".into(),
+                AuthStrategy::CodexOAuth,
+            ));
+        }
         // xAI OAuth (Grok subscription): placeholder credentials only; the real
         // access_token is resolved per-request by the forwarder via XaiOAuthManager.
         if provider.is_xai_oauth() {
@@ -772,6 +779,13 @@ impl ProviderAdapter for CodexAdapter {
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
         let base_trimmed = base_url.trim_end_matches('/');
         let endpoint_trimmed = endpoint.trim_start_matches('/');
+        let endpoint_trimmed = if base_trimmed == super::CHATGPT_CODEX_BASE_URL {
+            endpoint_trimmed
+                .strip_prefix("v1/")
+                .unwrap_or(endpoint_trimmed)
+        } else {
+            endpoint_trimmed
+        };
 
         // OpenAI/Codex 的 base_url 可能是：
         // - 纯 origin: https://api.openai.com  (需要自动补 /v1)
@@ -806,6 +820,9 @@ impl ProviderAdapter for CodexAdapter {
         auth: &AuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
         use super::adapter::auth_header_value;
+        if auth.strategy == AuthStrategy::CodexOAuth {
+            return super::auth::codex_oauth_headers(&auth.api_key);
+        }
         let bearer = format!("Bearer {}", auth.api_key);
         // Anthropic gateway: send only x-api-key (anthropic-version is filled in by
         // the forwarder). Mutually exclusive with Bearer to avoid a 401 from the
@@ -1582,18 +1599,18 @@ wire_api = "responses"
     }
 
     #[test]
-    fn xai_oauth_pins_chat_catalog_profile() {
+    fn xai_oauth_pins_responses_catalog_profile() {
         let mut provider = create_provider(json!({ "auth": {}, "config": "" }));
         provider.meta = Some(crate::provider::ProviderMeta {
             provider_type: Some("xai_oauth".to_string()),
-            // 即使 api_format 被改成 anthropic，catalog 画像也必须匹配 Chat 转换
+            // Editable metadata cannot replace the native Responses contract.
             api_format: Some("anthropic".to_string()),
             ..Default::default()
         });
 
         assert!(matches!(
             resolve_codex_catalog_tool_profile(&provider),
-            crate::codex_config::CodexCatalogToolProfile::ProxyChat
+            crate::codex_config::CodexCatalogToolProfile::NativeResponses
         ));
         // Even contradictory imported official metadata cannot change the
         // tool profile independently from the authoritative OAuth wire route.
@@ -1611,11 +1628,11 @@ wire_api = "responses"
                 .strategy,
             AuthStrategy::XaiOAuth
         );
-        assert!(codex_provider_uses_chat_completions(&provider));
+        assert!(!codex_provider_uses_chat_completions(&provider));
         assert!(!codex_provider_uses_anthropic(&provider));
         assert!(matches!(
             resolve_codex_catalog_tool_profile(&provider),
-            crate::codex_config::CodexCatalogToolProfile::ProxyChat
+            crate::codex_config::CodexCatalogToolProfile::NativeResponses
         ));
         provider.meta = None;
         assert!(matches!(

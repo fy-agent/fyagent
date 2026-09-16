@@ -1,6 +1,6 @@
 # Verification
 
-Candidate verified on 2026-09-16 in `/Users/pythonrust/Desktop/projects/fyagent`, branch `dev/laiyongjie`. This task changes renderer catalogue data, browsing/draft behavior, tests and SPEC only. No remote push or PR is part of the task.
+Candidate verified on 2026-09-16 in `<workspace-root>`, branch `dev/laiyongjie`. This task changes renderer catalogue data, browsing/draft behavior, tests and SPEC only. No remote push or PR is part of the task.
 
 ## Accepted final checks
 

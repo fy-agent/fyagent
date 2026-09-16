@@ -42,7 +42,7 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 | [External Agent Auth](./agent-auth.md)                | Native auth observations, session ownership and safe handoff.                   |
 | [Managed Auth](./managed-auth.md)                     | Accounts/connections/request sources, login and impact confirmation.            |
 | [Models](./models.md)                                 | Drafts, connectivity, native save and existing model workflows.                 |
-| [Managed Grok Subscriptions](./grok-subscription.md)  | Explicit account/model binding, native readback and subscription scope.         |
+| [Managed Account Subscriptions](./grok-subscription.md) | OpenAI/xAI proxy binding, target readback and subscription scope.                |
 | [Assignments](./assignments.md)                       | Shared seven-target selection and serialized mutations.                         |
 | [Skills](./skills.md)                                 | Discovery, installed items, backups and assignment.                             |
 | [MCP](./mcp.md)                                       | Catalog/launch validation, CRUD, installation and assignment.                   |

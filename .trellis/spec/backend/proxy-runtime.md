@@ -61,20 +61,22 @@ backup body, or replacement routing implementation.
 
 ## 3. Contracts
 
-### Managed Grok activation
+### Managed subscription activation
 
-- `xai_oauth` inference is pinned to the official CLI session route
-  `https://cli-chat-proxy.grok.com/v1/chat/completions`. Ordinary API-key
-  providers retain `api.x.ai`. Claude Messages and Codex Responses reuse the
-  existing Chat converters, including streaming tool calls; Codex's tool
-  catalog uses the matching `ProxyChat` profile.
+- `xai_oauth` inference is pinned to the CLI session route
+  `https://cli-chat-proxy.grok.com/v1/responses`; `codex_oauth` uses
+  `https://chatgpt.com/backend-api/codex/responses`. Ordinary API-key providers
+  retain their existing routes. Codex/Grok Build use native Responses; Claude
+  Messages uses the existing Responses converter, including streaming tools.
+  Managed Codex tool catalogs use `NativeResponses`. Final wire normalization
+  and bounded same-account refresh are owned by the request pipeline.
 - After model mapping and header overrides, write `X-XAI-Token-Auth:
   xai-grok-cli` and `x-grok-model-override` from the final outbound model.
   Replace incoming copies; JSON `model` alone does not select the CLI route.
   The integration fixture must assert vendor host/path before redirecting I/O
   to loopback. Its streaming tests inspect tool arguments and terminal events
   in both downstream protocols; synthetic success is not real quota evidence.
-- Claude Code/Codex Grok subscription activation composes the existing Provider
+- Claude Code/Codex/Grok Build subscription activation composes the existing Provider
   transaction with the one `ProxyService`. Acquire the target mutation lock,
   then the shared managed-activation guard, then any listener-start guard.
   Hold activation ownership from snapshots through commit or compensation;
@@ -87,8 +89,10 @@ backup body, or replacement routing implementation.
   backup; otherwise capture the outgoing native configuration. Do not backfill
   an outgoing API key into the new managed Provider.
 - Write/read back the local endpoint using the target owner. Preserve Claude
-  permissions/unrelated environment and Codex native auth/MCP/unrelated source
-  configuration. Set only the selected target enabled; disable its automatic
+  permissions/unrelated environment and Codex/Grok native auth/MCP/unrelated
+  configuration. Grok uses the existing model-selection TOML patch; malformed
+  existing content is not treated as an empty file. Set only the selected
+  target enabled; disable its automatic
   failover so an expired subscription cannot silently use a paid API source.
 - Failure restores files, row/current selection, backup, and target proxy flags.
   Stop a newly created listener only when no other takeover uses it; never stop
@@ -99,6 +103,19 @@ backup body, or replacement routing implementation.
   cannot stop the subsequently committed target's listener.
 - Existing quit/restore/next-start behavior stays authoritative; this feature
   does not add a daemon, Docker, cloud service, or system-wide proxy.
+- Listener integration tests normally bind port zero and read the bound port.
+  A deliberate stop/restart across a confirmed Change Plan must instead reuse
+  the endpoint confirmed by that plan: allocate through the real ProxyService,
+  then retain that port for the restart fixture. Port zero after restart may
+  correctly fail the target-projection check; never weaken that check merely
+  to make an ephemeral-port fixture pass.
+- `observe_managed_account_route(authKind, legacyAccountId, isDefault)` is a
+  read-only `Option<bool>` snapshot: true means an owned, bound loopback
+  listener and at least one matching effective current Provider with adopted
+  live configuration. False means stopped/unadopted; None means locked,
+  unreadable or inconsistent observation. Reuse the same effective Provider
+  selection owner as forwarding, not the database marker alone. Observation
+  does not probe upstream or imply quota/model availability.
 
 
 ### Command and state ownership

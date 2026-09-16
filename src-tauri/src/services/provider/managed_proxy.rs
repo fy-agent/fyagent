@@ -1,4 +1,6 @@
-//! Grok subscription bindings reuse the Provider transaction and local Proxy.
+//! Subscription account bindings reuse one Provider transaction and local Proxy.
+//! The old xAI façade remains wire-compatible; public identity resolution and
+//! per-target preparation are shared with OpenAI proxy-purpose accounts.
 
 use super::*;
 use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
@@ -27,6 +29,10 @@ pub struct BindXaiManagedResult {
     pub already_bound: bool,
     pub activated: bool,
 }
+
+pub type BindManagedProxyRequest = BindXaiManagedRequest;
+pub type BindManagedProxyResult = BindXaiManagedResult;
+pub type BindManagedProxyError = BindXaiManagedError;
 
 #[derive(Debug, Clone, Copy, Serialize, thiserror::Error)]
 #[serde(tag = "code", rename_all = "snake_case")]
@@ -58,6 +64,7 @@ fn parse_request(request: &BindXaiManagedRequest) -> Result<AppType, BindXaiMana
     let app = match request.app.as_str() {
         "claude" => AppType::Claude,
         "codex" => AppType::Codex,
+        "grokbuild" => AppType::GrokBuild,
         "claude-desktop" => AppType::ClaudeDesktop,
         _ => return Err(BindXaiManagedError::InvalidRequest),
     };
@@ -81,6 +88,7 @@ fn build_provider(
     app: &AppType,
     account: &str,
     identity: &IdentityRecord,
+    source: ManagedAuthProvider,
     model: &str,
 ) -> Provider {
     // Model-specific drafts avoid mutating an already active binding when a
@@ -89,11 +97,34 @@ fn build_provider(
         "{:x}",
         Sha256::digest(format!("{account}\0{model}").as_bytes())
     );
-    let id = format!("fyagent-xai-{}-{}", app.as_str(), &digest[..24]);
-    let base_url = crate::proxy::providers::XAI_SUBSCRIPTION_BASE_URL;
+    let (source_id, auth_kind, slot, label_name, base_url, website) = match source {
+        ManagedAuthProvider::Openai => (
+            "openai",
+            "codex_oauth",
+            "fyagent_chatgpt",
+            "ChatGPT",
+            crate::proxy::providers::CHATGPT_CODEX_BASE_URL,
+            "https://chatgpt.com",
+        ),
+        ManagedAuthProvider::Xai => (
+            "xai",
+            "xai_oauth",
+            "xai",
+            "Grok",
+            crate::proxy::providers::XAI_SUBSCRIPTION_BASE_URL,
+            "https://x.ai/grok",
+        ),
+        ManagedAuthProvider::GithubCopilot => unreachable!("proxy admission excludes Copilot"),
+    };
+    let id = format!("fyagent-{source_id}-{}-{}", app.as_str(), &digest[..24]);
     let settings = if *app == AppType::Codex {
-        let config = format!("model_provider = \"xai\"\nmodel = \"{model}\"\n\n[model_providers.xai]\nname = \"Grok subscription\"\nbase_url = \"{base_url}\"\nwire_api = \"responses\"\n");
+        let config = format!("model_provider = \"{slot}\"\nmodel = \"{model}\"\n\n[model_providers.{slot}]\nname = \"{label_name} subscription\"\nbase_url = \"{base_url}\"\nwire_api = \"responses\"\n");
         serde_json::json!({"auth": {}, "config": config})
+    } else if *app == AppType::GrokBuild {
+        // A conservative local history budget, not a model entitlement claim.
+        // The key is only the existing local Proxy marker, never an OAuth token.
+        let config = format!("[models]\ndefault = \"fyagent_subscription\"\n\n[model.fyagent_subscription]\nmodel = \"{model}\"\nbase_url = \"{base_url}\"\nname = \"{label_name} subscription\"\napi_key = \"PROXY_MANAGED\"\napi_backend = \"responses\"\ncontext_window = 128000\n");
+        serde_json::json!({"config": config})
     } else {
         serde_json::json!({"env": {
             "ANTHROPIC_BASE_URL": base_url,
@@ -120,17 +151,17 @@ fn build_provider(
     let account_tag = format!("{:x}", Sha256::digest(identity.identity_id.as_bytes()));
     let mut provider = Provider::with_id(
         id,
-        format!("Grok · {label} ({}) · {model}", &account_tag[..6]),
+        format!("{label_name} · {label} ({}) · {model}", &account_tag[..6]),
         settings,
-        Some("https://x.ai/grok".into()),
+        Some(website.into()),
     );
     provider.category = Some("third_party".into());
-    provider.icon = Some("xai".into());
+    provider.icon = Some(source_id.into());
     provider.meta = Some(ProviderMeta {
-        provider_type: Some("xai_oauth".into()),
+        provider_type: Some(auth_kind.into()),
         auth_binding: Some(AuthBinding {
             source: AuthBindingSource::ManagedAccount,
-            auth_provider: Some("xai_oauth".into()),
+            auth_provider: Some(auth_kind.into()),
             account_id: Some(account.into()),
         }),
         ..Default::default()
@@ -153,7 +184,17 @@ fn build_provider(
 }
 
 impl ProviderService {
-    pub(crate) fn xai_managed_codex_shape_is_valid(provider: &Provider) -> bool {
+    pub(crate) fn managed_proxy_codex_shape_is_valid(provider: &Provider) -> bool {
+        let (slot, base_url) = if provider.is_xai_oauth() {
+            ("xai", crate::proxy::providers::XAI_SUBSCRIPTION_BASE_URL)
+        } else if provider.is_codex_oauth() {
+            (
+                "fyagent_chatgpt",
+                crate::proxy::providers::CHATGPT_CODEX_BASE_URL,
+            )
+        } else {
+            return false;
+        };
         let Some(auth) = provider
             .settings_config
             .get("auth")
@@ -175,15 +216,14 @@ impl ProviderService {
         let Some(selected) = config
             .get("model_providers")
             .and_then(toml::Value::as_table)
-            .and_then(|table| table.get("xai"))
+            .and_then(|table| table.get(slot))
             .and_then(toml::Value::as_table)
         else {
             return false;
         };
         auth.is_empty()
-            && config.get("model_provider").and_then(toml::Value::as_str) == Some("xai")
-            && selected.get("base_url").and_then(toml::Value::as_str)
-                == Some(crate::proxy::providers::XAI_SUBSCRIPTION_BASE_URL)
+            && config.get("model_provider").and_then(toml::Value::as_str) == Some(slot)
+            && selected.get("base_url").and_then(toml::Value::as_str) == Some(base_url)
             && selected.get("wire_api").and_then(toml::Value::as_str) == Some("responses")
             && selected.keys().all(|key| {
                 matches!(
@@ -208,7 +248,14 @@ impl ProviderService {
             .is_ok()
     }
 
-    pub(crate) fn xai_managed_account_is_ready(state: &AppState, provider: &Provider) -> bool {
+    pub(crate) fn managed_proxy_account_is_ready(state: &AppState, provider: &Provider) -> bool {
+        let (source, auth_kind) = if provider.is_xai_oauth() {
+            (ManagedAuthProvider::Xai, "xai_oauth")
+        } else if provider.is_codex_oauth() {
+            (ManagedAuthProvider::Openai, "codex_oauth")
+        } else {
+            return false;
+        };
         let Some(binding) = provider
             .meta
             .as_ref()
@@ -216,9 +263,8 @@ impl ProviderService {
         else {
             return false;
         };
-        if !provider.is_xai_oauth()
-            || binding.source != AuthBindingSource::ManagedAccount
-            || binding.auth_provider.as_deref() != Some("xai_oauth")
+        if binding.source != AuthBindingSource::ManagedAccount
+            || binding.auth_provider.as_deref() != Some(auth_kind)
         {
             return false;
         }
@@ -227,7 +273,7 @@ impl ProviderService {
         };
         ManagedAuthRepository::new(state.db.clone())
             .get_credential_by_legacy(
-                ManagedAuthProvider::Xai,
+                source,
                 CredentialPurpose::ProxyUpstream,
                 Some(ManagedAuthConsumer::FyagentProxy),
                 account,
@@ -245,15 +291,40 @@ impl ProviderService {
         auth: &ManagedAuthService<B>,
         request: BindXaiManagedRequest,
     ) -> Result<BindXaiManagedResult, BindXaiManagedError> {
+        Self::bind_managed_proxy_for(state, auth, request, Some(ManagedAuthProvider::Xai))
+    }
+
+    pub(crate) fn bind_managed_proxy<B: SecretBackend>(
+        state: &AppState,
+        auth: &ManagedAuthService<B>,
+        request: BindManagedProxyRequest,
+    ) -> Result<BindManagedProxyResult, BindManagedProxyError> {
+        // Desktop retains its separate legacy workflow and profile confirmation.
+        if request.app == "claude-desktop" {
+            return Err(BindManagedProxyError::InvalidRequest);
+        }
+        Self::bind_managed_proxy_for(state, auth, request, None)
+    }
+
+    fn bind_managed_proxy_for<B: SecretBackend>(
+        state: &AppState,
+        auth: &ManagedAuthService<B>,
+        request: BindManagedProxyRequest,
+        expected_source: Option<ManagedAuthProvider>,
+    ) -> Result<BindManagedProxyResult, BindManagedProxyError> {
         let app = parse_request(&request)?;
         let _guard = Self::lock_provider_mutation(state, &app);
         let credential = auth
-            .xai_proxy_account(&request.account_id)
+            .proxy_account(&request.account_id)
             .map_err(|_| BindXaiManagedError::AccountUnavailable)?;
+        if expected_source.is_some_and(|source| source != credential.credential.provider) {
+            return Err(BindXaiManagedError::AccountUnavailable);
+        }
         let mut provider = build_provider(
             &app,
             &credential.credential.legacy_account_id,
             &credential.identity,
+            credential.credential.provider,
             &request.model_id,
         );
         Self::normalize_provider_if_claude(&app, &mut provider);
@@ -280,9 +351,9 @@ impl ProviderService {
             provider_name: provider.name.clone(),
             app: app.as_str().into(),
             already_bound: existing.is_some(),
-            activated: app == AppType::Claude,
+            activated: matches!(app, AppType::Claude | AppType::GrokBuild),
         };
-        if app == AppType::Claude {
+        if matches!(app, AppType::Claude | AppType::GrokBuild) {
             Self::apply_quick_setup_locked(state, app, provider)?;
         } else if existing.is_none() {
             // Codex keeps the existing Change Plan confirmation. Desktop keeps

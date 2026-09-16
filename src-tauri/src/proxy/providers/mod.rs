@@ -24,6 +24,7 @@ pub mod copilot_model_map;
 mod gemini;
 pub(crate) mod gemini_schema;
 pub mod gemini_shadow;
+pub(crate) mod managed_responses;
 pub mod models;
 pub(crate) mod reasoning_bridge;
 pub mod streaming;
@@ -90,7 +91,7 @@ pub enum ProviderType {
     GitHubCopilot,
     /// OpenAI Codex (ChatGPT Plus/Pro OAuth，需要 Anthropic ↔ Responses API 转换)
     CodexOAuth,
-    /// xAI Grok CLI subscription OAuth（复用 Chat Completions 转换）
+    /// xAI Grok CLI subscription OAuth（原生 Responses）
     XaiOAuth,
 }
 
