@@ -42,7 +42,7 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 | [External Agent Auth](./agent-auth.md)                | Native auth observations, session ownership and safe handoff.                   |
 | [Managed Auth](./managed-auth.md)                     | Accounts/connections/request sources, login and impact confirmation.            |
 | [Models](./models.md)                                 | Drafts, connectivity, native save and existing model workflows.                 |
-| [Managed Account Subscriptions](./grok-subscription.md) | OpenAI/xAI proxy binding, target readback and subscription scope.                |
+| [Managed Account Subscriptions](./managed-account-subscriptions.md) | OpenAI/xAI proxy binding, target readback and subscription scope.                |
 | [Assignments](./assignments.md)                       | Shared seven-target selection and serialized mutations.                         |
 | [Skills](./skills.md)                                 | Discovery, installed items, backups and assignment.                             |
 | [MCP](./mcp.md)                                       | Catalog/launch validation, CRUD, installation and assignment.                   |
@@ -52,9 +52,11 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 
 ## Historical discovery routers
 
-[Shell](./shell.md), [Agents and Models](./agent-models.md) and
-[Skills and MCP](./skills-mcp.md) only point to focused contracts. They are not
-alternative implementations. New work cites the focused owner.
+[Shell](./shell.md), [Agents and Models](./agent-models.md),
+[Skills and MCP](./skills-mcp.md), and the historical
+[Grok subscription filename](./grok-subscription.md) only point to focused
+contracts. They are not alternative implementations. New work cites the
+focused owner.
 
 ## Quality Check
 

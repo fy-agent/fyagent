@@ -215,7 +215,7 @@ an apply instruction.
 
 ### Existing account subscription to a local Agent
 
-[Managed Account Subscriptions](./grok-subscription.md) owns the explicit
+[Managed Account Subscriptions](./managed-account-subscriptions.md) owns the explicit
 account/model picker, binding DTOs, target-local failure/readback rules and
 subscription regression matrix. Read it when changing `bindManagedProxy`, `bindXaiManaged`,
 `fetchXaiManagedModels` or `XaiSubscriptionSection`. It extends this Models

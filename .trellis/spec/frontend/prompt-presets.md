@@ -8,8 +8,24 @@ identity remain in [Prompts and Memory](./prompts-memory.md).
 
 ## 2. Signatures and owners
 
-`src/pages/prompts/presets.ts` owns `FDE_PROMPT_PRESETS`, the closed six-value
-`PromptPresetCategory`, `PROMPT_PRESET_CATEGORIES` and:
+`src/pages/prompts/presets.ts` owns `FDE_PROMPT_PRESETS`, the exact six-value
+category order and:
+
+```ts
+type PromptPresetCategory =
+  | "delivery"
+  | "business"
+  | "industry"
+  | "public"
+  | "services"
+  | "engineering";
+```
+
+`PROMPT_PRESET_CATEGORIES` presents those IDs in that order as `交付基础`,
+`企业流程`, `产业运营`, `公共与专业服务`, `行业服务`, and `工程运维`.
+The catalogue contains exactly 30 stable scenarios: five in each category.
+
+The public search boundary is:
 
 ```ts
 searchPromptPresets(
@@ -31,9 +47,11 @@ There is no new Port, native command, preference or persistence schema.
   specific inputs, implementation choices, deliverables, acceptance cases and
   an example. The common contract covers evidence, untrusted external text,
   tool approval and data minimization without demanding a fixed report format.
-- Search matches every whitespace-separated, case-insensitive term in the
-  scenario metadata/body, intersected with the chosen category. Do not search
-  credentials, native user records or only the shared boilerplate.
+- Search matches every whitespace-separated, case-insensitive term across the
+  scenario `name`, `description`, category label, `tags`, `inputs`, `approach`,
+  `deliverables`, and `evaluation`, intersected with the chosen category.
+  `example`, composed shared boilerplate, credentials and native user records
+  are not hidden search authorities.
 - Use shared `FeatureTabs` / `FeatureTabPanel` with `layout="workspace"`,
   `FeatureSearch`, `FeatureList`, `SplitPanes` and `Button`. The preset panel
   mounts on selection and unmounts on exit. The library/editor stays mounted
@@ -54,14 +72,16 @@ There is no new Port, native command, preference or persistence schema.
   characters for new renderer-created records (`crypto.getRandomValues`),
   preserves existing IDs on edit and sets new records `enabled: false`.
   Do not require the secure-context-only `crypto.randomUUID` API or use a
-  timestamp as uniqueness. Repeated copies cannot replace an enabled record. `upsert` and authoritative
-  rereads are unchanged; enable remains a separate explicit operation.
+  timestamp as uniqueness. Repeated copies cannot replace an enabled record.
+  `upsert` and authoritative rereads are unchanged; enable remains a separate
+  explicit operation.
 
 ## 4. Validation & Error Matrix
 
 | Condition                                    | Required behavior                                                         |
 | -------------------------------------------- | ------------------------------------------------------------------------- |
 | No native library data / initial read failed | Browsing works, use is disabled; no synthetic native success.             |
+| Category ID/order or per-category count drifts | Catalogue contract test fails; do not silently reclassify saved presets. |
 | Search/category matches nothing              | Empty result with clear-filter action; no stale preview.                  |
 | Browse while editor is dirty                 | Preserve the editor and its route blocker.                                |
 | Apply while dirty                            | Confirm before replacing; cancel keeps user content.                      |
@@ -80,8 +100,9 @@ invoke a suggested integration merely because its name appears in prompt text.
 
 ## 6. Tests Required
 
-`tests/renderer/pages/prompts/presets.test.ts` checks unique IDs, complete
-scenario fields, category/search intersections and shared safety boundaries.
+`tests/renderer/pages/prompts/presets.test.ts` checks the exact six category
+IDs/order, five scenarios per category, 30 unique IDs/content bodies, complete
+scenario fields, exact search-field intersections and shared safety boundaries.
 `Page.test.tsx` covers zero-write preview, dirty cancellation/confirmation,
 repeated copies, all seven libraries, disabled saves and native-only browsing.
 Keep existing failed-save/readback, route guards and live-file tests.

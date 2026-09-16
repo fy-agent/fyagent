@@ -14,12 +14,39 @@ fields/targets and uses `npxSpec` for Windows/macOS launch differences.
 `McpCatalogCategory` and `McpCatalogFilterId` admit `fde`; Discovery intersects
 this category with ordinary search. No new installer, Port or endpoint exists.
 
+The `fde` filter contains exactly these 20 catalogue IDs in catalogue order:
+
+```text
+amap
+feishu
+dingtalk
+yunxiao
+gitee
+tencent-docs
+tapd
+aliyun-websearch
+yuque
+apifox
+antv-chart
+edgeone-pages
+cloudbase
+aliyun-dms
+aliyun-dataworks
+aliyun-ack
+aliyun-rds
+aliyun-cloudops
+dbhub
+starrocks
+```
+
 ## 3. Contracts
 
-- The FDE filter includes relevant existing domestic collaboration, mapping,
-  API and deployment entries plus the new cloud/data entries; do not clone
-  existing IDs to create a second catalogue. Other install-mode filters retain
-  their existing meaning. No-field configuration does not imply no login.
+- The FDE filter uses the exact ordered membership above: twelve existing
+  domestic mapping/collaboration/API/deployment entries plus eight cloud/data
+  recipes. Do not clone an ID to create a second catalogue or admit an entry
+  merely because it has a China-related tag. A membership change is a reviewed
+  contract change with an exact regression update. Other install-mode filters
+  retain their existing meaning. No-field configuration does not imply no login.
 - New FDE recipes are `provenance: official`, `maturity: verify`, linked to
   upstream setup documentation and carry actual runtime/auth/risk notes.
   Configuration review is not authentication, availability, audit certification
@@ -55,6 +82,7 @@ to FyAgent's own lockfiles by adding a recipe.
 | Platform is Windows                                          | npx uses existing `cmd /c` adapter; uv/uvx retain their documented argv.      |
 | Database account can write                                   | Keep write/cloud risk even when the intended workflow only queries.           |
 | Upstream only provides source/binary or publisher is unclear | Do not invent an installable npm/PyPI recipe or mark community code official. |
+| FDE membership/order differs from the exact 20-ID set        | Catalogue contract test fails; review the admission/removal explicitly.       |
 | FDE filter + search                                          | Both apply; unrelated catalogue entries are excluded.                         |
 
 ## 5. Good / Base / Bad Cases
@@ -67,9 +95,10 @@ successfully saved CloudBase config with a successful login/deployment.
 
 ## 6. Tests Required
 
-`tests/renderer/features/mcpCatalog.test.ts` covers all new IDs, category,
-official/verify metadata, nonempty docs/risk, required fields, zero targets,
-macOS/Windows identity generation and no private values in argv/search.
+`tests/renderer/features/mcpCatalog.test.ts` freezes the exact ordered 20-ID
+FDE membership and covers all eight new IDs, category, official/verify
+metadata, nonempty docs/risk, required fields, zero targets, macOS/Windows
+identity generation and no private values in argv/search.
 Assert exact env keys, restricted tool selectors, STS omission and conditional
 CA verification. `featurePages.test.tsx` checks FDE/search intersection while
 retaining install-mode and ordinary install/assignment regressions.

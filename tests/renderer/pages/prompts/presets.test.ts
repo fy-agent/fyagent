@@ -7,6 +7,14 @@ import {
 
 describe("original FDE prompt catalogue", () => {
   it("covers six distinct domains with five complete scenarios each", () => {
+    expect(PROMPT_PRESET_CATEGORIES).toEqual([
+      { id: "delivery", label: "交付基础" },
+      { id: "business", label: "企业流程" },
+      { id: "industry", label: "产业运营" },
+      { id: "public", label: "公共与专业服务" },
+      { id: "services", label: "行业服务" },
+      { id: "engineering", label: "工程运维" },
+    ]);
     expect(FDE_PROMPT_PRESETS).toHaveLength(30);
     expect(new Set(FDE_PROMPT_PRESETS.map((item) => item.id)).size).toBe(30);
     expect(new Set(FDE_PROMPT_PRESETS.map((item) => item.content)).size).toBe(

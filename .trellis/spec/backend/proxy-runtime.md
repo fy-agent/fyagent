@@ -16,7 +16,9 @@ persistence mechanics remain owned by
 [Database Persistence](./database-persistence.md). Upstream OAuth access
 tokens for Codex/xAI/Copilot come from
 [Managed Auth Core](./managed-auth.md) when a fyagent-owned vault session
-exists; the forwarder must not grow a second token store.
+exists; the forwarder must not grow a second token store. Explicit account
+admission, stable Provider binding and `fyagent_proxy` overview projection are
+owned by [Managed Account Proxy](./managed-account-proxy.md).
 
 ## 2. Signatures
 
@@ -63,19 +65,11 @@ backup body, or replacement routing implementation.
 
 ### Managed subscription activation
 
-- `xai_oauth` inference is pinned to the CLI session route
-  `https://cli-chat-proxy.grok.com/v1/responses`; `codex_oauth` uses
-  `https://chatgpt.com/backend-api/codex/responses`. Ordinary API-key providers
-  retain their existing routes. Codex/Grok Build use native Responses; Claude
-  Messages uses the existing Responses converter, including streaming tools.
-  Managed Codex tool catalogs use `NativeResponses`. Final wire normalization
-  and bounded same-account refresh are owned by the request pipeline.
-- After model mapping and header overrides, write `X-XAI-Token-Auth:
-  xai-grok-cli` and `x-grok-model-override` from the final outbound model.
-  Replace incoming copies; JSON `model` alone does not select the CLI route.
-  The integration fixture must assert vendor host/path before redirecting I/O
-  to loopback. Its streaming tests inspect tool arguments and terminal events
-  in both downstream protocols; synthetic success is not real quota evidence.
+- Vendor origins, protected headers, Responses transforms, same-account 401
+  refresh/replay, downstream conversion and streaming terminal events are
+  owned by [Local Proxy Pipeline](./local-proxy-pipeline.md). Runtime activation
+  receives an already admitted managed Provider and must not duplicate those
+  request semantics.
 - Claude Code/Codex/Grok Build subscription activation composes the existing Provider
   transaction with the one `ProxyService`. Acquire the target mutation lock,
   then the shared managed-activation guard, then any listener-start guard.
@@ -115,7 +109,9 @@ backup body, or replacement routing implementation.
   live configuration. False means stopped/unadopted; None means locked,
   unreadable or inconsistent observation. Reuse the same effective Provider
   selection owner as forwarding, not the database marker alone. Observation
-  does not probe upstream or imply quota/model availability.
+  does not probe upstream or imply quota/model availability. Mapping this
+  result to account counts, request mode and provider label is owned by
+  [Managed Account Proxy](./managed-account-proxy.md).
 
 
 ### Command and state ownership
@@ -240,6 +236,10 @@ backup body, or replacement routing implementation.
 - Recovery tests cover clean shutdown, interrupted takeover, missing/uncertain
   backup, recognized local-proxy state, unrecognized user state, and idempotent
   rerun.
+- Managed subscription tests cover lock ordering across concurrent targets,
+  listener reuse, port-conflict compensation, preservation of target auth/MCP,
+  exact endpoint readback and effective-Provider route observation. They do not
+  re-specify token refresh or HTTP replay.
 - Breaker administration tests cover application-scoped refresh/reset and prove
   health reads do not consume permits; HTTP attempt behavior remains covered by
   [Local Proxy Pipeline](./local-proxy-pipeline.md).

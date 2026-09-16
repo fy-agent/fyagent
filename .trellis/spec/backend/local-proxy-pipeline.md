@@ -14,6 +14,12 @@ Provider switching, live-config backup/restore, and crash recovery are owned by
 [Local Proxy Service and Takeover](./proxy-runtime.md). This file owns the HTTP
 engine after that service has admitted and configured it.
 
+[Managed Account Proxy](./managed-account-proxy.md) owns which explicit
+OpenAI/xAI account, model and Agent target may create the managed Provider and
+how its local route appears in the account overview. This pipeline consumes the
+admitted Provider/account lineage; it does not select an account or publish
+connection summaries.
+
 Provider-specific adapters may add narrower authentication or wire-format
 rules, but they must enter and leave through this pipeline rather than creating
 a parallel HTTP server, retry loop, health ledger, or usage logger.

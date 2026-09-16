@@ -123,17 +123,31 @@ describe("MCP curated catalog", () => {
       expect(() => entry.build(values, [], "macos")).toThrow(UserFacingError);
     }
     expect(
-      MCP_CATALOG.filter((entry) => entry.categories.includes("fde")),
-    ).toHaveLength(20);
-    for (const id of [
+      MCP_CATALOG.filter((entry) => entry.categories.includes("fde")).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual([
+      "amap",
       "feishu",
       "dingtalk",
       "yunxiao",
+      "gitee",
+      "tencent-docs",
       "tapd",
+      "aliyun-websearch",
       "yuque",
       "apifox",
-    ])
-      expect(item(id).categories).toContain("fde");
+      "antv-chart",
+      "edgeone-pages",
+      "cloudbase",
+      "aliyun-dms",
+      "aliyun-dataworks",
+      "aliyun-ack",
+      "aliyun-rds",
+      "aliyun-cloudops",
+      "dbhub",
+      "starrocks",
+    ]);
     expect(item("cloudbase").authLabel).toContain("登录");
   });
 

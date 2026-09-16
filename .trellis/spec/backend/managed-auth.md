@@ -25,6 +25,8 @@ Related owners:
   OpenAI browser/Device Code, xAI Device Code, cancellation and reopen.
 - [Managed Auth Consumers](./managed-auth-consumers.md) owns Codex/Grok/OpenCode
   connection observation, native projection gates, readback and restart state.
+- [Managed Account Proxy](./managed-account-proxy.md) owns explicit OpenAI/xAI
+  binding to local Agent Providers and the `fyagent_proxy` route projection.
 
 This is the first production consumer of `services::secret`. Do not introduce a
 second keyring, a plaintext JSON token authority, or a `shared` refresh owner.
@@ -134,45 +136,21 @@ returns a refresh token or SecretRef.
 
 ## 3. Contracts
 
-### Subscription binding to local Agent providers
+### Proxy account boundary
 
-- `bind_managed_proxy_provider` accepts exactly `{ app, accountId, modelId }`
-  for `claude | codex | grokbuild`. `bind_xai_managed_provider` keeps its
-  xAI-only compatibility facade and Desktop draft behavior. Both delegate to
-  `services/provider/managed_proxy.rs`; neither owns another transaction.
-  `accountId` is the public overview identity, not a default or caller-supplied
-  legacy token-store ID. Binding resolves an OpenAI/xAI `proxy_upstream` /
-  `fyagent_proxy` credential, requires `ready` and `refresh_owner=fyagent`, and
-  reads the matching SecretRef bundle before Provider mutation.
-- Native Codex/Grok/OpenCode lineages are not eligible even when the same account
-  identity is ready. No upstream access/refresh token is copied into a Provider,
-  renderer, Change Plan, or Agent auth file. The existing proxy resolver remains
-  the only refresh owner and rejects credentials whose current status changed.
-- The binding uses a stable target/account/model Provider identity; an existing
-  row with a different definition fails `provider_conflict` instead of being
-  overwritten. A new source name includes a short public account label and a
-  stable identity digest so equal model/display names remain distinguishable.
-  A saved name is preserved and excluded from binding identity; renaming the
-  source or changing an account's display name does not break idempotency.
-  Claude Code and Grok Build activate through the existing Provider transaction;
-  Codex saves a draft and uses Change Plan; Claude Desktop saves a draft for its
-  existing dedicated profile application, with `activated=false`.
-- OpenAI Codex sources use the custom slot `fyagent_chatgpt`, never the
-  reserved native `openai` provider ID. Existing xAI IDs/definitions remain
-  compatible. Agent configuration contains loopback routing and local markers,
-  not upstream OAuth credentials; native auth files remain unchanged.
-- Result fields remain `providerId`, `providerName`, `app`, `alreadyBound`,
-  `activated`. Errors contain only a closed `code`: `invalid_request`,
-  `account_unavailable`, `provider_conflict`, `apply_failed_rolled_back`, or
-  `rollback_partial_state_unknown`. The last code never means restored.
-- `get_xai_oauth_models(accountId)` checks the same explicit overview identity
-  and vault bundle, then returns the documented `grok-build` route suggestion.
-  No subscription catalog endpoint is established: do not send session tokens
-  to the API-key `/models` endpoint or label suggestions as account entitlement.
-- New vault-created binding IDs never fall back to an in-memory legacy JSON
-  account when the vault account disappears or becomes unavailable.
+- This core exposes exact-account credential admission and access-material
+  resolution only. Provider identity, target activation/draft behavior, model
+  suggestions and overview route projection are owned by
+  [Managed Account Proxy](./managed-account-proxy.md).
+- A proxy consumer must present the public account identity and resolve a
+  `Ready` `proxy_upstream` / `fyagent_proxy` credential owned by FyAgent. Native
+  consumer lineages are not interchangeable, and a missing vault credential
+  never falls back to a default or plaintext legacy account.
+- No binding owner may receive a refresh token or SecretRef. The only exported
+  request-time material is the zeroizing access token and optional routing
+  subject described below.
 
-### Proxy refresh and local observation
+### Proxy access-material refresh
 
 - `resolve_access_material` returns only a zeroizing access token, optional
   routing subject and private admitted credential lineage. The internal
@@ -193,23 +171,6 @@ returns a refresh token or SecretRef.
   malformed responses preserve the credential for an explicit retry. Missing
   refresh material when renewal is needed requires reauthentication. The
   legacy xAI refresh policy and native consumer owners are not rewritten.
-- OpenAI/xAI default proxy connection rows represent credential availability,
-  not proof of a running route. Reconcile changed/missing defaults and revoked
-  credentials before overview. Ready alone is `checking/unknown`. Only the
-  existing ProxyService observer may establish local listener/config adoption;
-  unavailable observation remains unknown and stopped/unadopted routes remain
-  disconnected. This is local evidence, never subscription entitlement or a
-  successful upstream call. Copilot's independent exchange path is unchanged.
-- Local route observation must still emit a renderer-parseable overview. A
-  stopped/unadopted `fyagent_proxy` slot may keep `accountId` (the selected
-  default identity) while `authStatus=disconnected` and `requestMode=none`.
-  `requestMode=none` requires `requestProviderLabel=null`. `connectedConsumerCount`
-  is the number of unique `connections[].consumer` values whose `accountId`
-  matches that account, including a named but not-currently-routing proxy slot.
-  Do not exclude non-connected `fyagent_proxy` from the count or leave a
-  leftover provider label on `none`: the renderer rejects the complete snapshot
-  as `账号与认证数据不可用`, and `/auth` shows only the generic retry empty
-  state.
 
 ### Identity versus credential session
 
@@ -399,8 +360,6 @@ metadata and must never include token columns.
 | leftover `auth_start_login` / `auth_poll_for_account` / `auth_remove_account` / `auth_set_default_account` / `auth_logout` / `auth_cancel_login` | `legacy_auth_mutation_disabled`; no Device Code, JSON write, or vault delete |
 | leftover `copilot_start_device_flow` / `copilot_poll_for_*` / `copilot_remove_account` / `copilot_set_default_account` / `copilot_logout`        | `legacy_auth_mutation_disabled`; list/status/models/usage remain readable    |
 | `shared` refresh owner in schema or enum                                                                                                         | reject implementation                                                        |
-| `fyagent_proxy` is disconnected/`none` but `requestProviderLabel` is still set                                                                   | renderer rejects the complete overview                                       |
-| `connectedConsumerCount` omits a connection that still names the account, including a non-routing `fyagent_proxy`                                | renderer rejects the complete overview                                       |
 
 ## 5. Good / Base / Bad Cases
 
@@ -419,13 +378,6 @@ metadata and must never include token columns.
 - **Bad:** write refresh tokens back to JSON after that source is sealed.
 - **Bad:** seal every JSON store because one source failed.
 - **Bad:** pre-mark credentials `Ready` in the parser before vault readback.
-- **Good:** a saved OpenAI/xAI default that the local listener is not routing
-  still names `fyagent_proxy` on the account, uses `requestMode=none` with a
-  null label, and keeps `connectedConsumerCount` equal to unique named
-  consumers.
-- **Bad:** drop non-connected `fyagent_proxy` from `connectedConsumerCount`, or
-  keep `requestProviderLabel` after setting `requestMode=none`. The Auth page
-  then fails closed with a generic retry instead of showing accounts.
 
 ## 6. Tests Required
 
@@ -457,12 +409,12 @@ Required assertions:
   concurrent expiry/401 callers share one same-lineage refresh; deletion,
   relogin and ownership changes reject both late success and terminal failure;
   terminal errors require reauth while transient errors retain Ready;
-- both account providers bind all three CLI targets through native owners;
-  explicit non-default selection never falls back to the default, and missing
-  vault sessions never fall back to legacy plaintext stores;
-- subscription HTTP fixtures use real ephemeral loopback listeners and fake
-  vault material, assert original vendor origins/paths before redirecting I/O,
-  and cover one 401 replay, second-401 termination and secret-negative output;
+- exact proxy-account lookup rejects defaults, missing vault sessions,
+  non-proxy purposes and native refresh owners. Provider binding, route
+  observation and transport replay assertions are owned by
+  [Managed Account Proxy](./managed-account-proxy.md),
+  [Proxy Runtime](./proxy-runtime.md) and
+  [Local Proxy Pipeline](./local-proxy-pipeline.md);
 - set-default accepts only a ready credential under exact revision;
   removal preview/apply recomputes impact and rejects stale preview IDs;
   native secrets are deleted before credential/identity metadata;
@@ -482,10 +434,6 @@ Required assertions:
   evidence, not product acceptance. Matching-host HIL remains `#[ignore]`
   until a signed app with `HY446996QX.com.fyagent.desktop` access-group
   evidence runs.
-- unrouted proxy observation clears `requestProviderLabel` when
-  `requestMode=none`; overview counts named `fyagent_proxy` slots even when
-  they are not currently routing; renderer parser accepts disconnected proxy
-  `none`+null-label and rejects leftover labels / under-counted summaries.
 
 ## 7. Wrong vs Correct
 
@@ -541,24 +489,4 @@ leftover copilot_start_device_flow / poll / remove / set_default / logout
   -> legacy_auth_mutation_disabled
 managed_auth_* owns login, default, and removal with preview
 auth_list_accounts / auth_get_status remain read-only
-```
-
-Wrong:
-
-```text
-observe proxy route = false
-  -> requestMode=none, requestProviderLabel="openai"
-  -> connectedConsumerCount excludes fyagent_proxy because authStatus!=connected
-  -> renderer parseManagedAuthOverview throws
-  -> /auth empty retry state
-```
-
-Correct:
-
-```text
-observe proxy route = false
-  -> requestMode=none, requestProviderLabel=null
-  -> connectedConsumerCount = unique consumers whose accountId matches
-     (including named disconnected fyagent_proxy)
-  -> renderer accepts the snapshot
 ```

@@ -21,9 +21,11 @@ External Agent-owned authentication remains under
 refresh ownership and recovery semantics are owned by
 [Managed Auth Core](../backend/managed-auth.md); provider login sessions by
 [Managed Auth Login](../backend/managed-auth-login.md); and software projection
-by [Managed Auth Consumers](../backend/managed-auth-consumers.md). This
-frontend contract does not make browser fixtures or mock IPC into native
-authentication evidence.
+by [Managed Auth Consumers](../backend/managed-auth-consumers.md). Explicit
+OpenAI/xAI binding plus `fyagent_proxy` route projection is owned by
+[Managed Account Proxy](../backend/managed-account-proxy.md). This frontend
+contract owns strict wire parsing and presentation; it does not make browser
+fixtures or mock IPC into native authentication evidence.
 
 ## 2. Signatures
 
