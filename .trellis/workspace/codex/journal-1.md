@@ -131,3 +131,26 @@ Fixed disabled Prompt live-file writes and invalid Daily Memory entries in an is
 ### Status
 
 [OK] **Completed**
+
+
+## Session 8: macOS 0.4.5 upgrade and native audit
+<!-- trellis-session: v=2 fp=f9d9990403d220f3 -->
+
+**Date**: 2026-09-19
+**Task**: macOS 0.4.5 upgrade and native audit
+**Branch**: `codex/macos-045-audit`
+
+### Summary
+
+Installed and native-tested local 0.4.5 with Codex Health uncertainty and Prompt target fixes; cleaned older installation artifacts, preserved user data and original dirty checkout, documented remaining compatibility and real-account coverage gaps.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1a924586` | fix(health): preserve unmanaged Codex native auth uncertainty |
+| `9dfb55bc` | fix(prompts): keep the selected agent when opening management |
+
+### Status
+
+[OK] **Completed**
