@@ -101,9 +101,14 @@ pub(super) fn auth_checks(
         // Multiple OpenCode account connections are not interchangeable with its selected model.
         let connection = connections.first();
         if let Some(connection) = connection {
-            let uncertain = overview
-                .reason_codes
-                .contains(&ManagedAuthReasonCode::ObserverUnavailable)
+            // A slot not managed by FyAgent is not evidence of native Codex logout.
+            let unmanaged_native_session = agent == AgentCatalogId::Codex
+                && connection.auth_status == ManagedAuthConnectionState::Disconnected
+                && connection.unmanaged_native_session;
+            let uncertain = unmanaged_native_session
+                || overview
+                    .reason_codes
+                    .contains(&ManagedAuthReasonCode::ObserverUnavailable)
                 || connection.reason_codes.iter().any(|r| {
                     matches!(
                         r,

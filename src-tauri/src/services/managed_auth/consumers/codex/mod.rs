@@ -154,6 +154,13 @@ pub(crate) fn connection_summary(
         provider: Some(ManagedAuthProvider::Openai),
         account_id: display_account.map(|row| row.identity.identity_id.clone()),
         auth_status,
+        unmanaged_native_session: connection.is_none()
+            && store_ready
+            && observation.provider_route.is_official()
+            && matches!(
+                &observation.auth_state,
+                CodexNativeAuthState::ChatGptKnown { .. }
+            ),
         credential_manager: if store_ready {
             ManagedAuthCredentialManager::Codex
         } else {
@@ -249,6 +256,28 @@ mod tests {
             observed.request_mode,
             crate::services::managed_auth::ManagedAuthRequestMode::OfficialSubscription
         );
+    }
+
+    #[test]
+    fn unmanaged_native_session_requires_official_file_route() {
+        let dir = tempdir().unwrap();
+        for (config, expected) in [
+            ("model = 'fixture'\n", true),
+            ("model_provider = 'openai'\ncli_auth_credentials_store = 'file'\n", true),
+            ("model_provider = 'custom'\n", false),
+            ("model_provider = 'openai'\n[model_providers.openai]\nbase_url = 'https://example.test/v1'\n", false),
+            ("cli_auth_credentials_store = 'keyring'\n", false),
+        ] {
+            std::fs::write(dir.path().join("config.toml"), config).unwrap();
+            let mut observed = observe_codex_home(dir.path());
+            observed.auth_state = CodexNativeAuthState::ChatGptKnown {
+                account_id: "fixture-account".into(),
+                revision: "fixture".into(),
+            };
+            let summary = connection_summary(&observed, None, None, &[], now_timestamp());
+            assert_eq!(summary.unmanaged_native_session, expected);
+            assert_eq!(summary.auth_status, ManagedAuthConnectionState::Disconnected);
+        }
     }
 
     #[test]

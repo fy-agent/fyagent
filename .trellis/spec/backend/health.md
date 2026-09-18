@@ -46,6 +46,12 @@ Evidence rules:
 - Credential presence and a native connection observation are separate facts.
   Neither proves remote authorization, remaining quota or successful pickup
   by a running application. Pending restart retains its native meaning.
+  A disconnected Codex slot with no persisted managed connection may still
+  have recognizable native ChatGPT OAuth material on the official file route.
+  The Codex consumer preserves that fact as non-serialized native metadata;
+  Health keeps auth and credentials unknown instead of claiming logged out or
+  missing. Missing native material and persisted managed disconnects retain
+  their existing results. This exception never establishes remote login.
 - Per-Agent proxy intent uses SELECT-only `health_proxy_enabled`.
   Missing rows remain unknown; the legacy proxy getter can seed rows and is
   prohibited on this path. A running global listener alone cannot establish

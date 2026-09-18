@@ -223,7 +223,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/consumers/grok.rs",
-      "d0b2abf5bf041d8d5be0cf1bda6b02c23c58ceeee396ef55efba2814cf34de5f"
+      "4d7ccd6200e71c3ab640f7d89638c18ea7fafdf0451ed896018ce5c0578d2eca"
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",

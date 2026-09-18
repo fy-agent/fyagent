@@ -289,6 +289,7 @@ pub(crate) fn connection_summary(
         provider: Some(ManagedAuthProvider::Xai),
         account_id: account.map(|row| row.identity.identity_id.clone()),
         auth_status,
+        unmanaged_native_session: false,
         credential_manager: ManagedAuthCredentialManager::Unavailable,
         request_mode: ManagedAuthRequestMode::OfficialSubscription,
         request_provider_label: Some("xai".to_string()),

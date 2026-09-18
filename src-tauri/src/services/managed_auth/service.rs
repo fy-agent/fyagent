@@ -2062,6 +2062,7 @@ fn connection_summary(
             ConnectionStatus::PendingRestart => ManagedAuthConnectionState::PendingRestart,
             _ => ManagedAuthConnectionState::Unavailable,
         },
+        unmanaged_native_session: false,
         credential_manager: ManagedAuthCredentialManager::Fyagent,
         request_mode: connection.request_mode,
         request_provider_label: request_provider_label_for(
