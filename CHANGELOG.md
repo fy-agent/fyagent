@@ -8,6 +8,61 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-09-18
+
+FyAgent 0.4.5 adds a read-only Agent Health Center, skippable first-use software
+recommendations, China-focused FDE catalogues, and explicit reuse of managed
+OpenAI/xAI subscriptions through the local proxy.
+
+### Added
+
+- Added a read-only Agent Health Center that observes installation,
+  configuration, authentication, and proxy evidence for supported Agents, with
+  per-card entry points and serial or single-item refresh. Checks do not write
+  configuration, refresh credentials, or execute target CLIs.
+- Added skippable first-use software recommendations for confirmed new
+  installations. The guide projects directory-owned recommendations and does
+  not install software, open logins, or change models.
+- Added China-focused FDE prompt presets and an exact FDE MCP catalogue for
+  delivery workflows.
+- Added explicit Managed Auth subscription reuse: a selected OpenAI or xAI
+  account can be bound through FyAgent's local proxy to Claude Code, Codex, and
+  Grok Build. Account login, software connection, and model-request source
+  remain separate confirmed actions.
+- Resolved Claude Code and Grok Build official npm latest metadata at runtime
+  while keeping executable install/update plans on exact reviewed versions.
+
+### Changed
+
+- Simplified secondary renderer pages while preserving destructive-action,
+  secret, recovery, scroll, accessibility, and performance boundaries.
+- Restricted first-use guide persistence to native owner commands so ordinary
+  settings saves cannot overwrite those fields through compatibility keys.
+- Preferred the current SwiftPM privileged-helper product over a leftover
+  Xcode build artifact during helper packaging.
+
+### Fixed
+
+- Preserved enabled Prompt files when saving new or disabled entries and when
+  importing, and validated Daily Memory dates so illegal names and README
+  files no longer break the list, search, or save paths.
+- Preserved Agent directory contrast on bright backing and ignored late scan
+  callbacks after a view is disposed.
+- Kept an idle managed-proxy overview parseable and included Grok Build in
+  first-use programming recommendations.
+- Applied the live Grok npm script policy on development Windows hosts.
+
+### Release contract
+
+- Application and bundled helper versions move to 0.4.5; the helper's existing
+  minimum-client compatibility floor is unchanged.
+- Formal assets remain native Windows x64/ARM64 NSIS installers and one macOS
+  universal DMG, with verified metadata and build attestation. Windows signing
+  status is disclosed from the actual verified release evidence.
+- Grok native credential projection and macOS privileged system commits retain
+  their existing fail-closed production gates. Health observation and first-use
+  recommendations do not imply installation, login, or entitlement success.
+
 ## [0.4.4] - 2026-09-07
 
 FyAgent 0.4.4 adds centralized account management, Claude Code CLI installation,
