@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentsPage } from "@/pages/agents/Page";
@@ -1363,6 +1363,25 @@ describe("V3 Agent directory and configuration shell", () => {
     await user.click(await screen.findByRole("button", { name: "管理 MCP" }));
     expect(screen.getByTestId("location")).toHaveTextContent(
       /^\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
+    );
+  });
+
+  it("carries the selected prompt target into global management", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/agents?target=codex&section=prompts"]}>
+        <FeatureProvider ports={configuredPorts()}>
+          <Routes>
+            <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/prompts" element={null} />
+          </Routes>
+          <LocationProbe />
+        </FeatureProvider>
+      </MemoryRouter>,
+    );
+    await user.click(await screen.findByRole("button", { name: "管理提示词" }));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      /^\/prompts\?target=codex&agentReturn=codex&agentSection=prompts$/,
     );
   });
 

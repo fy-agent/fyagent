@@ -26,6 +26,17 @@ Failed or mismatched readback remains non-optimistic. `/memory` uses the common
 shell only; its native data, persistence, limits, and directory behavior remain
 owned here.
 
+Prompt management owns a closed, single `target=PromptAppId` query field.
+Agent entry links carry the directory's `promptAppId` separately from the
+return tuple. Use the existing persistent-search and sticky-visible-selection
+owners: hidden pages freeze selection, a new explicit target overrides a prior
+visit, and a targetless return keeps the last selection. Invalid/duplicate targets
+do not select an app. Target changes reset the target's editor/search state while
+retaining the source tab; dirty target changes, including same-path navigation,
+must pass the same discard blocker before switching. Cover selected-library
+writes, invalid targets and dirty cancel/proceed in renderer tests, then repeat
+the Agent-to-Prompts route in the final native build.
+
 ## 2. Signatures
 
 Prompts support exactly the native applications whose prompt backends already
@@ -92,8 +103,9 @@ paths above.
 
 ### Prompt behavior
 
-- The page defaults to Claude. Application selection is page-local state and is
-  not written to preferences. The application rail follows
+- The page defaults to Claude when no valid target has been selected. The URL
+  owns explicit application selection; the page retains the last visible target
+  for targetless returns and does not write it to preferences. The application rail follows
   `PRODUCT_DIRECTORY` prompt members (Grok Build, Codex, Claude Code,
   OpenCode) then `PROMPT_ONLY_DIRECTORY` (Gemini, OpenClaw, Hermes). Claude's
   display name is Claude Code. The rail shows each application's authoritative
