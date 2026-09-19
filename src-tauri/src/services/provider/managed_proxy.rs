@@ -34,6 +34,23 @@ pub type BindManagedProxyRequest = BindXaiManagedRequest;
 pub type BindManagedProxyResult = BindXaiManagedResult;
 pub type BindManagedProxyError = BindXaiManagedError;
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BindOpenCodeManagedProxyRequest {
+    pub account_id: String,
+    pub model_id: String,
+    // No serde default: an explicit null is required for an absent config.
+    #[serde(deserialize_with = "deserialize_required_revision")]
+    pub expected_revision: Option<String>,
+}
+
+fn deserialize_required_revision<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)
+}
+
 #[derive(Debug, Clone, Copy, Serialize, thiserror::Error)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum BindXaiManagedError {
@@ -120,6 +137,13 @@ fn build_provider(
     let settings = if *app == AppType::Codex {
         let config = format!("model_provider = \"{slot}\"\nmodel = \"{model}\"\n\n[model_providers.{slot}]\nname = \"{label_name} subscription\"\nbase_url = \"{base_url}\"\nwire_api = \"responses\"\n");
         serde_json::json!({"auth": {}, "config": config})
+    } else if *app == AppType::OpenCode {
+        serde_json::json!({
+            "npm": "@ai-sdk/openai",
+            "name": format!("{label_name} subscription"),
+            "options": {"baseURL": base_url, "apiKey": "PROXY_MANAGED"},
+            "models": {model: {"name": model}}
+        })
     } else if *app == AppType::GrokBuild {
         // A conservative local history budget, not a model entitlement claim.
         // The key is only the existing local Proxy marker, never an OAuth token.
@@ -184,6 +208,110 @@ fn build_provider(
 }
 
 impl ProviderService {
+    /// Returns false for ordinary API providers so startup can keep its legacy
+    /// path. Managed providers always reuse the exact binding transaction.
+    pub(crate) fn resume_managed_proxy(
+        state: &AppState,
+        app: AppType,
+    ) -> Result<bool, BindManagedProxyError> {
+        let _guard = Self::lock_provider_mutation(state, &app);
+        let _activation =
+            futures::executor::block_on(state.proxy_service.lock_managed_activation(&app));
+        let _config = (app == AppType::OpenCode).then(crate::opencode_config::lock_opencode_config);
+        let Some(id) = crate::settings::get_effective_current_provider(&state.db, &app)
+            .map_err(|_| BindManagedProxyError::AccountUnavailable)?
+        else {
+            return Ok(false);
+        };
+        let Some(provider) = state
+            .db
+            .get_provider_by_id(&id, app.as_str())
+            .map_err(|_| BindManagedProxyError::AccountUnavailable)?
+            .filter(|provider| provider.uses_subscription_proxy())
+        else {
+            return Ok(false);
+        };
+        if app == AppType::OpenCode {
+            state
+                .proxy_service
+                .validate_opencode_managed_projection(&provider)
+                .map_err(|_| BindManagedProxyError::ProviderConflict)?;
+        }
+        Self::apply_provider_activation_transaction_locked(state, app, provider)?;
+        Ok(true)
+    }
+
+    pub(crate) fn bind_opencode_managed_proxy<B: SecretBackend>(
+        state: &AppState,
+        auth: &ManagedAuthService<B>,
+        request: BindOpenCodeManagedProxyRequest,
+    ) -> Result<BindManagedProxyResult, BindManagedProxyError> {
+        let account = request.account_id.as_bytes();
+        if account.len() != 36
+            || !account.starts_with(b"ma1:")
+            || !account[4..]
+                .iter()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+            || request.expected_revision.as_ref().is_some_and(|revision| {
+                revision.len() != 64
+                    || !revision
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            })
+        {
+            return Err(BindManagedProxyError::InvalidRequest);
+        }
+        // Share the reviewed model grammar without opening the generic app set.
+        parse_request(&BindManagedProxyRequest {
+            app: "codex".into(),
+            account_id: request.account_id.clone(),
+            model_id: request.model_id.clone(),
+        })?;
+        let app = AppType::OpenCode;
+        let _guard = Self::lock_provider_mutation(state, &app);
+        let _activation =
+            futures::executor::block_on(state.proxy_service.lock_managed_activation(&app));
+        let _config = crate::opencode_config::lock_opencode_config();
+        let current_revision = crate::services::opencode_models::current_revision_locked()
+            .map_err(|_| BindManagedProxyError::ApplyFailedRolledBack)?;
+        if request.expected_revision != current_revision {
+            return Err(BindManagedProxyError::ProviderConflict);
+        }
+        let credential = auth
+            .proxy_account(&request.account_id)
+            .map_err(|_| BindManagedProxyError::AccountUnavailable)?;
+        let mut provider = build_provider(
+            &app,
+            &credential.credential.legacy_account_id,
+            &credential.identity,
+            credential.credential.provider,
+            &request.model_id,
+        );
+        let existing = state
+            .db
+            .get_provider_by_id(&provider.id, app.as_str())
+            .map_err(|_| BindManagedProxyError::ApplyFailedRolledBack)?;
+        if let Some(existing) = &existing {
+            provider.name = existing.name.clone();
+            if !Self::quick_setup_persisted_provider_matches(&provider, existing).unwrap_or(false) {
+                return Err(BindManagedProxyError::ProviderConflict);
+            }
+        }
+        state
+            .proxy_service
+            .validate_opencode_managed_projection(&provider)
+            .map_err(|_| BindManagedProxyError::ProviderConflict)?;
+        let result = BindManagedProxyResult {
+            provider_id: provider.id.clone(),
+            provider_name: provider.name.clone(),
+            app: app.as_str().into(),
+            already_bound: existing.is_some(),
+            activated: true,
+        };
+        Self::apply_provider_activation_transaction_locked(state, app, provider)?;
+        Ok(result)
+    }
+
     pub(crate) fn managed_proxy_codex_shape_is_valid(provider: &Provider) -> bool {
         let (slot, base_url) = if provider.is_xai_oauth() {
             ("xai", crate::proxy::providers::XAI_SUBSCRIPTION_BASE_URL)

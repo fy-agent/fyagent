@@ -255,6 +255,12 @@ impl ManagedAuthRepository {
             .map_err(ManagedAuthCoreError::from)
     }
 
+    pub(crate) fn prune_subscription_proxy_connections(&self) -> Result<(), ManagedAuthCoreError> {
+        self.db
+            .managed_auth_prune_subscription_proxy_connections()
+            .map_err(ManagedAuthCoreError::from)
+    }
+
     pub(crate) fn delete_connections_for_credential(
         &self,
         credential_id: &str,

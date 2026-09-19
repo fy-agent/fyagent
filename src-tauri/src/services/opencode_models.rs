@@ -132,6 +132,7 @@ pub struct OpenCodeProviderSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct OpenCodeModelSnapshot {
     pub providers: Vec<OpenCodeProviderSnapshot>,
+    pub selected_model: Option<String>,
     pub revision: Option<String>,
     pub path: String,
     pub backup_path: String,
@@ -172,6 +173,17 @@ fn pending_overwrites() -> &'static StdMutex<HashMap<String, PendingOverwrite>> 
     PENDING.get_or_init(|| StdMutex::new(HashMap::new()))
 }
 
+/// Caller holds the shared OpenCode config lock for the whole transaction.
+pub(crate) fn current_revision_locked() -> Result<Option<String>, OpenCodeModelsErrorDto> {
+    let bytes = read_opencode_config_bytes()
+        .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::ConfigUnavailable))?;
+    if let Some(bytes) = &bytes {
+        let config = parse_config_object(bytes)?;
+        project_providers(&config)?;
+    }
+    Ok(bytes.as_deref().map(revision_for))
+}
+
 pub(crate) fn get_opencode_model_snapshot() -> Result<OpenCodeModelSnapshot, OpenCodeModelsErrorDto>
 {
     let _guard = lock_opencode_config();
@@ -182,6 +194,7 @@ pub(crate) fn get_opencode_model_snapshot() -> Result<OpenCodeModelSnapshot, Ope
     let Some(bytes) = bytes else {
         return Ok(OpenCodeModelSnapshot {
             providers: Vec::new(),
+            selected_model: None,
             revision: None,
             path: crate::config::display_user_path(&config_path),
             backup_path: crate::config::display_user_path(&backup_path),
@@ -189,8 +202,22 @@ pub(crate) fn get_opencode_model_snapshot() -> Result<OpenCodeModelSnapshot, Ope
         });
     };
     let config = parse_config_object(&bytes)?;
+    let providers = project_providers(&config)?;
+    let selected_model = config
+        .get("model")
+        .and_then(Value::as_str)
+        .filter(|selected| {
+            providers.iter().any(|provider| {
+                provider
+                    .model_ids
+                    .iter()
+                    .any(|model| selected == &format!("{}/{model}", provider.id))
+            })
+        })
+        .map(str::to_owned);
     Ok(OpenCodeModelSnapshot {
-        providers: project_providers(&config)?,
+        providers,
+        selected_model,
         revision: Some(revision_for(&bytes)),
         path: crate::config::display_user_path(&config_path),
         backup_path: crate::config::display_user_path(&backup_path),
@@ -274,6 +301,21 @@ fn save_opencode_models_locked(
         Some(bytes) if !bytes.is_empty() => parse_config_object(bytes)?,
         _ => json!({}),
     };
+    // The subscription owner restores its preimage before ordinary model
+    // editing resumes. Mixing writers here would invalidate its recovery proof.
+    if providers_object(&config)?
+        .keys()
+        .any(|id| is_managed_proxy_provider_id(id))
+    {
+        return Err(OpenCodeModelsErrorDto::new(
+            OpenCodeModelsErrorCode::ConfigUnavailable,
+        ));
+    }
+    if is_managed_proxy_provider_id(&slugify(request.provider_name.trim())) {
+        return Err(OpenCodeModelsErrorDto::new(
+            OpenCodeModelsErrorCode::InvalidRequest,
+        ));
+    }
     let provider_id = resolve_provider_id(&config, request.provider_name.trim());
     let existing = existing_model_ids(&config, &provider_id)?;
     let confirmation = existing_targets(&existing, &selected, &removed);
@@ -441,6 +483,10 @@ fn resolve_provider_id(config: &Value, provider_name: &str) -> String {
         return providers.keys().next().cloned().unwrap_or(slug);
     }
     slug
+}
+
+fn is_managed_proxy_provider_id(id: &str) -> bool {
+    id.starts_with("fyagent-openai-opencode-") || id.starts_with("fyagent-xai-opencode-")
 }
 
 fn slugify(name: &str) -> String {

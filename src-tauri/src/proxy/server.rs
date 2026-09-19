@@ -344,6 +344,10 @@ impl ProxyServer {
                 "/grokbuild/v1/responses",
                 post(handlers::handle_grokbuild_responses),
             )
+            .route(
+                "/opencode/v1/responses",
+                post(handlers::handle_opencode_responses),
+            )
             // OpenAI Responses Compact API (Codex CLI 远程压缩，透传)
             .route(
                 "/responses/compact",

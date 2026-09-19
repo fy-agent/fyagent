@@ -705,6 +705,30 @@ const RUST_STD_OS_CONTRACT = Object.freeze({
 const DATA_HOME_VARIABLE = `${SURFACE_MARKERS.directoryConvention.toUpperCase()}_DATA_HOME`;
 const BIN_DIRECTORY_VARIABLE = `${SURFACE_MARKERS.directoryConvention.toUpperCase()}_BIN_DIR`;
 const DATA_HOME_IDENTIFIER = combine("OPENCODE_DATA_", "HOME_ENV");
+const SUBSCRIPTION_TEST_HOME_PATH =
+  "src-tauri/src/services/managed_auth/subscription_tests.rs";
+const SUBSCRIPTION_TEST_HOME_GUARD = `struct TestHome(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
+impl TestHome {
+    fn set(path: &std::path::Path) -> Self {
+        let previous = std::env::var_os("FYAGENT_TEST_HOME");
+        let data_home = std::env::var_os("${DATA_HOME_VARIABLE}");
+        std::env::set_var("FYAGENT_TEST_HOME", path);
+        std::env::set_var("${DATA_HOME_VARIABLE}", path.join(".local/share"));
+        Self(previous, data_home)
+    }
+}
+impl Drop for TestHome {
+    fn drop(&mut self) {
+        match self.1.take() {
+            Some(value) => std::env::set_var("${DATA_HOME_VARIABLE}", value),
+            None => std::env::remove_var("${DATA_HOME_VARIABLE}"),
+        }
+        match self.0.take() {
+            Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+            None => std::env::remove_var("FYAGENT_TEST_HOME"),
+        }
+    }
+}`;
 export const MACOS_POSIX_CONTRACT = Object.freeze([
   Object.freeze({
     id: "data-home-declaration",
@@ -753,6 +777,16 @@ export const MACOS_POSIX_CONTRACT = Object.freeze([
     snippet:
       '#[cfg(target_os = "windows")]\n        let ambient_paths = (None, None, None);',
   }),
+  Object.freeze({
+    id: "subscription-test-only-module",
+    file: "src-tauri/src/services/managed_auth/mod.rs",
+    snippet: "#[cfg(test)]\nmod subscription_tests;",
+  }),
+  Object.freeze({
+    id: "subscription-test-home-guard",
+    file: SUBSCRIPTION_TEST_HOME_PATH,
+    snippet: SUBSCRIPTION_TEST_HOME_GUARD,
+  }),
 ]);
 
 const DIRECTORY_IDENTIFIER = SURFACE_MARKERS.directoryConvention;
@@ -798,6 +832,16 @@ const DIRECTORY_OCCURRENCE_CONTRACT = Object.freeze(
       "src-tauri/src/services/tooling.rs",
       `assert_eq!(paths[1], PathBuf::from("/custom/${DIRECTORY_IDENTIFIER}/bin"));`,
     ],
+    ...[
+      `let data_home = std::env::var_os("${DATA_HOME_VARIABLE}");`,
+      `std::env::set_var("${DATA_HOME_VARIABLE}", path.join(".local/share"));`,
+      `Some(value) => std::env::set_var("${DATA_HOME_VARIABLE}", value),`,
+      `None => std::env::remove_var("${DATA_HOME_VARIABLE}"),`,
+    ].map((snippet) => [
+      SUBSCRIPTION_TEST_HOME_PATH,
+      snippet,
+      SUBSCRIPTION_TEST_HOME_GUARD,
+    ]),
   ].map(([file, snippet, anchor]) =>
     Object.freeze({ file, snippet, anchor, count: 1 }),
   ),

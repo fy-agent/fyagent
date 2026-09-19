@@ -11,6 +11,83 @@ import {
   installRichTauriFeatureFixture,
 } from "./support/features";
 
+test("OpenCode applies an existing ChatGPT subscription through its own revisioned configuration", async ({
+  page,
+}) => {
+  await installRichTauriFeatureFixture(page);
+  const health = monitorPageHealth(page);
+  await openRendererPage(page, "/models?target=opencode");
+  const section = page.getByRole("region", { name: "账号订阅设置" });
+  await section
+    .getByRole("radio", { name: "ChatGPT · Browser Fixture" })
+    .check();
+  await section.getByLabel("订阅模型 ID").fill("chatgpt-fixture-model");
+  await section.getByRole("button", { name: "应用到 OpenCode" }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "确认应用 OpenCode 订阅配置",
+  });
+  await expect(
+    dialog.getByText("~/.config/opencode/opencode.json", { exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "确认应用" }).click();
+  await expect(section.getByText("已将账号订阅应用到 OpenCode")).toBeVisible();
+  const calls = await featureFixtureCalls(page);
+  expect(
+    calls
+      .filter((call) => call.command === "bind_opencode_managed_proxy")
+      .map((call) => call.payload),
+  ).toEqual([
+    {
+      request: {
+        accountId: `ma1:${"1".repeat(32)}`,
+        modelId: "chatgpt-fixture-model",
+        expectedRevision: null,
+      },
+    },
+  ]);
+  expect(
+    calls.filter((call) =>
+      [
+        "bind_managed_proxy_provider",
+        "save_opencode_models",
+        "apply_provider_quick_setup_with_result",
+        "fetch_models_for_config",
+      ].includes(call.command),
+    ),
+  ).toEqual([]);
+  expect(
+    calls.filter((call) => call.command === "get_opencode_model_snapshot")
+      .length,
+  ).toBeGreaterThanOrEqual(2);
+  await expect(
+    page.getByRole("button", { name: "保存并应用", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "恢复之前的模型配置" }).click();
+  const restoreDialog = page.getByRole("dialog", {
+    name: "恢复 OpenCode 模型配置",
+  });
+  await expect(
+    restoreDialog.getByText("~/.config/opencode/opencode.json", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await restoreDialog.getByRole("button", { name: "确认恢复" }).click();
+  await expect(
+    page.getByRole("button", { name: "恢复之前的模型配置" }),
+  ).toHaveCount(0);
+  await expect(section.getByText("已将账号订阅应用到 OpenCode")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "保存并应用", exact: true }),
+  ).toBeEnabled();
+  expect(
+    (await featureFixtureCalls(page))
+      .filter((call) => call.command === "set_proxy_takeover_for_app")
+      .map((call) => call.payload),
+  ).toEqual([{ appType: "opencode", enabled: false }]);
+  await expectNoHorizontalOverflow(page);
+  await expectHealthyPage(page, health);
+});
+
 test("saved Grok subscription can be selected for Claude and continued through the Codex source plan", async ({
   page,
 }) => {

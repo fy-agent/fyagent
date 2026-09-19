@@ -80,6 +80,10 @@ built-ins only. CI Changes invokes it before dependency installation.
 - When repairing a source-text guard, assert the complete owning platform block
   and add negative fixtures for moving or widening the protected operation.
   Attribute/call adjacency alone is not an authority boundary.
+- The subscription fixture's OpenCode data-directory override is admitted only
+  with its complete `TestHome` save/restore guard and the owning `#[cfg(test)]`
+  module. Moving the override, removing cleanup or exposing that module in a
+  product build must fail the exact source contract.
 
 ### Runtime and CI boundary
 
@@ -94,19 +98,19 @@ built-ins only. CI Changes invokes it before dependency installation.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Candidate set differs from manifest in either direction | Fail with added/removed identities. |
-| Tracked mode, regular-file type or SHA-256 differs | Fail; require review and explicit inventory update. |
-| Candidate or inventory entry is a symlink/escape | Reject. |
-| Manifest order differs from English locale ordering | Fail canonicalization. |
-| New platform guard is hidden by an exclusion | Contract regression; admit and review the candidate. |
-| Integration scanners enumerate separate live file lists | Test failure; use one captured Git snapshot. |
-| Whole-repository scan exceeds the bounded integration watchdog | Diagnose scheduling/fixture cost; do not weaken production scanner or product budget. |
-| Zero-findings or inspected-count assertion is removed | Contract regression. |
-| Checker imports an installed package before CI dependency setup | Changes job failure; restore dependency-free boundary. |
-| Canonical check receives an inferred/private task exclusion | Reject; only validated prearchive may exclude one exact task. |
-| Portable scan is cited as native runtime/install/signing evidence | Keep matching-host evidence pending. |
+| Condition                                                         | Required result                                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Candidate set differs from manifest in either direction           | Fail with added/removed identities.                                                   |
+| Tracked mode, regular-file type or SHA-256 differs                | Fail; require review and explicit inventory update.                                   |
+| Candidate or inventory entry is a symlink/escape                  | Reject.                                                                               |
+| Manifest order differs from English locale ordering               | Fail canonicalization.                                                                |
+| New platform guard is hidden by an exclusion                      | Contract regression; admit and review the candidate.                                  |
+| Integration scanners enumerate separate live file lists           | Test failure; use one captured Git snapshot.                                          |
+| Whole-repository scan exceeds the bounded integration watchdog    | Diagnose scheduling/fixture cost; do not weaken production scanner or product budget. |
+| Zero-findings or inspected-count assertion is removed             | Contract regression.                                                                  |
+| Checker imports an installed package before CI dependency setup   | Changes job failure; restore dependency-free boundary.                                |
+| Canonical check receives an inferred/private task exclusion       | Reject; only validated prearchive may exclude one exact task.                         |
+| Portable scan is cited as native runtime/install/signing evidence | Keep matching-host evidence pending.                                                  |
 
 ## 5. Good / Base / Bad Cases
 

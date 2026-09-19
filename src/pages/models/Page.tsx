@@ -1699,8 +1699,8 @@ function ProviderPanel({
 function renderTargetPanel(
   target: ModelTarget,
   active: boolean,
-  blockedProviderWrites: Partial<Record<ProviderAppId, boolean>>,
-  onBlockProviderWrites: (app: ProviderAppId) => void,
+  blockedProviderWrites: Partial<Record<ProviderAppId | "opencode", boolean>>,
+  onBlockProviderWrites: (app: ProviderAppId | "opencode") => void,
 ) {
   switch (target) {
     case "workbuddy":
@@ -1721,7 +1721,13 @@ function renderTargetPanel(
     case "trae":
       return <TraeModelsPanel active={active} />;
     case "opencode":
-      return <OpenCodeModelsPanel active={active} />;
+      return (
+        <OpenCodeModelsPanel
+          active={active}
+          writesBlocked={Boolean(blockedProviderWrites.opencode)}
+          onBlockWrites={() => onBlockProviderWrites("opencode")}
+        />
+      );
   }
 }
 
@@ -1729,7 +1735,7 @@ export function ModelsPage() {
   const { visible, searchParams, setSearchParams } =
     usePersistentSearchParams();
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
-    Partial<Record<ProviderAppId, boolean>>
+    Partial<Record<ProviderAppId | "opencode", boolean>>
   >({});
   const rawTarget = searchParams.get("target");
   const target = useStickyVisibleValue(
@@ -1739,7 +1745,7 @@ export function ModelsPage() {
   );
   const targets = useMemo(() => MODEL_TARGETS, []);
 
-  const blockProviderWrites = (app: ProviderAppId) => {
+  const blockProviderWrites = (app: ProviderAppId | "opencode") => {
     setBlockedProviderWrites((current) => ({
       ...current,
       [app]: true,

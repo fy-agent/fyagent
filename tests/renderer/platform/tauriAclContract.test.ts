@@ -124,9 +124,11 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(114);
+    expect(renderer.commands.size).toBe(116);
     expect(renderer.commands.has("bind_managed_proxy_provider")).toBe(true);
     expect(renderer.commands.has("bind_xai_managed_provider")).toBe(true);
+    expect(renderer.commands.has("bind_opencode_managed_proxy")).toBe(true);
+    expect(renderer.commands.has("set_proxy_takeover_for_app")).toBe(true);
     expect(renderer.commands.has("get_first_use_guide_state")).toBe(true);
     expect(renderer.commands.has("dismiss_first_use_guide")).toBe(true);
     expect(renderer.commands.has("get_agent_health")).toBe(true);

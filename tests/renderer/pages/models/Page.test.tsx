@@ -251,6 +251,60 @@ const TEST_OPENCODE_SNAPSHOT_META = {
 } as const;
 
 describe("Models page", () => {
+  it("keeps an unconfirmed OpenCode subscription blocked across target changes", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.managedAuth.getOverview = vi.fn(async () =>
+      managedAuthOverviewFixture(),
+    );
+    ports.opencodeModels.getSnapshot = vi.fn(async () => ({
+      providers: [],
+      revision: "revision-1",
+      ...TEST_OPENCODE_SNAPSHOT_META,
+    }));
+    let rejectBind: (reason: unknown) => void = () => {
+      throw new Error("binding not started");
+    };
+    ports.opencodeModels.bindManagedProxy = vi.fn(
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectBind = reject;
+        }),
+    );
+    ports.opencodeModels.saveModels = vi.fn();
+    renderPage(ports, "opencode");
+    await user.click(
+      await screen.findByRole("radio", { name: "ChatGPT · Personal" }),
+    );
+    await user.type(
+      screen.getByLabelText("订阅模型 ID"),
+      "chatgpt-fixture-model",
+    );
+    await user.click(screen.getByRole("button", { name: "应用到 OpenCode" }));
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "确认应用",
+      }),
+    );
+    await waitFor(() =>
+      expect(ports.opencodeModels.bindManagedProxy).toHaveBeenCalledOnce(),
+    );
+    await user.click(screen.getByTestId("model-target-qoderwork"));
+    rejectBind({ code: "rollback_partial_state_unknown" });
+    await waitFor(() =>
+      expect(ports.managedAuth.getOverview).toHaveBeenCalled(),
+    );
+    await user.click(screen.getByTestId("model-target-opencode"));
+    expect(
+      await screen.findByText(/当前设置尚未确认，已暂停修改/),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "保存并应用" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "应用到 OpenCode" }),
+    ).toBeDisabled();
+    expect(ports.opencodeModels.saveModels).not.toHaveBeenCalled();
+  });
+
   it("keeps Grok subscription selections isolated when switching provider targets", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();

@@ -723,11 +723,19 @@ fn migration_from_v3_8_schema_v1_to_current_schema_v3() {
         "skills migration snapshot should preserve legacy app mapping"
     );
 
-    // v3.9+ 新增：proxy_config 三行 seed 必须存在（否则 UI 会查不到默认值）
-    let proxy_rows: i64 = conn
-        .query_row("SELECT COUNT(*) FROM proxy_config", [], |r| r.get(0))
-        .expect("count proxy_config rows");
-    assert_eq!(proxy_rows, 4);
+    // All current proxy targets must be seeded when migrating the old schema.
+    let mut proxy_statement = conn
+        .prepare("SELECT app_type FROM proxy_config ORDER BY app_type")
+        .expect("query proxy_config targets");
+    let proxy_apps = proxy_statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("read proxy_config targets")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect proxy_config targets");
+    assert_eq!(
+        proxy_apps,
+        ["claude", "codex", "gemini", "grokbuild", "opencode"]
+    );
 
     // model_pricing 应具备默认数据（迁移时会 seed）
     let pricing_rows: i64 = conn

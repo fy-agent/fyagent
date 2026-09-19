@@ -9,6 +9,8 @@ import {
 import type {
   BindManagedProxyRequest,
   BindManagedProxyResult,
+  BindOpenCodeManagedRequest,
+  BindOpenCodeManagedResult,
   ModelWriteTarget,
 } from "../../shared/features/models";
 import { useFeatures } from "../../shared/features/provider";
@@ -35,20 +37,25 @@ import { GroupedModelChips } from "./modelChips";
 type Props = {
   active: boolean;
   disabled: boolean;
-  app: BindManagedProxyRequest["app"];
   writeTargets: readonly ModelWriteTarget[];
   onBeginWrite: () => boolean;
   onEndWrite: () => void;
   onUnconfirmed: () => void;
-};
+} & (
+  | { app: BindManagedProxyRequest["app"] }
+  | { app: "opencode"; expectedRevision: string | null }
+);
 
 const TARGET_LABELS = {
   claude: "Claude Code",
   codex: "Codex",
   grokbuild: "Grok Build",
+  opencode: "OpenCode",
 };
 
-type CliBindRequest = BindManagedProxyRequest;
+type CliBindRequest =
+  | BindManagedProxyRequest
+  | (BindOpenCodeManagedRequest & { app: "opencode" });
 
 export function XaiSubscriptionSection(props: Props) {
   const { ports } = useFeatures();
@@ -64,7 +71,9 @@ export function XaiSubscriptionSection(props: Props) {
   const [pending, setPending] = useState<CliBindRequest | null>(null);
   const [busy, setBusy] = useState<"fetch" | "bind" | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [saved, setSaved] = useState<BindManagedProxyResult | null>(null);
+  const [saved, setSaved] = useState<
+    BindManagedProxyResult | BindOpenCodeManagedResult | null
+  >(null);
   const lock = useRef(false);
   const mounted = useRef(true);
   const originRef = useRef<HTMLElement | null>(null);
@@ -168,11 +177,22 @@ export function XaiSubscriptionSection(props: Props) {
     setPending(null);
     let bindingReturned = false;
     try {
-      const result = await ports.providers.bindManagedProxy(request);
+      const result =
+        request.app === "opencode"
+          ? await ports.opencodeModels.bindManagedProxy({
+              accountId: request.accountId,
+              modelId: request.modelId,
+              expectedRevision: request.expectedRevision,
+            })
+          : await ports.providers.bindManagedProxy(request);
       bindingReturned = true;
+      const configKey =
+        request.app === "opencode"
+          ? featureKeys.openCodeModelSnapshot
+          : featureKeys.providerSummary(request.app);
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: featureKeys.providerSummary(props.app),
+          queryKey: configKey,
           refetchType: "none",
         }),
         queryClient.invalidateQueries({
@@ -180,20 +200,40 @@ export function XaiSubscriptionSection(props: Props) {
           refetchType: "none",
         }),
       ]);
-      const [summary] = await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: featureKeys.providerSummary(props.app),
-          queryFn: () => ports.providers.getSummary(props.app),
-        }),
+      const readConfiguration = async () => {
+        if (request.app === "opencode") {
+          const snapshot = await queryClient.fetchQuery({
+            queryKey: featureKeys.openCodeModelSnapshot,
+            queryFn: ports.opencodeModels.getSnapshot,
+          });
+          return (
+            snapshot.selectedModel ===
+              `${result.providerId}/${request.modelId}` &&
+            snapshot.providers.some(
+              (provider) =>
+                provider.id === result.providerId &&
+                provider.modelIds.includes(request.modelId),
+            )
+          );
+        }
+        const app = request.app;
+        const summary = await queryClient.fetchQuery({
+          queryKey: featureKeys.providerSummary(app),
+          queryFn: () => ports.providers.getSummary(app),
+        });
+        return (
+          Boolean(summary.providers[result.providerId]) &&
+          (!result.activated || summary.currentId === result.providerId)
+        );
+      };
+      const [confirmed] = await Promise.all([
+        readConfiguration(),
         queryClient.fetchQuery({
           queryKey: featureKeys.managedAuthOverview,
           queryFn: ports.managedAuth.getOverview,
         }),
       ]);
-      if (
-        !summary.providers[result.providerId] ||
-        (result.activated && summary.currentId !== result.providerId)
-      ) {
+      if (!confirmed) {
         props.onUnconfirmed();
         if (mounted.current)
           setNotice({
@@ -243,6 +283,11 @@ export function XaiSubscriptionSection(props: Props) {
       await queryClient.invalidateQueries({
         queryKey: featureKeys.managedAuthOverview,
       });
+      if (request.app === "opencode") {
+        await queryClient.invalidateQueries({
+          queryKey: featureKeys.openCodeModelSnapshot,
+        });
+      }
     } finally {
       lock.current = false;
       props.onEndWrite();
@@ -375,11 +420,20 @@ export function XaiSubscriptionSection(props: Props) {
           disabled={!canBind || props.writeTargets.length === 0}
           dialogOriginRef={originRef}
           onClick={() =>
-            setPending({
-              app: props.app,
-              accountId,
-              modelId: modelId.trim(),
-            })
+            setPending(
+              props.app === "opencode"
+                ? {
+                    app: "opencode",
+                    accountId,
+                    modelId: modelId.trim(),
+                    expectedRevision: props.expectedRevision,
+                  }
+                : {
+                    app: props.app,
+                    accountId,
+                    modelId: modelId.trim(),
+                  },
+            )
           }
         >
           {props.app === "codex"

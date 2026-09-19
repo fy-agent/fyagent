@@ -341,6 +341,11 @@ export async function installRichTauriFeatureFixture(
       };
     }
     let workBuddyRevision = "fixture-revision-1";
+    let openCodeSubscription: {
+      id: string;
+      name: string;
+      modelIds: string[];
+    } | null = null;
     let workBuddyModelIds = ["existing-model"];
     let workBuddySaveAttempts = 0;
     let workBuddyPlan: Record<string, unknown> | null = null;
@@ -1230,8 +1235,15 @@ export async function installRichTauriFeatureFixture(
             };
           case "get_opencode_model_snapshot":
             return {
-              providers: [],
-              revision: null,
+              selectedModel: openCodeSubscription
+                ? `${openCodeSubscription.id}/${openCodeSubscription.modelIds[0]}`
+                : null,
+              providers: openCodeSubscription
+                ? [structuredClone(openCodeSubscription)]
+                : [],
+              revision: openCodeSubscription
+                ? "fixture-opencode-revision"
+                : null,
               path: "~/.config/opencode/opencode.json",
               backupPath: "~/.config/opencode/opencode.json.backup",
               exists: true,
@@ -1352,6 +1364,38 @@ export async function installRichTauriFeatureFixture(
               { id: "grok-subscription-fixture-1" },
               { id: "grok-subscription-fixture-2" },
             ];
+          case "bind_opencode_managed_proxy": {
+            const request = payload.request as Record<string, unknown>;
+            if (
+              fixtureOptions.xaiBindFailure ||
+              (request.accountId !== managedAuthAccountIds.xai &&
+                request.accountId !== managedAuthAccountIds.openai)
+            )
+              throw { code: "account_unavailable" };
+            const revision = openCodeSubscription
+              ? "fixture-opencode-revision"
+              : null;
+            if (request.expectedRevision !== revision)
+              throw { code: "provider_conflict" };
+            const alreadyBound = openCodeSubscription !== null;
+            openCodeSubscription = {
+              id: "fyagent-openai-opencode-fixture",
+              name: "OpenCode subscription",
+              modelIds: [String(request.modelId)],
+            };
+            return {
+              providerId: openCodeSubscription.id,
+              providerName: openCodeSubscription.name,
+              app: "opencode",
+              alreadyBound,
+              activated: true,
+            };
+          }
+          case "set_proxy_takeover_for_app":
+            if (payload.appType !== "opencode" || payload.enabled !== false)
+              throw new Error("Unsupported fixture target");
+            openCodeSubscription = null;
+            return null;
           case "bind_xai_managed_provider":
           case "bind_managed_proxy_provider": {
             const request = payload.request as Record<string, unknown>;

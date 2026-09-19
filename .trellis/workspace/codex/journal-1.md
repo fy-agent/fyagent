@@ -131,3 +131,25 @@ Fixed disabled Prompt live-file writes and invalid Daily Memory entries in an is
 ### Status
 
 [OK] **Completed**
+
+
+## Session 9: Complete cross-agent subscription reuse
+<!-- trellis-session: v=2 fp=3e18ab8fd182dc45 -->
+
+**Date**: 2026-09-19
+**Task**: Complete cross-agent subscription reuse
+**Branch**: `codex/subscription-cross-agent-20260919`
+
+### Summary
+
+Completed OpenCode managed OpenAI/xAI binding and local Responses routing; fixed request normalization, per-account overview, restoration ownership and restart recovery across four targets. Full prearchive gate passed with 3611 Rust and 1752 frontend tests; 636 browser flows plus 20 final subscription regressions passed. Built and integrity-checked a local macOS arm64 candidate. Real provider and client UAT remains pending.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `61040031` | feat(models): complete cross-agent subscription reuse |
+
+### Status
+
+[OK] **Completed**
