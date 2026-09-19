@@ -25,6 +25,8 @@ error matrices, tests, paths, and security rules belong in the linked owner.
 
 ## Core architecture and repository infrastructure
 
+Delivery kits: [Delivery Kit Native Contract](./delivery-kits.md) owns text package validation, immutable library, native pickers and synthetic weekly-report checks.
+
 Security-alert triage and independent scan evidence are owned by
 [Security Review](./security-review.md), including dependency reachability,
 secret handling, native source checks, and residual-risk reporting.

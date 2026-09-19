@@ -24,6 +24,7 @@
     "allow-agent-auth",
     "allow-managed-auth",
     "allow-user-config-recovery",
-    "allow-projects"
+    "allow-projects",
+    "allow-delivery-kits"
   ]
 }

@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "e2360314d01cbd0d7086b15a15eeb37111f6c98cb9e039e05e2d58a05252650b"
+      "ba15d34242b685fb92f1cb90234e9d9e85203f1ffc104ab120aeb9061f29c64f"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -212,6 +212,14 @@
     [
       "src-tauri/src/proxy/providers/xai_oauth_auth.rs",
       "37654d2a840aabdd23cc5aa3cfa2bb4cd7e04d2d413db2e310b752de408403eb"
+    ],
+    [
+      "src-tauri/src/services/delivery_kits/mod.rs",
+      "0e76631d010f987feb1bece7bc0118b91e82b70d44440a0375d8360f3068abdb"
+    ],
+    [
+      "src-tauri/src/services/delivery_kits/tests.rs",
+      "797b5d977d98520096977d3b7e1bbcc0f889adb6582f8922d1a877553c07b3f0"
     ],
     [
       "src-tauri/src/services/env_checker.rs",

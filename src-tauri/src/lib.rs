@@ -1756,6 +1756,9 @@ pub fn run() {
                 std::sync::Arc::new(crate::services::projects::UnavailableKitReader),
             ));
             app.manage(app_state);
+            app.manage(commands::DeliveryKitsState(std::sync::Mutex::new(
+                services::delivery_kits::KitLibrary::new(config::get_app_config_dir().join("delivery-kits")),
+            )));
 
             // 初始化 SkillService
             let skill_service = SkillService::new();
@@ -1994,6 +1997,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::list_delivery_kits,
+            commands::preview_builtin_delivery_kit,
+            commands::pick_delivery_kit_import,
+            commands::apply_delivery_kit_import,
+            commands::cancel_delivery_kit_preview,
+            commands::preview_delivery_kit_export,
+            commands::save_delivery_kit_export,
+            commands::run_delivery_kit_demo,
             commands::get_agent_catalog,
             commands::get_agent_auth_observation,
             commands::start_agent_auth_session,
