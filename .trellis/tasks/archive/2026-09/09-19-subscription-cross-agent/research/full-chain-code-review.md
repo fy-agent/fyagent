@@ -101,6 +101,12 @@
 - 主控最终全库 prearchive gate 已通过；下面 reviewer 定向检查保留其实际范围，最终总检查见 `../verification.md`。
 - 真实账号登录、厂商模型 entitlement/额度、目标 CLI/Desktop 实际调用，留待用户 UAT。静态代码、临时 home、fake upstream、本机 listener 和浏览器 fixture 都不替代真实订阅证据。
 
+### 并行分支合并与 UAT 目录边界补充
+
+- 订阅功能提交 `61040031` 和并行 FDE 提交 `cd8b4ced` 都将 schema 21 升至 22；前者扩展 `proxy_config` 的 OpenCode 约束/默认行，后者增加客户项目、资源代际和验证记录结构。源码已核对，相同版本号不代表相同结构，两种候选不得交替读取同一真实目录。正式合并需另做统一版本与两种 22 结构的升级验证，当前未实施该迁移。
+- 本订阅候选 UAT 必须使用独立 `FYAGENT_TEST_HOME`。macOS `config::get_app_config_dir` 优先采用 `app_store` 缓存的自定义目录；同应用标识的 `app_paths.json` 不受测试 home 自动隔离，现有外部覆盖可能把数据库重新指向正式目录。应在启动前核对，无法确认隔离时不得启动，也不修改公共 Store 来绕过此条件。
+- 目标客户端的测试配置入口需与 FyAgent 的投影路径一致；测试 home 环境变量不会替其他 CLI 完成配置隔离。应用、ZIP 和功能代码保持已冻结版本；更新后的启动条件、源码对照及后续合并要求见 `../verification.md`。
+
 ## 验证状态
 
 - Reviewer 修改范围：`managed_responses.rs`、`transform_responses.rs`、Managed Auth `service.rs`/`repository.rs`、DAO `managed_auth.rs`、新 `proxy_overview_tests.rs`、新 `OpenCodeSubscriptionRestore.test.tsx`、本报告；没有修改其他执行端独占的源文件/既有 tests。
