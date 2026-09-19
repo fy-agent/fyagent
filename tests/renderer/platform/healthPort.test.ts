@@ -14,6 +14,21 @@ beforeEach(() => {
 });
 
 describe("health native boundary", () => {
+  it("admits closed read-only drift and unrecognized-profile explanations", () => {
+    for (const reasonCode of [
+      "configuration_source_drifted",
+      "configuration_endpoint_drifted",
+      "configuration_model_drifted",
+      "configuration_credential_drifted",
+      "configuration_profile_unknown",
+    ] as const) {
+      const snapshot = healthSnapshotFixture("codex", {
+        drift: { state: "attention", reasonCode, action: "configuration" },
+      });
+      expect(parseAgentHealthSnapshot(snapshot, "codex")).toEqual(snapshot);
+    }
+  });
+
   it("uses the exact read-only command and payload and parses before returning", async () => {
     const { createTauriFeaturePorts } = await import(
       "@/shared/platform/tauri/features"

@@ -436,3 +436,56 @@ fn health_proxy_checks_the_selected_listener_path_model_and_upstream_auth() {
         .iter()
         .any(|c| c.id == Id::Secret));
 }
+
+#[test]
+fn health_drift_explains_only_routing_metadata_without_values() {
+    let base = configuration::routing(&crate::AppType::Claude, &json!({
+        "model":"fixture-model", "env":{"ANTHROPIC_API_KEY":"fixture-private", "ANTHROPIC_BASE_URL":"https://fixture.test"}
+    })).unwrap();
+    let mut changed = base.clone();
+    changed.model = Some("another-model".into());
+    assert_eq!(
+        configuration::drift_reason(&base, &changed),
+        Reason::ConfigurationModelDrifted
+    );
+    changed.endpoint = Some("https://another.test".into());
+    assert_eq!(
+        configuration::drift_reason(&base, &changed),
+        Reason::ConfigurationDrifted
+    );
+    let preferences = configuration::routing(&crate::AppType::Claude, &json!({
+        "model":"fixture-model", "env":{"ANTHROPIC_API_KEY":"fixture-private", "ANTHROPIC_BASE_URL":"https://fixture.test"},
+        "theme":"light", "mcpServers":{"unrelated":{"command":"fixture"}}
+    })).unwrap();
+    assert_eq!(
+        configuration::drift_reason(&base, &preferences),
+        Reason::ConfigurationInSync
+    );
+    let reason = serde_json::to_string(&configuration::drift_reason(&base, &changed)).unwrap();
+    assert!(!reason.contains("fixture"));
+    assert!(!reason.contains("https"));
+}
+
+#[test]
+fn health_grok_unrecognized_profile_is_not_corrupt_toml_or_native_auth() {
+    let unknown = json!({"config":"[models]\ndefault = 'builtin-profile'\n[model.custom]\nmodel = 'custom-model'\n"});
+    assert!(configuration::unrecognized_grok_profile(
+        &crate::AppType::GrokBuild,
+        Some(&unknown)
+    ));
+    assert!(configuration::routing(&crate::AppType::GrokBuild, &unknown).is_err());
+    for value in [
+        json!({"config":"[broken"}),
+        json!({"config":""}),
+        json!({"config":"[mcp_servers.fixture]\ncommand = 'fixture'\n"}),
+    ] {
+        assert!(!configuration::unrecognized_grok_profile(
+            &crate::AppType::GrokBuild,
+            Some(&value)
+        ));
+    }
+    assert!(!configuration::unrecognized_grok_profile(
+        &crate::AppType::Codex,
+        Some(&unknown)
+    ));
+}
