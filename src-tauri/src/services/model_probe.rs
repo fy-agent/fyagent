@@ -63,7 +63,7 @@ async fn probe_saved_identity_with_client(
     {
         return IdentityProbe::Failed;
     }
-    let Ok((spec, _)) = build_probe_spec(app, base_url, api_key, model_id, false) else {
+    let Ok((spec, actual_model)) = build_probe_spec(app, base_url, api_key, model_id, false) else {
         return IdentityProbe::Failed;
     };
     let result = tokio::time::timeout(deadline, async {
@@ -123,7 +123,7 @@ async fn probe_saved_identity_with_client(
                         .or_else(|| value.pointer("/response/model"))
                         .and_then(Value::as_str)
                     {
-                        if model != model_id {
+                        if model != actual_model {
                             return Ok(IdentityProbe::Unconfirmed);
                         }
                         identity = true;
@@ -934,6 +934,29 @@ mod tests {
             let result=probe_saved_identity_with_client(&loopback_client(),ModelProbeApp::OpenCode,&base,"sk-fixture","gpt-test",Duration::from_secs(2)).await;
             assert_eq!(result,expected);
             assert_eq!(requests.lock().unwrap().len(),1);
+        }
+    }
+
+    #[tokio::test]
+    async fn verification_identity_matches_the_projected_model_with_effort() {
+        for requested in ["gpt-test@high", "gpt-test#high"] {
+            for (actual, expected) in [
+                ("gpt-test", IdentityProbe::Matched),
+                ("different-model", IdentityProbe::Unconfirmed),
+            ] {
+                let body = format!("data: {{\"model\":\"{actual}\",\"choices\":[{{\"delta\":{{\"content\":\"hello\"}}}}]}}\n\n");
+                let (base, _) = spawn_server(vec![http_response("200 OK", &body)]);
+                let result = probe_saved_identity_with_client(
+                    &loopback_client(),
+                    ModelProbeApp::OpenCode,
+                    &base,
+                    "sk-fixture",
+                    requested,
+                    Duration::from_secs(2),
+                )
+                .await;
+                assert_eq!(result, expected);
+            }
         }
     }
 

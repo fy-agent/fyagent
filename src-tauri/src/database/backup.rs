@@ -282,16 +282,24 @@ impl Database {
     }
 
     fn is_owned_project_trigger(sql: &str) -> bool {
-        let normalize = |value: &str| value.trim().trim_end_matches(';')
-            .replace("CREATE TRIGGER IF NOT EXISTS", "CREATE TRIGGER");
+        let normalize = |value: &str| {
+            value
+                .trim()
+                .trim_end_matches(';')
+                .replace("CREATE TRIGGER IF NOT EXISTS", "CREATE TRIGGER")
+        };
         let candidate = normalize(sql);
-        Self::project_resource_trigger_sql().iter().any(|owned| normalize(owned) == candidate)
+        Self::project_resource_trigger_sql()
+            .iter()
+            .any(|owned| normalize(owned) == candidate)
     }
 
     fn reject_persistent_triggers(conn: &Connection) -> Result<(), AppError> {
-        let mut statement = conn.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger'")
+        let mut statement = conn
+            .prepare("SELECT sql FROM sqlite_schema WHERE type='trigger'")
             .map_err(|e| AppError::Database(e.to_string()))?;
-        let definitions = statement.query_map([], |row| row.get::<_, String>(0))
+        let definitions = statement
+            .query_map([], |row| row.get::<_, String>(0))
             .map_err(|e| AppError::Database(e.to_string()))?;
         for definition in definitions {
             let sql = definition.map_err(|e| AppError::Database(e.to_string()))?;
@@ -572,7 +580,9 @@ impl Database {
             if obj_type == "trigger" {
                 // Owned generation counters are rebuilt by the application. External
                 // SQL never receives permission to install executable schema.
-                if Self::is_owned_project_trigger(&sql) { continue; }
+                if Self::is_owned_project_trigger(&sql) {
+                    continue;
+                }
                 triggers.push(sql);
                 continue;
             }
@@ -776,12 +786,13 @@ impl Database {
         Self::reject_persistent_triggers(&source_conn)?;
         // Validate every new fallible migration before replacing the live database.
         // Keep the selected backup immutable as well.
-        let mut candidate = Connection::open_in_memory()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let mut candidate =
+            Connection::open_in_memory().map_err(|e| AppError::Database(e.to_string()))?;
         {
             let copy = Backup::new(&source_conn, &mut candidate)
                 .map_err(|e| AppError::Database(e.to_string()))?;
-            copy.step(-1).map_err(|e| AppError::Database(e.to_string()))?;
+            copy.step(-1)
+                .map_err(|e| AppError::Database(e.to_string()))?;
         }
         Self::create_tables_on_conn(&candidate)?;
         Self::apply_schema_migrations_on_conn(&candidate)?;
@@ -900,6 +911,9 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    mod fde_restore_tests {
+        include!("fde_restore_tests.rs");
+    }
     use super::{Database, FYAGENT_SQL_EXPORT_HEADER};
     use crate::error::AppError;
     use crate::settings::{update_settings, AppSettings};
@@ -1964,7 +1978,7 @@ mod tests {
             "fde_projects",
             "fde_project_kit_intents",
             "fde_project_context_versions",
-    "fde_resource_generations",
+            "fde_resource_generations",
         ];
         for table in tables {
             assert!(super::SYNC_SKIP_TABLES.contains(&table));

@@ -6752,8 +6752,7 @@ impl ProviderService {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    fn extract_credentials(
+    pub(crate) fn extract_credentials(
         provider: &Provider,
         app_type: &AppType,
     ) -> Result<(String, String), AppError> {

@@ -10,6 +10,59 @@ import {
   PROJECT,
 } from "../fixtures/verification";
 describe("verification evidence boundary", () => {
+  it("keeps bounded business values and rejects unknown sample content", () => {
+    const snapshot = verificationFixture();
+    const sample = {
+      inputDigest: "a".repeat(64),
+      code: "ok" as const,
+      matchesExpectation: true,
+      validator: "weekly-report/v1" as const,
+      metrics: {
+        currentMinor: 18000000,
+        previousMinor: 15000000,
+        growthBps: 2000,
+        targetBps: 9000,
+      },
+      sourceRowIds: ["row-1" as const],
+    };
+    snapshot.evidence = [
+      {
+        ...evidenceFixture(),
+        stage: "sample_passed",
+        checkerId: "kit_validator",
+        sourceClass: "local_fixture",
+        fixture: "baseline",
+        sample,
+      },
+    ];
+    expect(
+      snapshotSchema.parse(snapshot).evidence[0].sample?.metrics?.growthBps,
+    ).toBe(2000);
+    snapshot.evidence[0].sample = {
+      ...sample,
+      metrics: { ...sample.metrics, growthBps: Number.MAX_SAFE_INTEGER + 1 },
+    };
+    expect(snapshotSchema.safeParse(snapshot).success).toBe(false);
+    snapshot.evidence[0].sample = {
+      ...sample,
+      code: "invalid_input",
+      metrics: null,
+      sourceRowIds: [],
+    };
+    expect(snapshotSchema.safeParse(snapshot).success).toBe(true);
+    expect(
+      snapshotSchema.safeParse({
+        ...snapshot,
+        evidence: [
+          {
+            ...snapshot.evidence[0],
+            sample: { ...sample, sourceRowIds: ["customer-private-row"] },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects native credentials, unknown fields and customer machine outcomes", () => {
     const snapshot = verificationFixture();
     snapshot.evidence = [evidenceFixture()];
@@ -46,6 +99,31 @@ describe("verification evidence boundary", () => {
       basisEvidenceIds: [],
     };
     expect(manualSchema.safeParse(r).success).toBe(true);
+    expect(
+      manualSchema.safeParse({
+        ...r,
+        externalBasis: {
+          ...r.externalBasis,
+          reference: "https://example.feishu.cn/docx/Abc123",
+        },
+      }).success,
+    ).toBe(true);
+    for (const reference of [
+      "javascript:alert(1)",
+      "file:///tmp/report",
+      "https://user:password@example.com/doc",
+      "https://example.com/doc?token=private",
+      "https://example.com/doc#secret",
+      "https://example.com/%73k-private",
+    ]) {
+      expect(
+        manualSchema.safeParse({
+          ...r,
+          externalBasis: { ...r.externalBasis, reference },
+        }).success,
+      ).toBe(false);
+    }
+
     expect(manualSchema.safeParse({ ...r, person: "" }).success).toBe(false);
     expect(manualSchema.safeParse({ ...r, externalBasis: null }).success).toBe(
       false,

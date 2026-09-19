@@ -1,6 +1,6 @@
 ## 已批准实施合同 v1（取代前文中的待定项）
 
-主控于 2026-09-19 批准直接实现：纯文本 `.fyagent-kit.json` v1、native immutable library、项目页面板、导入不全局激活。协调来源：`/Users/serendipity/.codex/worktrees/fyagent-fde-control/fyagent/.trellis/tasks/09-19-fde-delivery-integration/coordination-contract.md` v1。
+主控于 2026-09-19 批准直接实现：纯文本 `.fyagent-kit.json` v1、native immutable library、项目页面板、导入不全局激活。协调来源：`~/.codex/worktrees/fyagent-fde-control/fyagent/.trellis/tasks/09-19-fde-delivery-integration/coordination-contract.md` v1。
 
 跨线统一 camelCase `projectId/projectRevision`；绑定为 `bindDeliveryKit(projectId, expectedRevision, kitId, kitVersion, manifestDigest, bindingIntentId)`；检查事实 `sourceClass=local_fixture`，无机器客户验收。先独立完成本机 validator/UI/port；项目及 evidence persistence 通过窄 adapter 接入，缺失明确 unavailable。包不写其他域表，原生文件库无需数据库迁移。共享注册修改列入交接，由 root 集成裁决。
 

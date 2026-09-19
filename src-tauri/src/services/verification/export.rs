@@ -74,14 +74,25 @@ pub(crate) fn preview(snapshot: VerificationSnapshot) -> VerificationResult<Hand
             if let Some(sample) = &e.sample {
                 markdown.push_str(&format!(
                     "  业务输入：{}；符合样例预期：{}；本机合成输入摘要：{}\n",
-                    if sample.code == SampleCode::Ok {
-                        "通过"
-                    } else {
-                        "未通过"
+                    match sample.code {
+                        SampleCode::Ok => "通过",
+                        SampleCode::InvalidInput => "缺少必填字段或输入格式有误",
+                        SampleCode::DuplicateRow => "存在重复数据行",
+                        SampleCode::PeriodMismatch => "数据期间不一致",
+                        SampleCode::CurrencyMismatch => "金额币种不一致",
+                        SampleCode::ZeroPrevious => "上期金额为零，无法计算增长率",
+                        SampleCode::MissingPeriod => "缺少本期或上期数据",
+                        SampleCode::InvalidAmount => "金额或目标值无效",
                     },
                     sample.matches_expectation,
                     sample.input_digest
                 ));
+                if let Some(m) = &sample.metrics {
+                    markdown.push_str(&format!("  本期金额：{:.2} 元；上期金额：{:.2} 元；增长：{:.2}%；目标完成：{:.2}%\n", m.current_minor as f64 / 100.0, m.previous_minor as f64 / 100.0, m.growth_bps as f64 / 100.0, m.target_bps as f64 / 100.0));
+                }
+                if !sample.source_row_ids.is_empty() {
+                    markdown.push_str(&format!("  来源行：{}\n", sample.source_row_ids.join("、")));
+                }
             }
             if let Some(kit) = &e.kit {
                 markdown.push_str(&format!(

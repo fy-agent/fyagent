@@ -1750,15 +1750,9 @@ pub fn run() {
                 app.handle().clone(),
             );
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
-            app.manage(crate::services::projects::ProjectsService::new(
-                app_state.db.clone(),
-                crate::config::get_app_config_dir().join("projects"),
-                std::sync::Arc::new(crate::services::projects::UnavailableKitReader),
-            ));
+            app.manage(app_state.projects.clone());
+            app.manage(commands::DeliveryKitsState(app_state.delivery_kits.clone()));
             app.manage(app_state);
-            app.manage(commands::DeliveryKitsState(std::sync::Mutex::new(
-                services::delivery_kits::KitLibrary::new(config::get_app_config_dir().join("delivery-kits")),
-            )));
 
             // 初始化 SkillService
             let skill_service = SkillService::new();

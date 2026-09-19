@@ -45,7 +45,9 @@ pub(crate) trait ProjectDependencyReader: Send + Sync {
 
 /// Explicit integration boundary until composition injects the project/kit
 /// owners. It cannot claim a successful read or execute a production fixture.
+#[cfg(test)]
 pub(crate) struct UnavailableProjectReader;
+#[cfg(test)]
 impl ProjectDependencyReader for UnavailableProjectReader {
     fn read(&self, _: &str) -> VerificationResult<ProjectDependencySnapshot> {
         Err("project_reader_unavailable")
@@ -416,12 +418,7 @@ impl VerificationService {
                                 && receipt.passed
                                     == (receipt.sample.code == SampleCode::Ok
                                         && receipt.sample.matches_expectation)
-                                && receipt.sample.input_digest.len() == 64
-                                && receipt
-                                    .sample
-                                    .input_digest
-                                    .bytes()
-                                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) =>
+                                && domain::valid_sample(&receipt.sample) =>
                         {
                             sample = Some(receipt.sample);
                             (

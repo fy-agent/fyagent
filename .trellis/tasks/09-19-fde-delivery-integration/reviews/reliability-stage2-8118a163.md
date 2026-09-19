@@ -32,4 +32,4 @@
 
 本次结论为固定源码审查；未触发 Apple 服务或签名 runner，未声称发布成功。修复后先做上述最小无秘密行为检查；真实 app/DMG 票据是否有效仍需正式签名 runner 的实际回执。
 
-路径均相对于 `/Users/serendipity/.codex/worktrees/fyagent-fde-reliability/fyagent` 的固定提交 `8118a163`。
+路径均相对于 `~/.codex/worktrees/fyagent-fde-reliability/fyagent` 的固定提交 `8118a163`。

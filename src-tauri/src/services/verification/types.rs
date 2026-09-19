@@ -56,10 +56,21 @@ wire_enum!(SampleCode {
 });
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SampleMetrics {
+    pub current_minor: i64,
+    pub previous_minor: i64,
+    pub growth_bps: i64,
+    pub target_bps: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SampleReceipt {
     pub input_digest: String,
     pub code: SampleCode,
     pub matches_expectation: bool,
+    pub metrics: Option<SampleMetrics>,
+    pub source_row_ids: Vec<String>,
+    pub validator: String,
 }
 wire_enum!(ProjectionState {
     Confirmed,

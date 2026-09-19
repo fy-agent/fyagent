@@ -1,3 +1,4 @@
+import { createDeliveryKitsPort } from "./feature-ports/delivery-kits";
 import { createProjectsPort } from "./feature-ports/projects";
 import { createVerificationPort } from "./feature-ports/verification";
 import type { FeaturePorts } from "../../features/ports";
@@ -16,6 +17,7 @@ import { createConfigRecoveryPort } from "./feature-ports/configRecovery";
 
 export function createTauriFeaturePorts(): FeaturePorts {
   return {
+    deliveryKits: createDeliveryKitsPort(),
     projects: createProjectsPort(),
     verification: createVerificationPort(),
     health: {

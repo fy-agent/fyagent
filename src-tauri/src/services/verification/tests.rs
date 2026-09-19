@@ -35,6 +35,18 @@ impl ProjectDependencyReader for Reader {
                     SampleCode::InvalidInput
                 },
                 matches_expectation: true,
+                metrics: (selected == KitFixture::Baseline).then_some(SampleMetrics {
+                    current_minor: 18_000_000,
+                    previous_minor: 15_000_000,
+                    growth_bps: 2_000,
+                    target_bps: 9_000,
+                }),
+                source_row_ids: if selected == KitFixture::Baseline {
+                    vec!["row-1".into()]
+                } else {
+                    vec![]
+                },
+                validator: "weekly-report/v1".into(),
             },
         })
     }
@@ -574,4 +586,128 @@ fn verification_missing_credential_generation_keeps_external_record_unverifiable
     assert_eq!(snapshot.evidence[0].source_class, SourceClass::ManualRecord);
     assert_eq!(snapshot.evidence[0].outcome, Outcome::Passed);
     assert_eq!(snapshot.evidence[0].validity, Validity::Unverifiable);
+}
+
+#[test]
+fn verification_later_nonpass_supersedes_pass_and_customer_basis() {
+    for outcome in [
+        Outcome::Failed,
+        Outcome::Unknown,
+        Outcome::Unsupported,
+        Outcome::Cancelled,
+    ] {
+        let (s, _) = fixture();
+        s.record_manual(manual(Stage::ToolCallable)).unwrap();
+        let (records, _) = s.db.verification_records(PROJECT).unwrap();
+        let mut passed = records[0].clone();
+        passed.id = uuid::Uuid::new_v4().to_string();
+        passed.source_class = SourceClass::NativeRemote;
+        passed.manual = None;
+        passed.checker_id = "saved_model_probe".into();
+        passed.reason_code = "model_identity_confirmed".into();
+        s.db.verification_append(&passed).unwrap();
+        let mut later = passed.clone();
+        later.id = uuid::Uuid::new_v4().to_string();
+        later.outcome = outcome;
+        later.recorded_at = domain::stamp(Utc::now());
+        later.reason_code = "model_request_failed".into();
+        s.db.verification_append(&later).unwrap();
+        let snap = s.snapshot(PROJECT).unwrap();
+        assert_eq!(
+            snap.evidence
+                .iter()
+                .find(|e| e.id == passed.id)
+                .unwrap()
+                .validity,
+            Validity::Stale
+        );
+        let mut request = manual(Stage::CustomerAccepted);
+        request.external_basis = None;
+        request.basis_evidence_ids = vec![passed.id];
+        assert_eq!(s.record_manual(request).unwrap_err(), "basis_not_current");
+        assert!(s
+            .preview(PROJECT)
+            .unwrap()
+            .markdown
+            .contains("通过 / 待复核"));
+    }
+}
+
+#[test]
+fn verification_document_reference_is_bounded_https_not_secret_or_path() {
+    let (s, _) = fixture();
+    let mut request = manual(Stage::CustomerAccepted);
+    request.external_basis.as_mut().unwrap().reference =
+        "https://example.feishu.cn/docx/Abc123".into();
+    s.record_manual(request.clone()).unwrap();
+    assert!(s
+        .preview(PROJECT)
+        .unwrap()
+        .markdown
+        .contains("https://example.feishu.cn/docx/Abc123"));
+    for bad in [
+        "javascript:alert(1)",
+        "/Users/private/report",
+        "file:///tmp/report",
+        "https://user:password@example.com/doc",
+        "https://example.com/doc?token=private",
+        "https://example.com/doc#private",
+        "https://example.com/%73k-private",
+    ] {
+        request.external_basis.as_mut().unwrap().reference = bad.into();
+        assert!(s.record_manual(request.clone()).is_err(), "{bad}");
+    }
+    request = manual(Stage::CustomerAccepted);
+    request.person = "https://example.com/person".into();
+    assert!(s.record_manual(request).is_err());
+}
+
+#[tokio::test]
+async fn verification_sample_metrics_survive_reload_and_negative_fixture_is_independent() {
+    let (s, reader) = fixture();
+    let baseline = s
+        .run(RunRequest {
+            project_id: PROJECT.into(),
+            expected_revision: 1,
+            checker: Checker::KitValidator,
+            run_id: uuid::Uuid::new_v4().to_string(),
+            fixture: Some(KitFixture::Baseline),
+        })
+        .await
+        .unwrap();
+    let baseline_id = baseline.evidence[0].id.clone();
+    s.run(RunRequest {
+        project_id: PROJECT.into(),
+        expected_revision: 1,
+        checker: Checker::KitValidator,
+        run_id: uuid::Uuid::new_v4().to_string(),
+        fixture: Some(KitFixture::MissingField),
+    })
+    .await
+    .unwrap();
+    let restarted = VerificationService::new(s.db.clone(), reader);
+    let preview = restarted.preview(PROJECT).unwrap();
+    let baseline = preview
+        .snapshot
+        .evidence
+        .iter()
+        .find(|e| e.id == baseline_id)
+        .unwrap();
+    assert_eq!(baseline.validity, Validity::Current);
+    assert_eq!(
+        baseline
+            .sample
+            .as_ref()
+            .unwrap()
+            .metrics
+            .as_ref()
+            .unwrap()
+            .growth_bps,
+        2000
+    );
+    assert!(preview.json.contains("18000000"));
+    assert!(preview.markdown.contains("增长：20.00%"));
+    assert!(preview.markdown.contains("目标完成：90.00%"));
+    assert!(preview.markdown.contains("来源行：row-1"));
+    assert!(preview.markdown.contains("缺少必填字段或输入格式有误"));
 }

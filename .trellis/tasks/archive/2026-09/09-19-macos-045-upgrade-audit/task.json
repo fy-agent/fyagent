@@ -14,7 +14,7 @@
   "completedAt": "2026-09-19",
   "branch": "codex/macos-045-audit",
   "base_branch": "main",
-  "worktree_path": "/Users/serendipity/.codex/worktrees/fyagent-045-audit/fyagent",
+  "worktree_path": "~/.codex/worktrees/fyagent-045-audit/fyagent",
   "commit": "1a924586,9dfb55bc",
   "pr_url": null,
   "subtasks": [],

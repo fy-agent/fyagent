@@ -24,7 +24,6 @@ pub(crate) enum KitError {
     LibraryUnavailable,
     WriteFailed,
     ReadbackFailed,
-    ExportNotAllowed,
     UnsupportedValidator,
     Busy,
 }

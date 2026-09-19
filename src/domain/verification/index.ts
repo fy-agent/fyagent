@@ -62,7 +62,42 @@ const label = z.string().check(
 const bounded = z
   .string()
   .check(z.minLength(1), z.maxLength(128), z.regex(/^[a-zA-Z0-9._+-]+$/u));
-const externalBasis = z.strictObject({ reference: label, issuer: label });
+const externalReference = z.string().check(
+  z.refine((value) => {
+    if (label.safeParse(value).success) return true;
+    if (
+      value.length > 2048 ||
+      value.trim() !== value ||
+      Array.from(value).some(
+        (c) =>
+          c.charCodeAt(0) < 32 ||
+          c.charCodeAt(0) === 127 ||
+          /\s/u.test(c) ||
+          ["\\", "%", "<", ">", '"', "[", "]"].includes(c),
+      ) ||
+      /secretref|sk-|bearer|api_key|apikey|password|token/iu.test(value)
+    )
+      return false;
+    try {
+      const url = new URL(value);
+      return (
+        value.startsWith("https://") &&
+        url.protocol === "https:" &&
+        url.hostname.includes(".") &&
+        url.username === "" &&
+        url.password === "" &&
+        !value.includes("?") &&
+        !value.includes("#")
+      );
+    } catch {
+      return false;
+    }
+  }),
+);
+const externalBasis = z.strictObject({
+  reference: externalReference,
+  issuer: label,
+});
 const manual = z.strictObject({
   person: label,
   role: label,
@@ -75,6 +110,13 @@ export const kitSchema = z.strictObject({
   kitVersion: bounded,
   manifestDigest: z.string().check(z.regex(/^[a-f0-9]{64}$/u)),
 });
+const safeInteger = z
+  .number()
+  .check(
+    z.int(),
+    z.minimum(Number.MIN_SAFE_INTEGER),
+    z.maximum(Number.MAX_SAFE_INTEGER),
+  );
 export const evidenceSchema = z
   .strictObject({
     id: projectIdSchema,
@@ -97,11 +139,41 @@ export const evidenceSchema = z
     ]),
     checkerId: z.enum([...CHECKERS, "external_manual_record"]),
     fixture: z.nullable(z.enum(KIT_FIXTURES)),
-    sample: z.nullable(z.strictObject({
-      inputDigest: z.string().check(z.regex(/^[a-f0-9]{64}$/u)),
-      code: z.enum(["ok", "invalid_input", "duplicate_row", "period_mismatch", "currency_mismatch", "zero_previous", "missing_period", "invalid_amount"]),
-      matchesExpectation: z.boolean(),
-    })),
+    sample: z.nullable(
+      z
+        .strictObject({
+          inputDigest: z.string().check(z.regex(/^[a-f0-9]{64}$/u)),
+          code: z.enum([
+            "ok",
+            "invalid_input",
+            "duplicate_row",
+            "period_mismatch",
+            "currency_mismatch",
+            "zero_previous",
+            "missing_period",
+            "invalid_amount",
+          ]),
+          matchesExpectation: z.boolean(),
+          validator: z.literal("weekly-report/v1"),
+          metrics: z.nullable(
+            z.strictObject({
+              currentMinor: safeInteger,
+              previousMinor: safeInteger,
+              growthBps: safeInteger,
+              targetBps: safeInteger,
+            }),
+          ),
+          sourceRowIds: z
+            .array(
+              z.enum(["row-1", "row-2", "row-3", "row-4", "row-5", "row-6"]),
+            )
+            .check(
+              z.maxLength(6),
+              z.refine((ids) => new Set(ids).size === ids.length),
+            ),
+        })
+        .check(z.refine((s) => (s.code === "ok") === (s.metrics !== null))),
+    ),
     checkerVersion: revision,
     appVersion: bounded,
     observedAt: timestamp,
@@ -149,13 +221,17 @@ export const snapshotSchema = z
       (s) => new Set(s.evidence.map((e) => e.id)).size === s.evidence.length,
     ),
   );
-export const runSchema = z.strictObject({
-  projectId: projectIdSchema,
-  expectedRevision: revision,
-  checker: z.enum(CHECKERS),
-  runId: projectIdSchema,
-  fixture: z.nullable(z.enum(KIT_FIXTURES)),
-}).check(z.refine((r) => (r.checker === "kit_validator") === (r.fixture !== null)));
+export const runSchema = z
+  .strictObject({
+    projectId: projectIdSchema,
+    expectedRevision: revision,
+    checker: z.enum(CHECKERS),
+    runId: projectIdSchema,
+    fixture: z.nullable(z.enum(KIT_FIXTURES)),
+  })
+  .check(
+    z.refine((r) => (r.checker === "kit_validator") === (r.fixture !== null)),
+  );
 export const manualSchema = z
   .strictObject({
     projectId: projectIdSchema,
@@ -268,4 +344,18 @@ export const CHECKER_LABELS: Record<Evidence["checkerId"], string> = {
   saved_model_probe: "已保存模型检查",
   kit_validator: "本机样本检查",
   external_manual_record: "人工登记",
+};
+
+export const SAMPLE_CODE_LABELS: Record<
+  NonNullable<Evidence["sample"]>["code"],
+  string
+> = {
+  ok: "业务输入通过",
+  invalid_input: "缺少必填字段或输入格式有误",
+  duplicate_row: "存在重复数据行",
+  period_mismatch: "数据期间不一致",
+  currency_mismatch: "金额币种不一致",
+  zero_previous: "上期金额为零，无法计算增长率",
+  missing_period: "缺少本期或上期数据",
+  invalid_amount: "金额或目标值无效",
 };

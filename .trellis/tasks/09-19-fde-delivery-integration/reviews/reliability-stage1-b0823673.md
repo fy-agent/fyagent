@@ -33,4 +33,4 @@
 - 固定提交内 `research/readiness-implementation.md` 记载 renderer 13 文件 / 158 用例及 typecheck 通过；这是实现线记录，本次没有重跑。该文件明确 Rust 编译被当时另一项 MCP 修改阻断，新 Rust 测试未执行；root 应在稳定集成版本跑一次既定 `agent_install::tests` 定向检查并确认命中新测试。
 - 不要求为了本审查额外制作平台框架、全库测试或真实安装。最终若要报告“原机器 R7 已修复”，须另有隔离原生运行回读；当前准确结论是源码修复及前端 fixture 证据。
 
-以上路径均相对于固定提交所在仓库 `/Users/serendipity/.codex/worktrees/fyagent-fde-reliability/fyagent`。本报告仅拥有并修改当前文件。
+以上路径均相对于固定提交所在仓库 `~/.codex/worktrees/fyagent-fde-reliability/fyagent`。本报告仅拥有并修改当前文件。

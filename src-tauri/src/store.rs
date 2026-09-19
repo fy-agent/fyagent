@@ -6,6 +6,8 @@ use std::sync::Arc;
 /// 全局应用状态
 #[derive(Clone)]
 pub struct AppState {
+    pub(crate) projects: Arc<crate::services::projects::ProjectsService>,
+    pub(crate) delivery_kits: Arc<std::sync::Mutex<crate::services::delivery_kits::KitLibrary>>,
     pub(crate) verification: Arc<crate::services::verification::VerificationService>,
     pub db: Arc<Database>,
     pub proxy_service: ProxyService,
@@ -22,12 +24,15 @@ impl AppState {
     /// 创建新的应用状态
     pub fn new(db: Arc<Database>) -> Self {
         let proxy_service = ProxyService::new(db.clone());
+        let fde = crate::services::fde_workspace::compose(
+            db.clone(),
+            crate::config::get_app_config_dir(),
+        );
 
         Self {
-            verification: Arc::new(crate::services::verification::VerificationService::new(
-                db.clone(),
-                Arc::new(crate::services::verification::UnavailableProjectReader),
-            )),
+            projects: fde.projects,
+            delivery_kits: fde.kits,
+            verification: fde.verification,
             db,
             proxy_service,
             usage_cache: Arc::new(UsageCache::new()),

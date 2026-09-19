@@ -4,7 +4,7 @@ use crate::services::delivery_kits::{
 use std::sync::Mutex;
 use tauri_plugin_dialog::DialogExt;
 
-pub(crate) struct DeliveryKitsState(pub Mutex<KitLibrary>);
+pub(crate) struct DeliveryKitsState(pub std::sync::Arc<Mutex<KitLibrary>>);
 
 #[tauri::command]
 pub(crate) fn list_delivery_kits(

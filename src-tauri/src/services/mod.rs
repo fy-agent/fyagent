@@ -67,3 +67,5 @@ pub use usage_stats::{
 };
 
 pub(crate) mod verification;
+
+pub(crate) mod fde_workspace;

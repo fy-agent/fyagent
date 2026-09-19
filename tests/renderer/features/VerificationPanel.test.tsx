@@ -17,6 +17,56 @@ import {
 } from "../fixtures/verification";
 
 describe("project verification panel", () => {
+  it("shows saved business metrics and specific sample failures", async () => {
+    const ports = createBrowserFeaturePorts();
+    const baseline = {
+      ...evidenceFixture(),
+      stage: "sample_passed" as const,
+      checkerId: "kit_validator" as const,
+      sourceClass: "local_fixture" as const,
+      fixture: "baseline" as const,
+      sample: {
+        inputDigest: "a".repeat(64),
+        code: "ok" as const,
+        matchesExpectation: true,
+        validator: "weekly-report/v1" as const,
+        metrics: {
+          currentMinor: 18000000,
+          previousMinor: 15000000,
+          growthBps: 2000,
+          targetBps: 9000,
+        },
+        sourceRowIds: ["row-1" as const],
+      },
+    };
+    ports.verification.get = vi.fn(async () => ({
+      ...verificationFixture(),
+      evidence: [
+        baseline,
+        {
+          ...baseline,
+          id: "00000000-0000-4000-8000-000000000004",
+          outcome: "failed" as const,
+          sample: {
+            ...baseline.sample,
+            code: "duplicate_row" as const,
+            metrics: null,
+            sourceRowIds: [],
+          },
+        },
+      ],
+    }));
+    render(
+      <FeatureProvider ports={ports}>
+        <VerificationPanel projectId={PROJECT} />
+      </FeatureProvider>,
+    );
+    await screen.findByText(/目标完成 90.00%/);
+    expect(screen.getByText(/增长 20.00%/)).toBeVisible();
+    expect(screen.getByText(/来源行：row-1/)).toBeVisible();
+    expect(screen.getByText(/存在重复数据行/)).toBeVisible();
+  });
+
   it("separates five unchecked stages and issues a saved-configuration check", async () => {
     const ports = createBrowserFeaturePorts();
     ports.verification.get = vi.fn(async () => verificationFixture());
@@ -90,7 +140,7 @@ describe("project verification panel", () => {
       ["登记或验收人", "张三"],
       ["角色", "客户负责人"],
       ["作用范围", "周报试点"],
-      ["外部真实记录编号", "UAT-9"],
+      ["记录编号或文档链接", "https://example.feishu.cn/docx/Abc123"],
       ["出具记录的组织或人员", "客户业务部"],
     ])
       fireEvent.change(screen.getByLabelText(label), { target: { value } });
@@ -99,7 +149,10 @@ describe("project verification panel", () => {
     expect(vi.mocked(ports.verification.record).mock.calls[0][0]).toMatchObject(
       {
         stage: "customer_accepted",
-        externalBasis: { reference: "UAT-9", issuer: "客户业务部" },
+        externalBasis: {
+          reference: "https://example.feishu.cn/docx/Abc123",
+          issuer: "客户业务部",
+        },
         basisEvidenceIds: [],
       },
     );
@@ -123,9 +176,16 @@ describe("project verification panel", () => {
   });
   it("marks cached passes for review after a failed mutation until explicit readback", async () => {
     const ports = createBrowserFeaturePorts();
-    ports.verification.get = vi.fn(async () => ({ ...verificationFixture(), evidence: [evidenceFixture()] }));
+    ports.verification.get = vi.fn(async () => ({
+      ...verificationFixture(),
+      evidence: [evidenceFixture()],
+    }));
     ports.verification.run = vi.fn().mockRejectedValue("project_changed");
-    render(<FeatureProvider ports={ports}><VerificationPanel projectId={PROJECT} /></FeatureProvider>);
+    render(
+      <FeatureProvider ports={ports}>
+        <VerificationPanel projectId={PROJECT} />
+      </FeatureProvider>,
+    );
     await screen.findByText("通过");
     fireEvent.click(screen.getByText("检查保存的配置"));
     await screen.findByText("待复核");
@@ -135,5 +195,4 @@ describe("project verification panel", () => {
     await screen.findByText("通过");
     expect(screen.getByText("检查保存的配置")).not.toBeDisabled();
   });
-
 });

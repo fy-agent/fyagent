@@ -22,7 +22,7 @@ function cachedLoader(
 
 const primaryPageLoaders = {
   projects: cachedLoader(async () => ({
-    default: (await import("../pages/projects/Page")).ProjectsPage,
+    default: (await import("./ProjectsWorkspace")).ProjectsWorkspace,
   })),
   health: cachedLoader(async () => ({
     default: (await import("../pages/health/Page")).HealthPage,

@@ -28,6 +28,70 @@ pub(crate) fn safe_label(value: &str) -> bool {
         .any(|s| lower.contains(s))
 }
 
+pub(crate) fn safe_reference(value: &str) -> bool {
+    if safe_label(value) {
+        return true;
+    }
+    if value.len() > 2048
+        || value.trim() != value
+        || value.chars().any(|c| c.is_control() || c.is_whitespace())
+        || value.contains(['\\', '%', '<', '>', '"', '[', ']'])
+    {
+        return false;
+    }
+    let Ok(url) = url::Url::parse(value) else {
+        return false;
+    };
+    let lower = value.to_ascii_lowercase();
+    url.scheme() == "https"
+        && value.starts_with("https://")
+        && url
+            .host_str()
+            .is_some_and(|host| host.contains('.') && host != "localhost")
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && ![
+            "secretref",
+            "sk-",
+            "bearer",
+            "api_key",
+            "apikey",
+            "password",
+            "token",
+        ]
+        .iter()
+        .any(|s| lower.contains(s))
+}
+
+pub(crate) fn valid_sample(s: &SampleReceipt) -> bool {
+    s.input_digest.len() == 64
+        && s.input_digest
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        && s.validator == "weekly-report/v1"
+        && s.source_row_ids.len() <= 6
+        && s.source_row_ids.iter().all(|id| {
+            matches!(
+                id.as_str(),
+                "row-1" | "row-2" | "row-3" | "row-4" | "row-5" | "row-6"
+            )
+        })
+        && s.source_row_ids.iter().collect::<HashSet<_>>().len() == s.source_row_ids.len()
+        && (s.code == SampleCode::Ok) == s.metrics.is_some()
+        && s.metrics.as_ref().is_none_or(|m| {
+            [
+                m.current_minor,
+                m.previous_minor,
+                m.growth_bps,
+                m.target_bps,
+            ]
+            .iter()
+            .all(|v| (-9_007_199_254_740_991..=9_007_199_254_740_991).contains(v))
+        })
+}
+
 pub(crate) fn time(value: &str) -> VerificationResult<DateTime<Utc>> {
     if !value.ends_with('Z') {
         return Err("invalid_time");
@@ -81,12 +145,7 @@ pub(crate) fn valid_record(e: &Evidence, project: &str) -> bool {
         "check_cancelled",
     ];
     valid_id(&e.id)
-        && e.sample.as_ref().is_none_or(|s| {
-            s.input_digest.len() == 64
-                && s.input_digest
-                    .bytes()
-                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        })
+        && e.sample.as_ref().is_none_or(valid_sample)
         && (e.checker_id == "kit_validator") == e.fixture.is_some()
         && (e.sample.is_none() || e.fixture.is_some())
         && e.dependencies.project_id == project
@@ -114,7 +173,7 @@ pub(crate) fn valid_record(e: &Evidence, project: &str) -> bool {
             [&m.person, &m.role, &m.scope].iter().all(|s| safe_label(s))
                 && m.external_basis
                     .as_ref()
-                    .is_none_or(|b| safe_label(&b.reference) && safe_label(&b.issuer))
+                    .is_none_or(|b| safe_reference(&b.reference) && safe_label(&b.issuer))
         })
 }
 
@@ -139,7 +198,7 @@ pub(crate) fn validate_manual(
         return Err("invalid_request");
     }
     if let Some(basis) = &request.external_basis {
-        if !safe_label(&basis.reference) || !safe_label(&basis.issuer) {
+        if !safe_reference(&basis.reference) || !safe_label(&basis.issuer) {
             return Err("invalid_external_basis");
         }
     }
@@ -155,8 +214,27 @@ pub(crate) fn views(
     revoked: &HashSet<String>,
     now: DateTime<Utc>,
 ) -> Vec<EvidenceView> {
+    let superseded: HashSet<_> = records
+        .iter()
+        .enumerate()
+        .filter_map(|(index, e)| {
+            (e.outcome == Outcome::Passed
+                && records[index + 1..].iter().any(|later| {
+                    later.outcome != Outcome::Passed
+                        && later.stage == e.stage
+                        && later.checker_id == e.checker_id
+                        && later.fixture == e.fixture
+                        && later.dependencies == e.dependencies
+                }))
+            .then_some(e.id.as_str())
+        })
+        .collect();
     let by_id: HashMap<_, _> = records.iter().map(|e| (e.id.as_str(), e)).collect();
-    let mut memo = HashMap::new();
+    let mut memo: HashMap<_, _> = superseded
+        .into_iter()
+        .filter(|id| !revoked.contains(*id))
+        .map(|id| (id, Validity::Stale))
+        .collect();
     records
         .iter()
         .map(|e| {

@@ -15,7 +15,7 @@ never present cached data as current authority.
 
 Five stages remain independent. Expired/future/stale/revoked evidence cannot
 display a green pass. Manual acceptance requires people, scope, time and actual
-external references or valid basis IDs. UI allows genuine external customer
+external references or valid basis IDs. Reference fields accept a bounded record label or credential-free HTTPS document URL; person, role and scope stay label-only. Sample records display native saved amounts, growth/target percentages, source rows and the specific business rejection reason. UI allows genuine external customer
 records without requiring a local machine pass, while the native service refuses
 fixture-only bases. Source labels always distinguish local synthetic validation.
 

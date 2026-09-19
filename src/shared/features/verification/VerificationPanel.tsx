@@ -6,6 +6,7 @@ import {
   SOURCE_LABELS,
   REASON_LABELS,
   CHECKER_LABELS,
+  SAMPLE_CODE_LABELS,
   ROLLBACKS,
   evidenceLabel,
   type Stage,
@@ -70,7 +71,9 @@ function ProjectVerification({
   const [message, setMessage] = useState("");
   const [preview, setPreview] = useState<HandoffPreview | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
-  const [sampleCase, setSampleCase] = useState<"baseline" | "missing_field">("baseline");
+  const [sampleCase, setSampleCase] = useState<"baseline" | "missing_field">(
+    "baseline",
+  );
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!visible) return;
@@ -176,8 +179,16 @@ function ProjectVerification({
         >
           检查模型（可能产生用量）
         </Button>
-        <label>本机样例
-          <select aria-label="本机样例" disabled={!ready} value={sampleCase} onChange={(event) => setSampleCase(event.target.value as "baseline" | "missing_field")}>
+        <label>
+          本机样例
+          <select
+            aria-label="本机样例"
+            disabled={!ready}
+            value={sampleCase}
+            onChange={(event) =>
+              setSampleCase(event.target.value as "baseline" | "missing_field")
+            }
+          >
             <option value="baseline">正常周报</option>
             <option value="missing_field">缺少必填字段</option>
           </select>
@@ -237,12 +248,53 @@ function ProjectVerification({
                 records.map((e) => (
                   <article key={e.id} className="fy-verification-record">
                     <strong>
-                      {query.isError || needsReview ? "待复核" : evidenceLabel(e, now)}
+                      {query.isError || needsReview
+                        ? "待复核"
+                        : evidenceLabel(e, now)}
                     </strong>{" "}
                     · {SOURCE_LABELS[e.sourceClass]}
                     <p>{REASON_LABELS[e.reasonCode]}</p>
-                    {e.fixture && <p>样例：{e.fixture === "baseline" ? "正常周报" : "缺少必填字段"}</p>}
-                    {e.sample && <p>{e.sample.code === "ok" ? "业务输入通过" : "业务输入未通过"}；{e.sample.matchesExpectation ? "符合样例预期" : "与样例预期不符"}</p>}
+                    {e.fixture && (
+                      <p>
+                        样例：
+                        {e.fixture === "baseline" ? "正常周报" : "缺少必填字段"}
+                      </p>
+                    )}
+                    {e.sample && (
+                      <p>
+                        {SAMPLE_CODE_LABELS[e.sample.code]}；
+                        {e.sample.matchesExpectation
+                          ? "符合样例预期"
+                          : "与样例预期不符"}
+                      </p>
+                    )}
+                    {e.sample?.metrics && (
+                      <p>
+                        本期金额{" "}
+                        {(e.sample.metrics.currentMinor / 100).toLocaleString(
+                          "zh-CN",
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          },
+                        )}{" "}
+                        元； 上期金额{" "}
+                        {(e.sample.metrics.previousMinor / 100).toLocaleString(
+                          "zh-CN",
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          },
+                        )}{" "}
+                        元； 增长{" "}
+                        {(e.sample.metrics.growthBps / 100).toFixed(2)}%；
+                        目标完成 {(e.sample.metrics.targetBps / 100).toFixed(2)}
+                        %
+                      </p>
+                    )}
+                    {!!e.sample?.sourceRowIds.length && (
+                      <p>来源行：{e.sample.sourceRowIds.join("、")}</p>
+                    )}
                     <p>
                       检查时间：
                       <time dateTime={e.observedAt}>
@@ -428,7 +480,7 @@ function ManualForm({
     >
       <h3>人工登记</h3>
       <p>
-        填写可核对的真实外部记录编号，或选择已有依据。仅本机模拟样本不能作为客户验收。
+        填写可核对的记录编号或文档链接，或选择已有依据。仅本机模拟样本不能作为客户验收。
       </p>
       <fieldset disabled={disabled}>
         <label>
@@ -495,12 +547,12 @@ function ManualForm({
           />
         </label>
         <label>
-          外部真实记录编号
+          记录编号或文档链接
           <input
-            maxLength={160}
+            maxLength={2048}
             value={reference}
             onChange={(e) => setReference(e.target.value)}
-            placeholder="例如 UAT-2026-09"
+            placeholder="UAT-2026-09 或 HTTPS 文档链接"
           />
         </label>
         <label>

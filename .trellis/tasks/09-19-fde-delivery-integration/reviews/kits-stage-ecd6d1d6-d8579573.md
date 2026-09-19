@@ -44,4 +44,4 @@
 - 不要求扩展第三方机器执行、客户取数、通用 Agent 平台或存证框架。
 - 保留真实 picker、最终 native gate、外部服务及客户验收为对应层级的未验证项。
 
-以上产品路径相对于 `/Users/serendipity/.codex/worktrees/fyagent-fde-kits/fyagent` 的固定提交 `d8579573`，原生核心从 `ecd6d1d6` 引入。
+以上产品路径相对于 `~/.codex/worktrees/fyagent-fde-kits/fyagent` 的固定提交 `d8579573`，原生核心从 `ecd6d1d6` 引入。

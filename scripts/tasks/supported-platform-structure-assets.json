@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "ba15d34242b685fb92f1cb90234e9d9e85203f1ffc104ab120aeb9061f29c64f"
+      "4a130e63a867bd9f63e3371baa6b94046fbebfa7eaf17f9c8dcdd65ec3b00e62"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -215,11 +215,11 @@
     ],
     [
       "src-tauri/src/services/delivery_kits/mod.rs",
-      "0e76631d010f987feb1bece7bc0118b91e82b70d44440a0375d8360f3068abdb"
+      "c4ee0a9e7924dc3e426ef1a6103e2ff19efa93c257c9c91e9b3302bb46a5f197"
     ],
     [
       "src-tauri/src/services/delivery_kits/tests.rs",
-      "797b5d977d98520096977d3b7e1bbcc0f889adb6582f8922d1a877553c07b3f0"
+      "be2f80d1aed202aed8a8c9ea44e4bea2d7a8988c67b9bdb41514090e36216c7b"
     ],
     [
       "src-tauri/src/services/env_checker.rs",
@@ -239,11 +239,23 @@
     ],
     [
       "src-tauri/src/services/model_probe.rs",
-      "f5c87f86e62c5738d3c345e191960d02100b3df8b79f74ec9e1909428f0e0578"
+      "88242ca3ce0de66443fc65c0a20ee16a9d6a08a7b17a100824642471896795b6"
+    ],
+    [
+      "src-tauri/src/services/projects/files.rs",
+      "bbf5f3ed67fb14f07ba5388e2181c08cf84ed27cd5f09e00a36ce607a3ecc9ff"
+    ],
+    [
+      "src-tauri/src/services/projects/mod.rs",
+      "3e9d3b9acb74afad85883c794d7baa789041405c9ccf115ccf6d990c2b17003d"
+    ],
+    [
+      "src-tauri/src/services/projects/tests.rs",
+      "d4c8b64a1da1cf63ecbf7be44bbb2e7988793d5318b53d41bddf6045fb8983c3"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "2d269ce29d68959ac8e84cf4808f862702c5ba541b4b647086697df9c5d9cbf1"
+      "50f48ec425e0176fa0683d5edde64c493a450b8bc11b2aa0a13b654b91a65b67"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -410,16 +422,12 @@
       "c03244446296c5fe98b7d8a66bebc2646a6830dca1f1a35431ae05bd839127ea"
     ],
     [
-      "tests/macosAppNotarization.test.ts",
-      "9020a6e32c93a39bd374ee9804a7e1ab3160f1e8986dd7c27f82323f6b5674a5"
-    ],
-    [
       "tests/miseTaskContract.test.ts",
       "e3b4d0d818956ae8e727236700eb539852f2961dd211e10ee967027eab05cb1c"
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "3dcf320f67d55e9e182ce7f19c13d055b013d32feb92642f11757c5c3ac09b67"
+      "e83fea94a79ab671c01ae515a16f5950c080690b2a7fc142dbf3b2f36ec2718c"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

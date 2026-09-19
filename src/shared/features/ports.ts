@@ -255,6 +255,7 @@ export interface MemoryPort {
 }
 
 export interface FeaturePorts {
+  deliveryKits: import("./delivery-kits").DeliveryKitsPort;
   projects: ProjectsPort;
   verification: import("@/domain/verification").VerificationPort;
   health: HealthPort;

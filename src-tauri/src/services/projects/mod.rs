@@ -36,7 +36,9 @@ fn now() -> String {
 pub(crate) trait ProjectKitReader: Send + Sync {
     fn confirm(&self, kit: &KitBinding) -> Result<(), AppError>;
 }
+#[cfg(test)]
 pub(crate) struct UnavailableKitReader;
+#[cfg(test)]
 impl ProjectKitReader for UnavailableKitReader {
     fn confirm(&self, _: &KitBinding) -> Result<(), AppError> {
         Err(project_error("kit_owner_unavailable"))

@@ -36,4 +36,4 @@
 - Health 保持只读观察，MCP 默认不分配；真实工具调用和客户验收不由配置成功或内置样本自动推导（reliability design:15-19、29-31、55；evidence design:13-27、96）。
 - UI 为一个 Projects 一级入口及两个业务面板。项目修订/摘要等内部值属于接口与导出取证，不应作为普通产品解释文案；阶段政策已经明确约束，无需再加一套前端“审计”流程。
 
-路径约定：本报告中的四线相对位置分别位于 `/Users/serendipity/.codex/worktrees/fyagent-fde-{reliability,projects,kits,evidence}/fyagent/.trellis/tasks/09-19-fde-{config-reliability,project-isolation,delivery-kits,verification-handoff}/`；主控文件位于本报告上级任务目录。
+路径约定：本报告中的四线相对位置分别位于 `~/.codex/worktrees/fyagent-fde-{reliability,projects,kits,evidence}/fyagent/.trellis/tasks/09-19-fde-{config-reliability,project-isolation,delivery-kits,verification-handoff}/`；主控文件位于本报告上级任务目录。
