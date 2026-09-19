@@ -16,7 +16,6 @@ pub use managed_proxy::{
 };
 
 use indexmap::IndexMap;
-use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -3148,6 +3147,48 @@ GEMINI_TIMEOUT_MS=30000
             ProviderService::extract_credentials(&provider, &AppType::Claude).unwrap();
         assert_eq!(api_key, "token");
         assert_eq!(base_url, "https://claude.example");
+    }
+
+    #[test]
+    fn extract_codex_credentials_uses_active_route_and_ignores_inactive_or_commented_urls() {
+        let config = r#"model_provider = "active"
+# base_url = "https://commented.example/v1"
+[model_providers.inactive]
+base_url = "https://inactive.example/v1"
+[model_providers.active]
+base_url = "https://active.example/v1"
+"#;
+        let provider = Provider::with_id(
+            "codex".into(),
+            "Codex".into(),
+            json!({"auth": {"OPENAI_API_KEY": "fixture-key"}, "config": config}),
+            None,
+        );
+        let (key, url) = ProviderService::extract_credentials(&provider, &AppType::Codex)
+            .expect("active route should be available");
+        assert_eq!(key, "fixture-key");
+        assert_eq!(url, "https://active.example/v1");
+
+        for config in [
+            "model_provider = 'missing'\n[model_providers.inactive]\nbase_url = 'https://inactive.example/v1'",
+            "# base_url = 'https://commented.example/v1'",
+            "model_provider = 'active'\n[model_providers.active]\nbase_url = ''",
+            "model_provider = [invalid toml",
+        ] {
+            let provider = Provider::with_id(
+                "codex".into(),
+                "Codex".into(),
+                json!({"auth": {"OPENAI_API_KEY": "fixture-key"}, "config": config}),
+                None,
+            );
+            assert!(matches!(
+                ProviderService::extract_credentials(&provider, &AppType::Codex),
+                Err(AppError::Localized {
+                    key: "provider.codex.base_url.missing",
+                    ..
+                })
+            ));
+        }
     }
 
     #[test]
@@ -6855,31 +6896,15 @@ impl ProviderService {
                     )
                 })?;
 
-                let base_url = if config_toml.contains("base_url") {
-                    let re = Regex::new(r#"base_url\s*=\s*["']([^"']+)["']"#).map_err(|e| {
+                let base_url = crate::codex_config::extract_codex_base_url(config_toml)
+                    .filter(|url| !url.trim().is_empty())
+                    .ok_or_else(|| {
                         AppError::localized(
-                            "provider.regex_init_failed",
-                            format!("正则初始化失败: {e}"),
-                            format!("Failed to initialize regex: {e}"),
+                            "provider.codex.base_url.missing",
+                            "config.toml 中缺少当前服务商的 base_url 配置",
+                            "base_url for the active provider is missing from config.toml",
                         )
                     })?;
-                    re.captures(config_toml)
-                        .and_then(|caps| caps.get(1))
-                        .map(|m| m.as_str().to_string())
-                        .ok_or_else(|| {
-                            AppError::localized(
-                                "provider.codex.base_url.invalid",
-                                "config.toml 中 base_url 格式错误",
-                                "base_url in config.toml has invalid format",
-                            )
-                        })?
-                } else {
-                    return Err(AppError::localized(
-                        "provider.codex.base_url.missing",
-                        "config.toml 中缺少 base_url 配置",
-                        "base_url is missing from config.toml",
-                    ));
-                };
 
                 Ok((api_key, base_url))
             }

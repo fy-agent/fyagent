@@ -1,8 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useMediaQuery } from "@/shared/ui/useMediaQuery";
 import { useReducedMotion } from "@/shared/ui/motion";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("live motion preference", () => {
   it("reacts to a system preference change and detaches when unmounted", () => {
@@ -16,18 +20,21 @@ describe("live motion preference", () => {
         listeners.delete(listener);
       },
     );
-    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-      media: query,
-      get matches() {
-        return matches;
-      },
-      onchange: null,
-      addEventListener,
-      removeEventListener,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(() => true),
-    }));
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string): MediaQueryList => ({
+        media: query,
+        get matches() {
+          return matches;
+        },
+        onchange: null,
+        addEventListener,
+        removeEventListener,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(() => true),
+      }),
+    );
     const { result, unmount } = renderHook(useReducedMotion);
     expect(result.current).toBe(false);
     act(() => {

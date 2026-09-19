@@ -188,7 +188,7 @@ pub(super) fn write(root: &Path, p: &str, g: &str, content: &str) -> Result<(), 
     {
         native::write(root, p, g, content)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
         let _ = (root, p, g, content, MAX_CONTEXT_BYTES);
         Err(project_error("platform_unavailable"))
@@ -199,7 +199,7 @@ pub(super) fn read(root: &Path, p: &str, g: &str) -> Result<String, AppError> {
     {
         native::read(root, p, g)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
         let _ = (root, p, g, MAX_CONTEXT_BYTES);
         Err(project_error("platform_unavailable"))
@@ -223,7 +223,7 @@ pub(super) fn prepare_codex(root: &Path, p: &str, g: &str, content: &str) -> Res
     {
         native::prepare_codex(root, p, g, content)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
         let _ = (root, p, g, content);
         Err(project_error("platform_unavailable"))
@@ -234,7 +234,7 @@ pub(super) fn verify_codex(root: &Path, p: &str, g: &str, content: &str) -> Resu
     {
         native::verify_codex(root, p, g, content)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
         let _ = (root, p, g, content, CODEX_CONFIG);
         Err(project_error("platform_unavailable"))

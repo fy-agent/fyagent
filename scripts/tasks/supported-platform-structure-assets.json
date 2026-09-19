@@ -243,7 +243,7 @@
     ],
     [
       "src-tauri/src/services/projects/files.rs",
-      "bbf5f3ed67fb14f07ba5388e2181c08cf84ed27cd5f09e00a36ce607a3ecc9ff"
+      "d13672c8e4f669f7eab07ab95eb9c179f957ff74797cc976092b89ef8e6a8038"
     ],
     [
       "src-tauri/src/services/projects/mod.rs",
@@ -255,7 +255,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "50f48ec425e0176fa0683d5edde64c493a450b8bc11b2aa0a13b654b91a65b67"
+      "7521ca4261e79567c3816144b02d863d7e599ca74295ef4bc092714a7b15bead"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",

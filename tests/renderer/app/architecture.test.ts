@@ -483,28 +483,37 @@ describe("FyAgent single renderer architecture boundary", () => {
     ).toEqual([]);
   });
 
-  it("loads all nine primary product pages through literal dynamic imports", () => {
+  it("loads all nine primary route entries through literal dynamic imports", () => {
     const pages = fs.readFileSync(
       path.join(sourceRoot, "app/primaryPages.tsx"),
       "utf8",
     );
     const routeModules = [
-      "projects",
-      "agents",
-      "health",
-      "auth",
-      "models",
-      "skills",
-      "mcp",
-      "prompts",
-      "memory",
+      "./ProjectsWorkspace",
+      "../pages/agents/Page",
+      "../pages/health/Page",
+      "../pages/auth/Page",
+      "../pages/models/Page",
+      "../pages/skills/Page",
+      "../pages/mcp/Page",
+      "../pages/prompts/Page",
+      "../pages/memory/Page",
     ];
 
-    for (const route of routeModules) {
-      expect(pages).toContain(`import("../pages/${route}/Page")`);
-      expect(pages).not.toMatch(
-        new RegExp(`^import[^\\n]+pages/${route}/Page`, "mu"),
+    for (const specifier of routeModules) {
+      expect(pages).toContain(`import("${specifier}")`);
+      const primaryPages = parsedModules.find(
+        (module) => relativeSourcePath(module.file) === "app/primaryPages.tsx",
       );
+      expect(primaryPages).toBeDefined();
+      expect(
+        primaryPages?.sourceFile.statements.some(
+          (statement) =>
+            ts.isImportDeclaration(statement) &&
+            ts.isStringLiteralLike(statement.moduleSpecifier) &&
+            statement.moduleSpecifier.text === specifier,
+        ),
+      ).toBe(false);
     }
   });
 

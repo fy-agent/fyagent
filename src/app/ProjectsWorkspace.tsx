@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ProjectsPage, type ProjectPanelProps } from "../pages/projects/Page";
 import { ProjectDeliveryKitsPanel } from "../shared/features/delivery-kits-ui/ProjectDeliveryKitsPanel";
@@ -11,14 +11,31 @@ import type {
 } from "../shared/features/delivery-kits";
 
 function DeliveryPanel(props: ProjectPanelProps) {
+  return (
+    <DeliverySession
+      key={`${props.projectId}:${props.projectRevision}:${props.disabled || props.archived}`}
+      {...props}
+    />
+  );
+}
+
+function DeliverySession(props: ProjectPanelProps) {
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
   const { ports } = useFeatures();
   const client = useQueryClient();
   const projectAdapter = useMemo<KitProjectAdapter>(
     () => ({
       bindDeliveryKit: async (request) => {
-        if (props.disabled || props.archived)
+        if (!live.current || props.disabled || props.archived)
           throw new Error("project_changed");
         const result = await ports.projects.bindDeliveryKit(request);
+        if (!live.current) throw new Error("project_changed");
         await client.invalidateQueries({
           queryKey: featureKeys.verification(request.projectId),
         });
@@ -30,10 +47,11 @@ function DeliveryPanel(props: ProjectPanelProps) {
   const evidenceAdapter = useMemo<KitEvidenceAdapter>(
     () => ({
       recordLocalFixture: async (request) => {
-        if (props.disabled || props.archived)
+        if (!live.current || props.disabled || props.archived)
           throw new Error("project_changed");
         const project = await ports.projects.get(request.projectId);
         if (
+          !live.current ||
           project.projectRevision !== request.projectRevision ||
           project.kit?.kitId !== request.kitId ||
           project.kit.kitVersion !== request.kitVersion ||
@@ -48,6 +66,7 @@ function DeliveryPanel(props: ProjectPanelProps) {
           fixture: "baseline",
           runId,
         });
+        if (!live.current) throw new Error("project_changed");
         const record = snapshot.evidence.find((entry) => entry.id === runId);
         if (
           !record ||

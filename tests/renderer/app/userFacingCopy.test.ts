@@ -96,7 +96,7 @@ function collectCopy(file: string): CopyOccurrence[] {
 }
 
 describe("FyAgent user-facing copy contract", () => {
-  it("keeps reviewed secondary-page narration out of all eight route families", () => {
+  it("keeps reviewed secondary-page narration out of all nine route families", () => {
     // These are concrete retired strings, not an AI-authorship detector or
     // a length limit for useful explanations, warnings or user-authored text.
     const retiredCopy = [
@@ -127,6 +127,7 @@ describe("FyAgent user-facing copy contract", () => {
       "mcp",
       "memory",
       "models",
+      "projects",
       "prompts",
       "skills",
     ]);

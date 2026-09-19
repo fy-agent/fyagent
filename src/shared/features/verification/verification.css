@@ -1,8 +1,8 @@
 .fy-verification {
   display: grid;
-  gap: var(--space-4, 16px);
+  gap: var(--fy-space-lg);
   min-width: 0;
-  padding: var(--space-4, 16px);
+  padding: var(--fy-space-lg);
   color: var(--fy-text);
 }
 .fy-verification h2,
@@ -65,7 +65,7 @@
   color: var(--fy-text);
   background: var(--fy-surface);
   border: 1px solid var(--fy-border);
-  border-radius: var(--radius-control, 8px);
+  border-radius: var(--fy-radius-control);
   font: inherit;
 }
 .fy-verification-form .fy-verification-check {

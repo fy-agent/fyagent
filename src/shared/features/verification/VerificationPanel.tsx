@@ -66,6 +66,13 @@ function ProjectVerification({
   });
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
   const [error, setError] = useState("");
   const [needsReview, setNeedsReview] = useState(false);
   const [message, setMessage] = useState("");
@@ -81,7 +88,7 @@ function ProjectVerification({
     return () => window.clearInterval(timer);
   }, [visible]);
   async function act(action: () => Promise<VerificationSnapshot | void>) {
-    if (!visible || lock.current) return;
+    if (!visible || !live.current || lock.current) return;
     lock.current = true;
     setBusy(true);
     setError("");
@@ -89,11 +96,13 @@ function ProjectVerification({
     setPreview(null);
     try {
       const result = await action();
+      if (!live.current) return;
       if (result) {
         client.setQueryData(featureKeys.verification(projectId), result);
         setNeedsReview(false);
       }
     } catch {
+      if (!live.current) return;
       setNeedsReview(true);
       setError("操作未完成，请刷新并检查配置、范围与依据后重试。");
       await client.invalidateQueries({
@@ -102,7 +111,7 @@ function ProjectVerification({
       });
     } finally {
       lock.current = false;
-      setBusy(false);
+      if (live.current) setBusy(false);
     }
   }
   const data = query.data;
@@ -215,14 +224,19 @@ function ProjectVerification({
             onClick={() =>
               void ports.verification
                 .cancel(projectId)
-                .then((accepted) =>
-                  setMessage(
-                    accepted
-                      ? "已请求取消，正在保存检查结果。"
-                      : "本次操作已结束或不支持取消。",
-                  ),
+                .then(
+                  (accepted) =>
+                    live.current &&
+                    setMessage(
+                      accepted
+                        ? "已请求取消，正在保存检查结果。"
+                        : "本次操作已结束或不支持取消。",
+                    ),
                 )
-                .catch(() => setError("取消未完成，请等待检查结束。"))
+                .catch(
+                  () =>
+                    live.current && setError("取消未完成，请等待检查结束。"),
+                )
             }
           >
             取消检查
@@ -358,7 +372,7 @@ function ProjectVerification({
           onSubmit={(request) =>
             act(async () => {
               const result = await ports.verification.record(request);
-              setManualOpen(false);
+              if (live.current) setManualOpen(false);
               return result;
             })
           }
@@ -386,7 +400,8 @@ function ProjectVerification({
           disabled={!visible || busy || !data}
           onClick={() =>
             void act(async () => {
-              setPreview(await ports.verification.preview(projectId));
+              const result = await ports.verification.preview(projectId);
+              if (live.current) setPreview(result);
             })
           }
         >
@@ -415,7 +430,8 @@ function ProjectVerification({
                       projectId,
                       format,
                     );
-                    setMessage(saved ? "交接文件已导出。" : "已取消导出。");
+                    if (live.current)
+                      setMessage(saved ? "交接文件已导出。" : "已取消导出。");
                   })
                 }
               >
