@@ -154,3 +154,29 @@ Installed and native-tested local 0.4.5 with Codex Health uncertainty and Prompt
 ### Status
 
 [OK] **Completed**
+
+
+## Session 10: FDE delivery integration and native acceptance
+<!-- trellis-session: v=2 fp=1491b3ca719c7887 -->
+
+**Date**: 2026-09-19
+**Task**: FDE delivery integration and native acceptance
+**Branch**: `codex/fde-delivery-integration`
+
+### Summary
+
+Completed four FDE workstreams, project UX refinement, independent review fixes, native isolated workflow and 0.4.5 local installation. Preserved original dirty checkout and eleven live business tables. Standard mode after user override. Upstream glib, real-service/Windows/release evidence and independent subscription migration collision remain explicit boundaries.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0a08c38f` | feat(fde): connect project delivery packages to durable verification and handoff |
+| `d2a5dc7d` | fix(fde): bind saved-model probes and results to the current project context |
+| `26efebed` | fix(fde): preserve legacy upgrades and defer project features at startup |
+| `cd8b4ced` | fix(fde): organize project workspaces and preserve verification drafts |
+| `c6cfbe94` | fix(projects): fill desktop workspace and show fresh verification results |
+
+### Status
+
+[OK] **Completed**
