@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/modular-boundaries.md", "reason": "Shared ports and project composition"}
+{"file": ".trellis/spec/frontend/navigation.md", "reason": "One project route and lazy keep-alive ownership"}
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "Command service ACL composition"}
+{"file": ".trellis/spec/backend/database-persistence.md", "reason": "Single additive schema and local-only sync"}
+{"file": ".trellis/tasks/09-19-fde-delivery-integration/coordination-contract.md", "reason": "Approved cross-workstream interfaces"}
