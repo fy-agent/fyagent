@@ -27,7 +27,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "1dc9568d77f556679c83ce330253cb4129674ca4e6cd0c7a2abb5942ff6e8ced"
+      "245b4e2ad773c9a3d35c39d8d78c3eb06af4355b6a7bf0f0a3f7723cccf4e1e0"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -147,11 +147,11 @@
     ],
     [
       "src-tauri/src/config.rs",
-      "824c10789ed99c53cc341792c849bf9da476ee3b0987f6806847e63419041545"
+      "48818e3539ed99248a278460f96d76b67932eff23cbf2457003ad534c630cfb0"
     ],
     [
       "src-tauri/src/config/recovery.rs",
-      "d0cc34f8fc541e341b836f56fe1c2d95482a45029097024bd61825132ed257cc"
+      "6f35ea0b5e3b238e7cd386323c2f299a654a3c980354d8b0614a571d157add0e"
     ],
     [
       "src-tauri/src/gemini_config.rs",
@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "e2360314d01cbd0d7086b15a15eeb37111f6c98cb9e039e05e2d58a05252650b"
+      "9836a04d6b9e0b5feeff878a670a24e3325722b0b137ce2fe766cc38693e1555"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -230,12 +230,16 @@
       "c54bbf91b40da1f3be7a74619ed120571f90c9d0c0ed526fdf2fbd0b43947d91"
     ],
     [
+      "src-tauri/src/services/managed_auth/subscription_tests.rs",
+      "5d0fc9c71a5f86af4f83a06e3244715bce1b8b9b6611a911a0a1bf73bea3951c"
+    ],
+    [
       "src-tauri/src/services/model_probe.rs",
       "f5c87f86e62c5738d3c345e191960d02100b3df8b79f74ec9e1909428f0e0578"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "640f6b6dc65d471506864d7390622fe57880aa76bc12c1cd8595fee7962418b0"
+      "f538c3e299f3a0dd18baac2a8bfc8db2c59ccc39de7e0a6bd474aea7b06db345"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -411,7 +415,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "b2b6c810ea4deb76c2efa5727b7c62e98eb14c2ab57095bc2e190f795a654855"
+      "d842533da089afa040665d72cbab87a1e2a7ba4065eee47d49248c28407c34ce"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

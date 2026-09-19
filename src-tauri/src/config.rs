@@ -11,7 +11,8 @@ use crate::error::AppError;
 mod recovery;
 
 pub(crate) use recovery::{
-    file_mutation_scope, file_recovery, restore_file_recovery, FileRecovery,
+    file_mutation_expected_hash, file_mutation_scope, file_recovery,
+    restore_file_preimage_if_owned, restore_file_recovery, FileRecovery,
 };
 
 /// Native-resolved display metadata. It is deliberately Serialize-only: a
@@ -350,14 +351,18 @@ pub fn write_json_file_with_contents<T: Serialize>(
         fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
     }
 
+    let contents = json_file_contents(data)?;
+    atomic_write(path, &contents)?;
+    Ok(contents)
+}
+
+pub(crate) fn json_file_contents<T: Serialize>(data: &T) -> Result<Vec<u8>, AppError> {
     let value = serde_json::to_value(data).map_err(|e| AppError::JsonSerialize { source: e })?;
     let sorted_value = sort_json_keys(&value);
     let json = serde_json::to_string_pretty(&sorted_value)
         .map_err(|e| AppError::JsonSerialize { source: e })?;
 
-    let contents = json.into_bytes();
-    atomic_write(path, &contents)?;
-    Ok(contents)
+    Ok(json.into_bytes())
 }
 
 /// 写入 JSON 配置文件（键按字母排序，确保确定性输出）

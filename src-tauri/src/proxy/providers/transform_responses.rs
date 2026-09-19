@@ -385,62 +385,16 @@ pub fn anthropic_to_responses(
         result["prompt_cache_key"] = json!(key);
     }
 
-    // Codex OAuth (ChatGPT Plus/Pro 反代) 特殊协议约束：
-    // 整体依据：OpenAI 官方 codex-rs 的 `ResponsesApiRequest` 结构体
-    // (codex-rs/codex-api/src/common.rs) 是 ChatGPT 反代后端的协议契约。
-    // 任何不在该结构体里的字段都可能被 ChatGPT 后端以
-    // "Unsupported parameter: ..." 400 拒绝；任何在结构体里的必填字段
-    // 都需要在请求体里出现。
-    //
-    // 字段处理：
-    // - store: 必须显式为 false（ChatGPT 消费级后端不允许服务端持久化）
-    // - include: 必须包含 "reasoning.encrypted_content"，
-    //   否则多轮 reasoning 中间态会丢失（无服务端状态 + 无加密回传 = 上下文断链）
-    // - max_output_tokens / temperature / top_p: 必须删除
-    //   （codex-rs 结构体根本没有这三个字段，OpenAI 自己的客户端不发它们）
-    // - instructions / tools / parallel_tool_calls: 必填字段，缺则兜底默认值
-    //   （fyagent 的 transform 当前是"条件写入"，可能产生缺失）
-    // - service_tier: 仅在 FAST mode 开启时写入 "priority"
-    //   （与 OpenAI 官方 codex-rs 当前请求结构保持一致）
-    // - stream: 必须永远 true（codex-rs 硬编码 true，且 fyagent 的
-    //   SSE 解析层只处理流式响应，强制覆盖避免客户端误传 false）
+    // Keep Claude's FAST choice here; vendor-required generation fields are
+    // shared with native Responses callers and reapplied after final overrides.
     if is_codex_oauth {
-        result["store"] = json!(false);
         if codex_fast_mode {
             result["service_tier"] = json!("priority");
         }
-
-        const REASONING_MARKER: &str = "reasoning.encrypted_content";
-        let mut includes: Vec<Value> = body
-            .get("include")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-        if !includes
-            .iter()
-            .any(|v| v.as_str() == Some(REASONING_MARKER))
-        {
-            includes.push(json!(REASONING_MARKER));
+        if let Some(include) = body.get("include") {
+            result["include"] = include.clone();
         }
-        result["include"] = json!(includes);
-
-        if let Some(obj) = result.as_object_mut() {
-            // —— 删除 ChatGPT 反代不接受的字段 ——
-            obj.remove("max_output_tokens");
-            obj.remove("temperature");
-            obj.remove("top_p");
-
-            // —— 兜底必填字段（or_insert：客户端送了什么就保留，否则注入默认值）——
-            obj.entry("instructions".to_string()).or_insert(json!(""));
-            obj.entry("tools".to_string()).or_insert(json!([]));
-            obj.entry("parallel_tool_calls".to_string())
-                .or_insert(json!(false));
-
-            // —— 强制覆盖 stream = true ——
-            // 即便客户端误传 stream:false 也要覆盖，因为 codex-rs 永远 true，
-            // 且 fyagent SSE 解析层只支持流式响应。
-            obj.insert("stream".to_string(), json!(true));
-        }
+        super::managed_responses::prepare_openai_generation(&mut result)?;
     }
 
     Ok(result)

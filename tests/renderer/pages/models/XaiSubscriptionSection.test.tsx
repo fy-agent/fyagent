@@ -61,6 +61,21 @@ function configuredPorts() {
     currentId: providerId,
     writeTargets,
   }));
+  ports.opencodeModels.bindManagedProxy = vi.fn(async () => ({
+    providerId,
+    providerName: "OpenCode subscription",
+    app: "opencode" as const,
+    activated: true,
+    alreadyBound: false,
+  }));
+  ports.opencodeModels.getSnapshot = vi.fn(async () => ({
+    providers: [{ id: providerId, name: "OpenCode subscription", modelIds }],
+    selectedModel: `${providerId}/${modelIds[1]}`,
+    revision: "revision-after",
+    path: "~/.config/opencode/opencode.json",
+    backupPath: "~/.config/opencode/opencode.json.fyagent.backup",
+    exists: true,
+  }));
   return ports;
 }
 
@@ -102,7 +117,7 @@ function LocationAndAuthority() {
 
 function renderSection(
   ports: FeaturePorts,
-  app: "claude" | "codex" | "grokbuild" = "claude",
+  app: "claude" | "codex" | "grokbuild" | "opencode" = "claude",
   active = true,
 ) {
   const onBegin = vi.fn(() => true);
@@ -113,8 +128,21 @@ function renderSection(
     return (
       <>
         <XaiSubscriptionSection
-          app={app}
-          writeTargets={writeTargets}
+          {...(app === "opencode"
+            ? { app, expectedRevision: "revision-before" }
+            : { app })}
+          writeTargets={
+            app === "opencode"
+              ? [
+                  {
+                    path: "~/.config/opencode/opencode.json",
+                    backupPath:
+                      "~/.config/opencode/opencode.json.fyagent.backup",
+                    exists: true,
+                  },
+                ]
+              : writeTargets
+          }
           onBeginWrite={onBegin}
           onEndWrite={onEnd}
           onUnconfirmed={() => {
@@ -157,6 +185,66 @@ async function selectAccountAndModel(
 }
 
 describe("Managed subscription selection and application", () => {
+  it("binds OpenCode with the confirmed revision, rereads its own snapshot and never switches another target", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    renderSection(ports, "opencode");
+    await selectAccountAndModel(user);
+    await user.click(screen.getByRole("button", { name: "应用到 OpenCode" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("~/.config/opencode/opencode.json"),
+    ).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "确认应用" }));
+    expect(
+      await screen.findByText("已将账号订阅应用到 OpenCode"),
+    ).toBeVisible();
+    expect(
+      ports.opencodeModels.bindManagedProxy,
+    ).toHaveBeenCalledExactlyOnceWith({
+      accountId: XAI_ACCOUNT_ID,
+      modelId: modelIds[1],
+      expectedRevision: "revision-before",
+    });
+    expect(ports.opencodeModels.getSnapshot).toHaveBeenCalledOnce();
+    expect(ports.managedAuth.getOverview).toHaveBeenCalledTimes(2);
+    expect(ports.providers.bindManagedProxy).not.toHaveBeenCalled();
+    expect(ports.providers.getSummary).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing-provider", "different-default"])(
+    "blocks OpenCode writes when saved model readback has %s",
+    async (mismatch) => {
+      const user = userEvent.setup();
+      const ports = configuredPorts();
+      const readSnapshot = ports.opencodeModels.getSnapshot;
+      ports.opencodeModels.getSnapshot = vi.fn(async () => ({
+        ...(await readSnapshot()),
+        ...(mismatch === "missing-provider"
+          ? { providers: [] }
+          : { selectedModel: `${providerId}/other-model` }),
+      }));
+      const { onUnconfirmed } = renderSection(ports, "opencode");
+      await selectAccountAndModel(user);
+      await user.click(screen.getByRole("button", { name: "应用到 OpenCode" }));
+      await user.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: "确认应用",
+        }),
+      );
+      expect(
+        await screen.findByText("设置已保存，当前状态待确认"),
+      ).toBeVisible();
+      expect(onUnconfirmed).toHaveBeenCalledOnce();
+      expect(
+        screen.getByRole("button", { name: "应用到 OpenCode" }),
+      ).toBeDisabled();
+      expect(
+        screen.queryByText("已将账号订阅应用到 OpenCode"),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it("uses an explicitly chosen account and suggested model without claiming entitlement, then rereads both owners", async () => {
     const user = userEvent.setup();
     const ports = configuredPorts();

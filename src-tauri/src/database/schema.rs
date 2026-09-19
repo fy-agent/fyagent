@@ -130,7 +130,7 @@ impl Database {
 
         // 8. Proxy Config 表（三行结构，app_type 主键）
         conn.execute("CREATE TABLE IF NOT EXISTS proxy_config (
-            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild')),
+            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild','opencode')),
             proxy_enabled INTEGER NOT NULL DEFAULT 0, listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
             listen_port INTEGER NOT NULL DEFAULT 15721, enable_logging INTEGER NOT NULL DEFAULT 1,
             enabled INTEGER NOT NULL DEFAULT 0, auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
@@ -550,6 +550,10 @@ impl Database {
                         log::info!("迁移数据库从 v20 到 v21（添加 Managed Auth 元数据）");
                         Self::migrate_v20_to_v21(conn)?;
                         Self::set_user_version(conn, 21)?;
+                    }
+                    21 => {
+                        Self::migrate_v21_to_v22(conn)?;
+                        Self::set_user_version(conn, 22)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1527,6 +1531,106 @@ impl Database {
             .map_err(|e| AppError::Database(e.to_string()))?;
         conn.execute(
             "INSERT OR IGNORE INTO proxy_config (app_type) VALUES ('grokbuild')",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// v21 -> v22: OpenCode has its own subscription proxy namespace.
+    fn migrate_v21_to_v22(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "proxy_config")? {
+            return Ok(());
+        }
+
+        conn.execute("DROP TABLE IF EXISTS proxy_config_v22", [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute(
+            "CREATE TABLE proxy_config_v22 (
+                app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild','opencode')),
+                proxy_enabled INTEGER NOT NULL DEFAULT 0,
+                listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
+                listen_port INTEGER NOT NULL DEFAULT 15721,
+                enable_logging INTEGER NOT NULL DEFAULT 1,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
+                max_retries INTEGER NOT NULL DEFAULT 3,
+                streaming_first_byte_timeout INTEGER NOT NULL DEFAULT 60,
+                streaming_idle_timeout INTEGER NOT NULL DEFAULT 120,
+                non_streaming_timeout INTEGER NOT NULL DEFAULT 600,
+                circuit_failure_threshold INTEGER NOT NULL DEFAULT 4,
+                circuit_success_threshold INTEGER NOT NULL DEFAULT 2,
+                circuit_timeout_seconds INTEGER NOT NULL DEFAULT 60,
+                circuit_error_rate_threshold REAL NOT NULL DEFAULT 0.6,
+                circuit_min_requests INTEGER NOT NULL DEFAULT 10,
+                default_cost_multiplier TEXT NOT NULL DEFAULT '1',
+                pricing_model_source TEXT NOT NULL DEFAULT 'response',
+                live_takeover_active INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let copied_columns = [
+            ("app_type", "'claude'"),
+            ("proxy_enabled", "0"),
+            ("listen_address", "'127.0.0.1'"),
+            ("listen_port", "15721"),
+            ("enable_logging", "1"),
+            ("enabled", "0"),
+            ("auto_failover_enabled", "0"),
+            ("max_retries", "3"),
+            ("streaming_first_byte_timeout", "60"),
+            ("streaming_idle_timeout", "120"),
+            ("non_streaming_timeout", "600"),
+            ("circuit_failure_threshold", "4"),
+            ("circuit_success_threshold", "2"),
+            ("circuit_timeout_seconds", "60"),
+            ("circuit_error_rate_threshold", "0.6"),
+            ("circuit_min_requests", "10"),
+            ("default_cost_multiplier", "'1'"),
+            ("pricing_model_source", "'response'"),
+            ("live_takeover_active", "0"),
+            ("created_at", "datetime('now')"),
+            ("updated_at", "datetime('now')"),
+        ]
+        .into_iter()
+        .map(|(column, fallback)| {
+            Self::has_column(conn, "proxy_config", column).map(|exists| {
+                if exists {
+                    format!("\"{column}\"")
+                } else {
+                    fallback.into()
+                }
+            })
+        })
+        .collect::<Result<Vec<_>, AppError>>()?
+        .join(", ");
+
+        let copy_sql = format!(
+            "INSERT INTO proxy_config_v22 (
+                app_type, proxy_enabled, listen_address, listen_port, enable_logging,
+                enabled, auto_failover_enabled, max_retries,
+                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests,
+                default_cost_multiplier, pricing_model_source, live_takeover_active,
+                created_at, updated_at
+            )
+            SELECT {copied_columns} FROM proxy_config"
+        );
+        conn.execute(&copy_sql, [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        conn.execute("DROP TABLE proxy_config", [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute("ALTER TABLE proxy_config_v22 RENAME TO proxy_config", [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO proxy_config (app_type) VALUES ('opencode')",
             [],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -3460,6 +3564,78 @@ mod tests {
         let memory_conn = lock_conn!(memory.conn);
         assert_eq!(change_plan_table_count(&memory_conn)?, 3);
         assert_managed_auth_contract(&memory_conn)?;
+        Ok(())
+    }
+
+    #[test]
+    fn subscription_opencode_schema_migrates_v21_preserving_every_existing_column(
+    ) -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch("CREATE TABLE proxy_config (app_type TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 0);
+            INSERT INTO proxy_config (app_type, enabled) VALUES ('claude', 1), ('codex', 0), ('gemini', 1);")?;
+        Database::migrate_v13_to_v14(&conn)?;
+        conn.execute_batch(
+            "UPDATE proxy_config SET listen_port=32123, auto_failover_enabled=1,
+            default_cost_multiplier='2.75', pricing_model_source='request', max_retries=9,
+            created_at='original-created', updated_at='original-updated' WHERE app_type='claude';",
+        )?;
+        let read_rows = || -> Result<Vec<Vec<rusqlite::types::Value>>, rusqlite::Error> {
+            let mut statement = conn.prepare(
+                "SELECT * FROM proxy_config WHERE app_type != 'opencode' ORDER BY app_type",
+            )?;
+            let count = statement.column_count();
+            let rows = statement
+                .query_map([], |row| (0..count).map(|index| row.get(index)).collect())?
+                .collect();
+            rows
+        };
+        let before = read_rows()?;
+        Database::set_user_version(&conn, 21)?;
+        Database::apply_schema_migrations_on_conn(&conn)?;
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        assert_eq!(read_rows()?, before);
+        let state: (bool, bool) = conn.query_row(
+            "SELECT enabled, auto_failover_enabled FROM proxy_config WHERE app_type='opencode'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(state, (false, false));
+        assert!(conn
+            .execute(
+                "INSERT INTO proxy_config (app_type) VALUES ('unsupported')",
+                []
+            )
+            .is_err());
+        Database::apply_schema_migrations_on_conn(&conn)?;
+        assert_eq!(read_rows()?, before);
+        let fresh = Database::memory()?;
+        assert!(fresh
+            .conn
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT OR REPLACE INTO proxy_config (app_type) VALUES ('opencode')",
+                []
+            )
+            .is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn subscription_opencode_schema_failed_copy_rolls_back_the_whole_migration(
+    ) -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE proxy_config (app_type TEXT PRIMARY KEY, enabled INTEGER);
+            INSERT INTO proxy_config VALUES ('unknown-imported-target', 1);",
+        )?;
+        Database::set_user_version(&conn, 21)?;
+        assert!(Database::apply_schema_migrations_on_conn(&conn).is_err());
+        assert_eq!(Database::get_user_version(&conn)?, 21);
+        let row: String =
+            conn.query_row("SELECT app_type FROM proxy_config", [], |row| row.get(0))?;
+        assert_eq!(row, "unknown-imported-target");
+        assert!(!Database::table_exists(&conn, "proxy_config_v22")?);
         Ok(())
     }
 

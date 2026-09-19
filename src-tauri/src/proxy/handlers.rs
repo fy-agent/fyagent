@@ -787,6 +787,13 @@ pub async fn handle_grokbuild_responses(
     .await
 }
 
+pub async fn handle_opencode_responses(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_responses_for_app(state, request, AppType::OpenCode, "OpenCode", "opencode").await
+}
+
 async fn handle_responses_for_app(
     state: ProxyState,
     request: axum::extract::Request,
@@ -805,11 +812,26 @@ async fn handle_responses_for_app(
         .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
         .to_bytes();
     let body_bytes = decode_codex_request_body(&mut headers, body_bytes)?;
-    let body: Value = serde_json::from_slice(&body_bytes)
+    let mut body: Value = serde_json::from_slice(&body_bytes)
         .map_err(|e| ProxyError::Internal(format!("Failed to parse request body: {e}")))?;
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, app_type.clone(), tag, app_type_str).await?;
+    if app_type == AppType::OpenCode {
+        let models = ctx
+            .provider
+            .settings_config
+            .get("models")
+            .and_then(Value::as_object)
+            .filter(|models| models.len() == 1)
+            .ok_or_else(|| {
+                ProxyError::ConfigError("OpenCode subscription model unavailable".into())
+            })?;
+        let model = models.keys().next().ok_or_else(|| {
+            ProxyError::ConfigError("OpenCode subscription model unavailable".into())
+        })?;
+        body["model"] = json!(model);
+    }
     let endpoint = endpoint_with_query(&uri, "/responses");
 
     let is_stream = body
@@ -849,6 +871,29 @@ async fn handle_responses_for_app(
     ctx.outbound_model = result.outbound_model.take();
     ctx.provider = result.provider;
     let response = result.response;
+    // ChatGPT requires an SSE upstream even when an SDK caller requested JSON.
+    // Rebuild only this subscription response, retaining the shared bounded
+    // body reader, connection lifetime and non-streaming usage owner.
+    let response = if ctx.provider.is_codex_oauth() && !is_stream && response.is_sse() {
+        let timeout =
+            std::time::Duration::from_secs(ctx.app_config.non_streaming_timeout.max(1) as u64);
+        let (mut headers, status, bytes) = read_decoded_body(response, ctx.tag, timeout).await?;
+        let value = responses_sse_to_response_value(&String::from_utf8_lossy(&bytes))?;
+        strip_entity_headers_for_rebuilt_body(&mut headers);
+        headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static("application/json"),
+        );
+        super::hyper_client::ProxyResponse::buffered(
+            status,
+            headers,
+            Bytes::from(serde_json::to_vec(&value).map_err(|_| {
+                ProxyError::Internal("Subscription response encoding failed".into())
+            })?),
+        )
+    } else {
+        response
+    };
 
     if super::providers::should_convert_codex_responses_to_anthropic(&ctx.provider, &endpoint) {
         return handle_codex_anthropic_to_responses_transform(
@@ -2068,7 +2113,7 @@ fn responses_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
                     output_items.push(item.clone());
                 }
             }
-            "response.completed" => {
+            "response.completed" | "response.incomplete" => {
                 completed_response = Some(data.get("response").cloned().unwrap_or(data));
             }
             "response.failed" => {
@@ -3270,6 +3315,16 @@ data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"upstr
             ProxyError::TransformError(msg) => assert!(msg.contains("upstream blew up")),
             other => panic!("expected TransformError, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn subscription_responses_nonstream_preserves_incomplete_terminal_and_tool_output() {
+        let sse = "event: response.output_item.done\ndata: {\"item\":{\"type\":\"function_call\",\"call_id\":\"call-1\",\"name\":\"tool\",\"arguments\":\"{}\"}}\n\nevent: response.incomplete\ndata: {\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"usage\":{\"output_tokens\":4}}}\n\n";
+        let value = responses_sse_to_response_value(sse).unwrap();
+        assert_eq!(value["status"], "incomplete");
+        assert_eq!(value["incomplete_details"]["reason"], "max_output_tokens");
+        assert_eq!(value["output"][0]["call_id"], "call-1");
+        assert_eq!(value["usage"]["output_tokens"], 4);
     }
 
     #[test]

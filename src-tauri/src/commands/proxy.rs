@@ -56,6 +56,19 @@ pub async fn set_proxy_takeover_for_app(
     app_type: String,
     enabled: bool,
 ) -> Result<(), String> {
+    if enabled && app_type != "opencode" {
+        let app = app_type.parse().map_err(|_| "Invalid proxy target")?;
+        let cloned_state = state.inner().clone();
+        if tauri::async_runtime::spawn_blocking(move || {
+            crate::services::ProviderService::resume_managed_proxy(&cloned_state, app)
+        })
+        .await
+        .map_err(|_| "Managed subscription activation unavailable")?
+        .map_err(|_| "Managed subscription activation failed")?
+        {
+            return Ok(());
+        }
+    }
     state
         .proxy_service
         .set_takeover_for_app(&app_type, enabled)

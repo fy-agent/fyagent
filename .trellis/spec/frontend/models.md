@@ -87,6 +87,8 @@ interface WorkBuddyPort {
 }
 
 interface OpenCodeModelsPort {
+  restoreManagedProxy(): Promise<void>;
+  bindManagedProxy(request: BindOpenCodeManagedRequest): Promise<BindOpenCodeManagedResult>;
   getSnapshot(): Promise<OpenCodeModelSnapshot>;
   fetchProviderModels(
     request: OpenCodeFetchModelsRequest,

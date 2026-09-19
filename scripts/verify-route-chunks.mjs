@@ -20,6 +20,7 @@ export const RENDERER_ROUTE_ENTRIES = Object.freeze([
 // Keep the list explicit: additional lazy entries still require review.
 export const RENDERER_DEFERRED_PORT_ENTRIES = Object.freeze([
   "shared/platform/tauri/feature-ports/health.ts",
+  "shared/platform/tauri/feature-ports/managedSubscriptions.ts",
 ]);
 
 export const RENDERER_BUILD_BUDGET = Object.freeze({

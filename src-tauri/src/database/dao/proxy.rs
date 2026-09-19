@@ -328,7 +328,7 @@ impl Database {
                 "claude" => (6, 90, 180, 8, 3, 90, 0.7, 15),
                 "codex" => (3, 60, 120, 4, 2, 60, 0.6, 10),
                 "gemini" => (5, 60, 120, 4, 2, 60, 0.6, 10),
-                "grokbuild" => (3, 60, 120, 4, 2, 60, 0.6, 10),
+                "grokbuild" | "opencode" => (3, 60, 120, 4, 2, 60, 0.6, 10),
                 _ => (3, 60, 120, 4, 2, 60, 0.6, 10), // 默认值
             };
 
@@ -407,6 +407,18 @@ impl Database {
                 circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
                 circuit_error_rate_threshold, circuit_min_requests
             ) VALUES ('grokbuild', 3, 60, 120, 600, 4, 2, 60, 0.6, 10)",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // opencode: Responses protocol, same timeout defaults as Codex.
+        conn.execute(
+            "INSERT OR IGNORE INTO proxy_config (
+                app_type, max_retries,
+                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests
+            ) VALUES ('opencode', 3, 60, 120, 600, 4, 2, 60, 0.6, 10)",
             [],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -781,6 +793,14 @@ impl Database {
         app_type: &str,
         config_json: &str,
     ) -> Result<(), AppError> {
+        self.save_live_backup_sync(app_type, config_json)
+    }
+
+    pub(crate) fn save_live_backup_sync(
+        &self,
+        app_type: &str,
+        config_json: &str,
+    ) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
         let now = chrono::Utc::now().to_rfc3339();
 
@@ -823,6 +843,13 @@ impl Database {
 
     /// 获取 Live 配置备份
     pub async fn get_live_backup(&self, app_type: &str) -> Result<Option<LiveBackup>, AppError> {
+        self.get_live_backup_sync(app_type)
+    }
+
+    pub(crate) fn get_live_backup_sync(
+        &self,
+        app_type: &str,
+    ) -> Result<Option<LiveBackup>, AppError> {
         let conn = lock_conn!(self.conn);
 
         let result = conn.query_row(

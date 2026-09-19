@@ -23,25 +23,45 @@ pub(crate) fn prepare_request(
         super::transform_codex_responses_xai_sanitize::sanitize_xai_responses_request(body);
         prepare_grok(body)?;
     } else if provider.is_codex_oauth() {
-        let fields = body.as_object_mut().ok_or_else(invalid_body)?;
-        fields.insert("store".into(), Value::Bool(false));
-        fields.remove("max_output_tokens");
-        let include = fields
-            .entry("include")
-            .or_insert_with(|| Value::Array(Vec::new()))
-            .as_array_mut()
-            .ok_or_else(invalid_body)?;
-        if !include.iter().all(Value::is_string) {
-            return Err(invalid_body());
-        }
-        let mut seen = std::collections::HashSet::new();
-        include.retain(|item| seen.insert(item.as_str().unwrap_or_default().to_owned()));
-        if !include
-            .iter()
-            .any(|item| item.as_str() == Some(ENCRYPTED_REASONING))
-        {
-            include.push(Value::String(ENCRYPTED_REASONING.into()));
-        }
+        prepare_openai_generation(body)?;
+    }
+    Ok(())
+}
+
+/// ChatGPT's generation policy is shared by native Responses callers and
+/// converted Claude Messages. Callers retain downstream streaming intent and
+/// any explicit service tier; only the upstream transport is forced to SSE.
+pub(crate) fn prepare_openai_generation(body: &mut Value) -> Result<(), ProxyError> {
+    let fields = body.as_object_mut().ok_or_else(invalid_body)?;
+    fields.insert("store".into(), Value::Bool(false));
+    fields.insert("stream".into(), Value::Bool(true));
+    for key in ["max_output_tokens", "temperature", "top_p"] {
+        fields.remove(key);
+    }
+    fields
+        .entry("instructions")
+        .or_insert_with(|| Value::String(String::new()));
+    fields
+        .entry("tools")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    fields
+        .entry("parallel_tool_calls")
+        .or_insert(Value::Bool(false));
+    let include = fields
+        .entry("include")
+        .or_insert_with(|| Value::Array(Vec::new()))
+        .as_array_mut()
+        .ok_or_else(invalid_body)?;
+    if !include.iter().all(Value::is_string) {
+        return Err(invalid_body());
+    }
+    let mut seen = std::collections::HashSet::new();
+    include.retain(|item| seen.insert(item.as_str().unwrap_or_default().to_owned()));
+    if !include
+        .iter()
+        .any(|item| item.as_str() == Some(ENCRYPTED_REASONING))
+    {
+        include.push(Value::String(ENCRYPTED_REASONING.into()));
     }
     Ok(())
 }
@@ -169,13 +189,19 @@ mod tests {
 
     #[test]
     fn openai_final_policy_is_idempotent_and_does_not_touch_native_or_api_key() {
-        let original =
-            json!({"store":true,"max_output_tokens":123,"input":"hello", "include":["foo","foo"]});
+        let original = json!({
+            "store":true,"stream":false,"max_output_tokens":123,
+            "temperature":0.7,"top_p":0.9,"input":"hello", "include":["foo","foo"]
+        });
         let mut body = original.clone();
         prepare_request(&provider("codex_oauth"), "/responses", &mut body).unwrap();
         assert_eq!(
             body,
-            json!({"store":false,"input":"hello","include":["foo",ENCRYPTED_REASONING]})
+            json!({
+                "store":false,"stream":true,"input":"hello",
+                "instructions":"","tools":[],"parallel_tool_calls":false,
+                "include":["foo",ENCRYPTED_REASONING]
+            })
         );
         let expected = body.clone();
         prepare_request(&provider("codex_oauth"), "/v1/responses?test=1", &mut body).unwrap();
@@ -188,6 +214,55 @@ mod tests {
             prepare_request(&provider(kind), path, &mut unchanged).unwrap();
             assert_eq!(unchanged, original);
         }
+    }
+
+    #[test]
+    fn openai_native_responses_preserves_tools_history_and_explicit_policies() {
+        let mut body = json!({
+            "model":"gpt-5-codex", "instructions":"Keep the supplied instructions",
+            "tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],
+            "parallel_tool_calls":true,"service_tier":"priority","stream":false,
+            "input":[
+                {"type":"reasoning","encrypted_content":"opaque-reasoning"},
+                {"type":"function_call","call_id":"call1","name":"lookup","arguments":"{}"},
+                {"type":"function_call_output","call_id":"call1","output":""}
+            ],
+            "include":[ENCRYPTED_REASONING,ENCRYPTED_REASONING,"web_search_call.action.sources"]
+        });
+        let original = body.clone();
+        prepare_request(&provider("codex_oauth"), "/v1/responses", &mut body).unwrap();
+        for key in [
+            "model",
+            "instructions",
+            "tools",
+            "parallel_tool_calls",
+            "service_tier",
+            "input",
+        ] {
+            assert_eq!(body[key], original[key], "preserve {key}");
+        }
+        assert_eq!(body["stream"], true);
+        assert_eq!(body["store"], false);
+        assert_eq!(
+            body["include"],
+            json!([ENCRYPTED_REASONING, "web_search_call.action.sources"])
+        );
+        let expected = body.clone();
+        prepare_request(&provider("codex_oauth"), "/responses", &mut body).unwrap();
+        assert_eq!(body, expected);
+    }
+
+    #[test]
+    fn openai_minimal_native_request_gets_generation_defaults_without_fast_mode() {
+        let mut body = json!({"model":"gpt-5-codex","input":[{"role":"user","content":"hello"}]});
+        prepare_request(&provider("codex_oauth"), "/responses", &mut body).unwrap();
+        assert_eq!(body["instructions"], "");
+        assert_eq!(body["tools"], json!([]));
+        assert_eq!(body["parallel_tool_calls"], false);
+        assert_eq!(body["stream"], true);
+        assert_eq!(body["store"], false);
+        assert_eq!(body["include"], json!([ENCRYPTED_REASONING]));
+        assert!(body.get("service_tier").is_none());
     }
 
     #[test]

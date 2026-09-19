@@ -75,12 +75,12 @@ afterEach(async () => {
 });
 
 describe("verifyRouteChunks", () => {
-  it("accepts eight distinct routes and the deferred health port outside the bounded initial graph", async () => {
+  it("accepts eight distinct routes and deferred health/subscription ports outside the bounded initial graph", async () => {
     const distributionDirectory = await fixture();
     const result = await verifyRouteChunks({ distributionDirectory });
 
     expect(result.routeChunks).toHaveLength(8);
-    expect(result.deferredPortChunks).toHaveLength(1);
+    expect(result.deferredPortChunks).toHaveLength(2);
     expect(result.initialChunks.map((chunk) => chunk.file).sort()).toEqual([
       "assets/index.js",
       "assets/main.js",
@@ -88,7 +88,7 @@ describe("verifyRouteChunks", () => {
     ]);
   });
 
-  it.each([RENDERER_ROUTE_ENTRIES[0], RENDERER_DEFERRED_PORT_ENTRIES[0]])(
+  it.each([RENDERER_ROUTE_ENTRIES[0], ...RENDERER_DEFERRED_PORT_ENTRIES])(
     "rejects %s if it leaks into the initial graph",
     async (key) => {
       const distributionDirectory = await fixture((manifest) => {

@@ -19,6 +19,8 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::RwLock;
 
+mod managed_recovery;
+mod opencode;
 mod takeover;
 
 use takeover::{codex_config_has_base_url_matching, is_local_proxy_url, proxy_urls_match};
@@ -112,7 +114,12 @@ impl ProxyService {
         let proxy_url = format!("http://{}", std::net::SocketAddr::new(address, status.port));
         let codex_url = format!("{proxy_url}/v1");
         let mut unreadable = false;
-        for app in [AppType::Claude, AppType::Codex, AppType::GrokBuild] {
+        for app in [
+            AppType::Claude,
+            AppType::Codex,
+            AppType::GrokBuild,
+            AppType::OpenCode,
+        ] {
             let Some(provider) = self.get_current_provider_for_app(&app).ok()? else {
                 continue;
             };
@@ -231,23 +238,33 @@ impl ProxyService {
                 json!({"config": ""})
             }
             AppType::GrokBuild => self.read_grok_live()?,
+            AppType::OpenCode => json!({}),
             _ => return Err("Managed takeover target is unsupported".into()),
         };
-        if self
-            .db
-            .get_live_backup(app.as_str())
-            .await
-            .map_err(|e| e.to_string())?
-            .is_none()
-        {
-            self.db
-                .save_live_backup(
-                    app.as_str(),
-                    &serde_json::to_string(&existing).map_err(|e| e.to_string())?,
-                )
+        if *app != AppType::OpenCode {
+            let backup = self
+                .db
+                .get_live_backup(app.as_str())
                 .await
                 .map_err(|e| e.to_string())?;
+            if let Some(backup) = backup {
+                self.validate_existing_managed_backup(app, &backup.original_config)?;
+            } else {
+                self.db
+                    .save_live_backup(
+                        app.as_str(),
+                        &serde_json::to_string(&existing).map_err(|e| e.to_string())?,
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
         }
+        let before_files = if *app != AppType::OpenCode {
+            self.mark_managed_restore_proof(app, None)?;
+            Some(Self::managed_restore_files(app)?)
+        } else {
+            None
+        };
         match app {
             AppType::Claude => {
                 let mut projected = existing;
@@ -266,9 +283,19 @@ impl ProxyService {
                 self.sync_grok_live_from_provider_while_proxy_active(provider)
                     .await?
             }
+            AppType::OpenCode => {
+                let (url, _) = self.build_proxy_urls().await?;
+                self.project_opencode_managed_locked(provider, &url)?;
+            }
             _ => unreachable!(),
         }
-        if !self.live_takeover_matches_current_proxy(app).await? {
+        let endpoint_matches = if *app == AppType::OpenCode {
+            let (url, _) = self.build_proxy_urls().await?;
+            self.opencode_matches_provider(provider, &url)?
+        } else {
+            self.live_takeover_matches_current_proxy(app).await?
+        };
+        if !endpoint_matches {
             return Err("Subscription endpoint readback failed".into());
         }
         let mut app_config = self
@@ -292,6 +319,15 @@ impl ProxyService {
         if !observed.enabled || observed.auto_failover_enabled {
             return Err("Subscription routing state readback failed".into());
         }
+        #[cfg(test)]
+        self.observe_managed_activation(app, "before_proof")?;
+        if let Some(before) = before_files {
+            self.mark_managed_restore_proof(app, Some(Self::managed_written_files(app, before)?))?;
+        } else {
+            self.validate_opencode_managed_projection(provider)?;
+        }
+        #[cfg(test)]
+        self.observe_managed_activation(app, "projected")?;
         Ok(())
     }
 
@@ -369,9 +405,11 @@ impl ProxyService {
         let backup_settings = backup
             .as_ref()
             .map(|backup| {
-                serde_json::from_str::<Value>(&backup.original_config).map_err(|_| {
-                    AppError::Config("Codex live backup is not valid JSON".to_string())
-                })
+                serde_json::from_str::<Value>(&backup.original_config)
+                    .map_err(|_| {
+                        AppError::Config("Codex live backup is not valid JSON".to_string())
+                    })
+                    .and_then(|value| Self::unwrap_managed_backup(value).map_err(AppError::Config))
             })
             .transpose()?;
         let preservation_source = backup_settings.as_ref().unwrap_or(&live_settings);
@@ -1087,8 +1125,12 @@ impl ProxyService {
             .await
             .map(|c| c.enabled)
             .unwrap_or(false);
-        // OpenCode and OpenClaw don't support proxy features, always return false
-        let opencode_enabled = false;
+        let opencode_enabled = self
+            .db
+            .get_proxy_config_for_app("opencode")
+            .await
+            .map(|config| config.enabled)
+            .unwrap_or(false);
         let openclaw_enabled = false;
 
         Ok(ProxyTakeoverStatus {
@@ -1111,6 +1153,16 @@ impl ProxyService {
         let _guard = self.switch_locks.lock_for_app(app_type_str).await;
         let _activation_guard = self.lock_managed_activation(&app).await;
 
+        if enabled && app == AppType::OpenCode {
+            return Err("OpenCode requires the revisioned managed subscription binding".into());
+        }
+        if enabled
+            && self
+                .get_current_provider_for_app(&app)?
+                .is_some_and(|provider| provider.uses_subscription_proxy())
+        {
+            return Err("Managed subscriptions require the managed activation transaction".into());
+        }
         if enabled {
             // 1) 代理服务未运行则自动启动
             if !self.is_running().await {
@@ -1686,7 +1738,7 @@ impl ProxyService {
             .map_err(|e| format!("清除接管状态失败: {e}"))?;
 
         // 4. 清除所有应用的 enabled 状态（用户手动关闭，不需要下次自动恢复）
-        for app_type in ["claude", "codex", "gemini", "grokbuild"] {
+        for app_type in ["claude", "codex", "gemini", "grokbuild", "opencode"] {
             if let Ok(mut config) = self.db.get_proxy_config_for_app(app_type).await {
                 if config.enabled {
                     config.enabled = false;
@@ -2127,42 +2179,25 @@ impl ProxyService {
     }
 
     async fn restore_live_config_for_app_inner(&self, app_type: &AppType) -> Result<(), String> {
-        match app_type {
-            AppType::Claude => {
-                if let Ok(Some(backup)) = self.db.get_live_backup("claude").await {
-                    let config: Value = serde_json::from_str(&backup.original_config)
-                        .map_err(|e| format!("解析 Claude 备份失败: {e}"))?;
-                    self.write_claude_live(&config)?;
-                    log::info!("Claude Live 配置已恢复");
-                }
-            }
-            AppType::Codex => {
-                if let Ok(Some(backup)) = self.db.get_live_backup("codex").await {
-                    let config: Value = serde_json::from_str(&backup.original_config)
-                        .map_err(|e| format!("解析 Codex 备份失败: {e}"))?;
-                    self.write_codex_live(&config)?;
-                    log::info!("Codex Live 配置已恢复");
-                }
-            }
-            AppType::Gemini => {
-                if let Ok(Some(backup)) = self.db.get_live_backup("gemini").await {
-                    let config: Value = serde_json::from_str(&backup.original_config)
-                        .map_err(|e| format!("解析 Gemini 备份失败: {e}"))?;
-                    self.write_gemini_live(&config)?;
-                    log::info!("Gemini Live 配置已恢复");
-                }
-            }
-            AppType::GrokBuild => {
-                if let Ok(Some(backup)) = self.db.get_live_backup("grokbuild").await {
-                    let config: Value = serde_json::from_str(&backup.original_config)
-                        .map_err(|e| format!("解析 Grok Build 备份失败: {e}"))?;
-                    self.write_grok_live(&config)?;
-                    log::info!("Grok Build Live 配置已恢复");
-                }
-            }
-            _ => {}
+        if *app_type == AppType::OpenCode {
+            return self.restore_opencode_managed();
         }
-
+        if let Some(backup) = self
+            .db
+            .get_live_backup(app_type.as_str())
+            .await
+            .map_err(|_| "Restore backup unavailable")?
+        {
+            let config: Value = serde_json::from_str(&backup.original_config)
+                .map_err(|_| "Restore backup unavailable")?;
+            let (config, managed) = self.verify_and_unwrap_managed_restore(app_type, config)?;
+            self.require_managed_restore_proof(app_type, managed)?;
+            if managed {
+                self.restore_verified_managed_config(app_type)?;
+            } else {
+                self.write_live_config_for_app(app_type, &config)?;
+            }
+        }
         Ok(())
     }
 
@@ -2175,6 +2210,7 @@ impl ProxyService {
             AppType::Codex,
             AppType::Gemini,
             AppType::GrokBuild,
+            AppType::OpenCode,
         ] {
             if let Err(e) = self
                 .restore_live_config_for_app_with_fallback(&app_type)
@@ -2205,6 +2241,9 @@ impl ProxyService {
         app_type: &AppType,
     ) -> Result<(), String> {
         let app_type_str = app_type.as_str();
+        if *app_type == AppType::OpenCode {
+            return self.restore_opencode_managed();
+        }
 
         // 1) 优先从 Live 备份恢复（这是"原始 Live"的唯一可靠来源）
         let backup = self
@@ -2215,6 +2254,8 @@ impl ProxyService {
         if let Some(backup) = backup {
             let config: Value = serde_json::from_str(&backup.original_config)
                 .map_err(|e| format!("解析 {app_type_str} 备份失败: {e}"))?;
+            let (config, managed) = self.verify_and_unwrap_managed_restore(app_type, config)?;
+            self.require_managed_restore_proof(app_type, managed)?;
 
             // 备份若是代理占位符（异常历史：上次 stop 失败导致 Live 留在了代理状态，
             // 下次接管时又被错误地备份成"原始 Live"），不能直接用 — 否则 stop 后
@@ -2224,7 +2265,11 @@ impl ProxyService {
                     "{app_type_str} 备份本身已是代理占位符（异常历史状态），跳过备份，改走 SSOT 重建 Live"
                 );
             } else {
-                self.write_live_config_for_app(app_type, &config)?;
+                if managed {
+                    self.restore_verified_managed_config(app_type)?;
+                } else {
+                    self.write_live_config_for_app(app_type, &config)?;
+                }
                 log::info!("{app_type_str} Live 配置已从备份恢复");
                 return Ok(());
             }
@@ -2234,6 +2279,7 @@ impl ProxyService {
         if !self.detect_takeover_in_live_config_for_app(app_type) {
             return Ok(());
         }
+        self.require_managed_restore_proof(app_type, false)?;
 
         // 2.1) 优先从 SSOT（当前供应商）重建 Live（比"清理字段"更可用）
         match self.restore_live_from_ssot_for_app(app_type) {
@@ -2287,6 +2333,8 @@ impl ProxyService {
                 Ok(config) => Self::is_grok_live_taken_over(&config),
                 Err(_) => false,
             },
+            AppType::OpenCode => crate::opencode_config::read_opencode_config()
+                .is_ok_and(|config| Self::is_opencode_live_taken_over(&config)),
             _ => false,
         }
     }
@@ -2402,6 +2450,15 @@ impl ProxyService {
                         });
                 Ok(Self::is_grok_live_taken_over(&config) && base_url_matches)
             }
+            AppType::OpenCode => {
+                if !self.db.get_proxy_flags_sync("opencode").0 {
+                    return Ok(false);
+                }
+                let Some(provider) = self.get_current_provider_for_app(app_type)? else {
+                    return Ok(false);
+                };
+                self.opencode_matches_provider(&provider, proxy_url)
+            }
             _ => Ok(false),
         }
     }
@@ -2504,7 +2561,7 @@ impl ProxyService {
     /// 检查是否处于 Live 接管模式
     pub async fn is_takeover_active(&self) -> Result<bool, String> {
         let status = self.get_takeover_status().await?;
-        Ok(status.claude || status.codex || status.gemini || status.grokbuild)
+        Ok(status.claude || status.codex || status.gemini || status.grokbuild || status.opencode)
     }
 
     /// 从异常退出中恢复（启动时调用）
@@ -2560,7 +2617,7 @@ impl ProxyService {
             }
         }
 
-        false
+        self.detect_takeover_in_live_config_for_app(&AppType::OpenCode)
     }
 
     fn is_claude_live_taken_over(config: &Value) -> bool {
@@ -2639,6 +2696,7 @@ impl ProxyService {
             AppType::Codex => Self::is_codex_live_taken_over(config),
             AppType::Gemini => Self::is_gemini_live_taken_over(config),
             AppType::GrokBuild => Self::is_grok_live_taken_over(config),
+            AppType::OpenCode => Self::is_opencode_live_taken_over(config),
             _ => false,
         }
     }
@@ -2678,6 +2736,7 @@ impl ProxyService {
                 .map(|backup| {
                     serde_json::from_str::<Value>(&backup.original_config)
                         .map_err(|e| format!("解析 {app_type} 现有备份失败: {e}"))
+                        .and_then(Self::unwrap_managed_backup)
                 })
                 .transpose()?;
             // A stale takeover marker can survive without its DB backup (for
@@ -2718,6 +2777,7 @@ impl ProxyService {
                 .map(|backup| {
                     serde_json::from_str::<Value>(&backup.original_config)
                         .map_err(|e| format!("解析 {app_type} 现有备份失败: {e}"))
+                        .and_then(Self::unwrap_managed_backup)
                 })
                 .transpose()?
                 .or_else(|| self.read_grok_live().ok());

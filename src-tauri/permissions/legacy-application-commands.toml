@@ -23,6 +23,7 @@ commands.allow = [
   "auth_cancel_login",
   "bind_xai_managed_provider",
   "bind_managed_proxy_provider",
+  "bind_opencode_managed_proxy",
   "cancel_codex_desktop_restart_with_force",
   "check_env_conflicts",
   "check_provider_limits",
