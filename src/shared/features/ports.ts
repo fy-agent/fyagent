@@ -256,6 +256,7 @@ export interface MemoryPort {
 
 export interface FeaturePorts {
   projects: ProjectsPort;
+  verification: import("@/domain/verification").VerificationPort;
   health: HealthPort;
   configRecovery: import("./config-recovery").ConfigRecoveryPort;
   catalog: AgentCatalogPort;

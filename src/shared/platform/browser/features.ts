@@ -28,6 +28,16 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       bindDeliveryKit: rejectNativeOnly,
       dependencySnapshot: rejectNativeOnly,
     },
+    verification: {
+      cancel: rejectNativeOnly,
+      get: rejectNativeOnly,
+      run: rejectNativeOnly,
+      record: rejectNativeOnly,
+      revoke: rejectNativeOnly,
+      saveHandoff: rejectNativeOnly,
+      preview: rejectNativeOnly,
+      export: rejectNativeOnly,
+    },
     health: { get: rejectNativeOnly },
     configRecovery: { list: rejectNativeOnly, restore: rejectNativeOnly },
     // The native command is the only Agent capability authority. Browser

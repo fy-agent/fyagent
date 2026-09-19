@@ -36,6 +36,8 @@ export const featureKeys = {
   projectDependencies: (id: string | null) =>
     [scope, "projects", id, "dependencies"] as const,
   deliveryKits: [scope, "delivery-kits"] as const,
+  verification: (projectId: string) =>
+    [scope, "verification", projectId] as const,
   agentHealth: (agentId: AgentCatalogId) => [scope, "health", agentId] as const,
   configRecoveries: (targets: readonly ConfigRecoveryTarget[]) =>
     [scope, "config-recoveries", ...targets] as const,

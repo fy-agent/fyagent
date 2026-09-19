@@ -1,4 +1,5 @@
 import { createProjectsPort } from "./feature-ports/projects";
+import { createVerificationPort } from "./feature-ports/verification";
 import type { FeaturePorts } from "../../features/ports";
 import { createAgentAuthPort } from "./feature-ports/agentAuth";
 import { createAgentFeaturePorts } from "./feature-ports/agents";
@@ -16,6 +17,7 @@ import { createConfigRecoveryPort } from "./feature-ports/configRecovery";
 export function createTauriFeaturePorts(): FeaturePorts {
   return {
     projects: createProjectsPort(),
+    verification: createVerificationPort(),
     health: {
       get: async (agentId) => {
         const { createHealthPort } = await import("./feature-ports/health");

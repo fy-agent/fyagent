@@ -1,5 +1,8 @@
 # Frontend Development Guidelines
 
+[Project Verification Panel](./project-verification.md) owns the project-scoped
+five-stage evidence and handoff panel, typed ports and manual acceptance forms.
+
 The product has one renderer. This index routes to contract owners; it does
 not duplicate DTOs, state machines, filenames or implementation behavior.
 
