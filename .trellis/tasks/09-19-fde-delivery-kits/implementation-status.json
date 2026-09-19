@@ -1,5 +1,5 @@
 {
-  "phase": "native-library-and-validator-implemented",
+  "phase": "native-and-panel-validated-final-pass",
   "status": "in_progress",
   "completed": [
     "strict native schema/duplicate-field parser/digest",
@@ -7,38 +7,39 @@
     "three builtin text packages and weekly report deterministic validator",
     "project panel and strict typed native port",
     "renderer validation tests",
-    "native commands/ACL and builtin-only sharing policy"
+    "native commands/ACL and builtin-only sharing policy",
+    "project panel with native results, safe previews, unavailable cross-line adapters"
   ],
   "tests": [
     {
       "command": "rtk mise run typecheck",
-      "result": "passed"
+      "result": "passed after panel placement"
     },
     {
       "command": "rtk mise run lint",
-      "result": "passed"
+      "result": "passed; final placement rerun planned"
     },
     {
-      "command": "latest kit renderer/port/ACL focused tests",
-      "result": "11/11 passed"
+      "command": "kit renderer/port/ACL + architecture/dependency graph",
+      "result": "33/33 passed in 6 files after panel placement"
     },
     {
-      "command": "architecture focused tests",
-      "result": "27/27 passed"
+      "command": "rtk mise run rust:test -- delivery_kits",
+      "result": "10/10 passed; final library capacity/asset location rerun in progress"
     },
     {
-      "command": "native delivery_kits tests",
-      "result": "recompiling after source fixes; not yet passed"
+      "command": "rtk mise run supported-platform:check",
+      "result": "passed 2701 files"
     },
     {
       "command": "check:contracts",
-      "result": "initial asset placement fixed; unrelated contract test timeouts under concurrent compilation require final retry"
+      "result": "initial asset ownership fixed; final serial rerun pending"
     }
   ],
   "next": [
-    "finish native tests and boundary regressions",
-    "freeze specs and integration handoff",
-    "commit independent behavior slices"
+    "final native test pass",
+    "serial contract checks",
+    "integration handoff"
   ],
   "blockers": [],
   "integrationPending": [

@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/prompt-presets.md","reason":"Preserve existing 30-preset semantics"}
+{"file":".trellis/spec/frontend/mcp-fde-catalog.md","reason":"Preserve 20-recipe evidence and permission boundaries"}
+{"file":".trellis/spec/backend/skill-management.md","reason":"Native paths and partial-result verification"}
+{"file":".trellis/tasks/09-19-fde-delivery-kits/implement.md","reason":"Focused acceptance and negative cases"}
+{"file": ".trellis/spec/backend/delivery-kits.md", "reason": "Implemented delivery kit v1 contract"}
+{"file": ".trellis/spec/frontend/delivery-kits.md", "reason": "Implemented delivery kit v1 contract"}

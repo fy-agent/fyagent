@@ -31,6 +31,8 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 
 ## Shell and feature owners
 
+Delivery kits: [Project Delivery Kits Panel](./delivery-kits.md) owns the independent Projects panel and strict package native port.
+
 | Contract                                              | Owns                                                                            |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------- |
 | [Navigation](./navigation.md)                         | Hash routes, literal loaders, keep-alive lifetime, blockers and return context. |
