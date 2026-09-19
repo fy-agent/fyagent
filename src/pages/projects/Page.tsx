@@ -136,7 +136,7 @@ export function ProjectsPage({
   };
   return (
     <div
-      className="fy-feature-page fy-projects-page"
+      className="fy-feature-page fy-feature-workspace fy-projects-page"
       aria-label="客户项目"
       data-testid="projects-page"
     >

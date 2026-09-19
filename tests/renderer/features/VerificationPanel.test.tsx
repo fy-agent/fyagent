@@ -1,4 +1,5 @@
 import {
+  act,
   render,
   screen,
   waitFor,
@@ -18,6 +19,78 @@ import {
 } from "../fixtures/verification";
 
 describe("project verification panel", () => {
+  it("labels fresh results immediately without trusting genuinely future records", async () => {
+    const startedAt = Date.now();
+    let clock = startedAt;
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const ports = createBrowserFeaturePorts();
+      ports.verification.get = vi.fn(async () => verificationFixture());
+      let resolveRun: (
+        snapshot: ReturnType<typeof verificationFixture>,
+      ) => void = () => undefined;
+      ports.verification.run = vi.fn(
+        () =>
+          new Promise<ReturnType<typeof verificationFixture>>((resolve) => {
+            resolveRun = resolve;
+          }),
+      );
+      render(
+        <FeatureProvider ports={ports}>
+          <VerificationPanel projectId={PROJECT} />
+        </FeatureProvider>,
+      );
+      await waitFor(() =>
+        expect(screen.getByText("检查保存的配置")).not.toBeDisabled(),
+      );
+      fireEvent.click(screen.getByText("检查保存的配置"));
+      clock = startedAt + 250;
+      const fresh = {
+        ...evidenceFixture(),
+        recordedAt: new Date(clock).toISOString(),
+        observedAt: new Date(clock).toISOString(),
+      };
+      await act(async () =>
+        resolveRun({
+          ...verificationFixture(),
+          evidence: [
+            fresh,
+            {
+              ...fresh,
+              id: OTHER_PROJECT,
+              stage: "sample_passed",
+              outcome: "failed",
+            },
+            {
+              ...fresh,
+              id: PROJECT,
+              stage: "authentication_available",
+              recordedAt: new Date(clock + 60000).toISOString(),
+            },
+          ],
+        }),
+      );
+      expect(
+        within(screen.getByRole("region", { name: "配置已保存" })).getByText(
+          "通过",
+        ),
+      ).toBeVisible();
+      expect(
+        within(screen.getByRole("region", { name: "样本通过" })).getByText(
+          "失败",
+        ),
+      ).toBeVisible();
+      expect(
+        within(screen.getByRole("region", { name: "认证可用" })).getByText(
+          "待复核",
+        ),
+      ).toBeVisible();
+    } finally {
+      now.mockRestore();
+      vi.useRealTimers();
+    }
+  });
   it("shows saved business metrics and specific sample failures", async () => {
     const ports = createBrowserFeaturePorts();
     const baseline = {
@@ -292,13 +365,25 @@ describe("project verification panel", () => {
       available: false,
       projectRevision: null,
     }));
-    render(
+    const { rerender } = render(
       <FeatureProvider ports={ports}>
         <VerificationPanel projectId={PROJECT} />
       </FeatureProvider>,
     );
     await screen.findByText(/当前项目暂不能检查/);
     expect(screen.getByText("检查保存的配置")).toBeDisabled();
+    rerender(
+      <FeatureProvider ports={ports}>
+        <VerificationPanel
+          projectId={PROJECT}
+          mutationBlockedReason="项目已归档，已有记录可查阅和导出。"
+        />
+      </FeatureProvider>,
+    );
+    expect(
+      screen.getByText("项目已归档，已有记录可查阅和导出。"),
+    ).toBeVisible();
+    expect(screen.queryByText(/当前项目暂不能检查/)).not.toBeInTheDocument();
   });
   it("keeps blocked projects readable and preserves manual and handoff drafts", async () => {
     const ports = createBrowserFeaturePorts();

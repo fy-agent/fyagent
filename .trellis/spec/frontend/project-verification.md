@@ -3,11 +3,15 @@
 `domain/verification/index.ts` owns portable DTOs, strict schemas and presentation
 states. `shared/features/verification/VerificationPanel.tsx` exports the project
 panel, composed by the project route owner; it creates no top-level route.
-`VerificationPanel({ projectId, active? })` consumes FeaturePorts.verification.
+`VerificationPanel({ projectId, active?, mutationBlockedReason? })` consumes FeaturePorts.verification.
 Tauri parsing/command literals live only in feature-ports/verification.ts.
 
 The Query key is featureKeys.verification(projectId). Automatic reads, expiry
-timers and actions stop while hidden. Project changes remount scoped drafts;
+timers and actions stop while hidden. An expanded manual form stays mounted across
+workspace tabs, with hidden submissions disabled. Dirty or archived projects keep
+read-only history, refresh and export available, with a single specific reason
+for blocked mutations. New snapshots refresh the local presentation clock before
+cache publication; genuinely future records remain invalid. Project changes remount scoped drafts;
 late results update only their original project's query. Checks are explicit,
 serialized by an immediate UI lock and native admission. Model checks disclose
 possible usage. Each explicit click creates a UUID runId. The sample selector offers normal weekly input and a missing-field input, both closed native choices; internal checker identifiers are not product labels. Cancel is distinct from failed/successful checks. Failed reads

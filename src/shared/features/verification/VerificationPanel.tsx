@@ -114,6 +114,7 @@ function ProjectVerification({
       const result = await action();
       if (!live.current) return;
       if (result) {
+        setNow(Date.now());
         client.setQueryData(featureKeys.verification(projectId), result);
         setNeedsReview(false);
       }
@@ -168,7 +169,7 @@ function ProjectVerification({
       )}
       {message && <p role="status">{message}</p>}
       {mutationBlockedReason && <p role="status">{mutationBlockedReason}</p>}
-      {data && !data.available && (
+      {data && !data.available && !mutationBlockedReason && (
         <p role="status">
           当前项目暂不能检查。已有记录仅供查阅，请在项目配置完成后刷新。
         </p>
