@@ -768,6 +768,18 @@ impl Database {
         let source_conn =
             Connection::open(&backup_path).map_err(|e| AppError::Database(e.to_string()))?;
         Self::reject_persistent_triggers(&source_conn)?;
+        // Validate every new fallible migration before replacing the live database.
+        // Keep the selected backup immutable as well.
+        let mut candidate = Connection::open_in_memory()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        {
+            let copy = Backup::new(&source_conn, &mut candidate)
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            copy.step(-1).map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        Self::create_tables_on_conn(&candidate)?;
+        Self::apply_schema_migrations_on_conn(&candidate)?;
+        Self::advance_project_resource_generations_on_conn(&candidate)?;
 
         // Step 1: Create safety backup of current database
         let safety_backup = self.backup_database_file()?;
@@ -778,18 +790,14 @@ impl Database {
         // Step 2: Open the backup file and restore it to the main database
         {
             let mut main_conn = lock_conn!(self.conn);
-            let backup = Backup::new(&source_conn, &mut main_conn)
+            let backup = Backup::new(&candidate, &mut main_conn)
                 .map_err(|e| AppError::Database(e.to_string()))?;
             backup
                 .step(-1)
                 .map_err(|e| AppError::Database(e.to_string()))?;
         }
 
-        // Step 3: Run schema migrations (backup may be from an older version)
-        self.create_tables()?;
-        self.apply_schema_migrations()?;
         self.ensure_model_pricing_seeded()?;
-        Self::advance_project_resource_generations_on_conn(&lock_conn!(self.conn))?;
 
         log::info!("Database restored from backup: {filename}, safety backup: {safety_id}");
         Ok(safety_id)
@@ -1921,7 +1929,7 @@ mod tests {
         let target = Connection::open_in_memory()?;
         Database::create_project_tables_on_conn(&source)?;
         Database::create_project_tables_on_conn(&target)?;
-        source.execute_batch("INSERT INTO fde_customers VALUES ('customer','local',0,0); INSERT INTO fde_projects VALUES ('project','customer',0,0,'{}'); INSERT INTO fde_project_kit_intents VALUES ('intent','project','request','result'); INSERT INTO fde_project_context_versions VALUES ('project','generation','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');")?;
+        source.execute_batch("INSERT INTO fde_customers VALUES ('customer','local',0,0); INSERT INTO fde_projects VALUES ('project','customer',0,0,'{}'); INSERT INTO fde_project_kit_intents VALUES ('intent','project','request','result'); INSERT INTO fde_project_context_versions VALUES ('project','generation','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'); INSERT INTO fde_resource_generations VALUES ('provider','codex','deleted-provider',4);")?;
         let tables = [
             "fde_customers",
             "fde_projects",
