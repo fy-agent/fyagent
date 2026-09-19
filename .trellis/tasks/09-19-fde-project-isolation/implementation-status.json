@@ -1,5 +1,5 @@
 {
-  "stage": "native_and_ui_implemented",
+  "stage": "native_committed_frontend_verified",
   "completed": [
     "native customer/project CRUD/archive/CAS",
     "four local-only tables, migration and sync skip/preserve",
@@ -31,13 +31,17 @@
     },
     {
       "command": "rtk mise run rust:clippy",
-      "result": "running"
+      "result": "passed"
+    },
+    {
+      "command": "rtk proxy env FYAGENT_TEST_HOME=/private/tmp/fyagent-projects-native-final mise run rust:test -- services::projects::tests",
+      "result": "13 passed, 0 failed"
     }
   ],
   "next": [
-    "finish isolated native checks and clippy",
-    "segment commits",
-    "write final implementation-ready.json"
+    "commit typed frontend and UI",
+    "isolated unrelated OpenCode failure readback",
+    "final handoff"
   ],
   "blockers": [
     "production kit authority adapter requires root integration",

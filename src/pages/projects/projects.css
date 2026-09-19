@@ -1,0 +1,168 @@
+.fy-projects-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--fy-text);
+}
+.fy-projects-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding-bottom: 16px;
+}
+.fy-projects-header h1 {
+  margin: 0;
+  font-size: var(--fy-font-page-title);
+}
+.fy-projects-header span,
+.fy-projects-hint {
+  color: var(--fy-text-secondary);
+  font-size: var(--fy-font-caption);
+}
+.fy-projects-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 28%) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-panel);
+  overflow: hidden;
+  background: var(--fy-surface-soft);
+}
+.fy-projects-rail,
+.fy-projects-detail {
+  overflow: auto;
+  min-height: 0;
+  padding: 20px;
+}
+.fy-projects-rail {
+  border-right: 1px solid var(--fy-border);
+  background: var(--fy-surface);
+}
+.fy-projects-rail summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin: 8px 0;
+}
+.fy-projects-page label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+  font-size: var(--fy-font-control);
+}
+.fy-projects-page .fy-control-input {
+  width: 100%;
+  min-width: 0;
+}
+.fy-projects-page .fy-projects-check {
+  flex-direction: row;
+  align-items: center;
+}
+.fy-projects-list,
+.fy-projects-resources {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+}
+.fy-projects-list li {
+  margin: 6px 0;
+}
+.fy-projects-list button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  text-align: left;
+}
+.fy-projects-list button[aria-pressed="true"] {
+  background: var(--fy-selected-bg);
+  border-color: var(--fy-selected-border);
+}
+.fy-projects-list span,
+.fy-projects-resources span {
+  display: block;
+  color: var(--fy-text-secondary);
+  font-size: var(--fy-font-caption);
+}
+.fy-projects-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.fy-projects-title h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.fy-projects-detail section {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--fy-divider);
+}
+.fy-projects-detail h3 {
+  margin: 0 0 12px;
+  font-size: var(--fy-font-section-title);
+}
+.fy-projects-context {
+  min-height: 230px;
+  resize: vertical;
+  line-height: 1.7;
+}
+.fy-projects-path {
+  overflow-wrap: anywhere;
+  font-size: var(--fy-font-caption);
+}
+.fy-projects-path code {
+  display: block;
+  margin-top: 6px;
+  user-select: text;
+}
+.fy-projects-actions,
+.fy-projects-resources li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fy-projects-resources li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--fy-divider);
+}
+.fy-projects-resources li > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fy-projects-customer {
+  padding: 12px 0;
+  border-top: 1px solid var(--fy-divider);
+}
+@media (max-width: 760px) {
+  .fy-projects-layout {
+    grid-template-columns: minmax(180px, 34%) minmax(0, 1fr);
+  }
+  .fy-projects-rail,
+  .fy-projects-detail {
+    padding: 12px;
+  }
+  .fy-projects-header span {
+    display: none;
+  }
+  .fy-projects-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.fy-projects-instructions {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--fy-font-caption);
+  line-height: 1.7;
+  padding: 16px;
+  background: var(--fy-surface-inset);
+  border-radius: var(--fy-radius-panel);
+  user-select: text;
+}

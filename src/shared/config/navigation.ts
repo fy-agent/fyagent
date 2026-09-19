@@ -1,5 +1,6 @@
 export type NavigationItem = {
   id:
+    | "projects"
     | "agents"
     | "health"
     | "auth"
@@ -9,6 +10,7 @@ export type NavigationItem = {
     | "prompts"
     | "memory";
   path:
+    | "/projects"
     | "/agents"
     | "/health"
     | "/auth"
@@ -33,6 +35,7 @@ export const navigationGroups = [
     label: "AI软件配置",
     collapsible: false,
     items: [
+      { id: "projects", path: "/projects", label: "客户项目" },
       { id: "agents", path: "/agents", label: "AI软件配置" },
       { id: "health", path: "/health", label: "运行状态" },
       { id: "auth", path: "/auth", label: "账号与认证" },

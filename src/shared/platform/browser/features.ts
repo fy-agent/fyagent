@@ -8,6 +8,26 @@ const rejectNativeOnly = async (): Promise<never> => {
 
 export function createBrowserFeaturePorts(): FeaturePorts {
   return {
+    projects: {
+      prepareCodex: rejectNativeOnly,
+      listCustomers: rejectNativeOnly,
+      createCustomer: rejectNativeOnly,
+      updateCustomer: rejectNativeOnly,
+      list: rejectNativeOnly,
+      get: rejectNativeOnly,
+      create: rejectNativeOnly,
+      update: rejectNativeOnly,
+      resourceOptions: rejectNativeOnly,
+      credentialOptions: rejectNativeOnly,
+      bindResource: rejectNativeOnly,
+      removeResource: rejectNativeOnly,
+      bindCredential: rejectNativeOnly,
+      removeCredential: rejectNativeOnly,
+      getContext: rejectNativeOnly,
+      writeContext: rejectNativeOnly,
+      bindDeliveryKit: rejectNativeOnly,
+      dependencySnapshot: rejectNativeOnly,
+    },
     health: { get: rejectNativeOnly },
     configRecovery: { list: rejectNativeOnly, restore: rejectNativeOnly },
     // The native command is the only Agent capability authority. Browser
