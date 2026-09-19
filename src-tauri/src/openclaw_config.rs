@@ -7,7 +7,6 @@ use crate::config::{atomic_write, get_app_config_dir};
 use crate::error::AppError;
 use crate::settings::{effective_backup_retain_count, get_openclaw_override_dir};
 use chrono::Local;
-use indexmap::IndexMap;
 use json_five::rt::parser::{
     from_str as rt_from_str, JSONKeyValuePair as RtJSONKeyValuePair,
     JSONObjectContext as RtJSONObjectContext, JSONText as RtJSONText, JSONValue as RtJSONValue,
@@ -86,13 +85,15 @@ pub struct OpenClawWriteOutcome {
 }
 
 /// OpenClaw 供应商配置（对应 models.providers 中的条目）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenClawProviderConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub api_key: Option<String>,
+    // Vendor credential literals/references stay opaque; parsing never resolves them.
+    #[serde(default, deserialize_with = "deserialize_present_json")]
+    pub api_key: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -101,6 +102,22 @@ pub struct OpenClawProviderConfig {
     pub headers: HashMap<String, String>,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
+}
+
+impl std::fmt::Debug for OpenClawProviderConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("OpenClawProviderConfig")
+            .field("config", &"[REDACTED]")
+            .finish()
+    }
+}
+
+// Preserve an explicit null separately from an absent field when round-tripping.
+fn deserialize_present_json<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
 }
 
 /// OpenClaw 模型条目
@@ -706,38 +723,6 @@ pub fn remove_provider(id: &str) -> Result<OpenClawWriteOutcome, AppError> {
 }
 
 // ============================================================================
-// Provider Functions (Typed)
-// ============================================================================
-
-/// 获取所有供应商配置（类型化）
-pub fn get_typed_providers() -> Result<IndexMap<String, OpenClawProviderConfig>, AppError> {
-    let providers = get_providers()?;
-    let mut result = IndexMap::new();
-
-    for (id, value) in providers {
-        match serde_json::from_value::<OpenClawProviderConfig>(value.clone()) {
-            Ok(config) => {
-                result.insert(id, config);
-            }
-            Err(e) => {
-                log::warn!("Failed to parse OpenClaw provider '{id}': {e}");
-            }
-        }
-    }
-
-    Ok(result)
-}
-
-/// 设置供应商配置（类型化）
-pub fn set_typed_provider(
-    id: &str,
-    config: &OpenClawProviderConfig,
-) -> Result<OpenClawWriteOutcome, AppError> {
-    let value = serde_json::to_value(config).map_err(|e| AppError::JsonSerialize { source: e })?;
-    set_provider(id, value)
-}
-
-// ============================================================================
 // Agents Configuration Functions
 // ============================================================================
 
@@ -916,6 +901,27 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use std::sync::{Mutex, OnceLock};
+
+    #[test]
+    #[serial]
+    fn config_reliability_typed_provider_preserves_opaque_api_key_and_null() {
+        with_test_paths("{models:{providers:{}}}", |_| {
+            for key in [
+                json!("FIXTURE-KEY"),
+                json!({"source":"env","id":"FIXTURE_ENV"}),
+                json!({"unknown":{"token":"FIXTURE-SECRET"}}),
+                Value::Null,
+            ] {
+                let config = json!({"apiKey":key, "models":[{"id":"m", "extra":true}], "vendor": {"keep":true}});
+                set_provider("fixture", config.clone()).unwrap();
+                let typed: OpenClawProviderConfig =
+                    serde_json::from_value(get_providers().unwrap()["fixture"].clone()).unwrap();
+                assert!(!format!("{typed:?}").contains("FIXTURE"));
+                set_provider("fixture", serde_json::to_value(typed).unwrap()).unwrap();
+                assert_eq!(get_providers().unwrap()["fixture"], config);
+            }
+        });
+    }
 
     fn test_guard() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();

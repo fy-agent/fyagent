@@ -970,7 +970,8 @@ requires_openai_auth = true"#
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenCodeProviderConfig {
     /// AI SDK 包名，如 "@ai-sdk/openai-compatible", "@ai-sdk/anthropic"
-    pub npm: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub npm: Option<String>,
 
     /// 供应商名称（可选，用于显示）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -983,15 +984,19 @@ pub struct OpenCodeProviderConfig {
     /// 模型定义映射
     #[serde(default)]
     pub models: HashMap<String, OpenCodeModel>,
+
+    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, Value>,
 }
 
 impl Default for OpenCodeProviderConfig {
     fn default() -> Self {
         Self {
-            npm: "@ai-sdk/openai-compatible".to_string(),
+            npm: Some("@ai-sdk/openai-compatible".to_string()),
             name: None,
             options: OpenCodeProviderOptions::default(),
             models: HashMap::new(),
+            extra: HashMap::new(),
         }
     }
 }
@@ -1021,7 +1026,8 @@ pub struct OpenCodeProviderOptions {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenCodeModel {
     /// 模型显示名称
-    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 
     /// 模型限制（上下文和输出 token 数）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1047,6 +1053,8 @@ pub struct OpenCodeModelLimit {
     /// 输出 token 限制
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<u64>,
+    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, Value>,
 }
 
 #[cfg(test)]
@@ -1480,7 +1488,7 @@ mod tests {
     #[test]
     fn opencode_provider_config_defaults() {
         let config = OpenCodeProviderConfig::default();
-        assert_eq!(config.npm, "@ai-sdk/openai-compatible");
+        assert_eq!(config.npm.as_deref(), Some("@ai-sdk/openai-compatible"));
         assert!(config.name.is_none());
         assert!(config.models.is_empty());
         assert!(config.options.base_url.is_none());

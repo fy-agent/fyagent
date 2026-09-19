@@ -1,8 +1,6 @@
 use crate::config::write_json_file_with_contents;
 use crate::error::AppError;
-use crate::provider::OpenCodeProviderConfig;
 use crate::settings::get_opencode_override_dir;
-use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -226,29 +224,6 @@ pub fn remove_provider(id: &str) -> Result<(), AppError> {
     write_opencode_config_to_path_with_contents(&path, &config).map(|_| ())
 }
 
-pub fn get_typed_providers() -> Result<IndexMap<String, OpenCodeProviderConfig>, AppError> {
-    let providers = get_providers()?;
-    let mut result = IndexMap::new();
-
-    for (id, value) in providers {
-        match serde_json::from_value::<OpenCodeProviderConfig>(value.clone()) {
-            Ok(config) => {
-                result.insert(id, config);
-            }
-            Err(e) => {
-                log::warn!("Failed to parse provider '{id}': {e}");
-            }
-        }
-    }
-
-    Ok(result)
-}
-
-pub fn set_typed_provider(id: &str, config: &OpenCodeProviderConfig) -> Result<(), AppError> {
-    let value = serde_json::to_value(config).map_err(|e| AppError::JsonSerialize { source: e })?;
-    set_provider(id, value)
-}
-
 pub fn get_mcp_servers() -> Result<Map<String, Value>, AppError> {
     let config = read_opencode_config()?;
     Ok(config
@@ -385,6 +360,24 @@ pub fn remove_plugins_by_prefixes(path: &Path, prefixes: &[&str]) -> Result<bool
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[serial_test::serial]
+    fn config_reliability_typed_builtin_provider_keeps_missing_npm_and_extensions() {
+        let temp = tempfile::tempdir().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let config = serde_json::json!({
+            "name": "Builtin", "vendorExtension": { "keep": true },
+            "options": { "vendorOption": 7 },
+            "models": { "m": { "vendorModel": [1,2], "limit": { "vendorLimit": 17 } } }
+        });
+        set_provider("builtin", config.clone()).unwrap();
+        let typed: crate::provider::OpenCodeProviderConfig =
+            serde_json::from_value(get_providers().unwrap()["builtin"].clone()).unwrap();
+        assert!(typed.npm.is_none());
+        set_provider("builtin", serde_json::to_value(typed).unwrap()).unwrap();
+        assert_eq!(get_providers().unwrap()["builtin"], config);
+    }
 
     struct TestHomeGuard(Option<std::ffi::OsString>);
     impl TestHomeGuard {

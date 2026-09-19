@@ -3836,6 +3836,78 @@ requires_openai_auth = true
 
     #[test]
     #[serial]
+    fn config_reliability_import_provider_documents_preserves_builtin_and_opaque_credentials_round_trip(
+    ) {
+        with_test_home(|state, _| {
+            let opencode = json!({
+                "name": "Builtin", "extension": { "nested": [1, null] },
+                "options": { "custom": { "keep": true } },
+                "models": { "builtin-model": { "limit": { "vendorLimit": 17 }, "variants": { "fast": {} } } }
+            });
+            crate::opencode_config::set_provider("builtin", opencode.clone()).unwrap();
+            crate::opencode_config::set_provider(
+                "neighbor",
+                json!({"npm":"vendor-package", "models":{}}),
+            )
+            .unwrap();
+            assert_eq!(import_opencode_providers_from_live(state).unwrap(), 2);
+            let saved = state
+                .db
+                .get_provider_by_id("builtin", "opencode")
+                .unwrap()
+                .unwrap();
+            assert_eq!(saved.settings_config, opencode);
+            live::write_live_snapshot(&AppType::OpenCode, &saved).unwrap();
+            assert_eq!(
+                crate::opencode_config::get_providers().unwrap()["builtin"],
+                opencode
+            );
+            assert!(crate::opencode_config::get_providers()
+                .unwrap()
+                .contains_key("neighbor"));
+            assert_eq!(import_opencode_providers_from_live(state).unwrap(), 0);
+
+            for (id, key) in [
+                ("literal", Some(json!("FIXTURE-KEY"))),
+                (
+                    "reference",
+                    Some(json!({"source":"env", "provider":"default", "id":"FIXTURE_ENV"})),
+                ),
+                (
+                    "opaque",
+                    Some(json!({"unknown":{"token":"FIXTURE-NESTED"}})),
+                ),
+                ("null", Some(Value::Null)),
+                ("absent", None),
+            ] {
+                let mut config = json!({"baseUrl":"https://fixture.invalid/v1", "models":[{"id":"model", "extra":{"keep":true}}], "vendorExtension": [1,2]});
+                if let Some(key) = key {
+                    config["apiKey"] = key;
+                }
+                crate::openclaw_config::set_provider(id, config.clone()).unwrap();
+                assert_eq!(import_openclaw_providers_from_live(state).unwrap(), 1);
+                let saved = state
+                    .db
+                    .get_provider_by_id(id, "openclaw")
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(saved.settings_config, config);
+                if id != "literal" {
+                    assert!(
+                        ProviderService::extract_credentials(&saved, &AppType::OpenClaw).is_err(),
+                        "opaque credentials must not be stringified or resolved"
+                    );
+                }
+                live::write_live_snapshot(&AppType::OpenClaw, &saved).unwrap();
+                assert_eq!(crate::openclaw_config::get_providers().unwrap()[id], config);
+                assert_eq!(import_openclaw_providers_from_live(state).unwrap(), 0);
+            }
+            assert_eq!(crate::openclaw_config::get_providers().unwrap().len(), 5);
+        });
+    }
+
+    #[test]
+    #[serial]
     fn import_opencode_providers_from_live_marks_provider_as_live_managed() {
         with_test_home(|state, _| {
             let provider = opencode_provider("imported-opencode");
