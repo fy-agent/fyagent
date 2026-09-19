@@ -87,6 +87,47 @@ function deferred<T>() {
 }
 
 describe("MCP management", () => {
+  it.each([undefined, "codex"] as const)(
+    "creates with only the explicit target %s",
+    async (creationTarget) => {
+      const ports = createBrowserFeaturePorts();
+      ports.mcp.getAll = async () => ({});
+      ports.mcp.upsert = vi.fn(async () => undefined);
+      const user = userEvent.setup();
+      renderFeature(<McpPage creationTarget={creationTarget} />, ports);
+      await screen.findByText("还没有 MCP 服务");
+      await user.click(screen.getAllByRole("button", { name: "添加 MCP" })[0]);
+      const dialog = screen.getByRole("dialog", { name: "添加 MCP" });
+      const fields = within(dialog);
+      expect(
+        fields
+          .getAllByRole("switch")
+          .filter((item) => item.getAttribute("aria-checked") === "true"),
+      ).toHaveLength(creationTarget ? 1 : 0);
+      if (!creationTarget)
+        expect(
+          fields.getByText("仅保存到 MCP 库，尚未分配给任何 Agent。"),
+        ).toBeVisible();
+      await user.type(
+        fields.getByLabelText("ID", { exact: true }),
+        "fixture-mcp",
+      );
+      await user.type(
+        fields.getByLabelText("名称", { exact: true }),
+        "Fixture MCP",
+      );
+      await user.type(
+        fields.getByLabelText("命令", { exact: true }),
+        "fixture-command",
+      );
+      await user.click(fields.getByRole("button", { name: "保存" }));
+      await waitFor(() => expect(ports.mcp.upsert).toHaveBeenCalledOnce());
+      expect(vi.mocked(ports.mcp.upsert).mock.calls[0][0].apps).toEqual(
+        createMcpAssignments(creationTarget ? [creationTarget] : []),
+      );
+    },
+  );
+
   it("keeps import actions on the same header row as Installed/Discover", async () => {
     const ports = createBrowserFeaturePorts();
     renderFeature(<McpPage />, ports);

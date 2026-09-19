@@ -220,7 +220,9 @@ function ServerDetail({
   );
 }
 
-export function McpPage() {
+export function McpPage({
+  creationTarget,
+}: { creationTarget?: McpTargetId } = {}) {
   const dialogOriginRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const { ports, notify, installTarget, setInstallTarget } = useFeatures();
@@ -541,6 +543,7 @@ export function McpPage() {
             key={editingKey}
             originRef={dialogOriginRef}
             initial={editing === "new" ? null : editing}
+            creationTarget={creationTarget}
             existingIds={new Set(servers.map((server) => server.id))}
             busy={busy}
             onClose={() => setEditing(null)}
@@ -600,6 +603,7 @@ export function McpPage() {
 type Mode = "quick" | "advanced";
 
 function McpEditor({
+  creationTarget,
   originRef,
   initial,
   existingIds,
@@ -608,6 +612,7 @@ function McpEditor({
   onSave,
 }: {
   originRef?: DialogOriginRef;
+  creationTarget?: McpTargetId;
   initial: McpServer | null;
   existingIds: Set<string>;
   busy: boolean;
@@ -639,7 +644,11 @@ function McpEditor({
       .join("\n"),
   );
   const [apps, setApps] = useState(() =>
-    initial ? { ...initial.apps } : createMcpAssignments(DEFAULT_NEW_APPS),
+    initial
+      ? { ...initial.apps }
+      : createMcpAssignments(
+          creationTarget ? [creationTarget] : DEFAULT_NEW_APPS,
+        ),
   );
   const [mode, setMode] = useState<Mode>("quick");
   const [advanced, setAdvanced] = useState(JSON.stringify(spec, null, 2));
@@ -985,6 +994,11 @@ function McpEditor({
           </label>
         </FeatureTabPanel>
         <div className="fy-feature-form-span">
+          <p className="fy-feature-description">
+            {MCP_TARGETS.some((target) => apps[target.id])
+              ? "保存后仅分配给所选 Agent。"
+              : "仅保存到 MCP 库，尚未分配给任何 Agent。"}
+          </p>
           <AssignmentPanel
             apps={apps}
             disabled={busy}

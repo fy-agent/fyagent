@@ -11,7 +11,15 @@ pub fn validate_server_spec(spec: &Value) -> Result<(), AppError> {
             "MCP 服务器连接定义必须为 JSON 对象".into(),
         ));
     }
-    let t_opt = spec.get("type").and_then(|x| x.as_str());
+    let t_opt = match spec.get("type") {
+        None => None,
+        Some(Value::String(value)) => Some(value.as_str()),
+        Some(_) => {
+            return Err(AppError::McpValidation(
+                "MCP 服务器 type 必须为字符串（或省略表示 stdio）".into(),
+            ));
+        }
+    };
     // 支持三种：stdio/http/sse；若缺省 type 则按 stdio 处理（与社区常见 .mcp.json 一致）
     let is_stdio = t_opt.map(|t| t == "stdio").unwrap_or(true);
     let is_http = t_opt.map(|t| t == "http").unwrap_or(false);

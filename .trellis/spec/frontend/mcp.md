@@ -120,11 +120,15 @@ untrusted or versioned response must add parsing at this adapter boundary.
 - New IDs are trimmed, required, and rejected when already present in the
   current installed map. An existing ID is fixed while editing; `name` is also
   required.
-- A new editor draft starts from `DEFAULT_NEW_APPS`, which enables every ID in
-  the closed seven-target `MCP_TARGET_IDS` tuple. Editing an existing server
-  starts from its stored flags. Because native unified upsert saves SQLite
-  before enabled target adapters validate/project, the default fan-out makes a
-  post-save partial failure possible even on the first create.
+- A global new editor draft starts from empty `DEFAULT_NEW_APPS`: save to the
+  library without assigning an Agent. An explicit `creationTarget` prop may
+  select only that one target; remembered discovery preferences are not authority
+  for manual creation. Editing starts from stored flags. Discovery still uses
+  its single selected target and confirmation. The editor makes library-only
+  versus selected-target persistence explicit before saving.
+- Native unified upsert validates the base transport shape before DB writes or
+  removal of old assignments. Target-specific projection may still partially
+  fail after save; this does not introduce an atomic multi-target transaction.
 - Quick mode supports three transports:
   - stdio: non-empty `command`, newline-delimited `args`, optional `cwd`, and
     `KEY=VALUE` env rows;
@@ -137,9 +141,8 @@ untrusted or versioned response must add parsing at this adapter boundary.
   wrapper. It intentionally preserves unknown fields because
   `McpServerSpec` extends `Record<string, unknown>`. This local parser does not
   validate the types/requirements of every known transport field. The unified
-  native upsert also has no centralized pre-SQLite validator; an enabled target
-  adapter can reject the shape only during post-save projection, while an
-  all-disabled row can be saved without adapter validation.
+  native upsert validates base transport requirements even for library-only
+  entries before mutation. Target-specific compatibility remains with adapters.
 - Moving quick -> advanced overlays the seven known transport fields onto the
   previous draft while preserving unknown fields. Moving advanced -> quick
   parses the JSON object and projects known fields into the form.
@@ -199,7 +202,7 @@ untrusted or versioned response must add parsing at this adapter boundary.
 | Installed query fails before any data                                        | Render load failure and retry; do not fabricate an empty map.                                                                                                             |
 | Refresh fails with cached data                                               | Keep the last successful map and show the refresh warning.                                                                                                                |
 | New ID is empty/duplicate or name is empty                                   | Block submit locally.                                                                                                                                                     |
-| New server draft is created                                                  | Initialize all seven Renderer target flags enabled; do not describe it as unassigned-by-default.                                                                          |
+| New server draft is created                                                  | Initialize all flags disabled, or only an explicit creationTarget; editing preserves stored flags.                                                                        |
 | Quick stdio command is empty                                                 | Block submit with the local command error.                                                                                                                                |
 | Quick HTTP/SSE URL fails `new URL`                                           | Block submit locally.                                                                                                                                                     |
 | Env/header row lacks a usable separator/key                                  | Block submit and list the affected row.                                                                                                                                   |
