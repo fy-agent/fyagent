@@ -9,6 +9,8 @@ import {
   SAMPLE_CODE_LABELS,
   ROLLBACKS,
   evidenceLabel,
+  manualSchema,
+  handoffSchema,
   type Stage,
   type ManualRequest,
   type VerificationSnapshot,
@@ -32,15 +34,18 @@ const rollbackLabels = {
 export function VerificationPanel({
   projectId,
   active = true,
+  mutationBlockedReason,
 }: {
   projectId: string;
   active?: boolean;
+  mutationBlockedReason?: string;
 }) {
   return (
     <ProjectVerification
       key={projectId}
       projectId={projectId}
       active={active}
+      mutationBlockedReason={mutationBlockedReason}
     />
   );
 }
@@ -48,9 +53,11 @@ export function VerificationPanel({
 function ProjectVerification({
   projectId,
   active,
+  mutationBlockedReason,
 }: {
   projectId: string;
   active: boolean;
+  mutationBlockedReason?: string;
 }) {
   const { ports } = useFeatures();
   const visible = usePersistentVisibility() && active;
@@ -87,8 +94,17 @@ function ProjectVerification({
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [visible]);
-  async function act(action: () => Promise<VerificationSnapshot | void>) {
-    if (!visible || !live.current || lock.current) return;
+  async function act(
+    action: () => Promise<VerificationSnapshot | void>,
+    readOnly = false,
+  ) {
+    if (
+      !visible ||
+      !live.current ||
+      lock.current ||
+      (mutationBlockedReason && !readOnly)
+    )
+      return;
     lock.current = true;
     setBusy(true);
     setError("");
@@ -121,6 +137,7 @@ function ProjectVerification({
     !query.isFetching &&
     !query.isError &&
     !needsReview &&
+    !mutationBlockedReason &&
     data?.available === true &&
     data.projectRevision !== null;
   const expectedRevision = data?.projectRevision ?? 0;
@@ -139,7 +156,7 @@ function ProjectVerification({
               const r = await query.refetch();
               if (r.error) throw r.error;
               return r.data;
-            })
+            }, true)
           }
         >
           刷新
@@ -150,6 +167,7 @@ function ProjectVerification({
         <p role="alert">{error || "读取失败，已有结果需要重新确认。"}</p>
       )}
       {message && <p role="status">{message}</p>}
+      {mutationBlockedReason && <p role="status">{mutationBlockedReason}</p>}
       {data && !data.available && (
         <p role="status">
           当前项目暂不能检查。已有记录仅供查阅，请在项目配置完成后刷新。
@@ -345,7 +363,7 @@ function ProjectVerification({
                     </details>
                     {e.validity !== "revoked" && (
                       <Button
-                        disabled={!visible || busy}
+                        disabled={!visible || busy || !!mutationBlockedReason}
                         onClick={() =>
                           void act(() =>
                             ports.verification.revoke({
@@ -365,7 +383,7 @@ function ProjectVerification({
           );
         })}
       </div>
-      {manualOpen && visible && data && (
+      {manualOpen && data && (
         <ManualForm
           snapshot={data}
           disabled={!ready}
@@ -402,7 +420,7 @@ function ProjectVerification({
             void act(async () => {
               const result = await ports.verification.preview(projectId);
               if (live.current) setPreview(result);
-            })
+            }, true)
           }
         >
           预览脱敏交接
@@ -432,7 +450,7 @@ function ProjectVerification({
                     );
                     if (live.current)
                       setMessage(saved ? "交接文件已导出。" : "已取消导出。");
-                  })
+                  }, true)
                 }
               >
                 导出 {format === "json" ? "JSON" : "Markdown"}
@@ -462,6 +480,7 @@ function ManualForm({
   const [reference, setReference] = useState("");
   const [issuer, setIssuer] = useState("");
   const [basis, setBasis] = useState<string[]>([]);
+  const [formError, setFormError] = useState("");
   const [at, setAt] = useState(() =>
     new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
       .toISOString()
@@ -480,7 +499,8 @@ function ManualForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (disabled) return;
-        void onSubmit({
+        const observedAt = new Date(at);
+        const parsed = manualSchema.safeParse({
           projectId: snapshot.projectId,
           expectedRevision: snapshot.projectRevision ?? 0,
           stage,
@@ -488,13 +508,37 @@ function ManualForm({
           person,
           role,
           scope,
-          observedAt: new Date(at).toISOString(),
-          externalBasis: reference && issuer ? { reference, issuer } : null,
+          observedAt: Number.isFinite(observedAt.getTime())
+            ? observedAt.toISOString()
+            : "",
+          externalBasis: reference || issuer ? { reference, issuer } : null,
           basisEvidenceIds: basis,
         });
+        if (!parsed.success) {
+          const field = parsed.error.issues[0]?.path.join(".") ?? "";
+          const labels: Record<string, string> = {
+            person: "登记或验收人",
+            role: "角色",
+            scope: "作用范围",
+            "externalBasis.issuer": "出具记录的组织或人员",
+          };
+          setFormError(
+            field === "observedAt"
+              ? "发生时间：请填写有效日期和时间。"
+              : field === "externalBasis.reference"
+                ? "记录编号或文档链接：请填写记录编号或不含登录信息、查询参数的 HTTPS 文档链接。"
+                : labels[field]
+                  ? `${labels[field]}：请填写文字、数字或常用中文标点，不含链接、路径或凭据，且不要留首尾空格。`
+                  : "请补全登记内容，并填写外部依据或选择已有记录。",
+          );
+          return;
+        }
+        setFormError("");
+        void onSubmit(parsed.data);
       }}
     >
       <h3>人工登记</h3>
+      {formError && <p role="alert">{formError}</p>}
       <p>
         填写可核对的记录编号或文档链接，或选择已有依据。仅本机模拟样本不能作为客户验收。
       </p>
@@ -617,16 +661,31 @@ function HandoffEditor({
   onSave: (notes: HandoffNotes) => Promise<void>;
 }) {
   const [notes, setNotes] = useState(initial);
+  const [formError, setFormError] = useState("");
   return (
     <form
       className="fy-verification-form"
       aria-label="交接事项"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!disabled) void onSave(notes);
+        if (disabled) return;
+        const parsed = handoffSchema.safeParse(notes);
+        if (!parsed.success) {
+          const path = parsed.error.issues[0]?.path ?? [];
+          const field = path[2] === "owner" ? "责任人" : "事项";
+          setFormError(
+            typeof path[1] === "number"
+              ? `${field} ${path[1] + 1}：请填写文字、数字或常用中文标点，不含链接、路径或凭据，且不要留首尾空格。`
+              : "请检查交接事项和回退办法后再保存。",
+          );
+          return;
+        }
+        setFormError("");
+        void onSave(parsed.data);
       }}
     >
       <h3>交接事项</h3>
+      {formError && <p role="alert">{formError}</p>}
       <fieldset disabled={disabled}>
         {notes.items.map((item, index) => (
           <div className="fy-verification-item" key={index}>

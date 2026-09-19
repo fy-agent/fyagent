@@ -14,7 +14,7 @@ pub(crate) fn safe_label(value: &str) -> bool {
         && value.chars().count() <= 160
         && value
             .chars()
-            .all(|c| c.is_alphanumeric() || " _-（）()，、".contains(c))
+            .all(|c| c.is_alphanumeric() || " _-（）()，、：；。·！？“”‘’".contains(c))
         && ![
             "secretref",
             "sk-",

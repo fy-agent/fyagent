@@ -4,14 +4,18 @@ import {
   screen,
   waitFor,
   act,
+  within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { useEffect, useState } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { ProjectsPage } from "@/pages/projects/Page";
+import { ProjectsPage, type ProjectsPageProps } from "@/pages/projects/Page";
 import type { Project, ProjectDependencySnapshot } from "@/domain/projects";
 import { FeatureProvider } from "@/shared/features/provider";
 import { PrimaryBlockerProvider } from "@/shared/ui/PrimaryBlocker";
 import { createBrowserFeaturePorts } from "@/shared/platform/browser/features";
+import { usePersistentVisibility } from "@/shared/ui/PersistentSurface";
 
 const a = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const b = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -32,7 +36,7 @@ function project(id: string, name: string): Project {
     updatedAt: "2026-09-19T00:00:00Z",
   };
 }
-function fixture() {
+function fixture(pageProps: ProjectsPageProps = {}, initialProject = a) {
   const ports = createBrowserFeaturePorts();
   const records = [project(a, "项目 A"), project(b, "项目 B")];
   const contents = new Map([
@@ -77,13 +81,13 @@ function fixture() {
         element: (
           <FeatureProvider ports={ports}>
             <PrimaryBlockerProvider>
-              <ProjectsPage />
+              <ProjectsPage {...pageProps} />
             </PrimaryBlockerProvider>
           </FeatureProvider>
         ),
       },
     ],
-    { initialEntries: [`/projects?project=${a}`] },
+    { initialEntries: [`/projects?project=${initialProject}`] },
   );
   return { ports, router, records, contents };
 }
@@ -109,6 +113,7 @@ describe("customer projects fixture UI", () => {
     });
     render(<RouterProvider router={router} />);
     await screen.findByDisplayValue("A 的说明");
+    fireEvent.click(screen.getByText("项目设置"));
     fireEvent.change(screen.getAllByLabelText("项目名称").at(-1)!, {
       target: { value: "新版名称" },
     });
@@ -146,6 +151,7 @@ describe("customer projects fixture UI", () => {
     });
     render(<RouterProvider router={router} />);
     await screen.findByDisplayValue("A 的说明");
+    fireEvent.click(screen.getByText("项目设置"));
     fireEvent.change(screen.getAllByLabelText("项目名称").at(-1)!, {
       target: { value: "名称草稿" },
     });
@@ -174,6 +180,7 @@ describe("customer projects fixture UI", () => {
     }));
     render(<RouterProvider router={router} />);
     await screen.findByText(/工作说明文件无法读取或已在外部修改/);
+    fireEvent.click(screen.getByText("项目设置"));
     expect(screen.getByRole("button", { name: "归档项目" })).toBeEnabled();
     fireEvent.change(screen.getByLabelText("工作说明"), {
       target: { value: "恢复内容" },
@@ -206,8 +213,8 @@ describe("customer projects fixture UI", () => {
     await screen.findByDisplayValue("B 的说明");
     expect(ports.projects.writeContext).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: /启动项目 Agent/ }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: /启动项目 Agent/ }),
+    ).not.toBeInTheDocument();
   });
   it("dirty project switch can be cancelled and never writes to B", async () => {
     const { ports, router } = fixture();
@@ -243,5 +250,151 @@ describe("customer projects fixture UI", () => {
     );
     await screen.findByText(/项目已发生变化/);
     expect(input).toHaveValue("keep this draft");
+  });
+
+  it("creates a project under its selected customer from the visible entry", async () => {
+    const { ports, router, records } = fixture({}, "");
+    ports.projects.create = vi.fn(async (customerId, name) => {
+      const next = { ...project(a, name), customerId };
+      records.splice(0, records.length, next);
+      return next;
+    });
+    render(<RouterProvider router={router} />);
+    await screen.findByRole("button", { name: /项目 A 客户/ });
+    fireEvent.click(screen.getByRole("button", { name: "新建项目" }));
+    const form = screen.getByRole("form", { name: "新建项目" });
+    fireEvent.change(within(form).getByLabelText("所属客户"), {
+      target: { value: customer },
+    });
+    fireEvent.change(within(form).getByLabelText("项目名称"), {
+      target: { value: "客户周报" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "创建项目" }));
+    await screen.findByRole("heading", { name: "客户周报" });
+    expect(ports.projects.create).toHaveBeenCalledWith(customer, "客户周报");
+    expect(
+      screen.queryByRole("form", { name: "新建项目" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("starts from an empty customer list without requiring a separate customer screen", async () => {
+    const { ports, router, records } = fixture({}, "");
+    records.length = 0;
+    const customers: {
+      customerId: string;
+      name: string;
+      revision: number;
+      archived: boolean;
+    }[] = [];
+    ports.projects.listCustomers = vi.fn(async () => customers);
+    ports.projects.createCustomer = vi.fn(async (name) => {
+      const record = {
+        customerId: customer,
+        name,
+        revision: 0,
+        archived: false,
+      };
+      customers.push(record);
+      return record;
+    });
+    ports.projects.create = vi.fn(async (customerId, name) => {
+      const next = { ...project(a, name), customerId };
+      records.push(next);
+      return next;
+    });
+    render(<RouterProvider router={router} />);
+    await screen.findByText("还没有项目。从一个具体的客户需求开始。");
+    fireEvent.click(screen.getByRole("button", { name: "创建第一个项目" }));
+    const form = screen.getByRole("form", { name: "新建项目" });
+    fireEvent.change(within(form).getByLabelText("客户名称"), {
+      target: { value: "星河商贸" },
+    });
+    fireEvent.change(within(form).getByLabelText("项目名称"), {
+      target: { value: "经营周报" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "创建项目" }));
+    await screen.findByRole("heading", { name: "经营周报" });
+    expect(ports.projects.createCustomer).toHaveBeenCalledTimes(1);
+    expect(ports.projects.create).toHaveBeenCalledWith(customer, "经营周报");
+  });
+
+  it("keeps context and handoff drafts across workspaces and pauses hidden panel work", async () => {
+    const user = userEvent.setup();
+    const readEvidence = vi.fn();
+    function HandoffDraft() {
+      const visible = usePersistentVisibility();
+      const [draft, setDraft] = useState("");
+      useEffect(() => {
+        if (visible) readEvidence();
+      }, [visible]);
+      return (
+        <label>
+          交接草稿
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} />
+        </label>
+      );
+    }
+    const { ports, router } = fixture({ VerificationPanel: HandoffDraft });
+    render(<RouterProvider router={router} />);
+    const context = await screen.findByLabelText("工作说明");
+    fireEvent.change(context, { target: { value: "待保存的项目范围" } });
+    expect(readEvidence).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("tab", { name: "验证与交接" }));
+    expect(context).not.toBeVisible();
+    expect(readEvidence).toHaveBeenCalledTimes(1);
+    const handoff = screen.getByLabelText("交接草稿");
+    fireEvent.change(handoff, { target: { value: "下周交给小周" } });
+    await user.click(screen.getByRole("tab", { name: "交付方案" }));
+    expect(handoff).not.toBeVisible();
+    expect(readEvidence).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("tab", { name: "项目准备" }));
+    expect(screen.getByLabelText("工作说明")).toBe(context);
+    expect(context).toHaveValue("待保存的项目范围");
+    await user.click(screen.getByRole("tab", { name: "验证与交接" }));
+    expect(screen.getByLabelText("交接草稿")).toBe(handoff);
+    expect(handoff).toHaveValue("下周交给小周");
+    expect(ports.projects.writeContext).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("shows individual changed resource states and usable Codex directory guidance", async () => {
+    const { ports, router, records } = fixture();
+    const resource = {
+      kind: "skill" as const,
+      agentId: "codex",
+      rawId: "weekly",
+      model: null,
+      pinnedVersion: "saved",
+    };
+    records[0].resources = [resource];
+    records[0].codexPrepared = true;
+    ports.projects.resourceOptions = vi.fn(async () => [
+      { ...resource, label: "周报整理", version: "current" },
+    ]);
+    ports.projects.getContext = vi.fn(async (projectId) => ({
+      projectId,
+      projectRevision: 0,
+      content: "A 的说明",
+      state: "materialized" as const,
+      directory: "/tmp/project-a",
+      codexInstructions: "请打开本目录。",
+    }));
+    const snapshot = await ports.projects.dependencySnapshot(a);
+    ports.projects.dependencySnapshot = vi.fn(async () => ({
+      ...snapshot,
+      contextState: "materialized" as const,
+      resources: [
+        { resource, observedVersion: "current", state: "drifted" as const },
+      ],
+    }));
+    render(<RouterProvider router={router} />);
+    await screen.findByDisplayValue("A 的说明");
+    fireEvent.click(screen.getByText("资源与账号"));
+    expect(await screen.findByText("来源已变化")).toBeVisible();
+    expect(screen.getByText(/在 Codex 中选择下方目录继续工作/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "复制工作目录" })).toBeEnabled();
+    expect(
+      screen.queryByText(/资源版本暂无法完整确认/),
+    ).not.toBeInTheDocument();
   });
 });

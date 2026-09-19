@@ -85,8 +85,16 @@ function DeliverySession(props: ProjectPanelProps) {
   );
   return (
     <ProjectDeliveryKitsPanel
-      projectId={props.disabled || props.archived ? null : props.projectId}
+      projectId={props.projectId}
       projectRevision={props.projectRevision}
+      currentKit={props.kit}
+      mutationBlockedReason={
+        props.archived
+          ? "项目已归档，可查看方案与样例。"
+          : props.disabled
+            ? "请先保存项目资料，再更换方案或保存检查记录。"
+            : undefined
+      }
       port={ports.deliveryKits}
       projectAdapter={projectAdapter}
       evidenceAdapter={evidenceAdapter}
@@ -100,6 +108,13 @@ function EvidencePanel(props: ProjectPanelProps) {
     <VerificationPanel
       key={`${props.projectId}:${props.projectRevision}`}
       projectId={props.projectId}
+      mutationBlockedReason={
+        props.archived
+          ? "项目已归档，已有记录可查阅和导出。"
+          : props.disabled
+            ? "请先保存项目资料，再检查或登记结果。"
+            : undefined
+      }
     />
   );
 }

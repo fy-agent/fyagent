@@ -269,6 +269,68 @@ fn verification_manual_validation_and_safe_handoff_export() {
 }
 
 #[test]
+fn verification_manual_chinese_punctuation_preserves_boundaries_and_readback() {
+    let (s, _) = fixture();
+    let scope = "本机演练：经营周报样例，不是真实客户验收";
+    let title = "阶段一；口径确认。张三·负责人（只读）！“周报”‘演练’？";
+    let mut request = manual(Stage::SamplePassed);
+    request.scope = scope.into();
+    s.record_manual(request).unwrap();
+    s.save_handoff(SaveHandoffRequest {
+        project_id: PROJECT.into(),
+        expected_revision: 1,
+        handoff_revision: 0,
+        handoff: HandoffNotes {
+            items: vec![HandoffItem {
+                title: title.into(),
+                owner: Some("交付·张三".into()),
+                completed: false,
+            }],
+            rollback: Some(Rollback::ManualOnly),
+        },
+    })
+    .unwrap();
+    let snapshot = s.snapshot(PROJECT).unwrap();
+    assert_eq!(snapshot.evidence[0].manual.as_ref().unwrap().scope, scope);
+    assert_eq!(snapshot.handoff.items[0].title, title);
+    let exported = s.preview(PROJECT).unwrap();
+    assert!(exported.markdown.contains(scope));
+    assert!(exported.markdown.contains(title));
+    assert!(exported.json.contains(scope));
+
+    for value in [
+        "https://example.com/doc",
+        "/tmp/report",
+        "C:\\reports\\a",
+        "../report",
+        "api_key：private",
+        "Bearer private",
+        "secretRef：private",
+        "token：private",
+        "javascript:alert(1)",
+        "资料\n秘密",
+        " 前置空格",
+    ] {
+        let mut request = manual(Stage::SamplePassed);
+        request.scope = value.into();
+        assert!(s.record_manual(request).is_err(), "unsafe scope accepted");
+        assert!(
+            domain::validate_handoff(&HandoffNotes {
+                items: vec![HandoffItem {
+                    title: value.into(),
+                    owner: None,
+                    completed: false
+                }],
+                rollback: None,
+            })
+            .is_err(),
+            "unsafe handoff accepted"
+        );
+    }
+    assert_eq!(s.snapshot(PROJECT).unwrap().evidence.len(), 1);
+}
+
+#[test]
 fn verification_handoff_cas_and_history_survive_service_restart() {
     let (s, reader) = fixture();
     s.record_manual(manual(Stage::CustomerAccepted)).unwrap();

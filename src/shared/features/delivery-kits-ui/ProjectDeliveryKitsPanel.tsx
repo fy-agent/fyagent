@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { Project } from "../../../domain/projects";
 import {
   businessLabels,
   type KitDemoResult,
@@ -29,6 +30,8 @@ import "./delivery-kits.css";
 export interface ProjectDeliveryKitsPanelProps {
   projectId: string | null;
   projectRevision: number | null;
+  currentKit?: Project["kit"];
+  mutationBlockedReason?: string;
   active?: boolean;
   port: DeliveryKitsPort;
   projectAdapter?: KitProjectAdapter;
@@ -52,6 +55,8 @@ function KitPanelSession({
   port,
   projectId,
   projectRevision,
+  currentKit,
+  mutationBlockedReason,
   projectAdapter,
   evidenceAdapter,
   onProjectChanged,
@@ -94,7 +99,18 @@ function KitPanelSession({
   );
   const selected =
     visible.find((k) => k.identity.manifestDigest === selectedDigest) ??
+    visible.find(
+      (k) => k.identity.manifestDigest === currentKit?.manifestDigest,
+    ) ??
     visible[0];
+  const boundKit = catalog.data?.find(
+    (k) => k.identity.manifestDigest === currentKit?.manifestDigest,
+  );
+  const selectedIsBound =
+    !!selected &&
+    selected.identity.kitId === currentKit?.kitId &&
+    selected.identity.kitVersion === currentKit.kitVersion &&
+    selected.identity.manifestDigest === currentKit.manifestDigest;
   const hasContext =
     projectId !== null &&
     projectRevision !== null &&
@@ -155,6 +171,8 @@ function KitPanelSession({
   async function bind(kit: KitView) {
     if (
       !hasContext ||
+      !!mutationBlockedReason ||
+      selectedIsBound ||
       !projectAdapter ||
       projectId === null ||
       projectRevision === null
@@ -204,6 +222,14 @@ function KitPanelSession({
       </header>
       {error && !preview && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
+      <p className="fy-kit-secondary">
+        {currentKit
+          ? boundKit
+            ? `当前项目方案：${boundKit.manifest.title} · ${boundKit.manifest.version}`
+            : "当前项目方案暂无法读取，请刷新交付包库。"
+          : "选择一个方案作为项目起点，查看方法和样例，再按客户情况开展工作。"}
+      </p>
+      {mutationBlockedReason && <p role="status">{mutationBlockedReason}</p>}
       {catalog.isPending && <p role="status">正在加载交付包…</p>}
       {catalog.isError && (
         <p role="alert">无法读取交付包目录，请刷新后重试。</p>
@@ -233,7 +259,12 @@ function KitPanelSession({
                 }}
               >
                 <span>
-                  {k.manifest.version} · {k.installed ? "已导入" : "待导入"}
+                  {k.manifest.version} ·{" "}
+                  {k.identity.manifestDigest === currentKit?.manifestDigest
+                    ? "本项目使用"
+                    : k.installed
+                      ? "已导入"
+                      : "待导入"}
                 </span>
               </FeatureListItem>
             ))}
@@ -277,15 +308,22 @@ function KitPanelSession({
                   分享导出
                 </Button>
                 <Button
+                  className="fy-control-button-primary"
                   disabled={
                     busy ||
+                    !!mutationBlockedReason ||
+                    selectedIsBound ||
                     !selected.installed ||
                     !hasContext ||
                     !projectAdapter
                   }
                   onClick={() => void perform(() => bind(selected))}
                 >
-                  绑定到当前项目
+                  {selectedIsBound
+                    ? "已用于本项目"
+                    : currentKit
+                      ? "更换为此方案"
+                      : "用作项目方案"}
                 </Button>
                 <Button
                   disabled={
@@ -309,6 +347,9 @@ function KitPanelSession({
                 </p>
               )}
               {!hasContext && projectAdapter && <p>请先选择项目。</p>}
+              {!selected.installed && (
+                <p className="fy-kit-secondary">先预览导入，再用作项目方案。</p>
+              )}
               {!selected.compatible && (
                 <p role="alert">当前版本不满足这个包的依赖要求。</p>
               )}
@@ -387,11 +428,19 @@ function KitPanelSession({
                       </div>
                     ))}
                     <Button
-                      disabled={busy || !evidenceAdapter || !hasContext}
+                      disabled={
+                        busy ||
+                        !!mutationBlockedReason ||
+                        !selectedIsBound ||
+                        !evidenceAdapter ||
+                        !hasContext
+                      }
                       onClick={() =>
                         void perform(async () => {
                           if (
                             !evidenceAdapter ||
+                            !!mutationBlockedReason ||
+                            !selectedIsBound ||
                             projectId === null ||
                             projectRevision === null
                           )
@@ -412,6 +461,9 @@ function KitPanelSession({
                     </Button>
                     {!evidenceAdapter && (
                       <p>结果仅保留在本次页面中，检查记录暂不可用。</p>
+                    )}
+                    {evidenceAdapter && !selectedIsBound && (
+                      <p>将此方案用于项目后，即可保存检查记录。</p>
                     )}
                   </section>
                 )}

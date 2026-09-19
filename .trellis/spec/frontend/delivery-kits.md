@@ -3,6 +3,10 @@
 `shared/features/delivery-kits-ui/ProjectDeliveryKitsPanel.tsx` exports one panel for Projects,
 not a top-level route. Props include projectId/projectRevision, active, a real
 DeliveryKitsPort, optional project/evidence adapters and onProjectChanged.
+The root also passes the actual currentKit and a mutationBlockedReason. A dirty
+or archived project retains its identity and readable plan; it must not become
+"no project selected". Default selection prefers the bound immutable identity,
+repeated binding is disabled, and evidence can only be saved for that identity.
 Root owns Projects navigation/composition and final shared-facade registration.
 
 `domain/delivery-kits/index.ts` owns strict runtime wire parsers and closed

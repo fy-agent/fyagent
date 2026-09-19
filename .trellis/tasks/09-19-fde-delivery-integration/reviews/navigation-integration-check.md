@@ -40,3 +40,22 @@ jsdom 没有原生 `window.matchMedia`；Vitest 4 的 spyOn 会拒绝对 undefin
 - 上述变更的定向 `git diff --check` 通过。
 
 没有修改 ProjectsWorkspace、VerificationPanel、native Rust 或构建预算，没有执行 native build、实机操作或全库测试，未提交。该证据属于 renderer 生产构建及定向静态/单元检查；整体 native 集成由主控接续。
+
+## 浏览器失败收尾（普通模式；仅测试修改）
+
+依据主控全量结果 `control-evidence/integration-browser.log`：621 passed / 10 failed，未另跑全库。8 个失败来自 shell 在四个 Chromium 视口仍断言旧的 5 顶层控件和 10 个键盘节点；真实九路由对应 6 和 11。剩余失败是 materials-responsive 在 Codex summary 尚未到达时直接查询 source guidance，以及 press-feedback 在 900×600 下等待按压缩放时始终得到 1。
+
+仅修改以下三个测试文件：
+- `tests/browser/shell.spec.ts`：增加客户项目到显式九路由遍历和键盘顺序，顶层控件改为 6；选中唯一性、aria-current、键盘顺序、视口边界、无重叠/横向溢出等断言保留。
+- `tests/browser/navigation-performance.spec.ts`：显式路由集合补 Projects，production boots 标题改 nine；原性能 p95 上限与采样逻辑均未改。
+- `tests/browser/materials-responsive.spec.ts`：在修改 320px 内容前，等待 `.fy-models-source-entry p` 可见。原始错误为 Missing source guidance；源码显示该块由 summaryQuery.data 控制，而 region 可先出现。没有增大超时、放宽布局阈值或跳过断言。
+
+press-feedback 原文件未改。原始日志和 trace 显示宽度比例为 1，但没有足够证据确认产品缺陷或具体输入丢失原因；原样在 Chromium 900×600 连续重跑三次全部通过，随后所有四个 Chromium 视口及 WebKit 的同一用例亦通过。保留其首次偶发失败记录，不宣称已修复确定根因。
+
+实际验证：
+- 原 press-feedback 单例：`rtk proxy pnpm exec playwright test --config config/playwright.config.ts tests/browser/press-feedback.spec.ts --grep 'positioned search' --project chromium-900x600 --repeat-each 3 --workers 1`，3 passed，exit 0。
+- 相关回归：`rtk proxy pnpm exec playwright test --config config/playwright.config.ts tests/browser/shell.spec.ts tests/browser/materials-responsive.spec.ts tests/browser/press-feedback.spec.ts --grep 'complete shell|every primary control|every route|long copy|positioned search'`，21 passed，exit 0。完整日志 `control-evidence/browser-navigation-fix.log`，产物 `control-evidence/browser-navigation-fix-artifacts/`。
+- 生产启动：`rtk proxy pnpm exec playwright test --config config/playwright.performance.config.ts --grep 'production boots'`，3 passed，exit 0，包含九页启动、首用引导、presentation timing；配置内 renderer 生产构建也成功。完整日志 `control-evidence/browser-production-boots.log`，产物 `control-evidence/browser-production-boots-artifacts/`。
+- 三个改动文件的 prettier、eslint 和定向 git diff --check 通过。
+
+本节 control-evidence 路径均相对主控指定的外部证据目录 `tmp/fde-workstreams-20260919/`，没有覆盖全量原日志。未改产品，未控制原生界面，未更新截图基线，未跑全库或完整性能套件，未提交。定向通过覆盖了原失败场景，但不替代一次重新运行的全量通过结论。

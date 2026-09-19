@@ -9,21 +9,27 @@ import type {
 import { projectError } from "../../shared/features/projects";
 import { useFeatures } from "../../shared/features/provider";
 import { featureKeys } from "../../shared/features/queries";
+import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import { Button } from "../../shared/ui/Button";
 import { ConfirmDialog } from "../../shared/ui/Dialog";
+import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { EmptyState, InlineNotice } from "../../shared/ui/primitives";
 import {
   usePrimaryBlocker,
   usePrimaryBlockerOrigin,
 } from "../../shared/ui/PrimaryBlocker";
 import { usePersistentSearchParams } from "../../shared/ui/usePersistentSearchParams";
-import { usePersistentVisibility } from "../../shared/ui/PersistentSurface";
+import {
+  PersistentSurface,
+  usePersistentVisibility,
+} from "../../shared/ui/PersistentSurface";
 import "./projects.css";
 
 export interface ProjectPanelProps {
   projectId: string;
   projectRevision: number;
   archived: boolean;
+  kit: Project["kit"];
   disabled: boolean;
   onProjectChanged: () => Promise<void>;
 }
@@ -49,6 +55,7 @@ const kinds: Record<string, string> = {
 };
 const resourceKey = (r: ResourceOption) =>
   JSON.stringify([r.kind, r.agentId, r.rawId]);
+type ProjectView = "prepare" | "delivery" | "verification";
 
 export function ProjectsPage({
   DeliveryKitPanel,
@@ -72,11 +79,15 @@ export function ProjectsPage({
   const [customerName, setCustomerName] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [customerId, setCustomerId] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [newCustomer, setNewCustomer] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const selected = searchParams.get("project");
   const selectedProject = projects.data?.find((p) => p.projectId === selected);
+  const activeCustomers = customers.data?.filter((c) => !c.archived) ?? [];
+  const creatingCustomer = newCustomer || activeCustomers.length === 0;
   const context = useQuery({
     queryKey: featureKeys.projectContext(selected),
     queryFn: () => ports.projects.getContext(selected!),
@@ -98,29 +109,24 @@ export function ProjectsPage({
       }),
     ]);
   };
-  const createCustomer = async () => {
-    if (busy || !visible) return;
-    setBusy(true);
-    setError("");
-    try {
-      const c = await ports.projects.createCustomer(customerName);
-      setCustomerName("");
-      setCustomerId(c.customerId);
-      await refresh();
-    } catch (e) {
-      setError(projectError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
   const createProject = async () => {
     if (busy || !visible) return;
     setBusy(true);
     setError("");
     try {
-      const p = await ports.projects.create(customerId, newProjectName);
+      let ownerId = customerId;
+      if (creatingCustomer) {
+        const c = await ports.projects.createCustomer(customerName);
+        ownerId = c.customerId;
+        setCustomerName("");
+        setCustomerId(ownerId);
+        setNewCustomer(false);
+        await refresh();
+      }
+      const p = await ports.projects.create(ownerId, newProjectName);
       setNewProjectName("");
       await refresh();
+      setCreating(false);
       setSearchParams({ project: p.projectId });
     } catch (e) {
       setError(projectError(e));
@@ -136,71 +142,90 @@ export function ProjectsPage({
     >
       <header className="fy-projects-header">
         <h1>客户项目</h1>
-        <span>按客户整理资料与工具</span>
+        <span>整理项目目标、交付方案与验证结果</span>
       </header>
       <div className="fy-projects-layout">
         <aside className="fy-projects-rail" aria-label="项目列表">
-          <details>
-            <summary>新建客户与项目</summary>
+          <Button
+            className="fy-control-button-primary fy-projects-create"
+            aria-expanded={creating}
+            aria-controls="project-create-form"
+            onClick={() => setCreating((open) => !open)}
+          >
+            新建项目
+          </Button>
+          {creating && (
             <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void createCustomer();
-              }}
-            >
-              <label>
-                客户名称
-                <input
-                  className="fy-control-input"
-                  value={customerName}
-                  maxLength={160}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                />
-              </label>
-              <Button type="submit" disabled={busy || !customerName.trim()}>
-                添加客户
-              </Button>
-            </form>
-            <form
+              id="project-create-form"
+              className="fy-projects-create-form"
+              aria-label="新建项目"
               onSubmit={(e) => {
                 e.preventDefault();
                 void createProject();
               }}
             >
-              <label>
-                所属客户
-                <select
-                  className="fy-control-input"
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                >
-                  <option value="">请选择客户</option>
-                  {customers.data
-                    ?.filter((c) => !c.archived)
-                    .map((c) => (
+              {activeCustomers.length > 0 && (
+                <label>
+                  所属客户
+                  <select
+                    className="fy-control-input"
+                    value={newCustomer ? "new" : customerId}
+                    disabled={busy}
+                    onChange={(e) => {
+                      setNewCustomer(e.target.value === "new");
+                      setCustomerId(
+                        e.target.value === "new" ? "" : e.target.value,
+                      );
+                    }}
+                  >
+                    <option value="">请选择客户</option>
+                    {activeCustomers.map((c) => (
                       <option key={c.customerId} value={c.customerId}>
                         {c.name}
                       </option>
                     ))}
-                </select>
-              </label>
+                    <option value="new">新建客户…</option>
+                  </select>
+                </label>
+              )}
+              {creatingCustomer && (
+                <label>
+                  客户名称
+                  <input
+                    className="fy-control-input"
+                    value={customerName}
+                    maxLength={160}
+                    disabled={busy}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="例如：星河商贸"
+                  />
+                </label>
+              )}
               <label>
                 项目名称
                 <input
                   className="fy-control-input"
                   value={newProjectName}
                   maxLength={160}
+                  disabled={busy}
                   onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder="例如：经营周报"
                 />
               </label>
               <Button
                 type="submit"
-                disabled={busy || !customerId || !newProjectName.trim()}
+                disabled={
+                  busy ||
+                  customers.isPending ||
+                  customers.isError ||
+                  (creatingCustomer ? !customerName.trim() : !customerId) ||
+                  !newProjectName.trim()
+                }
               >
                 创建项目
               </Button>
             </form>
-          </details>
+          )}
           <label className="fy-projects-check">
             <input
               type="checkbox"
@@ -217,7 +242,9 @@ export function ProjectsPage({
           ) : projects.isPending ? (
             <p role="status">正在读取项目…</p>
           ) : projects.data?.length === 0 ? (
-            <p>先添加客户，再创建第一个项目。</p>
+            <p className="fy-projects-hint">
+              还没有项目。从一个具体的客户需求开始。
+            </p>
           ) : null}
           <ul className="fy-projects-list">
             {projects.data
@@ -255,13 +282,24 @@ export function ProjectsPage({
         <main className="fy-projects-detail" aria-label="项目详情">
           {!selectedProject ? (
             <EmptyState
-              title="选择一个项目"
-              description="项目资料独立保存，选择项目不会更改正在使用的软件配置。"
-            />
+              title={
+                projects.data?.length ? "选择要继续的项目" : "开始一个客户项目"
+              }
+              description="记录客户要解决的问题，为项目选择交付方案，再保存验证结果与交接说明。"
+            >
+              <Button onClick={() => setCreating(true)}>
+                {projects.data?.length ? "新建另一个项目" : "创建第一个项目"}
+              </Button>
+            </EmptyState>
           ) : (
             <ProjectEditor
               key={selectedProject.projectId}
               project={selectedProject}
+              customerName={
+                customers.data?.find(
+                  (c) => c.customerId === selectedProject.customerId,
+                )?.name ?? "客户"
+              }
               context={
                 context.isError || !selectedContext
                   ? {
@@ -350,6 +388,7 @@ function CustomerEditor({
 
 function ProjectEditor({
   project,
+  customerName,
   context,
   contextLoading,
   onChanged,
@@ -357,6 +396,7 @@ function ProjectEditor({
   VerificationPanel,
 }: ProjectsPageProps & {
   project: Project;
+  customerName: string;
   context: ProjectContext;
   contextLoading: boolean;
   onChanged: () => Promise<void>;
@@ -376,6 +416,16 @@ function ProjectEditor({
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [reloadOpen, setReloadOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [view, setView] = useState<ProjectView>("prepare");
+  const [visitedViews, setVisitedViews] = useState<ReadonlySet<ProjectView>>(
+    () => new Set(["prepare"]),
+  );
+  const contextInput = useRef<HTMLTextAreaElement>(null);
+  const tabsId = `project-work-${project.projectId}`;
+  function changeView(next: ProjectView) {
+    setView(next);
+    setVisitedViews((visited) => new Set([...visited, next]));
+  }
   const recoveryOrigin = useRef<HTMLElement | null>(null);
   const reloadOrigin = useRef<HTMLElement | null>(null);
   const archiveOrigin = useRef<HTMLElement | null>(null);
@@ -385,12 +435,12 @@ function ProjectEditor({
   const resources = useQuery({
     queryKey: featureKeys.projectResourceOptions,
     queryFn: () => ports.projects.resourceOptions(),
-    enabled: visible,
+    enabled: visible && view === "prepare",
   });
   const credentials = useQuery({
     queryKey: featureKeys.projectCredentialOptions,
     queryFn: () => ports.projects.credentialOptions(),
-    enabled: visible,
+    enabled: visible && view === "prepare",
   });
   const selectedResource = resources.data?.find(
     (r) => resourceKey(r) === resource,
@@ -398,7 +448,7 @@ function ProjectEditor({
   const dependencies = useQuery({
     queryKey: featureKeys.projectDependencies(project.projectId),
     queryFn: () => ports.projects.dependencySnapshot(project.projectId),
-    enabled: visible,
+    enabled: visible && view === "prepare",
   });
   const request = {
     projectId: project.projectId,
@@ -424,20 +474,44 @@ function ProjectEditor({
     projectId: project.projectId,
     projectRevision: project.projectRevision,
     archived: project.archived,
+    kit: project.kit,
     disabled: disabled || dirty,
     onProjectChanged: onChanged,
   };
   return (
-    <>
+    <div className="fy-projects-workspace">
       <div className="fy-projects-title">
-        <h2>{project.name}</h2>
-        <Button
-          disabled={disabled || dirty}
-          dialogOriginRef={archiveOrigin}
-          onClick={() => setArchiveOpen(true)}
-        >
-          归档项目
-        </Button>
+        <div>
+          <p className="fy-projects-customer-name">{customerName}</p>
+          <h2>{project.name}</h2>
+          <p className="fy-projects-hint">
+            {contextLoading
+              ? "正在读取项目资料"
+              : context.state === "materialized"
+                ? "已保存工作说明"
+                : context.state === "not_created"
+                  ? "先写清项目目标与交付要求"
+                  : "工作说明需要重新检查"}
+            {project.kit ? " · 已选择交付方案" : " · 尚未选择交付方案"}
+          </p>
+        </div>
+        {!project.archived && (
+          <Button
+            disabled={busy || contextLoading}
+            onClick={() => {
+              if (dirty || context.state !== "materialized") {
+                changeView("prepare");
+                if (view === "prepare") contextInput.current?.focus();
+              } else changeView(project.kit ? "verification" : "delivery");
+            }}
+          >
+            {dirty || context.state !== "materialized"
+              ? "完善项目说明"
+              : project.kit
+                ? "查看验证与交接"
+                : "选择交付方案"}
+          </Button>
+        )}
       </div>
       {project.archived && (
         <InlineNotice>
@@ -447,309 +521,404 @@ function ProjectEditor({
       {error && <InlineNotice tone="error">{error}</InlineNotice>}
       {status && <p role="status">{status}</p>}
       {(error || dirty) && (
-        <Button
-          disabled={busy || !visible}
-          dialogOriginRef={reloadOrigin}
-          onClick={() => setReloadOpen(true)}
-        >
-          重新载入项目
-        </Button>
-      )}
-      <section>
-        <h3>项目资料</h3>
-        <label>
-          项目名称
-          <input
-            className="fy-control-input"
-            value={name}
-            maxLength={160}
-            disabled={disabled}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <Button
-          disabled={disabled || name === project.name || !name.trim()}
-          onClick={() =>
-            void run(async () => {
-              await ports.projects.update(request, name, false);
-              setName(null);
-            }, "项目名称已保存")
-          }
-        >
-          保存名称
-        </Button>
-        {!contextLoading && context.state === "unavailable" && (
-          <InlineNotice tone="error">
-            工作说明文件无法读取或已在外部修改。请先保留外部内容，再重新建立工作说明。
-            <Button
-              disabled={busy || !visible}
-              onClick={() => void onChanged()}
-            >
-              重试读取
-            </Button>
-          </InlineNotice>
-        )}
-        {contextLoading && <p role="status">正在读取工作说明…</p>}
-        <label>
-          工作说明
-          <textarea
-            className="fy-control-input fy-projects-context"
-            value={text}
-            disabled={disabled || contextLoading}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="记录项目目标、授权资料、口径与待确认事项"
-          />
-        </label>
-        <p className="fy-projects-hint">
-          保存会为此项目生成新的工作说明文件，保留先前版本。不会写入其他软件的全局记忆。
-        </p>
-        <Button
-          className="fy-control-button-primary"
-          disabled={
-            disabled ||
-            contextLoading ||
-            context.state === "unavailable" ||
-            (text === context.content && context.state === "materialized")
-          }
-          onClick={() =>
-            void run(async () => {
-              await ports.projects.writeContext(
-                { ...request, expectedRevision: context.projectRevision },
-                text,
-              );
-              setText(null);
-            }, "工作说明已保存")
-          }
-        >
-          {busy ? "保存中…" : "保存工作说明"}
-        </Button>
-        {!contextLoading && context.state === "unavailable" && (
+        <div className="fy-projects-draft-notice">
+          {dirty && <span>项目资料有未保存的修改</span>}
           <Button
-            disabled={disabled}
-            dialogOriginRef={recoveryOrigin}
-            onClick={() => setRecoveryOpen(true)}
+            disabled={busy || !visible}
+            dialogOriginRef={reloadOrigin}
+            onClick={() => setReloadOpen(true)}
           >
-            重新建立工作说明
+            重新载入项目
           </Button>
-        )}
-        {context.directory && (
-          <p className="fy-projects-path">
-            文件目录 <code>{context.directory}</code>
-          </p>
-        )}
-      </section>
-      <section>
-        <h3>项目资源</h3>
-        <p className="fy-projects-hint">
-          引用现有资源，不会自动在软件中启用。资源版本暂无法完整确认，使用前请核对。
-          全局记忆暂不支持项目绑定，请将本项目说明保存在上方资料中。
-        </p>
-        {resources.isError ? (
-          <p role="alert">无法读取资源，请刷新重试。</p>
-        ) : (
+        </div>
+      )}
+      <FeatureTabs
+        id={tabsId}
+        label="项目工作区"
+        value={view}
+        onChange={changeView}
+        options={[
+          { id: "prepare", label: "项目准备" },
+          { id: "delivery", label: "交付方案" },
+          { id: "verification", label: "验证与交接" },
+        ]}
+      />
+      <FeatureTabPanel
+        tabsId={tabsId}
+        value="prepare"
+        active={view === "prepare"}
+        layout="workspace"
+        className="fy-projects-panel"
+      >
+        <section className="fy-projects-goal">
+          <h3>这次要交付什么</h3>
+          {!contextLoading && context.state === "unavailable" && (
+            <InlineNotice tone="error">
+              工作说明文件无法读取或已在外部修改。请先保留外部内容，再重新建立工作说明。
+              <Button
+                disabled={busy || !visible}
+                onClick={() => void onChanged()}
+              >
+                重试读取
+              </Button>
+            </InlineNotice>
+          )}
+          {contextLoading && <p role="status">正在读取工作说明…</p>}
           <label>
-            选择资源
-            <select
-              className="fy-control-input"
-              value={resource}
-              disabled={disabled || dirty}
-              onChange={(e) => setResource(e.target.value)}
-            >
-              <option value="">请选择</option>
-              {resources.data?.map((r) => (
-                <option key={resourceKey(r)} value={resourceKey(r)}>
-                  {r.agentId} · {kinds[r.kind]} · {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {selectedResource?.kind === "provider" && (
-          <label>
-            模型名称
-            <input
-              className="fy-control-input"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              maxLength={256}
-              disabled={disabled || dirty}
+            工作说明
+            <textarea
+              ref={contextInput}
+              className="fy-control-input fy-projects-context"
+              value={text}
+              disabled={disabled || contextLoading}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="客户要解决什么问题？使用哪些已获授权的资料？交付什么成果、如何验收？"
             />
           </label>
-        )}
-        <Button
-          disabled={disabled || dirty || !selectedResource}
-          onClick={() => {
-            const r = selectedResource;
-            if (r)
-              void run(
-                () =>
-                  ports.projects.bindResource(
-                    request,
-                    r,
-                    r.kind === "provider" ? model || null : null,
-                  ),
-                "资源引用已保存",
-              );
-          }}
-        >
-          添加引用
-        </Button>
-        <ul className="fy-projects-resources">
-          {project.resources.map((r) => (
-            <li key={`${r.kind}:${r.agentId}:${r.rawId}`}>
-              <div>
-                <strong>
-                  {resources.data?.find(
-                    (x) =>
-                      x.kind === r.kind &&
-                      x.agentId === r.agentId &&
-                      x.rawId === r.rawId,
-                  )?.label ?? "来源不可用"}
-                </strong>
-                <span>
-                  {r.agentId} · {kinds[r.kind]}
-                  {r.model ? ` · ${r.model}` : ""}
-                </span>
-              </div>
-              <Button
-                disabled={disabled || dirty}
-                onClick={() =>
-                  void run(
-                    () => ports.projects.removeResource(request, r),
-                    "引用已移除",
-                  )
-                }
-              >
-                移除引用
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section>
-        <h3>账号引用</h3>
-        <p className="fy-projects-hint">
-          仅保存账号用途，不复制凭据；尚未检查远端认证。
-        </p>
-        {credentials.isError ? (
-          <p role="alert">无法读取账号，请重试。</p>
-        ) : (
-          <label>
-            选择账号
-            <select
-              className="fy-control-input"
-              value={credential}
-              disabled={disabled || dirty}
-              onChange={(e) => setCredential(e.target.value)}
+          <p className="fy-projects-hint">
+            这份说明仅用于本项目，保存时保留先前版本。
+          </p>
+          <Button
+            className="fy-control-button-primary"
+            disabled={
+              disabled ||
+              contextLoading ||
+              context.state === "unavailable" ||
+              (text === context.content && context.state === "materialized")
+            }
+            onClick={() =>
+              void run(async () => {
+                await ports.projects.writeContext(
+                  { ...request, expectedRevision: context.projectRevision },
+                  text,
+                );
+                setText(null);
+              }, "工作说明已保存")
+            }
+          >
+            {busy ? "保存中…" : "保存工作说明"}
+          </Button>
+          {!contextLoading && context.state === "unavailable" && (
+            <Button
+              disabled={disabled}
+              dialogOriginRef={recoveryOrigin}
+              onClick={() => setRecoveryOpen(true)}
             >
-              <option value="">请选择</option>
-              {credentials.data?.map((c) => (
-                <option
-                  key={c.credentialId}
-                  value={c.credentialId}
-                  disabled={c.state !== "unverifiable"}
+              重新建立工作说明
+            </Button>
+          )}
+        </section>
+        <details className="fy-projects-optional">
+          <summary>
+            资源与账号{" "}
+            <span>
+              可选 · {project.resources.length} 项资源，
+              {project.credentials.length} 个账号
+            </span>
+          </summary>
+          {dirty && (
+            <p className="fy-projects-hint">
+              先保存项目资料，再调整资源与账号。
+            </p>
+          )}
+          <section>
+            <h3>为项目保留所需资源</h3>
+            <p className="fy-projects-hint">
+              关联已保存的模型、MCP、Skill
+              或提示词，方便后续核对。引用不会自动在软件中启用。
+            </p>
+            {resources.isError ? (
+              <p role="alert">无法读取资源，请刷新重试。</p>
+            ) : (
+              <label>
+                选择资源
+                <select
+                  className="fy-control-input"
+                  value={resource}
+                  disabled={disabled || dirty}
+                  onChange={(e) => setResource(e.target.value)}
                 >
-                  {c.label} · {c.consumer}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <Button
-          disabled={disabled || dirty || !credential}
-          onClick={() => {
-            const c = credentials.data?.find(
-              (c) => c.credentialId === credential,
-            );
-            if (c)
-              void run(
-                () => ports.projects.bindCredential(request, c),
-                "账号引用已保存",
-              );
-          }}
-        >
-          绑定账号用途
-        </Button>
-        <ul className="fy-projects-resources">
-          {project.credentials.map((c) => (
-            <li key={c.credentialId}>
-              <div>
-                <strong>
-                  {credentials.data?.find(
-                    (x) => x.credentialId === c.credentialId,
-                  )?.label ?? "来源不可用"}
-                </strong>
-                <span>{c.consumer}</span>
-              </div>
-              <Button
-                disabled={disabled || dirty}
-                onClick={() =>
+                  <option value="">请选择</option>
+                  {resources.data?.map((r) => (
+                    <option key={resourceKey(r)} value={resourceKey(r)}>
+                      {r.agentId} · {kinds[r.kind]} · {r.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {selectedResource?.kind === "provider" && (
+              <label>
+                模型名称
+                <input
+                  className="fy-control-input"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  maxLength={256}
+                  disabled={disabled || dirty}
+                />
+              </label>
+            )}
+            <Button
+              disabled={disabled || dirty || !selectedResource}
+              onClick={() => {
+                const r = selectedResource;
+                if (r)
                   void run(
                     () =>
-                      ports.projects.removeCredential(request, c.credentialId),
-                    "账号引用已移除",
-                  )
-                }
-              >
-                移除引用
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section>
-        <h3>Codex 工作目录</h3>
-        <p>生成独立的工作目录、只读配置和检查说明。账号和工具不会自动带入。</p>
-        <Button
-          disabled={disabled || dirty || context.state !== "materialized"}
-          onClick={() =>
-            void run(
-              () => ports.projects.prepareCodex(request),
-              "Codex 工作目录已生成",
-            )
-          }
-        >
-          生成 Codex 工作目录
-        </Button>
-        {context.codexInstructions && (
-          <details>
-            <summary>查看使用说明</summary>
-            <pre className="fy-projects-instructions">
-              {context.codexInstructions}
-            </pre>
-          </details>
-        )}
-      </section>
-      <section>
-        <h3>使用前检查</h3>
-        {dependencies.data ? (
-          <DependencySummary snapshot={dependencies.data} />
-        ) : (
-          <p>
-            {dependencies.isError
-              ? "无法核对项目，请刷新重试。"
-              : "正在核对项目…"}
+                      ports.projects.bindResource(
+                        request,
+                        r,
+                        r.kind === "provider" ? model || null : null,
+                      ),
+                    "资源引用已保存",
+                  );
+              }}
+            >
+              添加引用
+            </Button>
+            <ul className="fy-projects-resources">
+              {project.resources.map((r) => (
+                <li key={`${r.kind}:${r.agentId}:${r.rawId}`}>
+                  <div>
+                    <strong>
+                      {resources.data?.find(
+                        (x) =>
+                          x.kind === r.kind &&
+                          x.agentId === r.agentId &&
+                          x.rawId === r.rawId,
+                      )?.label ?? "来源不可用"}
+                    </strong>
+                    <span>
+                      {r.agentId} · {kinds[r.kind]}
+                      {r.model ? ` · ${r.model}` : ""}
+                    </span>
+                    <span>
+                      {dependencies.isError
+                        ? "状态暂无法确认，请重新检查"
+                        : states[
+                            dependencies.data?.resources.find(
+                              (item) =>
+                                item.resource.kind === r.kind &&
+                                item.resource.agentId === r.agentId &&
+                                item.resource.rawId === r.rawId,
+                            )?.state ?? "unverifiable"
+                          ]}
+                    </span>
+                  </div>
+                  <Button
+                    disabled={disabled || dirty}
+                    onClick={() =>
+                      void run(
+                        () => ports.projects.removeResource(request, r),
+                        "引用已移除",
+                      )
+                    }
+                  >
+                    移除引用
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section>
+            <h3>记录项目使用的账号</h3>
+            <p className="fy-projects-hint">
+              仅保存账号用途，不复制凭据；尚未检查远端认证。
+            </p>
+            {credentials.isError ? (
+              <p role="alert">无法读取账号，请重试。</p>
+            ) : (
+              <label>
+                选择账号
+                <select
+                  className="fy-control-input"
+                  value={credential}
+                  disabled={disabled || dirty}
+                  onChange={(e) => setCredential(e.target.value)}
+                >
+                  <option value="">请选择</option>
+                  {credentials.data?.map((c) => (
+                    <option
+                      key={c.credentialId}
+                      value={c.credentialId}
+                      disabled={c.state !== "unverifiable"}
+                    >
+                      {c.label} · {c.consumer}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <Button
+              disabled={disabled || dirty || !credential}
+              onClick={() => {
+                const c = credentials.data?.find(
+                  (c) => c.credentialId === credential,
+                );
+                if (c)
+                  void run(
+                    () => ports.projects.bindCredential(request, c),
+                    "账号引用已保存",
+                  );
+              }}
+            >
+              绑定账号用途
+            </Button>
+            <ul className="fy-projects-resources">
+              {project.credentials.map((c) => (
+                <li key={c.credentialId}>
+                  <div>
+                    <strong>
+                      {credentials.data?.find(
+                        (x) => x.credentialId === c.credentialId,
+                      )?.label ?? "来源不可用"}
+                    </strong>
+                    <span>{c.consumer}</span>
+                    <span>
+                      {dependencies.isError
+                        ? "状态暂无法确认，请重新检查"
+                        : states[
+                            dependencies.data?.credentials.find(
+                              (item) =>
+                                item.binding.credentialId === c.credentialId,
+                            )?.state ?? "unverifiable"
+                          ]}
+                    </span>
+                  </div>
+                  <Button
+                    disabled={disabled || dirty}
+                    onClick={() =>
+                      void run(
+                        () =>
+                          ports.projects.removeCredential(
+                            request,
+                            c.credentialId,
+                          ),
+                        "账号引用已移除",
+                      )
+                    }
+                  >
+                    移除引用
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section>
+            <h3>检查资源是否仍可用</h3>
+            {dependencies.data && !dependencies.isError ? (
+              <DependencySummary snapshot={dependencies.data} />
+            ) : (
+              <p>
+                {dependencies.isError
+                  ? "无法核对项目，请刷新重试。"
+                  : "正在核对项目…"}
+              </p>
+            )}
+            <Button
+              disabled={busy || dirty || !visible}
+              onClick={() => void dependencies.refetch()}
+            >
+              重新检查引用
+            </Button>
+          </section>
+        </details>
+        <section>
+          <h3>Codex 工作目录</h3>
+          <p className="fy-projects-hint">
+            {context.state !== "materialized"
+              ? "先保存工作说明，再生成供 Codex 使用的独立目录。"
+              : project.codexPrepared
+                ? "在 Codex 中选择下方目录继续工作。账号与工具需在 Codex 中另行配置。"
+                : "把工作说明放进独立目录，随后在 Codex 中选择这个目录开展工作。"}
           </p>
-        )}
-        <Button
-          disabled={busy || dirty || !visible}
-          onClick={() => void dependencies.refetch()}
-        >
-          重新检查引用
-        </Button>
-        <p>尚未启动项目 Agent。外部软件的认证、工具调用和权限需要另外确认。</p>
-        <Button disabled>启动项目 Agent（暂不可用）</Button>
-      </section>
-      {DeliveryKitPanel && (
-        <section aria-label="交付包">
-          <DeliveryKitPanel {...panelProps} />
+          <Button
+            disabled={disabled || dirty || context.state !== "materialized"}
+            onClick={() =>
+              void run(
+                () => ports.projects.prepareCodex(request),
+                "Codex 工作目录已生成",
+              )
+            }
+          >
+            {project.codexPrepared ? "重新生成工作目录" : "生成 Codex 工作目录"}
+          </Button>
+          {context.directory && (
+            <CopyablePath
+              value={context.directory}
+              label={project.codexPrepared ? "工作目录" : "资料目录"}
+            />
+          )}
+          {context.codexInstructions && (
+            <details>
+              <summary>查看使用说明</summary>
+              <pre className="fy-projects-instructions">
+                {context.codexInstructions}
+              </pre>
+            </details>
+          )}
         </section>
-      )}
-      {VerificationPanel && (
-        <section aria-label="验证与交接">
-          <VerificationPanel {...panelProps} />
-        </section>
-      )}
+        <details className="fy-projects-settings">
+          <summary>项目设置</summary>
+          <label>
+            项目名称
+            <input
+              className="fy-control-input"
+              value={name}
+              maxLength={160}
+              disabled={disabled}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <div className="fy-projects-actions">
+            <Button
+              disabled={disabled || name === project.name || !name.trim()}
+              onClick={() =>
+                void run(async () => {
+                  await ports.projects.update(request, name, false);
+                  setName(null);
+                }, "项目名称已保存")
+              }
+            >
+              保存名称
+            </Button>
+            <Button
+              disabled={disabled || dirty}
+              dialogOriginRef={archiveOrigin}
+              onClick={() => setArchiveOpen(true)}
+            >
+              归档项目
+            </Button>
+          </div>
+        </details>
+      </FeatureTabPanel>
+      <FeatureTabPanel
+        tabsId={tabsId}
+        value="delivery"
+        active={view === "delivery"}
+        layout="workspace"
+        className="fy-projects-panel"
+      >
+        <PersistentSurface active={view === "delivery"}>
+          {DeliveryKitPanel && visitedViews.has("delivery") && (
+            <DeliveryKitPanel {...panelProps} />
+          )}
+        </PersistentSurface>
+      </FeatureTabPanel>
+      <FeatureTabPanel
+        tabsId={tabsId}
+        value="verification"
+        active={view === "verification"}
+        layout="workspace"
+        className="fy-projects-panel"
+      >
+        <PersistentSurface active={view === "verification"}>
+          {VerificationPanel && visitedViews.has("verification") && (
+            <VerificationPanel {...panelProps} />
+          )}
+        </PersistentSurface>
+      </FeatureTabPanel>
       <ConfirmDialog
         open={visible && recoveryOpen}
         title="重新建立工作说明？"
@@ -804,7 +973,7 @@ function ProjectEditor({
           );
         }}
       />
-    </>
+    </div>
   );
 }
 

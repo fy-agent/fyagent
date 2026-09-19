@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   snapshotSchema,
   manualSchema,
+  handoffSchema,
   evidenceLabel,
 } from "@/domain/verification";
 import {
@@ -99,6 +100,39 @@ describe("verification evidence boundary", () => {
       basisEvidenceIds: [],
     };
     expect(manualSchema.safeParse(r).success).toBe(true);
+    for (const scope of [
+      "本机演练：经营周报样例，不是真实客户验收",
+      "阶段一；口径确认。张三·负责人（只读）！“周报”‘演练’？",
+    ]) {
+      expect(manualSchema.safeParse({ ...r, scope }).success).toBe(true);
+      expect(
+        handoffSchema.safeParse({
+          items: [{ title: scope, owner: "交付·张三", completed: false }],
+          rollback: "manual_only",
+        }).success,
+      ).toBe(true);
+    }
+    for (const scope of [
+      "https://example.com/doc",
+      "/tmp/report",
+      "C:\\reports\\a",
+      "../report",
+      "api_key：private",
+      "Bearer private",
+      "secretRef：private",
+      "token：private",
+      "javascript:alert(1)",
+      "资料\n秘密",
+      " 前置空格",
+    ]) {
+      expect(manualSchema.safeParse({ ...r, scope }).success).toBe(false);
+      expect(
+        handoffSchema.safeParse({
+          items: [{ title: scope, owner: null, completed: false }],
+          rollback: "manual_only",
+        }).success,
+      ).toBe(false);
+    }
     expect(
       manualSchema.safeParse({
         ...r,

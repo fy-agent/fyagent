@@ -40,6 +40,7 @@ vi.mock("@/pages/projects/Page", () => ({
       projectRevision: scope.revision,
       disabled: false,
       archived: false,
+      kit: null,
       onProjectChanged: async () => undefined,
     };
     return (

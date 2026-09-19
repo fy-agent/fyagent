@@ -9,7 +9,10 @@ import {
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import fixture from "../../../fixtures/deliveryKitContract.v1.json";
-import { ProjectDeliveryKitsPanel } from "@/shared/features/delivery-kits-ui/ProjectDeliveryKitsPanel";
+import {
+  ProjectDeliveryKitsPanel,
+  type ProjectDeliveryKitsPanelProps,
+} from "@/shared/features/delivery-kits-ui/ProjectDeliveryKitsPanel";
 import {
   parseKitView,
   type KitDemoResult,
@@ -65,7 +68,10 @@ function makePort(): DeliveryKitsPort {
     runDemo: vi.fn().mockResolvedValue(demo),
   };
 }
-function harness(port: DeliveryKitsPort) {
+function harness(
+  port: DeliveryKitsPort,
+  props: Partial<ProjectDeliveryKitsPanelProps> = {},
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
@@ -76,12 +82,64 @@ function harness(port: DeliveryKitsPort) {
         projectRevision={revision}
         port={port}
         active={active}
+        {...props}
       />
     </QueryClientProvider>
   );
   return { view, client };
 }
 describe("project delivery kits panel (fixture IPC)", () => {
+  it("opens the project's bound plan after a revision change and prevents redundant binding", async () => {
+    const bound = parseKitView({
+      ...fixture,
+      identity: {
+        ...fixture.identity,
+        kitId: "customer-plan",
+        manifestDigest: "c".repeat(64),
+      },
+      manifest: {
+        ...fixture.manifest,
+        id: "customer-plan",
+        title: "客户周报方案",
+      },
+      installed: true,
+    });
+    const port = makePort();
+    vi.mocked(port.list).mockResolvedValue([kit, bound]);
+    const bindDeliveryKit = vi.fn();
+    const { view } = harness(port, {
+      currentKit: bound.identity,
+      projectAdapter: { bindDeliveryKit },
+    });
+    const rendered = render(view());
+    await screen.findByRole("heading", { name: "客户周报方案" });
+    expect(screen.getByRole("button", { name: "已用于本项目" })).toBeDisabled();
+    rendered.rerender(view("project-a", 1));
+    await screen.findByRole("heading", { name: "客户周报方案" });
+    expect(bindDeliveryKit).not.toHaveBeenCalled();
+  });
+  it("keeps project identity while drafts block binding and recording", async () => {
+    const port = makePort();
+    vi.mocked(port.list).mockResolvedValue([{ ...kit, installed: true }]);
+    const bindDeliveryKit = vi.fn();
+    const recordLocalFixture = vi.fn();
+    const reason = "请先保存项目资料，再更换方案或保存检查记录。";
+    const { view } = harness(port, {
+      currentKit: kit.identity,
+      mutationBlockedReason: reason,
+      projectAdapter: { bindDeliveryKit },
+      evidenceAdapter: { recordLocalFixture },
+    });
+    render(view());
+    fireEvent.click(
+      await screen.findByRole("button", { name: "运行合成样例" }),
+    );
+    await screen.findByRole("region", { name: "样例检查结果" });
+    expect(screen.getByText(reason)).toBeVisible();
+    expect(screen.queryByText("请先选择项目。")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存检查记录" })).toBeDisabled();
+    expect(recordLocalFixture).not.toHaveBeenCalled();
+  });
   it("shows actual port results without pretending a connection or durable evidence exists", async () => {
     const port = makePort();
     const { view } = harness(port);
@@ -94,9 +152,7 @@ describe("project delivery kits panel (fixture IPC)", () => {
     expect(within(results).getByText("20%")).toBeInTheDocument();
     expect(within(results).getByText(/来源行重复/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存检查记录" })).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "绑定到当前项目" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "用作项目方案" })).toBeDisabled();
     expect(port.runDemo).toHaveBeenCalledWith(kit.identity);
   });
   it("previews and cancels without importing; only confirm performs a native write and reread", async () => {

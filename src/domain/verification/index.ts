@@ -52,7 +52,7 @@ const timestamp = z.string().check(
 const label = z.string().check(
   z.minLength(1),
   z.maxLength(160),
-  z.regex(/^[\p{L}\p{N} _（）()，、-]+$/u),
+  z.regex(/^[\p{L}\p{N} _（）()，、：；。·！？“”‘’-]+$/u),
   z.refine(
     (v) =>
       v.trim() === v &&
