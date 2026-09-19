@@ -110,11 +110,12 @@ export function createProjectsPort(): ProjectsPort {
           projectId: projectIdSchema.parse(projectId),
         }),
       ),
-    writeContext: async (request, content) =>
+    writeContext: async (request, content, recover = false) =>
       projectContextSchema.parse(
         await invoke<unknown>("projects_write_context", {
           request: mutationSchema.parse(request),
           content,
+          recover,
         }),
       ),
     prepareCodex: async (request) =>

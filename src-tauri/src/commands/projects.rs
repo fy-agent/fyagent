@@ -135,10 +135,14 @@ pub(crate) fn projects_write_context(
     state: State<'_, ProjectsService>,
     request: ProjectMutation,
     content: String,
+    recover: Option<bool>,
 ) -> Result<ProjectContext, String> {
-    state
-        .write_context(&request, &content)
-        .map_err(public_error)
+    if recover.unwrap_or(false) {
+        state.write_context_with_recovery(&request, &content, true)
+    } else {
+        state.write_context(&request, &content)
+    }
+    .map_err(public_error)
 }
 #[tauri::command]
 pub(crate) fn projects_bind_delivery_kit(

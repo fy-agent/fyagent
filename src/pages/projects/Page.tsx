@@ -80,9 +80,12 @@ export function ProjectsPage({
   const context = useQuery({
     queryKey: featureKeys.projectContext(selected),
     queryFn: () => ports.projects.getContext(selected!),
+    retry: false,
     enabled: visible && !!selected,
     staleTime: Infinity,
   });
+  const selectedContext =
+    context.data?.projectId === selected ? context.data : undefined;
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: featureKeys.projects }),
@@ -255,22 +258,23 @@ export function ProjectsPage({
               title="选择一个项目"
               description="项目资料独立保存，选择项目不会更改正在使用的软件配置。"
             />
-          ) : context.isError ? (
-            <EmptyState
-              title="无法读取项目工作说明"
-              description="项目文件可能被移动或替换。原有项目记录已保留，请检查目录后重试。"
-            >
-              <Button onClick={() => void context.refetch()}>重试</Button>
-            </EmptyState>
-          ) : !context.data ||
-            context.data.projectId !== selectedProject.projectId ||
-            context.data.projectRevision !== selectedProject.projectRevision ? (
-            <p role="status">正在读取工作说明…</p>
           ) : (
             <ProjectEditor
-              key={`${selectedProject.projectId}:${selectedProject.projectRevision}`}
+              key={selectedProject.projectId}
               project={selectedProject}
-              context={context.data}
+              context={
+                context.isError || !selectedContext
+                  ? {
+                      projectId: selectedProject.projectId,
+                      projectRevision: selectedProject.projectRevision,
+                      content: selectedContext?.content ?? "",
+                      directory: null,
+                      state: "unavailable",
+                      codexInstructions: null,
+                    }
+                  : selectedContext
+              }
+              contextLoading={context.isPending}
               onChanged={refresh}
               DeliveryKitPanel={DeliveryKitPanel}
               VerificationPanel={VerificationPanel}
@@ -347,18 +351,22 @@ function CustomerEditor({
 function ProjectEditor({
   project,
   context,
+  contextLoading,
   onChanged,
   DeliveryKitPanel,
   VerificationPanel,
 }: ProjectsPageProps & {
   project: Project;
   context: ProjectContext;
+  contextLoading: boolean;
   onChanged: () => Promise<void>;
 }) {
   const { ports } = useFeatures();
   const visible = usePersistentVisibility();
-  const [name, setName] = useState(project.name);
-  const [text, setText] = useState(context.content);
+  const [nameDraft, setName] = useState<string | null>(null);
+  const [textDraft, setText] = useState<string | null>(null);
+  const name = nameDraft ?? project.name;
+  const text = textDraft ?? context.content;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -367,6 +375,8 @@ function ProjectEditor({
   const [model, setModel] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [reloadOpen, setReloadOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const recoveryOrigin = useRef<HTMLElement | null>(null);
   const reloadOrigin = useRef<HTMLElement | null>(null);
   const archiveOrigin = useRef<HTMLElement | null>(null);
   const dirty = name !== project.name || text !== context.content;
@@ -458,27 +468,34 @@ function ProjectEditor({
           />
         </label>
         <Button
-          disabled={
-            disabled ||
-            name === project.name ||
-            !name.trim() ||
-            text !== context.content
-          }
+          disabled={disabled || name === project.name || !name.trim()}
           onClick={() =>
-            void run(
-              () => ports.projects.update(request, name, false),
-              "项目名称已保存",
-            )
+            void run(async () => {
+              await ports.projects.update(request, name, false);
+              setName(null);
+            }, "项目名称已保存")
           }
         >
           保存名称
         </Button>
+        {!contextLoading && context.state === "unavailable" && (
+          <InlineNotice tone="error">
+            工作说明文件无法读取或已在外部修改。请先保留外部内容，再重新建立工作说明。
+            <Button
+              disabled={busy || !visible}
+              onClick={() => void onChanged()}
+            >
+              重试读取
+            </Button>
+          </InlineNotice>
+        )}
+        {contextLoading && <p role="status">正在读取工作说明…</p>}
         <label>
           工作说明
           <textarea
             className="fy-control-input fy-projects-context"
             value={text}
-            disabled={disabled}
+            disabled={disabled || contextLoading}
             onChange={(e) => setText(e.target.value)}
             placeholder="记录项目目标、授权资料、口径与待确认事项"
           />
@@ -490,18 +507,31 @@ function ProjectEditor({
           className="fy-control-button-primary"
           disabled={
             disabled ||
-            name !== project.name ||
-            (!dirty && context.state === "materialized")
+            contextLoading ||
+            context.state === "unavailable" ||
+            (text === context.content && context.state === "materialized")
           }
           onClick={() =>
-            void run(
-              () => ports.projects.writeContext(request, text),
-              "工作说明已保存",
-            )
+            void run(async () => {
+              await ports.projects.writeContext(
+                { ...request, expectedRevision: context.projectRevision },
+                text,
+              );
+              setText(null);
+            }, "工作说明已保存")
           }
         >
           {busy ? "保存中…" : "保存工作说明"}
         </Button>
+        {!contextLoading && context.state === "unavailable" && (
+          <Button
+            disabled={disabled}
+            dialogOriginRef={recoveryOrigin}
+            onClick={() => setRecoveryOpen(true)}
+          >
+            重新建立工作说明
+          </Button>
+        )}
         {context.directory && (
           <p className="fy-projects-path">
             文件目录 <code>{context.directory}</code>
@@ -721,6 +751,21 @@ function ProjectEditor({
         </section>
       )}
       <ConfirmDialog
+        open={visible && recoveryOpen}
+        title="重新建立工作说明？"
+        description="将以上方内容建立新版本，旧文件保留。请先复制需要保留的外部修改。"
+        pending={busy}
+        originRef={recoveryOrigin}
+        onCancel={() => setRecoveryOpen(false)}
+        onConfirm={() => {
+          setRecoveryOpen(false);
+          void run(async () => {
+            await ports.projects.writeContext(request, text, true);
+            setText(null);
+          }, "工作说明已重新建立");
+        }}
+      />
+      <ConfirmDialog
         open={visible && reloadOpen}
         title="重新载入项目？"
         description="未保存的草稿会被丢弃，请先复制需要保留的内容。"
@@ -729,8 +774,8 @@ function ProjectEditor({
         onCancel={() => setReloadOpen(false)}
         onConfirm={() => {
           setReloadOpen(false);
-          setName(project.name);
-          setText(context.content);
+          setName(null);
+          setText(null);
           setError("");
           void onChanged();
         }}

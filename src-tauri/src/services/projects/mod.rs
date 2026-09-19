@@ -1,5 +1,7 @@
 pub(crate) mod domain;
 mod files;
+#[cfg(all(test, target_os = "macos"))]
+mod project_recovery_tests;
 mod resources;
 #[cfg(test)]
 mod tests;
@@ -266,11 +268,19 @@ impl ProjectsService {
         r: &ProjectMutation,
         content: &str,
     ) -> Result<ProjectContext, AppError> {
+        self.write_context_with_recovery(r, content, false)
+    }
+    pub(crate) fn write_context_with_recovery(
+        &self,
+        r: &ProjectMutation,
+        content: &str,
+        recover: bool,
+    ) -> Result<ProjectContext, AppError> {
         let mut p = self.mutation(r)?;
         if content.len() > MAX_CONTEXT_BYTES || content.contains('\0') {
             return Err(project_error("invalid_request"));
         }
-        if p.context_generation.is_some() {
+        if p.context_generation.is_some() && !recover {
             self.context(&p.project_id)?;
         }
         let generation = uuid::Uuid::new_v4().to_string();
@@ -347,7 +357,13 @@ impl ProjectsService {
                 let state = match source {
                     None => ObservationState::Missing,
                     Some(_) => match (&b.pinned_version, &observed) {
-                        (Some(a), Some(b)) if a == b => ObservationState::Matched,
+                        (Some(a), Some(observed)) if a == observed => {
+                            if b.kind == ResourceKind::Skill {
+                                ObservationState::Unverifiable
+                            } else {
+                                ObservationState::Matched
+                            }
+                        }
                         (Some(_), Some(_)) => ObservationState::Drifted,
                         _ => ObservationState::Unverifiable,
                     },

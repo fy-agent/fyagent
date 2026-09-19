@@ -50,6 +50,7 @@ export interface ProjectsPort {
   writeContext(
     request: ProjectMutation,
     content: string,
+    recover?: boolean,
   ): Promise<ProjectContext>;
   prepareCodex(request: ProjectMutation): Promise<ProjectContext>;
   bindDeliveryKit(request: BindDeliveryKitRequest): Promise<Project>;
