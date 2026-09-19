@@ -73,17 +73,33 @@ function rustFilesUnder(relativeDirectory: string): string[] {
 }
 
 function assertMacosPathEnvironmentBoundary(source: string) {
-  // Match rustfmt's complete function/block boundaries, not an attribute next
-  // to a call: the login-shell and ambient PATH reads share one macOS block.
-  const searchFunction = source.match(
+  // Interactive readiness resolves a login environment only on macOS. The
+  // shared filesystem collector must not execute it (Health passes None).
+  const readinessFunction = source.match(
     /^fn build_tool_search_paths\(tool: &str\) -> Vec<std::path::PathBuf> \{[\s\S]*?^\}/mu,
   )?.[0];
+  expect(readinessFunction).toBeDefined();
+  const macosLogin = readinessFunction?.match(
+    /^    #\[cfg\(target_os = "macos"\)\]\s*\n    let login_path = login_shell_path\(\);/mu,
+  )?.[0];
+  expect(macosLogin).toBeDefined();
+  expect(readinessFunction?.replace(macosLogin ?? "", "")).not.toContain(
+    "login_shell_path()",
+  );
+  expect(readinessFunction).not.toMatch(/std::env::var(?:_os)?\("PATH"\)/u);
+  expect(readinessFunction).toMatch(
+    /#\[cfg\(target_os = "windows"\)\]\s+let login_path = None;/u,
+  );
+  const searchFunction = source.match(
+    /^fn build_tool_search_paths_from\([^\n]+\) -> Vec<std::path::PathBuf> \{[\s\S]*?^\}/mu,
+  )?.[0];
   expect(searchFunction).toBeDefined();
+  expect(searchFunction).not.toContain("login_shell_path()");
   const macosBlock = searchFunction?.match(
     /^    #\[cfg\(target_os = "macos"\)\]\s*\n    \{[\s\S]*?^    \}/mu,
   )?.[0];
   expect(macosBlock).toBeDefined();
-  expect(macosBlock).toContain("login_shell_path()");
+  expect(macosBlock).toContain("if let Some(login) = login_path");
   expect(macosBlock).toContain('std::env::var_os("PATH")');
   expect(macosBlock?.match(/extend_from_cli_path_env\s*\(/gu)).toHaveLength(2);
   const otherBranches = searchFunction?.replace(macosBlock ?? "", "");
