@@ -87,6 +87,10 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "managed_auth_defaults",
     "managed_auth_connections",
     "managed_auth_migrations",
+    "fde_customers",
+    "fde_projects",
+    "fde_project_kit_intents",
+    "fde_project_context_versions",
 ];
 
 /// Tables whose local data is preserved (restored from local snapshot) during WebDAV import.
@@ -104,6 +108,10 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "managed_auth_defaults",
     "managed_auth_connections",
     "managed_auth_migrations",
+    "fde_customers",
+    "fde_projects",
+    "fde_project_kit_intents",
+    "fde_project_context_versions",
 ];
 
 /// A database backup entry for the UI
@@ -1892,6 +1900,34 @@ mod tests {
             preserved,
             ("plan-local".into(), "job-local".into(), "job-local".into())
         );
+        Ok(())
+    }
+
+    #[test]
+    fn projects_sync_preserves_device_rows_with_no_filesystem_access() -> Result<(), AppError> {
+        let source = Connection::open_in_memory()?;
+        let target = Connection::open_in_memory()?;
+        Database::create_project_tables_on_conn(&source)?;
+        Database::create_project_tables_on_conn(&target)?;
+        source.execute_batch("INSERT INTO fde_customers VALUES ('customer','local',0,0); INSERT INTO fde_projects VALUES ('project','customer',0,0,'{}'); INSERT INTO fde_project_kit_intents VALUES ('intent','project','request','result'); INSERT INTO fde_project_context_versions VALUES ('project','generation','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');")?;
+        let tables = [
+            "fde_customers",
+            "fde_projects",
+            "fde_project_kit_intents",
+            "fde_project_context_versions",
+        ];
+        for table in tables {
+            assert!(super::SYNC_SKIP_TABLES.contains(&table));
+            assert!(super::SYNC_PRESERVE_TABLES.contains(&table));
+        }
+        Database::restore_tables(&source, &target, &tables)?;
+        for table in tables {
+            assert_eq!(
+                target.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                    .get::<_, i64>(0))?,
+                1
+            );
+        }
         Ok(())
     }
 

@@ -17,6 +17,7 @@ pub(crate) mod model_probe;
 pub(crate) mod omo;
 pub(crate) mod opencode_models;
 pub(crate) mod profile;
+pub(crate) mod projects;
 pub(crate) mod prompt;
 pub(crate) mod provider;
 pub(crate) mod proxy;

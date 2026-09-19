@@ -8,6 +8,7 @@ pub(crate) mod health;
 pub(crate) mod managed_auth;
 pub mod mcp;
 pub mod profiles;
+mod projects;
 pub mod prompts;
 pub mod providers;
 pub mod providers_seed;

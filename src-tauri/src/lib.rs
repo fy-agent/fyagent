@@ -1750,6 +1750,11 @@ pub fn run() {
                 app.handle().clone(),
             );
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
+            app.manage(crate::services::projects::ProjectsService::new(
+                app_state.db.clone(),
+                crate::config::get_app_config_dir().join("projects"),
+                std::sync::Arc::new(crate::services::projects::UnavailableKitReader),
+            ));
             app.manage(app_state);
 
             // 初始化 SkillService
@@ -2136,6 +2141,24 @@ pub fn run() {
             commands::import_prompt_from_file,
             commands::get_current_prompt_file_content,
             // Profile management (项目配置方案)
+            commands::projects_list_customers,
+            commands::projects_create_customer,
+            commands::projects_update_customer,
+            commands::projects_list,
+            commands::projects_get,
+            commands::projects_create,
+            commands::projects_update,
+            commands::projects_resource_options,
+            commands::projects_credential_options,
+            commands::projects_bind_resource,
+            commands::projects_remove_resource,
+            commands::projects_bind_credential,
+            commands::projects_remove_credential,
+            commands::projects_get_context,
+            commands::projects_write_context,
+            commands::projects_prepare_codex,
+            commands::projects_bind_delivery_kit,
+            commands::projects_dependency_snapshot,
             commands::list_profiles,
             commands::create_profile,
             commands::update_profile,
