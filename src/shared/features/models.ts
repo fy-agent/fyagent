@@ -189,6 +189,7 @@ export interface TraeWorkModelIdsResult {
 }
 
 export interface OpenCodeProviderSnapshot {
+  editable: boolean;
   id: string;
   name: string;
   modelIds: string[];
@@ -209,6 +210,7 @@ export interface OpenCodeFetchModelsRequest {
 }
 
 export interface OpenCodeSaveModelsRequest {
+  providerId: string | null;
   providerName: string;
   baseUrl: string;
   apiKey: string;

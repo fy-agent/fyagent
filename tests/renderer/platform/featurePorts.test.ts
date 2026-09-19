@@ -620,6 +620,25 @@ describe("Renderer feature ports", () => {
     ]);
   });
 
+  it("rejects OpenCode snapshots without native edit eligibility", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/shared/platform/tauri/features"
+    );
+    const provider = { id: "builtin", name: "Builtin", modelIds: ["m"] };
+    for (const candidate of [provider, { ...provider, editable: "true" }]) {
+      invoke.mockResolvedValueOnce({
+        providers: [candidate],
+        revision: "r1",
+        path: "opencode.json",
+        backupPath: "opencode.json.backup",
+        exists: true,
+      });
+      await expect(
+        createTauriFeaturePorts().opencodeModels.getSnapshot(),
+      ).rejects.toThrow("OpenCode model snapshot is unavailable");
+    }
+  });
+
   it("uses exact TRAE observation and OpenCode model commands", async () => {
     const { createTauriFeaturePorts } = await import(
       "@/shared/platform/tauri/features"
@@ -635,7 +654,12 @@ describe("Renderer feature ports", () => {
       if (command === "get_opencode_model_snapshot") {
         return {
           providers: [
-            { id: "gateway", name: "Gateway", modelIds: ["model-a"] },
+            {
+              id: "gateway",
+              name: "Gateway",
+              modelIds: ["model-a"],
+              editable: true,
+            },
           ],
           revision: "oc-rev",
           path: "~/.config/opencode/opencode.json",
@@ -695,7 +719,14 @@ describe("Renderer feature ports", () => {
       truncated: false,
     });
     await expect(ports.opencodeModels.getSnapshot()).resolves.toEqual({
-      providers: [{ id: "gateway", name: "Gateway", modelIds: ["model-a"] }],
+      providers: [
+        {
+          id: "gateway",
+          name: "Gateway",
+          modelIds: ["model-a"],
+          editable: true,
+        },
+      ],
       revision: "oc-rev",
       path: "~/.config/opencode/opencode.json",
       backupPath: "~/.config/opencode/opencode.json.backup",
@@ -703,6 +734,7 @@ describe("Renderer feature ports", () => {
     });
     await ports.opencodeModels.fetchProviderModels(openCodeFetch);
     await ports.opencodeModels.saveModels({
+      providerId: "gateway",
       providerName: "Gateway",
       baseUrl: openCodeFetch.baseUrl,
       apiKey: openCodeFetch.apiKey,
@@ -743,6 +775,7 @@ describe("Renderer feature ports", () => {
         "save_opencode_models",
         {
           request: {
+            providerId: "gateway",
             providerName: "Gateway",
             baseUrl: openCodeFetch.baseUrl,
             apiKey: openCodeFetch.apiKey,
