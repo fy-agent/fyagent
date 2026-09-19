@@ -1113,6 +1113,119 @@ function runMacSignedDmgVerifier(mode: string) {
   };
 }
 
+function runMacNotarization(scenario: string) {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "fyagent-notary-sequence-"),
+  );
+  temporaryRoots.push(root);
+  const state = path.join(root, "fyagent-macos-signing");
+  const bin = path.join(root, "bin");
+  const app = path.join(root, "FyAgent.app");
+  const dmg = path.join(root, "FyAgent.dmg");
+  const log = path.join(root, "calls.log");
+  for (const directory of [state, bin, app]) fs.mkdirSync(directory);
+  fs.writeFileSync(path.join(state, "signing.keychain-db"), "fixture");
+  fs.writeFileSync(
+    path.join(state, "state.env"),
+    'KEYCHAIN_PATH="$STATE_DIR/signing.keychain-db"\nKEYCHAIN_PASSWORD=fixture-only\n',
+  );
+  fs.writeFileSync(
+    path.join(bin, "security"),
+    "#!/usr/bin/env bash\nexit 0\n",
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(
+    path.join(bin, "ditto"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+[ "$#" -eq 5 ] && [ "$1" = -c ] && [ "$2" = -k ] && [ "$3" = --keepParent ]
+[ -d "$4" ]
+printf 'archive-app\\n' >> "$FYAGENT_FAKE_NOTARY_LOG"
+printf 'signed-app-archive' > "$5"
+`,
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(
+    path.join(bin, "xcrun"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+case "$1 $2" in
+  'notarytool submit')
+    [ -f "$3" ]
+    case "$3" in *.zip) kind=app ;; *.dmg) kind=dmg ;; *) exit 2 ;; esac
+    printf 'submit-%s\\n' "$kind" >> "$FYAGENT_FAKE_NOTARY_LOG"
+    if [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = missing-id ]; then printf '{}\\n'; else printf '{"id":"%s-id"}\\n' "$kind"; fi
+    ;;
+  'notarytool info')
+    case "$3" in app-id) kind=app ;; dmg-id) kind=dmg ;; *) exit 2 ;; esac
+    status=Accepted
+    if [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = invalid ] || { [ "$kind" = dmg ] && [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = dmg-invalid ]; }; then
+      status=Invalid
+    elif [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = timeout ]; then
+      status='In Progress'
+    elif [ ! -f "$FYAGENT_FAKE_NOTARY_ROOT/polled-$kind" ]; then
+      status='In Progress'
+      touch "$FYAGENT_FAKE_NOTARY_ROOT/polled-$kind"
+    fi
+    printf 'info-%s-%s\\n' "$kind" "$status" >> "$FYAGENT_FAKE_NOTARY_LOG"
+    if [ "$status" = Accepted ]; then touch "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind"; fi
+    printf '{"status":"%s"}\\n' "$status"
+    ;;
+  'notarytool log') printf 'denial-log\\n' >> "$FYAGENT_FAKE_NOTARY_LOG" ;;
+  'stapler staple')
+    case "$3" in *.app) kind=app ;; *.dmg) kind=dmg ;; *) exit 2 ;; esac
+    [ -f "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind" ] || exit 91
+    printf 'staple-%s\\n' "$kind" >> "$FYAGENT_FAKE_NOTARY_LOG"
+    if [ "$kind" = app ]; then touch "$3/.ticket"; fi
+    ;;
+  *) exit 2 ;;
+esac
+`,
+    { mode: 0o755 },
+  );
+  const result = spawnSync(
+    resolveBashExecutable(),
+    [
+      "-c",
+      `
+set -euo pipefail
+bash "$1" notarize-app "$2"
+bash "$1" staple-app "$2"
+test -f "$2/.ticket"
+printf 'package-ticketed-app\\n' >> "$FYAGENT_FAKE_NOTARY_LOG"
+printf 'container-with-app-ticket' > "$3"
+bash "$1" notarize-dmg "$3"
+`,
+      "notary-fixture",
+      MACOS_DEVELOPER_ID,
+      app,
+      dmg,
+    ],
+    {
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        RUNNER_TEMP: root,
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        FYAGENT_NOTARY_WAIT_SECONDS: scenario === "timeout" ? "0" : "5",
+        FYAGENT_NOTARY_POLL_SECONDS: "0",
+        FYAGENT_FAKE_NOTARY_ROOT: root,
+        FYAGENT_FAKE_NOTARY_LOG: log,
+        FYAGENT_FAKE_NOTARY_SCENARIO: scenario,
+      },
+    },
+  );
+  if (result.error) throw result.error;
+  return {
+    ...result,
+    calls: fs.existsSync(log) ? read(log).trim().split("\n") : [],
+    privateArchiveExists: fs.existsSync(
+      path.join(state, "app-notarization.zip"),
+    ),
+  };
+}
+
 afterAll(() => {
   for (const root of temporaryRoots) {
     fs.rmSync(root, { force: true, recursive: true });
@@ -1125,6 +1238,47 @@ describe("FyAgent release workflow", () => {
   const releaseContract = read(RELEASE_CONTRACT);
   const releaseContractTypes = read(RELEASE_CONTRACT_TYPES);
   const windowsManifestVerifier = read(WINDOWS_MANIFEST_VERIFIER);
+
+  it("waits for app acceptance before packaging its ticket and notarizes the final container", () => {
+    const result = runMacNotarization("accepted");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.calls).toEqual([
+      "archive-app",
+      "submit-app",
+      "info-app-In Progress",
+      "info-app-Accepted",
+      "staple-app",
+      "package-ticketed-app",
+      "submit-dmg",
+      "info-dmg-In Progress",
+      "info-dmg-Accepted",
+      "staple-dmg",
+    ]);
+    expect(result.privateArchiveExists).toBe(false);
+  });
+
+  it.each(["invalid", "missing-id", "timeout"])(
+    "stops before app staple and DMG creation on %s notarization",
+    (scenario) => {
+      const result = runMacNotarization(scenario);
+      expect(result.status, result.stderr).not.toBe(0);
+      expect(result.calls.filter((call) => call.startsWith("submit-"))).toEqual(
+        ["submit-app"],
+      );
+      expect(result.calls).not.toContain("staple-app");
+      expect(result.calls).not.toContain("package-ticketed-app");
+      expect(result.calls).not.toContain("staple-dmg");
+    },
+  );
+
+  it("does not staple a denied final DMG even after app acceptance", () => {
+    const result = runMacNotarization("dmg-invalid");
+    expect(result.status, result.stderr).not.toBe(0);
+    expect(result.calls).toContain("staple-app");
+    expect(result.calls).toContain("submit-dmg");
+    expect(result.calls).toContain("info-dmg-Invalid");
+    expect(result.calls).not.toContain("staple-dmg");
+  });
 
   it("pins every pre-signer build input by exact file identity", async () => {
     const version = "12.34.56";
@@ -2353,7 +2507,7 @@ jobs:
     ).toBeGreaterThan(
       macJob.indexOf("verify-macos-privileged-helper.sh --structure-only"),
     );
-    expect(macJob).not.toContain(
+    expect(macJob).toContain(
       "scripts/release/macos-developer-id.sh notarize-app",
     );
     expect(macJob).toContain("scripts/release/macos-developer-id.sh sign-dmg");
@@ -2445,7 +2599,7 @@ jobs:
     expect(macDeveloperId).toContain("FYAGENT_NOTARY_WAIT_SECONDS");
     expect(macDeveloperId.match(/notarytool submit/gu)).toHaveLength(1);
     expectExactLine(macJob, "    timeout-minutes: 360");
-    expect(macDeveloperId).not.toContain("notarize_app");
+    expect(macDeveloperId).toContain("notarize_app");
     expect(macDeveloperId).toContain("stapler staple");
     expect(macDeveloperId).toContain("--options runtime");
     expect(macDeveloperId).toContain("--timestamp");
@@ -2489,12 +2643,25 @@ jobs:
     expect(
       macJob.match(/scripts\/release\/verify-macos-signed-app\.sh/gu),
     ).toHaveLength(3);
-    const appStaple = macJob.indexOf('scripts/release/macos-developer-id.sh staple-app "$APP_PATH"');
+    const appStaple = macJob.indexOf(
+      'scripts/release/macos-developer-id.sh staple-app "$APP_PATH"',
+    );
+    const appNotarize = macJob.indexOf(
+      'scripts/release/macos-developer-id.sh notarize-app "$APP_PATH"',
+    );
     const dmgCreate = macJob.indexOf("scripts/release/create-macos-dmg.sh");
+    expect(appNotarize).toBeGreaterThan(
+      macJob.indexOf("scripts/release/macos-developer-id.sh sign-app"),
+    );
+    expect(appNotarize).toBeLessThan(appStaple);
     expect(appStaple).toBeGreaterThan(-1);
     expect(appStaple).toBeLessThan(dmgCreate);
-    expect(macJob).toContain('scripts/release/verify-macos-signed-app.sh "$mount_point/FyAgent.app"');
-    expect(macJob).not.toContain('scripts/release/verify-macos-signed-app.sh --signature-only "$mount_point/FyAgent.app"');
+    expect(macJob).toContain(
+      'scripts/release/verify-macos-signed-app.sh "$mount_point/FyAgent.app"',
+    );
+    expect(macJob).not.toContain(
+      'scripts/release/verify-macos-signed-app.sh --signature-only "$mount_point/FyAgent.app"',
+    );
     expect(
       macJob.match(/scripts\/release\/verify-macos-signed-dmg\.sh/gu),
     ).toHaveLength(1);

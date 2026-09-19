@@ -1290,6 +1290,7 @@ jobs:
         if: needs.eligibility.outputs.release_mode == 'formal'
         shell: bash
         env:
+          FYAGENT_NOTARY_WAIT_SECONDS: "9000"
           APP_PATH: ${{ steps.app.outputs.app_path }}
           APP_EXECUTABLE: ${{ steps.app.outputs.executable }}
         run: |
@@ -1310,6 +1311,7 @@ jobs:
           }
           trap cleanup EXIT
 
+          scripts/release/macos-developer-id.sh notarize-app "$APP_PATH"
           scripts/release/macos-developer-id.sh staple-app "$APP_PATH"
           scripts/release/verify-macos-signed-app.sh "$APP_PATH"
 
