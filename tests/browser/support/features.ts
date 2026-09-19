@@ -1225,7 +1225,6 @@ export async function installRichTauriFeatureFixture(
           case "get_traework_model_ids":
             return {
               modelIds: ["fixture-model"],
-              editable: true,
               revision: "fixture-trae-revision",
               truncated: false,
             };
