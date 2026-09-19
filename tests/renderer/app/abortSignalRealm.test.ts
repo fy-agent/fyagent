@@ -56,6 +56,8 @@ it("does not register a listener when a directly supplied native signal is alrea
   const button = document.createElement("button");
   const listener = vi.fn();
   button.addEventListener("click", listener, { signal: controller.signal });
+  window.addEventListener("pointerup", listener, { signal: controller.signal });
   button.click();
+  window.dispatchEvent(new Event("pointerup"));
   expect(listener).not.toHaveBeenCalled();
 });
