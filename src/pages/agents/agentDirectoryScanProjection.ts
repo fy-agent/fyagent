@@ -52,7 +52,7 @@ export function observeAgentDirectoryRow(
   const scanning = scan.status === "scanning" && !settled;
   const readFailed = scan.currentFailureIds.includes(agentId);
   const readiness = scan.results[agentId];
-  const configurable = isAgentExistenceProven(readiness?.installState);
+  const configurable = readiness?.configurationEligibility.state === "eligible";
   const refreshing = scanning && readiness !== undefined;
   const kind = readiness
     ? kindFromInstallState(readiness.installState)

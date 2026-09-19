@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::services::external_agents::AgentCatalogId;
 
-pub const AGENT_INSTALL_READINESS_CONTRACT_VERSION: u16 = 4;
+pub const AGENT_INSTALL_READINESS_CONTRACT_VERSION: u16 = 5;
 pub const AGENT_INSTALL_READINESS_REVIEWED_AT: &str = "2026-08-31";
 pub const AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION: u16 = 1;
 pub const AGENT_ACTION_CONTRACT_VERSION: u16 = 4;
@@ -451,9 +451,37 @@ pub struct AgentSurfaceReadinessDto {
     pub reason_codes: Vec<AgentReasonCode>,
 }
 
+/// Configuration navigation evidence is independent from lifecycle target trust.
+/// It never authorizes install/update, login, or vendor configuration writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentConfigurationState {
+    Eligible,
+    NotDetected,
+    Unknown,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentConfigurationEvidence {
+    CliRunnable,
+    CliDetected,
+    InstallationDetected,
+    None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentConfigurationEligibility {
+    pub state: AgentConfigurationState,
+    pub evidence: AgentConfigurationEvidence,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInstallReadinessDto {
+    pub configuration_eligibility: AgentConfigurationEligibility,
     pub contract_version: u16,
     pub agent_id: AgentCatalogId,
     pub reviewed_at: &'static str,
@@ -999,7 +1027,7 @@ mod tests {
         );
         assert!(serde_json::from_value::<AgentReasonCode>(json!("smjobbless")).is_err());
         assert_eq!(AGENT_ACTION_CONTRACT_VERSION, 4);
-        assert_eq!(AGENT_INSTALL_READINESS_CONTRACT_VERSION, 4);
+        assert_eq!(AGENT_INSTALL_READINESS_CONTRACT_VERSION, 5);
         assert_eq!(AGENT_INSTALL_READINESS_REVIEWED_AT, "2026-08-31");
     }
 

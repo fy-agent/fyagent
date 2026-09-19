@@ -61,10 +61,7 @@ import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";
 function isInstalledReadiness(
   data: AgentInstallReadiness | undefined,
 ): boolean {
-  return (
-    data?.installState === "installed" ||
-    data?.installState === "installed_not_runnable"
-  );
+  return data?.configurationEligibility.state === "eligible";
 }
 
 function scanButtonLabel(
@@ -85,6 +82,26 @@ function rowKindCopy(observation: AgentDirectoryRowObservation): string | null {
   if (observation.kind === "unknown") return "状态未知";
   if (observation.kind === "unavailable") return "当前不可用";
   return null;
+}
+
+function configurationObservationCopy(
+  readiness: AgentInstallReadiness | undefined,
+): string | null {
+  if (!readiness || readiness.configurationEligibility.state !== "eligible")
+    return null;
+  const evidence = readiness.configurationEligibility.evidence;
+  if (evidence !== "cli_runnable" && evidence !== "cli_detected") return null;
+  const observed =
+    evidence === "cli_runnable"
+      ? "已检测到可运行的 CLI"
+      : "已检测到 CLI，但暂不可运行";
+  if (readiness.inventoryState === "multiple") {
+    return `${observed}，可进入配置。存在多个安装，更新仍需确认目标。`;
+  }
+  if (readiness.inventoryState === "unknown") {
+    return `${observed}，可进入配置。安装来源尚未确认。`;
+  }
+  return evidence === "cli_detected" ? `${observed}，可进入配置。` : null;
 }
 
 function directoryBusyCopy(
@@ -180,6 +197,11 @@ function DirectoryCardShell({
           ) : null}
         </div>
         <p className="fy-agent-directory-description">{entry.description}</p>
+        {configurationObservationCopy(observation.readiness) ? (
+          <p className="fy-agent-directory-card-feedback" data-tone="info">
+            {configurationObservationCopy(observation.readiness)}
+          </p>
+        ) : null}
         {authSlot}
         <DirectoryActionFeedback error={error} success={success ?? null} />
       </div>

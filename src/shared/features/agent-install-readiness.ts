@@ -1,6 +1,6 @@
 import { AGENT_CATALOG_IDS, type AgentCatalogId } from "./directory";
 
-export const AGENT_INSTALL_READINESS_CONTRACT_VERSION = 4 as const;
+export const AGENT_INSTALL_READINESS_CONTRACT_VERSION = 5 as const;
 export const AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION = 1 as const;
 export const AGENT_ACTION_CONTRACT_VERSION = 4 as const;
 
@@ -229,7 +229,15 @@ export interface AgentSurfaceReadiness {
   reasonCodes: AgentReasonCode[];
 }
 
+export type AgentConfigurationEligibility =
+  | {
+      state: "eligible";
+      evidence: "cli_runnable" | "cli_detected" | "installation_detected";
+    }
+  | { state: "not_detected" | "unknown" | "unavailable"; evidence: "none" };
+
 export interface AgentInstallReadiness {
+  configurationEligibility: AgentConfigurationEligibility;
   contractVersion: typeof AGENT_INSTALL_READINESS_CONTRACT_VERSION;
   agentId: AgentCatalogId;
   reviewedAt: string;
@@ -405,6 +413,7 @@ function parseStringList<T extends string>(
 }
 
 const READINESS_KEYS = [
+  "configurationEligibility",
   "contractVersion",
   "agentId",
   "reviewedAt",
@@ -497,6 +506,10 @@ export function parseAgentInstallReadiness(
   }
   const surfaces = parseAgentSurfaces(value.surfaces, expectedAgentId);
   const parsed: AgentInstallReadiness = {
+    configurationEligibility: parseConfigurationEligibility(
+      value.configurationEligibility,
+      value.sourceKind,
+    ),
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId: expectedAgentId,
     reviewedAt: value.reviewedAt,
@@ -517,6 +530,36 @@ export function parseAgentInstallReadiness(
     parsed.surfaces = surfaces;
   }
   return parsed;
+}
+
+function parseConfigurationEligibility(
+  value: unknown,
+  sourceKind: AgentSourceKind,
+): AgentConfigurationEligibility {
+  if (isRecord(value) && hasExactKeys(value, ["state", "evidence"])) {
+    if (value.state === "eligible") {
+      if (
+        sourceKind === "cli_tooling" &&
+        (value.evidence === "cli_runnable" || value.evidence === "cli_detected")
+      ) {
+        return { state: value.state, evidence: value.evidence };
+      }
+      if (
+        sourceKind !== "cli_tooling" &&
+        value.evidence === "installation_detected"
+      ) {
+        return { state: value.state, evidence: value.evidence };
+      }
+    } else if (
+      (value.state === "not_detected" ||
+        value.state === "unknown" ||
+        value.state === "unavailable") &&
+      value.evidence === "none"
+    ) {
+      return { state: value.state, evidence: value.evidence };
+    }
+  }
+  throw new Error("Agent install readiness is unavailable");
 }
 
 function parseAgentSurfaces(

@@ -34,6 +34,14 @@ function readiness(
 ): AgentInstallReadiness {
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+    configurationEligibility:
+      installState === "installed" || installState === "installed_not_runnable"
+        ? { state: "eligible", evidence: "installation_detected" }
+        : {
+            state:
+              installState === "not_installed" ? "not_detected" : installState,
+            evidence: "none",
+          },
     agentId,
     reviewedAt: "2026-08-29",
     installState,
@@ -104,6 +112,31 @@ function resolvingRefetch(
 }
 
 describe("observeAgentDirectoryRow", () => {
+  it.each(["multiple", "unknown"] as const)(
+    "uses native configuration eligibility independently of %s installation inventory",
+    (inventoryState) => {
+      const data = readiness("claude-code", "unknown");
+      data.inventoryState = inventoryState;
+      data.configurationEligibility = {
+        state: "eligible",
+        evidence: "cli_detected",
+      };
+      const scan = idleScanState({
+        status: "complete",
+        settledIds: ["claude-code"],
+        results: { "claude-code": data },
+      });
+      expect(observeAgentDirectoryRow("claude-code", scan)).toMatchObject({
+        kind: "unknown",
+        configurable: true,
+      });
+      data.configurationEligibility = { state: "unknown", evidence: "none" };
+      expect(observeAgentDirectoryRow("claude-code", scan).configurable).toBe(
+        false,
+      );
+    },
+  );
+
   it("treats idle and in-flight rows without results as pending, not missing", () => {
     const idle = observeAgentDirectoryRow("codex", idleScanState());
     expect(idle).toMatchObject({

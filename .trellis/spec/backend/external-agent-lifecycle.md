@@ -56,7 +56,7 @@ get_agent_action_job({ jobId })
 Current wire versions:
 
 ```text
-AgentInstallReadinessDto.contractVersion = 4
+AgentInstallReadinessDto.contractVersion = 5
 AgentInstallationInventoryDto.contractVersion = 1
 AgentActionResult.contractVersion = 4
 AgentActionJobSnapshot.contractVersion = 4
@@ -117,6 +117,18 @@ command, argument vector, token, hash, package format, signer or bypass flags.
   incomplete or unknown.
 
 ### Readiness and target capabilities
+
+- Readiness v5 adds required `configurationEligibility { state, evidence }`.
+  `state` is `eligible | not_detected | unknown | unavailable`; positive
+  evidence is `cli_runnable | cli_detected | installation_detected`, otherwise
+  `none`. Compute this from native observation before the inventory overlay.
+  CLI evidence comes from Tooling, never Health color or a config directory.
+  Multiple/unknown installation inventory must not erase positive CLI evidence.
+  Installation state/version/target rules still reflect inventory uncertainty.
+- Configuration eligibility authorizes navigation only. It never supplies
+  lifecycle actions, target capabilities, login, or vendor write permission.
+  Failed/missing CLI probes do not become eligible even if inventory is single.
+  Renderer and host v5 ship together; older readiness payloads fail closed.
 
 - `not_observed` means a complete supported scan found no trusted candidate;
   it may expose a reviewed fresh destination. `unknown` means the scan was

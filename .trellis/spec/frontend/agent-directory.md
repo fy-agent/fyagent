@@ -42,7 +42,7 @@ The platform adapter returns and strictly parses:
 
 ```text
 Agent catalog          contractVersion 5
-Install readiness      contractVersion 4
+Install readiness      contractVersion 5
 Installation inventory contractVersion 1
 Action/job snapshots   contractVersion 4
 Runtime status         tri-state detected/running plus sanitized metadata
@@ -94,6 +94,16 @@ or bypass flag.
   become launch authority.
 
 ### Runtime and readiness projection
+
+- `configurationEligibility` is a required native v5 object with exact keys
+  `state` and `evidence`. Eligible CLI rows require `cli_runnable` or
+  `cli_detected`; eligible desktop rows require `installation_detected`.
+  `not_detected`, `unknown`, and `unavailable` require evidence `none`.
+  Missing/excess/unknown or source-mismatched fields fail strict parsing.
+- Configuration navigation reads only eligibility, independently of inventory
+  trust. Positive CLI evidence survives `multiple`/`unknown` inventory and is
+  explained beside installation uncertainty. Failed/absent observation leaves
+  the entry disabled. Configuration does not grant an install/update action.
 
 - `useAgentDirectoryScan` distinguishes hidden from unmounted owners. Hidden
   mounted pages buffer settled rows and reconcile on return; unmounted owners

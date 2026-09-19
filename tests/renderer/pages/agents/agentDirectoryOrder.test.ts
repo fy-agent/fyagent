@@ -32,6 +32,14 @@ function readiness(
 ): AgentInstallReadiness {
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+    configurationEligibility:
+      installState === "installed" || installState === "installed_not_runnable"
+        ? { state: "eligible", evidence: "installation_detected" }
+        : {
+            state:
+              installState === "not_installed" ? "not_detected" : installState,
+            evidence: "none",
+          },
     agentId,
     reviewedAt: "2026-08-31",
     installState,

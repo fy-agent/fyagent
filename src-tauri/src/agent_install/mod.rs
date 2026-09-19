@@ -34,6 +34,8 @@ pub use types::{
     AGENT_INSTALL_READINESS_CONTRACT_VERSION, AGENT_INSTALL_READINESS_REVIEWED_AT,
 };
 
+use types::{AgentConfigurationEligibility, AgentConfigurationEvidence, AgentConfigurationState};
+
 use auth_actions::observe_auth_state;
 use cli::{observe_cli, run_cli_lifecycle};
 #[cfg(target_os = "windows")]
@@ -93,6 +95,43 @@ pub async fn readiness_for(agent_id: AgentCatalogId, state: &AppState) -> AgentI
     readiness
 }
 
+fn configuration_eligibility(
+    observed_state: AgentInstallState,
+    agent_id: AgentCatalogId,
+) -> AgentConfigurationEligibility {
+    let cli = matches!(
+        agent_id,
+        AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild
+    );
+    let (state, evidence) = match observed_state {
+        AgentInstallState::Installed if cli => (
+            AgentConfigurationState::Eligible,
+            AgentConfigurationEvidence::CliRunnable,
+        ),
+        AgentInstallState::InstalledNotRunnable if cli => (
+            AgentConfigurationState::Eligible,
+            AgentConfigurationEvidence::CliDetected,
+        ),
+        AgentInstallState::Installed | AgentInstallState::InstalledNotRunnable => (
+            AgentConfigurationState::Eligible,
+            AgentConfigurationEvidence::InstallationDetected,
+        ),
+        AgentInstallState::NotInstalled => (
+            AgentConfigurationState::NotDetected,
+            AgentConfigurationEvidence::None,
+        ),
+        AgentInstallState::Unknown => (
+            AgentConfigurationState::Unknown,
+            AgentConfigurationEvidence::None,
+        ),
+        AgentInstallState::Unavailable => (
+            AgentConfigurationState::Unavailable,
+            AgentConfigurationEvidence::None,
+        ),
+    };
+    AgentConfigurationEligibility { state, evidence }
+}
+
 fn apply_inventory_overlay(
     readiness: &mut AgentInstallReadinessDto,
     inventory: &InventoryReadinessProjection,
@@ -132,6 +171,19 @@ fn apply_inventory_overlay(
 
 async fn cli_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto {
     let observation = observe_cli(agent_id).await;
+    let auth_state = observe_auth_state(
+        agent_id,
+        observation.as_ref().is_some_and(|value| value.detected),
+        observation.as_ref().is_some_and(|value| value.unavailable),
+    );
+    cli_readiness_from_observation(agent_id, observation.as_ref(), auth_state)
+}
+
+fn cli_readiness_from_observation(
+    agent_id: AgentCatalogId,
+    observation: Option<&cli::CliObservation>,
+    auth_state: AgentAuthState,
+) -> AgentInstallReadinessDto {
     let (install_state, local_version, remote_version, unavailable) = match &observation {
         Some(value) if value.unavailable => (AgentInstallState::Unavailable, None, None, true),
         Some(value) if value.runnable => (
@@ -164,11 +216,6 @@ async fn cli_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto {
     } else {
         AgentAuthOwnership::AgentOwned
     };
-    let auth_state = observe_auth_state(
-        agent_id,
-        observation.as_ref().is_some_and(|value| value.detected),
-        unavailable,
-    );
     let mut reason_codes = Vec::new();
     let mut allowed_actions = Vec::new();
     if unavailable {
@@ -208,6 +255,7 @@ async fn cli_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto {
         contract_version: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
         agent_id,
         reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
+        configuration_eligibility: configuration_eligibility(install_state, agent_id),
         install_state,
         inventory_state: InstallationInventoryState::Unknown,
         requires_target_selection: false,
@@ -256,6 +304,10 @@ async fn desktop_readiness(
                 contract_version: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
                 agent_id,
                 reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
+                configuration_eligibility: configuration_eligibility(
+                    AgentInstallState::Unavailable,
+                    agent_id,
+                ),
                 install_state: AgentInstallState::Unavailable,
                 inventory_state: InstallationInventoryState::Unknown,
                 requires_target_selection: false,
@@ -321,6 +373,7 @@ async fn desktop_readiness(
         contract_version: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
         agent_id,
         reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
+        configuration_eligibility: configuration_eligibility(install_state, agent_id),
         install_state,
         inventory_state: InstallationInventoryState::Unknown,
         requires_target_selection: false,
@@ -472,6 +525,7 @@ async fn codex_readiness(state: &AppState) -> AgentInstallReadinessDto {
         contract_version: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
         agent_id: AgentCatalogId::Codex,
         reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
+        configuration_eligibility: configuration_eligibility(install_state, AgentCatalogId::Codex),
         install_state,
         inventory_state: InstallationInventoryState::Unknown,
         requires_target_selection: false,
@@ -1122,6 +1176,7 @@ mod tests {
             "allowedActions",
             "authOwnership",
             "authState",
+            "configurationEligibility",
             "contractVersion",
             "installState",
             "inventoryState",
@@ -1149,6 +1204,105 @@ mod tests {
             "packageFormat",
             "managed_package",
         ]
+    }
+
+    #[test]
+    fn cli_configuration_evidence_survives_uncertain_inventory() {
+        for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::GrokBuild] {
+            for runnable in [true, false] {
+                for inventory_state in [
+                    InstallationInventoryState::Single,
+                    InstallationInventoryState::Multiple,
+                    InstallationInventoryState::Unknown,
+                ] {
+                    let observation = cli::CliObservation {
+                        detected: true,
+                        runnable,
+                        local_version: runnable.then(|| "1.0.0".to_string()),
+                        latest_version: None,
+                        unavailable: false,
+                        update_supported: false,
+                    };
+                    let mut readiness = cli_readiness_from_observation(
+                        agent_id,
+                        Some(&observation),
+                        AgentAuthState::Unknown,
+                    );
+                    apply_inventory_overlay(
+                        &mut readiness,
+                        &inventory_projection(inventory_state, None, false, false),
+                    );
+                    assert_eq!(
+                        readiness.configuration_eligibility.state,
+                        AgentConfigurationState::Eligible
+                    );
+                    assert_eq!(
+                        readiness.configuration_eligibility.evidence,
+                        if runnable {
+                            AgentConfigurationEvidence::CliRunnable
+                        } else {
+                            AgentConfigurationEvidence::CliDetected
+                        }
+                    );
+                    assert_eq!(readiness.inventory_state, inventory_state);
+                    assert_eq!(
+                        readiness.requires_target_selection,
+                        inventory_state == InstallationInventoryState::Multiple
+                    );
+                    if inventory_state != InstallationInventoryState::Single {
+                        assert_eq!(readiness.install_state, AgentInstallState::Unknown);
+                        assert_eq!(readiness.local_version, None);
+                        assert_eq!(readiness.update_state, AgentUpdateState::Unknown);
+                    }
+                    // Navigation eligibility does not manufacture lifecycle authority.
+                    assert!(readiness.allowed_actions.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn missing_or_failed_cli_observation_never_grants_configuration() {
+        let absent = cli::CliObservation {
+            detected: false,
+            runnable: false,
+            local_version: None,
+            latest_version: None,
+            unavailable: false,
+            update_supported: false,
+        };
+        let unavailable = cli::CliObservation {
+            unavailable: true,
+            ..absent.clone()
+        };
+        for (observation, expected) in [
+            (None, AgentConfigurationState::Unknown),
+            (Some(&absent), AgentConfigurationState::NotDetected),
+            (Some(&unavailable), AgentConfigurationState::Unavailable),
+        ] {
+            for inventory_state in [
+                InstallationInventoryState::Single,
+                InstallationInventoryState::Multiple,
+                InstallationInventoryState::Unknown,
+            ] {
+                let mut readiness = cli_readiness_from_observation(
+                    AgentCatalogId::ClaudeCode,
+                    observation,
+                    AgentAuthState::Unknown,
+                );
+                apply_inventory_overlay(
+                    &mut readiness,
+                    &inventory_projection(inventory_state, Some("1.0.0"), true, true),
+                );
+                assert_eq!(
+                    readiness.configuration_eligibility,
+                    AgentConfigurationEligibility {
+                        state: expected,
+                        evidence: AgentConfigurationEvidence::None
+                    }
+                );
+            }
+        }
     }
 
     #[test]
@@ -1355,6 +1509,10 @@ mod tests {
             contract_version: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
             agent_id: AgentCatalogId::QoderWork,
             reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
+            configuration_eligibility: configuration_eligibility(
+                AgentInstallState::Unknown,
+                AgentCatalogId::QoderWork,
+            ),
             install_state: AgentInstallState::Unknown,
             inventory_state: InstallationInventoryState::Unknown,
             requires_target_selection: false,
@@ -1406,6 +1564,10 @@ mod tests {
             contract_version: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
             agent_id: AgentCatalogId::OpenCode,
             reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
+            configuration_eligibility: configuration_eligibility(
+                AgentInstallState::NotInstalled,
+                AgentCatalogId::OpenCode,
+            ),
             install_state: AgentInstallState::NotInstalled,
             inventory_state: InstallationInventoryState::NotObserved,
             requires_target_selection: false,
