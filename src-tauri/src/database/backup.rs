@@ -1221,6 +1221,25 @@ mod tests {
             skill_snapshot.contains("legacy-skill"),
             "重建 skills 表时必须保留旧数据迁移快照"
         );
+        let generation = || -> Result<i64, rusqlite::Error> {
+            conn.query_row(
+                "SELECT generation FROM fde_resource_generations WHERE kind='provider' AND app_type='claude' AND resource_id='legacy-provider'",
+                [],
+                |row| row.get(0),
+            )
+        };
+        let imported_generation = generation()?;
+        conn.execute(
+            "UPDATE providers SET name='Updated Legacy Provider' WHERE id='legacy-provider' AND app_type='claude'",
+            [],
+        )?;
+        assert_eq!(generation()?, imported_generation + 1);
+        let skill_triggers: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name LIKE 'fde_resource_skill_%'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(skill_triggers, 4);
         Ok(())
     }
 

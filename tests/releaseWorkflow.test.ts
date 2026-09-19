@@ -1119,35 +1119,27 @@ function runMacNotarization(scenario: string) {
   );
   temporaryRoots.push(root);
   const state = path.join(root, "fyagent-macos-signing");
-  const bin = path.join(root, "bin");
   const app = path.join(root, "FyAgent.app");
   const dmg = path.join(root, "FyAgent.dmg");
   const log = path.join(root, "calls.log");
-  for (const directory of [state, bin, app]) fs.mkdirSync(directory);
+  for (const directory of [state, app]) fs.mkdirSync(directory);
   fs.writeFileSync(path.join(state, "signing.keychain-db"), "fixture");
   fs.writeFileSync(
     path.join(state, "state.env"),
     'KEYCHAIN_PATH="$STATE_DIR/signing.keychain-db"\nKEYCHAIN_PASSWORD=fixture-only\n',
   );
-  fs.writeFileSync(
-    path.join(bin, "security"),
-    "#!/usr/bin/env bash\nexit 0\n",
-    { mode: 0o755 },
-  );
-  fs.writeFileSync(
-    path.join(bin, "ditto"),
-    `#!/usr/bin/env bash
+  // Avoid launching fresh executable files for each fake command.
+  // Subshell functions preserve each fake tool's process-local exit behavior.
+  const fakeTools = `
+security() { return 0; }
+ditto() (
 set -euo pipefail
 [ "$#" -eq 5 ] && [ "$1" = -c ] && [ "$2" = -k ] && [ "$3" = --keepParent ]
 [ -d "$4" ]
 printf 'archive-app\\n' >> "$FYAGENT_FAKE_NOTARY_LOG"
 printf 'signed-app-archive' > "$5"
-`,
-    { mode: 0o755 },
-  );
-  fs.writeFileSync(
-    path.join(bin, "xcrun"),
-    `#!/usr/bin/env bash
+)
+xcrun() (
 set -euo pipefail
 case "$1 $2" in
   'notarytool submit')
@@ -1180,15 +1172,16 @@ case "$1 $2" in
     ;;
   *) exit 2 ;;
 esac
-`,
-    { mode: 0o755 },
-  );
+)
+export -f security ditto xcrun
+`;
   const result = spawnSync(
     resolveBashExecutable(),
     [
       "-c",
       `
 set -euo pipefail
+${fakeTools}
 bash "$1" notarize-app "$2"
 bash "$1" staple-app "$2"
 test -f "$2/.ticket"
@@ -1207,7 +1200,6 @@ bash "$1" notarize-dmg "$3"
       env: {
         ...process.env,
         RUNNER_TEMP: root,
-        PATH: `${bin}:${process.env.PATH ?? ""}`,
         FYAGENT_NOTARY_WAIT_SECONDS: scenario === "timeout" ? "0" : "5",
         FYAGENT_NOTARY_POLL_SECONDS: "0",
         FYAGENT_FAKE_NOTARY_ROOT: root,

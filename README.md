@@ -28,14 +28,15 @@ FyAgent 面向正在使用 AI Agent、AI Worker 和智能助手的人。它把�
 
 ## 当前功能
 
-| 区域        | 可以做什么                                                                                                                               |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| AI 软件配置 | 扫描 QoderWork CN、TRAE Work CN、WorkBuddy、Grok Build、Codex、Claude Code 和 OpenCode；在支持时提供安装、更新、启动、认证和资源分配入口 |
-| 模型管理    | 为上述软件查看或修改模型与 Provider 设置；写入前预览变更，并在保存后检查结果                                                             |
-| Skills 管理 | 从本地或发现页安装 Skills，并分配给支持的软件                                                                                            |
-| MCP 管理    | 添加、导入和管理 MCP 服务，并分配给支持的软件                                                                                            |
-| 提示词管理  | 管理 Grok Build、Codex、Claude Code、OpenCode、Gemini、OpenClaw 和 Hermes 的提示词                                                       |
-| 记忆模块    | 编辑 OpenClaw 与 Hermes 的长期记忆文件，以及 OpenClaw 的每日记忆                                                                         |
+| 区域        | 可以做什么                                                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 客户项目    | 为 FDE 按客户保存工作说明和资源引用，装配版本化交付包，记录分阶段检查结果并导出交接材料；详见[客户项目与交付](docs/user-manual/zh/4-extensions/4.7-fde-projects.md) |
+| AI 软件配置 | 扫描 QoderWork CN、TRAE Work CN、WorkBuddy、Grok Build、Codex、Claude Code 和 OpenCode；在支持时提供安装、更新、启动、认证和资源分配入口                            |
+| 模型管理    | 为上述软件查看或修改模型与 Provider 设置；写入前预览变更，并在保存后检查结果                                                                                        |
+| Skills 管理 | 从本地或发现页安装 Skills，并分配给支持的软件                                                                                                                       |
+| MCP 管理    | 添加、导入和管理 MCP 服务，并分配给支持的软件                                                                                                                       |
+| 提示词管理  | 管理 Grok Build、Codex、Claude Code、OpenCode、Gemini、OpenClaw 和 Hermes 的提示词                                                                                  |
+| 记忆模块    | 编辑 OpenClaw 与 Hermes 的长期记忆文件，以及 OpenClaw 的每日记忆                                                                                                    |
 
 工作数据默认保存在本机 `~/.fyagent`。具体写入位置、备份方法和各软件的支持差异见[使用手册](docs/user-manual/zh/README.md)。
 

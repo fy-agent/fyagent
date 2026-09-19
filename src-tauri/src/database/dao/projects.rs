@@ -97,6 +97,14 @@ impl Database {
             if !exists {
                 continue;
             }
+            // Startup creates tables before migrating legacy Skills identities.
+            // The 21 -> 22 migration seeds and installs these after the v3 rebuild.
+            if kind == "skill"
+                && Self::get_user_version(conn)? < 3
+                && !Self::has_column(conn, table, "id")?
+            {
+                continue;
+            }
             let app = if scoped { "app_type" } else { "''" };
             conn.execute_batch(&format!("INSERT OR IGNORE INTO fde_resource_generations(kind,app_type,resource_id,generation) SELECT '{kind}',{app},id,1 FROM {table};")).map_err(db_error)?;
             for trigger in &triggers[index * 4..index * 4 + 4] {

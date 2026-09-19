@@ -75,12 +75,15 @@ afterEach(async () => {
 });
 
 describe("verifyRouteChunks", () => {
-  it("accepts eight distinct routes and the deferred health port outside the bounded initial graph", async () => {
+  it("accepts nine distinct routes and the reviewed deferred ports outside the bounded initial graph", async () => {
     const distributionDirectory = await fixture();
     const result = await verifyRouteChunks({ distributionDirectory });
 
-    expect(result.routeChunks).toHaveLength(8);
-    expect(result.deferredPortChunks).toHaveLength(1);
+    expect(result.routeChunks).toHaveLength(9);
+    expect(result.routeChunks.map(({ route }) => route)).toContain(
+      "app/ProjectsWorkspace.tsx",
+    );
+    expect(result.deferredPortChunks).toHaveLength(6);
     expect(result.initialChunks.map((chunk) => chunk.file).sort()).toEqual([
       "assets/index.js",
       "assets/main.js",
@@ -88,7 +91,7 @@ describe("verifyRouteChunks", () => {
     ]);
   });
 
-  it.each([RENDERER_ROUTE_ENTRIES[0], RENDERER_DEFERRED_PORT_ENTRIES[0]])(
+  it.each([RENDERER_ROUTE_ENTRIES[0], ...RENDERER_DEFERRED_PORT_ENTRIES])(
     "rejects %s if it leaks into the initial graph",
     async (key) => {
       const distributionDirectory = await fixture((manifest) => {
@@ -99,6 +102,30 @@ describe("verifyRouteChunks", () => {
       ).rejects.toThrow("leaked into the initial graph");
     },
   );
+
+  it("rejects a missing Projects composition entry", async () => {
+    const distributionDirectory = await fixture((manifest) => {
+      manifest["_main.js"].dynamicImports = [
+        ...RENDERER_ROUTE_ENTRIES.filter(
+          (entry) => entry !== "app/ProjectsWorkspace.tsx",
+        ),
+        ...RENDERER_DEFERRED_PORT_ENTRIES,
+      ];
+    });
+    await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
+      "must dynamically import exactly 9 product pages and 6 deferred ports",
+    );
+  });
+
+  it("rejects Projects sharing another primary route entry chunk", async () => {
+    const distributionDirectory = await fixture((manifest) => {
+      manifest["app/ProjectsWorkspace.tsx"].file =
+        manifest["pages/agents/Page.tsx"].file;
+    });
+    await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
+      "product pages share an entry chunk",
+    );
+  });
 
   it("rejects an unreviewed dynamic entry", async () => {
     const distributionDirectory = await fixture((manifest) => {
