@@ -1010,6 +1010,18 @@ fn tool_executable_candidates(tool: &str, dir: &Path) -> Vec<std::path::PathBuf>
 /// PATH、以及产品自己的环境变量（如 `GROK_BIN_DIR`），不遍历 mise/nvm/volta
 /// 的内部安装树。单探兜底与全量枚举共用，确保两条路径看到同一组位置。
 fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
+    #[cfg(target_os = "macos")]
+    let login_path = login_shell_path();
+    #[cfg(target_os = "windows")]
+    let login_path = None;
+    build_tool_search_paths_from(tool, login_path)
+}
+
+/// Collect paths without launching a shell. Health passes no login-shell path;
+/// executable readiness retains its separately resolved login environment.
+fn build_tool_search_paths_from(tool: &str, login_path: Option<String>) -> Vec<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    let _ = login_path;
     let resolved_home = crate::config::get_home_dir();
     #[cfg(target_os = "windows")]
     let home = if crate::windows_runtime::is_local_command_path(&resolved_home) {
@@ -1056,7 +1068,7 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
                 }
             }
         }
-        if let Some(login) = login_shell_path() {
+        if let Some(login) = login_path {
             extend_from_cli_path_env(&mut search_paths, Some(std::ffi::OsString::from(login)));
         }
         extend_from_cli_path_env(&mut search_paths, std::env::var_os("PATH"));

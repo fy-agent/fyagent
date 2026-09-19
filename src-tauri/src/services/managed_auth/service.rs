@@ -279,6 +279,16 @@ where
         }
     }
 
+    /// Read-only observation for Health. Never reconciles persisted connections,
+    /// reads vault material, refreshes tokens, or repairs native configuration.
+    pub(crate) fn observe_overview(&self) -> ManagedAuthOverview {
+        self.observe_overview_inner().unwrap_or_else(|error| {
+            let mut overview = ManagedAuthOverview::unavailable();
+            overview.reason_codes = vec![error.reason_code()];
+            overview
+        })
+    }
+
     /// Resolve the public overview identity to the one FyAgent-owned Proxy
     /// credential. This is an admission/readback check, never a refresh or an
     /// export of native consumer credentials.
@@ -1013,9 +1023,22 @@ where
     }
 
     pub(crate) fn upsert_proxy_connections(&self) -> Result<(), ManagedAuthCoreError> {
-        let now = chrono::Utc::now().timestamp();
         let rows = self.repository.list_all_credentials()?;
         let existing = self.repository.list_connections()?;
+        for connection in Self::projected_proxy_connections(&rows, &existing) {
+            self.repository.upsert_connection(&connection)?;
+        }
+        Ok(())
+    }
+
+    /// Project the same desired proxy slots used by management reconciliation.
+    /// Observation keeps them in memory: discovering a default is not a DB write.
+    fn projected_proxy_connections(
+        rows: &[CredentialWithIdentity],
+        existing: &[ConnectionRecord],
+    ) -> Vec<ConnectionRecord> {
+        let now = chrono::Utc::now().timestamp();
+        let mut projected = Vec::new();
         for provider in [
             ManagedAuthProvider::Openai,
             ManagedAuthProvider::Xai,
@@ -1058,7 +1081,7 @@ where
                 continue;
             }
             let copilot = provider == ManagedAuthProvider::GithubCopilot;
-            self.repository.upsert_connection(&ConnectionRecord {
+            projected.push(ConnectionRecord {
                 connection_id: connection_id.clone(),
                 consumer: ManagedAuthConsumer::FyagentProxy,
                 target_id: String::new(),
@@ -1081,18 +1104,26 @@ where
                 pending_restart: false,
                 created_at: now,
                 updated_at: now,
-            })?;
+            });
         }
-        Ok(())
+        projected
     }
 
     fn overview_inner(&self) -> Result<ManagedAuthOverview, ManagedAuthCoreError> {
         // Reconcile missing/changed defaults as well as ready accounts. A
         // persisted login row is never evidence of a running local route.
         self.upsert_proxy_connections()?;
+        self.observe_overview_inner()
+    }
+
+    fn observe_overview_inner(&self) -> Result<ManagedAuthOverview, ManagedAuthCoreError> {
         let fail = self.fail_closed_snapshot();
         let rows = self.repository.list_all_credentials()?;
-        let connections = self.repository.list_connections()?;
+        let mut connections = self.repository.list_connections()?;
+        for projected in Self::projected_proxy_connections(&rows, &connections) {
+            connections.retain(|record| record.connection_id != projected.connection_id);
+            connections.push(projected);
+        }
         let mut accounts = Vec::new();
         let mut seen = Vec::new();
         for row in &rows {
@@ -2415,6 +2446,109 @@ mod tests {
             .expect("grok bundle");
         assert_eq!(proxy_bundle.refresh_token(), Some("refresh-proxy"));
         assert_eq!(grok_bundle.refresh_token(), Some("refresh-grok"));
+    }
+
+    #[test]
+    fn health_observe_overview_preserves_database_vault_and_native_files() {
+        for scenario in ["empty", "default", "reauth", "historical", "copilot"] {
+            let dir = tempdir().unwrap();
+            let db = Arc::new(Database::memory().unwrap());
+            let backend = MemorySecretBackend::new();
+            let service = ManagedAuthService::new(
+                db.clone(),
+                SecretService::new(backend.clone()),
+                dir.path().to_path_buf(),
+            );
+            if scenario != "empty" && scenario != "historical" {
+                let mut input = sample_input("fixture-account", "fixture-refresh", true);
+                if scenario == "reauth" {
+                    input.desired_status = CredentialStatus::RequiresReauth;
+                }
+                if scenario == "copilot" {
+                    input.provider = ManagedAuthProvider::GithubCopilot;
+                    input.purpose = CredentialPurpose::Copilot;
+                }
+                service.provision_legacy_credential(input).unwrap();
+            }
+            if scenario == "historical" {
+                service
+                    .repository
+                    .upsert_connection(&ConnectionRecord {
+                        connection_id: stable_connection_id(
+                            ManagedAuthConsumer::FyagentProxy,
+                            "",
+                            "openai",
+                        ),
+                        consumer: ManagedAuthConsumer::FyagentProxy,
+                        target_id: String::new(),
+                        provider_slot: "openai".into(),
+                        credential_id: None,
+                        desired_revision: stable_revision(&["historical"]),
+                        observed_revision: None,
+                        status: ConnectionStatus::Checking,
+                        request_mode: ManagedAuthRequestMode::Unknown,
+                        request_provider_label: Some("openai".into()),
+                        official_session_preserved: None,
+                        pending_restart: false,
+                        created_at: 1,
+                        updated_at: 1,
+                    })
+                    .unwrap();
+            }
+            // The observer must neither touch a locked vault nor native files.
+            let codex_path = service.codex_home().join("auth.json");
+            std::fs::create_dir_all(codex_path.parent().unwrap()).unwrap();
+            let native = br#"{"auth_mode":"chatgpt","tokens":{"access_token":"fixture-native","refresh_token":"fixture-refresh","id_token":"fixture-id"}}"#;
+            std::fs::write(&codex_path, native).unwrap();
+            // Ignore only the export header's wall-clock time; all stored rows,
+            // including created_at/updated_at, must remain byte-for-byte equal.
+            let snapshot = || {
+                db.export_sql_string()
+                    .unwrap()
+                    .lines()
+                    .filter(|line| !line.starts_with("-- 生成时间:"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            let before = snapshot();
+            backend.set_mode(MemoryFailureMode::Denied);
+            let operations = backend.operation_count();
+            for _ in 0..3 {
+                let overview = service.observe_overview();
+                if scenario == "default" || scenario == "copilot" {
+                    assert_eq!(overview.accounts.len(), 1, "{scenario}");
+                    let proxy = overview
+                        .connections
+                        .iter()
+                        .find(|c| c.consumer == ManagedAuthConsumer::FyagentProxy)
+                        .unwrap();
+                    assert_eq!(
+                        proxy.account_id.as_deref(),
+                        Some(overview.accounts[0].account_id.as_str())
+                    );
+                }
+                let text = serde_json::to_string(&overview).unwrap();
+                assert!(!text.contains("fixture-refresh"));
+                assert!(!text.contains("fixture-native"));
+                assert!(!text.contains("secretRef"));
+            }
+            assert_eq!(snapshot(), before, "DB changed: {scenario}");
+            assert_eq!(
+                backend.operation_count(),
+                operations,
+                "vault read: {scenario}"
+            );
+            assert_eq!(std::fs::read(&codex_path).unwrap(), native);
+            assert!(!service.opencode_auth_path().exists());
+            if scenario == "default" {
+                assert!(service.repository.list_connections().unwrap().is_empty());
+                service.overview();
+                assert!(
+                    !service.repository.list_connections().unwrap().is_empty(),
+                    "management reconciliation remains available"
+                );
+            }
+        }
     }
 
     #[test]

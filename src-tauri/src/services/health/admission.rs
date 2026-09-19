@@ -3,7 +3,8 @@ use super::{collect, AgentHealthSnapshot};
 use crate::{
     services::{
         external_agents::AgentCatalogId,
-        managed_auth::{ManagedAuthOverview, NativeManagedAuthService},
+        managed_auth::{ManagedAuthOverview, ManagedAuthService},
+        secret::SecretBackend,
     },
     store::AppState,
 };
@@ -17,13 +18,13 @@ use tokio::sync::Semaphore;
 static HEALTH_READS: LazyLock<Arc<Semaphore>> = LazyLock::new(|| Arc::new(Semaphore::new(1)));
 const CALLER_DEADLINE: Duration = Duration::from_secs(8);
 
-pub(crate) async fn read(
+pub(crate) async fn read<B: SecretBackend + 'static>(
     agent: AgentCatalogId,
     state: AppState,
-    service: Arc<NativeManagedAuthService>,
+    service: Arc<ManagedAuthService<B>>,
 ) -> Result<AgentHealthSnapshot, &'static str> {
     run_admitted(&HEALTH_READS, CALLER_DEADLINE, async move {
-        let overview = tauri::async_runtime::spawn_blocking(move || service.overview())
+        let overview = tauri::async_runtime::spawn_blocking(move || service.observe_overview())
             .await
             .unwrap_or_else(|_| ManagedAuthOverview::unavailable());
         collect(agent, &state, overview).await
