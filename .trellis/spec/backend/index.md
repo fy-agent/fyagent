@@ -59,6 +59,9 @@ settings persistence, narrow commands and protection against stale settings save
 [Agent Health Observation](./health.md) owns the on-demand local status
 snapshot and its read-only installation/configuration/auth/proxy evidence.
 
+[Project Verification and Handoff](./project-verification.md) owns scoped durable
+evidence, validity, manual acceptance and redacted handoff through native readers.
+
 [Reversible User Configuration](./reversible-user-config.md) owns the default
 backup/atomic-write/undo mechanism, closed recovery commands and disclosure
 metadata. Read it before any user-file write; domain-specific locks and native

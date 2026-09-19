@@ -79,6 +79,9 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "provider_health",
     "proxy_live_backup",
     "usage_daily_rollups",
+    "verification_revocations",
+    "verification_evidence",
+    "verification_handoff",
     "change_plans",
     "change_jobs",
     "change_job_events",
@@ -101,6 +104,9 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "stream_check_logs",
     "proxy_live_backup",
     "usage_daily_rollups",
+    "verification_revocations",
+    "verification_evidence",
+    "verification_handoff",
     "change_plans",
     "change_jobs",
     "change_job_events",
@@ -939,6 +945,29 @@ mod tests {
                 None => std::env::remove_var("FYAGENT_TEST_HOME"),
             }
         }
+    }
+
+    #[test]
+    fn verification_sync_preserves_ledger_and_revocations_in_one_transaction(
+    ) -> Result<(), AppError> {
+        let source = Connection::open_in_memory().map_err(|e| AppError::Database(e.to_string()))?;
+        let target = Connection::open_in_memory().map_err(|e| AppError::Database(e.to_string()))?;
+        for conn in [&source, &target] {
+            conn.execute_batch("PRAGMA foreign_keys=ON;")
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            Database::migrate_verification_v22(conn)?;
+        }
+        source.execute_batch("INSERT INTO verification_evidence VALUES('e','p','2026-09-19','{}'); INSERT INTO verification_revocations VALUES('e','2026-09-19'); INSERT INTO verification_handoff VALUES('p',3,'{}');").map_err(|e|AppError::Database(e.to_string()))?;
+        let tables = [
+            "verification_revocations",
+            "verification_evidence",
+            "verification_handoff",
+        ];
+        Database::restore_tables(&source, &target, &tables)?;
+        Database::restore_tables(&source, &target, &tables)?;
+        let values:(String,String,i64)=target.query_row("SELECT (SELECT id FROM verification_evidence),(SELECT evidence_id FROM verification_revocations),(SELECT revision FROM verification_handoff)",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(|e|AppError::Database(e.to_string()))?;
+        assert_eq!(values, ("e".into(), "e".into(), 3));
+        Ok(())
     }
 
     #[test]

@@ -417,6 +417,7 @@ impl Database {
             [],
         );
 
+        Self::migrate_verification_v22(conn)?;
         Ok(())
     }
 
@@ -555,6 +556,7 @@ impl Database {
                     }
                     21 => {
                         Self::create_project_tables_on_conn(conn)?;
+                        Self::migrate_verification_v22(conn)?;
                         Self::set_user_version(conn, 22)?;
                     }
                     _ => {

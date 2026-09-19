@@ -25,6 +25,7 @@
     "allow-managed-auth",
     "allow-user-config-recovery",
     "allow-projects",
-    "allow-delivery-kits"
+    "allow-delivery-kits",
+    "allow-project-verification"
   ]
 }

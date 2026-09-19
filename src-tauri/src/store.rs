@@ -6,6 +6,7 @@ use std::sync::Arc;
 /// 全局应用状态
 #[derive(Clone)]
 pub struct AppState {
+    pub(crate) verification: Arc<crate::services::verification::VerificationService>,
     pub db: Arc<Database>,
     pub proxy_service: ProxyService,
     pub usage_cache: Arc<UsageCache>,
@@ -23,6 +24,10 @@ impl AppState {
         let proxy_service = ProxyService::new(db.clone());
 
         Self {
+            verification: Arc::new(crate::services::verification::VerificationService::new(
+                db.clone(),
+                Arc::new(crate::services::verification::UnavailableProjectReader),
+            )),
             db,
             proxy_service,
             usage_cache: Arc::new(UsageCache::new()),

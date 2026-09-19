@@ -23,3 +23,5 @@ pub mod usage_rollup;
 // 导出 FailoverQueueItem / Profile 供外部使用
 pub use failover::FailoverQueueItem;
 pub use profiles::Profile;
+
+mod verification;
