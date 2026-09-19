@@ -46,12 +46,20 @@ network request, shell/SQL executor, or background job in this owner.
 
 ## Sharing and validation evidence
 
-Only exact built-in content is exportable or admitted to `local_fixture`
-machine checks. Imported content may be previewed/kept but its own synthetic
-label does not prove provenance. A conservative secret-pattern check rejects
-known forms; it is not an anonymization guarantee. Built-in-only export ensures
-no project input, local identity or edited prose is incorporated. No automatic
-upstream package download/pinning is implied by a recipe ID.
+Exact built-in content and strictly validated, already imported immutable
+versions can be exported after an explicit content preview. Both preview and
+save resolve the exact native identity; a missing or changed imported version
+cannot be exported using an old preview. Export contains only the canonical
+manifest, never attached project state or local credential references. Imported
+text retains its unverified origin and requires the user to confirm that it is
+safe to share. A conservative secret-pattern check rejects known forms; it is
+not an anonymization guarantee. An imported synthetic label does not prove
+provenance. Only exact built-in content is admitted to `local_fixture` machine
+checks. No automatic upstream package download/pinning is implied by a recipe ID.
+
+`KitLibrary::confirm_identity` reads the exact native id/version/digest and
+checks host compatibility without writes. Project binding adapters use this
+authority instead of trusting renderer catalogue fields.
 
 `run_delivery_kit_demo` runs the native validator, independently totals bounded
 integer cents, computes rounded basis points and reports source row IDs.
@@ -68,7 +76,8 @@ dependencies and call this service; it must not accept renderer-calculated facts
 
 Focused Rust `delivery_kits` tests cover immutable round-trip/restart/concurrency,
 strict/duplicate input, path/secret/script rejection, preview cancellation/TTL,
-compatibility/conflict, built-in export restrictions, golden digest and real
+compatibility/conflict, imported sharing round-trip and native identity
+confirmation without writes, built-in-only machine checks, golden digest and real
 fixture calculations with expected-output tampering. All files live in temporary
 directories. Test results are host-native service evidence, not desktop picker,
 Windows, online MCP, or customer acceptance evidence.

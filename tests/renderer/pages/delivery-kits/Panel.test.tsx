@@ -143,6 +143,61 @@ describe("project delivery kits panel (fixture IPC)", () => {
       screen.queryByRole("button", { name: "导入交付包" }),
     ).not.toBeInTheDocument();
   });
+  it("shares an imported version only after preview confirmation and keeps cancellation and errors retryable", async () => {
+    const custom = parseKitView({
+      ...fixture,
+      identity: { ...fixture.identity, kitId: "custom-kit" },
+      manifest: { ...fixture.manifest, id: "custom-kit" },
+      builtin: false,
+      installed: true,
+      exportable: true,
+    });
+    const port = makePort();
+    vi.mocked(port.list).mockResolvedValue([custom]);
+    vi.mocked(port.previewExport).mockResolvedValue({
+      ...preview,
+      kind: "export",
+      kit: custom,
+    });
+    const { view } = harness(port);
+    render(view());
+    fireEvent.click(await screen.findByRole("button", { name: "分享导出" }));
+    let dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/来源未验证/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/请确认内容不含客户资料或凭据/),
+    ).toBeInTheDocument();
+    expect(port.previewExport).toHaveBeenCalledWith(custom.identity);
+    expect(port.saveExport).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(port.cancel).toHaveBeenCalled());
+    expect(port.saveExport).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "分享导出" }));
+    dialog = await screen.findByRole("dialog");
+    vi.mocked(port.saveExport)
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error("SECRET-CANARY"))
+      .mockResolvedValueOnce(true);
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "确认并选择保存位置" }),
+    );
+    await waitFor(() => expect(port.saveExport).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("交付包已导出。")).not.toBeInTheDocument();
+    const confirm = await screen.findByRole("button", {
+      name: "确认并选择保存位置",
+    });
+    fireEvent.click(confirm);
+    await screen.findByRole("alert");
+    expect(screen.queryByText(/SECRET-CANARY/)).not.toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "确认并选择保存位置" }),
+    );
+    await screen.findByText("交付包已导出。");
+    expect(port.saveExport).toHaveBeenCalledTimes(3);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(port.runDemo).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "运行合成样例" })).toBeDisabled();
+  });
   it("blocks conflicting import and masks unknown failures", async () => {
     const port = makePort();
     vi.mocked(port.previewBuiltin).mockResolvedValue({

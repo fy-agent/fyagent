@@ -20,9 +20,12 @@ interaction. Resource text is rendered as inert text, no HTML or remote images.
 
 Import preview shows content, origin, permissions, connection uncertainty and
 conflict/compatibility. Only confirmation applies, then a catalogue reread is
-required before success. Export preview explicitly limits contents to built-in
-templates and synthetic samples; actual save can be cancelled, existing files
-are not overwritten. Import never assigns Agent targets or enables tools.
+required before success. Built-in or already imported immutable versions can be
+shared. Export preview shows the actual content and origin; imported content
+requires confirmation that it contains no customer information or credentials.
+It never acquires built-in provenance or machine-check eligibility by being
+shared. Actual save can be cancelled, existing files are not overwritten.
+Import never assigns Agent targets or enables tools.
 
 Weekly report UI shows native-computed cents as currency and basis points as
 percentages, source row IDs and each actual failure. It never shows template
@@ -39,5 +42,6 @@ acceptance remain separate under the evidence owner's contract.
 Required tests: strict/excess/malformed/identity DTOs, error canary, literal IPC
 payloads and ACL, zero-write preview/cancel, confirmed import/reread, conflict,
 late result after project switch, hidden surface, native-result presentation,
-and disabled unavailable adapters. Fixture IPC does not prove native UI or
+imported share preview/confirmation/cancellation/retry, and disabled unavailable
+adapters. Fixture IPC does not prove native UI or
 real connection operation.

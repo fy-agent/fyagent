@@ -148,7 +148,7 @@ function KitPanelSession({
       const saved = await port.saveExport(p);
       if (live.current && saved) {
         setPreview(null);
-        setNotice("交付包已导出。仅包含内置模板与合成样例。");
+        setNotice("交付包已导出。");
       }
     }
   }
@@ -202,7 +202,7 @@ function KitPanelSession({
           刷新
         </Button>
       </header>
-      {error && <p role="alert">{error}</p>}
+      {error && !preview && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
       {catalog.isPending && <p role="status">正在加载交付包…</p>}
       {catalog.isError && (
@@ -312,9 +312,7 @@ function KitPanelSession({
               {!selected.compatible && (
                 <p role="alert">当前版本不满足这个包的依赖要求。</p>
               )}
-              {!selected.exportable && (
-                <p>第三方或修改后的内容未经分享审查，暂不能导出。</p>
-              )}
+              {!selected.exportable && <p>请先导入这个交付包，再分享。</p>}
               <h4>输入与连接</h4>
               {selected.manifest.inputs.map((input) => (
                 <p key={input.id}>
@@ -434,7 +432,9 @@ function KitPanelSession({
           description={
             preview.kind === "import"
               ? "确认后只加入交付包库，不启用任何工具。"
-              : "仅导出内置模板与合成样例，不包含项目数据。请另存为新文件。"
+              : preview.kit.builtin
+                ? "仅导出内置模板与合成样例，不包含项目数据。请另存为新文件。"
+                : "将原样导出这个版本。请确认内容不含客户资料或凭据，并另存为新文件。"
           }
           actions={
             <>
@@ -453,7 +453,7 @@ function KitPanelSession({
                   ? "处理中…"
                   : preview.kind === "import"
                     ? "确认导入"
-                    : "选择保存位置"}
+                    : "确认并选择保存位置"}
               </Button>
             </>
           }
@@ -469,6 +469,7 @@ function KitPanelSession({
           {preview.conflict && (
             <p role="alert">同一版本已有不同内容，不能覆盖。</p>
           )}
+          {error && <p role="alert">{error}</p>}
           {!preview.kit.compatible && (
             <p role="alert">当前版本不满足依赖要求。</p>
           )}

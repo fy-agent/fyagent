@@ -165,7 +165,7 @@ fn delivery_kits_unknown_schema_and_incompatible_host() {
     assert!(!l.root.exists());
 }
 #[test]
-fn delivery_kits_version_conflict_and_unreviewed_export_is_blocked() {
+fn delivery_kits_version_conflict_and_imported_sharing_preserve_identity() {
     let (_dir, mut l) = library();
     let mut v = value();
     v["summary"] = json!("different");
@@ -179,12 +179,69 @@ fn delivery_kits_version_conflict_and_unreviewed_export_is_blocked() {
     let p = l.preview_bytes(&bytes(v)).unwrap();
     let id = p.kit.identity.clone();
     assert!(!p.kit.exportable);
-    l.apply(&p.preview_id, &id.manifest_digest).unwrap();
+    assert!(matches!(l.preview_export(&id), Err(KitError::NotFound)));
+    assert!(matches!(l.confirm_identity(&id), Err(KitError::NotFound)));
+    let imported = l.apply(&p.preview_id, &id.manifest_digest).unwrap();
+    assert!(imported.exportable && imported.installed && !imported.builtin);
+    let original = fs::read(l.path(&id).unwrap()).unwrap();
+    let e = l.preview_export(&id).unwrap();
+    assert_eq!(fs::read(l.path(&id).unwrap()).unwrap(), original);
+    assert_eq!(fs::read_dir(&l.root).unwrap().count(), 1);
     assert!(matches!(
-        l.preview_export(&id),
-        Err(KitError::ExportNotAllowed)
+        l.export_bytes(&p.preview_id, &id.manifest_digest),
+        Err(KitError::InvalidPreview)
+    ));
+    l.cancel(&e.preview_id);
+    assert!(matches!(
+        l.export_bytes(&e.preview_id, &id.manifest_digest),
+        Err(KitError::PreviewExpired)
+    ));
+    let e = l.preview_export(&id).unwrap();
+    let data = l.export_bytes(&e.preview_id, &id.manifest_digest).unwrap();
+    assert_eq!(data, original);
+    let (_other, mut other) = library();
+    let incoming = other.preview_bytes(&data).unwrap();
+    assert_eq!(incoming.kit.identity, id);
+    let received = other
+        .apply(&incoming.preview_id, &id.manifest_digest)
+        .unwrap();
+    assert!(received.exportable && !received.builtin);
+    assert_eq!(other.confirm_identity(&id), Ok(()));
+    assert!(matches!(
+        other.run(&id),
+        Err(KitError::UnsupportedValidator)
     ));
     assert!(matches!(l.run(&id), Err(KitError::UnsupportedValidator)));
+    fs::remove_file(l.path(&id).unwrap()).unwrap();
+    assert!(matches!(
+        l.export_bytes(&e.preview_id, &id.manifest_digest),
+        Err(KitError::NotFound)
+    ));
+}
+#[test]
+fn delivery_kits_identity_confirmation_is_exact_compatible_and_read_only() {
+    let (_dir, l) = library();
+    let id = first(&l);
+    assert_eq!(l.confirm_identity(&id), Ok(()));
+    let mut wrong = id.clone();
+    wrong.manifest_digest = "0".repeat(64);
+    assert_eq!(l.confirm_identity(&wrong), Err(KitError::NotFound));
+    wrong = id;
+    wrong.kit_version = "999.0.0".into();
+    assert_eq!(l.confirm_identity(&wrong), Err(KitError::NotFound));
+    assert!(!l.root.exists());
+
+    let mut v = value();
+    v["id"] = json!("future-kit");
+    v["compatibility"]["minFyAgentVersion"] = json!("999.0.0");
+    let manifest = parse(&bytes(v)).unwrap();
+    let id = KitLibrary::identity(&manifest).unwrap();
+    let data = canonical(&manifest).unwrap();
+    fs::create_dir(&l.root).unwrap();
+    fs::write(l.path(&id).unwrap(), &data).unwrap();
+    assert_eq!(l.confirm_identity(&id), Err(KitError::IncompatibleHost));
+    assert_eq!(fs::read(l.path(&id).unwrap()).unwrap(), data);
+    assert_eq!(fs::read_dir(&l.root).unwrap().count(), 1);
 }
 #[test]
 fn delivery_kits_validator_computes_actual_numbers_and_business_failures() {

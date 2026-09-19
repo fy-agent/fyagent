@@ -123,7 +123,7 @@ const viewSchema = z
       (v) =>
         v.identity.kitId === v.manifest.id &&
         v.identity.kitVersion === v.manifest.version &&
-        (!v.exportable || v.builtin),
+        (!v.exportable || v.builtin || v.installed),
     ),
   );
 const token = z

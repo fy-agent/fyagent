@@ -28,6 +28,14 @@ describe("delivery kit strict boundary", () => {
     expect(() =>
       parseKitView({ ...fixture, builtin: false, exportable: true }),
     ).toThrow();
+    expect(
+      parseKitView({
+        ...fixture,
+        builtin: false,
+        installed: true,
+        exportable: true,
+      }).builtin,
+    ).toBe(false);
     expect(() =>
       parseKitView({
         ...fixture,

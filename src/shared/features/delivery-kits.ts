@@ -48,7 +48,7 @@ export const kitErrorMessages = {
   library_unavailable: "无法读取交付包，请检查文件访问权限。",
   write_failed: "未能保存交付包，请检查保存位置后重试。",
   readback_failed: "无法确认交付包完整性，请检查文件后重试。",
-  export_not_allowed: "这个包未经分享审查，暂不能导出。",
+  export_not_allowed: "请先导入这个交付包，再分享。",
   unsupported_validator: "这个入门包需按说明人工检查。",
   busy: "交付包正在处理，请稍后重试。",
   dependency_unavailable: "项目或验证记录暂不可用。",

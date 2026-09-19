@@ -144,7 +144,7 @@ impl KitLibrary {
             manifest: m,
             installed,
             builtin,
-            exportable: builtin,
+            exportable: builtin || installed,
             connections_checked: false,
         })
     }
@@ -200,6 +200,13 @@ impl KitLibrary {
             .find(|m| Self::identity(m).as_ref() == Ok(id))
             .ok_or(KitError::NotFound)
     }
+    pub(crate) fn confirm_identity(&self, id: &KitIdentity) -> Result<()> {
+        let m = self.get(id)?;
+        if !compatible(&m) {
+            return Err(KitError::IncompatibleHost);
+        }
+        Ok(())
+    }
     fn preview(&mut self, m: Manifest, kind: PreviewKind) -> Result<Preview> {
         self.pending.retain(|_, p| p.created.elapsed() < TTL);
         if self.pending.len() >= 16 {
@@ -241,9 +248,6 @@ impl KitLibrary {
     }
     pub(crate) fn preview_export(&mut self, id: &KitIdentity) -> Result<Preview> {
         let m = self.get(id)?;
-        if !Self::is_builtin(&m)? {
-            return Err(KitError::ExportNotAllowed);
-        }
         self.preview(m, PreviewKind::Export)
     }
     fn pending(&self, id: &str, d: &str, kind: PreviewKind) -> Result<&Pending> {
@@ -316,9 +320,7 @@ impl KitLibrary {
     }
     pub(crate) fn export_bytes(&self, id: &str, d: &str) -> Result<Vec<u8>> {
         let p = self.pending(id, d, PreviewKind::Export)?;
-        if !Self::is_builtin(&parse(&p.bytes)?)? {
-            return Err(KitError::ExportNotAllowed);
-        }
+        self.get(&p.preview.kit.identity)?;
         Ok(p.bytes.clone())
     }
     pub(crate) fn run(&self, id: &KitIdentity) -> Result<DemoResult> {
