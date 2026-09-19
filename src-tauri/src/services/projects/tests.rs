@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "resource_versions_tests.rs"]
+mod resource_versions_tests;
+
 fn fixture() -> (tempfile::TempDir, ProjectsService) {
     let t = tempfile::tempdir().unwrap();
     let root = t.path().canonicalize().unwrap().join("projects");
@@ -265,7 +268,7 @@ fn projects_migration_fresh_predecessor_rollback_and_future() {
 }
 
 #[test]
-fn projects_resource_missing_and_unverifiable_content_versions() {
+fn projects_resource_missing_and_owned_content_versions() {
     let (_t, s) = fixture();
     let c = s.create_customer("C").unwrap();
     let p = s.create(&c.customer_id, "P").unwrap();
@@ -284,7 +287,7 @@ fn projects_resource_missing_and_unverifiable_content_versions() {
         .unwrap();
     assert_eq!(
         s.dependency_snapshot(&p.project_id).unwrap().resources[0].state,
-        ObservationState::Unverifiable
+        ObservationState::Matched
     );
     s.db.delete_prompt("codex", "source").unwrap();
     assert_eq!(

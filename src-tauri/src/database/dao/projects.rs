@@ -25,7 +25,125 @@ impl Database {
         CREATE TABLE IF NOT EXISTS fde_project_context_versions (
           project_id TEXT NOT NULL REFERENCES fde_projects(project_id), generation TEXT NOT NULL,
           digest TEXT NOT NULL CHECK(length(digest)=64), PRIMARY KEY(project_id,generation));")
-          .map_err(db_error)
+          .map_err(db_error)?;
+        Self::create_project_resource_generations_on_conn(conn)
+    }
+
+    pub(crate) fn project_resource_trigger_sql() -> Vec<String> {
+        let mut triggers = Vec::new();
+        for (kind, table, scoped) in [
+            ("provider", "providers", true),
+            ("prompt", "prompts", true),
+            ("mcp", "mcp_servers", false),
+            ("skill", "skills", false),
+        ] {
+            let bump = |row: &str| {
+                let app = if scoped {
+                    format!("{row}.app_type")
+                } else {
+                    "''".into()
+                };
+                format!("INSERT INTO fde_resource_generations(kind,app_type,resource_id,generation) VALUES('{kind}',{app},{row}.id,1) ON CONFLICT(kind,app_type,resource_id) DO UPDATE SET generation=generation+1;")
+            };
+            for (event, row) in [("INSERT", "NEW"), ("DELETE", "OLD")] {
+                triggers.push(format!("CREATE TRIGGER IF NOT EXISTS fde_resource_{kind}_{} AFTER {event} ON {table} BEGIN {} END", event.to_lowercase(), bump(row)));
+            }
+            // Updating an identity invalidates both its old tombstone and its new row.
+            let same_identity = if scoped {
+                "OLD.id IS NEW.id AND OLD.app_type IS NEW.app_type"
+            } else {
+                "OLD.id IS NEW.id"
+            };
+            triggers.push(format!("CREATE TRIGGER IF NOT EXISTS fde_resource_{kind}_update AFTER UPDATE ON {table} BEGIN {} END", bump("OLD")));
+            triggers.push(format!("CREATE TRIGGER IF NOT EXISTS fde_resource_{kind}_rekey AFTER UPDATE ON {table} WHEN NOT ({same_identity}) BEGIN {} END", bump("NEW")));
+        }
+        // Custom endpoints are part of the provider returned by its existing owner.
+        let endpoint_bump = |row: &str| {
+            format!("INSERT INTO fde_resource_generations(kind,app_type,resource_id,generation) VALUES('provider',{row}.app_type,{row}.provider_id,1) ON CONFLICT(kind,app_type,resource_id) DO UPDATE SET generation=generation+1;")
+        };
+        for (event, row) in [("INSERT", "NEW"), ("DELETE", "OLD"), ("UPDATE", "OLD")] {
+            triggers.push(format!("CREATE TRIGGER IF NOT EXISTS fde_resource_provider_endpoint_{} AFTER {event} ON provider_endpoints BEGIN {} END", event.to_lowercase(), endpoint_bump(row)));
+        }
+        triggers.push(format!("CREATE TRIGGER IF NOT EXISTS fde_resource_provider_endpoint_rekey AFTER UPDATE ON provider_endpoints WHEN NOT (OLD.provider_id IS NEW.provider_id AND OLD.app_type IS NEW.app_type) BEGIN {} END", endpoint_bump("NEW")));
+        triggers
+    }
+
+    fn create_project_resource_generations_on_conn(conn: &Connection) -> Result<(), AppError> {
+        // Tombstones deliberately outlive their source row. No content or digest is stored.
+        conn.execute_batch("CREATE TABLE IF NOT EXISTS fde_resource_generations (
+            kind TEXT NOT NULL CHECK(kind IN ('provider','prompt','mcp','skill')),
+            app_type TEXT NOT NULL,
+            resource_id TEXT NOT NULL,
+            generation INTEGER NOT NULL CHECK(typeof(generation)='integer' AND generation BETWEEN 1 AND 9007199254740990),
+            CHECK(kind IN ('provider','prompt') OR app_type=''),
+            PRIMARY KEY(kind,app_type,resource_id));").map_err(db_error)?;
+        let triggers = Self::project_resource_trigger_sql();
+        for (index, (kind, table, scoped)) in [
+            ("provider", "providers", true),
+            ("prompt", "prompts", true),
+            ("mcp", "mcp_servers", false),
+            ("skill", "skills", false),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?1)",
+                    [table],
+                    |r| r.get(0),
+                )
+                .map_err(db_error)?;
+            if !exists {
+                continue;
+            }
+            let app = if scoped { "app_type" } else { "''" };
+            conn.execute_batch(&format!("INSERT OR IGNORE INTO fde_resource_generations(kind,app_type,resource_id,generation) SELECT '{kind}',{app},id,1 FROM {table};")).map_err(db_error)?;
+            for trigger in &triggers[index * 4..index * 4 + 4] {
+                conn.execute_batch(trigger).map_err(db_error)?;
+            }
+        }
+        let endpoints_exist: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='provider_endpoints')", [], |r| r.get(0),
+        ).map_err(db_error)?;
+        if endpoints_exist {
+            for trigger in &triggers[16..] {
+                conn.execute_batch(trigger).map_err(db_error)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// A sync replacement cannot retain evidence based on the previous local rows.
+    /// Call after restoring the local-only generations snapshot, within the import transaction.
+    pub(crate) fn advance_project_resource_generations_on_conn(
+        conn: &Connection,
+    ) -> Result<(), AppError> {
+        conn.execute(
+            "UPDATE fde_resource_generations SET generation=generation+1",
+            [],
+        )
+        .map_err(db_error)?;
+        Self::create_project_resource_generations_on_conn(conn)
+    }
+
+    pub(crate) fn project_resource_version(
+        &self,
+        kind: ResourceKind,
+        app: &str,
+        id: &str,
+    ) -> Result<Option<String>, AppError> {
+        let (kind, app) = match kind {
+            ResourceKind::Provider => ("provider", app),
+            ResourceKind::Prompt => ("prompt", app),
+            ResourceKind::Mcp => ("mcp", ""),
+            ResourceKind::Skill => ("skill", ""),
+            ResourceKind::Memory => return Ok(None),
+        };
+        let conn = lock_conn!(self.conn);
+        conn.query_row("SELECT generation FROM fde_resource_generations WHERE kind=?1 AND app_type=?2 AND resource_id=?3", params![kind, app, id], |r| r.get::<_, i64>(0))
+            .optional().map_err(db_error)
+            .map(|value| value.map(|generation| format!("db:{generation}")))
     }
 
     pub(crate) fn projects_list_customers(&self) -> Result<Vec<Customer>, AppError> {

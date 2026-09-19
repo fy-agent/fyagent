@@ -24,7 +24,11 @@ impl ProjectsService {
                     agent_id: agent.into(),
                     raw_id: p.id.clone(),
                     label: p.name.clone(),
-                    version: None,
+                    version: self.db.project_resource_version(
+                        ResourceKind::Provider,
+                        agent,
+                        &p.id,
+                    )?,
                 });
             }
             for p in self.db.get_prompts(agent)?.values() {
@@ -33,7 +37,11 @@ impl ProjectsService {
                     agent_id: agent.into(),
                     raw_id: p.id.clone(),
                     label: p.name.clone(),
-                    version: None,
+                    version: self.db.project_resource_version(
+                        ResourceKind::Prompt,
+                        agent,
+                        &p.id,
+                    )?,
                 });
             }
         }
@@ -56,7 +64,9 @@ impl ProjectsService {
                     agent_id: agent.into(),
                     raw_id: m.id.clone(),
                     label: m.name.clone(),
-                    version: None,
+                    version: self
+                        .db
+                        .project_resource_version(ResourceKind::Mcp, agent, &m.id)?,
                 });
             }
             for s in skills.values() {
@@ -65,12 +75,13 @@ impl ProjectsService {
                     agent_id: agent.into(),
                     raw_id: s.id.clone(),
                     label: s.name.clone(),
-                    version: None,
+                    version: self
+                        .db
+                        .project_resource_version(ResourceKind::Skill, agent, &s.id)?,
                 });
             }
         }
-        // Existing owners have no credential-neutral immutable content revision.
-        // Do not hash raw config/prompt/skill content or claim name equality pins it.
+        // Generations cover DB mutations only; skill files remain independently unverifiable.
         out.sort_by(|a, b| {
             a.agent_id
                 .cmp(&b.agent_id)

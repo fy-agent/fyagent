@@ -40,8 +40,8 @@ const IMPORT_ALLOWED_PRAGMAS: &[&str] = &["foreign_keys", "user_version"];
 ///
 /// 普通表、索引和视图只是导入数据本身；持久 trigger 不同，它会在导入完成后继续
 /// 运行，并能在 Provider quick setup 等后续写入时复制凭据。因此 trigger 属于越过
-/// 本次导入生命周期的可执行输入，必须 fail closed。FyAgent 正式 schema 不依赖
-/// trigger，拒绝它不会破坏受支持备份；也避免维护一份容易漂移的 trigger allowlist。
+/// 本次导入生命周期的可执行输入，必须 fail closed。项目资源代际触发器由应用
+/// 重建且不写入 SQL 导出；二进制恢复仅接受与应用定义逐字匹配的版本。
 ///
 /// 越界动作是实测出来的，不是推断的：
 /// - `ATTACH DATABASE 'x'`、`VACUUM INTO 'x'`、裸 `VACUUM` **三者都**报
@@ -91,6 +91,7 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "fde_projects",
     "fde_project_kit_intents",
     "fde_project_context_versions",
+    "fde_resource_generations",
 ];
 
 /// Tables whose local data is preserved (restored from local snapshot) during WebDAV import.
@@ -112,6 +113,7 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "fde_projects",
     "fde_project_kit_intents",
     "fde_project_context_versions",
+    "fde_resource_generations",
 ];
 
 /// A database backup entry for the UI
@@ -224,6 +226,7 @@ impl Database {
         if let Some(local_snapshot) = local_snapshot.as_ref() {
             Self::restore_tables(local_snapshot, &temp_conn, preserve_tables)?;
         }
+        Self::advance_project_resource_generations_on_conn(&temp_conn)?;
 
         // 使用 Backup 将临时库原子写回主库
         {
@@ -272,23 +275,28 @@ impl Database {
         ))
     }
 
+    fn is_owned_project_trigger(sql: &str) -> bool {
+        let normalize = |value: &str| value.trim().trim_end_matches(';')
+            .replace("CREATE TRIGGER IF NOT EXISTS", "CREATE TRIGGER");
+        let candidate = normalize(sql);
+        Self::project_resource_trigger_sql().iter().any(|owned| normalize(owned) == candidate)
+    }
+
     fn reject_persistent_triggers(conn: &Connection) -> Result<(), AppError> {
-        let has_persistent_trigger: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'trigger')",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(format!("校验备份 schema 失败: {e}")))?;
-
-        if has_persistent_trigger {
-            return Err(AppError::localized(
-                "backup.sql.unsupported_trigger",
-                "导入的数据库备份包含不受支持的持久触发器。",
-                "The imported database backup contains unsupported persistent triggers.",
-            ));
+        let mut statement = conn.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger'")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let definitions = statement.query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        for definition in definitions {
+            let sql = definition.map_err(|e| AppError::Database(e.to_string()))?;
+            if !Self::is_owned_project_trigger(&sql) {
+                return Err(AppError::localized(
+                    "backup.sql.unsupported_trigger",
+                    "导入的数据库备份包含不受支持的持久触发器。",
+                    "The imported database backup contains unsupported persistent triggers.",
+                ));
+            }
         }
-
         Ok(())
     }
 
@@ -556,6 +564,9 @@ impl Database {
             }
 
             if obj_type == "trigger" {
+                // Owned generation counters are rebuilt by the application. External
+                // SQL never receives permission to install executable schema.
+                if Self::is_owned_project_trigger(&sql) { continue; }
                 triggers.push(sql);
                 continue;
             }
@@ -778,6 +789,7 @@ impl Database {
         self.create_tables()?;
         self.apply_schema_migrations()?;
         self.ensure_model_pricing_seeded()?;
+        Self::advance_project_resource_generations_on_conn(&lock_conn!(self.conn))?;
 
         log::info!("Database restored from backup: {filename}, safety backup: {safety_id}");
         Ok(safety_id)
@@ -1915,6 +1927,7 @@ mod tests {
             "fde_projects",
             "fde_project_kit_intents",
             "fde_project_context_versions",
+    "fde_resource_generations",
         ];
         for table in tables {
             assert!(super::SYNC_SKIP_TABLES.contains(&table));
