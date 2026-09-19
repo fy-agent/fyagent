@@ -42,7 +42,11 @@ background file .background/background.png
 ## 3. Contracts
 
 - `build-macos` calls `create-macos-dmg.sh` as the only styled-DMG entry after
-  Developer ID app signing. The script stages `FyAgent.app`,
+  Developer ID app signing, notarization, ticket stapling and full app verification.
+  The DMG must be created from the already-stapled app; stapling the source
+  after packaging cannot update its embedded copy. Mounted release apps use
+  the full signed-app verifier (never signature-only), in addition to DMG
+  ticket verification. The script stages `FyAgent.app`,
   `ln -s /Applications Applications`, and the checked-in background, creates
   UDRW HFS+, attaches at a fixed mountpoint (`-nobrowse -noautoopen`), writes
   `.DS_Store`, converts UDZO, and verifies.

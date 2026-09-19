@@ -1310,6 +1310,9 @@ jobs:
           }
           trap cleanup EXIT
 
+          scripts/release/macos-developer-id.sh staple-app "$APP_PATH"
+          scripts/release/verify-macos-signed-app.sh "$APP_PATH"
+
           source_digest="$(shasum -a 256 "$APP_PATH/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')"
           scripts/release/create-macos-dmg.sh \
             --app "$APP_PATH" \
@@ -1317,8 +1320,6 @@ jobs:
             --background src-tauri/icons/dmg-background.png
           scripts/release/macos-developer-id.sh sign-dmg "$dmg_path"
           scripts/release/macos-developer-id.sh notarize-dmg "$dmg_path"
-          scripts/release/macos-developer-id.sh staple-app "$APP_PATH"
-          scripts/release/verify-macos-signed-app.sh "$APP_PATH"
           scripts/release/verify-macos-signed-dmg.sh "$dmg_path"
 
           mounted=true
@@ -1330,7 +1331,7 @@ jobs:
           [ -f "$mount_point/.DS_Store" ]
           [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mount_point/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
           [ "$(shasum -a 256 "$mount_point/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
-          scripts/release/verify-macos-signed-app.sh --signature-only "$mount_point/FyAgent.app"
+          scripts/release/verify-macos-signed-app.sh "$mount_point/FyAgent.app"
           hdiutil detach "$mount_point"
           mounted=false
           node scripts/release/prepare-release-publication.mjs verify-target \

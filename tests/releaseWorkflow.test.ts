@@ -2489,9 +2489,12 @@ jobs:
     expect(
       macJob.match(/scripts\/release\/verify-macos-signed-app\.sh/gu),
     ).toHaveLength(3);
-    expect(macJob).toContain(
-      "scripts/release/verify-macos-signed-app.sh --signature-only",
-    );
+    const appStaple = macJob.indexOf('scripts/release/macos-developer-id.sh staple-app "$APP_PATH"');
+    const dmgCreate = macJob.indexOf("scripts/release/create-macos-dmg.sh");
+    expect(appStaple).toBeGreaterThan(-1);
+    expect(appStaple).toBeLessThan(dmgCreate);
+    expect(macJob).toContain('scripts/release/verify-macos-signed-app.sh "$mount_point/FyAgent.app"');
+    expect(macJob).not.toContain('scripts/release/verify-macos-signed-app.sh --signature-only "$mount_point/FyAgent.app"');
     expect(
       macJob.match(/scripts\/release\/verify-macos-signed-dmg\.sh/gu),
     ).toHaveLength(1);
