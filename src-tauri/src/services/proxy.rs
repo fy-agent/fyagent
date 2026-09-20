@@ -3612,11 +3612,6 @@ mod tests {
             .expect("set test proxy config to an ephemeral port");
     }
 
-    async fn running_codex_base_url(service: &ProxyService) -> String {
-        let status = service.get_status().await.expect("get proxy status");
-        format!("http://127.0.0.1:{}/v1", status.port)
-    }
-
     async fn seed_distinct_app_proxy_settings(db: &Database) -> Vec<Value> {
         let mut expected = Vec::new();
         for (index, app) in ["claude", "codex", "gemini", "grokbuild", "opencode"]
@@ -5195,7 +5190,7 @@ wire_api = "responses"
 
     #[tokio::test]
     #[serial]
-    async fn codex_set_takeover_rebuilds_stale_enabled_state_without_overwriting_backup() {
+    async fn codex_stale_enabled_rebuild_preserves_unproven_live_and_backup() {
         let _home = TempHome::new();
         crate::settings::reload_settings().expect("reload settings");
         crate::settings::update_settings(crate::settings::AppSettings {
@@ -5279,63 +5274,55 @@ wire_api = "responses"
             .await
             .expect("mark Codex takeover enabled");
 
-        service
+        let auth_path = crate::codex_config::get_codex_auth_path();
+        let config_path = crate::codex_config::get_codex_config_path();
+        let live_auth_before = std::fs::read(&auth_path).expect("read seeded auth");
+        let live_config_before = std::fs::read(&config_path).expect("read seeded config");
+        let backup_before = db
+            .get_live_backup("codex")
+            .await
+            .expect("get Codex live backup")
+            .expect("backup exists")
+            .original_config;
+
+        let error = service
             .set_takeover_for_app("codex", true)
             .await
-            .expect("rebuild Codex takeover");
-
-        let live_auth: Value =
-            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
-                .expect("read live auth");
+            .expect_err("unproven stale live must not be rebuilt from the backup");
+        assert!(
+            error.contains("无法确认代理配置仍可安全恢复"),
+            "stale rebuild without ownership proof must report conflict: {error}"
+        );
         assert_eq!(
-            live_auth, oauth_auth,
-            "repairing stale takeover must restore the preserved OAuth auth from backup"
+            std::fs::read(&auth_path).expect("reread auth"),
+            live_auth_before,
+            "conflict must preserve the unproven live auth bytes"
         );
-
-        let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
-            .expect("read live config");
-        let expected_base_url = running_codex_base_url(&service).await;
-        assert!(
-            live_config.contains(&expected_base_url),
-            "stale enabled takeover must be rebuilt to the current proxy base_url"
+        assert_eq!(
+            std::fs::read(&config_path).expect("reread config"),
+            live_config_before,
+            "conflict must preserve the unproven live config bytes"
         );
-        assert!(
-            live_config.contains(PROXY_TOKEN_PLACEHOLDER),
-            "rebuilt takeover should keep the proxy bearer placeholder"
-        );
-        assert!(
-            service
-                .live_takeover_matches_current_proxy(&AppType::Codex)
-                .await
-                .expect("detect rebuilt Codex takeover"),
-            "rebuilt Codex live config should match the active proxy address"
-        );
-
-        let backup = db
+        let backup_after = db
             .get_live_backup("codex")
             .await
             .expect("get Codex live backup")
             .expect("backup exists");
-        let backup_value: Value =
-            serde_json::from_str(&backup.original_config).expect("parse backup");
         assert_eq!(
-            backup_value.get("auth"),
-            Some(&oauth_auth),
-            "rebuilding stale takeover must not overwrite the original OAuth backup"
+            backup_after.original_config, backup_before,
+            "conflict must preserve the original recovery backup"
         );
         assert!(
-            backup_value
-                .get("config")
-                .and_then(|value| value.as_str())
-                .is_some_and(|config| config.contains("deepseek-key")
-                    && !config.contains("http://127.0.0.1")),
-            "backup should remain the restorable DeepSeek config, not the proxy config"
+            db.get_proxy_config_for_app("codex")
+                .await
+                .expect("get Codex proxy config")
+                .enabled,
+            "unowned rebuild must leave takeover enabled"
         );
 
-        service
-            .set_takeover_for_app("codex", false)
-            .await
-            .expect("disable Codex takeover");
+        if service.is_running().await {
+            let _ = service.stop().await;
+        }
         crate::settings::update_settings(crate::settings::AppSettings::default())
             .expect("reset settings");
     }

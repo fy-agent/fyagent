@@ -71,6 +71,7 @@ describe("repository change classifier", () => {
       "config/vite.config.ts",
       "config/vitest.config.ts",
       "config/playwright.config.ts",
+      "config/playwright.demo.config.ts",
       "config/playwright.performance.config.ts",
       "config/postcss.config.cjs",
       ".dependency-cruiser.cjs",
@@ -89,6 +90,11 @@ describe("repository change classifier", () => {
     expect(
       classifyChangedPaths(["tests/architecture/dependencyGraph.test.ts"]),
     ).toEqual({
+      domains: domains("frontend"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+    expect(classifyChangedPaths(["tests/demo/current-flows.demo.ts"])).toEqual({
       domains: domains("frontend"),
       unknownPaths: [],
       forceFull: false,

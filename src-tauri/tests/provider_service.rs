@@ -3108,7 +3108,7 @@ fn provider_service_delete_current_provider_returns_error() {
 }
 
 #[test]
-fn recover_from_crash_without_backup_cleans_placeholder_instead_of_writing_it_back() {
+fn recover_from_crash_without_owned_proof_preserves_placeholder() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
     let _home = ensure_test_home();
@@ -3122,11 +3122,8 @@ fn recover_from_crash_without_backup_cleans_placeholder_instead_of_writing_it_ba
     });
     let settings_path = get_claude_settings_path();
     std::fs::create_dir_all(settings_path.parent().expect("settings dir")).expect("create dir");
-    std::fs::write(
-        &settings_path,
-        serde_json::to_string_pretty(&taken_over_live).expect("serialize taken over live"),
-    )
-    .expect("write taken over live");
+    let seeded = serde_json::to_string_pretty(&taken_over_live).expect("serialize taken over live");
+    std::fs::write(&settings_path, &seeded).expect("write taken over live");
 
     let state = create_test_state().expect("create test state");
 
@@ -3146,22 +3143,30 @@ fn recover_from_crash_without_backup_cleans_placeholder_instead_of_writing_it_ba
         .set_current_provider(AppType::Claude.as_str(), "default")
         .expect("set current provider");
 
-    futures::executor::block_on(state.proxy_service.recover_from_crash())
-        .expect("recover from crash");
+    let before = std::fs::read(&settings_path).expect("read seeded live");
+    let error = futures::executor::block_on(state.proxy_service.recover_from_crash())
+        .expect_err("unowned placeholder must not be rewritten");
+    assert!(
+        error.contains("无法确认代理配置仍可安全恢复"),
+        "crash recovery without backup/receipt must report conflict: {error}"
+    );
+    assert_eq!(
+        std::fs::read(&settings_path).expect("reread live"),
+        before,
+        "conflict must preserve the unproven placeholder bytes"
+    );
 
     let live_after: serde_json::Value =
         read_json_file(&settings_path).expect("read live settings after recovery");
     let env = live_after.get("env").cloned().unwrap_or_else(|| json!({}));
-    assert_ne!(
+    assert_eq!(
         env.get("ANTHROPIC_AUTH_TOKEN").and_then(|v| v.as_str()),
         Some("PROXY_MANAGED"),
-        "recovery must not write the placeholder back to live"
+        "recovery must not manufacture an original by deleting the placeholder"
     );
-    assert!(
-        env.get("ANTHROPIC_BASE_URL")
-            .and_then(|v| v.as_str())
-            .map(|url| !url.starts_with("http://127.0.0.1"))
-            .unwrap_or(true),
-        "recovery must drop the local proxy base URL"
+    assert_eq!(
+        env.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str()),
+        Some("http://127.0.0.1:15721"),
+        "recovery must not drop an unproven local proxy URL"
     );
 }

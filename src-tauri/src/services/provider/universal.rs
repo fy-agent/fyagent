@@ -137,6 +137,7 @@ mod tests {
     use super::*;
     use crate::database::Database;
     use crate::provider::{Provider, ProviderMeta};
+    use crate::services::provider::ProviderCredentials;
 
     fn universal_fixture() -> UniversalProvider {
         let mut provider = UniversalProvider::new(
@@ -234,9 +235,7 @@ mod tests {
                 assert_eq!(child.icon, projected.icon);
                 assert_eq!(child.icon_color, projected.icon_color);
                 assert_eq!(child.settings_config["childOnly"], json!({"keep": app}));
-                for (key, value) in projected.settings_config.as_object().unwrap() {
-                    assert_eq!(&child.settings_config[key], value, "{app}/{key}");
-                }
+                assert_projected_settings_preserved(app, &child, &projected, &state.db);
                 assert!(child.in_failover_queue);
                 assert_eq!(
                     state.db.get_current_provider(app).unwrap().as_deref(),
@@ -258,11 +257,54 @@ mod tests {
                 .get_provider_by_id(&projected.id, app)
                 .unwrap()
                 .unwrap();
+            assert_eq!(child.id, projected.id);
+            assert_eq!(child.name, projected.name);
+            assert_eq!(child.website_url, projected.website_url);
+            assert_eq!(child.category, projected.category);
+            assert_eq!(child.notes, projected.notes);
+            assert_eq!(child.icon, projected.icon);
+            assert_eq!(child.icon_color, projected.icon_color);
+            assert_eq!(child.created_at, projected.created_at);
+            assert_eq!(child.sort_index, projected.sort_index);
             assert_eq!(
-                serde_json::to_value(child).unwrap(),
-                serde_json::to_value(projected).unwrap()
+                serde_json::to_value(&child.meta).unwrap(),
+                serde_json::to_value(&projected.meta).unwrap()
             );
+            assert_eq!(child.in_failover_queue, projected.in_failover_queue);
+            assert_projected_settings_preserved(app, &child, &projected, &state.db);
         }
+    }
+
+    fn assert_projected_settings_preserved(
+        app: &str,
+        child: &Provider,
+        projected: &Provider,
+        db: &Database,
+    ) {
+        for (key, value) in projected.settings_config.as_object().unwrap() {
+            if app == "codex" && key == "auth" {
+                assert_eq!(&child.settings_config[key], &json!({}), "{app}/{key}");
+                continue;
+            }
+            assert_eq!(&child.settings_config[key], value, "{app}/{key}");
+        }
+        if app != "codex" {
+            return;
+        }
+        let reference = child.settings_config["credentialRef"]
+            .as_str()
+            .expect("Codex public child stores SecretRef");
+        assert!(reference.starts_with("pc_"), "{app} {reference}");
+        let public = serde_json::to_string(child).unwrap();
+        for secret in ["shared-fixture-key", "previous-fixture-key"] {
+            assert!(!public.contains(secret), "{app} leaked {secret}");
+        }
+        assert_eq!(
+            ProviderCredentials::resolve(db, "codex", child)
+                .unwrap()
+                .settings_config["auth"]["OPENAI_API_KEY"],
+            projected.settings_config["auth"]["OPENAI_API_KEY"]
+        );
     }
 
     #[test]

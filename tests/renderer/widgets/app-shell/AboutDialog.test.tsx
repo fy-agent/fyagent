@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -25,6 +25,11 @@ describe("About dialog", () => {
     expect(readVersion).not.toHaveBeenCalled();
     const trigger = screen.getByRole("button", { name: "关于 FyAgent" });
     await user.click(trigger);
+    // Await the real lazy chunk before asserting the dialog. A cold import
+    // can outlast the DOM polling window when the full suite compiles in parallel.
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     const dialog = await screen.findByRole("dialog", { name: "关于 FyAgent" });
     expect(await within(dialog).findByText("9.8.7")).toBeVisible();
     expect(readVersion).toHaveBeenCalledTimes(1);

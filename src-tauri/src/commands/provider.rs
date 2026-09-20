@@ -1813,6 +1813,7 @@ mod provider_draft_command_tests {
     use super::{parse_provider_draft_app, provider_public_summary, ProviderQuickSetupRequest};
     use crate::app_config::AppType;
     use crate::provider::Provider;
+    use crate::services::provider::ProviderCredentials;
 
     #[test]
     fn quick_setup_drafts_allow_claude_codex_and_grokbuild() {
@@ -2210,17 +2211,56 @@ mod provider_draft_command_tests {
                 .get_provider_by_id(&provider.id, AppType::Codex.as_str())
                 .unwrap()
                 .expect("new Kimi setup was saved");
-            assert_eq!(reread.settings_config, provider.settings_config);
+            assert_public_codex_secretref(&reread, &["new-kimi-key", "saved-kimi-key"]);
+            assert_eq!(
+                reread.settings_config["config"],
+                provider.settings_config["config"]
+            );
+            assert_eq!(
+                ProviderCredentials::resolve(&db, "codex", &reread)
+                    .unwrap()
+                    .settings_config["auth"]["OPENAI_API_KEY"],
+                "new-kimi-key"
+            );
             let saved_reread = db
                 .get_provider_by_id(&saved.id, AppType::Codex.as_str())
                 .unwrap()
                 .expect("existing Kimi provider is retained");
-            assert_eq!(saved_reread.settings_config, saved.settings_config);
+            assert_public_codex_secretref(&saved_reread, &["new-kimi-key", "saved-kimi-key"]);
+            assert_eq!(
+                saved_reread.settings_config["config"],
+                saved.settings_config["config"]
+            );
+            assert_eq!(
+                saved_reread.settings_config["modelCatalog"],
+                saved.settings_config["modelCatalog"]
+            );
+            assert_eq!(
+                ProviderCredentials::resolve(&db, "codex", &saved_reread)
+                    .unwrap()
+                    .settings_config["auth"]["OPENAI_API_KEY"],
+                "saved-kimi-key"
+            );
             assert_eq!(
                 serde_json::to_value(saved_reread.meta).unwrap(),
                 serde_json::to_value(saved.meta).unwrap(),
                 "existing Chat routing and user overrides must remain unchanged"
             );
+        }
+    }
+
+    fn assert_public_codex_secretref(stored: &Provider, secrets: &[&str]) {
+        let reference = stored.settings_config["credentialRef"]
+            .as_str()
+            .expect("public Codex row stores SecretRef");
+        assert!(
+            reference.starts_with("pc_"),
+            "public credential id must stay opaque: {reference}"
+        );
+        assert_eq!(stored.settings_config["auth"], serde_json::json!({}));
+        let public = serde_json::to_string(stored).unwrap();
+        for secret in secrets {
+            assert!(!public.contains(secret), "public readback leaked {secret}");
         }
     }
 

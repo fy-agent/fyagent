@@ -1425,6 +1425,7 @@ mod tests {
             include_str!("../../permissions/projects.toml"),
             include_str!("../../permissions/delivery-kits.toml"),
             include_str!("../../permissions/project-verification.toml"),
+            include_str!("../../permissions/config-pack.toml"),
         ] {
             let commands = allowed_commands(manifest);
             assert!(allowed.is_disjoint(&commands));

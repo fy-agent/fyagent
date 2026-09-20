@@ -146,6 +146,7 @@ const WINDOWS_NATIVE_TEST =
 const FRONTEND_TEST_PREFIXES = Object.freeze([
   "tests/renderer/",
   "tests/browser/",
+  "tests/demo/",
   "tests/domain/",
   "tests/shared/",
   // Deleted-side paths must remain classifiable against pre-consolidation main.
@@ -166,6 +167,7 @@ const FRONTEND_ROOT_FILES = new Set([
   "config/vite.config.ts",
   "config/vitest.config.ts",
   "config/playwright.config.ts",
+  "config/playwright.demo.config.ts",
   "config/playwright.performance.config.ts",
   "config/postcss.config.cjs",
   "eslint.config.mjs",
