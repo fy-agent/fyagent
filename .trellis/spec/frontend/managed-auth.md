@@ -127,7 +127,10 @@ request mode is a third-party API.
   `switch_to_official` is a retained wire value, not a currently advertised
   account mutation. A ready account may also start a `connect_consumer` login
   for a matching consumer that is not yet connectable from the saved credential
-  purpose. The page does not auto-connect on login and does not install software.
+  purpose, but only when the native provider summary advertises that consumer and
+  the disconnected slot is readable/projection-capable. A gated Grok slot is not a
+  connect/relogin shortcut or a live linked connection. The page does not
+  auto-connect on login and does not install software.
 - Connection rows show the connected official account/provider slot, current
   request source, whether an official session is preserved, credential-renewal
   owner as user-facing copy, pending restart and closed available actions.
@@ -249,6 +252,12 @@ listed in
   cannot overwrite the next dialog. This does not change native revision,
   previewId or canApply admission. Fast preview delivery updates content without
   cancelling shared source entrance; no minimum loading timer is permitted.
+- Connection mutation results are retained by connection ID. A failure or partial
+  result on target B never clears target A's completion. Failed writes reread the
+  overview; retry selects the latest connection revision and opens a fresh,
+  single-use preview rather than resubmitting the consumed one. File recovery is
+  scoped to Codex auth/config or OpenCode auth as applicable and rereads feature
+  state afterwards. These are per-target actions, not an atomic batch operation.
 - `pendingRestart`, partial completion, external change, unavailable authority
   and recovery-required remain explicit states. Starting a browser, writing a
   credential or launching software is not sufficient to paint success.
@@ -268,6 +277,13 @@ listed in
   managed authentication. Their main action routes to `/auth` with the closed
   consumer ID; they do not duplicate account lists, OAuth controls or managed
   connection mutations.
+- The Grok connection detail also owns the existing official CLI handoff through
+  the shared AgentAuthPort/session hook. Successful handoff is not verified login
+  or logout. Only native-advertised intents are enabled; logout has a mounted
+  confirmation, and manual terminal steps/expiry guidance stay visible.
+- xAI Device Code names the saved FyAgent account and the consumers advertised by
+  native capabilities. It never claims to log Grok CLI in. API Keys remain Models
+  configuration; the Models subscription picker uses the same xAI device-code name.
 - Claude continues its reviewed Agent-owned login/logout session. QoderWork,
   TRAE Work and WorkBuddy continue trusted desktop handoff. The central page
   does not absorb those flows without a separately reviewed managed adapter.
@@ -321,7 +337,7 @@ listed in
 | Completed login/mutation has another non-null reason                                                                  | Reject the response as invalid managed-auth data.                                                                                                       |
 | Account removal preview fails                                                                                         | Do not expose the destructive confirmation.                                                                                                             |
 | Connection needs restart                                                                                              | Show saved/pending-restart separately; do not say the consumer is already using it.                                                                     |
-| Codex mutation completes with no pending restart                                                                      | Render the returned binding state; no Restart action does not itself mean connected, especially after disconnect.                                      |
+| Codex mutation completes with no pending restart                                                                      | Render the returned binding state; no Restart action does not itself mean connected, especially after disconnect.                                       |
 | Managed Agent summary is clicked                                                                                      | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session.                                                                      |
 | Access/refresh token, OAuth authorization code, PKCE verifier, raw state/command or unapproved path escapes its owner | Security regression; allowlisted device `userCode`/verification URI and parsed file-impact display metadata are intentional, not credentials to replay. |
 

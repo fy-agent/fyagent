@@ -15,7 +15,7 @@ Primary owners are:
   adaptation;
 - `src/shared/platform/tauri/features.ts` for desktop Port composition;
 - `src/pages/agents/AgentAuthStatusPanel.tsx` for product-specific Auth UI;
-- `src/pages/agents/useAgentAuthSession.ts` for recovery, polling, and
+- `src/shared/features/useAgentAuthSession.ts` for recovery, polling, and
   lifecycle state.
 
 Native observation/session semantics are owned by
@@ -120,14 +120,12 @@ The page never invokes native Auth commands directly.
   and duplicate-free lists are strict for all five commands.
 - `getObservation(agentId)` and `getActiveSession(agentId)` additionally bind
   the parsed response `agentId` to the requested Agent and reject a mismatch.
-  `startSession(request)` validates the request ID and strictly parses the
-  returned snapshot, but the current adapter does not perform that second
-  request/response equality check. Do not claim this guard is already present;
-  a change touching this path should add the check and a regression test before
-  treating cross-Agent start responses as fail-closed.
+  `startSession(request)` also binds both Agent ID and intent. Another Agent or
+  intent is rejected, even if its snapshot is structurally valid.
 - `getSession` and `stopWaiting` are addressed by `sessionId`, not by a second
-  caller Agent ID. The hook keeps the returned session chain; callers must not
-  substitute a snapshot from a different interaction.
+  caller Agent ID. The adapter binds the returned session ID; the shared hook
+  additionally binds Agent ID and intent. A crossed response never updates the
+  current interaction or delivers a terminal callback.
 - A malformed response, or a mismatch on an adapter path that implements the
   binding check, becomes the generic unavailable error. A component must not
   partially trust fields from an invalid DTO.
@@ -165,7 +163,11 @@ The page never invokes native Auth commands directly.
   closed `agentReturn`/`agentSection` tuple. The page does not pass a token,
   command, path, arbitrary provider name or free-form return URL.
 - These managed-consumer panels disable `useAgentAuthSession` recovery and
-  start operations. Clicking their management button must issue zero
+  start operations. `/auth` owns `GrokOfficialLogin`, which reuses the shared
+  hook/port for the existing Grok CLI handoff, exposes only allowed intents,
+  confirms logout, and gives static `grok login` / `grok logout` manual steps.
+  It never enables Managed Auth projection or infers login/expiry/logout from
+  `handoff_complete`. Clicking an Agent card's management button must issue zero
   `start_agent_auth_session` calls. Claude and the current desktop handoff
   products retain the Agent-owned session flow until their backend ownership
   changes.
@@ -184,17 +186,24 @@ The page never invokes native Auth commands directly.
   [External Agent Auth](../backend/external-agent-auth.md).
 
 - When enabled, the hook first calls `getActiveSession(agentId)` so a remounted
-  page resumes a native session instead of launching a duplicate flow.
+  page resumes a native session instead of launching a duplicate flow. Failed
+  recovery blocks new starts until `retryRecovery()` successfully rereads active
+  state. A retained terminal result stays reviewable across hide/show. If a known
+  session finished while hidden and native active lookup omits it, read that
+  same session ID once to recover its terminal result.
 - A non-terminal snapshot is polled with `getSession(sessionId)` until its stage
   is `verified`, `handoff_complete`, `failed`, `cancelled`, or `timed_out`.
-  Polling uses hook-owned timers and stops on unmount or terminal state.
+  Polling uses hook-owned timers and stops on hidden/disabled, unmount or
+  terminal state. A scope generation rejects late start, stop, recovery or poll
+  responses after an owner/visibility change. React state owns presentation;
+  synchronous refs guard duplicate admission, not render output.
 - `start(request)` submits through `AgentAuthPort.startSession`, stores the
   returned snapshot, and calls `onTerminal` immediately only when the returned
   snapshot is already terminal.
 - A terminal callback can be reached from immediate start/stop results,
   recovered snapshots, or the polling effect. Consumers must make terminal
-  side effects idempotent by `sessionId`; `AgentAuthStatusPanel` keeps the last
-  handled terminal session before refetching observation.
+  side effects idempotent by `sessionId`; the shared controller deduplicates
+  delivery and AgentAuthStatusPanel also guards its observation reread.
 - `stopWaiting()` is available only when the current snapshot has
   `canStopWaiting = true`. It calls the native command and preserves the
   terminal result; it is not a generic process kill.
@@ -218,21 +227,21 @@ The page never invokes native Auth commands directly.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                         | Required result                                                                                                                                                     |
-| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Response contract version or exact keys are wrong                                 | Reject the whole response as unavailable.                                                                                                                           |
-| Observation or active-session response `agentId` differs from the requested Agent | Reject in the adapter; do not attach another Agent's Auth state.                                                                                                    |
-| `startSession` returns a strict snapshot for another known Agent                  | The current adapter does not rebind it to the request. Do not rely on rejection; add the equality check and regression test before changing/claiming this boundary. |
-| Duplicate/unknown intent, stage, outcome, ownership, authority, or reason         | Reject the whole DTO.                                                                                                                                               |
-| Observation is `provider_connections/configured`                                  | Say provider configured; do not say account logged in.                                                                                                              |
-| Observation is `handoff_only`                                                     | Offer only the admitted handoff and retain unverified wording.                                                                                                      |
-| `getActiveSession` fails                                                          | End recovery, expose retry/error state, and do not start automatically.                                                                                             |
-| A non-terminal poll fails                                                         | Keep the last snapshot, expose the error, and continue only through the hook-owned retry loop.                                                                      |
-| User starts while recovery/submission/session is busy                             | Disable/reject the duplicate action.                                                                                                                                |
-| `stopWaiting` when `canStopWaiting` is false                                      | No native call; return no result.                                                                                                                                   |
-| Desktop target/revision is stale                                                  | Preserve the native reason and require lifecycle reread/reselection.                                                                                                |
-| Terminal session arrives                                                          | Stop polling; deduplicate callback side effects by `sessionId` and reread display authority.                                                                        |
-| Secret/raw command output appears in UI or route state                            | Security regression.                                                                                                                                                |
+| Condition                                                                         | Required result                                                                                |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Response contract version or exact keys are wrong                                 | Reject the whole response as unavailable.                                                      |
+| Observation or active-session response `agentId` differs from the requested Agent | Reject in the adapter; do not attach another Agent's Auth state.                               |
+| `startSession` returns a strict snapshot for another known Agent                  | Reject the Agent or intent mismatch before attaching the session.                              |
+| Duplicate/unknown intent, stage, outcome, ownership, authority, or reason         | Reject the whole DTO.                                                                          |
+| Observation is `provider_connections/configured`                                  | Say provider configured; do not say account logged in.                                         |
+| Observation is `handoff_only`                                                     | Offer only the admitted handoff and retain unverified wording.                                 |
+| `getActiveSession` fails                                                          | Expose recovery retry/error; block all starts until recovery succeeds.                         |
+| A non-terminal poll fails                                                         | Keep the last snapshot, expose the error, and continue only through the hook-owned retry loop. |
+| User starts while recovery/submission/session is busy                             | Disable/reject the duplicate action.                                                           |
+| `stopWaiting` when `canStopWaiting` is false                                      | No native call; return no result.                                                              |
+| Desktop target/revision is stale                                                  | Preserve the native reason and require lifecycle reread/reselection.                           |
+| Terminal session arrives                                                          | Stop polling; deduplicate callback side effects by `sessionId` and reread display authority.   |
+| Secret/raw command output appears in UI or route state                            | Security regression.                                                                           |
 
 ## 5. Good / Base / Bad Cases
 
@@ -245,9 +254,8 @@ The page never invokes native Auth commands directly.
   and normal observation/actions remain available.
 - **Base:** the action is handoff-only; launch it, show `handoff_complete`, and
   retain unverified status until a future observer provides stronger evidence.
-- **Base:** a strict `startSession` payload contains another known Agent ID.
-  This is a documented current hardening gap, not an accepted semantic success;
-  code touching the adapter must close it rather than extending the assumption.
+- **Base:** a strict `startSession` payload contains another known Agent ID or
+  intent; reject it and keep the current session unchanged.
 - **Bad:** call `useAgentAuthSession(agentId)` without the Port, poll with a
   component interval, infer logged-in from a provider row, claim every Auth
   command already enforces request/response Agent binding, or put a token/path
@@ -259,8 +267,11 @@ Required assertion owners include:
 
 - `tests/renderer/platform/agentAuthPort.test.ts`: exact command/payload mapping,
   closed Agent IDs, strict response parsing, contract-version/key mismatch, and
-  `agentId` binding for observation/active-session reads. A product change that
-  hardens `startSession` must add the corresponding mismatch regression;
+  Agent/intent binding for starts and session-ID binding for poll/stop reads;
+- `tests/renderer/features/useAgentAuthSession.test.tsx`: failed-recovery
+  admission, crossed replies, hidden polling, late starts and terminal dedup;
+- `tests/renderer/pages/auth/Page.test.tsx`: reachable Grok official handoff,
+  logout confirmation, xAI naming, and zero managed OAuth calls for CLI login;
 - `tests/renderer/pages/agents/AgentAuthStatusPanel.test.tsx`: allowed-intent UI,
   provider selection, active-session recovery, terminal polling, stop-waiting,
   terminal-session deduplication, handoff/unknown/unavailable copy, and no

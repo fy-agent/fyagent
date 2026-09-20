@@ -55,11 +55,7 @@ where
         if request.purpose == ManagedAuthLoginPurpose::ConnectConsumer
             && !matches!(
                 request.consumer,
-                Some(
-                    ManagedAuthConsumer::Grokbuild
-                        | ManagedAuthConsumer::FyagentProxy
-                        | ManagedAuthConsumer::Opencode
-                )
+                Some(ManagedAuthConsumer::FyagentProxy | ManagedAuthConsumer::Opencode)
             )
         {
             return Err(ManagedAuthErrorDto::from_reason(
@@ -584,14 +580,10 @@ mod tests {
         ));
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn grok_connect_uses_separate_purpose_and_stays_fail_closed() {
-        let issuer = spawn_issuer(0, false).await;
+    #[test]
+    fn grok_consumer_login_is_rejected_before_session_or_vendor_worker() {
         let (service, dir) = service();
-        service.set_xai_login_hooks(XaiLoginHooks {
-            endpoints: Some(XaiOAuthEndpoints::for_issuer(&issuer)),
-        });
-        let snapshot = service
+        let error = service
             .start_login(StartManagedAuthLoginRequest {
                 provider: ManagedAuthProvider::Xai,
                 purpose: ManagedAuthLoginPurpose::ConnectConsumer,
@@ -599,25 +591,18 @@ mod tests {
                 method: ManagedAuthLoginMethod::DeviceCode,
                 account_id: None,
             })
-            .expect("start");
-        let finished = wait_terminal(&service, &snapshot.session_id).await;
-        assert_eq!(finished.stage, ManagedAuthLoginStage::Completed);
-        assert_eq!(finished.reason_code, None);
-        assert_eq!(finished.connection_id, None);
-        let rows = service.repository.list_all_credentials().expect("rows");
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].credential.purpose, CredentialPurpose::GrokNative);
+            .expect_err("gated native projection cannot be offered as a login target");
         assert_eq!(
-            rows[0].credential.consumer,
-            Some(ManagedAuthConsumer::Grokbuild)
+            error.reason_code,
+            ManagedAuthReasonCode::ProviderNotSupported
         );
-        assert_eq!(rows[0].credential.refresh_owner, RefreshOwner::Fyagent);
+        assert!(service.overview().active_sessions.is_empty());
+        assert!(service
+            .repository
+            .list_all_credentials()
+            .expect("rows")
+            .is_empty());
         assert!(!dir.path().join("auth.json").exists());
-        let error = service
-            .resolve_credential_access(rows[0].credential.clone())
-            .await
-            .expect_err("grok native must not resolve for proxy");
-        assert!(matches!(error, ManagedAuthCoreError::Conflict));
     }
 
     #[test]

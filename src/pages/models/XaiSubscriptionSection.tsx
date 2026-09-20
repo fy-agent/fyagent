@@ -309,7 +309,7 @@ export function XaiSubscriptionSection(props: Props) {
       ) : null}
       {!overview.isPending && !overview.isError && accounts.length === 0 ? (
         <InlineNotice tone="info">
-          还没有保存的 ChatGPT 或 Grok 账号，请先到账号与认证登录。
+          还没有保存的 ChatGPT 或 xAI 设备码账号，请先到账号与认证登录。
         </InlineNotice>
       ) : null}
       {accounts.length > 0 ? (
@@ -338,7 +338,7 @@ export function XaiSubscriptionSection(props: Props) {
                 }}
               />
               <span>
-                {account.provider === "openai" ? "ChatGPT · " : "Grok · "}
+                {account.provider === "openai" ? "ChatGPT · " : "xAI 设备码 · "}
                 {account.displayName ?? account.login}
                 {account.health === "requires_reauth"
                   ? "（需要重新登录）"

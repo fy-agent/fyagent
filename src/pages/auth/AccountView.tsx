@@ -133,6 +133,7 @@ function AccountDetail({
   originRef,
   account,
   connections,
+  providers,
   mutationBusy,
   onBack,
   onReauthenticate,
@@ -144,6 +145,7 @@ function AccountDetail({
   account: ManagedAuthAccountSummary;
   originRef?: DialogOriginRef;
   connections: ManagedAuthConnectionSummary[];
+  providers: ManagedAuthOverview["providers"];
   mutationBusy: boolean;
   onBack: () => void;
   onReauthenticate: (account: ManagedAuthAccountSummary) => void;
@@ -166,6 +168,7 @@ function AccountDetail({
   const loginRequiredConnections = loginRequiredConnectionsForAccount(
     account,
     connections,
+    providers,
   );
   return (
     <CatalogDetail
@@ -484,6 +487,7 @@ export function AccountView({
           originRef={originRef}
           account={selectedAccount}
           connections={overview.connections}
+          providers={overview.providers}
           mutationBusy={mutationBusy}
           onBack={onClearSelection}
           onReauthenticate={onReauthenticate}

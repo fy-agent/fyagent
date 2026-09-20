@@ -23,7 +23,7 @@ import type { ManagedAuthLoginController } from "./useManagedAuthLoginSession";
 
 const providerDescriptions: Record<ManagedAuthProvider, string> = {
   openai: "用于 Codex、FyAgent Local Proxy 或 OpenCode Desktop",
-  xai: "用于 Grok Build、FyAgent Local Proxy 或 OpenCode Desktop",
+  xai: "xAI 设备码账号；与 Grok 官方 CLI 登录、API Key 配置分别管理",
   github_copilot: "用于支持 GitHub Copilot 的 Provider",
 };
 
@@ -129,7 +129,9 @@ function LoginDialogContent({
   const canContinueFromUse =
     provider !== null &&
     selectedProvider?.available === true &&
-    (purpose !== "connect_consumer" || consumer !== null);
+    selectedProvider.loginMethods.includes(method) &&
+    (purpose !== "connect_consumer" ||
+      (consumer !== null && availableConsumers.includes(consumer)));
 
   const selectProvider = (next: ManagedAuthProvider) => {
     const summary = providers.find((item) => item.provider === next);
@@ -383,6 +385,15 @@ function LoginDialogContent({
             <div>
               <strong>{managedAuthProviderLabel(provider)}</strong>
               <span>{providerDescriptions[provider]}</span>
+              {provider === "xai" ? (
+                <span>
+                  当前可用于：
+                  {availableConsumers
+                    .map(managedAuthConsumerLabel)
+                    .join("、") || "仅保存账号"}
+                  。保存后仍需逐项预览并确认连接。
+                </span>
+              ) : null}
             </div>
           </div>
           {reauthenticateAccount ? (

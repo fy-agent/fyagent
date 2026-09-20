@@ -4,6 +4,8 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { AuthPage } from "@/pages/auth/Page";
+import type { AgentAuthPort } from "@/shared/features/agent-auth";
+import type { ManagedAuthConnectionActionRequest } from "@/shared/features/managed-auth";
 import type { FeaturePorts } from "@/shared/features/ports";
 import { FeatureProvider } from "@/shared/features/provider";
 import { createBrowserFeaturePorts } from "@/shared/platform/browser/features";
@@ -13,6 +15,9 @@ import {
   CODEX_CONNECTION_ID,
   CONNECTION_REVISION,
   OPENAI_ACCOUNT_ID,
+  XAI_ACCOUNT_ID,
+  GROK_CONNECTION_ID,
+  OPENCODE_CONNECTION_ID,
   PREVIEW_ID,
   deviceLoginSessionFixture,
   managedAuthOverviewFixture,
@@ -86,6 +91,205 @@ function withoutOpenAiAccount() {
 }
 
 describe("AuthPage", () => {
+  it("offers Grok official CLI handoff without claiming login or invoking xAI OAuth", async () => {
+    const user = userEvent.setup();
+    const ports = managedPorts();
+    const observation = {
+      contractVersion: 1 as const,
+      agentId: "grokbuild" as const,
+      kind: "handoff_only" as const,
+      ownership: "agent_owned" as const,
+      authority: "unverified" as const,
+      allowedIntents: ["login", "logout"] as ("login" | "logout")[],
+      checkedAt: "2026-09-20T00:00:00Z",
+      reasonCodes: ["handoff_only"] as "handoff_only"[],
+    };
+    ports.agentAuth = {
+      getObservation: vi.fn(async () => observation),
+      getActiveSession: vi.fn(async () => null),
+      startSession: vi.fn<AgentAuthPort["startSession"]>(async (request) => ({
+        contractVersion: 1,
+        sessionId: "123e4567-e89b-42d3-a456-426614174000",
+        agentId: "grokbuild",
+        intent: request.intent,
+        stage: "handoff_complete",
+        canStopWaiting: false,
+        outcome: "handoff_only",
+        observation,
+        reasonCode: "handoff_only",
+      })),
+      getSession: vi.fn(),
+      stopWaiting: vi.fn(),
+    };
+    renderPage(ports, "/auth?consumer=grokbuild&view=connections");
+    const login = await screen.findByRole("button", {
+      name: "打开官方 CLI 登录",
+    });
+    await waitFor(() => expect(login).toBeEnabled());
+    await user.click(login);
+    expect(
+      await screen.findByText("已打开官方 CLI 登录入口，请在终端完成登录。"),
+    ).toBeVisible();
+    expect(ports.agentAuth.startSession).toHaveBeenCalledWith({
+      agentId: "grokbuild",
+      intent: "login",
+    });
+    expect(ports.managedAuth.startLogin).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "退出官方 CLI 登录" }));
+    const dialog = screen.getByRole("dialog", {
+      name: "退出 Grok 官方 CLI 登录",
+    });
+    expect(ports.agentAuth.startSession).toHaveBeenCalledTimes(1);
+    await user.click(
+      within(dialog).getByRole("button", { name: "确认退出官方 CLI" }),
+    );
+    expect(
+      await screen.findByText(
+        "已向官方 CLI 发出退出操作，请在官方终端确认结果。",
+      ),
+    ).toBeVisible();
+    expect(ports.agentAuth.startSession).toHaveBeenLastCalledWith({
+      agentId: "grokbuild",
+      intent: "logout",
+    });
+  });
+
+  it("does not present a gated Grok connection as an account reuse or device-code target", async () => {
+    const user = userEvent.setup();
+    const overview = managedAuthOverviewFixture();
+    const grok = overview.connections.find(
+      (item) => item.connectionId === GROK_CONNECTION_ID,
+    )!;
+    Object.assign(grok, {
+      accountId: null,
+      authStatus: "disconnected",
+      allowedActions: ["refresh"],
+      reasonCodes: ["native_projection_unavailable"],
+    });
+    renderPage(
+      managedPorts({ getOverview: vi.fn(async () => overview) }),
+      `/auth?account=${XAI_ACCOUNT_ID}`,
+    );
+    const detail = await screen.findByRole("region", {
+      name: "xai@example.com 账号详情",
+    });
+    expect(
+      within(detail).queryByRole("button", { name: "连接 Grok Build" }),
+    ).not.toBeInTheDocument();
+    await user.click(within(detail).getByRole("button", { name: "重新登录" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("xAI 设备码账号");
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("用于 Grok Build");
+  });
+
+  it("preserves target A success when B fails and retries B with a fresh preview", async () => {
+    const user = userEvent.setup();
+    let overview = managedAuthOverviewFixture();
+    overview.connections = overview.connections
+      .filter((item) =>
+        [CODEX_CONNECTION_ID, OPENCODE_CONNECTION_ID].includes(
+          item.connectionId,
+        ),
+      )
+      .map((item) => ({
+        ...item,
+        provider: "openai",
+        accountId: null,
+        authStatus: "disconnected",
+        allowedActions: ["connect_account", "refresh"],
+        reasonCodes: [],
+      }));
+    let previewSequence = 0;
+    const previewConnectionAction = vi.fn(
+      async (request: ManagedAuthConnectionActionRequest) => ({
+        ...connectionPreviewFixture(request),
+        previewId: `323e4567-e89b-42d3-a456-${String(++previewSequence).padStart(12, "0")}`,
+      }),
+    );
+    let failB = true;
+    const applyConnectionAction = vi.fn<
+      FeaturePorts["managedAuth"]["applyConnectionAction"]
+    >(async (request) => {
+      if (request.connectionId === OPENCODE_CONNECTION_ID && failB) {
+        failB = false;
+        throw { contractVersion: 1, reasonCode: "external_change_detected" };
+      }
+      overview = {
+        ...overview,
+        connections: overview.connections.map((connection) =>
+          connection.connectionId === request.connectionId
+            ? {
+                ...connection,
+                accountId: OPENAI_ACCOUNT_ID,
+                authStatus: "connected",
+                allowedActions: ["refresh"],
+              }
+            : connection,
+        ),
+      };
+      return mutationResultFixture(overview);
+    });
+    const ports = managedPorts({
+      getOverview: vi.fn(async () => overview),
+      applyConnectionAction,
+      previewConnectionAction,
+    });
+    ports.configRecovery.list = vi.fn(async () => []);
+    renderPage(ports);
+    const connect = async (name: string) => {
+      const card = (await screen.findByRole("heading", { name })).closest(
+        "article",
+      )!;
+      await user.click(
+        within(card).getByRole("button", { name: "用此账号连接" }),
+      );
+      const dialog = screen.getByRole("dialog");
+      await waitFor(() =>
+        expect(
+          within(dialog).getByRole("button", { name: "确认" }),
+        ).toBeEnabled(),
+      );
+      await user.click(within(dialog).getByRole("button", { name: "确认" }));
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      );
+    };
+    await connect("Codex");
+    await connect("OpenCode Desktop");
+    const a = screen.getByRole("article", { name: "Codex · OpenAI 操作结果" });
+    const b = screen.getByRole("article", {
+      name: "OpenCode Desktop · OpenAI 操作结果",
+    });
+    expect(a).toHaveTextContent("此连接操作已完成并回读。");
+    expect(b).toHaveTextContent("检测到软件在 FyAgent 外部修改了登录信息");
+    const firstB = applyConnectionAction.mock.calls.find(
+      ([request]) => request.connectionId === OPENCODE_CONNECTION_ID,
+    )![1];
+    await user.click(within(b).getByRole("button", { name: "重试此连接" }));
+    const retry = screen.getByRole("dialog");
+    await waitFor(() =>
+      expect(within(retry).getByRole("button", { name: "确认" })).toBeEnabled(),
+    );
+    await user.click(within(retry).getByRole("button", { name: "确认" }));
+    await waitFor(() =>
+      expect(b).toHaveTextContent("此连接操作已完成并回读。"),
+    );
+    expect(
+      applyConnectionAction.mock.calls.filter(
+        ([request]) => request.connectionId === CODEX_CONNECTION_ID,
+      ),
+    ).toHaveLength(1);
+    const bCalls = applyConnectionAction.mock.calls.filter(
+      ([request]) => request.connectionId === OPENCODE_CONNECTION_ID,
+    );
+    expect(bCalls).toHaveLength(2);
+    expect(bCalls[1][1]).not.toBe(firstB);
+    expect(a).toHaveTextContent("此连接操作已完成并回读。");
+    await user.click(within(b).getByRole("button", { name: "撤回文件修改" }));
+    await waitFor(() =>
+      expect(ports.configRecovery.list).toHaveBeenCalledWith(["opencode_auth"]),
+    );
+  });
+
   it("keeps account identity, software connection and current request source visually separate", async () => {
     renderPage(managedPorts());
 
@@ -406,7 +610,7 @@ describe("AuthPage", () => {
     expect(within(detail).getByText("custom")).toBeVisible();
     expect(
       within(detail).getByText(
-        "账号已保存在 FyAgent。还不能改写该软件的本地登录和模型来源，所以本机配置不会变。",
+        "FyAgent 暂时不能改写该软件的本地登录。已保存的账号不代表软件已登录，请使用官方登录入口。",
       ),
     ).toBeVisible();
     expect(within(detail).queryByText("已连接")).not.toBeInTheDocument();

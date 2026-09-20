@@ -324,14 +324,14 @@ fn slot_summary(
     if connected {
         allowed_actions.push(ManagedAuthConnectionAction::Disconnect);
     }
-    if independent.is_some() {
+    if observation.readable && independent.is_some() {
         if connected {
             allowed_actions.push(ManagedAuthConnectionAction::SwitchAccount);
         } else {
             allowed_actions.push(ManagedAuthConnectionAction::ConnectAccount);
         }
     }
-    if pending_restart {
+    if observation.readable && pending_restart {
         allowed_actions.push(ManagedAuthConnectionAction::Restart);
     }
     let account = stored

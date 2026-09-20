@@ -101,7 +101,7 @@ test("saved Grok subscription can be selected for Claude and continued through t
     section.getByRole("button", { name: "应用到 Claude Code" }),
   ).toBeDisabled();
   await section
-    .getByRole("radio", { name: "Grok · browser-xai@example.com" })
+    .getByRole("radio", { name: "xAI 设备码 · browser-xai@example.com" })
     .check();
   await section
     .getByRole("button", { name: "grok-subscription-fixture-2" })
@@ -126,7 +126,7 @@ test("saved Grok subscription can be selected for Claude and continued through t
     section.getByRole("button", { name: "保存 Codex 订阅配置" }),
   ).toBeDisabled();
   await section
-    .getByRole("radio", { name: "Grok · browser-xai@example.com" })
+    .getByRole("radio", { name: "xAI 设备码 · browser-xai@example.com" })
     .check();
   await section
     .getByRole("button", { name: "grok-subscription-fixture-1" })
@@ -180,7 +180,7 @@ test("subscription rejection remains local to its target and exposes the account
   );
   const section = page.getByRole("region", { name: "账号订阅设置" });
   await section
-    .getByRole("radio", { name: "Grok · browser-xai@example.com" })
+    .getByRole("radio", { name: "xAI 设备码 · browser-xai@example.com" })
     .check();
   await section
     .getByRole("button", { name: "grok-subscription-fixture-1" })

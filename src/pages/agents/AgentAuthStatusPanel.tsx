@@ -30,7 +30,7 @@ import { InlineNotice, Spinner } from "../../shared/ui/primitives";
 import {
   isAgentAuthSessionTerminal,
   useAgentAuthSession,
-} from "./useAgentAuthSession";
+} from "../../shared/features/useAgentAuthSession";
 
 const DESKTOP_HANDOFF_AGENTS = new Set<AgentCatalogId>([
   "qoderwork",
@@ -353,6 +353,7 @@ function AgentAuthStatusPanelInner({
       !(observation.kind === "provider_connections" && intent === "logout"),
   );
   const refreshObservation = async () => {
+    if (session.error) session.retryRecovery();
     const result = await observationQuery.refetch();
     if (result.data) session.resetTerminal();
   };
@@ -364,7 +365,7 @@ function AgentAuthStatusPanelInner({
           <p>{observationDescription(observation)}</p>
         </div>
         <Button
-          disabled={session.busy}
+          disabled={session.submitting || session.recovering}
           onClick={() => void refreshObservation()}
         >
           刷新状态

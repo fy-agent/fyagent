@@ -11,6 +11,7 @@ import {
   type ManagedAuthLoginSessionSnapshot,
   type ManagedAuthLoginStage,
   type ManagedAuthProvider,
+  type ManagedAuthProviderSummary,
   type ManagedAuthReasonCode,
   type ManagedAuthRequestMode,
 } from "../../shared/features/managed-auth";
@@ -47,7 +48,7 @@ const reasonCopies: Record<ManagedAuthReasonCode, string> = {
   secret_unavailable: "系统凭据库暂时不可用。",
   connection_unavailable: "暂时无法确认软件连接状态。",
   native_projection_unavailable:
-    "账号已保存在 FyAgent。还不能改写该软件的本地登录和模型来源，所以本机配置不会变。",
+    "FyAgent 暂时不能改写该软件的本地登录。已保存的账号不代表软件已登录，请使用官方登录入口。",
   target_selection_required: "检测到多个安装实例，请先选择要管理的软件。",
   target_changed: "软件安装状态已变化，请刷新后重试。",
   pending_restart: "凭据已更新，软件需要重新启动后才能使用。",
@@ -365,7 +366,8 @@ export function linkedConnectionsForAccount(
   return connections.filter(
     (connection) =>
       connection.accountId === account.accountId &&
-      connection.authStatus !== "disconnected",
+      connection.authStatus !== "disconnected" &&
+      !connection.reasonCodes.includes("native_projection_unavailable"),
   );
 }
 
@@ -376,6 +378,8 @@ export function connectableConnectionsForAccount(
   if (account.health !== "ready") return [];
   return connections.filter((connection) => {
     if (connection.provider !== account.provider) return false;
+    if (connection.reasonCodes.includes("native_projection_unavailable"))
+      return false;
     const alreadyLive =
       connection.accountId === account.accountId &&
       connection.authStatus !== "disconnected";
@@ -390,8 +394,11 @@ export function connectableConnectionsForAccount(
 export function loginRequiredConnectionsForAccount(
   account: ManagedAuthAccountSummary,
   connections: ManagedAuthConnectionSummary[],
+  providers: ManagedAuthProviderSummary[],
 ): ManagedAuthConnectionSummary[] {
   if (account.health !== "ready") return [];
+  const provider = providers.find((item) => item.provider === account.provider);
+  if (!provider?.available) return [];
   const connectableIds = new Set(
     connectableConnectionsForAccount(account, connections).map(
       (connection) => connection.connectionId,
@@ -399,6 +406,17 @@ export function loginRequiredConnectionsForAccount(
   );
   return connections.filter((connection) => {
     if (connection.provider !== account.provider) return false;
+    if (!provider.consumers.includes(connection.consumer)) return false;
+    if (
+      connection.authStatus !== "disconnected" ||
+      connection.reasonCodes.some(
+        (reason) =>
+          reason === "native_projection_unavailable" ||
+          reason === "observer_unavailable" ||
+          reason === "connection_unavailable",
+      )
+    )
+      return false;
     if (connection.accountId !== null) return false;
     if (connectableIds.has(connection.connectionId)) return false;
     return true;

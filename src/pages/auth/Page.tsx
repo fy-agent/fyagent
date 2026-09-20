@@ -28,6 +28,7 @@ import { useDialogState } from "../../shared/ui/useDialogState";
 import { EmptyState, InlineNotice, Spinner } from "../../shared/ui/primitives";
 import { AccountView } from "./AccountView";
 import { ConnectionsView } from "./ConnectionsView";
+import { ConnectionResults, type ConnectionResult } from "./ConnectionResults";
 import { CodexRequestSource } from "./CodexRequestSource";
 import { LoginDialog } from "./LoginDialog";
 import { ConnectionActionDialog, RemoveAccountDialog } from "./MutationDialogs";
@@ -35,6 +36,7 @@ import { ReasonList } from "./common";
 import {
   managedAuthCommandErrorCopy,
   managedAuthConsumerLabel,
+  managedAuthReasonCopy,
   sessionSummary,
 } from "./presentation";
 import { useManagedAuthLoginSession } from "./useManagedAuthLoginSession";
@@ -104,6 +106,9 @@ export function AuthPage() {
     setSourceBusy(busy);
   }, []);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [connectionResults, setConnectionResults] = useState<
+    Record<string, ConnectionResult>
+  >({});
   const [removalAccount, setRemovalAccount] =
     useState<ManagedAuthAccountSummary | null>(null);
   const [removalPreview, setRemovalPreview] =
@@ -207,6 +212,7 @@ export function AuthPage() {
   const runMutation = async (
     action: () => Promise<ManagedAuthMutationResult>,
     successTitle: string,
+    target?: Pick<ConnectionResult, "connection" | "action" | "accountId">,
   ) => {
     if (
       !visible ||
@@ -218,14 +224,38 @@ export function AuthPage() {
     mutationBusyRef.current = true;
     setMutationBusy(true);
     setMutationError(null);
+    const record = (state: ConnectionResult["state"], message: string) => {
+      if (!target) return;
+      setConnectionResults((current) => ({
+        ...current,
+        [target.connection.connectionId]: { ...target, state, message },
+      }));
+    };
+    record("pending", "正在处理此连接并读取结果…");
     try {
       const result = await action();
       commitMutationResult(result, successTitle);
+      const connection = result.overview.connections.find(
+        (item) => item.connectionId === target?.connection.connectionId,
+      );
+      record(
+        result.outcome,
+        result.outcome === "completed"
+          ? connection?.pendingRestart
+            ? "此连接已保存并回读，需要重新启动软件后使用。"
+            : target?.action === "refresh"
+              ? "已重新读取此连接的状态。"
+              : "此连接操作已完成并回读。"
+          : (managedAuthReasonCopy(result.reasonCode) ??
+              "此连接尚未确认完成，请检查当前状态后重试。"),
+      );
       return result;
     } catch (cause) {
       const message = managedAuthCommandErrorCopy(cause);
       setMutationError(message);
+      record("failed", message);
       notify({ tone: "error", title: "账号操作未完成", description: message });
+      if (target) await refetchOverview();
       return null;
     } finally {
       mutationBusyRef.current = false;
@@ -334,8 +364,11 @@ export function AuthPage() {
           previewId,
         ),
       `${managedAuthConsumerLabel(connection.consumer)} 状态已更新`,
+      action === "refresh" ? undefined : { connection, action, accountId },
     );
-    if (result) setConnectionAction(null);
+    // The native preview is single-use even when apply failed. Retain this
+    // target's result, close the consumed preview and obtain a new one on retry.
+    if (result || previewId) setConnectionAction(null);
   };
 
   const requestConnectionAction = (
@@ -498,6 +531,25 @@ export function AuthPage() {
           Codex 配置切换尚未确认完成，请先在软件连接中检查结果。
         </InlineNotice>
       ) : null}
+      <ConnectionResults
+        results={connectionResults}
+        connections={overview.connections}
+        disabled={
+          mutationBusy ||
+          sourceBusy ||
+          loginController.busy ||
+          overviewQuery.isError ||
+          connectionAction !== null
+        }
+        originRef={dialogOriginRef}
+        onRetry={(connection, result) =>
+          requestConnectionAction(connection, result.action, result.accountId)
+        }
+        onRefresh={async () => {
+          await refreshSourceOverview();
+          invalidateRequestSources();
+        }}
+      />
       {overview.reasonCodes.length > 0 ? (
         <InlineNotice tone="warning">
           <span className="fy-auth-session-banner">
@@ -571,6 +623,7 @@ export function AuthPage() {
         className="fy-auth-view-panel"
       >
         <ConnectionsView
+          active={visible && view === "connections"}
           originRef={dialogOriginRef}
           overview={overview}
           selectedConsumer={selectedConsumer}

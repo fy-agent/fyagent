@@ -186,7 +186,7 @@ async function selectAccountAndModel(
   account = "xai@example.com",
 ) {
   await user.click(
-    await screen.findByRole("radio", { name: `Grok · ${account}` }),
+    await screen.findByRole("radio", { name: `xAI 设备码 · ${account}` }),
   );
   await user.click(await screen.findByRole("button", { name: modelIds[1] }));
 }
@@ -298,7 +298,7 @@ describe("Managed subscription selection and application", () => {
     renderSection(ports);
     await selectAccountAndModel(user);
     await user.click(
-      screen.getByRole("radio", { name: "Grok · second@example.com" }),
+      screen.getByRole("radio", { name: "xAI 设备码 · second@example.com" }),
     );
     await waitFor(() =>
       expect(ports.providers.fetchXaiManagedModels).toHaveBeenCalledTimes(2),
@@ -372,7 +372,9 @@ describe("Managed subscription selection and application", () => {
     });
     renderSection(ports);
     await user.click(
-      await screen.findByRole("radio", { name: "Grok · xai@example.com" }),
+      await screen.findByRole("radio", {
+        name: "xAI 设备码 · xai@example.com",
+      }),
     );
     const input = await screen.findByLabelText("订阅模型 ID");
     await user.type(input, "grok-manual-fixture");

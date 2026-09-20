@@ -329,7 +329,9 @@ describe("Models page", () => {
     }));
     renderPage(ports, "claude");
     await user.click(
-      await screen.findByRole("radio", { name: "Grok · xai@example.com" }),
+      await screen.findByRole("radio", {
+        name: "xAI 设备码 · xai@example.com",
+      }),
     );
     await user.click(
       await screen.findByRole("button", { name: "grok-selected-fixture" }),
@@ -339,7 +341,9 @@ describe("Models page", () => {
     ).toBeEnabled();
     await user.click(screen.getByTestId("model-target-codex"));
     expect(
-      await screen.findByRole("radio", { name: "Grok · xai@example.com" }),
+      await screen.findByRole("radio", {
+        name: "xAI 设备码 · xai@example.com",
+      }),
     ).not.toBeChecked();
     expect(
       screen.getByRole("button", { name: "保存 Codex 订阅配置" }),
