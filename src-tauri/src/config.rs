@@ -11,7 +11,7 @@ use crate::error::AppError;
 mod recovery;
 
 pub(crate) use recovery::{
-    file_mutation_expected_hash, file_mutation_scope, file_recovery,
+    file_mutation_expected_hash, file_mutation_scope, file_recovery, file_restore_scope,
     restore_file_preimage_if_owned, restore_file_recovery, verified_file_recovery, FileRecovery,
 };
 

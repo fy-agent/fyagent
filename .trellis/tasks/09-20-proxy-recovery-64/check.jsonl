@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/proxy-runtime.md","reason":"Legacy and managed restore safety"}
+{"file":".trellis/spec/backend/reversible-user-config.md","reason":"Recheck ownership at publication and preserve evidence"}
+{"file":".trellis/spec/frontend/managed-auth.md","reason":"Recovery outcome and restart disclosure"}

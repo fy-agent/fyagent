@@ -43,8 +43,10 @@ pub(crate) use credential_store::{
 #[cfg(test)]
 use catalog::*;
 pub(crate) use catalog::{
-    codex_model_catalog_write_required, codex_top_level_model, read_codex_model_catalog_text,
-    resolve_fyagent_catalog_path, CODEX_WEB_SEARCH_DISABLED, CODEX_WEB_SEARCH_FIELD,
+    codex_model_catalog_write_required, codex_native_gateway_rejects_web_search,
+    codex_top_level_model, read_codex_model_catalog_text, resolve_fyagent_catalog_path,
+    set_codex_model_catalog_json_field, set_codex_native_web_search_field,
+    CODEX_WEB_SEARCH_DISABLED, CODEX_WEB_SEARCH_FIELD,
 };
 pub use catalog::{
     prepare_codex_config_text_with_model_catalog, read_codex_model_catalog_simplified_from_live,

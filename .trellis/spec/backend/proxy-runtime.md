@@ -100,6 +100,9 @@ backup body, or replacement routing implementation.
   remain intact and keep their backup/recovery evidence. Incomplete ownership
   yields recovery-required/state-unknown, never a confirmed rollback. This
   narrower protection does not redefine legacy API-key backup formats.
+  Exit/recovery accepts each exact preimage as already restored when another
+  file failed. Binding/rebinding still requires every owned postimage. A partial
+  exit must not authorize a new activation over an uncertain projection.
 - Expected postimages come from this operation's atomic-writer receipt, never
   a new sample of current bytes after asynchronous work. Rebinding verifies
   the prior proof before replacing it, so earlier external edits cannot become
@@ -201,6 +204,24 @@ backup body, or replacement routing implementation.
 - Takeover matching helpers in `services/proxy/takeover.rs` are pure URL/config
   recognition. Stateful reads, writes, locks, backup ownership, and transition
   order stay in `ProxyService`.
+- Legacy API-key exit keeps the historical DB backup format. A current file
+  already equivalent to the intended restored configuration is a no-op. Any
+  changed file requires a valid path-bound atomic-writer receipt and the full
+  takeover projection reproduced from its original/source configuration; a
+  loopback URL, placeholder or newer FyAgent writer receipt alone is not
+  ownership. Unrelated external edits and invalid/missing receipts preserve
+  the file and DB backup and return actionable conflict guidance.
+- If a receipt still retains the real original, restore its exact bytes at
+  the shared guarded writer. A hot-switch backup may instead require existing
+  format writers; constrain them using `file_restore_scope`, including catalog
+  writes, and never restore Codex native auth from a proxy backup. Catalog
+  admission uses existing pure field transforms and cannot generate a catalog
+  or launch CLI discovery. Legacy backups still cannot prove changes to DB-only
+  fields masked by both projections; DB remains the source authority there.
+- Missing/corrupt placeholder backups may use a guarded SSOT projection or a
+  verified original file receipt. Never fall through from an ownership failure
+  into unchecked cleanup, or manufacture a usable original by deleting keys
+  and endpoints. Unverifiable historical evidence requires manual comparison.
 
 ### Provider switching and crash recovery
 

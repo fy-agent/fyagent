@@ -179,7 +179,7 @@ impl ProxyService {
             .ok_or("Managed restore backup missing")?;
         let raw: Value = serde_json::from_str(&backup.original_config)
             .map_err(|_| "Managed restore backup unavailable")?;
-        self.verify_and_unwrap_managed_restore(app, raw.clone())?;
+        self.verify_and_unwrap_managed_restore_for_exit(app, raw.clone())?;
         let proof = decode(&raw)?.ok_or("Managed restore proof missing")?;
         let expected = hashes(&proof.preimages);
         let paths = paths(app)?;
@@ -210,6 +210,23 @@ impl ProxyService {
         app: &AppType,
         config: Value,
     ) -> Result<(Value, bool), String> {
+        self.verify_managed_restore(app, config, false)
+    }
+
+    pub(super) fn verify_and_unwrap_managed_restore_for_exit(
+        &self,
+        app: &AppType,
+        config: Value,
+    ) -> Result<(Value, bool), String> {
+        self.verify_managed_restore(app, config, true)
+    }
+
+    fn verify_managed_restore(
+        &self,
+        app: &AppType,
+        config: Value,
+        allow_restored: bool,
+    ) -> Result<(Value, bool), String> {
         let proof = match decode(&config)? {
             Some(proof) => proof,
             None => match self.legacy_managed_restore_proof(app, &config)? {
@@ -217,7 +234,23 @@ impl ProxyService {
                 None => return Ok((config, false)),
             },
         };
-        if proof.version != 1 || proof.files.as_ref() != Some(&fingerprints(app)?) {
+        let current = fingerprints(app)?;
+        let original = hashes(&proof.preimages);
+        let owned = proof
+            .files
+            .as_ref()
+            .ok_or("Managed restore proof unavailable")?;
+        if proof.version != 1
+            || owned.len() != current.len()
+            || original.len() != current.len()
+            || !current
+                .iter()
+                .zip(owned)
+                .zip(&original)
+                .all(|((live, written), before)| {
+                    live == written || (allow_restored && live == before)
+                })
+        {
             return Err(
                 "Managed subscription configuration changed; recovery requires review".into(),
             );
