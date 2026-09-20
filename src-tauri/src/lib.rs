@@ -2030,6 +2030,7 @@ pub fn run() {
             commands::restore_config_file_recovery,
             commands::get_agent_install_readiness,
             commands::get_agent_installation_inventory,
+            commands::get_agent_install_preflight,
             commands::start_agent_action,
             commands::cancel_agent_action,
             commands::get_agent_action_job,
@@ -2435,6 +2436,7 @@ pub fn run() {
             commands::codex_desktop_check_latest,
             commands::codex_desktop_get_job,
             commands::codex_desktop_start_install,
+            commands::codex_desktop_prepare_install,
             commands::codex_desktop_cancel_install,
             commands::codex_desktop_launch,
             commands::codex_desktop_open_log_directory,
@@ -3899,11 +3901,12 @@ mod tests {
 
     #[test]
     fn codex_desktop_ipc_keeps_seven_ordinary_commands_and_four_trusted_restart_commands() {
-        const ORDINARY_COMMANDS: [&str; 7] = [
+        const ORDINARY_COMMANDS: [&str; 8] = [
             "codex_desktop_get_local_status",
             "codex_desktop_check_latest",
             "codex_desktop_get_job",
             "codex_desktop_start_install",
+            "codex_desktop_prepare_install",
             "codex_desktop_cancel_install",
             "codex_desktop_launch",
             "codex_desktop_open_log_directory",

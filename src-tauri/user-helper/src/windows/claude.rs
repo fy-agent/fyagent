@@ -67,7 +67,7 @@ fn version(candidate: &Candidate) -> Result<String, HelperErrorCode> {
     parse_normalized_version(&output).ok_or(HelperErrorCode::ToolNotDetected)
 }
 
-fn npm_prefix(npm: &Path) -> Result<PathBuf, HelperErrorCode> {
+pub(super) fn npm_prefix(npm: &Path) -> Result<PathBuf, HelperErrorCode> {
     let (output, _) = run_grok_binary(npm, &["prefix", "-g"], grok_version_timeout())?;
     let text = output.trim();
     if text.is_empty() || text.chars().any(char::is_control) {
@@ -100,20 +100,27 @@ fn execute_inner(
             before.as_ref().and_then(|item| version(item).ok()),
         ));
     }
-    let plan = plan.ok_or(HelperErrorCode::ToolExecutionFailed)?;
-    match (action, before.as_ref()) {
-        (GrokToolAction::Install, None) => {}
-        (GrokToolAction::Update, Some(item)) if item.owner == ClaudeOwner::Npm => {
-            if version(item).is_ok_and(|local| version_is_at_least(&local, plan.version())) {
-                let mut result =
-                    ToolOperationResult::observed(true, Some(GrokOwner::Npm), Some(version(item)?));
-                result.outcome = fyagent_user_helper::GrokOutcome::NoChange;
-                return Ok(result);
+    let preflight = action == GrokToolAction::Preflight;
+    if !preflight {
+        match (action, before.as_ref()) {
+            (GrokToolAction::Install, None) => {}
+            (GrokToolAction::Update, Some(item)) if item.owner == ClaudeOwner::Npm => {
+                if plan.as_ref().is_some_and(|plan| {
+                    version(item).is_ok_and(|local| version_is_at_least(&local, plan.version()))
+                }) {
+                    let mut result = ToolOperationResult::observed(
+                        true,
+                        Some(GrokOwner::Npm),
+                        Some(version(item)?),
+                    );
+                    result.outcome = fyagent_user_helper::GrokOutcome::NoChange;
+                    return Ok(result);
+                }
             }
-        }
-        (GrokToolAction::Update, None) => return Err(HelperErrorCode::ToolNotDetected),
-        _ => {
-            return Err(HelperErrorCode::ToolOwnerMismatch);
+            (GrokToolAction::Update, None) => return Err(HelperErrorCode::ToolNotDetected),
+            _ => {
+                return Err(HelperErrorCode::ToolOwnerMismatch);
+            }
         }
     }
     let npm = find_path_program(&["npm.cmd", "npm.exe"]).ok_or(HelperErrorCode::ToolHostMissing)?;
@@ -139,6 +146,7 @@ fn execute_inner(
         return Err(HelperErrorCode::ToolHostMissing);
     }
     let prefix = npm_prefix(&npm)?;
+    ensure_install_directory_writable(&prefix)?;
     if let Some(before) = &before {
         let actual =
             std::fs::canonicalize(&prefix).map_err(|_| HelperErrorCode::ToolOwnerMismatch)?;
@@ -154,6 +162,20 @@ fn execute_inner(
     if observe_candidate()? != before {
         return Err(HelperErrorCode::ToolOwnerMismatch);
     }
+    if preflight {
+        return Ok(ToolOperationResult::observed(
+            before.is_some(),
+            before.as_ref().map(|item| {
+                if item.owner == ClaudeOwner::Npm {
+                    GrokOwner::Npm
+                } else {
+                    GrokOwner::Native
+                }
+            }),
+            before.as_ref().and_then(|item| version(item).ok()),
+        ));
+    }
+    let plan = plan.ok_or(HelperErrorCode::ToolExecutionFailed)?;
     if let Err(code) = execute_npm_plan(&npm, OfficialNpmTool::Claude, &plan) {
         return Err(code);
     }

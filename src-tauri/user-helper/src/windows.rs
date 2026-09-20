@@ -328,6 +328,29 @@ fn execute_grok_tool(
         )?;
     match plan {
         GrokPlanKind::Observe => Ok(observe_grok_result(&candidates, observation)),
+        GrokPlanKind::Preflight => {
+            if observation.owner() == Some(GrokOwner::Native) {
+                let binary = preferred_candidate(&candidates, GrokOwner::Native)
+                    .ok_or(HelperErrorCode::ToolNotDetected)?;
+                run_grok_binary(&binary.path, &["--version"], grok_version_timeout())?;
+                ensure_install_directory_writable(
+                    binary
+                        .path
+                        .parent()
+                        .ok_or(HelperErrorCode::ToolOwnerMismatch)?,
+                )?;
+            } else {
+                let npm = if let Some(binary) = preferred_candidate(&candidates, GrokOwner::Npm) {
+                    sibling_npm(&binary.path)
+                } else {
+                    find_path_program(&["npm.cmd", "npm.exe"])
+                }
+                .ok_or(HelperErrorCode::ToolHostMissing)?;
+                let _ = npm_major_from(&npm)?;
+                ensure_install_directory_writable(&claude::npm_prefix(&npm)?)?;
+            }
+            Ok(observe_grok_result(&candidates, observation))
+        }
         GrokPlanKind::NativeFresh => {
             run_native_fresh_install()?;
             finalize_after_mutation(GrokToolAction::Install, expected_owner)
@@ -365,7 +388,9 @@ fn finalize_after_mutation(
             result.outcome = match action {
                 GrokToolAction::Install => fyagent_user_helper::GrokOutcome::Installed,
                 GrokToolAction::Update => fyagent_user_helper::GrokOutcome::Updated,
-                GrokToolAction::Observe => fyagent_user_helper::GrokOutcome::Observed,
+                GrokToolAction::Observe | GrokToolAction::Preflight => {
+                    fyagent_user_helper::GrokOutcome::Observed
+                }
             };
             Ok(result)
         }
@@ -589,6 +614,37 @@ fn sibling_npm(grok_path: &Path) -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn ensure_install_directory_writable(path: &Path) -> Result<(), HelperErrorCode> {
+    validate_ordinary_dos_path(path).map_err(|_| HelperErrorCode::ToolOwnerMismatch)?;
+    let directory = path
+        .ancestors()
+        .find(|parent| parent.exists())
+        .ok_or(HelperErrorCode::ToolPermissionDenied)?;
+    let metadata =
+        std::fs::symlink_metadata(directory).map_err(|_| HelperErrorCode::ToolPermissionDenied)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(HelperErrorCode::ToolOwnerMismatch);
+    }
+    let wide: Vec<u16> = directory.as_os_str().encode_wide().chain(Some(0)).collect();
+    // Query the ordinary helper token's ability to create inside the selected
+    // prefix, without creating files and without borrowing the elevated host.
+    let handle = unsafe {
+        CreateFileW(
+            PCWSTR(wide.as_ptr()),
+            FILE_ADD_FILE.0 | FILE_ADD_SUBDIRECTORY.0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            None,
+        )
+    }
+    .map_err(|_| HelperErrorCode::ToolPermissionDenied)?;
+    let _handle =
+        OwnedKernelHandle::new(handle).map_err(|_| HelperErrorCode::ToolPermissionDenied)?;
+    Ok(())
 }
 
 fn execute_npm_plan(

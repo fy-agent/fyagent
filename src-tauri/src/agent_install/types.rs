@@ -390,6 +390,8 @@ pub enum AgentReasonCode {
     CandidateConflict,
     AuthorizationRequired,
     PermissionDenied,
+    InsufficientDiskSpace,
+    DiskSpaceUnavailable,
     ApplicationRunning,
     InstallerArtifactUnavailable,
     InstallationVerificationFailed,

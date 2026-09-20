@@ -83,10 +83,11 @@ pub enum HelperErrorCode {
     ToolOwnerMismatch = 24,
     ToolNotDetected = 25,
     ToolExecutionFailed = 26,
+    ToolPermissionDenied = 27,
 }
 
 impl HelperErrorCode {
-    pub const ALL: [Self; 26] = [
+    pub const ALL: [Self; 27] = [
         Self::InstallLayoutInvalid,
         Self::WinRtInitializationFailed,
         Self::PackageUriInvalid,
@@ -113,6 +114,7 @@ impl HelperErrorCode {
         Self::ToolOwnerMismatch,
         Self::ToolNotDetected,
         Self::ToolExecutionFailed,
+        Self::ToolPermissionDenied,
     ];
 
     pub const fn wire_code(self) -> u8 {
@@ -151,6 +153,9 @@ impl HelperErrorCode {
             Self::ToolOwnerMismatch => "The Grok Build installation owner does not match",
             Self::ToolNotDetected => "Grok Build is not installed for the current user",
             Self::ToolExecutionFailed => "The Grok Build operation failed",
+            Self::ToolPermissionDenied => {
+                "The current user cannot write to the CLI installation directory"
+            }
         }
     }
 

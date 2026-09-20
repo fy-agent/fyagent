@@ -36,6 +36,9 @@ get_agent_install_readiness({ agentId })
 get_agent_installation_inventory({ agentId, surface? })
   -> AgentInstallationInventoryDto
 
+get_agent_install_preflight({ request: StartAgentActionRequest })
+  -> AgentInstallPreflightDto | AgentActionErrorDto
+
 start_agent_action({
   agentId,
   action,
@@ -58,6 +61,7 @@ Current wire versions:
 ```text
 AgentInstallReadinessDto.contractVersion = 5
 AgentInstallationInventoryDto.contractVersion = 1
+AgentInstallPreflightDto.contractVersion = 1
 AgentActionResult.contractVersion = 4
 AgentActionJobSnapshot.contractVersion = 4
 ```
@@ -169,6 +173,32 @@ Source and identity failure must remain evidence-strength preserving:
 - vendor-wizard handoff is not installed evidence;
 - CLI package resolution supplies an exact plan, while lifecycle owns only the
   action/job transition around that plan.
+
+### Download preflight and confirmation
+
+- Install/update first calls `get_agent_install_preflight` with the same closed
+  request used for execution. It creates no action job and performs no Agent
+  mutation: validate the live inventory revision, release/platform/architecture,
+  required native or CLI runtime, ordinary-user target permissions, and available
+  space on the temporary and target volumes. Metadata resolution is permitted;
+  package download, npm install and helper mutation are not.
+- The v1 summary contains the exact request, platform, architecture,
+  `versionOrChannel`, redacted `targetLabel`, `availableBytes`, closed `runtime`
+  (`native_installer|node_npm|existing_cli`) and `execution`
+  (`current_user|system_authorization|vendor_wizard`). Missing package size is
+  explicitly unknown; positive free space does not prove sufficient capacity.
+- Inventory owns one prepared native target per existing short-lived snapshot.
+  Execution repeats the necessary checks and consumes the exact request/path/
+  runtime/identity-scope binding once. A changed target requires a new preflight;
+  no confirmation-time target substitution or fallback is allowed.
+- Windows CLI permission/runtime checks run inside the authenticated ordinary-user
+  helper. Official EXE wizards choose their own final destination: the summary
+  must describe this handoff, not claim the elevated host checked Alice's access
+  to a destination that the wizard has not chosen.
+- `insufficient_disk_space`, `disk_space_unavailable`, runtime, identity and
+  permission failures have specific renderer recovery copy. An uncertain
+  `recovery_required` terminal result is retained; a same-Agent retry cannot
+  replace that known unresolved result in the job slot.
 
 ### Jobs and platform side effects
 

@@ -263,6 +263,8 @@ pub trait MacosFilesystem: Send + Sync {
 
     fn file_kind(&self, path: &Path) -> Result<MacosFileKind, MacosFilesystemError>;
 
+    fn directory_writable(&self, path: &Path) -> bool;
+
     fn create_dir_all(&self, path: &Path) -> Result<(), MacosFilesystemError>;
 
     fn rename(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError>;
@@ -276,6 +278,20 @@ pub trait MacosFilesystem: Send + Sync {
 pub struct StdMacosFilesystem;
 
 impl MacosFilesystem for StdMacosFilesystem {
+    fn directory_writable(&self, path: &Path) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            use std::{ffi::CString, os::unix::ffi::OsStrExt};
+            CString::new(path.as_os_str().as_bytes()).is_ok_and(|path| unsafe {
+                libc::access(path.as_ptr(), libc::W_OK | libc::X_OK) == 0
+            })
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = path;
+            false
+        }
+    }
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, MacosFilesystemError> {
         fs::read_dir(path)
             .map_err(macos_filesystem_error_from_io)?
@@ -956,6 +972,13 @@ pub(super) mod test_support {
     }
 
     impl MacosFilesystem for FakeFilesystem {
+        fn directory_writable(&self, path: &Path) -> bool {
+            !self
+                .lock()
+                .create_dir_failures
+                .keys()
+                .any(|root| path.starts_with(root))
+        }
         fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, MacosFilesystemError> {
             let state = self.lock();
             match state.entries.get(path) {

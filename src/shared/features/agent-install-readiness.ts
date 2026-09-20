@@ -156,6 +156,8 @@ export const AGENT_REASON_CODES = [
   "candidate_conflict",
   "authorization_required",
   "permission_denied",
+  "insufficient_disk_space",
+  "disk_space_unavailable",
   "application_running",
   "installer_artifact_unavailable",
   "installation_verification_failed",
@@ -359,6 +361,74 @@ export interface AgentInstallReadinessPort {
   startAction(request: StartAgentActionRequest): Promise<AgentActionResult>;
   cancelAction(jobId: string): Promise<AgentActionJobSnapshot>;
   getActionJob(jobId: string): Promise<AgentActionJobSnapshot>;
+  preflight(request: StartAgentActionRequest): Promise<AgentInstallPreflight>;
+}
+
+export interface AgentInstallPreflight {
+  contractVersion: 1;
+  request: StartAgentActionRequest;
+  platform: "macos" | "windows";
+  architecture: "aarch64" | "x86_64";
+  versionOrChannel: string;
+  targetLabel: string;
+  availableBytes: number;
+  runtime: "native_installer" | "node_npm" | "existing_cli";
+  execution: "current_user" | "system_authorization" | "vendor_wizard";
+}
+
+export function parseAgentInstallPreflight(
+  value: unknown,
+  request: StartAgentActionRequest,
+): AgentInstallPreflight {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "contractVersion",
+      "request",
+      "platform",
+      "architecture",
+      "versionOrChannel",
+      "targetLabel",
+      "availableBytes",
+      "runtime",
+      "execution",
+    ]) ||
+    value.contractVersion !== 1 ||
+    !isRecord(value.request) ||
+    !hasExactKeys(
+      value.request,
+      Object.keys(request).filter(
+        (key) => request[key as keyof StartAgentActionRequest] !== undefined,
+      ),
+    ) ||
+    Object.entries(request).some(
+      ([key, expected]) =>
+        value.request &&
+        (value.request as Record<string, unknown>)[key] !== expected,
+    ) ||
+    (value.platform !== "macos" && value.platform !== "windows") ||
+    (value.architecture !== "aarch64" && value.architecture !== "x86_64") ||
+    typeof value.versionOrChannel !== "string" ||
+    !value.versionOrChannel.trim() ||
+    value.versionOrChannel.length > 160 ||
+    typeof value.targetLabel !== "string" ||
+    !value.targetLabel.trim() ||
+    value.targetLabel.length > 512 ||
+    Array.from(`${value.versionOrChannel}${value.targetLabel}`).some(
+      (char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,
+    ) ||
+    typeof value.availableBytes !== "number" ||
+    !Number.isSafeInteger(value.availableBytes) ||
+    value.availableBytes <= 0 ||
+    !["native_installer", "node_npm", "existing_cli"].includes(
+      String(value.runtime),
+    ) ||
+    !["current_user", "system_authorization", "vendor_wizard"].includes(
+      String(value.execution),
+    )
+  )
+    throw new Error("Invalid Agent installation preflight");
+  return value as unknown as AgentInstallPreflight;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

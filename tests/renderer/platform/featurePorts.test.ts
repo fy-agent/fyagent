@@ -1,3 +1,7 @@
+import {
+  codexInstallPreflightFixture,
+  confirmationId,
+} from "../../fixtures/codexInstallPreflight";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CODEX_DESKTOP_PAYLOAD_ERROR } from "@/domain/codex-desktop";
@@ -340,7 +344,7 @@ describe("Renderer feature ports", () => {
       NATIVE_ONLY_ERROR,
     );
     await expect(
-      ports.codexDesktop.startInstall(installerReleaseId),
+      ports.codexDesktop.startInstall(installerReleaseId, confirmationId),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(
       ports.codexDesktop.cancelInstall("fixture-job-001"),
@@ -1170,6 +1174,8 @@ describe("Renderer feature ports", () => {
           return installerRemote;
         case "codex_desktop_get_job":
           return null;
+        case "codex_desktop_prepare_install":
+          return codexInstallPreflightFixture(installerReleaseId);
         case "codex_desktop_start_install":
           return installerJob("checking", 1);
         case "codex_desktop_cancel_install":
@@ -1194,7 +1200,10 @@ describe("Renderer feature ports", () => {
     );
     await expect(ports.codexDesktop.getJob()).resolves.toBeNull();
     await expect(
-      ports.codexDesktop.startInstall(installerReleaseId),
+      ports.codexDesktop.prepareInstall(installerReleaseId),
+    ).resolves.toEqual(codexInstallPreflightFixture(installerReleaseId));
+    await expect(
+      ports.codexDesktop.startInstall(installerReleaseId, confirmationId),
     ).resolves.toEqual(installerJob("checking", 1));
     await expect(
       ports.codexDesktop.cancelInstall("fixture-job-001"),
@@ -1209,8 +1218,12 @@ describe("Renderer feature ports", () => {
       ["codex_desktop_check_latest", { force: true }],
       ["codex_desktop_get_job"],
       [
-        "codex_desktop_start_install",
+        "codex_desktop_prepare_install",
         { request: { expectedReleaseId: installerReleaseId } },
+      ],
+      [
+        "codex_desktop_start_install",
+        { request: { expectedReleaseId: installerReleaseId, confirmationId } },
       ],
       ["codex_desktop_cancel_install", { jobId: "fixture-job-001" }],
       ["codex_desktop_launch"],
@@ -1249,7 +1262,10 @@ describe("Renderer feature ports", () => {
     const ports = createTauriFeaturePorts();
 
     await expect(
-      ports.codexDesktop.startInstall("https://example.test/release.msix"),
+      ports.codexDesktop.startInstall(
+        "https://example.test/release.msix",
+        confirmationId,
+      ),
     ).rejects.toThrow(CODEX_DESKTOP_PAYLOAD_ERROR);
     await expect(ports.codexDesktop.cancelInstall(" job-001 ")).rejects.toThrow(
       "Codex desktop installer request is invalid",

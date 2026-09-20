@@ -18,8 +18,8 @@ function scopeCopy(scope: AgentInstallationTarget["scope"]): string {
   }
 }
 
-function isRootApplications(target: AgentInstallationTarget): boolean {
-  return target.label.startsWith("/Applications");
+function isCurrentUserDestination(target: AgentInstallationTarget): boolean {
+  return target.kind === "fresh_destination" && target.scope === "current_user";
 }
 
 export function LifecycleTargetPicker({
@@ -104,7 +104,7 @@ export function LifecycleTargetPicker({
               <span className="fy-agent-target-option-copy">
                 <strong>
                   {target.label}
-                  {isRootApplications(target) ? (
+                  {eligible && isCurrentUserDestination(target) ? (
                     <span className="fy-agent-target-recommend">推荐</span>
                   ) : null}
                 </strong>

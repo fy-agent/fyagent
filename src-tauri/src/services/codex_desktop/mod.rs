@@ -5,7 +5,10 @@
 //! already-constrained core adapters and exposes only the fixed V1 operations
 //! that the Tauri command shell delegates to.
 
+mod install_confirmation;
 mod restart_plan;
+use install_confirmation::PendingInstallConfirmation;
+pub use install_confirmation::{CodexInstallPreflight, ConfirmedStartInstallRequest};
 
 use std::{
     collections::HashMap,
@@ -213,6 +216,7 @@ pub struct CodexDesktopService {
     clock: Arc<dyn InstallerClock>,
     job_store: JobStore,
     checked_release: Arc<Mutex<Option<CheckedRelease>>>,
+    install_confirmation: Arc<Mutex<Option<PendingInstallConfirmation>>>,
     event_sink: Arc<ForwardingJobEventSink>,
     log_directory_opener: Arc<Mutex<Option<Arc<dyn LogDirectoryOpener>>>>,
     restart_timing: RestartTiming,
@@ -295,6 +299,7 @@ impl CodexDesktopService {
             clock,
             job_store,
             checked_release: Arc::new(Mutex::new(None)),
+            install_confirmation: Arc::new(Mutex::new(None)),
             event_sink,
             log_directory_opener: Arc::new(Mutex::new(None)),
             restart_timing: RestartTiming::default(),
@@ -764,9 +769,18 @@ impl CodexDesktopService {
 
     /// Atomically claims the process-local job slot and starts the worker only
     /// after returning the initial `Checking` snapshot to the caller.
+    #[cfg(test)]
     pub fn start_install(
         &self,
         request: StartInstallRequest,
+    ) -> Result<JobSnapshot, InstallerError> {
+        self.start_install_with_target(request, None)
+    }
+
+    fn start_install_with_target(
+        &self,
+        request: StartInstallRequest,
+        confirmed_target: Option<crate::codex_desktop::platform::ConfirmedInstallTarget>,
     ) -> Result<JobSnapshot, InstallerError> {
         request.validate()?;
 
@@ -789,7 +803,7 @@ impl CodexDesktopService {
 
         tokio::spawn(async move {
             service
-                .run_job(job_id, expected_release_id, cancellation)
+                .run_job(job_id, expected_release_id, cancellation, confirmed_target)
                 .await;
         });
 
@@ -841,6 +855,7 @@ impl CodexDesktopService {
         job_id: String,
         expected_release_id: String,
         cancellation: JobCancellation,
+        confirmed_target: Option<crate::codex_desktop::platform::ConfirmedInstallTarget>,
     ) {
         let mut temporary_directory = None;
         let outcome = AssertUnwindSafe(self.run_install_flow(
@@ -848,6 +863,7 @@ impl CodexDesktopService {
             &expected_release_id,
             &cancellation,
             &mut temporary_directory,
+            confirmed_target.as_ref(),
         ))
         .catch_unwind()
         .await;
@@ -907,6 +923,7 @@ impl CodexDesktopService {
         expected_release_id: &str,
         cancellation: &JobCancellation,
         temporary_directory: &mut Option<JobTempDir>,
+        confirmed_target: Option<&crate::codex_desktop::platform::ConfirmedInstallTarget>,
     ) -> Result<InstallFlowOutcome, InstallerError> {
         let release = self
             .resolve_latest(CacheMode::ForceRefresh, cancellation)
@@ -921,7 +938,11 @@ impl CodexDesktopService {
         // Treat a direct IPC invocation exactly like the renderer's version
         // decision: an already-installed equal or newer Stable app is a pure
         // readback no-op. Install/update never launches the application.
-        match self.platform.inspect_local().await? {
+        let local = self.platform.inspect_local().await?;
+        if confirmed_target.is_some_and(|target| target.local != local) {
+            return Err(InstallerError::new(InstallerErrorCode::MetadataChanged));
+        }
+        match local {
             LocalInstallStatus::Installed { application } => {
                 if application
                     .platform_version
@@ -954,6 +975,12 @@ impl CodexDesktopService {
             )
             .await?;
         self.ensure_not_cancelled(cancellation)?;
+
+        if confirmed_target
+            .is_some_and(|target| target.target_root.as_deref() != plan.confirmation_target())
+        {
+            return Err(InstallerError::new(InstallerErrorCode::MetadataChanged));
+        }
 
         // The platform probe is path-shaped because it resolves capacity by
         // volume only. Revalidate the held directory identities on both sides;
@@ -1001,10 +1028,16 @@ impl CodexDesktopService {
         download_progress.take_error()?;
         self.ensure_not_cancelled(cancellation)?;
 
-        let package = self
+        let mut package = self
             .platform
             .prepare_install_package(&release, &artifact)
             .await?;
+        if let Some(target) = confirmed_target {
+            if self.platform.inspect_local().await? != target.local {
+                return Err(InstallerError::new(InstallerErrorCode::MetadataChanged));
+            }
+            package.bind_confirmed_target(target.clone());
+        }
         self.ensure_not_cancelled(cancellation)?;
 
         // `JobStore::update_stage` arbitrates cancellation and Installing under
@@ -2175,6 +2208,108 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         panic!("job {job_id} did not reach a terminal stage")
+    }
+
+    #[tokio::test]
+    async fn confirmation_preflight_has_no_install_job_and_token_is_single_use() {
+        let artifact = b"fixture installer package".to_vec();
+        let harness = harness(release_for(&artifact, "1.2.3.4"), artifact, None);
+        let release = harness.service.check_latest(false).await.unwrap();
+        let prepared = harness
+            .service
+            .prepare_install(StartInstallRequest {
+                expected_release_id: release.release_id.clone(),
+            })
+            .await
+            .unwrap();
+        assert!(harness.service.get_job().unwrap().is_none());
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
+        assert!(prepared.available_bytes > 0);
+        assert!(!prepared.updating);
+        assert!(harness
+            .service
+            .start_confirmed_install(ConfirmedStartInstallRequest {
+                expected_release_id: release.release_id.clone(),
+                confirmation_id: "unknown".to_string(),
+            })
+            .is_err());
+        assert!(harness.service.get_job().unwrap().is_none());
+        let started = harness
+            .service
+            .start_confirmed_install(ConfirmedStartInstallRequest {
+                expected_release_id: release.release_id.clone(),
+                confirmation_id: prepared.confirmation_id.clone(),
+            })
+            .unwrap();
+        let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
+        assert_eq!(terminal.stage, JobStage::Succeeded);
+        assert!(harness
+            .service
+            .start_confirmed_install(ConfirmedStartInstallRequest {
+                expected_release_id: release.release_id,
+                confirmation_id: prepared.confirmation_id,
+            })
+            .is_err());
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn confirmation_rejects_local_target_changes_before_downloading() {
+        let artifact = b"fixture installer package".to_vec();
+        let harness = harness(release_for(&artifact, "1.2.3.4"), artifact, None);
+        let release = harness.service.check_latest(false).await.unwrap();
+        let prepared = harness
+            .service
+            .prepare_install(StartInstallRequest {
+                expected_release_id: release.release_id.clone(),
+            })
+            .await
+            .unwrap();
+        harness
+            .platform
+            .set_initial_local_status(LocalInstallStatus::Installed {
+                application: harness.platform.installed_application(),
+            });
+        let started = harness
+            .service
+            .start_confirmed_install(ConfirmedStartInstallRequest {
+                expected_release_id: release.release_id,
+                confirmation_id: prepared.confirmation_id,
+            })
+            .unwrap();
+        let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
+        assert_eq!(
+            terminal.error.unwrap().code,
+            InstallerErrorCode::MetadataChanged
+        );
+        assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn confirmation_fails_on_insufficient_disk_without_creating_job() {
+        let artifact = b"fixture installer package".to_vec();
+        let root = tempfile::tempdir().unwrap();
+        let temp = root.path().join("installer-temp");
+        let harness = harness_with_temp_root(
+            release_for(&artifact, "1.2.3.4"),
+            artifact,
+            None,
+            root,
+            temp,
+            Arc::new(FixtureDiskProbe::insufficient()),
+        );
+        let release = harness.service.check_latest(false).await.unwrap();
+        let error = harness
+            .service
+            .prepare_install(StartInstallRequest {
+                expected_release_id: release.release_id,
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::InsufficientDiskSpace);
+        assert!(harness.service.get_job().unwrap().is_none());
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

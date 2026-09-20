@@ -400,7 +400,10 @@ pub(super) fn grok_plan_from_installs(
         Ok(fyagent_user_helper::GrokPlanKind::OfficialNpm) => Ok(GrokPlan::OfficialNpm {
             bin_path: default_install(installs).map(|install| install.path.clone()),
         }),
-        Ok(fyagent_user_helper::GrokPlanKind::Observe) => Err(GrokPlanError::new(
+        Ok(
+            fyagent_user_helper::GrokPlanKind::Observe
+            | fyagent_user_helper::GrokPlanKind::Preflight,
+        ) => Err(GrokPlanError::new(
             "distribution_owner_mismatch",
             None,
             "Grok Build 安装来源不一致，需要先选择目标",

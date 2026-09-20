@@ -13,6 +13,7 @@ import type {
   AgentUpdateState,
 } from "../../shared/features/agent-install-readiness";
 import { installationTargetsForAction } from "../../shared/features/agent-install-readiness";
+import { AgentInstallConfirmation } from "./AgentInstallConfirmation";
 import {
   grokLatestLabel,
   grokOwnerCopy,
@@ -39,6 +40,9 @@ const LAUNCH_COPY = "打开软件";
 const LIFECYCLE_ACTION_ORDER = ["install", "update", "launch"] as const;
 
 const unavailablePort: ReadinessPort = {
+  preflight: async () => {
+    throw new Error(NATIVE_ONLY_COPY);
+  },
   get: async () => {
     throw new Error(NATIVE_ONLY_COPY);
   },
@@ -606,7 +610,7 @@ function AgentInstallReadinessContent({
         (action === "install" || action === "update" || action === "launch")) ||
       (action === "launch" && launchEligibleCount > 1);
     if (!needsTarget) {
-      void lifecycle.run(action, null);
+      void lifecycle.prepare(action, null);
       return;
     }
     setTargetAction({ action, surface: projection.surface });
@@ -622,12 +626,12 @@ function AgentInstallReadinessContent({
       ? eligible.find((target) => target.targetId === selectedTarget.targetId)
       : undefined;
     if (current) {
-      void lifecycle.run(action, current);
+      void lifecycle.prepare(action, current);
       return;
     }
     if (eligible.length === 1 && !hasDisabledSystem) {
       setSelectedTarget(eligible[0]);
-      void lifecycle.run(action, eligible[0]);
+      void lifecycle.prepare(action, eligible[0]);
       return;
     }
     setSelectedTarget(null);
@@ -676,6 +680,22 @@ function AgentInstallReadinessContent({
 
   return (
     <section className="fy-agent-section" aria-label="安装与更新">
+      <AgentInstallConfirmation
+        name={
+          agentId === "claude-code"
+            ? "Claude Code"
+            : agentId === "grokbuild"
+              ? "Grok Build"
+              : agentId === "trae-work"
+                ? "TRAE Work"
+                : agentId === "qoderwork"
+                  ? "QoderWork"
+                  : agentId === "workbuddy"
+                    ? "WorkBuddy"
+                    : "OpenCode"
+        }
+        lifecycle={lifecycle}
+      />
       <h3>安装与更新</h3>
       <div className="fy-agent-install-readiness">
         {state.status === "loading" ? (

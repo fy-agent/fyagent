@@ -45,6 +45,7 @@ Agent catalog          contractVersion 5
 Install readiness      contractVersion 5
 Installation inventory contractVersion 1
 Action/job snapshots   contractVersion 4
+Install preflight      contractVersion 1
 Runtime status         tri-state detected/running plus sanitized metadata
 ```
 
@@ -139,7 +140,7 @@ claude-code  surface=cli  sourceKind=cli_tooling
 - Opaque `releaseId`, `inventoryId`, `targetId` and revision values are treated
   as uninterpreted strings. The UI may retain them only for the current
   interaction/query lifetime; it must not parse paths from them or persist them
-  as durable target preferences.
+  as durable target preferences. Preflight summaries are also interaction-local.
 - The page distinguishes installed, update available, latest unknown,
   unsupported, source unverified and inventory unknown. One generic
   green/red badge is insufficient.
@@ -166,9 +167,10 @@ claude-code  surface=cli  sourceKind=cli_tooling
   feature supports recovery.
 - Display raw transfer totals only when native provides them. Percent/speed are
   derived renderer values; unknown `totalBytes` does not become 100% or zero.
-- Cancellation is offered only while native reports `cancellable=true`.
+- Directory cards expose cancellation only while native reports `cancellable=true`.
   `operation_conflict` after a side-effect boundary is not presented as a
-  successful cancel.
+  successful cancel. A terminal recovery-required result stays inspectable and
+  disables automatic retry; a polling timeout does not authorize another install.
 
 ### Product and feature navigation
 
@@ -181,10 +183,14 @@ installation controls. Configuration navigation never starts an installation.
 When inventory reports more than one eligible install destination, the directory
 card opens a shared `Dialog` from the 「选择安装目标」 control (origin animation
 returns to that control) and reuses `LifecycleTargetPicker` with opaque
-`targetId` values. A `locationLabel` that starts with `/Applications` shows a
-small 「推荐」 mark; confirmation still requires an explicit dialog confirm.
-Confirming a destination starts the native action and immediately dismisses the
-dialog back to the originating control so the card can show transfer progress.
+`targetId` values. The default selection and recommendation prefer an eligible current-user destination.
+Confirming a destination closes the picker and performs native preflight. A
+separate confirmation shows software/version or channel, actual target, planned
+change, necessary runtime and available space. Single-target installs use this
+same confirmation. Dismissing it never starts a job. Confirm forwards the exact
+preflight request without rereading or silently replacing the target. A changed
+revision requires a new selection and preflight. After confirmation the dialog
+closes so the card can show transfer progress.
 Do not keep the picker open until the job finishes, and do not unmount the
 return anchor when the slot switches to busy status.
 Do not send the user to the Models section to pick a filesystem destination.

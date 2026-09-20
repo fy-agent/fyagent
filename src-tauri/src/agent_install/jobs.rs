@@ -61,6 +61,11 @@ impl AgentActionJobStore {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(existing) = guard.as_ref() {
+            if existing.snapshot.agent_id == agent_id
+                && existing.snapshot.reason_code == Some(AgentReasonCode::RecoveryRequired)
+            {
+                return Err(AgentReasonCode::RecoveryRequired);
+            }
             if !is_terminal(existing.snapshot.stage) {
                 return Err(AgentReasonCode::OperationConflict);
             }
@@ -222,6 +227,36 @@ fn is_terminal(stage: AgentActionJobStage) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uncertain_result_is_preserved_instead_of_replaced_by_retry() {
+        let store = AgentActionJobStore::new();
+        let (job, _) = store
+            .start(
+                AgentCatalogId::QoderWork,
+                AgentActionId::Install,
+                AgentSurface::Desktop,
+            )
+            .unwrap();
+        let failed = store
+            .transition(
+                &job.job_id,
+                AgentActionJobStage::Failed,
+                Some(AgentReasonCode::RecoveryRequired),
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .start(
+                    AgentCatalogId::QoderWork,
+                    AgentActionId::Install,
+                    AgentSurface::Desktop
+                )
+                .err(),
+            Some(AgentReasonCode::RecoveryRequired)
+        );
+        assert_eq!(store.current(), Some(failed));
+    }
 
     #[test]
     fn single_flight_rejects_a_second_active_job() {

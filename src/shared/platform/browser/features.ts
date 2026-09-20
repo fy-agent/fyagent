@@ -77,6 +77,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       stopWaiting: rejectNativeOnly,
     },
     agentInstallReadiness: {
+      preflight: rejectNativeOnly,
       get: rejectNativeOnly,
       getInventory: rejectNativeOnly,
       startAction: rejectNativeOnly,
@@ -136,6 +137,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       getLocalStatus: rejectNativeOnly,
       checkLatest: rejectNativeOnly,
       getJob: rejectNativeOnly,
+      prepareInstall: rejectNativeOnly,
       startInstall: rejectNativeOnly,
       cancelInstall: rejectNativeOnly,
       launch: rejectNativeOnly,

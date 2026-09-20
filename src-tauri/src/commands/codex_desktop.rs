@@ -14,6 +14,7 @@ use crate::{
             RemoteReleaseStatus, StartInstallRequest,
         },
     },
+    services::codex_desktop::{CodexInstallPreflight, ConfirmedStartInstallRequest},
     store::AppState,
 };
 
@@ -105,12 +106,24 @@ pub async fn codex_desktop_get_job(
 
 #[tauri::command]
 pub async fn codex_desktop_start_install(
-    request: StartInstallRequest,
+    request: ConfirmedStartInstallRequest,
     state: State<'_, AppState>,
 ) -> Result<JobSnapshot, InstallerErrorDto> {
     state
         .codex_desktop_service
-        .start_install(request)
+        .start_confirmed_install(request)
+        .map_err(to_ipc_error)
+}
+
+#[tauri::command]
+pub async fn codex_desktop_prepare_install(
+    request: StartInstallRequest,
+    state: State<'_, AppState>,
+) -> Result<CodexInstallPreflight, InstallerErrorDto> {
+    state
+        .codex_desktop_service
+        .prepare_install(request)
+        .await
         .map_err(to_ipc_error)
 }
 

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/external-agent-lifecycle.md", "reason": "Lifecycle target admission and jobs"}
+{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "Reuse existing native installer preflight"}
+{"file": ".trellis/spec/backend/windows-agent-runtime-security.md", "reason": "Ordinary-user and closed helper contract"}
+{"file": ".trellis/spec/frontend/agent-directory.md", "reason": "Directory confirmation and recovery"}

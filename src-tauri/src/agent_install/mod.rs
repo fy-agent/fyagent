@@ -10,6 +10,7 @@ mod inventory;
 mod jobs;
 mod lifecycle_policy;
 mod macos;
+mod preflight;
 mod sources;
 mod types;
 mod windows;
@@ -24,6 +25,10 @@ pub use auth_sessions::{
 pub(crate) use inventory::local_health_inventory_for;
 pub use inventory::{inventory_for, AgentInstallationInventoryStore};
 pub use jobs::AgentActionJobStore;
+#[cfg(target_os = "macos")]
+pub(crate) use preflight::directory_writable;
+pub(crate) use preflight::{display_user_path, existing_directory};
+pub use preflight::{preflight_for, AgentInstallPreflightDto};
 pub use types::{
     resolve_requested_surface, validate_opaque_release_id, AgentActionErrorDto, AgentActionId,
     AgentActionJobSnapshot, AgentActionJobStage, AgentActionResult, AgentAuthErrorDto,
@@ -564,6 +569,14 @@ pub async fn start_agent_action(
         }
     }
     let target = validate_action_target(&request, state).await?;
+    if request.agent_id != AgentCatalogId::Codex
+        && matches!(
+            request.action,
+            AgentActionId::Install | AgentActionId::Update
+        )
+    {
+        preflight::confirm_preflight(request.clone(), state).await?;
+    }
     match (request.agent_id, surface, request.action) {
         (
             AgentCatalogId::Codex,

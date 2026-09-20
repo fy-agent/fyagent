@@ -1,4 +1,8 @@
 import {
+  codexInstallPreflightFixture,
+  confirmationId,
+} from "../../../fixtures/codexInstallPreflight";
+import {
   act,
   fireEvent,
   render,
@@ -80,6 +84,7 @@ function createInstallerPort(
     getLocalStatus: vi.fn(async () => notInstalled),
     checkLatest: vi.fn(async () => release),
     getJob: vi.fn(async () => null),
+    prepareInstall: vi.fn(async (id) => codexInstallPreflightFixture(id)),
     startInstall: vi.fn(async () =>
       snapshot({ sequence: 1, stage: "checking" }),
     ),
@@ -105,12 +110,30 @@ function renderPanel(port: CodexDesktopPort, strict = false) {
 }
 
 describe("Codex Desktop installer panel", () => {
-  it("starts once under repeat clicks and passes only the release id", async () => {
+  it("dismisses a confirmation without starting or cancelling a native job", async () => {
+    const port = createInstallerPort();
+    renderPanel(port);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "安装 Codex Desktop" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "确认安装" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(port.startInstall).not.toHaveBeenCalled();
+    expect(port.cancelInstall).not.toHaveBeenCalled();
+  });
+
+  it("preflights without installing, then consumes the exact confirmation once", async () => {
     let resolveStart!: (value: JobSnapshot) => void;
     const pendingStart = new Promise<JobSnapshot>((resolve) => {
       resolveStart = resolve;
     });
     const port = createInstallerPort({
+      prepareInstall: vi.fn(async (id) => codexInstallPreflightFixture(id)),
       startInstall: vi.fn(() => pendingStart),
     });
     renderPanel(port);
@@ -126,8 +149,16 @@ describe("Codex Desktop installer panel", () => {
     fireEvent.click(install);
     fireEvent.click(install);
 
+    expect(port.startInstall).not.toHaveBeenCalled();
+    const confirm = await screen.findByRole("button", { name: "确认安装" });
+    expect(port.prepareInstall).toHaveBeenCalledTimes(1);
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
     expect(port.startInstall).toHaveBeenCalledTimes(1);
-    expect(port.startInstall).toHaveBeenCalledWith(release.releaseId);
+    expect(port.startInstall).toHaveBeenCalledWith(
+      release.releaseId,
+      confirmationId,
+    );
     expect(port.startInstall).not.toHaveBeenCalledWith(
       expect.objectContaining({ url: expect.anything() }),
     );
@@ -362,7 +393,7 @@ describe("Codex Desktop installer panel", () => {
       await screen.findByRole("button", { name: "打开日志目录" }),
     ).toBeVisible();
     expect(document.body).toHaveTextContent(
-      "版本信息已更新，请刷新后重新确认安装。",
+      "版本或安装位置已变化，请刷新后重新确认安装。",
     );
     expect(document.body).not.toHaveTextContent("METADATA_CHANGED");
     expect(document.body).not.toHaveTextContent("secret.backend");
@@ -376,6 +407,8 @@ describe("Codex Desktop installer panel", () => {
     });
 
     fireEvent.click(install);
+    expect(port.startInstall).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "确认安装" }));
     await waitFor(() => expect(port.startInstall).toHaveBeenCalledTimes(1));
   });
 

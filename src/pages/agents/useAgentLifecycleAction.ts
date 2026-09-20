@@ -13,6 +13,8 @@ import {
   type AgentReasonCode,
   type AgentSourceKind,
   type AgentSurface,
+  type AgentInstallPreflight,
+  type StartAgentActionRequest,
 } from "../../shared/features/agent-install-readiness";
 import {
   agentJobToSpeedSample,
@@ -47,6 +49,15 @@ export type AgentLifecycleActionView = {
   activeSurface: AgentSurface | null;
   canCancel: boolean;
   canRetry: boolean;
+  preflight: AgentInstallPreflight | null;
+  lastResult: AgentActionJobSnapshot | null;
+  prepare: (
+    action: AgentActionId,
+    target?: AgentInstallationTarget | null,
+    surface?: AgentSurface,
+  ) => Promise<void>;
+  confirm: () => Promise<void>;
+  dismissPreflight: () => void;
   run: (
     action: AgentActionId,
     targetOverride?: AgentInstallationTarget | null,
@@ -115,14 +126,15 @@ export function bindLiveInventoryTarget(
   const eligible = installationTargetsForAction(inventory, action).filter(
     (target) => target.eligibleActions.includes(action),
   );
-  if (eligible.length === 1) return eligible[0];
+  if (!previous && eligible.length === 1) return eligible[0];
   if (!previous) return null;
   return (
     eligible.find(
       (target) =>
         target.kind === previous.kind &&
         target.scope === previous.scope &&
-        target.label === previous.label,
+        target.label === previous.label &&
+        target.expectedTargetRevision === previous.expectedTargetRevision,
     ) ?? null
   );
 }
@@ -147,13 +159,17 @@ export function reasonCopy(code: AgentReasonCode): string | null {
     case "managed_by_codex_desktop":
       return "Codex Desktop 的安装和更新请在现有安装器中完成。";
     case "interactive_user_unavailable":
-      return "当前无法显示 Windows 管理员确认窗口。请回到桌面后重试。";
+      return "无法确认当前登录的 Windows 桌面用户。请回到桌面重新打开 FyAgent 后重试。";
     case "platform_unsupported":
       return "当前系统没有可用的官方安装包。";
     case "source_not_verified":
       return "暂时无法访问官方下载来源。请打开产品官网下载安装。";
     case "tool_host_missing":
-      return "Claude Code CLI 安装需要 Node.js 22 或更高版本及 npm。请先安装依赖，再重新操作。";
+      return "请检查当前用户的 Node.js、npm 和全局安装目录权限。Claude Code 需要 Node.js 22 或更高版本。";
+    case "insufficient_disk_space":
+      return "安装所需的磁盘没有可用空间。请释放下载目录和目标目录所在磁盘的空间后重新检查。";
+    case "disk_space_unavailable":
+      return "无法读取安装所需的磁盘空间。请确认下载目录和目标目录可访问后重新检查。";
     case "tool_owner_unsupported":
       return "当前安装来源或位置无法确认。请使用原安装方式更新；FyAgent 不会将它改为另一种安装方式。";
     case "official_page_only":
@@ -180,7 +196,7 @@ export function reasonCopy(code: AgentReasonCode): string | null {
     case "authorization_required":
       return "系统应用程序文件夹目前不可用于一键安装。请使用当前用户的应用程序目录，不会改装到其他目录。";
     case "permission_denied":
-      return "没有权限更新所选位置，原应用未改动。";
+      return "没有权限写入所选位置。请调整该目录的写入权限，或重新选择可写的安装位置。";
     case "application_running":
       return "应用仍在运行。请先完全退出，再重新执行。";
     case "installer_artifact_unavailable":
@@ -335,6 +351,10 @@ export function useAgentLifecycleAction({
     null,
   );
   const [activeSurface, setActiveSurface] = useState<AgentSurface | null>(null);
+  const [preflight, setPreflight] = useState<AgentInstallPreflight | null>(
+    null,
+  );
+  const preparedRef = useRef<AgentInstallPreflight | null>(null);
   const [downloadSpeed, setDownloadSpeed] = useState(createDownloadSpeedState);
 
   const generationRef = useRef(0);
@@ -423,6 +443,7 @@ export function useAgentLifecycleAction({
       action: AgentActionId,
       targetOverride?: AgentInstallationTarget | null,
       nextSurface?: AgentSurface,
+      confirmedRequest?: StartAgentActionRequest,
     ) => {
       const admitRetry = admitRetryRef.current;
       admitRetryRef.current = false;
@@ -448,9 +469,10 @@ export function useAgentLifecycleAction({
           ? !cliBound || gate.requiresTargetSelection
           : gate.requiresTargetSelection && action === "launch";
       const shouldRefreshBinding =
-        action === "install" ||
-        action === "update" ||
-        (action === "launch" && (targetRequired || previousTarget !== null));
+        !confirmedRequest &&
+        (action === "install" ||
+          action === "update" ||
+          (action === "launch" && (targetRequired || previousTarget !== null)));
 
       const generation = generationRef.current + 1;
       generationRef.current = generation;
@@ -501,6 +523,7 @@ export function useAgentLifecycleAction({
 
       if (
         targetRequired &&
+        !confirmedRequest &&
         (!selectedTarget || !selectedTarget.eligibleActions.includes(action))
       ) {
         runningRef.current = false;
@@ -515,21 +538,23 @@ export function useAgentLifecycleAction({
       let outcomeReason: AgentReasonCode | null;
 
       try {
-        const result = await portRef.current.startAction({
-          agentId: agentIdRef.current,
-          action,
-          expectedReleaseId: gate.releaseId ?? undefined,
-          ...(selectedTarget?.eligibleActions.includes(action)
-            ? {
-                inventoryId: selectedTarget.inventoryId,
-                targetId: selectedTarget.targetId,
-                expectedTargetRevision: selectedTarget.expectedTargetRevision,
-              }
-            : {}),
-          ...(lastSurfaceRef.current
-            ? { surface: lastSurfaceRef.current }
-            : {}),
-        });
+        const result = await portRef.current.startAction(
+          confirmedRequest ?? {
+            agentId: agentIdRef.current,
+            action,
+            expectedReleaseId: gate.releaseId ?? undefined,
+            ...(selectedTarget?.eligibleActions.includes(action)
+              ? {
+                  inventoryId: selectedTarget.inventoryId,
+                  targetId: selectedTarget.targetId,
+                  expectedTargetRevision: selectedTarget.expectedTargetRevision,
+                }
+              : {}),
+            ...(lastSurfaceRef.current
+              ? { surface: lastSurfaceRef.current }
+              : {}),
+          },
+        );
         if (generationRef.current !== generation) return;
         setStage(result.stage);
         if (isVendorInstallerHandoffStage(result.stage)) {
@@ -602,10 +627,95 @@ export function useAgentLifecycleAction({
       setStage(null);
       setCancellable(false);
       setJobId(null);
-      resetTransfer();
+      // Keep the terminal result for inspection and recovery. A later attempt
+      // resets it only when the user confirms that new attempt.
     },
     [applyJobSnapshot, reread, resetTransfer],
   );
+
+  const prepare = useCallback(
+    async (
+      action: AgentActionId,
+      targetOverride?: AgentInstallationTarget | null,
+      nextSurface?: AgentSurface,
+    ) => {
+      if (action !== "install" && action !== "update") {
+        await run(action, targetOverride, nextSurface);
+        return;
+      }
+      if (runningRef.current || !readinessRef.current) return;
+      const generation = ++generationRef.current;
+      runningRef.current = true;
+      setBusy(true);
+      setError(null);
+      setReasonCode(null);
+      setPreflight(null);
+      preparedRef.current = null;
+      try {
+        const resolvedSurface = nextSurface ?? surfaceRef.current;
+        const inventory = await portRef.current.getInventory(
+          agentIdRef.current,
+          resolvedSurface,
+        );
+        if (generationRef.current !== generation) return;
+        onInventoryChangeRef.current?.(inventory);
+        const previous = targetOverride ?? targetRef.current ?? null;
+        const selected = bindLiveInventoryTarget(inventory, action, previous);
+        if (!selected)
+          throw {
+            reasonCode: previous
+              ? "target_changed"
+              : "target_selection_required",
+          };
+        const gate = resolveLifecycleReadiness(
+          readinessRef.current,
+          resolvedSurface,
+        );
+        const request: StartAgentActionRequest = {
+          agentId: agentIdRef.current,
+          action,
+          inventoryId: selected.inventoryId,
+          targetId: selected.targetId,
+          expectedTargetRevision: selected.expectedTargetRevision,
+          ...(gate.releaseId ? { expectedReleaseId: gate.releaseId } : {}),
+          ...(resolvedSurface ? { surface: resolvedSurface } : {}),
+        };
+        const checked = await portRef.current.preflight(request);
+        if (generationRef.current !== generation) return;
+        preparedRef.current = checked;
+        setPreflight(checked);
+      } catch (caught) {
+        if (generationRef.current !== generation) return;
+        const reason = actionErrorReason(caught) ?? "refresh_required";
+        setReasonCode(reason);
+        setError(reasonCopy(reason));
+      } finally {
+        if (generationRef.current === generation) {
+          runningRef.current = false;
+          setBusy(false);
+        }
+      }
+    },
+    [run],
+  );
+
+  const dismissPreflight = useCallback(() => {
+    preparedRef.current = null;
+    setPreflight(null);
+  }, []);
+
+  const confirm = useCallback(async () => {
+    const checked = preparedRef.current;
+    if (!checked || runningRef.current) return;
+    dismissPreflight();
+    // No inventory refresh or target substitution may occur after confirmation.
+    await run(
+      checked.request.action,
+      null,
+      checked.request.surface,
+      checked.request,
+    );
+  }, [dismissPreflight, run]);
 
   const runPrimary = useCallback(async () => {
     const next = deriveAgentLifecyclePrimaryAction(
@@ -613,8 +723,8 @@ export function useAgentLifecycleAction({
       readinessRef.current,
     );
     if (!next) return;
-    await run(next);
-  }, [run]);
+    await prepare(next);
+  }, [prepare]);
 
   const retry = useCallback(async () => {
     const last = lastActionRef.current;
@@ -632,8 +742,8 @@ export function useAgentLifecycleAction({
       return;
     }
     admitRetryRef.current = true;
-    await run(last, undefined, lastSurface);
-  }, [reread, run, runPrimary]);
+    await prepare(last, undefined, lastSurface);
+  }, [reread, prepare, runPrimary]);
 
   const cancel = useCallback(async () => {
     if (!jobId || !cancellable) return;
@@ -665,7 +775,11 @@ export function useAgentLifecycleAction({
   );
 
   return {
-    primaryAction,
+    primaryAction:
+      reasonCode === "recovery_required" ||
+      error === AGENT_LIFECYCLE_TIMEOUT_COPY
+        ? null
+        : primaryAction,
     busy,
     stage,
     percent: transferView.percent,
@@ -675,7 +789,16 @@ export function useAgentLifecycleAction({
     success,
     activeSurface,
     canCancel: busy && jobId !== null && cancellable,
-    canRetry: !busy && error !== null,
+    canRetry:
+      !busy &&
+      error !== null &&
+      reasonCode !== "recovery_required" &&
+      error !== AGENT_LIFECYCLE_TIMEOUT_COPY,
+    preflight,
+    lastResult: jobSnapshot,
+    prepare,
+    confirm,
+    dismissPreflight,
     run,
     runPrimary,
     retry,

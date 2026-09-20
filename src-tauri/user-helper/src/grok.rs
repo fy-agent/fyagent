@@ -63,6 +63,7 @@ impl GrokOwner {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GrokToolAction {
     Observe,
+    Preflight,
     Install,
     Update,
 }
@@ -71,6 +72,7 @@ impl GrokToolAction {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Observe => "observe",
+            Self::Preflight => "preflight",
             Self::Install => "install",
             Self::Update => "update",
         }
@@ -79,6 +81,7 @@ impl GrokToolAction {
     pub fn parse_cli(value: &str) -> Option<Self> {
         match value {
             "observe" => Some(Self::Observe),
+            "preflight" => Some(Self::Preflight),
             "install" => Some(Self::Install),
             "update" => Some(Self::Update),
             _ => None,
@@ -368,6 +371,7 @@ pub fn infer_source_marker(path: &str) -> &'static str {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GrokPlanKind {
     Observe,
+    Preflight,
     NativeFresh,
     NativeUpdate,
     OfficialNpm,
@@ -386,6 +390,16 @@ pub fn plan_grok_operation(
 ) -> Result<GrokPlanKind, GrokPlanFailure> {
     match action {
         GrokToolAction::Observe => Ok(GrokPlanKind::Observe),
+        GrokToolAction::Preflight => {
+            if observation == GrokOwnerObservation::Ambiguous
+                || expected_owner
+                    .is_some_and(|owner| observation.owner().is_some_and(|actual| actual != owner))
+            {
+                Err(GrokPlanFailure::OwnerMismatch)
+            } else {
+                Ok(GrokPlanKind::Preflight)
+            }
+        }
         GrokToolAction::Install => plan_install(observation, expected_owner),
         GrokToolAction::Update => plan_update(observation, expected_owner),
     }
@@ -442,6 +456,36 @@ fn plan_update(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn preflight_never_selects_a_mutation_and_refuses_ambiguous_owner() {
+        for owner in [
+            GrokOwnerObservation::Absent,
+            GrokOwnerObservation::Native,
+            GrokOwnerObservation::Npm,
+        ] {
+            assert_eq!(
+                plan_grok_operation(GrokToolAction::Preflight, owner, None),
+                Ok(GrokPlanKind::Preflight)
+            );
+        }
+        assert_eq!(
+            plan_grok_operation(
+                GrokToolAction::Preflight,
+                GrokOwnerObservation::Ambiguous,
+                None
+            ),
+            Err(GrokPlanFailure::OwnerMismatch)
+        );
+        assert_eq!(
+            plan_grok_operation(
+                GrokToolAction::Preflight,
+                GrokOwnerObservation::Native,
+                Some(GrokOwner::Npm)
+            ),
+            Err(GrokPlanFailure::OwnerMismatch)
+        );
+    }
+
     use super::*;
 
     #[test]

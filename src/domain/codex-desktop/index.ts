@@ -4,3 +4,4 @@ export * from "./parsers";
 export * from "./snapshots";
 export * from "./types";
 export * from "./versionState";
+export * from "./confirmation";

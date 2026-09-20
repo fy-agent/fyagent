@@ -32,7 +32,7 @@ machine_program_files_directories()
 formal Windows Claude install|update
   -> claude-tool helper
 
-formal Windows Grok observe|install|update
+formal Windows Grok observe|preflight|install|update
   -> grok-tool helper
 
 development Windows Grok npm
@@ -42,9 +42,9 @@ fyagent-user-helper.exe
   codex-msix-install --job-id <uuid> --pipe <nonce>
   agent-exe-install --product qoderwork|trae-work|workbuddy|opencode
                     --job-id <uuid> --pipe <nonce>
-  grok-tool --action observe|install|update [--owner native|npm]
+  grok-tool --action observe|preflight|install|update [--owner native|npm]
             --job-id <uuid> --pipe <nonce>
-  claude-tool --action observe|install|update --job-id <uuid> --pipe <nonce>
+  claude-tool --action observe|preflight|install|update --job-id <uuid> --pipe <nonce>
 
 RegistryRights { query_value, enumerate_subkeys, create_subkey, set_value }
 READ_VALUES           = query
@@ -109,6 +109,18 @@ No generic command/path helper exists. Public invalid-EXE errors map to
   the `1.2.3` command-shape fixture.
 - Closed desktop Agent EXE install uses its own protected package bridge.
   Trusted desktop launch is not an install bypass.
+
+### Read-only installation preflight
+
+The closed Grok/Claude `preflight` action uses the same pinned helper, frozen
+Shell identity and authenticated action-bound controls as the existing lifecycle
+operations. It accepts no caller path, URL, package, argv or executable. Its
+native/npm version and fixed runtime probes plus directory access-right queries
+must return before any mutation path. Prefix access is checked with the ordinary
+helper token. Wire action IDs 18–20 are Grok preflight with the closed owner
+choices, and 21 is Claude preflight; `ToolPermissionDenied` is bounded error 27.
+A permission failure is not reported as a missing runtime. The parent preserves
+identity/admission/quarantine behavior and returns actionable redacted errors.
 
 ### Inventory parent registry rights
 

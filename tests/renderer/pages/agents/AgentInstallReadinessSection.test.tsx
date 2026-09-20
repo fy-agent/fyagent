@@ -1,3 +1,4 @@
+import { installPreflightFixture } from "../../../fixtures/agentInstallPreflight";
 import {
   fireEvent,
   render,
@@ -151,6 +152,7 @@ function portFor(data: AgentInstallReadiness): AgentInstallReadinessPort {
     getInventory: vi.fn(async (agentId) =>
       inventory(agentId as "qoderwork" | "codex" | "opencode"),
     ),
+    preflight: async (request) => installPreflightFixture(request),
     startAction: vi.fn(),
     cancelAction: vi.fn(),
     getActionJob: vi.fn(),
@@ -202,6 +204,7 @@ describe("AgentInstallReadinessSection", () => {
           getInventory: async () => {
             throw new Error("offline");
           },
+          preflight: async (request) => installPreflightFixture(request),
           startAction: async () => {
             throw new Error("offline");
           },
@@ -239,6 +242,7 @@ describe("AgentInstallReadinessSection", () => {
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => (stage === "succeeded" ? current : available)),
       getInventory: vi.fn(async () => inventory("opencode", true)),
+      preflight: async (request) => installPreflightFixture(request),
       startAction: vi.fn(
         async (): Promise<AgentActionResult> => ({
           contractVersion: AGENT_ACTION_CONTRACT_VERSION,
@@ -278,6 +282,8 @@ describe("AgentInstallReadinessSection", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "更新当前位置" }),
     );
+    expect(port.startAction).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "确认更新" }));
     expect(await screen.findByText("正在下载安装包")).toBeVisible();
     stage = "succeeded";
     await waitFor(
@@ -312,6 +318,7 @@ describe("AgentInstallReadinessSection", () => {
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => data),
       getInventory: vi.fn(async () => desktopInventory),
+      preflight: async (request) => installPreflightFixture(request),
       startAction: vi.fn(
         async (): Promise<AgentActionResult> => ({
           contractVersion: AGENT_ACTION_CONTRACT_VERSION,
@@ -448,6 +455,7 @@ describe("AgentInstallReadinessSection", () => {
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => available),
       getInventory: vi.fn(async () => dests),
+      preflight: async (request) => installPreflightFixture(request),
       startAction: vi.fn(),
       cancelAction: vi.fn(),
       getActionJob: vi.fn(),
@@ -475,6 +483,7 @@ describe("AgentInstallReadinessSection", () => {
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => available),
       getInventory: vi.fn(async () => inventory("qoderwork")),
+      preflight: async (request) => installPreflightFixture(request),
       startAction: vi.fn(
         async (): Promise<AgentActionResult> => ({
           contractVersion: AGENT_ACTION_CONTRACT_VERSION,
@@ -509,6 +518,7 @@ describe("AgentInstallReadinessSection", () => {
     };
     render(<AgentInstallReadinessSection agentId="qoderwork" port={port} />);
     fireEvent.click(await screen.findByRole("button", { name: "安装" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认安装" }));
     expect(await screen.findByText("下载中 37.4%")).toBeVisible();
     expect(screen.queryByText(/0 B\/s/)).not.toBeInTheDocument();
     stage = "succeeded";

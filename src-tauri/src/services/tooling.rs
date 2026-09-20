@@ -8,6 +8,8 @@ mod discovery;
 mod grok;
 mod grok_npm;
 mod health;
+mod install_preflight;
+pub(crate) use install_preflight::CliInstallPreflight;
 mod lifecycle;
 #[cfg(target_os = "macos")]
 mod npm_runtime;
@@ -17,6 +19,13 @@ mod versions;
 pub(crate) use claude::ClaudeLifecycleError;
 pub(crate) use health::observe_local_tool_health;
 static CLI_LIFECYCLE_WRITER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+pub(crate) async fn preflight_cli_lifecycle(
+    agent: crate::services::external_agents::AgentCatalogId,
+    action: crate::agent_install::AgentActionId,
+) -> Result<CliInstallPreflight, crate::agent_install::AgentReasonCode> {
+    install_preflight::check(agent, action).await
+}
 
 pub(crate) async fn run_claude_cli_lifecycle(action: &str) -> Result<(), ClaudeLifecycleError> {
     let action = ToolLifecycleAction::from_str(action)

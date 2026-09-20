@@ -165,10 +165,7 @@ pub(crate) fn preflight(
 
     let stable_bundles = bundle::scan_stable_bundles(runner, filesystem, host)?;
     match stable_bundles.as_slice() {
-        [] => Ok(PlatformInstallPlan::new(vec![
-            host.applications_dir().to_path_buf(),
-            host.user_applications_dir().to_path_buf(),
-        ])),
+        [] => install_preflight_target(filesystem, host.user_applications_dir()),
         [existing] => {
             bundle::ensure_not_running(runner, filesystem, existing.bundle_path())?;
             let parent = existing.bundle_path().parent().ok_or_else(|| {
@@ -177,13 +174,45 @@ pub(crate) fn preflight(
                     "installed Stable bundle has no parent directory",
                 )
             })?;
-            Ok(PlatformInstallPlan::new(vec![parent.to_path_buf()]))
+            install_preflight_target(filesystem, parent)
         }
         _ => Err(error(
             InstallerErrorCode::MacMultipleInstallations,
             "multiple Stable macOS bundles prevent a safe update",
         )),
     }
+}
+
+fn install_preflight_target(
+    filesystem: &dyn MacosFilesystem,
+    target: &Path,
+) -> Result<PlatformInstallPlan, InstallerError> {
+    for ancestor in target.ancestors() {
+        match filesystem.file_kind(ancestor) {
+            Ok(MacosFileKind::Directory) => {
+                if !filesystem.directory_writable(ancestor) {
+                    return Err(error(
+                        InstallerErrorCode::MacCopyFailed,
+                        "the selected installation directory is not writable",
+                    )
+                    .with_platform_error_code("target_permission_denied"));
+                }
+                return Ok(PlatformInstallPlan::new(vec![ancestor.to_path_buf()])
+                    .with_confirmation_target(target.to_path_buf()));
+            }
+            Err(error) if is_not_found(error) => continue,
+            _ => {
+                return Err(error(
+                    InstallerErrorCode::MacTargetPathConflict,
+                    "the selected installation directory is unavailable",
+                ))
+            }
+        }
+    }
+    Err(error(
+        InstallerErrorCode::MacTargetPathConflict,
+        "the selected installation directory is unavailable",
+    ))
 }
 
 /// Bind a downloader-owned fixed DMG to its locally computed handoff evidence.
@@ -234,7 +263,33 @@ pub(crate) fn install_current_user(
         let source_bundle = discover_single_bundle(runner, filesystem, mounted.mount_point())?;
         let policy = BundleTransactionPolicy::Codex { host };
         let source_bundle = policy.inspect_source_info(filesystem, source_bundle)?;
-        let targets = plan_targets(runner, filesystem, host, &source_bundle, &policy)?;
+        let mut targets = plan_targets(runner, filesystem, host, &source_bundle, &policy)?;
+        if let Some(confirmed) = &package.confirmed_target {
+            targets.retain(|target| {
+                confirmed.target_root.as_ref() == Some(&target.parent)
+                    && match (&confirmed.local, &target.existing) {
+                        (
+                            crate::codex_desktop::types::LocalInstallStatus::NotInstalled {
+                                ..
+                            },
+                            None,
+                        ) => true,
+                        (
+                            crate::codex_desktop::types::LocalInstallStatus::Installed {
+                                application,
+                            },
+                            Some(existing),
+                        ) => *application == bundle::installed_application(&existing.info),
+                        _ => false,
+                    }
+            });
+            if targets.len() != 1 {
+                return Err(error(
+                    InstallerErrorCode::MetadataChanged,
+                    "the confirmed installation target changed before commit",
+                ));
+            }
+        }
         let mut last_permission_error = None;
 
         for target in targets {
@@ -2053,6 +2108,70 @@ mod tests {
         package
             .revalidate_artifact()
             .expect("same-path content drift is not a package-hash admission gate");
+    }
+
+    #[test]
+    fn confirmation_preflight_uses_user_directory_and_blocks_unwritable_target() {
+        let (filesystem, _) = fixture_filesystem();
+        filesystem.add_dir("/tmp/fyagent-job");
+        let runner = FakeRunner::new();
+        let plan = preflight(
+            &runner,
+            filesystem.as_ref(),
+            &host(),
+            &release("5848"),
+            Path::new("/tmp/fyagent-job"),
+        )
+        .unwrap();
+        assert_eq!(
+            plan.confirmation_target(),
+            Some(Path::new(USER_APPLICATIONS))
+        );
+        assert!(runner.invocations().is_empty());
+        filesystem.fail_create_dir_under(
+            USER_APPLICATIONS,
+            MacosFilesystemErrorKind::PermissionDenied,
+        );
+        let error = preflight(
+            &runner,
+            filesystem.as_ref(),
+            &host(),
+            &release("5848"),
+            Path::new("/tmp/fyagent-job"),
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.to_dto().details.platform_error_code.as_deref(),
+            Some("target_permission_denied")
+        );
+        assert!(runner.invocations().is_empty());
+    }
+
+    #[test]
+    fn confirmed_fresh_install_cannot_fall_back_to_system_applications() {
+        let (filesystem, _) = fixture_filesystem();
+        let runner = Arc::new(FakeRunner::new());
+        install_copy_hook(&runner, &filesystem);
+        queue_fresh_install(runner.as_ref(), "5848");
+        let mut package = package(&release("5848"));
+        package.bind_confirmed_target(crate::codex_desktop::platform::ConfirmedInstallTarget {
+            local: crate::codex_desktop::types::LocalInstallStatus::NotInstalled {
+                platform: DesktopPlatform::Macos,
+                architecture: CpuArchitecture::Aarch64,
+            },
+            target_root: Some(PathBuf::from(USER_APPLICATIONS)),
+        });
+        install_current_user(
+            runner.as_ref(),
+            filesystem.as_ref(),
+            &host(),
+            &package,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert!(filesystem.contains(Path::new(USER_APPLICATIONS).join("ChatGPT.app")));
+        assert!(!filesystem.contains(Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app")));
+        runner.assert_drained();
     }
 
     #[test]

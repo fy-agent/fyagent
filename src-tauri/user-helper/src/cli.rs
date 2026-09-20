@@ -150,6 +150,7 @@ impl UserHelperAction {
                 GrokToolAction::Observe => 15,
                 GrokToolAction::Install => 16,
                 GrokToolAction::Update => 17,
+                GrokToolAction::Preflight => 21,
             },
         }
     }
@@ -170,6 +171,17 @@ impl UserHelperAction {
             }),
             17 => Some(Self::ClaudeTool {
                 action: GrokToolAction::Update,
+            }),
+            18..=20 => Some(Self::GrokTool {
+                action: GrokToolAction::Preflight,
+                expected_owner: match value {
+                    19 => Some(GrokOwner::Native),
+                    20 => Some(GrokOwner::Npm),
+                    _ => None,
+                },
+            }),
+            21 => Some(Self::ClaudeTool {
+                action: GrokToolAction::Preflight,
             }),
             _ => None,
         }
@@ -225,10 +237,18 @@ impl UserHelperAction {
 }
 
 const fn grok_tool_wire_code(action: GrokToolAction, expected_owner: Option<GrokOwner>) -> u8 {
+    if matches!(action, GrokToolAction::Preflight) {
+        return match expected_owner {
+            None => 18,
+            Some(GrokOwner::Native) => 19,
+            Some(GrokOwner::Npm) => 20,
+        };
+    }
     let action_offset = match action {
         GrokToolAction::Observe => 0,
         GrokToolAction::Install => 3,
         GrokToolAction::Update => 6,
+        GrokToolAction::Preflight => unreachable!(),
     };
     let owner_offset = match expected_owner {
         None => 0,
@@ -428,9 +448,37 @@ mod tests {
     const NONCE: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     #[test]
+    fn preflight_wire_actions_are_closed_and_do_not_require_package_admission() {
+        for owner in [None, Some(GrokOwner::Native), Some(GrokOwner::Npm)] {
+            let action = UserHelperAction::GrokTool {
+                action: GrokToolAction::Preflight,
+                expected_owner: owner,
+            };
+            assert_eq!(
+                UserHelperAction::from_wire(action.wire_code()),
+                Some(action)
+            );
+            assert!(!action.requires_package_bridge());
+        }
+        assert!(parse_cli_args([
+            GROK_TOOL_ACTION,
+            ACTION_FLAG,
+            "preflight",
+            JOB_ID_FLAG,
+            JOB_ID,
+            PIPE_FLAG,
+            NONCE,
+            "--prefix",
+            "C:\\other",
+        ])
+        .is_err());
+    }
+
+    #[test]
     fn claude_actions_are_closed_bound_and_do_not_reuse_grok_wire_identity() {
         for action in [
             GrokToolAction::Observe,
+            GrokToolAction::Preflight,
             GrokToolAction::Install,
             GrokToolAction::Update,
         ] {
@@ -657,7 +705,7 @@ mod tests {
             UserHelperAction::AgentExeInstall(AgentInstallerProduct::OpenCode)
                 .requires_package_bridge()
         );
-        assert_eq!(UserHelperAction::from_wire(18), None);
+        assert_eq!(UserHelperAction::from_wire(22), None);
         assert_eq!(
             UserHelperAction::GrokTool {
                 action: GrokToolAction::Install,

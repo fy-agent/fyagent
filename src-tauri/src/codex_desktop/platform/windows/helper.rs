@@ -1425,6 +1425,10 @@ fn map_helper_error(code: HelperErrorCode) -> InstallerError {
             return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
                 .with_platform_error_code("agent_installer_exited_nonzero")
         }
+        HelperErrorCode::ToolPermissionDenied => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("tool_permission_denied")
+        }
         HelperErrorCode::ToolHostMissing => {
             return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
                 .with_platform_error_code("grok_tool_host_missing")

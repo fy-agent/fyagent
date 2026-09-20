@@ -1,6 +1,7 @@
 import type { ProjectsPort } from "./projects";
 import type { FirstUseGuideState } from "./first-use-guide";
 import type {
+  CodexInstallPreflight,
   JobSnapshot,
   LocalInstallStatus,
   RemoteReleaseStatus,
@@ -122,7 +123,11 @@ export interface CodexDesktopPort {
   getLocalStatus(): Promise<LocalInstallStatus>;
   checkLatest(force: boolean): Promise<RemoteReleaseStatus>;
   getJob(): Promise<JobSnapshot | null>;
-  startInstall(expectedReleaseId: string): Promise<JobSnapshot>;
+  prepareInstall(expectedReleaseId: string): Promise<CodexInstallPreflight>;
+  startInstall(
+    expectedReleaseId: string,
+    confirmationId: string,
+  ): Promise<JobSnapshot>;
   cancelInstall(jobId: string): Promise<JobSnapshot>;
   launch(): Promise<void>;
   openLogDirectory(): Promise<void>;

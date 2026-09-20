@@ -1,3 +1,4 @@
+import { installPreflightFixture } from "../../../fixtures/agentInstallPreflight";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -148,6 +149,7 @@ function createPort(
   return {
     get: vi.fn(async () => readiness()),
     getInventory: vi.fn(async (agentId) => installationInventory(agentId)),
+    preflight: async (request) => installPreflightFixture(request),
     startAction: vi.fn(),
     cancelAction: vi.fn(),
     getActionJob: vi.fn(),
@@ -339,7 +341,7 @@ describe("Windows external-installer state copy", () => {
 });
 
 describe("bindLiveInventoryTarget", () => {
-  it("prefers the unique eligible destination over a stale triplet", () => {
+  it("rejects a changed revision even when only one destination is eligible", () => {
     const stale = lifecycleTarget();
     const live = installationInventory("qoderwork");
     live.inventoryId = `i1:${"f".repeat(32)}`;
@@ -348,7 +350,8 @@ describe("bindLiveInventoryTarget", () => {
       destinationId: `d1:${"e".repeat(32)}`,
       destinationRevision: `r1:${"d".repeat(64)}`,
     };
-    expect(bindLiveInventoryTarget(live, "install", stale)).toEqual({
+    expect(bindLiveInventoryTarget(live, "install", stale)).toBeNull();
+    expect(bindLiveInventoryTarget(live, "install", null)).toEqual({
       kind: "fresh_destination",
       inventoryId: `i1:${"f".repeat(32)}`,
       targetId: `d1:${"e".repeat(32)}`,
@@ -362,6 +365,72 @@ describe("bindLiveInventoryTarget", () => {
 });
 
 describe("useAgentLifecycleAction", () => {
+  it("dismisses preflight without side effects and confirms the exact checked request", async () => {
+    const port = createPort({
+      startAction: vi.fn(async () =>
+        actionResult({ jobId: null, stage: "succeeded" }),
+      ),
+    });
+    const { result } = renderHook(() =>
+      useAgentLifecycleAction({
+        agentId: "qoderwork",
+        port,
+        readiness: readiness(),
+        target: lifecycleTarget(),
+      }),
+    );
+    await act(async () => {
+      await result.current.runPrimary();
+    });
+    expect(result.current.preflight?.targetLabel).toBe("~/Applications");
+    expect(port.startAction).not.toHaveBeenCalled();
+    act(() => result.current.dismissPreflight());
+    await act(async () => {
+      await result.current.confirm();
+    });
+    expect(port.startAction).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.runPrimary();
+    });
+    const checked = result.current.preflight!.request;
+    const changed = installationInventory();
+    changed.freshDestinations[0].destinationRevision = `r1:${"e".repeat(64)}`;
+    vi.mocked(port.getInventory).mockResolvedValue(changed);
+    await act(async () => {
+      await result.current.confirm();
+    });
+    expect(port.startAction).toHaveBeenCalledExactlyOnceWith(checked);
+    expect(result.current.preflight).toBeNull();
+  });
+
+  it("retains an uncertain terminal result and removes automatic retry", async () => {
+    const terminal = jobSnapshot("failed", {
+      reasonCode: "recovery_required",
+      cancellable: false,
+    });
+    const port = createPort({
+      startAction: vi.fn(async () => actionResult()),
+      getActionJob: vi.fn(async () => terminal),
+    });
+    const { result } = renderHook(() =>
+      useAgentLifecycleAction({
+        agentId: "qoderwork",
+        port,
+        readiness: readiness(),
+        target: lifecycleTarget(),
+        pollIntervalMs: 0,
+      }),
+    );
+    await act(async () => {
+      await result.current.run("install");
+    });
+    expect(result.current.lastResult).toEqual(terminal);
+    expect(result.current.canRetry).toBe(false);
+    expect(result.current.primaryAction).toBeNull();
+    expect(result.current.error).toContain("停止重试");
+  });
+
   it("shows real job stages and only applies the reread readiness", async () => {
     const stages: AgentActionJobStage[] = [
       "downloading",
@@ -507,6 +576,8 @@ describe("useAgentLifecycleAction", () => {
 
     await act(async () => {
       await result.current.runPrimary();
+      expect(port.startAction).not.toHaveBeenCalled();
+      await result.current.confirm();
     });
 
     expect(port.getActionJob).not.toHaveBeenCalled();
@@ -683,6 +754,8 @@ describe("useAgentLifecycleAction", () => {
     expect(result.current.primaryAction).toBe("update");
     await act(async () => {
       await result.current.runPrimary();
+      expect(port.startAction).not.toHaveBeenCalled();
+      await result.current.confirm();
     });
     expect(port.startAction).toHaveBeenCalledWith({
       agentId: "opencode",
@@ -723,6 +796,7 @@ describe("useAgentLifecycleAction", () => {
 
     await act(async () => {
       await result.current.retry();
+      await result.current.confirm();
     });
     expect(startAction).toHaveBeenCalledTimes(2);
     expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
@@ -767,6 +841,7 @@ describe("useAgentLifecycleAction", () => {
 
     await act(async () => {
       await result.current.retry();
+      await result.current.confirm();
     });
     expect(startAction).toHaveBeenCalledTimes(2);
     expect(startAction).toHaveBeenLastCalledWith(
@@ -1019,7 +1094,7 @@ describe("useAgentLifecycleAction", () => {
     expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
   });
 
-  it("replaces a stale inventory triplet before startAction", async () => {
+  it("rejects a stale target instead of silently rebinding it", async () => {
     const live = installationInventory("qoderwork");
     live.inventoryId = `i1:${"f".repeat(32)}`;
     live.freshDestinations[0] = {
@@ -1047,15 +1122,8 @@ describe("useAgentLifecycleAction", () => {
       await result.current.run("install");
     });
 
-    expect(port.startAction).toHaveBeenCalledWith({
-      agentId: "qoderwork",
-      action: "install",
-      expectedReleaseId: readiness().releaseId,
-      inventoryId: `i1:${"f".repeat(32)}`,
-      targetId: `d1:${"e".repeat(32)}`,
-      expectedTargetRevision: `r1:${"d".repeat(64)}`,
-    });
-    expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
+    expect(port.startAction).not.toHaveBeenCalled();
+    expect(result.current.error).toBeTruthy();
   });
 
   it("does not invent percent when Content-Length is unknown", async () => {

@@ -1,3 +1,5 @@
+import { installPreflightFixture } from "../../../fixtures/agentInstallPreflight";
+import { codexInstallPreflightFixture } from "../../../fixtures/codexInstallPreflight";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -409,12 +411,16 @@ function configuredPorts(): FeaturePorts {
       checkedAt: "2026-08-26T00:00:00.000Z",
     }),
     getJob: async () => null,
+    prepareInstall: vi.fn(async (id) => codexInstallPreflightFixture(id)),
     startInstall: vi.fn(),
     cancelInstall: vi.fn(),
     launch: vi.fn(),
     openLogDirectory: vi.fn(),
     subscribeJobUpdates: async () => () => undefined,
   } satisfies CodexDesktopPort;
+  ports.agentInstallReadiness.preflight = vi.fn(async (request) =>
+    installPreflightFixture(request),
+  );
   return ports;
 }
 
@@ -968,6 +974,8 @@ describe("V3 Agent directory and configuration shell", () => {
         name: "一键安装",
       }),
     );
+    expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "确认安装" }));
     expect(
       await within(directoryArticle("QoderWork CN")).findByText("正在检查来源"),
     ).toBeVisible();
@@ -1086,13 +1094,17 @@ describe("V3 Agent directory and configuration shell", () => {
     });
     expect(within(dialog).getByText("推荐")).toBeVisible();
     expect(
-      within(dialog).getByRole("radio", { name: /\/Applications/ }),
+      within(dialog).getByRole("radio", { name: /当前用户应用目录/ }),
     ).toBeChecked();
     expect(screen.getByTestId("agents-page")).toHaveAttribute(
       "data-view",
       "directory",
     );
-    await user.click(within(dialog).getByRole("button", { name: "确认安装" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "检查并继续" }),
+    );
+    expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "确认安装" }));
     await waitFor(() =>
       expect(
         screen.queryByRole("dialog", {
@@ -1109,8 +1121,8 @@ describe("V3 Agent directory and configuration shell", () => {
         action: "install",
         expectedReleaseId: `v1:${"a".repeat(64)}`,
         inventoryId: `i1:${"a".repeat(32)}`,
-        targetId: `d1:${"f".repeat(32)}`,
-        expectedTargetRevision: `r1:${"g".repeat(64)}`,
+        targetId: `d1:${"d".repeat(32)}`,
+        expectedTargetRevision: `r1:${"e".repeat(64)}`,
       }),
     );
     actionJob.resolve({
@@ -1182,6 +1194,8 @@ describe("V3 Agent directory and configuration shell", () => {
         name: "一键安装",
       }),
     );
+    expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "确认安装" }));
     expect(
       await within(directoryArticle("QoderWork CN")).findByText(
         "正在更新安装状态",
@@ -1251,6 +1265,8 @@ describe("V3 Agent directory and configuration shell", () => {
         name: "一键安装",
       }),
     );
+    expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "确认安装" }));
     expect(
       await within(directoryArticle("QoderWork CN")).findByText(
         "正在更新安装状态",
@@ -1385,6 +1401,8 @@ describe("V3 Agent directory and configuration shell", () => {
     );
     expect(configureButton("Codex")).toBeDisabled();
     await user.click(install);
+    expect(ports.codexDesktop.startInstall).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "确认安装" }));
     await waitFor(() =>
       expect(ports.codexDesktop.startInstall).toHaveBeenCalledTimes(1),
     );

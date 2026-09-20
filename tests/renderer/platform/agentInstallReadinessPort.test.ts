@@ -5,6 +5,7 @@ import {
   AGENT_INSTALL_READINESS_CONTRACT_VERSION,
 } from "@/shared/features/agent-install-readiness";
 import { createAgentInstallReadinessPort } from "@/shared/platform/tauri/feature-ports/agentInstallReadiness";
+import { installPreflightFixture } from "../../fixtures/agentInstallPreflight";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -68,6 +69,47 @@ function inventoryWire(agentId = "qoderwork") {
 
 describe("Tauri Agent install readiness port", () => {
   beforeEach(() => invoke.mockReset());
+
+  it("checks before starting and rejects a substituted preflight target", async () => {
+    const request = {
+      agentId: "qoderwork" as const,
+      action: "install" as const,
+      inventoryId: `i1:${"a".repeat(32)}`,
+      targetId: `d1:${"b".repeat(32)}`,
+      expectedTargetRevision: `r1:${"c".repeat(64)}`,
+    };
+    const checked = installPreflightFixture(request);
+    invoke.mockResolvedValueOnce(checked);
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).resolves.toEqual(checked);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      "get_agent_install_preflight",
+      { request },
+    );
+    invoke.mockResolvedValueOnce({
+      ...checked,
+      request: { ...request, targetId: `d1:${"e".repeat(32)}` },
+    });
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).rejects.toThrow();
+    invoke.mockResolvedValueOnce({
+      ...checked,
+      installerPath: "/tmp/untrusted",
+    });
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).rejects.toThrow();
+    invoke.mockReset();
+    await expect(
+      createAgentInstallReadinessPort().preflight({
+        ...request,
+        action: "launch",
+      }),
+    ).rejects.toThrow();
+    expect(invoke).not.toHaveBeenCalled();
+  });
 
   it("invokes readiness and action commands with closed payloads", async () => {
     invoke.mockResolvedValue(wire("codex"));

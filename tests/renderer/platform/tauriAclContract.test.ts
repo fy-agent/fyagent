@@ -124,7 +124,7 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(150);
+    expect(renderer.commands.size).toBe(152);
     expect(renderer.commands.has("projects_prepare_codex")).toBe(true);
     expect(renderer.commands.has("projects_bind_delivery_kit")).toBe(true);
     expect(renderer.commands.has("projects_dependency_snapshot")).toBe(true);
@@ -162,6 +162,8 @@ describe("Native ACL contract", () => {
       "list_recoverable_change_jobs",
       "get_agent_install_readiness",
       "get_agent_installation_inventory",
+      "get_agent_install_preflight",
+      "codex_desktop_prepare_install",
       "start_agent_action",
       "cancel_agent_action",
       "get_agent_action_job",
