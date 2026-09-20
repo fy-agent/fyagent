@@ -1069,6 +1069,7 @@ function ProviderPanel({
         modelId,
       },
       app,
+      app === "codex" && providerExists,
     );
     if (!validated.ok) {
       setErrors(validated.errors);
@@ -1518,6 +1519,11 @@ function ProviderPanel({
         </div>
         <div className="fy-control-field">
           <label htmlFor={`${app}-quick-setup-api-key`}>API Key</label>
+          {app === "codex" && providerExists && (
+            <p className="fy-models-muted">
+              留空保留已保存的 API Key，填写新值会替换它。
+            </p>
+          )}
           <SecretInput
             ref={apiKeyInputRef}
             id={`${app}-quick-setup-api-key`}
@@ -1674,6 +1680,7 @@ function ProviderPanel({
         open={writeConfirm.open}
         targets={writeConfirm.pending?.targets ?? []}
         onConfirm={confirmWrite}
+        credentialDisclosure={app === "codex"}
         onCancel={() => {
           writeConfirm.takePending();
         }}

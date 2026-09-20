@@ -31,6 +31,45 @@ pub(crate) trait SecretBackend: Send + Sync {
     fn delete(&self, secret_ref: &SecretRef) -> Result<(), SecretServiceError>;
 }
 
+// A consumer may inject an explicit fixture backend without teaching the
+// platform implementation about tests or introducing a runtime fallback.
+impl SecretBackend for Box<dyn SecretBackend> {
+    fn kind(&self) -> SecretBackendKind {
+        (**self).kind()
+    }
+    fn create_new(
+        &self,
+        key: &SecretRef,
+        material: &SecretMaterial,
+    ) -> Result<(), SecretServiceError> {
+        (**self).create_new(key, material)
+    }
+    fn replace(
+        &self,
+        key: &SecretRef,
+        material: &SecretMaterial,
+    ) -> Result<(), SecretServiceError> {
+        (**self).replace(key, material)
+    }
+    fn read(
+        &self,
+        key: &SecretRef,
+        purpose: SecretPurpose,
+    ) -> Result<SecretMaterial, SecretServiceError> {
+        (**self).read(key, purpose)
+    }
+    fn probe(
+        &self,
+        key: &SecretRef,
+        purpose: SecretPurpose,
+    ) -> Result<BackendProbe, SecretServiceError> {
+        (**self).probe(key, purpose)
+    }
+    fn delete(&self, key: &SecretRef) -> Result<(), SecretServiceError> {
+        (**self).delete(key)
+    }
+}
+
 mod callback_sealed {
     pub(crate) trait Sealed {}
 }

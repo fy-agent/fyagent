@@ -14,6 +14,16 @@ struct LegacySkillMigrationRow {
 }
 
 impl Database {
+    fn create_provider_credential_tables_on_conn(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch("CREATE TABLE IF NOT EXISTS provider_credentials (
+            credential_id TEXT PRIMARY KEY,
+            provider_id TEXT NOT NULL,
+            secret_ref TEXT NOT NULL UNIQUE,
+            secret_version TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('pending','ready','revoked','deleted'))
+        ); CREATE INDEX IF NOT EXISTS idx_provider_credentials_provider ON provider_credentials(provider_id);")
+            .map_err(|_| AppError::Database("provider_credential_schema_failed".into()))
+    }
     /// 创建所有数据库表
     pub(crate) fn create_tables(&self) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
@@ -336,6 +346,8 @@ impl Database {
         // credential store and is referenced only by opaque SecretRef values.
         Self::create_managed_auth_tables_on_conn(conn)?;
 
+        Self::create_provider_credential_tables_on_conn(conn)?;
+
         Self::create_project_tables_on_conn(conn)?;
 
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
@@ -561,6 +573,10 @@ impl Database {
                     22 => {
                         Self::migrate_v22_to_v23(conn)?;
                         Self::set_user_version(conn, 23)?;
+                    }
+                    23 => {
+                        Self::create_provider_credential_tables_on_conn(conn)?;
+                        Self::set_user_version(conn, 24)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -3484,6 +3500,21 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn provider_credentials_v24_fresh_predecessor_and_failed_migration() {
+        let db = super::Database::memory().unwrap();
+        let conn = db.conn.lock().unwrap();
+        assert!(super::Database::table_exists(&conn, "provider_credentials").unwrap());
+        conn.execute_batch("DROP TABLE provider_credentials; PRAGMA user_version = 23;")
+            .unwrap();
+        super::Database::apply_schema_migrations_on_conn(&conn).unwrap();
+        assert_eq!(super::Database::get_user_version(&conn).unwrap(), 24);
+        assert!(super::Database::table_exists(&conn, "provider_credentials").unwrap());
+        conn.execute_batch("DROP TABLE provider_credentials; CREATE VIEW provider_credentials AS SELECT 1; PRAGMA user_version = 23;").unwrap();
+        assert!(super::Database::apply_schema_migrations_on_conn(&conn).is_err());
+        assert_eq!(super::Database::get_user_version(&conn).unwrap(), 23);
+    }
+
     use super::*;
 
     fn change_plan_table_count(conn: &Connection) -> Result<i64, AppError> {

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/secretref-backend.md", "reason": "Native credential contract"}
+{"file": ".trellis/spec/backend/codex-provider-configuration.md", "reason": "Codex save and file semantics"}
+{"file": ".trellis/spec/backend/database-persistence.md", "reason": "Ordered migration and local-only sync"}
+{"file": ".trellis/spec/frontend/models.md", "reason": "Current save entry"}

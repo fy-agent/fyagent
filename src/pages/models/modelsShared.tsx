@@ -86,12 +86,14 @@ export function ModelsWriteConfirmDialog({
   targets,
   onConfirm,
   onCancel,
+  credentialDisclosure = false,
 }: {
   open: boolean;
   originRef?: DialogOriginRef;
   targets: readonly ModelWriteTarget[];
   onConfirm: () => void;
   onCancel: () => void;
+  credentialDisclosure?: boolean;
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   return (
@@ -128,6 +130,14 @@ export function ModelsWriteConfirmDialog({
         </>
       }
     >
+      {credentialDisclosure && (
+        <p className="fy-models-muted">
+          FyAgent 将 API Key 保存在本机系统凭据库。Codex
+          读取模型配置时仍需要明文 Key，因此会写入下列
+          config.toml；滚动备份也可能含有旧 Key。请勿分享这些文件。删除 FyAgent
+          中的配置不会撤销服务商处的 Key。
+        </p>
+      )}
       <ModelsWriteDisclosure targets={targets} />
     </Dialog>
   );

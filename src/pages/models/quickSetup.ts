@@ -83,6 +83,7 @@ export function parseModelTarget(value: string | null): ModelTarget {
 export function validateQuickSetup(
   input: QuickSetupFormInput,
   target?: ProviderQuickSetupTarget,
+  retainCodexCredential = false,
 ): QuickSetupValidation {
   const value: NormalizedQuickSetupInput = {
     name: input.name.trim(),
@@ -95,13 +96,18 @@ export function validateQuickSetup(
   if (!value.name) errors.name = "请输入配置名称";
   if (!isHttpUrl(value.baseUrl))
     errors.baseUrl = "请输入不含账号信息的 HTTP(S) 地址";
-  if (!value.apiKey) errors.apiKey = "请输入 API Key";
+  if (!value.apiKey && !(target === "codex" && retainCodexCredential))
+    errors.apiKey = "请输入 API Key";
   if (!value.modelId) errors.modelId = "请输入模型 ID";
   if (value.apiKey && value.name.includes(value.apiKey))
     errors.name = "配置名称不能包含 API Key";
   if (value.apiKey && value.modelId.includes(value.apiKey))
     errors.modelId = "模型 ID 不能包含 API Key";
-  if (target && QUICK_SETUP_PROVIDER_IDS[target].includes(value.apiKey))
+  if (
+    target &&
+    value.apiKey &&
+    QUICK_SETUP_PROVIDER_IDS[target].includes(value.apiKey)
+  )
     errors.apiKey = "API Key 不能使用该值";
   if (value.apiKey && isHttpUrl(value.baseUrl)) {
     const parsed = new URL(value.baseUrl);

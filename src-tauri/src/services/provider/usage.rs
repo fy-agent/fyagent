@@ -138,6 +138,7 @@ pub async fn query_usage(
             )
         })?;
 
+        let provider = super::ProviderCredentials::resolve(&state.db, app_type.as_str(), provider)?;
         let usage_script = provider
             .meta
             .as_ref()
@@ -160,7 +161,7 @@ pub async fn query_usage(
         // Get credentials: prioritize UsageScript values, fallback to provider config
         let (api_key, base_url) = resolve_script_credentials(
             &app_type,
-            provider,
+            &provider,
             usage_script.api_key.as_deref(),
             usage_script.base_url.as_deref(),
         );
@@ -211,9 +212,11 @@ pub async fn test_usage_script(
         )
     })?;
 
+    let provider = super::ProviderCredentials::resolve(&state.db, app_type.as_str(), provider)?;
+
     // Resolve like the real query so testing matches what a saved script does:
     // explicit values win, empty ones fall back to the provider config.
-    let (api_key, base_url) = resolve_script_credentials(&app_type, provider, api_key, base_url);
+    let (api_key, base_url) = resolve_script_credentials(&app_type, &provider, api_key, base_url);
 
     execute_and_format_usage_result(
         script_code,

@@ -154,6 +154,18 @@ describe("models quick setup helpers", () => {
     },
   );
 
+  it("retains an existing Codex credential with blank input only for edits", () => {
+    const fields = {
+      name: "Gateway",
+      baseUrl: "https://gateway.example/v1",
+      apiKey: "",
+      modelId: "model-a",
+    };
+    expect(validateQuickSetup(fields, "codex", true).ok).toBe(true);
+    expect(validateQuickSetup(fields, "codex").ok).toBe(false);
+    expect(validateQuickSetup(fields, "claude", true).ok).toBe(false);
+  });
+
   it("parses ordered unique manual model IDs", () => {
     expect(parseManualModelIds(" alpha, beta\nalpha\n\nGamma ")).toEqual([
       "alpha",

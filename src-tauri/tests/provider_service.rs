@@ -506,8 +506,8 @@ requires_openai_auth = true
             .settings_config
             .pointer("/auth/OPENAI_API_KEY")
             .and_then(|v| v.as_str()),
-        Some("bridge-key"),
-        "backfill should restore the API key into stored provider auth"
+        None,
+        "backfill must retain only the native credential reference"
     );
     assert!(
         stored_bridge
@@ -515,6 +515,18 @@ requires_openai_auth = true
             .pointer("/auth/tokens")
             .is_none(),
         "backfill should not persist ChatGPT OAuth tokens into provider storage"
+    );
+    assert!(stored_bridge.settings_config.get("credentialRef").is_some());
+    assert!(!stored_bridge
+        .settings_config
+        .to_string()
+        .contains("bridge-key"));
+    ProviderService::switch(&state, AppType::Codex, "bridge-provider")
+        .expect("resolve migrated key on switch back");
+    assert!(
+        std::fs::read_to_string(fyagent_lib::get_codex_config_path())
+            .unwrap()
+            .contains("bridge-key")
     );
     assert!(
         !stored_bridge

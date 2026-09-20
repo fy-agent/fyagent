@@ -15,7 +15,8 @@ binding journals, or hardware-backed secret stores.
 The private service source lives under `src-tauri/src/services/secret/`. The
 first production consumer is [Managed Auth Core](./managed-auth.md), which
 registers `services::secret` and constructs `SecretService<NativeSecretBackend>`
-in the application composition root. The leaf still exposes no Tauri command;
+in the application composition root. [Provider Credential Persistence](./provider-credentials.md)
+adds the Codex API-key consumer through the same leaf boundary. The leaf still exposes no Tauri command;
 renderer traffic stays on Managed Auth DTOs that never include SecretRef or
 secret material.
 

@@ -1255,6 +1255,46 @@ describe("Models page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps a saved Codex key native when editing with blank input", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {
+        [QUICK_SETUP_PROVIDER_IDS.codex]: {
+          id: QUICK_SETUP_PROVIDER_IDS.codex,
+          name: "Saved",
+        },
+      },
+      currentId: QUICK_SETUP_PROVIDER_IDS.codex,
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+    }));
+    ports.changePlans.createCodexProviderUpsertPlan = vi.fn(
+      async () => changePlanUpsertWire,
+    );
+    renderPage(ports, "codex");
+    await screen.findByText("留空保留已保存的 API Key，填写新值会替换它。");
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://codex.example/v1",
+    );
+    await user.type(screen.getByLabelText("模型 ID"), "gpt-5");
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    );
+    expect(await screen.findByText(/本机系统凭据库/)).toHaveTextContent(
+      "config.toml",
+    );
+    await confirmWriteDisclosure(user);
+    await waitFor(() =>
+      expect(
+        ports.changePlans.createCodexProviderUpsertPlan,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: "", modelId: "gpt-5" }),
+      ),
+    );
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+  });
+
   it("atomically applies Codex once with the exact provider payload", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();

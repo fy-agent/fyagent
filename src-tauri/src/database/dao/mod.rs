@@ -24,4 +24,5 @@ pub mod usage_rollup;
 pub use failover::FailoverQueueItem;
 pub use profiles::Profile;
 
+pub(super) mod provider_credentials;
 mod verification;

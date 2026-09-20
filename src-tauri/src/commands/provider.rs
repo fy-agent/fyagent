@@ -214,7 +214,7 @@ fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary,
     })
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderQuickSetupRequest {
     name: String,
@@ -224,6 +224,12 @@ pub struct ProviderQuickSetupRequest {
     /// Codex 原生能力意图（生图扩展 / WebSocket），仅 codex 目标生效。
     #[serde(default)]
     codex_features: Option<CodexProviderFeatureIntent>,
+}
+
+impl std::fmt::Debug for ProviderQuickSetupRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ProviderQuickSetupRequest([REDACTED])")
+    }
 }
 
 impl ProviderQuickSetupRequest {
@@ -236,7 +242,10 @@ impl ProviderQuickSetupRequest {
         let base_url = self.base_url.trim().to_string();
         let api_key = self.api_key.trim().to_string();
         let model_id = self.model_id.trim().to_string();
-        if name.is_empty() || api_key.is_empty() || model_id.is_empty() {
+        if name.is_empty()
+            || (api_key.is_empty() && *app_type != AppType::Codex)
+            || model_id.is_empty()
+        {
             return Err(ProviderQuickSetupCommandError::new(
                 QuickSetupApplyFailureCode::ApplyFailedRolledBack,
             ));
@@ -247,7 +256,10 @@ impl ProviderQuickSetupRequest {
             AppType::GrokBuild => "fyagent-v2-quick-setup-grokbuild",
             _ => "",
         };
-        if name.contains(&api_key) || model_id.contains(&api_key) || reserved_id.contains(&api_key)
+        if !api_key.is_empty()
+            && (name.contains(&api_key)
+                || model_id.contains(&api_key)
+                || reserved_id.contains(&api_key))
         {
             return Err(ProviderQuickSetupCommandError::new(
                 QuickSetupApplyFailureCode::ApplyFailedRolledBack,
@@ -433,6 +445,29 @@ pub async fn get_provider_summary(
     .map_err(|_| "Provider public summary is unavailable".to_string())?
 }
 
+fn provider_command_error(app: &str, error: AppError) -> String {
+    if app != "codex" {
+        return error.to_string();
+    }
+    if let AppError::Message(code) = &error {
+        if matches!(
+            code.as_str(),
+            "provider_secret_invalid"
+                | "provider_secret_locked"
+                | "provider_secret_denied"
+                | "provider_secret_missing"
+                | "provider_secret_unavailable"
+                | "provider_secret_operation_failed"
+                | "provider_secret_revoked"
+                | "provider_secret_persistence_failed"
+                | "provider_secret_recovery_required"
+        ) {
+            return code.clone();
+        }
+    }
+    "provider_operation_failed".into()
+}
+
 #[tauri::command]
 pub fn add_provider(
     state: State<'_, AppState>,
@@ -442,7 +477,7 @@ pub fn add_provider(
 ) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     ProviderService::add(state.inner(), app_type, provider, addToLive.unwrap_or(true))
-        .map_err(|e| e.to_string())
+        .map_err(|e| provider_command_error(&app, e))
 }
 
 /// Compatible mutation envelope for clients that coordinate a Codex Desktop
@@ -468,7 +503,7 @@ pub fn add_provider_with_result(
             addToLive.unwrap_or(true),
         )
     })
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| provider_command_error(&app, e))?;
     let saved_provider = state
         .db
         .get_provider_by_id(&provider_id, warning_app_type.as_str())
@@ -589,7 +624,7 @@ pub fn update_provider(
 ) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     ProviderService::update(state.inner(), app_type, originalId.as_deref(), provider)
-        .map_err(|e| e.to_string())
+        .map_err(|e| provider_command_error(&app, e))
 }
 
 #[tauri::command]
@@ -612,7 +647,7 @@ pub fn update_provider_with_result(
             provider,
         )
     })
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| provider_command_error(&app, e))?;
     let saved_provider = state
         .db
         .get_provider_by_id(&provider_id, warning_app_type.as_str())
@@ -633,7 +668,7 @@ pub fn delete_provider(
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     ProviderService::delete(state.inner(), app_type, &id)
         .map(|_| true)
-        .map_err(|e| e.to_string())
+        .map_err(|e| provider_command_error(&app, e))
 }
 
 #[tauri::command]
@@ -647,7 +682,7 @@ pub fn delete_provider_with_result(
     ProviderService::with_live_config_result(app_type, || {
         ProviderService::delete(state.inner(), mutation_app_type, &id).map(|_| true)
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| provider_command_error(&app, e))
 }
 
 /// Analyze a form-only Codex provider draft. This command never writes the
@@ -729,7 +764,8 @@ pub async fn switch_provider(
         let state = app_handle
             .try_state::<AppState>()
             .ok_or_else(|| "应用状态不可用".to_string())?;
-        switch_provider_internal(state.inner(), app_type, &id).map_err(|e| e.to_string())
+        switch_provider_internal(state.inner(), app_type, &id)
+            .map_err(|e| provider_command_error(&app, e))
     })
     .await
     .map_err(|e| format!("供应商切换任务执行失败: {e}"))?
@@ -750,7 +786,7 @@ pub async fn switch_provider_with_result(
         ProviderService::with_live_config_result(app_type, || {
             switch_provider_internal(state.inner(), mutation_app_type, &id)
         })
-        .map_err(|error| error.to_string())
+        .map_err(|error| provider_command_error(&app, error))
     })
     .await
     .map_err(|e| format!("供应商切换任务执行失败: {e}"))?
@@ -1194,7 +1230,18 @@ async fn query_provider_usage_inner(
         .db
         .get_all_providers(app_type.as_str())
         .map_err(|e| format!("Failed to get providers: {e}"))?;
-    let provider = providers.get(provider_id);
+    let resolved = providers
+        .get(provider_id)
+        .map(|provider| {
+            crate::services::provider::ProviderCredentials::resolve(
+                &state.db,
+                app_type.as_str(),
+                provider,
+            )
+        })
+        .transpose()
+        .map_err(|_| "provider_credentials_unavailable".to_owned())?;
+    let provider = resolved.as_ref();
     let usage_script = provider
         .and_then(|p| p.meta.as_ref())
         .and_then(|m| m.usage_script.as_ref());
@@ -1439,7 +1486,14 @@ pub async fn testUsageScript(
 #[tauri::command]
 pub fn read_live_provider_settings(app: String) -> Result<serde_json::Value, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    ProviderService::read_live_settings(app_type).map_err(|e| e.to_string())
+    let value = ProviderService::read_live_settings(app_type.clone())
+        .map_err(|_| "provider_live_settings_unavailable".to_owned())?;
+    if app_type == AppType::Codex {
+        let provider = Provider::with_id(String::new(), String::new(), value, None);
+        Ok(crate::provider::sanitize_provider_for_export(&provider).settings_config)
+    } else {
+        Ok(value)
+    }
 }
 
 #[tauri::command]

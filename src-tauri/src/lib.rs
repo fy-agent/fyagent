@@ -1652,6 +1652,13 @@ pub fn run() {
 
             // 启动阶段不再无条件保存,避免意外覆盖用户配置。
 
+            // Only legacy Codex credential rows are migrated. Locked stores
+            // retain the original row; this never writes an external file.
+            if crate::services::provider::ProviderCredentials::migrate_legacy(&app_state.db).is_err() {
+                log::warn!("Provider credential migration deferred");
+            }
+            crate::services::provider::ProviderCredentials::settle(&app_state.db);
+
             // 注册 deep-link URL 处理器（使用正确的 DeepLinkExt API）
             log::info!("=== Registering deep-link URL handler ===");
 

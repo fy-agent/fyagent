@@ -22,51 +22,7 @@ pub(super) fn extract_common_config_snippet_from_settings(
 /// Return true when a config key can carry authentication material and must
 /// never enter a shared common-config snippet.
 pub(super) fn is_sensitive_config_key(name: &str) -> bool {
-    let upper = name.to_ascii_uppercase();
-
-    const SENSITIVE_SUFFIXES: &[&str] = &[
-        "_KEY",
-        "_API_KEY",
-        "_ACCESS_KEY",
-        "_ACCESS_KEY_ID",
-        "_KEY_ID",
-        "_PRIVATE_KEY",
-        "_APIKEY",
-        "_ACCESSKEY",
-        "_SECRETKEY",
-        "_APITOKEN",
-        "_AUTH_TOKEN",
-        "_TOKEN",
-        "_PAT",
-        "_PWD",
-        "_PASS",
-        "_PASSPHRASE",
-        "_CREDS",
-    ];
-    const SENSITIVE_EXACT: &[&str] = &[
-        "APIKEY",
-        "API_KEY",
-        "TOKEN",
-        "SECRET",
-        "PASSWORD",
-        "CREDENTIALS",
-    ];
-    const SENSITIVE_CONTAINS: &[&str] = &[
-        "SECRET",
-        "PASSWORD",
-        "PASSWD",
-        "CREDENTIAL",
-        "PRIVATE_KEY",
-        "BEARER_TOKEN",
-    ];
-
-    SENSITIVE_EXACT.contains(&upper.as_str())
-        || SENSITIVE_SUFFIXES
-            .iter()
-            .any(|suffix| upper.ends_with(suffix))
-        || SENSITIVE_CONTAINS
-            .iter()
-            .any(|fragment| upper.contains(fragment))
+    crate::provider::is_sensitive_config_key(name)
 }
 
 fn extract_claude_common_config(settings: &Value) -> Result<String, AppError> {

@@ -1,7 +1,6 @@
 mod backend;
 mod error;
 mod material;
-#[cfg(test)]
 mod memory;
 mod platform;
 mod types;
@@ -18,7 +17,6 @@ pub(crate) use material::MAX_SECRET_BYTES;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use memory::MemoryFailureMode;
-#[cfg(test)]
 pub(crate) use memory::MemorySecretBackend;
 pub(crate) use platform::NativeSecretBackend;
 #[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]

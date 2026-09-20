@@ -339,7 +339,10 @@ impl ChangePlanService {
             .get_provider_by_id(&provider.id, AppType::Codex.as_str())
             .map_err(|_| ChangePlanErrorCode::Internal)?
             .is_some();
-        let mut provider = provider;
+        let mut provider = crate::services::provider::ProviderCredentials::merge_edit(
+            &state.db, "codex", &provider,
+        )
+        .map_err(|_| ChangePlanErrorCode::SecretDependencyUnavailable)?;
         crate::codex_config::prepare_codex_provider_features_for_save(
             &mut provider,
             !existing_reserved_row,
@@ -1605,7 +1608,14 @@ fn prove_codex_target_credential_capability(
     state: &AppState,
     inspection: &CodexSwitchInspection,
 ) -> SecretCapabilityResult {
-    let provider = &inspection.target;
+    let Ok(resolved) = crate::services::provider::ProviderCredentials::resolve(
+        &state.db,
+        "codex",
+        &inspection.target,
+    ) else {
+        return SecretCapabilityResult::SecretDependencyUnavailable;
+    };
+    let provider = &resolved;
     if ProviderService::managed_proxy_account_is_ready(state, provider) {
         return prove_managed_proxy_switch_shape(provider);
     }
@@ -2978,6 +2988,31 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    #[serial]
+    fn credential_rotation_after_plan_is_stale_before_writer() {
+        let (_home, _guard, db, state, _current, mut target) = setup_switch_state();
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+        target.settings_config["auth"]["OPENAI_API_KEY"] = json!("fixture-rotated-native-key");
+        db.save_provider("codex", &target).unwrap();
+        let calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            |_| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok::<_, ()>(WriterReceipt {
+                    live_config_changed: false,
+                })
+            },
+        )
+        .unwrap();
+        assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]

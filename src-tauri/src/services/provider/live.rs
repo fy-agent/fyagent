@@ -574,15 +574,13 @@ pub(crate) fn remove_common_config_from_settings(
             let mut target_doc = if config_toml.trim().is_empty() {
                 DocumentMut::new()
             } else {
-                config_toml.parse::<DocumentMut>().map_err(|e| {
-                    AppError::Message(format!(
-                        "Invalid Codex config.toml while removing common config: {e}"
-                    ))
-                })?
+                config_toml
+                    .parse::<DocumentMut>()
+                    .map_err(|_| AppError::Message("provider_codex_config_invalid".into()))?
             };
-            let source_doc = trimmed.parse::<DocumentMut>().map_err(|e| {
-                AppError::Message(format!("Invalid Codex common config snippet: {e}"))
-            })?;
+            let source_doc = trimmed
+                .parse::<DocumentMut>()
+                .map_err(|_| AppError::Message("provider_codex_common_config_invalid".into()))?;
 
             remove_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
             if let Some(obj) = result.as_object_mut() {
@@ -631,15 +629,13 @@ fn apply_common_config_to_settings(
             let mut target_doc = if config_toml.trim().is_empty() {
                 DocumentMut::new()
             } else {
-                config_toml.parse::<DocumentMut>().map_err(|e| {
-                    AppError::Message(format!(
-                        "Invalid Codex config.toml while applying common config: {e}"
-                    ))
-                })?
+                config_toml
+                    .parse::<DocumentMut>()
+                    .map_err(|_| AppError::Message("provider_codex_config_invalid".into()))?
             };
-            let source_doc = trimmed.parse::<DocumentMut>().map_err(|e| {
-                AppError::Message(format!("Invalid Codex common config snippet: {e}"))
-            })?;
+            let source_doc = trimmed
+                .parse::<DocumentMut>()
+                .map_err(|_| AppError::Message("provider_codex_common_config_invalid".into()))?;
 
             merge_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
             if let Some(obj) = result.as_object_mut() {
@@ -672,7 +668,8 @@ pub(crate) fn build_effective_settings_with_common_config(
     provider: &Provider,
 ) -> Result<Value, AppError> {
     let snippet = db.get_config_snippet(app_type.as_str())?;
-    let mut effective_settings = provider.settings_config.clone();
+    let resolved = super::ProviderCredentials::resolve(db, app_type.as_str(), provider)?;
+    let mut effective_settings = resolved.settings_config;
 
     if provider_uses_common_config(app_type, provider, snippet.as_deref()) {
         if let Some(snippet_text) = snippet.as_deref() {

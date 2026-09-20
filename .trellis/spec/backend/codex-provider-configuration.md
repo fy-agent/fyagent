@@ -112,11 +112,13 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   `requires_openai_auth = false` in the stored TOML and sets
   `experimental_bearer_token` on the active `[model_providers.<id>]` table.
   Disabling image-extension restores stored `requires_openai_auth = true` and
-  omits the stored bearer field. The stored Provider always keeps
-  `auth.OPENAI_API_KEY`.
+  omits the stored bearer field. Form/native drafts carry `auth.OPENAI_API_KEY`;
+  [Provider Credential Persistence](./provider-credentials.md) converts successful
+  saves to `credentialRef` and strips both plaintext representations. Native
+  projection resolves the reference before feature and live-file preparation.
 - Third-party live writes are always config-only: they never create, replace,
   or delete `auth.json`. `prepare_codex_provider_live_config` projects the
-  stored API key onto `experimental_bearer_token` so Codex can authenticate
+  natively resolved API key onto `experimental_bearer_token` so Codex can authenticate
   without touching the ChatGPT login cache. This is a hard invariant, not the
   leftover `preserveCodexOfficialAuthOnSwitch` setting. Proxy restore
   (`write_codex_live_verbatim`) follows the same split: ChatGPT OAuth login
@@ -216,7 +218,7 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 - Switch admission accepts only an existing saved Codex Provider whose
   already-saved material proves that no new credential is needed. Upsert
   admission proves the same capability from the process-private intended
-  Provider and does not call SecretRef. Unknown or managed auth is
+  Provider; bound rows resolve their exact native SecretRef at admission. Unknown or managed auth is
   `secret_dependency_unavailable`; API keys, auth objects, raw config, paths,
   SecretRef/Keychain values, and credential-derived values never enter DTOs,
   ledger rows, errors, or logs.
@@ -261,8 +263,8 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 | A consumed v2 Change Plan is reapplied with the exact same digest                                    | Return the already-created execution as `idempotent_replay`; invoke the Provider writer zero additional times.          |
 | Change Plan readback is mixed/unavailable                                                            | Persist `recovery_required`; later recovery performs readback only and never replays the writer.                        |
 | Change Plan targets the fixed Quick Setup row while live TOML contains unrelated user content        | Preview and writer use the same targeted projection; preserved content does not create a false readback mismatch.       |
-| Codex image-extension is enabled (`requires_openai_auth = false`) and the Provider has an API key    | Stored and live `[model_providers.<id>]` contain `experimental_bearer_token` equal to `auth.OPENAI_API_KEY`.            |
-| Codex image-extension is disabled (`requires_openai_auth = true`)                                    | Stored TOML has no image-mode bearer token; the stored Provider still keeps `auth.OPENAI_API_KEY`.                      |
+| Codex image-extension is enabled (`requires_openai_auth = false`) and the Provider has an API key    | Stored row holds `credentialRef`; native draft/live bearer equals the resolved key.                                     |
+| Codex image-extension is disabled (`requires_openai_auth = true`)                                    | Stored TOML has no image-mode bearer token; the stored Provider keeps only `credentialRef`.                             |
 | Third-party Codex live write (any leftover preserve setting)                                         | Config-only; live `auth.json` bytes unchanged; API key projected to `experimental_bearer_token`.                        |
 | Restore a third-party Codex backup whose `auth` is only `OPENAI_API_KEY`                             | Config-only; do not write `auth.json`; project the key onto live `experimental_bearer_token`.                           |
 | Official Provider/source switch                                                                      | Config-only; preserve the current auth bytes; do not project a saved Provider credential                                |

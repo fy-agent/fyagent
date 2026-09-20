@@ -53,6 +53,9 @@ secret handling, native source checks, and residual-risk reporting.
 
 ## Product, configuration, and runtime security
 
+[Provider Credential Persistence](./provider-credentials.md) owns production Codex
+SecretRef saves, migration, native consumers and secret-free Provider exports.
+
 [Device-local First-use Guide](./first-use-guide.md) owns new-install eligibility,
 settings persistence, narrow commands and protection against stale settings saves.
 

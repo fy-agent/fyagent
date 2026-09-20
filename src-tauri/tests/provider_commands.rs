@@ -212,14 +212,19 @@ experimental_bearer_token = "live-key"
         "missing auth.json should import as an empty auth object"
     );
     assert!(
-        provider
+        !provider
             .settings_config
             .get("config")
             .and_then(|value| value.as_str())
             .unwrap_or_default()
             .contains("experimental_bearer_token"),
-        "config.toml content should still be imported"
+        "stored bearer material should migrate into SecretRef"
     );
+    assert!(provider.settings_config.get("credentialRef").is_some());
+    assert!(!provider.settings_config.to_string().contains("live-key"));
+    assert!(std::fs::read_to_string(&config_path)
+        .unwrap()
+        .contains("live-key"));
 }
 
 #[test]
