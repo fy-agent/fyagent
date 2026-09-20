@@ -173,10 +173,10 @@ untrusted or versioned response must add parsing at this adapter boundary.
 
 ### Discovery, import, assignment, and trust copy
 
-- Installed detail shows source and transport once in its header and keeps
-  configuration/provenance in one flat metadata section. Missing optional
-  descriptions and absent local directories do not produce filler rows.
-  Editable assignment switches replace the former read-only assignment card.
+- Installed detail shows source and transport in its header. Configuration and
+  provenance share one installation section, collapsed by default and expandable
+  by keyboard. Main actions and assignment switches remain directly visible;
+  descriptions and local directories appear when supplied.
 - Copy-only directory assertions target `CopyablePath` itself. An explicitly
   displayed absolute command can legitimately contain the same directory;
   combining metadata must not turn that fact into a false redaction failure.

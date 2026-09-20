@@ -59,6 +59,40 @@ for (const theme of ["light", "dark"] as const) {
         await expect(
           scope.locator(".fy-feature-assignments:visible").getByRole("switch"),
         ).toHaveCount(7);
+        const installationToggle = scope.getByRole("button", {
+          name: "安装信息",
+        });
+        const installationPanel = scope.locator(".fy-collapsible-panel");
+        await expect(installationToggle).toHaveAttribute(
+          "aria-expanded",
+          "false",
+        );
+        await expect(installationPanel).toHaveAttribute("aria-hidden", "true");
+        await expect(installationPanel).toHaveCSS("height", "0px");
+        await page.screenshot({
+          path: `node_modules/.cache/concise-renderer/screenshots/${info.project.name}-${theme}-${view.id}-collapsed.jpg`,
+          type: "jpeg",
+          quality: 75,
+        });
+        await installationToggle.focus();
+        await page.keyboard.press("Enter");
+        await expect(installationToggle).toHaveAttribute(
+          "aria-expanded",
+          "true",
+        );
+        await expect(installationPanel).not.toHaveAttribute("aria-hidden");
+        await expect(scope.locator(".fy-feature-definition")).toBeVisible();
+        await page.screenshot({
+          path: `node_modules/.cache/concise-renderer/screenshots/${info.project.name}-${theme}-${view.id}-expanded.jpg`,
+          type: "jpeg",
+          quality: 75,
+        });
+        await page.keyboard.press("Space");
+        await expect(installationToggle).toHaveAttribute(
+          "aria-expanded",
+          "false",
+        );
+        await expect(installationPanel).toHaveAttribute("inert", "");
       }
       if (view.id === "memory") {
         await expect(scope.getByText("已读取", { exact: true })).toHaveCount(0);

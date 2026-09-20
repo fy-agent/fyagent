@@ -1,3 +1,4 @@
+import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState, type MouseEvent } from "react";
 
@@ -26,6 +27,12 @@ import {
   type McpTargetId,
 } from "../../shared/features/types";
 import { Button } from "../../shared/ui/Button";
+import {
+  Collapsible,
+  CollapsibleCaret,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../../shared/ui/Collapsible";
 import { AnimatePresence } from "../../shared/ui/motion";
 import {
   captureDialogOrigin,
@@ -81,6 +88,7 @@ function ServerDetail({
   onDelete: () => void;
   showAssignment: boolean;
 }) {
+  const [installationOpen, setInstallationOpen] = useState(false);
   const spec = server.server;
   const transport = transportOf(server);
   const catalogItem = findCatalogItem(server.id);
@@ -117,92 +125,116 @@ function ServerDetail({
         </div>
       </div>
       <div className="fy-feature-info-grid">
-        <section className="fy-feature-info-card" aria-label="安装信息">
-          <h3>安装信息</h3>
-          <dl className="fy-feature-definition">
-            {catalogItem && (
-              <>
-                <dt>发布方</dt>
-                <dd>{catalogItem.publisher}</dd>
-                <dt>来源标识</dt>
-                <dd>{MCP_PROVENANCE_LABEL[catalogItem.provenance]}</dd>
-              </>
-            )}
-            <dt>ID</dt>
-            <dd>
-              <code className="fy-feature-code">{server.id}</code>
-            </dd>
-            {installDirectory && (
-              <>
-                <dt>安装目录</dt>
+        <Collapsible
+          open={installationOpen}
+          onOpenChange={setInstallationOpen}
+          asChild
+        >
+          <section className="fy-feature-info-card" aria-label="安装信息">
+            <h3>
+              <CollapsibleTrigger asChild>
+                <Button>
+                  安装信息
+                  <CollapsibleCaret open={installationOpen}>
+                    <CaretDownIcon size={16} />
+                  </CollapsibleCaret>
+                </Button>
+              </CollapsibleTrigger>
+            </h3>
+            <CollapsibleContent open={installationOpen}>
+              <dl className="fy-feature-definition">
+                {catalogItem && (
+                  <>
+                    <dt>发布方</dt>
+                    <dd>{catalogItem.publisher}</dd>
+                    <dt>来源标识</dt>
+                    <dd>{MCP_PROVENANCE_LABEL[catalogItem.provenance]}</dd>
+                  </>
+                )}
+                <dt>ID</dt>
                 <dd>
-                  <CopyablePath revealValue={false} value={installDirectory} />
+                  <code className="fy-feature-code">{server.id}</code>
                 </dd>
-              </>
-            )}
-            {spec.command && (
-              <>
-                <dt>命令</dt>
-                <dd>
-                  <code className="fy-feature-code">{spec.command}</code>
-                </dd>
-              </>
-            )}
-            {spec.args && spec.args.length > 0 && (
-              <>
-                <dt>参数</dt>
-                <dd>
-                  {redactMcpArgs(spec.args).map((argument, index) => (
-                    <code
-                      className="fy-feature-code"
-                      key={`${argument}-${index}`}
-                    >
-                      {argument}
-                    </code>
-                  ))}
-                </dd>
-              </>
-            )}
-            {spec.cwd && spec.cwd.trim() !== installDirectory && (
-              <>
-                <dt>工作目录</dt>
-                <dd>
-                  <code className="fy-feature-code">{spec.cwd}</code>
-                </dd>
-              </>
-            )}
-            {spec.url && (
-              <>
-                <dt>URL</dt>
-                <dd>
-                  <code className="fy-feature-code">
-                    {redactMcpUrl(spec.url)}
-                  </code>
-                </dd>
-              </>
-            )}
-            {spec.env && (
-              <>
-                <dt>环境变量</dt>
-                <dd>{Object.keys(spec.env).length} 项（仅在编辑时显示）</dd>
-              </>
-            )}
-            {spec.headers && (
-              <>
-                <dt>请求头</dt>
-                <dd>{Object.keys(spec.headers).length} 项（仅在编辑时显示）</dd>
-              </>
-            )}
-          </dl>
-          {(homepage || docs) && (
-            <div className="fy-feature-actions">
-              {homepage && (
-                <ExternalLinkButton url={homepage}>主页</ExternalLinkButton>
+                {installDirectory && (
+                  <>
+                    <dt>安装目录</dt>
+                    <dd>
+                      <CopyablePath
+                        revealValue={false}
+                        value={installDirectory}
+                      />
+                    </dd>
+                  </>
+                )}
+                {spec.command && (
+                  <>
+                    <dt>命令</dt>
+                    <dd>
+                      <code className="fy-feature-code">{spec.command}</code>
+                    </dd>
+                  </>
+                )}
+                {spec.args && spec.args.length > 0 && (
+                  <>
+                    <dt>参数</dt>
+                    <dd>
+                      {redactMcpArgs(spec.args).map((argument, index) => (
+                        <code
+                          className="fy-feature-code"
+                          key={`${argument}-${index}`}
+                        >
+                          {argument}
+                        </code>
+                      ))}
+                    </dd>
+                  </>
+                )}
+                {spec.cwd && spec.cwd.trim() !== installDirectory && (
+                  <>
+                    <dt>工作目录</dt>
+                    <dd>
+                      <code className="fy-feature-code">{spec.cwd}</code>
+                    </dd>
+                  </>
+                )}
+                {spec.url && (
+                  <>
+                    <dt>URL</dt>
+                    <dd>
+                      <code className="fy-feature-code">
+                        {redactMcpUrl(spec.url)}
+                      </code>
+                    </dd>
+                  </>
+                )}
+                {spec.env && (
+                  <>
+                    <dt>环境变量</dt>
+                    <dd>{Object.keys(spec.env).length} 项（仅在编辑时显示）</dd>
+                  </>
+                )}
+                {spec.headers && (
+                  <>
+                    <dt>请求头</dt>
+                    <dd>
+                      {Object.keys(spec.headers).length} 项（仅在编辑时显示）
+                    </dd>
+                  </>
+                )}
+              </dl>
+              {(homepage || docs) && (
+                <div className="fy-feature-actions">
+                  {homepage && (
+                    <ExternalLinkButton url={homepage}>主页</ExternalLinkButton>
+                  )}
+                  {docs && (
+                    <ExternalLinkButton url={docs}>说明</ExternalLinkButton>
+                  )}
+                </div>
               )}
-              {docs && <ExternalLinkButton url={docs}>说明</ExternalLinkButton>}
-            </div>
-          )}
-        </section>
+            </CollapsibleContent>
+          </section>
+        </Collapsible>
       </div>
       {showAssignment && (
         <div className="fy-feature-inline-assignment">
@@ -500,6 +532,7 @@ export function McpPage() {
                 </section>
                 {selected && (
                   <ServerDetail
+                    key={selected.id}
                     originRef={dialogOriginRef}
                     server={selected}
                     busy={busy}

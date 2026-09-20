@@ -46,6 +46,8 @@ Evidence rules:
 - Credential presence and a native connection observation are separate facts.
   Neither proves remote authorization, remaining quota or successful pickup
   by a running application. Pending restart retains its native meaning.
+- Codex, Claude Code, Grok Build and OpenCode read the managed-auth overview.
+  QoderWork, TRAE and WorkBuddy use vendor-owned observations.
 - Per-Agent proxy intent uses SELECT-only `health_proxy_enabled`.
   Missing rows remain unknown; the legacy proxy getter can seed rows and is
   prohibited on this path. A running global listener alone cannot establish
