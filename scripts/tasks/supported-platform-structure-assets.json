@@ -67,7 +67,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "602c4772f24177c3698ad627fc64de8c2c1396ce6b03374bb72852f29b657202"
+      "24f315ff2dbf1ec6821473c04606ca5151635ebd07679cd396460bb287f23669"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -230,12 +230,20 @@
       "8d31450f0b157a78b7907eb4b45b54dba1b15da3541ce76bbd3225945b49ff1a"
     ],
     [
+      "src-tauri/src/services/fde_workspace/tests.rs",
+      "857530b0591827ec989b7fb7ad7026fdf55335b3022624f088102edd134d0d8a"
+    ],
+    [
       "src-tauri/src/services/managed_auth/consumers/grok.rs",
       "4d7ccd6200e71c3ab640f7d89638c18ea7fafdf0451ed896018ce5c0578d2eca"
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",
       "c54bbf91b40da1f3be7a74619ed120571f90c9d0c0ed526fdf2fbd0b43947d91"
+    ],
+    [
+      "src-tauri/src/services/managed_auth/subscription_transport_tests.rs",
+      "a74374c08c8fbc3610ef4b2aba965af8a9ea73125b775caae2d933f5720ddaaa"
     ],
     [
       "src-tauri/src/services/model_probe.rs",

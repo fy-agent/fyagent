@@ -7,6 +7,10 @@ fn health_admission_collect_preserves_seeded_database_native_files_and_vault() {
     use crate::services::external_agents::AgentCatalogId;
     use crate::services::secret::MemoryFailureMode;
 
+    #[cfg(target_os = "windows")]
+    crate::initialize_windows_user_context()
+        .expect("initialize the real Windows Shell-user context for health inventory");
+
     let home = tempfile::tempdir().unwrap();
     let _home_guard = TestHome::set(home.path());
     // Restore process-local settings while the temporary home is still active.
@@ -28,8 +32,8 @@ fn health_admission_collect_preserves_seeded_database_native_files_and_vault() {
     ));
     seed_provider(&auth, "health-fixture", ManagedAuthProvider::Openai);
     let state = AppState::new(db.clone());
-    // OpenCode's desktop inventory is confined to this temporary home. Unlike
-    // CLI inventory, this path never needs a login shell or Agent execution.
+    // Configuration remains confined to this temporary home. Desktop inventory
+    // may read platform installation evidence, but never runs an Agent or shell.
     let config_path = home.path().join(".config/opencode/opencode.json");
     let codex_path = auth.codex_home().join("auth.json");
     let opencode_auth_path = auth.opencode_auth_path();

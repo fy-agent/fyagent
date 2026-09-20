@@ -78,6 +78,10 @@ rejects native-only dismissal instead of pretending to save.
   update the shared state but must not steal focus, reopen portals or scan.
   Focus the guide heading on step changes and the directory heading on visible
   completion. Reuse Button/PressableButton, brand assets and semantic CSS tokens.
+- The guide is outside the directory/master-detail containers. Define its
+  detail-brand frame and artwork sizes locally (64 px and 48 px); inheriting
+  container-only variables leaves the image at its intrinsic size and can push
+  completion/skip controls out of view when the image finishes loading.
 
 ## 4. Validation & Error Matrix
 
@@ -117,7 +121,8 @@ positive catalog copy in Chromium/WebKit. Run the existing directory/browser
 regressions and production boot gate. WebKit keyboard tests use its Option-Tab
 all-controls navigation, without changing the host keyboard-access setting.
 The four-item coding result must keep recommendations and completion/skip
-controls reachable at the smallest supported viewport. Browser fixtures do not
+controls reachable at the smallest supported viewport. Assert the actual frame
+and artwork dimensions before checking reachability. Browser fixtures do not
 prove native first-install or Windows/macOS installer behavior.
 The production navigation smoke test also verifies that a fresh user loads the
 guide chunk and a post-skip reload does not request it.

@@ -1,7 +1,12 @@
 use super::*;
-use evidence::{Checker, KitFixture, Outcome, RunRequest, SourceClass, Validity};
-use projects::domain::{BindKitRequest, ProjectMutation};
+use evidence::{Checker, KitFixture, Outcome, RunRequest};
+#[cfg(target_os = "macos")]
+use evidence::{SourceClass, Validity};
+#[cfg(target_os = "macos")]
+use projects::domain::BindKitRequest;
+use projects::domain::ProjectMutation;
 
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn fde_workspace_sample_binding_persistence_export_and_revision_invalidation() {
     let temp = tempfile::tempdir().unwrap();
@@ -141,6 +146,47 @@ async fn fde_workspace_sample_binding_persistence_export_and_revision_invalidati
         .unwrap()
         .evidence
         .is_empty());
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn fde_workspace_windows_context_write_reports_unavailable_without_publication() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let workspace = compose(Arc::new(Database::memory().unwrap()), root.clone());
+    let customer = workspace
+        .projects
+        .create_customer("Windows fixture")
+        .unwrap();
+    let project = workspace
+        .projects
+        .create(&customer.customer_id, "Unavailable context")
+        .unwrap();
+    let error = workspace
+        .projects
+        .write_context(
+            &ProjectMutation {
+                project_id: project.project_id.clone(),
+                expected_revision: project.project_revision,
+            },
+            "This context must not be published on Windows.",
+        )
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        AppError::InvalidInput(code) if code == "projects_platform_unavailable"
+    ));
+    assert_eq!(
+        workspace.projects.get(&project.project_id).unwrap(),
+        project
+    );
+    let context = workspace.projects.context(&project.project_id).unwrap();
+    assert_eq!(context.state, ContextState::NotCreated);
+    assert_eq!(context.project_revision, project.project_revision);
+    assert!(context.content.is_empty());
+    assert!(context.directory.is_none());
+    assert!(context.codex_instructions.is_none());
+    assert!(!root.join("projects").exists());
 }
 
 #[tokio::test]

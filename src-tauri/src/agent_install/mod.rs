@@ -1641,10 +1641,13 @@ mod tests {
 
     fn test_app_state() -> AppState {
         #[cfg(target_os = "windows")]
+        crate::initialize_windows_user_context()
+            .expect("initialize the real Windows Shell-user context for Agent tests");
+        #[cfg(target_os = "windows")]
         // AppState construction creates the production Codex service, whose log
-        // root normally assumes startup already froze the Explorer-user context.
-        // These tests stop before user-path I/O, so bind only the test log root;
-        // do not initialize or weaken the production Windows user context.
+        // root must remain temporary even after the production context is frozen.
+        // The test binary does not enter main; FDE composition also requires the
+        // same initialized Shell-user authority as production startup.
         crate::panic_hook::init_app_config_dir(
             std::env::temp_dir()
                 .join("fyagent-agent-install-tests")

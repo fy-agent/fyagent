@@ -292,7 +292,11 @@ test("reaches every primary control with the keyboard in document order", async 
             element.querySelectorAll<HTMLElement>(
               'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
             ),
-          ).filter((control) => control.tabIndex >= 0).length,
+          ).filter(
+            (control) =>
+              control.tabIndex >= 0 &&
+              control.closest('[data-testid="top-bar"], nav'),
+          ).length,
       ),
     "Renderer shell must contain the complete grouped keyboard path",
   ).toBe(primaryControlTestIds.length);

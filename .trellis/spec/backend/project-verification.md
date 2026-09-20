@@ -72,6 +72,14 @@ write. A file undo does not undo account grants, DB state or remote business wor
 
 ## Checks
 
+The composed sample/context/export workflow requires the macOS project-files
+owner and runs only on macOS. Windows keeps the file owner explicitly
+unavailable: its composition test requires `projects_platform_unavailable` from
+context writing, unchanged project revision/generation, no published context and
+no project directory. Cross-platform checks such as unbound-package rejection
+remain enabled on both platforms; do not skip the whole FDE test module or turn
+an unavailable file operation into successful evidence.
+
 Run `mise run rust:test -- verification`, `mise run rust:test -- model_probe`,
 relevant migration/sync tests and Rust Clippy/fmt. Required cases: config cannot
 become customer pass, external manual acceptance, fixture laundering refusal,
