@@ -1,6 +1,14 @@
 import type { AgentCatalogId, AgentVariantId } from "./directory";
 
-export const AGENT_OFFICIAL_LINK_IDS = ["product", "cli", "desktop"] as const;
+export const AGENT_OFFICIAL_LINK_IDS = [
+  "product",
+  "desktop",
+  "cli",
+  "download",
+  "license",
+  "terms",
+  "docs",
+] as const;
 export type AgentOfficialLinkId = (typeof AGENT_OFFICIAL_LINK_IDS)[number];
 
 export interface AgentOfficialLink {
@@ -313,3 +321,90 @@ export interface CancelTraeModelProbeResult {
   requestId: string;
   cancelled: boolean;
 }
+
+export type AgentSourceLinkCategory =
+  | "homepage"
+  | "download"
+  | "license"
+  | "terms"
+  | "docs";
+
+export interface AgentVerifiedSourceLink {
+  id: AgentOfficialLinkId;
+  category: AgentSourceLinkCategory;
+  label: string;
+  url: string;
+  isOssLicense: boolean;
+  licenseName?: string;
+  badge: string;
+}
+
+function categoryFromLinkId(id: AgentOfficialLinkId): AgentSourceLinkCategory {
+  switch (id) {
+    case "product":
+      return "homepage";
+    case "desktop":
+    case "download":
+    case "cli":
+      return "download";
+    case "license":
+      return "license";
+    case "terms":
+      return "terms";
+    case "docs":
+      return "docs";
+  }
+}
+
+function badgeFromLinkId(id: AgentOfficialLinkId): string {
+  switch (id) {
+    case "product":
+      return "官方主页";
+    case "desktop":
+      return "桌面客户端";
+    case "download":
+      return "官方下载";
+    case "cli":
+      return "CLI工具";
+    case "license":
+      return "开源许可";
+    case "terms":
+      return "服务协议";
+    case "docs":
+      return "官方文档";
+  }
+}
+
+/**
+ * Resolves verified official homepage, download source, and license/terms links
+ * directly from native catalog officialLinks.
+ * Renderer performs purely presentational mapping without storing a second URL authority table.
+ */
+export function resolveAgentSourceLinks(
+  catalogLinks?: readonly AgentOfficialLink[],
+): AgentVerifiedSourceLink[] {
+  if (!catalogLinks || catalogLinks.length === 0) return [];
+
+  return catalogLinks.map((link) => {
+    const category = categoryFromLinkId(link.id);
+    const isOss = link.id === "license";
+    const licenseName = isOss
+      ? link.label.includes("Apache")
+        ? "Apache-2.0"
+        : link.label.includes("MIT")
+          ? "MIT"
+          : undefined
+      : undefined;
+
+    return {
+      id: link.id,
+      category,
+      label: link.label,
+      url: link.url,
+      isOssLicense: isOss,
+      licenseName,
+      badge: badgeFromLinkId(link.id),
+    };
+  });
+}
+

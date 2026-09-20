@@ -1,0 +1,108 @@
+.fy-agent-source-links {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--fy-surface-inset);
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-panel);
+}
+
+.fy-agent-source-links-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fy-agent-source-links-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fy-text-secondary);
+  letter-spacing: -0.01em;
+}
+
+.fy-agent-source-links-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fy-agent-source-link-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--fy-text);
+  background: var(--fy-surface);
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-sm, 6px);
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.fy-agent-source-link-card:hover {
+  background: var(--fy-surface-hover);
+  border-color: var(--fy-border-strong);
+  text-decoration: none;
+}
+
+.fy-agent-source-link-card:focus-visible {
+  outline: 2px solid var(--fy-focus, #3b82f6);
+  outline-offset: 1px;
+}
+
+.fy-agent-source-link-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  background: var(--fy-surface-elevated, rgba(255, 255, 255, 0.08));
+  color: var(--fy-text-secondary);
+}
+
+.fy-agent-source-link-badge-homepage {
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+}
+
+.fy-agent-source-link-badge-download {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
+
+.fy-agent-source-link-badge-license {
+  background: rgba(168, 85, 247, 0.12);
+  color: #c084fc;
+}
+
+.fy-agent-source-link-badge-terms {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+}
+
+.fy-agent-source-link-badge-docs {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+}
+
+.fy-agent-source-link-label {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fy-agent-source-link-arrow {
+  font-size: 11px;
+  color: var(--fy-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.fy-agent-source-link-card:hover .fy-agent-source-link-arrow {
+  transform: translate(1px, -1px);
+  color: var(--fy-text);
+}

@@ -28,13 +28,13 @@ import {
 import { hasExactKeys, isOneOf, isRecord } from "./validation";
 
 const EXPECTED_AGENT_LINK_IDS = {
-  qoderwork: ["product"],
-  "trae-work": ["product"],
-  workbuddy: ["product"],
-  grokbuild: ["product"],
-  codex: [],
-  "claude-code": ["product"],
-  opencode: ["product", "desktop"],
+  qoderwork: ["product", "download", "terms"],
+  "trae-work": ["product", "download", "terms"],
+  workbuddy: ["product", "download", "terms"],
+  grokbuild: ["product", "docs", "download", "license"],
+  codex: ["product", "desktop", "download", "terms"],
+  "claude-code": ["product", "download", "terms"],
+  opencode: ["product", "desktop", "license", "terms"],
 } as const satisfies Readonly<
   Record<AgentCatalogId, readonly AgentOfficialLinkId[]>
 >;
