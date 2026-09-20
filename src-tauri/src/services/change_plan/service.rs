@@ -2495,7 +2495,9 @@ mod tests {
     fn malformed_target_and_live_read_error_fail_closed_without_plan() {
         let (_home, _guard, db, state, _current, mut target) = setup_switch_state();
         target.settings_config["config"] = Value::String("not = [valid".to_string());
-        db.save_provider(AppType::Codex.as_str(), &target).unwrap();
+        // A legacy/corrupt row can predate the credential-aware save boundary.
+        db.save_provider_record(AppType::Codex.as_str(), &target)
+            .unwrap();
         assert_eq!(
             ChangePlanService::plan_codex_switch_at(&state, &target.id, 100),
             Err(ChangePlanErrorCode::Internal)
@@ -2522,10 +2524,15 @@ mod tests {
     #[test]
     #[serial]
     fn apply_revalidates_credentials_before_consuming_plan_or_calling_writer() {
-        let (_home, _guard, db, state, _current, mut target) = setup_switch_state();
+        let (_home, _guard, db, state, _current, target) = setup_switch_state();
         let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
-        target.settings_config["auth"] = json!({});
-        db.save_provider(AppType::Codex.as_str(), &target).unwrap();
+        let stored = db.get_provider_by_id(&target.id, "codex").unwrap().unwrap();
+        let reference = stored.settings_config["credentialRef"].as_str().unwrap();
+        let credential = db
+            .provider_credential(reference, &target.id)
+            .unwrap()
+            .unwrap();
+        db.provider_secrets.delete(&credential.handle).unwrap();
         let calls = AtomicUsize::new(0);
 
         let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
