@@ -74,6 +74,12 @@ pub(crate) struct FileRecovery {
     pub can_restore: bool,
 }
 
+/// Historical writer evidence, read without granting a new file mutation.
+pub(crate) struct VerifiedFileRecovery {
+    pub preimage: Option<Vec<u8>>,
+    pub postimage_sha256: Option<String>,
+}
+
 fn failure(code: &'static str) -> AppError {
     AppError::Config(code.to_string())
 }
@@ -314,6 +320,28 @@ pub(crate) fn file_recovery(path: &Path) -> Result<Option<FileRecovery>, AppErro
         had_file: record.preimage_sha256.is_some(),
         can_restore: digest(current.as_deref()) == record.postimage_sha256
             && digest(backup.as_deref()) == record.preimage_sha256,
+    }))
+}
+
+pub(crate) fn verified_file_recovery(
+    path: &Path,
+) -> Result<Option<VerifiedFileRecovery>, AppError> {
+    let _guard = WRITER
+        .lock()
+        .map_err(|_| failure("config_writer_unavailable"))?;
+    let Some(record) = read_record(path)? else {
+        return Ok(None);
+    };
+    let current = read_file(path, MAX_FILE_BYTES)?;
+    let preimage = read_file(&rolling_backup_path(path), MAX_FILE_BYTES)?;
+    if digest(current.as_deref()) != record.postimage_sha256
+        || digest(preimage.as_deref()) != record.preimage_sha256
+    {
+        return Err(failure("config_external_change"));
+    }
+    Ok(Some(VerifiedFileRecovery {
+        preimage,
+        postimage_sha256: record.postimage_sha256,
     }))
 }
 

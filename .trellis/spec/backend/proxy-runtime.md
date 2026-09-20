@@ -105,9 +105,30 @@ backup body, or replacement routing implementation.
   the prior proof before replacing it, so earlier external edits cannot become
   owned accidentally. Recovery also protects the target's backup sidecars and
   rechecks ownership inside each individual restore writer.
-- A pre-existing plain backup is not a managed ownership proof. For a managed
-  current Provider, legacy restoration and the following automatic resume must
-  both retain that backup and fail closed. A new managed binding encountering
+- Legacy Claude/Codex/Grok subscription backups may be upgraded using the
+  existing path-bound atomic-writer receipt. Verify its current/postimage and
+  rolling-backup/preimage hashes, and independently reproduce the complete
+  subscription projection from the old database backup and saved managed
+  Provider. Match the current endpoint to the persisted subscription listener;
+  a current file cannot declare its own trusted loopback endpoint. A later
+  FyAgent MCP/configuration write is not subscription
+  ownership. Reject unexplained changes without replacing files or recovery
+  records; the existing per-file undo/original-source recovery remains the
+  recovery route. Preserve exact native preimages, including absent files and
+  Claude's original `null` bytes (whose read value was normalized to `{}`),
+  when the receipt contains them. Repeated bindings may use the legacy
+  logical backup only after the prior projection is also verified. Native
+  Codex auth is never restored from this backup; a catalog with no historical
+  preimage remains unchanged. Cover normal upgrade, repeated model/source
+  binding, absent/null files, external edits and tampered recovery evidence.
+  The old database remains the restoration authority for native fields masked
+  by both subscription projections, such as original credentials/URLs after
+  repeated bindings. v0.4.5 retained no independent digest of those original
+  fields; this compatibility path does not claim to detect their database-only
+  modification. Keep a regression that explicitly records this boundary.
+- A pre-existing plain backup alone is not a managed ownership proof. If the
+  legacy compatibility checks above cannot prove ownership, restoration and
+  automatic resume retain that backup and fail closed. A new managed binding encountering
   an existing API-key takeover must require its normal stop/restore first;
   never adopt the currently projected placeholder as the original preimage.
 - Startup routes every managed current Provider through the same admitted
