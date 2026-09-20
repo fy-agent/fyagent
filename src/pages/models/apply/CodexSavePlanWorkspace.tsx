@@ -17,7 +17,7 @@ export function CodexSavePlanWorkspace(
       }
       label="保存 Codex Provider"
       title="保存并设为当前配置"
-      description="请先检查更改内容。只有确认后才会保存并启用此 Provider。"
+      description="确认后将保存并启用此配置。FyAgent 将 API Key 保存在本机系统凭据库；Codex 仍需在 config.toml 中读取明文 Key，备份也可能含有旧 Key。请勿分享这些文件。删除 FyAgent 中的配置不会撤销服务商处的 Key。"
     />
   );
 }

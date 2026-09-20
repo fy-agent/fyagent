@@ -1284,7 +1284,7 @@ describe("Models page", () => {
     expect(await screen.findByText(/本机系统凭据库/)).toHaveTextContent(
       "config.toml",
     );
-    await confirmWriteDisclosure(user);
+    await expectSavePreview();
     await waitFor(() =>
       expect(
         ports.changePlans.createCodexProviderUpsertPlan,

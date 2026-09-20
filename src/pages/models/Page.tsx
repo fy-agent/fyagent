@@ -1681,7 +1681,6 @@ function ProviderPanel({
         open={writeConfirm.open}
         targets={writeConfirm.pending?.targets ?? []}
         onConfirm={confirmWrite}
-        credentialDisclosure={app === "codex"}
         onCancel={() => {
           writeConfirm.takePending();
         }}
