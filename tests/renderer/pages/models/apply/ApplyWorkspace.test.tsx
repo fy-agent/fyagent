@@ -397,14 +397,28 @@ describe("ApplyWorkspace", () => {
     ).toHaveAttribute("aria-live", "polite");
   });
 
-  it("renders four preview sections from the closed plan DTO", () => {
+  it("shows the actual write scope without empty warnings or premature results", () => {
     render(<ApplyWorkspace {...baseProps} />);
 
     expect(screen.getByRole("heading", { name: "将要更改" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "需要注意" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "影响范围" })).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "需要注意" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "执行进度" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "应用结果" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "失败或中断时" })).toBeVisible();
-    expect(screen.getByText("没有其他需要确认的事项")).toBeVisible();
+    expect(
+      screen.getByText(
+        "FyAgent 当前 Provider、Codex 当前 Provider、Codex 配置文件",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("配置详情").closest("details")).not.toHaveAttribute(
+      "open",
+    );
     expect(
       screen.queryByText(plan.currentProviderCode),
     ).not.toBeInTheDocument();
@@ -416,11 +430,72 @@ describe("ApplyWorkspace", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("preserves required restart and meaningful warnings from the native plan", () => {
+    render(
+      <ApplyWorkspace
+        {...baseProps}
+        plan={{
+          ...plan,
+          restartExpectation: "recommended",
+          risks: [
+            { code: "local_configuration_write", severity: "notice" },
+            { code: "existing_model_ids_will_be_updated", severity: "warning" },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("建议重启 Codex")).toBeVisible();
+    expect(screen.getByText("同名模型会更新现有设置（注意）")).toBeVisible();
+    expect(
+      screen.queryByText("将修改本机配置文件（提示）"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps pending steps pending and does not promise recovery before readback", () => {
+    const view = createApplyViewModel(plan, job(), {
+      busy: false,
+      error: null,
+    });
+    expect(
+      view.steps.find((step) => step.key.startsWith("readback")),
+    ).toMatchObject({
+      status: "pending",
+      current: false,
+      detail: "等待中",
+    });
+    expect(view.partialTruth).toBeNull();
+    render(
+      <ApplyWorkspace
+        {...baseProps}
+        job={job({
+          status: "failed",
+          resultCode: "recovery_required",
+          recoveryState: "recovery_required",
+          partialResult: {
+            succeededSteps: [],
+            compensatedSteps: [],
+            unverifiedSteps: ["readback"],
+            remainingEffects: [],
+            manualActions: [],
+          },
+        })}
+      />,
+    );
+    expect(
+      screen.queryByRole("heading", { name: "将要更改" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("尚未确认，请检查当前配置")).toBeVisible();
+    expect(screen.queryByText("没有检测到残留更改")).not.toBeInTheDocument();
+    expect(screen.queryByText("无需额外操作")).not.toBeInTheDocument();
+  });
+
   it("renders actionable partial results without backend diagnostics", () => {
     render(
       <ApplyWorkspace
         {...baseProps}
         job={job({
+          status: "failed",
+          resultCode: "recovery_required",
           eventSeq: 7,
           partialResult: {
             succeededSteps: ["precheck", "snapshot"],
@@ -439,6 +514,27 @@ describe("ApplyWorkspace", () => {
     expect(screen.getAllByText("FyAgent 当前 Provider").length).toBeGreaterThan(
       0,
     );
+  });
+
+  it("keeps resource uncertainty even when the unverified step list is empty", () => {
+    render(
+      <ApplyWorkspace
+        {...baseProps}
+        job={job({
+          status: "failed",
+          resultCode: "readback_unavailable",
+          resources: [
+            {
+              kind: "codex_live_projection",
+              status: "unavailable",
+              code: "unavailable",
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText("尚未确认，请检查当前配置")).toBeVisible();
+    expect(screen.queryByText("无需额外操作")).not.toBeInTheDocument();
   });
 
   it("keeps prohibited prototype controls and data sources out of product code", () => {

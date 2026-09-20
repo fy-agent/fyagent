@@ -106,7 +106,9 @@ describe("WorkBuddy save Change Plan workspace", () => {
       </FeatureProvider>,
     );
 
-    expect(screen.getByText("保存 WorkBuddy 模型设置")).toBeVisible();
+    expect(
+      screen.getByText(/^保存 WorkBuddy 模型设置，服务地址为 /),
+    ).toBeVisible();
     expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
     expect(document.body).not.toHaveTextContent("secret");
     fireEvent.click(screen.getByRole("button", { name: "应用更改" }));

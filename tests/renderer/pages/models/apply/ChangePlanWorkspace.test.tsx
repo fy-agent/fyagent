@@ -83,7 +83,8 @@ describe("Models Change Plan connection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
     await waitFor(() => expect(get).toHaveBeenCalledWith("job-1"));
-    expect(screen.getByText("请重新生成预览")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "正在应用配置" })).toBeVisible();
+    expect(screen.queryByText("请重新生成预览")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "预览更改" })).toBeDisabled();
     expect(target).toBeDisabled();
     expect(screen.getByRole("button", { name: "关闭" })).toBeDisabled();

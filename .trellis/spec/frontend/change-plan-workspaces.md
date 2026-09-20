@@ -64,6 +64,20 @@ and `SavePlanWorkspace` never forwards its request to apply.
 
 ## 3. Contracts
 
+### Focused confirmation and execution
+
+Before admission, show the operation summary, deduplicated native write scope,
+necessary restart or meaningful warnings, and recovery limitations. Do not repeat
+notice-only write/switch risks already described by that summary. Read scope,
+credential capability and preview expiry remain in a keyboard-accessible closed
+details disclosure. Never translate opaque provider codes into invented values.
+
+After admission, replace the preview with the job progress and readback result;
+do not ask the user to regenerate a consumed plan while its job is running.
+Pending steps retain their waiting presentation. Missing remaining-effect or
+manual-action entries are not evidence of successful recovery when native
+unverified steps remain. Preserve those unknowns and the actual recovery state.
+
 ### File-impact disclosure
 
 `ApplyWorkspace` accepts native-owned `writeTargets` and composes the shared
