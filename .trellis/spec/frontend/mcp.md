@@ -176,17 +176,18 @@ untrusted or versioned response must add parsing at this adapter boundary.
 
 ### Discovery, import, assignment, and trust copy
 
-- Installed detail shows source and transport once in its header and keeps
-  configuration/provenance in one flat metadata section. Missing optional
-  descriptions and absent local directories do not produce filler rows.
-  Editable assignment switches replace the former read-only assignment card.
+- Installed detail shows source and transport in its header. Configuration and
+  provenance share one installation section, collapsed by default and expandable
+  by keyboard. Main actions and assignment switches remain directly visible;
+  descriptions and local directories appear when supplied.
 - Copy-only directory assertions target `CopyablePath` itself. An explicitly
   displayed absolute command can legitimately contain the same directory;
   combining metadata must not turn that fact into a false redaction failure.
 - Discovery uses the local reviewed catalog and builds an `McpServer` for
   `McpPort.upsert`; it is not a runtime/network test of the recipe.
-- Import delegates to `importFromApps()` and reports the returned imported
-  count. Native code owns per-target parsing and conflict behavior.
+- The header owns add/import actions, including when the installed list is empty.
+  Import delegates to `importFromApps()` and reports the returned imported count.
+  Native code owns per-target parsing and conflict behavior.
 - The seven target rows and order come from `MCP_TARGETS`. Assignment pages do
   not construct vendor paths or choose the native write format.
 - Enabling/installing WorkBuddy opens the product's trust disclosure after the

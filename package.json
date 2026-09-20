@@ -20,7 +20,7 @@
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\" \"config/*.{ts,cjs}\"",
     "test:unit": "node --throw-deprecation ./node_modules/vitest/vitest.mjs run --config config/vitest.config.ts",
     "test:unit:watch": "node --throw-deprecation ./node_modules/vitest/vitest.mjs watch --config config/vitest.config.ts",
-    "test:browser": "pnpm build:renderer && playwright test --config config/playwright.performance.config.ts --grep 'production boots' && playwright test --config config/playwright.config.ts",
+    "test:browser": "playwright test --config config/playwright.performance.config.ts --grep 'production boots' && playwright test --config config/playwright.config.ts",
     "test:performance": "playwright test --config config/playwright.performance.config.ts",
     "test:desktop:mock": "node --throw-deprecation ./node_modules/vitest/vitest.mjs run --config config/vitest.config.ts tests/desktop-acceptance && node --throw-deprecation scripts/desktop-acceptance/verify-mock-contract.mjs",
     "test:native-fetch": "node --pending-deprecation --throw-deprecation ./node_modules/vitest/vitest.mjs run --config config/vitest.config.ts tests/msw/nativeFetchTauriMock.test.ts",

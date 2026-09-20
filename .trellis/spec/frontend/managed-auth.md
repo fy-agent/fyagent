@@ -217,6 +217,8 @@ listed in
   owner independently enforces expiry, request/path binding and single use.
 - OAuth completion says `账号已保存`, not connected. A consumer-purpose login
   still requires a separate impact preview and explicit connection action.
+  Login stages show their current action and include supporting text when the
+  user needs to act, recover or continue in another window.
 - `FileRecoveryButton` composes the closed recovery port. It loads only on
   request, shows actual source/backup paths, explicitly distinguishes restoring
   an old file from deleting a first-created file, and requires confirmation.

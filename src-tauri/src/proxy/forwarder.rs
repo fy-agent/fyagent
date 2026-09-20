@@ -1550,48 +1550,6 @@ impl RequestForwarder {
             mapped_body
         };
 
-        // Native Responses passthrough to a strict third-party gateway (xAI):
-        // flatten Codex's private `namespace`/plugin tool declarations into
-        // top-level function tools so the upstream's strict serde parser does
-        // not 422 on `unknown variant "namespace"`. The Chat/Anthropic paths
-        // above already unwrap namespaces, so this only fires on the native
-        // passthrough. The response handler restores the flat names using a map
-        // re-derived from the same request tools.
-        if matches!(app_type, AppType::Codex | AppType::GrokBuild)
-            && !codex_responses_to_chat
-            && !codex_responses_to_anthropic
-            && super::providers::provider_needs_responses_namespace_flatten(provider)
-            && super::providers::transform_codex_responses_namespace::flatten_request_namespaces(
-                &mut request_body,
-            )?
-        {
-            log::debug!(
-                "[Codex] Flattened namespace tools for native Responses upstream (provider={})",
-                provider.id
-            );
-        }
-
-        // Same native-Responses path: scrub the OpenAI-backend-private fields
-        // and tool carriers (`external_web_access`, `prompt_cache_retention`,
-        // `additional_tools`, `tool_search`, …) that xAI's strict serde parser
-        // rejects with 400/422. Deterministic field removals only, gated on the
-        // xAI OAuth path, so the prompt-cache prefix stays stable and no other
-        // provider is affected. Runs after the flatten above so lifted
-        // `namespace` tools survive the tool-type whitelist.
-        if matches!(app_type, AppType::Codex | AppType::GrokBuild)
-            && !codex_responses_to_chat
-            && !codex_responses_to_anthropic
-            && super::providers::provider_needs_responses_namespace_flatten(provider)
-            && super::providers::transform_codex_responses_xai_sanitize::sanitize_xai_responses_request(
-                &mut request_body,
-            )
-        {
-            log::debug!(
-                "[Codex] Sanitized xAI-unsupported Responses fields (provider={})",
-                provider.id
-            );
-        }
-
         if matches!(app_type, AppType::Codex | AppType::GrokBuild) {
             self.apply_media_prevention(&mut request_body, provider);
         }
@@ -1610,6 +1568,12 @@ impl RequestForwarder {
                 }
             }
         }
+        prepare_xai_native_responses_request(
+            app_type,
+            provider,
+            &effective_endpoint,
+            &mut filtered_body,
+        )?;
         // 出站 body 定稿后刷新真值（覆盖 Codex chat 上游模型覆写、转换层模型改写）
         // Subscription constraints are final wire policy, not editable defaults.
         // Apply equally to direct Responses and converted Claude Messages.
@@ -3092,6 +3056,33 @@ fn is_claude_messages_path(path: &str) -> bool {
     matches!(path, "/v1/messages" | "/claude/v1/messages")
 }
 
+fn prepare_xai_native_responses_request(
+    app_type: &AppType,
+    provider: &Provider,
+    endpoint: &str,
+    body: &mut Value,
+) -> Result<(), ProxyError> {
+    let path = endpoint.split('?').next().unwrap_or(endpoint);
+    if !matches!(
+        app_type,
+        AppType::Codex | AppType::GrokBuild | AppType::OpenCode
+    ) || !matches!(
+        path,
+        "/responses" | "/v1/responses" | "/responses/compact" | "/v1/responses/compact"
+    ) || !super::providers::provider_needs_responses_namespace_flatten(provider)
+    {
+        return Ok(());
+    }
+    super::providers::transform_codex_responses_namespace::flatten_request_namespaces(body)?;
+    super::providers::transform_codex_responses_xai_sanitize::apply_xai_native_responses_request_compat(
+        body,
+        &provider.id,
+        super::providers::codex_provider_upstream_model(provider).as_deref(),
+        &provider.settings_config,
+    );
+    Ok(())
+}
+
 fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (String, Option<String>) {
     let (_path, query) = split_endpoint_and_query(endpoint);
     let passthrough_query = query.map(ToString::to_string);
@@ -3987,6 +3978,51 @@ mod tests {
             streaming_first_byte_timeout,
             max_attempts: 1,
         }
+    }
+
+    #[test]
+    fn xai_native_responses_request_gate_covers_existing_native_routes() {
+        let mut provider = test_provider_with_type(Some("xai_oauth"));
+        provider.settings_config = json!({"model": "grok-4.5"});
+        let original = json!({
+            "model": "gpt-5.6-sol", "stop": ["end"],
+            "tools": [{"type": "namespace", "name": "mcp__codex_app", "tools": [{
+                "type": "function", "name": "automation_update", "parameters": null
+            }]}],
+            "input": [{"type": "agent_message", "content": [{"type": "input_text", "text": "task"}]}]
+        });
+        for app in [AppType::Codex, AppType::GrokBuild, AppType::OpenCode] {
+            for endpoint in [
+                "/responses",
+                "/v1/responses?stream=true",
+                "/responses/compact",
+            ] {
+                let mut body = original.clone();
+                prepare_xai_native_responses_request(&app, &provider, endpoint, &mut body).unwrap();
+                assert_eq!(body["model"], "grok-4.5");
+                assert!(body.get("stop").is_none());
+                assert_eq!(body["tools"][0]["type"], "function");
+                assert_eq!(body["tools"][0]["parameters"]["type"], "object");
+                assert_eq!(body["input"][0]["type"], "message");
+            }
+        }
+        for (app, endpoint) in [
+            (AppType::Claude, "/responses"),
+            (AppType::Codex, "/chat/completions"),
+        ] {
+            let mut body = original.clone();
+            prepare_xai_native_responses_request(&app, &provider, endpoint, &mut body).unwrap();
+            assert_eq!(body, original);
+        }
+        let mut body = original.clone();
+        prepare_xai_native_responses_request(
+            &AppType::Codex,
+            &test_provider_with_type(None),
+            "/responses",
+            &mut body,
+        )
+        .unwrap();
+        assert_eq!(body, original);
     }
 
     #[test]

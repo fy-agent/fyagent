@@ -106,11 +106,7 @@ pub fn import_from_gemini(config: &mut MultiAppConfig) -> Result<usize, AppError
 }
 
 /// 将单个 MCP 服务器同步到 Gemini live 配置
-pub fn sync_single_server_to_gemini(
-    _config: &MultiAppConfig,
-    id: &str,
-    server_spec: &Value,
-) -> Result<(), AppError> {
+pub fn sync_single_server_to_gemini(id: &str, server_spec: &Value) -> Result<(), AppError> {
     if !should_sync_gemini_mcp() {
         return Ok(());
     }

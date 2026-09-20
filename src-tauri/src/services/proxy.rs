@@ -1026,10 +1026,14 @@ impl ProxyService {
             return Ok(());
         }
 
-        let mut resolved_config = config.clone();
+        let mut resolved_config = self
+            .db
+            .get_global_proxy_config()
+            .await
+            .map_err(|e| format!("获取全局代理配置失败: {e}"))?;
         resolved_config.listen_port = actual_port;
         self.db
-            .update_proxy_config(resolved_config)
+            .update_global_proxy_config(resolved_config)
             .await
             .map_err(|e| format!("保存动态代理端口失败: {e}"))
     }
@@ -1808,20 +1812,14 @@ impl ProxyService {
         // 2. 恢复原始 Live 配置
         self.restore_live_configs().await?;
 
-        // 3. 更新 proxy_config 表中的 live_takeover_active 标志（兼容旧版）
-        //    注意：保留 proxy_config.enabled 状态，下次启动时自动恢复
-        if let Ok(mut config) = self.db.get_proxy_config().await {
-            config.live_takeover_active = false;
-            let _ = self.db.update_proxy_config(config).await;
-        }
-
-        // 4. 删除备份（Live 配置已恢复，备份不再需要）
+        // 保留每个应用的 enabled 和独立参数，下次启动时按原设置恢复。
+        // 3. 删除备份（Live 配置已恢复，备份不再需要）
         self.db
             .delete_all_live_backups()
             .await
             .map_err(|e| format!("删除备份失败: {e}"))?;
 
-        // 5. 重置健康状态
+        // 4. 重置健康状态
         self.db
             .clear_all_provider_health()
             .await
@@ -3742,6 +3740,110 @@ mod tests {
     async fn running_codex_base_url(service: &ProxyService) -> String {
         let status = service.get_status().await.expect("get proxy status");
         format!("http://127.0.0.1:{}/v1", status.port)
+    }
+
+    async fn seed_distinct_app_proxy_settings(db: &Database) -> Vec<Value> {
+        let mut expected = Vec::new();
+        for (index, app) in ["claude", "codex", "gemini", "grokbuild", "opencode"]
+            .into_iter()
+            .enumerate()
+        {
+            let index = index as u32;
+            let mut config = db.get_proxy_config_for_app(app).await.unwrap();
+            config.enabled = index % 2 == 0;
+            config.auto_failover_enabled = index % 2 != 0;
+            config.max_retries = index + 2;
+            config.streaming_first_byte_timeout = index + 31;
+            config.streaming_idle_timeout = index + 71;
+            config.non_streaming_timeout = index + 101;
+            config.circuit_failure_threshold = index + 3;
+            config.circuit_success_threshold = index + 1;
+            config.circuit_timeout_seconds = index + 41;
+            config.circuit_error_rate_threshold = 0.4 + f64::from(index) / 10.0;
+            config.circuit_min_requests = index + 9;
+            db.update_proxy_config_for_app(config.clone())
+                .await
+                .unwrap();
+            expected.push(serde_json::to_value(config).unwrap());
+        }
+        expected
+    }
+
+    async fn assert_app_proxy_settings(db: &Database, expected: &[Value]) {
+        for config in expected {
+            let app = config["appType"].as_str().unwrap();
+            assert_eq!(
+                serde_json::to_value(db.get_proxy_config_for_app(app).await.unwrap()).unwrap(),
+                *config,
+                "independent settings changed for {app}"
+            );
+        }
+    }
+
+    fn assert_shared_proxy_settings(db: &Database, port: u16, enabled: bool) {
+        let conn = db.conn.lock().unwrap();
+        let mut statement = conn
+            .prepare("SELECT listen_address, listen_port, proxy_enabled, enable_logging FROM proxy_config")
+            .unwrap();
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, u16>(1)?,
+                    row.get::<_, bool>(2)?,
+                    row.get::<_, bool>(3)?,
+                ))
+            })
+            .unwrap();
+        let mut count = 0;
+        for row in rows {
+            assert_eq!(row.unwrap(), ("127.0.0.1".into(), port, enabled, false));
+            count += 1;
+        }
+        assert_eq!(count, 5);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn compat_config_ephemeral_port_preserves_per_app_settings() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        seed_distinct_app_proxy_settings(&db).await;
+        let mut global = db.get_global_proxy_config().await.unwrap();
+        global.listen_port = 0;
+        global.enable_logging = false;
+        db.update_global_proxy_config(global).await.unwrap();
+        let expected = seed_distinct_app_proxy_settings(&db).await;
+        let service = ProxyService::new(db.clone());
+        let info = service.start().await.unwrap();
+        assert_ne!(info.port, 0);
+        // Stop before assertions so a failed regression leaves no test listener.
+        service.stop().await.unwrap();
+        assert_shared_proxy_settings(&db, info.port, false);
+        assert_app_proxy_settings(&db, &expected).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn compat_config_shutdown_preserves_per_app_settings() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().unwrap();
+        let db = Arc::new(Database::memory().unwrap());
+        seed_distinct_app_proxy_settings(&db).await;
+        let mut global = db.get_global_proxy_config().await.unwrap();
+        global.listen_port = 0;
+        global.enable_logging = false;
+        db.update_global_proxy_config(global).await.unwrap();
+        let service = ProxyService::new(db.clone());
+        let info = service.start().await.unwrap();
+        // Set differing app values after allocation to isolate shutdown from
+        // the separate ephemeral-port regression.
+        let expected = seed_distinct_app_proxy_settings(&db).await;
+        assert_shared_proxy_settings(&db, info.port, true);
+        service.stop_with_restore_keep_state().await.unwrap();
+        assert!(!service.is_running().await);
+        assert_shared_proxy_settings(&db, info.port, false);
+        assert_app_proxy_settings(&db, &expected).await;
     }
 
     fn seed_codex_model_template() {

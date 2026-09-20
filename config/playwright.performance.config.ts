@@ -24,6 +24,7 @@ export default defineConfig({
   timeout: 120_000,
   use: {
     ...devices["Desktop Chrome"],
+    channel: "chromium",
     baseURL: "http://127.0.0.1:4175",
     viewport: { width: 1232, height: 700 },
     // Tracing records every run, even when only failures are retained, and

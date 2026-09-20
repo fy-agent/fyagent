@@ -106,11 +106,7 @@ pub fn import_from_workbuddy(config: &mut MultiAppConfig) -> Result<usize, AppEr
     Ok(changed)
 }
 
-pub fn sync_single_server_to_workbuddy(
-    _config: &MultiAppConfig,
-    id: &str,
-    server_spec: &Value,
-) -> Result<(), AppError> {
+pub fn sync_single_server_to_workbuddy(id: &str, server_spec: &Value) -> Result<(), AppError> {
     if !should_sync_workbuddy_mcp() {
         return Ok(());
     }
@@ -157,12 +153,8 @@ mod tests {
     #[serial]
     fn skips_write_when_workbuddy_home_and_mcp_file_are_absent() {
         with_test_home(|home| {
-            sync_single_server_to_workbuddy(
-                &Default::default(),
-                "demo",
-                &json!({ "command": "echo" }),
-            )
-            .expect("skip write");
+            sync_single_server_to_workbuddy("demo", &json!({ "command": "echo" }))
+                .expect("skip write");
             assert!(!home.join(".workbuddy").exists());
             assert!(!canonical_mcp_path().exists());
         });
@@ -173,12 +165,8 @@ mod tests {
     fn writes_canonical_mcp_json_and_backup_when_home_exists() {
         with_test_home(|home| {
             fs::create_dir_all(home.join(".workbuddy")).expect("create workbuddy home");
-            sync_single_server_to_workbuddy(
-                &Default::default(),
-                "demo",
-                &json!({ "command": "echo", "args": ["hi"] }),
-            )
-            .expect("write mcp");
+            sync_single_server_to_workbuddy("demo", &json!({ "command": "echo", "args": ["hi"] }))
+                .expect("write mcp");
             let written = fs::read_to_string(canonical_mcp_path()).expect("read canonical");
             assert!(written.contains("\"demo\""));
             assert!(written.contains("echo"));
@@ -228,12 +216,8 @@ mod tests {
                 r#"{"mcpServers":{"existing":{"command":"uvx"}}}"#,
             )
             .expect("write hidden");
-            sync_single_server_to_workbuddy(
-                &Default::default(),
-                "demo",
-                &json!({ "command": "echo" }),
-            )
-            .expect("write mcp");
+            sync_single_server_to_workbuddy("demo", &json!({ "command": "echo" }))
+                .expect("write mcp");
             let written = fs::read_to_string(canonical_mcp_path()).expect("read official");
             assert!(written.contains("\"existing\""));
             assert!(written.contains("\"demo\""));

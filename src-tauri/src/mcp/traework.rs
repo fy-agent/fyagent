@@ -104,11 +104,7 @@ pub fn import_from_traework(config: &mut MultiAppConfig) -> Result<usize, AppErr
     Ok(changed)
 }
 
-pub fn sync_single_server_to_traework(
-    _config: &MultiAppConfig,
-    id: &str,
-    server_spec: &Value,
-) -> Result<(), AppError> {
+pub fn sync_single_server_to_traework(id: &str, server_spec: &Value) -> Result<(), AppError> {
     if !should_sync_traework_mcp() {
         return Ok(());
     }
@@ -155,12 +151,8 @@ mod tests {
     #[serial]
     fn skips_write_when_user_dir_and_mcp_file_are_absent() {
         with_test_home(|_home| {
-            sync_single_server_to_traework(
-                &Default::default(),
-                "demo",
-                &json!({ "command": "echo" }),
-            )
-            .expect("skip write");
+            sync_single_server_to_traework("demo", &json!({ "command": "echo" }))
+                .expect("skip write");
             assert!(!trae_user_dir().exists());
             assert!(!canonical_mcp_path().exists());
         });
@@ -171,12 +163,8 @@ mod tests {
     fn writes_canonical_mcp_json_and_backup_when_user_dir_exists() {
         with_test_home(|_home| {
             fs::create_dir_all(trae_user_dir()).expect("create TRAE User dir");
-            sync_single_server_to_traework(
-                &Default::default(),
-                "demo",
-                &json!({ "command": "echo", "args": ["hi"] }),
-            )
-            .expect("write mcp");
+            sync_single_server_to_traework("demo", &json!({ "command": "echo", "args": ["hi"] }))
+                .expect("write mcp");
             let written = fs::read_to_string(canonical_mcp_path()).expect("read canonical");
             assert!(written.contains("\"demo\""));
             assert!(written.contains("echo"));

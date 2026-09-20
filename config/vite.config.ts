@@ -26,9 +26,7 @@ export default defineConfig(({ command }) => {
       cssCodeSplit: true,
       rollupOptions: {
         output: {
-          // Let Rollup keep each named entry's dependency closure together.
-          // A path-based catch-all split React's helpers from React and put
-          // hook consumers in the reverse dependency, breaking production.
+          // Keep each named entry's dependency closure together.
           manualChunks: {
             "vendor-react": ["react", "react-dom", "react-router-dom"],
             "vendor-query": ["@tanstack/react-query"],

@@ -105,6 +105,10 @@ fn sync_projection(
         let mut merged = existing.settings_config.clone();
         merge_json(&mut merged, &projected.settings_config);
         projected.settings_config = merged;
+        // Existing cards own their app-specific behavior and placement.
+        projected.meta = existing.meta;
+        projected.created_at = existing.created_at;
+        projected.sort_index = existing.sort_index;
     }
     state.db.save_provider(app, &projected)
 }
@@ -128,8 +132,138 @@ fn merge_json(base: &mut Value, patch: &Value) {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use std::sync::Arc;
 
-    use super::merge_json;
+    use super::*;
+    use crate::database::Database;
+    use crate::provider::{Provider, ProviderMeta};
+
+    fn universal_fixture() -> UniversalProvider {
+        let mut provider = UniversalProvider::new(
+            "shared".into(),
+            "Shared updated name".into(),
+            "newapi".into(),
+            "https://shared.example".into(),
+            "shared-fixture-key".into(),
+        );
+        provider.apps.claude = true;
+        provider.apps.codex = true;
+        provider.apps.gemini = true;
+        provider.created_at = Some(900);
+        provider.sort_index = Some(90);
+        provider.website_url = Some("https://shared.example/about".into());
+        provider.notes = Some("Shared updated notes".into());
+        provider.icon = Some("shared-icon".into());
+        provider.icon_color = Some("#112233".into());
+        provider.meta = Some(ProviderMeta {
+            common_config_enabled: Some(true),
+            endpoint_auto_select: Some(false),
+            ..Default::default()
+        });
+        provider
+    }
+
+    fn child_projections(provider: &UniversalProvider) -> [(&str, Provider); 3] {
+        [
+            ("claude", provider.to_claude_provider().unwrap()),
+            ("codex", provider.to_codex_provider().unwrap()),
+            ("gemini", provider.to_gemini_provider().unwrap()),
+        ]
+    }
+
+    #[test]
+    fn compat_config_universal_sync_preserves_existing_child_metadata() {
+        let state = AppState::new(Arc::new(Database::memory().unwrap()));
+        let mut parent = universal_fixture();
+        let mut previous = parent.clone();
+        previous.name = "Old child name".into();
+        previous.base_url = "https://previous.example".into();
+        previous.api_key = "previous-fixture-key".into();
+        previous.website_url = None;
+        previous.notes = Some("Old child notes".into());
+        previous.icon = None;
+        previous.icon_color = None;
+        for (app, mut child) in child_projections(&previous) {
+            child.created_at = Some(123);
+            child.sort_index = Some(4);
+            child.in_failover_queue = true;
+            child.settings_config["childOnly"] = json!({"keep": app});
+            child.meta = Some(ProviderMeta {
+                common_config_enabled: Some(false),
+                endpoint_auto_select: Some(true),
+                usage_script: Some(
+                    serde_json::from_value(json!({
+                        "enabled": true,
+                        "language": "javascript",
+                        "code": "return { remaining: 12 };"
+                    }))
+                    .unwrap(),
+                ),
+                ..Default::default()
+            });
+            state.db.save_provider(app, &child).unwrap();
+            state.db.set_current_provider(app, &child.id).unwrap();
+        }
+        // Neither a different parent metadata object nor an absent one may
+        // replace app-owned usage scripts and independent card settings.
+        for keep_parent_meta in [true, false] {
+            if !keep_parent_meta {
+                parent.meta = None;
+            }
+            state.db.save_universal_provider(&parent).unwrap();
+            ProviderService::sync_universal_to_apps(&state, &parent.id).unwrap();
+            for (app, projected) in child_projections(&parent) {
+                let child = state
+                    .db
+                    .get_provider_by_id(&projected.id, app)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(child.created_at, Some(123), "{app}");
+                assert_eq!(child.sort_index, Some(4), "{app}");
+                let meta = child.meta.as_ref().unwrap();
+                assert_eq!(meta.common_config_enabled, Some(false), "{app}");
+                assert_eq!(meta.endpoint_auto_select, Some(true), "{app}");
+                assert_eq!(
+                    meta.usage_script.as_ref().unwrap().code,
+                    "return { remaining: 12 };"
+                );
+                assert_eq!(child.name, projected.name);
+                assert_eq!(child.website_url, projected.website_url);
+                assert_eq!(child.category, projected.category);
+                assert_eq!(child.notes, projected.notes);
+                assert_eq!(child.icon, projected.icon);
+                assert_eq!(child.icon_color, projected.icon_color);
+                assert_eq!(child.settings_config["childOnly"], json!({"keep": app}));
+                for (key, value) in projected.settings_config.as_object().unwrap() {
+                    assert_eq!(&child.settings_config[key], value, "{app}/{key}");
+                }
+                assert!(child.in_failover_queue);
+                assert_eq!(
+                    state.db.get_current_provider(app).unwrap().as_deref(),
+                    Some(child.id.as_str())
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn compat_config_universal_sync_initializes_new_child_metadata() {
+        let state = AppState::new(Arc::new(Database::memory().unwrap()));
+        let parent = universal_fixture();
+        state.db.save_universal_provider(&parent).unwrap();
+        ProviderService::sync_universal_to_apps(&state, &parent.id).unwrap();
+        for (app, projected) in child_projections(&parent) {
+            let child = state
+                .db
+                .get_provider_by_id(&projected.id, app)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(child).unwrap(),
+                serde_json::to_value(projected).unwrap()
+            );
+        }
+    }
 
     #[test]
     fn merge_json_preserves_unknown_nested_fields_and_overrides_patch_values() {

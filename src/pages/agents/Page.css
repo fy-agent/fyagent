@@ -1,14 +1,14 @@
 .fy-agents-page {
-  overflow: auto;
-}
-
-.fy-agent-directory,
-.fy-agent-configuration {
   --fy-catalog-list-frame-size: 36px;
   --fy-catalog-list-artwork-size: 28px;
   --fy-catalog-detail-frame-size: 64px;
   --fy-catalog-detail-artwork-size: 48px;
 
+  overflow: auto;
+}
+
+.fy-agent-directory,
+.fy-agent-configuration {
   display: grid;
   align-content: start;
   gap: 16px;

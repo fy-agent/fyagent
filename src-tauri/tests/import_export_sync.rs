@@ -528,9 +528,7 @@ fn sync_single_server_to_codex_fails_closed_on_invalid_toml() {
     let broken = "model = \"gpt-5.5\"\ninvalid = [\n";
     fs::write(&path, broken).expect("write invalid config");
 
-    let config = MultiAppConfig::default();
     let err = fyagent_lib::sync_single_server_to_codex(
-        &config,
         "srv",
         &json!({ "type": "stdio", "command": "echo" }),
     )

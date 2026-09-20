@@ -176,6 +176,9 @@ backup body, or replacement routing implementation.
 - Configuration updates validate and persist through their owning service/DAO,
   then update the running engine only through the reviewed hot-update path.
   Database success alone is not proof that a running listener adopted a value.
+- Persist an automatically allocated listener port through the global proxy
+  configuration DAO. Never copy a legacy aggregate configuration back across
+  per-application retry, timeout, circuit-breaker, or startup settings.
 - Pricing source and cost multiplier are configuration inputs to usage
   attribution. They do not authorize a Provider switch or rewrite historical
   usage records.
@@ -185,6 +188,9 @@ backup body, or replacement routing implementation.
 - `stop` stops the server only. `stop_with_restore` is the explicit operation
   that also attempts to restore taken-over Agent configuration. Generic process
   shutdown must not silently choose the stronger restore transaction.
+- `stop_with_restore_keep_state` preserves each application's saved startup and
+  forwarding settings. It must not rewrite them through the legacy compatibility
+  DTO merely to clear an obsolete takeover flag.
 - Takeover is application-specific. Claude, Codex, and Grok Build projections
   retain their own authentication, model, base-URL, and MCP rules; they are not
   normalized through one generic JSON rewrite.

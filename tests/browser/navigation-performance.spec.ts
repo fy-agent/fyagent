@@ -29,7 +29,7 @@ test("production boots all nine primary routes without initialization errors", a
   expect(errors).toEqual([]);
 });
 
-test("production boots the first-use guide on demand and persists skipping", async ({
+test("production boots the first-use guide on demand and persists completion", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -52,7 +52,7 @@ test("production boots the first-use guide on demand and persists skipping", asy
     "WorkBuddy",
     "Codex",
   ]);
-  await page.getByRole("button", { name: "跳过引导" }).click();
+  await page.getByRole("button", { name: "查看全部软件" }).click();
   await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
   scripts.length = 0;
   await page.reload();

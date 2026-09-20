@@ -25,6 +25,7 @@ export function FeatureSearch({
   disabled?: boolean;
   id?: string;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const clearVisualRef = useRef<HTMLSpanElement>(null);
   return (
     <div role="search" className={classNames("fy-feature-search", className)}>
@@ -35,6 +36,7 @@ export function FeatureSearch({
         aria-hidden
       />
       <Input
+        ref={inputRef}
         id={id}
         type="search"
         value={value}
@@ -59,7 +61,10 @@ export function FeatureSearch({
           aria-label={clearLabel}
           title={clearLabel}
           disabled={disabled}
-          onClick={() => onValueChange("")}
+          onClick={() => {
+            onValueChange("");
+            inputRef.current?.focus();
+          }}
         >
           <span ref={clearVisualRef} className="fy-control-icon-feedback">
             <XIcon size={14} aria-hidden />

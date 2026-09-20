@@ -11,9 +11,6 @@ export type McpAssignments = Record<McpTargetId, boolean> &
 export type SkillAssignments = Record<SkillTargetId, boolean> &
   Record<string, boolean | undefined>;
 
-/** @deprecated Use SkillAssignments or McpAssignments. */
-export type AppAssignments = SkillAssignments;
-
 export function createSkillAssignments(
   enabled: readonly SkillTargetId[] = [],
 ): SkillAssignments {

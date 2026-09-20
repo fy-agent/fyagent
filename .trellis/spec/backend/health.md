@@ -52,6 +52,8 @@ Evidence rules:
   Health keeps auth and credentials unknown instead of claiming logged out or
   missing. Missing native material and persisted managed disconnects retain
   their existing results. This exception never establishes remote login.
+- Codex, Claude Code, Grok Build and OpenCode read the observation-only managed-auth overview.
+  QoderWork, TRAE and WorkBuddy use vendor-owned observations.
 - Per-Agent proxy intent uses SELECT-only `health_proxy_enabled`.
   Missing rows remain unknown; the legacy proxy getter can seed rows and is
   prohibited on this path. A running global listener alone cannot establish

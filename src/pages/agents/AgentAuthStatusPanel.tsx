@@ -479,7 +479,6 @@ function AgentAuthStatusPanelInner({
             ? "退出 Claude Code 登录？"
             : "打开 Claude Code 官方登录？"
         }
-        description="此操作由 Claude Code CLI 完成，不会安装或打开 Claude Desktop。"
         actions={
           <>
             <Button
@@ -506,12 +505,8 @@ function AgentAuthStatusPanelInner({
           </>
         }
       >
-        <p>
-          Claude Code 自行更新登录凭据（macOS 使用系统钥匙串）。FyAgent
-          不读取、复制或替换凭据，也不改动模型来源、MCP 或其他配置。
-        </p>
-        <p>登录或退出不能通过文件备份撤销，恢复账号需重新运行官方登录。</p>
-        <p>关闭窗口或停止等待只会结束监测，不会取消官方登录流程。</p>
+        <p>恢复账号需重新登录。</p>
+        <p>关闭窗口或停止等待后，已开始的操作仍会继续。</p>
       </Dialog>
     </section>
   );

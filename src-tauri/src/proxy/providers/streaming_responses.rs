@@ -545,9 +545,9 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                             }
 
                             // ================================================
-                            // response.output_text.delta → content_block_delta (text_delta)
+                            // Text and refusal deltas share one text content block.
                             // ================================================
-                            "response.output_text.delta" => {
+                            "response.output_text.delta" | "response.refusal.delta" => {
                                 if let Some(delta) = data.get("delta").and_then(|d| d.as_str()) {
                                     let index = if let Some(index) = current_text_index {
                                         index
@@ -576,53 +576,6 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                         yield Ok(Bytes::from(start_sse));
                                         open_indices.insert(index);
                                     }
-                                    let event = json!({
-                                        "type": "content_block_delta",
-                                        "index": index,
-                                        "delta": {
-                                            "type": "text_delta",
-                                            "text": delta
-                                        }
-                                    });
-                                    let sse = format!("event: content_block_delta\ndata: {}\n\n",
-                                        serde_json::to_string(&event).unwrap_or_default());
-                                    yield Ok(Bytes::from(sse));
-                                }
-                            }
-
-                            // ================================================
-                            // response.refusal.delta → content_block_delta (text_delta)
-                            // ================================================
-                            "response.refusal.delta" => {
-                                if let Some(delta) = data.get("delta").and_then(|d| d.as_str()) {
-                                    let index = if let Some(index) = current_text_index {
-                                        index
-                                    } else {
-                                        let index = resolve_content_index(
-                                            &data,
-                                            &mut next_content_index,
-                                            &mut index_by_key,
-                                            &mut fallback_open_index,
-                                        );
-                                        current_text_index = Some(index);
-                                        index
-                                    };
-
-                                    if !open_indices.contains(&index) {
-                                        let start_event = json!({
-                                            "type": "content_block_start",
-                                            "index": index,
-                                            "content_block": {
-                                                "type": "text",
-                                                "text": ""
-                                            }
-                                        });
-                                        let start_sse = format!("event: content_block_start\ndata: {}\n\n",
-                                            serde_json::to_string(&start_event).unwrap_or_default());
-                                        yield Ok(Bytes::from(start_sse));
-                                        open_indices.insert(index);
-                                    }
-
                                     let event = json!({
                                         "type": "content_block_delta",
                                         "index": index,
@@ -1550,6 +1503,38 @@ mod tests {
             .into_iter()
             .map(|chunk| String::from_utf8_lossy(chunk.unwrap().as_ref()).to_string())
             .collect()
+    }
+
+    #[tokio::test]
+    async fn text_and_refusal_deltas_emit_the_same_complete_text_block() {
+        let text_input = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_delta\",\"model\":\"gpt-5\"}}\n\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\",\"output_index\":0,\"content_index\":0}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n\n"
+        );
+        let refusal_input =
+            text_input.replace("response.output_text.delta", "response.refusal.delta");
+        let text_output = convert_stream_text(text_input).await;
+        let refusal_output = convert_stream_text(refusal_input).await;
+
+        assert_eq!(text_output, refusal_output);
+        assert!(text_output.contains("\"text\":\"hello\""));
+        assert_eq!(
+            text_output.matches("event: content_block_start\n").count(),
+            1
+        );
+        assert_eq!(
+            text_output.matches("event: content_block_delta\n").count(),
+            1
+        );
+        assert_eq!(
+            text_output.matches("event: content_block_stop\n").count(),
+            1
+        );
+        assert_eq!(text_output.matches("event: message_stop\n").count(), 1);
     }
 
     #[test]
