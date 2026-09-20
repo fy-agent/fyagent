@@ -12,16 +12,14 @@ export function createGrokToolingPort(): GrokToolingPort {
         await invoke<unknown>("get_tool_versions", { tools: ["grok"] }),
       ),
     installOfficialNpm: async () => {
-      await invoke("run_tool_lifecycle_action", {
-        tools: ["grok"],
-        action: "install_official_npm",
-      });
+      throw new Error(
+        "Direct tool installation without preflight is forbidden",
+      );
     },
     installNative: async () => {
-      await invoke("run_tool_lifecycle_action", {
-        tools: ["grok"],
-        action: "install_native",
-      });
+      throw new Error(
+        "Direct tool installation without preflight is forbidden",
+      );
     },
   };
 }

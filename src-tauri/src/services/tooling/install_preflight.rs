@@ -62,11 +62,37 @@ pub(super) async fn check(
         if !crate::agent_install::directory_writable(&writable_prefix) {
             return Err(AgentReasonCode::PermissionDenied);
         }
-        let cache_path = super::npm_runtime::cache(anchor)
-            .unwrap_or_else(|| crate::config::get_home_dir().join(".npm"));
+        let cache_path =
+            super::npm_runtime::cache(anchor).ok_or(AgentReasonCode::ToolHostMissing)?;
         let writable_cache = crate::agent_install::existing_directory(&cache_path)?;
         if !crate::agent_install::directory_writable(&writable_cache) {
             return Err(AgentReasonCode::PermissionDenied);
+        }
+        if agent == AgentCatalogId::GrokBuild {
+            for candidate in [
+                prefix
+                    .join("lib")
+                    .join("node_modules")
+                    .join("@iarna")
+                    .join("toml")
+                    .join("package.json"),
+                prefix
+                    .join("node_modules")
+                    .join("@iarna")
+                    .join("toml")
+                    .join("package.json"),
+            ] {
+                if candidate.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&candidate) {
+                        if let Some(pos) = content.find("\"version\"") {
+                            let snippet = &content[pos..pos.min(pos + 40)];
+                            if !snippet.contains("3.0.0") {
+                                return Err(AgentReasonCode::CandidateConflict);
+                            }
+                        }
+                    }
+                }
+            }
         }
         let bin = prefix.join("bin");
         if let Some(anchor) = anchor {

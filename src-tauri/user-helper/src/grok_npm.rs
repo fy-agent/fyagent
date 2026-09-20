@@ -15,7 +15,12 @@ pub const GROK_NPM_ALLOW_SCRIPTS_ENV: &str = "GROK_NPM_ALLOW_SCRIPTS";
 pub const GROK_NPM_ALLOW_SCRIPTS_PACKAGE: &str = "@xai-official/grok";
 pub const GROK_NPM_ALLOW_SCRIPTS_MAJOR: u32 = 12;
 pub const GROK_NPM_PLAN_CONTROL_BYTES: usize = 80;
-pub const GROK_NPM_PLAN_CONTROL_VERSION: u8 = 1;
+pub const GROK_NPM_PLAN_CONTROL_VERSION: u8 = 2;
+
+pub const CLOSED_DEP_TAG_NONE: u8 = 0;
+pub const CLOSED_DEP_TAG_IARNA_TOML: u8 = 1;
+pub const CLOSED_DEP_IARNA_TOML_NAME: &str = "@iarna/toml";
+pub const CLOSED_DEP_VERSION_MAX_BYTES: usize = 16;
 
 const PLAN_MAGIC: [u8; 8] = *b"FYAGROKP";
 const VERSION_FIELD_BYTES: usize = 32;
@@ -142,6 +147,9 @@ pub struct GrokNpmInstallPlan {
     platform_package: String,
     platform_integrity: String,
     allow_install_scripts: bool,
+    dependency_name: Option<String>,
+    dependency_version: Option<String>,
+    reserve_budget_bytes: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,6 +195,9 @@ impl GrokNpmInstallPlan {
             platform_package,
             platform_integrity,
             allow_install_scripts,
+            dependency_name: None,
+            dependency_version: None,
+            reserve_budget_bytes: None,
         })
     }
 
@@ -205,6 +216,63 @@ impl GrokNpmInstallPlan {
 
     pub fn with_npm_major(self, major: u32) -> Self {
         self.with_allow_install_scripts(npm_major_allows_scripts(major))
+    }
+
+    pub fn with_dependency(
+        mut self,
+        name: impl Into<String>,
+        version: impl Into<String>,
+    ) -> Result<Self, GrokNpmPlanError> {
+        let name = name.into();
+        let version = version.into();
+        if name != CLOSED_DEP_IARNA_TOML_NAME {
+            return Err(GrokNpmPlanError::UnsupportedDependency);
+        }
+        validate_exact_version(&version)?;
+        if version.len() > CLOSED_DEP_VERSION_MAX_BYTES {
+            return Err(GrokNpmPlanError::InvalidVersion);
+        }
+        self.dependency_name = Some(name);
+        self.dependency_version = Some(version);
+        Ok(self)
+    }
+
+    pub fn with_reserve_budget_bytes(mut self, budget: u64) -> Result<Self, GrokNpmPlanError> {
+        if budget == 0 || budget > 2 * 1024 * 1024 * 1024 * 3 {
+            return Err(GrokNpmPlanError::InvalidSize);
+        }
+        self.reserve_budget_bytes = Some(budget);
+        Ok(self)
+    }
+
+    pub fn dependency(&self) -> Option<(&str, &str)> {
+        match (&self.dependency_name, &self.dependency_version) {
+            (Some(name), Some(ver)) => Some((name.as_str(), ver.as_str())),
+            _ => None,
+        }
+    }
+
+    pub fn dependency_name(&self) -> Option<&str> {
+        self.dependency_name.as_deref()
+    }
+
+    pub fn dependency_version(&self) -> Option<&str> {
+        self.dependency_version.as_deref()
+    }
+
+    pub fn reserve_budget_bytes(&self) -> Option<u64> {
+        self.reserve_budget_bytes
+    }
+
+    pub fn has_dependency(&self) -> bool {
+        self.dependency_name.is_some()
+    }
+
+    pub fn validate_for_tool(&self, tool: OfficialNpmTool) -> Result<(), GrokNpmPlanError> {
+        if tool == OfficialNpmTool::Claude && self.has_dependency() {
+            return Err(GrokNpmPlanError::UnsupportedDependency);
+        }
+        Ok(())
     }
 
     pub fn version(&self) -> &str {
@@ -248,16 +316,21 @@ impl GrokNpmInstallPlan {
             "i".to_string(),
             "-g".to_string(),
             format!("{}@{}", tool.package(), self.version),
-            format!("--registry={}", self.registry.as_str()),
-            format!(
-                "--{}:registry={}",
-                tool.package()
-                    .split('/')
-                    .next()
-                    .expect("closed scoped package"),
-                self.registry.as_str()
-            ),
         ];
+        if tool == OfficialNpmTool::Grok {
+            if let (Some(name), Some(version)) = (&self.dependency_name, &self.dependency_version) {
+                argv.push(format!("{name}@{version}"));
+            }
+        }
+        argv.push(format!("--registry={}", self.registry.as_str()));
+        argv.push(format!(
+            "--{}:registry={}",
+            tool.package()
+                .split('/')
+                .next()
+                .expect("closed scoped package"),
+            self.registry.as_str()
+        ));
         if tool == OfficialNpmTool::Claude {
             // The official launcher links its native optional package. Do not
             // let an ambient omit=optional setting trigger an external fallback.
@@ -309,6 +382,7 @@ pub fn npm_install_argv_or_reject(
     plan: Option<&GrokNpmInstallPlan>,
 ) -> Result<Vec<String>, GrokNpmPlanError> {
     let plan = plan.ok_or(GrokNpmPlanError::Missing)?;
+    plan.validate_for_tool(OfficialNpmTool::Grok)?;
     let argv = plan.npm_argv();
     if argv
         .iter()
@@ -407,6 +481,19 @@ pub fn encode_plan_control(plan: Option<&GrokNpmInstallPlan>) -> [u8; GROK_NPM_P
     let version = plan.version.as_bytes();
     bytes[12] = version.len() as u8;
     bytes[13..13 + version.len()].copy_from_slice(version);
+    if let (Some(name), Some(dep_version)) = (&plan.dependency_name, &plan.dependency_version) {
+        if name == CLOSED_DEP_IARNA_TOML_NAME {
+            bytes[45] = CLOSED_DEP_TAG_IARNA_TOML;
+            let dep_bytes = dep_version.as_bytes();
+            if dep_bytes.len() <= CLOSED_DEP_VERSION_MAX_BYTES {
+                bytes[46] = dep_bytes.len() as u8;
+                bytes[47..47 + dep_bytes.len()].copy_from_slice(dep_bytes);
+            }
+        }
+    }
+    if let Some(budget) = plan.reserve_budget_bytes {
+        bytes[63..71].copy_from_slice(&budget.to_le_bytes());
+    }
     bytes
 }
 
@@ -441,19 +528,53 @@ pub fn decode_plan_control(bytes: &[u8]) -> Result<Option<GrokNpmInstallPlan>, G
             }
             let version = std::str::from_utf8(&bytes[13..13 + version_len])
                 .map_err(|_| GrokNpmPlanError::InvalidVersion)?;
-            if bytes[13 + version_len..13 + VERSION_FIELD_BYTES]
-                .iter()
-                .any(|byte| *byte != 0)
-            {
+            validate_exact_version(version)?;
+            if bytes[13 + version_len..45].iter().any(|byte| *byte != 0) {
                 return Err(GrokNpmPlanError::InvalidVersion);
             }
-            if bytes[13 + VERSION_FIELD_BYTES..]
-                .iter()
-                .any(|byte| *byte != 0)
-            {
+            let dep_tag = bytes[45];
+            let dep_version_len = usize::from(bytes[46]);
+            let dep_info = match dep_tag {
+                CLOSED_DEP_TAG_NONE => {
+                    if dep_version_len != 0 || bytes[47..63].iter().any(|byte| *byte != 0) {
+                        return Err(GrokNpmPlanError::Missing);
+                    }
+                    None
+                }
+                CLOSED_DEP_TAG_IARNA_TOML => {
+                    if dep_version_len == 0 || dep_version_len > CLOSED_DEP_VERSION_MAX_BYTES {
+                        return Err(GrokNpmPlanError::InvalidVersion);
+                    }
+                    let dep_version = std::str::from_utf8(&bytes[47..47 + dep_version_len])
+                        .map_err(|_| GrokNpmPlanError::InvalidVersion)?;
+                    validate_exact_version(dep_version)?;
+                    if bytes[47 + dep_version_len..63]
+                        .iter()
+                        .any(|byte| *byte != 0)
+                    {
+                        return Err(GrokNpmPlanError::InvalidVersion);
+                    }
+                    Some((CLOSED_DEP_IARNA_TOML_NAME, dep_version))
+                }
+                _ => return Err(GrokNpmPlanError::UnsupportedDependency),
+            };
+            let raw_budget = u64::from_le_bytes(
+                bytes[63..71]
+                    .try_into()
+                    .map_err(|_| GrokNpmPlanError::InvalidSize)?,
+            );
+            if raw_budget == 0 || raw_budget > 2 * 1024 * 1024 * 1024 * 3 {
+                return Err(GrokNpmPlanError::InvalidSize);
+            }
+            if bytes[71..80].iter().any(|byte| *byte != 0) {
                 return Err(GrokNpmPlanError::Missing);
             }
-            GrokNpmInstallPlan::for_execution(version, registry, allow).map(Some)
+            let mut plan = GrokNpmInstallPlan::for_execution(version, registry, allow)?;
+            plan = plan.with_reserve_budget_bytes(raw_budget)?;
+            if let Some((dep_name, dep_version)) = dep_info {
+                plan = plan.with_dependency(dep_name, dep_version)?;
+            }
+            Ok(Some(plan))
         }
         _ => Err(GrokNpmPlanError::Missing),
     }
@@ -555,6 +676,8 @@ mod tests {
             allow,
         )
         .expect("valid sample plan")
+        .with_reserve_budget_bytes(1024 * 1024 * 3)
+        .expect("valid budget")
     }
 
     #[test]
@@ -689,5 +812,90 @@ mod tests {
         assert!(version_is_at_least("1.0.13", "1.0.13"));
         assert!(version_is_at_least("1.0.14", "1.0.13"));
         assert!(!version_is_at_least("1.0.12", "1.0.13"));
+    }
+
+    #[test]
+    fn control_v2_round_trips_dependency_and_budget() {
+        let plan = sample_plan(true)
+            .with_dependency(CLOSED_DEP_IARNA_TOML_NAME, "3.0.0")
+            .unwrap()
+            .with_reserve_budget_bytes(3072)
+            .unwrap();
+        let encoded = plan.encode_control();
+        let decoded = decode_plan_control(&encoded).unwrap().unwrap();
+        assert_eq!(decoded.version(), "1.0.13");
+        assert_eq!(
+            decoded.dependency(),
+            Some((CLOSED_DEP_IARNA_TOML_NAME, "3.0.0"))
+        );
+        assert_eq!(decoded.reserve_budget_bytes(), Some(3072));
+        let grok_argv = decoded.npm_argv_for(OfficialNpmTool::Grok);
+        assert!(grok_argv.contains(&"@iarna/toml@3.0.0".to_string()));
+    }
+
+    #[test]
+    fn control_v2_rejects_dirty_tail_and_v1_and_unknown_tag() {
+        let plan = sample_plan(true)
+            .with_dependency(CLOSED_DEP_IARNA_TOML_NAME, "3.0.0")
+            .unwrap();
+        let mut encoded = plan.encode_control();
+
+        // 1. Dirty unused tail (byte 75 != 0) fails closed with Missing
+        encoded[75] = 0xAA;
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::Missing)
+        );
+        encoded[75] = 0;
+
+        // 2. Older protocol v1 payload fails with Missing
+        encoded[8] = 1;
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::Missing)
+        );
+        encoded[8] = GROK_NPM_PLAN_CONTROL_VERSION;
+
+        // 3. Unknown dep tag fails closed with UnsupportedDependency
+        encoded[45] = 2;
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        encoded[45] = CLOSED_DEP_TAG_IARNA_TOML;
+
+        // 4. Zero budget fails closed with InvalidSize
+        encoded[63..71].copy_from_slice(&0_u64.to_le_bytes());
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::InvalidSize)
+        );
+    }
+
+    #[test]
+    fn claude_never_installs_toml_and_rejects_plan_with_dependency() {
+        let grok_plan = sample_plan(true)
+            .with_dependency(CLOSED_DEP_IARNA_TOML_NAME, "3.0.0")
+            .unwrap();
+        assert_eq!(
+            grok_plan.validate_for_tool(OfficialNpmTool::Claude),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        let claude_plan = sample_plan(true);
+        assert_eq!(
+            claude_plan.validate_for_tool(OfficialNpmTool::Claude),
+            Ok(())
+        );
+        let claude_argv = claude_plan.npm_argv_for(OfficialNpmTool::Claude);
+        assert!(!claude_argv.iter().any(|arg| arg.contains("toml")));
+    }
+
+    #[test]
+    fn for_execution_plan_lacks_dependency_proving_macos_must_use_plan_for_registry() {
+        let execution_plan =
+            GrokNpmInstallPlan::for_execution("1.0.13", GrokNpmRegistry::Tencent, true).unwrap();
+        let grok_argv = execution_plan.npm_argv_for(OfficialNpmTool::Grok);
+        // for_execution does NOT include @iarna/toml@3.0.0, which catches the old macOS bug!
+        assert!(!grok_argv.iter().any(|arg| arg.contains("@iarna/toml")));
     }
 }

@@ -524,7 +524,7 @@ describe("AgentInstallReadinessSection", () => {
     stage = "succeeded";
   });
 
-  it("shows Grok official native as an explicit choice and does not auto-run it", async () => {
+  it("shows Grok official native guidance and forbids direct installer bypass", async () => {
     const grokTooling = {
       getSnapshot: vi.fn(async () => ({
         localVersion: null,
@@ -544,21 +544,22 @@ describe("AgentInstallReadinessSection", () => {
         grokTooling={grokTooling}
       />,
     );
-    expect(await screen.findByText("使用官方命令行安装")).toBeVisible();
+    expect(await screen.findByText("官方 npm 最新")).toBeVisible();
     expect(screen.getByText(/安装按钮会安装官方 npm 包/)).toBeVisible();
-    expect(screen.getByText("官方 npm 最新")).toBeVisible();
+    expect(
+      screen.getByText(/如需使用官方原生命令行安装，请参考官方说明手动安装/),
+    ).toBeVisible();
     expect(grokTooling.installNative).not.toHaveBeenCalled();
     expect(grokTooling.installOfficialNpm).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "使用官方命令行安装" }));
-    await waitFor(() =>
-      expect(grokTooling.installNative).toHaveBeenCalledTimes(1),
-    );
+    expect(
+      screen.queryByRole("button", { name: "使用官方命令行安装" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "打开软件" }),
     ).not.toBeInTheDocument();
   });
 
-  it("offers 改用官方 npm 方式 for a native install and does not auto-run it", async () => {
+  it("offers honest official/manual handoff for native install and preserves observed installation", async () => {
     const installed: AgentInstallReadiness = {
       ...readiness("grokbuild"),
       installState: "installed",
@@ -588,15 +589,17 @@ describe("AgentInstallReadinessSection", () => {
     );
     expect(await screen.findByText("官方命令行")).toBeVisible();
     expect(
-      await screen.findByRole("button", { name: "改用官方 npm 方式" }),
+      screen.getByText(
+        /当前环境检测到官方原生命令行安装。原安装方式已保留；如需改用 npm 官方包或更新原生版本，请前往官方页面手动完成。/,
+      ),
     ).toBeVisible();
     expect(grokTooling.installOfficialNpm).not.toHaveBeenCalled();
+    expect(grokTooling.installNative).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "改用官方 npm 方式" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "打开软件" }),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "改用官方 npm 方式" }));
-    await waitFor(() =>
-      expect(grokTooling.installOfficialNpm).toHaveBeenCalledTimes(1),
-    );
   });
 });

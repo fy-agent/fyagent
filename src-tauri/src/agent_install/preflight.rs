@@ -110,11 +110,9 @@ pub(super) fn storage_budget(
                 basis: SpaceBudgetBasis::PackageReserve,
             })
         }
-        (AgentSurface::Cli, InstallRuntime::ExistingCli, None) => Ok(StorageBudget {
-            artifact_size_bytes: None,
-            required_bytes: None,
-            basis: SpaceBudgetBasis::CliUnknown,
-        }),
+        (AgentSurface::Cli, InstallRuntime::ExistingCli, None) => {
+            Err(AgentReasonCode::OfficialPageOnly)
+        }
         _ => Err(AgentReasonCode::SourceNotVerified),
     }
 }
@@ -123,7 +121,6 @@ pub(super) fn storage_budget(
 pub(crate) enum PreparedPlanPayload {
     Desktop,
     CliNpm(crate::services::tooling::grok_npm::GrokNpmManifest),
-    CliExisting,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -241,12 +238,7 @@ async fn inspect_preflight(
                     PreparedPlanPayload::CliNpm(manifest),
                 )
             } else {
-                (
-                    InstallRuntime::ExistingCli,
-                    "官方渠道（保留当前安装方式）".to_string(),
-                    None,
-                    PreparedPlanPayload::CliExisting,
-                )
+                return Err(AgentReasonCode::OfficialPageOnly);
             };
             (
                 checked.paths,
@@ -543,10 +535,8 @@ mod tests {
         assert_eq!(cli_npm.required_bytes, Some(3072));
         assert_eq!(cli_npm.artifact_size_bytes, Some(1024));
         assert_eq!(cli_npm.basis, SpaceBudgetBasis::PackageReserve);
-        let cli_existing =
-            storage_budget(AgentSurface::Cli, InstallRuntime::ExistingCli, None).unwrap();
-        assert_eq!(cli_existing.required_bytes, None);
-        assert_eq!(cli_existing.basis, SpaceBudgetBasis::CliUnknown);
+        let cli_existing = storage_budget(AgentSurface::Cli, InstallRuntime::ExistingCli, None);
+        assert_eq!(cli_existing, Err(AgentReasonCode::OfficialPageOnly));
         for size in [
             0,
             super::super::fetch::MAX_STREAMED_ARTIFACT_BYTES + 1,

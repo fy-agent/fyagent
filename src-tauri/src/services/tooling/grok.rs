@@ -918,20 +918,19 @@ async fn run_official_npm(
         ));
     }
 
-    tokio::task::spawn_blocking(move || {
-        execute_official_npm(action, bin_path, manifest.version().to_string(), matching)
-    })
-    .await
-    .map_err(|error| format!("tool lifecycle task join error: {error}"))?
+    tokio::task::spawn_blocking(move || execute_official_npm(action, bin_path, manifest, matching))
+        .await
+        .map_err(|error| format!("tool lifecycle task join error: {error}"))?
 }
 
 #[cfg(target_os = "macos")]
 fn execute_official_npm(
     action: ToolLifecycleAction,
     bin_path: Option<String>,
-    target_version: String,
+    manifest: super::grok_npm::GrokNpmManifest,
     registries: Vec<fyagent_user_helper::GrokNpmRegistry>,
 ) -> Result<(), String> {
+    let target_version = manifest.version().to_string();
     let before = grok_post_observe().ok();
     if let Some(local) = before
         .as_ref()
@@ -976,8 +975,8 @@ fn execute_official_npm(
     let npm_major = detect_npm_major(bin_path.as_deref());
     let mut last_detail = String::from("官方 npm 安装未完成");
     for registry in registries {
-        let Ok(plan) = fyagent_user_helper::GrokNpmInstallPlan::for_execution(
-            &target_version,
+        let Ok(plan) = super::grok_npm::plan_for_registry(
+            &manifest,
             registry,
             npm_major.is_some_and(fyagent_user_helper::grok_npm::npm_major_allows_scripts),
         ) else {

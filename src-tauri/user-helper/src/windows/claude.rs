@@ -78,6 +78,17 @@ pub(super) fn npm_prefix(npm: &Path) -> Result<PathBuf, HelperErrorCode> {
     Ok(path)
 }
 
+pub(super) fn npm_cache(npm: &Path) -> Result<PathBuf, HelperErrorCode> {
+    let (output, _) = run_grok_binary(npm, &["config", "get", "cache"], grok_version_timeout())?;
+    let text = output.trim();
+    if text.is_empty() || text.chars().any(char::is_control) {
+        return Err(HelperErrorCode::ToolHostMissing);
+    }
+    let path = PathBuf::from(text);
+    validate_ordinary_dos_path(&path).map_err(|_| HelperErrorCode::ToolOwnerMismatch)?;
+    Ok(path)
+}
+
 pub(super) fn execute(
     action: GrokToolAction,
     plan: Option<GrokNpmInstallPlan>,

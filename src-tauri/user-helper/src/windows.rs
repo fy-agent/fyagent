@@ -51,12 +51,12 @@ use windows::{
             SE_GROUP_DEFAULTED, SE_OWNER_DEFAULTED, TOKEN_DUPLICATE, TOKEN_QUERY, TOKEN_USER,
         },
         Storage::FileSystem::{
-            CreateFileW, FileAttributeTagInfo, FileStandardInfo, GetDriveTypeW,
-            GetFileInformationByHandle, GetFileInformationByHandleEx, GetVolumeInformationW,
-            GetVolumePathNameW, ReadFile, WriteFile, BY_HANDLE_FILE_INFORMATION, DELETE,
-            FILE_ACCESS_RIGHTS, FILE_ADD_FILE, FILE_ADD_SUBDIRECTORY, FILE_ALL_ACCESS,
-            FILE_APPEND_DATA, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
-            FILE_ATTRIBUTE_OFFLINE, FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS,
+            CreateFileW, FileAttributeTagInfo, FileStandardInfo, GetDiskFreeSpaceExW,
+            GetDriveTypeW, GetFileInformationByHandle, GetFileInformationByHandleEx,
+            GetVolumeInformationW, GetVolumePathNameW, ReadFile, WriteFile,
+            BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ACCESS_RIGHTS, FILE_ADD_FILE,
+            FILE_ADD_SUBDIRECTORY, FILE_ALL_ACCESS, FILE_APPEND_DATA, FILE_ATTRIBUTE_DIRECTORY,
+            FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_OFFLINE, FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS,
             FILE_ATTRIBUTE_RECALL_ON_OPEN, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO,
             FILE_DELETE_CHILD, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_BACKUP_SEMANTICS,
             FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_OVERLAPPED, FILE_GENERIC_EXECUTE,
@@ -347,7 +347,25 @@ fn execute_grok_tool(
                 }
                 .ok_or(HelperErrorCode::ToolHostMissing)?;
                 let _ = npm_major_from(&npm)?;
-                ensure_install_directory_writable(&claude::npm_prefix(&npm)?)?;
+                let prefix = claude::npm_prefix(&npm)?;
+                ensure_install_directory_writable(&prefix)?;
+                let cache = claude::npm_cache(&npm)?;
+                ensure_install_directory_writable(&cache)?;
+                let global_toml = prefix
+                    .join("node_modules")
+                    .join("@iarna")
+                    .join("toml")
+                    .join("package.json");
+                if global_toml.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&global_toml) {
+                        if let Some(pos) = content.find("\"version\"") {
+                            let snippet = &content[pos..pos.min(pos + 40)];
+                            if !snippet.contains("3.0.0") {
+                                return Err(HelperErrorCode::ToolOwnerMismatch);
+                            }
+                        }
+                    }
+                }
             }
             Ok(observe_grok_result(&candidates, observation))
         }
@@ -653,6 +671,25 @@ fn execute_npm_plan(
     plan: &GrokNpmInstallPlan,
 ) -> Result<(), HelperErrorCode> {
     use fyagent_user_helper::grok_npm::OfficialNpmTool;
+    let prefix = claude::npm_prefix(npm)?;
+    ensure_install_directory_writable(&prefix)?;
+    let cache = claude::npm_cache(npm)?;
+    ensure_install_directory_writable(&cache)?;
+    if let Some(reserve) = plan.reserve_budget_bytes() {
+        for path in [&prefix, &cache, &std::env::temp_dir()] {
+            let wide: Vec<u16> = path
+                .as_os_str()
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+            let mut available = 0_u64;
+            unsafe { GetDiskFreeSpaceExW(PCWSTR(wide.as_ptr()), Some(&mut available), None, None) }
+                .map_err(|_| HelperErrorCode::ToolExecutionFailed)?;
+            if available < reserve {
+                return Err(HelperErrorCode::ToolExecutionFailed);
+            }
+        }
+    }
     let plan = plan.clone().with_npm_major(npm_major_from(npm)?);
     let argv = match tool {
         OfficialNpmTool::Grok => npm_install_argv_or_reject(Some(&plan))

@@ -308,22 +308,29 @@ pub(super) fn plan_for_registry(
     registry: GrokNpmRegistry,
     allow_install_scripts: bool,
 ) -> Result<GrokNpmInstallPlan, GrokNpmPlanError> {
+    let budget = manifest
+        .total_unpacked_size()
+        .checked_mul(3)
+        .ok_or(GrokNpmPlanError::ArithmeticOverflow)?;
     if manifest.tool == OfficialNpmTool::Claude {
-        return GrokNpmInstallPlan::for_execution(
-            manifest.version(),
-            registry,
-            allow_install_scripts,
-        );
+        let plan =
+            GrokNpmInstallPlan::for_execution(manifest.version(), registry, allow_install_scripts)?;
+        return plan.with_reserve_budget_bytes(budget);
     }
     let platform = current_platform_package().ok_or(GrokNpmPlanError::InvalidPlatformPackage)?;
-    GrokNpmInstallPlan::new(
+    let mut plan = GrokNpmInstallPlan::new(
         manifest.version(),
         registry,
         manifest.package_integrity().unwrap_or_default(),
         platform,
         manifest.platform_integrity(platform).unwrap_or_default(),
         allow_install_scripts,
-    )
+    )?;
+    plan = plan.with_reserve_budget_bytes(budget)?;
+    for dep in &manifest.dependencies {
+        plan = plan.with_dependency(&dep.name, &dep.version)?;
+    }
+    Ok(plan)
 }
 
 fn metadata_client() -> Option<reqwest::Client> {
@@ -1015,5 +1022,39 @@ mod tests {
             parse_manifest(&json).unwrap_err(),
             GrokNpmPlanError::ArithmeticOverflow
         );
+    }
+
+    #[test]
+    fn plan_for_registry_carries_confirmed_toml_dependency_and_claude_omits_it() {
+        let hash = fixture_sha512();
+        let platform = current_platform_package().expect("platform");
+        let json = format!(
+            r#"{{"channel":"stable","package":"@xai-official/grok","version":"1.2.3","root_size":100,"platform_size":200,"dependencies":[{{"name":"@iarna/toml","version":"3.0.0","integrity":"{hash}","unpacked_size":300}}],"integrity":{{"@xai-official/grok":"{hash}","{platform}":"{hash}","@iarna/toml":"{hash}"}}}}"#
+        );
+        let grok_manifest = parse_manifest(&json).expect("manifest");
+        let grok_plan =
+            plan_for_registry(&grok_manifest, GrokNpmRegistry::Npmjs, false).expect("grok plan");
+        let grok_argv = grok_plan.npm_argv_for(OfficialNpmTool::Grok);
+        assert!(grok_argv.contains(&"@xai-official/grok@1.2.3".to_string()));
+        assert!(grok_argv.contains(&"@iarna/toml@3.0.0".to_string()));
+        assert!(!grok_argv.iter().any(|arg| arg.contains("@latest")));
+        assert_eq!(grok_plan.reserve_budget_bytes(), Some(600 * 3));
+
+        let claude_manifest = GrokNpmManifest {
+            tool: OfficialNpmTool::Claude,
+            version: "2.1.261".to_string(),
+            platform_version: "2.1.261".to_string(),
+            integrity: std::collections::BTreeMap::new(),
+            root_size: 1000,
+            platform_size: 2000,
+            dependencies: Vec::new(),
+            total_unpacked_size: 3000,
+        };
+        let claude_plan = plan_for_registry(&claude_manifest, GrokNpmRegistry::Tencent, false)
+            .expect("claude plan");
+        let claude_argv = claude_plan.npm_argv_for(OfficialNpmTool::Claude);
+        assert!(claude_argv.contains(&"@anthropic-ai/claude-code@2.1.261".to_string()));
+        assert!(!claude_argv.iter().any(|arg| arg.contains("toml")));
+        assert_eq!(claude_plan.reserve_budget_bytes(), Some(3000 * 3));
     }
 }
