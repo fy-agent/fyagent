@@ -206,7 +206,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
   ).toEqual([
     {
       command: "open_external",
-      payload: { url: "https://www.workbuddy.ai/document/term" },
+      payload: { url: "https://www.workbuddy.cn/document/term" },
     },
   ]);
   await workbuddyCard.getByText("官方资料与许可", { exact: true }).click();

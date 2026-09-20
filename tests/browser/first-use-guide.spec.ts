@@ -187,6 +187,12 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({
       path: testInfo.outputPath(`guide-recommendations-${theme}.png`),
     });
+    const configButtons = guide.getByRole("button", { name: "开始配置" });
+    await expect(configButtons).toHaveCount(3);
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press(tabKey);
+      await expect(configButtons.nth(i)).toBeFocused();
+    }
     await page.keyboard.press(tabKey);
     await expect(guide.getByRole("button", { name: "重新选择" })).toBeFocused();
     await page.keyboard.press(tabKey);

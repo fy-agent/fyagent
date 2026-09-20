@@ -3,9 +3,13 @@
   gap: 10px;
   width: 100%;
   padding: 12px 16px;
-  background: var(--fy-surface-inset);
+  background: var(--fy-surface-opaque);
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-panel);
+}
+
+details:not([open]) > .fy-agent-source-links {
+  display: none;
 }
 
 .fy-agent-source-links-header {
@@ -34,7 +38,7 @@
   padding: 6px 10px;
   font-size: 13px;
   color: var(--fy-text);
-  background: var(--fy-surface);
+  background: var(--fy-surface-raised);
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-compact);
   text-decoration: none;
@@ -60,33 +64,39 @@
   font-size: 11px;
   font-weight: 500;
   border-radius: var(--fy-radius-compact);
-  background: var(--fy-surface-elevated, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--fy-border);
+  background: var(--fy-surface-raised);
   color: var(--fy-text-secondary);
 }
 
 .fy-agent-source-link-badge-homepage {
-  background: rgba(59, 130, 246, 0.12);
-  color: #60a5fa;
+  border-color: var(--fy-selected-border);
+  background: var(--fy-selected);
+  color: var(--fy-accent-text);
 }
 
 .fy-agent-source-link-badge-download {
-  background: rgba(16, 185, 129, 0.12);
-  color: #34d399;
+  border-color: var(--fy-selected-border);
+  background: var(--fy-selected-bg);
+  color: var(--fy-accent-text);
 }
 
 .fy-agent-source-link-badge-license {
-  background: rgba(168, 85, 247, 0.12);
-  color: #c084fc;
+  border-color: var(--fy-border-strong);
+  background: var(--fy-surface-raised);
+  color: var(--fy-text);
 }
 
 .fy-agent-source-link-badge-terms {
-  background: rgba(245, 158, 11, 0.12);
-  color: #fbbf24;
+  border-color: var(--fy-warning-border);
+  background: var(--fy-warning-soft);
+  color: var(--fy-warning-text);
 }
 
 .fy-agent-source-link-badge-docs {
-  background: rgba(100, 116, 139, 0.15);
-  color: #94a3b8;
+  border-color: var(--fy-border);
+  background: var(--fy-surface-soft);
+  color: var(--fy-text-secondary);
 }
 
 .fy-agent-source-link-label {

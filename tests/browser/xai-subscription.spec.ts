@@ -137,7 +137,9 @@ test("saved Grok subscription can be selected for Claude and continued through t
   await expect(section.getByText(/当前请求来源尚未切换/)).toBeVisible();
   await section.getByRole("button", { name: "继续预览 Codex 配置" }).click();
   await expect(page).toHaveURL(/#\/auth\?consumer=codex&view=connections$/);
-  await page.getByRole("combobox").selectOption("subscription-fixture-codex");
+  await page
+    .getByRole("combobox", { name: "切换到" })
+    .selectOption("subscription-fixture-codex");
   await page.getByRole("button", { name: "预览更改" }).click();
   await page.getByRole("button", { name: "应用更改" }).click();
   await expect(page.getByRole("button", { name: "应用更改" })).toHaveCount(0);

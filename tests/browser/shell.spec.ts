@@ -21,7 +21,7 @@ const navigationContract = [
   { path: "/memory", label: "记忆模块" },
 ] as const;
 
-const visibleControlTestIds = ["theme-toggle"] as const;
+const visibleControlTestIds = ["theme-toggle", "about"] as const;
 
 const shellRegionTestIds = ["brand"] as const;
 
@@ -145,7 +145,10 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
     primaryControls.push(link);
   }
   for (const testId of visibleControlTestIds) {
-    const control = page.getByTestId(testId);
+    const control =
+      testId === "about"
+        ? page.getByRole("button", { name: "关于 FyAgent" })
+        : page.getByTestId(testId);
     await expect(control).toBeVisible();
     primaryControls.push(control);
   }
@@ -307,6 +310,9 @@ test("reaches every primary control with the keyboard in document order", async 
     focusedControlIds.push(
       (await page.evaluate(() => {
         const activeElement = document.activeElement;
+        if (activeElement?.getAttribute("aria-label") === "关于 FyAgent") {
+          return "about";
+        }
         return (
           activeElement?.getAttribute("data-testid") ??
           activeElement?.getAttribute("href")

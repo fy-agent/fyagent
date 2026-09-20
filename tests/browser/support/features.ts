@@ -1514,6 +1514,15 @@ export async function installRichTauriFeatureFixture(
               activated: true,
             };
           }
+          case "get_proxy_restore_preview": {
+            const app = String(payload.app);
+            return {
+              app,
+              enabled: false,
+              canRestore: false,
+              targets: [],
+            };
+          }
           case "set_proxy_takeover_for_app":
             if (payload.appType !== "opencode" || payload.enabled !== false)
               throw new Error("Unsupported fixture target");
