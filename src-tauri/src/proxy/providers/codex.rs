@@ -212,17 +212,53 @@ pub fn should_convert_codex_responses_to_anthropic(provider: &Provider, endpoint
     ) && codex_provider_uses_anthropic(provider)
 }
 
-/// Whether a native-Responses Codex upstream needs Codex `namespace`/plugin
-/// tool declarations flattened before forwarding.
-///
-/// Codex 0.142+ emits ChatGPT-backend-private `{"type":"namespace",…}` tool
-/// shapes that strict third-party Responses gateways reject with
-/// `422 unknown variant "namespace"`. Only providers whose upstream is such a
-/// strict native gateway need the flatten+restore pass; the Chat/Anthropic
-/// transform paths already unwrap namespaces on their own. Currently that is the
-/// managed xAI (Grok) OAuth provider — the first strict gateway fyagent hit.
+/// Native xAI Responses requires namespace, schema and tool-argument compatibility.
+/// Use the same effective URL and protocol owners as forwarding so editable
+/// inactive provider entries cannot enable rewrites for another upstream.
 pub fn provider_needs_responses_namespace_flatten(provider: &Provider) -> bool {
-    provider.is_xai_oauth()
+    if provider.is_xai_oauth() {
+        return true;
+    }
+    if codex_provider_uses_chat_completions(provider) || codex_provider_uses_anthropic(provider) {
+        return false;
+    }
+    let wire_api = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.api_format.as_deref())
+        .or_else(|| {
+            provider
+                .settings_config
+                .get("api_format")
+                .and_then(JsonValue::as_str)
+        })
+        .or_else(|| {
+            provider
+                .settings_config
+                .get("apiFormat")
+                .and_then(JsonValue::as_str)
+        })
+        .map(str::to_owned)
+        .or_else(|| {
+            provider
+                .settings_config
+                .get("config")
+                .and_then(JsonValue::as_str)
+                .and_then(extract_codex_wire_api_from_toml)
+        });
+    if !wire_api.is_some_and(|wire| {
+        matches!(
+            wire.to_ascii_lowercase().as_str(),
+            "responses" | "openai_responses"
+        )
+    }) {
+        return false;
+    }
+    CodexAdapter::new()
+        .extract_base_url(provider)
+        .ok()
+        .and_then(|base| url::Url::parse(&base).ok())
+        .is_some_and(|url| url.host_str() == Some("api.x.ai"))
 }
 
 /// The single built-in official Codex provider.  Unlike managed Codex OAuth
@@ -1642,20 +1678,39 @@ wire_api = "responses"
     }
 
     #[test]
-    fn namespace_flatten_gate_only_fires_for_xai_oauth() {
-        // xAI OAuth: strict native gateway → needs namespace flattening.
-        let mut xai = create_provider(json!({ "auth": {}, "config": "" }));
+    fn xai_native_responses_gate_uses_effective_host_and_protocol() {
+        let mut xai = create_provider(json!({"auth": {}, "config": ""}));
         xai.meta = Some(crate::provider::ProviderMeta {
-            provider_type: Some("xai_oauth".to_string()),
+            provider_type: Some("xai_oauth".into()),
+            api_format: Some("anthropic".into()),
             ..Default::default()
         });
         assert!(provider_needs_responses_namespace_flatten(&xai));
 
-        // A plain third-party API-key Codex provider must not be flattened.
-        let plain = create_provider(json!({
-            "auth": { "OPENAI_API_KEY": "sk-x" },
-            "config": "base_url = \"https://api.x.ai/v1\"\nwire_api = \"responses\""
+        let mut key = create_provider(json!({
+            "auth": {"OPENAI_API_KEY": "fixture-key"},
+            "config": "model_provider = \"custom\"\nmodel = \"grok-4.6\"\n[model_providers.custom]\nbase_url = \"https://api.x.ai/v1\"\nwire_api = \"responses\""
         }));
-        assert!(!provider_needs_responses_namespace_flatten(&plain));
+        assert!(provider_needs_responses_namespace_flatten(&key));
+        for url in [
+            "https://api.x.ai.example/v1",
+            "https://example.com/api.x.ai",
+            "https://api.x.ai@example.com/v1",
+        ] {
+            key.settings_config["base_url"] = json!(url);
+            assert!(!provider_needs_responses_namespace_flatten(&key), "{url}");
+        }
+        key.settings_config["base_url"] = json!("https://api.x.ai/v1");
+        key.meta = Some(crate::provider::ProviderMeta {
+            api_format: Some("openai_chat".into()),
+            ..Default::default()
+        });
+        assert!(!provider_needs_responses_namespace_flatten(&key));
+        key.meta.as_mut().unwrap().api_format = Some("anthropic".into());
+        assert!(!provider_needs_responses_namespace_flatten(&key));
+        key.meta.as_mut().unwrap().api_format = Some("openai_responses".into());
+        assert!(provider_needs_responses_namespace_flatten(&key));
+        key.meta.as_mut().unwrap().provider_type = Some("codex_oauth".into());
+        assert!(!provider_needs_responses_namespace_flatten(&key));
     }
 }
