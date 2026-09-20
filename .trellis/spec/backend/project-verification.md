@@ -21,6 +21,11 @@ The renderer supplies project ID, expected revision, UUID runId and closed check
 Registered checks are saved configuration readback, saved-model probe and a
 kit-owned local synthetic validator. The model reader resolves a saved binding
 natively. Secret strings are non-serializable, have no Debug and zeroize on drop.
+Managed subscription providers are unsupported by this saved-model HTTP probe:
+the native reader rejects them before credential extraction or any request.
+Their persisted upstream URL and placeholder are not an API-key binding, and
+must never be sent directly to the vendor or recorded as a vendor failure.
+Subscription use in the target Agent remains a separate verification path.
 Missing credential generation prevents a request from being accepted as verified. None means unknown tracking; a known credential-free binding should have its own native generation. External manual records can still be registered, but non-configuration/non-fixture records remain unverifiable while tracking is unknown.
 `model_probe::probe_saved_identity` reuses the existing request projection and
 HTTP owner, requires exact response model identity against the same request projection (including removal of explicit reasoning-effort suffixes), plus actual text output in a

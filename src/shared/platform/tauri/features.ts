@@ -141,6 +141,10 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).workbuddy.checkModel(...args),
     },
     opencodeModels: {
+      restoreManagedProxy: async (...args) =>
+        (await models()).opencodeModels.restoreManagedProxy(...args),
+      bindManagedProxy: async (...args) =>
+        (await models()).opencodeModels.bindManagedProxy(...args),
       getSnapshot: async (...args) =>
         (await models()).opencodeModels.getSnapshot(...args),
       fetchProviderModels: async (...args) =>

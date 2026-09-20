@@ -377,6 +377,43 @@ describe("durable supported-platform surface contract", () => {
     );
 
     expect(checker.scanDirectoryConventionContract(entries)).toEqual([]);
+    for (const id of [
+      "subscription-test-only-module",
+      "subscription-test-home-guard",
+    ]) {
+      const contract = checker.MACOS_POSIX_CONTRACT.find(
+        (item) => item.id === id,
+      );
+      expect(contract).toBeDefined();
+      const drift = entries.map((entry) =>
+        entry.path === contract?.file
+          ? {
+              ...entry,
+              source: entry.source.replace(
+                contract.snippet,
+                contract.snippet.replace(
+                  id === "subscription-test-only-module"
+                    ? "#[cfg(test)]"
+                    : "impl Drop for TestHome",
+                  "// moved out of the reviewed test guard",
+                ),
+              ),
+            }
+          : entry,
+      );
+      expect(checker.scanMacosPosixContract(drift)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ rule: "macos-posix:contract-drift" }),
+        ]),
+      );
+      if (id === "subscription-test-home-guard") {
+        expect(checker.scanDirectoryConventionContract(drift)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ rule: "macos-posix:contract-drift" }),
+          ]),
+        );
+      }
+    }
     const unexpectedVariable = [
       checker.SURFACE_MARKERS.directoryConvention.toUpperCase(),
       "_CACHE_HOME",

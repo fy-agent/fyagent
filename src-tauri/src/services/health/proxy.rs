@@ -16,22 +16,54 @@ pub(super) async fn proxy_checks(
     observed: &ConfigurationObservation,
     at: &str,
 ) -> Vec<HealthCheck> {
-    if *app == AppType::OpenCode {
-        return vec![HealthCheck::new(
-            Id::Proxy,
-            State::NotSupported,
-            Reason::NotSupported,
-            None,
-            at,
-        )];
-    }
     let enabled = db.health_proxy_enabled(app.as_str()).ok().flatten();
-    let takeover = observed
-        .live
-        .as_ref()
-        .map(|live| ProxyService::live_has_proxy_placeholder_for_app(app, live));
+    let takeover = observed.live.as_ref().map(|live| {
+        if *app == AppType::OpenCode {
+            observed.provider_id.as_deref().is_some_and(|id| {
+                crate::services::opencode_models::is_managed_proxy_provider_id(id)
+                    && live
+                        .get("provider")
+                        .and_then(|providers| providers.get(id))
+                        .and_then(|provider| provider.pointer("/options/apiKey"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some("PROXY_MANAGED")
+            })
+        } else {
+            ProxyService::live_has_proxy_placeholder_for_app(app, live)
+        }
+    });
     let runtime = service.get_status().await.ok();
-    project(app, enabled, takeover, runtime.as_ref(), observed, at)
+    let mut checks = project(app, enabled, takeover, runtime.as_ref(), observed, at);
+    if *app == AppType::OpenCode && takeover == Some(true) {
+        // The dedicated route serves the app's selected managed binding. A
+        // retained slot pointing to this listener cannot claim another account.
+        let current = crate::settings::get_current_provider(app)
+            .map(|id| Ok(Some(id)))
+            .unwrap_or_else(|| db.get_current_provider(app.as_str()));
+        let binding_matches = current.and_then(|id| {
+            let Some(id) = id else {
+                return Ok(false);
+            };
+            Ok(observed.provider_id.as_deref() == Some(id.as_str())
+                && db
+                    .get_provider_by_id(&id, app.as_str())?
+                    .is_some_and(|provider| provider.uses_subscription_proxy()))
+        });
+        if !matches!(binding_matches, Ok(true)) {
+            let (state, reason) = if binding_matches.is_ok() {
+                (State::Attention, Reason::ConfigurationSourceDrifted)
+            } else {
+                (State::Unknown, Reason::ReadFailed)
+            };
+            for check in checks
+                .iter_mut()
+                .filter(|check| matches!(check.id, Id::Proxy | Id::Drift))
+            {
+                *check = HealthCheck::new(check.id, state, reason, Some(Action::Configuration), at);
+            }
+        }
+    }
+    checks
 }
 
 pub(super) fn project(
@@ -59,6 +91,7 @@ pub(super) fn project(
                     let expected_path = match app {
                         AppType::Codex => "/v1",
                         AppType::GrokBuild => "/grokbuild/v1",
+                        AppType::OpenCode => "/opencode/v1",
                         _ => "",
                     };
                     url.scheme() == "http"
@@ -100,7 +133,10 @@ pub(super) fn project(
                 .expected
                 .as_ref()
                 .zip(observed.facts.as_ref())
-                .is_some_and(|(expected, live)| expected.model == live.model);
+                .is_some_and(|(expected, live)| {
+                    expected.model == live.model
+                        && (*app != AppType::OpenCode || expected.selected == live.selected)
+                });
         checks.push(HealthCheck::new(
             Id::Drift,
             if aligned {

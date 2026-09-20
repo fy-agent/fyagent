@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   BindManagedProxyRequest,
+  BindOpenCodeManagedRequest,
   BindXaiManagedRequest,
 } from "@/shared/features/models";
 import {
@@ -32,6 +33,132 @@ async function ports() {
   );
   return createModelFeaturePorts().providers;
 }
+
+async function openCodePorts() {
+  const { createTauriFeaturePorts } = await import(
+    "@/shared/platform/tauri/features"
+  );
+  return createTauriFeaturePorts().opencodeModels;
+}
+
+describe("OpenCode subscription transport", () => {
+  const submitted: BindOpenCodeManagedRequest = {
+    accountId: OPENAI_ACCOUNT_ID,
+    modelId: "chatgpt-fixture-model",
+    expectedRevision: "revision-before",
+  };
+  beforeEach(() => {
+    invoke.mockReset();
+  });
+
+  it("restores only OpenCode through the existing native takeover owner", async () => {
+    invoke.mockResolvedValue(null);
+    await expect(
+      (await openCodePorts()).restoreManagedProxy(),
+    ).resolves.toBeUndefined();
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      "set_proxy_takeover_for_app",
+      {
+        appType: "opencode",
+        enabled: false,
+      },
+    );
+    await expect(
+      createBrowserFeaturePorts().opencodeModels.restoreManagedProxy(),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+  });
+
+  it.each([undefined, true, { restored: true }])(
+    "rejects unconfirmed restore results %#",
+    async (response) => {
+      invoke.mockResolvedValue(response);
+      await expect(
+        (await openCodePorts()).restoreManagedProxy(),
+      ).rejects.toThrow("unconfirmed");
+    },
+  );
+
+  it.each(["owned/model-1", null, "other/model-1", "SENTINEL-SECRET", 5])(
+    "validates the selected model against the public snapshot %#",
+    async (selectedModel) => {
+      const snapshot = {
+        providers: [
+          {
+            id: "owned",
+            name: "Saved provider",
+            modelIds: ["model-1"],
+            editable: true,
+          },
+        ],
+        selectedModel,
+        path: "~/.config/opencode/opencode.json",
+        backupPath: "~/.config/opencode/opencode.json.backup",
+        revision: "revision-before",
+        exists: true,
+      };
+      invoke.mockResolvedValue(snapshot);
+      const read = (await openCodePorts()).getSnapshot();
+      if (selectedModel === null || selectedModel === "owned/model-1")
+        await expect(read).resolves.toEqual(snapshot);
+      else await expect(read).rejects.toThrow("selected model is unavailable");
+    },
+  );
+
+  it.each([null, "revision-before"])(
+    "sends only explicit account/model and the confirmed config revision %s",
+    async (expectedRevision) => {
+      const response = { ...result, app: "opencode" };
+      invoke.mockResolvedValue(response);
+      const request = { ...submitted, expectedRevision };
+      await expect(
+        (await openCodePorts()).bindManagedProxy(request),
+      ).resolves.toEqual(response);
+      expect(invoke).toHaveBeenCalledExactlyOnceWith(
+        "bind_opencode_managed_proxy",
+        { request },
+      );
+    },
+  );
+
+  it.each([
+    { ...submitted, expectedRevision: undefined },
+    { ...submitted, expectedRevision: 1 },
+    { ...submitted, expectedRevision: "" },
+    { ...submitted, accountId: "legacy-account" },
+    { ...submitted, modelId: "../invalid" },
+    { ...submitted, app: "codex" },
+    { ...submitted, token: "SENTINEL-SECRET" },
+  ])("rejects invalid OpenCode requests before IPC %#", async (request) => {
+    await expect(
+      (await openCodePorts()).bindManagedProxy(
+        request as unknown as BindOpenCodeManagedRequest,
+      ),
+    ).rejects.toThrow("Subscription bind request is invalid");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { ...result, app: "codex" },
+    { ...result, app: "opencode", activated: false },
+    { ...result, app: "opencode", accessToken: "SENTINEL-SECRET" },
+    null,
+  ])("rejects mismatched or unconfirmed results %#", async (response) => {
+    invoke.mockResolvedValue(response);
+    await expect(
+      (await openCodePorts()).bindManagedProxy(submitted),
+    ).rejects.toEqual({ code: "rollback_partial_state_unknown" });
+  });
+
+  it("preserves revision conflict and keeps the browser native-only", async () => {
+    invoke.mockRejectedValue({ code: "provider_conflict" });
+    await expect(
+      (await openCodePorts()).bindManagedProxy(submitted),
+    ).rejects.toEqual({ code: "provider_conflict" });
+    await expect(
+      createBrowserFeaturePorts().opencodeModels.bindManagedProxy(submitted),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+  });
+});
 
 describe("Grok subscription transport", () => {
   beforeEach(() => {
@@ -66,7 +193,7 @@ describe("Grok subscription transport", () => {
         (await ports()).bindXaiManaged(
           invalid as unknown as BindXaiManagedRequest,
         ),
-      ).rejects.toThrow("SuperGrok bind request is invalid");
+      ).rejects.toThrow("Subscription bind request is invalid");
       expect(invoke).not.toHaveBeenCalled();
     },
   );

@@ -10,26 +10,36 @@ use crate::services::provider::{BindXaiManagedError, BindXaiManagedRequest, Prov
 use crate::services::secret::{MemorySecretBackend, SecretService};
 use crate::store::AppState;
 
+#[path = "subscription_opencode_tests.rs"]
+mod opencode_tests;
 #[path = "subscription_transport_tests.rs"]
 mod transport_tests;
 use serde_json::{json, Value};
 use serial_test::serial;
 use std::sync::Arc;
 
-struct TestHome(Option<std::ffi::OsString>);
+struct TestHome(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
 impl TestHome {
     fn set(path: &std::path::Path) -> Self {
         let previous = std::env::var_os("FYAGENT_TEST_HOME");
+        let data_home = std::env::var_os("XDG_DATA_HOME");
         std::env::set_var("FYAGENT_TEST_HOME", path);
-        Self(previous)
+        std::env::set_var("XDG_DATA_HOME", path.join(".local/share"));
+        crate::settings::reload_settings().unwrap();
+        Self(previous, data_home)
     }
 }
 impl Drop for TestHome {
     fn drop(&mut self) {
+        match self.1.take() {
+            Some(value) => std::env::set_var("XDG_DATA_HOME", value),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
         match self.0.take() {
             Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
             None => std::env::remove_var("FYAGENT_TEST_HOME"),
         }
+        crate::settings::reload_settings().unwrap();
     }
 }
 
@@ -318,9 +328,7 @@ fn check_concurrent_targets(use_change_plan: bool) {
         let second = scope.spawn(|| {
             let _entered = runtime.enter();
             if !use_change_plan {
-                runtime
-                    .block_on(state.proxy_service.set_takeover_for_app("codex", true))
-                    .unwrap();
+                assert!(ProviderService::resume_managed_proxy(&state, AppType::Codex).unwrap());
                 return None;
             }
             Some(

@@ -28,4 +28,3 @@
 
 - Apple Developer — [Customizing the notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)：不能直接上传 `.app`，需创建压缩归档；`ditto` ZIP 示例；`--wait` 等待服务完成；将已公证/已 staple 的项目放入 installer/container 后再公证 container。
 - Apple Developer — [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)：可提交 ZIP、installer package 或 disk image；提交前无需重新构建或重新签名；公证后 staple 返回的 ticket。
-

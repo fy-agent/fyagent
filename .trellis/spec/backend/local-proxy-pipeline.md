@@ -35,6 +35,7 @@ POST /v1/messages and /claude/v1/messages
 POST chat-completions route family
 GET  /models and /v1/models
 POST responses/compact route families, including Codex and Grok Build aliases
+POST /opencode/v1/responses (isolated OpenCode application context)
 ANY  /v1beta/*path, /gemini/v1beta/*path, /gemini/v1/*path
 ```
 
@@ -78,6 +79,10 @@ socket, database handle, or raw response-success override.
   strings, model resources, streaming intent, session identity, timeout policy,
   and usage parsers are carried deliberately; handlers must not infer an app
   only from an untrusted substring.
+- `/opencode/v1/responses` uses OpenCode's effective Provider, configuration,
+  breaker and usage scope. It reuses the Responses/Codex protocol adapter and
+  never borrows Codex's current Provider. Generic OpenCode API-key takeover
+  remains outside this dedicated managed binding surface.
 - Request bodies and headers are bounded and normalized before forwarding.
   Protected routing/authentication headers cannot be replaced by generic local
   override configuration.
@@ -120,11 +125,17 @@ socket, database handle, or raw response-success override.
   editable metadata. API-key and official native-client auth paths retain their
   own adapters. Resolve the actual bound upstream model before final headers.
 - `providers/managed_responses::prepare_request(provider, endpoint, body)` runs
-  after editable overrides. OpenAI generation requests force `store=false`,
-  remove `max_output_tokens`, and deduplicate encrypted-reasoning inclusion.
+  after editable overrides. OpenAI generation requests share the idempotent
+  `prepare_openai_generation` policy with Claude conversion: force
+  `store=false` and upstream `stream=true`, remove `max_output_tokens`,
+  `temperature` and `top_p`, supply missing instructions/tools/parallel defaults,
+  and deduplicate encrypted-reasoning inclusion. Explicit supported tool,
+  instruction, parallel, include and service-tier values remain intact.
   Compact requests have a separate schema and must not receive generation-only
-  fields. Existing Claude conversion handles a forced upstream SSE response
-  even when its downstream caller requested non-streaming JSON.
+  fields. Both Claude conversion and native Responses handlers aggregate the
+  forced upstream SSE response when the downstream caller requested JSON;
+  stream=true retains native SSE/tool events. Reuse the bounded completed-event
+  parser and do not fabricate success from a failed or incomplete stream.
 - xAI reuses namespace/sanitize owners, normalizes the route model, hoists
   text-only system/developer content into instructions, removes unsupported
   reasoning/encrypted replay and retention fields, and maps a legacy response
@@ -197,7 +208,7 @@ socket, database handle, or raw response-success override.
 - Forwarder tests cover retryable/terminal classification, permit settlement,
   non-streaming body-read failure, first-stream-chunk priming/replay, semantic
   2xx failures, timeout/cancellation, and protected overrides.
-- Managed subscription tests cover both providers and all three CLI targets,
+- Managed subscription tests cover both providers and all four CLI targets,
   official host/path assertions before mock I/O, complete stream/tool terminal
   events, tool-result replay, final policy idempotence, preserved native auth,
   exact one-401 retry and no default-account/API-key fallback. HTTP fixtures

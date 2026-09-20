@@ -489,3 +489,114 @@ fn health_grok_unrecognized_profile_is_not_corrupt_toml_or_native_auth() {
         Some(&unknown)
     ));
 }
+
+#[test]
+#[serial_test::serial]
+fn release_integration_health_opencode_observes_owned_route_and_reports_real_drift() {
+    use crate::provider::{Provider, ProviderMeta};
+    use std::sync::Arc;
+    struct RestoreHome(Option<std::ffi::OsString>);
+    impl Drop for RestoreHome {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+                None => std::env::remove_var("FYAGENT_TEST_HOME"),
+            }
+            crate::settings::reload_settings().unwrap();
+        }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let _home = RestoreHome(std::env::var_os("FYAGENT_TEST_HOME"));
+    std::env::set_var("FYAGENT_TEST_HOME", directory.path());
+    crate::settings::reload_settings().unwrap();
+    let db = Arc::new(crate::database::Database::memory().unwrap());
+    let state = AppState::new(db.clone());
+    let mut provider = Provider::with_id(
+        "fyagent-openai-opencode-fixture".into(),
+        "Subscription".into(),
+        json!({"npm":"@ai-sdk/openai", "options":{"baseURL":"https://upstream.example/v1","apiKey":"PROXY_MANAGED"},"models":{"fixture":{}}}),
+        None,
+    );
+    provider.meta = Some(ProviderMeta {
+        provider_type: Some("codex_oauth".into()),
+        ..Default::default()
+    });
+    db.save_provider("opencode", &provider).unwrap();
+    db.set_current_provider("opencode", &provider.id).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let _entered = runtime.enter();
+    let mut global = runtime.block_on(db.get_global_proxy_config()).unwrap();
+    global.listen_address = "127.0.0.1".into();
+    global.listen_port = 0;
+    runtime
+        .block_on(db.update_global_proxy_config(global))
+        .unwrap();
+    let listener = runtime.block_on(state.proxy_service.start()).unwrap();
+    let mut intent = runtime
+        .block_on(db.get_proxy_config_for_app("opencode"))
+        .unwrap();
+    intent.enabled = true;
+    runtime
+        .block_on(db.update_proxy_config_for_app(intent))
+        .unwrap();
+    let endpoint = format!("http://127.0.0.1:{}/opencode/v1", listener.port);
+    let mut live = json!({"model":format!("{}/fixture",provider.id),"provider":{&provider.id:provider.settings_config.clone()}});
+    live["provider"][&provider.id]["options"]["baseURL"] = json!(endpoint);
+    let path = crate::opencode_config::get_opencode_config_path();
+    assert!(path.starts_with(directory.path()));
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let observe = |value: &serde_json::Value| {
+        let bytes = serde_json::to_vec_pretty(value).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        let before = db.export_sql_string().unwrap();
+        let observation = configuration::observe(&db, &crate::AppType::OpenCode, AT);
+        let checks = runtime.block_on(proxy::proxy_checks(
+            &db,
+            &state.proxy_service,
+            &crate::AppType::OpenCode,
+            &observation,
+            AT,
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        let rows = |sql: &str| {
+            sql.lines()
+                .filter(|line| !line.starts_with("--"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert_eq!(rows(&db.export_sql_string().unwrap()), rows(&before));
+        checks
+    };
+    let healthy = observe(&live);
+    assert_eq!(find(&healthy, Id::Proxy).reason_code, Reason::ProxyRunning);
+    assert_eq!(
+        find(&healthy, Id::Drift).reason_code,
+        Reason::ConfigurationInSync
+    );
+    for wrong_endpoint in [
+        format!("http://127.0.0.1:{}/grokbuild/v1", listener.port),
+        "http://127.0.0.1:1/opencode/v1".into(),
+    ] {
+        let mut changed = live.clone();
+        changed["provider"][&provider.id]["options"]["baseURL"] = json!(wrong_endpoint);
+        assert_eq!(find(&observe(&changed), Id::Proxy).state, State::Attention);
+        assert_eq!(find(&observe(&changed), Id::Drift).state, State::Attention);
+    }
+    let mut changed = live.clone();
+    changed["model"] = json!(format!("{}/different-model", provider.id));
+    assert_eq!(find(&observe(&changed), Id::Drift).state, State::Attention);
+    let mut other = provider.clone();
+    other.id = "fyagent-openai-opencode-other".into();
+    db.save_provider("opencode", &other).unwrap();
+    changed["provider"][&other.id] = live["provider"][&provider.id].clone();
+    changed["model"] = json!(format!("{}/fixture", other.id));
+    assert_eq!(
+        find(&observe(&changed), Id::Drift).reason_code,
+        Reason::ConfigurationSourceDrifted
+    );
+    runtime.block_on(state.proxy_service.stop()).unwrap();
+    assert_eq!(
+        find(&observe(&live), Id::Proxy).reason_code,
+        Reason::ProxyStopped
+    );
+}

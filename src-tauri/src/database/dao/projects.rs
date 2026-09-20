@@ -8,7 +8,7 @@ fn db_error(_: rusqlite::Error) -> AppError {
 }
 
 impl Database {
-    /// Additive domain migration; root composes this into the single 21 -> 22 step.
+    /// Idempotent domain schema shared by fresh creation and forward migrations.
     pub(crate) fn create_project_tables_on_conn(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch("CREATE TABLE IF NOT EXISTS fde_customers (
           customer_id TEXT PRIMARY KEY, name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 160),
@@ -98,7 +98,7 @@ impl Database {
                 continue;
             }
             // Startup creates tables before migrating legacy Skills identities.
-            // The 21 -> 22 migration seeds and installs these after the v3 rebuild.
+            // The forward domain migration seeds these after the v3 rebuild.
             if kind == "skill"
                 && Self::get_user_version(conn)? < 3
                 && !Self::has_column(conn, table, "id")?

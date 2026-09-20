@@ -90,7 +90,9 @@ Health calls Managed Auth's internal `observe_overview` facade. Proxy slots
 are projected in memory from SELECT-only rows, including missing/default and
 historical slots; only the existing management overview reconciles them to DB.
 The shared route observer reads saved provider selection without the repairing
-`get_effective_current_provider` selector. A stale selected ID stays unknown.
+`get_effective_current_provider` selector. A stale selected ID stays unchanged;
+the account's route stays unknown unless another target proves a matching
+active route for that same account.
 Tests compare complete fixture database dumps, timestamps, native auth bytes
 and vault operation counts across repeated observations.
 

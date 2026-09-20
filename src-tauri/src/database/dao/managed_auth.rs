@@ -875,6 +875,34 @@ impl Database {
         .map_err(|error| database_error("delete managed auth connections", error))?;
         Ok(())
     }
+
+    /// Replace the old default-only subscription slots with per-credential
+    /// slots. Recheck live metadata in SQL so a concurrent admission is not
+    /// pruned from an earlier service snapshot. Native and Copilot slots stay
+    /// with their existing owners.
+    pub(crate) fn managed_auth_prune_subscription_proxy_connections(&self) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "DELETE FROM managed_auth_connections
+             WHERE consumer = 'fyagent_proxy' AND target_id = '' AND (
+                provider_slot IN ('openai', 'xai') OR (
+                    (provider_slot LIKE 'openai:mcred1:%' OR provider_slot LIKE 'xai:mcred1:%')
+                    AND NOT EXISTS (
+                        SELECT 1 FROM managed_auth_credentials AS credential
+                        WHERE credential.credential_id = managed_auth_connections.credential_id
+                          AND credential.provider IN ('openai', 'xai')
+                          AND credential.purpose = 'proxy_upstream'
+                          AND credential.consumer = 'fyagent_proxy'
+                          AND managed_auth_connections.provider_slot =
+                              credential.provider || ':' || credential.credential_id
+                    )
+                )
+             )",
+            [],
+        )
+        .map_err(|error| database_error("prune subscription proxy connections", error))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

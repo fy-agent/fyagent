@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/managed-account-proxy.md", "reason": "Owning contract for subscription reuse implementation and validation"}
+{"file": ".trellis/spec/backend/proxy-runtime.md", "reason": "Owning contract for subscription reuse implementation and validation"}
+{"file": ".trellis/spec/backend/local-proxy-pipeline.md", "reason": "Owning contract for subscription reuse implementation and validation"}
+{"file": ".trellis/spec/backend/external-agent-models.md", "reason": "Owning contract for subscription reuse implementation and validation"}
+{"file": ".trellis/spec/backend/reversible-user-config.md", "reason": "Owning contract for subscription reuse implementation and validation"}
+{"file": ".trellis/spec/frontend/managed-account-subscriptions.md", "reason": "Owning contract for subscription reuse implementation and validation"}
+{"file": ".trellis/spec/frontend/models.md", "reason": "Owning contract for subscription reuse implementation and validation"}

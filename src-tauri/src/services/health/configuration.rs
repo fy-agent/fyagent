@@ -331,6 +331,22 @@ pub(super) fn observe(db: &Database, app: &AppType, at: &str) -> ConfigurationOb
         |id, state, reason, action| checks.push(HealthCheck::new(id, state, reason, action, at));
     let expected = selected.and_then(|p| {
         let value = crate::services::provider::build_health_settings_projection(db, app, p).ok()?;
+        if *app == AppType::OpenCode && p.uses_subscription_proxy() {
+            // A managed slot owns one explicit model; deriving its expectation
+            // from live would hide edits to the selected subscription model.
+            let models = value.get("models")?.as_object()?.keys().collect::<Vec<_>>();
+            if models.len() != 1 {
+                return None;
+            }
+            return routing(
+                app,
+                &serde_json::json!({
+                    "model": format!("{}/{}", p.id, models[0]),
+                    "provider": {&p.id: value}
+                }),
+            )
+            .ok();
+        }
         expected_routing(app, &p.id, value, facts.as_ref()).ok()
     });
     if let Some(facts) = &facts {

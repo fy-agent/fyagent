@@ -14,14 +14,7 @@ import type {
   ProviderSummaryQueryData,
   ReachabilityResult,
   WorkBuddySaveModelsResult,
-  BindXaiManagedRequest,
-  BindXaiManagedResult,
-  BindManagedProxyRequest,
 } from "../../../features/types";
-import {
-  isXaiSubscriptionModelId,
-  xaiBindErrorCode,
-} from "../../../features/xai-subscription";
 import {
   hasExactKeys,
   hasRequiredAndOptionalKeys,
@@ -253,13 +246,11 @@ async function invokeModelProbe(
 function parseOpenCodeModelSnapshot(value: unknown): OpenCodeModelSnapshot {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      "providers",
-      "revision",
-      "path",
-      "backupPath",
-      "exists",
-    ]) ||
+    !hasRequiredAndOptionalKeys(
+      value,
+      ["providers", "revision", "path", "backupPath", "exists"],
+      ["selectedModel"],
+    ) ||
     !Array.isArray(value.providers) ||
     (value.revision !== null && typeof value.revision !== "string") ||
     typeof value.path !== "string" ||
@@ -284,8 +275,21 @@ function parseOpenCodeModelSnapshot(value: unknown): OpenCodeModelSnapshot {
       editable: provider.editable,
     };
   });
+  if (
+    value.selectedModel !== undefined &&
+    value.selectedModel !== null &&
+    !providers.some((provider) =>
+      provider.modelIds.some(
+        (model) => value.selectedModel === `${provider.id}/${model}`,
+      ),
+    )
+  )
+    throw new Error("OpenCode selected model is unavailable");
   return {
     providers,
+    ...(value.selectedModel === undefined
+      ? {}
+      : { selectedModel: value.selectedModel as string | null }),
     revision: value.revision,
     path: value.path,
     backupPath: value.backupPath,
@@ -417,81 +421,6 @@ function assertQuickSetupRequest(
   return request;
 }
 
-function assertSubscriptionBindRequest<
-  T extends BindXaiManagedRequest | BindManagedProxyRequest,
->(
-  request: T,
-  apps: readonly (
-    | BindXaiManagedRequest["app"]
-    | BindManagedProxyRequest["app"]
-  )[],
-): T {
-  if (
-    !isRecord(request) ||
-    !hasExactKeys(request, ["app", "accountId", "modelId"]) ||
-    !isOneOf(request.app, apps) ||
-    typeof request.accountId !== "string" ||
-    !/^ma1:[0-9a-f]{32}$/u.test(request.accountId) ||
-    !isXaiSubscriptionModelId(request.modelId)
-  )
-    throw new Error("SuperGrok bind request is invalid");
-  return request;
-}
-
-function parseSubscriptionBindResult<
-  T extends BindXaiManagedRequest | BindManagedProxyRequest,
->(
-  value: unknown,
-  request: T,
-): Omit<BindXaiManagedResult, "app"> & { app: T["app"] } {
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, [
-      "providerId",
-      "providerName",
-      "app",
-      "alreadyBound",
-      "activated",
-    ]) ||
-    typeof value.providerId !== "string" ||
-    !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/u.test(value.providerId) ||
-    typeof value.providerName !== "string" ||
-    !value.providerName.trim() ||
-    value.providerName.length > 200 ||
-    /[\r\n\0]/u.test(value.providerName) ||
-    value.app !== request.app ||
-    typeof value.alreadyBound !== "boolean" ||
-    typeof value.activated !== "boolean" ||
-    value.activated !==
-      (request.app === "claude" || request.app === "grokbuild")
-  )
-    throw new Error("SuperGrok bind result is unavailable");
-  return {
-    providerId: value.providerId,
-    providerName: value.providerName,
-    app: request.app,
-    alreadyBound: value.alreadyBound,
-    activated: value.activated,
-  };
-}
-
-function parseXaiManagedModels(value: unknown): {
-  models: string[];
-  truncated: boolean;
-} {
-  if (!Array.isArray(value) || value.length > 2_000)
-    throw new Error("xAI models are unavailable");
-  const models: string[] = [];
-  for (const entry of value) {
-    const id =
-      typeof entry === "string" ? entry : isRecord(entry) ? entry.id : null;
-    if (!isXaiSubscriptionModelId(id))
-      throw new Error("xAI models are unavailable");
-    if (!models.includes(id)) models.push(id);
-  }
-  return { models, truncated: false };
-}
-
 export function createModelFeaturePorts(): Pick<
   FeaturePorts,
   "providers" | "workbuddy" | "opencodeModels"
@@ -514,54 +443,18 @@ export function createModelFeaturePorts(): Pick<
         ),
       checkReachability: invokeReachability,
       checkModel: invokeModelProbe,
-      bindXaiManaged: async (request) => {
-        const validated = assertSubscriptionBindRequest(request, [
-          "claude",
-          "claude-desktop",
-          "codex",
-        ]);
-        try {
-          return parseSubscriptionBindResult(
-            await invoke<unknown>("bind_xai_managed_provider", {
-              request: validated,
-            }),
-            validated,
-          );
-        } catch (error) {
-          throw {
-            code: xaiBindErrorCode(error) ?? "rollback_partial_state_unknown",
-          };
-        }
-      },
-      bindManagedProxy: async (request) => {
-        const validated = assertSubscriptionBindRequest(request, [
-          "claude",
-          "codex",
-          "grokbuild",
-        ]);
-        try {
-          return parseSubscriptionBindResult(
-            await invoke<unknown>("bind_managed_proxy_provider", {
-              request: validated,
-            }),
-            validated,
-          );
-        } catch (error) {
-          throw {
-            code: xaiBindErrorCode(error) ?? "rollback_partial_state_unknown",
-          };
-        }
-      },
-      fetchXaiManagedModels: async (accountId) => {
-        if (
-          typeof accountId !== "string" ||
-          !/^ma1:[0-9a-f]{32}$/u.test(accountId)
-        )
-          throw new Error("xAI account selection is invalid");
-        return parseXaiManagedModels(
-          await invoke<unknown>("get_xai_oauth_models", { accountId }),
-        );
-      },
+      bindXaiManaged: async (request) =>
+        (
+          await import("./managedSubscriptions")
+        ).managedProviderPorts.bindXaiManaged(request),
+      bindManagedProxy: async (request) =>
+        (
+          await import("./managedSubscriptions")
+        ).managedProviderPorts.bindManagedProxy(request),
+      fetchXaiManagedModels: async (accountId) =>
+        (
+          await import("./managedSubscriptions")
+        ).managedProviderPorts.fetchXaiManagedModels(accountId),
     },
     workbuddy: {
       getStatus: () => invoke("get_workbuddy_status"),
@@ -572,6 +465,14 @@ export function createModelFeaturePorts(): Pick<
       checkModel: invokeModelProbe,
     },
     opencodeModels: {
+      restoreManagedProxy: async () =>
+        (
+          await import("./managedSubscriptions")
+        ).managedOpenCodePorts.restoreManagedProxy(),
+      bindManagedProxy: async (request) =>
+        (
+          await import("./managedSubscriptions")
+        ).managedOpenCodePorts.bindManagedProxy(request),
       getSnapshot: async () =>
         parseOpenCodeModelSnapshot(
           await invoke<unknown>("get_opencode_model_snapshot"),

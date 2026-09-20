@@ -421,6 +421,7 @@ where
         account_id: &str,
         expected_revision: &str,
     ) -> Result<ManagedAuthAccountRemovalPreview, ManagedAuthCoreError> {
+        self.upsert_proxy_connections()?;
         let rows = self.credentials_for_account(account_id)?;
         let Some(selected) = rows.first() else {
             return Err(ManagedAuthCoreError::NotFound);
@@ -1024,19 +1025,16 @@ where
 
     pub(crate) fn upsert_proxy_connections(&self) -> Result<(), ManagedAuthCoreError> {
         let rows = self.repository.list_all_credentials()?;
-        let existing = self.repository.list_connections()?;
-        for connection in Self::projected_proxy_connections(&rows, &existing) {
+        for connection in Self::projected_proxy_connections(&rows) {
             self.repository.upsert_connection(&connection)?;
         }
+        self.repository.prune_subscription_proxy_connections()?;
         Ok(())
     }
 
-    /// Project the same desired proxy slots used by management reconciliation.
-    /// Observation keeps them in memory: discovering a default is not a DB write.
-    fn projected_proxy_connections(
-        rows: &[CredentialWithIdentity],
-        existing: &[ConnectionRecord],
-    ) -> Vec<ConnectionRecord> {
+    /// One pure projection serves management reconciliation and read-only
+    /// Health observations, including every independently selectable account.
+    fn projected_proxy_connections(rows: &[CredentialWithIdentity]) -> Vec<ConnectionRecord> {
         let now = chrono::Utc::now().timestamp();
         let mut projected = Vec::new();
         for provider in [
@@ -1045,82 +1043,117 @@ where
             ManagedAuthProvider::GithubCopilot,
         ] {
             let (purpose, consumer) = purpose_for_provider(provider);
-            let selected = rows.iter().find(|row| {
+            let copilot = provider == ManagedAuthProvider::GithubCopilot;
+            for row in rows.iter().filter(|row| {
                 row.credential.provider == provider
                     && row.credential.purpose == purpose
                     && row.credential.consumer == consumer
-                    && row.is_default
-            });
-            let mut status = match selected {
-                Some(row) if row.credential.status == CredentialStatus::RequiresReauth => {
-                    ConnectionStatus::RequiresReauth
-                }
-                Some(row)
-                    if row.credential.status == CredentialStatus::Ready
-                        && row.credential.refresh_owner == RefreshOwner::Fyagent =>
-                {
-                    ConnectionStatus::Checking
-                }
-                Some(_) => ConnectionStatus::Unavailable,
-                None => ConnectionStatus::Disconnected,
-            };
-            let connection_id =
-                stable_connection_id(ManagedAuthConsumer::FyagentProxy, "", provider.as_str());
-            if provider == ManagedAuthProvider::GithubCopilot {
-                // Copilot's existing control-plane projection is outside the
-                // OpenAI/xAI subscription migration.
-                if !selected.is_some_and(|row| row.credential.status == CredentialStatus::Ready) {
+                    && (!copilot || row.is_default)
+            }) {
+                // Copilot keeps its independent default-account projection.
+                if copilot && row.credential.status != CredentialStatus::Ready {
                     continue;
                 }
-                status = ConnectionStatus::Connected;
-            } else if selected.is_none()
-                && !existing
-                    .iter()
-                    .any(|row| row.connection_id == connection_id)
-            {
-                continue;
-            }
-            let copilot = provider == ManagedAuthProvider::GithubCopilot;
-            projected.push(ConnectionRecord {
-                connection_id: connection_id.clone(),
-                consumer: ManagedAuthConsumer::FyagentProxy,
-                target_id: String::new(),
-                provider_slot: provider.as_str().to_string(),
-                credential_id: selected.map(|row| row.credential.credential_id.clone()),
-                desired_revision: stable_revision(&[
-                    &connection_id,
-                    selected.map_or("", |row| row.credential.credential_id.as_str()),
-                    status.as_str(),
-                ]),
-                observed_revision: copilot.then(|| stable_revision(&[&connection_id, "proxy"])),
-                status,
-                request_mode: if copilot {
-                    ManagedAuthRequestMode::OfficialSubscription
+                let status = if copilot {
+                    ConnectionStatus::Connected
+                } else if row.credential.status == CredentialStatus::RequiresReauth {
+                    ConnectionStatus::RequiresReauth
+                } else if row.credential.status == CredentialStatus::Ready
+                    && row.credential.refresh_owner == RefreshOwner::Fyagent
+                {
+                    ConnectionStatus::Checking
                 } else {
-                    ManagedAuthRequestMode::Unknown
-                },
-                request_provider_label: Some(provider.as_str().to_string()),
-                official_session_preserved: copilot.then_some(true),
-                pending_restart: false,
-                created_at: now,
-                updated_at: now,
-            });
+                    ConnectionStatus::Unavailable
+                };
+                // Each independently selectable lineage needs a stable slot.
+                // The private slot is hashed into the existing public connection
+                // ID; it is not a lifecycle target or a renderer credential ID.
+                let provider_slot = if copilot {
+                    provider.as_str().to_string()
+                } else {
+                    format!("{}:{}", provider.as_str(), row.credential.credential_id)
+                };
+                let connection_id =
+                    stable_connection_id(ManagedAuthConsumer::FyagentProxy, "", &provider_slot);
+                projected.push(ConnectionRecord {
+                    connection_id: connection_id.clone(),
+                    consumer: ManagedAuthConsumer::FyagentProxy,
+                    target_id: String::new(),
+                    provider_slot,
+                    credential_id: Some(row.credential.credential_id.clone()),
+                    desired_revision: stable_revision(&[
+                        &connection_id,
+                        &row.credential.credential_id,
+                        status.as_str(),
+                    ]),
+                    observed_revision: copilot.then(|| stable_revision(&[&connection_id, "proxy"])),
+                    status,
+                    request_mode: if copilot {
+                        ManagedAuthRequestMode::OfficialSubscription
+                    } else {
+                        ManagedAuthRequestMode::Unknown
+                    },
+                    request_provider_label: Some(provider.as_str().to_string()),
+                    official_session_preserved: copilot.then_some(true),
+                    pending_restart: false,
+                    created_at: now,
+                    updated_at: now,
+                });
+            }
         }
         projected
     }
 
     fn overview_inner(&self) -> Result<ManagedAuthOverview, ManagedAuthCoreError> {
+        self.overview_inner_with_proxy_observer(|auth_kind, account, is_default| {
+            self.with_app_state(|state| {
+                state
+                    .proxy_service
+                    .observe_managed_account_route(auth_kind, account, is_default)
+            })
+            .flatten()
+        })
+    }
+
+    fn overview_inner_with_proxy_observer(
+        &self,
+        observe_proxy: impl FnMut(&str, &str, bool) -> Option<bool>,
+    ) -> Result<ManagedAuthOverview, ManagedAuthCoreError> {
         // Reconcile missing/changed defaults as well as ready accounts. A
         // persisted login row is never evidence of a running local route.
         self.upsert_proxy_connections()?;
-        self.observe_overview_inner()
+        self.observe_overview_inner_with_proxy_observer(observe_proxy)
     }
 
     fn observe_overview_inner(&self) -> Result<ManagedAuthOverview, ManagedAuthCoreError> {
+        self.observe_overview_inner_with_proxy_observer(|auth_kind, account, is_default| {
+            self.with_app_state(|state| {
+                state
+                    .proxy_service
+                    .observe_managed_account_route(auth_kind, account, is_default)
+            })
+            .flatten()
+        })
+    }
+
+    fn observe_overview_inner_with_proxy_observer(
+        &self,
+        mut observe_proxy: impl FnMut(&str, &str, bool) -> Option<bool>,
+    ) -> Result<ManagedAuthOverview, ManagedAuthCoreError> {
         let fail = self.fail_closed_snapshot();
         let rows = self.repository.list_all_credentials()?;
         let mut connections = self.repository.list_connections()?;
-        for projected in Self::projected_proxy_connections(&rows, &connections) {
+        // Hide superseded/orphaned subscription slots without a persisted
+        // mutation during Health observation. Management prunes them in its DAO.
+        connections.retain(|record| {
+            record.consumer != ManagedAuthConsumer::FyagentProxy
+                || !record.target_id.is_empty()
+                || !(record.provider_slot == "openai"
+                    || record.provider_slot.starts_with("openai:mcred1:")
+                    || record.provider_slot == "xai"
+                    || record.provider_slot.starts_with("xai:mcred1:"))
+        });
+        for projected in Self::projected_proxy_connections(&rows) {
             connections.retain(|record| record.connection_id != projected.connection_id);
             connections.push(projected);
         }
@@ -1150,11 +1183,16 @@ where
             if connection.consumer != ManagedAuthConsumer::FyagentProxy {
                 continue;
             }
-            let selected = rows.iter().find(|row| {
-                row.is_default
-                    && Some(row.identity.identity_id.as_str()) == connection.account_id.as_deref()
-                    && row.credential.consumer == Some(ManagedAuthConsumer::FyagentProxy)
-            });
+            let selected = connections
+                .iter()
+                .find(|record| record.connection_id == connection.connection_id)
+                .and_then(|record| record.credential_id.as_deref())
+                .and_then(|credential_id| {
+                    rows.iter().find(|row| {
+                        row.credential.credential_id == credential_id
+                            && row.credential.consumer == Some(ManagedAuthConsumer::FyagentProxy)
+                    })
+                });
             let Some(row) = selected else {
                 continue;
             };
@@ -1170,15 +1208,8 @@ where
                 // readiness is not local listener evidence either.
                 ManagedAuthProvider::GithubCopilot => continue,
             };
-            let observed = self
-                .with_app_state(|state| {
-                    state.proxy_service.observe_managed_account_route(
-                        auth_kind,
-                        &row.credential.legacy_account_id,
-                        row.is_default,
-                    )
-                })
-                .flatten();
+            let observed =
+                observe_proxy(auth_kind, &row.credential.legacy_account_id, row.is_default);
             apply_proxy_route_observation(connection, observed);
         }
         for account in &mut accounts {
@@ -2144,6 +2175,10 @@ fn map_opencode_error(error: opencode::OpencodeAuthError) -> ManagedAuthErrorDto
 #[cfg(test)]
 #[path = "proxy_refresh_tests.rs"]
 mod proxy_refresh_tests;
+
+#[cfg(test)]
+#[path = "proxy_overview_tests.rs"]
+mod proxy_overview_tests;
 
 #[cfg(test)]
 mod tests {

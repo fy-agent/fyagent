@@ -1,7 +1,7 @@
 use super::*;
-use evidence::{Checker, KitFixture, Outcome, RunRequest};
 #[cfg(target_os = "macos")]
-use evidence::{SourceClass, Validity};
+use evidence::SourceClass;
+use evidence::{Checker, KitFixture, Outcome, RunRequest, Validity};
 #[cfg(target_os = "macos")]
 use projects::domain::BindKitRequest;
 use projects::domain::ProjectMutation;
@@ -213,4 +213,99 @@ async fn fde_workspace_unbound_package_cannot_create_a_pass() {
         .await
         .unwrap();
     assert_eq!(result.evidence[0].outcome, Outcome::Unsupported);
+}
+
+#[tokio::test]
+async fn release_integration_fde_saved_probe_rejects_subscription_sources_before_transport() {
+    use crate::provider::{Provider, ProviderMeta};
+    use evidence::ProjectDependencyReader;
+    use serde_json::json;
+
+    // A real API-key probe would connect to this listener. No subscription
+    // source may issue that request or report a vendor/network failure.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
+    for source in ["codex_oauth", "xai_oauth"] {
+        for app in ["claude", "codex", "grokbuild", "opencode"] {
+            let temp = tempfile::tempdir().unwrap();
+            let db = Arc::new(Database::memory().unwrap());
+            let workspace = compose(db.clone(), temp.path().canonicalize().unwrap());
+            let settings = match app {
+                "claude" => {
+                    json!({"env":{"ANTHROPIC_BASE_URL":endpoint,"ANTHROPIC_MODEL":"fixture","ANTHROPIC_API_KEY":"PROXY_MANAGED"}})
+                }
+                "codex" => {
+                    json!({"auth":{"OPENAI_API_KEY":"PROXY_MANAGED"},"config":format!("model_provider='fixture'\nmodel='fixture'\n[model_providers.fixture]\nbase_url='{endpoint}'\nwire_api='responses'\n")})
+                }
+                "grokbuild" => {
+                    json!({"config":format!("[models]\ndefault='fixture'\n[model.fixture]\nmodel='fixture'\nbase_url='{endpoint}'\napi_key='PROXY_MANAGED'\napi_backend='responses'\ncontext_window=128000\n")})
+                }
+                _ => {
+                    json!({"npm":"@ai-sdk/openai","options":{"baseURL":endpoint,"apiKey":"PROXY_MANAGED"},"models":{"fixture":{}}})
+                }
+            };
+            let mut provider =
+                Provider::with_id("subscription".into(), "Subscription".into(), settings, None);
+            provider.meta = Some(ProviderMeta {
+                provider_type: Some(source.into()),
+                ..Default::default()
+            });
+            db.save_provider(app, &provider).unwrap();
+            let customer = workspace
+                .projects
+                .create_customer("Fixture customer")
+                .unwrap();
+            let project = workspace
+                .projects
+                .create(&customer.customer_id, "Subscription check")
+                .unwrap();
+            let bound = workspace
+                .projects
+                .bind_resource(
+                    &ProjectMutation {
+                        project_id: project.project_id.clone(),
+                        expected_revision: project.project_revision,
+                    },
+                    ResourceKind::Provider,
+                    app,
+                    &provider.id,
+                    Some("fixture".into()),
+                )
+                .unwrap();
+            let reader = DependencyReader {
+                db,
+                projects: workspace.projects.clone(),
+                kits: workspace.kits.clone(),
+            };
+            assert_eq!(
+                reader.saved_model(&project.project_id).err(),
+                Some("saved_model_unavailable"),
+                "{source}/{app}"
+            );
+            let result = workspace
+                .verification
+                .run(RunRequest {
+                    project_id: project.project_id,
+                    expected_revision: bound.project_revision as u64,
+                    checker: Checker::SavedModelProbe,
+                    fixture: None,
+                    run_id: uuid::Uuid::new_v4().to_string(),
+                })
+                .await
+                .unwrap();
+            assert_eq!(result.evidence.len(), 1);
+            let record = &result.evidence[0];
+            assert_eq!(record.outcome, Outcome::Unsupported, "{source}/{app}");
+            assert_eq!(record.reason_code, "saved_model_unavailable");
+            assert_eq!(record.validity, Validity::Current);
+            let wire = serde_json::to_string(record).unwrap();
+            assert!(!wire.contains("PROXY_MANAGED"));
+            assert!(!wire.contains(&endpoint));
+        }
+    }
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
 }

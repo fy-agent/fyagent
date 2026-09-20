@@ -27,7 +27,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "1dc9568d77f556679c83ce330253cb4129674ca4e6cd0c7a2abb5942ff6e8ced"
+      "4c16497066bf5be50d407e22fcb6bfa1f50fe058850e77d4e32046bcb7dae684"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -147,11 +147,11 @@
     ],
     [
       "src-tauri/src/config.rs",
-      "824c10789ed99c53cc341792c849bf9da476ee3b0987f6806847e63419041545"
+      "d665a2bfd235ca5c0d6548b5abc138e2b36f41b2b4cb4eac7404015d1fb0b97b"
     ],
     [
       "src-tauri/src/config/recovery.rs",
-      "d0cc34f8fc541e341b836f56fe1c2d95482a45029097024bd61825132ed257cc"
+      "776f8d453ef7b452d8328152ec8ecd806955a7e3073b4eba6b43751aa4cd1ce1"
     ],
     [
       "src-tauri/src/gemini_config.rs",
@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "4a130e63a867bd9f63e3371baa6b94046fbebfa7eaf17f9c8dcdd65ec3b00e62"
+      "42a23d47c3c85a9601c8b13eacfd6e604de1b8a423aa82b529a6e6dc2e80e5a5"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -231,7 +231,7 @@
     ],
     [
       "src-tauri/src/services/fde_workspace/tests.rs",
-      "857530b0591827ec989b7fb7ad7026fdf55335b3022624f088102edd134d0d8a"
+      "464ed1af5d9c95df53ad0c74497823466df6097aa74475bc51c20289957155a2"
     ],
     [
       "src-tauri/src/services/managed_auth/consumers/grok.rs",
@@ -242,8 +242,12 @@
       "c54bbf91b40da1f3be7a74619ed120571f90c9d0c0ed526fdf2fbd0b43947d91"
     ],
     [
+      "src-tauri/src/services/managed_auth/subscription_tests.rs",
+      "031d37552d6fd7970c4dbf3e4cb3bbcee8db1f126631b43b44fa06fc48250b80"
+    ],
+    [
       "src-tauri/src/services/managed_auth/subscription_transport_tests.rs",
-      "a74374c08c8fbc3610ef4b2aba965af8a9ea73125b775caae2d933f5720ddaaa"
+      "cd7d49b3d731caa2db19da40aa58b7816dc9645ddca0de73cd72ea46eda14a17"
     ],
     [
       "src-tauri/src/services/model_probe.rs",
@@ -263,7 +267,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "7521ca4261e79567c3816144b02d863d7e599ca74295ef4bc092714a7b15bead"
+      "8d6ebbba07b71e097f86dda358b9528de83e358eb7b8ef1cc47990f1f695122b"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -439,7 +443,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "b2b6c810ea4deb76c2efa5727b7c62e98eb14c2ab57095bc2e190f795a654855"
+      "d842533da089afa040665d72cbab87a1e2a7ba4065eee47d49248c28407c34ce"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

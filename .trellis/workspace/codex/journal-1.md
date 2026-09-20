@@ -133,6 +133,16 @@ Fixed disabled Prompt live-file writes and invalid Daily Memory entries in an is
 [OK] **Completed**
 
 
+## Session 9: Complete cross-agent subscription reuse
+<!-- trellis-session: v=2 fp=3e18ab8fd182dc45 -->
+
+**Date**: 2026-09-19
+**Task**: Complete cross-agent subscription reuse
+**Branch**: `codex/subscription-cross-agent-20260919`
+
+### Summary
+
+Completed OpenCode managed OpenAI/xAI binding and local Responses routing; fixed request normalization, per-account overview, restoration ownership and restart recovery across four targets. Full prearchive gate passed with 3611 Rust and 1752 frontend tests; 636 browser flows plus 20 final subscription regressions passed. Built and integrity-checked a local macOS arm64 candidate. Real provider and client UAT remains pending.
 ## Session 8: macOS 0.4.5 upgrade and native audit
 <!-- trellis-session: v=2 fp=f9d9990403d220f3 -->
 
@@ -148,6 +158,7 @@ Installed and native-tested local 0.4.5 with Codex Health uncertainty and Prompt
 
 | Hash | Message |
 |------|---------|
+| `61040031` | feat(models): complete cross-agent subscription reuse |
 | `1a924586` | fix(health): preserve unmanaged Codex native auth uncertainty |
 | `9dfb55bc` | fix(prompts): keep the selected agent when opening management |
 
@@ -176,6 +187,30 @@ Completed four FDE workstreams, project UX refinement, independent review fixes,
 | `26efebed` | fix(fde): preserve legacy upgrades and defer project features at startup |
 | `cd8b4ced` | fix(fde): organize project workspaces and preserve verification drafts |
 | `c6cfbe94` | fix(projects): fill desktop workspace and show fresh verification results |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 11: FDE and subscription same-delivery integration
+<!-- trellis-session: v=2 fp=b69b1e6887f63bd6 -->
+
+**Date**: 2026-09-20
+**Task**: FDE and subscription same-delivery integration
+**Branch**: `codex/subscription-cross-agent-20260919`
+
+### Summary
+
+Created FDE PR #193 and stacked subscription PR #192 on its base. Resolved both schema-22 histories through schema 23, OpenCode binding/import/Health/probe compatibility, lazy-port contracts, and concrete workstation paths. Repaired FDE Windows fixtures and browser guide/animation/contrast checks. The final combined local gate passed 1869 frontend tests, 3700 Rust tests, and all 640 browser cases. Final hosted checks and merge-order readback are tracked in the two PR descriptions; real accounts, combined app UAT, Windows project-file support, installation and release remain outside this verification.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `31aa9d92` | feat(models): integrate subscription reuse with FDE delivery |
+| `ebbda4ac` | chore(integration): include verified FDE CI fixes |
+| `590f6f96` | fix(ci): repair FDE native fixtures and browser regressions |
 
 ### Status
 

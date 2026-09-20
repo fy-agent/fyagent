@@ -44,6 +44,22 @@ The native command is `bind_managed_proxy_provider`. The old
 Desktop draft compatibility; both use the same response/error parser and native
 binding owner. Browser ports remain native-only.
 
+OpenCode uses `OpenCodeModelsPort.bindManagedProxy` and the dedicated command
+`bind_opencode_managed_proxy`, not the generic Provider summary/write surface:
+
+```ts
+interface BindOpenCodeManagedRequest {
+  accountId: string;
+  modelId: string;
+  expectedRevision: string | null;
+}
+// Same result keys, app="opencode", activated=true.
+```
+
+The request has exactly those keys. `expectedRevision` is the OpenCode snapshot
+revision captured when confirmation opens, or null for an absent file. A stale
+revision fails as `provider_conflict`; the UI must not silently rebase a write.
+
 ## 3. Contracts
 
 - The overview is Query-owned under `featureKeys.managedAuthOverview` and
@@ -67,7 +83,7 @@ binding owner. Browser ports remain native-only.
   accounts or targets clears stale model selection.
 - The bind request has exactly the three keys above. Native response parsing
   checks exact keys, the submitted target identity, bounded provider ID/name,
-  boolean fields and `activated === (app === "claude" || app === "grokbuild")`. Invalid or unknown
+  boolean fields and activation only for Claude/Grok/OpenCode. Invalid or unknown
   responses fail closed; no raw native diagnostic enters product copy.
 - Claude Code/Grok Build confirmation discloses native write targets and shares the
   Provider panel's synchronous write guard. A positive result requires native
@@ -76,11 +92,28 @@ binding owner. Browser ports remain native-only.
   target through the existing Models parent block. Other targets remain usable.
   This target block still applies when switching targets unmounts the picker
   while a bind is pending; mounted guards may suppress only local UI updates.
+- OpenCode composes the same picker and uses its own snapshot/write disclosure,
+  synchronous guard and revision. Success requires a fresh OpenCode snapshot
+  containing the returned Provider/model and a managed-auth overview reread.
+  The snapshot's `selectedModel` must also match `providerId/modelId`; a missing
+  field on an older host cannot confirm a new binding. It never reads the
+  generic Provider summary as OpenCode authority. Its
+  unknown-result block lives in the Models parent and survives target switches;
+  ordinary model save/delete and subscription binding share this block/guard.
+- While the OpenCode snapshot contains a reserved managed provider, ordinary
+  API-key save/delete is disabled and its form excludes managed entries. A
+  dedicated restore action confirms file disclosure, invokes only
+  `set_proxy_takeover_for_app({appType:"opencode",enabled:false})`, then rereads
+  the OpenCode snapshot and account overview. Native null is the only accepted
+  void result. A remaining managed entry, failure or unavailable reread blocks
+  target writes, including failures arriving after unmount. Restoring this
+  target does not stop other targets. Quitting with retained state is not the
+  same as explicitly disabling a subscription.
 - Codex binding saves a draft only. The result links to the existing Auth
   `consumer=codex&view=connections` source workspace, where the user selects
   the named saved source, previews and confirms the existing Change Plan.
   Models never mounts another source-switch workspace. This picker exposes
-  Claude Code, Codex and Grok Build binding. The native contract retains Desktop
+  Claude Code, Codex, Grok Build and OpenCode binding. The native contract retains Desktop
   draft compatibility, but Models provides no Desktop action until its own
   authoritative saved-source readback and application path are integrated.
 - Bind errors are the closed `{code}` values `invalid_request`,
@@ -89,7 +122,8 @@ binding owner. Browser ports remain native-only.
   block writes; known preflight/confirmed-restoration failures retain a safe
   retry path. Once binding returned, subsequent owner-read errors are always
   unconfirmed regardless of their error shape.
-- Successful binding invalidates/rereads the affected Provider summary and
+- Successful binding invalidates/rereads the affected Provider summary (or
+  OpenCode model snapshot) and
   managed-auth overview. Account/login changes reuse the same overview key.
   The UI states that using the subscription requires FyAgent running in the
   background, and separates saved config from actual calls/quota use.
@@ -131,8 +165,13 @@ exact vault identity payloads, invalid fields, target/result agreement, closed
 errors, old/new command compatibility, Grok activation and browser native-only
 behavior. OpenAI selection must not call xAI/API-key model discovery. Models
 Page tests retain target-switch isolation and WorkBuddy's non-subscription scope.
+OpenCode cases cover exact revision/null admission, stale conflicts, secret/extra
+field rejection, native-only browser ports, target-local readback, and pending
+binding failure after a target switch.
+`OpenCodeSubscriptionRestore.test.tsx` covers confirmation, native/owner reads,
+restored API-key editing, residual managed state and late failure blocking.
 
-`tests/browser/xai-subscription.spec.ts` covers the real renderer's Claude/Grok
+`tests/browser/xai-subscription.spec.ts` covers the real renderer's Claude/Grok/OpenCode
 confirmation, OpenAI manual selection and Codex source preview/apply using
 synthetic IPC fixtures.
 These are not native-file, live-subscription or Windows evidence.

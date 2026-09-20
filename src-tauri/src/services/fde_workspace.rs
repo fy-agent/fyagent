@@ -173,6 +173,12 @@ impl evidence::ProjectDependencyReader for DependencyReader {
             .get_provider_by_id(&binding.raw_id, &binding.agent_id)
             .map_err(|_| "saved_model_unavailable")?
             .ok_or("saved_model_unavailable")?;
+        // This checker owns a saved API-key request. Subscription credentials
+        // belong to the local proxy, and its marker is never upstream auth.
+        // An unsupported source must not become a vendor/network failure.
+        if provider.uses_subscription_proxy() {
+            return Err("saved_model_unavailable");
+        }
         let (api_key, base_url) =
             super::provider::ProviderService::extract_credentials(&provider, &app)
                 .map_err(|_| "saved_model_unavailable")?;

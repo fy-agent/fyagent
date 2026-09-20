@@ -2056,6 +2056,7 @@ pub fn run() {
             commands::add_provider_with_result,
             commands::bind_xai_managed_provider,
             commands::bind_managed_proxy_provider,
+            commands::bind_opencode_managed_proxy,
             commands::apply_provider_quick_setup_with_result,
             commands::update_provider,
             commands::update_provider_with_result,
@@ -2916,7 +2917,7 @@ pub(crate) fn remove_tray_icon_before_exit(app_handle: &tauri::AppHandle) {
 ///
 /// 检查 `proxy_config.enabled` 字段，如果有任一应用的状态为 `true`，
 /// 则自动启动代理服务并接管对应应用的 Live 配置。
-const PROXY_STARTUP_APP_TYPES: [&str; 4] = ["claude", "codex", "gemini", "grokbuild"];
+const PROXY_STARTUP_APP_TYPES: [&str; 5] = ["claude", "codex", "gemini", "grokbuild", "opencode"];
 
 async fn enabled_proxy_apps_on_startup(db: &database::Database) -> Vec<&'static str> {
     let mut apps = Vec::new();
@@ -2945,6 +2946,25 @@ async fn restore_proxy_state_on_startup(state: &store::AppState) {
 
     // 逐个恢复接管状态
     for app_type in apps_to_restore {
+        let cloned_state = state.clone();
+        let app = app_type.parse().expect("startup app allowlist");
+        match tauri::async_runtime::spawn_blocking(move || {
+            ProviderService::resume_managed_proxy(&cloned_state, app)
+        })
+        .await
+        {
+            Ok(Ok(true)) => {
+                log::info!("{app_type} subscription route restored");
+                continue;
+            }
+            Ok(Ok(false)) if app_type != "opencode" => {}
+            _ => {
+                log::error!(
+                    "{app_type} subscription route requires review; recovery evidence retained"
+                );
+                continue;
+            }
+        }
         match state
             .proxy_service
             .set_takeover_for_app(app_type, true)

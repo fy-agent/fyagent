@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   RENDERER_ROUTE_ENTRIES,
   RENDERER_DEFERRED_PORT_ENTRIES,
+  RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
+  RENDERER_NESTED_SUBSCRIPTION_PORT,
   verifyRouteChunks,
 } from "../../../scripts/verify-route-chunks.mjs";
 
@@ -30,7 +32,7 @@ async function fixture(
       imports: ["_vendor.js", "index.html"],
       dynamicImports: [
         ...RENDERER_ROUTE_ENTRIES,
-        ...RENDERER_DEFERRED_PORT_ENTRIES,
+        ...RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
       ],
       css: ["assets/main.css"],
     },
@@ -55,6 +57,9 @@ async function fixture(
       "deferred port",
     );
   }
+  manifest[RENDERER_NESTED_SUBSCRIPTION_PORT.importer].dynamicImports = [
+    RENDERER_NESTED_SUBSCRIPTION_PORT.entry,
+  ];
   patch?.(manifest);
   await Promise.all([
     writeFile(path.join(root, "assets/index.js"), "entry"),
@@ -83,7 +88,7 @@ describe("verifyRouteChunks", () => {
     expect(result.routeChunks.map(({ route }) => route)).toContain(
       "app/ProjectsWorkspace.tsx",
     );
-    expect(result.deferredPortChunks).toHaveLength(6);
+    expect(result.deferredPortChunks).toHaveLength(7);
     expect(result.initialChunks.map((chunk) => chunk.file).sort()).toEqual([
       "assets/index.js",
       "assets/main.js",
@@ -109,7 +114,7 @@ describe("verifyRouteChunks", () => {
         ...RENDERER_ROUTE_ENTRIES.filter(
           (entry) => entry !== "app/ProjectsWorkspace.tsx",
         ),
-        ...RENDERER_DEFERRED_PORT_ENTRIES,
+        ...RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
       ];
     });
     await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
@@ -133,6 +138,36 @@ describe("verifyRouteChunks", () => {
     });
     await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
       "must dynamically import exactly",
+    );
+  });
+
+  it.each([
+    [],
+    ["unexpected.ts"],
+    [RENDERER_NESTED_SUBSCRIPTION_PORT.entry, "unexpected.ts"],
+  ])(
+    "rejects missing or unreviewed nested subscription entries: %j",
+    async (...entries) => {
+      const distributionDirectory = await fixture((manifest) => {
+        manifest[RENDERER_NESTED_SUBSCRIPTION_PORT.importer].dynamicImports =
+          entries;
+      });
+      await expect(
+        verifyRouteChunks({ distributionDirectory }),
+      ).rejects.toThrow(
+        "Models port must dynamically import only the subscription port",
+      );
+    },
+  );
+
+  it("rejects moving the subscription port into Models static imports", async () => {
+    const distributionDirectory = await fixture((manifest) => {
+      manifest[RENDERER_NESTED_SUBSCRIPTION_PORT.importer].imports = [
+        RENDERER_NESTED_SUBSCRIPTION_PORT.entry,
+      ];
+    });
+    await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
+      "subscription port must remain deferred from Models",
     );
   });
 

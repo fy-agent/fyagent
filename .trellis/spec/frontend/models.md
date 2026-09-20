@@ -89,6 +89,10 @@ interface WorkBuddyPort {
 }
 
 interface OpenCodeModelsPort {
+  restoreManagedProxy(): Promise<void>;
+  bindManagedProxy(
+    request: BindOpenCodeManagedRequest,
+  ): Promise<BindOpenCodeManagedResult>;
   getSnapshot(): Promise<OpenCodeModelSnapshot>;
   fetchProviderModels(
     request: OpenCodeFetchModelsRequest,
@@ -274,8 +278,10 @@ shared lifecycle here.
 ### OpenCode flow
 
 - OpenCode reads a strict `OpenCodeModelSnapshot` containing providers,
-  revision, path/backupPath, and existence. Current UI edits the first provider
-  snapshot.
+  revision, path/backupPath, and existence. The UI selects an editable provider
+  by its exact provider ID and keeps builtin-provider structure intact. Managed
+  subscription providers are excluded from ordinary API-key editing and use the
+  dedicated binding/restoration flow.
 - Fetch uses `fetchProviderModels`, preserves the key for later save, and keeps
   ordered unique model IDs plus `ownedBy` metadata for local icons/grouping.
 - Normal save includes `expectedRevision`, shows the native write target, and

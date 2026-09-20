@@ -35,6 +35,16 @@ impl ProviderRouter {
     /// - 故障转移关闭时：仅返回当前供应商
     /// - 故障转移开启时：仅使用故障转移队列，按队列顺序依次尝试（P1 → P2 → ...）
     pub async fn select_providers(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
+        if app_type == "opencode" {
+            let config = self.db.get_proxy_config_for_app(app_type).await?;
+            let current =
+                crate::settings::get_effective_current_provider(&self.db, &AppType::OpenCode)?
+                    .and_then(|id| self.db.get_provider_by_id(&id, app_type).ok().flatten());
+            return current
+                .filter(|provider| config.enabled && provider.uses_subscription_proxy())
+                .map(|provider| vec![provider])
+                .ok_or(AppError::NoProvidersConfigured);
+        }
         let mut result = Vec::new();
         let mut total_providers = 0usize;
         let mut circuit_open_count = 0usize;

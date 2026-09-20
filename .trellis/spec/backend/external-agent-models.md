@@ -39,7 +39,7 @@ OpenCode owns a dedicated model configuration port:
 
 ```text
 get_opencode_model_snapshot()
-  -> { providers, revision, path, backupPath, exists }
+  -> { providers, selectedModel, revision, path, backupPath, exists }
 
 fetch_opencode_provider_models(request)
   -> { models, truncated }
@@ -51,6 +51,9 @@ save_opencode_models(request)
 GET snapshots contain only sanitized provider/model IDs, revision, and
 user-visible write-target metadata. `apiKey` is a mutation/fetch argument only;
 it is never query data or a persisted public DTO field.
+`selectedModel` is a safe `providerId/modelId` reference matching the sanitized
+provider/model list, or null. Unknown and secret-bearing config references are
+not projected merely because they occur in the native `model` field.
 
 ## 3. Contracts
 
@@ -88,6 +91,19 @@ OpenCode models do not use the generic Provider quick-setup command. Native
 code owns the fixed user config path, parser, per-config critical section,
 revision, rolling backup, atomic write, overwrite capability, and
 authoritative reread.
+
+Managed subscriptions use the dedicated revisioned `bind_opencode_managed_proxy`
+command specified by [Managed Account Proxy](./managed-account-proxy.md). It
+reuses the config lock/snapshot owner and the internal Provider transaction,
+not the public generic quick-setup surface. Ordinary model writes and managed
+binding serialize on the same lock. Subscription conflicts have no automatic
+overwrite/rebase path. Proxy lifecycle/recovery owns its loopback projection;
+native OpenCode `auth.json` and independent native login remain untouched.
+The ordinary model writer refuses reserved managed Provider IDs and any active
+managed projection. Explicit target restore uses the existing Proxy takeover
+owner; after authoritative snapshot/overview reread the ordinary writer can
+resume. It cannot silently replace the sole managed provider via its legacy
+single-provider convenience rule.
 
 Unknown providers, models, and extension fields outside the managed mutation
 survive. Invalid existing configuration fails closed instead of being replaced

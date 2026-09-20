@@ -105,6 +105,17 @@ export interface BindManagedProxyResult
   app: BindManagedProxyRequest["app"];
 }
 
+export interface BindOpenCodeManagedRequest {
+  accountId: string;
+  modelId: string;
+  expectedRevision: string | null;
+}
+
+export interface BindOpenCodeManagedResult
+  extends Omit<BindXaiManagedResult, "app"> {
+  app: "opencode";
+}
+
 export interface WorkBuddySaveModelsRequest
   extends WorkBuddyFetchModelsRequest {
   selectedModelIds: string[];
@@ -195,8 +206,12 @@ export interface OpenCodeProviderSnapshot {
   modelIds: string[];
 }
 
+export const isManagedOpenCodeProvider = (id: string) =>
+  /^fyagent-(openai|xai)-opencode-/u.test(id);
+
 export interface OpenCodeModelSnapshot {
   providers: OpenCodeProviderSnapshot[];
+  selectedModel?: string | null;
   revision: string | null;
   path: string;
   backupPath: string;

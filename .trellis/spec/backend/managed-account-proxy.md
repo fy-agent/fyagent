@@ -44,6 +44,21 @@ bind_managed_proxy_provider({ request: {
 }}) -> BindManagedProxyResult
 ```
 
+OpenCode has a dedicated revisioned surface:
+
+```text
+bind_opencode_managed_proxy({ request: {
+  accountId: "ma1:" + 32 lowercase hex,
+  modelId: string,
+  expectedRevision: string | null
+}}) -> BindManagedProxyResult { app: "opencode", activated: true, ... }
+```
+
+It holds the OpenCode configuration lock from revision admission through the
+existing Provider transaction and readback. A stale revision is a
+`provider_conflict`. Generic quick setup and `bind_managed_proxy_provider`
+still reject OpenCode; a second unrestricted writer is not admitted.
+
 The retained compatibility façade is xAI-only and additionally admits the
 existing Claude Desktop draft workflow:
 
@@ -60,7 +75,7 @@ contains only alphanumeric, `.`, `_`, `-` or `:`. The native command repeats
 that validation; the compatibility façade does not turn a non-xAI account into
 an xAI binding.
 
-Both commands return the exact wire shape:
+All binding commands return the exact wire shape:
 
 ```text
 BindManagedProxyResult {
@@ -82,7 +97,7 @@ apply_failed_rolled_back
 rollback_partial_state_unknown
 ```
 
-`activated` is true exactly for successful Claude Code or Grok Build binds.
+`activated` is true exactly for successful Claude Code, Grok Build or OpenCode binds.
 Codex and compatibility Claude Desktop are saved drafts and return false.
 
 The xAI suggestion command is:
@@ -152,6 +167,13 @@ None        -> checking / unknown / observer_unavailable
   Proxy managed-activation path. Positive return requires the target-specific
   write/readback and runtime commit to finish; `activated=true` is not emitted
   after a merely saved row.
+- OpenCode enters that same transaction through its dedicated binder. Its
+  `@ai-sdk/openai` Provider uses the isolated `/opencode/v1` loopback base URL,
+  one explicit model and the local proxy marker. The OpenCode writer preserves
+  unrelated Providers, MCP and unknown fields and selects `providerId/modelId`.
+  It does not write OpenCode `auth.json` or export any OAuth material. Only an
+  owned, intact prior managed projection can be replaced. Native OpenCode auth
+  remains a separate consumer with its own refresh lineage.
 - Codex saves or reuses the Provider draft without changing the current
   Provider marker. The user continues through the existing Auth source
   workspace and typed Change Plan before any live switch. This command does
@@ -162,7 +184,7 @@ None        -> checking / unknown / observer_unavailable
 - Agent-facing configuration receives the loopback endpoint, selected model
   and existing local proxy marker/placeholder. Upstream OAuth access/refresh
   tokens never enter Provider JSON returned to the Renderer, a Change Plan,
-  Claude/Codex/Grok live files or native Agent auth files.
+  Claude/Codex/Grok/OpenCode live files or native Agent auth files.
 - Existing native auth material, MCP configuration, permissions and unrelated
   target fields survive application and restoration. Automatic failover is
   disabled for the managed target so an expired subscription cannot silently
@@ -190,12 +212,22 @@ None        -> checking / unknown / observer_unavailable
   owned running loopback listener and at least one matching effective Provider
   whose target live configuration has adopted that listener.
 - A stopped listener, unadopted target or nonmatching Provider yields
-  `Some(false)`. Lock contention, unreadable state or an inconsistent
-  transition yields `None`. Observation is read-only and never probes the
-  upstream service.
+  `Some(false)`. Lock contention yields `None`. Target-local unreadable or
+  stale selection is accumulated while the other targets are observed: a
+  matching account's confirmed route can still yield `Some(true)`, otherwise
+  that unreadable state yields `None`. Observation is read-only and never
+  repairs selections or probes the upstream service.
 - Reconciliation may retain `accountId` on a named `fyagent_proxy` slot even
   when observation is false. That represents the selected saved credential,
   not current request routing.
+- OpenAI/xAI proxy connections are keyed by the admitted proxy credential, not
+  just the provider's default account. Each eligible credential has a stable
+  private provider slot with an empty target ID; the public connection ID stays
+  opaque. Observe that exact credential, including non-default accounts.
+  Reconcile before account-removal impact preview, and prune only obsolete
+  `fyagent_proxy` slots with an empty target ID. Native consumers and Copilot
+  slots keep their existing owners. Multiple target routes for one credential
+  still count as one unique `fyagent_proxy` consumer.
 - `requestMode=none` always serializes
   `requestProviderLabel=null`. A stale label must be cleared before the
   complete overview crosses IPC.
@@ -210,21 +242,21 @@ None        -> checking / unknown / observer_unavailable
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Generic request names an unsupported app, malformed account ID/model ID, or extra field | Reject before Provider, listener, file or credential mutation. |
-| Compatibility request selects a non-xAI account | `account_unavailable`; do not reinterpret it as a generic bind. |
-| Explicit account is absent, not Ready, wrong-purpose, wrong-consumer, native-owned or unreadable from the vault | `account_unavailable`; no default/legacy fallback. |
-| Stable Provider ID exists with a different account/model/config definition | `provider_conflict`; preserve the existing row and live state. |
-| Claude/Grok application fails and every snapshot is restored/read back | `apply_failed_rolled_back`; no activation claim. |
-| Provider/target/listener compensation cannot establish the baseline | `rollback_partial_state_unknown`; preserve recovery evidence and block optimistic retry. |
-| Codex draft save/readback/current-marker verification fails but restoration is confirmed | `apply_failed_rolled_back`; current source remains unchanged. |
-| Codex draft restoration cannot be confirmed | `rollback_partial_state_unknown`; do not hand off as a usable draft. |
-| xAI suggestions are empty or unavailable | Return failure/empty evidence; do not manufacture a model or query an API-key catalog. |
-| Proxy observation is `Some(true)` | Project connected + official subscription only for the named account slot. |
-| Proxy observation is `Some(false)` | Keep the named account if present, project disconnected + none, clear the provider label. |
-| Proxy observation is `None` | Project checking + unknown with observer-unavailable evidence; no connected claim. |
-| `requestMode=none` still has a provider label, or account count omits a named proxy slot | Backend/Renderer contract test fails; the complete snapshot is not accepted. |
+| Condition                                                                                                       | Required result                                                                           |
+| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Generic request names an unsupported app, malformed account ID/model ID, or extra field                         | Reject before Provider, listener, file or credential mutation.                            |
+| Compatibility request selects a non-xAI account                                                                 | `account_unavailable`; do not reinterpret it as a generic bind.                           |
+| Explicit account is absent, not Ready, wrong-purpose, wrong-consumer, native-owned or unreadable from the vault | `account_unavailable`; no default/legacy fallback.                                        |
+| Stable Provider ID exists with a different account/model/config definition                                      | `provider_conflict`; preserve the existing row and live state.                            |
+| Claude/Grok application fails and every snapshot is restored/read back                                          | `apply_failed_rolled_back`; no activation claim.                                          |
+| Provider/target/listener compensation cannot establish the baseline                                             | `rollback_partial_state_unknown`; preserve recovery evidence and block optimistic retry.  |
+| Codex draft save/readback/current-marker verification fails but restoration is confirmed                        | `apply_failed_rolled_back`; current source remains unchanged.                             |
+| Codex draft restoration cannot be confirmed                                                                     | `rollback_partial_state_unknown`; do not hand off as a usable draft.                      |
+| xAI suggestions are empty or unavailable                                                                        | Return failure/empty evidence; do not manufacture a model or query an API-key catalog.    |
+| Proxy observation is `Some(true)`                                                                               | Project connected + official subscription only for the named account slot.                |
+| Proxy observation is `Some(false)`                                                                              | Keep the named account if present, project disconnected + none, clear the provider label. |
+| Proxy observation is `None`                                                                                     | Project checking + unknown with observer-unavailable evidence; no connected claim.        |
+| `requestMode=none` still has a provider label, or account count omits a named proxy slot                        | Backend/Renderer contract test fails; the complete snapshot is not accepted.              |
 
 ## 5. Good / Base / Bad Cases
 
@@ -249,8 +281,9 @@ None        -> checking / unknown / observer_unavailable
 
 ## 6. Tests Required
 
-- `services/managed_auth/subscription_tests.rs` covers both OpenAI/xAI
-  accounts, all three CLI targets, compatibility Desktop draft behavior,
+- `services/managed_auth/subscription_tests.rs` and
+  `subscription_opencode_tests.rs` cover both OpenAI/xAI
+  accounts, all four CLI targets, compatibility Desktop draft behavior,
   wrong-purpose admission, provider conflicts, stable/distinct identities,
   saved-name idempotency, Codex current-marker preservation, target
   application and compensation.
@@ -267,6 +300,9 @@ None        -> checking / unknown / observer_unavailable
   preserves the named account slot and recomputes unique consumer counts after
   observation. Renderer parser tests accept that exact snapshot and reject a
   leftover label or under-count.
+- Multi-account overview tests bind a non-default and a default account to
+  different targets, exercise the complete overview/removal preview, verify
+  unique counts and clean obsolete legacy slots without removing other owners.
 - `xaiSubscriptionPort.test.ts` asserts exact nested command payloads, strict
   request/result keys, public `ma1` identity, target/result agreement, closed
   errors, old/new command compatibility, Grok activation and browser

@@ -74,6 +74,12 @@ pub(crate) struct FileRecovery {
     pub can_restore: bool,
 }
 
+/// Historical writer evidence, read without granting a new file mutation.
+pub(crate) struct VerifiedFileRecovery {
+    pub preimage: Option<Vec<u8>>,
+    pub postimage_sha256: Option<String>,
+}
+
 fn failure(code: &'static str) -> AppError {
     AppError::Config(code.to_string())
 }
@@ -317,6 +323,51 @@ pub(crate) fn file_recovery(path: &Path) -> Result<Option<FileRecovery>, AppErro
     }))
 }
 
+pub(crate) fn verified_file_recovery(
+    path: &Path,
+) -> Result<Option<VerifiedFileRecovery>, AppError> {
+    let _guard = WRITER
+        .lock()
+        .map_err(|_| failure("config_writer_unavailable"))?;
+    let Some(record) = read_record(path)? else {
+        return Ok(None);
+    };
+    let current = read_file(path, MAX_FILE_BYTES)?;
+    let preimage = read_file(&rolling_backup_path(path), MAX_FILE_BYTES)?;
+    if digest(current.as_deref()) != record.postimage_sha256
+        || digest(preimage.as_deref()) != record.preimage_sha256
+    {
+        return Err(failure("config_external_change"));
+    }
+    Ok(Some(VerifiedFileRecovery {
+        preimage,
+        postimage_sha256: record.postimage_sha256,
+    }))
+}
+
+/// The postimage published by this synchronous operation, never a fresh sample
+/// of potentially externally edited contents. The outer Option distinguishes
+/// an untouched path from an intentional deletion.
+pub(crate) fn file_mutation_expected_hash(path: &Path) -> Result<Option<Option<String>>, AppError> {
+    let receipt = OPERATION.with(|operation| {
+        operation
+            .borrow()
+            .as_ref()
+            .and_then(|paths| paths.get(path).cloned())
+    });
+    let Some(receipt) = receipt else {
+        return Ok(None);
+    };
+    let _guard = WRITER
+        .lock()
+        .map_err(|_| failure("config_writer_unavailable"))?;
+    let record = read_record(path)?.ok_or_else(|| failure("config_recovery_missing"))?;
+    if record.receipt_id != receipt {
+        return Err(failure("config_recovery_stale"));
+    }
+    Ok(Some(record.postimage_sha256))
+}
+
 pub(crate) fn restore_file_recovery(path: &Path, receipt_id: &str) -> Result<(), AppError> {
     let _guard = WRITER
         .lock()
@@ -351,9 +402,43 @@ pub(super) fn restore_preimage(path: &Path, bytes: Option<&[u8]>) -> Result<(), 
     replace(path, bytes, false)
 }
 
+pub(crate) fn restore_file_preimage_if_owned(
+    path: &Path,
+    bytes: Option<&[u8]>,
+    expected_hash: Option<&str>,
+) -> Result<(), AppError> {
+    let _guard = WRITER
+        .lock()
+        .map_err(|_| failure("config_writer_unavailable"))?;
+    let current = read_file(path, MAX_FILE_BYTES)?;
+    if current.as_deref() != bytes && digest(current.as_deref()).as_deref() != expected_hash {
+        return Err(failure("config_external_change"));
+    }
+    replace(path, bytes, false)?;
+    if read_file(path, MAX_FILE_BYTES)?.as_deref() != bytes {
+        return Err(failure("config_recovery_required"));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn subscription_compensation_rechecks_postimage_at_the_writer_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        fs::write(&path, b"original").unwrap();
+        let _scope = file_mutation_scope();
+        write(&path, Some(b"managed"), false).unwrap();
+        let expected = file_mutation_expected_hash(&path).unwrap().unwrap();
+        fs::write(&path, b"external after admission").unwrap();
+        assert!(
+            restore_file_preimage_if_owned(&path, Some(b"original"), expected.as_deref()).is_err()
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"external after admission");
+    }
 
     #[test]
     fn one_operation_retains_the_first_preimage_across_internal_rewrites() {

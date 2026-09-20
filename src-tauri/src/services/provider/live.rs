@@ -1308,6 +1308,14 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             // OpenCode uses additive mode - write provider to config
             use crate::opencode_config;
 
+            if provider.uses_subscription_proxy()
+                || crate::services::opencode_models::is_managed_proxy_provider_id(&provider.id)
+            {
+                return Err(AppError::Message(
+                    "OpenCode subscription configuration requires the managed proxy flow".into(),
+                ));
+            }
+
             // Defensive check: if settings_config is a full config structure, extract provider fragment
             let config_to_write = if let Some(obj) = provider.settings_config.as_object() {
                 // Detect full config structure (has $schema or top-level provider field)
@@ -1915,7 +1923,13 @@ pub fn import_opencode_providers_from_live(state: &AppState) -> Result<usize, Ap
     let existing_ids = state.db.get_provider_ids("opencode")?;
 
     for (id, config) in providers {
-        if id.trim().is_empty() || !config.is_object() {
+        if id.trim().is_empty()
+            || !config.is_object()
+            || crate::services::opencode_models::is_managed_proxy_provider_id(&id)
+            || config.pointer("/options/apiKey").and_then(Value::as_str) == Some("PROXY_MANAGED")
+        {
+            // Managed live entries are loopback projections, never saved
+            // upstream definitions or new API-key providers.
             continue;
         }
         // Typed metadata is advisory; unknown vendor shapes still retain raw authority.
@@ -1934,6 +1948,9 @@ pub fn import_opencode_providers_from_live(state: &AppState) -> Result<usize, Ap
         if existing_ids.contains(&id) {
             match state.db.get_provider_by_id(&id, "opencode") {
                 Ok(Some(existing)) => {
+                    if existing.uses_subscription_proxy() {
+                        continue;
+                    }
                     let display_name = display_name
                         .clone()
                         .unwrap_or_else(|| existing.name.clone());

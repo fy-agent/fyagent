@@ -19,13 +19,23 @@ export const RENDERER_ROUTE_ENTRIES = Object.freeze([
 
 // These capability adapters are loaded only when their port is first used.
 // Keep the list explicit: additional lazy entries still require review.
-export const RENDERER_DEFERRED_PORT_ENTRIES = Object.freeze([
+export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
   "shared/platform/tauri/feature-ports/health.ts",
   "shared/platform/tauri/feature-ports/projects.ts",
   "shared/platform/tauri/feature-ports/delivery-kits.ts",
   "shared/platform/tauri/feature-ports/verification.ts",
   "shared/platform/tauri/feature-ports/models.ts",
   "shared/platform/tauri/feature-ports/configRecovery.ts",
+]);
+
+export const RENDERER_NESTED_SUBSCRIPTION_PORT = Object.freeze({
+  importer: "shared/platform/tauri/feature-ports/models.ts",
+  entry: "shared/platform/tauri/feature-ports/managedSubscriptions.ts",
+});
+
+export const RENDERER_DEFERRED_PORT_ENTRIES = Object.freeze([
+  ...RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
+  RENDERER_NESTED_SUBSCRIPTION_PORT.entry,
 ]);
 
 export const RENDERER_BUILD_BUDGET = Object.freeze({
@@ -88,19 +98,43 @@ export async function verifyRouteChunks({
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const entry = assertManifestRecord(manifest, "index.html");
   const initialKeys = collectStaticClosure(manifest, ["index.html"]);
+  for (const key of [
+    ...RENDERER_ROUTE_ENTRIES,
+    ...RENDERER_DEFERRED_PORT_ENTRIES,
+  ]) {
+    if (initialKeys.has(key)) {
+      throw new Error(
+        `Renderer deferred entry leaked into the initial graph: ${key}`,
+      );
+    }
+  }
   const dynamicEntries = new Set(
     [...initialKeys].flatMap((key) => manifest[key].dynamicImports ?? []),
   );
   const expectedDynamicEntries = [
     ...RENDERER_ROUTE_ENTRIES,
-    ...RENDERER_DEFERRED_PORT_ENTRIES,
+    ...RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
   ];
   if (
     dynamicEntries.size !== expectedDynamicEntries.length ||
     expectedDynamicEntries.some((key) => !dynamicEntries.has(key))
   ) {
     throw new Error(
-      `Renderer bootstrap must dynamically import exactly ${RENDERER_ROUTE_ENTRIES.length} product pages and ${RENDERER_DEFERRED_PORT_ENTRIES.length} deferred ports`,
+      `Renderer bootstrap must dynamically import exactly ${RENDERER_ROUTE_ENTRIES.length} product pages and ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports`,
+    );
+  }
+
+  const nested = RENDERER_NESTED_SUBSCRIPTION_PORT;
+  const modelPort = assertManifestRecord(manifest, nested.importer);
+  const nestedEntries = new Set(modelPort.dynamicImports ?? []);
+  if (nestedEntries.size !== 1 || !nestedEntries.has(nested.entry)) {
+    throw new Error(
+      "Renderer Models port must dynamically import only the subscription port",
+    );
+  }
+  if (collectStaticClosure(manifest, [nested.importer]).has(nested.entry)) {
+    throw new Error(
+      "Renderer subscription port must remain deferred from Models",
     );
   }
 
@@ -134,11 +168,6 @@ export async function verifyRouteChunks({
     if (record.isDynamicEntry !== true || !record.file.endsWith(".js")) {
       throw new Error(`Renderer deferred port is not a dynamic entry: ${key}`);
     }
-    if (initialKeys.has(key)) {
-      throw new Error(
-        `Renderer deferred port leaked into the initial graph: ${key}`,
-      );
-    }
     const bytes = await assetSize(distributionDirectory, record.file);
     if (bytes > budget.routeChunkBytes) {
       throw new Error(
@@ -146,14 +175,6 @@ export async function verifyRouteChunks({
       );
     }
     deferredPortChunks.push({ key, file: record.file, bytes });
-  }
-
-  for (const route of RENDERER_ROUTE_ENTRIES) {
-    if (initialKeys.has(route)) {
-      throw new Error(
-        `Renderer product page leaked into the initial graph: ${route}`,
-      );
-    }
   }
 
   let initialJavaScriptBytes = 0;

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
-- **Last Active**: 2026-09-19
+- **Total Sessions**: 11
+- **Last Active**: 2026-09-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~182 | Active |
+| `journal-1.md` | ~217 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,7 +29,9 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-09-20 | FDE and subscription same-delivery integration | `31aa9d92`, `ebbda4ac`, `590f6f96` | `codex/subscription-cross-agent-20260919` |
 | 10 | 2026-09-19 | FDE delivery integration and native acceptance | `0a08c38f`, `d2a5dc7d`, `26efebed`, `cd8b4ced`, `c6cfbe94` | `codex/fde-delivery-integration` |
+| 9 | 2026-09-19 | Complete cross-agent subscription reuse | `61040031` | `codex/subscription-cross-agent-20260919` |
 | 8 | 2026-09-19 | macOS 0.4.5 upgrade and native audit | `1a924586`, `9dfb55bc` | `codex/macos-045-audit` |
 | 7 | 2026-09-10 | Issue 52 Agent Health Center | `7bd07e72211dd295cf0c474f40727e0121aba06a` | `codex/issue-52-health-center` |
 | 6 | 2026-09-08 | Grok subscription reuse and local verification | `2e61af91b1677bfe584cc4908b00b53985555a92` | `codex/grok-auth-reuse-completion` |

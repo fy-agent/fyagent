@@ -481,8 +481,9 @@ pub fn add_provider_with_result(
 }
 
 pub use crate::services::provider::{
-    BindManagedProxyError, BindManagedProxyRequest, BindManagedProxyResult, BindXaiManagedError,
-    BindXaiManagedRequest, BindXaiManagedResult,
+    BindManagedProxyError, BindManagedProxyRequest, BindManagedProxyResult,
+    BindOpenCodeManagedProxyRequest, BindXaiManagedError, BindXaiManagedRequest,
+    BindXaiManagedResult,
 };
 
 /// Generalized proxy-purpose binding. Native account projection remains a
@@ -499,6 +500,24 @@ pub async fn bind_managed_proxy_provider(
             .try_state::<AppState>()
             .ok_or(BindManagedProxyError::ApplyFailedRolledBack)?;
         ProviderService::bind_managed_proxy(state.inner(), auth.as_ref(), request)
+    })
+    .await
+    .map_err(|_| BindManagedProxyError::RollbackPartialStateUnknown)?
+}
+
+/// OpenCode has a dedicated revisioned writer; generic quick setup stays closed.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn bind_opencode_managed_proxy(
+    request: BindOpenCodeManagedProxyRequest,
+    app_handle: tauri::AppHandle,
+    auth_state: State<'_, crate::commands::ManagedAuthState>,
+) -> Result<BindManagedProxyResult, BindManagedProxyError> {
+    let auth = auth_state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or(BindManagedProxyError::ApplyFailedRolledBack)?;
+        ProviderService::bind_opencode_managed_proxy(state.inner(), auth.as_ref(), request)
     })
     .await
     .map_err(|_| BindManagedProxyError::RollbackPartialStateUnknown)?

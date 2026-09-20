@@ -34,6 +34,9 @@ import {
   useModelsWriteConfirm,
 } from "./modelsShared";
 import { isHttpUrl, parseManualModelIds } from "./quickSetup";
+import { XaiSubscriptionSection } from "./XaiSubscriptionSection";
+import { OpenCodeSubscriptionRestore } from "./OpenCodeSubscriptionRestore";
+import { isManagedOpenCodeProvider } from "../../shared/features/models";
 import {
   addUniqueModelIds,
   filterModelIds,
@@ -50,9 +53,18 @@ type NoticeField =
   | "save"
   | "existing";
 
-export function OpenCodeModelsPanel({ active }: { active: boolean }) {
+export function OpenCodeModelsPanel({
+  active,
+  writesBlocked,
+  onBlockWrites,
+}: {
+  active: boolean;
+  writesBlocked: boolean;
+  onBlockWrites: () => void;
+}) {
   const { ports } = useFeatures();
   const snapshotQuery = useOpenCodeModelSnapshot(active);
+  const [subscriptionEpoch, setSubscriptionEpoch] = useState(0);
   const [providerSelection, setProviderSelection] = useState<string>();
   const [pendingProviderSelection, setPendingProviderSelection] = useState<
     string | null
@@ -73,7 +85,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   const [existingOpen, setExistingOpen] = useState(false);
   const [truncated, setTruncated] = useState(false);
   const [busy, setBusy] = useState<
-    "fetch" | "save" | "delete" | "reachability" | null
+    "fetch" | "save" | "delete" | "reachability" | "subscription" | null
   >(null);
   const { notices, show, clear, dismiss } = useFieldNotices<NoticeField>();
   const [pendingOverwrite, setPendingOverwrite] = useState<{
@@ -97,7 +109,14 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   const manualModelsInputRef = useRef<HTMLInputElement>(null);
   const draftCommit = useModelsDraftCommit();
 
-  const providers = snapshotQuery.data?.providers ?? [];
+  const hasManagedProjection =
+    snapshotQuery.data?.providers.some((item) =>
+      isManagedOpenCodeProvider(item.id),
+    ) ?? false;
+  const apiWritesBlocked = writesBlocked || hasManagedProjection;
+  const providers = (snapshotQuery.data?.providers ?? []).filter(
+    (provider) => !isManagedOpenCodeProvider(provider.id),
+  );
   const defaultProvider =
     providers.find((provider) => provider.editable) ?? providers[0];
   const selectedTarget =
@@ -112,6 +131,25 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   const modelIds = currentProvider?.modelIds ?? EMPTY_MODEL_IDS;
   const readOnlyProvider = currentProvider?.editable === false;
   const providerName = providerNameDraft ?? currentProvider?.name ?? "";
+  const writeTargets: readonly ModelWriteTarget[] = snapshotQuery.data
+    ? [
+        {
+          path: snapshotQuery.data.path,
+          backupPath: snapshotQuery.data.backupPath,
+          exists: snapshotQuery.data.exists,
+        },
+      ]
+    : [];
+  const beginSubscriptionWrite = () => {
+    if (writeLock.current || writesBlocked || busy !== null) return false;
+    writeLock.current = true;
+    setBusy("subscription");
+    return true;
+  };
+  const endSubscriptionWrite = () => {
+    writeLock.current = false;
+    if (mountedRef.current) setBusy(null);
+  };
 
   const setApiKey = (value: string) => {
     apiKeyRef.current = value;
@@ -270,7 +308,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
     request: OpenCodeSaveModelsRequest,
     submittedRevision: number,
   ) => {
-    if (writeLock.current) return;
+    if (readOnlyProvider || writeLock.current || apiWritesBlocked) return;
     writeLock.current = true;
     setBusy("save");
     clear();
@@ -380,7 +418,13 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   };
 
   const startSave = () => {
-    if (readOnlyProvider || writeLock.current || writeConfirm.open) return;
+    if (
+      readOnlyProvider ||
+      writeLock.current ||
+      apiWritesBlocked ||
+      writeConfirm.open
+    )
+      return;
     const draftIds = collectDraftIds();
     if (draftIds.length === 0) {
       show("draft", { tone: "error", title: "请至少添加一个模型 ID" });
@@ -409,8 +453,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   };
 
   const confirmWrite = () => {
-    if (writeLock.current) return;
-    if (readOnlyProvider) return;
+    if (readOnlyProvider || writeLock.current || apiWritesBlocked) return;
     const pending = writeConfirm.takePending();
     if (!pending) return;
     setDraftModelIds(pending.draftIds);
@@ -419,7 +462,13 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   };
 
   const confirmOverwrite = () => {
-    if (readOnlyProvider || !pendingOverwrite || writeLock.current) return;
+    if (
+      readOnlyProvider ||
+      !pendingOverwrite ||
+      writeLock.current ||
+      apiWritesBlocked
+    )
+      return;
     const frozen = pendingOverwrite;
     setPendingOverwrite(null);
     void saveRequest(
@@ -432,7 +481,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   };
 
   const deleteExistingModel = async (modelId: string) => {
-    if (writeLock.current) return;
+    if (readOnlyProvider || writeLock.current || apiWritesBlocked) return;
     writeLock.current = true;
     setBusy("delete");
     dismiss("existing");
@@ -483,10 +532,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
     }
   };
 
-  const filteredExistingIds = useMemo(
-    () => filterModelIds(modelIds, existingSearch),
-    [modelIds, existingSearch],
-  );
+  const filteredExistingIds = filterModelIds(modelIds, existingSearch);
   const filteredDraftIds = useMemo(
     () => filterModelIds(draftModelIds, draftSearch),
     [draftModelIds, draftSearch],
@@ -502,7 +548,13 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
       <ModelsPanelHeader title="OpenCode" pending={draftCommit.pending}>
         <Button
           className="fy-control-button-primary fy-models-commit-button"
-          disabled={busy !== null || loading || readFailed || readOnlyProvider}
+          disabled={
+            busy !== null ||
+            loading ||
+            readFailed ||
+            readOnlyProvider ||
+            apiWritesBlocked
+          }
           onClick={startSave}
           dialogOriginRef={writeConfirm.originRef}
         >
@@ -510,6 +562,51 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
         </Button>
       </ModelsPanelHeader>
       <FieldFeedback id="opencode-save-error" notice={notices.save} />
+      {writesBlocked && (
+        <InlineNotice tone="warning">
+          当前设置尚未确认，已暂停修改。请重新打开模型页面后检查配置。
+        </InlineNotice>
+      )}
+
+      {hasManagedProjection && (
+        <OpenCodeSubscriptionRestore
+          disabled={
+            busy !== null ||
+            loading ||
+            readFailed ||
+            writesBlocked ||
+            pendingProviderSelection !== null
+          }
+          writeTargets={writeTargets}
+          onBeginWrite={beginSubscriptionWrite}
+          onEndWrite={endSubscriptionWrite}
+          onUnconfirmed={onBlockWrites}
+          onRestored={() => {
+            if (mountedRef.current) setSubscriptionEpoch((value) => value + 1);
+          }}
+        />
+      )}
+
+      <XaiSubscriptionSection
+        key={subscriptionEpoch}
+        active={active}
+        app="opencode"
+        expectedRevision={snapshotQuery.data?.revision ?? null}
+        disabled={
+          busy !== null ||
+          loading ||
+          readFailed ||
+          writesBlocked ||
+          writeConfirm.open ||
+          pendingOverwrite !== null ||
+          pendingDeleteId !== null ||
+          pendingProviderSelection !== null
+        }
+        writeTargets={writeTargets}
+        onBeginWrite={beginSubscriptionWrite}
+        onEndWrite={endSubscriptionWrite}
+        onUnconfirmed={onBlockWrites}
+      />
 
       {loading && <Spinner label="正在读取 OpenCode 模型设置" />}
       {readFailed && (
@@ -592,11 +689,21 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
           ids={filteredExistingIds}
           removable
           removeDisabled={
-            busy !== null || loading || readFailed || readOnlyProvider
+            busy !== null ||
+            loading ||
+            readFailed ||
+            readOnlyProvider ||
+            apiWritesBlocked
           }
           removeOriginRef={deleteOriginRef}
           onRemove={(modelId) => {
-            if (busy !== null || writeLock.current) return;
+            if (
+              readOnlyProvider ||
+              busy !== null ||
+              writeLock.current ||
+              apiWritesBlocked
+            )
+              return;
             setPendingDeleteId(modelId);
           }}
           emptyLabel={

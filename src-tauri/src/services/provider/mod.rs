@@ -11,8 +11,9 @@ mod universal;
 mod usage;
 
 pub use managed_proxy::{
-    BindManagedProxyError, BindManagedProxyRequest, BindManagedProxyResult, BindXaiManagedError,
-    BindXaiManagedRequest, BindXaiManagedResult,
+    BindManagedProxyError, BindManagedProxyRequest, BindManagedProxyResult,
+    BindOpenCodeManagedProxyRequest, BindXaiManagedError, BindXaiManagedRequest,
+    BindXaiManagedResult,
 };
 
 use indexmap::IndexMap;
@@ -361,6 +362,33 @@ impl QuickSetupFileSnapshot {
     fn matches_current(&self) -> Result<bool, AppError> {
         Ok(Self::capture(self.path.clone())?.bytes == self.bytes)
     }
+
+    fn is_owned_by_current_operation(&self) -> Result<bool, AppError> {
+        use sha2::{Digest, Sha256};
+        let current = Self::capture(self.path.clone())?.bytes;
+        if current == self.bytes {
+            return Ok(true);
+        }
+        let Some(expected) = crate::config::file_mutation_expected_hash(&self.path)? else {
+            return Ok(false);
+        };
+        Ok(current.map(|bytes| format!("{:x}", Sha256::digest(&bytes))) == expected)
+    }
+
+    fn restore_owned(&self) -> Result<(), AppError> {
+        use sha2::{Digest, Sha256};
+        let expected =
+            crate::config::file_mutation_expected_hash(&self.path)?.unwrap_or_else(|| {
+                self.bytes
+                    .as_ref()
+                    .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+            });
+        crate::config::restore_file_preimage_if_owned(
+            &self.path,
+            self.bytes.as_deref(),
+            expected.as_deref(),
+        )
+    }
 }
 
 fn snapshot_quick_setup_live(app_type: &AppType) -> Result<Vec<QuickSetupFileSnapshot>, AppError> {
@@ -372,6 +400,10 @@ fn snapshot_quick_setup_live(app_type: &AppType) -> Result<Vec<QuickSetupFileSna
             crate::codex_config::get_codex_model_catalog_path(),
         ],
         AppType::GrokBuild => vec![crate::grok_config::get_grok_config_path()],
+        AppType::OpenCode => vec![
+            crate::opencode_config::get_opencode_config_path(),
+            crate::opencode_config::get_opencode_dir().join("opencode.json.backup"),
+        ],
         _ => {
             return Err(AppError::Message(
                 "Provider quick setup supports only claude, codex, or grokbuild".to_string(),
@@ -381,13 +413,6 @@ fn snapshot_quick_setup_live(app_type: &AppType) -> Result<Vec<QuickSetupFileSna
     paths
         .into_iter()
         .map(QuickSetupFileSnapshot::capture)
-        .collect()
-}
-
-fn restore_quick_setup_live(snapshots: &[QuickSetupFileSnapshot]) -> Vec<String> {
-    snapshots
-        .iter()
-        .filter_map(|snapshot| snapshot.restore().err().map(|error| error.to_string()))
         .collect()
 }
 
@@ -3977,6 +4002,36 @@ requires_openai_auth = true
 
     #[test]
     #[serial]
+    fn release_integration_opencode_import_and_generic_writer_reject_managed_projection() {
+        with_test_home(|state, _| {
+            let reserved = "fyagent-openai-opencode-fixture";
+            let fragment = json!({"npm":"@ai-sdk/openai","options":{"baseURL":"http://127.0.0.1:15721/opencode/v1","apiKey":"PROXY_MANAGED"},"models":{"fixture":{}}});
+            crate::opencode_config::set_provider(reserved, fragment.clone()).unwrap();
+            crate::opencode_config::set_provider("legacy-projection", fragment.clone()).unwrap();
+            assert_eq!(import_opencode_providers_from_live(state).unwrap(), 0);
+            assert!(state.db.get_all_providers("opencode").unwrap().is_empty());
+            let path = crate::opencode_config::get_opencode_config_path();
+            let bytes = std::fs::read(&path).unwrap();
+            let mut provider = Provider::with_id(
+                reserved.into(),
+                "Subscription".into(),
+                fragment.clone(),
+                None,
+            );
+            assert!(live::write_live_snapshot(&AppType::OpenCode, &provider).is_err());
+            provider.id = "older-managed-binding".into();
+            provider.meta = Some(ProviderMeta {
+                provider_type: Some("xai_oauth".into()),
+                ..Default::default()
+            });
+            state.db.save_provider("opencode", &provider).unwrap();
+            assert!(live::write_live_snapshot(&AppType::OpenCode, &provider).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        });
+    }
+
+    #[test]
+    #[serial]
     fn import_opencode_providers_from_live_updates_existing_provider_from_live() {
         with_test_home(|state, _| {
             let provider = opencode_provider("existing-opencode");
@@ -4829,11 +4884,26 @@ impl ProviderService {
     fn apply_quick_setup_locked(
         state: &AppState,
         app_type: AppType,
-        mut provider: Provider,
+        provider: Provider,
     ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
         let _managed_activation = provider.uses_subscription_proxy().then(|| {
             futures::executor::block_on(state.proxy_service.lock_managed_activation(&app_type))
         });
+        if app_type == AppType::OpenCode {
+            return Err(QuickSetupApplyError::rolled_back(
+                "OpenCode requires revisioned managed binding",
+            ));
+        }
+        Self::apply_provider_activation_transaction_locked(state, app_type, provider)
+    }
+
+    /// Caller owns target and managed activation locks. OpenCode additionally
+    /// owns its native config lock from revision admission through compensation.
+    fn apply_provider_activation_transaction_locked(
+        state: &AppState,
+        app_type: AppType,
+        mut provider: Provider,
+    ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
         let _file_scope = crate::config::file_mutation_scope();
         let existing_provider = state
             .db
@@ -5004,6 +5074,17 @@ impl ProviderService {
             Ok(value) => value,
             Err(primary) => {
                 let mut rollback_errors = Vec::new();
+                let owns_live = !managed_subscription
+                    || live_snapshots.iter().all(|snapshot| {
+                        (app_type == AppType::Codex
+                            && snapshot.path == crate::codex_config::get_codex_auth_path())
+                            || snapshot.is_owned_by_current_operation().unwrap_or(false)
+                    });
+                if !owns_live {
+                    rollback_errors.push(
+                        "Managed target changed externally; recovery evidence retained".to_string(),
+                    );
+                }
                 let restore_provider = match &existing_provider {
                     Some(previous) => state.db.save_provider(app_type.as_str(), previous),
                     None => state.db.delete_provider(app_type.as_str(), &provider.id),
@@ -5023,23 +5104,44 @@ impl ProviderService {
                 {
                     rollback_errors.push(format!("restore local current: {error}"));
                 }
-                match &backup_before {
-                    Some(backup) => {
-                        if let Err(error) =
-                            futures::executor::block_on(state.db.restore_live_backup(backup))
-                        {
-                            rollback_errors.push(format!("restore live backup: {error}"));
+                if owns_live {
+                    let mut files_restored = true;
+                    for snapshot in live_snapshots.iter().filter(|snapshot| {
+                        !(managed_subscription
+                            && app_type == AppType::Codex
+                            && snapshot.path == crate::codex_config::get_codex_auth_path())
+                    }) {
+                        let restored = if managed_subscription {
+                            snapshot.restore_owned()
+                        } else {
+                            snapshot.restore()
+                        };
+                        if let Err(error) = restored {
+                            files_restored = false;
+                            rollback_errors.push(format!("restore live file: {error}"));
                         }
                     }
-                    None => {
-                        if let Err(error) = futures::executor::block_on(
-                            state.db.delete_live_backup(app_type.as_str()),
-                        ) {
-                            rollback_errors.push(format!("remove live backup: {error}"));
+                    // Keep the recovery record until every file was restored;
+                    // a late external writer cannot erase the only evidence.
+                    if files_restored {
+                        match &backup_before {
+                            Some(backup) => {
+                                if let Err(error) = futures::executor::block_on(
+                                    state.db.restore_live_backup(backup),
+                                ) {
+                                    rollback_errors.push(format!("restore live backup: {error}"));
+                                }
+                            }
+                            None => {
+                                if let Err(error) = futures::executor::block_on(
+                                    state.db.delete_live_backup(app_type.as_str()),
+                                ) {
+                                    rollback_errors.push(format!("remove live backup: {error}"));
+                                }
+                            }
                         }
                     }
                 }
-                rollback_errors.extend(restore_quick_setup_live(&live_snapshots));
                 if let Some(snapshot) = &managed_runtime {
                     if let Err(error) = futures::executor::block_on(
                         state
@@ -5103,6 +5205,12 @@ impl ProviderService {
                         .push(format!("live backup rollback verification failed: {error}")),
                 }
                 for snapshot in &live_snapshots {
+                    if managed_subscription
+                        && app_type == AppType::Codex
+                        && snapshot.path == crate::codex_config::get_codex_auth_path()
+                    {
+                        continue;
+                    }
                     match snapshot.matches_current() {
                         Ok(true) => {}
                         Ok(false) => rollback_errors

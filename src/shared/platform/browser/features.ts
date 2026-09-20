@@ -161,6 +161,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       checkModel: rejectNativeOnly,
     },
     opencodeModels: {
+      restoreManagedProxy: rejectNativeOnly,
+      bindManagedProxy: rejectNativeOnly,
       getSnapshot: rejectNativeOnly,
       fetchProviderModels: rejectNativeOnly,
       saveModels: rejectNativeOnly,

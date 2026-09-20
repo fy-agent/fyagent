@@ -70,7 +70,7 @@ backup body, or replacement routing implementation.
   owned by [Local Proxy Pipeline](./local-proxy-pipeline.md). Runtime activation
   receives an already admitted managed Provider and must not duplicate those
   request semantics.
-- Claude Code/Codex/Grok Build subscription activation composes the existing Provider
+- Claude Code/Codex/Grok Build/OpenCode subscription activation composes the existing Provider
   transaction with the one `ProxyService`. Acquire the target mutation lock,
   then the shared managed-activation guard, then any listener-start guard.
   Hold activation ownership from snapshots through commit or compensation;
@@ -88,6 +88,53 @@ backup body, or replacement routing implementation.
   existing content is not treated as an empty file. Set only the selected
   target enabled; disable its automatic
   failover so an expired subscription cannot silently use a paid API source.
+- OpenCode uses its configuration lock and dedicated projection owner in
+  `services/proxy/opencode.rs`. Store versioned recovery evidence before
+  publication, preserve exact original bytes, and verify the selected model
+  and `/opencode/v1` provider endpoint. Preserve native `auth.json` throughout.
+  Switching managed bindings replaces only the owned prior managed provider.
+- Managed subscription recovery and activation compensation require evidence
+  that each changed file still belongs to this operation. Retain postimage
+  proofs together with recovery state; before restoring, compare current
+  content with the owned projection or known preimage. External changes must
+  remain intact and keep their backup/recovery evidence. Incomplete ownership
+  yields recovery-required/state-unknown, never a confirmed rollback. This
+  narrower protection does not redefine legacy API-key backup formats.
+- Expected postimages come from this operation's atomic-writer receipt, never
+  a new sample of current bytes after asynchronous work. Rebinding verifies
+  the prior proof before replacing it, so earlier external edits cannot become
+  owned accidentally. Recovery also protects the target's backup sidecars and
+  rechecks ownership inside each individual restore writer.
+- Legacy Claude/Codex/Grok subscription backups may be upgraded using the
+  existing path-bound atomic-writer receipt. Verify its current/postimage and
+  rolling-backup/preimage hashes, and independently reproduce the complete
+  subscription projection from the old database backup and saved managed
+  Provider. Match the current endpoint to the persisted subscription listener;
+  a current file cannot declare its own trusted loopback endpoint. A later
+  FyAgent MCP/configuration write is not subscription
+  ownership. Reject unexplained changes without replacing files or recovery
+  records; the existing per-file undo/original-source recovery remains the
+  recovery route. Preserve exact native preimages, including absent files and
+  Claude's original `null` bytes (whose read value was normalized to `{}`),
+  when the receipt contains them. Repeated bindings may use the legacy
+  logical backup only after the prior projection is also verified. Native
+  Codex auth is never restored from this backup; a catalog with no historical
+  preimage remains unchanged. Cover normal upgrade, repeated model/source
+  binding, absent/null files, external edits and tampered recovery evidence.
+  The old database remains the restoration authority for native fields masked
+  by both subscription projections, such as original credentials/URLs after
+  repeated bindings. v0.4.5 retained no independent digest of those original
+  fields; this compatibility path does not claim to detect their database-only
+  modification. Keep a regression that explicitly records this boundary.
+- A pre-existing plain backup alone is not a managed ownership proof. If the
+  legacy compatibility checks above cannot prove ownership, restoration and
+  automatic resume retain that backup and fail closed. A new managed binding encountering
+  an existing API-key takeover must require its normal stop/restore first;
+  never adopt the currently projected placeholder as the original preimage.
+- Startup routes every managed current Provider through the same admitted
+  managed activation transaction. It never uses generic takeover's outgoing
+  API-key backfill, loses the managed proof or treats an empty native Grok
+  model config as a managed subscription template.
 - Failure restores files, row/current selection, backup, and target proxy flags.
   Stop a newly created listener only when no other takeover uses it; never stop
   a listener that was already running. Report incomplete compensation as
@@ -112,7 +159,6 @@ backup body, or replacement routing implementation.
   does not probe upstream or imply quota/model availability. Mapping this
   result to account counts, request mode and provider label is owned by
   [Managed Account Proxy](./managed-account-proxy.md).
-
 
 ### Command and state ownership
 
@@ -188,19 +234,19 @@ backup body, or replacement routing implementation.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| listener bind/start fails | Return failure and keep running/takeover state honest; do not publish a server target. |
-| start is called while running | Return the reviewed already-running error; retain the one listener. |
-| plain stop is called | Stop the server only; do not select restoration implicitly. |
-| restore was requested but no authoritative backup applies | Return the bounded no-backup/recovery result; do not synthesize a default live file. |
-| application or Provider ID is unsupported/ineligible | Reject before live-file, secret, or breaker mutation. |
-| conflicting switch/takeover transition exists | Serialize or return conflict; never run a parallel backup/write transaction. |
-| Provider persistence succeeds but live projection or readback fails | Compensate and report failure/recovery-required; do not claim active switch. |
-| compensation also fails | Preserve recovery evidence/backups and return the incomplete recovery state. |
-| crash recovery finds uncertain or unrecognized live state | Preserve it and surface bounded recovery evidence; do not overwrite destructively. |
-| breaker config persistence succeeds but runtime refresh fails | Report the real incomplete update; do not claim the running router adopted it. |
-| health/stats are requested | Return bounded observation without consuming permits or changing selection. |
+| Condition                                                           | Required result                                                                        |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| listener bind/start fails                                           | Return failure and keep running/takeover state honest; do not publish a server target. |
+| start is called while running                                       | Return the reviewed already-running error; retain the one listener.                    |
+| plain stop is called                                                | Stop the server only; do not select restoration implicitly.                            |
+| restore was requested but no authoritative backup applies           | Return the bounded no-backup/recovery result; do not synthesize a default live file.   |
+| application or Provider ID is unsupported/ineligible                | Reject before live-file, secret, or breaker mutation.                                  |
+| conflicting switch/takeover transition exists                       | Serialize or return conflict; never run a parallel backup/write transaction.           |
+| Provider persistence succeeds but live projection or readback fails | Compensate and report failure/recovery-required; do not claim active switch.           |
+| compensation also fails                                             | Preserve recovery evidence/backups and return the incomplete recovery state.           |
+| crash recovery finds uncertain or unrecognized live state           | Preserve it and surface bounded recovery evidence; do not overwrite destructively.     |
+| breaker config persistence succeeds but runtime refresh fails       | Report the real incomplete update; do not claim the running router adopted it.         |
+| health/stats are requested                                          | Return bounded observation without consuming permits or changing selection.            |
 
 ## 5. Good / Base / Bad Cases
 
@@ -240,6 +286,10 @@ backup body, or replacement routing implementation.
   listener reuse, port-conflict compensation, preservation of target auth/MCP,
   exact endpoint readback and effective-Provider route observation. They do not
   re-specify token refresh or HTTP replay.
+- Recovery/compensation regressions cover clean OpenCode restoration, absent
+  initial config, stale revision, corrupt or missing recovery evidence and
+  external edits after projection for every managed target. Confirmed rollback
+  and state-unknown must remain distinct; preserve unrelated target state.
 - Breaker administration tests cover application-scoped refresh/reset and prove
   health reads do not consume permits; HTTP attempt behavior remains covered by
   [Local Proxy Pipeline](./local-proxy-pipeline.md).
