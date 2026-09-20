@@ -140,6 +140,21 @@ describe("models quick setup helpers", () => {
     });
   });
 
+  it.each([
+    ["Kimi", "https://api.moonshot.cn/v1", "kimi-k3"],
+    ["Kimi For Coding", "https://api.kimi.com/coding/v1", "k3-256k"],
+  ])(
+    "keeps the explicit endpoint and model for %s",
+    (name, baseUrl, modelId) => {
+      const input = { name, baseUrl, modelId, apiKey: "kimi-test-key" };
+      const validated = validateQuickSetup(input, "codex");
+      expect(validated.ok).toBe(true);
+      if (!validated.ok) throw new Error("Kimi quick setup should be valid");
+
+      expect(buildQuickSetupRequest("codex", validated.value)).toEqual(input);
+    },
+  );
+
   it.each(["safe-key", "safe%2Dkey"])(
     "rejects an API key in a decoded URL path segment: %s",
     (segment) => {

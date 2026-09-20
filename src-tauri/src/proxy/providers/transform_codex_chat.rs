@@ -839,6 +839,17 @@ fn flush_pending_tool_calls(
     // new assistant tool-call turn. Consecutive outputs do not enter here
     // because `pending_tool_calls` is empty after the first output.
     flush_pending_chat_tool_media(messages, pending_media);
+    // Responses can split one model turn into commentary followed by calls.
+    // Keep that text and its calls on the same Chat assistant turn, after any
+    // media boundary and without joining an already emitted tool-call batch.
+    if merge_pending_tool_calls_into_adjacent_assistant(
+        messages,
+        pending_tool_calls,
+        pending_reasoning,
+    ) {
+        *last_assistant_index = Some(messages.len() - 1);
+        return;
+    }
     let mut message = json!({
         "role": "assistant",
         "content": null,
@@ -847,6 +858,56 @@ fn flush_pending_tool_calls(
     attach_pending_reasoning_to_assistant(&mut message, pending_reasoning);
     *last_assistant_index = Some(messages.len());
     messages.push(message);
+}
+
+fn merge_pending_tool_calls_into_adjacent_assistant(
+    messages: &mut [Value],
+    pending_tool_calls: &mut Vec<Value>,
+    pending_reasoning: &mut Option<String>,
+) -> bool {
+    let Some(message) = messages.last_mut().filter(|message| {
+        message.get("role").and_then(Value::as_str) == Some("assistant")
+            && !message
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .is_some_and(|calls| !calls.is_empty())
+    }) else {
+        return false;
+    };
+    message["tool_calls"] = Value::Array(std::mem::take(pending_tool_calls));
+    if let Some(reasoning) = pending_reasoning.take() {
+        // Parallel calls can replay reasoning already carried by commentary.
+        // Normalize only the comparison keys: added segments keep their
+        // indentation and trailing spaces, even when earlier segments repeat.
+        let additional = {
+            let mut seen: HashSet<&str> = message
+                .get("reasoning_content")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .split("\n\n")
+                .map(str::trim)
+                .filter(|segment| !segment.is_empty())
+                .collect();
+            reasoning
+                .split("\n\n")
+                .filter(|segment| {
+                    let key = segment.trim();
+                    !key.is_empty() && seen.insert(key)
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        };
+        if !additional.is_empty() {
+            match message.get_mut("reasoning_content") {
+                Some(Value::String(existing)) if !existing.is_empty() => {
+                    existing.push_str("\n\n");
+                    existing.push_str(&additional);
+                }
+                _ => message["reasoning_content"] = Value::String(additional),
+            }
+        }
+    }
+    true
 }
 
 fn responses_message_item_to_chat_message(
@@ -3748,6 +3809,161 @@ mod tests {
         assert_eq!(messages[1]["tool_calls"].as_array().unwrap().len(), 1);
         assert_eq!(messages[1]["tool_calls"][0]["id"], "call_2");
         assert_eq!(messages[1]["reasoning_content"], "second batch reasoning");
+    }
+
+    #[test]
+    fn compat_stream_coalesces_commentary_and_parallel_calls_without_duplicate_reasoning() {
+        let mut first_call = test_function_call("call_first");
+        first_call["reasoning_content"] = json!("inspect files");
+        let mut second_call = test_function_call("call_second");
+        second_call["reasoning_content"] = json!("inspect files\n\nthen update configuration");
+        let result = convert_test_input(vec![
+            json!({
+                "type": "message",
+                "role": "assistant",
+                "channel": "commentary",
+                "content": "I will inspect both files.",
+                "reasoning_content": "inspect files"
+            }),
+            first_call,
+            second_call,
+            test_function_output("call_first", json!("first result")),
+            test_function_output("call_second", json!("second result")),
+        ]);
+        let messages = result_messages(&result);
+
+        assert_eq!(message_roles(&result), vec!["assistant", "tool", "tool"]);
+        assert_eq!(messages[0]["content"], "I will inspect both files.");
+        assert_eq!(messages[0]["tool_calls"].as_array().unwrap().len(), 2);
+        assert_eq!(messages[0]["tool_calls"][0]["id"], "call_first");
+        assert_eq!(messages[0]["tool_calls"][1]["id"], "call_second");
+        assert_eq!(
+            messages[0]["reasoning_content"],
+            "inspect files\n\nthen update configuration"
+        );
+        assert_eq!(messages[1]["tool_call_id"], "call_first");
+        assert_eq!(messages[2]["tool_call_id"], "call_second");
+    }
+
+    #[test]
+    fn compat_stream_preserves_reasoning_segment_whitespace_after_dedup() {
+        let pending = "first paragraph\n\n    keep_indent  \n\nlast paragraph";
+        for (existing, expected) in [
+            (
+                "context",
+                "context\n\nfirst paragraph\n\n    keep_indent  \n\nlast paragraph",
+            ),
+            ("first paragraph", pending),
+            (
+                "first paragraph\n\nlast paragraph",
+                "first paragraph\n\nlast paragraph\n\n    keep_indent  ",
+            ),
+        ] {
+            let mut call = test_function_call("call_read");
+            call["reasoning_content"] = json!(pending);
+            let result = convert_test_input(vec![
+                json!({
+                    "role": "assistant",
+                    "content": "Reading the file now.",
+                    "reasoning_content": existing
+                }),
+                call,
+            ]);
+
+            assert_eq!(message_roles(&result), vec!["assistant"]);
+            assert_eq!(
+                result["messages"][0]["reasoning_content"], expected,
+                "existing reasoning: {existing:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn compat_stream_coalesced_calls_keep_reasoning_placeholder() {
+        let result = convert_test_input(vec![
+            json!({"role": "assistant", "content": "Reading the file now."}),
+            test_function_call("call_read"),
+        ]);
+
+        assert_eq!(message_roles(&result), vec!["assistant"]);
+        assert_eq!(result["messages"][0]["content"], "Reading the file now.");
+        assert_eq!(result["messages"][0]["tool_calls"][0]["id"], "call_read");
+        assert_eq!(result["messages"][0]["reasoning_content"], "tool call");
+    }
+
+    #[test]
+    fn compat_stream_coalescing_preserves_user_tool_media_and_batch_boundaries() {
+        let commentary = json!({"role": "assistant", "content": "Next step."});
+        let user_boundary = convert_test_input(vec![
+            commentary.clone(),
+            json!({"role": "user", "content": "Use the other file."}),
+            test_function_call("call_next"),
+        ]);
+        assert_eq!(
+            message_roles(&user_boundary),
+            vec!["assistant", "user", "assistant"]
+        );
+        assert!(user_boundary["messages"][0].get("tool_calls").is_none());
+        assert_eq!(
+            user_boundary["messages"][2]["tool_calls"][0]["id"],
+            "call_next"
+        );
+
+        for media in [false, true] {
+            let output = if media {
+                json!([{"type": "input_image", "image_url": "https://example.com/tool.png"}])
+            } else {
+                json!("first result")
+            };
+            let result = convert_test_input(vec![
+                commentary.clone(),
+                test_function_call("call_first"),
+                test_function_output("call_first", output),
+                test_function_call("call_next"),
+            ]);
+            let expected_roles = if media {
+                vec!["assistant", "tool", "user", "assistant"]
+            } else {
+                vec!["assistant", "tool", "assistant"]
+            };
+            assert_eq!(message_roles(&result), expected_roles);
+            let messages = result_messages(&result);
+            assert_eq!(messages[0]["tool_calls"].as_array().unwrap().len(), 1);
+            assert_eq!(messages[0]["tool_calls"][0]["id"], "call_first");
+            assert_eq!(messages.last().unwrap()["tool_calls"][0]["id"], "call_next");
+            if media {
+                assert_eq!(
+                    messages[2]["content"][1]["image_url"]["url"],
+                    "https://example.com/tool.png"
+                );
+            }
+        }
+
+        let separate_batches = convert_test_input(vec![
+            commentary,
+            test_function_call("call_first"),
+            json!({"type": "future_metadata", "value": 1}),
+            test_function_call("call_next"),
+            test_function_output("call_first", json!("first result")),
+            test_function_output("call_next", json!("next result")),
+        ]);
+        assert_eq!(
+            message_roles(&separate_batches),
+            vec!["assistant", "assistant", "tool", "tool"]
+        );
+        for (index, id) in [(0, "call_first"), (1, "call_next")] {
+            assert_eq!(
+                separate_batches["messages"][index]["tool_calls"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                1
+            );
+            assert_eq!(
+                separate_batches["messages"][index]["tool_calls"][0]["id"],
+                id
+            );
+        }
     }
 
     #[test]

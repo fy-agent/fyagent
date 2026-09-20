@@ -2138,6 +2138,93 @@ mod provider_draft_command_tests {
     }
 
     #[test]
+    fn kimi_quick_setup_uses_native_responses_and_preserves_saved_providers() {
+        for (name, base_url, model_id) in [
+            ("Kimi", "https://api.moonshot.cn/v1", "kimi-k3"),
+            (
+                "Kimi For Coding",
+                "https://api.kimi.com/coding/v1",
+                "k3-256k",
+            ),
+        ] {
+            let db = crate::database::Database::memory().expect("memory database");
+            let mut saved = Provider::with_id(
+                "saved-kimi".to_string(),
+                name.to_string(),
+                serde_json::json!({
+                    "auth": { "OPENAI_API_KEY": "saved-kimi-key" },
+                    "config": format!(
+                        "# User configuration\nmodel_provider = \"saved\"\nmodel = \"user-model\"\nmodel_reasoning_effort = \"low\"\n\n[model_providers.saved]\nname = \"User Kimi\"\nbase_url = \"{base_url}\"\nwire_api = \"responses\"\nrequires_openai_auth = true\nrequest_max_retries = 3\n"
+                    ),
+                    "modelCatalog": { "models": [{
+                        "model": "user-model", "contextWindow": 131072,
+                        "supportsParallelToolCalls": false
+                    }] }
+                }),
+                None,
+            );
+            saved.meta = Some(
+                serde_json::from_value(serde_json::json!({
+                    "apiFormat": "openai_chat",
+                    "promptCacheRouting": "disabled",
+                    "codexChatReasoning": {
+                        "supportsThinking": true,
+                        "supportsEffort": false,
+                        "thinkingParam": "thinking",
+                        "effortParam": "none",
+                        "outputFormat": "reasoning_content"
+                    }
+                }))
+                .expect("legacy Kimi metadata"),
+            );
+            db.save_provider(AppType::Codex.as_str(), &saved)
+                .expect("save existing Kimi provider");
+            db.init_default_official_providers()
+                .expect("initialize provider seeds");
+
+            let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
+                "name": name, "baseUrl": base_url,
+                "apiKey": "new-kimi-key", "modelId": model_id
+            }))
+            .expect("Kimi quick-setup request");
+            let provider = request.into_provider(&AppType::Codex).unwrap();
+            let config = provider.settings_config["config"]
+                .as_str()
+                .unwrap()
+                .parse::<toml_edit::DocumentMut>()
+                .expect("valid Codex TOML");
+            assert_eq!(config["model"].as_str(), Some(model_id));
+            assert_eq!(config["model_provider"].as_str(), Some("custom"));
+            let table = &config["model_providers"]["custom"];
+            assert_eq!(table["base_url"].as_str(), Some(base_url));
+            assert_eq!(table["wire_api"].as_str(), Some("responses"));
+            assert_eq!(table["requires_openai_auth"].as_bool(), Some(true));
+            assert!(
+                provider.meta.is_none(),
+                "native setup has no Chat overrides"
+            );
+
+            db.save_provider(AppType::Codex.as_str(), &provider)
+                .expect("save new Kimi quick setup");
+            let reread = db
+                .get_provider_by_id(&provider.id, AppType::Codex.as_str())
+                .unwrap()
+                .expect("new Kimi setup was saved");
+            assert_eq!(reread.settings_config, provider.settings_config);
+            let saved_reread = db
+                .get_provider_by_id(&saved.id, AppType::Codex.as_str())
+                .unwrap()
+                .expect("existing Kimi provider is retained");
+            assert_eq!(saved_reread.settings_config, saved.settings_config);
+            assert_eq!(
+                serde_json::to_value(saved_reread.meta).unwrap(),
+                serde_json::to_value(saved.meta).unwrap(),
+                "existing Chat routing and user overrides must remain unchanged"
+            );
+        }
+    }
+
+    #[test]
     fn quick_setup_request_writes_image_extension_and_websocket_features() {
         let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
             "name": "Gateway", "baseUrl": "https://example.test/v1",

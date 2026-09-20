@@ -28,13 +28,10 @@
 
 use std::collections::HashMap;
 
-use bytes::Bytes;
-use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
 
 use super::transform_codex_chat::flatten_namespace_tool_name;
 use crate::proxy::error::ProxyError;
-use crate::proxy::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
 
 /// Reverse map entry: a flattened tool name resolves back to its original
 /// namespace and bare child name.
@@ -334,104 +331,13 @@ fn restore_value(value: &mut Value, map: &HashMap<String, NamespacedName>) -> bo
     changed
 }
 
-/// Wrap a native Responses SSE byte stream, restoring flattened `function_call`
-/// names in each event back to their namespace identity. Events that carry no
-/// affected function call pass through with their inner content preserved
-/// verbatim (only the block delimiter is normalized to `\n\n`).
-pub(crate) fn create_namespace_restore_sse_stream<E>(
-    stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
-    map: HashMap<String, NamespacedName>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send
-where
-    E: std::error::Error + Send + 'static,
-{
-    async_stream::stream! {
-        let mut buffer = String::new();
-        let mut utf8_remainder: Vec<u8> = Vec::new();
-
-        tokio::pin!(stream);
-
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(bytes) => {
-                    append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
-                    while let Some(block) = take_sse_block(&mut buffer) {
-                        if block.trim().is_empty() {
-                            continue;
-                        }
-                        yield Ok(restore_sse_block(&block, &map));
-                    }
-                }
-                Err(e) => {
-                    yield Err(std::io::Error::other(e.to_string()));
-                    return;
-                }
-            }
-        }
-
-        // Flush any trailing partial block (streams normally end on a delimiter,
-        // but be defensive so no bytes are dropped).
-        if !utf8_remainder.is_empty() {
-            buffer.push_str(&String::from_utf8_lossy(&utf8_remainder));
-        }
-        let tail = std::mem::take(&mut buffer);
-        if !tail.trim().is_empty() {
-            yield Ok(restore_sse_block(&tail, &map));
-        }
-    }
-}
-
-/// Restore one SSE block. When the block's `data:` JSON carries an affected
-/// function call, re-serialize just that line; otherwise the original block text
-/// is preserved and only the `\n\n` delimiter re-appended.
-fn restore_sse_block(block: &str, map: &HashMap<String, NamespacedName>) -> Bytes {
-    let mut event_name: Option<&str> = None;
-    let mut data_parts: Vec<&str> = Vec::new();
-    for line in block.lines() {
-        if let Some(event) = strip_sse_field(line, "event") {
-            event_name = Some(event.trim());
-        }
-        if let Some(data) = strip_sse_field(line, "data") {
-            data_parts.push(data);
-        }
-    }
-
-    if data_parts.is_empty() {
-        return Bytes::from(format!("{block}\n\n"));
-    }
-
-    let data = data_parts.join("\n");
-    if data.trim() == "[DONE]" {
-        return Bytes::from(format!("{block}\n\n"));
-    }
-
-    let mut event: Value = match serde_json::from_str(&data) {
-        Ok(value) => value,
-        // Non-JSON data (shouldn't happen on the Responses wire): pass through.
-        Err(_) => return Bytes::from(format!("{block}\n\n")),
-    };
-
-    if !restore_sse_event_namespaces(&mut event, map) {
-        return Bytes::from(format!("{block}\n\n"));
-    }
-
-    let restored = serde_json::to_string(&event).unwrap_or(data);
-    let mut out = String::new();
-    if let Some(name) = event_name {
-        out.push_str("event: ");
-        out.push_str(name);
-        out.push('\n');
-    }
-    out.push_str("data: ");
-    out.push_str(&restored);
-    out.push_str("\n\n");
-    Bytes::from(out)
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::transform_codex_responses_xai_sanitize::create_xai_native_responses_sse_stream;
     use super::*;
+    use bytes::Bytes;
     use futures::stream;
+    use futures::StreamExt;
     use serde_json::json;
 
     fn namespace_request() -> Value {
@@ -589,7 +495,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sse_stream_restores_function_call_events_and_passes_others_through() {
+    async fn xai_sse_stream_restores_function_call_events_and_passes_others_through() {
         let map = namespace_restore_map(&namespace_request());
 
         let added = "event: response.output_item.added\n\
@@ -604,7 +510,7 @@ mod tests {
             Ok(Bytes::from(done)),
         ];
         let input = stream::iter(chunks);
-        let out = create_namespace_restore_sse_stream(input, map);
+        let out = create_xai_native_responses_sse_stream(input, map);
         futures::pin_mut!(out);
 
         let mut collected = String::new();

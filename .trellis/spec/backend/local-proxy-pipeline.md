@@ -142,6 +142,10 @@ socket, database handle, or raw response-success override.
   format only when no explicit text policy exists. Preserve function calls,
   call IDs, arguments and empty function-result outputs; reject unsupported
   instruction content instead of silently deleting it.
+- Native xAI compatibility also applies to API-key Responses routes whose
+  effective parsed upstream hostname is exactly `api.x.ai`. Codex, Grok Build,
+  and OpenCode share this owner; Chat/Anthropic routes and unrelated hosts do
+  not enter it. Resolve model mapping before model-specific request cleanup.
 - Request-time vault resolution retains the admitted account lineage. A first
   upstream 401 drops its response before a single same-account refresh/replay
   inside the existing attempt and permit. Reuse the buffered request, replace
@@ -161,6 +165,16 @@ socket, database handle, or raw response-success override.
 - Rebuilt bodies remove hop-by-hop headers and stale entity headers. Streaming
   keeps bounded UTF-8/SSE framing across chunk boundaries and does not lose or
   duplicate the primed bytes.
+- Codex-to-Chat conversion keeps commentary followed by tool calls in one
+  assistant turn when safe, preserving user, tool-result, media, and existing
+  tool-batch boundaries. Reasoning deduplication must retain original text and
+  indentation. An empty reasoning delta opens no block; nonempty whitespace
+  deltas remain meaningful and are preserved.
+- Native xAI response cleanup restores tool namespaces and handles complete
+  arguments even without a namespace map. Numeric normalization must prove
+  losslessness from the original decimal token, preserve other tokens, and
+  leave partial argument deltas untouched. Rewriting SSE data must preserve
+  non-data fields, comments, and framing; it does not change usage ownership.
 - Cancellation, timeout, client disconnect, stream completion, and stream
   failure each settle permit/accounting guards once. Drop guards may finish
   logging, but must not turn an incomplete response into success.
