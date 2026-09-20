@@ -6,6 +6,7 @@ import type {
   ChangePlanErrorCode,
 } from "../../../shared/features/change-plans";
 import { useFeatures } from "../../../shared/features/provider";
+import type { FileWriteTarget } from "../../../shared/features/file-writes";
 import { usePersistentVisibility } from "../../../shared/ui/PersistentSurface";
 import { ApplyWorkspace } from "../../../shared/features/change-plans-ui/ApplyWorkspace";
 import {
@@ -16,6 +17,7 @@ import { useChangeJob } from "../../../shared/features/change-plans-ui/useChange
 
 export interface SavePlanWorkspaceProps<Request> {
   active: boolean;
+  writeTargets?: readonly FileWriteTarget[];
   request: Request | null;
   plan: ChangePlan | null;
   previewError: { code: ChangePlanErrorCode; message?: string } | null;
@@ -26,6 +28,7 @@ export interface SavePlanWorkspaceProps<Request> {
 
 export function SavePlanWorkspace<Request>({
   active,
+  writeTargets,
   request,
   plan,
   previewError,
@@ -149,6 +152,7 @@ export function SavePlanWorkspace<Request>({
       <p className="fy-models-muted">{description}</p>
       {plan || job || displayError ? (
         <ApplyWorkspace
+          writeTargets={writeTargets}
           plan={plan}
           job={job}
           busy={busy}

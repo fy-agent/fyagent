@@ -51,6 +51,13 @@ async function confirmWriteDisclosure(
   await user.click(within(dialog).getByRole("button", { name: "确认保存" }));
 }
 
+async function expectSavePreview() {
+  await screen.findByRole("button", { name: "应用更改" });
+  expect(screen.queryByRole("dialog", { name: "保存前确认" })).toBeNull();
+  expect(screen.getByText("将修改")).toBeVisible();
+  expect(screen.getByText("备份位置")).toBeVisible();
+}
+
 function succeededCodexJob(): ChangeJobSnapshot {
   return {
     ...changeJobWire,
@@ -781,9 +788,11 @@ describe("Models page", () => {
     await user.type(screen.getByLabelText("API Key"), "first-secret");
     await user.type(screen.getByLabelText("自定义模型 ID"), "manual-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
-    await confirmWriteDisclosure(user);
+    await expectSavePreview();
 
-    expect(await screen.findByText("保存 WorkBuddy 模型设置")).toBeVisible();
+    expect(
+      screen.getByRole("region", { name: "保存 WorkBuddy 模型设置" }),
+    ).toBeVisible();
     expect(screen.queryByRole("button", { name: "确认覆盖" })).toBeNull();
     expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
     expect(document.body).not.toHaveTextContent("first-secret");
@@ -941,7 +950,7 @@ describe("Models page", () => {
     await user.type(screen.getByLabelText("API Key"), "conflict-secret");
     await user.type(screen.getByLabelText("自定义模型 ID"), "conflict-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
-    await confirmWriteDisclosure(user);
+    await expectSavePreview();
     await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
     expect(
@@ -972,7 +981,7 @@ describe("Models page", () => {
     await user.type(screen.getByLabelText("API Key"), "expired-secret");
     await user.type(screen.getByLabelText("自定义模型 ID"), "expired-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
-    await confirmWriteDisclosure(user);
+    await expectSavePreview();
     await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
     expect(await screen.findByText("预览已过期")).toBeVisible();
@@ -1217,7 +1226,7 @@ describe("Models page", () => {
       screen.getByRole("button", { name: "移除模型 gemini-2.5-pro" }),
     );
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
-    await confirmWriteDisclosure(user);
+    await expectSavePreview();
     await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
     await screen.findByText("WorkBuddy 模型配置已保存");
@@ -1297,10 +1306,7 @@ describe("Models page", () => {
     expect(screen.queryByText("将修改")).not.toBeInTheDocument();
     const submit = screen.getByRole("button", { name: "保存并设为当前配置" });
     await user.click(submit);
-    expect(
-      ports.changePlans.createCodexProviderUpsertPlan,
-    ).not.toHaveBeenCalled();
-    await confirmWriteDisclosure(user);
+    expect(ports.changePlans.applyChangePlan).not.toHaveBeenCalled();
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
     expect(
@@ -1352,7 +1358,7 @@ describe("Models page", () => {
     expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
   });
 
-  it("keeps write targets in a save-confirm dialog instead of the page layout", async () => {
+  it("keeps native write targets in the single plan confirmation and can return to editing", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.providers.getSummary = vi.fn(async () => ({
@@ -1380,19 +1386,18 @@ describe("Models page", () => {
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
 
-    const dialog = await screen.findByRole("dialog", { name: "保存前确认" });
-    expect(within(dialog).getByText("将修改")).toBeVisible();
-    expect(within(dialog).getByText("备份位置")).toBeVisible();
+    await expectSavePreview();
     expect(
       ports.changePlans.createCodexProviderUpsertPlan,
-    ).not.toHaveBeenCalled();
-    await user.click(within(dialog).getByRole("button", { name: "取消" }));
-    expect(
-      screen.queryByRole("dialog", { name: "保存前确认" }),
-    ).not.toBeInTheDocument();
-    expect(
-      ports.changePlans.createCodexProviderUpsertPlan,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledTimes(1);
+    expect(ports.changePlans.applyChangePlan).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("button", { name: "应用更改" })).toBeNull();
+    expect(screen.getByLabelText("服务地址")).toHaveValue(
+      "https://codex.example/v1",
+    );
+    expect(screen.getByLabelText("API Key")).toHaveValue("codex-secret");
+    expect(ports.changePlans.applyChangePlan).not.toHaveBeenCalled();
     expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
   });
 
@@ -1427,7 +1432,7 @@ describe("Models page", () => {
     await user.click(
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
-    await confirmWriteDisclosure(user);
+    await expectSavePreview();
 
     await waitFor(() =>
       expect(
@@ -1532,7 +1537,7 @@ describe("Models page", () => {
     await user.click(
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
-    await confirmWriteDisclosure(user);
+    await expectSavePreview();
     await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
     await screen.findByText("无法确认当前设置");
@@ -1613,7 +1618,7 @@ describe("Models page", () => {
     await user.click(
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
-    await confirmWriteDisclosure(user);
+    await expectSavePreview();
     expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
     expect(
       ports.changePlans.createCodexProviderUpsertPlan,
@@ -1668,7 +1673,7 @@ describe("Models page", () => {
     await user.click(
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
-    await confirmWriteDisclosure(user);
+    await expectSavePreview();
     expect(
       await screen.findByText("当前模型可能与此连接方式不兼容，请确认后使用。"),
     ).toBeVisible();
@@ -1703,7 +1708,7 @@ describe("Models page", () => {
     await user.click(
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
-    await confirmWriteDisclosure(user);
+    await expectSavePreview();
     await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
     expect(await screen.findByText("模型设置已保存，待确认")).toBeVisible();

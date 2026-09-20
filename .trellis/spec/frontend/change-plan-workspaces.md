@@ -66,6 +66,12 @@ and `SavePlanWorkspace` never forwards its request to apply.
 
 ### Focused confirmation and execution
 
+Codex and WorkBuddy form saves create the read-only plan directly and use this
+workspace as their only write confirmation. Do not put another confirmation
+dialog before plan creation. Freeze native file targets with the request, keep
+the submitted draft while previewing, and return to that draft when the preview
+closes without applying. Neither preview creation nor cancellation writes files.
+
 Before admission, show the operation summary, deduplicated native write scope,
 necessary restart or meaningful warnings, and recovery limitations. Do not repeat
 notice-only write/switch risks already described by that summary. Read scope,

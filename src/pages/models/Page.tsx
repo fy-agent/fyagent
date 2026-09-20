@@ -156,12 +156,9 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     useFieldNotices<WorkBuddyNoticeField>();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const deleteOriginRef = useRef<HTMLElement | null>(null);
-  const writeConfirm = useModelsWriteConfirm<{
-    request: WorkBuddySaveRequest;
-    revision: number;
-    draftIds: string[];
-    targets: readonly ModelWriteTarget[];
-  }>();
+  const [workBuddyWriteTargets, setWorkBuddyWriteTargets] = useState<
+    readonly ModelWriteTarget[]
+  >([]);
   const [workBuddySaveRequest, setWorkBuddySaveRequest] =
     useState<WorkBuddySaveRequest | null>(null);
   const [workBuddySavePlan, setWorkBuddySavePlan] = useState<ChangePlan | null>(
@@ -359,7 +356,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   };
 
   const startSave = () => {
-    if (writeLock.current || writeConfirm.open) return;
+    if (writeLock.current) return;
     const draftIds = collectDraftIds();
     const hasDraft = draftIds.length > 0;
     if (!hasDraft) {
@@ -391,27 +388,16 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       focusControl(manualModelsInputRef.current);
       return;
     }
-    writeConfirm.requestConfirm({
-      request,
-      revision: submittedRevision,
-      draftIds,
-      targets: [
-        {
-          path: status.path,
-          backupPath: status.backupPath,
-          exists: status.exists,
-        },
-      ],
-    });
-  };
-
-  const confirmWrite = () => {
-    if (writeLock.current) return;
-    const pending = writeConfirm.takePending();
-    if (!pending) return;
-    setDraftModelIds(pending.draftIds);
+    setWorkBuddyWriteTargets([
+      {
+        path: status.path,
+        backupPath: status.backupPath,
+        exists: status.exists,
+      },
+    ]);
+    setDraftModelIds(draftIds);
     setManualDraft("");
-    void createSavePlan(pending.request, pending.revision);
+    void createSavePlan(request, submittedRevision);
   };
 
   const createSavePlan = async (
@@ -443,6 +429,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     setWorkBuddySaveRequest(null);
     setWorkBuddySavePlan(null);
     setWorkBuddySavePreviewError(null);
+    setWorkBuddyWriteTargets([]);
     writeLock.current = false;
     if (mountedRef.current) setBusy(null);
   };
@@ -601,7 +588,6 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
             )
           }
           onClick={startSave}
-          dialogOriginRef={writeConfirm.originRef}
         >
           {busy === "save" ? "保存中…" : "保存并应用"}
         </Button>
@@ -610,6 +596,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       <WorkBuddySavePlanWorkspace
         key={workBuddySavePlan?.planId ?? "workbuddy-save-preview"}
         active={active}
+        writeTargets={workBuddyWriteTargets}
         request={workBuddySaveRequest}
         plan={workBuddySavePlan}
         previewError={workBuddySavePreviewError}
@@ -876,15 +863,6 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           </p>
         ) : null}
       </Dialog>
-      <ModelsWriteConfirmDialog
-        originRef={writeConfirm.originRef}
-        open={writeConfirm.open}
-        targets={writeConfirm.pending?.targets ?? []}
-        onConfirm={confirmWrite}
-        onCancel={() => {
-          writeConfirm.takePending();
-        }}
-      />
     </CatalogDetail>
   );
 }
@@ -957,6 +935,9 @@ function ProviderPanel({
   >([]);
   const [codexSaveRequest, setCodexSaveRequest] =
     useState<ProviderQuickSetupRequest | null>(null);
+  const [codexWriteTargets, setCodexWriteTargets] = useState<
+    readonly ModelWriteTarget[]
+  >([]);
   const [codexSavePlan, setCodexSavePlan] = useState<ChangePlan | null>(null);
   const [codexSavePreviewError, setCodexSavePreviewError] = useState<{
     code: ChangePlanErrorCode;
@@ -1105,15 +1086,20 @@ function ProviderPanel({
     }
     const targets = summaryQuery.data?.writeTargets ?? [];
     if (targets.length === 0) return;
-    writeConfirm.requestConfirm({
-      request: buildQuickSetupRequest(
-        app,
-        validated.value,
-        app === "codex" ? { imageExtension, websockets } : undefined,
-      ),
-      revision: draftCommit.captureRevision(),
-      targets,
-    });
+    const request = buildQuickSetupRequest(
+      app,
+      validated.value,
+      app === "codex" ? { imageExtension, websockets } : undefined,
+    );
+    const revision = draftCommit.captureRevision();
+    if (app === "codex") {
+      // Plan creation is read-only. Its shared preview owns the one save
+      // confirmation, including the native-owned file impact disclosure.
+      setCodexWriteTargets(targets);
+      void submit(request, revision);
+    } else {
+      writeConfirm.requestConfirm({ request, revision, targets });
+    }
   };
 
   const confirmWrite = () => {
@@ -1229,6 +1215,7 @@ function ProviderPanel({
 
   const handleCodexSaveDismiss = useCallback(() => {
     setCodexSaveRequest(null);
+    setCodexWriteTargets([]);
     setCodexSavePlan(null);
     setCodexSavePreviewError(null);
     writeLock.current = false;
@@ -1441,6 +1428,7 @@ function ProviderPanel({
           <CodexSavePlanWorkspace
             key={codexSavePlan?.planId ?? "codex-save-preview"}
             active={active}
+            writeTargets={codexWriteTargets}
             request={codexSaveRequest}
             plan={codexSavePlan}
             previewError={codexSavePreviewError}

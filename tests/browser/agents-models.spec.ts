@@ -64,6 +64,14 @@ async function confirmSaveDisclosure(
   await dialog.getByRole("button", { name: "确认保存" }).click();
 }
 
+async function expectSingleSavePreview(
+  page: Parameters<typeof openRendererPage>[0],
+) {
+  await expect(page.getByRole("button", { name: "应用更改" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "保存前确认" })).toHaveCount(0);
+  await expect(page.getByText("将修改")).toBeVisible();
+}
+
 test("Agent directory keeps exact native order and accessible configuration entry points", async ({
   page,
 }) => {
@@ -479,9 +487,7 @@ test("WorkBuddy save preview uses Change Plan and does not expose overwrite toke
   await page.getByLabel("API Key", { exact: true }).fill(apiKey);
   await page.getByLabel("自定义模型 ID").fill("manual-browser-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
-  await expect(page.getByRole("dialog", { name: "保存前确认" })).toBeVisible();
-  await expect(page.getByText("将修改")).toBeVisible();
-  await page.getByRole("button", { name: "确认保存" }).click();
+  await expectSingleSavePreview(page);
 
   await expect(page.getByRole("button", { name: "应用更改" })).toBeVisible();
   await expect(
@@ -537,7 +543,7 @@ test("WorkBuddy write failures stay redacted and clear the submitted credential"
   await page.getByLabel("API Key", { exact: true }).fill(apiKey);
   await page.getByLabel("自定义模型 ID").fill("failure-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
-  await page.getByRole("button", { name: "确认保存" }).click();
+  await expectSingleSavePreview(page);
   await page.getByRole("button", { name: "应用更改" }).click();
 
   await expect(page.locator("body")).toContainText("保存失败，已恢复原配置");
@@ -572,7 +578,7 @@ test("WorkBuddy concurrent modification rereads authority instead of claiming su
     .fill("browser-conflict-secret");
   await page.getByLabel("自定义模型 ID").fill("conflict-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
-  await page.getByRole("button", { name: "确认保存" }).click();
+  await expectSingleSavePreview(page);
   await page.getByRole("button", { name: "应用更改" }).click();
 
   await expect(page.locator("body")).toContainText("预览已过期");
@@ -815,7 +821,7 @@ test("Provider atomic failure reports rollback instead of a partial result", asy
   await page.getByLabel("API Key", { exact: true }).fill("partial-secret");
   await page.getByLabel("模型 ID", { exact: true }).fill("partial-model");
   await page.getByRole("button", { name: "保存并设为当前配置" }).click();
-  await confirmSaveDisclosure(page);
+  await expectSingleSavePreview(page);
   await page
     .getByRole("region", { name: "保存 Codex Provider" })
     .getByRole("button", { name: "应用更改" })

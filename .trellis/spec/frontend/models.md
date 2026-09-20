@@ -202,7 +202,10 @@ an apply instruction.
   API key in the current draft so the same credential can be used for probe or
   save. Fetch success is not a persisted configuration.
 - The save confirmation shows the native `writeTargets` returned by
-  `getSummary`; React never constructs target or backup paths.
+  `getSummary`; React never constructs target or backup paths. Codex and
+  WorkBuddy disclose those targets in the single Change Plan preview, without
+  an earlier write-confirmation dialog. Closing that preview preserves the form
+  draft and does not apply or save it.
 - Claude and Grok Build call `applyQuickSetupWithResult`, then reread
   `getSummary`. They claim the new provider is current only when the reread
   `currentId` equals the closed quick-setup provider ID.
