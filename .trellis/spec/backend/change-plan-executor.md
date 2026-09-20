@@ -103,7 +103,6 @@ faultPoints        = before_managed_write,
   quota consumption. Synthetic vault + loopback upstream integration is separate
   from actual subscription and Windows acceptance evidence.
 
-
 ### Wire version and phase model
 
 - `CHANGE_PLAN_CONTRACT_VERSION = fyagent-change-plan/v2`.
@@ -194,7 +193,11 @@ faultPoints        = before_managed_write,
   `existing_model_ids_will_be_updated`. WorkBuddy classify compares models.json
   revision/content digest and backup digest against the stored baseline. Writer
   failure plus restored baseline is `writer_failed_baseline_restored` with
-  recovery succeeded. Revision drift before admit is `stale`.
+  recovery succeeded. The adapter must not restore a backup merely because a
+  writer returned an error: validation/read failures may precede all writes,
+  and the backup may belong to an earlier successful operation. Native writer
+  compensation is bound to its exact preimage/publication and preserves later
+  external edits. Revision drift before admit is `stale`.
 - Plan/job/event/partial/error DTOs remain credential- and path-free.
 - SecretRef integration is separate. A secret-blocked target fails closed
   before admission/writer invocation.

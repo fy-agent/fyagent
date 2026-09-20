@@ -156,9 +156,15 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
   and confirms with `{planId, planDigest}` only. The adapter holds the
   WorkBuddy write lock and consumes any overwrite capability internally.
   Revision drift at apply is `stale`; the UI regenerates the plan rather than
-  retrying the old digest. A failed apply write restores `models.json` from the
-  pre-apply backup when that restore succeeds, and the job remains a confirmed
-  failure with `writer_failed_baseline_restored`. API keys stay in the
+  retrying the old digest. Recovery belongs to the native writer, which knows
+  the exact preimage and its own attempted publication. Validation, read and
+  backup failures never trigger restoration from an older backup. On macOS, a
+  failed primary write restores that exact preimage (including prior absence)
+  only while the primary still matches its publication or the preimage; later
+  external bytes are preserved. Windows commit errors occur before the primary
+  rename, so the adapter performs no second blind restore. The job rereads the
+  real files and remains a confirmed failure with
+  `writer_failed_baseline_restored` only if the baseline is proven. API keys stay in the
   process-private draft and the locked writer; they never enter the public
   plan, job, events, logs, or query cache.
 - The backend consumes the token before rereading, validates request and
@@ -231,6 +237,8 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
 | Target IDs already exist without a matching overwrite token                                                                        | Direct `save_workbuddy_models` returns one confirmation requirement and writes nothing. Change Plan apply consumes the capability internally; the renderer never sees the token. |
 | Change Plan apply sees revision/file baseline drift                                                                                | `stale`; no write; UI regenerates the plan.                                                                                                                                      |
 | A failed Change Plan write restores the pre-apply backup                                                                           | Failed job with `writer_failed_baseline_restored`, compensated managed-write, and `recoveryState=succeeded`.                                                                     |
+| Read/validation fails while an unrelated old backup exists                                                                         | Preserve both current and backup bytes; never turn the failed save into an implicit rollback.                                                                                    |
+| Another writer changes the primary before failure recovery                                                                         | Preserve external bytes and report unverified/recovery-required state after reread.                                                                                              |
 | `removedModelIds` match existing entries without a matching overwrite token                                                        | Return one confirmation requirement listing those IDs; write neither backup nor primary.                                                                                         |
 | A removal-only save commits with a valid token                                                                                     | Delete matching entries and prune populated `availableModels`; URL/key are not required.                                                                                         |
 | Token is malformed, expired, mismatched, or reused                                                                                 | Consume/reject it, expose no credential or target contents, and write nothing.                                                                                                   |

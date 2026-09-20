@@ -443,14 +443,12 @@ pub(crate) fn save_workbuddy_models_at_locked(
         return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed));
     }
 
-    #[cfg(all(test, target_os = "macos"))]
-    if FAIL_NEXT_PRIMARY_WRITE.with(|flag| flag.replace(false)) {
-        return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed));
-    }
-
     #[cfg(target_os = "macos")]
-    write_credential_file_atomically(&paths.models, &serialized)
-        .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
+    write_primary_with_recovery(
+        paths,
+        loaded.exists.then_some(loaded.original_bytes.as_slice()),
+        &serialized,
+    )?;
 
     Ok(SaveWorkBuddyModelsOutcome::Saved {
         revision: revision_for(&serialized),
@@ -464,14 +462,23 @@ pub(crate) fn save_workbuddy_models_at_locked(
 thread_local! {
     static WORKBUDDY_PRECOMMIT_REPLACEMENT: std::cell::RefCell<Option<Vec<u8>>> =
         const { std::cell::RefCell::new(None) };
-    static FAIL_NEXT_PRIMARY_WRITE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static PRIMARY_WRITE_FAULT: std::cell::RefCell<Option<PrimaryWriteFault>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(all(test, target_os = "macos"))]
+enum PrimaryWriteFault {
+    BeforePublish,
+    AfterPublish,
+    ExternalEdit(Vec<u8>),
 }
 
 #[cfg(test)]
 pub(crate) fn arm_next_workbuddy_primary_write_fault() -> bool {
     #[cfg(target_os = "macos")]
     {
-        FAIL_NEXT_PRIMARY_WRITE.with(|flag| flag.set(true));
+        PRIMARY_WRITE_FAULT
+            .with(|slot| *slot.borrow_mut() = Some(PrimaryWriteFault::BeforePublish));
         true
     }
     #[cfg(target_os = "windows")]
@@ -781,37 +788,41 @@ fn api_key_mac_key() -> &'static [u8; 32] {
     KEY.get_or_init(random_mac_key)
 }
 
-pub(crate) fn restore_workbuddy_from_backup_at_locked(paths: &WorkBuddyPaths) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        restore_workbuddy_from_backup_windows(paths)
-    }
-    #[cfg(target_os = "macos")]
-    {
-        restore_workbuddy_from_backup_macos(paths)
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn restore_workbuddy_from_backup_windows(paths: &WorkBuddyPaths) -> bool {
-    let Ok(storage) = open_windows_storage(paths, false) else {
-        return false;
-    };
-    let Ok(Some(backup)) = storage.read_backup() else {
-        return false;
-    };
-    let Ok(mut snapshot) = storage.snapshot_models() else {
-        return false;
-    };
-    storage.commit(&mut snapshot, &backup).is_ok()
-}
-
 #[cfg(target_os = "macos")]
-fn restore_workbuddy_from_backup_macos(paths: &WorkBuddyPaths) -> bool {
-    let Ok(backup) = fs::read(&paths.backup) else {
-        return false;
-    };
-    write_credential_file_atomically(&paths.models, &backup).is_ok()
+fn write_primary_with_recovery(
+    paths: &WorkBuddyPaths,
+    preimage: Option<&[u8]>,
+    replacement: &[u8],
+) -> Result<(), WorkBuddyError> {
+    #[cfg(test)]
+    let fault = PRIMARY_WRITE_FAULT.with(|slot| slot.borrow_mut().take());
+    #[cfg(test)]
+    if matches!(fault, Some(PrimaryWriteFault::BeforePublish)) {
+        return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed));
+    }
+
+    let result = write_credential_file_atomically(&paths.models, replacement);
+    #[cfg(test)]
+    let result = result.and_then(|()| match fault {
+        Some(PrimaryWriteFault::AfterPublish) => Err(io::Error::other("injected sync failure")),
+        Some(PrimaryWriteFault::ExternalEdit(bytes)) => {
+            fs::write(&paths.models, bytes).expect("external writer fixture");
+            Err(io::Error::other(
+                "injected sync failure after external edit",
+            ))
+        }
+        _ => Ok(()),
+    });
+    result.map_err(|_| {
+        use sha2::Digest;
+        // Only this writer knows the exact preimage and possible publication.
+        // A validation/read/backup error must never restore an unrelated old
+        // backup. A later external edit must survive failed compensation.
+        let expected = format!("{:x}", Sha256::digest(replacement));
+        let _ =
+            crate::config::restore_file_preimage_if_owned(&paths.models, preimage, Some(&expected));
+        WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed)
+    })
 }
 
 fn random_mac_key() -> [u8; 32] {
@@ -917,13 +928,44 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn restore_from_backup_replaces_primary_with_backup_bytes() {
+    fn failed_publication_restores_only_its_own_preimage() {
         let temp = tempfile::TempDir::new().unwrap();
         let paths = paths(&temp);
-        write_models(&paths, r#"{"models":[{"id":"new"}]}"#);
-        fs::write(&paths.backup, br#"{"models":[{"id":"old"}]}"#).unwrap();
-        assert!(restore_workbuddy_from_backup_at_locked(&paths));
-        assert_eq!(read_json(&paths)["models"][0]["id"], "old");
+        let original = br#"{"models":[{"id":"original"}]}"#;
+        write_models(&paths, std::str::from_utf8(original).unwrap());
+        fs::write(&paths.backup, b"unrelated old backup").unwrap();
+        PRIMARY_WRITE_FAULT.with(|slot| *slot.borrow_mut() = Some(PrimaryWriteFault::AfterPublish));
+        assert!(write_primary_with_recovery(&paths, Some(original), b"new publication").is_err());
+        assert_eq!(fs::read(&paths.models).unwrap(), original);
+        assert_eq!(fs::read(&paths.backup).unwrap(), b"unrelated old backup");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn failed_first_publication_recovers_absence_instead_of_an_old_backup() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let paths = paths(&temp);
+        fs::create_dir_all(&paths.directory).unwrap();
+        fs::write(&paths.backup, b"unrelated old backup").unwrap();
+        PRIMARY_WRITE_FAULT.with(|slot| *slot.borrow_mut() = Some(PrimaryWriteFault::AfterPublish));
+        assert!(write_primary_with_recovery(&paths, None, b"new publication").is_err());
+        assert!(!paths.models.exists());
+        assert_eq!(fs::read(&paths.backup).unwrap(), b"unrelated old backup");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn failed_publication_preserves_external_edits_before_recovery() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let paths = paths(&temp);
+        let original = br#"{"models":[]}"#;
+        write_models(&paths, std::str::from_utf8(original).unwrap());
+        let external = br#"{"models":[{"id":"user-new"}]}"#;
+        PRIMARY_WRITE_FAULT.with(|slot| {
+            *slot.borrow_mut() = Some(PrimaryWriteFault::ExternalEdit(external.to_vec()));
+        });
+        assert!(write_primary_with_recovery(&paths, Some(original), b"new publication").is_err());
+        assert_eq!(fs::read(&paths.models).unwrap(), external);
     }
 
     #[cfg(all(test, target_os = "macos"))]

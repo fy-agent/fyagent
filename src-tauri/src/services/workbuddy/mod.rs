@@ -16,8 +16,7 @@ mod windows_storage;
 
 pub(crate) use config::{
     current_paths, get_workbuddy_model_ids, get_workbuddy_status, load_workbuddy_files,
-    normalized_target_ids, restore_workbuddy_from_backup_at_locked, save_workbuddy_models,
-    save_workbuddy_models_at_locked, write_lock,
+    normalized_target_ids, save_workbuddy_models, save_workbuddy_models_at_locked, write_lock,
 };
 
 #[cfg(test)]

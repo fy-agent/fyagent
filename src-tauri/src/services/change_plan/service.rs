@@ -17,8 +17,8 @@ use crate::services::workbuddy::url::{
 };
 use crate::services::workbuddy::{
     credential_matches_model_id, current_paths, load_workbuddy_files, normalized_target_ids,
-    restore_workbuddy_from_backup_at_locked, save_workbuddy_models_at_locked, write_lock,
-    SaveWorkBuddyModelsOutcome, SaveWorkBuddyModelsRequest,
+    save_workbuddy_models_at_locked, write_lock, SaveWorkBuddyModelsOutcome,
+    SaveWorkBuddyModelsRequest,
 };
 use crate::services::ProviderService;
 use crate::store::AppState;
@@ -1593,17 +1593,11 @@ pub(crate) fn write_workbuddy_save_locked(
                 }),
                 Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification) => Err(()),
                 Ok(SaveWorkBuddyModelsOutcome::OverwriteConfirmationRequired { .. }) => Err(()),
-                Err(_) => {
-                    let _ = restore_workbuddy_from_backup_at_locked(&paths);
-                    Err(())
-                }
+                Err(_) => Err(()),
             }
         }
         Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification) => Err(()),
-        Err(_) => {
-            let _ = restore_workbuddy_from_backup_at_locked(&paths);
-            Err(())
-        }
+        Err(_) => Err(()),
     }
 }
 
@@ -3824,6 +3818,44 @@ mod tests {
         assert_eq!(outcome.kind, ChangeApplyOutcomeKind::Rejected);
         assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
         assert_eq!(writer_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    #[serial]
+    fn workbuddy_read_failure_does_not_restore_an_unrelated_backup() {
+        let (home, _guard, _db, _state, _current, _target) = setup_switch_state();
+        let external = b"user's unfinished JSON edit";
+        write_workbuddy_models(home.path(), std::str::from_utf8(external).unwrap());
+        let backup = home.path().join(".workbuddy/models.json.backup");
+        std::fs::write(&backup, br#"{"models":[{"id":"old"}]}"#).unwrap();
+        let backup_before = std::fs::read(&backup).unwrap();
+
+        assert!(write_workbuddy_save_locked(workbuddy_save_request(None, None)).is_err());
+        assert_eq!(
+            std::fs::read(home.path().join(".workbuddy/models.json")).unwrap(),
+            external
+        );
+        assert_eq!(std::fs::read(&backup).unwrap(), backup_before);
+    }
+
+    #[test]
+    #[serial]
+    fn workbuddy_invalid_request_does_not_roll_back_a_previous_success() {
+        let (home, _guard, _db, _state, _current, _target) = setup_switch_state();
+        let current = br#"{"models":[{"id":"current"}]}"#;
+        write_workbuddy_models(home.path(), std::str::from_utf8(current).unwrap());
+        let backup = home.path().join(".workbuddy/models.json.backup");
+        std::fs::write(&backup, br#"{"models":[{"id":"older"}]}"#).unwrap();
+        let backup_before = std::fs::read(&backup).unwrap();
+        let mut request = workbuddy_save_request(None, None);
+        request.api_key.clear();
+
+        assert!(write_workbuddy_save_locked(request).is_err());
+        assert_eq!(
+            std::fs::read(home.path().join(".workbuddy/models.json")).unwrap(),
+            current
+        );
+        assert_eq!(std::fs::read(&backup).unwrap(), backup_before);
     }
 
     #[test]
