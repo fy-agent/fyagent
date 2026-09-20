@@ -212,12 +212,32 @@ pub async fn test_usage_script(
         )
     })?;
 
+    if matches!(app_type, AppType::Codex) {
+        let admitted = super::ProviderCredentials::admit_usage_test(
+            &state.db,
+            app_type.as_str(),
+            provider,
+            script_code,
+            api_key,
+            base_url,
+            access_token,
+            user_id,
+            template_type,
+        )?;
+        return execute_and_format_usage_result(
+            script_code,
+            &admitted.api_key,
+            &admitted.base_url,
+            timeout,
+            admitted.access_token.as_deref(),
+            admitted.user_id.as_deref(),
+            admitted.template_type.as_deref(),
+        )
+        .await;
+    }
+
     let provider = super::ProviderCredentials::resolve(&state.db, app_type.as_str(), provider)?;
-
-    // Resolve like the real query so testing matches what a saved script does:
-    // explicit values win, empty ones fall back to the provider config.
     let (api_key, base_url) = resolve_script_credentials(&app_type, &provider, api_key, base_url);
-
     execute_and_format_usage_result(
         script_code,
         &api_key,
@@ -318,5 +338,346 @@ base_url = "https://other.example.com/v1"
             resolve_script_credentials(&AppType::Codex, &provider, None, None);
         assert_eq!(api_key, "openai-key");
         assert_eq!(base_url, "https://azure.example.com/v1");
+    }
+
+    const USAGE_KEY: &str = "fixture-usage-api-key-canary";
+    const USAGE_TOKEN: &str = "fixture-usage-access-token-canary";
+    const INFERENCE_KEY: &str = "fixture-inference-canary";
+
+    fn https_reject_script() -> String {
+        "(function() { if (!'{{apiKey}}') throw new Error('fixture missing native material'); return {request:{url:'http://example.invalid',method:'GET'}}; })()".into()
+    }
+
+    fn usage_provider(include_usage_key: bool) -> Provider {
+        use crate::provider::{ProviderMeta, UsageScript};
+        let mut provider = Provider::with_id(
+            "fixture-codex".into(),
+            "Fixture".into(),
+            json!({
+                "auth": {"OPENAI_API_KEY": INFERENCE_KEY},
+                "config": "model_provider = 'custom'\nmodel = 'fixture-model'\n[model_providers.custom]\nname = 'Fixture'\nbase_url = 'https://example.invalid/v1'\nwire_api = 'responses'\n"
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            usage_script: Some(UsageScript {
+                enabled: true,
+                language: "javascript".into(),
+                code: https_reject_script(),
+                timeout: None,
+                api_key: include_usage_key.then(|| USAGE_KEY.to_owned()),
+                base_url: Some("https://usage.example.invalid/api".into()),
+                access_token: None,
+                user_id: None,
+                template_type: Some("token_plan".into()),
+                auto_query_interval: None,
+                coding_plan_provider: Some("volcengine".into()),
+                access_key_id: None,
+                secret_access_key: None,
+                team_organization_id: None,
+                team_project_id: None,
+            }),
+            ..Default::default()
+        });
+        provider
+    }
+
+    fn run_test(
+        state: &crate::store::AppState,
+        provider_id: &str,
+        script: &str,
+        api_key: Option<&str>,
+        base_url: Option<&str>,
+        user_id: Option<&str>,
+        template_type: Option<&str>,
+    ) -> Result<crate::provider::UsageResult, crate::error::AppError> {
+        run_test_with(
+            state,
+            provider_id,
+            script,
+            api_key,
+            base_url,
+            None,
+            user_id,
+            template_type,
+        )
+    }
+
+    fn run_test_with(
+        state: &crate::store::AppState,
+        provider_id: &str,
+        script: &str,
+        api_key: Option<&str>,
+        base_url: Option<&str>,
+        access_token: Option<&str>,
+        user_id: Option<&str>,
+        template_type: Option<&str>,
+    ) -> Result<crate::provider::UsageResult, crate::error::AppError> {
+        futures::executor::block_on(super::test_usage_script(
+            state,
+            AppType::Codex,
+            provider_id,
+            script,
+            5,
+            api_key,
+            base_url,
+            access_token,
+            user_id,
+            template_type,
+        ))
+    }
+
+    fn assert_https_reject(result: crate::provider::UsageResult) {
+        assert!(!result.success, "{result:?}");
+        assert!(
+            result.error.as_deref().unwrap().contains("HTTPS"),
+            "{result:?}"
+        );
+        let text = serde_json::to_string(&result).unwrap();
+        assert!(!text.contains(USAGE_KEY));
+        assert!(!text.contains(USAGE_TOKEN));
+        assert!(!text.contains(INFERENCE_KEY));
+    }
+
+    fn assert_rejected_without_execution(
+        result: Result<crate::provider::UsageResult, crate::error::AppError>,
+    ) {
+        let err = result.expect_err("changed target must not execute");
+        assert_eq!(err.to_string(), "provider_secret_invalid");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn usage_script_test_binds_saved_secrets_to_the_same_target() {
+        super::super::tests::with_test_home(|state, _| {
+            let provider = usage_provider(true);
+            let script = provider
+                .meta
+                .as_ref()
+                .unwrap()
+                .usage_script
+                .as_ref()
+                .unwrap()
+                .code
+                .clone();
+            state.db.save_provider("codex", &provider).unwrap();
+            for mask in [None, Some(""), Some("********"), Some("[REDACTED]")] {
+                assert_https_reject(
+                    run_test(state, &provider.id, &script, mask, None, None, None).unwrap(),
+                );
+            }
+            assert_https_reject(
+                run_test(
+                    state,
+                    &provider.id,
+                    &script,
+                    Some("fixture-fresh-usage-key"),
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap(),
+            );
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn usage_script_test_rejects_blank_key_when_target_changes() {
+        super::super::tests::with_test_home(|state, _| {
+            let provider = usage_provider(true);
+            let script = provider
+                .meta
+                .as_ref()
+                .unwrap()
+                .usage_script
+                .as_ref()
+                .unwrap()
+                .code
+                .clone();
+            state.db.save_provider("codex", &provider).unwrap();
+            for (code, url, user, template) in [
+                (format!("{};0", https_reject_script()), None, None, None),
+                (
+                    script.clone(),
+                    Some("https://changed.example.invalid/v1"),
+                    None,
+                    None,
+                ),
+                (script.clone(), None, Some("other-user"), None),
+                (script.clone(), None, None, Some("custom")),
+            ] {
+                assert_rejected_without_execution(run_test(
+                    state,
+                    &provider.id,
+                    &code,
+                    Some(""),
+                    url,
+                    user,
+                    template,
+                ));
+                assert_rejected_without_execution(run_test(
+                    state,
+                    &provider.id,
+                    &code,
+                    Some("********"),
+                    url,
+                    user,
+                    template,
+                ));
+            }
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn usage_script_test_allows_fresh_credentials_for_a_changed_target() {
+        super::super::tests::with_test_home(|state, _| {
+            let provider = usage_provider(true);
+            state.db.save_provider("codex", &provider).unwrap();
+            let fresh = "fixture-fresh-usage-key";
+            assert_https_reject(
+                run_test(
+                    state,
+                    &provider.id,
+                    &https_reject_script(),
+                    Some(fresh),
+                    Some("https://changed.example.invalid/v1"),
+                    Some("other-user"),
+                    Some("newapi"),
+                )
+                .unwrap(),
+            );
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn usage_script_test_falls_back_to_inference_key_only_for_the_bound_target() {
+        super::super::tests::with_test_home(|state, _| {
+            let mut provider = usage_provider(false);
+            provider.meta.as_mut().unwrap().common_config_enabled = Some(true);
+            let script = provider
+                .meta
+                .as_ref()
+                .unwrap()
+                .usage_script
+                .as_ref()
+                .unwrap()
+                .code
+                .clone();
+            state.db.save_provider("codex", &provider).unwrap();
+            assert_https_reject(
+                run_test(state, &provider.id, &script, Some(""), None, None, None).unwrap(),
+            );
+            state
+                .db
+                .set_config_snippet(
+                    "codex",
+                    Some(
+                        "[model_providers.custom]\nbase_url = 'https://redirect.example.invalid/v1'\n"
+                            .into(),
+                    ),
+                )
+                .unwrap();
+            assert_rejected_without_execution(run_test(
+                state,
+                &provider.id,
+                &script,
+                Some(""),
+                None,
+                None,
+                None,
+            ));
+        });
+    }
+
+    fn token_only_provider() -> Provider {
+        use crate::provider::{ProviderMeta, UsageScript};
+        let mut provider = Provider::with_id(
+            "fixture-codex".into(),
+            "Fixture".into(),
+            json!({
+                "auth": {},
+                "config": "model_provider = 'custom'\nmodel = 'fixture-model'\n[model_providers.custom]\nname = 'Fixture'\nbase_url = 'https://example.invalid/v1'\nwire_api = 'responses'\n"
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            usage_script: Some(UsageScript {
+                enabled: true,
+                language: "javascript".into(),
+                code: "(function() { if (!'{{accessToken}}') throw new Error('fixture missing native material'); return {request:{url:'http://example.invalid',method:'GET'}}; })()".into(),
+                timeout: None,
+                api_key: None,
+                base_url: Some("https://usage.example.invalid/api".into()),
+                access_token: Some(USAGE_TOKEN.to_owned()),
+                user_id: None,
+                template_type: Some("newapi".into()),
+                auto_query_interval: None,
+                coding_plan_provider: None,
+                access_key_id: None,
+                secret_access_key: None,
+                team_organization_id: None,
+                team_project_id: None,
+            }),
+            ..Default::default()
+        });
+        provider
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn usage_script_test_allows_token_only_same_target_and_rejects_changes() {
+        super::super::tests::with_test_home(|state, _| {
+            let provider = token_only_provider();
+            let script = provider
+                .meta
+                .as_ref()
+                .unwrap()
+                .usage_script
+                .as_ref()
+                .unwrap()
+                .code
+                .clone();
+            state.db.save_provider("codex", &provider).unwrap();
+            assert_https_reject(
+                run_test_with(
+                    state,
+                    &provider.id,
+                    &script,
+                    Some(""),
+                    None,
+                    Some("********"),
+                    None,
+                    None,
+                )
+                .unwrap(),
+            );
+            assert_rejected_without_execution(run_test_with(
+                state,
+                &provider.id,
+                &script,
+                Some(""),
+                Some("https://changed.example.invalid/v1"),
+                Some("********"),
+                None,
+                None,
+            ));
+            let fresh = "fixture-fresh-access-token";
+            assert_https_reject(
+                run_test_with(
+                    state,
+                    &provider.id,
+                    &script,
+                    Some(""),
+                    Some("https://changed.example.invalid/v1"),
+                    Some(fresh),
+                    None,
+                    Some("newapi"),
+                )
+                .unwrap(),
+            );
+        });
     }
 }

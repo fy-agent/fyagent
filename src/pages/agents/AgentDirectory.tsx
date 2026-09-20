@@ -60,6 +60,7 @@ import {
 } from "./useAgentLifecycleAction";
 import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";
 import { AgentInstallConfirmation } from "./AgentInstallConfirmation";
+import { AgentSourceLinks } from "./AgentSourceLinks";
 
 function isInstalledReadiness(
   data: AgentInstallReadiness | undefined,
@@ -200,6 +201,10 @@ function DirectoryCardShell({
           ) : null}
         </div>
         <p className="fy-agent-directory-description">{entry.description}</p>
+        <details>
+          <summary>官方资料与许可</summary>
+          <AgentSourceLinks catalogLinks={entry.officialLinks} />
+        </details>
         {configurationObservationCopy(observation.readiness) ? (
           <p className="fy-agent-directory-card-feedback" data-tone="info">
             {configurationObservationCopy(observation.readiness)}
@@ -596,11 +601,15 @@ export function AgentDirectory({
   entries,
   scanController,
   onConfigure,
+  selectedAgentId,
+  onBack,
 }: {
   headingRef?: RefObject<HTMLHeadingElement>;
   entries: readonly AgentCatalogEntry[];
   scanController: AgentDirectoryScanController;
   onConfigure: (agentId: AgentCatalogId) => void;
+  selectedAgentId?: AgentCatalogId;
+  onBack?: () => void;
 }) {
   const { ports } = useFeatures();
   const installer = useCodexDesktopInstaller();
@@ -610,7 +619,7 @@ export function AgentDirectory({
   const visibleEntries = applyCommittedAgentDirectoryOrder(
     entries,
     state.committedOrderIds,
-  );
+  ).filter((entry) => !selectedAgentId || entry.id === selectedAgentId);
   const hasSuccessfulResults = Object.keys(state.results).length > 0;
   const currentReadiness = state.currentSuccessIds
     .map((id) => state.results[id])
@@ -637,9 +646,12 @@ export function AgentDirectory({
         <div className="fy-agent-directory-title-row">
           <div className="fy-agent-directory-title-group">
             <h1 ref={headingRef} tabIndex={-1}>
-              我的 AI 软件
+              {selectedAgentId
+                ? `设置 ${visibleEntries[0]?.displayName ?? "AI 软件"}`
+                : "我的 AI 软件"}
             </h1>
           </div>
+          {onBack ? <Button onClick={onBack}>返回</Button> : null}
           <Button
             className="fy-control-button-primary fy-agent-scan-button"
             disabled={scanning}

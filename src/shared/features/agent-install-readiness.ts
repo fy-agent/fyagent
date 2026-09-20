@@ -374,6 +374,9 @@ export interface AgentInstallPreflight {
   downloadUrl: string | null;
   targetLabel: string;
   availableBytes: number;
+  requiredBytes: number | null;
+  artifactSizeBytes: number | null;
+  spaceBudgetBasis: "source_size" | "download_limit" | "cli_unknown";
   runtime: "native_installer" | "node_npm" | "existing_cli";
   execution: "current_user" | "system_authorization" | "vendor_wizard";
 }
@@ -393,6 +396,9 @@ export function parseAgentInstallPreflight(
       "downloadUrl",
       "targetLabel",
       "availableBytes",
+      "requiredBytes",
+      "artifactSizeBytes",
+      "spaceBudgetBasis",
       "runtime",
       "execution",
     ]) ||
@@ -424,6 +430,7 @@ export function parseAgentInstallPreflight(
     typeof value.availableBytes !== "number" ||
     !Number.isSafeInteger(value.availableBytes) ||
     value.availableBytes <= 0 ||
+    !isValidSpaceBudget(value) ||
     !["native_installer", "node_npm", "existing_cli"].includes(
       String(value.runtime),
     ) ||
@@ -433,6 +440,46 @@ export function parseAgentInstallPreflight(
   )
     throw new Error("Invalid Agent installation preflight");
   return value as unknown as AgentInstallPreflight;
+}
+
+function isValidSpaceBudget(value: Record<string, unknown>): boolean {
+  // Closed v1 wire contract, mirrored from the native streaming downloader cap.
+  const downloadLimitBytes = 2 * 1024 ** 3;
+  const { requiredBytes, availableBytes, artifactSizeBytes, spaceBudgetBasis } =
+    value;
+  if (spaceBudgetBasis === "cli_unknown") {
+    return (
+      requiredBytes === null &&
+      artifactSizeBytes === null &&
+      (value.runtime === "node_npm" || value.runtime === "existing_cli")
+    );
+  }
+  if (
+    typeof requiredBytes !== "number" ||
+    !Number.isSafeInteger(requiredBytes) ||
+    requiredBytes < 3 ||
+    requiredBytes % 3 !== 0 ||
+    typeof availableBytes !== "number" ||
+    availableBytes < requiredBytes
+  )
+    return false;
+  if (spaceBudgetBasis === "source_size") {
+    return (
+      value.runtime === "native_installer" &&
+      typeof artifactSizeBytes === "number" &&
+      Number.isSafeInteger(artifactSizeBytes) &&
+      artifactSizeBytes > 0 &&
+      artifactSizeBytes <= downloadLimitBytes &&
+      Number.isSafeInteger(artifactSizeBytes * 3) &&
+      requiredBytes === artifactSizeBytes * 3
+    );
+  }
+  return (
+    artifactSizeBytes === null &&
+    requiredBytes === downloadLimitBytes * 3 &&
+    spaceBudgetBasis === "download_limit" &&
+    value.runtime === "native_installer"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

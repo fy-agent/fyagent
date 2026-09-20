@@ -60,6 +60,25 @@ The request has exactly those keys. `expectedRevision` is the OpenCode snapshot
 revision captured when confirmation opens, or null for an absent file. A stale
 revision fails as `provider_conflict`; the UI must not silently rebase a write.
 
+Provider targets use `ProvidersPort.getProxyRestorePreview(app)` and
+`restoreManagedProxy(app)`. The preview command is the read-only
+`get_proxy_restore_preview({app})` and returns exactly:
+
+```ts
+interface ProviderProxyRestorePreview {
+  app: "claude" | "codex" | "grokbuild";
+  enabled: boolean;
+  canRestore: boolean;
+  targets: { path: string; exists: boolean }[];
+}
+```
+
+Target paths are native-owned display metadata. A target has no `backupPath`:
+the original may be stored in a DB proof rather than a rolling backup. The
+parser rejects unknown fields, wrong targets, invalid or duplicate paths, more
+than eight targets and `canRestore` without enabled state and at least one
+target. The renderer never submits paths as restore instructions.
+
 ## 3. Contracts
 
 - The overview is Query-owned under `featureKeys.managedAuthOverview` and
@@ -109,6 +128,25 @@ revision fails as `provider_conflict`; the UI must not silently rebase a write.
   target writes, including failures arriving after unmount. Restoring this
   target does not stop other targets. Quitting with retained state is not the
   same as explicitly disabling a subscription.
+- Claude/Codex/Grok Build subscription sections compose the existing Dialog and
+  CopyablePath controls in `ProviderSubscriptionRestore`. Confirmation lists
+  the preview's actual restore targets, not Quick Setup paths or guessed
+  backup locations. It re-reads and compares app, enabled/canRestore, path set
+  and file existence before invoking only
+  `set_proxy_takeover_for_app({appType:app,enabled:false})`. Changed conditions
+  require a new preview. The native restore owner revalidates owned bytes.
+- Provider exit succeeds only after a fresh same-target preview has
+  `enabled=false`, the same target's actual `summary.live` exists and is not
+  `unreadable`, and the managed overview reread succeeds. Known `missing` or
+  `not_configured` preimages are valid; saved DB IDs cannot replace live
+  evidence. Success and target unblocking wait for all three reads.
+- Failed/partial exit retains safe conflict guidance and the parent's ordinary
+  write block. `recoveryDisabled` and `onBeginRecovery` allow a fresh same-target
+  recovery attempt independently of that block, while retaining the shared
+  synchronous write lock. Recheck never writes: an enabled target requires a
+  new confirmation; an already-exited target repeats the full readback without
+  another restore. Only complete success calls `onRecoveryConfirmed(app)` to
+  clear that target's block. Other targets and successful results remain intact.
 - Codex binding saves a draft only. The result links to the existing Auth
   `consumer=codex&view=connections` source workspace, where the user selects
   the named saved source, previews and confirms the existing Change Plan.
@@ -136,16 +174,16 @@ revision fails as `provider_conflict`; the UI must not silently rebase a write.
 These focused cases extend the general write, secret and lifecycle matrix in
 [Models](./models.md).
 
-| Condition | Required renderer behavior |
-| --- | --- |
-| No explicit account/model, or selected account is no longer ready | Disable confirmation; never select the default account or another model. |
-| Discovery fails or returns no usable IDs | Offer explicit manual input; do not manufacture a model or change the upstream source. |
-| Bind result names another target, has excess fields, or contradicts activation semantics | Reject the result and mark target state unconfirmed. |
-| Native rejects unavailable account/conflict, or confirms restoration | Show the closed failure and retain an explicit retry/recovery entry. |
-| Native cannot confirm restoration, or either post-bind owner read fails | Block further target writes; no optimistic success or automatic write retry. |
-| Codex draft is saved | State that it is a draft and expose the existing Auth source-plan continuation. |
-| Claude Code picker is open | Offer only its own target; do not save a Desktop source then read the Claude Code summary. |
-| WorkBuddy is selected | Keep its service/key workflow; do not offer subscription route suggestions. |
+| Condition                                                                                | Required renderer behavior                                                                 |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| No explicit account/model, or selected account is no longer ready                        | Disable confirmation; never select the default account or another model.                   |
+| Discovery fails or returns no usable IDs                                                 | Offer explicit manual input; do not manufacture a model or change the upstream source.     |
+| Bind result names another target, has excess fields, or contradicts activation semantics | Reject the result and mark target state unconfirmed.                                       |
+| Native rejects unavailable account/conflict, or confirms restoration                     | Show the closed failure and retain an explicit retry/recovery entry.                       |
+| Native cannot confirm restoration, or either post-bind owner read fails                  | Block further target writes; no optimistic success or automatic write retry.               |
+| Codex draft is saved                                                                     | State that it is a draft and expose the existing Auth source-plan continuation.            |
+| Claude Code picker is open                                                               | Offer only its own target; do not save a Desktop source then read the Claude Code summary. |
+| WorkBuddy is selected                                                                    | Keep its service/key workflow; do not offer subscription route suggestions.                |
 
 ## 5. Good / Base / Bad Cases
 
@@ -170,6 +208,11 @@ field rejection, native-only browser ports, target-local readback, and pending
 binding failure after a target switch.
 `OpenCodeSubscriptionRestore.test.tsx` covers confirmation, native/owner reads,
 restored API-key editing, residual managed state and late failure blocking.
+`ProviderSubscriptionRestore.test.tsx` and `providerProxyRestorePort.test.ts`
+cover all three Provider targets, exact preview/restore payloads, path parsing,
+cancellation, duplicate confirmation, changed preview refusal, partial failure
+isolation, live/overview readback failure and independent recovery retry. These
+fixture tests are separate from native owned-file recovery evidence.
 
 `tests/browser/xai-subscription.spec.ts` covers the real renderer's Claude/Grok/OpenCode
 confirmation, OpenAI manual selection and Codex source preview/apply using

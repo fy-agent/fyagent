@@ -1777,13 +1777,14 @@ mod tests {
             conn.execute(
                 "INSERT INTO providers (id, app_type, name, settings_config, meta)
                  VALUES ('special', 'claude', ?1, ?2, '{}')",
-                rusqlite::params!["O'Brien,\n第二行 \"quoted\" 😀", "{\"key\": \"it's, ok\"}"],
+                rusqlite::params![
+                    "O'Brien,\n第二行 \"quoted\" 😀",
+                    "{\"model\": \"it's, ok\"}"
+                ],
             )?;
-            conn.execute(
-                "INSERT INTO providers (id, app_type, name, settings_config, meta)
-                 VALUES ('with-blob', 'claude', 'blob', X'00FF10', '{}')",
-                [],
-            )?;
+            // BLOB is valid generic SQLite data, but never a valid Provider
+            // configuration. Keep escaping coverage outside the credential DTO.
+            conn.execute_batch("CREATE TABLE fixture_scalars (id TEXT, payload BLOB); INSERT INTO fixture_scalars VALUES ('with-blob', X'00FF10');")?;
             conn.execute(
                 "INSERT INTO providers (id, app_type, name, settings_config, meta, category)
                  VALUES ('with-null', 'claude', 'nullcat', '{}', '{}', NULL)",
@@ -1807,16 +1808,19 @@ mod tests {
             [],
             |row| row.get(0),
         )?;
-        assert_eq!(cfg, "{\"key\": \"it's, ok\"}");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&cfg).unwrap(),
+            serde_json::json!({"model": "it's, ok"})
+        );
 
         let blob_type: String = conn.query_row(
-            "SELECT typeof(settings_config) FROM providers WHERE id = 'with-blob'",
+            "SELECT typeof(payload) FROM fixture_scalars WHERE id = 'with-blob'",
             [],
             |row| row.get(0),
         )?;
         assert_eq!(blob_type, "blob", "BLOB 存储类型必须在往返后保留");
         let blob: Vec<u8> = conn.query_row(
-            "SELECT settings_config FROM providers WHERE id = 'with-blob'",
+            "SELECT payload FROM fixture_scalars WHERE id = 'with-blob'",
             [],
             |row| row.get(0),
         )?;
@@ -1828,6 +1832,28 @@ mod tests {
             |row| row.get(0),
         )?;
         assert_eq!(category, None, "NULL 必须在往返后保留");
+        Ok(())
+    }
+
+    #[test]
+    fn provider_export_rejects_non_json_storage_without_mutating_source() -> Result<(), AppError> {
+        let source = Database::memory()?;
+        source.conn.lock().unwrap().execute_batch("INSERT INTO providers (id, app_type, name, settings_config, meta) VALUES ('corrupt-provider', 'codex', 'Fixture', X'00FF10', '{}');")?;
+        for result in [
+            source.export_sql_string(),
+            source.export_sql_string_for_sync(),
+        ] {
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                AppError::Database("provider_export_failed".into()).to_string()
+            );
+        }
+        let bytes: Vec<u8> = source.conn.lock().unwrap().query_row(
+            "SELECT settings_config FROM providers WHERE id = 'corrupt-provider'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(bytes, [0x00, 0xff, 0x10]);
         Ok(())
     }
 

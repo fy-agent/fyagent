@@ -1,0 +1,271 @@
+{
+  "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+  "started_at": "2026-09-20T14:57:08.643771+00:00",
+  "issues": [
+    {
+      "number": 25,
+      "title": "在软件详情提供官方来源与许可入口",
+      "url": "https://github.com/fy-agent/fyagent/issues/25",
+      "owner": "Antigravity desktop Gemini 3.8 Flash High",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "a21a72ae",
+        "2de30c8b"
+      ],
+      "residuals": [
+        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
+      ]
+    },
+    {
+      "number": 27,
+      "title": "在安装前检查必要条件并展示实际变更",
+      "url": "https://github.com/fy-agent/fyagent/issues/27",
+      "owner": "installer_27_29",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "d311a7d8",
+        "268815ba"
+      ],
+      "residuals": [
+        "Desktop budget integrated; final native validation pending",
+        "Antigravity implementing frozen CLI artifact/dependency metadata, volume checks and helper transfer; acceptance pending"
+      ]
+    },
+    {
+      "number": 29,
+      "title": "核对已支持安装路径的用户身份与 Helper 行为",
+      "url": "https://github.com/fy-agent/fyagent/issues/29",
+      "owner": "installer_27_29",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "d311a7d8",
+        "268815ba"
+      ],
+      "residuals": [
+        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
+      ]
+    },
+    {
+      "number": 34,
+      "title": "让首次用途推荐直达可用的配置入口",
+      "url": "https://github.com/fy-agent/fyagent/issues/34",
+      "owner": "Antigravity desktop Gemini 3.8 Flash High",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "2de30c8b"
+      ],
+      "residuals": [
+        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
+      ]
+    },
+    {
+      "number": 35,
+      "title": "让 Provider 使用 SecretRef 并完成旧凭据迁移",
+      "url": "https://github.com/fy-agent/fyagent/issues/35",
+      "owner": "Cursor backend repair; GPT-6 acceptance",
+      "implementation_status": "review_repaired_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "19a366ce",
+        "ee301f66"
+      ],
+      "residuals": [
+        "Final combined checks, latest-main integration, PR delivery and remote Issue readback pending"
+      ]
+    },
+    {
+      "number": 40,
+      "title": "统一兼容 API 配置与厂商预设",
+      "url": "https://github.com/fy-agent/fyagent/issues/40",
+      "owner": "config_pack_73",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "07519b37"
+      ],
+      "residuals": [
+        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
+      ]
+    },
+    {
+      "number": 42,
+      "title": "把同一接入源应用到当前支持的 Agent",
+      "url": "https://github.com/fy-agent/fyagent/issues/42",
+      "owner": "secretref_35",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "94ab3244"
+      ],
+      "residuals": [
+        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
+      ]
+    },
+    {
+      "number": 43,
+      "title": "完善现有官方登录、过期与退出流程",
+      "url": "https://github.com/fy-agent/fyagent/issues/43",
+      "owner": "secretref_35",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "94ab3244"
+      ],
+      "residuals": [
+        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
+      ]
+    },
+    {
+      "number": 47,
+      "title": "让已有配置保持可用并可明确替换",
+      "url": "https://github.com/fy-agent/fyagent/issues/47",
+      "owner": "Cursor backend route fix; existing native and UI package integrated",
+      "implementation_status": "review_repaired_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "65 focused port/architecture tests passed"
+      ],
+      "residuals": [
+        "Final combined checks, latest-main integration, PR delivery and remote Issue readback pending"
+      ]
+    },
+    {
+      "number": 56,
+      "title": "让配置预览展示实际变化与恢复入口",
+      "url": "https://github.com/fy-agent/fyagent/issues/56",
+      "owner": "root integration",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "1300632b",
+        "41 focused tests passed; typecheck and lint passed",
+        "9253946e",
+        "82750e30"
+      ],
+      "residuals": [
+        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
+      ]
+    },
+    {
+      "number": 61,
+      "title": "完善配置写入后的失败恢复",
+      "url": "https://github.com/fy-agent/fyagent/issues/61",
+      "owner": "root integration",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "Found blind WorkBuddy old-backup restoration on all writer errors; patch removes it and binds compensation to exact operation preimage/publication",
+        "ed37bcac"
+      ],
+      "residuals": [
+        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
+      ]
+    },
+    {
+      "number": 64,
+      "title": "让代理接管和退出可以可靠恢复",
+      "url": "https://github.com/fy-agent/fyagent/issues/64",
+      "owner": "Cursor targeted recovery repair; GPT-6 acceptance",
+      "implementation_status": "review_repaired_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "e18d9501",
+        "16 native recovery tests passed; 137 focused frontend tests passed",
+        "Grok findings repaired; Cursor 21 recovery + 2 atomic-finish tests; root 42 Page tests passed"
+      ],
+      "residuals": [
+        "Final combined checks, latest-main integration, PR delivery and remote Issue readback pending"
+      ]
+    },
+    {
+      "number": 67,
+      "title": "落实正式发布负责人和证书恢复方式",
+      "url": "https://github.com/fy-agent/fyagent/issues/67",
+      "owner": null,
+      "implementation_status": "external_decision_required",
+      "acceptance_status": "not_code_closable",
+      "remote_status": "OPEN",
+      "evidence": [],
+      "residuals": [
+        "Actual release/certificate owners, contact and expiry/recovery ownership require named human/service records; do not invent"
+      ]
+    },
+    {
+      "number": 68,
+      "title": "[G5-02] 发布经过 Authenticode 验证的 Windows x64/arm64 安装包",
+      "url": "https://github.com/fy-agent/fyagent/issues/68",
+      "owner": null,
+      "implementation_status": "external_signed_release_evidence_required",
+      "acceptance_status": "not_closed_by_source_alone",
+      "remote_status": "OPEN",
+      "evidence": [],
+      "residuals": [
+        "Actual signed Windows x64/arm64 installers, Authenticode publisher/timestamp verification and clean Windows acceptance remain required"
+      ]
+    },
+    {
+      "number": 70,
+      "title": "提供产品简介、版本和支持入口",
+      "url": "https://github.com/fy-agent/fyagent/issues/70",
+      "owner": "root integration",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "745b843b",
+        "77 focused tests and 4 final focused tests passed",
+        "typecheck, lint, renderer build passed"
+      ],
+      "residuals": [
+        "Final combined checks, upstream main integration, and PR delivery pending"
+      ]
+    },
+    {
+      "number": 73,
+      "title": "导出和导入选定配置",
+      "url": "https://github.com/fy-agent/fyagent/issues/73",
+      "owner": "config_pack_73",
+      "implementation_status": "integrated_pending_final_validation",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "9d705c0e",
+        "73460cf7"
+      ],
+      "residuals": [
+        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
+      ]
+    },
+    {
+      "number": 92,
+      "title": "制作当前主要流程的使用演示",
+      "url": "https://github.com/fy-agent/fyagent/issues/92",
+      "owner": "installer_27_29",
+      "implementation_status": "capture_code_complete_debug_verified",
+      "acceptance_status": "pending",
+      "remote_status": "OPEN",
+      "evidence": [
+        "debug capture sourceStable=true; 7 PNG, 2 WebM, 2 VTT; full playback, caption activeCue and 12 hashes verified"
+      ],
+      "residuals": [
+        "Candidate capture after final integrated renderer stability; debug fixtures do not prove native operation"
+      ]
+    }
+  ]
+}

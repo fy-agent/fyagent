@@ -43,7 +43,10 @@ export interface StartingInstructionPreset {
   summary: string;
 }
 
-const AGENT_PRESET_ID_MAP: Record<GuidePurpose, Record<AgentCatalogId, string>> = {
+const AGENT_PRESET_ID_MAP: Record<
+  GuidePurpose,
+  Record<AgentCatalogId, string>
+> = {
   office: {
     qoderwork: "fde-knowledge",
     "trae-work": "fde-discovery",

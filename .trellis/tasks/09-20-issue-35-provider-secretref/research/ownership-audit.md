@@ -1,6 +1,6 @@
 # Ownership and save-path audit
 
-Worktree: /Users/serendipity/.codex/worktrees/fyagent-next-secretref/fyagent
+Worktree: ~/.codex/worktrees/fyagent-next-secretref/fyagent
 Branch: codex/next-secretref-35; base: 2c09c4be2c5f50b4060fd6f7a13a7be31c364c54.
 
 Database::save_provider and update_provider_settings_config keep their public

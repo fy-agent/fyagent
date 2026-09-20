@@ -184,10 +184,21 @@ Source and identity failure must remain evidence-strength preserving:
   package download, npm install and helper mutation are not.
 - The v1 summary contains the exact request, platform, architecture,
   `versionOrChannel`, native-resolved `downloadUrl` (null for CLI operations),
-  redacted `targetLabel`, `availableBytes`, closed `runtime`
+  redacted `targetLabel`, `availableBytes`, nullable `requiredBytes` and
+  `artifactSizeBytes`, closed `spaceBudgetBasis`, and closed `runtime`
   (`native_installer|node_npm|existing_cli`) and `execution`
-  (`current_user|system_authorization|vendor_wizard`). Missing package size is
-  explicitly unknown; positive free space does not prove sufficient capacity.
+  (`current_user|system_authorization|vendor_wizard`). Desktop capacity is checked
+  on every distinct temporary/target volume against the shared checked 3× budget:
+  `source_size` uses metadata for the exact downloaded artifact; `download_limit`
+  uses the existing 2 GiB downloader cap (6 GiB reserve). A ZIP/other architecture
+  size never describes a DMG. The size hint, source URL, and budget are bound to
+  the release/prepared target and rechecked before consuming confirmation.
+  Unavailable space, arithmetic overflow, insufficient space, and source/budget
+  drift fail closed. The preview calls these conservative budgets, not vendor
+  exact requirements. CLI package/dependency footprint is not currently bounded;
+  `cli_unknown` returns null required/size values and explicitly does not claim
+  measured free capacity is sufficient. A nonzero CLI readout is not a completed
+  installation-capacity check. No extra GET/HEAD was introduced.
   The URL is display metadata from the existing platform/architecture resolver;
   execution never accepts it back, and its presence does not prove the downloaded
   artifact has already passed validation.

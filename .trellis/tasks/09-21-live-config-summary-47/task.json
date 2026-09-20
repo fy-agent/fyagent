@@ -1,0 +1,43 @@
+{
+  "id": "live-config-summary-47",
+  "name": "live-config-summary-47",
+  "title": "Read-only target live configuration summary #47",
+  "description": "Add independently failing credential-free actual target configuration projection to provider summary for first-use keep/replace decisions.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-09-21",
+  "completedAt": null,
+  "branch": "codex/next-iteration-engineering-20260920",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/commands/provider.rs",
+    "src-tauri/src/commands/provider/live_summary.rs",
+    "src-tauri/src/commands/provider/live_summary/tests.rs",
+    "src/shared/features/models.ts",
+    "src/shared/features/types.ts",
+    "src/shared/platform/tauri/feature-ports/models.ts",
+    "src/shared/platform/tauri/feature-ports/providerLiveSummary.ts",
+    "tests/renderer/platform/providerLiveSummaryPort.test.ts",
+    ".trellis/spec/frontend/models.md",
+    ".trellis/spec/backend/codex-provider-configuration.md"
+  ],
+  "notes": "Implementation frozen for parent integration. Native compilation/tests and UI acceptance pending; no independent shared-tree commit.",
+  "meta": {
+    "issue": 47,
+    "execution_status": "complete",
+    "acceptance_status": "pending",
+    "parent_task": "09-20-next-iteration-engineering",
+    "context_id": "live-config-summary-47"
+  }
+}

@@ -167,7 +167,7 @@ export function reasonCopy(code: AgentReasonCode): string | null {
     case "tool_host_missing":
       return "请检查当前用户的 Node.js、npm 和全局安装目录权限。Claude Code 需要 Node.js 22 或更高版本。";
     case "insufficient_disk_space":
-      return "安装所需的磁盘没有可用空间。请释放下载目录和目标目录所在磁盘的空间后重新检查。";
+      return "安装所需的磁盘空间不足。请释放下载目录和目标目录所在磁盘的空间后重新检查。";
     case "disk_space_unavailable":
       return "无法读取安装所需的磁盘空间。请确认下载目录和目标目录可访问后重新检查。";
     case "tool_owner_unsupported":

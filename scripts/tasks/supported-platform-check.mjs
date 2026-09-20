@@ -466,6 +466,37 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
       '#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]',
     next: "pub(crate) use unavailable::UnavailableSecretBackend;",
   }),
+  Object.freeze({
+    id: "install-target-preflight-unsupported-host",
+    file: "src-tauri/src/agent_install/preflight.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "{",
+    block:
+      '#[cfg(not(any(target_os = "macos", target_os = "windows")))] { let _ = target; Err(AgentReasonCode::PlatformUnsupported) }',
+  }),
+  Object.freeze({
+    id: "install-storage-preflight-unsupported-host",
+    file: "src-tauri/src/agent_install/preflight.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "fn check_storage(_paths: &[PathBuf], _required_bytes: Option<u64>) -> Result<u64, AgentReasonCode> {",
+    block:
+      '#[cfg(not(any(target_os = "macos", target_os = "windows")))] fn check_storage(_paths: &[PathBuf], _required_bytes: Option<u64>) -> Result<u64, AgentReasonCode> { Err(AgentReasonCode::PlatformUnsupported) }',
+  }),
+  Object.freeze({
+    id: "codex-writable-directory-non-macos-rejection",
+    file: "src-tauri/src/codex_desktop/platform/macos/mod.rs",
+    condition: '#[cfg(not(target_os = "macos"))]',
+    next: "{",
+    block: '#[cfg(not(target_os = "macos"))] { let _ = path; false }',
+  }),
+  Object.freeze({
+    id: "cli-install-preflight-unsupported-host",
+    file: "src-tauri/src/services/tooling/install_preflight.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "pub(super) async fn check(",
+    block:
+      '#[cfg(not(any(target_os = "macos", target_os = "windows")))] pub(super) async fn check( _agent: AgentCatalogId, _action: crate::agent_install::AgentActionId, ) -> Result<CliInstallPreflight, AgentReasonCode> { Err(AgentReasonCode::PlatformUnsupported) }',
+  }),
 ]);
 const RUST_CFG_MACRO_CONTRACT = Object.freeze(
   [
@@ -2012,7 +2043,14 @@ export function scanRustImplicitPredicates(entries) {
           candidate.condition === attribute &&
           (candidate.nextPrefix
             ? adjacent.startsWith(candidate.next)
-            : adjacent === candidate.next),
+            : adjacent === candidate.next) &&
+          (!candidate.block ||
+            lines
+              .slice(index)
+              .join("\n")
+              .replace(/\s+/gu, " ")
+              .trimStart()
+              .startsWith(candidate.block)),
       );
       if (allowance) {
         seen.add(allowance.id);

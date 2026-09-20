@@ -67,12 +67,23 @@ async function checkExistingAgentConfiguration(
     ) {
       const app = agentId === "claude-code" ? "claude" : agentId;
       const summary = await ports.providers.getSummary(app);
-      if (summary?.currentId && summary.providers?.[summary.currentId]) {
-        const p = summary.providers[summary.currentId];
-        const label = p.name || p.modelId;
+      const live = summary.live;
+      if (!live || live.target !== app || live.state === "unreadable") {
+        return {
+          status: "unknown",
+          message: "无法读取实际配置文件，请重试或进入软件详情查看。",
+        };
+      }
+      if (live.state === "configured") {
+        const details = [
+          live.connection.modelId ? `模型：${live.connection.modelId}` : null,
+          live.connection.baseUrl
+            ? `服务地址：${live.connection.baseUrl}`
+            : null,
+        ].filter(Boolean);
         return {
           status: "configured",
-          summary: label ? `当前已保存配置：${label}` : "已有已保存配置",
+          summary: details.join("；") || "实际配置文件中已有连接设置",
         };
       }
     } else if (agentId === "workbuddy") {
@@ -80,7 +91,7 @@ async function checkExistingAgentConfiguration(
       if (modelIds?.ids && modelIds.ids.length > 0) {
         return {
           status: "configured",
-          summary: `当前已保存配置：已配置 ${modelIds.ids.length} 个模型`,
+          summary: `实际配置文件：已配置 ${modelIds.ids.length} 个模型`,
         };
       }
     } else if (agentId === "opencode") {
@@ -88,24 +99,20 @@ async function checkExistingAgentConfiguration(
       if (snapshot?.exists && snapshot.providers?.length > 0) {
         return {
           status: "configured",
-          summary: `当前已保存配置：已配置 ${snapshot.providers.length} 个模型提供商`,
+          summary: `实际配置文件：已配置 ${snapshot.providers.length} 个模型提供商`,
         };
       }
     }
     return { status: "empty" };
-  } catch (error) {
+  } catch {
     return {
       status: "unknown",
-      message:
-        error instanceof Error ? error.message : "读取当前已保存配置失败",
+      message: "读取当前配置失败，请重试或进入软件详情查看。",
     };
   }
 }
 
-export function FirstUseGuide({
-  entries,
-  onConfigure,
-}: FirstUseGuideProps) {
+export function FirstUseGuide({ entries, onConfigure }: FirstUseGuideProps) {
   const { ports } = useFeatures();
   const queryClient = useQueryClient();
   const visible = usePersistentVisibility();
@@ -426,7 +433,8 @@ export function FirstUseGuide({
           existingConfigState.status === "unknown" ? (
             <div className="fy-first-use-existing-config-content">
               <p>
-                无法确认 {existingConfigState.entry.displayName} 的现有配置状态。当前不确定是否存在可用配置。
+                无法确认 {existingConfigState.entry.displayName}{" "}
+                的现有配置状态。当前不确定是否存在可用配置。
               </p>
               {existingConfigState.message ? (
                 <p className="fy-first-use-keep-notice">
@@ -437,11 +445,12 @@ export function FirstUseGuide({
           ) : (
             <div className="fy-first-use-existing-config-content">
               <p>
-                检测到 {existingConfigState.entry.displayName} 已有已保存配置
+                检测到 {existingConfigState.entry.displayName}{" "}
+                的实际配置文件中已有设置
                 {existingConfigState.summary
                   ? `（${existingConfigState.summary}）`
                   : ""}
-                。你可以选择保留现有配置直接使用，或按现有流程重新配置。
+                。你可以保留现有设置，或进入重新配置。尚未测试连接。
               </p>
               <p className="fy-first-use-keep-notice">
                 保留现有配置不会发起模型网络请求。

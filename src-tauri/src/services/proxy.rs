@@ -22,7 +22,10 @@ mod managed_recovery;
 mod opencode;
 #[cfg(test)]
 mod recovery_tests;
+mod restore_preview;
 mod takeover;
+
+pub use restore_preview::ProxyRestorePreview;
 
 use takeover::{codex_config_has_base_url_matching, is_local_proxy_url, proxy_urls_match};
 
@@ -1333,31 +1336,21 @@ impl ProxyService {
         self.restore_live_config_for_app_with_fallback_inner(&app)
             .await?;
 
-        // 2) 删除该 app 的备份（避免长期存储敏感 Token）
+        // After owned files are restored and verified, clear only this app's
+        // enabled flag and delete its live backup in one SQL transaction.
+        // Native I/O stays outside the DAO mutex so a failed second statement
+        // can still present a retryable preview.
         self.db
-            .delete_live_backup(app_type_str)
-            .await
-            .map_err(|e| format!("删除 {app_type_str} Live 备份失败: {e}"))?;
+            .complete_app_restore(app_type_str)
+            .map_err(|e| format!("完成 {app_type_str} 恢复收尾失败: {e}"))?;
 
-        // 3) 设置 proxy_config.enabled = false
-        let mut updated_config = self
-            .db
-            .get_proxy_config_for_app(app_type_str)
-            .await
-            .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
-        updated_config.enabled = false;
-        self.db
-            .update_proxy_config_for_app(updated_config)
-            .await
-            .map_err(|e| format!("清除 {app_type_str} enabled 状态失败: {e}"))?;
-
-        // 4) 清除该应用的健康状态（关闭代理时重置队列状态）
+        // 3) 清除该应用的健康状态（关闭代理时重置队列状态）
         self.db
             .clear_provider_health_for_app(app_type_str)
             .await
             .map_err(|e| format!("清除 {app_type_str} 健康状态失败: {e}"))?;
 
-        // 5) 若无其它接管，更新旧标志，并停止代理服务
+        // 4) 若无其它接管，更新旧标志，并停止代理服务
         // 检查是否还有其它 app 的 enabled = true
         let any_enabled = self
             .db
@@ -1393,25 +1386,15 @@ impl ProxyService {
         futures::executor::block_on(self.restore_live_config_for_app_with_fallback_inner(app_type))
             .map_err(|e| format!("恢复 {app_type_str} Live 配置失败: {e}"))?;
 
-        // 2) 删除该 app 的备份
-        futures::executor::block_on(self.db.delete_live_backup(app_type_str))
-            .map_err(|e| format!("删除 {app_type_str} Live 备份失败: {e}"))?;
+        self.db
+            .complete_app_restore(app_type_str)
+            .map_err(|e| format!("完成 {app_type_str} 恢复收尾失败: {e}"))?;
 
-        // 3) 设置 proxy_config.enabled = false
-        let mut config =
-            futures::executor::block_on(self.db.get_proxy_config_for_app(app_type_str))
-                .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
-        if config.enabled {
-            config.enabled = false;
-            futures::executor::block_on(self.db.update_proxy_config_for_app(config))
-                .map_err(|e| format!("清除 {app_type_str} enabled 状态失败: {e}"))?;
-        }
-
-        // 4) 清除该应用的健康状态
+        // 3) 清除该应用的健康状态
         futures::executor::block_on(self.db.clear_provider_health_for_app(app_type_str))
             .map_err(|e| format!("清除 {app_type_str} 健康状态失败: {e}"))?;
 
-        // 5) 清旧标志
+        // 4) 清旧标志
         let _ = futures::executor::block_on(self.db.set_live_takeover_active(false));
 
         Ok(())

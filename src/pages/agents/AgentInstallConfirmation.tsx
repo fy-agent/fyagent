@@ -64,9 +64,20 @@ export function AgentInstallConfirmation({
                 : "使用系统安装工具"}
           </p>
           <p>
-            <strong>可用空间：</strong>
-            {(checked.availableBytes / 1024 ** 3).toFixed(1)}{" "}
-            GB。来源未提供安装大小，实际空间需求由安装过程确认。
+            <strong>空间预检：</strong>
+            {checked.requiredBytes !== null
+              ? `需预留 ${(checked.requiredBytes / 1024 ** 3).toFixed(1)} GiB；`
+              : "安装预留预算尚未核定；"}
+            下载临时目录和目标目录所在磁盘最少可用{" "}
+            {(checked.availableBytes / 1024 ** 3).toFixed(1)} GiB。
+          </p>
+          <p>
+            {checked.spaceBudgetBasis === "source_size"
+              ? "按此安装包元数据大小的 3 倍预留下载、临时文件和安装空间；这是保守预算，不是厂商精确安装需求。"
+              : checked.spaceBudgetBasis === "download_limit"
+                ? "未取得此安装包的准确大小，按下载器的 2 GiB 上限预留 3 倍空间；这是保守预算，不是厂商精确安装需求。"
+                : "CLI 安装和依赖大小尚未核定；可用空间数值不能证明容量足够，安装工具仍可能报告空间不足。"}
+            确认时会重新检查可用空间。
           </p>
           {checked.downloadUrl ? (
             <details>

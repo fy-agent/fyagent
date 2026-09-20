@@ -88,12 +88,12 @@ const QODERWORK_OFFICIAL_LINKS: [AgentOfficialLink; 3] = [
     official_link(
         AgentOfficialLinkId::Download,
         "打开 QoderWork 官方下载页",
-        "https://qoder.com/download",
+        "https://qoder.com.cn/download",
     ),
     official_link(
         AgentOfficialLinkId::Terms,
         "Qoder 产品服务协议",
-        "https://qoder.com/product-service",
+        "https://qoder.com.cn/product-service",
     ),
 ];
 
@@ -129,7 +129,7 @@ const WORKBUDDY_OFFICIAL_LINKS: [AgentOfficialLink; 3] = [
     official_link(
         AgentOfficialLinkId::Terms,
         "WorkBuddy 软件许可及服务协议",
-        "https://www.workbuddy.ai/document/term",
+        "https://www.workbuddy.cn/document/term",
     ),
 ];
 
@@ -1450,7 +1450,7 @@ mod tests {
         assert!(registered.contains("get_agent_health"));
         assert!(registered.contains("get_first_use_guide_state"));
         assert!(registered.contains("dismiss_first_use_guide"));
-        assert_eq!(registered.len(), 407, "review intentional handler changes");
+        assert_eq!(registered.len(), 417, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }

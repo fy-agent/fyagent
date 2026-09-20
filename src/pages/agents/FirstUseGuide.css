@@ -104,7 +104,7 @@
   padding: 1px 6px;
   font-size: 11px;
   font-weight: 500;
-  border-radius: 4px;
+  border-radius: var(--fy-radius-compact);
   background: var(--fy-surface-elevated, rgba(255, 255, 255, 0.08));
   color: var(--fy-text-secondary);
   border: 1px solid var(--fy-border);

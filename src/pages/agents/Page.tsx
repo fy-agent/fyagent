@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { PRODUCT_DIRECTORY } from "../../shared/features/directory";
+import { appendAgentReturnToPath } from "../../shared/features/agent-navigation";
 import {
   useAgentCatalog,
   useFirstUseGuideState,
@@ -27,12 +29,16 @@ function agentSection(value: string | null): AgentSection | null {
 }
 
 export function AgentsPage() {
+  const navigate = useNavigate();
   const { visible, searchParams, setSearchParams } =
     usePersistentSearchParams();
   const catalogQuery = useAgentCatalog();
   const entries = catalogQuery.data?.agents ?? [];
   const rawTarget = searchParams.get("target");
   const rawSection = searchParams.get("section");
+  const setupEntry = PRODUCT_DIRECTORY.find(
+    (entry) => entry.agentId === searchParams.get("setup"),
+  );
   const directoryEntry = PRODUCT_DIRECTORY.find(
     (entry) => entry.agentId === rawTarget,
   );
@@ -44,7 +50,8 @@ export function AgentsPage() {
   const showDirectory = !directoryEntry;
   const guideQuery = useFirstUseGuideState(showDirectory);
   const guideLoading = showDirectory && guideQuery.isPending;
-  const showGuide = showDirectory && guideQuery.data === "pending";
+  const showGuide =
+    showDirectory && !setupEntry && guideQuery.data === "pending";
   const headingRef = useRef<HTMLHeadingElement>(null);
   const guideWasShown = useRef(false);
   useFrontendReady(
@@ -149,22 +156,43 @@ export function AgentsPage() {
             </EmptyState>
           }
         >
-          <FirstUseGuide entries={entries} />
+          <FirstUseGuide
+            entries={entries}
+            onConfigure={({ agentId, intent }) =>
+              setSearchParams(
+                intent === "keep"
+                  ? { target: agentId, section: "models", intent: "keep" }
+                  : { setup: agentId },
+              )
+            }
+          />
         </Suspense>
       ) : showDirectory ? (
         <AgentDirectory
           headingRef={headingRef}
           entries={entries}
           scanController={scanController}
-          onConfigure={(agentId) =>
-            setSearchParams({ target: agentId, section: "models" })
-          }
+          selectedAgentId={setupEntry?.agentId}
+          onBack={setupEntry ? returnToDirectory : undefined}
+          onConfigure={(agentId) => {
+            if (setupEntry?.agentId === agentId) {
+              navigate(
+                appendAgentReturnToPath(
+                  `/models?target=${encodeURIComponent(setupEntry.modelTarget)}`,
+                  { agentId, section: "models" },
+                ),
+              );
+              return;
+            }
+            setSearchParams({ target: agentId, section: "models" });
+          }}
         />
       ) : catalogEntry && directoryEntry ? (
         <AgentConfiguration
           entry={directoryEntry}
           catalogEntry={catalogEntry}
           section={section}
+          keepingCurrent={searchParams.get("intent") === "keep"}
           onBack={returnToDirectory}
           onSectionChange={(nextSection) =>
             setSearchParams({

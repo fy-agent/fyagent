@@ -49,6 +49,15 @@ pub async fn get_proxy_takeover_status(
     state.proxy_service.get_takeover_status().await
 }
 
+/// Inspect an existing takeover without changing files, backups or selection.
+#[tauri::command]
+pub async fn get_proxy_restore_preview(
+    state: tauri::State<'_, AppState>,
+    app: String,
+) -> Result<crate::services::proxy::ProxyRestorePreview, String> {
+    state.proxy_service.get_restore_preview(&app).await
+}
+
 /// 为指定应用开启/关闭接管
 #[tauri::command]
 pub async fn set_proxy_takeover_for_app(

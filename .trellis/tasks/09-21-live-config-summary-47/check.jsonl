@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/models.md","reason":"Provider summary and actual target distinction"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Closed independent wire projection"}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Read-only native configuration ownership"}
+{"file":".trellis/spec/backend/provider-credentials.md","reason":"No secret resolution or disclosure"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Thin command module and existing service facade"}
+{"file":".trellis/spec/backend/reuse.md","reason":"Reuse live reader and URL/credential collection"}

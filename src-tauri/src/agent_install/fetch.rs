@@ -26,7 +26,7 @@ use crate::codex_desktop::{
 use crate::services::external_agents::AgentCatalogId;
 
 const USER_AGENT: &str = "fyagent-agent-installer";
-const MAX_STREAMED_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+pub(super) const MAX_STREAMED_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 pub async fn fetch_metadata_bytes(url: Url, hosts: &[&str]) -> Result<Vec<u8>, SourceResolveError> {
     https_url_on_allowlist(&url, hosts)?;
@@ -280,6 +280,7 @@ mod tests {
             release_id: "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                 .to_string(),
             display_version: None,
+            artifact_size_bytes: None,
             download_url: Url::parse(
                 "https://static.qoder.com.cn/qoder-work-cn/releases/latest/QoderWorkCN-arm64.dmg",
             )
@@ -318,6 +319,7 @@ mod tests {
             release_id: "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                 .to_string(),
             display_version: None,
+            artifact_size_bytes: None,
             download_url: Url::parse(
                 "https://static.qoder.com.cn/qoder-work-cn/releases/latest/QoderWorkCN-Setup-User-x64.exe",
             )

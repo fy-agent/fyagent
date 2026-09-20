@@ -15,7 +15,7 @@
     "dev:renderer": "vite --config config/vite.config.ts",
     "build:renderer": "vite build --config config/vite.config.ts && node scripts/verify-route-chunks.mjs",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src tests/renderer tests/browser config",
+    "lint": "eslint src tests/renderer tests/browser tests/demo config",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\" \"config/*.{ts,cjs}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\" \"config/*.{ts,cjs}\"",
     "test:unit": "node --throw-deprecation ./node_modules/vitest/vitest.mjs run --config config/vitest.config.ts",

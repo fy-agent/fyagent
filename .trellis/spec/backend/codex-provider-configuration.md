@@ -481,6 +481,38 @@ existing Provider persistence facade; it does not infer same-identity credential
 reuse from the fixed row ID. Existing transaction, targeted file patch,
 compensation and authoritative readback remain the sole mutation authority.
 
+### Actual target summary observation
+
+`get_provider_summary.live` is a closed read-only projection of the actual
+target, independent of DB `currentId` and saved Provider snapshots. The command
+uses `ProviderService::quick_setup_write_targets` for native target existence
+and `ProviderService::read_live_settings` for the file read. It never reuses the
+display path as read authority, resolves credentials, calls a model endpoint,
+or writes config/backups. Existing reader errors are reduced to an unreadable
+state without logging/returning their text.
+
+The projection exposes target identity, `configured | not_configured | missing |
+unreadable`, nullable existence, and an optional partial public connection.
+Missing fields stay null. A file without explicit model/endpoint is
+not_configured; protocol alone is insufficient. Codex honors an explicit file
+profile and selected provider, with no inferred protocol/endpoint defaults or
+CLI/runtime overrides. Claude env and Grok selected-model formats are separately
+projected through the same boundary.
+
+Known credential leaves/headers from saved records and the live document
+(including parsed TOML and auth) are collected without secret resolution. Public
+model/endpoint fields are bounded and reject control characters, unsafe URLs,
+and credential collisions; encoded URL collisions use the existing WorkBuddy
+URL owner. Unknown/raw secret fields never enter the DTO. Live failures and
+write-target metadata failures preserve valid saved sources, but bad saved
+identity/credential collisions still fail the whole public summary closed.
+
+`commands/provider/live_summary/tests.rs` uses real temporary target files and
+an in-memory DB to prove external routing can differ from the saved current
+source, missing/empty/corrupt/unsafe files remain distinct, read errors do not
+echo secret text, metadata failure preserves saved sources, and reads leave
+primary bytes and backup absence unchanged.
+
 ### 4. Validation & Error Matrix
 
 | Condition                                                                   | Required result                                                                 |

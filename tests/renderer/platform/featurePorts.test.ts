@@ -162,12 +162,12 @@ function catalogFixture(): AgentCatalogResult {
         {
           id: "download",
           label: "打开 QoderWork 官方下载页",
-          url: "https://qoder.com/download",
+          url: "https://qoder.com.cn/download",
         },
         {
           id: "terms",
           label: "Qoder 产品服务协议",
-          url: "https://qoder.com/product-service",
+          url: "https://qoder.com.cn/product-service",
         },
       ]),
       catalogEntry("trae-work", "TRAE Work CN", [
@@ -201,7 +201,7 @@ function catalogFixture(): AgentCatalogResult {
         {
           id: "terms",
           label: "WorkBuddy 软件许可及服务协议",
-          url: "https://www.workbuddy.ai/document/term",
+          url: "https://www.workbuddy.cn/document/term",
         },
       ]),
       catalogEntry("grokbuild", "Grok Build", [

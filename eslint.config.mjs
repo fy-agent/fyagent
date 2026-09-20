@@ -8,6 +8,7 @@ const files = [
   "src/**/*.{ts,tsx}",
   "tests/renderer/**/*.{ts,tsx}",
   "tests/browser/**/*.{ts,tsx}",
+  "tests/demo/**/*.{ts,tsx}",
   "config/**/*.ts",
 ];
 const patterns = [

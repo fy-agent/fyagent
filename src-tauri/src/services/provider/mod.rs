@@ -11,7 +11,6 @@ mod managed_proxy;
 mod universal;
 mod usage;
 
-pub(crate) use crate::provider::sanitize_provider_for_export;
 pub(crate) use credentials::ProviderCredentials;
 
 pub use managed_proxy::{
@@ -739,8 +738,8 @@ mod tests {
             template_type: template_type.map(str::to_string),
             auto_query_interval: None,
             coding_plan_provider: None,
-            access_key_id: Some("ak-test".to_string()),
-            secret_access_key: Some("sk-test".to_string()),
+            access_key_id: (template_type == Some("token_plan")).then(|| "ak-test".to_string()),
+            secret_access_key: (template_type == Some("token_plan")).then(|| "sk-test".to_string()),
             team_organization_id: None,
             team_project_id: None,
         }
@@ -1408,9 +1407,7 @@ mod tests {
                 error.code,
                 QuickSetupApplyFailureCode::RollbackPartialStateUnknown
             );
-            assert!(error
-                .to_string()
-                .contains("persistence verification failed"));
+            assert_eq!(error.to_string(), "provider_rollback_partial_state_unknown");
             let restored = state
                 .db
                 .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, "codex")
@@ -1443,6 +1440,11 @@ mod tests {
             );
             original.name = "Original quick setup provider".to_string();
             state.db.save_provider("codex", &original).unwrap();
+            let original = state
+                .db
+                .get_provider_by_id(&original.id, "codex")
+                .unwrap()
+                .unwrap();
             state
                 .db
                 .conn
@@ -1510,6 +1512,11 @@ mod tests {
                 None,
             );
             state.db.save_provider("codex", &original).unwrap();
+            let original = state
+                .db
+                .get_provider_by_id(&original.id, "codex")
+                .unwrap()
+                .unwrap();
             let original_backup = crate::proxy::types::LiveBackup {
                 app_type: "codex".to_string(),
                 original_config: "{\"preimage\":true}".to_string(),
@@ -2318,6 +2325,13 @@ context_window = 262144
                 .get_provider_by_id("codex-usage-old", AppType::Codex.as_str())
                 .expect("query updated provider")
                 .expect("updated provider should exist");
+            let serialized = serde_json::to_string(&saved).unwrap();
+            for secret in [
+                "sk-main", "sk-usage", "sk-plan", "sk-a", "ak-test", "sk-test",
+            ] {
+                assert!(!serialized.contains(secret));
+            }
+            let saved = ProviderCredentials::resolve(&state.db, "codex", &saved).unwrap();
             let script = saved
                 .meta
                 .as_ref()
@@ -2385,7 +2399,9 @@ context_window = 262144
             assert_eq!(script_after_update.api_key, None);
             assert_eq!(script_after_update.base_url, None);
             assert_eq!(
-                saved_after_update.resolve_usage_credentials(&AppType::Codex),
+                ProviderCredentials::resolve(&state.db, "codex", &saved_after_update)
+                    .unwrap()
+                    .resolve_usage_credentials(&AppType::Codex),
                 ("https://api.b.example/v1".to_string(), "sk-b".to_string())
             );
         });
@@ -2458,6 +2474,13 @@ context_window = 262144
                 .get_provider_by_id("codex-distinct", AppType::Codex.as_str())
                 .expect("query saved provider")
                 .expect("saved provider should exist");
+            let serialized = serde_json::to_string(&saved).unwrap();
+            for secret in [
+                "sk-main", "sk-usage", "sk-plan", "sk-a", "ak-test", "sk-test",
+            ] {
+                assert!(!serialized.contains(secret));
+            }
+            let saved = ProviderCredentials::resolve(&state.db, "codex", &saved).unwrap();
             let script = saved
                 .meta
                 .as_ref()
@@ -2492,6 +2515,13 @@ context_window = 262144
                 .get_provider_by_id("codex-token-plan", AppType::Codex.as_str())
                 .expect("query saved provider")
                 .expect("saved provider should exist");
+            let serialized = serde_json::to_string(&saved).unwrap();
+            for secret in [
+                "sk-main", "sk-usage", "sk-plan", "sk-a", "ak-test", "sk-test",
+            ] {
+                assert!(!serialized.contains(secret));
+            }
+            let saved = ProviderCredentials::resolve(&state.db, "codex", &saved).unwrap();
             let script = saved
                 .meta
                 .as_ref()
@@ -4806,7 +4836,7 @@ impl ProviderService {
                 (
                     id,
                     if app_type == AppType::Codex {
-                        sanitize_provider_for_export(&provider)
+                        ProviderCredentials::renderer_projection(&provider)
                     } else {
                         provider
                     },

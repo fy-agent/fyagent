@@ -142,6 +142,7 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 
 | Task           | Description                                                                 | Usage   | Effect           |
 | -------------- | --------------------------------------------------------------------------- | ------- | ---------------- |
+| `demo:capture` | Capture fixture-only usage screenshots, video, captions and source manifest | —       | build-output     |
 | `format:files` | Format reviewed files with locked Prettier and lossless JSONL normalization | <files> | source-modifying |
 | `lint`         | Lint the production renderer, domain and focused tests                      | —       | read-only        |
 

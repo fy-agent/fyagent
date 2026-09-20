@@ -61,6 +61,10 @@ interface ProvidersPort {
   getSummary(
     app: "claude" | "codex" | "grokbuild",
   ): Promise<ProviderSummaryQueryData>;
+  getProxyRestorePreview(
+    app: ProviderAppId,
+  ): Promise<ProviderProxyRestorePreview>;
+  restoreManagedProxy(app: ProviderAppId): Promise<void>;
   applyQuickSetupWithResult(
     request: ProviderQuickSetupRequest,
     app: "claude" | "codex" | "grokbuild",
@@ -215,13 +219,37 @@ an apply instruction.
   `ROLLBACK_PARTIAL_STATE_UNKNOWN` blocks further writes for that target until
   the owning `/models` page is unmounted/remounted and authority can be reread.
   `blockedProviderWrites` lives on `ModelsPage`; switching targets or merely
-  remounting a child Provider panel does not clear the block.
+  remounting a child Provider panel does not clear the block. An explicit
+  subscription exit may clear only its own target after the complete recovery
+  readback specified in [Managed Account Subscriptions](./managed-account-subscriptions.md).
 - Codex does not call the direct apply path. It creates a parsed Change Plan
   through `createCodexProviderUpsertPlan`, shows the closed preview, and applies
   only its `planId` and `planDigest` through the Change Plan workspace.
 - Codex image-extension and WebSocket choices exist only in the Codex request.
   The page sanitizes returned warning codes against the closed
   `CodexProviderMutationWarning` union.
+
+### Saved sources and actual target configuration
+
+- `ProviderSummaryQueryData.live` is an independent native file observation:
+  `{ target, state, exists, connection }`. Native always returns it. The optional
+  TypeScript member preserves older host/mock compatibility; absence means
+  unknown and the Tauri adapter normalizes it to `unreadable`, never `missing`.
+- States are `configured`, `not_configured`, `missing`, and `unreadable`.
+  `configured` requires an existing file and at least one safe model/endpoint;
+  its connection has exactly `baseUrl`, `modelId`, and `protocol`, each nullable
+  when unspecified. `not_configured` means the file is present without an
+  explicit usable model/endpoint. `missing` requires known absence; unreadable
+  existence may be `true`, `false`, or `null` when metadata is unknown.
+- DB `currentId` and saved `connection` are not evidence of actual target state.
+  The actual file may have been changed outside FyAgent. Keep/replace UI uses
+  the independent observation and does not infer successful authentication,
+  connectivity, CLI overrides, or process runtime configuration from it.
+- Malformed/secret-bearing/wrong-target live wire fields produce a neutral
+  `unreadable` observation while retaining an independently valid saved list.
+  The root and saved-source allowlists still fail closed. Target metadata
+  failure also marks live unreadable rather than silently making an empty
+  `writeTargets` list look like a ready save target.
 
 ### Shared API protocols and production presets
 
@@ -459,6 +487,9 @@ assertion owners include:
   the adapter. Reachability payload tests pass URL only; a future model-probe
   request/response identity check needs an explicit mismatched-`modelUsed`
   regression;
+- `tests/renderer/platform/providerLiveSummaryPort.test.ts`: independent actual
+  target state, old-host unknown fallback, partial explicit fields, target
+  binding, closed live fields, and preserved saved-source error boundaries;
 - `tests/renderer/features/change-plans.test.ts` and
   `tests/renderer/platform/changePlansPort.test.ts`: exact plan/job parsing, request
   validation, digest/ID binding, and command names;

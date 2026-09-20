@@ -125,12 +125,48 @@ fn native_config(app: &AppType, bytes: &[u8]) -> Result<Value, String> {
     }
 }
 
+enum LegacyRestorePlan {
+    Unchanged(Vec<PathBuf>),
+    Exact {
+        path: PathBuf,
+        preimage: Option<Vec<u8>>,
+        expected_hash: Option<String>,
+    },
+    Source(Vec<(PathBuf, Option<String>)>),
+}
+
+impl LegacyRestorePlan {
+    fn paths(&self) -> Vec<PathBuf> {
+        match self {
+            Self::Unchanged(paths) => paths.clone(),
+            Self::Exact { path, .. } => vec![path.clone()],
+            Self::Source(expected) => expected.iter().map(|(path, _)| path.clone()).collect(),
+        }
+    }
+}
+
+fn closed_legacy_restore_paths(app: &AppType, path: PathBuf, original: &Value) -> Vec<PathBuf> {
+    let mut paths = vec![path];
+    if *app == AppType::Codex && crate::codex_config::codex_model_catalog_write_required(original) {
+        paths.push(crate::codex_config::get_codex_model_catalog_path());
+    }
+    paths
+}
+
 impl ProxyService {
-    pub(super) fn restore_legacy_config_if_owned(
+    pub(super) fn legacy_restore_preview_paths(
         &self,
         app: &AppType,
         original: &Value,
-    ) -> Result<(), String> {
+    ) -> Result<Vec<PathBuf>, String> {
+        Ok(self.legacy_restore_plan(app, original)?.paths())
+    }
+
+    fn legacy_restore_plan(
+        &self,
+        app: &AppType,
+        original: &Value,
+    ) -> Result<LegacyRestorePlan, String> {
         let path = path(app)?;
         let metadata = std::fs::symlink_metadata(&path).map_err(|_| CONFLICT)?;
         if !metadata.is_file()
@@ -143,7 +179,9 @@ impl ProxyService {
         // A previous exit may have restored this target before another target
         // failed. Do not rotate its backup or rewrite equivalent external bytes.
         if original_matches(app, original, &current) {
-            return Ok(());
+            return Ok(LegacyRestorePlan::Unchanged(closed_legacy_restore_paths(
+                app, path, original,
+            )));
         }
         let receipt = crate::config::verified_file_recovery(&path)
             .map_err(|_| CONFLICT)?
@@ -186,15 +224,12 @@ impl ProxyService {
         {
             return Err(CONFLICT.into());
         }
-        #[cfg(test)]
-        self.observe_managed_activation(app, "legacy_restore_admitted")?;
         if preimage_matches {
-            return crate::config::restore_file_preimage_if_owned(
-                &path,
-                receipt.preimage.as_deref(),
-                receipt.postimage_sha256.as_deref(),
-            )
-            .map_err(|_| CONFLICT.into());
+            return Ok(LegacyRestorePlan::Exact {
+                path,
+                preimage: receipt.preimage,
+                expected_hash: receipt.postimage_sha256,
+            });
         }
         let mut expected = vec![(path, receipt.postimage_sha256)];
         if *app == AppType::Codex
@@ -204,6 +239,36 @@ impl ProxyService {
             let receipt = crate::config::verified_file_recovery(&catalog).map_err(|_| CONFLICT)?;
             expected.push((catalog, receipt.and_then(|item| item.postimage_sha256)));
         }
+        Ok(LegacyRestorePlan::Source(expected))
+    }
+
+    pub(super) fn restore_legacy_config_if_owned(
+        &self,
+        app: &AppType,
+        original: &Value,
+    ) -> Result<(), String> {
+        let plan = self.legacy_restore_plan(app, original)?;
+        if matches!(plan, LegacyRestorePlan::Unchanged(_)) {
+            return Ok(());
+        }
+        #[cfg(test)]
+        self.observe_managed_activation(app, "legacy_restore_admitted")?;
+        let expected = match plan {
+            LegacyRestorePlan::Unchanged(_) => return Ok(()),
+            LegacyRestorePlan::Exact {
+                path,
+                preimage,
+                expected_hash,
+            } => {
+                return crate::config::restore_file_preimage_if_owned(
+                    &path,
+                    preimage.as_deref(),
+                    expected_hash.as_deref(),
+                )
+                .map_err(|_| CONFLICT.into());
+            }
+            LegacyRestorePlan::Source(expected) => expected,
+        };
         let _guard = crate::config::file_restore_scope(expected).map_err(|_| CONFLICT)?;
         let _operation = crate::config::file_mutation_scope();
         if *app == AppType::Codex {
@@ -230,7 +295,9 @@ impl ProxyService {
         url: &str,
     ) -> Result<bool, String> {
         let mut projected = original.clone();
-        let provider = self.get_current_provider_for_app(app)?;
+        // This projection is also used by preview: selection must not repair
+        // preferences or turn stale state into new recovery authority.
+        let provider = self.current_provider_for_restore_preview(app)?;
         match app {
             AppType::Claude => {
                 if let Some(provider) = provider.as_ref() {

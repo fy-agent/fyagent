@@ -1,0 +1,8 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\n  \"tool\": \"jev_review\",\n  \"model\": \"typesafe-ai/jev\",\n  \"provider\": \"vercel\",\n  \"truncated\": false,\n  \"safe_to_apply\": 0.15,\n  \"scores\": {\n    \"correctness\": {\n      \"score\": 1.46,\n      \"confidence\": 0.27\n    },\n    \"spec_match\": {\n      \"score\": 1.84,\n      \"confidence\": 0.76\n    },\n    \"test_gap\": {\n      \"score\": 1.33,\n      \"confidence\": 0.45\n    },\n    \"blast_radius\": {\n      \"score\": 1.74,\n      \"confidence\": 0.61\n    }\n  },\n  \"weights\": {\n    \"correctness\": 0.4,\n    \"spec_match\": 0.3,\n    \"test_gap\": 0.15,\n    \"blast_radius\": 0.15\n  },\n  \"thresholds\": {\n    \"auto_accept\": 0.8,\n    \"review_at\": 0.5,\n    \"composite_floor\": 0.7\n  },\n  \"action\": \"escalate\",\n  \"composite\": 0.63775,\n  \"usage\": {\n    \"input_tokens\": 5424,\n    \"output_tokens\": 79\n  }\n}"
+    }
+  ]
+}

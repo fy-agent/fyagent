@@ -458,9 +458,28 @@ impl LocalProxyRequestOverrides {
     }
 }
 
+/// Opaque native-only admission context. Serde never imports or exports it;
+/// only the credential owner constructs it during native edit preparation.
+#[doc(hidden)]
+#[derive(Clone)]
+pub struct NativeCredentialDraft {
+    pub(crate) provider_id: String,
+    pub(crate) source_ref: Option<String>,
+    pub(crate) target_fingerprint: [u8; 32],
+}
+
+impl std::fmt::Debug for NativeCredentialDraft {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("NativeCredentialDraft([REDACTED])")
+    }
+}
+
 /// 供应商元数据
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderMeta {
+    #[doc(hidden)]
+    #[serde(skip)]
+    pub native_credential_draft: Option<NativeCredentialDraft>,
     /// 自定义端点列表（按 URL 去重存储）
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub custom_endpoints: HashMap<String, crate::settings::CustomEndpoint>,

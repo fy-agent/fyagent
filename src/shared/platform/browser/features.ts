@@ -155,6 +155,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     },
     providers: {
       getSummary: rejectNativeOnly,
+      getProxyRestorePreview: rejectNativeOnly,
+      restoreManagedProxy: rejectNativeOnly,
       applyQuickSetupWithResult: rejectNativeOnly,
       fetchModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,

@@ -30,10 +30,33 @@ export interface ProviderSummary {
 export type ModelWriteTarget = FileWriteTarget;
 
 export type ProviderSummaryMap = Record<string, ProviderSummary>;
+
+export interface ProviderLiveConnection {
+  baseUrl: string | null;
+  modelId: string | null;
+  protocol: ApiProtocol | null;
+}
+
+export type ProviderLiveSummary = { target: ProviderAppId } & (
+  | { state: "configured"; exists: true; connection: ProviderLiveConnection }
+  | { state: "not_configured"; exists: true; connection: null }
+  | { state: "missing"; exists: false; connection: null }
+  | { state: "unreadable"; exists: boolean | null; connection: null }
+);
+
 export interface ProviderSummaryQueryData {
   providers: ProviderSummaryMap;
   currentId: string;
   writeTargets: ModelWriteTarget[];
+  /** Absent on older hosts; absence means unknown, never missing. */
+  live?: ProviderLiveSummary;
+}
+
+export interface ProviderProxyRestorePreview {
+  app: ProviderAppId;
+  enabled: boolean;
+  canRestore: boolean;
+  targets: { path: string; exists: boolean }[];
 }
 
 export type CodexProviderMutationWarning =

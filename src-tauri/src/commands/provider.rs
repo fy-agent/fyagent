@@ -16,6 +16,9 @@ use crate::services::{
 use crate::store::AppState;
 use std::str::FromStr;
 
+mod live_summary;
+use live_summary::ProviderLiveSummary;
+
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderPublicSummary {
@@ -120,6 +123,7 @@ pub struct ProviderPublicSummaryResult {
     providers: IndexMap<String, ProviderPublicSummary>,
     current_id: String,
     write_targets: Vec<QuickSetupWriteTarget>,
+    live: ProviderLiveSummary,
 }
 
 const PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE: &str = "Provider public summary is unavailable";
@@ -237,7 +241,7 @@ fn collect_provider_credentials(
     }
 }
 
-fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary, String> {
+fn provider_known_credentials(provider: &Provider) -> Result<Vec<String>, String> {
     let mut credentials = Vec::new();
     collect_provider_credentials(&provider.settings_config, &mut credentials)
         .map_err(|_| PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string())?;
@@ -285,6 +289,19 @@ fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary,
         collect_provider_credentials(&config, &mut credentials)
             .map_err(|_| PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string())?;
     }
+    Ok(credentials)
+}
+
+#[cfg(test)]
+fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary, String> {
+    let credentials = provider_known_credentials(provider)?;
+    project_provider_public_summary(provider, &credentials)
+}
+
+fn project_provider_public_summary(
+    provider: &Provider,
+    credentials: &[String],
+) -> Result<ProviderPublicSummary, String> {
     if [provider.id.as_str(), provider.name.as_str()]
         .into_iter()
         .any(|public| {
@@ -300,7 +317,7 @@ fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary,
     Ok(ProviderPublicSummary {
         id: provider.id.clone(),
         name: provider.name.clone(),
-        connection: provider_public_connection(provider, &credentials),
+        connection: provider_public_connection(provider, credentials),
         write_targets: None,
     })
 }
@@ -524,36 +541,58 @@ pub async fn get_provider_summary(
             .db
             .get_all_providers(app_type.as_str())
             .map_err(|_| "Provider public summary is unavailable".to_string())?;
-        let mut providers = IndexMap::new();
-        for (key, provider) in all {
-            let mut summary = provider_public_summary(&provider)?;
-            summary.connection = summary.connection.filter(|connection| {
-                ApiProtocol::for_target(app_type.as_str(), Some(connection.protocol)).is_ok()
-            });
-            summary.write_targets = Some(
-                ProviderService::source_write_targets(&app_type, &provider)
-                    .map_err(|_| "Provider public summary is unavailable".to_string())?,
-            );
-            if key != summary.id {
-                return Err("Provider public summary is unavailable".to_string());
-            }
-            providers.insert(key, summary);
-        }
-        let write_targets = ProviderService::quick_setup_write_targets(&app_type)
+        let current_id = ProviderService::current(state.inner(), app_type.clone())
             .map_err(|_| "Provider public summary is unavailable".to_string())?;
-        let current_id = ProviderService::current(state.inner(), app_type)
-            .map_err(|_| "Provider public summary is unavailable".to_string())?;
-        if !current_id.is_empty() && !providers.contains_key(&current_id) {
-            return Err("Provider public summary is unavailable".to_string());
-        }
-        Ok(ProviderPublicSummaryResult {
-            providers,
-            current_id,
-            write_targets,
-        })
+        build_provider_public_summary_result(&app_type, all, current_id)
     })
     .await
     .map_err(|_| "Provider public summary is unavailable".to_string())?
+}
+
+fn build_provider_public_summary_result(
+    app_type: &AppType,
+    all: IndexMap<String, Provider>,
+    current_id: String,
+) -> Result<ProviderPublicSummaryResult, String> {
+    let mut providers = IndexMap::new();
+    let mut known_credentials = Vec::new();
+    let mut targets_unreadable = false;
+    for (key, provider) in all {
+        let credentials = provider_known_credentials(&provider)?;
+        let mut summary = project_provider_public_summary(&provider, &credentials)?;
+        known_credentials.extend(credentials);
+        summary.connection = summary.connection.filter(|connection| {
+            ApiProtocol::for_target(app_type.as_str(), Some(connection.protocol)).is_ok()
+        });
+        summary.write_targets = Some(
+            ProviderService::source_write_targets(app_type, &provider).unwrap_or_else(|_| {
+                targets_unreadable = true;
+                Vec::new()
+            }),
+        );
+        if key != summary.id {
+            return Err(PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string());
+        }
+        providers.insert(key, summary);
+    }
+    if !current_id.is_empty() && !providers.contains_key(&current_id) {
+        return Err(PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string());
+    }
+    let write_targets = ProviderService::quick_setup_write_targets(app_type).unwrap_or_else(|_| {
+        targets_unreadable = true;
+        Vec::new()
+    });
+    let live = if targets_unreadable {
+        ProviderLiveSummary::unreadable(app_type, None)
+    } else {
+        live_summary::observe(app_type, &write_targets, &known_credentials)
+    };
+    Ok(ProviderPublicSummaryResult {
+        providers,
+        current_id,
+        write_targets,
+        live,
+    })
 }
 
 fn provider_command_error(app: &str, error: AppError) -> String {

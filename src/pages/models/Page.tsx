@@ -102,6 +102,7 @@ import {
 import { changePlanErrorCode } from "../../shared/features/change-plans-ui/changePlanErrors";
 import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
 import { ConfigPackButton } from "../../shared/features/config-pack-ui/ConfigPackButton";
+import type { PortableProvider } from "../../domain/config-pack";
 import {
   addUniqueModelIds,
   filterModelIds,
@@ -916,23 +917,32 @@ function ProviderPanel({
   active,
   writesBlocked,
   onBlockWrites,
+  onRecoverWrites,
+  initialForm,
 }: {
   app: ProviderAppId;
   active: boolean;
   writesBlocked: boolean;
   onBlockWrites: (app: ProviderAppId) => void;
+  onRecoverWrites: (app: ProviderAppId) => void;
+  initialForm?: ProviderApiFormFill;
 }) {
   const navigate = useNavigate();
   const { search } = useLocation();
   const { ports } = useFeatures();
   const summaryQuery = useProviderSummary(app, active);
-  const [name, setName] = useState(PROVIDER_DEFAULT_NAMES[app]);
-  const [baseUrl, setBaseUrl] = useState("");
+  const [name, setName] = useState(
+    initialForm?.name ?? PROVIDER_DEFAULT_NAMES[app],
+  );
+  const [baseUrl, setBaseUrl] = useState(initialForm?.connection.baseUrl ?? "");
   const [apiKey, setApiKeyState] = useState("");
   const apiKeyRef = useRef("");
-  const [modelId, setModelId] = useState("");
+  const [modelId, setModelId] = useState(initialForm?.connection.modelId ?? "");
   const [protocol, setProtocol] = useState<ApiProtocol>(
-    defaultApiProtocol(app),
+    initialForm?.connection.protocol ?? defaultApiProtocol(app),
+  );
+  const [requiresFreshKey, setRequiresFreshKey] = useState(
+    Boolean(initialForm),
   );
   const [fetchedModelIds, setFetchedModelIds] = useState<string[]>([]);
   const [ownedByById, setOwnedByById] = useState<Record<string, string>>({});
@@ -969,7 +979,7 @@ function ProviderPanel({
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const modelIdInputRef = useRef<HTMLInputElement>(null);
-  const draftCommit = useModelsDraftCommit();
+  const draftCommit = useModelsDraftCommit(Boolean(initialForm));
 
   const setApiKey = (value: string) => {
     apiKeyRef.current = value;
@@ -992,9 +1002,17 @@ function ProviderPanel({
   const providerId = QUICK_SETUP_PROVIDER_IDS[app];
   const providerExists = Boolean(summaryQuery.data?.providers[providerId]);
   const currentId = summaryQuery.data?.currentId ?? "";
+  const savedConnection = summaryQuery.data?.providers[providerId]?.connection;
+  const canRetainCodexCredential =
+    app === "codex" &&
+    !requiresFreshKey &&
+    savedConnection !== undefined &&
+    savedConnection.baseUrl === baseUrl.trim() &&
+    savedConnection.protocol === protocol;
 
   const restrictedPlan = isToolOnlyApi(baseUrl, apiKey);
   const fillApiForm = (value: ProviderApiFormFill) => {
+    setRequiresFreshKey(true);
     setName(value.name);
     setBaseUrl(value.connection.baseUrl);
     setModelId(value.connection.modelId);
@@ -1119,7 +1137,7 @@ function ProviderPanel({
         protocol,
       },
       app,
-      app === "codex" && providerExists,
+      canRetainCodexCredential,
     );
     if (!validated.ok) {
       setErrors(validated.errors);
@@ -1418,11 +1436,38 @@ function ProviderPanel({
           active={active}
           disabled={
             busy ||
+            fetchBusy ||
+            probeBusy ||
+            subscriptionBusy ||
             writesBlocked ||
             writeConfirm.open ||
             Boolean(codexSaveRequest || codexSavePlan)
           }
           writeTargets={summaryQuery.data?.writeTargets ?? []}
+          recoveryDisabled={
+            busy ||
+            fetchBusy ||
+            probeBusy ||
+            subscriptionBusy ||
+            writeConfirm.open ||
+            Boolean(codexSaveRequest || codexSavePlan)
+          }
+          onBeginRecovery={() => {
+            if (
+              writeLock.current ||
+              busy ||
+              fetchBusy ||
+              probeBusy ||
+              writeConfirm.open ||
+              codexSaveRequest ||
+              codexSavePlan
+            )
+              return false;
+            writeLock.current = true;
+            setSubscriptionBusy(true);
+            return true;
+          }}
+          onRecoveryConfirmed={() => onRecoverWrites(app)}
           onBeginWrite={() => {
             if (writeLock.current || writesBlocked) return false;
             writeLock.current = true;
@@ -1593,7 +1638,7 @@ function ProviderPanel({
         </div>
         <div className="fy-control-field">
           <label htmlFor={`${app}-quick-setup-api-key`}>API Key</label>
-          {app === "codex" && providerExists && (
+          {canRetainCodexCredential && (
             <p className="fy-models-muted">
               留空保留已保存的 API Key，填写新值会替换它。
             </p>
@@ -1783,6 +1828,12 @@ function renderTargetPanel(
   active: boolean,
   blockedProviderWrites: Partial<Record<ProviderAppId | "opencode", boolean>>,
   onBlockProviderWrites: (app: ProviderAppId | "opencode") => void,
+  onRecoverProviderWrites: (app: ProviderAppId) => void,
+  importedForm: {
+    app: "claude" | "codex";
+    sequence: number;
+    form: ProviderApiFormFill;
+  } | null,
 ) {
   switch (target) {
     case "workbuddy":
@@ -1792,10 +1843,15 @@ function renderTargetPanel(
     case "grokbuild":
       return (
         <ProviderPanel
+          key={`${target}:${importedForm?.app === target ? importedForm.sequence : 0}`}
           app={target}
           active={active}
           writesBlocked={Boolean(blockedProviderWrites[target])}
           onBlockWrites={onBlockProviderWrites}
+          onRecoverWrites={onRecoverProviderWrites}
+          initialForm={
+            importedForm?.app === target ? importedForm.form : undefined
+          }
         />
       );
     case "qoderwork":
@@ -1819,6 +1875,26 @@ export function ModelsPage() {
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
     Partial<Record<ProviderAppId | "opencode", boolean>>
   >({});
+  const [importedForm, setImportedForm] = useState<{
+    app: "claude" | "codex";
+    sequence: number;
+    form: ProviderApiFormFill;
+  } | null>(null);
+  const fillImportedForm = (provider: Readonly<PortableProvider>) => {
+    setImportedForm((current) => ({
+      app: provider.app,
+      sequence: (current?.sequence ?? 0) + 1,
+      form: {
+        name: provider.name,
+        connection: {
+          baseUrl: provider.endpoint,
+          modelId: provider.model,
+          protocol: provider.wireApi ?? "anthropic",
+        },
+      },
+    }));
+    setSearchParams({ target: provider.app });
+  };
   const rawTarget = searchParams.get("target");
   const target = useStickyVisibleValue(
     visible,
@@ -1833,6 +1909,9 @@ export function ModelsPage() {
       [app]: true,
     }));
   };
+  const recoverProviderWrites = (app: ProviderAppId) => {
+    setBlockedProviderWrites((current) => ({ ...current, [app]: false }));
+  };
 
   return (
     <div
@@ -1842,7 +1921,7 @@ export function ModelsPage() {
     >
       <header className="fy-models-page-heading">
         <h1>模型管理</h1>
-        <ConfigPackButton />
+        <ConfigPackButton onFillModelForm={fillImportedForm} />
       </header>
       <CatalogMasterDetail>
         <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择应用">
@@ -1874,6 +1953,8 @@ export function ModelsPage() {
             visible,
             blockedProviderWrites,
             blockProviderWrites,
+            recoverProviderWrites,
+            importedForm,
           )}
         </div>
       </CatalogMasterDetail>

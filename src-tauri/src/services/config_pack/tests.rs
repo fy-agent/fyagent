@@ -412,7 +412,7 @@ fn config_pack_files_are_bounded_regular_json_and_export_never_overwrites() {
     let oversized = root.join("oversized.json");
     std::fs::write(&oversized, vec![b' '; MAX_BYTES + 1]).unwrap();
     assert!(matches!(read_file(&oversized), Err(PackError::TooLarge)));
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     {
         let link = root.join("link.json");
         std::os::unix::fs::symlink(&path, &link).unwrap();

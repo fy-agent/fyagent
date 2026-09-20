@@ -21,6 +21,11 @@ readback and stored candidates both offer this action, so closing/reopening
 does not strand a saved draft. It preserves Chat/Responses and never persists,
 adds credentials, switches a source or activates a connection. Model-form
 credential entry and the independent apply preview/confirmation stay required.
+Filling a candidate creates a fresh pending form, including when its endpoint
+matches a saved connection. Clear the previous draft's credential and optional
+Codex features; never retain another form's SecretRef or let an unchanged
+endpoint authorize reuse of the saved credential. The user must enter a fresh
+key before a filled candidate can produce an apply preview.
 
 ## 3. Contracts
 
@@ -47,15 +52,15 @@ through the ordinary candidate read. Raw errors never appear in the dialog.
 
 ## 4. Validation & Error Matrix
 
-| Condition | UI |
-| --- | --- |
-| Unsupported or excess field, wrong DTO discriminant | safe error, no optimistic result |
-| Protected same-name connection | skip/rename; overwrite absent |
-| Text or decision edited after preview | confirm disabled until new preview |
-| Pending native operation | no duplicate dispatch |
-| Readback differs from final preview | safe readback failure, no saved claim |
-| Closed surface receives late preview | cancel it, no new dialog or write |
-| Browser runtime or cancelled picker | explicit unavailable/cancelled behavior |
+| Condition                                           | UI                                      |
+| --------------------------------------------------- | --------------------------------------- |
+| Unsupported or excess field, wrong DTO discriminant | safe error, no optimistic result        |
+| Protected same-name connection                      | skip/rename; overwrite absent           |
+| Text or decision edited after preview               | confirm disabled until new preview      |
+| Pending native operation                            | no duplicate dispatch                   |
+| Readback differs from final preview                 | safe readback failure, no saved claim   |
+| Closed surface receives late preview                | cancel it, no new dialog or write       |
+| Browser runtime or cancelled picker                 | explicit unavailable/cancelled behavior |
 
 ## 5. Good / Base / Bad Cases
 
@@ -73,6 +78,9 @@ cancel. Keep route chunks/ACL/architecture, typecheck, lint and renderer build
 checks. Browser fixture behavior is not native picker acceptance.
 Test exact callback fields from actual import readback and reopened candidates,
 including the Chat discriminant, and assert no native save/apply from that action.
+The Models integration test fills a candidate over a dirty credential-bearing
+form, checks that its key/options are cleared, and rejects empty-key save even
+when the saved connection has the same endpoint and protocol.
 
 ## 7. Wrong vs Correct
 

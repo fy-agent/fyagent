@@ -5,6 +5,7 @@ import {
 } from "../../../../domain/configuration/providerApi";
 import { invoke } from "@tauri-apps/api/core";
 import { parseFileWriteTarget as parseModelWriteTarget } from "../../../features/file-writes";
+import { parseProviderLiveSummary } from "./providerLiveSummary";
 
 import type { FeaturePorts } from "../../../features/ports";
 import type {
@@ -15,6 +16,7 @@ import type {
   OpenCodeFetchModelsRequest,
   OpenCodeModelSnapshot,
   OpenCodeSaveModelsRequest,
+  ProviderAppId,
   ProviderQuickSetupRequest,
   ProviderSummaryQueryData,
   ReachabilityResult,
@@ -389,10 +391,17 @@ function parsePublicConnection(value: unknown): ApiConnection {
   };
 }
 
-function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
+function parseProviderSummary(
+  value: unknown,
+  app: ProviderAppId,
+): ProviderSummaryQueryData {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ["providers", "currentId", "writeTargets"])
+    !hasRequiredAndOptionalKeys(
+      value,
+      ["providers", "currentId", "writeTargets"],
+      ["live"],
+    )
   )
     throw new Error("Provider public summary is unavailable");
   if (
@@ -437,6 +446,7 @@ function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
     providers,
     currentId: value.currentId,
     writeTargets: value.writeTargets.map(parseModelWriteTarget),
+    live: parseProviderLiveSummary(value.live, app),
   };
 }
 
@@ -480,7 +490,18 @@ export function createModelFeaturePorts(): Pick<
   return {
     providers: {
       getSummary: async (app) =>
-        parseProviderSummary(await invoke("get_provider_summary", { app })),
+        parseProviderSummary(
+          await invoke("get_provider_summary", { app }),
+          app,
+        ),
+      getProxyRestorePreview: async (app) =>
+        (
+          await import("./managedSubscriptions")
+        ).managedProviderPorts.getProxyRestorePreview(app),
+      restoreManagedProxy: async (app) =>
+        (
+          await import("./managedSubscriptions")
+        ).managedProviderPorts.restoreManagedProxy(app),
       applyQuickSetupWithResult: (request, app) =>
         invoke("apply_provider_quick_setup_with_result", {
           request: assertQuickSetupRequest(request, app),

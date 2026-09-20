@@ -51,6 +51,7 @@ type RustAllowance = {
   condition: string;
   next: string;
   nextPrefix?: boolean;
+  block?: string;
 };
 
 type SourceContract = { id: string; file: string; snippet: string };
@@ -758,9 +759,50 @@ describe("durable supported-platform surface contract", () => {
     ).toThrow(/not directly active/);
   });
 
+  it("rejects preflight fallbacks that stop rejecting unsupported hosts", () => {
+    const entries = permittedRustEntries();
+    const guarded = checker.RUST_ALLOWANCE_CONTRACT.filter(
+      (item): item is RustAllowance & { block: string } => Boolean(item.block),
+    );
+    expect(guarded).toHaveLength(4);
+    for (const allowance of guarded) {
+      const pattern = new RegExp(
+        allowance.block
+          .split(/\s+/u)
+          .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+          .join("\\s+"),
+        "u",
+      );
+      const drifted = entries.map((entry) =>
+        entry.path === allowance.file
+          ? {
+              ...entry,
+              source: entry.source.replace(pattern, (block) =>
+                block.replace(/Err\(|\bfalse\b/u, (token) =>
+                  token === "false" ? "true" : "Ok(",
+                ),
+              ),
+            }
+          : entry,
+      );
+      expect(checker.scanRustImplicitPredicates(drifted)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: allowance.file,
+            rule: "rust:implicit-target",
+          }),
+          expect.objectContaining({
+            rule: "rust:allowance-drift",
+            excerpt: allowance.id,
+          }),
+        ]),
+      );
+    }
+  });
+
   it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", () => {
     const entries = permittedRustEntries();
-    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(33);
+    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(37);
     expect(checker.scanRustImplicitPredicates(entries)).toEqual([]);
 
     const first = checker.RUST_ALLOWANCE_CONTRACT[0];

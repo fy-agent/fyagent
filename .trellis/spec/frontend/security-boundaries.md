@@ -25,8 +25,11 @@ confirmation and stale-result requirements before introducing an import Port.
 Production asset paths remain confined to the Vite distribution. The route
 chunk verifier walks the actual static entry closure, requires exactly nine
 literal product route chunks (including `app/ProjectsWorkspace.tsx`) plus the
-explicitly listed deferred Health, Projects, Delivery Kits, Verification, Models and
-Configuration Recovery ports. Managed Subscription is a reviewed second-level
+explicitly listed deferred Application, Health, Projects, Delivery Kits,
+Verification, Models, Configuration Recovery, Configuration Pack and Codex
+Desktop ports. Desktop installer observation, preflight, mutations and event
+subscription load the same typed port on first use; loading it starts no job.
+Managed Subscription is a reviewed second-level
 dynamic entry imported only by the deferred Models port; the verifier checks
 that exact nested edge and rejects static inclusion or unreviewed children.
 Subscription IPC parsing loads on first use of its typed port, retaining literal

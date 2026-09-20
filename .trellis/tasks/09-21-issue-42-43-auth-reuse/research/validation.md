@@ -2,7 +2,7 @@
 
 ## Environment and scope
 
-- Isolated worktree: `/Users/serendipity/.codex/worktrees/fyagent-next-auth-reuse/fyagent`
+- Isolated worktree: `~/.codex/worktrees/fyagent-next-auth-reuse/fyagent`
 - Branch: `codex/next-auth-reuse-42-43`; base: `2c09c4be2c5f50b4060fd6f7a13a7be31c364c54`.
 - Origin: `https://github.com/fy-agent/fyagent.git`. No push, merge or Issue write.
 - Root-provided `NEXT_ISSUES.json` / `VENDOR_SOURCES.md` remain untracked inputs.

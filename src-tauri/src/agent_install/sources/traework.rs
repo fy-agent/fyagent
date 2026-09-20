@@ -99,6 +99,7 @@ pub fn parse_traework_latest(
             ("endpoint", endpoint_kind),
         ]),
         display_version: Some(version.to_string()),
+        artifact_size_bytes: None,
         download_url,
         versionless_latest: false,
         official_page: traework_official_page(),

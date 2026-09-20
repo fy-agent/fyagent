@@ -10,11 +10,13 @@ import type { AgentCatalogEntry } from "../../shared/features/types";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { BrandIconFrame } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/Button";
+import { InlineNotice } from "../../shared/ui/primitives";
 
 import { AgentMcpSection, AgentSkillsSection } from "./AgentAssignmentSections";
 import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";
 import { AgentModelsSection } from "./AgentModelsSection";
 import { AgentPromptsSection } from "./AgentPromptsSection";
+import { AgentSourceLinks } from "./AgentSourceLinks";
 import type { AgentSection } from "./agentSections";
 
 const sectionOptions: ReadonlyArray<{ id: AgentSection; label: string }> = [
@@ -30,12 +32,14 @@ export function AgentConfiguration({
   section,
   onSectionChange,
   onBack,
+  keepingCurrent = false,
 }: {
   entry: ProductDirectoryEntry;
   catalogEntry: AgentCatalogEntry;
   section: AgentSection;
   onSectionChange: (section: AgentSection) => void;
   onBack: () => void;
+  keepingCurrent?: boolean;
 }) {
   const navigate = useNavigate();
   const openManagement = () => {
@@ -83,6 +87,16 @@ export function AgentConfiguration({
         </div>
         <Button onClick={onBack}>返回</Button>
       </header>
+
+      {keepingCurrent ? (
+        <InlineNotice tone="info">
+          已保留当前设置。下面仅查看已保存配置；未更改目标文件或发起模型检查。
+        </InlineNotice>
+      ) : null}
+      <details>
+        <summary>官方资料与许可</summary>
+        <AgentSourceLinks catalogLinks={catalogEntry.officialLinks} />
+      </details>
 
       <FeatureTabs
         id="agent-configuration-sections"

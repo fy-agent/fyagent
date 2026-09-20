@@ -36,11 +36,11 @@
   color: var(--fy-text);
   background: var(--fy-surface);
   border: 1px solid var(--fy-border);
-  border-radius: var(--fy-radius-sm, 6px);
+  border-radius: var(--fy-radius-compact);
   text-decoration: none;
   transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
+    background var(--fy-motion-control) var(--fy-motion-ease),
+    border-color var(--fy-motion-control) var(--fy-motion-ease);
 }
 
 .fy-agent-source-link-card:hover {
@@ -59,7 +59,7 @@
   padding: 1px 6px;
   font-size: 11px;
   font-weight: 500;
-  border-radius: 4px;
+  border-radius: var(--fy-radius-compact);
   background: var(--fy-surface-elevated, rgba(255, 255, 255, 0.08));
   color: var(--fy-text-secondary);
 }
@@ -99,7 +99,7 @@
 .fy-agent-source-link-arrow {
   font-size: 11px;
   color: var(--fy-text-muted);
-  transition: transform 0.15s ease;
+  transition: transform var(--fy-motion-control) var(--fy-motion-ease);
 }
 
 .fy-agent-source-link-card:hover .fy-agent-source-link-arrow {

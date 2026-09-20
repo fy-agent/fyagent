@@ -29,6 +29,7 @@ import type {
   ProviderAppId,
   ProviderQuickSetupRequest,
   ProviderMutationResult,
+  ProviderProxyRestorePreview,
   ProviderSummaryQueryData,
   ProviderSwitchResult,
   WorkBuddyFetchModelsRequest,
@@ -138,6 +139,10 @@ export interface CodexDesktopPort {
 
 export interface ProvidersPort {
   getSummary(app: ProviderAppId): Promise<ProviderSummaryQueryData>;
+  getProxyRestorePreview(
+    app: ProviderAppId,
+  ): Promise<ProviderProxyRestorePreview>;
+  restoreManagedProxy(app: ProviderAppId): Promise<void>;
   applyQuickSetupWithResult(
     request: ProviderQuickSetupRequest,
     app: ProviderAppId,

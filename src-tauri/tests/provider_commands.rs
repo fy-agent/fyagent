@@ -11,8 +11,9 @@ use fyagent_lib::{
 mod support;
 use std::collections::HashMap;
 use support::{
-    create_test_state, create_test_state_with_config, enable_codex_official_auth_preservation,
-    ensure_test_home, reset_test_fs, test_mutex,
+    create_credential_test_state as create_test_state,
+    create_credential_test_state_with_config as create_test_state_with_config,
+    enable_codex_official_auth_preservation, ensure_test_home, reset_test_fs, test_mutex,
 };
 
 fn settings_path(home: &Path) -> PathBuf {
@@ -323,7 +324,13 @@ fn switch_provider_updates_codex_live_and_state() {
     let _home = ensure_test_home();
 
     let legacy_auth = json!({"OPENAI_API_KEY": "legacy-key"});
-    let legacy_config = r#"[mcp_servers.legacy]
+    let legacy_config = r#"model_provider = "legacy"
+model = "fixture-model"
+[model_providers.legacy]
+name = "Legacy"
+base_url = "https://legacy.example.invalid/v1"
+wire_api = "responses"
+[mcp_servers.legacy]
 type = "stdio"
 command = "echo"
 "#;
@@ -355,7 +362,13 @@ command = "echo"
                 "Latest".to_string(),
                 json!({
                     "auth": {"OPENAI_API_KEY": "fresh-key"},
-                    "config": r#"[mcp_servers.latest]
+                    "config": r#"model_provider = "latest"
+model = "fixture-model"
+[model_providers.latest]
+name = "Latest"
+base_url = "https://latest.example.invalid/v1"
+wire_api = "responses"
+[mcp_servers.latest]
 type = "stdio"
 command = "say"
 "#
@@ -454,18 +467,17 @@ command = "say"
     let legacy = providers
         .get("old-provider")
         .expect("legacy provider still exists");
-    let legacy_auth_value = legacy
+    assert!(legacy
         .settings_config
-        .get("auth")
-        .and_then(|v| v.get("OPENAI_API_KEY"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    // 回填机制：切换前会将 live 配置回填到当前供应商
-    // 这保护了用户在 live 文件中的手动修改
-    assert_eq!(
-        legacy_auth_value, "legacy-key",
-        "previous provider should be backfilled with live auth"
-    );
+        .pointer("/auth/OPENAI_API_KEY")
+        .is_none());
+    assert!(legacy.settings_config["credentialRef"].as_str().is_some());
+    // Restoring the saved source proves the backfilled native material resolves.
+    ProviderService::switch(&app_state, AppType::Codex, "old-provider")
+        .expect("switch back to the reference-backed source");
+    let restored = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
+        .expect("read restored Codex config");
+    assert!(restored.contains("legacy-key"));
 }
 
 #[test]
@@ -548,7 +560,7 @@ fn switch_provider_updates_claude_live_and_state() {
         );
     }
 
-    let app_state = create_test_state_with_config(&config).expect("create test state");
+    let app_state = support::create_test_state_with_config(&config).expect("create test state");
 
     switch_provider_test_hook(&app_state, AppType::Claude, "new-provider")
         .expect("switch provider should succeed");

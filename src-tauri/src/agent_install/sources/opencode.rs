@@ -109,6 +109,7 @@ fn resolve_opencode_desktop_inner(
         format,
         release_id: opaque_release_id(&fields),
         display_version: display_version.map(str::to_string),
+        artifact_size_bytes: None,
         download_url,
         versionless_latest: true,
         official_page: OPENCODE_OFFICIAL_PAGE,

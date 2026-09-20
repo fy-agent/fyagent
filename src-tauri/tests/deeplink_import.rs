@@ -74,7 +74,15 @@ fn deeplink_import_codex_provider_builds_auth_and_config() {
         .get("config")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
-    assert_eq!(auth_value, request.api_key.as_deref());
+    assert_eq!(auth_value, None);
+    assert!(provider.settings_config["credentialRef"].as_str().is_some());
+    assert!(!serde_json::to_string(provider)
+        .unwrap()
+        .contains("sk-test-codex-key"));
+    fyagent_lib::ProviderService::switch(&state, fyagent_lib::AppType::Codex, &provider_id)
+        .expect("activate imported source with native credentials");
+    let live = std::fs::read_to_string(fyagent_lib::get_codex_config_path()).unwrap();
+    assert!(live.contains("sk-test-codex-key"));
     assert!(
         config_text.contains(request.endpoint.as_deref().unwrap()),
         "config.toml content should contain endpoint"

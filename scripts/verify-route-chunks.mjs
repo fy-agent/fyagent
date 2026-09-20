@@ -28,6 +28,7 @@ export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
   "shared/platform/tauri/feature-ports/models.ts",
   "shared/platform/tauri/feature-ports/configRecovery.ts",
   "shared/platform/tauri/feature-ports/configPack.ts",
+  "shared/platform/tauri/feature-ports/codexDesktop.ts",
 ]);
 
 export const RENDERER_DEFERRED_SHELL_ENTRIES = Object.freeze([

@@ -384,6 +384,17 @@ function configuredPorts(): FeaturePorts {
     },
     currentId: "current",
     writeTargets: [],
+    live: {
+      target: app,
+      state: "configured" as const,
+      exists: true as const,
+      connection: {
+        baseUrl: "https://api.example.test/v1",
+        modelId: `${app}-model`,
+        protocol:
+          app === "claude" ? ("anthropic" as const) : ("responses" as const),
+      },
+    },
   }));
   const codexPlatformVersion = {
     kind: "windows_msix" as const,
@@ -467,6 +478,66 @@ describe("first-use software guide", () => {
     ports.settings.save = vi.fn();
     return ports;
   }
+
+  it("takes a recommendation to that software's actual install controls", async () => {
+    const user = userEvent.setup();
+    const ports = firstUsePorts();
+    ports.workbuddy.getModelIds = vi.fn(async () => ({
+      ids: [],
+      revision: "empty",
+    }));
+    ports.agentInstallReadiness.get = vi.fn(async (agentId) =>
+      readiness(agentId, "not_installed", {
+        allowedActions: ["install"],
+        releaseId: `v1:${"a".repeat(64)}`,
+      }),
+    );
+    renderPage(ports);
+    await user.click(await screen.findByRole("button", { name: "日常办公" }));
+    const recommendation = screen
+      .getByRole("heading", { name: "WorkBuddy" })
+      .closest("article")!;
+    await user.click(
+      within(recommendation).getByRole("button", { name: "开始配置" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "设置 WorkBuddy" }),
+    ).toBeVisible();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/agents?setup=workbuddy",
+    );
+    expect(screen.queryByRole("heading", { name: "Codex" })).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "进行配置" })).toBeDisabled(),
+    );
+    expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
+    expect(ports.agentInstallReadiness.preflight).not.toHaveBeenCalled();
+  });
+
+  it("keeps an existing configuration without probing or writing the model", async () => {
+    const user = userEvent.setup();
+    const ports = firstUsePorts();
+    ports.workbuddy.checkModel = vi.fn();
+    ports.workbuddy.fetchModels = vi.fn();
+    ports.workbuddy.saveModels = vi.fn();
+    renderPage(ports);
+    await user.click(await screen.findByRole("button", { name: "日常办公" }));
+    const recommendation = screen
+      .getByRole("heading", { name: "WorkBuddy" })
+      .closest("article")!;
+    await user.click(
+      within(recommendation).getByRole("button", { name: "开始配置" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "保留现有配置" }),
+    );
+    expect(await screen.findByText(/已保留当前设置/)).toBeVisible();
+    expect(screen.getByTestId("location")).toHaveTextContent("intent=keep");
+    expect(ports.workbuddy.checkModel).not.toHaveBeenCalled();
+    expect(ports.workbuddy.fetchModels).not.toHaveBeenCalled();
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
+    expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
+  });
 
   it.each([
     ["日常办公", ["QoderWork CN", "TRAE Work CN", "WorkBuddy"]],

@@ -23,7 +23,7 @@ describe("main-window presentation ownership", () => {
       "focusManager.setFocused(true)",
     );
     expect(read("src/shared/platform/tauri/feature-ports/agents.ts")).toMatch(
-      /"claude-code": \["product"\]/,
+      /"claude-code": \["product", "download", "terms"\]/,
     );
   });
 

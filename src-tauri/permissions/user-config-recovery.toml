@@ -3,5 +3,6 @@ identifier = "allow-user-config-recovery"
 description = "Allows local inspection and receipt-bound restoration of the closed, native-resolved user configuration targets; never accepts filesystem paths."
 commands.allow = [
   "get_config_file_recoveries",
+  "get_proxy_restore_preview",
   "restore_config_file_recovery",
 ]

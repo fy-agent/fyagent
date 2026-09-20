@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "Existing Rust host and service ownership"}
+{"file": ".trellis/spec/backend/reuse.md", "reason": "Reuse supported paths before new implementations"}
+{"file": ".trellis/spec/frontend/modular-boundaries.md", "reason": "Existing renderer ownership"}
+{"file": ".trellis/spec/backend/github-merge-governance.md", "reason": "Delivery and CI closure boundary"}
+{"file": ".trellis/spec/frontend/change-plan-workspaces.md", "reason": "Preview, job result and recovery presentation"}
+{"file": ".trellis/spec/frontend/window-shell.md", "reason": "About dialog and read-only native package version"}

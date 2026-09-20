@@ -1,7 +1,10 @@
 //! Download-before checks for an inventory-bound lifecycle action. No job or
 //! installer is started here; execution repeats the checks at admission.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use serde::Serialize;
 
@@ -10,7 +13,10 @@ use super::{
     types::{AgentActionId, AgentReasonCode, AgentSurface, StartAgentActionRequest},
 };
 use crate::{
-    codex_desktop::{temp::JobTempRoot, verify::DiskSpaceProbe},
+    codex_desktop::{
+        temp::JobTempRoot,
+        verify::{required_free_space, DiskSpaceProbe},
+    },
     store::AppState,
 };
 
@@ -25,6 +31,9 @@ pub struct AgentInstallPreflightDto {
     pub download_url: Option<String>,
     pub target_label: String,
     pub available_bytes: u64,
+    pub required_bytes: Option<u64>,
+    pub artifact_size_bytes: Option<u64>,
+    pub space_budget_basis: SpaceBudgetBasis,
     pub runtime: InstallRuntime,
     pub execution: InstallExecution,
 }
@@ -45,6 +54,52 @@ pub enum InstallExecution {
     VendorWizard,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceBudgetBasis {
+    SourceSize,
+    DownloadLimit,
+    CliUnknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct StorageBudget {
+    artifact_size_bytes: Option<u64>,
+    required_bytes: Option<u64>,
+    basis: SpaceBudgetBasis,
+}
+
+pub(super) fn storage_budget(
+    surface: AgentSurface,
+    artifact_size_bytes: Option<u64>,
+) -> Result<StorageBudget, AgentReasonCode> {
+    let limit = super::fetch::MAX_STREAMED_ARTIFACT_BYTES;
+    let (size, basis) = match (surface, artifact_size_bytes) {
+        (AgentSurface::Desktop, Some(size)) => (size, SpaceBudgetBasis::SourceSize),
+        (AgentSurface::Desktop, None) => (limit, SpaceBudgetBasis::DownloadLimit),
+        // npm/native updaters expose no complete package/dependency footprint.
+        // Report the gap; a desktop download cap cannot justify a CLI minimum.
+        (AgentSurface::Cli, None) => {
+            return Ok(StorageBudget {
+                artifact_size_bytes: None,
+                required_bytes: None,
+                basis: SpaceBudgetBasis::CliUnknown,
+            })
+        }
+        (AgentSurface::Cli, Some(_)) => return Err(AgentReasonCode::SourceNotVerified),
+    };
+    let required_bytes =
+        required_free_space(size).map_err(|_| AgentReasonCode::SourceNotVerified)?;
+    if size > limit {
+        return Err(AgentReasonCode::SourceNotVerified);
+    }
+    Ok(StorageBudget {
+        artifact_size_bytes,
+        required_bytes: Some(required_bytes),
+        basis,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct PreparedInstallTarget {
     pub(super) request: StartAgentActionRequest,
@@ -52,6 +107,8 @@ pub(super) struct PreparedInstallTarget {
     pub(super) runtime: InstallRuntime,
     pub(super) execution: InstallExecution,
     pub(super) target_label: String,
+    pub(super) download_url: Option<String>,
+    pub(super) storage_budget: StorageBudget,
 }
 
 pub async fn preflight_for(
@@ -100,7 +157,7 @@ async fn inspect_preflight(
     let target = super::inventory::validate_action_target(&request, state).await?;
     let (platform, architecture) =
         super::sources::current_host_target().ok_or(AgentReasonCode::PlatformUnsupported)?;
-    let (version_or_channel, runtime, download_url) = match surface {
+    let (version_or_channel, runtime, download_url, artifact_size_bytes) = match surface {
         AgentSurface::Desktop => {
             let source = super::desktop::resolve_desktop_source(request.agent_id)
                 .await
@@ -114,11 +171,13 @@ async fn inspect_preflight(
                     .unwrap_or_else(|| "官方最新渠道".to_string()),
                 InstallRuntime::NativeInstaller,
                 Some(source.download_url.to_string()),
+                source.artifact_size_bytes,
             )
         }
         AgentSurface::Cli => (
             "官方渠道（保留当前安装方式）".to_string(),
             InstallRuntime::NodeNpm,
+            None,
             None,
         ),
     };
@@ -141,16 +200,20 @@ async fn inspect_preflight(
         }
         AgentSurface::Desktop => desktop_target_paths(&target)?,
     };
+    let budget = storage_budget(surface, artifact_size_bytes)?;
     let binding = PreparedInstallTarget {
         request: request.clone(),
         paths: paths.clone(),
         runtime,
         execution,
         target_label: target_label.clone(),
+        download_url: download_url.clone(),
+        storage_budget: budget,
     };
-    let available_bytes = tokio::task::spawn_blocking(move || check_storage(&paths))
-        .await
-        .map_err(|_| AgentReasonCode::InstallerArtifactUnavailable)??;
+    let available_bytes =
+        tokio::task::spawn_blocking(move || check_storage(&paths, budget.required_bytes))
+            .await
+            .map_err(|_| AgentReasonCode::InstallerArtifactUnavailable)??;
     Ok((
         AgentInstallPreflightDto {
             contract_version: 1,
@@ -161,6 +224,9 @@ async fn inspect_preflight(
             download_url,
             target_label,
             available_bytes,
+            required_bytes: budget.required_bytes,
+            artifact_size_bytes: budget.artifact_size_bytes,
+            space_budget_basis: budget.basis,
             runtime,
             execution,
         },
@@ -294,7 +360,7 @@ pub(crate) fn directory_writable(path: &Path) -> bool {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-fn check_storage(paths: &[PathBuf]) -> Result<u64, AgentReasonCode> {
+fn check_storage(paths: &[PathBuf], required_bytes: Option<u64>) -> Result<u64, AgentReasonCode> {
     let scratch = JobTempRoot::for_current_process()
         .create_job(&uuid::Uuid::new_v4().to_string())
         .map_err(|_| AgentReasonCode::InstallerArtifactUnavailable)?;
@@ -309,6 +375,7 @@ fn check_storage(paths: &[PathBuf]) -> Result<u64, AgentReasonCode> {
         minimum_available(
             &probe,
             std::iter::once(scratch.path()).chain(paths.iter().map(PathBuf::as_path)),
+            required_bytes,
         )
     })();
     scratch
@@ -320,17 +387,26 @@ fn check_storage(paths: &[PathBuf]) -> Result<u64, AgentReasonCode> {
 fn minimum_available<'a>(
     probe: &dyn DiskSpaceProbe,
     paths: impl IntoIterator<Item = &'a Path>,
+    required_bytes: Option<u64>,
 ) -> Result<u64, AgentReasonCode> {
+    if required_bytes == Some(0) {
+        return Err(AgentReasonCode::SourceNotVerified);
+    }
     let mut available = None;
+    let mut seen_volumes = HashSet::new();
     for path in paths {
         let ancestor = existing_directory(path)?;
         let volume = probe
             .volume_key(&ancestor)
             .map_err(|_| AgentReasonCode::DiskSpaceUnavailable)?;
+        // One capacity read per physical volume, including shared temp/target.
+        if !seen_volumes.insert(volume.clone()) {
+            continue;
+        }
         let bytes = probe
             .available_bytes(&volume)
             .map_err(|_| AgentReasonCode::DiskSpaceUnavailable)?;
-        if bytes == 0 {
+        if bytes == 0 || required_bytes.is_some_and(|required| bytes < required) {
             return Err(AgentReasonCode::InsufficientDiskSpace);
         }
         available = Some(available.map_or(bytes, |previous: u64| previous.min(bytes)));
@@ -339,7 +415,7 @@ fn minimum_available<'a>(
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn check_storage(_paths: &[PathBuf]) -> Result<u64, AgentReasonCode> {
+fn check_storage(_paths: &[PathBuf], _required_bytes: Option<u64>) -> Result<u64, AgentReasonCode> {
     Err(AgentReasonCode::PlatformUnsupported)
 }
 
@@ -361,22 +437,107 @@ mod tests {
     #[test]
     fn disk_preflight_distinguishes_empty_unavailable_and_available_capacity() {
         let root = tempfile::tempdir().unwrap();
+        for available in [0, 1024, 4095] {
+            assert_eq!(
+                minimum_available(&Probe(Some(available)), [root.path()], Some(4096)),
+                Err(AgentReasonCode::InsufficientDiskSpace)
+            );
+        }
         assert_eq!(
-            minimum_available(&Probe(Some(0)), [root.path()]),
-            Err(AgentReasonCode::InsufficientDiskSpace)
-        );
-        assert_eq!(
-            minimum_available(&Probe(None), [root.path()]),
+            minimum_available(&Probe(None), [root.path()], Some(4096)),
             Err(AgentReasonCode::DiskSpaceUnavailable)
         );
         assert_eq!(
-            minimum_available(&Probe(Some(4096)), [root.path()]),
+            minimum_available(&Probe(Some(4096)), [root.path()], Some(4096)),
             Ok(4096)
         );
         std::fs::write(root.path().join("file"), b"fixture").unwrap();
         assert_eq!(
-            minimum_available(&Probe(Some(4096)), [root.path().join("file").as_path()]),
+            minimum_available(
+                &Probe(Some(4096)),
+                [root.path().join("file").as_path()],
+                Some(4096)
+            ),
             Err(AgentReasonCode::PermissionDenied)
+        );
+    }
+
+    #[test]
+    fn storage_budget_uses_exact_hint_or_explicit_conservative_estimate() {
+        let known = storage_budget(AgentSurface::Desktop, Some(4096)).unwrap();
+        assert_eq!(known.required_bytes, Some(12288));
+        assert_eq!(known.basis, SpaceBudgetBasis::SourceSize);
+        let unknown = storage_budget(AgentSurface::Desktop, None).unwrap();
+        assert_eq!(unknown.required_bytes, Some(6 * 1024 * 1024 * 1024));
+        assert_eq!(unknown.artifact_size_bytes, None);
+        assert_eq!(unknown.basis, SpaceBudgetBasis::DownloadLimit);
+        let cli = storage_budget(AgentSurface::Cli, None).unwrap();
+        assert_eq!(cli.required_bytes, None);
+        assert_eq!(cli.basis, SpaceBudgetBasis::CliUnknown);
+        for size in [
+            0,
+            super::super::fetch::MAX_STREAMED_ARTIFACT_BYTES + 1,
+            u64::MAX,
+        ] {
+            assert_eq!(
+                storage_budget(AgentSurface::Desktop, Some(size)),
+                Err(AgentReasonCode::SourceNotVerified)
+            );
+        }
+    }
+
+    #[test]
+    fn every_volume_must_pass_and_rechecking_observes_capacity_loss() {
+        use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+        struct Volumes {
+            target: AtomicU64,
+            reads: AtomicUsize,
+        }
+        impl DiskSpaceProbe for Volumes {
+            fn volume_key(&self, path: &Path) -> Result<VolumeKey, DiskSpaceProbeError> {
+                VolumeKey::new(if path.ends_with("target") {
+                    "target"
+                } else {
+                    "temp"
+                })
+            }
+            fn available_bytes(&self, volume: &VolumeKey) -> Result<u64, DiskSpaceProbeError> {
+                self.reads.fetch_add(1, Ordering::Relaxed);
+                Ok(if *volume == VolumeKey::new("target")? {
+                    self.target.load(Ordering::Relaxed)
+                } else {
+                    8192
+                })
+            }
+        }
+        let root = tempfile::tempdir().unwrap();
+        let temp = root.path().join("temp");
+        let target = root.path().join("target");
+        std::fs::create_dir(&temp).unwrap();
+        std::fs::create_dir(&target).unwrap();
+        let probe = Volumes {
+            target: AtomicU64::new(4096),
+            reads: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            minimum_available(
+                &probe,
+                [temp.as_path(), temp.as_path(), target.as_path()],
+                Some(4096)
+            ),
+            Ok(4096)
+        );
+        assert_eq!(probe.reads.load(Ordering::Relaxed), 2);
+        probe.target.store(4095, Ordering::Relaxed);
+        // inspect_preflight runs this same check again before confirmation consumes
+        // the prepared target; earlier success cannot authorize diminished space.
+        assert_eq!(
+            minimum_available(&probe, [temp.as_path(), target.as_path()], Some(4096)),
+            Err(AgentReasonCode::InsufficientDiskSpace)
+        );
+        assert_eq!(
+            minimum_available(&probe, [], Some(4096)),
+            Err(AgentReasonCode::DiskSpaceUnavailable)
         );
     }
 }

@@ -220,6 +220,7 @@ describe("FyAgent shell accessibility", () => {
 
     const expectedTabOrder = [
       screen.getByRole("button", { name: /切换为.*蓝/ }),
+      screen.getByRole("button", { name: "关于 FyAgent" }),
       routeLinks[0],
       routeLinks[1],
       routeLinks[2],

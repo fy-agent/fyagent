@@ -58,6 +58,32 @@ provider_id, secret_ref UNIQUE, secret_version, status)`. Status is constrained
 - SQL import preserves device-local credential ledger and full local Provider
   routes which contain credentials; it never attaches a local key to imported
   remote endpoint data. Explicit rotation and removal remain Provider operations.
+- Native material is a versioned bundle (`fyagent-provider-credential:1`) holding
+  the inference key plus independent usage API key, access token, AccessKey ID
+  and SecretAccessKey. One reference/version covers the complete bundle.
+  Historical single-key records remain readable; unknown versions, malformed
+  bundles, missing target metadata and masks-as-material fail closed.
+- Persisted auxiliary fields contain only `[REDACTED]` presence markers. Native
+  resolve restores values for writers, proxy and usage consumers. Ordinary
+  SQL/sync export still drops usage scripts and references. Renderer projection
+  keeps non-secret script configuration plus retain markers.
+- A mask retains auxiliary material only for this Provider and the same usage
+  target. A fresh value replaces. Changing the usage endpoint, script digest,
+  language, template/vendor or account identifiers rejects rather than
+  transferring old material. Common endpoint/protocol/auth-role changes reject
+  retained credentials and require fresh material.
+- A native materialized edit carries an opaque `NativeCredentialDraft` in a
+  serde-skipped ProviderMeta field. It binds the source Provider/reference and
+  a fingerprint of non-secret route/usage target data, never a credential-derived
+  hash. Serde cannot import the context.
+- `test_usage_script` admits through the same UsageTarget owner. It binds the
+  effective execution parameters before resolving or using saved secrets. A
+  blank or masked key cannot send saved usage or inference credentials to a
+  changed target. Same-target tests may retain; explicit fresh credentials may
+  target a new destination. NewAPI token-only material (access token, no usage
+  API key and no inference key) may test the bound target; a fresh token does
+  not inherit a saved API key. Rejection happens before script execution. No
+  production log may record caller URLs, templates or secret values.
 
 ## 4. Validation & Error Matrix
 
@@ -71,6 +97,7 @@ provider_id, secret_ref UNIQUE, secret_version, status)`. Status is constrained
 | DB compensation cannot be verified              | `provider_secret_recovery_required`                       |
 | Backend delete fails                            | reference revoked locally; durable cleanup retry retained |
 | Ordinary export cannot safely preserve identity | bounded export error; no output                           |
+| Blank/masked usage test to a changed target     | `provider_secret_invalid`; no script execution            |
 
 ## 5. Good / Base / Bad Cases
 
@@ -81,12 +108,18 @@ provider_id, secret_ref UNIQUE, secret_version, status)`. Status is constrained
   no authority is gained and missing/locked resolution does not fall back.
 - Bad: interrupted migration leaves the original usable row and a pending native
   admission; a matching retry resumes it instead of allocating another item.
+- Bad: a blank or masked usage-script test with a changed URL, script, template
+  or user executes the saved secret; admission must fail closed first.
 
 ## 6. Tests Required
 
 `services::provider::credentials` covers reference save/read, masks, rotation,
 rollback, pending-create retry, conflicts, missing/locked/foreign refs, deletion
 retry, full temporary-file create/edit/switch/delete and export/import negatives.
+`services::provider::usage` covers usage-script test admission: same-target
+retain, changed URL/script/template/user rejection without execution, fresh
+credentials for a new target, inference-key fallback, common-config
+redirect rejection, and NewAPI token-only retain/mask/fresh-token cases.
 Schema fixtures cover fresh/v23/failed migration. Change Plan rotation tests assert
 stale and zero writer calls. Renderer tests cover existing-key blank edits and
 plaintext disclosure. Fixture checks do not prove OS-keychain HIL, Windows UAT,

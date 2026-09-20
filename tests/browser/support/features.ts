@@ -4,6 +4,10 @@ import {
   type AgentCatalogId,
 } from "../../../src/shared/features/directory";
 import type { AgentHealthSnapshot } from "../../../src/shared/features/health";
+import type {
+  ProviderAppId,
+  ProviderLiveSummary,
+} from "../../../src/shared/features/models";
 import { healthSnapshotFixture } from "../../renderer/fixtures/health";
 
 export interface FeatureFixtureCall {
@@ -19,6 +23,7 @@ export interface RichFeatureFixtureOptions {
   observationFailure?: "workbuddy" | "codex" | "claude";
   openExternalFailure?: boolean;
   existingQuickSetup?: "codex" | "claude";
+  providerLive?: Partial<Record<ProviderAppId, ProviderLiveSummary>>;
   providerMutation?: "success" | "save_failure" | "switch_failure";
   providerWriteDelayMs?: number;
   holdProviderWrite?: boolean;
@@ -187,26 +192,26 @@ export async function installRichTauriFeatureFixture(
       "mcp.validate",
       "mcp.write",
     ];
-    const catalogCapabilities = (id: string) =>
+    const catalogCapabilities = () =>
       capabilityIds.map((capabilityId) => ({
         id: capabilityId,
         mode:
-          capabilityId === "product.open" && id === "codex"
-            ? "unsupported"
-            : capabilityId === "app.detect" || capabilityId === "app.launch"
-              ? "unverified"
-              : "direct",
+          capabilityId === "app.detect" || capabilityId === "app.launch"
+            ? "unverified"
+            : "direct",
         reasonCode:
-          capabilityId === "product.open" && id === "codex"
-            ? "no_catalog_product_link"
+          capabilityId === "product.open"
+            ? "official_link_reviewed"
             : capabilityId === "app.detect" || capabilityId === "app.launch"
               ? "trusted_runtime_identity_unavailable"
               : "dedicated_native_contract",
         evidenceIds: ["p0_scope"],
       }));
+    // Mirror the reviewed IDs, order and URLs from commands/agent_catalog.rs.
+    // The production platform parser deliberately rejects older partial lists.
     const catalog = {
       contractVersion: 5,
-      reviewedAt: "2026-08-20",
+      reviewedAt: "2026-08-31",
       agents: [
         {
           id: "qoderwork",
@@ -219,8 +224,18 @@ export async function installRichTauriFeatureFixture(
               label: "打开 QoderWork 官方页面",
               url: "https://qoder.com.cn/qoderwork",
             },
+            {
+              id: "download",
+              label: "打开 QoderWork 官方下载页",
+              url: "https://qoder.com.cn/download",
+            },
+            {
+              id: "terms",
+              label: "Qoder 产品服务协议",
+              url: "https://qoder.com.cn/product-service",
+            },
           ],
-          capabilities: catalogCapabilities("qoderwork"),
+          capabilities: catalogCapabilities(),
         },
         {
           id: "trae-work",
@@ -232,10 +247,20 @@ export async function installRichTauriFeatureFixture(
             {
               id: "product",
               label: "打开 TRAE Work CN 官方页面",
-              url: "https://www.trae.cn/sem-work",
+              url: "https://www.trae.cn/work",
+            },
+            {
+              id: "download",
+              label: "打开 TRAE Work CN 官方下载页",
+              url: "https://www.trae.cn/download",
+            },
+            {
+              id: "terms",
+              label: "TRAE 用户服务协议",
+              url: "https://www.trae.cn/terms-of-service/cn",
             },
           ],
-          capabilities: catalogCapabilities("trae-work"),
+          capabilities: catalogCapabilities(),
         },
         {
           id: "workbuddy",
@@ -246,10 +271,20 @@ export async function installRichTauriFeatureFixture(
             {
               id: "product",
               label: "打开 WorkBuddy 官方页面",
-              url: "https://www.workbuddy.cn/",
+              url: "https://www.workbuddy.cn/home",
+            },
+            {
+              id: "download",
+              label: "打开 WorkBuddy 官方下载页",
+              url: "https://www.workbuddy.cn/home",
+            },
+            {
+              id: "terms",
+              label: "WorkBuddy 软件许可及服务协议",
+              url: "https://www.workbuddy.cn/document/term",
             },
           ],
-          capabilities: catalogCapabilities("workbuddy"),
+          capabilities: catalogCapabilities(),
         },
         {
           id: "grokbuild",
@@ -260,18 +295,54 @@ export async function installRichTauriFeatureFixture(
             {
               id: "product",
               label: "打开 Grok Build 官方页面",
-              url: "https://x.ai/grok",
+              url: "https://x.ai/build",
+            },
+            {
+              id: "docs",
+              label: "打开 Grok Build 官方文档",
+              url: "https://docs.x.ai/build/overview",
+            },
+            {
+              id: "download",
+              label: "Grok Build 源码与安装说明",
+              url: "https://github.com/xai-org/grok-build/blob/main/README.md",
+            },
+            {
+              id: "license",
+              label: "开源许可证 (Apache-2.0)",
+              url: "https://github.com/xai-org/grok-build/blob/main/LICENSE",
             },
           ],
-          capabilities: catalogCapabilities("grokbuild"),
+          capabilities: catalogCapabilities(),
         },
         {
           id: "codex",
           variantId: "codex",
           displayName: "Codex",
           description: "支持桌面安装、Skills、模型配置与 MCP。",
-          officialLinks: [],
-          capabilities: catalogCapabilities("codex"),
+          officialLinks: [
+            {
+              id: "product",
+              label: "打开 OpenAI Codex 官方主页",
+              url: "https://openai.com/codex/",
+            },
+            {
+              id: "desktop",
+              label: "Codex Desktop 官方页面",
+              url: "https://openai.com/codex/",
+            },
+            {
+              id: "download",
+              label: "Codex CLI 安装与使用说明",
+              url: "https://help.openai.com/en/articles/11096431",
+            },
+            {
+              id: "terms",
+              label: "OpenAI 使用条款",
+              url: "https://openai.com/policies/terms-of-use/",
+            },
+          ],
+          capabilities: catalogCapabilities(),
         },
         {
           id: "claude-code",
@@ -282,11 +353,21 @@ export async function installRichTauriFeatureFixture(
           officialLinks: [
             {
               id: "product",
+              label: "打开 Claude Code 官方页面",
+              url: "https://code.claude.com/docs/en/setup",
+            },
+            {
+              id: "download",
               label: "Claude Code CLI 安装说明",
               url: "https://code.claude.com/docs/en/setup",
             },
+            {
+              id: "terms",
+              label: "Anthropic 消费者服务条款",
+              url: "https://www.anthropic.com/legal/consumer-terms",
+            },
           ],
-          capabilities: catalogCapabilities("claude-code"),
+          capabilities: catalogCapabilities(),
         },
         {
           id: "opencode",
@@ -304,8 +385,18 @@ export async function installRichTauriFeatureFixture(
               label: "打开 OpenCode 官方下载页",
               url: "https://opencode.ai/download",
             },
+            {
+              id: "license",
+              label: "开源许可证 (MIT)",
+              url: "https://github.com/anomalyco/opencode/blob/dev/LICENSE",
+            },
+            {
+              id: "terms",
+              label: "OpenCode 服务条款",
+              url: "https://opencode.ai/legal/terms-of-service",
+            },
           ],
-          capabilities: catalogCapabilities("opencode"),
+          capabilities: catalogCapabilities(),
         },
       ],
     };
@@ -331,6 +422,36 @@ export async function installRichTauriFeatureFixture(
     const currentProviderIds: Record<string, string> = {
       codex: "fixture-codex-current",
       claude: "fixture-claude-current",
+    };
+    // File observations are explicit fixture state, independent of saved plans.
+    const providerLive: Record<string, ProviderLiveSummary> = {
+      codex: {
+        target: "codex",
+        state: "configured",
+        exists: true,
+        connection: {
+          modelId: "fixture-codex-live-model",
+          baseUrl: "https://codex.example.test/v1",
+          protocol: "responses",
+        },
+      },
+      claude: {
+        target: "claude",
+        state: "configured",
+        exists: true,
+        connection: {
+          modelId: "fixture-claude-live-model",
+          baseUrl: "https://claude.example.test",
+          protocol: "anthropic",
+        },
+      },
+      grokbuild: {
+        target: "grokbuild",
+        state: "missing",
+        exists: false,
+        connection: null,
+      },
+      ...fixtureOptions.providerLive,
     };
     if (fixtureOptions.existingQuickSetup) {
       const app = fixtureOptions.existingQuickSetup;
@@ -1451,6 +1572,7 @@ export async function installRichTauriFeatureFixture(
               ),
               currentId: currentProviderIds[app] ?? "",
               writeTargets,
+              live: structuredClone(providerLive[app]),
             };
           }
           case "list_recoverable_change_jobs":

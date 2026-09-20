@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { appendAgentReturnToPath } from "../../shared/features/agent-navigation";
+import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import {
   useOpenCodeModelSnapshot,
@@ -12,6 +13,7 @@ import {
 } from "../../shared/features/queries";
 import type {
   AgentCatalogEntry,
+  ProviderAppId,
   ProviderSummaryQueryData,
 } from "../../shared/features/types";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
@@ -41,9 +43,56 @@ function providerObservations(
       label: provider.modelId ?? provider.name,
       detail:
         provider.id === data.currentId
-          ? `当前 Provider · ${provider.name}`
-          : `已配置 Provider · ${provider.name}`,
+          ? `已选方案 · ${provider.name}`
+          : `已保存方案 · ${provider.name}`,
     }));
+}
+
+function ProviderLiveConfiguration({
+  app,
+  data,
+  failed,
+}: {
+  app: ProviderAppId;
+  data: ProviderSummaryQueryData | undefined;
+  failed: boolean;
+}) {
+  const live = data?.live;
+  const matching = live?.target === app;
+  const unknown = failed || !matching || live?.state === "unreadable";
+  const configured = !unknown && live?.state === "configured";
+  return (
+    <section className="fy-agent-model-card" aria-label="实际配置文件">
+      <div className="fy-agent-model-card-info">
+        <h3>实际配置文件</h3>
+        {unknown ? (
+          <InlineNotice tone="warning">
+            实际配置状态未知。无法读取当前配置文件，请在软件中检查或稍后重试。
+          </InlineNotice>
+        ) : configured ? (
+          <>
+            <p>实际配置文件已配置</p>
+            <p>模型：{live.connection.modelId ?? "未指定模型"}</p>
+            <p>服务地址：{live.connection.baseUrl ?? "未指定服务地址"}</p>
+            <p>尚未测试连接。</p>
+          </>
+        ) : (
+          <p>
+            实际配置尚未配置。
+            {live?.state === "missing" ? "配置文件尚不存在。" : ""}
+          </p>
+        )}
+        {(!live || matching) && (data?.writeTargets.length ?? 0) > 0 ? (
+          <div>
+            <p>配置文件位置</p>
+            {data!.writeTargets.map(({ path }) => (
+              <CopyablePath key={path} value={path} label="配置文件路径" />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 export function AgentModelsSection({
@@ -70,6 +119,20 @@ export function AgentModelsSection({
     "claude",
     entry.agentId === "claude-code",
   );
+  const providerApp =
+    entry.agentId === "claude-code"
+      ? "claude"
+      : entry.agentId === "codex" || entry.agentId === "grokbuild"
+        ? entry.agentId
+        : null;
+  const providerQuery =
+    providerApp === "claude"
+      ? claudeSummary
+      : providerApp === "codex"
+        ? codexSummary
+        : providerApp === "grokbuild"
+          ? grokSummary
+          : null;
   const modelCapability = catalogEntry.capabilities.find(
     (candidate) => candidate.id === "models.write",
   );
@@ -149,7 +212,7 @@ export function AgentModelsSection({
       aria-label={`${entry.displayName} 模型设置`}
     >
       <AgentSectionHeader
-        title="当前模型"
+        title={providerApp ? "模型配置" : "当前模型"}
         actionLabel="管理模型"
         onAction={onOpenManagement}
       />
@@ -180,6 +243,17 @@ export function AgentModelsSection({
           </div>
         </>
       ) : null}
+      {providerApp && !pending ? (
+        <>
+          <ProviderLiveConfiguration
+            app={providerApp}
+            data={providerQuery?.data}
+            failed={failed}
+          />
+          <h3>FyAgent 已保存方案</h3>
+          <p>已选方案记录在 FyAgent 中，与实际配置文件分别显示。</p>
+        </>
+      ) : null}
       {mode !== "unsupported" ? (
         <FeatureSearch
           value={search}
@@ -194,14 +268,20 @@ export function AgentModelsSection({
           <Spinner label="正在读取模型状态" />
           <span>正在读取模型状态</span>
         </div>
-      ) : failed ? (
+      ) : failed && (!providerApp || !providerQuery?.data) ? (
         <InlineNotice tone="warning">
-          当前模型状态无法读取，请检查网络或配置后重试。
+          {providerApp
+            ? "FyAgent 已保存方案暂时无法读取，请稍后重试。"
+            : "当前模型状态无法读取，请检查配置后重试。"}
         </InlineNotice>
       ) : mode === "unsupported" ? (
         <EmptyState title="此应用不支持在 FyAgent 中配置第三方模型" />
       ) : observations.length === 0 ? (
-        <EmptyState title="还没有找到已配置的模型" />
+        <EmptyState
+          title={
+            providerApp ? "FyAgent 还没有保存方案" : "还没有找到已配置的模型"
+          }
+        />
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的模型" description="请调整搜索关键词。" />
       ) : (

@@ -3,7 +3,6 @@ import { createAgentAuthPort } from "./feature-ports/agentAuth";
 import { createAgentFeaturePorts } from "./feature-ports/agents";
 import { createAgentInstallReadinessPort } from "./feature-ports/agentInstallReadiness";
 import { createChangePlansPort } from "./feature-ports/changePlans";
-import { createCodexDesktopPort } from "./feature-ports/codexDesktop";
 import { createContentFeaturePorts } from "./feature-ports/content";
 import { createQoderTraeFeaturePorts } from "./feature-ports/qoderTrae";
 import { createGrokToolingPort } from "./feature-ports/grokTooling";
@@ -11,6 +10,12 @@ import { createManagedAuthPort } from "./feature-ports/managedAuth";
 import { createSimpleFeaturePorts } from "./feature-ports/simple";
 
 export function createTauriFeaturePorts(): FeaturePorts {
+  const codexDesktop = async () => {
+    const { createCodexDesktopPort } = await import(
+      "./feature-ports/codexDesktop"
+    );
+    return createCodexDesktopPort();
+  };
   const configPack = async () => {
     const { createConfigPackPort } = await import("./feature-ports/configPack");
     return createConfigPackPort();
@@ -122,10 +127,31 @@ export function createTauriFeaturePorts(): FeaturePorts {
     changePlans: createChangePlansPort(),
     ...createAgentFeaturePorts(),
     ...createQoderTraeFeaturePorts(),
-    codexDesktop: createCodexDesktopPort(),
+    codexDesktop: {
+      getLocalStatus: async (...args) =>
+        (await codexDesktop()).getLocalStatus(...args),
+      checkLatest: async (...args) =>
+        (await codexDesktop()).checkLatest(...args),
+      getJob: async (...args) => (await codexDesktop()).getJob(...args),
+      prepareInstall: async (...args) =>
+        (await codexDesktop()).prepareInstall(...args),
+      startInstall: async (...args) =>
+        (await codexDesktop()).startInstall(...args),
+      cancelInstall: async (...args) =>
+        (await codexDesktop()).cancelInstall(...args),
+      launch: async (...args) => (await codexDesktop()).launch(...args),
+      openLogDirectory: async (...args) =>
+        (await codexDesktop()).openLogDirectory(...args),
+      subscribeJobUpdates: async (...args) =>
+        (await codexDesktop()).subscribeJobUpdates(...args),
+    },
     providers: {
       getSummary: async (...args) =>
         (await models()).providers.getSummary(...args),
+      getProxyRestorePreview: async (...args) =>
+        (await models()).providers.getProxyRestorePreview(...args),
+      restoreManagedProxy: async (...args) =>
+        (await models()).providers.restoreManagedProxy(...args),
       applyQuickSetupWithResult: async (...args) =>
         (await models()).providers.applyQuickSetupWithResult(...args),
       fetchModels: async (...args) =>

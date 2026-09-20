@@ -14,6 +14,7 @@ import { ModelsPage } from "@/pages/models/Page";
 import { QUICK_SETUP_PROVIDER_IDS } from "@/pages/models/quickSetup";
 import { getAgentIcon } from "@/shared/assets/agents";
 import type { FeaturePorts } from "@/shared/features/ports";
+import type { ProviderAppId } from "@/shared/features/models";
 import { FeatureProvider } from "@/shared/features/provider";
 import type { AgentCatalogResult } from "@/shared/features/types";
 import type { ChangeJobSnapshot } from "@/shared/features/change-plans";
@@ -258,6 +259,150 @@ const TEST_OPENCODE_SNAPSHOT_META = {
 } as const;
 
 describe("Models page", () => {
+  it("allows recovery while writes are blocked and clears only the recovered target", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    const enabled: Record<ProviderAppId, boolean> = {
+      claude: true,
+      codex: true,
+      grokbuild: false,
+    };
+    let completeClaudeRestore = false;
+    ports.managedAuth.getOverview = vi.fn(async () =>
+      managedAuthOverviewFixture(),
+    );
+    ports.providers.getSummary = vi.fn<FeaturePorts["providers"]["getSummary"]>(
+      async (app) => ({
+        providers: {},
+        currentId: "",
+        writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+        live: {
+          target: app,
+          state: "missing",
+          exists: false,
+          connection: null,
+        },
+      }),
+    );
+    ports.providers.getProxyRestorePreview = vi.fn(
+      async (app: ProviderAppId) => ({
+        app,
+        enabled: enabled[app],
+        canRestore: enabled[app],
+        targets: [{ path: `~/.${app}/config`, exists: true }],
+      }),
+    );
+    ports.providers.restoreManagedProxy = vi.fn(async (app: ProviderAppId) => {
+      if (app !== "claude" || !completeClaudeRestore)
+        throw new Error("Restore state unknown");
+      enabled[app] = false;
+    });
+    const confirmRestore = async (label: string) => {
+      const trigger = await screen.findByRole("button", {
+        name: `退出 ${label} 代理并恢复配置`,
+      });
+      await waitFor(() => expect(trigger).toBeEnabled());
+      await user.click(trigger);
+      const dialog = await screen.findByRole("dialog", {
+        name: `退出 ${label} 代理`,
+      });
+      await user.click(
+        within(dialog).getByRole("button", { name: "确认退出并恢复" }),
+      );
+    };
+    renderPage(ports, "claude");
+    await confirmRestore("Claude Code");
+    expect(
+      await screen.findByRole("button", { name: "暂时无法确认当前设置" }),
+    ).toBeDisabled();
+    await user.click(screen.getByTestId("model-target-codex"));
+    await confirmRestore("Codex");
+    expect(
+      await screen.findByRole("button", { name: "暂时无法确认当前设置" }),
+    ).toBeDisabled();
+    await user.click(screen.getByTestId("model-target-claude"));
+    expect(
+      screen.getByRole("button", { name: "暂时无法确认当前设置" }),
+    ).toBeDisabled();
+    completeClaudeRestore = true;
+    await confirmRestore("Claude Code");
+    await screen.findByText(/已退出 Claude Code 代理并回读恢复后的配置/);
+    expect(
+      screen.queryByRole("button", { name: "暂时无法确认当前设置" }),
+    ).toBeNull();
+    expect(screen.getByLabelText("API Key")).toBeEnabled();
+    await user.click(screen.getByTestId("model-target-codex"));
+    expect(
+      screen.getByRole("button", { name: "暂时无法确认当前设置" }),
+    ).toBeDisabled();
+    expect(enabled.codex).toBe(true);
+    expect(ports.providers.restoreManagedProxy).toHaveBeenCalledTimes(3);
+  });
+
+  it("unblocks a completed restore by readback without repeating the mutation", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    let enabled = true;
+    let failSummary = false;
+    ports.managedAuth.getOverview = vi.fn(async () =>
+      managedAuthOverviewFixture(),
+    );
+    ports.providers.getSummary = vi.fn<FeaturePorts["providers"]["getSummary"]>(
+      async (app) => {
+        if (failSummary) throw new Error("Readback unavailable");
+        return {
+          providers: {},
+          currentId: "",
+          writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+          live: {
+            target: app,
+            state: "missing" as const,
+            exists: false as const,
+            connection: null,
+          },
+        };
+      },
+    );
+    ports.providers.getProxyRestorePreview = vi.fn(
+      async (app: ProviderAppId) => ({
+        app,
+        enabled,
+        canRestore: enabled,
+        targets: [{ path: "~/.claude/settings.json", exists: true }],
+      }),
+    );
+    ports.providers.restoreManagedProxy = vi.fn(async () => {
+      enabled = false;
+      failSummary = true;
+    });
+    renderPage(ports, "claude");
+    const trigger = await screen.findByRole("button", {
+      name: "退出 Claude Code 代理并恢复配置",
+    });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    await user.click(trigger);
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "确认退出并恢复",
+      }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "暂时无法确认当前设置" }),
+    ).toBeDisabled();
+    failSummary = false;
+    const recheck = screen.getByRole("button", {
+      name: "重新检查恢复状态",
+    });
+    await waitFor(() => expect(recheck).toBeEnabled());
+    await user.click(recheck);
+    await screen.findByText(/已退出 Claude Code 代理并回读恢复后的配置/);
+    expect(
+      screen.queryByRole("button", { name: "暂时无法确认当前设置" }),
+    ).toBeNull();
+    expect(screen.getByLabelText("API Key")).toBeEnabled();
+    expect(ports.providers.restoreManagedProxy).toHaveBeenCalledOnce();
+  });
+
   it("keeps an unconfirmed OpenCode subscription blocked across target changes", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
@@ -1267,6 +1412,11 @@ describe("Models page", () => {
         [QUICK_SETUP_PROVIDER_IDS.codex]: {
           id: QUICK_SETUP_PROVIDER_IDS.codex,
           name: "Saved",
+          connection: {
+            baseUrl: "https://codex.example/v1",
+            modelId: "gpt-5",
+            protocol: "responses" as const,
+          },
         },
       },
       currentId: QUICK_SETUP_PROVIDER_IDS.codex,
@@ -1276,12 +1426,12 @@ describe("Models page", () => {
       async () => changePlanUpsertWire,
     );
     renderPage(ports, "codex");
-    await screen.findByText("留空保留已保存的 API Key，填写新值会替换它。");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://codex.example/v1",
     );
     await user.type(screen.getByLabelText("模型 ID"), "gpt-5");
+    await screen.findByText("留空保留已保存的 API Key，填写新值会替换它。");
     await user.click(
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
@@ -1297,6 +1447,67 @@ describe("Models page", () => {
       ),
     );
     expect(screen.getByLabelText("API Key")).toHaveValue("");
+  });
+
+  it("fills a portable Chat connection without reusing the existing key or options", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    const candidate = {
+      app: "codex" as const,
+      name: "Imported Chat",
+      endpoint: "https://new.example/v1",
+      model: "chat-model",
+      wireApi: "chat" as const,
+    };
+    ports.configPack.list = vi.fn(async () => ({
+      entries: [{ selectionId: "a".repeat(64), provider: candidate }],
+      excluded: 0,
+    }));
+    ports.configPack.apply = vi.fn();
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {
+        [QUICK_SETUP_PROVIDER_IDS.codex]: {
+          id: QUICK_SETUP_PROVIDER_IDS.codex,
+          name: "Saved",
+          connection: {
+            baseUrl: "https://new.example/v1",
+            modelId: "old-model",
+            protocol: "chat" as const,
+          },
+        },
+      },
+      currentId: QUICK_SETUP_PROVIDER_IDS.codex,
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+    }));
+    ports.providers.fetchModels = vi.fn();
+    ports.changePlans.createCodexProviderUpsertPlan = vi.fn();
+    renderPage(ports, "codex");
+    await user.type(await screen.findByLabelText("API Key"), "old-draft-key");
+    await user.click(
+      screen.getByRole("checkbox", { name: "启用内置生图扩展" }),
+    );
+    await user.click(screen.getByRole("button", { name: "导入 / 导出连接" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "将 Imported Chat 填入模型配置表单",
+      }),
+    );
+    expect(screen.getByLabelText("服务地址")).toHaveValue(candidate.endpoint);
+    expect(screen.getByLabelText("模型 ID")).toHaveValue(candidate.model);
+    expect(screen.getByLabelText("API 协议")).toHaveValue("chat");
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(
+      screen.getByRole("checkbox", { name: "启用内置生图扩展" }),
+    ).not.toBeChecked();
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    );
+    expect(await screen.findByText("请输入 API Key")).toBeVisible();
+    expect(
+      ports.changePlans.createCodexProviderUpsertPlan,
+    ).not.toHaveBeenCalled();
+    expect(ports.configPack.apply).not.toHaveBeenCalled();
+    expect(ports.providers.fetchModels).not.toHaveBeenCalled();
   });
 
   it("atomically applies Codex once with the exact provider payload", async () => {
@@ -1983,7 +2194,7 @@ describe("Models page", () => {
 });
 
 describe("production API presets", () => {
-  it("fills the real form without network or writes and preserves Chat through preview", async () => {
+  it("fills the real form without network or writes and preserves Chat in the preview request", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.providers.getSummary = vi.fn(async () => ({
@@ -2029,7 +2240,6 @@ describe("production API presets", () => {
     await user.click(
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
-    await confirmWriteDisclosure(user);
     await waitFor(() =>
       expect(
         ports.changePlans.createCodexProviderUpsertPlan,

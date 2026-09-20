@@ -1,0 +1,400 @@
+{
+  "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+  "coordinator": "01a0bf4c-7b39-7761-bbe9-f0072d4c6bbf",
+  "release_owner": "01a0bf06-73ca-7771-997f-903022f3410f",
+  "items": [
+    {
+      "id": "intake",
+      "executor": "native:/root/issue_gap_map",
+      "model": "gpt-5.6-luna",
+      "effort": "medium",
+      "allowed_paths": [
+        "research/issue-gap-map.md",
+        "research/issue-gap-map.json"
+      ],
+      "lifecycle": "completed",
+      "acceptance_status": "accepted as initial index; code-only closure labels require root adjudication"
+    },
+    {
+      "id": "secretref-35",
+      "issues": [
+        35
+      ],
+      "executor": "native:/root/secretref_35",
+      "model": "inherited parent; runtime not independently observed",
+      "cwd": "~/.codex/worktrees/fyagent-next-secretref/fyagent",
+      "branch": "codex/next-secretref-35",
+      "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+      "allowed_paths": [
+        "provider lifecycle and credential modules",
+        "focused tests",
+        "focused specs",
+        "own task artifacts"
+      ],
+      "lifecycle": "integrated; scoped root credential repair includes usage secret bundle and effective common-overlay target binding",
+      "acceptance_status": "pending new native compile/tests",
+      "commit": "19a366cedb720aea33c57ae5796aeb3c3e1f9a29",
+      "integration_commit": "ee301f66"
+    },
+    {
+      "id": "installer-27-29",
+      "issues": [
+        27,
+        29
+      ],
+      "executor": "native:/root/installer_27_29",
+      "cwd": "~/.codex/worktrees/fyagent-next-installer/fyagent",
+      "branch": "codex/next-installer-27-29",
+      "lifecycle": "Integrated desktop exact-size/download-cap space budget; writer stopped for installer files; native tests pending",
+      "acceptance_status": "root final native/renderer checks pending",
+      "commit": "d311a7d8b444fd8cbebed05eb8677e9a699a2415",
+      "integration_commit": "268815ba"
+    },
+    {
+      "id": "agent-entry-25-34",
+      "issues": [
+        25,
+        34
+      ],
+      "executor": "Antigravity desktop UI",
+      "model_observed": "Gemini 3.8 Flash High",
+      "project_id": "e7f72ebb-59ab-436f-98eb-d717ef0eb6b5",
+      "conversation_id": "69885734-0ed8-4d39-a333-da8b3b75d5b6",
+      "cwd": "~/.codex/worktrees/fyagent-next-agent-entry/fyagent",
+      "branch": "codex/next-agent-entry-25-34",
+      "allowed_paths": [
+        "agents catalog",
+        "FirstUseGuide",
+        "new source links component",
+        "focused tests/specs",
+        "native commands/agent_catalog.rs and typed catalog parser/fixtures (narrow official-link extension)"
+      ],
+      "excluded_paths": [
+        "AgentDirectory.tsx",
+        "nav",
+        "providers",
+        "database",
+        "proxy"
+      ],
+      "lifecycle": "Both implementation and regional-link follow-up completed; writer stopped in original tree",
+      "acceptance_status": "171 worker focused tests passed; parent wiring integrated; final native/browser checks pending",
+      "review_feedback": "Typed keep/replace/inspect handler; existing saved summary is distinct from installation eligibility; failed reads block replacement with retry/details; no duplicate URL authority.",
+      "commit": "3c1b4e29c00c232658c082b8eeaebb52a1acf3db",
+      "integration_commit": "2de30c8b",
+      "followup_commit": "09b784c1ccd0154efeffada3e2f5d077b069767f",
+      "followup_integration": "reviewed patch applied to root, pending integration commit"
+    },
+    {
+      "id": "about-70",
+      "issues": [
+        70
+      ],
+      "executor": "root integration after external failures; both old job worktrees clean",
+      "attempts": [
+        {
+          "job": "~/.codex/worktrees/fyagent-next-jobs/about-70-google",
+          "model": "google/gemini-3.5-flash",
+          "lifecycle": "failed",
+          "error": "401 ACCOUNT_STATE_INVALID; service account deleted or disabled",
+          "server_stopped": true
+        },
+        {
+          "job": "~/.codex/worktrees/fyagent-next-jobs/about-70-claude",
+          "model": "poe/anthropic/claude-opus-4.8",
+          "lifecycle": "failed",
+          "server_stopped": true,
+          "error": "unknown certificate verification error; no TLS bypass; no product change"
+        }
+      ],
+      "lifecycle": "committed; focused tests, typecheck, lint and renderer build passed",
+      "acceptance_status": "pending native integration readback; browser visual inspection in progress",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "branch": "codex/next-iteration-engineering-20260920",
+      "evidence": [
+        "77 focused tests passed; final shell state simplification repeated 4 tests passed",
+        "Final typecheck and lint passed",
+        "Renderer build passed: 9 routes; 665584 initial JS bytes within unchanged 665600 budget",
+        "GitHub project/release/licensing links read back live"
+      ],
+      "commit": "745b843b"
+    },
+    {
+      "id": "vendor-sources",
+      "executor": "native:/root/issue_gap_map",
+      "model": "gpt-5.6-luna",
+      "effort": "medium",
+      "lifecycle": "completed",
+      "acceptance_status": "accepted as official-source map; regional caveats retained",
+      "artifacts": [
+        "research/vendor-sources.md",
+        "research/vendor-sources.json"
+      ]
+    },
+    {
+      "id": "preview-56",
+      "issues": [
+        56
+      ],
+      "executor": "root integration",
+      "allowed_paths": [
+        "shared change-plans-ui",
+        "focused tests/specs"
+      ],
+      "lifecycle": "single save confirmation and native credential disclosure integrated",
+      "acceptance_status": "50 focused integration tests passed; final aggregate/browser pending",
+      "commit": "1300632b",
+      "integration_commits": [
+        "1300632b",
+        "9253946e",
+        "82750e30"
+      ]
+    },
+    {
+      "id": "config-pack-73",
+      "issues": [
+        73
+      ],
+      "executor": "native:/root/config_pack_73",
+      "cwd": "~/.codex/worktrees/fyagent-next-config-pack/fyagent",
+      "branch": "codex/next-config-pack-73",
+      "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+      "lifecycle": "integrated; writer stopped",
+      "acceptance_status": "production form fill connected; credential/options reset and same-endpoint fresh-key regression passed; final native/browser pending",
+      "scope": "Selected portable connection settings only; explicit preview, bounded import, no activation, no secrets or device paths. Native provider add_draft authority; coordinate SecretRef.",
+      "commit": "9d705c0e1b0bd831ebecff3ec5ebc50eb17eaf85",
+      "integration_commit": "73460cf7"
+    },
+    {
+      "id": "workbuddy-recovery-61",
+      "issues": [
+        61
+      ],
+      "executor": "root integration",
+      "allowed_paths": [
+        "services/workbuddy/config.rs",
+        "services/workbuddy/mod.rs",
+        "change_plan/service.rs WorkBuddy writer and focused regression tests",
+        "own specs/task"
+      ],
+      "lifecycle": "integrated; targeted tests passed in native suite",
+      "acceptance_status": "final aggregate and upstream integration pending",
+      "commit": "ed37bcac"
+    },
+    {
+      "id": "api-presets-40",
+      "issues": [
+        40
+      ],
+      "executor": "native:/root/config_pack_73",
+      "cwd": "~/.codex/worktrees/fyagent-next-api-presets/fyagent",
+      "branch": "codex/next-api-presets-40",
+      "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+      "lifecycle": "integrated; worker writer stopped",
+      "acceptance_status": "101 worker focused tests passed; root protocol/credential-retention tests passed; final native pending",
+      "scope": "production Quick Setup protocol and vendor presets, schema-preserving config-pack form fill dependency",
+      "commit": "cee53a92",
+      "integration_commit": "07519b37"
+    },
+    {
+      "id": "auth-reuse-42-43",
+      "issues": [
+        42,
+        43
+      ],
+      "executor": "native:/root/secretref_35",
+      "cwd": "~/.codex/worktrees/fyagent-next-auth-reuse/fyagent",
+      "branch": "codex/next-auth-reuse-42-43",
+      "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+      "lifecycle": "integrated; writer stopped",
+      "acceptance_status": "127 focused tests and 32 final affected tests passed by worker; root native/final checks pending",
+      "scope": "official Grok handoff, honest xAI account/provider admission, independent connection outcomes",
+      "commit": "216f30fc101550d48106376965a3f50f0b1a0d57",
+      "integration_commit": "94ab3244"
+    },
+    {
+      "id": "proxy-recovery-64",
+      "issues": [
+        64
+      ],
+      "executor": "native:/root/installer_27_29",
+      "cwd": "~/.codex/worktrees/fyagent-next-proxy-recovery/fyagent",
+      "branch": "codex/next-proxy-recovery-64",
+      "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+      "lifecycle": "review findings repaired, including root-discovered interruption gap; Cursor writer stopped",
+      "acceptance_status": "21 recovery and 2 atomic-finish focused tests passed; 42 parent-page tests passed; final combined checks pending",
+      "scope": "owned-file restoration, idempotent recovery, external-edit preservation; minimal shared config/recovery.rs guard authorized",
+      "commit": "fc01826906713bfb57e9c5acc14dc9d6e951be7b",
+      "integration_commit": "e18d9501"
+    },
+    {
+      "id": "demo-92",
+      "issues": [
+        92
+      ],
+      "executor": "native:/root/installer_27_29",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "allowed_paths": [
+        "config/playwright.demo.config.ts",
+        "tests/demo/current-flows.demo.ts",
+        "docs/fyagent/development/usage-demo.md",
+        "tests/browser/support/features.ts",
+        "tests/browser/agent-directory.spec.ts"
+      ],
+      "lifecycle": "capture implementation complete; debug capture verified; formal capture awaits stable renderer",
+      "acceptance_status": "debug only: 7 PNG, 2 WebM, 2 VTT; 12 hashes and full media/caption playback passed; not native/UAT evidence"
+    },
+    {
+      "id": "live-config-summary-47",
+      "issues": [
+        47
+      ],
+      "executor": "native:/root/config_pack_73 native projection; native:/root/installer_27_29 UI integration",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "allowed_paths": [
+        "commands/provider.rs and provider/live_summary.rs",
+        "shared provider public DTO/typed parser and focused tests",
+        "FirstUseGuide.tsx and AgentModelsSection.tsx",
+        "focused UI tests, browser fixtures, specs"
+      ],
+      "lifecycle": "Native and renderer integration complete; Cursor owns top-level Codex route repair",
+      "acceptance_status": "65 port/architecture and 29 UI tests passed; new native route regression pending",
+      "scope": "Read-only real target configuration with configured/not_configured/missing/unreadable; DB saved candidates never imply live state"
+    },
+    {
+      "id": "cli-disk-evidence",
+      "issues": [
+        27
+      ],
+      "executor": "native:/root/cli_disk_requirements",
+      "model": "gpt-5.6-luna",
+      "effort": "medium",
+      "allowed_paths": [
+        "research/cli-disk-evidence.md"
+      ],
+      "lifecycle": "completed",
+      "acceptance_status": "accepted as bounded source evidence; Jev decision saved and root selected frozen metadata approach"
+    },
+    {
+      "id": "cli-space-27",
+      "issues": [
+        27
+      ],
+      "executor": "Antigravity desktop UI",
+      "model_observed": "Gemini 3.8 Flash High",
+      "cwd": "~/.codex/worktrees/fyagent-next-cli-space/fyagent",
+      "branch": "codex/next-cli-space-27",
+      "baseline": "e0cb6f69",
+      "job_id": "69885734-0ed8-4d39-a333-da8b3b75d5b6",
+      "allowed_paths": [
+        "tooling and helper CLI preflight/installation",
+        "focused CLI tests and existing DTO/UI type extensions if required"
+      ],
+      "artifacts": [
+        "ANTIGRAVITY_CLI_TASK.md",
+        "ANTIGRAVITY_CLI_RESULT.md"
+      ],
+      "lifecycle": "running in observed Gemini 3.8 Flash High conversation; baseline native tests completed; implementation active",
+      "acceptance_status": "pending"
+    },
+    {
+      "id": "cursor-backend-35-47",
+      "issues": [
+        35,
+        47
+      ],
+      "executor": "Cursor desktop Debug mode",
+      "model_observed": "Cursor Grok 4.6 / High / Fast",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "branch": "codex/next-iteration-engineering-20260920",
+      "baseline": "07519b37 plus existing dirty changes",
+      "allowed_paths": [
+        "services/provider/usage.rs",
+        "services/provider/credentials.rs and credentials submodules",
+        "commands/provider/live_summary.rs and tests",
+        "spec/backend/provider-credentials.md",
+        "research/cursor-backend-result.md and focused logs"
+      ],
+      "artifacts": [
+        "research/cursor-backend-task.md",
+        "research/cursor-backend-result.md"
+      ],
+      "lifecycle": "completed; writer stopped confirmed in actual Cursor UI",
+      "acceptance_status": "source and regressions reviewed by GPT-6; final combined checks pending"
+    },
+    {
+      "id": "grok-recovery-review",
+      "issues": [
+        64
+      ],
+      "executor": "terminal Grok CLI",
+      "model_observed": "grok-4.6",
+      "product_version": "1.0.34 (3736acbc8658)",
+      "account_pool_observed": "grok.com login; no credential values read",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "job_id": "exec session 29208",
+      "allowed_paths": [],
+      "scope": "read-only bounded proxy restoration review; final output persisted by root",
+      "artifacts": [
+        "research/grok-recovery-review-task.md",
+        "research/grok-recovery-review.md"
+      ],
+      "lifecycle": "completed exit 0; read-only findings reviewed by root",
+      "acceptance_status": "three concrete findings accepted for targeted repair; no Issue closure"
+    },
+    {
+      "id": "cursor-recovery-64",
+      "issues": [
+        64
+      ],
+      "executor": "Cursor desktop",
+      "model_observed": "existing High Fast selection; exact model not independently re-read for second chat",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "branch": "codex/next-iteration-engineering-20260920",
+      "allowed_paths": [
+        "services/proxy.rs and legacy_recovery/managed_recovery/restore_preview/recovery_tests",
+        "database/dao/proxy.rs and narrow tests",
+        "backend/proxy-runtime.md",
+        "research/cursor-recovery-result.md and focused logs"
+      ],
+      "artifacts": [
+        "research/cursor-recovery-task.md",
+        "research/jev-recovery-decision.json"
+      ],
+      "lifecycle": "completed; writer stopped confirmed in actual Cursor UI",
+      "acceptance_status": "source and regressions reviewed by GPT-6; final combined checks pending"
+    }
+  ],
+  "entry_observations": [
+    {
+      "entry": "Antigravity agy models",
+      "result": "timeout; no inference runtime verified"
+    },
+    {
+      "entry": "OpenCode models google",
+      "result": [
+        "google/gemini-3.1-pro-preview",
+        "google/gemini-3.5-flash"
+      ]
+    },
+    {
+      "entry": "OpenCode models poe",
+      "result": [
+        "poe/anthropic/claude-opus-4.8",
+        "poe/google/gemini-3.5-flash"
+      ]
+    }
+  ],
+  "known_coordination": {
+    "release_main_after_193": "d07eaef982c7ede3a84c0dd4e14a67c7b34af826",
+    "upstream_grok_commit": "superseded; included in release PR194 final candidate c99889ab; wait for final main",
+    "upstream_kimi_tests_commit": "f24295dfd60eaefc960d1753c1683c4cd1b135a3",
+    "release_window": "released; root serializes integrated heavy checks",
+    "issue_owner": "root only; no Issue closed by this task yet",
+    "antigravity_review": "returned for targeted fixes: eligibility is not existing config, post-await hidden guard, native external links, no releaseId verification claim, actual preset reuse",
+    "release_pr194_head": "c99889abd2b7802ed160f9f8e2f5abc13c5c8ac8",
+    "cua_window": "released by release owner; root controls Antigravity",
+    "release_pr194_status": "merged; origin/main da91427e verified by release owner and fetched",
+    "native_agents": "config_pack_73, installer_27_29, integration_check all errored shared usage limit; writers stopped"
+  },
+  "upstream_final_main": "da91427e2e564499a4dcc4d20f2874105072123c"
+}

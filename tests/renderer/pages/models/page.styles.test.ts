@@ -15,7 +15,7 @@ const pageSource = readFileSync(
 describe("Models management layout", () => {
   it("keeps the management title above the application catalog", () => {
     expect(pageSource).toMatch(
-      /<header className="fy-models-page-heading">\s*<h1>模型管理<\/h1>\s*<\/header>\s*<CatalogMasterDetail>/,
+      /<header className="fy-models-page-heading">\s*<h1>模型管理<\/h1>\s*<ConfigPackButton\b[^>]*\/>\s*<\/header>\s*<CatalogMasterDetail>/,
     );
     expect(pageCss).toMatch(
       /\.fy-models-page-heading\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*margin-bottom:\s*14px;/s,

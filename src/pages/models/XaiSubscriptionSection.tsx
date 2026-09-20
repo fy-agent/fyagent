@@ -12,6 +12,7 @@ import type {
   BindOpenCodeManagedRequest,
   BindOpenCodeManagedResult,
   ModelWriteTarget,
+  ProviderAppId,
 } from "../../shared/features/models";
 import { useFeatures } from "../../shared/features/provider";
 import {
@@ -33,14 +34,18 @@ import { Dialog } from "../../shared/ui/Dialog";
 import { InlineNotice, Input, Spinner } from "../../shared/ui/primitives";
 import { FieldFeedback, ModelsSection, type Notice } from "./feedback";
 import { GroupedModelChips } from "./modelChips";
+import { ProviderSubscriptionRestore } from "./ProviderSubscriptionRestore";
 
 type Props = {
   active: boolean;
   disabled: boolean;
+  recoveryDisabled?: boolean;
   writeTargets: readonly ModelWriteTarget[];
   onBeginWrite: () => boolean;
+  onBeginRecovery?: () => boolean;
   onEndWrite: () => void;
   onUnconfirmed: () => void;
+  onRecoveryConfirmed?: (app: ProviderAppId) => void;
 } & (
   | { app: BindManagedProxyRequest["app"] }
   | { app: "opencode"; expectedRevision: string | null }
@@ -69,7 +74,7 @@ export function XaiSubscriptionSection(props: Props) {
   const [modelIds, setModelIds] = useState<string[]>([]);
   const [manualModel, setManualModel] = useState(false);
   const [pending, setPending] = useState<CliBindRequest | null>(null);
-  const [busy, setBusy] = useState<"fetch" | "bind" | null>(null);
+  const [busy, setBusy] = useState<"fetch" | "bind" | "restore" | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [saved, setSaved] = useState<
     BindManagedProxyResult | BindOpenCodeManagedResult | null
@@ -92,6 +97,10 @@ export function XaiSubscriptionSection(props: Props) {
   const selected = accounts.find((item) => item.accountId === accountId);
   const accountReady = !overview.isError && selected?.health === "ready";
   const locked = !props.active || props.disabled || busy !== null;
+  const recoveryLocked =
+    !props.active ||
+    (props.recoveryDisabled ?? props.disabled) ||
+    busy !== null;
   const canBind =
     accountReady && isXaiSubscriptionModelId(modelId.trim()) && !locked;
   const pendingAccountReady =
@@ -200,6 +209,11 @@ export function XaiSubscriptionSection(props: Props) {
           refetchType: "none",
         }),
       ]);
+      if (request.app !== "opencode") {
+        await queryClient.invalidateQueries({
+          queryKey: featureKeys.providerProxyRestorePreview(request.app),
+        });
+      }
       const readConfiguration = async () => {
         if (request.app === "opencode") {
           const snapshot = await queryClient.fetchQuery({
@@ -301,6 +315,31 @@ export function XaiSubscriptionSection(props: Props) {
         使用订阅时，请保持 FyAgent
         在后台运行；完全退出后会停止转发。账号是否支持调用及额度使用，以服务返回为准。
       </p>
+      {props.app !== "opencode" ? (
+        <ProviderSubscriptionRestore
+          app={props.app}
+          active={props.active}
+          disabled={recoveryLocked}
+          onBeginWrite={() => {
+            if (
+              lock.current ||
+              recoveryLocked ||
+              !(props.onBeginRecovery ?? props.onBeginWrite)()
+            )
+              return false;
+            lock.current = true;
+            setBusy("restore");
+            return true;
+          }}
+          onEndWrite={() => {
+            lock.current = false;
+            props.onEndWrite();
+            if (mounted.current) setBusy(null);
+          }}
+          onUnconfirmed={props.onUnconfirmed}
+          onRecoveryConfirmed={props.onRecoveryConfirmed}
+        />
+      ) : null}
       {overview.isPending ? <Spinner label="正在读取订阅账号" /> : null}
       {overview.isError ? (
         <InlineNotice tone="warning">

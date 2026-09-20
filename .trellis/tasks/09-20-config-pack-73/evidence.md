@@ -1,6 +1,6 @@
 # Delivery evidence — #73
 
-Worktree: `/Users/serendipity/.codex/worktrees/fyagent-next-config-pack/fyagent`
+Worktree: `~/.codex/worktrees/fyagent-next-config-pack/fyagent`
 Branch: `codex/next-config-pack-73`
 Base: `2c09c4be2c5f50b4060fd6f7a13a7be31c364c54`
 Parent: `09-20-next-iteration-engineering` in the root integration worktree.

@@ -1,0 +1,27 @@
+{
+  "query": "Map merged 17 open issues to code and executable gaps",
+  "scope": "internal",
+  "date": "2026-09-20",
+  "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+  "issues": [25,27,29,34,35,40,42,43,47,56,61,64,67,68,70,73,92],
+  "work_packages": [
+    {"id":"provider-secretref-migration","issues":[35],"owner":"#35 implementation owner","code_only_close":false},
+    {"id":"change-preview-gap-audit","issues":[47,56],"owner":"change-plan owner","code_only_close":false},
+    {"id":"writer-recovery-coverage","issues":[61],"owner":"native config writers + change-plan owner","code_only_close":false},
+    {"id":"multi-target-provider-apply","issues":[42],"owner":"provider live + change-plan owner","code_only_close":false},
+    {"id":"first-use-direct-entry","issues":[34],"owner":"frontend agents owner","code_only_close":false},
+    {"id":"install-preflight-summary","issues":[27],"owner":"agent directory + native readiness owner","code_only_close":false},
+    {"id":"install-identity-recovery","issues":[29],"owner":"native installer owner","code_only_close":false},
+    {"id":"provider-preset-matrix","issues":[40],"owner":"provider configuration owners","code_only_close":false},
+    {"id":"official-auth-matrix","issues":[43],"owner":"managed-auth owner","code_only_close":false},
+    {"id":"proxy-takeover-recovery","issues":[64],"owner":"proxy runtime owner","code_only_close":false},
+    {"id":"catalog-provenance-ui","issues":[25],"owner":"frontend catalog owner","code_only_close":true},
+    {"id":"about-support-surface","issues":[70],"owner":"shell/frontend owner","code_only_close":true},
+    {"id":"workspace-pack-import","issues":[73],"owner":"serialization + change-plan owner","code_only_close":false},
+    {"id":"release-ownership-runbook","issues":[67],"owner":"release maintainer","code_only_close":false},
+    {"id":"windows-signing-physical-evidence","issues":[68],"owner":"release workflow owner","code_only_close":false},
+    {"id":"demo-assets-0.4.6","issues":[92],"owner":"docs/content owner","code_only_close":false}
+  ],
+  "maximum_blocker": "External evidence and ownership: #67 named release owner/certificate recovery, #68 signed x64/arm64 clean-Windows evidence, and #92 human-created current demo assets are absent from code and cannot be closed by static or fixture checks.",
+  "caveats": ["#35 intentionally interface/dependency-only", "No external web research", "Fixture/static evidence is not service readback, UAT, release, or production evidence"]
+}

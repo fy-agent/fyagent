@@ -662,11 +662,36 @@ fn apply_common_config_to_settings(
     }
 }
 
+/// Pure Codex projection shared by credential admission and its native
+/// consumers. Callers pass one snippet snapshot; no secret is resolved here.
+pub(crate) fn build_codex_credential_projection(
+    provider: &Provider,
+    snippet: Option<&str>,
+) -> Result<Provider, AppError> {
+    let mut projected = provider.clone();
+    if provider_uses_common_config(&AppType::Codex, provider, snippet) {
+        if let Some(snippet) = snippet {
+            projected.settings_config = apply_common_config_to_settings(
+                &AppType::Codex,
+                &provider.settings_config,
+                snippet,
+            )?;
+        }
+    }
+    Ok(projected)
+}
+
 pub(crate) fn build_effective_settings_with_common_config(
     db: &Database,
     app_type: &AppType,
     provider: &Provider,
 ) -> Result<Value, AppError> {
+    if *app_type == AppType::Codex {
+        // The credential owner validates and materializes the same effective
+        // snapshot. Applying another snippet afterwards could redirect a key
+        // after its destination had already been checked.
+        return Ok(super::ProviderCredentials::resolve(db, "codex", provider)?.settings_config);
+    }
     let snippet = db.get_config_snippet(app_type.as_str())?;
     let resolved = super::ProviderCredentials::resolve(db, app_type.as_str(), provider)?;
     let mut effective_settings = resolved.settings_config;
