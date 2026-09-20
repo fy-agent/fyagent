@@ -231,6 +231,7 @@ export interface McpPort {
 }
 
 export interface SettingsPort {
+  getAppVersion(): Promise<string>;
   get(): Promise<FeatureSettings>;
   save(settings: FeatureSettings): Promise<boolean>;
   getFirstUseGuideState(): Promise<FirstUseGuideState>;

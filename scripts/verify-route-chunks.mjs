@@ -20,12 +20,17 @@ export const RENDERER_ROUTE_ENTRIES = Object.freeze([
 // These capability adapters are loaded only when their port is first used.
 // Keep the list explicit: additional lazy entries still require review.
 export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
+  "shared/platform/tauri/feature-ports/application.ts",
   "shared/platform/tauri/feature-ports/health.ts",
   "shared/platform/tauri/feature-ports/projects.ts",
   "shared/platform/tauri/feature-ports/delivery-kits.ts",
   "shared/platform/tauri/feature-ports/verification.ts",
   "shared/platform/tauri/feature-ports/models.ts",
   "shared/platform/tauri/feature-ports/configRecovery.ts",
+]);
+
+export const RENDERER_DEFERRED_SHELL_ENTRIES = Object.freeze([
+  "widgets/app-shell/AboutDialog.tsx",
 ]);
 
 export const RENDERER_NESTED_SUBSCRIPTION_PORT = Object.freeze({
@@ -101,6 +106,7 @@ export async function verifyRouteChunks({
   for (const key of [
     ...RENDERER_ROUTE_ENTRIES,
     ...RENDERER_DEFERRED_PORT_ENTRIES,
+    ...RENDERER_DEFERRED_SHELL_ENTRIES,
   ]) {
     if (initialKeys.has(key)) {
       throw new Error(
@@ -114,13 +120,14 @@ export async function verifyRouteChunks({
   const expectedDynamicEntries = [
     ...RENDERER_ROUTE_ENTRIES,
     ...RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
+    ...RENDERER_DEFERRED_SHELL_ENTRIES,
   ];
   if (
     dynamicEntries.size !== expectedDynamicEntries.length ||
     expectedDynamicEntries.some((key) => !dynamicEntries.has(key))
   ) {
     throw new Error(
-      `Renderer bootstrap must dynamically import exactly ${RENDERER_ROUTE_ENTRIES.length} product pages and ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports`,
+      `Renderer bootstrap must dynamically import exactly ${RENDERER_ROUTE_ENTRIES.length} product pages, ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports and ${RENDERER_DEFERRED_SHELL_ENTRIES.length} shell dialogs`,
     );
   }
 
@@ -175,6 +182,19 @@ export async function verifyRouteChunks({
       );
     }
     deferredPortChunks.push({ key, file: record.file, bytes });
+  }
+
+  for (const key of RENDERER_DEFERRED_SHELL_ENTRIES) {
+    const record = assertManifestRecord(manifest, key);
+    if (record.isDynamicEntry !== true || !record.file.endsWith(".js")) {
+      throw new Error(`Renderer shell dialog is not a dynamic entry: ${key}`);
+    }
+    const bytes = await assetSize(distributionDirectory, record.file);
+    if (bytes > budget.routeChunkBytes) {
+      throw new Error(
+        `Renderer shell dialog exceeds ${budget.routeChunkBytes} bytes: ${key} (${bytes})`,
+      );
+    }
   }
 
   let initialJavaScriptBytes = 0;

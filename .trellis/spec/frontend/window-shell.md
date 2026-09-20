@@ -45,10 +45,20 @@ useFrontendReady(ready?: boolean): void
 `PrimaryBlockerProvider`, one `SideNavigation`, and one `ContentViewport`.
 Only `TopBar.tsx` may declare `data-tauri-drag-region` in Renderer production code.
 
-The chrome row contains the brand and one trailing `ThemeToggle` outside the
-native drag strip. It is the first keyboard action in shell document order;
-the existing navigation follows unchanged. [Appearance](./appearance.md) owns
+The chrome row contains the brand, `ThemeToggle` and a trailing About action
+outside the native drag strip. ThemeToggle remains the first keyboard action
+in shell document order; the existing navigation follows unchanged. [Appearance](./appearance.md) owns
 the paired palettes, preference and radial transition.
+
+The About dialog is lazy-loaded on explicit opening and uses the shared Dialog
+focus/Escape lifecycle and external opener. `SettingsPort.getAppVersion()` reads
+the running Tauri package version through the deferred application adapter;
+there is no duplicated version literal or automatic remote update request.
+Browser preview has no native package version and reports the read as unavailable.
+Version errors use bounded copy with read-only retry. Release, feedback and legal
+links reuse the official project repository; release details stay collapsed until
+requested. Both the About dialog and application port remain outside bootstrap's
+static graph under the existing size budgets.
 
 Shared selection/motion APIs are:
 

@@ -224,6 +224,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       openOpenClawDirectory: rejectNativeOnly,
     },
     settings: {
+      getAppVersion: rejectNativeOnly,
       get: async () => ({}),
       save: rejectNativeOnly,
       getFirstUseGuideState: async () => "dismissed",

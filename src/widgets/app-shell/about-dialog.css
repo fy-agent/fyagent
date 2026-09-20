@@ -1,0 +1,41 @@
+.fy-about-content {
+  display: grid;
+  gap: 20px;
+}
+
+.fy-about-version,
+.fy-about-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.fy-about-version > span {
+  color: var(--text-muted);
+}
+
+.fy-about-version > strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.fy-about-details {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.fy-about-details > summary {
+  cursor: pointer;
+}
+
+.fy-about-details > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.fy-about-details > p {
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-block: 12px;
+}
