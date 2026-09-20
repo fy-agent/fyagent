@@ -16,6 +16,11 @@ describe("Codex install confirmation", () => {
       { ...checked, confirmationId: "/Applications/Codex.app" },
       { ...checked, targetLabel: "bad\nlabel" },
       { ...checked, availableBytes: 0 },
+      {
+        ...checked,
+        downloadUrl: "https://user:secret@example.test/Codex.msix",
+      },
+      { ...checked, downloadUrl: "file:///tmp/Codex.msix" },
       { ...checked, bypass: true },
     ])
       expect(() => parseCodexInstallPreflight(invalid, release)).toThrow();

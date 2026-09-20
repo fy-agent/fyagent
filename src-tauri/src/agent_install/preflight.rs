@@ -22,6 +22,7 @@ pub struct AgentInstallPreflightDto {
     pub platform: String,
     pub architecture: String,
     pub version_or_channel: String,
+    pub download_url: Option<String>,
     pub target_label: String,
     pub available_bytes: u64,
     pub runtime: InstallRuntime,
@@ -99,7 +100,7 @@ async fn inspect_preflight(
     let target = super::inventory::validate_action_target(&request, state).await?;
     let (platform, architecture) =
         super::sources::current_host_target().ok_or(AgentReasonCode::PlatformUnsupported)?;
-    let (version_or_channel, runtime) = match surface {
+    let (version_or_channel, runtime, download_url) = match surface {
         AgentSurface::Desktop => {
             let source = super::desktop::resolve_desktop_source(request.agent_id)
                 .await
@@ -112,11 +113,13 @@ async fn inspect_preflight(
                     .display_version
                     .unwrap_or_else(|| "官方最新渠道".to_string()),
                 InstallRuntime::NativeInstaller,
+                Some(source.download_url.to_string()),
             )
         }
         AgentSurface::Cli => (
             "官方渠道（保留当前安装方式）".to_string(),
             InstallRuntime::NodeNpm,
+            None,
         ),
     };
     let agent_id = request.agent_id;
@@ -155,6 +158,7 @@ async fn inspect_preflight(
             platform: platform.as_str().to_string(),
             architecture: architecture.as_str().to_string(),
             version_or_channel,
+            download_url,
             target_label,
             available_bytes,
             runtime,

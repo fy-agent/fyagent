@@ -12,6 +12,7 @@ export function codexInstallPreflightFixture(
     platform: "windows",
     architecture: "x86_64",
     displayVersion: "1.2.3.4",
+    downloadUrl: "https://codexapp.agentsmirror.com/latest/win-x64",
     targetLabel: "当前桌面用户的 Windows 应用目录（由系统管理）",
     updating: false,
     availableBytes: 10 * 1024 ** 3,

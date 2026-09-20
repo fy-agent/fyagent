@@ -96,6 +96,13 @@ describe("Tauri Agent install readiness port", () => {
     ).rejects.toThrow();
     invoke.mockResolvedValueOnce({
       ...checked,
+      downloadUrl: "javascript:alert(1)",
+    });
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).rejects.toThrow();
+    invoke.mockResolvedValueOnce({
+      ...checked,
       installerPath: "/tmp/untrusted",
     });
     await expect(

@@ -92,7 +92,10 @@ install scope, or validation-bypass switch.
 `codex_desktop_prepare_install` accepts only `expectedReleaseId` and returns a
 v1 summary with a five-minute opaque `confirmationId`, the same release ID,
 platform/architecture, display version, redacted target, install/update kind,
-available bytes and optional size hint. It uses existing platform preflight,
+available bytes, optional size hint and the actual closed download endpoint URL.
+The source disclosure shows that endpoint verbatim (including the configured
+mirror); it does not relabel it as the official homepage or imply artifact
+verification before download. It uses existing platform preflight,
 temporary-directory ownership and disk probes; it does not create an install job
 or download the package. `codex_desktop_start_install` now requires both IDs and
 consumes the confirmation once. Local installation identity and the chosen root

@@ -68,6 +68,13 @@ export function AgentInstallConfirmation({
             {(checked.availableBytes / 1024 ** 3).toFixed(1)}{" "}
             GB。来源未提供安装大小，实际空间需求由安装过程确认。
           </p>
+          {checked.downloadUrl ? (
+            <details>
+              <summary>查看本次安装包来源</summary>
+              <p className="fy-install-source-url">{checked.downloadUrl}</p>
+              <p>这是本次所选系统和架构的下载入口；安装时仍会检查下载内容。</p>
+            </details>
+          ) : null}
           {checked.execution === "system_authorization" ? (
             <InlineNotice tone="warning">
               安装时需要管理员授权。拒绝授权会停止本次安装。

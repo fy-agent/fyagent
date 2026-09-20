@@ -573,6 +573,12 @@
   background: var(--fy-surface-raised);
 }
 
+.fy-install-source-url {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
 .fy-agent-install-readiness-summary,
 .fy-agent-install-readiness-note {
   margin: 0;

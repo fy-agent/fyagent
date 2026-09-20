@@ -1,4 +1,5 @@
 import { AGENT_CATALOG_IDS, type AgentCatalogId } from "./directory";
+import { isDownloadSourceUrl } from "../../domain/installation-source";
 
 export const AGENT_INSTALL_READINESS_CONTRACT_VERSION = 5 as const;
 export const AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION = 1 as const;
@@ -370,6 +371,7 @@ export interface AgentInstallPreflight {
   platform: "macos" | "windows";
   architecture: "aarch64" | "x86_64";
   versionOrChannel: string;
+  downloadUrl: string | null;
   targetLabel: string;
   availableBytes: number;
   runtime: "native_installer" | "node_npm" | "existing_cli";
@@ -388,6 +390,7 @@ export function parseAgentInstallPreflight(
       "platform",
       "architecture",
       "versionOrChannel",
+      "downloadUrl",
       "targetLabel",
       "availableBytes",
       "runtime",
@@ -411,6 +414,7 @@ export function parseAgentInstallPreflight(
     typeof value.versionOrChannel !== "string" ||
     !value.versionOrChannel.trim() ||
     value.versionOrChannel.length > 160 ||
+    (value.downloadUrl !== null && !isDownloadSourceUrl(value.downloadUrl)) ||
     typeof value.targetLabel !== "string" ||
     !value.targetLabel.trim() ||
     value.targetLabel.length > 512 ||

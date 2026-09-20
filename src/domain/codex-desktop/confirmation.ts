@@ -2,6 +2,7 @@ import {
   assertExpectedReleaseId,
   CODEX_DESKTOP_PAYLOAD_ERROR,
 } from "./parsers";
+import { isDownloadSourceUrl } from "../installation-source";
 
 export interface CodexInstallPreflight {
   contractVersion: 1;
@@ -10,6 +11,7 @@ export interface CodexInstallPreflight {
   platform: "macos" | "windows";
   architecture: "aarch64" | "x86_64";
   displayVersion: string;
+  downloadUrl: string;
   targetLabel: string;
   updating: boolean;
   availableBytes: number;
@@ -36,6 +38,7 @@ export function parseCodexInstallPreflight(
     "platform",
     "architecture",
     "displayVersion",
+    "downloadUrl",
     "targetLabel",
     "updating",
     "availableBytes",
@@ -59,6 +62,7 @@ export function parseCodexInstallPreflight(
     !["macos", "windows"].includes(String(record.platform)) ||
     !["aarch64", "x86_64"].includes(String(record.architecture)) ||
     !label(record.displayVersion) ||
+    !isDownloadSourceUrl(record.downloadUrl) ||
     !label(record.targetLabel) ||
     typeof record.updating !== "boolean" ||
     !size(record.availableBytes) ||

@@ -183,10 +183,14 @@ Source and identity failure must remain evidence-strength preserving:
   space on the temporary and target volumes. Metadata resolution is permitted;
   package download, npm install and helper mutation are not.
 - The v1 summary contains the exact request, platform, architecture,
-  `versionOrChannel`, redacted `targetLabel`, `availableBytes`, closed `runtime`
+  `versionOrChannel`, native-resolved `downloadUrl` (null for CLI operations),
+  redacted `targetLabel`, `availableBytes`, closed `runtime`
   (`native_installer|node_npm|existing_cli`) and `execution`
   (`current_user|system_authorization|vendor_wizard`). Missing package size is
   explicitly unknown; positive free space does not prove sufficient capacity.
+  The URL is display metadata from the existing platform/architecture resolver;
+  execution never accepts it back, and its presence does not prove the downloaded
+  artifact has already passed validation.
 - Inventory owns one prepared native target per existing short-lived snapshot.
   Execution repeats the necessary checks and consumes the exact request/path/
   runtime/identity-scope binding once. A changed target requires a new preflight;
@@ -239,33 +243,33 @@ Source and identity failure must remain evidence-strength preserving:
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                                 | Required result                                                                                                                                                             |
-| --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unknown Agent/action/surface or excess request field                                                      | Reject; no job.                                                                                                                                                             |
-| Product/surface is illegal                                                                                | `surface_not_supported`; no source or side effect.                                                                                                                          |
-| Product action is disabled                                                                                | `action_not_supported` before target/network/write.                                                                                                                         |
-| Renderer supplies URL/path/command/token/hash/package/signer/bypass                                       | Reject; no job.                                                                                                                                                             |
-| Target triplet is partial or malformed                                                                    | `refresh_required`; no side effect.                                                                                                                                         |
-| Inventory expired or selected identity/revision/scope changed                                             | Closed inventory/target error; no launch/write.                                                                                                                             |
-| Multiple candidates and no selected target                                                                | `target_selection_required`; never choose first.                                                                                                                            |
-| Managed desktop update is disabled/up-to-date/non-single/ineligible                                       | Omit `update`; refuse the job.                                                                                                                                              |
-| Codex install/update uses Agent action                                                                    | `managed_by_codex_desktop`; Agent slot stays free.                                                                                                                          |
-| Source host/schema/redirect/port/body grammar fails                                                       | `source_not_verified`/official-page fallback; no stale pin.                                                                                                                 |
-| Fetch is cancelled                                                                                        | `cancelled`; do not remap to source failure.                                                                                                                                |
-| Selected macOS system target while helper gate is closed                                                  | `authorization_required`; zero write/fallback.                                                                                                                              |
-| App is running or staging permission denied                                                               | Closed running/permission error; preserve original target.                                                                                                                  |
-| macOS post-install identity/path/scope/version check fails                                                | Restore/reverify; `rollback_restored` or `recovery_required`.                                                                                                               |
-| Windows inventory view is incomplete                                                                      | `unknown` + native projection reason; no fresh destination.                                                                                                                 |
-| Windows EXE product/signer/trust/arch/helper/pipe binding fails                                           | Fail before installer launch.                                                                                                                                               |
-| User cancels Windows UAC/vendor launch                                                                    | Cancelled/installer-user-cancelled result.                                                                                                                                  |
-| Windows official EXE ShellExecute succeeds                                                                | Job succeeded as handoff; do not claim installed proof.                                                                                                                     |
-| Focused source/identity owner emits one complete trusted candidate                                         | Lifecycle may normalize it and expose only policy-legal actions.                                                                                                            |
-| Source/identity evidence is absent, conflicting, stale or incomplete                                       | Preserve unknown/not-installed distinction; do not synthesize a candidate or action.                                                                                        |
-| Source/desktop identity owner cannot produce an admitted release or installed identity                    | Preserve its fail-closed reason; do not create or advance a lifecycle job.                                                                                                  |
-| Claude/Grok source owner cannot produce an exact current-platform npm plan                                | No package action; never substitute a tag, fixture, foreign platform package or stale manifest.                                                                             |
-| CLI execution exits but owner/version verification is not satisfied                                      | Terminal verification failure; do not report Agent `succeeded`.                                                                                                            |
-| Cancel after `launching_installer`/`installing`                                                           | `operation_conflict`; do not kill external/commit operation.                                                                                                                |
-| Secret/path/raw native identity reaches DTO/log/DOM                                                       | Security regression.                                                                                                                                                        |
+| Condition                                                                              | Required result                                                                                 |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Unknown Agent/action/surface or excess request field                                   | Reject; no job.                                                                                 |
+| Product/surface is illegal                                                             | `surface_not_supported`; no source or side effect.                                              |
+| Product action is disabled                                                             | `action_not_supported` before target/network/write.                                             |
+| Renderer supplies URL/path/command/token/hash/package/signer/bypass                    | Reject; no job.                                                                                 |
+| Target triplet is partial or malformed                                                 | `refresh_required`; no side effect.                                                             |
+| Inventory expired or selected identity/revision/scope changed                          | Closed inventory/target error; no launch/write.                                                 |
+| Multiple candidates and no selected target                                             | `target_selection_required`; never choose first.                                                |
+| Managed desktop update is disabled/up-to-date/non-single/ineligible                    | Omit `update`; refuse the job.                                                                  |
+| Codex install/update uses Agent action                                                 | `managed_by_codex_desktop`; Agent slot stays free.                                              |
+| Source host/schema/redirect/port/body grammar fails                                    | `source_not_verified`/official-page fallback; no stale pin.                                     |
+| Fetch is cancelled                                                                     | `cancelled`; do not remap to source failure.                                                    |
+| Selected macOS system target while helper gate is closed                               | `authorization_required`; zero write/fallback.                                                  |
+| App is running or staging permission denied                                            | Closed running/permission error; preserve original target.                                      |
+| macOS post-install identity/path/scope/version check fails                             | Restore/reverify; `rollback_restored` or `recovery_required`.                                   |
+| Windows inventory view is incomplete                                                   | `unknown` + native projection reason; no fresh destination.                                     |
+| Windows EXE product/signer/trust/arch/helper/pipe binding fails                        | Fail before installer launch.                                                                   |
+| User cancels Windows UAC/vendor launch                                                 | Cancelled/installer-user-cancelled result.                                                      |
+| Windows official EXE ShellExecute succeeds                                             | Job succeeded as handoff; do not claim installed proof.                                         |
+| Focused source/identity owner emits one complete trusted candidate                     | Lifecycle may normalize it and expose only policy-legal actions.                                |
+| Source/identity evidence is absent, conflicting, stale or incomplete                   | Preserve unknown/not-installed distinction; do not synthesize a candidate or action.            |
+| Source/desktop identity owner cannot produce an admitted release or installed identity | Preserve its fail-closed reason; do not create or advance a lifecycle job.                      |
+| Claude/Grok source owner cannot produce an exact current-platform npm plan             | No package action; never substitute a tag, fixture, foreign platform package or stale manifest. |
+| CLI execution exits but owner/version verification is not satisfied                    | Terminal verification failure; do not report Agent `succeeded`.                                 |
+| Cancel after `launching_installer`/`installing`                                        | `operation_conflict`; do not kill external/commit operation.                                    |
+| Secret/path/raw native identity reaches DTO/log/DOM                                    | Security regression.                                                                            |
 
 ## 5. Good / Base / Bad Cases
 
@@ -365,15 +369,15 @@ await ports.agentInstallReadiness.startAction({
 Wrong:
 
 ```ts
-surfacesForAgent("claude-code") === ["desktop"]
-sourceKind === "managed_desktop"
+surfacesForAgent("claude-code") === ["desktop"];
+sourceKind === "managed_desktop";
 ```
 
 Correct:
 
 ```ts
-surfacesForAgent("claude-code") === ["cli"]
-sourceKind === "cli_tooling"
+surfacesForAgent("claude-code") === ["cli"];
+sourceKind === "cli_tooling";
 ```
 
 Wrong:

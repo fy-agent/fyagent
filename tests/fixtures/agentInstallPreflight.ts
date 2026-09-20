@@ -12,6 +12,8 @@ export function installPreflightFixture(
     platform: "macos",
     architecture: "aarch64",
     versionOrChannel: "1.2.3",
+    downloadUrl:
+      "https://static.qoder.com.cn/qoder-work-cn/releases/latest/QoderWorkCN-arm64.dmg",
     targetLabel: "~/Applications",
     availableBytes: 10 * 1024 ** 3,
     runtime: "native_installer",

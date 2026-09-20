@@ -59,6 +59,11 @@ export function CodexInstallConfirmation({
               ? `下载约 ${(checked.downloadSizeHint / 1024 ** 2).toFixed(0)} MB；已检查安装所需的预留空间。`
               : "来源未提供安装大小，实际空间需求由安装过程确认。"}
           </p>
+          <details>
+            <summary>查看本次安装包来源</summary>
+            <p className="fy-install-source-url">{checked.downloadUrl}</p>
+            <p>这是本次所选系统和架构的下载入口；安装时仍会检查下载内容。</p>
+          </details>
         </div>
       ) : null}
     </Dialog>
