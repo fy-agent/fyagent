@@ -96,3 +96,13 @@ and confirmation; navigation never sends a request or applies a repair.
 These browser fixtures prove renderer behavior, not native file read-only
 behavior, real account availability, Windows UAT or release acceptance. Native
 collector tests and runtime evidence belong to the backend owner.
+
+## Configuration reliability explanations
+
+Health v1 admits closed configuration_source_drifted, configuration_endpoint_drifted,
+configuration_model_drifted, configuration_credential_drifted and
+configuration_profile_unknown reasons. Their copy explains the category without
+raw diff values, and explicitly preserves live configuration. Unrecognized Grok
+profile/schema stays unknown; it is not interpreted as a corrupt file, native
+login, or supported builtin model. These additions ship native/parser/presentation
+together. The existing configuration action navigates only; it never reconciles.

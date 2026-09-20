@@ -31,6 +31,7 @@ The primary registry is a closed literal union:
 ```ts
 type NavigationItem = {
   id:
+    | "projects"
     | "agents"
     | "health"
     | "auth"
@@ -40,6 +41,7 @@ type NavigationItem = {
     | "prompts"
     | "memory";
   path:
+    | "/projects"
     | "/agents"
     | "/health"
     | "/auth"
@@ -106,12 +108,14 @@ arbitrary return URL, serialized history entry, or free-form navigation state.
   labels, grouping, and collapsibility. `navigationItems` is derived from it;
   the router and sidebar do not maintain separate route arrays.
 - The root index and unknown production paths redirect with replacement to
-  `/agents`. The eight primary paths remain hash-router paths so browser and
+  `/agents`. The nine primary paths remain hash-router paths so browser and
   Tauri startup share one routing model.
 - `__dev/ui-lab` exists only when `import.meta.env.DEV` is true. It must not
   enter production navigation, production bundles as an eager route, or
   release acceptance as an end-user surface.
-- Every primary page has one literal dynamic import in `primaryPages.tsx`.
+- Every primary route has one literal dynamic import in `primaryPages.tsx`.
+  Projects loads `app/ProjectsWorkspace.tsx`, whose composition joins the project
+  page with its delivery-kit and verification panels in one deferred route.
   Literal loaders are required for reviewable chunk ownership and architecture
   tests; do not replace them with a computed import path or page-side registry.
 - `prefetchPrimaryRoutes` warms those same cached loaders. Prefetch must not
@@ -165,7 +169,7 @@ without a matching intent use neutral presentation; see
 - `SideNavigation` renders semantic links from the registry and derives active
   state from the router. Exactly one primary link is `aria-current="page"` for
   a valid primary path.
-- The AI software group exposes `/agents`, `/health` and `/auth` as direct controls. Health accepts a closed Agent selection and retains its own visited state; see [Agent Health](./health.md). The configuration group is the only collapsible primary group. Collapsing it
+- The AI software group exposes `/projects`, `/agents`, `/health` and `/auth` as direct controls. Health accepts a closed Agent selection and retains its own visited state; see [Agent Health](./health.md). The configuration group is the only collapsible primary group. Collapsing it
   may retain a visually active group trigger, but must not leave hidden child
   links keyboard-focusable or produce a second current page.
 - Arrow Up/Down wrap through currently available navigation controls; Home and
@@ -219,7 +223,7 @@ without a matching intent use neutral presentation; see
   mounts and no feature query starts until the route is visited.
 - Base: an unknown hash route redirects to `/agents` with exactly one current
   sidebar link.
-- Bad: derive imports from arbitrary route strings, render all eight pages at
+- Bad: derive imports from arbitrary route strings, render all nine pages at
   startup, let a hidden page call the live `setSearchParams`, put a full return
   URL in query state, or leave collapsed child links focusable.
 

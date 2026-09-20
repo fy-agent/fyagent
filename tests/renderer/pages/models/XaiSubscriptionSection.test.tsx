@@ -69,7 +69,14 @@ function configuredPorts() {
     alreadyBound: false,
   }));
   ports.opencodeModels.getSnapshot = vi.fn(async () => ({
-    providers: [{ id: providerId, name: "OpenCode subscription", modelIds }],
+    providers: [
+      {
+        id: providerId,
+        name: "OpenCode subscription",
+        modelIds,
+        editable: true,
+      },
+    ],
     selectedModel: `${providerId}/${modelIds[1]}`,
     revision: "revision-after",
     path: "~/.config/opencode/opencode.json",

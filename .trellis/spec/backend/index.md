@@ -25,6 +25,8 @@ error matrices, tests, paths, and security rules belong in the linked owner.
 
 ## Core architecture and repository infrastructure
 
+Delivery kits: [Delivery Kit Native Contract](./delivery-kits.md) owns text package validation, immutable library, native pickers and synthetic weekly-report checks.
+
 Security-alert triage and independent scan evidence are owned by
 [Security Review](./security-review.md), including dependency reachability,
 secret handling, native source checks, and residual-risk reporting.
@@ -56,6 +58,9 @@ settings persistence, narrow commands and protection against stale settings save
 
 [Agent Health Observation](./health.md) owns the on-demand local status
 snapshot and its read-only installation/configuration/auth/proxy evidence.
+
+[Project Verification and Handoff](./project-verification.md) owns scoped durable
+evidence, validity, manual acceptance and redacted handoff through native readers.
 
 [Reversible User Configuration](./reversible-user-config.md) owns the default
 backup/atomic-write/undo mechanism, closed recovery commands and disclosure

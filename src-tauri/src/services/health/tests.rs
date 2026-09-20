@@ -125,6 +125,7 @@ fn connection(
         provider: Some(provider),
         account_id: None,
         auth_status: ManagedAuthConnectionState::Connected,
+        unmanaged_native_session: false,
         credential_manager: ManagedAuthCredentialManager::Fyagent,
         request_mode: if consumer == ManagedAuthConsumer::Opencode {
             ManagedAuthRequestMode::ProviderConnections
@@ -196,6 +197,129 @@ fn health_external_auth_and_unavailable_observation_never_claim_logged_out() {
     overview.reason_codes = vec![ManagedAuthReasonCode::ObserverUnavailable];
     let checks = auth_checks(AgentCatalogId::Codex, &overview, Some(&facts), AT);
     assert_eq!(find(&checks, Id::Auth).state, State::Unknown);
+}
+
+#[test]
+fn health_unmanaged_codex_native_session_remains_unknown() {
+    use crate::services::managed_auth::{consumers::codex, ManagedAuthConnectionState};
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    let home = tempfile::tempdir().unwrap();
+    let config = "model = 'fixture-model'\n";
+    let payload = URL_SAFE_NO_PAD.encode(
+        json!({"chatgpt_account_id":"fixture-native-account", "email":"fixture@example.test"})
+            .to_string(),
+    );
+    let token = format!("e30.{payload}.fixture-signature");
+    let auth = json!({
+        "OPENAI_API_KEY": null,
+        "auth_mode": "chatgpt",
+        "tokens": {
+            "id_token": token,
+            "access_token": token,
+            "refresh_token": "fixture-refresh-canary",
+            "account_id": "fixture-native-account"
+        }
+    });
+    let auth_bytes = serde_json::to_vec(&auth).unwrap();
+    std::fs::write(home.path().join("config.toml"), config).unwrap();
+    std::fs::write(home.path().join("auth.json"), &auth_bytes).unwrap();
+    let observed = codex::observe_codex_home(home.path());
+    assert!(matches!(
+        observed.auth_state,
+        codex::CodexNativeAuthState::ChatGptKnown { .. }
+    ));
+    // Empty account/connection inputs model a device with no managed-auth rows.
+    let summary = codex::connection_summary(&observed, None, None, &[], AT.into());
+    assert_eq!(
+        summary.auth_status,
+        ManagedAuthConnectionState::Disconnected
+    );
+    assert!(summary.account_id.is_none());
+    let wire = serde_json::to_string(&summary).unwrap();
+    for private in [
+        &token,
+        "fixture-refresh-canary",
+        "fixture-native-account",
+        "fixture@example.test",
+        "unmanagedNativeSession",
+        "unmanaged_native_session",
+    ] {
+        assert!(!wire.contains(private));
+    }
+    let mut overview = ManagedAuthOverview::unavailable();
+    overview.reason_codes.clear();
+    overview.connections = vec![summary];
+    let facts = configuration::routing(
+        &crate::AppType::Codex,
+        &json!({"config": config, "auth": auth}),
+    )
+    .unwrap();
+    let checks = auth_checks(AgentCatalogId::Codex, &overview, Some(&facts), AT);
+    assert_eq!(find(&checks, Id::Auth).state, State::Unknown);
+    assert_eq!(find(&checks, Id::Auth).reason_code, Reason::AuthUnknown);
+    assert_eq!(find(&checks, Id::Secret).state, State::Unknown);
+    assert_eq!(
+        find(&checks, Id::Secret).reason_code,
+        Reason::CredentialUnknown
+    );
+    assert!(!checks.iter().any(|check| check.id == Id::Drift));
+    assert_eq!(
+        std::fs::read(home.path().join("auth.json")).unwrap(),
+        auth_bytes
+    );
+    assert_eq!(
+        std::fs::read_to_string(home.path().join("config.toml")).unwrap(),
+        config
+    );
+}
+
+#[test]
+fn health_codex_missing_auth_and_managed_disconnect_remain_logged_out() {
+    use crate::services::managed_auth::{consumers::codex, *};
+
+    let home = tempfile::tempdir().unwrap();
+    let missing = codex::observe_codex_home(home.path());
+    let known = codex::CodexManagedAuthObservation {
+        auth_state: codex::CodexNativeAuthState::ChatGptKnown {
+            account_id: "fixture-native-account".into(),
+            revision: "fixture".into(),
+        },
+        ..missing.clone()
+    };
+    let disconnected = ConnectionRecord {
+        connection_id: "fixture".into(),
+        consumer: ManagedAuthConsumer::Codex,
+        target_id: String::new(),
+        provider_slot: "openai".into(),
+        credential_id: None,
+        desired_revision: "fixture".into(),
+        observed_revision: None,
+        status: ConnectionStatus::Disconnected,
+        request_mode: ManagedAuthRequestMode::OfficialSubscription,
+        request_provider_label: Some("openai".into()),
+        official_session_preserved: None,
+        pending_restart: false,
+        created_at: 0,
+        updated_at: 0,
+    };
+    let facts =
+        configuration::routing(&crate::AppType::Codex, &json!({"config":"", "auth":{}})).unwrap();
+    for (observed, record) in [(&missing, None), (&known, Some(&disconnected))] {
+        let summary = codex::connection_summary(observed, None, record, &[], AT.into());
+        assert!(!summary.unmanaged_native_session);
+        let mut overview = ManagedAuthOverview::unavailable();
+        overview.reason_codes.clear();
+        overview.connections = vec![summary];
+        let checks = auth_checks(AgentCatalogId::Codex, &overview, Some(&facts), AT);
+        assert_eq!(find(&checks, Id::Auth).state, State::NotConfigured);
+        assert_eq!(find(&checks, Id::Auth).reason_code, Reason::AuthLoggedOut);
+        assert_eq!(find(&checks, Id::Secret).state, State::NotConfigured);
+        assert_eq!(
+            find(&checks, Id::Secret).reason_code,
+            Reason::CredentialMissing
+        );
+    }
 }
 
 #[test]
@@ -311,4 +435,168 @@ fn health_proxy_checks_the_selected_listener_path_model_and_upstream_auth() {
     assert!(!check(&observed, &runtime, Some(true))
         .iter()
         .any(|c| c.id == Id::Secret));
+}
+
+#[test]
+fn health_drift_explains_only_routing_metadata_without_values() {
+    let base = configuration::routing(&crate::AppType::Claude, &json!({
+        "model":"fixture-model", "env":{"ANTHROPIC_API_KEY":"fixture-private", "ANTHROPIC_BASE_URL":"https://fixture.test"}
+    })).unwrap();
+    let mut changed = base.clone();
+    changed.model = Some("another-model".into());
+    assert_eq!(
+        configuration::drift_reason(&base, &changed),
+        Reason::ConfigurationModelDrifted
+    );
+    changed.endpoint = Some("https://another.test".into());
+    assert_eq!(
+        configuration::drift_reason(&base, &changed),
+        Reason::ConfigurationDrifted
+    );
+    let preferences = configuration::routing(&crate::AppType::Claude, &json!({
+        "model":"fixture-model", "env":{"ANTHROPIC_API_KEY":"fixture-private", "ANTHROPIC_BASE_URL":"https://fixture.test"},
+        "theme":"light", "mcpServers":{"unrelated":{"command":"fixture"}}
+    })).unwrap();
+    assert_eq!(
+        configuration::drift_reason(&base, &preferences),
+        Reason::ConfigurationInSync
+    );
+    let reason = serde_json::to_string(&configuration::drift_reason(&base, &changed)).unwrap();
+    assert!(!reason.contains("fixture"));
+    assert!(!reason.contains("https"));
+}
+
+#[test]
+fn health_grok_unrecognized_profile_is_not_corrupt_toml_or_native_auth() {
+    let unknown = json!({"config":"[models]\ndefault = 'builtin-profile'\n[model.custom]\nmodel = 'custom-model'\n"});
+    assert!(configuration::unrecognized_grok_profile(
+        &crate::AppType::GrokBuild,
+        Some(&unknown)
+    ));
+    assert!(configuration::routing(&crate::AppType::GrokBuild, &unknown).is_err());
+    for value in [
+        json!({"config":"[broken"}),
+        json!({"config":""}),
+        json!({"config":"[mcp_servers.fixture]\ncommand = 'fixture'\n"}),
+    ] {
+        assert!(!configuration::unrecognized_grok_profile(
+            &crate::AppType::GrokBuild,
+            Some(&value)
+        ));
+    }
+    assert!(!configuration::unrecognized_grok_profile(
+        &crate::AppType::Codex,
+        Some(&unknown)
+    ));
+}
+
+#[test]
+#[serial_test::serial]
+fn release_integration_health_opencode_observes_owned_route_and_reports_real_drift() {
+    use crate::provider::{Provider, ProviderMeta};
+    use std::sync::Arc;
+    struct RestoreHome(Option<std::ffi::OsString>);
+    impl Drop for RestoreHome {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+                None => std::env::remove_var("FYAGENT_TEST_HOME"),
+            }
+            crate::settings::reload_settings().unwrap();
+        }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let _home = RestoreHome(std::env::var_os("FYAGENT_TEST_HOME"));
+    std::env::set_var("FYAGENT_TEST_HOME", directory.path());
+    crate::settings::reload_settings().unwrap();
+    let db = Arc::new(crate::database::Database::memory().unwrap());
+    let state = AppState::new(db.clone());
+    let mut provider = Provider::with_id(
+        "fyagent-openai-opencode-fixture".into(),
+        "Subscription".into(),
+        json!({"npm":"@ai-sdk/openai", "options":{"baseURL":"https://upstream.example/v1","apiKey":"PROXY_MANAGED"},"models":{"fixture":{}}}),
+        None,
+    );
+    provider.meta = Some(ProviderMeta {
+        provider_type: Some("codex_oauth".into()),
+        ..Default::default()
+    });
+    db.save_provider("opencode", &provider).unwrap();
+    db.set_current_provider("opencode", &provider.id).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let _entered = runtime.enter();
+    let mut global = runtime.block_on(db.get_global_proxy_config()).unwrap();
+    global.listen_address = "127.0.0.1".into();
+    global.listen_port = 0;
+    runtime
+        .block_on(db.update_global_proxy_config(global))
+        .unwrap();
+    let listener = runtime.block_on(state.proxy_service.start()).unwrap();
+    let mut intent = runtime
+        .block_on(db.get_proxy_config_for_app("opencode"))
+        .unwrap();
+    intent.enabled = true;
+    runtime
+        .block_on(db.update_proxy_config_for_app(intent))
+        .unwrap();
+    let endpoint = format!("http://127.0.0.1:{}/opencode/v1", listener.port);
+    let mut live = json!({"model":format!("{}/fixture",provider.id),"provider":{&provider.id:provider.settings_config.clone()}});
+    live["provider"][&provider.id]["options"]["baseURL"] = json!(endpoint);
+    let path = crate::opencode_config::get_opencode_config_path();
+    assert!(path.starts_with(directory.path()));
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let observe = |value: &serde_json::Value| {
+        let bytes = serde_json::to_vec_pretty(value).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        let before = db.export_sql_string().unwrap();
+        let observation = configuration::observe(&db, &crate::AppType::OpenCode, AT);
+        let checks = runtime.block_on(proxy::proxy_checks(
+            &db,
+            &state.proxy_service,
+            &crate::AppType::OpenCode,
+            &observation,
+            AT,
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        let rows = |sql: &str| {
+            sql.lines()
+                .filter(|line| !line.starts_with("--"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert_eq!(rows(&db.export_sql_string().unwrap()), rows(&before));
+        checks
+    };
+    let healthy = observe(&live);
+    assert_eq!(find(&healthy, Id::Proxy).reason_code, Reason::ProxyRunning);
+    assert_eq!(
+        find(&healthy, Id::Drift).reason_code,
+        Reason::ConfigurationInSync
+    );
+    for wrong_endpoint in [
+        format!("http://127.0.0.1:{}/grokbuild/v1", listener.port),
+        "http://127.0.0.1:1/opencode/v1".into(),
+    ] {
+        let mut changed = live.clone();
+        changed["provider"][&provider.id]["options"]["baseURL"] = json!(wrong_endpoint);
+        assert_eq!(find(&observe(&changed), Id::Proxy).state, State::Attention);
+        assert_eq!(find(&observe(&changed), Id::Drift).state, State::Attention);
+    }
+    let mut changed = live.clone();
+    changed["model"] = json!(format!("{}/different-model", provider.id));
+    assert_eq!(find(&observe(&changed), Id::Drift).state, State::Attention);
+    let mut other = provider.clone();
+    other.id = "fyagent-openai-opencode-other".into();
+    db.save_provider("opencode", &other).unwrap();
+    changed["provider"][&other.id] = live["provider"][&provider.id].clone();
+    changed["model"] = json!(format!("{}/fixture", other.id));
+    assert_eq!(
+        find(&observe(&changed), Id::Drift).reason_code,
+        Reason::ConfigurationSourceDrifted
+    );
+    runtime.block_on(state.proxy_service.stop()).unwrap();
+    assert_eq!(
+        find(&observe(&live), Id::Proxy).reason_code,
+        Reason::ProxyStopped
+    );
 }

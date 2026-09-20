@@ -17,7 +17,6 @@ pub use managed_proxy::{
 };
 
 use indexmap::IndexMap;
-use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -3176,6 +3175,48 @@ GEMINI_TIMEOUT_MS=30000
     }
 
     #[test]
+    fn extract_codex_credentials_uses_active_route_and_ignores_inactive_or_commented_urls() {
+        let config = r#"model_provider = "active"
+# base_url = "https://commented.example/v1"
+[model_providers.inactive]
+base_url = "https://inactive.example/v1"
+[model_providers.active]
+base_url = "https://active.example/v1"
+"#;
+        let provider = Provider::with_id(
+            "codex".into(),
+            "Codex".into(),
+            json!({"auth": {"OPENAI_API_KEY": "fixture-key"}, "config": config}),
+            None,
+        );
+        let (key, url) = ProviderService::extract_credentials(&provider, &AppType::Codex)
+            .expect("active route should be available");
+        assert_eq!(key, "fixture-key");
+        assert_eq!(url, "https://active.example/v1");
+
+        for config in [
+            "model_provider = 'missing'\n[model_providers.inactive]\nbase_url = 'https://inactive.example/v1'",
+            "# base_url = 'https://commented.example/v1'",
+            "model_provider = 'active'\n[model_providers.active]\nbase_url = ''",
+            "model_provider = [invalid toml",
+        ] {
+            let provider = Provider::with_id(
+                "codex".into(),
+                "Codex".into(),
+                json!({"auth": {"OPENAI_API_KEY": "fixture-key"}, "config": config}),
+                None,
+            );
+            assert!(matches!(
+                ProviderService::extract_credentials(&provider, &AppType::Codex),
+                Err(AppError::Localized {
+                    key: "provider.codex.base_url.missing",
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[test]
     fn extract_codex_common_config_strips_provider_fields_and_injected_artifacts() {
         // 顶层 experimental_bearer_token 模拟无活跃路由时的 fallback 注入；
         // web_search = "disabled" 是 fyagent 对黑名单网关注入的哨兵；
@@ -3861,6 +3902,78 @@ requires_openai_auth = true
 
     #[test]
     #[serial]
+    fn config_reliability_import_provider_documents_preserves_builtin_and_opaque_credentials_round_trip(
+    ) {
+        with_test_home(|state, _| {
+            let opencode = json!({
+                "name": "Builtin", "extension": { "nested": [1, null] },
+                "options": { "custom": { "keep": true } },
+                "models": { "builtin-model": { "limit": { "vendorLimit": 17 }, "variants": { "fast": {} } } }
+            });
+            crate::opencode_config::set_provider("builtin", opencode.clone()).unwrap();
+            crate::opencode_config::set_provider(
+                "neighbor",
+                json!({"npm":"vendor-package", "models":{}}),
+            )
+            .unwrap();
+            assert_eq!(import_opencode_providers_from_live(state).unwrap(), 2);
+            let saved = state
+                .db
+                .get_provider_by_id("builtin", "opencode")
+                .unwrap()
+                .unwrap();
+            assert_eq!(saved.settings_config, opencode);
+            live::write_live_snapshot(&AppType::OpenCode, &saved).unwrap();
+            assert_eq!(
+                crate::opencode_config::get_providers().unwrap()["builtin"],
+                opencode
+            );
+            assert!(crate::opencode_config::get_providers()
+                .unwrap()
+                .contains_key("neighbor"));
+            assert_eq!(import_opencode_providers_from_live(state).unwrap(), 0);
+
+            for (id, key) in [
+                ("literal", Some(json!("FIXTURE-KEY"))),
+                (
+                    "reference",
+                    Some(json!({"source":"env", "provider":"default", "id":"FIXTURE_ENV"})),
+                ),
+                (
+                    "opaque",
+                    Some(json!({"unknown":{"token":"FIXTURE-NESTED"}})),
+                ),
+                ("null", Some(Value::Null)),
+                ("absent", None),
+            ] {
+                let mut config = json!({"baseUrl":"https://fixture.invalid/v1", "models":[{"id":"model", "extra":{"keep":true}}], "vendorExtension": [1,2]});
+                if let Some(key) = key {
+                    config["apiKey"] = key;
+                }
+                crate::openclaw_config::set_provider(id, config.clone()).unwrap();
+                assert_eq!(import_openclaw_providers_from_live(state).unwrap(), 1);
+                let saved = state
+                    .db
+                    .get_provider_by_id(id, "openclaw")
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(saved.settings_config, config);
+                if id != "literal" {
+                    assert!(
+                        ProviderService::extract_credentials(&saved, &AppType::OpenClaw).is_err(),
+                        "opaque credentials must not be stringified or resolved"
+                    );
+                }
+                live::write_live_snapshot(&AppType::OpenClaw, &saved).unwrap();
+                assert_eq!(crate::openclaw_config::get_providers().unwrap()[id], config);
+                assert_eq!(import_openclaw_providers_from_live(state).unwrap(), 0);
+            }
+            assert_eq!(crate::openclaw_config::get_providers().unwrap().len(), 5);
+        });
+    }
+
+    #[test]
+    #[serial]
     fn import_opencode_providers_from_live_marks_provider_as_live_managed() {
         with_test_home(|state, _| {
             let provider = opencode_provider("imported-opencode");
@@ -3884,6 +3997,36 @@ requires_openai_auth = true
                 Some(true),
                 "providers imported from live should be treated as live-managed"
             );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn release_integration_opencode_import_and_generic_writer_reject_managed_projection() {
+        with_test_home(|state, _| {
+            let reserved = "fyagent-openai-opencode-fixture";
+            let fragment = json!({"npm":"@ai-sdk/openai","options":{"baseURL":"http://127.0.0.1:15721/opencode/v1","apiKey":"PROXY_MANAGED"},"models":{"fixture":{}}});
+            crate::opencode_config::set_provider(reserved, fragment.clone()).unwrap();
+            crate::opencode_config::set_provider("legacy-projection", fragment.clone()).unwrap();
+            assert_eq!(import_opencode_providers_from_live(state).unwrap(), 0);
+            assert!(state.db.get_all_providers("opencode").unwrap().is_empty());
+            let path = crate::opencode_config::get_opencode_config_path();
+            let bytes = std::fs::read(&path).unwrap();
+            let mut provider = Provider::with_id(
+                reserved.into(),
+                "Subscription".into(),
+                fragment.clone(),
+                None,
+            );
+            assert!(live::write_live_snapshot(&AppType::OpenCode, &provider).is_err());
+            provider.id = "older-managed-binding".into();
+            provider.meta = Some(ProviderMeta {
+                provider_type: Some("xai_oauth".into()),
+                ..Default::default()
+            });
+            state.db.save_provider("opencode", &provider).unwrap();
+            assert!(live::write_live_snapshot(&AppType::OpenCode, &provider).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
         });
     }
 
@@ -6758,8 +6901,7 @@ impl ProviderService {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    fn extract_credentials(
+    pub(crate) fn extract_credentials(
         provider: &Provider,
         app_type: &AppType,
     ) -> Result<(String, String), AppError> {
@@ -6862,31 +7004,15 @@ impl ProviderService {
                     )
                 })?;
 
-                let base_url = if config_toml.contains("base_url") {
-                    let re = Regex::new(r#"base_url\s*=\s*["']([^"']+)["']"#).map_err(|e| {
+                let base_url = crate::codex_config::extract_codex_base_url(config_toml)
+                    .filter(|url| !url.trim().is_empty())
+                    .ok_or_else(|| {
                         AppError::localized(
-                            "provider.regex_init_failed",
-                            format!("正则初始化失败: {e}"),
-                            format!("Failed to initialize regex: {e}"),
+                            "provider.codex.base_url.missing",
+                            "config.toml 中缺少当前服务商的 base_url 配置",
+                            "base_url for the active provider is missing from config.toml",
                         )
                     })?;
-                    re.captures(config_toml)
-                        .and_then(|caps| caps.get(1))
-                        .map(|m| m.as_str().to_string())
-                        .ok_or_else(|| {
-                            AppError::localized(
-                                "provider.codex.base_url.invalid",
-                                "config.toml 中 base_url 格式错误",
-                                "base_url in config.toml has invalid format",
-                            )
-                        })?
-                } else {
-                    return Err(AppError::localized(
-                        "provider.codex.base_url.missing",
-                        "config.toml 中缺少 base_url 配置",
-                        "base_url is missing from config.toml",
-                    ));
-                };
 
                 Ok((api_key, base_url))
             }

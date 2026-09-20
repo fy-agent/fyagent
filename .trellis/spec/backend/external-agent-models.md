@@ -116,6 +116,33 @@ Responses, logs, errors, query keys, and snapshots never include `apiKey`,
 authorization headers, or private config fragments. User-visible `path` /
 `backupPath` are backend-projected metadata, not writable renderer inputs.
 
+### Native provider import preserves vendor semantics
+
+OpenCode/OpenClaw imports store raw provider objects as their native authority.
+Display-name projection must not serialize a typed subset back into storage.
+Live provider writes retain unknown nested fields, explicit nulls, and neighboring
+providers through the existing locked/backup writers. Semantic preservation is
+not a byte-for-byte formatting claim.
+
+OpenCode `npm` is optional; omitted packages are never guessed. Typed models
+allow omitted names and retain provider/model/limit extension fields. A Models
+snapshot includes `editable: boolean` per provider. An existing provider without
+an explicit nonempty npm, or with unsupported options/models shape, is read-only;
+the native model writer rejects it before overwrite admission or backup/write.
+Only newly created providers receive the dedicated writer's default package.
+
+Model-save `providerId` is an existing exact ID or null for explicit creation.
+An existing ID must still exist; display-name edits never change the target.
+Creation rejects a derived-ID collision, including builtin providers. There is no
+single-provider fallback. The overwrite HMAC includes the target ID, preventing
+an issued confirmation from being replayed for another provider.
+
+OpenClaw `apiKey` is native opaque JSON, including string/object/null. Parsing,
+importing and copying do not stringify or resolve vendor references. Its typed
+Debug representation is redacted. Public provider summaries remain id/name only
+and reject credential-string collisions inside opaque objects. This does not add
+an OpenClaw model editor or credential resolver to the renderer.
+
 ## 4. Validation & Error Matrix
 
 | Condition                                                                       | Required result                                                  |

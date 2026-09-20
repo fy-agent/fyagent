@@ -1,11 +1,7 @@
-import { transferableAbortController } from "node:util";
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
-const nodeAbortController = transferableAbortController();
-const DOMAbortController = window.AbortController;
-const DOMAbortSignal = window.AbortSignal;
 const originalAddEventListener = window.EventTarget.prototype.addEventListener;
 const originalWindowAddEventListener = window.addEventListener;
 const originalScrollTo = window.scrollTo;
@@ -48,69 +44,24 @@ afterAll(() => {
   window.scrollTo = originalScrollTo;
 });
 
-try {
-  new Request("http://localhost", {
-    signal: new AbortController().signal,
-  });
-} catch {
-  // React Router creates requests with AbortController. Vitest's jsdom realm
-  // can replace that constructor while the repository deliberately retains
-  // Node's native Request, so keep both sides of the test boundary in the
-  // same native realm rather than replacing or weakening Request itself.
-  Object.defineProperties(globalThis, {
-    AbortController: {
-      configurable: true,
-      writable: true,
-      value: nodeAbortController.constructor,
-    },
-    AbortSignal: {
-      configurable: true,
-      writable: true,
-      value: nodeAbortController.signal.constructor,
-    },
-  });
-}
-
-// Backport the narrow jsdom/Node signal bridge used by Vitest's upstream
-// environment fix (vitest-dev/vitest#8704). Native Request/fetch remain native;
-// DOM listeners still receive an actual jsdom signal and real cancellation.
-// Remove when the adopted test environment provides this bridge itself.
-const domSignals = new WeakMap<AbortSignal, AbortController>();
-function domListenerOptions(
-  options?: boolean | AddEventListenerOptions,
-): boolean | AddEventListenerOptions | undefined {
-  if (
+// Vitest 4 bridges native signals into jsdom, so the old realm bridge is no
+// longer needed. Its bridge currently misses signals aborted before listener
+// registration; preserve the platform's no-registration behavior at both entry
+// points without replacing Request/fetch or weakening jsdom's signal checks.
+function isAbortedNativeSignal(options?: boolean | AddEventListenerOptions) {
+  return (
     typeof options === "object" &&
-    options.signal &&
-    !((options.signal as unknown) instanceof DOMAbortSignal)
-  ) {
-    const signal = options.signal;
-    let controller = domSignals.get(signal);
-    if (!controller) {
-      controller = new DOMAbortController();
-      const receiver = controller;
-      if (signal.aborted) receiver.abort(signal.reason);
-      else
-        signal.addEventListener("abort", () => receiver.abort(signal.reason), {
-          once: true,
-        });
-      domSignals.set(signal, controller);
-    }
-    return { ...options, signal: controller.signal };
-  }
-  return options;
+    options?.signal instanceof AbortSignal &&
+    options.signal.aborted
+  );
 }
 window.EventTarget.prototype.addEventListener = function (
   type,
   callback,
   options,
 ) {
-  return originalAddEventListener.call(
-    this,
-    type,
-    callback,
-    domListenerOptions(options),
-  );
+  if (isAbortedNativeSignal(options)) return;
+  return originalAddEventListener.call(this, type, callback, options);
 };
 // Vitest also installs a bound own-property window listener for teardown.
 window.addEventListener = function (
@@ -118,13 +69,8 @@ window.addEventListener = function (
   callback: EventListenerOrEventListenerObject | null,
   options?: boolean | AddEventListenerOptions,
 ) {
-  if (callback === null) return;
-  return originalWindowAddEventListener.call(
-    window,
-    type,
-    callback,
-    domListenerOptions(options),
-  );
+  if (callback === null || isAbortedNativeSignal(options)) return;
+  return originalWindowAddEventListener.call(window, type, callback, options);
 };
 
 afterEach(() => {

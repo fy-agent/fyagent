@@ -1,4 +1,7 @@
 .fy-first-use-guide {
+  --fy-catalog-detail-frame-size: 64px;
+  --fy-catalog-detail-artwork-size: 48px;
+
   display: grid;
   align-content: center;
   gap: 24px;

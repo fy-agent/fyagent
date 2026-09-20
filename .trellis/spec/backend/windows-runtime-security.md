@@ -287,6 +287,13 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 
 ## 6. Tests Required
 
+- Unit-test binaries do not enter production `main`. Fixtures that construct
+  `AppState` without a test-home override or invoke real Windows inventory must
+  call `initialize_windows_user_context()` before those consumers and require
+  success. The production `OnceLock` owns repeated/concurrent initialization;
+  tests never replace its Shell identity with a synthetic context or weaken
+  `require_interactive_user_context()`. Temporary configuration/log paths remain
+  isolated through the existing test hooks, independently of identity admission.
 - Portable Rust tests cover same-user, Bob/Alice, missing Shell/session/SID,
   noncanonical SID, each missing/non-absolute folder, immutable revalidation,
   redacted debug output, and stable error codes.

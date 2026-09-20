@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   cleanup,
   render,
@@ -10,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import {
   createMemoryRouter,
   RouterProvider,
+  useLocation,
   useNavigate,
 } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -19,6 +21,7 @@ import { FDE_PROMPT_PRESETS } from "@/pages/prompts/presets";
 import type { FeaturePorts } from "@/shared/features/ports";
 import { FeatureProvider } from "@/shared/features/provider";
 import { PrimaryBlockerProvider } from "@/shared/ui/PrimaryBlocker";
+import { PersistentSurface } from "@/shared/ui/PersistentSurface";
 import {
   PROMPT_APP_IDS,
   type ManagedPrompt,
@@ -136,7 +139,7 @@ function PromptsRouteFixture({
 
 function renderPrompts(
   ports: FeaturePorts,
-  { showNavigationControl = false } = {},
+  { showNavigationControl = false, initialEntry = "/prompts" } = {},
 ) {
   const router = createMemoryRouter(
     [
@@ -148,7 +151,7 @@ function renderPrompts(
       },
       { path: "/memory", element: <h1>记忆目标页</h1> },
     ],
-    { initialEntries: ["/prompts"] },
+    { initialEntries: [initialEntry] },
   );
   render(
     <FeatureProvider ports={ports}>
@@ -158,7 +161,106 @@ function renderPrompts(
   return router;
 }
 
+function PersistentPromptsFixture() {
+  const location = useLocation();
+  return (
+    <PrimaryBlockerProvider>
+      <PersistentSurface active={location.pathname === "/prompts"}>
+        <PromptsPage />
+      </PersistentSurface>
+    </PrimaryBlockerProvider>
+  );
+}
+
 describe("PromptsPage native business management", () => {
+  it("opens the requested app and saves only to that prompt library", async () => {
+    const { ports, stores } = statefulPorts({
+      claude: [prompt("claude-one", "Claude rule")],
+      codex: [prompt("codex-one", "Codex rule")],
+    });
+    const user = userEvent.setup();
+    renderPrompts(ports, {
+      initialEntry:
+        "/prompts?target=codex&agentReturn=codex&agentSection=prompts",
+    });
+    await screen.findByRole("heading", { name: "Codex rule" });
+    expect(screen.getByTestId("prompt-app-codex")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    await user.type(screen.getByRole("textbox", { name: "内容" }), " edited");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(stores.codex[0].content).toBe("Codex rule content edited"),
+    );
+    expect(stores.claude[0].content).toBe("Claude rule content");
+    expect(ports.prompts.upsert).toHaveBeenCalledWith(
+      "codex",
+      expect.anything(),
+    );
+  });
+
+  it.each(["unknown", "codex&target=claude"])(
+    "ignores invalid or duplicate target %s",
+    async (target) => {
+      const { ports } = statefulPorts();
+      renderPrompts(ports, { initialEntry: `/prompts?target=${target}` });
+      expect(await screen.findByText("Claude Code 还没有提示词")).toBeVisible();
+    },
+  );
+
+  it("freezes a hidden target and honors a new explicit target after returning", async () => {
+    const { ports } = statefulPorts({
+      claude: [prompt("claude-one", "Claude rule")],
+      codex: [prompt("codex-one", "Codex rule")],
+    });
+    const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [{ path: "*", element: <PersistentPromptsFixture /> }],
+      { initialEntries: ["/prompts?target=codex"] },
+    );
+    render(
+      <FeatureProvider ports={ports}>
+        <RouterProvider router={router} />
+      </FeatureProvider>,
+    );
+    await screen.findByRole("heading", { name: "Codex rule" });
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜索提示词" }),
+      "Codex",
+    );
+    await user.click(screen.getByRole("tab", { name: /FDE 预设/u }));
+
+    await act(() => router.navigate("/agents?target=claude"));
+    expect(screen.getByTestId("prompt-app-codex")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    await act(() => router.navigate("/prompts"));
+    expect(screen.getByTestId("prompt-app-codex")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: /FDE 预设/u })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await act(() => router.navigate("/prompts?target=claude"));
+    expect(screen.getByTestId("prompt-app-claude")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: /FDE 预设/u })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.click(screen.getByRole("tab", { name: "我的提示词" }));
+    expect(await screen.findByRole("heading", { name: "Claude rule" })).toBeVisible();
+    expect(screen.getByRole("searchbox", { name: "搜索提示词" })).toHaveValue("");
+    expect(ports.prompts.upsert).not.toHaveBeenCalled();
+  });
+
   it("creates collision-resistant library IDs without requiring crypto.randomUUID", async () => {
     const uuid = vi.spyOn(crypto, "randomUUID").mockImplementation(() => {
       throw new Error("randomUUID unavailable");

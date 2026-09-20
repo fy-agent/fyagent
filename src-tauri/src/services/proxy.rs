@@ -120,8 +120,27 @@ impl ProxyService {
             AppType::GrokBuild,
             AppType::OpenCode,
         ] {
-            let Some(provider) = self.get_current_provider_for_app(&app).ok()? else {
-                continue;
+            // The normal selector repairs stale preferences. Observation must
+            // preserve them and report an inconsistent selection as unknown.
+            let selected = crate::settings::get_current_provider(&app)
+                .map(|id| Ok(Some(id)))
+                .unwrap_or_else(|| self.db.get_current_provider(app.as_str()));
+            let selected = match selected {
+                Ok(Some(selected)) => selected,
+                Ok(None) => continue,
+                Err(_) => {
+                    unreadable = true;
+                    continue;
+                }
+            };
+            let provider = match self.db.get_provider_by_id(&selected, app.as_str()) {
+                Ok(Some(provider)) => provider,
+                // A stale target cannot hide a proven route on another Agent.
+                // If none is proven, the combined observation remains unknown.
+                Ok(None) | Err(_) => {
+                    unreadable = true;
+                    continue;
+                }
             };
             let matches_kind = match auth_kind {
                 "codex_oauth" => provider.is_codex_oauth(),
@@ -141,7 +160,18 @@ impl ProxyService {
             {
                 continue;
             }
-            match self.live_takeover_matches_proxy_urls(&app, &proxy_url, &codex_url) {
+            // OpenCode comparison needs the captured binding. Its general
+            // lifecycle helper resolves (and can repair) current selection.
+            let route = if app == AppType::OpenCode {
+                if self.db.get_proxy_flags_sync("opencode").0 {
+                    self.opencode_matches_provider(&provider, &proxy_url)
+                } else {
+                    Ok(false)
+                }
+            } else {
+                self.live_takeover_matches_proxy_urls(&app, &proxy_url, &codex_url)
+            };
+            match route {
                 Ok(true) => return Some(true),
                 Ok(false) => {}
                 Err(_) => unreadable = true,

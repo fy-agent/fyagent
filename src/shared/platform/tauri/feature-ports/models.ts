@@ -45,6 +45,7 @@ function assertOpenCodeSaveRequest(
     !hasRequiredAndOptionalKeys(
       request,
       [
+        "providerId",
         "providerName",
         "baseUrl",
         "apiKey",
@@ -53,6 +54,9 @@ function assertOpenCodeSaveRequest(
       ],
       ["removedModelIds", "overwriteToken"],
     ) ||
+    (request.providerId !== null &&
+      (typeof request.providerId !== "string" ||
+        request.providerId.trim().length === 0)) ||
     typeof request.providerName !== "string" ||
     typeof request.baseUrl !== "string" ||
     typeof request.apiKey !== "string" ||
@@ -257,9 +261,10 @@ function parseOpenCodeModelSnapshot(value: unknown): OpenCodeModelSnapshot {
   const providers = value.providers.map((provider) => {
     if (
       !isRecord(provider) ||
-      !hasExactKeys(provider, ["id", "name", "modelIds"]) ||
+      !hasExactKeys(provider, ["id", "name", "modelIds", "editable"]) ||
       typeof provider.id !== "string" ||
       typeof provider.name !== "string" ||
+      typeof provider.editable !== "boolean" ||
       !isStringArray(provider.modelIds)
     )
       throw new Error("OpenCode model snapshot is unavailable");
@@ -267,6 +272,7 @@ function parseOpenCodeModelSnapshot(value: unknown): OpenCodeModelSnapshot {
       id: provider.id,
       name: provider.name,
       modelIds: provider.modelIds,
+      editable: provider.editable,
     };
   });
   if (

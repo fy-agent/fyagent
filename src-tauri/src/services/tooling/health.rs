@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
-use super::{build_tool_search_paths, infer_install_source, tool_executable_candidates};
+use super::{build_tool_search_paths_from, infer_install_source, tool_executable_candidates};
 
 const MAX_PACKAGE_BYTES: u64 = 64 * 1024;
 
@@ -20,7 +20,7 @@ pub(crate) struct LocalToolHealth {
 /// This path must never delegate to version, shell, helper or network probes.
 pub(crate) fn observe_local_tool_health(tool: &str) -> Result<LocalToolHealth, ()> {
     package_for_health(tool).ok_or(())?;
-    observe_in_directories(tool, &build_tool_search_paths(tool))
+    observe_in_directories(tool, &build_tool_search_paths_from(tool, None))
 }
 
 fn package_for_health(tool: &str) -> Option<(&'static str, &'static str)> {
@@ -218,6 +218,39 @@ mod tests {
         }
         assert!(observe_local_tool_health("codex; touch marker").is_err());
         assert!(observe_in_directories("../codex", &[]).is_err());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[serial_test::serial]
+    fn health_public_observer_never_starts_the_login_shell() {
+        struct RestoreEnv(Vec<(&'static str, Option<std::ffi::OsString>)>);
+        impl Drop for RestoreEnv {
+            fn drop(&mut self) {
+                for (key, value) in self.0.drain(..) {
+                    match value {
+                        Some(value) => std::env::set_var(key, value),
+                        None => std::env::remove_var(key),
+                    }
+                }
+            }
+        }
+        let temp = TempDir::new().unwrap();
+        let bin = temp.path().join("bin");
+        let shell = fake_tool(&bin, "sh");
+        fake_tool(&bin, "claude");
+        let _restore = RestoreEnv(
+            ["FYAGENT_TEST_HOME", "PATH", "SHELL"]
+                .into_iter()
+                .map(|key| (key, std::env::var_os(key)))
+                .collect(),
+        );
+        std::env::set_var("FYAGENT_TEST_HOME", temp.path());
+        std::env::set_var("PATH", &bin);
+        std::env::set_var("SHELL", shell);
+        let observed = observe_local_tool_health("claude").unwrap();
+        assert_eq!(observed.observed_count, 1);
+        assert!(!bin.join("executed-marker").exists());
     }
 
     #[test]

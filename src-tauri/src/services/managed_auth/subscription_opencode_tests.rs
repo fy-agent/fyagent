@@ -136,6 +136,39 @@ fn subscription_opencode_both_sources_revision_isolation_secret_free_and_restore
         for app in ["claude", "codex", "grokbuild"] {
             assert!(state.db.get_all_providers(app).unwrap().is_empty());
         }
+        // Startup imports native providers before resuming proxy state. The
+        // loopback projection must not replace the saved upstream definition.
+        let generation = state
+            .db
+            .project_resource_version(
+                crate::services::projects::domain::ResourceKind::Provider,
+                "opencode",
+                &bound.provider_id,
+            )
+            .unwrap();
+        crate::services::provider::import_opencode_providers_from_live(&state).unwrap();
+        let after_import = state
+            .db
+            .get_provider_by_id(&bound.provider_id, "opencode")
+            .unwrap()
+            .unwrap();
+        assert_eq!(after_import.settings_config, row.settings_config);
+        assert_eq!(
+            serde_json::to_value(&after_import.meta).unwrap(),
+            serde_json::to_value(&row.meta).unwrap()
+        );
+        assert_eq!(
+            state
+                .db
+                .project_resource_version(
+                    crate::services::projects::domain::ResourceKind::Provider,
+                    "opencode",
+                    &bound.provider_id,
+                )
+                .unwrap(),
+            generation
+        );
+        assert_eq!(std::fs::read(&auth_path).unwrap(), auth_bytes);
         let mut stale = bind_request(&selected.identity_id, "selected-model");
         stale.expected_revision = before_revision;
         assert!(matches!(
@@ -173,12 +206,19 @@ fn subscription_opencode_both_sources_revision_isolation_secret_free_and_restore
         } else {
             "xai_oauth"
         };
+        crate::settings::set_current_provider(&AppType::Claude, Some("stale-unrelated-target"))
+            .unwrap();
         assert_eq!(
             state
                 .proxy_service
                 .observe_managed_account_route(kind, "other", true),
             Some(true)
         );
+        assert_eq!(
+            crate::settings::get_current_provider(&AppType::Claude).as_deref(),
+            Some("stale-unrelated-target")
+        );
+        crate::settings::set_current_provider(&AppType::Claude, None).unwrap();
         assert_eq!(
             state
                 .proxy_service
@@ -490,6 +530,7 @@ fn subscription_opencode_api_writer_and_backup_compensation_are_isolated() {
     let bound = activate_target(&state, &auth, "opencode", &account.identity_id, "model").unwrap();
     let live = std::fs::read(&path).unwrap();
     let make_request = |name: &str| crate::services::opencode_models::SaveOpenCodeModelsRequest {
+        provider_id: None,
         provider_name: name.into(),
         base_url: "https://api.example.com/v1".into(),
         api_key: "ordinary-api-key".into(),

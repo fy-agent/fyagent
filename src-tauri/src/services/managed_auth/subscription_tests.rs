@@ -25,6 +25,7 @@ impl TestHome {
         let data_home = std::env::var_os("XDG_DATA_HOME");
         std::env::set_var("FYAGENT_TEST_HOME", path);
         std::env::set_var("XDG_DATA_HOME", path.join(".local/share"));
+        crate::settings::reload_settings().unwrap();
         Self(previous, data_home)
     }
 }
@@ -38,6 +39,7 @@ impl Drop for TestHome {
             Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
             None => std::env::remove_var("FYAGENT_TEST_HOME"),
         }
+        crate::settings::reload_settings().unwrap();
     }
 }
 

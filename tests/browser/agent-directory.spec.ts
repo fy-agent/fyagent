@@ -60,7 +60,18 @@ async function installAgentDirectoryOverrides(page: Page): Promise<void> {
             : "installed";
       const grokCli = agentId === "grokbuild" || agentId === "claude-code";
       return {
-        contractVersion: 4,
+        contractVersion: 5,
+        configurationEligibility:
+          installState === "installed"
+            ? {
+                state: "eligible",
+                evidence: grokCli ? "cli_runnable" : "installation_detected",
+              }
+            : {
+                state:
+                  installState === "not_installed" ? "not_detected" : "unknown",
+                evidence: "none",
+              },
         agentId,
         reviewedAt: "2026-08-29",
         installState,

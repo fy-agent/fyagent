@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   RENDERER_ROUTE_ENTRIES,
   RENDERER_DEFERRED_PORT_ENTRIES,
+  RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
+  RENDERER_NESTED_SUBSCRIPTION_PORT,
   verifyRouteChunks,
 } from "../../../scripts/verify-route-chunks.mjs";
 
@@ -30,7 +32,7 @@ async function fixture(
       imports: ["_vendor.js", "index.html"],
       dynamicImports: [
         ...RENDERER_ROUTE_ENTRIES,
-        ...RENDERER_DEFERRED_PORT_ENTRIES,
+        ...RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
       ],
       css: ["assets/main.css"],
     },
@@ -55,6 +57,9 @@ async function fixture(
       "deferred port",
     );
   }
+  manifest[RENDERER_NESTED_SUBSCRIPTION_PORT.importer].dynamicImports = [
+    RENDERER_NESTED_SUBSCRIPTION_PORT.entry,
+  ];
   patch?.(manifest);
   await Promise.all([
     writeFile(path.join(root, "assets/index.js"), "entry"),
@@ -75,12 +80,15 @@ afterEach(async () => {
 });
 
 describe("verifyRouteChunks", () => {
-  it("accepts eight distinct routes and deferred health/subscription ports outside the bounded initial graph", async () => {
+  it("accepts nine distinct routes and the reviewed deferred ports outside the bounded initial graph", async () => {
     const distributionDirectory = await fixture();
     const result = await verifyRouteChunks({ distributionDirectory });
 
-    expect(result.routeChunks).toHaveLength(8);
-    expect(result.deferredPortChunks).toHaveLength(2);
+    expect(result.routeChunks).toHaveLength(9);
+    expect(result.routeChunks.map(({ route }) => route)).toContain(
+      "app/ProjectsWorkspace.tsx",
+    );
+    expect(result.deferredPortChunks).toHaveLength(7);
     expect(result.initialChunks.map((chunk) => chunk.file).sort()).toEqual([
       "assets/index.js",
       "assets/main.js",
@@ -100,12 +108,66 @@ describe("verifyRouteChunks", () => {
     },
   );
 
+  it("rejects a missing Projects composition entry", async () => {
+    const distributionDirectory = await fixture((manifest) => {
+      manifest["_main.js"].dynamicImports = [
+        ...RENDERER_ROUTE_ENTRIES.filter(
+          (entry) => entry !== "app/ProjectsWorkspace.tsx",
+        ),
+        ...RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
+      ];
+    });
+    await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
+      "must dynamically import exactly 9 product pages and 6 deferred ports",
+    );
+  });
+
+  it("rejects Projects sharing another primary route entry chunk", async () => {
+    const distributionDirectory = await fixture((manifest) => {
+      manifest["app/ProjectsWorkspace.tsx"].file =
+        manifest["pages/agents/Page.tsx"].file;
+    });
+    await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
+      "product pages share an entry chunk",
+    );
+  });
+
   it("rejects an unreviewed dynamic entry", async () => {
     const distributionDirectory = await fixture((manifest) => {
       manifest["_vendor.js"].dynamicImports = ["unexpected.ts"];
     });
     await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
       "must dynamically import exactly",
+    );
+  });
+
+  it.each([
+    [],
+    ["unexpected.ts"],
+    [RENDERER_NESTED_SUBSCRIPTION_PORT.entry, "unexpected.ts"],
+  ])(
+    "rejects missing or unreviewed nested subscription entries: %j",
+    async (...entries) => {
+      const distributionDirectory = await fixture((manifest) => {
+        manifest[RENDERER_NESTED_SUBSCRIPTION_PORT.importer].dynamicImports =
+          entries;
+      });
+      await expect(
+        verifyRouteChunks({ distributionDirectory }),
+      ).rejects.toThrow(
+        "Models port must dynamically import only the subscription port",
+      );
+    },
+  );
+
+  it("rejects moving the subscription port into Models static imports", async () => {
+    const distributionDirectory = await fixture((manifest) => {
+      manifest[RENDERER_NESTED_SUBSCRIPTION_PORT.importer].imports = [
+        RENDERER_NESTED_SUBSCRIPTION_PORT.entry,
+      ];
+    });
+    await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
+      "subscription port must remain deferred from Models",
     );
   });
 

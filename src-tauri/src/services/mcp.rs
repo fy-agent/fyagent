@@ -17,6 +17,8 @@ impl McpService {
 
     /// 添加或更新 MCP 服务器
     pub fn upsert_server(state: &AppState, server: McpServer) -> Result<(), AppError> {
+        // Validate even library-only entries, before any DB or live-file mutation.
+        mcp::validate_server_spec(&server.server)?;
         // Codex MCP and Provider settings share config.toml. Serialize every
         // read-modify-write with Provider switching/quick setup.
         let _codex_guard = futures::executor::block_on(

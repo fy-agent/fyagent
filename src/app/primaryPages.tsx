@@ -21,6 +21,9 @@ function cachedLoader(
 }
 
 const primaryPageLoaders = {
+  projects: cachedLoader(async () => ({
+    default: (await import("./ProjectsWorkspace")).ProjectsWorkspace,
+  })),
   health: cachedLoader(async () => ({
     default: (await import("../pages/health/Page")).HealthPage,
   })),
@@ -54,6 +57,7 @@ export const primaryPages: Record<
   NavigationItem["id"],
   LazyExoticComponent<ComponentType>
 > = {
+  projects: lazy(primaryPageLoaders.projects),
   health: lazy(primaryPageLoaders.health),
   agents: lazy(primaryPageLoaders.agents),
   auth: lazy(primaryPageLoaders.auth),

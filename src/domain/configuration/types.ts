@@ -597,10 +597,11 @@ export type UniversalProvidersMap = Record<string, UniversalProvider>;
 
 // OpenCode 模型配置
 export interface OpenCodeModel {
-  name: string;
+  name?: string;
   limit?: {
     context?: number;
     output?: number;
+    [key: string]: unknown;
   };
   options?: Record<string, unknown>; // 模型级别额外选项（provider 路由等）
   // 支持任意额外字段（cost、modalities、thinking、variants 等）
@@ -618,10 +619,11 @@ export interface OpenCodeProviderOptions {
 
 // OpenCode 供应商配置（settings_config 结构）
 export interface OpenCodeProviderConfig {
-  npm: string; // AI SDK 包名，如 "@ai-sdk/openai-compatible"
+  npm?: string; // 省略时保留内置供应商语义；AI SDK 包名，如 "@ai-sdk/openai-compatible"
   name?: string; // 供应商显示名称
   options: OpenCodeProviderOptions;
   models: Record<string, OpenCodeModel>;
+  [key: string]: unknown;
 }
 
 // OpenCode MCP 服务器配置（与统一格式不同）

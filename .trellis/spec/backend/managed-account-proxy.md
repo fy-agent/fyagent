@@ -212,9 +212,11 @@ None        -> checking / unknown / observer_unavailable
   owned running loopback listener and at least one matching effective Provider
   whose target live configuration has adopted that listener.
 - A stopped listener, unadopted target or nonmatching Provider yields
-  `Some(false)`. Lock contention, unreadable state or an inconsistent
-  transition yields `None`. Observation is read-only and never probes the
-  upstream service.
+  `Some(false)`. Lock contention yields `None`. Target-local unreadable or
+  stale selection is accumulated while the other targets are observed: a
+  matching account's confirmed route can still yield `Some(true)`, otherwise
+  that unreadable state yields `None`. Observation is read-only and never
+  repairs selections or probes the upstream service.
 - Reconciliation may retain `accountId` on a named `fyagent_proxy` slot even
   when observation is false. That represents the selected saved credential,
   not current request routing.
@@ -240,21 +242,21 @@ None        -> checking / unknown / observer_unavailable
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Generic request names an unsupported app, malformed account ID/model ID, or extra field | Reject before Provider, listener, file or credential mutation. |
-| Compatibility request selects a non-xAI account | `account_unavailable`; do not reinterpret it as a generic bind. |
-| Explicit account is absent, not Ready, wrong-purpose, wrong-consumer, native-owned or unreadable from the vault | `account_unavailable`; no default/legacy fallback. |
-| Stable Provider ID exists with a different account/model/config definition | `provider_conflict`; preserve the existing row and live state. |
-| Claude/Grok application fails and every snapshot is restored/read back | `apply_failed_rolled_back`; no activation claim. |
-| Provider/target/listener compensation cannot establish the baseline | `rollback_partial_state_unknown`; preserve recovery evidence and block optimistic retry. |
-| Codex draft save/readback/current-marker verification fails but restoration is confirmed | `apply_failed_rolled_back`; current source remains unchanged. |
-| Codex draft restoration cannot be confirmed | `rollback_partial_state_unknown`; do not hand off as a usable draft. |
-| xAI suggestions are empty or unavailable | Return failure/empty evidence; do not manufacture a model or query an API-key catalog. |
-| Proxy observation is `Some(true)` | Project connected + official subscription only for the named account slot. |
-| Proxy observation is `Some(false)` | Keep the named account if present, project disconnected + none, clear the provider label. |
-| Proxy observation is `None` | Project checking + unknown with observer-unavailable evidence; no connected claim. |
-| `requestMode=none` still has a provider label, or account count omits a named proxy slot | Backend/Renderer contract test fails; the complete snapshot is not accepted. |
+| Condition                                                                                                       | Required result                                                                           |
+| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Generic request names an unsupported app, malformed account ID/model ID, or extra field                         | Reject before Provider, listener, file or credential mutation.                            |
+| Compatibility request selects a non-xAI account                                                                 | `account_unavailable`; do not reinterpret it as a generic bind.                           |
+| Explicit account is absent, not Ready, wrong-purpose, wrong-consumer, native-owned or unreadable from the vault | `account_unavailable`; no default/legacy fallback.                                        |
+| Stable Provider ID exists with a different account/model/config definition                                      | `provider_conflict`; preserve the existing row and live state.                            |
+| Claude/Grok application fails and every snapshot is restored/read back                                          | `apply_failed_rolled_back`; no activation claim.                                          |
+| Provider/target/listener compensation cannot establish the baseline                                             | `rollback_partial_state_unknown`; preserve recovery evidence and block optimistic retry.  |
+| Codex draft save/readback/current-marker verification fails but restoration is confirmed                        | `apply_failed_rolled_back`; current source remains unchanged.                             |
+| Codex draft restoration cannot be confirmed                                                                     | `rollback_partial_state_unknown`; do not hand off as a usable draft.                      |
+| xAI suggestions are empty or unavailable                                                                        | Return failure/empty evidence; do not manufacture a model or query an API-key catalog.    |
+| Proxy observation is `Some(true)`                                                                               | Project connected + official subscription only for the named account slot.                |
+| Proxy observation is `Some(false)`                                                                              | Keep the named account if present, project disconnected + none, clear the provider label. |
+| Proxy observation is `None`                                                                                     | Project checking + unknown with observer-unavailable evidence; no connected claim.        |
+| `requestMode=none` still has a provider label, or account count omits a named proxy slot                        | Backend/Renderer contract test fails; the complete snapshot is not accepted.              |
 
 ## 5. Good / Base / Bad Cases
 

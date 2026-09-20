@@ -73,16 +73,8 @@ describe("MCP curated catalog", () => {
     expect(findCatalogItem("minimax")).toBeUndefined();
   });
 
-  it("defaults new MCP installs to Agent catalog target order", () => {
-    expect(DEFAULT_NEW_APPS).toEqual([
-      "qoderwork",
-      "trae-work",
-      "workbuddy",
-      "grokbuild",
-      "codex",
-      "claude",
-      "opencode",
-    ]);
+  it("keeps new manual MCP entries unassigned until a target is chosen", () => {
+    expect(DEFAULT_NEW_APPS).toEqual([]);
   });
 
   it("adds eight sourced FDE recipes without conflating configuration review with connectivity", () => {
@@ -250,17 +242,17 @@ describe("MCP curated catalog", () => {
 
   it("builds Windows and macOS npx commands", () => {
     const playwright = item("playwright");
-    expect(playwright.build({}, DEFAULT_NEW_APPS, "windows").server).toEqual({
+    expect(playwright.build({}, ["claude"], "windows").server).toEqual({
       type: "stdio",
       command: "cmd",
       args: ["/c", "npx", "-y", "@playwright/mcp@latest"],
     });
-    expect(playwright.build({}, DEFAULT_NEW_APPS, "macos").server).toEqual({
+    expect(playwright.build({}, ["claude"], "macos").server).toEqual({
       type: "stdio",
       command: "npx",
       args: ["-y", "@playwright/mcp@latest"],
     });
-    expect(playwright.build({}, DEFAULT_NEW_APPS, "unknown").server).toEqual({
+    expect(playwright.build({}, ["claude"], "unknown").server).toEqual({
       type: "stdio",
       command: "npx",
       args: ["-y", "@playwright/mcp@latest"],
@@ -268,11 +260,11 @@ describe("MCP curated catalog", () => {
   });
 
   it("requires business fields before building credentialed items", () => {
-    expect(() => item("amap").build({}, DEFAULT_NEW_APPS, "macos")).toThrow(
+    expect(() => item("amap").build({}, ["claude"], "macos")).toThrow(
       UserFacingError,
     );
     expect(() =>
-      item("filesystem").build({ paths: [] }, DEFAULT_NEW_APPS, "macos"),
+      item("filesystem").build({ paths: [] }, ["claude"], "macos"),
     ).toThrow(UserFacingError);
     expect(() =>
       item("dingtalk").build(
@@ -281,7 +273,7 @@ describe("MCP curated catalog", () => {
           clientSecret: "secret",
           profiles: ["ALL"],
         },
-        DEFAULT_NEW_APPS,
+        ["claude"],
         "macos",
       ),
     ).toThrow(UserFacingError);
@@ -290,7 +282,7 @@ describe("MCP curated catalog", () => {
   it("puts the Amap key in the URL and keeps it out of the search token", () => {
     const server = item("amap").build(
       { key: "amap-query-secret" },
-      DEFAULT_NEW_APPS,
+      ["claude"],
       "macos",
     );
     expect(server.server).toEqual({
@@ -305,7 +297,7 @@ describe("MCP curated catalog", () => {
   it("masks the Feishu app secret in display args", () => {
     const server = item("feishu").build(
       { appId: "cli_app", appSecret: "feishu-app-secret" },
-      DEFAULT_NEW_APPS,
+      ["claude"],
       "windows",
     );
     expect(server.server.command).toBe("cmd");
@@ -320,23 +312,17 @@ describe("MCP curated catalog", () => {
       "-s",
       "••••••",
     ]);
-    expect(JSON.stringify(server.apps)).toEqual(
-      JSON.stringify({
-        qoderwork: true,
-        "trae-work": true,
-        workbuddy: true,
-        grokbuild: true,
-        codex: true,
-        claude: true,
-        opencode: true,
-      }),
-    );
+    expect(
+      Object.entries(server.apps)
+        .filter(([, enabled]) => enabled)
+        .map(([id]) => id),
+    ).toEqual(["claude"]);
   });
 
   it("stores Baidu and DingTalk secrets in env rather than the command line", () => {
     const baidu = item("baidu-map").build(
       { apiKey: "baidu-ak" },
-      DEFAULT_NEW_APPS,
+      ["claude"],
       "macos",
     );
     expect(baidu.server.env).toEqual({ BAIDU_MAP_API_KEY: "baidu-ak" });
@@ -346,7 +332,7 @@ describe("MCP curated catalog", () => {
         clientSecret: "ding-secret",
         profiles: ["chatbot", "calendar"],
       },
-      DEFAULT_NEW_APPS,
+      ["claude"],
       "macos",
     );
     expect(dingtalk.server.env).toEqual({
@@ -360,7 +346,7 @@ describe("MCP curated catalog", () => {
   it("builds Yunxiao and Context7 as Streamable HTTP", () => {
     const yunxiao = item("yunxiao").build(
       { token: "yunxiao-token", toolsets: ["codeup", "flow"] },
-      DEFAULT_NEW_APPS,
+      ["claude"],
       "macos",
     );
     expect(yunxiao.server).toEqual({
@@ -368,7 +354,7 @@ describe("MCP curated catalog", () => {
       url: "https://openapi-rdc.aliyuncs.com/ai/mcp?toolsets=codeup%2Cflow",
       headers: { Authorization: "Bearer yunxiao-token" },
     });
-    const context7 = item("context7").build({}, DEFAULT_NEW_APPS, "macos");
+    const context7 = item("context7").build({}, ["claude"], "macos");
     expect(context7.server).toEqual({
       type: "http",
       url: "https://mcp.context7.com/mcp",
@@ -376,17 +362,15 @@ describe("MCP curated catalog", () => {
   });
 
   it("keeps time and fetch catalog commands aligned with presets", () => {
-    const time = item("time").build({}, DEFAULT_NEW_APPS, "windows");
-    const fetch = item("fetch").build({}, DEFAULT_NEW_APPS, "windows");
+    const time = item("time").build({}, ["claude"], "windows");
+    const fetch = item("fetch").build({}, ["claude"], "windows");
     expect(mcpPresets.find((preset) => preset.id === "time")?.server).toEqual(
       time.server,
     );
     expect(mcpPresets.find((preset) => preset.id === "fetch")?.server).toEqual(
       fetch.server,
     );
-    expect(
-      item("memory").build({}, DEFAULT_NEW_APPS, "windows").server,
-    ).toEqual({
+    expect(item("memory").build({}, ["claude"], "windows").server).toEqual({
       type: "stdio",
       command: "cmd",
       args: ["/c", "npx", "-y", "@modelcontextprotocol/server-memory"],
@@ -396,7 +380,7 @@ describe("MCP curated catalog", () => {
   it("builds China P0 HTTP recipes without putting secrets in search text", () => {
     const gitee = item("gitee").build(
       { token: "gitee-pat", access: "readonly" },
-      DEFAULT_NEW_APPS,
+      ["claude"],
       "macos",
     );
     expect(gitee.server).toEqual({
@@ -411,14 +395,14 @@ describe("MCP curated catalog", () => {
     expect(
       item("gitee").build(
         { token: "gitee-pat", access: "full" },
-        DEFAULT_NEW_APPS,
+        ["claude"],
         "macos",
       ).server.headers,
     ).toEqual({ Authorization: "Bearer gitee-pat" });
 
     const docs = item("tencent-docs").build(
       { token: "docs-mcp-token" },
-      DEFAULT_NEW_APPS,
+      ["claude"],
       "macos",
     );
     expect(docs.server).toEqual({
@@ -429,7 +413,7 @@ describe("MCP curated catalog", () => {
 
     const weather = item("caiyun-weather").build(
       { apiKey: "caiyun-key" },
-      DEFAULT_NEW_APPS,
+      ["claude"],
       "macos",
     );
     expect(weather.server).toEqual({
@@ -440,7 +424,7 @@ describe("MCP curated catalog", () => {
 
     const search = item("aliyun-websearch").build(
       { apiKey: "sk-websearch" },
-      DEFAULT_NEW_APPS,
+      ["claude"],
       "macos",
     );
     expect(search.server).toEqual({
@@ -457,7 +441,7 @@ describe("MCP curated catalog", () => {
     expect(
       item("tapd").build(
         { token: "tapd-token", workspaceId: "101" },
-        DEFAULT_NEW_APPS,
+        ["claude"],
         "windows",
       ).server,
     ).toEqual({
@@ -470,8 +454,7 @@ describe("MCP curated catalog", () => {
       },
     });
     expect(
-      item("yuque").build({ token: "yuque-token" }, DEFAULT_NEW_APPS, "macos")
-        .server,
+      item("yuque").build({ token: "yuque-token" }, ["claude"], "macos").server,
     ).toEqual({
       type: "stdio",
       command: "npx",
@@ -481,7 +464,7 @@ describe("MCP curated catalog", () => {
     expect(
       item("apifox").build(
         { token: "apifox-token", projectId: "123456" },
-        DEFAULT_NEW_APPS,
+        ["claude"],
         "windows",
       ).server,
     ).toEqual({
@@ -496,62 +479,54 @@ describe("MCP curated catalog", () => {
       ],
       env: { APIFOX_ACCESS_TOKEN: "apifox-token" },
     });
-    expect(
-      item("antv-chart").build({}, DEFAULT_NEW_APPS, "windows").server,
-    ).toEqual({
+    expect(item("antv-chart").build({}, ["claude"], "windows").server).toEqual({
       type: "stdio",
       command: "cmd",
       args: ["/c", "npx", "-y", "@antv/mcp-server-chart"],
     });
     expect(
-      item("sequential-thinking").build({}, DEFAULT_NEW_APPS, "macos").server,
+      item("sequential-thinking").build({}, ["claude"], "macos").server,
     ).toEqual({
       type: "stdio",
       command: "npx",
       args: ["-y", "@modelcontextprotocol/server-sequential-thinking"],
     });
     expect(
-      item("chrome-devtools").build({}, DEFAULT_NEW_APPS, "windows").server,
+      item("chrome-devtools").build({}, ["claude"], "windows").server,
     ).toEqual({
       type: "stdio",
       command: "cmd",
       args: ["/c", "npx", "-y", "chrome-devtools-mcp@latest"],
     });
-    expect(item("git").build({}, DEFAULT_NEW_APPS, "macos").server).toEqual({
+    expect(item("git").build({}, ["claude"], "macos").server).toEqual({
       type: "stdio",
       command: "uvx",
       args: ["mcp-server-git"],
     });
-    expect(
-      item("markitdown").build({}, DEFAULT_NEW_APPS, "windows").server,
-    ).toEqual({
+    expect(item("markitdown").build({}, ["claude"], "windows").server).toEqual({
       type: "stdio",
       command: "uvx",
       args: ["markitdown-mcp"],
     });
-    expect(
-      item("edgeone-pages").build({}, DEFAULT_NEW_APPS, "macos").server,
-    ).toEqual({
-      type: "http",
-      url: "https://mcp-on-edge.edgeone.site/mcp-server",
-    });
-    expect(
-      item("howtocook").build({}, DEFAULT_NEW_APPS, "macos").server,
-    ).toEqual({
+    expect(item("edgeone-pages").build({}, ["claude"], "macos").server).toEqual(
+      {
+        type: "http",
+        url: "https://mcp-on-edge.edgeone.site/mcp-server",
+      },
+    );
+    expect(item("howtocook").build({}, ["claude"], "macos").server).toEqual({
       type: "stdio",
       command: "npx",
       args: ["-y", "howtocook-mcp"],
     });
-    expect(
-      item("train-12306").build({}, DEFAULT_NEW_APPS, "windows").server,
-    ).toEqual({
-      type: "stdio",
-      command: "cmd",
-      args: ["/c", "npx", "-y", "12306-mcp"],
-    });
-    expect(
-      item("duckduckgo").build({}, DEFAULT_NEW_APPS, "macos").server,
-    ).toEqual({
+    expect(item("train-12306").build({}, ["claude"], "windows").server).toEqual(
+      {
+        type: "stdio",
+        command: "cmd",
+        args: ["/c", "npx", "-y", "12306-mcp"],
+      },
+    );
+    expect(item("duckduckgo").build({}, ["claude"], "macos").server).toEqual({
       type: "stdio",
       command: "uvx",
       args: ["duckduckgo-mcp-server"],

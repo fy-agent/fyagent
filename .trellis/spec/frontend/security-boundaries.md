@@ -23,10 +23,14 @@ human consent. Any future UI must meet the linked native contract's explicit
 confirmation and stale-result requirements before introducing an import Port.
 
 Production asset paths remain confined to the Vite distribution. The route
-chunk verifier walks the actual static entry closure, requires exactly eight
-literal product route chunks plus the explicitly listed deferred health and
-managed-subscription ports. Subscription IPC parsing loads on first use of its
-typed port, retaining literal command registration and the existing error rules.
+chunk verifier walks the actual static entry closure, requires exactly nine
+literal product route chunks (including `app/ProjectsWorkspace.tsx`) plus the
+explicitly listed deferred Health, Projects, Delivery Kits, Verification, Models and
+Configuration Recovery ports. Managed Subscription is a reviewed second-level
+dynamic entry imported only by the deferred Models port; the verifier checks
+that exact nested edge and rejects static inclusion or unreviewed children.
+Subscription IPC parsing loads on first use of its typed port, retaining literal
+command registration and the existing error rules.
 It rejects unlisted dynamic entries and routes or deferred ports leaked into
 eager startup; the existing route chunk limit also bounds deferred ports.
 Budget checks still apply after directory moves; removing a redundant entry

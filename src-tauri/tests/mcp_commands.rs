@@ -1473,3 +1473,47 @@ fn sync_all_enabled_removes_known_disabled_but_preserves_unknown_live_entries() 
         "live entries unknown to DB should be preserved"
     );
 }
+
+#[test]
+fn mcp_library_only_upsert_validates_before_persisting_without_native_writes() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let home = ensure_test_home();
+    let state = create_test_state().unwrap();
+    let mut server = McpServer {
+        id: "library-fixture".into(),
+        name: "Library fixture".into(),
+        server: json!({"type":"stdio"}),
+        apps: McpApps::default(),
+        description: None,
+        homepage: None,
+        docs: None,
+        tags: vec![],
+    };
+    let snapshot = || {
+        state
+            .db
+            .export_sql_string()
+            .unwrap()
+            .lines()
+            .filter(|line| !line.starts_with("-- 生成时间:"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let before = snapshot();
+    assert!(McpService::upsert_server(&state, server.clone()).is_err());
+    assert_eq!(snapshot(), before);
+    for invalid_type in [json!(7), json!(null), json!(false), json!({})] {
+        server.server = json!({"type":invalid_type,"command":"fixture-never-executed"});
+        assert!(McpService::upsert_server(&state, server.clone()).is_err());
+        assert_eq!(snapshot(), before);
+    }
+    server.server =
+        json!({"type":"stdio","command":"fixture-never-executed","extension":{"keep":true}});
+    McpService::upsert_server(&state, server.clone()).unwrap();
+    let saved = state.db.get_all_mcp_servers().unwrap();
+    assert_eq!(saved["library-fixture"].server, server.server);
+    for native_dir in [".claude", ".codex", ".grok", ".config/opencode"] {
+        assert!(!home.join(native_dir).exists(), "created {native_dir}");
+    }
+}

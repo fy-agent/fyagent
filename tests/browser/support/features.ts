@@ -342,6 +342,7 @@ export async function installRichTauriFeatureFixture(
     }
     let workBuddyRevision = "fixture-revision-1";
     let openCodeSubscription: {
+      editable: boolean;
       id: string;
       name: string;
       modelIds: string[];
@@ -1379,6 +1380,7 @@ export async function installRichTauriFeatureFixture(
               throw { code: "provider_conflict" };
             const alreadyBound = openCodeSubscription !== null;
             openCodeSubscription = {
+              editable: true,
               id: "fyagent-openai-opencode-fixture",
               name: "OpenCode subscription",
               modelIds: [String(request.modelId)],
@@ -1661,7 +1663,11 @@ export async function installRichTauriFeatureFixture(
             const grokCli =
               agentId === "grokbuild" || agentId === "claude-code";
             return {
-              contractVersion: 4,
+              contractVersion: 5,
+              configurationEligibility: {
+                state: "eligible",
+                evidence: grokCli ? "cli_runnable" : "installation_detected",
+              },
               agentId,
               reviewedAt: "2026-08-29",
               installState: "installed",

@@ -45,6 +45,10 @@ and macOS `rust:test` cannot close that acceptance gap. See
 
 ## Test Setup and Patterns
 
+The contract/release aggregate includes workstation-path privacy checks so a
+docs-only follow-up cannot pass local contract validation and then fail the same
+tracked-document check in hosted frontend CI. Check the staged final file set.
+
 Vitest projects explicitly define setup rather than inheriting one another.
 The contracts project loads `tests/setupGlobals.ts` and `tests/setupTests.ts`;
 MSW/native-fetch fixtures retain their transport setup and cleanup. The renderer
@@ -53,8 +57,8 @@ bridge and cleanup. Removed i18n setup must not reappear as a phantom dependency
 
 The `host-integration` project isolates the five real-mise suites selected by
 `hostIntegrationFiles` in the same config. Ordinary `mise run test:unit` still
-collects all projects once. CI selects `contracts` and `renderer` explicitly;
-the locked Vitest 3 CLI does not propagate `--exclude` into inline projects.
+collects all projects once. CI selects `contracts` and `renderer` explicitly
+instead of relying on cross-project `--exclude` propagation.
 `tests/ciWorkflow.test.ts` executes real `vitest list --filesOnly` collection to
 prove the local/CI set difference and disjoint file ownership. Do not replace
 this evidence with a workflow substring assertion or disable host checks locally.
@@ -143,7 +147,7 @@ initial-chunk budget; do not raise Vite's warning threshold to hide a
 monolithic entry. Vendor budgets must name their source and remain separate
 from the app route budget.
 
-The browser gate also boots the production bundle and visits all eight routes
+The browser gate also boots the production bundle and visits all nine routes
 through `config/playwright.performance.config.ts` (the `production boots` case).
 Passing Vite dev-server tests or producing a manifest does not prove bundled
 module initialization. `config/vite.config.ts` uses Rollup's dependency-aware named

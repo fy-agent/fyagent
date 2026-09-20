@@ -33,6 +33,7 @@ function readiness(
 ): AgentInstallReadiness {
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+    configurationEligibility: { state: "not_detected", evidence: "none" },
     agentId: "qoderwork",
     reviewedAt: "2026-08-29",
     installState: "not_installed",

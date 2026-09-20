@@ -35,10 +35,10 @@ async function ports() {
 }
 
 async function openCodePorts() {
-  const { createModelFeaturePorts } = await import(
-    "@/shared/platform/tauri/feature-ports/models"
+  const { createTauriFeaturePorts } = await import(
+    "@/shared/platform/tauri/features"
   );
-  return createModelFeaturePorts().opencodeModels;
+  return createTauriFeaturePorts().opencodeModels;
 }
 
 describe("OpenCode subscription transport", () => {
@@ -83,7 +83,12 @@ describe("OpenCode subscription transport", () => {
     async (selectedModel) => {
       const snapshot = {
         providers: [
-          { id: "owned", name: "Saved provider", modelIds: ["model-1"] },
+          {
+            id: "owned",
+            name: "Saved provider",
+            modelIds: ["model-1"],
+            editable: true,
+          },
         ],
         selectedModel,
         path: "~/.config/opencode/opencode.json",

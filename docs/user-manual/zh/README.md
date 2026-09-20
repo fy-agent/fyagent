@@ -11,6 +11,7 @@
 - 需要查看 CLI 版本或安装 **Grok Build**：看[工具安装](./2-agent-tools/2.1-install.md)和[冲突诊断](./2-agent-tools/2.2-update-diagnose.md)。Claude Desktop、Codex Desktop、OpenCode Desktop 请到 Agent 页面管理。
 - 想集中管理接口和模型：从[添加供应商](./3-providers/3.1-add.md)开始。
 - 想使用 MCP、Prompts 或 Skills：进入[扩展功能](#4-扩展功能)。
+- 为不同客户交付 AI 项目：看[客户项目与交付](./4-extensions/4.7-fde-projects.md)。
 - WorkBuddy 模型列表需要写入本地配置：看[WorkBuddy 模型配置](./4-extensions/4.6-workbuddy.md)。
 - 请求不稳定或需要统计用量：进入[代理与高可用](#5-代理与高可用)。
 - 配置没生效：先看[常见问题](./6-faq/6.2-questions.md)和[环境变量冲突](./6-faq/6.4-env-conflict.md)。
@@ -45,6 +46,7 @@
 - [4.4 会话](./4-extensions/4.4-sessions.md)
 - [4.5 工作区与记忆](./4-extensions/4.5-workspace.md)
 - [4.6 WorkBuddy 模型配置](./4-extensions/4.6-workbuddy.md)
+- [4.7 客户项目与交付](./4-extensions/4.7-fde-projects.md)
 
 ## 5. 代理与高可用
 

@@ -16,11 +16,13 @@ import { TooltipProvider } from "@/shared/ui/primitives";
 import { managedAuthOverviewFixture } from "../../fixtures/managedAuth";
 
 const managedProvider = {
+  editable: true,
   id: "fyagent-openai-opencode-fixture",
   name: "ChatGPT subscription",
   modelIds: ["subscription-only-model"],
 };
 const apiProvider = {
+  editable: true,
   id: "ordinary-api",
   name: "Ordinary API",
   modelIds: ["ordinary-api-model"],
@@ -307,6 +309,11 @@ describe("OpenCode subscription restoration", () => {
       expect(screen.getByLabelText("供应商名称")).toHaveValue(
         withApiProvider ? apiProvider.name : "",
       );
+      expect(
+        within(screen.getByLabelText("供应商")).queryByRole("option", {
+          name: managedProvider.name,
+        }),
+      ).not.toBeInTheDocument();
       const existing = screen.getByTestId("opencode-model-ids");
       await user.click(within(existing).getByRole("button"));
       expect(
@@ -324,4 +331,98 @@ describe("OpenCode subscription restoration", () => {
       expect(ports.opencodeModels.saveModels).not.toHaveBeenCalled();
     },
   );
+
+  it("restores subscription ownership before editing an exact API provider while keeping builtin models read-only", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    const builtinProvider = {
+      id: "builtin",
+      name: "Builtin",
+      modelIds: ["builtin-model"],
+      editable: false,
+    };
+    const secondApiProvider = { ...apiProvider, id: "second-api-exact-id" };
+    const restoredProviders = [builtinProvider, apiProvider, secondApiProvider];
+    let restored = false;
+    ports.opencodeModels.getSnapshot = vi.fn(async () => ({
+      ...snapshot(
+        restored ? restoredProviders : [managedProvider, ...restoredProviders],
+      ),
+      revision: restored ? "restored-revision" : "managed-revision",
+    }));
+    ports.opencodeModels.restoreManagedProxy = vi.fn(async () => {
+      restored = true;
+    });
+    ports.opencodeModels.saveModels = vi.fn(async () => ({
+      state: "saved" as const,
+      revision: "saved-revision",
+      modelCount: 2,
+      createdEntries: 1,
+      updatedEntries: 0,
+    }));
+    const onBlockWrites = vi.fn();
+    renderWithPorts(
+      <OpenCodeModelsPanel
+        active
+        writesBlocked={false}
+        onBlockWrites={onBlockWrites}
+      />,
+      ports,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("供应商")).toHaveValue(
+        `existing:${apiProvider.id}`,
+      ),
+    );
+    expect(screen.getByRole("button", { name: "保存并应用" })).toBeDisabled();
+    await user.selectOptions(
+      screen.getByLabelText("供应商"),
+      "existing:builtin",
+    );
+    expect(screen.queryByLabelText("服务地址")).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: /当前已有的第三方模型 ID/ }),
+    );
+    expect(screen.getByText("builtin-model")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "移除模型 builtin-model" }),
+    ).toBeDisabled();
+    await confirmRestore(user);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "恢复之前的模型配置" }),
+      ).not.toBeInTheDocument(),
+    );
+    await user.selectOptions(
+      screen.getByLabelText("供应商"),
+      `existing:${secondApiProvider.id}`,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "保存并应用" })).toBeEnabled(),
+    );
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://fixture.invalid/v1",
+    );
+    await user.type(screen.getByLabelText("API Key"), "fixture-key");
+    await user.type(screen.getByLabelText("自定义模型 ID"), "new-model");
+    await user.click(screen.getByRole("button", { name: "填入" }));
+    await user.click(screen.getByRole("button", { name: "保存并应用" }));
+    await user.click(screen.getByRole("button", { name: "确认保存" }));
+    await waitFor(() =>
+      expect(ports.opencodeModels.saveModels).toHaveBeenCalledExactlyOnceWith({
+        providerId: secondApiProvider.id,
+        providerName: apiProvider.name,
+        baseUrl: "https://fixture.invalid/v1",
+        apiKey: "fixture-key",
+        selectedModelIds: ["new-model"],
+        removedModelIds: [],
+        expectedRevision: "restored-revision",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("API Key")).toHaveValue(""),
+    );
+    expect(onBlockWrites).not.toHaveBeenCalled();
+  });
 });

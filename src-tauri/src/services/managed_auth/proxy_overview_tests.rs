@@ -15,6 +15,7 @@ impl Drop for TestHome {
             Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
             None => std::env::remove_var("FYAGENT_TEST_HOME"),
         }
+        crate::settings::reload_settings().unwrap();
     }
 }
 
@@ -22,6 +23,7 @@ fn fixture() -> (TestHome, ManagedAuthService<MemorySecretBackend>, AppState) {
     let directory = tempfile::tempdir().unwrap();
     let previous = std::env::var_os("FYAGENT_TEST_HOME");
     std::env::set_var("FYAGENT_TEST_HOME", directory.path());
+    crate::settings::reload_settings().unwrap();
     let db = Arc::new(Database::memory().unwrap());
     let auth = ManagedAuthService::new(
         db.clone(),
@@ -235,6 +237,29 @@ fn subscription_proxy_slots_remove_superseded_and_orphaned_rows_only() {
     native.credential_id = None;
     auth.repository.upsert_connection(&native).unwrap();
 
+    let observed = auth
+        .observe_overview_inner_with_proxy_observer(|_, _, _| Some(true))
+        .unwrap();
+    for retained in [&current, &unrelated, &targeted] {
+        assert!(observed
+            .connections
+            .iter()
+            .any(|row| row.connection_id == retained.connection_id));
+    }
+    for removed in [&legacy, &orphan] {
+        assert!(!observed
+            .connections
+            .iter()
+            .any(|row| row.connection_id == removed.connection_id));
+        assert!(
+            auth.repository
+                .list_connections()
+                .unwrap()
+                .iter()
+                .any(|row| row.connection_id == removed.connection_id),
+            "Health must not persist reconciliation"
+        );
+    }
     auth.upsert_proxy_connections().unwrap();
     let rows = auth.repository.list_connections().unwrap();
     for retained in [&current, &unrelated, &targeted, &native] {
@@ -296,4 +321,53 @@ fn subscription_overview_counts_one_consumer_for_multiple_credentials_on_one_acc
     assert!(proxy
         .iter()
         .all(|connection| connection.account_id.as_deref() == Some(first.identity_id.as_str())));
+}
+
+#[test]
+#[serial]
+fn release_integration_health_observes_all_proxy_accounts_without_persisting_slots() {
+    for provider in [ManagedAuthProvider::Openai, ManagedAuthProvider::Xai] {
+        let (_home, auth, state) = fixture();
+        let first = seed(&auth, provider, "first", "first");
+        let second = seed(&auth, provider, "second", "second");
+        assert!(auth.repository.list_connections().unwrap().is_empty());
+        let before = state.db.export_sql_string().unwrap();
+        for _ in 0..2 {
+            let mut observed = Vec::new();
+            let overview = auth
+                .observe_overview_inner_with_proxy_observer(|_, account, is_default| {
+                    observed.push((account.to_owned(), is_default));
+                    Some(true)
+                })
+                .unwrap();
+            assert!(observed.contains(&("first".into(), false)));
+            assert!(observed.contains(&("second".into(), true)));
+            for credential in [&first, &second] {
+                let account = overview
+                    .accounts
+                    .iter()
+                    .find(|row| row.account_id == credential.identity_id)
+                    .unwrap();
+                assert_eq!(account.connected_consumer_count, 1);
+                assert!(overview
+                    .connections
+                    .iter()
+                    .any(
+                        |row| row.account_id.as_deref() == Some(credential.identity_id.as_str())
+                            && row.consumer == ManagedAuthConsumer::FyagentProxy
+                            && row.auth_status == ManagedAuthConnectionState::Connected
+                    ));
+            }
+        }
+        assert!(auth.repository.list_connections().unwrap().is_empty());
+        // Export timestamps are presentation metadata, not persisted data.
+        let rows = |value: &str| {
+            value
+                .lines()
+                .filter(|line| !line.starts_with("--"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert_eq!(rows(&state.db.export_sql_string().unwrap()), rows(&before));
+    }
 }

@@ -3,6 +3,10 @@
 日期：2026-09-19。基线：`origin/main` 的 `64f4d8f6`（0.4.5）。
 候选分支：`codex/subscription-cross-agent-20260919`。
 
+历史候选说明：以下安装包和 schema 22 验证属于订阅单项版本。2026-09-20
+与 FDE 的组合代码以 PR #193、#192 及 `09-20-release-integration` 验证记录为准，
+组合迁移使用 schema 23；旧安装包不作为两项功能整合后的验收候选。
+
 ## 代码结论
 
 此前已经存在内部登录、凭据保险库、刷新，以及 OpenAI/xAI 订阅经 FyAgent
@@ -71,12 +75,13 @@ schema 22，但结构不同，具体风险见下节。不能通过同为 0.4.5 �
    仅在空白项目目录启动 CLI 不能证明配置隔离。
 
 前述检查完成后，才能通过下面带进程级环境变量的入口启动已签名候选。
-路径必须指向准备好的独立测试目录；不要直接双击应用或将它复制到
+先将 `<isolated-test-home>` 和 `<subscription-uat-app>` 分别替换为已核对的
+独立测试目录和候选应用路径；不要直接双击应用或将它复制到
 `/Applications/FyAgent.app`。后续重启也使用同一入口。
 
 ```sh
-env FYAGENT_TEST_HOME="/Users/serendipity/.codex/worktrees/subscription-cross-agent-20260919/fyagent/.trellis/.runtime/uat-home/subscription-20260919" \
-  "/Users/serendipity/.codex/worktrees/subscription-cross-agent-20260919/fyagent/.trellis/.runtime/artifacts/subscription-uat-20260919/FyAgent.app/Contents/MacOS/fyagent"
+env FYAGENT_TEST_HOME="<isolated-test-home>" \
+  "<subscription-uat-app>/Contents/MacOS/fyagent"
 ```
 
 启动入口尚未完成真实账号 UAT。正式发行、Windows 实机及真实订阅额度均未

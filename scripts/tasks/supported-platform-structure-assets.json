@@ -27,7 +27,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "245b4e2ad773c9a3d35c39d8d78c3eb06af4355b6a7bf0f0a3f7723cccf4e1e0"
+      "4c16497066bf5be50d407e22fcb6bfa1f50fe058850e77d4e32046bcb7dae684"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -67,7 +67,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "fef1f416810bc2acfc2724f2046bfed4928dce90e9e9e72734813c6b08530bc4"
+      "24f315ff2dbf1ec6821473c04606ca5151635ebd07679cd396460bb287f23669"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "9836a04d6b9e0b5feeff878a670a24e3325722b0b137ce2fe766cc38693e1555"
+      "42a23d47c3c85a9601c8b13eacfd6e604de1b8a423aa82b529a6e6dc2e80e5a5"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -187,7 +187,7 @@
     ],
     [
       "src-tauri/src/opencode_config.rs",
-      "ec1c5bc633d9dd8690919235994c6a55d4da3f869f5f153e613d33ef042ee09e"
+      "bcce927c10fbcaabd2bca74d5f4858fc3eabeb6f2612074ae730ae4a397aa778"
     ],
     [
       "src-tauri/src/panic_hook.rs",
@@ -214,6 +214,14 @@
       "37654d2a840aabdd23cc5aa3cfa2bb4cd7e04d2d413db2e310b752de408403eb"
     ],
     [
+      "src-tauri/src/services/delivery_kits/mod.rs",
+      "c4ee0a9e7924dc3e426ef1a6103e2ff19efa93c257c9c91e9b3302bb46a5f197"
+    ],
+    [
+      "src-tauri/src/services/delivery_kits/tests.rs",
+      "be2f80d1aed202aed8a8c9ea44e4bea2d7a8988c67b9bdb41514090e36216c7b"
+    ],
+    [
       "src-tauri/src/services/env_checker.rs",
       "e23b834ebd817e45afac47d1327902e66cb1fd651fd8eb25c0d3aaed8e5b02cf"
     ],
@@ -222,8 +230,12 @@
       "8d31450f0b157a78b7907eb4b45b54dba1b15da3541ce76bbd3225945b49ff1a"
     ],
     [
+      "src-tauri/src/services/fde_workspace/tests.rs",
+      "464ed1af5d9c95df53ad0c74497823466df6097aa74475bc51c20289957155a2"
+    ],
+    [
       "src-tauri/src/services/managed_auth/consumers/grok.rs",
-      "d0b2abf5bf041d8d5be0cf1bda6b02c23c58ceeee396ef55efba2814cf34de5f"
+      "4d7ccd6200e71c3ab640f7d89638c18ea7fafdf0451ed896018ce5c0578d2eca"
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",
@@ -231,15 +243,31 @@
     ],
     [
       "src-tauri/src/services/managed_auth/subscription_tests.rs",
-      "5d0fc9c71a5f86af4f83a06e3244715bce1b8b9b6611a911a0a1bf73bea3951c"
+      "031d37552d6fd7970c4dbf3e4cb3bbcee8db1f126631b43b44fa06fc48250b80"
+    ],
+    [
+      "src-tauri/src/services/managed_auth/subscription_transport_tests.rs",
+      "cd7d49b3d731caa2db19da40aa58b7816dc9645ddca0de73cd72ea46eda14a17"
     ],
     [
       "src-tauri/src/services/model_probe.rs",
-      "f5c87f86e62c5738d3c345e191960d02100b3df8b79f74ec9e1909428f0e0578"
+      "88242ca3ce0de66443fc65c0a20ee16a9d6a08a7b17a100824642471896795b6"
+    ],
+    [
+      "src-tauri/src/services/projects/files.rs",
+      "d13672c8e4f669f7eab07ab95eb9c179f957ff74797cc976092b89ef8e6a8038"
+    ],
+    [
+      "src-tauri/src/services/projects/mod.rs",
+      "3e9d3b9acb74afad85883c794d7baa789041405c9ccf115ccf6d990c2b17003d"
+    ],
+    [
+      "src-tauri/src/services/projects/tests.rs",
+      "d4c8b64a1da1cf63ecbf7be44bbb2e7988793d5318b53d41bddf6045fb8983c3"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "f538c3e299f3a0dd18baac2a8bfc8db2c59ccc39de7e0a6bd474aea7b06db345"
+      "8d6ebbba07b71e097f86dda358b9528de83e358eb7b8ef1cc47990f1f695122b"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -271,7 +299,7 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "bac1492eb395bb9a06fb5ddc3e60e504b89dec46253ba9f2aa8b652962ed5eb2"
+      "b8833c66e29aa4af5e29592d311df2dd545f5044afc0ae3169a5b6cbc6f293da"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",
@@ -291,7 +319,7 @@
     ],
     [
       "src-tauri/src/services/tooling/health.rs",
-      "f4aa850d1d21c0662b568c9911b74f0b7744b88f5f760e2bcfc736a415ba6646"
+      "e38d20b4e69f851a76ca8e1ee40a8e3fd4f2d538f3ac4d8a8da3a76d08036abe"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
@@ -399,7 +427,7 @@
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
-      "dd312ed28285c0aa56e7f998b3c3f64095b71c4df0bac4a3e4db7d57c49869cd"
+      "dfebb5eda13f7b115d83c9e0df681812967f212b93dbd9647ed049a2a7b113c1"
     ],
     [
       "tests/hdiutilRetry.test.ts",
@@ -411,7 +439,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "9754ef52ad771dc78157b34291c135aa90b5d7cd0e2d46349a4d582655ec3b8d"
+      "124fd5d09695b0e1132e18e43d74059d3eae4a4efea2247fd3aab3114fdb957a"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

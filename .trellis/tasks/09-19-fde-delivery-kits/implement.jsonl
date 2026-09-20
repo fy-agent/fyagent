@@ -1,0 +1,7 @@
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Renderer/domain/native port ownership"}
+{"file":".trellis/spec/backend/skill-management.md","reason":"Reuse installation and path boundaries without implicit target projection"}
+{"file":".trellis/spec/backend/secretref-backend.md","reason":"Native-only credential boundary"}
+{"file":".trellis/tasks/09-19-fde-delivery-kits/design.md","reason":"Proposed package and cross-task contracts pending root freeze"}
+{"file":".trellis/tasks/09-19-fde-delivery-kits/research/architecture.md","reason":"Source evidence and ownership map"}
+{"file": ".trellis/spec/backend/delivery-kits.md", "reason": "Implemented delivery kit v1 contract"}
+{"file": ".trellis/spec/frontend/delivery-kits.md", "reason": "Implemented delivery kit v1 contract"}

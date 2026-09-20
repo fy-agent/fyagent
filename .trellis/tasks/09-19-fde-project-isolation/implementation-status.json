@@ -1,0 +1,50 @@
+{
+  "stage": "native_committed_frontend_verified",
+  "completed": [
+    "native customer/project CRUD/archive/CAS",
+    "four local-only tables, migration and sync skip/preserve",
+    "native resource and credential references with honest unavailable/unverifiable states",
+    "kit native authority port + atomic idempotent binding",
+    "immutable context files and explicit Codex materialization",
+    "typed projects page, route/ACL and kit/verification component slots"
+  ],
+  "tests": [
+    {
+      "command": "rtk mise run rust:test -- projects",
+      "result": "domain 13 + sync preserve 1 passed; broader match total 24 passed / 1 unrelated Managed Auth TargetChanged failure; isolated rerun pending"
+    },
+    {
+      "command": "focused frontend UI/ports/ACL/navigation/architecture tests",
+      "result": "57 passed / 8 files"
+    },
+    {
+      "command": "rtk mise run typecheck",
+      "result": "passed after final UI update"
+    },
+    {
+      "command": "rtk mise run rust:fmt:check",
+      "result": "passed"
+    },
+    {
+      "command": "focused ESLint",
+      "result": "passed"
+    },
+    {
+      "command": "rtk mise run rust:clippy",
+      "result": "passed"
+    },
+    {
+      "command": "rtk proxy env FYAGENT_TEST_HOME=/private/tmp/fyagent-projects-native-final mise run rust:test -- services::projects::tests",
+      "result": "13 passed, 0 failed"
+    }
+  ],
+  "next": [
+    "commit typed frontend and UI",
+    "isolated unrelated OpenCode failure readback",
+    "final handoff"
+  ],
+  "blockers": [
+    "production kit authority adapter requires root integration",
+    "runtime launch unverified and disabled"
+  ]
+}

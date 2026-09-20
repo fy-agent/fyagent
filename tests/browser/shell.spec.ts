@@ -10,6 +10,7 @@ import {
 } from "./support";
 
 const navigationContract = [
+  { path: "/projects", label: "客户项目" },
   { path: "/agents", label: "AI软件配置" },
   { path: "/health", label: "运行状态" },
   { path: "/auth", label: "账号与认证" },
@@ -28,6 +29,7 @@ const windowControlNames = ["最小化", "最大化/还原", "关闭"] as const;
 
 const primaryControlTestIds = [
   ...visibleControlTestIds,
+  "#/projects",
   "#/agents",
   "#/health",
   "#/auth",
@@ -129,7 +131,7 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
     navigation.locator(
       ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
     ),
-  ).toHaveCount(5);
+  ).toHaveCount(6);
   await expect(
     navigation.getByRole("link", { name: "Agent 目录" }),
   ).toHaveCount(0);
@@ -290,7 +292,11 @@ test("reaches every primary control with the keyboard in document order", async 
             element.querySelectorAll<HTMLElement>(
               'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
             ),
-          ).filter((control) => control.tabIndex >= 0).length,
+          ).filter(
+            (control) =>
+              control.tabIndex >= 0 &&
+              control.closest('[data-testid="top-bar"], nav'),
+          ).length,
       ),
     "Renderer shell must contain the complete grouped keyboard path",
   ).toBe(primaryControlTestIds.length);

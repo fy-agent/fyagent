@@ -14,7 +14,10 @@ impl Database {
     /// Missing per-Agent proxy configuration stays unknown. In particular this
     /// must not use the legacy getter, which seeds missing rows while reading.
     pub(crate) fn health_proxy_enabled(&self, app_type: &str) -> Result<Option<bool>, AppError> {
-        if !matches!(app_type, "claude" | "codex" | "gemini" | "grokbuild") {
+        if !matches!(
+            app_type,
+            "claude" | "codex" | "gemini" | "grokbuild" | "opencode"
+        ) {
             return Err(AppError::Database(
                 "health_proxy_unsupported_app".to_string(),
             ));
@@ -109,12 +112,16 @@ mod tests {
                 [],
             )
             .unwrap();
-            conn.execute("DELETE FROM proxy_config WHERE app_type = 'grokbuild'", [])
-                .unwrap();
+            conn.execute(
+                "DELETE FROM proxy_config WHERE app_type IN ('grokbuild','opencode')",
+                [],
+            )
+            .unwrap();
         }
         let before = total_changes(&db);
         assert_eq!(db.health_proxy_enabled("claude").unwrap(), Some(true));
         assert_eq!(db.health_proxy_enabled("codex").unwrap(), Some(false));
+        assert_eq!(db.health_proxy_enabled("opencode").unwrap(), None);
         assert_eq!(db.health_proxy_enabled("grokbuild").unwrap(), None);
         assert!(db.health_proxy_enabled("gemini").is_err());
         for unsupported in [

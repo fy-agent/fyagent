@@ -69,7 +69,9 @@ interface ProvidersPort {
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
   bindXaiManaged(request: BindXaiManagedRequest): Promise<BindXaiManagedResult>;
-  bindManagedProxy(request: BindManagedProxyRequest): Promise<BindManagedProxyResult>;
+  bindManagedProxy(
+    request: BindManagedProxyRequest,
+  ): Promise<BindManagedProxyResult>;
   fetchXaiManagedModels(accountId: string): Promise<WorkBuddyFetchModelsResult>;
 }
 
@@ -88,7 +90,9 @@ interface WorkBuddyPort {
 
 interface OpenCodeModelsPort {
   restoreManagedProxy(): Promise<void>;
-  bindManagedProxy(request: BindOpenCodeManagedRequest): Promise<BindOpenCodeManagedResult>;
+  bindManagedProxy(
+    request: BindOpenCodeManagedRequest,
+  ): Promise<BindOpenCodeManagedResult>;
   getSnapshot(): Promise<OpenCodeModelSnapshot>;
   fetchProviderModels(
     request: OpenCodeFetchModelsRequest,
@@ -274,8 +278,10 @@ shared lifecycle here.
 ### OpenCode flow
 
 - OpenCode reads a strict `OpenCodeModelSnapshot` containing providers,
-  revision, path/backupPath, and existence. Current UI edits the first provider
-  snapshot.
+  revision, path/backupPath, and existence. The UI selects an editable provider
+  by its exact provider ID and keeps builtin-provider structure intact. Managed
+  subscription providers are excluded from ordinary API-key editing and use the
+  dedicated binding/restoration flow.
 - Fetch uses `fetchProviderModels`, preserves the key for later save, and keeps
   ordered unique model IDs plus `ownedBy` metadata for local icons/grouping.
 - Normal save includes `expectedRevision`, shows the native write target, and
@@ -458,3 +464,18 @@ if (target === "codex") {
 Credential lifetime remains owned by the API-key boundary above. Identity-only
 apply, Query observation, and their wrong/correct examples live in
 [Renderer Change Plan Workspaces](./change-plan-workspaces.md#7-wrong-vs-correct).
+
+## OpenCode provider edit eligibility
+
+`OpenCodeProviderSnapshot.editable` is a required native boolean parsed by the
+model port. Missing/invalid eligibility is rejected. Existing builtin or unknown
+provider shapes remain visible as model IDs with an explanation directing edits
+to OpenCode. Save/delete are disabled and native writes independently reject the
+unsupported shape. No npm value or private provider document reaches the panel.
+
+The provider selector defaults to the first editable provider, while builtin/unknown
+providers remain selectable for read-only inspection. Explicit creation remains
+available in builtin-only configurations. Save sends the selected exact
+`providerId`, or null only for explicit creation; display names do not choose
+the target. Switching with a pending draft requires discard confirmation, and
+cancel preserves the target, draft and transient key.

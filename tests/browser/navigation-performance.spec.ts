@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { installRichTauriFeatureFixture } from "./support/features";
 
 const routes = [
+  "projects",
   "health",
   "auth",
   "models",
@@ -13,7 +14,7 @@ const routes = [
   "agents",
 ];
 
-test("production boots all eight primary routes without initialization errors", async ({
+test("production boots all nine primary routes without initialization errors", async ({
   page,
 }) => {
   const errors: string[] = [];

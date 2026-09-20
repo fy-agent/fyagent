@@ -89,6 +89,14 @@ constraints, hooks, or error mapping.
 - Schema migration uses the migration savepoint/rollback path. An unknown
   predecessor version, failed DDL, failed data rewrite, or failed version bump
   leaves no partially accepted schema.
+- The combined FDE/subscription migration accepts both historical schema-22
+  shapes: FDE project/evidence tables with the four-target proxy constraint, and
+  OpenCode proxy support without those FDE tables. It completes both owners in a
+  forward migration, retaining proxy settings and takeover state, resource
+  generations, projects, evidence, and recovery records. Reopening does not
+  re-seed or increment existing generations. Fixtures cover both shapes,
+  schema 21, fresh initialization, late-failure rollback and binary restore;
+  never repair a real database by manually rewriting its version.
 - A pre-migration binary backup is attempted for an existing older database.
   The current implementation logs and continues when that safety copy fails;
   do not strengthen or weaken that behavior accidentally inside an unrelated

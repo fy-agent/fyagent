@@ -336,6 +336,8 @@ impl Database {
         // credential store and is referenced only by opaque SecretRef values.
         Self::create_managed_auth_tables_on_conn(conn)?;
 
+        Self::create_project_tables_on_conn(conn)?;
+
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
         // （随 v12 定稿为 current_profile_id_<scope>，不单独 bump 版本）
         if conn
@@ -415,6 +417,7 @@ impl Database {
             [],
         );
 
+        Self::migrate_verification_v22(conn)?;
         Ok(())
     }
 
@@ -554,6 +557,10 @@ impl Database {
                     21 => {
                         Self::migrate_v21_to_v22(conn)?;
                         Self::set_user_version(conn, 22)?;
+                    }
+                    22 => {
+                        Self::migrate_v22_to_v23(conn)?;
+                        Self::set_user_version(conn, 23)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1535,6 +1542,16 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        Ok(())
+    }
+
+    /// Two independent v22 branches owned disjoint additions. The
+    /// forward merge accepts either (or both) without interpreting the numeric
+    /// version alone as proof that OpenCode and FDE structures already exist.
+    fn migrate_v22_to_v23(conn: &Connection) -> Result<(), AppError> {
+        Self::migrate_v21_to_v22(conn)?;
+        Self::create_project_tables_on_conn(conn)?;
+        Self::migrate_verification_v22(conn)?;
         Ok(())
     }
 

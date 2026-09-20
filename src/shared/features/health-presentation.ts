@@ -73,7 +73,18 @@ export const HEALTH_REASON_LABELS: Record<HealthReasonCode, string> = {
   model_missing: "尚未选择模型。",
   model_unknown: "暂时无法确认当前模型。",
   configuration_in_sync: "当前请求来源与已保存设置一致。",
-  configuration_drifted: "配置已在其他位置改变，请检查后再使用。",
+  configuration_drifted:
+    "现用请求配置与保存记录有多项差异。请查看配置后决定，检查不会覆盖现用文件。",
+  configuration_source_drifted:
+    "现用请求来源与保存记录不同，或保存的来源已不存在。检查不会更改当前选择。",
+  configuration_endpoint_drifted:
+    "现用服务地址与保存记录不同。请在配置页核对，检查不会覆盖现用地址。",
+  configuration_model_drifted:
+    "现用模型与保存记录不同。请在配置页核对，检查不会切换模型。",
+  configuration_credential_drifted:
+    "现用认证方式或凭据可观察状态与保存记录不同。检查不会读取或替换密钥。",
+  configuration_profile_unknown:
+    "配置文件可读取，但当前模型引用或格式尚无法识别。请在 Grok 中核对；检查不会改写配置。",
   configuration_drift_unknown: "缺少可比较的配置，暂时无法确认是否发生变化。",
   proxy_running: "当前配置使用的本机转发正在运行。",
   proxy_stopped: "当前配置需要本机转发，但转发尚未运行。",

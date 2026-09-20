@@ -1,0 +1,237 @@
+{
+  "schemaVersion": "fyagent-delivery-kit/v1",
+  "id": "weekly-report",
+  "version": "1.0.0",
+  "title": "经营周报",
+  "summary": "合成数据演示，可在本机核对金额、口径和失败样例。",
+  "scenario": "weekly_report",
+  "compatibility": {
+    "minFyAgentVersion": "0.4.5",
+    "requiredCapabilities": [
+      "text-kit-v1",
+      "weekly-report-v1"
+    ]
+  },
+  "provenance": {
+    "publisherLabel": "FyAgent 内置内容",
+    "license": "PolyForm-Noncommercial-1.0.0",
+    "sourcePresetIds": [
+      "fde-analytics",
+      "fde-discovery",
+      "fde-evaluation"
+    ],
+    "sourceRecipeIds": [
+      "feishu"
+    ]
+  },
+  "inputs": [
+    {
+      "id": "business-input",
+      "label": "业务输入",
+      "description": "使用获授权来源并核对口径；随包数据全部为虚构样例，不填入真实客户内容。",
+      "required": true
+    }
+  ],
+  "connections": [
+    {
+      "id": "source",
+      "recipeId": "feishu",
+      "purpose": "在真实项目中按授权只读获取来源；合成演示不调用连接。",
+      "permissionIds": [
+        "read-source"
+      ],
+      "credentialSlotIds": [
+        "source-access"
+      ],
+      "optional": true
+    }
+  ],
+  "credentialSlots": [
+    {
+      "id": "source-access",
+      "purpose": "在项目设置中选择获授权连接，不随包提供凭据。",
+      "required": false
+    }
+  ],
+  "permissions": [
+    {
+      "id": "read-source",
+      "resourceClass": "business_table",
+      "access": "read",
+      "rationale": "只读必要来源，不发送消息、不修改业务系统；权限仍由来源系统强制。"
+    }
+  ],
+  "prompts": [
+    {
+      "id": "main-prompt",
+      "resourceId": "prompt",
+      "version": "1.0.0"
+    }
+  ],
+  "skills": [
+    {
+      "id": "workflow",
+      "resourceId": "skill",
+      "version": "1.0.0"
+    }
+  ],
+  "resources": [
+    {
+      "id": "prompt",
+      "mediaType": "text/markdown",
+      "text": "请根据已授权台账形成经营周报。先检查期间、币种、重复行和缺失金额，再计算本期收入、环比、目标达成率。每项数字注明来源行。将事实、推测、待核对项分开；给出待决策事项、负责人、下一步。输入异常时停止计算并解释，不补造数字。合成样例不代表真实飞书连接或客户验收。",
+      "sha256": "a7288f4173e69835e65b54d6f2cf635c6974f3e838128852eb7163ce03f0c70b"
+    },
+    {
+      "id": "skill",
+      "mediaType": "text/markdown",
+      "text": "经营周报工作法\n1. 与业务负责人确认期间、币种、收入口径、目标与来源权限。\n2. 只读采集获授权台账，保留来源行，禁止粘贴凭据。无接口时由负责人导出受控文件。\n3. 排除缺字段、重复记录、跨期和混币种；不自动修正。\n4. 以整数分核算金额；上期为零不输出增长率。\n5. 将校验后事实交给 Agent 起草，逐条复核数字/引用。\n6. 业务负责人确认后按单独授权发布；本包不会发送消息。",
+      "sha256": "8dd64dd019b9c242ccf9c983c46c215d42df0a6f49a163e52eaa73e961e0f545"
+    },
+    {
+      "id": "handoff",
+      "mediaType": "text/markdown",
+      "text": "接手清单\n核对源表权限、数据截止时间、指标口径、负责人和异常处理人。先运行内置正反样例；再以独立授权的真实样本验证取数/Agent 输出。记录未接通项与复核人。若金额不一致，停止发布，回到来源行对账。撤回输出或改绑定不能撤回已发送消息。",
+      "sha256": "88124f3f16fbff35cd4c504da8a93fb8c7a616f3863ddc8615a2e275d0c5af92"
+    },
+    {
+      "id": "rollback",
+      "mediaType": "text/markdown",
+      "text": "停止使用当前包；在项目中解除当前绑定或显式选择上一版本。保留来源和未处理事项。不要删除共享连接、Skill 或覆盖全局配置。重新配置真实连接前由项目负责人复核权限。",
+      "sha256": "9093284f38bd669bc1d5b63d0f168c41112e5a8141cf7f26a345ccfca2c60352"
+    },
+    {
+      "id": "baseline-input",
+      "mediaType": "application/json",
+      "text": "{\"currentPeriod\":\"2026-W38\",\"previousPeriod\":\"2026-W37\",\"currency\":\"CNY\",\"targetMinor\":20000000,\"rows\":[{\"rowId\":\"row-1\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":8000000},{\"rowId\":\"row-2\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":6000000},{\"rowId\":\"row-3\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":4000000},{\"rowId\":\"row-4\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":7000000},{\"rowId\":\"row-5\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":5000000},{\"rowId\":\"row-6\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":3000000}]}",
+      "sha256": "406d9479b45d8dcc832abd1c2717c2ef7a0234692a385e851d37fc6a90fe112b"
+    },
+    {
+      "id": "baseline-expected",
+      "mediaType": "application/json",
+      "text": "{\"code\":\"ok\",\"currentMinor\":18000000,\"previousMinor\":15000000,\"growthBps\":2000,\"targetBps\":9000}",
+      "sha256": "6ce654e6fb1300225fa520c4a0ecb5d1cfb2f40978419240966679e81231960d"
+    },
+    {
+      "id": "missing-field-input",
+      "mediaType": "application/json",
+      "text": "{\"currentPeriod\":\"2026-W38\",\"previousPeriod\":\"2026-W37\",\"currency\":\"CNY\",\"targetMinor\":20000000,\"rows\":[{\"rowId\":\"row-1\",\"period\":\"2026-W38\",\"currency\":\"CNY\"},{\"rowId\":\"row-2\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":6000000},{\"rowId\":\"row-3\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":4000000},{\"rowId\":\"row-4\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":7000000},{\"rowId\":\"row-5\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":5000000},{\"rowId\":\"row-6\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":3000000}]}",
+      "sha256": "dfde6daa5a6bd09e8b29251aa95f052b6d637fe1a8f471c39077591e51381159"
+    },
+    {
+      "id": "missing-field-expected",
+      "mediaType": "application/json",
+      "text": "{\"code\":\"invalid_input\"}",
+      "sha256": "5189d9e0275e0aaac6f2919c3a1c7e4a26fa6445111113678d45b9261ee0a6d5"
+    },
+    {
+      "id": "duplicate-row-input",
+      "mediaType": "application/json",
+      "text": "{\"currentPeriod\":\"2026-W38\",\"previousPeriod\":\"2026-W37\",\"currency\":\"CNY\",\"targetMinor\":20000000,\"rows\":[{\"rowId\":\"row-1\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":8000000},{\"rowId\":\"row-1\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":6000000},{\"rowId\":\"row-3\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":4000000},{\"rowId\":\"row-4\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":7000000},{\"rowId\":\"row-5\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":5000000},{\"rowId\":\"row-6\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":3000000}]}",
+      "sha256": "70dce5164bc575dc0a14852cdec2d2eaf64fb26400366e751c97704a5e663125"
+    },
+    {
+      "id": "duplicate-row-expected",
+      "mediaType": "application/json",
+      "text": "{\"code\":\"duplicate_row\"}",
+      "sha256": "c553e2aa134f75d40cc98c392612375f42a72f5dc05f4d29d2d58ea5fc2341c0"
+    },
+    {
+      "id": "wrong-period-input",
+      "mediaType": "application/json",
+      "text": "{\"currentPeriod\":\"2026-W38\",\"previousPeriod\":\"2026-W37\",\"currency\":\"CNY\",\"targetMinor\":20000000,\"rows\":[{\"rowId\":\"row-1\",\"period\":\"2025-W01\",\"currency\":\"CNY\",\"revenueMinor\":8000000},{\"rowId\":\"row-2\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":6000000},{\"rowId\":\"row-3\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":4000000},{\"rowId\":\"row-4\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":7000000},{\"rowId\":\"row-5\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":5000000},{\"rowId\":\"row-6\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":3000000}]}",
+      "sha256": "75f61cb501ceb04449f18b79df4dca37815c3a0d4981ffdbcefba0a434195cce"
+    },
+    {
+      "id": "wrong-period-expected",
+      "mediaType": "application/json",
+      "text": "{\"code\":\"period_mismatch\"}",
+      "sha256": "1e536a504f7f2498122142bcafc4e548713d79919579006c4af5f4d4c53feaf7"
+    },
+    {
+      "id": "mixed-currency-input",
+      "mediaType": "application/json",
+      "text": "{\"currentPeriod\":\"2026-W38\",\"previousPeriod\":\"2026-W37\",\"currency\":\"CNY\",\"targetMinor\":20000000,\"rows\":[{\"rowId\":\"row-1\",\"period\":\"2026-W38\",\"currency\":\"USD\",\"revenueMinor\":8000000},{\"rowId\":\"row-2\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":6000000},{\"rowId\":\"row-3\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":4000000},{\"rowId\":\"row-4\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":7000000},{\"rowId\":\"row-5\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":5000000},{\"rowId\":\"row-6\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":3000000}]}",
+      "sha256": "764b52a8aa99e0ce4b9e1ea32d0d9d0d78d1eb4f5ba32487cbf09a6ad7cdff65"
+    },
+    {
+      "id": "mixed-currency-expected",
+      "mediaType": "application/json",
+      "text": "{\"code\":\"currency_mismatch\"}",
+      "sha256": "e1c7b7db1289783def378009a5862da5525a56705b9e87ac3838556e0e7f224d"
+    },
+    {
+      "id": "zero-previous-input",
+      "mediaType": "application/json",
+      "text": "{\"currentPeriod\":\"2026-W38\",\"previousPeriod\":\"2026-W37\",\"currency\":\"CNY\",\"targetMinor\":20000000,\"rows\":[{\"rowId\":\"row-1\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":8000000},{\"rowId\":\"row-2\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":6000000},{\"rowId\":\"row-3\",\"period\":\"2026-W38\",\"currency\":\"CNY\",\"revenueMinor\":4000000},{\"rowId\":\"row-4\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":0},{\"rowId\":\"row-5\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":0},{\"rowId\":\"row-6\",\"period\":\"2026-W37\",\"currency\":\"CNY\",\"revenueMinor\":0}]}",
+      "sha256": "4fa18c7e217a85e102c3ac888bad32be39807a199dd390ce3d4267b29b48795f"
+    },
+    {
+      "id": "zero-previous-expected",
+      "mediaType": "application/json",
+      "text": "{\"code\":\"zero_previous\"}",
+      "sha256": "e141bbe79608d11af09b5c97aca6e55f509d91254161c9d5d1f42ac0bed3a72f"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "baseline",
+      "kind": "positive",
+      "provenance": "synthetic",
+      "inputResourceId": "baseline-input",
+      "expectedResourceId": "baseline-expected"
+    },
+    {
+      "id": "missing-field",
+      "kind": "negative",
+      "provenance": "synthetic",
+      "inputResourceId": "missing-field-input",
+      "expectedResourceId": "missing-field-expected"
+    },
+    {
+      "id": "duplicate-row",
+      "kind": "negative",
+      "provenance": "synthetic",
+      "inputResourceId": "duplicate-row-input",
+      "expectedResourceId": "duplicate-row-expected"
+    },
+    {
+      "id": "wrong-period",
+      "kind": "negative",
+      "provenance": "synthetic",
+      "inputResourceId": "wrong-period-input",
+      "expectedResourceId": "wrong-period-expected"
+    },
+    {
+      "id": "mixed-currency",
+      "kind": "negative",
+      "provenance": "synthetic",
+      "inputResourceId": "mixed-currency-input",
+      "expectedResourceId": "mixed-currency-expected"
+    },
+    {
+      "id": "zero-previous",
+      "kind": "negative",
+      "provenance": "synthetic",
+      "inputResourceId": "zero-previous-input",
+      "expectedResourceId": "zero-previous-expected"
+    }
+  ],
+  "checks": [
+    {
+      "id": "sample-check",
+      "validator": "weekly_report_v1",
+      "fixtureIds": [
+        "baseline",
+        "missing-field",
+        "duplicate-row",
+        "wrong-period",
+        "mixed-currency",
+        "zero-previous"
+      ],
+      "description": "独立重算指标与业务失败原因。"
+    }
+  ],
+  "handoff": "handoff",
+  "rollback": "rollback"
+}
