@@ -22,6 +22,7 @@ pub(crate) mod profile;
 pub(crate) mod projects;
 pub(crate) mod prompt;
 pub(crate) mod provider;
+pub(crate) mod provider_api;
 pub(crate) mod proxy;
 pub(crate) mod qoderwork;
 pub(crate) mod s3;

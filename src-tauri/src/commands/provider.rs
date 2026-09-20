@@ -8,6 +8,7 @@ use crate::commands::xai_oauth::XaiOAuthState;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider, ProviderMeta, ProviderMutationResult};
 use crate::services::provider::QuickSetupApplyFailureCode;
+use crate::services::provider_api::{validate_credential_scope, ApiProtocol};
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, QuickSetupWriteTarget, SpeedtestService,
     SwitchResult,
@@ -21,7 +22,96 @@ pub struct ProviderPublicSummary {
     id: String,
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    connection: Option<ProviderPublicConnection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     write_targets: Option<Vec<QuickSetupWriteTarget>>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderPublicConnection {
+    base_url: String,
+    model_id: String,
+    protocol: ApiProtocol,
+}
+
+// Project only recognized connection fields. Unsupported shapes remain visible
+// as sources but are not offered as editable quick setup forms.
+fn provider_public_connection(
+    provider: &Provider,
+    credentials: &[String],
+) -> Option<ProviderPublicConnection> {
+    let settings = &provider.settings_config;
+    let (base_url, model_id, protocol) = if let Some(env) = settings.get("env") {
+        (
+            env.get("ANTHROPIC_BASE_URL")?.as_str()?.to_owned(),
+            env.get("ANTHROPIC_MODEL")?.as_str()?.to_owned(),
+            ApiProtocol::Anthropic,
+        )
+    } else {
+        let config = settings
+            .get("config")?
+            .as_str()?
+            .parse::<toml::Value>()
+            .ok()?;
+        if let Some(selected) = config.get("model_provider").and_then(toml::Value::as_str) {
+            let selected = config.get("model_providers")?.get(selected)?;
+            let protocol = match selected.get("wire_api") {
+                None => ApiProtocol::Responses,
+                Some(value) => match value.as_str()? {
+                    "responses" => ApiProtocol::Responses,
+                    "chat" => ApiProtocol::Chat,
+                    _ => return None,
+                },
+            };
+            (
+                selected.get("base_url")?.as_str()?.to_owned(),
+                config.get("model")?.as_str()?.to_owned(),
+                protocol,
+            )
+        } else {
+            let selected = config.get("models")?.get("default")?.as_str()?;
+            let model = config.get("model")?.get(selected)?;
+            if model.get("api_backend")?.as_str()? != "responses" {
+                return None;
+            }
+            (
+                model.get("base_url")?.as_str()?.to_owned(),
+                model.get("model")?.as_str()?.to_owned(),
+                ApiProtocol::Responses,
+            )
+        }
+    };
+    let url = url::Url::parse(&base_url).ok()?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || credentials.iter().any(|credential| {
+            crate::services::workbuddy::url::reject_parsed_url_credential_collision(
+                &url, credential,
+            )
+            .is_err()
+        })
+        || base_url.len() > 2048
+        || model_id.trim().is_empty()
+        || model_id.len() > 256
+        || [&base_url, &model_id].iter().any(|value| {
+            value.chars().any(char::is_control)
+                || credentials
+                    .iter()
+                    .any(|credential| value.contains(credential))
+        })
+    {
+        return None;
+    }
+    Some(ProviderPublicConnection {
+        base_url,
+        model_id,
+        protocol,
+    })
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -210,6 +300,7 @@ fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary,
     Ok(ProviderPublicSummary {
         id: provider.id.clone(),
         name: provider.name.clone(),
+        connection: provider_public_connection(provider, &credentials),
         write_targets: None,
     })
 }
@@ -221,6 +312,8 @@ pub struct ProviderQuickSetupRequest {
     base_url: String,
     api_key: String,
     model_id: String,
+    #[serde(default)]
+    protocol: Option<ApiProtocol>,
     /// Codex 原生能力意图（生图扩展 / WebSocket），仅 codex 目标生效。
     #[serde(default)]
     codex_features: Option<CodexProviderFeatureIntent>,
@@ -237,7 +330,18 @@ impl ProviderQuickSetupRequest {
         self,
         app_type: &AppType,
     ) -> Result<Provider, ProviderQuickSetupCommandError> {
+        let protocol = ApiProtocol::for_target(app_type.as_str(), self.protocol).map_err(|_| {
+            ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
+        })?;
         let codex_features = self.codex_features.unwrap_or_default();
+        if protocol != ApiProtocol::Responses
+            && (codex_features.image_extension == Some(true)
+                || codex_features.websockets == Some(true))
+        {
+            return Err(ProviderQuickSetupCommandError::new(
+                QuickSetupApplyFailureCode::ApplyFailedRolledBack,
+            ));
+        }
         let name = self.name.trim().to_string();
         let base_url = self.base_url.trim().to_string();
         let api_key = self.api_key.trim().to_string();
@@ -265,6 +369,9 @@ impl ProviderQuickSetupRequest {
                 QuickSetupApplyFailureCode::ApplyFailedRolledBack,
             ));
         }
+        validate_credential_scope(&base_url, &api_key, protocol).map_err(|_| {
+            ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
+        })?;
         let (id, settings_config) = match app_type {
             AppType::Claude => (
                 "fyagent-v2-quick-setup-claude",
@@ -289,10 +396,11 @@ impl ProviderQuickSetupRequest {
                 let websockets = codex_features.websockets.unwrap_or(false);
                 let requires_openai_auth = !image_extension;
                 let mut config = format!(
-                    "model_provider = \"custom\"\nmodel = {}\ndisable_response_storage = true\n\n[model_providers.custom]\nname = {}\nbase_url = {}\nwire_api = \"responses\"\nrequires_openai_auth = {}",
+                    "model_provider = \"custom\"\nmodel = {}\ndisable_response_storage = true\n\n[model_providers.custom]\nname = {}\nbase_url = {}\nwire_api = {}\nrequires_openai_auth = {}",
                     quote(&model_id),
                     quote(&name),
                     quote(&base_url),
+                    quote(protocol.wire_name()),
                     requires_openai_auth,
                 );
                 if image_extension {
@@ -337,7 +445,7 @@ impl ProviderQuickSetupRequest {
         provider.notes = Some("Created by FyAgent V2 quick setup".to_string());
         // 显式生图选择视为已完成迁移，避免 prepare_codex_provider_features_for_save
         // 的默认迁移覆盖用户的一键配置选择。
-        if codex_features.image_extension.is_some() {
+        if codex_features.image_extension.is_some() || protocol == ApiProtocol::Chat {
             provider
                 .meta
                 .get_or_insert_with(ProviderMeta::default)
@@ -419,6 +527,9 @@ pub async fn get_provider_summary(
         let mut providers = IndexMap::new();
         for (key, provider) in all {
             let mut summary = provider_public_summary(&provider)?;
+            summary.connection = summary.connection.filter(|connection| {
+                ApiProtocol::for_target(app_type.as_str(), Some(connection.protocol)).is_ok()
+            });
             summary.write_targets = Some(
                 ProviderService::source_write_targets(&app_type, &provider)
                     .map_err(|_| "Provider public summary is unavailable".to_string())?,
@@ -1868,6 +1979,95 @@ mod provider_draft_command_tests {
             let error = request.into_provider(&AppType::Codex).unwrap_err();
             assert!(!format!("{error:?}").contains("secret-key"));
         }
+    }
+
+    #[test]
+    fn quick_setup_protocol_is_preserved_in_public_readback_without_credentials() {
+        for protocol in ["responses", "chat"] {
+            let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
+                "name": "Gateway", "baseUrl": "https://example.test/v1", "apiKey": "fixture-secret",
+                "modelId": "vendor/model-a", "protocol": protocol
+            }))
+            .unwrap();
+            let mut provider = request.into_provider(&AppType::Codex).unwrap();
+            if protocol == "chat" {
+                crate::codex_config::prepare_codex_provider_features_for_save(&mut provider, true)
+                    .unwrap();
+                assert_eq!(
+                    provider
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.image_extension_configured),
+                    Some(true)
+                );
+            }
+            let config: toml::Value = provider.settings_config["config"]
+                .as_str()
+                .unwrap()
+                .parse()
+                .unwrap();
+            assert_eq!(
+                config["model_providers"]["custom"]["wire_api"].as_str(),
+                Some(protocol)
+            );
+            let summary =
+                serde_json::to_value(provider_public_summary(&provider).unwrap()).unwrap();
+            assert_eq!(
+                summary["connection"],
+                serde_json::json!({"baseUrl":"https://example.test/v1", "modelId":"vendor/model-a", "protocol":protocol})
+            );
+            assert!(!summary.to_string().contains("fixture-secret"));
+            assert!(!summary.to_string().contains("auth"));
+        }
+    }
+
+    #[test]
+    fn quick_setup_protocol_rejects_wrong_target_unknown_and_responses_features_for_chat() {
+        let value = serde_json::json!({"name":"Gateway", "baseUrl":"https://example.test/v1", "apiKey":"fixture-secret", "modelId":"model-a", "protocol":"chat"});
+        for app in [AppType::Claude, AppType::GrokBuild] {
+            let request: ProviderQuickSetupRequest = serde_json::from_value(value.clone()).unwrap();
+            assert!(request.into_provider(&app).is_err());
+        }
+        let mut invalid = value.clone();
+        invalid["protocol"] = "unknown".into();
+        assert!(serde_json::from_value::<ProviderQuickSetupRequest>(invalid).is_err());
+        for feature in ["imageExtension", "websockets"] {
+            let mut invalid = value.clone();
+            invalid["codexFeatures"] = serde_json::json!({(feature): true});
+            let request: ProviderQuickSetupRequest = serde_json::from_value(invalid).unwrap();
+            assert!(request.into_provider(&AppType::Codex).is_err());
+        }
+    }
+
+    #[test]
+    fn public_connection_omits_secret_urls_and_unsupported_protocols() {
+        for endpoint in [
+            "https://user:pass@example.test/v1",
+            "https://example.test/v1?key=fixture-secret",
+            "https://example.test/fixture%2Dsecret/v1",
+        ] {
+            let provider = Provider::with_id(
+                "safe".into(),
+                "Gateway".into(),
+                serde_json::json!({"env": {
+                    "ANTHROPIC_BASE_URL":endpoint, "ANTHROPIC_AUTH_TOKEN":"fixture-secret", "ANTHROPIC_MODEL":"model-a"
+                }}),
+                None,
+            );
+            let summary =
+                serde_json::to_value(provider_public_summary(&provider).unwrap()).unwrap();
+            assert!(summary.get("connection").is_none());
+        }
+        let provider = Provider::with_id(
+            "safe".into(),
+            "Gateway".into(),
+            serde_json::json!({"config":"model_provider='custom'\nmodel='m'\n[model_providers.custom]\nbase_url='https://example.test/v1'\nwire_api='unknown'"}),
+            None,
+        );
+        assert!(provider_public_summary(&provider)
+            .unwrap()
+            .connection
+            .is_none());
     }
 
     #[test]

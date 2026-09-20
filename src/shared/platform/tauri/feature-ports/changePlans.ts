@@ -38,9 +38,13 @@ function assertUpsertRequest(
     "codexFeatures",
     "modelId",
     "name",
+    "protocol",
   ]);
   if (
     keys.some((key) => !allowed.has(key)) ||
+    (request.protocol !== undefined &&
+      request.protocol !== "responses" &&
+      request.protocol !== "chat") ||
     typeof request.name !== "string" ||
     !request.name ||
     typeof request.baseUrl !== "string" ||

@@ -1,12 +1,18 @@
 import type { FileWriteTarget } from "./file-writes";
+import type {
+  ApiConfigTarget,
+  ApiConnection,
+  ApiProtocol,
+} from "../../domain/configuration/providerApi";
 
-export type ProviderAppId = "claude" | "codex" | "grokbuild";
+export type ProviderAppId = ApiConfigTarget;
 
 export interface ProviderQuickSetupRequest {
   name: string;
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  protocol?: ApiProtocol;
   codexFeatures?: {
     imageExtension?: boolean;
     websockets?: boolean;
@@ -17,6 +23,7 @@ export interface ProviderSummary {
   id: string;
   name: string;
   modelId?: string;
+  connection?: ApiConnection;
   writeTargets?: ModelWriteTarget[];
 }
 
@@ -180,6 +187,7 @@ export interface ModelProbeRequest {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  protocol?: ApiProtocol;
   codexImageExtension?: boolean;
 }
 

@@ -1,3 +1,8 @@
+import {
+  apiProtocolsForTarget,
+  isApiProtocol,
+  type ApiConnection,
+} from "../../../../domain/configuration/providerApi";
 import { invoke } from "@tauri-apps/api/core";
 import { parseFileWriteTarget as parseModelWriteTarget } from "../../../features/file-writes";
 
@@ -200,7 +205,7 @@ function assertModelProbeRequest(
     !hasRequiredAndOptionalKeys(
       request,
       ["app", "baseUrl", "apiKey", "modelId"],
-      ["codexImageExtension"],
+      ["codexImageExtension", "protocol"],
     ) ||
     !isOneOf(request.app, [
       "claude",
@@ -213,6 +218,11 @@ function assertModelProbeRequest(
     typeof request.apiKey !== "string" ||
     typeof request.modelId !== "string" ||
     request.modelId.trim().length === 0 ||
+    (request.protocol !== undefined &&
+      (!isApiProtocol(request.protocol) ||
+        (request.app === "workbuddy" || request.app === "opencode"
+          ? request.protocol !== "chat"
+          : !apiProtocolsForTarget(request.app).includes(request.protocol)))) ||
     (request.codexImageExtension !== undefined &&
       typeof request.codexImageExtension !== "boolean")
   )
@@ -239,6 +249,7 @@ async function invokeModelProbe(
       apiKey: payload.apiKey,
       modelId: payload.modelId,
       codexImageExtension: payload.codexImageExtension,
+      ...(payload.protocol !== undefined ? { protocol: payload.protocol } : {}),
     }),
   );
 }
@@ -344,6 +355,40 @@ function parseRevisionedSaveResult(value: unknown): WorkBuddySaveModelsResult {
   throw new Error("Model save result is unavailable");
 }
 
+function parsePublicConnection(value: unknown): ApiConnection {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["baseUrl", "modelId", "protocol"]) ||
+    typeof value.baseUrl !== "string" ||
+    typeof value.modelId !== "string" ||
+    !value.modelId.trim() ||
+    value.modelId.length > 256 ||
+    !isApiProtocol(value.protocol)
+  ) {
+    throw new Error("Provider public summary is unavailable");
+  }
+  try {
+    const url = new URL(value.baseUrl);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      !url.hostname ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      value.baseUrl.length > 2048
+    )
+      throw new Error();
+  } catch {
+    throw new Error("Provider public summary is unavailable");
+  }
+  return {
+    baseUrl: value.baseUrl,
+    modelId: value.modelId,
+    protocol: value.protocol,
+  };
+}
+
 function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
   if (
     !isRecord(value) ||
@@ -364,7 +409,7 @@ function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
       !hasRequiredAndOptionalKeys(
         candidate,
         ["id", "name", "writeTargets"],
-        ["modelId"],
+        ["modelId", "connection"],
       ) ||
       !Array.isArray(candidate.writeTargets) ||
       typeof candidate.id !== "string" ||
@@ -378,6 +423,9 @@ function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
       id: candidate.id,
       name: candidate.name,
       writeTargets: candidate.writeTargets.map(parseModelWriteTarget),
+      ...(candidate.connection !== undefined
+        ? { connection: parsePublicConnection(candidate.connection) }
+        : {}),
       ...(typeof candidate.modelId === "string" && candidate.modelId
         ? { modelId: candidate.modelId }
         : {}),
@@ -403,17 +451,21 @@ function isValidCodexFeatures(value: unknown): boolean {
 
 function assertQuickSetupRequest(
   request: ProviderQuickSetupRequest,
+  app: "claude" | "codex" | "grokbuild",
 ): ProviderQuickSetupRequest {
   if (
     !isRecord(request) ||
     !hasRequiredAndOptionalKeys(
       request,
       ["name", "baseUrl", "apiKey", "modelId"],
-      ["codexFeatures"],
+      ["codexFeatures", "protocol"],
     ) ||
     !["name", "baseUrl", "apiKey", "modelId"].every(
       (key) => typeof request[key] === "string",
     ) ||
+    (request.protocol !== undefined &&
+      (!isApiProtocol(request.protocol) ||
+        !apiProtocolsForTarget(app).includes(request.protocol))) ||
     (request.codexFeatures !== undefined &&
       !isValidCodexFeatures(request.codexFeatures))
   )
@@ -431,7 +483,7 @@ export function createModelFeaturePorts(): Pick<
         parseProviderSummary(await invoke("get_provider_summary", { app })),
       applyQuickSetupWithResult: (request, app) =>
         invoke("apply_provider_quick_setup_with_result", {
-          request: assertQuickSetupRequest(request),
+          request: assertQuickSetupRequest(request, app),
           app,
         }),
       fetchModels: async (baseUrl, apiKey) =>

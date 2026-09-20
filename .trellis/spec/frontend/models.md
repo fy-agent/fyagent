@@ -148,6 +148,7 @@ interface ProviderQuickSetupRequest {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  protocol?: "anthropic" | "responses" | "chat";
   codexFeatures?: { imageExtension?: boolean; websockets?: boolean };
 }
 ```
@@ -221,6 +222,39 @@ an apply instruction.
 - Codex image-extension and WebSocket choices exist only in the Codex request.
   The page sanitizes returned warning codes against the closed
   `CodexProviderMutationWarning` union.
+
+### Shared API protocols and production presets
+
+- `domain/configuration/providerApi.ts` owns the closed protocol and production
+  preset matrix. `ProviderApiFields` fills the actual shared ProviderPanel;
+  retired provider snapshots are not a second preset authority for this flow.
+- Claude accepts Anthropic Messages, Codex Responses or Chat, and Grok Build
+  Responses. Omitted request protocol preserves the previous target default.
+  Explicit protocol travels through validation, the Quick Setup DTO, the
+  Change Plan port, native derivation, public readback and model probes.
+- Alibaba pay-as-you-go/Coding Plan and Ark general API/Coding Plan remain
+  separate options with distinct endpoint/key-scope/use copy. Tencent means
+  TokenHub Hy3 with a Hy3-scoped API key, not Cloud SecretId/SecretKey or a
+  Coding/Token Plan key. Account-specific model IDs remain editable.
+- Selecting a preset or explicitly filling a saved source changes only local
+  form fields and clears both the Key state and its ref. Blank Key is rejected
+  even if the fixed Quick Setup row exists: a source/product change must never
+  become implicit reuse of that row's credential. No fetch, probe or write runs
+  on selection. A failed preview preserves the public draft fields.
+- Public Provider summaries may carry exactly `connection: {baseUrl, modelId,
+protocol}`. Unsupported shapes omit that projection. Keys/references/private
+  settings are never returned to refill a form. The selected saved source is
+  copied into this page's existing Quick Setup form; this does not retarget the
+  existing native writer to arbitrary provider IDs.
+- Chat remains a valid persisted protocol. The UI states that modern Codex
+  direct clients may require a compatible client or existing conversion setup;
+  choosing Chat does not turn on a proxy. Responses-only image/WebSocket
+  controls are disabled and cleared for Chat.
+- Known tool-restricted plan endpoints and dedicated `sk-sp-` credentials cannot
+  use generic model discovery/probes. Renderer and native both enforce this;
+  the page directs users to their permitted target tool. Other probes remain
+  user initiated and use the selected protocol. Success does not prove the
+  target client reloaded the saved configuration.
 
 ### Existing account subscription to a local Agent
 

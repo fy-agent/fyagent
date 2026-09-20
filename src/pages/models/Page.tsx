@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  defaultApiProtocol,
+  isToolOnlyApi,
+  providerApiCredentialError,
+  type ApiProtocol,
+} from "../../domain/configuration/providerApi";
+import {
+  ProviderApiFields,
+  type ProviderApiFormFill,
+} from "../../shared/features/controls/ProviderApiFields";
+import {
   appendAgentReturnToPath,
   agentReturnDescriptorFromManagementSearch,
 } from "../../shared/features/agent-navigation";
@@ -921,6 +931,9 @@ function ProviderPanel({
   const [apiKey, setApiKeyState] = useState("");
   const apiKeyRef = useRef("");
   const [modelId, setModelId] = useState("");
+  const [protocol, setProtocol] = useState<ApiProtocol>(
+    defaultApiProtocol(app),
+  );
   const [fetchedModelIds, setFetchedModelIds] = useState<string[]>([]);
   const [ownedByById, setOwnedByById] = useState<Record<string, string>>({});
   const [fetchBusy, setFetchBusy] = useState(false);
@@ -980,8 +993,24 @@ function ProviderPanel({
   const providerExists = Boolean(summaryQuery.data?.providers[providerId]);
   const currentId = summaryQuery.data?.currentId ?? "";
 
+  const restrictedPlan = isToolOnlyApi(baseUrl, apiKey);
+  const fillApiForm = (value: ProviderApiFormFill) => {
+    setName(value.name);
+    setBaseUrl(value.connection.baseUrl);
+    setModelId(value.connection.modelId);
+    setProtocol(value.connection.protocol);
+    clearApiKey();
+    setFetchedModelIds([]);
+    setOwnedByById({});
+    setImageExtension(false);
+    setWebsockets(false);
+    setErrors({});
+    setNotice(null);
+    draftCommit.markDirty();
+  };
+
   const fetchProviderModels = async () => {
-    if (fetchBusy || busy || writesBlocked) return;
+    if (fetchBusy || busy || writesBlocked || restrictedPlan) return;
     if (!isHttpUrl(baseUrl.trim())) {
       setErrors((current) => ({
         ...current,
@@ -993,6 +1022,15 @@ function ProviderPanel({
     if (!apiKeyRef.current.trim()) {
       setErrors((current) => ({ ...current, apiKey: "请输入 API Key" }));
       apiKeyInputRef.current?.focus();
+      return;
+    }
+    const credentialError = providerApiCredentialError(
+      baseUrl,
+      apiKeyRef.current,
+      protocol,
+    );
+    if (credentialError) {
+      setErrors((current) => ({ ...current, apiKey: credentialError }));
       return;
     }
     setFetchBusy(true);
@@ -1033,6 +1071,16 @@ function ProviderPanel({
   );
 
   const prepareModelProbe = () => {
+    if (restrictedPlan) return false;
+    const credentialError = providerApiCredentialError(
+      baseUrl,
+      apiKeyRef.current,
+      protocol,
+    );
+    if (credentialError) {
+      setErrors((current) => ({ ...current, apiKey: credentialError }));
+      return false;
+    }
     if (!isHttpUrl(baseUrl.trim())) {
       setErrors((current) => ({
         ...current,
@@ -1068,6 +1116,7 @@ function ProviderPanel({
         baseUrl,
         apiKey: apiKeyRef.current,
         modelId,
+        protocol,
       },
       app,
       app === "codex" && providerExists,
@@ -1442,6 +1491,30 @@ function ProviderPanel({
       ) : null}
 
       <div className="fy-models-form">
+        <ProviderApiFields
+          app={app}
+          baseUrl={baseUrl}
+          protocol={protocol}
+          saved={Object.values(summaryQuery.data?.providers ?? {})}
+          disabled={
+            busy ||
+            fetchBusy ||
+            probeBusy ||
+            writesBlocked ||
+            writeConfirm.open ||
+            Boolean(codexSaveRequest || codexSavePlan)
+          }
+          error={errors.protocol}
+          onFill={fillApiForm}
+          onProtocolChange={(next) => {
+            setProtocol(next);
+            if (next !== "responses") {
+              setImageExtension(false);
+              setWebsockets(false);
+            }
+            draftCommit.markDirty();
+          }}
+        />
         <div className="fy-control-field">
           <label htmlFor={`${app}-quick-setup-name`}>配置名称</label>
           <Input
@@ -1587,7 +1660,7 @@ function ProviderPanel({
               searchId={`${app}-probe-search`}
               modelIds={selectableModelIds}
               ownedByById={ownedByById}
-              disabled={busy || fetchBusy || writesBlocked}
+              disabled={busy || fetchBusy || writesBlocked || restrictedPlan}
               resetVersion={draftCommit.resetVersion}
               onPrepare={prepareModelProbe}
               onBusyChange={setProbeBusy}
@@ -1597,6 +1670,7 @@ function ProviderPanel({
                   baseUrl: baseUrl.trim(),
                   apiKey: apiKeyRef.current.trim(),
                   modelId: selectedModelId,
+                  protocol,
                   ...(app === "codex"
                     ? { codexImageExtension: imageExtension }
                     : {}),
@@ -1604,13 +1678,26 @@ function ProviderPanel({
               }
             />
             <Button
-              disabled={busy || fetchBusy || probeBusy || writesBlocked}
+              disabled={
+                busy ||
+                fetchBusy ||
+                probeBusy ||
+                writesBlocked ||
+                restrictedPlan
+              }
               onClick={() => void fetchProviderModels()}
             >
               {fetchBusy ? "读取中…" : "拉取模型"}
             </Button>
           </div>
         </div>
+        {restrictedPlan && (
+          <div className="fy-models-form-wide">
+            <InlineNotice tone="info">
+              此套餐请在允许的目标编程工具中验证；本页不发送模型拉取或测试请求。
+            </InlineNotice>
+          </div>
+        )}
         <div className="fy-models-form-wide">
           <GroupedModelChips
             ids={selectableModelIds}
@@ -1641,6 +1728,7 @@ function ProviderPanel({
           >
             <div className="fy-models-checkbox-row">
               <Checkbox
+                disabled={protocol !== "responses"}
                 checked={imageExtension}
                 onCheckedChange={(checked) => {
                   setImageExtension(checked);
@@ -1652,6 +1740,7 @@ function ProviderPanel({
             </div>
             <div className="fy-models-checkbox-row">
               <Checkbox
+                disabled={protocol !== "responses"}
                 checked={websockets}
                 onCheckedChange={(checked) => {
                   setWebsockets(checked);

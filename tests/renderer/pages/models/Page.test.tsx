@@ -1382,6 +1382,7 @@ describe("Models page", () => {
       baseUrl: "https://codex.example/v1",
       apiKey: "codex-secret",
       modelId: "gpt-5",
+      protocol: "responses",
       codexFeatures: { imageExtension: false, websockets: false },
     });
     await user.click(screen.getByRole("button", { name: "应用更改" }));
@@ -1491,6 +1492,7 @@ describe("Models page", () => {
       baseUrl: "https://codex.example/v1",
       apiKey: "codex-secret",
       modelId: "gpt-5",
+      protocol: "responses",
       codexFeatures: { imageExtension: true, websockets: true },
     });
   });
@@ -1946,6 +1948,7 @@ describe("Models page", () => {
       apiKey: "codex-key",
       modelId: "gpt-test",
       codexImageExtension: false,
+      protocol: "responses",
     });
     expect(screen.queryByText(/\/v1\/v1\/XXXX/)).not.toBeInTheDocument();
     codexView.unmount();
@@ -1976,5 +1979,127 @@ describe("Models page", () => {
       apiKey: "oc-key",
       modelId: "gpt-test",
     });
+  });
+});
+
+describe("production API presets", () => {
+  it("fills the real form without network or writes and preserves Chat through preview", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {},
+      currentId: "",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+    }));
+    ports.providers.fetchModels = vi.fn();
+    ports.providers.checkModel = vi.fn();
+    ports.changePlans.createCodexProviderUpsertPlan = vi.fn(async () => {
+      throw new Error("preview unavailable");
+    });
+    renderPage(ports, "codex");
+    await screen.findByTestId("provider-status");
+    await user.type(screen.getByLabelText("API Key"), "previous-product-key");
+    await user.selectOptions(
+      screen.getByLabelText("服务商预设"),
+      "aliyun-coding",
+    );
+    expect(screen.getByLabelText("服务地址")).toHaveValue(
+      "https://coding.dashscope.aliyuncs.com/v1",
+    );
+    expect(screen.getByLabelText("API 协议")).toHaveValue("chat");
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.getByLabelText("启用 WebSocket 传输")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "拉取模型" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "测试连通" })).toBeDisabled();
+    expect(ports.providers.fetchModels).not.toHaveBeenCalled();
+    expect(ports.providers.checkModel).not.toHaveBeenCalled();
+    expect(
+      ports.changePlans.createCodexProviderUpsertPlan,
+    ).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    );
+    expect(
+      ports.changePlans.createCodexProviderUpsertPlan,
+    ).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("dialog", { name: "保存前确认" }),
+    ).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("API Key"), "sk-sp-fixture");
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    );
+    await confirmWriteDisclosure(user);
+    await waitFor(() =>
+      expect(
+        ports.changePlans.createCodexProviderUpsertPlan,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          protocol: "chat",
+          baseUrl: "https://coding.dashscope.aliyuncs.com/v1",
+          apiKey: "sk-sp-fixture",
+          modelId: "qwen3.7-plus",
+        }),
+      ),
+    );
+    // Failed preview retains editable public values. Native config was not applied.
+    expect(screen.getByLabelText("配置名称")).toHaveValue(
+      "阿里百炼 · Coding Plan",
+    );
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("qwen3.7-plus");
+    expect(screen.getByLabelText("API 协议")).toHaveValue("chat");
+  });
+
+  it("requires an explicit saved-source fill and carries its real protocol without a key", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {
+        saved: {
+          id: "saved",
+          name: "Saved Chat",
+          connection: {
+            baseUrl: "https://saved.example/v1",
+            modelId: "saved-model",
+            protocol: "chat" as const,
+          },
+        },
+      },
+      currentId: "saved",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+    }));
+    ports.providers.fetchModels = vi.fn();
+    ports.providers.checkModel = vi.fn();
+    ports.changePlans.createCodexProviderUpsertPlan = vi.fn();
+    renderPage(ports, "codex");
+    await screen.findByTestId("provider-status");
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://draft.example/v1",
+    );
+    await user.type(screen.getByLabelText("API Key"), "draft-fixture");
+    await user.selectOptions(
+      screen.getByLabelText("从已保存配置填入"),
+      "saved",
+    );
+    expect(screen.getByLabelText("服务地址")).toHaveValue(
+      "https://draft.example/v1",
+    );
+    await user.click(screen.getByRole("button", { name: "填入表单" }));
+    expect(screen.getByLabelText("服务地址")).toHaveValue(
+      "https://saved.example/v1",
+    );
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("saved-model");
+    expect(screen.getByLabelText("API 协议")).toHaveValue("chat");
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(ports.providers.fetchModels).not.toHaveBeenCalled();
+    expect(ports.providers.checkModel).not.toHaveBeenCalled();
+    expect(
+      ports.changePlans.createCodexProviderUpsertPlan,
+    ).not.toHaveBeenCalled();
+    await user.selectOptions(screen.getByLabelText("API 协议"), "responses");
+    expect(screen.getByLabelText("服务地址")).toHaveValue(
+      "https://saved.example/v1",
+    );
   });
 });

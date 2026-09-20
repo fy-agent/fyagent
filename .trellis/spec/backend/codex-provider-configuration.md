@@ -453,6 +453,34 @@ write_live_with_common_config(Codex, fixedQuickSetupProvider)
   login, not credentials stored on the selected Provider. Establishing or
   changing that account uses the independent Auth confirmation flow.
 
+### Explicit API protocol and public connection readback
+
+`ProviderQuickSetupRequest.protocol` is optional and closed to
+`anthropic | responses | chat`. Native `services/provider_api.rs` resolves
+compatible defaults before derivation and rejects target/protocol mismatches.
+Codex accepts Responses/Chat; Claude accepts Anthropic; Grok Build accepts
+Responses. Codex TOML carries the selected `wire_api` verbatim. Chat rejects
+Responses-only image/WebSocket intent and marks image migration complete with
+the feature off, preventing save normalization from changing its protocol.
+
+The same policy rejects known Alibaba plan/key/address mismatches. Generic
+model-fetch/model-probe commands reject known tool-only plan endpoints or
+`sk-sp-` credentials before network; alternate model-list URLs cannot bypass
+the guard. Explicit model-probe protocol chooses both the URL and request body.
+No credentials are tested by preset selection.
+
+`get_provider_summary` may serialize a closed optional `connection` projection:
+`baseUrl`, `modelId`, `protocol`. It reads only recognized Claude env, selected
+Codex provider TOML or selected Grok model TOML. Wrong target/protocol, unknown
+shape, unsafe URL, control/oversized fields or collisions with known credential
+sources omit the projection. Encoded URL credential collisions reuse the
+existing URL collision owner. No credential/reference is resolved or returned.
+
+Quick Setup continues to require a nonempty submitted Key before invoking the
+existing Provider persistence facade; it does not infer same-identity credential
+reuse from the fixed row ID. Existing transaction, targeted file patch,
+compensation and authoritative readback remain the sole mutation authority.
+
 ### 4. Validation & Error Matrix
 
 | Condition                                                                   | Required result                                                                 |
