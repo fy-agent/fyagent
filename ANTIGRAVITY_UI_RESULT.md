@@ -120,3 +120,44 @@
 9. `ANTIGRAVITY_UI_RESULT.md`
 
 *(Note: `ANTIGRAVITY_UI_TASK.md` is an untracked prompt document and is excluded from git staging.)*
+
+---
+
+## 5. Acceptance Follow-Up: Opened Source Links Contrast Coverage
+
+### 5.1 Diagnosis & Follow-up Scope
+- **Commit `ccb1aa1b` Integrated**: Reviewed and integrated into the integration tree as `a0a170b2`.
+- **Identified Gap**: The original `Agent directory cards preserve text contrast on the bright CI backing` test validated text contrast against bright CI backing when the `<details>` disclosure was closed (confirming the collapsed layout fix). Direct verification was needed to exercise the badge and text palette in both light and dark modes when disclosures are actually OPENED.
+- **Implemented Verification**:
+  - In `tests/browser/blue-themes.spec.ts`, added dedicated light and dark tests: `opened official source disclosures preserve text and badge contrast in ${theme} mode on bright CI backing`.
+  - The tests open disclosures on `grokbuild` and `codex` cards over the bright CI backing (`rgb(111, 141, 164)`).
+  - Explicitly asserted the presence and contrast of all 5 distinct link/badge categories:
+    1. `homepage` ("官方主页")
+    2. `docs` ("官方文档")
+    3. `download` ("官方下载")
+    4. `license` ("开源许可")
+    5. `terms` ("服务协议")
+    (along with "桌面客户端" and section title "官方来源与许可").
+  - Strictly asserted that all sampled text, link labels, and badges satisfy the WCAG `ratio >= 4.5` threshold (`samples.filter(s => s.ratio < 4.5)` is empty).
+
+### 5.2 Visual Inspection Screenshots Captured
+Representative screenshots of the opened source link disclosures were captured under the ignored `artifacts/ui-open-source-review/` directory:
+- **Light Theme**:
+  `/Users/serendipity/.codex/worktrees/fyagent-next-ui-regressions/fyagent/artifacts/ui-open-source-review/open-source-links-light.png`
+- **Dark Theme**:
+  `/Users/serendipity/.codex/worktrees/fyagent-next-ui-regressions/fyagent/artifacts/ui-open-source-review/open-source-links-dark.png`
+
+### 5.3 Blue-Themes Browser Matrix Verification
+- **Command**:
+  ```bash
+  rtk proxy mise exec -- pnpm exec playwright test --config config/playwright.config.ts tests/browser/blue-themes.spec.ts
+  ```
+- **Projects Tested**:
+  - `chromium-900x600`
+  - `chromium-1152x640`
+  - `chromium-1232x700`
+  - `chromium-1440x900`
+  - `webkit-1232x700`
+- **Result**:
+  - **40 passed / 40 tests** (0 failed, duration: 44.0s)
+  - All 8 tests passed across each of the 5 projects.
