@@ -6,7 +6,7 @@ use std::str::FromStr;
 mod claude;
 mod discovery;
 mod grok;
-mod grok_npm;
+pub(crate) mod grok_npm;
 mod health;
 mod install_preflight;
 pub(crate) use install_preflight::CliInstallPreflight;
@@ -27,13 +27,21 @@ pub(crate) async fn preflight_cli_lifecycle(
     install_preflight::check(agent, action).await
 }
 
+#[allow(dead_code)]
 pub(crate) async fn run_claude_cli_lifecycle(action: &str) -> Result<(), ClaudeLifecycleError> {
+    run_claude_cli_lifecycle_with_manifest(action, None).await
+}
+
+pub(crate) async fn run_claude_cli_lifecycle_with_manifest(
+    action: &str,
+    confirmed_manifest: Option<&grok_npm::GrokNpmManifest>,
+) -> Result<(), ClaudeLifecycleError> {
     let action = ToolLifecycleAction::from_str(action)
         .map_err(|_| ClaudeLifecycleError::UnsupportedAction)?;
     let _guard = CLI_LIFECYCLE_WRITER
         .try_lock()
         .map_err(|_| ClaudeLifecycleError::OperationConflict)?;
-    claude::run(action).await
+    claude::run(action, confirmed_manifest).await
 }
 
 #[cfg(target_os = "windows")]
@@ -221,8 +229,16 @@ pub async fn get_tool_versions(tools: Option<Vec<String>>) -> Result<Vec<ToolVer
 }
 
 pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Result<(), String> {
+    run_tool_lifecycle_action_with_manifest(tools, action, None).await
+}
+
+pub(crate) async fn run_tool_lifecycle_action_with_manifest(
+    tools: Vec<String>,
+    action: String,
+    confirmed_manifest: Option<&grok_npm::GrokNpmManifest>,
+) -> Result<(), String> {
     if tools.len() == 1 && tools[0] == "claude" {
-        return run_claude_cli_lifecycle(&action)
+        return run_claude_cli_lifecycle_with_manifest(&action, confirmed_manifest)
             .await
             .map_err(|error| error.message().to_string());
     }
@@ -255,13 +271,13 @@ pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Re
     #[cfg(target_os = "macos")]
     {
         let _ = label;
-        grok::run_macos_grok_lifecycle(action).await
+        grok::run_macos_grok_lifecycle(action, confirmed_manifest).await
     }
 
     #[cfg(target_os = "windows")]
     {
         if grok_windows_uses_ordinary_user_helper() {
-            return grok::run_windows_grok_helper_lifecycle(action).await;
+            return grok::run_windows_grok_helper_lifecycle(action, confirmed_manifest).await;
         }
         let live_npm_commands = if matches!(action, ToolLifecycleAction::InstallNative) {
             Vec::new()

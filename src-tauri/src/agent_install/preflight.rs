@@ -59,45 +59,71 @@ pub enum InstallExecution {
 pub enum SpaceBudgetBasis {
     SourceSize,
     DownloadLimit,
+    PackageReserve,
     CliUnknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct StorageBudget {
-    artifact_size_bytes: Option<u64>,
-    required_bytes: Option<u64>,
-    basis: SpaceBudgetBasis,
+    pub(super) artifact_size_bytes: Option<u64>,
+    pub(super) required_bytes: Option<u64>,
+    pub(super) basis: SpaceBudgetBasis,
 }
 
 pub(super) fn storage_budget(
     surface: AgentSurface,
+    runtime: InstallRuntime,
     artifact_size_bytes: Option<u64>,
 ) -> Result<StorageBudget, AgentReasonCode> {
     let limit = super::fetch::MAX_STREAMED_ARTIFACT_BYTES;
-    let (size, basis) = match (surface, artifact_size_bytes) {
-        (AgentSurface::Desktop, Some(size)) => (size, SpaceBudgetBasis::SourceSize),
-        (AgentSurface::Desktop, None) => (limit, SpaceBudgetBasis::DownloadLimit),
-        // npm/native updaters expose no complete package/dependency footprint.
-        // Report the gap; a desktop download cap cannot justify a CLI minimum.
-        (AgentSurface::Cli, None) => {
-            return Ok(StorageBudget {
-                artifact_size_bytes: None,
-                required_bytes: None,
-                basis: SpaceBudgetBasis::CliUnknown,
+    match (surface, runtime, artifact_size_bytes) {
+        (AgentSurface::Desktop, _, Some(size)) => {
+            if size == 0 || size > limit {
+                return Err(AgentReasonCode::SourceNotVerified);
+            }
+            let required_bytes =
+                required_free_space(size).map_err(|_| AgentReasonCode::SourceNotVerified)?;
+            Ok(StorageBudget {
+                artifact_size_bytes: Some(size),
+                required_bytes: Some(required_bytes),
+                basis: SpaceBudgetBasis::SourceSize,
             })
         }
-        (AgentSurface::Cli, Some(_)) => return Err(AgentReasonCode::SourceNotVerified),
-    };
-    let required_bytes =
-        required_free_space(size).map_err(|_| AgentReasonCode::SourceNotVerified)?;
-    if size > limit {
-        return Err(AgentReasonCode::SourceNotVerified);
+        (AgentSurface::Desktop, _, None) => {
+            let required_bytes =
+                required_free_space(limit).map_err(|_| AgentReasonCode::SourceNotVerified)?;
+            Ok(StorageBudget {
+                artifact_size_bytes: None,
+                required_bytes: Some(required_bytes),
+                basis: SpaceBudgetBasis::DownloadLimit,
+            })
+        }
+        (AgentSurface::Cli, InstallRuntime::NodeNpm, Some(size)) => {
+            if size == 0 || size > limit {
+                return Err(AgentReasonCode::SourceNotVerified);
+            }
+            let required_bytes =
+                required_free_space(size).map_err(|_| AgentReasonCode::SourceNotVerified)?;
+            Ok(StorageBudget {
+                artifact_size_bytes: Some(size),
+                required_bytes: Some(required_bytes),
+                basis: SpaceBudgetBasis::PackageReserve,
+            })
+        }
+        (AgentSurface::Cli, InstallRuntime::ExistingCli, None) => Ok(StorageBudget {
+            artifact_size_bytes: None,
+            required_bytes: None,
+            basis: SpaceBudgetBasis::CliUnknown,
+        }),
+        _ => Err(AgentReasonCode::SourceNotVerified),
     }
-    Ok(StorageBudget {
-        artifact_size_bytes,
-        required_bytes: Some(required_bytes),
-        basis,
-    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PreparedPlanPayload {
+    Desktop,
+    CliNpm(crate::services::tooling::grok_npm::GrokNpmManifest),
+    CliExisting,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,6 +135,7 @@ pub(super) struct PreparedInstallTarget {
     pub(super) target_label: String,
     pub(super) download_url: Option<String>,
     pub(super) storage_budget: StorageBudget,
+    pub(super) plan: PreparedPlanPayload,
 }
 
 pub async fn preflight_for(
@@ -130,7 +157,7 @@ pub async fn preflight_for(
 pub(super) async fn confirm_preflight(
     request: StartAgentActionRequest,
     state: &AppState,
-) -> Result<(), AgentReasonCode> {
+) -> Result<PreparedInstallTarget, AgentReasonCode> {
     let (summary, target) = inspect_preflight(request, state).await?;
     state.agent_installation_inventory.consume_preflight(
         summary
@@ -139,7 +166,8 @@ pub(super) async fn confirm_preflight(
             .as_deref()
             .ok_or(AgentReasonCode::InventoryExpired)?,
         &target,
-    )
+    )?;
+    Ok(target)
 }
 
 async fn inspect_preflight(
@@ -157,7 +185,16 @@ async fn inspect_preflight(
     let target = super::inventory::validate_action_target(&request, state).await?;
     let (platform, architecture) =
         super::sources::current_host_target().ok_or(AgentReasonCode::PlatformUnsupported)?;
-    let (version_or_channel, runtime, download_url, artifact_size_bytes) = match surface {
+    let (
+        paths,
+        target_label,
+        execution,
+        runtime,
+        version_or_channel,
+        download_url,
+        artifact_size_bytes,
+        plan,
+    ) = match surface {
         AgentSurface::Desktop => {
             let source = super::desktop::resolve_desktop_source(request.agent_id)
                 .await
@@ -165,42 +202,65 @@ async fn inspect_preflight(
             if request.expected_release_id.as_deref() != Some(&source.release_id) {
                 return Err(AgentReasonCode::RefreshRequired);
             }
+            let (paths, target_label, execution, runtime) = desktop_target_paths(&target)?;
             (
+                paths,
+                target_label,
+                execution,
+                runtime,
                 source
                     .display_version
                     .unwrap_or_else(|| "官方最新渠道".to_string()),
-                InstallRuntime::NativeInstaller,
                 Some(source.download_url.to_string()),
                 source.artifact_size_bytes,
+                PreparedPlanPayload::Desktop,
             )
         }
-        AgentSurface::Cli => (
-            "官方渠道（保留当前安装方式）".to_string(),
-            InstallRuntime::NodeNpm,
-            None,
-            None,
-        ),
-    };
-    let agent_id = request.agent_id;
-    let action = request.action;
-    let (paths, target_label, execution, runtime) = match surface {
         AgentSurface::Cli => {
             let checked =
-                crate::services::tooling::preflight_cli_lifecycle(agent_id, action).await?;
+                crate::services::tooling::preflight_cli_lifecycle(request.agent_id, request.action)
+                    .await?;
+            let (runtime, version_or_channel, artifact_size_bytes, plan) = if checked.requires_npm {
+                let tool = match request.agent_id {
+                    crate::services::external_agents::AgentCatalogId::ClaudeCode => {
+                        fyagent_user_helper::grok_npm::OfficialNpmTool::Claude
+                    }
+                    crate::services::external_agents::AgentCatalogId::GrokBuild => {
+                        fyagent_user_helper::grok_npm::OfficialNpmTool::Grok
+                    }
+                    _ => return Err(AgentReasonCode::ActionNotSupported),
+                };
+                let manifest = crate::services::tooling::grok_npm::resolve_published_manifest(tool)
+                    .await
+                    .map_err(|_| AgentReasonCode::SourceNotVerified)?;
+                let total_size = manifest.total_unpacked_size();
+                (
+                    InstallRuntime::NodeNpm,
+                    manifest.version().to_string(),
+                    Some(total_size),
+                    PreparedPlanPayload::CliNpm(manifest),
+                )
+            } else {
+                (
+                    InstallRuntime::ExistingCli,
+                    "官方渠道（保留当前安装方式）".to_string(),
+                    None,
+                    PreparedPlanPayload::CliExisting,
+                )
+            };
             (
                 checked.paths,
                 checked.location_label,
                 InstallExecution::CurrentUser,
-                if checked.requires_npm {
-                    runtime
-                } else {
-                    InstallRuntime::ExistingCli
-                },
+                runtime,
+                version_or_channel,
+                None,
+                artifact_size_bytes,
+                plan,
             )
         }
-        AgentSurface::Desktop => desktop_target_paths(&target)?,
     };
-    let budget = storage_budget(surface, artifact_size_bytes)?;
+    let budget = storage_budget(surface, runtime, artifact_size_bytes)?;
     let binding = PreparedInstallTarget {
         request: request.clone(),
         paths: paths.clone(),
@@ -209,6 +269,7 @@ async fn inspect_preflight(
         target_label: target_label.clone(),
         download_url: download_url.clone(),
         storage_budget: budget,
+        plan,
     };
     let available_bytes =
         tokio::task::spawn_blocking(move || check_storage(&paths, budget.required_bytes))
@@ -464,23 +525,43 @@ mod tests {
 
     #[test]
     fn storage_budget_uses_exact_hint_or_explicit_conservative_estimate() {
-        let known = storage_budget(AgentSurface::Desktop, Some(4096)).unwrap();
+        let known = storage_budget(
+            AgentSurface::Desktop,
+            InstallRuntime::NativeInstaller,
+            Some(4096),
+        )
+        .unwrap();
         assert_eq!(known.required_bytes, Some(12288));
         assert_eq!(known.basis, SpaceBudgetBasis::SourceSize);
-        let unknown = storage_budget(AgentSurface::Desktop, None).unwrap();
+        let unknown =
+            storage_budget(AgentSurface::Desktop, InstallRuntime::NativeInstaller, None).unwrap();
         assert_eq!(unknown.required_bytes, Some(6 * 1024 * 1024 * 1024));
         assert_eq!(unknown.artifact_size_bytes, None);
         assert_eq!(unknown.basis, SpaceBudgetBasis::DownloadLimit);
-        let cli = storage_budget(AgentSurface::Cli, None).unwrap();
-        assert_eq!(cli.required_bytes, None);
-        assert_eq!(cli.basis, SpaceBudgetBasis::CliUnknown);
+        let cli_npm =
+            storage_budget(AgentSurface::Cli, InstallRuntime::NodeNpm, Some(1024)).unwrap();
+        assert_eq!(cli_npm.required_bytes, Some(3072));
+        assert_eq!(cli_npm.artifact_size_bytes, Some(1024));
+        assert_eq!(cli_npm.basis, SpaceBudgetBasis::PackageReserve);
+        let cli_existing =
+            storage_budget(AgentSurface::Cli, InstallRuntime::ExistingCli, None).unwrap();
+        assert_eq!(cli_existing.required_bytes, None);
+        assert_eq!(cli_existing.basis, SpaceBudgetBasis::CliUnknown);
         for size in [
             0,
             super::super::fetch::MAX_STREAMED_ARTIFACT_BYTES + 1,
             u64::MAX,
         ] {
             assert_eq!(
-                storage_budget(AgentSurface::Desktop, Some(size)),
+                storage_budget(
+                    AgentSurface::Desktop,
+                    InstallRuntime::NativeInstaller,
+                    Some(size)
+                ),
+                Err(AgentReasonCode::SourceNotVerified)
+            );
+            assert_eq!(
+                storage_budget(AgentSurface::Cli, InstallRuntime::NodeNpm, Some(size)),
                 Err(AgentReasonCode::SourceNotVerified)
             );
         }

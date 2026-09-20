@@ -160,7 +160,10 @@ fn observe() -> Result<Option<Installation>, ClaudeLifecycleError> {
 }
 
 #[cfg(target_os = "macos")]
-pub(super) async fn run(action: ToolLifecycleAction) -> Result<(), ClaudeLifecycleError> {
+pub(super) async fn run(
+    action: ToolLifecycleAction,
+    confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
+) -> Result<(), ClaudeLifecycleError> {
     if !matches!(
         action,
         ToolLifecycleAction::Install | ToolLifecycleAction::Update
@@ -170,9 +173,12 @@ pub(super) async fn run(action: ToolLifecycleAction) -> Result<(), ClaudeLifecyc
     let before = tokio::task::spawn_blocking(observe)
         .await
         .map_err(|_| ClaudeLifecycleError::ExecutionFailed)??;
-    let manifest = grok_npm::resolve_published_manifest(OfficialNpmTool::Claude)
-        .await
-        .map_err(|_| ClaudeLifecycleError::SourceUnverified)?;
+    let manifest = match confirmed_manifest {
+        Some(manifest) => manifest.clone(),
+        None => grok_npm::resolve_published_manifest(OfficialNpmTool::Claude)
+            .await
+            .map_err(|_| ClaudeLifecycleError::SourceUnverified)?,
+    };
     if let Some(installed) = &before {
         if action == ToolLifecycleAction::Install || installed.owner != ClaudeOwner::Npm {
             return Err(ClaudeLifecycleError::OwnerUnsupported);
@@ -251,7 +257,10 @@ pub(super) async fn run(action: ToolLifecycleAction) -> Result<(), ClaudeLifecyc
 }
 
 #[cfg(target_os = "windows")]
-pub(super) async fn run(action: ToolLifecycleAction) -> Result<(), ClaudeLifecycleError> {
+pub(super) async fn run(
+    action: ToolLifecycleAction,
+    confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
+) -> Result<(), ClaudeLifecycleError> {
     use fyagent_user_helper::{GrokOwner, GrokToolAction};
     let action = match action {
         ToolLifecycleAction::Install => GrokToolAction::Install,
@@ -264,9 +273,12 @@ pub(super) async fn run(action: ToolLifecycleAction) -> Result<(), ClaudeLifecyc
     {
         return Err(ClaudeLifecycleError::OwnerUnsupported);
     }
-    let manifest = grok_npm::resolve_published_manifest(OfficialNpmTool::Claude)
-        .await
-        .map_err(|_| ClaudeLifecycleError::SourceUnverified)?;
+    let manifest = match confirmed_manifest {
+        Some(manifest) => manifest.clone(),
+        None => grok_npm::resolve_published_manifest(OfficialNpmTool::Claude)
+            .await
+            .map_err(|_| ClaudeLifecycleError::SourceUnverified)?,
+    };
     if action == GrokToolAction::Update
         && before
             .normalized_version

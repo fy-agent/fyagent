@@ -163,6 +163,19 @@ describe("Tauri Agent install readiness port", () => {
         createAgentInstallReadinessPort().preflight(request),
       ).rejects.toThrow("Invalid Agent installation preflight");
     }
+    const cliReserve = {
+      ...checked,
+      runtime: "node_npm" as const,
+      artifactSizeBytes: 29410539,
+      requiredBytes: 29410539 * 3,
+      availableBytes: 29410539 * 3,
+      spaceBudgetBasis: "package_reserve" as const,
+      downloadUrl: null,
+    };
+    invoke.mockResolvedValueOnce(cliReserve);
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).resolves.toEqual(cliReserve);
     const cli = {
       ...checked,
       runtime: "node_npm",

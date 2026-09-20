@@ -67,6 +67,24 @@ pub(super) fn prefix(bin_path: Option<&str>) -> Option<std::path::PathBuf> {
     path.is_absolute().then_some(path)
 }
 
+pub(super) fn cache(bin_path: Option<&str>) -> Option<std::path::PathBuf> {
+    let command = match bin_path {
+        Some(path) => super::anchored_npm_command(path, "config get cache")?,
+        None => "npm config get cache".to_string(),
+    };
+    let output = run_command(&command, Duration::from_secs(20)).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = super::decode_command_output(&output.stdout);
+    let text = text.trim();
+    if text.chars().any(char::is_control) {
+        return None;
+    }
+    let path = std::path::PathBuf::from(text);
+    path.is_absolute().then_some(path)
+}
+
 pub(super) fn node_major(bin_path: Option<&str>) -> Option<u32> {
     let command = match bin_path {
         Some(path) => {

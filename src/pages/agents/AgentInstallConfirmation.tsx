@@ -74,9 +74,11 @@ export function AgentInstallConfirmation({
           <p>
             {checked.spaceBudgetBasis === "source_size"
               ? "按此安装包元数据大小的 3 倍预留下载、临时文件和安装空间；这是保守预算，不是厂商精确安装需求。"
-              : checked.spaceBudgetBasis === "download_limit"
-                ? "未取得此安装包的准确大小，按下载器的 2 GiB 上限预留 3 倍空间；这是保守预算，不是厂商精确安装需求。"
-                : "CLI 安装和依赖大小尚未核定；可用空间数值不能证明容量足够，安装工具仍可能报告空间不足。"}
+              : checked.spaceBudgetBasis === "package_reserve"
+                ? "按已核实 npm 包及依赖大小的 3 倍预留 FyAgent 保守预算；这是预留空间，不是厂商保证的完整峰值。"
+                : checked.spaceBudgetBasis === "download_limit"
+                  ? "未取得此安装包的准确大小，按下载器的 2 GiB 上限预留 3 倍空间；这是保守预算，不是厂商精确安装需求。"
+                  : "CLI 安装和依赖大小尚未核定；可用空间数值不能证明容量足够，安装工具仍可能报告空间不足。"}
             确认时会重新检查可用空间。
           </p>
           {checked.downloadUrl ? (

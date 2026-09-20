@@ -569,14 +569,15 @@ pub async fn start_agent_action(
         }
     }
     let target = validate_action_target(&request, state).await?;
-    if request.agent_id != AgentCatalogId::Codex
+    let confirmed_target = if request.agent_id != AgentCatalogId::Codex
         && matches!(
             request.action,
             AgentActionId::Install | AgentActionId::Update
-        )
-    {
-        preflight::confirm_preflight(request.clone(), state).await?;
-    }
+        ) {
+        Some(preflight::confirm_preflight(request.clone(), state).await?)
+    } else {
+        None
+    };
     match (request.agent_id, surface, request.action) {
         (
             AgentCatalogId::Codex,
@@ -602,7 +603,11 @@ pub async fn start_agent_action(
             AgentSurface::Cli,
             AgentActionId::Install | AgentActionId::Update,
         ) => {
-            run_cli_lifecycle(request.agent_id, request.action).await?;
+            let manifest = match confirmed_target.as_ref().map(|target| &target.plan) {
+                Some(preflight::PreparedPlanPayload::CliNpm(manifest)) => Some(manifest),
+                _ => None,
+            };
+            run_cli_lifecycle(request.agent_id, request.action, manifest).await?;
             Ok(immediate_result(
                 request.agent_id,
                 request.action,

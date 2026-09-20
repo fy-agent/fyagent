@@ -376,7 +376,11 @@ export interface AgentInstallPreflight {
   availableBytes: number;
   requiredBytes: number | null;
   artifactSizeBytes: number | null;
-  spaceBudgetBasis: "source_size" | "download_limit" | "cli_unknown";
+  spaceBudgetBasis:
+    | "source_size"
+    | "download_limit"
+    | "cli_unknown"
+    | "package_reserve";
   runtime: "native_installer" | "node_npm" | "existing_cli";
   execution: "current_user" | "system_authorization" | "vendor_wizard";
 }
@@ -466,6 +470,17 @@ function isValidSpaceBudget(value: Record<string, unknown>): boolean {
   if (spaceBudgetBasis === "source_size") {
     return (
       value.runtime === "native_installer" &&
+      typeof artifactSizeBytes === "number" &&
+      Number.isSafeInteger(artifactSizeBytes) &&
+      artifactSizeBytes > 0 &&
+      artifactSizeBytes <= downloadLimitBytes &&
+      Number.isSafeInteger(artifactSizeBytes * 3) &&
+      requiredBytes === artifactSizeBytes * 3
+    );
+  }
+  if (spaceBudgetBasis === "package_reserve") {
+    return (
+      (value.runtime === "node_npm" || value.runtime === "existing_cli") &&
       typeof artifactSizeBytes === "number" &&
       Number.isSafeInteger(artifactSizeBytes) &&
       artifactSizeBytes > 0 &&

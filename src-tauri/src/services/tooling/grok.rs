@@ -626,7 +626,10 @@ fn succeed_job(
 }
 
 #[cfg(target_os = "macos")]
-pub(super) async fn run_macos_grok_lifecycle(action: ToolLifecycleAction) -> Result<(), String> {
+pub(super) async fn run_macos_grok_lifecycle(
+    action: ToolLifecycleAction,
+    confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
+) -> Result<(), String> {
     store_stage(GrokLifecycleStage::Checking, action, None, None);
 
     let prepared = tokio::task::spawn_blocking(move || {
@@ -663,7 +666,9 @@ pub(super) async fn run_macos_grok_lifecycle(action: ToolLifecycleAction) -> Res
     match plan {
         GrokPlan::NativeFresh => run_native_fresh_install(action).await,
         GrokPlan::NativeUpdate { bin_path } => run_native_update(action, bin_path).await,
-        GrokPlan::OfficialNpm { bin_path } => run_official_npm(action, bin_path).await,
+        GrokPlan::OfficialNpm { bin_path } => {
+            run_official_npm(action, bin_path, confirmed_manifest).await
+        }
     }
 }
 
@@ -861,6 +866,7 @@ fn execute_native_update(action: ToolLifecycleAction, bin_path: String) -> Resul
 async fn run_official_npm(
     action: ToolLifecycleAction,
     bin_path: Option<String>,
+    confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
 ) -> Result<(), String> {
     let is_update = matches!(action, ToolLifecycleAction::Update);
     if is_update && bin_path.is_none() {
@@ -875,22 +881,27 @@ async fn run_official_npm(
         ));
     }
 
-    let manifest = match super::grok_npm::resolve_published_manifest(
-        fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
-    )
-    .await
-    {
-        Ok(manifest) => manifest,
-        Err(_) => {
-            return Err(fail_job(
-                action,
-                Some(GrokDistributionOwner::OfficialNpm),
-                "official_source_unreachable",
-                "暂时无法读取官方 npm 最新版本",
-                None,
-                false,
-                Some("official_npm"),
-            ));
+    let manifest = match confirmed_manifest {
+        Some(manifest) => manifest.clone(),
+        None => {
+            match super::grok_npm::resolve_published_manifest(
+                fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
+            )
+            .await
+            {
+                Ok(manifest) => manifest,
+                Err(_) => {
+                    return Err(fail_job(
+                        action,
+                        Some(GrokDistributionOwner::OfficialNpm),
+                        "official_source_unreachable",
+                        "暂时无法读取官方 npm 最新版本",
+                        None,
+                        false,
+                        Some("official_npm"),
+                    ));
+                }
+            }
         }
     };
 
@@ -1260,9 +1271,10 @@ fn run_bash_script(path: &Path, timeout: Duration) -> Result<std::process::Outpu
 #[cfg(target_os = "windows")]
 pub(super) async fn run_windows_grok_helper_lifecycle(
     action: ToolLifecycleAction,
+    confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
 ) -> Result<(), String> {
     let (tool_action, expected_owner) = grok_helper_request(action);
-    let plans = windows_npm_plans_for_action(action).await;
+    let plans = windows_npm_plans_for_action(action, confirmed_manifest).await;
     let requires_npm_plan = matches!(
         action,
         ToolLifecycleAction::Install | ToolLifecycleAction::InstallOfficialNpm
@@ -1305,6 +1317,7 @@ pub(super) async fn run_windows_grok_helper_lifecycle(
 #[cfg(target_os = "windows")]
 async fn windows_npm_plans_for_action(
     action: ToolLifecycleAction,
+    confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
 ) -> Vec<fyagent_user_helper::GrokNpmInstallPlan> {
     if matches!(action, ToolLifecycleAction::InstallNative)
         || matches!(
@@ -1314,12 +1327,18 @@ async fn windows_npm_plans_for_action(
     {
         return Vec::new();
     }
-    let Ok(manifest) = super::grok_npm::resolve_published_manifest(
-        fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
-    )
-    .await
-    else {
-        return Vec::new();
+    let manifest = match confirmed_manifest {
+        Some(manifest) => manifest.clone(),
+        None => {
+            let Ok(manifest) = super::grok_npm::resolve_published_manifest(
+                fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
+            )
+            .await
+            else {
+                return Vec::new();
+            };
+            manifest
+        }
     };
     let matching = super::grok_npm::registries_matching_manifest(&manifest).await;
     matching

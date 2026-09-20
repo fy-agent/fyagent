@@ -152,6 +152,9 @@ pub enum GrokNpmPlanError {
     InvalidIntegrity,
     InvalidPlatformPackage,
     LatestForbidden,
+    InvalidSize,
+    UnsupportedDependency,
+    ArithmeticOverflow,
 }
 
 impl GrokNpmInstallPlan {

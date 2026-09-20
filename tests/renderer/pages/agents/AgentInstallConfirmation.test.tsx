@@ -69,4 +69,23 @@ describe("Agent install space confirmation", () => {
     expect(screen.getByText(/可用空间数值不能证明容量足够/)).toBeVisible();
     expect(screen.queryByText(/需预留 6.0/)).not.toBeInTheDocument();
   });
+
+  it("shows package reserve budget for npm CLI installation", () => {
+    show({
+      ...installPreflightFixture({
+        agentId: "claude-code",
+        surface: "cli",
+        action: "install",
+      }),
+      downloadUrl: null,
+      artifactSizeBytes: 217880104,
+      requiredBytes: 217880104 * 3,
+      runtime: "node_npm",
+      spaceBudgetBasis: "package_reserve",
+    });
+    expect(screen.getByText(/需预留 0.6 GiB/)).toBeVisible();
+    expect(
+      screen.getByText(/按已核实 npm 包及依赖大小的 3 倍预留 FyAgent 保守预算/),
+    ).toHaveTextContent("这是预留空间，不是厂商保证的完整峰值");
+  });
 });

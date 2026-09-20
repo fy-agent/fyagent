@@ -25,19 +25,31 @@ const VERSION_AUTHORITY: [GrokNpmRegistry; 4] = [
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct GrokNpmManifest {
-    version: String,
-    platform_version: String,
-    integrity: BTreeMap<String, String>,
-    tool: OfficialNpmTool,
+pub struct NpmDependency {
+    pub name: String,
+    pub version: String,
+    pub integrity: String,
+    pub unpacked_size: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GrokNpmManifest {
+    pub(super) version: String,
+    pub(super) platform_version: String,
+    pub(super) integrity: BTreeMap<String, String>,
+    pub(super) tool: OfficialNpmTool,
+    pub(super) root_size: u64,
+    pub(super) platform_size: u64,
+    pub(super) dependencies: Vec<NpmDependency>,
+    pub(super) total_unpacked_size: u64,
 }
 
 impl GrokNpmManifest {
-    pub(super) fn version(&self) -> &str {
+    pub(crate) fn version(&self) -> &str {
         &self.version
     }
 
-    pub(super) fn platform_version(&self) -> &str {
+    pub(crate) fn platform_version(&self) -> &str {
         &self.platform_version
     }
 
@@ -48,9 +60,32 @@ impl GrokNpmManifest {
     pub(super) fn platform_integrity(&self, platform_package: &str) -> Option<&str> {
         self.integrity.get(platform_package).map(String::as_str)
     }
+
+    #[allow(dead_code)]
+    pub(crate) fn root_size(&self) -> u64 {
+        self.root_size
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn platform_size(&self) -> u64 {
+        self.platform_size
+    }
+
+    pub(crate) fn dependencies(&self) -> &[NpmDependency] {
+        &self.dependencies
+    }
+
+    pub(crate) fn total_unpacked_size(&self) -> u64 {
+        self.total_unpacked_size
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn required_reserve_bytes(&self) -> Option<u64> {
+        self.total_unpacked_size.checked_mul(3)
+    }
 }
 
-pub(super) async fn resolve_published_manifest(
+pub(crate) async fn resolve_published_manifest(
     tool: OfficialNpmTool,
 ) -> Result<GrokNpmManifest, GrokNpmPlanError> {
     let Some(client) = metadata_client() else {
@@ -92,6 +127,10 @@ pub(super) fn install_command_for_version(version: &str) -> Option<String> {
             platform_version: version.to_string(),
             integrity: BTreeMap::new(),
             tool: OfficialNpmTool::Grok,
+            root_size: 20_000,
+            platform_size: 30_000_000,
+            dependencies: Vec::new(),
+            total_unpacked_size: 30_020_000,
         },
         GrokNpmRegistry::Tencent,
         false,
@@ -177,11 +216,76 @@ fn parse_manifest_for(
         return Err(GrokNpmPlanError::InvalidPlatformPackage);
     }
     GrokNpmInstallPlan::for_execution(version, GrokNpmRegistry::Npmjs, false)?;
+    let root_size = value
+        .get("root_size")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(20_000);
+    let platform_size = value
+        .get("platform_size")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(30_000_000);
+    let mut resolved_dependencies = Vec::new();
+    if let Some(deps_val) = value.get("dependencies") {
+        let deps = deps_val
+            .as_array()
+            .ok_or(GrokNpmPlanError::UnsupportedDependency)?;
+        for dep in deps {
+            let dep_obj = dep
+                .as_object()
+                .ok_or(GrokNpmPlanError::UnsupportedDependency)?;
+            let name = dep_obj
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or(GrokNpmPlanError::InvalidVersion)?;
+            let dep_ver = dep_obj
+                .get("version")
+                .and_then(|v| v.as_str())
+                .ok_or(GrokNpmPlanError::InvalidVersion)?;
+            let dep_hash = dep_obj
+                .get("integrity")
+                .and_then(|v| v.as_str())
+                .ok_or(GrokNpmPlanError::InvalidIntegrity)?;
+            let dep_size = dep_obj
+                .get("unpacked_size")
+                .and_then(|v| v.as_u64())
+                .filter(|&s| s > 0)
+                .ok_or(GrokNpmPlanError::InvalidSize)?;
+            if let Some(transitive) = dep_obj.get("dependencies") {
+                let transitive_obj = transitive
+                    .as_object()
+                    .ok_or(GrokNpmPlanError::UnsupportedDependency)?;
+                if !transitive_obj.is_empty() {
+                    return Err(GrokNpmPlanError::UnsupportedDependency);
+                }
+            }
+            resolved_dependencies.push(NpmDependency {
+                name: name.to_string(),
+                version: dep_ver.to_string(),
+                integrity: decode_sha512(dep_hash)?.to_string(),
+                unpacked_size: dep_size,
+            });
+        }
+    }
+    let mut total_unpacked_size = root_size
+        .checked_add(platform_size)
+        .ok_or(GrokNpmPlanError::ArithmeticOverflow)?;
+    for dep in &resolved_dependencies {
+        total_unpacked_size = total_unpacked_size
+            .checked_add(dep.unpacked_size)
+            .ok_or(GrokNpmPlanError::ArithmeticOverflow)?;
+    }
+    if let Some(total) = value.get("total_unpacked_size").and_then(|v| v.as_u64()) {
+        total_unpacked_size = total;
+    }
     Ok(GrokNpmManifest {
         version: version.to_string(),
         platform_version: version.to_string(),
         integrity: map,
         tool,
+        root_size,
+        platform_size,
+        dependencies: resolved_dependencies,
+        total_unpacked_size,
     })
 }
 
@@ -307,6 +411,12 @@ async fn load_manifest_from_registry(
         .and_then(|value| value.get("integrity"))
         .and_then(|value| value.as_str())
         .ok_or(GrokNpmPlanError::InvalidIntegrity)?;
+    let platform_size = platform_doc
+        .get("dist")
+        .and_then(|value| value.get("unpackedSize"))
+        .and_then(|value| value.as_u64())
+        .filter(|&size| size > 0)
+        .ok_or(GrokNpmPlanError::InvalidSize)?;
     let mut integrity = BTreeMap::new();
     integrity.insert(
         tool.package().to_string(),
@@ -316,19 +426,89 @@ async fn load_manifest_from_registry(
         platform.to_string(),
         decode_sha512(platform_integrity)?.to_string(),
     );
+    let mut resolved_dependencies = Vec::new();
+    for (dep_name, dep_spec) in &published.declared_dependencies {
+        let exact_version = resolve_declared_dependency(dep_name, dep_spec)?;
+        let dep_doc = fetch_json(client, registry, dep_name, exact_version)
+            .await
+            .ok_or(GrokNpmPlanError::Missing)?;
+        if dep_doc.get("name").and_then(|value| value.as_str()) != Some(dep_name.as_str())
+            || dep_doc.get("version").and_then(|value| value.as_str()) != Some(exact_version)
+        {
+            return Err(GrokNpmPlanError::InvalidVersion);
+        }
+        if let Some(transitive) = dep_doc.get("dependencies") {
+            let transitive_obj = transitive
+                .as_object()
+                .ok_or(GrokNpmPlanError::UnsupportedDependency)?;
+            if !transitive_obj.is_empty() {
+                return Err(GrokNpmPlanError::UnsupportedDependency);
+            }
+        }
+        let dep_integrity = dep_doc
+            .get("dist")
+            .and_then(|value| value.get("integrity"))
+            .and_then(|value| value.as_str())
+            .ok_or(GrokNpmPlanError::InvalidIntegrity)?;
+        let dep_size = dep_doc
+            .get("dist")
+            .and_then(|value| value.get("unpackedSize"))
+            .and_then(|value| value.as_u64())
+            .filter(|&size| size > 0)
+            .ok_or(GrokNpmPlanError::InvalidSize)?;
+        integrity.insert(dep_name.clone(), decode_sha512(dep_integrity)?.to_string());
+        resolved_dependencies.push(NpmDependency {
+            name: dep_name.clone(),
+            version: exact_version.to_string(),
+            integrity: decode_sha512(dep_integrity)?.to_string(),
+            unpacked_size: dep_size,
+        });
+    }
+    let mut total_unpacked_size = published
+        .root_size
+        .checked_add(platform_size)
+        .ok_or(GrokNpmPlanError::ArithmeticOverflow)?;
+    for dep in &resolved_dependencies {
+        total_unpacked_size = total_unpacked_size
+            .checked_add(dep.unpacked_size)
+            .ok_or(GrokNpmPlanError::ArithmeticOverflow)?;
+    }
     GrokNpmInstallPlan::for_execution(&published.version, GrokNpmRegistry::Npmjs, false)?;
     Ok(GrokNpmManifest {
         version: published.version,
         platform_version: published.platform_version,
         integrity,
         tool,
+        root_size: published.root_size,
+        platform_size,
+        dependencies: resolved_dependencies,
+        total_unpacked_size,
     })
 }
 
+#[derive(Debug)]
 struct PublishedRoot {
     version: String,
     package_integrity: String,
     platform_version: String,
+    root_size: u64,
+    declared_dependencies: BTreeMap<String, String>,
+}
+
+pub(super) fn resolve_declared_dependency(
+    name: &str,
+    spec: &str,
+) -> Result<&'static str, GrokNpmPlanError> {
+    match name {
+        "@iarna/toml" => {
+            if spec == "^3.0.0" || spec == "~3.0.0" || spec == "3.0.0" || spec == "=3.0.0" {
+                Ok("3.0.0")
+            } else {
+                Err(GrokNpmPlanError::UnsupportedDependency)
+            }
+        }
+        _ => Err(GrokNpmPlanError::UnsupportedDependency),
+    }
 }
 
 fn parse_published_root(
@@ -350,16 +530,36 @@ fn parse_published_root(
         .and_then(|value| value.as_str())
         .ok_or(GrokNpmPlanError::InvalidIntegrity)?;
     decode_sha512(package_integrity)?;
+    let root_size = json
+        .get("dist")
+        .and_then(|value| value.get("unpackedSize"))
+        .and_then(|value| value.as_u64())
+        .filter(|&size| size > 0)
+        .ok_or(GrokNpmPlanError::InvalidSize)?;
     let platform_version = json
         .get("optionalDependencies")
         .and_then(|value| value.get(platform))
         .and_then(|value| value.as_str())
         .unwrap_or(version);
     GrokNpmInstallPlan::for_execution(platform_version, GrokNpmRegistry::Npmjs, false)?;
+    let mut declared_dependencies = BTreeMap::new();
+    if let Some(deps_val) = json.get("dependencies") {
+        let deps = deps_val
+            .as_object()
+            .ok_or(GrokNpmPlanError::UnsupportedDependency)?;
+        for (name, spec_val) in deps {
+            let spec = spec_val
+                .as_str()
+                .ok_or(GrokNpmPlanError::UnsupportedDependency)?;
+            declared_dependencies.insert(name.clone(), spec.to_string());
+        }
+    }
     Ok(PublishedRoot {
         version: version.to_string(),
         package_integrity: package_integrity.to_string(),
         platform_version: platform_version.to_string(),
+        root_size,
+        declared_dependencies,
     })
 }
 
@@ -388,9 +588,21 @@ async fn registry_matches(
     if !package_ok {
         return false;
     }
-    fetch_integrity(client, registry, platform, manifest.platform_version())
+    let platform_ok = fetch_integrity(client, registry, platform, manifest.platform_version())
         .await
-        .is_some_and(|integrity| integrity == expected_platform)
+        .is_some_and(|integrity| integrity == expected_platform);
+    if !platform_ok {
+        return false;
+    }
+    for dep in manifest.dependencies() {
+        let dep_ok = fetch_integrity(client, registry, &dep.name, &dep.version)
+            .await
+            .is_some_and(|integrity| integrity == dep.integrity);
+        if !dep_ok {
+            return false;
+        }
+    }
+    true
 }
 
 async fn fetch_integrity(
@@ -485,25 +697,26 @@ mod tests {
         let json = serde_json::json!({
             "name": "@xai-official/grok",
             "version": "1.0.25",
-            "dist": { "integrity": hash },
+            "dist": { "integrity": hash, "unpackedSize": 18363 },
         });
         let published = parse_published_root("@xai-official/grok", platform, &json).unwrap();
         assert_eq!(published.version, "1.0.25");
         assert_eq!(published.platform_version, "1.0.25");
+        assert_eq!(published.root_size, 18363);
         assert!(parse_published_root(
             "@xai-official/grok",
             platform,
             &serde_json::json!({
                 "name": "@xai-official/grok",
                 "version": "latest",
-                "dist": { "integrity": hash },
+                "dist": { "integrity": hash, "unpackedSize": 18363 },
             })
         )
         .is_err());
     }
 
     #[test]
-    fn published_root_reads_optional_package_version() {
+    fn published_root_reads_optional_package_version_and_dependencies() {
         let hash = fixture_sha512();
         let platform = OfficialNpmTool::Grok
             .current_platform_package()
@@ -511,7 +724,10 @@ mod tests {
         let mut json = serde_json::json!({
             "name": "@xai-official/grok",
             "version": "1.0.25",
-            "dist": { "integrity": hash },
+            "dist": { "integrity": hash, "unpackedSize": 18363 },
+            "dependencies": {
+                "@iarna/toml": "^3.0.0"
+            }
         });
         let mut deps = serde_json::Map::new();
         deps.insert(platform.to_string(), serde_json::json!("1.0.26"));
@@ -522,6 +738,147 @@ mod tests {
         let published = parse_published_root("@xai-official/grok", platform, &json).unwrap();
         assert_eq!(published.version, "1.0.25");
         assert_eq!(published.platform_version, "1.0.26");
+        assert_eq!(published.root_size, 18363);
+        assert_eq!(
+            published
+                .declared_dependencies
+                .get("@iarna/toml")
+                .map(String::as_str),
+            Some("^3.0.0")
+        );
+    }
+
+    #[test]
+    fn published_root_rejects_missing_or_zero_unpacked_size() {
+        let hash = fixture_sha512();
+        let platform = OfficialNpmTool::Grok
+            .current_platform_package()
+            .expect("platform");
+        for invalid_dist in [
+            serde_json::json!({ "integrity": hash }),
+            serde_json::json!({ "integrity": hash, "unpackedSize": 0 }),
+            serde_json::json!({ "integrity": hash, "unpackedSize": -1 }),
+            serde_json::json!({ "integrity": hash, "unpackedSize": "large" }),
+        ] {
+            let json = serde_json::json!({
+                "name": "@xai-official/grok",
+                "version": "1.0.25",
+                "dist": invalid_dist,
+            });
+            assert_eq!(
+                parse_published_root("@xai-official/grok", platform, &json).unwrap_err(),
+                GrokNpmPlanError::InvalidSize
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_declared_dependency_freezes_iarna_toml_and_rejects_others() {
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", "^3.0.0"),
+            Ok("3.0.0")
+        );
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", "~3.0.0"),
+            Ok("3.0.0")
+        );
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", "=3.0.0"),
+            Ok("3.0.0")
+        );
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", "3.0.0"),
+            Ok("3.0.0")
+        );
+        // Strictly reject unproven or broader ranges
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", "^3.1.0"),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", "^3.0.1"),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", "~3.1.0"),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", ">=3.0.0"),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", "*"),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", "3.x"),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        assert_eq!(
+            resolve_declared_dependency("@iarna/toml", "^4.0.0"),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        assert_eq!(
+            resolve_declared_dependency("lodash", "^4.17.21"),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+    }
+
+    #[test]
+    fn parse_published_root_rejects_malformed_dependencies() {
+        let hash = fixture_sha512();
+        let platform = OfficialNpmTool::Grok
+            .current_platform_package()
+            .expect("platform");
+        for invalid_deps in [
+            serde_json::json!(["@iarna/toml"]),
+            serde_json::json!(123),
+            serde_json::json!("^3.0.0"),
+            serde_json::json!({ "@iarna/toml": 300 }),
+            serde_json::json!({ "@iarna/toml": ["3.0.0"] }),
+        ] {
+            let json = serde_json::json!({
+                "name": "@xai-official/grok",
+                "version": "1.0.25",
+                "dist": { "integrity": hash, "unpackedSize": 1000 },
+                "dependencies": invalid_deps,
+            });
+            assert_eq!(
+                parse_published_root("@xai-official/grok", platform, &json).unwrap_err(),
+                GrokNpmPlanError::UnsupportedDependency
+            );
+        }
+    }
+
+    #[test]
+    fn parse_manifest_rejects_transitive_dependencies_and_invalid_size() {
+        let hash = fixture_sha512();
+        let platform = current_platform_package().expect("platform");
+        // Non-empty transitive dependencies
+        let with_transitive = format!(
+            r#"{{"channel":"stable","package":"@xai-official/grok","version":"1.2.3","root_size":18363,"platform_size":29292216,"dependencies":[{{"name":"@iarna/toml","version":"3.0.0","integrity":"{hash}","unpacked_size":99960,"dependencies":{{"foo":"1.0.0"}}}}],"integrity":{{"@xai-official/grok":"{hash}","{platform}":"{hash}"}}}}"#
+        );
+        assert_eq!(
+            parse_manifest(&with_transitive).unwrap_err(),
+            GrokNpmPlanError::UnsupportedDependency
+        );
+        // Malformed transitive dependencies (e.g. array)
+        let malformed_transitive = format!(
+            r#"{{"channel":"stable","package":"@xai-official/grok","version":"1.2.3","root_size":18363,"platform_size":29292216,"dependencies":[{{"name":"@iarna/toml","version":"3.0.0","integrity":"{hash}","unpacked_size":99960,"dependencies":["foo"]}}],"integrity":{{"@xai-official/grok":"{hash}","{platform}":"{hash}"}}}}"#
+        );
+        assert_eq!(
+            parse_manifest(&malformed_transitive).unwrap_err(),
+            GrokNpmPlanError::UnsupportedDependency
+        );
+        // Zero unpacked_size in dependency
+        let zero_size = format!(
+            r#"{{"channel":"stable","package":"@xai-official/grok","version":"1.2.3","root_size":18363,"platform_size":29292216,"dependencies":[{{"name":"@iarna/toml","version":"3.0.0","integrity":"{hash}","unpacked_size":0}}],"integrity":{{"@xai-official/grok":"{hash}","{platform}":"{hash}"}}}}"#
+        );
+        assert_eq!(
+            parse_manifest(&zero_size).unwrap_err(),
+            GrokNpmPlanError::InvalidSize
+        );
     }
 
     #[test]
@@ -625,5 +982,38 @@ mod tests {
         assert!(exact.as_str().contains("1.2.3"));
         assert!(!exact.as_str().contains("latest"));
         assert_eq!(exact.scheme(), "https");
+    }
+
+    #[test]
+    fn manifest_calculates_total_unpacked_size_and_3x_reserve() {
+        let hash = fixture_sha512();
+        let platform = current_platform_package().expect("platform");
+        let json = format!(
+            r#"{{"channel":"stable","package":"@xai-official/grok","version":"1.2.3","root_size":18363,"platform_size":29292216,"dependencies":[{{"name":"@iarna/toml","version":"3.0.0","integrity":"{hash}","unpacked_size":99960}}],"integrity":{{"@xai-official/grok":"{hash}","{platform}":"{hash}","@iarna/toml":"{hash}"}}}}"#
+        );
+        let manifest = parse_manifest(&json).expect("manifest");
+        assert_eq!(manifest.root_size(), 18363);
+        assert_eq!(manifest.platform_size(), 29292216);
+        assert_eq!(manifest.dependencies().len(), 1);
+        assert_eq!(manifest.dependencies()[0].name, "@iarna/toml");
+        assert_eq!(manifest.dependencies()[0].version, "3.0.0");
+        assert_eq!(manifest.dependencies()[0].unpacked_size, 99960);
+        let expected_total = 18363 + 29292216 + 99960;
+        assert_eq!(manifest.total_unpacked_size(), expected_total);
+        assert_eq!(manifest.required_reserve_bytes(), Some(expected_total * 3));
+    }
+
+    #[test]
+    fn parse_manifest_rejects_arithmetic_overflow() {
+        let hash = fixture_sha512();
+        let platform = current_platform_package().expect("platform");
+        let json = format!(
+            r#"{{"channel":"stable","package":"@xai-official/grok","version":"1.2.3","root_size":{},"platform_size":100,"integrity":{{"@xai-official/grok":"{hash}","{platform}":"{hash}"}}}}"#,
+            u64::MAX
+        );
+        assert_eq!(
+            parse_manifest(&json).unwrap_err(),
+            GrokNpmPlanError::ArithmeticOverflow
+        );
     }
 }

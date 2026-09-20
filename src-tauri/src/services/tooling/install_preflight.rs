@@ -58,8 +58,14 @@ pub(super) async fn check(
             return Err(AgentReasonCode::ToolHostMissing);
         }
         let prefix = super::npm_runtime::prefix(anchor).ok_or(AgentReasonCode::ToolHostMissing)?;
-        let writable = crate::agent_install::existing_directory(&prefix)?;
-        if !crate::agent_install::directory_writable(&writable) {
+        let writable_prefix = crate::agent_install::existing_directory(&prefix)?;
+        if !crate::agent_install::directory_writable(&writable_prefix) {
+            return Err(AgentReasonCode::PermissionDenied);
+        }
+        let cache_path = super::npm_runtime::cache(anchor)
+            .unwrap_or_else(|| crate::config::get_home_dir().join(".npm"));
+        let writable_cache = crate::agent_install::existing_directory(&cache_path)?;
+        if !crate::agent_install::directory_writable(&writable_cache) {
             return Err(AgentReasonCode::PermissionDenied);
         }
         let bin = prefix.join("bin");
@@ -76,9 +82,13 @@ pub(super) async fn check(
         {
             return Err(AgentReasonCode::ToolOwnerUnsupported);
         }
+        let mut paths = vec![writable_prefix];
+        if !paths.contains(&writable_cache) {
+            paths.push(writable_cache);
+        }
         Ok(CliInstallPreflight {
             location_label: crate::agent_install::display_user_path(&prefix),
-            paths: vec![writable],
+            paths,
             requires_npm: true,
         })
     })

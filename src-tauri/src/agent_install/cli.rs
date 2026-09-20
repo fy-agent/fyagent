@@ -77,6 +77,7 @@ pub async fn observe_cli(agent_id: AgentCatalogId) -> Option<CliObservation> {
 pub async fn run_cli_lifecycle(
     agent_id: AgentCatalogId,
     action: super::types::AgentActionId,
+    confirmed_manifest: Option<&crate::services::tooling::grok_npm::GrokNpmManifest>,
 ) -> Result<(), super::types::AgentReasonCode> {
     let tool =
         tooling_id_for(agent_id).ok_or(super::types::AgentReasonCode::ExecutorNotImplemented)?;
@@ -86,7 +87,7 @@ pub async fn run_cli_lifecycle(
         _ => return Err(super::types::AgentReasonCode::ExecutorNotImplemented),
     };
     if agent_id == AgentCatalogId::ClaudeCode {
-        return tooling::run_claude_cli_lifecycle(lifecycle)
+        return tooling::run_claude_cli_lifecycle_with_manifest(lifecycle, confirmed_manifest)
             .await
             .map_err(|error| {
                 use super::types::AgentReasonCode;
@@ -106,21 +107,25 @@ pub async fn run_cli_lifecycle(
                 }
             });
     }
-    tooling::run_tool_lifecycle_action(vec![tool.to_string()], lifecycle.to_string())
-        .await
-        .map_err(|error| {
-            if error.contains("elevated Windows")
-                || error.contains("unavailable for the current Windows user")
-            {
-                super::types::AgentReasonCode::InteractiveUserUnavailable
-            } else if error.contains("Codex CLI lifecycle")
-                || error.contains("only available for Grok Build")
-            {
-                super::types::AgentReasonCode::ExecutorNotImplemented
-            } else {
-                super::types::AgentReasonCode::SourceNotVerified
-            }
-        })
+    tooling::run_tool_lifecycle_action_with_manifest(
+        vec![tool.to_string()],
+        lifecycle.to_string(),
+        confirmed_manifest,
+    )
+    .await
+    .map_err(|error| {
+        if error.contains("elevated Windows")
+            || error.contains("unavailable for the current Windows user")
+        {
+            super::types::AgentReasonCode::InteractiveUserUnavailable
+        } else if error.contains("Codex CLI lifecycle")
+            || error.contains("only available for Grok Build")
+        {
+            super::types::AgentReasonCode::ExecutorNotImplemented
+        } else {
+            super::types::AgentReasonCode::SourceNotVerified
+        }
+    })
 }
 
 #[cfg(test)]

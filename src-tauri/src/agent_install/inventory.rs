@@ -1298,8 +1298,13 @@ mod tests {
             execution: InstallExecution::CurrentUser,
             target_label: "Original".to_string(),
             download_url: None,
-            storage_budget: super::super::preflight::storage_budget(AgentSurface::Desktop, None)
-                .unwrap(),
+            storage_budget: super::super::preflight::storage_budget(
+                AgentSurface::Desktop,
+                InstallRuntime::NativeInstaller,
+                None,
+            )
+            .unwrap(),
+            plan: super::super::preflight::PreparedPlanPayload::Desktop,
         };
         store
             .record_preflight(&dto.inventory_id, binding.clone())
@@ -1318,8 +1323,12 @@ mod tests {
         let mut changed_source = binding.clone();
         changed_source.download_url = Some("https://opencode.ai/changed".to_string());
         let mut changed_budget = binding.clone();
-        changed_budget.storage_budget =
-            super::super::preflight::storage_budget(AgentSurface::Desktop, Some(4096)).unwrap();
+        changed_budget.storage_budget = super::super::preflight::storage_budget(
+            AgentSurface::Desktop,
+            InstallRuntime::NativeInstaller,
+            Some(4096),
+        )
+        .unwrap();
         for changed in [changed_source, changed_budget] {
             store
                 .record_preflight(&dto.inventory_id, binding.clone())
