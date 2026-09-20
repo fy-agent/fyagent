@@ -1,0 +1,68 @@
+.fy-kit-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  color: var(--fy-text);
+}
+.fy-kit-toolbar,
+.fy-kit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.fy-kit-toolbar h2 {
+  margin: 0 auto 0 0;
+}
+.fy-kit-panel .fy-catalog-detail {
+  padding: 20px;
+}
+.fy-kit-secondary {
+  color: var(--fy-text-secondary);
+}
+.fy-kit-panel p {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.fy-kit-resources {
+  display: grid;
+  gap: 8px;
+  margin-block: 16px;
+}
+.fy-kit-resources summary {
+  cursor: pointer;
+  padding: 8px 0;
+  font-weight: 600;
+}
+.fy-kit-resources summary:focus-visible {
+  outline: 2px solid var(--fy-focus);
+  outline-offset: 2px;
+}
+.fy-kit-resources pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.65;
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--fy-radius-item);
+  background: var(--fy-surface-hover);
+}
+.fy-kit-result {
+  padding-block: 12px;
+  border-top: 1px solid var(--fy-border);
+}
+.fy-kit-metrics {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(100px, 1fr);
+  gap: 8px;
+  max-width: 440px;
+}
+.fy-kit-metrics dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

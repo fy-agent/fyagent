@@ -221,6 +221,9 @@ pub struct ManagedAuthConnectionSummary {
     pub provider: Option<ManagedAuthProvider>,
     pub account_id: Option<String>,
     pub auth_status: ManagedAuthConnectionState,
+    /// Recognized local Codex material without a managed connection, not remote auth proof.
+    #[serde(skip)]
+    pub(crate) unmanaged_native_session: bool,
     pub credential_manager: ManagedAuthCredentialManager,
     pub request_mode: ManagedAuthRequestMode,
     pub request_provider_label: Option<String>,

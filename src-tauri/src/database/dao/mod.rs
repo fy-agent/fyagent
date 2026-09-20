@@ -8,6 +8,7 @@ pub(crate) mod health;
 pub(crate) mod managed_auth;
 pub mod mcp;
 pub mod profiles;
+mod projects;
 pub mod prompts;
 pub mod providers;
 pub mod providers_seed;
@@ -22,3 +23,5 @@ pub mod usage_rollup;
 // 导出 FailoverQueueItem / Profile 供外部使用
 pub use failover::FailoverQueueItem;
 pub use profiles::Profile;
+
+mod verification;

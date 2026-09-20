@@ -336,6 +336,8 @@ impl Database {
         // credential store and is referenced only by opaque SecretRef values.
         Self::create_managed_auth_tables_on_conn(conn)?;
 
+        Self::create_project_tables_on_conn(conn)?;
+
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
         // （随 v12 定稿为 current_profile_id_<scope>，不单独 bump 版本）
         if conn
@@ -415,6 +417,7 @@ impl Database {
             [],
         );
 
+        Self::migrate_verification_v22(conn)?;
         Ok(())
     }
 
@@ -550,6 +553,11 @@ impl Database {
                         log::info!("迁移数据库从 v20 到 v21（添加 Managed Auth 元数据）");
                         Self::migrate_v20_to_v21(conn)?;
                         Self::set_user_version(conn, 21)?;
+                    }
+                    21 => {
+                        Self::create_project_tables_on_conn(conn)?;
+                        Self::migrate_verification_v22(conn)?;
+                        Self::set_user_version(conn, 22)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(

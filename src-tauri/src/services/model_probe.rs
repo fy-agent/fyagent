@@ -23,6 +23,127 @@ const MAX_RETRIES: u32 = 1;
 const DEGRADED_THRESHOLD_MS: u64 = 6000;
 const ERROR_BODY_MAX_CHARS: usize = 512;
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum IdentityProbe {
+    Matched,
+    Unconfirmed,
+    Failed,
+}
+
+/// Evidence-specific probe. Unlike the draft connectivity UI, it requires an
+/// explicit model identity in a bounded SSE/JSON response. No alias is inferred.
+pub(crate) async fn probe_saved_identity(
+    app: ModelProbeApp,
+    base_url: &str,
+    api_key: &str,
+    model_id: &str,
+) -> IdentityProbe {
+    probe_saved_identity_with_client(
+        &crate::proxy::http_client::get(),
+        app,
+        base_url,
+        api_key,
+        model_id,
+        TIMEOUT,
+    )
+    .await
+}
+
+async fn probe_saved_identity_with_client(
+    client: &Client,
+    app: ModelProbeApp,
+    base_url: &str,
+    api_key: &str,
+    model_id: &str,
+    deadline: Duration,
+) -> IdentityProbe {
+    if StreamCheckService::validate_probe_url(base_url).is_err()
+        || model_id.trim().is_empty()
+        || (!api_key.is_empty() && base_url.contains(api_key))
+    {
+        return IdentityProbe::Failed;
+    }
+    let Ok((spec, actual_model)) = build_probe_spec(app, base_url, api_key, model_id, false) else {
+        return IdentityProbe::Failed;
+    };
+    let result = tokio::time::timeout(deadline, async {
+        let mut request = client
+            .post(&spec.url)
+            .timeout(deadline)
+            .body(spec.body.to_string());
+        for (name, value) in &spec.headers {
+            request = request.header(name.as_str(), value);
+        }
+        let response = request.send().await.map_err(|_| ())?;
+        if !response.status().is_success() {
+            return Ok(IdentityProbe::Failed);
+        }
+        let mut bytes = Vec::new();
+        let mut identity = false;
+        let mut output = false;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|_| ())?;
+            if bytes.len() + chunk.len() > 65_536 {
+                return Ok(IdentityProbe::Unconfirmed);
+            }
+            bytes.extend_from_slice(&chunk);
+            let text = String::from_utf8_lossy(&bytes);
+            if first_chunk_is_error(&text) {
+                return Ok(IdentityProbe::Failed);
+            }
+            for line in text.lines() {
+                let body = line.strip_prefix("data:").unwrap_or(line).trim();
+                if let Ok(value) = serde_json::from_str::<Value>(body) {
+                    if value.get("type").and_then(Value::as_str).is_some_and(|t| {
+                        matches!(t, "response.failed" | "response.incomplete" | "error")
+                    }) {
+                        return Ok(IdentityProbe::Failed);
+                    }
+                    output |= value
+                        .pointer("/choices/0/delta/content")
+                        .and_then(Value::as_str)
+                        .is_some_and(|s| !s.is_empty())
+                        || value
+                            .pointer("/delta/text")
+                            .and_then(Value::as_str)
+                            .is_some_and(|s| !s.is_empty())
+                        || (value.get("type").and_then(Value::as_str)
+                            == Some("response.output_text.delta")
+                            && value
+                                .get("delta")
+                                .and_then(Value::as_str)
+                                .is_some_and(|s| !s.is_empty()));
+                    if value.get("error").is_some() {
+                        return Ok(IdentityProbe::Failed);
+                    }
+                    if let Some(model) = value
+                        .get("model")
+                        .or_else(|| value.pointer("/message/model"))
+                        .or_else(|| value.pointer("/response/model"))
+                        .and_then(Value::as_str)
+                    {
+                        if model != actual_model {
+                            return Ok(IdentityProbe::Unconfirmed);
+                        }
+                        identity = true;
+                    }
+                }
+            }
+        }
+        Ok::<_, ()>(if identity && output {
+            IdentityProbe::Matched
+        } else {
+            IdentityProbe::Unconfirmed
+        })
+    })
+    .await;
+    match result {
+        Ok(Ok(value)) => value,
+        _ => IdentityProbe::Failed,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelProbeApp {
@@ -798,6 +919,81 @@ mod tests {
             assert_eq!(spec_user_content(&spec), expected);
             assert_ne!(spec_user_content(&spec), "ping");
         }
+    }
+
+    #[tokio::test]
+    async fn verification_identity_probe_requires_exact_model_and_output() {
+        for (body, expected) in [
+            ("data: {\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n", IdentityProbe::Matched),
+            ("data: {\"model\":\"alias-unknown\",\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n", IdentityProbe::Unconfirmed),
+            ("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n", IdentityProbe::Unconfirmed),
+            ("data: {\"model\":\"gpt-test\"}\n\n", IdentityProbe::Unconfirmed),
+            ("data: {\"model\":\"gpt-test\"}\n\ndata: {\"type\":\"response.failed\"}\n\n", IdentityProbe::Failed),
+        ] {
+            let (base,requests)=spawn_server(vec![http_response("200 OK",body)]);
+            let result=probe_saved_identity_with_client(&loopback_client(),ModelProbeApp::OpenCode,&base,"sk-fixture","gpt-test",Duration::from_secs(2)).await;
+            assert_eq!(result,expected);
+            assert_eq!(requests.lock().unwrap().len(),1);
+        }
+    }
+
+    #[tokio::test]
+    async fn verification_identity_matches_the_projected_model_with_effort() {
+        for requested in ["gpt-test@high", "gpt-test#high"] {
+            for (actual, expected) in [
+                ("gpt-test", IdentityProbe::Matched),
+                ("different-model", IdentityProbe::Unconfirmed),
+            ] {
+                let body = format!("data: {{\"model\":\"{actual}\",\"choices\":[{{\"delta\":{{\"content\":\"hello\"}}}}]}}\n\n");
+                let (base, _) = spawn_server(vec![http_response("200 OK", &body)]);
+                let result = probe_saved_identity_with_client(
+                    &loopback_client(),
+                    ModelProbeApp::OpenCode,
+                    &base,
+                    "sk-fixture",
+                    requested,
+                    Duration::from_secs(2),
+                )
+                .await;
+                assert_eq!(result, expected);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn verification_identity_probe_401_and_timeout_are_not_success() {
+        let (base, _) = spawn_server(vec![http_response("401 Unauthorized", "sk-private-canary")]);
+        assert_eq!(
+            probe_saved_identity_with_client(
+                &loopback_client(),
+                ModelProbeApp::OpenCode,
+                &base,
+                "sk-fixture",
+                "gpt-test",
+                Duration::from_secs(2)
+            )
+            .await,
+            IdentityProbe::Failed
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let thread = thread::spawn(move || {
+            let (_stream, _) = listener.accept().unwrap();
+            thread::sleep(StdDuration::from_millis(150));
+        });
+        assert_eq!(
+            probe_saved_identity_with_client(
+                &loopback_client(),
+                ModelProbeApp::OpenCode,
+                &base,
+                "sk-fixture",
+                "gpt-test",
+                Duration::from_millis(30)
+            )
+            .await,
+            IdentityProbe::Failed
+        );
+        thread.join().unwrap();
     }
 
     #[test]

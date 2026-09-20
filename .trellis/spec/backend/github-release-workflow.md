@@ -367,21 +367,27 @@ unavailability blocks acceptance.
   `Developer ID Application: William Wang (HY446996QX)` / team `HY446996QX`,
   the hardened runtime, a secure timestamp, and the checked-in entitlements,
   then verifies that identity without requiring a stapler ticket yet. The job
-  packages a signed DMG from that app and submits only the DMG to Apple
-  notarization. The nested privileged helper is not a second Apple
-  submission. The notarization step submits without `--wait`, then polls
+  archives the signed app with `ditto -c -k --keepParent` into a private
+  temporary ZIP and submits it to Apple. After acceptance, it staples and
+  fully verifies the app before copying it into the styled DMG. It then
+  signs and separately notarizes the final DMG. The nested privileged helper
+  is included in the app submission, not submitted independently.
+  Both notarization operations reuse one submit/poll implementation without `--wait`, then poll
   `notarytool info` until `Accepted` / `Invalid` or a multi-hour budget;
   `notarytool wait --timeout` is not used because it exits 124 with JSON on
-  stderr while Apple may still be In Progress. After Apple accepts that one
-  submission, it staples the DMG and the original app from the same ticket.
-  It does not emit a ZIP or notarize an app zip as a second serial
-  wait. The `build-macos` job sets `timeout-minutes: 360` so the poll can use
-  the GitHub-hosted maximum. Strict deep verification must
+  stderr while Apple may still be In Progress. Only an Accepted result permits
+  stapling the corresponding artifact. The app submission ZIP is removed
+  after acceptance and never becomes a Release asset; teardown also removes
+  the private state on failure. The `build-macos` job retains
+  `timeout-minutes: 360` as the total job bound, including both submissions.
+  Formal packaging allocates `FYAGENT_NOTARY_WAIT_SECONDS=9000` per
+  submission so the two waits leave room for building and packaging.
+  Strict deep verification must
   report the exact identity, `runtime` flags, a timestamp, and sealed
   resources. The published DMG container must carry a stapled ticket. The
-  workflow also staples the original app for ticket proof. The
-  app copy inside the already-built DMG is the pre-staple Developer ID binary
-  and is checked for signature identity, not a nested ticket. An ad-hoc
+  app inside the final mounted DMG must also pass complete signature and
+  stapled-ticket verification. The app is not modified or re-signed after
+  its ticket is attached. An ad-hoc
   signature, missing team, missing timestamp, or missing required ticket is
   rejected;
 - the DMG source folder contains `FyAgent.app`, a symlink named
@@ -615,7 +621,8 @@ publication, formal push/dispatch concurrency identity, both preflight/formal
 tail-job truth tables, owned-draft source/marker/run/workflow/job/step proof,
 published/foreign draft rejection, bounded deletion confirmation, mutation of
 explicit status conditions or direct-need assertions, asset loss/extra, signer
-policy, transaction failure, a single `notarytool submit`, `notarytool info`
+policy, transaction failure, one reusable `notarytool submit` implementation
+used for the app archive and final DMG, `notarytool info`
 polling, no `xcrun notarytool wait` invocation, `notarytool log` on a denied
 submission, `FYAGENT_NOTARY_WAIT_SECONDS`, `build-macos`
 `timeout-minutes: 360`, the Applications symlink inside the DMG, `.background/background.png`,
@@ -674,7 +681,8 @@ sourceSha = live main HEAD
 require successful push CI on that SHA
 reject tag objects that are commits (lightweight)
 cache path: src-tauri/target
-notarize app zip, then notarize DMG
+staple an app before Apple has accepted its submission
+package an unstapled app, then staple only the source outside the DMG
 xcrun notarytool wait "$id" --timeout 1800
 # exit 124 / empty stdout => fail the Release job
 bump X.Y.Z after every failed unpublished formal run
@@ -693,11 +701,12 @@ run/attempt/job provenance can be deleted and recreated. A published Release
 is immutable.
 Release restores/saves no Actions dependency or compiler cache. Download-only
 Cargo caching is a separate CI policy, not a Release exception. Submit the
-signed DMG once without `--wait`, poll `notarytool info` on that submission
-id until `Accepted` / `Invalid` or the wait budget, then staple the DMG and
-the original app from that ticket. Do not emit a ZIP.
+signed app archive without `--wait`, poll its submission id until Accepted,
+then staple and verify the app before packaging. Sign and submit the final
+DMG, poll its separate id and staple it only after acceptance. Verify the
+mounted app's ticket as well as the DMG's. Do not publish the private ZIP.
 
-## Scenario: Single DMG notarization poll
+## Scenario: App ticket before DMG packaging
 
 ### 1. Scope / Trigger
 
@@ -711,15 +720,20 @@ the original app from that ticket. Do not emit a ZIP.
 
 ### 2. Signatures
 
-- `macos-developer-id.sh notarize-dmg <dmg>`
-- `xcrun notarytool submit <dmg> --output-format json` (no `--wait`)
+- `macos-developer-id.sh notarize-app <app>` creates a private ZIP and waits
+  for acceptance through the shared poller.
+- `macos-developer-id.sh staple-app <app>` precedes full app verification and
+  DMG creation; the signed app is not re-signed afterward.
+- `macos-developer-id.sh notarize-dmg <dmg>` follows final DMG signing.
+- `xcrun notarytool submit <archive-or-dmg> --output-format json` (no `--wait`)
 - `xcrun notarytool info <submission-id> --output-format json`
 - `xcrun notarytool log <submission-id> <log-json>` on `Invalid` / `Rejected`
-- `xcrun stapler staple <dmg>` then `macos-developer-id.sh staple-app <app>`
+- `xcrun stapler staple <dmg>` follows that container's acceptance.
 
 ### 3. Contracts
 
-- Request: one regular signed UDZO DMG; one Apple submission id.
+- Request: one signed app archive and one final signed UDZO DMG, with a
+  separate Apple submission id for each. Never resubmit while polling an id.
 - Response status values: `Accepted` (success), `In Progress` / `UNKNOWN`
   (keep polling), `Invalid` / `Rejected` (fail).
 - Environment: required `FYAGENT_APPLE_CERTIFICATE_P12_BASE64`,
@@ -738,26 +752,32 @@ the original app from that ticket. Do not emit a ZIP.
 - `Invalid` / `Rejected` -> print `notarytool log`, fail, do not staple.
 - Non-terminal after wait budget -> fail with id and last status; do not
   upload a second Apple job.
-- `Accepted` -> staple DMG and the original app; do not emit a ZIP.
+- App `Accepted` -> staple/verify the app, then create the final DMG.
+- DMG `Accepted` -> staple/verify the DMG and verify its mounted app ticket.
+- App denial, missing submission id or timeout -> stop before staple/package.
+- The private app ZIP is not a published installer.
 
 ### 5. Good / Base / Bad Cases
 
-- Good: `info` returns `Accepted` inside the budget; the DMG has a stapled
-  ticket and the original app is stapled from the same ticket.
+- Good: the app is accepted and stapled before copying; the final DMG is
+  independently accepted/stapled and its app copy retains the app ticket.
 - Base: `info` stays `In Progress` for more than 60 minutes, then `Accepted`;
   the same submission id is reused.
-- Bad: two serial Apple uploads; `wait --timeout 1800` twice; treating 124 as
+- Bad: stapling before acceptance; packaging before app staple;
+  `wait --timeout 1800` twice; treating 124 as
   rejection; bumping the Cargo version solely because an unpublished tag's
   formal run timed out.
 
 ### 6. Tests Required
 
-- `tests/releaseWorkflow.test.ts` asserts exactly one `notarytool submit`,
+- `tests/releaseWorkflow.test.ts` asserts one shared `notarytool submit` implementation,
   presence of `notarytool info` and `notarytool log`, no `xcrun notarytool wait`
   invocation, `FYAGENT_NOTARY_WAIT_SECONDS`,
-  `scripts/release/macos-developer-id.sh` subcommand `notarize-dmg`,
+  `scripts/release/macos-developer-id.sh` subcommands `notarize-app`, `notarize-dmg`,
   `staple-app`, `timeout-minutes: 360` on `build-macos`, the DMG Applications
-  symlink, styled layout scripts, and the absence of `macOS.zip`.
+  symlink, styled layout scripts, and the absence of a public `macOS.zip`.
+- Fake-tool execution proves In Progress→Accepted before app staple/package,
+  final-DMG submission, and stopping on denial, missing id or timeout.
 - Local tests do not call Apple; a successful unit run is not notarization
   evidence.
 

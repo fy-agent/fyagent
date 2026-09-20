@@ -77,6 +77,14 @@ test("dark blue text and controls remain readable on actual composited page and 
     const scope = `[data-testid="${route.split("?")[0]}-page"]`;
     const routeScope = page.locator(scope);
     await expect(routeScope).toBeVisible();
+    if (route === "agents") {
+      // Scan completion removes the progress block and commits the card order.
+      // Capture glyph coordinates only after those geometry changes settle.
+      await expect(
+        routeScope.getByRole("button", { name: "重新扫描", exact: true }),
+      ).toBeEnabled();
+      await expect(routeScope.getByRole("progressbar")).toHaveCount(0);
+    }
     if (route === "health") {
       // Raster sampling records glyph geometry before it hides text and takes
       // the screenshot. Let the initial read and its conditional stop action
@@ -162,6 +170,10 @@ test("Agent directory cards preserve text contrast on the bright CI backing", as
   await page.addInitScript(() => localStorage.setItem("fyagent-theme", "dark"));
   await installRichTauriFeatureFixture(page);
   await openRendererPage(page, "/agents");
+  await expect(
+    page.getByRole("button", { name: "重新扫描", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
   const directory = page.locator(".fy-agent-directory-list");
   await expect(
     directory.getByRole("heading", { name: "Grok Build", exact: true }),
@@ -207,41 +219,47 @@ test("theme reveal has one real circular track and survives quick reversal and r
       { once: true },
     ),
   );
-  await trigger.click({ position: { x: 10, y: 12 } });
-  if (supported) {
-    await expect(page.locator("html")).toHaveAttribute(
-      "data-theme-reveal",
-      "active",
-    );
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
-          document
+  // Observe and interrupt the real track inside the browser. Separate protocol
+  // polls can miss the entire 560 ms animation on a busy test host.
+  const nativeReveal = supported
+    ? page.evaluate(async () => {
+        const deadline = performance.now() + 5_000;
+        while (performance.now() < deadline) {
+          const tracks = document
             .getAnimations()
-            .some(
+            .filter(
               (animation) =>
                 (animation.effect as KeyframeEffect | null)?.pseudoElement ===
                 "::view-transition-new(root)",
-            ),
-        ),
-      )
-      .toBe(true);
-    const frames = await page.evaluate(() => {
-      const animation = document
-        .getAnimations()
-        .find(
-          (a) =>
-            (a.effect as KeyframeEffect | null)?.pseudoElement ===
-            "::view-transition-new(root)",
-        );
-      if (!animation) throw new Error("No native reveal track");
-      const effect = animation.effect as KeyframeEffect;
-      return {
-        frames: effect.getKeyframes().map((frame) => frame.clipPath),
-        duration: effect.getTiming().duration,
-        easing: effect.getTiming().easing,
-      };
-    });
+            );
+          const animation = tracks[0];
+          if (animation) {
+            const effect = animation.effect as KeyframeEffect;
+            const observed = {
+              trackCount: tracks.length,
+              active: document.documentElement.dataset.themeReveal,
+              frames: effect.getKeyframes().map((frame) => frame.clipPath),
+              duration: effect.getTiming().duration,
+              easing: effect.getTiming().easing,
+            };
+            const trigger =
+              document.querySelector<HTMLButtonElement>(".fy-theme-toggle");
+            if (!trigger) throw new Error("Missing theme trigger");
+            trigger.click();
+            return observed;
+          }
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+        }
+        throw new Error("No native reveal track within 5 seconds");
+      })
+    : null;
+  await trigger.click({ position: { x: 10, y: 12 } });
+  if (nativeReveal) {
+    const frames = await nativeReveal;
+    expect(frames.trackCount).toBe(1);
+    expect(frames.active).toBe("active");
     expect(frames.duration).toBe(560);
     expect(String(frames.easing).replace(/\s/g, "")).toBe(
       "cubic-bezier(0.25,0.08,0.25,1)",
@@ -264,7 +282,6 @@ test("theme reveal has one real circular track and survives quick reversal and r
     expect(parsed).toBeTruthy();
     expect(Number(parsed?.[1])).toBeCloseTo(expected.xPercent, 1);
     expect(Number(parsed?.[2])).toBeCloseTo(expected.yPercent, 1);
-    await trigger.evaluate((element) => (element as HTMLButtonElement).click());
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await page.setViewportSize({ width: 1000, height: 700 });
   }

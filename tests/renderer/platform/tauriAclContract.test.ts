@@ -124,7 +124,10 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(114);
+    expect(renderer.commands.size).toBe(148);
+    expect(renderer.commands.has("projects_prepare_codex")).toBe(true);
+    expect(renderer.commands.has("projects_bind_delivery_kit")).toBe(true);
+    expect(renderer.commands.has("projects_dependency_snapshot")).toBe(true);
     expect(renderer.commands.has("bind_managed_proxy_provider")).toBe(true);
     expect(renderer.commands.has("bind_xai_managed_provider")).toBe(true);
     expect(renderer.commands.has("get_first_use_guide_state")).toBe(true);

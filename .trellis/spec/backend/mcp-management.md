@@ -287,3 +287,12 @@ await ports.mcp.toggleApp(serverId, app, enabled);
 await mcpServersQuery.refetch();
 // Treat an error as unconfirmed even if the reread durable flag changed.
 ```
+
+## Library-only creation
+
+Unified McpService::upsert_server reuses mcp::validate_server_spec before any
+assignment removal or SQLite mutation, including all-disabled entries. Such
+entries save to the library without creating target configuration directories,
+starting commands, or contacting servers. Native target projection retains its
+existing partial-failure semantics. Renderer defaults no longer authorize
+seven-target fan-out; explicit selected targets remain ordinary user mutations.

@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentsPage } from "@/pages/agents/Page";
@@ -155,6 +155,14 @@ function readiness(
 ): AgentInstallReadiness {
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+    configurationEligibility:
+      installState === "installed" || installState === "installed_not_runnable"
+        ? { state: "eligible", evidence: "installation_detected" }
+        : {
+            state:
+              installState === "not_installed" ? "not_detected" : installState,
+            evidence: "none",
+          },
     reviewedAt: "2026-08-29",
     inventoryState: "single",
     requiresTargetSelection: false,
@@ -351,7 +359,14 @@ function configuredPorts(): FeaturePorts {
     revision: "workbuddy-revision",
   }));
   ports.opencodeModels.getSnapshot = vi.fn(async () => ({
-    providers: [{ id: "openai", name: "OpenAI", modelIds: ["opencode-model"] }],
+    providers: [
+      {
+        id: "openai",
+        name: "OpenAI",
+        modelIds: ["opencode-model"],
+        editable: true,
+      },
+    ],
     revision: "opencode-revision",
     path: "~/.config/opencode/opencode.json",
     backupPath: "~/.config/opencode/opencode.json.backup",
@@ -737,6 +752,46 @@ describe("V3 Agent directory and configuration shell", () => {
     await waitFor(() => expect(signal).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("region", { name: "AI 软件目录" })).toBeVisible();
   });
+  it.each(["multiple", "unknown"] as const)(
+    "opens Claude configuration while preserving %s installation uncertainty",
+    async (inventoryState) => {
+      const user = userEvent.setup();
+      const ports = configuredPorts();
+      ports.agentInstallReadiness.get = vi.fn(async (agentId) =>
+        agentId === "claude-code"
+          ? readiness(agentId, "unknown", {
+              sourceKind: "cli_tooling",
+              inventoryState,
+              requiresTargetSelection: inventoryState === "multiple",
+              configurationEligibility: {
+                state: "eligible",
+                evidence: "cli_runnable",
+              },
+              allowedActions: [],
+            })
+          : readiness(agentId, "not_installed"),
+      );
+      renderPage(ports);
+      await waitFor(() => expect(configureButton("Claude Code")).toBeEnabled());
+      const card = directoryArticle("Claude Code");
+      expect(within(card).getByText("状态未知")).toBeVisible();
+      expect(
+        within(card).getByText(/已检测到可运行的 CLI，可进入配置/),
+      ).toBeVisible();
+      expect(
+        within(card).queryByRole("button", { name: /安装|更新/ }),
+      ).not.toBeInTheDocument();
+      await user.click(configureButton("Claude Code"));
+      await waitFor(() =>
+        expect(screen.getByTestId("agents-page")).toHaveAttribute(
+          "data-view",
+          "configuration",
+        ),
+      );
+      expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
+    },
+  );
+
   it("shows all catalog rows immediately and settles readiness progressively", async () => {
     const ports = configuredPorts();
     const reads = {} as Record<
@@ -1363,6 +1418,25 @@ describe("V3 Agent directory and configuration shell", () => {
     await user.click(await screen.findByRole("button", { name: "管理 MCP" }));
     expect(screen.getByTestId("location")).toHaveTextContent(
       /^\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
+    );
+  });
+
+  it("carries the selected prompt target into global management", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/agents?target=codex&section=prompts"]}>
+        <FeatureProvider ports={configuredPorts()}>
+          <Routes>
+            <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/prompts" element={null} />
+          </Routes>
+          <LocationProbe />
+        </FeatureProvider>
+      </MemoryRouter>,
+    );
+    await user.click(await screen.findByRole("button", { name: "管理提示词" }));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      /^\/prompts\?target=codex&agentReturn=codex&agentSection=prompts$/,
     );
   });
 

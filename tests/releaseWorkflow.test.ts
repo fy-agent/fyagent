@@ -1113,6 +1113,111 @@ function runMacSignedDmgVerifier(mode: string) {
   };
 }
 
+function runMacNotarization(scenario: string) {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "fyagent-notary-sequence-"),
+  );
+  temporaryRoots.push(root);
+  const state = path.join(root, "fyagent-macos-signing");
+  const app = path.join(root, "FyAgent.app");
+  const dmg = path.join(root, "FyAgent.dmg");
+  const log = path.join(root, "calls.log");
+  for (const directory of [state, app]) fs.mkdirSync(directory);
+  fs.writeFileSync(path.join(state, "signing.keychain-db"), "fixture");
+  fs.writeFileSync(
+    path.join(state, "state.env"),
+    'KEYCHAIN_PATH="$STATE_DIR/signing.keychain-db"\nKEYCHAIN_PASSWORD=fixture-only\n',
+  );
+  // Avoid launching fresh executable files for each fake command.
+  // Subshell functions preserve each fake tool's process-local exit behavior.
+  const fakeTools = `
+security() { return 0; }
+ditto() (
+set -euo pipefail
+[ "$#" -eq 5 ] && [ "$1" = -c ] && [ "$2" = -k ] && [ "$3" = --keepParent ]
+[ -d "$4" ]
+printf 'archive-app\\n' >> "$FYAGENT_FAKE_NOTARY_LOG"
+printf 'signed-app-archive' > "$5"
+)
+xcrun() (
+set -euo pipefail
+case "$1 $2" in
+  'notarytool submit')
+    [ -f "$3" ]
+    case "$3" in *.zip) kind=app ;; *.dmg) kind=dmg ;; *) exit 2 ;; esac
+    printf 'submit-%s\\n' "$kind" >> "$FYAGENT_FAKE_NOTARY_LOG"
+    if [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = missing-id ]; then printf '{}\\n'; else printf '{"id":"%s-id"}\\n' "$kind"; fi
+    ;;
+  'notarytool info')
+    case "$3" in app-id) kind=app ;; dmg-id) kind=dmg ;; *) exit 2 ;; esac
+    status=Accepted
+    if [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = invalid ] || { [ "$kind" = dmg ] && [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = dmg-invalid ]; }; then
+      status=Invalid
+    elif [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = timeout ]; then
+      status='In Progress'
+    elif [ ! -f "$FYAGENT_FAKE_NOTARY_ROOT/polled-$kind" ]; then
+      status='In Progress'
+      touch "$FYAGENT_FAKE_NOTARY_ROOT/polled-$kind"
+    fi
+    printf 'info-%s-%s\\n' "$kind" "$status" >> "$FYAGENT_FAKE_NOTARY_LOG"
+    if [ "$status" = Accepted ]; then touch "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind"; fi
+    printf '{"status":"%s"}\\n' "$status"
+    ;;
+  'notarytool log') printf 'denial-log\\n' >> "$FYAGENT_FAKE_NOTARY_LOG" ;;
+  'stapler staple')
+    case "$3" in *.app) kind=app ;; *.dmg) kind=dmg ;; *) exit 2 ;; esac
+    [ -f "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind" ] || exit 91
+    printf 'staple-%s\\n' "$kind" >> "$FYAGENT_FAKE_NOTARY_LOG"
+    if [ "$kind" = app ]; then touch "$3/.ticket"; fi
+    ;;
+  *) exit 2 ;;
+esac
+)
+export -f security ditto xcrun
+`;
+  const result = spawnSync(
+    resolveBashExecutable(),
+    [
+      "-c",
+      `
+set -euo pipefail
+${fakeTools}
+bash "$1" notarize-app "$2"
+bash "$1" staple-app "$2"
+test -f "$2/.ticket"
+printf 'package-ticketed-app\\n' >> "$FYAGENT_FAKE_NOTARY_LOG"
+printf 'container-with-app-ticket' > "$3"
+bash "$1" notarize-dmg "$3"
+`,
+      "notary-fixture",
+      MACOS_DEVELOPER_ID,
+      app,
+      dmg,
+    ],
+    {
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        RUNNER_TEMP: root,
+        FYAGENT_NOTARY_WAIT_SECONDS: scenario === "timeout" ? "0" : "5",
+        FYAGENT_NOTARY_POLL_SECONDS: "0",
+        FYAGENT_FAKE_NOTARY_ROOT: root,
+        FYAGENT_FAKE_NOTARY_LOG: log,
+        FYAGENT_FAKE_NOTARY_SCENARIO: scenario,
+      },
+    },
+  );
+  if (result.error) throw result.error;
+  return {
+    ...result,
+    calls: fs.existsSync(log) ? read(log).trim().split("\n") : [],
+    privateArchiveExists: fs.existsSync(
+      path.join(state, "app-notarization.zip"),
+    ),
+  };
+}
+
 afterAll(() => {
   for (const root of temporaryRoots) {
     fs.rmSync(root, { force: true, recursive: true });
@@ -1125,6 +1230,47 @@ describe("FyAgent release workflow", () => {
   const releaseContract = read(RELEASE_CONTRACT);
   const releaseContractTypes = read(RELEASE_CONTRACT_TYPES);
   const windowsManifestVerifier = read(WINDOWS_MANIFEST_VERIFIER);
+
+  it("waits for app acceptance before packaging its ticket and notarizes the final container", () => {
+    const result = runMacNotarization("accepted");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.calls).toEqual([
+      "archive-app",
+      "submit-app",
+      "info-app-In Progress",
+      "info-app-Accepted",
+      "staple-app",
+      "package-ticketed-app",
+      "submit-dmg",
+      "info-dmg-In Progress",
+      "info-dmg-Accepted",
+      "staple-dmg",
+    ]);
+    expect(result.privateArchiveExists).toBe(false);
+  });
+
+  it.each(["invalid", "missing-id", "timeout"])(
+    "stops before app staple and DMG creation on %s notarization",
+    (scenario) => {
+      const result = runMacNotarization(scenario);
+      expect(result.status, result.stderr).not.toBe(0);
+      expect(result.calls.filter((call) => call.startsWith("submit-"))).toEqual(
+        ["submit-app"],
+      );
+      expect(result.calls).not.toContain("staple-app");
+      expect(result.calls).not.toContain("package-ticketed-app");
+      expect(result.calls).not.toContain("staple-dmg");
+    },
+  );
+
+  it("does not staple a denied final DMG even after app acceptance", () => {
+    const result = runMacNotarization("dmg-invalid");
+    expect(result.status, result.stderr).not.toBe(0);
+    expect(result.calls).toContain("staple-app");
+    expect(result.calls).toContain("submit-dmg");
+    expect(result.calls).toContain("info-dmg-Invalid");
+    expect(result.calls).not.toContain("staple-dmg");
+  });
 
   it("pins every pre-signer build input by exact file identity", async () => {
     const version = "12.34.56";
@@ -2353,7 +2499,7 @@ jobs:
     ).toBeGreaterThan(
       macJob.indexOf("verify-macos-privileged-helper.sh --structure-only"),
     );
-    expect(macJob).not.toContain(
+    expect(macJob).toContain(
       "scripts/release/macos-developer-id.sh notarize-app",
     );
     expect(macJob).toContain("scripts/release/macos-developer-id.sh sign-dmg");
@@ -2445,7 +2591,7 @@ jobs:
     expect(macDeveloperId).toContain("FYAGENT_NOTARY_WAIT_SECONDS");
     expect(macDeveloperId.match(/notarytool submit/gu)).toHaveLength(1);
     expectExactLine(macJob, "    timeout-minutes: 360");
-    expect(macDeveloperId).not.toContain("notarize_app");
+    expect(macDeveloperId).toContain("notarize_app");
     expect(macDeveloperId).toContain("stapler staple");
     expect(macDeveloperId).toContain("--options runtime");
     expect(macDeveloperId).toContain("--timestamp");
@@ -2489,8 +2635,24 @@ jobs:
     expect(
       macJob.match(/scripts\/release\/verify-macos-signed-app\.sh/gu),
     ).toHaveLength(3);
+    const appStaple = macJob.indexOf(
+      'scripts/release/macos-developer-id.sh staple-app "$APP_PATH"',
+    );
+    const appNotarize = macJob.indexOf(
+      'scripts/release/macos-developer-id.sh notarize-app "$APP_PATH"',
+    );
+    const dmgCreate = macJob.indexOf("scripts/release/create-macos-dmg.sh");
+    expect(appNotarize).toBeGreaterThan(
+      macJob.indexOf("scripts/release/macos-developer-id.sh sign-app"),
+    );
+    expect(appNotarize).toBeLessThan(appStaple);
+    expect(appStaple).toBeGreaterThan(-1);
+    expect(appStaple).toBeLessThan(dmgCreate);
     expect(macJob).toContain(
-      "scripts/release/verify-macos-signed-app.sh --signature-only",
+      'scripts/release/verify-macos-signed-app.sh "$mount_point/FyAgent.app"',
+    );
+    expect(macJob).not.toContain(
+      'scripts/release/verify-macos-signed-app.sh --signature-only "$mount_point/FyAgent.app"',
     );
     expect(
       macJob.match(/scripts\/release\/verify-macos-signed-dmg\.sh/gu),
@@ -2643,10 +2805,8 @@ jobs:
     );
   });
 
-  it(
-    "executes the Developer ID verifiers for both slices and fails closed on trust drift",
-    { timeout: 30_000 },
-    () => {
+  describe("executes the Developer ID verifiers for both slices and fails closed on trust drift", () => {
+    it("accepts both application slices", { timeout: 30_000 }, () => {
       const accepted = runMacSignedAppVerifier("accepted");
       expect(accepted.status, accepted.stderr).toBe(0);
       const displayCalls = accepted.calls.filter((call) =>
@@ -2667,41 +2827,52 @@ jobs:
       expect(accepted.calls).toContainEqual(
         expect.stringContaining("--verify --deep --strict"),
       );
+    });
 
-      for (const rejected of [
-        "adhoc",
-        "authority",
-        "linker",
-        "not-stapled",
-        "team",
-        "timestamp",
-        "unsealed",
-        "verify-fail",
-      ]) {
+    it.each([
+      "adhoc",
+      "authority",
+      "linker",
+      "not-stapled",
+      "team",
+      "timestamp",
+      "unsealed",
+      "verify-fail",
+    ])(
+      "rejects application trust drift: %s",
+      { timeout: 30_000 },
+      (rejected) => {
         const result = runMacSignedAppVerifier(rejected);
         expect(result.status, `${rejected}: ${result.stderr}`).not.toBe(0);
-      }
+      },
+    );
 
+    it("permits an unstapled signature-only check", { timeout: 30_000 }, () => {
       const signatureOnlyUnstapled = runMacSignedAppVerifier("not-stapled", [
         "--signature-only",
       ]);
       expect(signatureOnlyUnstapled.status, signatureOnlyUnstapled.stderr).toBe(
         0,
       );
+    });
 
+    it("accepts a signed and stapled DMG", { timeout: 30_000 }, () => {
       const acceptedDmg = runMacSignedDmgVerifier("accepted");
       expect(acceptedDmg.status, acceptedDmg.stderr).toBe(0);
-      for (const rejected of ["adhoc", "authority", "not-stapled", "team"]) {
+    });
+
+    it.each(["adhoc", "authority", "not-stapled", "team"])(
+      "rejects DMG trust drift: %s",
+      { timeout: 30_000 },
+      (rejected) => {
         const result = runMacSignedDmgVerifier(rejected);
         expect(result.status, `dmg ${rejected}: ${result.stderr}`).not.toBe(0);
-      }
-    },
-  );
+      },
+    );
+  });
 
-  it(
-    "requires nested privileged helper signatures after the main app checks",
-    { timeout: 30_000 },
-    () => {
+  describe("requires nested privileged helper signatures after the main app checks", () => {
+    it("rejects a missing formal helper", { timeout: 30_000 }, () => {
       const missingFormal = runMacSignedAppVerifier("accepted", [], {
         helper: "absent",
       });
@@ -2709,127 +2880,191 @@ jobs:
       expect(missingFormal.stderr).toContain(
         "formal Developer ID verification requires the nested privileged helper",
       );
+    });
 
-      const missingSignatureOnly = runMacSignedAppVerifier(
-        "accepted",
-        ["--signature-only"],
-        { helper: "absent" },
-      );
-      expect(missingSignatureOnly.status, missingSignatureOnly.stderr).toBe(0);
-      expect(missingSignatureOnly.stderr).toContain(
-        "nested privileged helper is absent; skipping nested helper verification",
-      );
+    it(
+      "allows a missing helper for signature-only",
+      { timeout: 30_000 },
+      () => {
+        const missingSignatureOnly = runMacSignedAppVerifier(
+          "accepted",
+          ["--signature-only"],
+          { helper: "absent" },
+        );
+        expect(missingSignatureOnly.status, missingSignatureOnly.stderr).toBe(
+          0,
+        );
+        expect(missingSignatureOnly.stderr).toContain(
+          "nested privileged helper is absent; skipping nested helper verification",
+        );
+      },
+    );
 
-      const missingSkipEnv = runMacSignedAppVerifier("accepted", [], {
-        helper: "absent",
-        env: { FYAGENT_REQUIRE_PRIVILEGED_HELPER: "0" },
-      });
-      expect(missingSkipEnv.status, missingSkipEnv.stderr).toBe(0);
-      expect(missingSkipEnv.stderr).toContain(
-        "nested privileged helper is absent; skipping nested helper verification",
-      );
+    it(
+      "allows an explicitly optional missing helper",
+      { timeout: 30_000 },
+      () => {
+        const missingSkipEnv = runMacSignedAppVerifier("accepted", [], {
+          helper: "absent",
+          env: { FYAGENT_REQUIRE_PRIVILEGED_HELPER: "0" },
+        });
+        expect(missingSkipEnv.status, missingSkipEnv.stderr).toBe(0);
+        expect(missingSkipEnv.stderr).toContain(
+          "nested privileged helper is absent; skipping nested helper verification",
+        );
+      },
+    );
 
+    it("rejects an ad-hoc helper", { timeout: 30_000 }, () => {
       const helperAdhoc = runMacSignedAppVerifier("accepted", [], {
         env: { FYAGENT_FAKE_HELPER_MODE: "adhoc" },
       });
       expect(helperAdhoc.status, helperAdhoc.stderr).not.toBe(0);
       expect(helperAdhoc.stderr).toContain("ad-hoc");
+    });
 
+    it("rejects a single-architecture helper", { timeout: 30_000 }, () => {
       const helperThin = runMacSignedAppVerifier("accepted", [], {
         env: { FYAGENT_FAKE_LIPO_MODE: "arm64-only" },
       });
       expect(helperThin.status, helperThin.stderr).not.toBe(0);
       expect(helperThin.stderr).toContain("universal");
+    });
 
-      const structureOnly = runMacPrivilegedHelperVerifier(
-        ["--structure-only"],
-        {
-          env: { FYAGENT_FAKE_HELPER_MODE: "adhoc" },
-        },
-      );
-      expect(structureOnly.status, structureOnly.stderr).toBe(0);
-      expect(
-        structureOnly.calls.some((call) => call.startsWith("--display ")),
-      ).toBe(false);
+    it(
+      "checks structure without signature inspection",
+      { timeout: 30_000 },
+      () => {
+        const structureOnly = runMacPrivilegedHelperVerifier(
+          ["--structure-only"],
+          {
+            env: { FYAGENT_FAKE_HELPER_MODE: "adhoc" },
+          },
+        );
+        expect(structureOnly.status, structureOnly.stderr).toBe(0);
+        expect(
+          structureOnly.calls.some((call) => call.startsWith("--display ")),
+        ).toBe(false);
+      },
+    );
 
+    it("rejects a missing Mach service label", { timeout: 30_000 }, () => {
       const missingLabel = runMacPrivilegedHelperVerifier([], {
         helper: "no-label",
       });
       expect(missingLabel.status, missingLabel.stderr).not.toBe(0);
       expect(missingLabel.stderr).toContain("Mach service label");
+    });
 
+    it("rejects additional privileged helpers", { timeout: 30_000 }, () => {
       const extraHelper = runMacPrivilegedHelperVerifier(["--structure-only"], {
         helper: "extra-helper",
       });
       expect(extraHelper.status, extraHelper.stderr).not.toBe(0);
       expect(extraHelper.stderr).toContain("exactly one privileged helper");
+    });
 
-      const acceptedHelper = runMacPrivilegedHelperVerifier();
-      expect(acceptedHelper.status, acceptedHelper.stderr).toBe(0);
-      expect(
-        acceptedHelper.calls.filter((call) => call.startsWith("--display ")),
-      ).toHaveLength(4);
+    it(
+      "accepts both nested binaries and architectures",
+      { timeout: 30_000 },
+      () => {
+        const acceptedHelper = runMacPrivilegedHelperVerifier();
+        expect(acceptedHelper.status, acceptedHelper.stderr).toBe(0);
+        expect(
+          acceptedHelper.calls.filter((call) => call.startsWith("--display ")),
+        ).toHaveLength(4);
+      },
+    );
 
-      const missingArtifacts = runEmbedPrivilegedHelper();
-      expect(missingArtifacts.status, missingArtifacts.stderr).toBe(0);
-      expect(missingArtifacts.stderr).toContain(
-        "leaving FyAgent.app unchanged",
-      );
-      expect(
-        fs.existsSync(
-          path.join(missingArtifacts.appPath, PRIVILEGED_HELPER_RELPATH),
-        ),
-      ).toBe(false);
+    it(
+      "leaves the app unchanged without optional artifacts",
+      { timeout: 30_000 },
+      () => {
+        const missingArtifacts = runEmbedPrivilegedHelper();
+        expect(missingArtifacts.status, missingArtifacts.stderr).toBe(0);
+        expect(missingArtifacts.stderr).toContain(
+          "leaving FyAgent.app unchanged",
+        );
+        expect(
+          fs.existsSync(
+            path.join(missingArtifacts.appPath, PRIVILEGED_HELPER_RELPATH),
+          ),
+        ).toBe(false);
+      },
+    );
 
-      const requiredMissing = runEmbedPrivilegedHelper({
-        FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1",
-      });
-      expect(requiredMissing.status, requiredMissing.stderr).not.toBe(0);
-      expect(requiredMissing.stderr).toContain(
-        "formal privileged helper artifacts are required before embedding",
-      );
-      expect(
-        fs.existsSync(
-          path.join(requiredMissing.appPath, PRIVILEGED_HELPER_RELPATH),
-        ),
-      ).toBe(false);
+    it(
+      "rejects missing required artifacts before embedding",
+      { timeout: 30_000 },
+      () => {
+        const requiredMissing = runEmbedPrivilegedHelper({
+          FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1",
+        });
+        expect(requiredMissing.status, requiredMissing.stderr).not.toBe(0);
+        expect(requiredMissing.stderr).toContain(
+          "formal privileged helper artifacts are required before embedding",
+        );
+        expect(
+          fs.existsSync(
+            path.join(requiredMissing.appPath, PRIVILEGED_HELPER_RELPATH),
+          ),
+        ).toBe(false);
+      },
+    );
 
-      const sourceRoot = fs.mkdtempSync(
-        path.join(os.tmpdir(), "fyagent-helper-src-"),
-      );
-      temporaryRoots.push(sourceRoot);
-      const helperSrc = path.join(sourceRoot, "helper-bin");
-      const clientSrc = path.join(sourceRoot, "client.dylib");
-      fs.writeFileSync(helperSrc, "helper-bytes");
-      fs.writeFileSync(clientSrc, "client-bytes");
-      const embedded = runEmbedPrivilegedHelper({
-        FYAGENT_PRIVILEGED_HELPER_BIN: helperSrc,
-        FYAGENT_PRIVILEGED_CLIENT_DYLIB: clientSrc,
-      });
-      expect(embedded.status, embedded.stderr).toBe(0);
-      expect(
-        fs.readFileSync(
-          path.join(embedded.appPath, PRIVILEGED_HELPER_RELPATH),
-          "utf8",
-        ),
-      ).toBe("helper-bytes");
-      expect(
-        fs.readFileSync(
-          path.join(embedded.appPath, PRIVILEGED_CLIENT_RELPATH),
-          "utf8",
-        ),
-      ).toBe("client-bytes");
+    it(
+      "embeds the provided helper and client bytes",
+      { timeout: 30_000 },
+      () => {
+        const sourceRoot = fs.mkdtempSync(
+          path.join(os.tmpdir(), "fyagent-helper-src-"),
+        );
+        temporaryRoots.push(sourceRoot);
+        const helperSrc = path.join(sourceRoot, "helper-bin");
+        const clientSrc = path.join(sourceRoot, "client.dylib");
+        fs.writeFileSync(helperSrc, "helper-bytes");
+        fs.writeFileSync(clientSrc, "client-bytes");
+        const embedded = runEmbedPrivilegedHelper({
+          FYAGENT_PRIVILEGED_HELPER_BIN: helperSrc,
+          FYAGENT_PRIVILEGED_CLIENT_DYLIB: clientSrc,
+        });
+        expect(embedded.status, embedded.stderr).toBe(0);
+        expect(
+          fs.readFileSync(
+            path.join(embedded.appPath, PRIVILEGED_HELPER_RELPATH),
+            "utf8",
+          ),
+        ).toBe("helper-bytes");
+        expect(
+          fs.readFileSync(
+            path.join(embedded.appPath, PRIVILEGED_CLIENT_RELPATH),
+            "utf8",
+          ),
+        ).toBe("client-bytes");
+      },
+    );
 
-      const partial = runEmbedPrivilegedHelper({
-        FYAGENT_PRIVILEGED_HELPER_BIN: helperSrc,
-      });
-      expect(partial.status, partial.stderr).not.toBe(0);
-      expect(fs.existsSync(partial.appPath)).toBe(true);
-      expect(
-        fs.existsSync(path.join(partial.appPath, PRIVILEGED_HELPER_RELPATH)),
-      ).toBe(false);
-    },
-  );
+    it(
+      "rejects partial artifacts without adding a helper",
+      { timeout: 30_000 },
+      () => {
+        const sourceRoot = fs.mkdtempSync(
+          path.join(os.tmpdir(), "fyagent-helper-src-"),
+        );
+        temporaryRoots.push(sourceRoot);
+        const helperSrc = path.join(sourceRoot, "helper-bin");
+        fs.writeFileSync(helperSrc, "helper-bytes");
+        const partial = runEmbedPrivilegedHelper({
+          FYAGENT_PRIVILEGED_HELPER_BIN: helperSrc,
+        });
+        expect(partial.status, partial.stderr).not.toBe(0);
+        expect(fs.existsSync(partial.appPath)).toBe(true);
+        expect(
+          fs.existsSync(path.join(partial.appPath, PRIVILEGED_HELPER_RELPATH)),
+        ).toBe(false);
+      },
+    );
+  });
 
   it("recovers only an owned failed draft, then publishes once through a fresh verified transaction", () => {
     const publish = source.slice(source.indexOf("\n  publish:\n"));

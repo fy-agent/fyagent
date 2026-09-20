@@ -101,6 +101,21 @@ fn collect_custom_header_string_credentials(value: &str, output: &mut Vec<String
     }
 }
 
+// An opaque vendor credential can itself contain strings under unknown keys.
+// Collect every leaf for collision checks without exposing or resolving it.
+fn collect_opaque_credential_strings(value: &serde_json::Value, output: &mut Vec<String>) {
+    match value {
+        serde_json::Value::String(value) => push_nonempty_credential(value, output),
+        serde_json::Value::Object(values) => values
+            .values()
+            .for_each(|value| collect_opaque_credential_strings(value, output)),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .for_each(|value| collect_opaque_credential_strings(value, output)),
+        _ => {}
+    }
+}
+
 fn collect_provider_credentials(
     value: &serde_json::Value,
     output: &mut Vec<String>,
@@ -118,9 +133,7 @@ fn collect_provider_credentials(
                         _ => collect_header_literal_credentials(value, output)?,
                     }
                 } else if ProviderService::is_sensitive_config_key(key) {
-                    if let Some(value) = value.as_str().map(str::trim).filter(|v| !v.is_empty()) {
-                        output.push(value.to_string());
-                    }
+                    collect_opaque_credential_strings(value, output);
                 } else {
                     collect_provider_credentials(value, output)?;
                 }
@@ -1647,6 +1660,21 @@ mod provider_draft_command_tests {
             let error = provider_public_summary(&provider).unwrap_err();
             assert!(!error.contains(credential));
         }
+    }
+
+    #[test]
+    fn config_reliability_public_summary_keeps_opaque_credentials_native_and_rejects_collisions() {
+        let mut provider = Provider::with_id(
+            "safe".into(),
+            "Safe".into(),
+            serde_json::json!({"apiKey":{"vendor":{"token":"FIXTURE-SECRET"}}}),
+            None,
+        );
+        let summary = serde_json::to_string(&provider_public_summary(&provider).unwrap()).unwrap();
+        assert!(!summary.contains("FIXTURE-SECRET"));
+        assert!(!summary.contains("apiKey"));
+        provider.name = "prefix-FIXTURE-SECRET".into();
+        assert!(provider_public_summary(&provider).is_err());
     }
 
     #[test]

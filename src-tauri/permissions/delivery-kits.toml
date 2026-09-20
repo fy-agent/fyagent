@@ -1,0 +1,13 @@
+[[permission]]
+identifier = "allow-delivery-kits"
+description = "Inspect text-only delivery kits, import/export with native pickers, and run reviewed local synthetic validators. No Agent activation."
+commands.allow = [
+  "list_delivery_kits",
+  "preview_builtin_delivery_kit",
+  "pick_delivery_kit_import",
+  "apply_delivery_kit_import",
+  "cancel_delivery_kit_preview",
+  "preview_delivery_kit_export",
+  "save_delivery_kit_export",
+  "run_delivery_kit_demo",
+]

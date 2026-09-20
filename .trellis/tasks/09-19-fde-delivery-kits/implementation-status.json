@@ -1,0 +1,50 @@
+{
+  "phase": "native-and-panel-validated-final-pass",
+  "status": "in_progress",
+  "completed": [
+    "strict native schema/duplicate-field parser/digest",
+    "immutable library and typed picker import/export commands",
+    "three builtin text packages and weekly report deterministic validator",
+    "project panel and strict typed native port",
+    "renderer validation tests",
+    "native commands/ACL and builtin-only sharing policy",
+    "project panel with native results, safe previews, unavailable cross-line adapters"
+  ],
+  "tests": [
+    {
+      "command": "rtk mise run typecheck",
+      "result": "passed after panel placement"
+    },
+    {
+      "command": "rtk mise run lint",
+      "result": "passed; final placement rerun planned"
+    },
+    {
+      "command": "kit renderer/port/ACL + architecture/dependency graph",
+      "result": "33/33 passed in 6 files after panel placement"
+    },
+    {
+      "command": "rtk mise run rust:test -- delivery_kits",
+      "result": "10/10 passed; final library capacity/asset location rerun in progress"
+    },
+    {
+      "command": "rtk mise run supported-platform:check",
+      "result": "passed 2701 files"
+    },
+    {
+      "command": "check:contracts",
+      "result": "initial asset ownership fixed; final serial rerun pending"
+    }
+  ],
+  "next": [
+    "final native test pass",
+    "serial contract checks",
+    "integration handoff"
+  ],
+  "blockers": [],
+  "integrationPending": [
+    "root project binding adapter",
+    "root native evidence persistence adapter",
+    "root Projects panel composition"
+  ]
+}

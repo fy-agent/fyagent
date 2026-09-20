@@ -23,6 +23,9 @@
     "allow-agent-install-readiness",
     "allow-agent-auth",
     "allow-managed-auth",
-    "allow-user-config-recovery"
+    "allow-user-config-recovery",
+    "allow-projects",
+    "allow-delivery-kits",
+    "allow-project-verification"
   ]
 }

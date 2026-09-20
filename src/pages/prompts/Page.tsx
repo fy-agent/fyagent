@@ -61,6 +61,10 @@ import {
   featureTabTriggerId,
 } from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
+import {
+  usePersistentSearchParams,
+  useStickyVisibleValue,
+} from "../../shared/ui/usePersistentSearchParams";
 import { PresetBrowser } from "./PresetBrowser";
 import { FDE_PROMPT_PRESETS, type PromptPreset } from "./presets";
 
@@ -104,7 +108,6 @@ interface EditorState {
 
 type DiscardIntent =
   | { kind: "close-editor" }
-  | { kind: "switch-app"; app: PromptAppId }
   | { kind: "select"; id: string }
   | { kind: "new" }
   | { kind: "preset"; preset: PromptPreset }
@@ -194,12 +197,57 @@ function searchPrompts(
   );
 }
 
+function explicitPromptTarget(search: URLSearchParams): PromptAppId | null {
+  const targets = search.getAll("target");
+  return targets.length === 1
+    ? (PROMPT_APP_IDS.find((id) => id === targets[0]) ?? null)
+    : null;
+}
+
 export function PromptsPage() {
+  const { visible, searchParams, setSearchParams } =
+    usePersistentSearchParams();
+  const app = useStickyVisibleValue(
+    visible,
+    explicitPromptTarget(searchParams),
+    "claude",
+  );
+  const [view, setView] = useState<PromptView>("library");
+
+  return (
+    <PromptsWorkspace
+      key={app}
+      app={app}
+      view={view}
+      setView={setView}
+      onAppChange={(nextApp) =>
+        setSearchParams(
+          (current) => {
+            const next = new URLSearchParams(current);
+            next.set("target", nextApp);
+            return next;
+          },
+          { replace: true },
+        )
+      }
+    />
+  );
+}
+
+function PromptsWorkspace({
+  app,
+  view,
+  setView,
+  onAppChange,
+}: {
+  app: PromptAppId;
+  view: PromptView;
+  setView: (value: PromptView) => void;
+  onAppChange: (value: PromptAppId) => void;
+}) {
   const dialogOriginRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const { ports, notify } = useFeatures();
-  const [app, setApp] = useState<PromptAppId>("claude");
-  const [view, setView] = useState<PromptView>("library");
   const promptsQuery = usePrompts(app);
   const promptLibraries = usePromptLibraries();
   const liveFileQuery = usePromptLiveFile(app);
@@ -242,8 +290,11 @@ export function PromptsPage() {
     (editor.baseline === null || !isSameDraft(editor.draft, editor.baseline));
   const shouldBlockNavigation = useCallback<BlockerFunction>(
     ({ currentLocation, nextLocation }) =>
-      editorDirty && currentLocation.pathname !== nextLocation.pathname,
-    [editorDirty],
+      editorDirty &&
+      (currentLocation.pathname !== nextLocation.pathname ||
+        (explicitPromptTarget(new URLSearchParams(nextLocation.search)) ??
+          app) !== app),
+    [app, editorDirty],
   );
   const blocker = usePrimaryBlocker(shouldBlockNavigation);
   const navigationOriginRef = usePrimaryBlockerOrigin();
@@ -308,23 +359,9 @@ export function PromptsPage() {
     return "refreshed";
   };
 
-  const resetWorkspace = (nextApp?: PromptAppId) => {
-    setEditor(null);
-    setDeleteTarget(null);
-    setSelectedId(null);
-    setSearch("");
-    setWriteError(null);
-    setRefreshWarning(false);
-    if (nextApp) setApp(nextApp);
-  };
-
   const requestAppChange = (nextApp: PromptAppId) => {
     if (nextApp === app || busy) return;
-    if (editorDirty) {
-      setDiscardIntent({ kind: "switch-app", app: nextApp });
-      return;
-    }
-    resetWorkspace(nextApp);
+    onAppChange(nextApp);
   };
 
   const requestSelect = (id: string) => {
@@ -402,9 +439,7 @@ export function PromptsPage() {
   const confirmDiscard = () => {
     const intent = activeDiscardIntent;
     setDiscardIntent(null);
-    if (intent?.kind === "switch-app") {
-      resetWorkspace(intent.app);
-    } else if (intent?.kind === "select") {
+    if (intent?.kind === "select") {
       setEditor(null);
       setSelectedId(intent.id);
     } else if (intent?.kind === "new") {

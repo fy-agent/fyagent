@@ -64,6 +64,12 @@ generic command execution capability is added.
 
 ### CLI discovery
 
+- Readiness v5 keeps `configurationEligibility` separate from installation
+  inventory authority. Native Tooling `detected`/`runnable` observations permit
+  configuration navigation even when inventory is multiple/unknown; source
+  uncertainty stays visible and lifecycle admission remains strict. A failed
+  probe or a config directory alone is not positive CLI evidence.
+
 - macOS search directories are the login-shell PATH, the current process
   PATH, `~/.local/bin`, and product env (`GROK_BIN_DIR` / `~/.grok/bin` for
   Grok). Do not walk mise, nvm, fnm or Volta internal install trees, and do

@@ -5,6 +5,7 @@ pub(crate) mod codex_desktop;
 pub(crate) mod codex_oauth_models;
 pub(crate) mod coding_plan;
 pub(crate) mod config;
+pub(crate) mod delivery_kits;
 pub(crate) mod env_checker;
 pub(crate) mod env_manager;
 pub(crate) mod external_agents;
@@ -17,6 +18,7 @@ pub(crate) mod model_probe;
 pub(crate) mod omo;
 pub(crate) mod opencode_models;
 pub(crate) mod profile;
+pub(crate) mod projects;
 pub(crate) mod prompt;
 pub(crate) mod provider;
 pub(crate) mod proxy;
@@ -63,3 +65,7 @@ pub use usage_stats::{
     DailyStats, LogFilters, ModelStats, PaginatedLogs, ProviderLimitStatus, ProviderStats,
     RequestLogDetail, UsageSummary, UsageSummaryByApp,
 };
+
+pub(crate) mod verification;
+
+pub(crate) mod fde_workspace;

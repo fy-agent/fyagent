@@ -27,6 +27,17 @@ const changeJobsKey = [scope, "change-plans", "job"] as const;
 const dailyMemorySearchKey = [scope, "memory", "daily", "search"] as const;
 
 export const featureKeys = {
+  projects: [scope, "projects", "list"] as const,
+  projectCustomers: [scope, "projects", "customers"] as const,
+  projectResourceOptions: [scope, "projects", "resources"] as const,
+  projectCredentialOptions: [scope, "projects", "credentials"] as const,
+  projectContext: (id: string | null) =>
+    [scope, "projects", id, "context"] as const,
+  projectDependencies: (id: string | null) =>
+    [scope, "projects", id, "dependencies"] as const,
+  deliveryKits: [scope, "delivery-kits"] as const,
+  verification: (projectId: string) =>
+    [scope, "verification", projectId] as const,
   agentHealth: (agentId: AgentCatalogId) => [scope, "health", agentId] as const,
   configRecoveries: (targets: readonly ConfigRecoveryTarget[]) =>
     [scope, "config-recoveries", ...targets] as const,

@@ -17,6 +17,10 @@ function readiness(
 ): AgentInstallReadiness {
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+    configurationEligibility: {
+      state: "eligible",
+      evidence: "installation_detected",
+    },
     agentId: "opencode",
     reviewedAt: "2026-08-29",
     installState: "installed",

@@ -11,6 +11,7 @@ afterEach(() => {
   localStorage.clear();
   delete document.documentElement.dataset.theme;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("shell appearance lifetime", () => {
@@ -25,7 +26,7 @@ describe("shell appearance lifetime", () => {
   it("follows an existing system preference until the user makes an explicit choice", () => {
     let dark = false;
     const listeners = new Map<string, Set<() => void>>();
-    vi.spyOn(window, "matchMedia").mockImplementation((query) => {
+    vi.stubGlobal("matchMedia", (query: string): MediaQueryList => {
       const callbacks = listeners.get(query) ?? new Set<() => void>();
       listeners.set(query, callbacks);
       return {

@@ -113,9 +113,14 @@ impl ProxyService {
         let codex_url = format!("{proxy_url}/v1");
         let mut unreadable = false;
         for app in [AppType::Claude, AppType::Codex, AppType::GrokBuild] {
-            let Some(provider) = self.get_current_provider_for_app(&app).ok()? else {
-                continue;
-            };
+            // The normal selector repairs stale preferences. Observation must
+            // preserve them and report an inconsistent selection as unknown.
+            let selected = crate::settings::get_current_provider(&app)
+                .map(|id| Ok(Some(id)))
+                .unwrap_or_else(|| self.db.get_current_provider(app.as_str()))
+                .ok()?;
+            let Some(selected) = selected else { continue };
+            let provider = self.db.get_provider_by_id(&selected, app.as_str()).ok()??;
             let matches_kind = match auth_kind {
                 "codex_oauth" => provider.is_codex_oauth(),
                 "xai_oauth" => provider.is_xai_oauth(),

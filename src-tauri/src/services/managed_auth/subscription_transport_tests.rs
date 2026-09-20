@@ -3,6 +3,110 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 #[serial]
+fn health_admission_collect_preserves_seeded_database_native_files_and_vault() {
+    use crate::services::external_agents::AgentCatalogId;
+    use crate::services::secret::MemoryFailureMode;
+
+    #[cfg(target_os = "windows")]
+    crate::initialize_windows_user_context()
+        .expect("initialize the real Windows Shell-user context for health inventory");
+
+    let home = tempfile::tempdir().unwrap();
+    let _home_guard = TestHome::set(home.path());
+    // Restore process-local settings while the temporary home is still active.
+    // No write in setup, observation or teardown can target the user's home.
+    struct SettingsRestore(crate::settings::AppSettings);
+    impl Drop for SettingsRestore {
+        fn drop(&mut self) {
+            let _ = crate::settings::update_settings(self.0.clone());
+        }
+    }
+    let _settings_guard = SettingsRestore(crate::settings::get_settings());
+    crate::settings::update_settings(crate::settings::AppSettings::default()).unwrap();
+    let db = Arc::new(Database::memory().unwrap());
+    let backend = MemorySecretBackend::new();
+    let auth = Arc::new(ManagedAuthService::new(
+        db.clone(),
+        SecretService::new(backend.clone()),
+        home.path().join("vault-meta"),
+    ));
+    seed_provider(&auth, "health-fixture", ManagedAuthProvider::Openai);
+    let state = AppState::new(db.clone());
+    // Configuration remains confined to this temporary home. Desktop inventory
+    // may read platform installation evidence, but never runs an Agent or shell.
+    let config_path = home.path().join(".config/opencode/opencode.json");
+    let codex_path = auth.codex_home().join("auth.json");
+    let opencode_auth_path = auth.opencode_auth_path();
+    let fixtures: Vec<(_, &[u8])> = vec![
+        (
+            config_path,
+            br#"{"model":"fixture/model","provider":{"fixture":{"npm":"@ai-sdk/openai-compatible","options":{"apiKey":"fixture-config-secret","baseURL":"https://fixture.invalid/v1"},"models":{"model":{}}}}}"#,
+        ),
+        (
+            codex_path,
+            br#"{"auth_mode":"chatgpt","tokens":{"access_token":"fixture-native-access","refresh_token":"fixture-native-refresh","id_token":"fixture-native-id"}}"#,
+        ),
+        (
+            opencode_auth_path,
+            br#"{"openai":{"type":"api","key":"fixture-opencode-secret"}}"#,
+        ),
+    ];
+    for (path, bytes) in &fixtures {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+    let settings_path = home.path().join(".fyagent/settings.json");
+    let settings_before = std::fs::read(&settings_path).unwrap();
+    let sql_snapshot = || {
+        db.export_sql_string()
+            .unwrap()
+            .lines()
+            // Export metadata changes with wall time; business timestamps do not.
+            .filter(|line| !line.starts_with("-- 生成时间:"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let before = sql_snapshot();
+    backend.set_mode(MemoryFailureMode::Denied);
+    let vault_operations = backend.operation_count();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    for _ in 0..3 {
+        let snapshot = runtime
+            .block_on(crate::services::health::read(
+                AgentCatalogId::OpenCode,
+                state.clone(),
+                auth.clone(),
+            ))
+            .expect("the real admission and collector must complete");
+        let wire = serde_json::to_value(snapshot).unwrap();
+        assert_eq!(wire["agentId"], "opencode");
+        assert_eq!(wire["checks"].as_array().unwrap().len(), 12);
+        assert!(wire["checks"].as_array().unwrap().iter().any(|check| {
+            check["id"] == "configuration" && check["reasonCode"] == "configuration_present"
+        }));
+        for secret in [
+            "synthetic-refresh-health-fixture",
+            "synthetic-access-health-fixture",
+            "fixture-config-secret",
+            "fixture-native-access",
+            "fixture-native-refresh",
+            "fixture-opencode-secret",
+            "secretRef",
+        ] {
+            assert!(!wire.to_string().contains(secret));
+        }
+        assert_eq!(sql_snapshot(), before);
+        assert_eq!(backend.operation_count(), vault_operations);
+        assert_eq!(std::fs::read(&settings_path).unwrap(), settings_before);
+        for (path, bytes) in &fixtures {
+            assert_eq!(std::fs::read(path).unwrap(), *bytes);
+        }
+        assert!(auth.repository.list_connections().unwrap().is_empty());
+    }
+}
+
+#[test]
+#[serial]
 fn subscription_401_replays_once_with_same_lineage_and_never_uses_default_account() {
     for provider in [ManagedAuthProvider::Openai, ManagedAuthProvider::Xai] {
         for reject_retry in [false, true] {
@@ -156,6 +260,12 @@ fn subscription_401_replays_once_with_same_lineage_and_never_uses_default_accoun
 #[serial]
 fn subscription_observation_distinguishes_saved_stopped_adopted_and_unknown() {
     let (_home, _guard, state, auth) = fixture();
+    // The settings cache is process-local, unlike this fixture's fresh DB.
+    // Start with no selections from preceding serial tests. Observation must
+    // report stale selections as unknown, never silently repair that leakage.
+    for app in [AppType::Claude, AppType::Codex, AppType::GrokBuild] {
+        crate::settings::set_current_provider(&app, None).unwrap();
+    }
     let selected = seed(&auth, "selected");
     auth.upsert_proxy_connections().unwrap();
     let overview = auth.overview();
@@ -208,6 +318,32 @@ fn subscription_observation_distinguishes_saved_stopped_adopted_and_unknown() {
             .observe_managed_account_route("xai_oauth", "selected", true),
         Some(false)
     );
+    // Observation must not repair a stale user selection or fall back to the
+    // database's prior managed route. Unknown preserves the evidence boundary.
+    crate::settings::set_current_provider(&AppType::Claude, Some("missing-fixture-provider"))
+        .unwrap();
+    let snapshot = || {
+        state
+            .db
+            .export_sql_string()
+            .unwrap()
+            .lines()
+            .filter(|line| !line.starts_with("-- 生成时间:"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let before = snapshot();
+    assert_eq!(
+        state
+            .proxy_service
+            .observe_managed_account_route("xai_oauth", "selected", true),
+        None
+    );
+    assert_eq!(
+        crate::settings::get_current_provider(&AppType::Claude).as_deref(),
+        Some("missing-fixture-provider")
+    );
+    assert_eq!(snapshot(), before);
     crate::settings::set_current_provider(&AppType::Claude, Some(&binding.provider_id)).unwrap();
     assert_eq!(
         state

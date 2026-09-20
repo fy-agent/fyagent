@@ -53,6 +53,11 @@ type NoticeField =
 export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
   const snapshotQuery = useOpenCodeModelSnapshot(active);
+  const [providerSelection, setProviderSelection] = useState<string>();
+  const [pendingProviderSelection, setPendingProviderSelection] = useState<
+    string | null
+  >(null);
+  const providerSelectRef = useRef<HTMLSelectElement>(null);
   const [providerNameDraft, setProviderNameDraft] = useState<string | null>(
     null,
   );
@@ -92,8 +97,20 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   const manualModelsInputRef = useRef<HTMLInputElement>(null);
   const draftCommit = useModelsDraftCommit();
 
-  const currentProvider = snapshotQuery.data?.providers[0];
+  const providers = snapshotQuery.data?.providers ?? [];
+  const defaultProvider =
+    providers.find((provider) => provider.editable) ?? providers[0];
+  const selectedTarget =
+    providerSelection ??
+    (defaultProvider ? `existing:${defaultProvider.id}` : "new");
+  const selectedProviderId = selectedTarget.startsWith("existing:")
+    ? selectedTarget.slice(9)
+    : null;
+  const currentProvider = providers.find(
+    (provider) => provider.id === selectedProviderId,
+  );
   const modelIds = currentProvider?.modelIds ?? EMPTY_MODEL_IDS;
+  const readOnlyProvider = currentProvider?.editable === false;
   const providerName = providerNameDraft ?? currentProvider?.name ?? "";
 
   const setApiKey = (value: string) => {
@@ -113,6 +130,26 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
       apiKeyRef.current = "";
     };
   }, []);
+
+  const applyProviderSelection = (target: string) => {
+    setProviderSelection(target);
+    setPendingProviderSelection(null);
+    setProviderNameDraft(null);
+    setBaseUrl("");
+    clearApiKey();
+    setAllowNoApiKey(false);
+    setManualDraft("");
+    setDraftModelIds([]);
+    setOwnedByById({});
+    setExistingSearch("");
+    setDraftSearch("");
+    setPendingOverwrite(null);
+    setPendingDeleteId(null);
+    writeConfirm.takePending();
+    clear();
+    draftCommit.markDirty();
+    draftCommit.commitRevision(draftCommit.captureRevision());
+  };
 
   const refreshAuthoritativeState = async (): Promise<boolean> => {
     try {
@@ -216,6 +253,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
     removedModelIds: string[] = [],
   ): OpenCodeSaveModelsRequest => {
     const request = {
+      providerId: selectedProviderId,
       providerName: providerName.trim(),
       baseUrl: baseUrl.trim(),
       apiKey: apiKeyRef.current.trim(),
@@ -342,7 +380,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   };
 
   const startSave = () => {
-    if (writeLock.current || writeConfirm.open) return;
+    if (readOnlyProvider || writeLock.current || writeConfirm.open) return;
     const draftIds = collectDraftIds();
     if (draftIds.length === 0) {
       show("draft", { tone: "error", title: "请至少添加一个模型 ID" });
@@ -352,6 +390,10 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
     if (!validateConnection()) return;
     const snapshot = snapshotQuery.data;
     if (!snapshot) return;
+    if (selectedProviderId === null && !providerName.trim()) {
+      show("save", { tone: "error", title: "请填写新供应商名称" });
+      return;
+    }
     writeConfirm.requestConfirm({
       request: buildSaveRequest(draftIds),
       revision: draftCommit.captureRevision(),
@@ -368,6 +410,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
 
   const confirmWrite = () => {
     if (writeLock.current) return;
+    if (readOnlyProvider) return;
     const pending = writeConfirm.takePending();
     if (!pending) return;
     setDraftModelIds(pending.draftIds);
@@ -376,7 +419,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   };
 
   const confirmOverwrite = () => {
-    if (!pendingOverwrite || writeLock.current) return;
+    if (readOnlyProvider || !pendingOverwrite || writeLock.current) return;
     const frozen = pendingOverwrite;
     setPendingOverwrite(null);
     void saveRequest(
@@ -459,7 +502,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
       <ModelsPanelHeader title="OpenCode" pending={draftCommit.pending}>
         <Button
           className="fy-control-button-primary fy-models-commit-button"
-          disabled={busy !== null || loading || readFailed}
+          disabled={busy !== null || loading || readFailed || readOnlyProvider}
           onClick={startSave}
           dialogOriginRef={writeConfirm.originRef}
         >
@@ -472,6 +515,58 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
       {readFailed && (
         <InlineNotice tone="error">
           暂时无法读取 OpenCode 配置，请重试。
+        </InlineNotice>
+      )}
+
+      <label className="fy-control-field" htmlFor="opencode-provider-target">
+        供应商
+        <select
+          ref={providerSelectRef}
+          id="opencode-provider-target"
+          className="fy-control-select"
+          value={selectedTarget}
+          disabled={
+            busy !== null ||
+            loading ||
+            readFailed ||
+            writeConfirm.open ||
+            pendingOverwrite !== null ||
+            pendingDeleteId !== null
+          }
+          onChange={(event) => {
+            const target = event.target.value;
+            if (draftCommit.pending) setPendingProviderSelection(target);
+            else applyProviderSelection(target);
+          }}
+        >
+          {providers.map((provider) => (
+            <option key={provider.id} value={`existing:${provider.id}`}>
+              {provider.name}
+              {provider.editable ? "" : "（只读）"}
+            </option>
+          ))}
+          <option value="new">新建自定义供应商</option>
+        </select>
+      </label>
+      {providers.some((provider) => !provider.editable) &&
+        !readOnlyProvider && (
+          <InlineNotice tone="info">
+            只读供应商：
+            {providers
+              .filter((provider) => !provider.editable)
+              .map(
+                (provider) =>
+                  `${provider.name}（${provider.modelIds.length} 个模型）`,
+              )
+              .join("、")}
+            。可在上方选择查看。
+          </InlineNotice>
+        )}
+
+      {readOnlyProvider && (
+        <InlineNotice tone="info">
+          当前供应商使用内置或尚未支持的配置格式，模型仅供查看。请在 OpenCode
+          中修改配置。
         </InlineNotice>
       )}
 
@@ -496,7 +591,9 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
         <GroupedModelChips
           ids={filteredExistingIds}
           removable
-          removeDisabled={busy !== null || loading || readFailed}
+          removeDisabled={
+            busy !== null || loading || readFailed || readOnlyProvider
+          }
           removeOriginRef={deleteOriginRef}
           onRemove={(modelId) => {
             if (busy !== null || writeLock.current) return;
@@ -511,195 +608,205 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
         <FieldFeedback id="opencode-existing-error" notice={notices.existing} />
       </ModelsExistingSection>
 
-      <ModelsSection
-        title="连接设置"
-        titleId="opencode-connection-title"
-        invalid={
-          isErrorNotice(notices.baseUrl) || isErrorNotice(notices.apiKey)
-        }
-      >
-        <div className="fy-models-form">
-          <label className="fy-control-field" htmlFor="opencode-provider-name">
-            供应商名称
-            <Input
-              id="opencode-provider-name"
-              value={providerName}
-              onChange={(event) => {
-                setProviderNameDraft(event.target.value);
-                draftCommit.markDirty();
-              }}
-              placeholder="FyAgent"
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </label>
-          <label className="fy-control-field" htmlFor="opencode-base-url">
-            服务地址
-            <Input
-              ref={baseUrlInputRef}
-              id="opencode-base-url"
-              type="url"
-              value={baseUrl}
-              onChange={(event) => {
-                setBaseUrl(event.target.value);
-                draftCommit.markDirty();
-                dismiss("baseUrl");
-              }}
-              placeholder="https://gateway.example/v1"
-              autoComplete="off"
-              spellCheck={false}
-              aria-invalid={isErrorNotice(notices.baseUrl)}
-              aria-describedby={
-                notices.baseUrl ? "opencode-base-url-error" : undefined
-              }
-            />
-            <FieldFeedback
-              id="opencode-base-url-error"
-              notice={notices.baseUrl}
-            />
-          </label>
-          <div className="fy-control-field">
-            <label htmlFor="opencode-api-key">API Key</label>
-            <SecretInput
-              ref={apiKeyInputRef}
-              id="opencode-api-key"
-              value={apiKey}
-              onChange={(event) => {
-                setApiKey(event.target.value);
-                dismiss("apiKey");
-              }}
-              autoComplete="off"
-              spellCheck={false}
-              aria-invalid={isErrorNotice(notices.apiKey)}
-              aria-describedby={
-                notices.apiKey ? "opencode-api-key-error" : undefined
-              }
-              revealLabel="显示 API Key"
-              hideLabel="隐藏 API Key"
-            />
-            <FieldFeedback
-              id="opencode-api-key-error"
-              notice={notices.apiKey}
-            />
-          </div>
-          <NoApiKeyOption
-            checked={allowNoApiKey}
-            onCheckedChange={(checked) => {
-              setAllowNoApiKey(checked);
-              draftCommit.markDirty();
-              if (checked) dismiss("apiKey");
-            }}
-            disabled={busy !== null}
-          />
-        </div>
-      </ModelsSection>
+      {!readOnlyProvider && (
+        <>
+          <ModelsSection
+            title="连接设置"
+            titleId="opencode-connection-title"
+            invalid={
+              isErrorNotice(notices.baseUrl) || isErrorNotice(notices.apiKey)
+            }
+          >
+            <div className="fy-models-form">
+              <label
+                className="fy-control-field"
+                htmlFor="opencode-provider-name"
+              >
+                供应商名称
+                <Input
+                  id="opencode-provider-name"
+                  value={providerName}
+                  onChange={(event) => {
+                    setProviderNameDraft(event.target.value);
+                    draftCommit.markDirty();
+                  }}
+                  placeholder="FyAgent"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <label className="fy-control-field" htmlFor="opencode-base-url">
+                服务地址
+                <Input
+                  ref={baseUrlInputRef}
+                  id="opencode-base-url"
+                  type="url"
+                  value={baseUrl}
+                  onChange={(event) => {
+                    setBaseUrl(event.target.value);
+                    draftCommit.markDirty();
+                    dismiss("baseUrl");
+                  }}
+                  placeholder="https://gateway.example/v1"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-invalid={isErrorNotice(notices.baseUrl)}
+                  aria-describedby={
+                    notices.baseUrl ? "opencode-base-url-error" : undefined
+                  }
+                />
+                <FieldFeedback
+                  id="opencode-base-url-error"
+                  notice={notices.baseUrl}
+                />
+              </label>
+              <div className="fy-control-field">
+                <label htmlFor="opencode-api-key">API Key</label>
+                <SecretInput
+                  ref={apiKeyInputRef}
+                  id="opencode-api-key"
+                  value={apiKey}
+                  onChange={(event) => {
+                    setApiKey(event.target.value);
+                    dismiss("apiKey");
+                  }}
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-invalid={isErrorNotice(notices.apiKey)}
+                  aria-describedby={
+                    notices.apiKey ? "opencode-api-key-error" : undefined
+                  }
+                  revealLabel="显示 API Key"
+                  hideLabel="隐藏 API Key"
+                />
+                <FieldFeedback
+                  id="opencode-api-key-error"
+                  notice={notices.apiKey}
+                />
+              </div>
+              <NoApiKeyOption
+                checked={allowNoApiKey}
+                onCheckedChange={(checked) => {
+                  setAllowNoApiKey(checked);
+                  draftCommit.markDirty();
+                  if (checked) dismiss("apiKey");
+                }}
+                disabled={busy !== null}
+              />
+            </div>
+          </ModelsSection>
 
-      <section
-        className="fy-models-draft"
-        data-testid="opencode-draft-models"
-        data-invalid={isErrorNotice(notices.draft) || undefined}
-        aria-label="待保存的模型 ID"
-      >
-        <h3>待保存的模型 ID</h3>
-        {truncated ? (
-          <p className="fy-models-muted">已达到可显示的模型数量上限。</p>
-        ) : null}
-        {draftModelIds.length > 0 ? (
-          <ModelSearchField
-            id="opencode-draft-search"
-            label="搜索待保存模型"
-            value={draftSearch}
-            onChange={setDraftSearch}
-          />
-        ) : null}
-        <GroupedModelChips
-          ids={filteredDraftIds}
-          removable
-          removeDisabled={busy !== null}
-          ownedByById={ownedByById}
-          onRemove={(modelId) => {
-            setDraftModelIds((current) =>
-              current.filter((id) => id !== modelId),
-            );
-            draftCommit.markDirty();
-          }}
-          emptyLabel={
-            draftSearch.trim()
-              ? "没有匹配的模型 ID"
-              : "尚未添加模型。可拉取远程模型，或手动填入模型 ID。"
-          }
-        />
-        <div className="fy-models-action-block">
-          <div className="fy-models-actions">
-            <ModelConnectivityTest
-              searchId="opencode-probe-search"
-              modelIds={draftModelIds}
+          <section
+            className="fy-models-draft"
+            data-testid="opencode-draft-models"
+            data-invalid={isErrorNotice(notices.draft) || undefined}
+            aria-label="待保存的模型 ID"
+          >
+            <h3>待保存的模型 ID</h3>
+            {truncated ? (
+              <p className="fy-models-muted">已达到可显示的模型数量上限。</p>
+            ) : null}
+            {draftModelIds.length > 0 ? (
+              <ModelSearchField
+                id="opencode-draft-search"
+                label="搜索待保存模型"
+                value={draftSearch}
+                onChange={setDraftSearch}
+              />
+            ) : null}
+            <GroupedModelChips
+              ids={filteredDraftIds}
+              removable
+              removeDisabled={busy !== null}
               ownedByById={ownedByById}
-              disabled={busy !== null && busy !== "reachability"}
-              resetVersion={draftCommit.resetVersion}
-              onPrepare={validateConnection}
-              onBusyChange={(probing) =>
-                setBusy(probing ? "reachability" : null)
-              }
-              onProbe={(modelId) =>
-                ports.opencodeModels.checkModel({
-                  app: "opencode",
-                  baseUrl: baseUrl.trim(),
-                  apiKey: apiKeyRef.current.trim(),
-                  modelId,
-                })
-              }
-            />
-            <Button disabled={busy !== null} onClick={() => void fetchModels()}>
-              {busy === "fetch" ? "读取中…" : "拉取模型"}
-            </Button>
-            <Button
-              className="fy-control-button-danger"
-              disabled={busy !== null || draftModelIds.length === 0}
-              onClick={() => {
-                setDraftModelIds([]);
-                setTruncated(false);
+              onRemove={(modelId) => {
+                setDraftModelIds((current) =>
+                  current.filter((id) => id !== modelId),
+                );
                 draftCommit.markDirty();
               }}
-            >
-              清除所有模型
-            </Button>
-          </div>
-          <FieldFeedback id="opencode-fetch-error" notice={notices.fetch} />
-        </div>
-        <div className="fy-models-manual-row">
-          <label className="fy-control-field fy-models-manual-field">
-            自定义模型 ID
-            <Input
-              ref={manualModelsInputRef}
-              id="opencode-manual-model-ids"
-              value={manualDraft}
-              onChange={(event) => {
-                setManualDraft(event.target.value);
-                draftCommit.markDirty();
-                dismiss("draft");
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  fillManualModels();
-                }
-              }}
-              placeholder="输入模型 ID，多个用逗号分隔"
-              autoComplete="off"
-              spellCheck={false}
-              aria-invalid={isErrorNotice(notices.draft)}
-              aria-describedby={
-                notices.draft ? "opencode-draft-error" : undefined
+              emptyLabel={
+                draftSearch.trim()
+                  ? "没有匹配的模型 ID"
+                  : "尚未添加模型。可拉取远程模型，或手动填入模型 ID。"
               }
             />
-          </label>
-          <Button disabled={busy !== null} onClick={fillManualModels}>
-            填入
-          </Button>
-        </div>
-        <FieldFeedback id="opencode-draft-error" notice={notices.draft} />
-      </section>
+            <div className="fy-models-action-block">
+              <div className="fy-models-actions">
+                <ModelConnectivityTest
+                  searchId="opencode-probe-search"
+                  modelIds={draftModelIds}
+                  ownedByById={ownedByById}
+                  disabled={busy !== null && busy !== "reachability"}
+                  resetVersion={draftCommit.resetVersion}
+                  onPrepare={validateConnection}
+                  onBusyChange={(probing) =>
+                    setBusy(probing ? "reachability" : null)
+                  }
+                  onProbe={(modelId) =>
+                    ports.opencodeModels.checkModel({
+                      app: "opencode",
+                      baseUrl: baseUrl.trim(),
+                      apiKey: apiKeyRef.current.trim(),
+                      modelId,
+                    })
+                  }
+                />
+                <Button
+                  disabled={busy !== null}
+                  onClick={() => void fetchModels()}
+                >
+                  {busy === "fetch" ? "读取中…" : "拉取模型"}
+                </Button>
+                <Button
+                  className="fy-control-button-danger"
+                  disabled={busy !== null || draftModelIds.length === 0}
+                  onClick={() => {
+                    setDraftModelIds([]);
+                    setTruncated(false);
+                    draftCommit.markDirty();
+                  }}
+                >
+                  清除所有模型
+                </Button>
+              </div>
+              <FieldFeedback id="opencode-fetch-error" notice={notices.fetch} />
+            </div>
+            <div className="fy-models-manual-row">
+              <label className="fy-control-field fy-models-manual-field">
+                自定义模型 ID
+                <Input
+                  ref={manualModelsInputRef}
+                  id="opencode-manual-model-ids"
+                  value={manualDraft}
+                  onChange={(event) => {
+                    setManualDraft(event.target.value);
+                    draftCommit.markDirty();
+                    dismiss("draft");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      fillManualModels();
+                    }
+                  }}
+                  placeholder="输入模型 ID，多个用逗号分隔"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-invalid={isErrorNotice(notices.draft)}
+                  aria-describedby={
+                    notices.draft ? "opencode-draft-error" : undefined
+                  }
+                />
+              </label>
+              <Button disabled={busy !== null} onClick={fillManualModels}>
+                填入
+              </Button>
+            </div>
+            <FieldFeedback id="opencode-draft-error" notice={notices.draft} />
+          </section>
+        </>
+      )}
 
       <Dialog
         open={Boolean(pendingOverwrite)}
@@ -765,6 +872,30 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
           </p>
         ) : null}
       </Dialog>
+      <Dialog
+        open={pendingProviderSelection !== null}
+        originRef={providerSelectRef}
+        onOpenChange={(open) => {
+          if (!open) setPendingProviderSelection(null);
+        }}
+        title="切换供应商？"
+        description="当前未保存的连接与模型设置将被清除。"
+        actions={
+          <>
+            <Button onClick={() => setPendingProviderSelection(null)}>
+              继续编辑
+            </Button>
+            <Button
+              onClick={() => {
+                if (pendingProviderSelection !== null)
+                  applyProviderSelection(pendingProviderSelection);
+              }}
+            >
+              放弃修改并切换
+            </Button>
+          </>
+        }
+      />
       <ModelsWriteConfirmDialog
         originRef={writeConfirm.originRef}
         open={writeConfirm.open}

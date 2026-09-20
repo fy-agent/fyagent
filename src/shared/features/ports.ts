@@ -1,3 +1,4 @@
+import type { ProjectsPort } from "./projects";
 import type { FirstUseGuideState } from "./first-use-guide";
 import type {
   JobSnapshot,
@@ -254,6 +255,9 @@ export interface MemoryPort {
 }
 
 export interface FeaturePorts {
+  deliveryKits: import("./delivery-kits").DeliveryKitsPort;
+  projects: ProjectsPort;
+  verification: import("@/domain/verification").VerificationPort;
   health: HealthPort;
   configRecovery: import("./config-recovery").ConfigRecoveryPort;
   catalog: AgentCatalogPort;

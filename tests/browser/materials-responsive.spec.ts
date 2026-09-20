@@ -107,6 +107,7 @@ test("long copy remains inside a 320px detail container independently of window 
   await openRendererPage(page, "/models?target=codex");
   const panel = page.getByRole("region", { name: "Codex 模型配置" });
   await expect(panel).toBeVisible();
+  await expect(panel.locator(".fy-models-source-entry p")).toBeVisible();
   await panel.evaluate((element) => {
     element.style.width = "320px";
     for (const label of element.querySelectorAll("label")) {

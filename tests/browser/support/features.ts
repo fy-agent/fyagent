@@ -1617,7 +1617,11 @@ export async function installRichTauriFeatureFixture(
             const grokCli =
               agentId === "grokbuild" || agentId === "claude-code";
             return {
-              contractVersion: 4,
+              contractVersion: 5,
+              configurationEligibility: {
+                state: "eligible",
+                evidence: grokCli ? "cli_runnable" : "installation_detected",
+              },
               agentId,
               reviewedAt: "2026-08-29",
               installState: "installed",

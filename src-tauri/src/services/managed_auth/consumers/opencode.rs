@@ -349,6 +349,7 @@ fn slot_summary(
         provider: Some(provider),
         account_id: account.map(|row| row.identity.identity_id.clone()),
         auth_status,
+        unmanaged_native_session: false,
         credential_manager: if connected {
             ManagedAuthCredentialManager::Opencode
         } else {

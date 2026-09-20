@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/health.md", "reason": "Health local-only evidence and auth uncertainty"}
+{"file": ".trellis/spec/backend/managed-auth-consumers.md", "reason": "Native Codex observation without IPC secrets"}
+{"file": ".trellis/spec/frontend/prompts-memory.md", "reason": "Prompt target and unsaved draft contracts"}
+{"file": ".trellis/spec/frontend/navigation.md", "reason": "Visible route selection and return tuple"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Persistent hidden route isolation"}

@@ -48,7 +48,9 @@ pub use qoderwork::{
 pub use traework::{
     import_from_traework, remove_server_from_traework, sync_single_server_to_traework,
 };
-pub(crate) use validation::{server_specs_are_equivalent, source_server_is_enabled};
+pub(crate) use validation::{
+    server_specs_are_equivalent, source_server_is_enabled, validate_server_spec,
+};
 pub use workbuddy::{
     import_from_workbuddy, remove_server_from_workbuddy, sync_single_server_to_workbuddy,
 };

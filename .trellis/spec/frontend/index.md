@@ -1,5 +1,8 @@
 # Frontend Development Guidelines
 
+[Project Verification Panel](./project-verification.md) owns the project-scoped
+five-stage evidence and handoff panel, typed ports and manual acceptance forms.
+
 The product has one renderer. This index routes to contract owners; it does
 not duplicate DTOs, state machines, filenames or implementation behavior.
 
@@ -30,6 +33,8 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 | [Dialog Lifecycle](./dialog-lifecycle.md)                   | Source geometry, content resize, session teardown and focus/scroll release. |
 
 ## Shell and feature owners
+
+Delivery kits: [Project Delivery Kits Panel](./delivery-kits.md) owns the independent Projects panel and strict package native port.
 
 | Contract                                              | Owns                                                                            |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------- |

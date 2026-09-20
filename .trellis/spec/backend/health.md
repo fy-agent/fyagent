@@ -46,6 +46,12 @@ Evidence rules:
 - Credential presence and a native connection observation are separate facts.
   Neither proves remote authorization, remaining quota or successful pickup
   by a running application. Pending restart retains its native meaning.
+  A disconnected Codex slot with no persisted managed connection may still
+  have recognizable native ChatGPT OAuth material on the official file route.
+  The Codex consumer preserves that fact as non-serialized native metadata;
+  Health keeps auth and credentials unknown instead of claiming logged out or
+  missing. Missing native material and persisted managed disconnects retain
+  their existing results. This exception never establishes remote login.
 - Per-Agent proxy intent uses SELECT-only `health_proxy_enabled`.
   Missing rows remain unknown; the legacy proxy getter can seed rows and is
   prohibited on this path. A running global listener alone cannot establish
@@ -79,6 +85,22 @@ and bounded local read attempts replace native diagnostic strings.
 Unsupported checks are informational with no automatic action; critical
 unknown observations prevent a local-ready result. The UI expires results
 after five minutes and preserves original facts after a failed reread.
+
+Health calls Managed Auth's internal `observe_overview` facade. Proxy slots
+are projected in memory from SELECT-only rows, including missing/default and
+historical slots; only the existing management overview reconciles them to DB.
+The shared route observer reads saved provider selection without the repairing
+`get_effective_current_provider` selector. A stale selected ID stays unknown.
+Tests compare complete fixture database dumps, timestamps, native auth bytes
+and vault operation counts across repeated observations.
+
+Drift uses only current request-route facts. Closed source/endpoint/model/
+credential-state reason codes explain one changed category; multiple categories
+retain the generic drift reason. No raw comparison values cross IPC, and no
+repair action is run. Syntactically valid Grok configuration whose selected
+profile/schema is not recognized is `configuration_profile_unknown` (unknown),
+not file corruption or a successful builtin/native login. Write/proxy validation
+remains strict; unknown vendor formats are never rewritten automatically.
 
 Default refresh never performs target CLI execution, network requests,
 OAuth/token refresh, model discovery/probes, session import, file repair or
@@ -129,3 +151,16 @@ their names sound like reads. They can repair selection or seed persisted rows.
 Correct: compose the pure selected-source projection with SELECT-only
 `health_proxy_enabled` and `latest_health_request`; assert the database and
 vendor configuration remain unchanged after observation.
+
+### Observer path isolation
+
+`tooling::observe_local_tool_health` must use the filesystem path collector with
+no login-shell PATH input. It must not call the interactive readiness collector:
+resolving a login environment launches user shell startup files and can mutate
+user state even when the eventual CLI binary is never executed. Health considers
+only existing process PATH and known local directories; a shell-only installation
+may remain unobserved. Installer/readiness keeps its existing executable probes.
+A public-observer fixture uses a fake shell and CLI with an execution marker;
+neither may run. The seeded admission fixture also compares all persisted rows
+(including timestamps), native bytes, settings bytes and vault operation count.
+Only the SQL export header's generation-time comment is excluded from comparison.

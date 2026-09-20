@@ -28,7 +28,7 @@ NOTARY_POLL_SECONDS="${FYAGENT_NOTARY_POLL_SECONDS:-20}"
 NOTARY_HEARTBEAT_SECONDS="${FYAGENT_NOTARY_HEARTBEAT_SECONDS:-120}"
 
 usage() {
-  echo "Usage: macos-developer-id.sh prepare|sign-app|sign-dmg|notarize-dmg|staple-app|teardown [path]" >&2
+  echo "Usage: macos-developer-id.sh prepare|sign-app|notarize-app|sign-dmg|notarize-dmg|staple-app|teardown [path]" >&2
   exit 2
 }
 
@@ -356,6 +356,17 @@ sign_dmg() {
     "$dmg_path"
 }
 
+notarize_app() {
+  local app_path="$1"
+  require_app_bundle "$app_path"
+  load_state
+  local archive_path="$STATE_DIR/app-notarization.zip"
+  rm -f "$archive_path"
+  ditto -c -k --keepParent "$app_path" "$archive_path"
+  submit_for_notarization "$archive_path"
+  rm -f "$archive_path"
+}
+
 notarize_dmg() {
   local dmg_path="$1"
   require_regular_file "$dmg_path" "macOS DMG"
@@ -404,6 +415,10 @@ case "$command" in
   sign-dmg)
     [ "$#" -eq 1 ] || usage
     sign_dmg "$1"
+    ;;
+  notarize-app)
+    [ "$#" -eq 1 ] || usage
+    notarize_app "$1"
     ;;
   notarize-dmg)
     [ "$#" -eq 1 ] || usage

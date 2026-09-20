@@ -427,6 +427,137 @@ describe("Models page", () => {
     expect("saveModels" in ports.traeWork).toBe(false);
   });
 
+  it("shows builtin OpenCode model IDs without offering writes", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.opencodeModels.getSnapshot = vi.fn(async () => ({
+      providers: [
+        {
+          id: "builtin",
+          name: "Builtin",
+          modelIds: ["builtin-model"],
+          editable: false,
+        },
+      ],
+      revision: "builtin-revision",
+      ...TEST_OPENCODE_SNAPSHOT_META,
+    }));
+    ports.opencodeModels.saveModels = vi.fn(async () => ({
+      state: "saved" as const,
+      revision: "r2",
+      modelCount: 1,
+      createdEntries: 1,
+      updatedEntries: 0,
+    }));
+    renderPage(ports, "opencode");
+    expect(
+      await screen.findByText(/当前供应商使用内置或尚未支持的配置格式/),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "保存并应用" })).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", { name: /当前已有的第三方模型 ID/ }),
+    );
+    expect(await screen.findByText("builtin-model")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: /移除模型 builtin-model/ }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("textbox", { name: "服务地址" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "拉取模型" }),
+    ).not.toBeInTheDocument();
+    expect(ports.opencodeModels.saveModels).not.toHaveBeenCalled();
+    await user.selectOptions(screen.getByLabelText("供应商"), "new");
+    await user.type(screen.getByLabelText("供应商名称"), "New Gateway");
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://fixture.invalid/v1",
+    );
+    await user.type(screen.getByLabelText("API Key"), "fixture-key");
+    await user.type(screen.getByLabelText("自定义模型 ID"), "new-model");
+    await user.click(screen.getByRole("button", { name: "填入" }));
+    await user.click(screen.getByRole("button", { name: "保存并应用" }));
+    await user.click(screen.getByRole("button", { name: "确认保存" }));
+    await waitFor(() =>
+      expect(ports.opencodeModels.saveModels).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerId: null,
+          providerName: "New Gateway",
+          selectedModelIds: ["new-model"],
+        }),
+      ),
+    );
+  });
+
+  it("selects the editable OpenCode provider by exact id in a mixed configuration", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.opencodeModels.getSnapshot = vi.fn(async () => ({
+      providers: [
+        {
+          id: "builtin",
+          name: "Builtin",
+          modelIds: ["native-model"],
+          editable: false,
+        },
+        {
+          id: "custom-exact-id",
+          name: "Gateway",
+          modelIds: ["custom-model"],
+          editable: true,
+        },
+      ],
+      revision: "r1",
+      ...TEST_OPENCODE_SNAPSHOT_META,
+    }));
+    ports.opencodeModels.saveModels = vi.fn(async () => ({
+      state: "saved" as const,
+      revision: "r2",
+      modelCount: 2,
+      createdEntries: 1,
+      updatedEntries: 0,
+    }));
+    renderPage(ports, "opencode");
+    await waitFor(() =>
+      expect(screen.getByLabelText("供应商")).toHaveValue(
+        "existing:custom-exact-id",
+      ),
+    );
+    expect(screen.getByText(/只读供应商：Builtin/)).toBeVisible();
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://fixture.invalid/v1",
+    );
+    await user.type(screen.getByLabelText("API Key"), "fixture-key");
+    await user.type(screen.getByLabelText("自定义模型 ID"), "new-model");
+    await user.click(screen.getByRole("button", { name: "填入" }));
+    await user.selectOptions(screen.getByLabelText("供应商"), "new");
+    await user.click(await screen.findByRole("button", { name: "继续编辑" }));
+    expect(screen.getByLabelText("供应商")).toHaveValue(
+      "existing:custom-exact-id",
+    );
+    expect(screen.getByLabelText("API Key")).toHaveValue("fixture-key");
+    await user.click(screen.getByRole("button", { name: "保存并应用" }));
+    await user.click(screen.getByRole("button", { name: "确认保存" }));
+    await waitFor(() =>
+      expect(ports.opencodeModels.saveModels).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerId: "custom-exact-id",
+          providerName: "Gateway",
+        }),
+      ),
+    );
+    await user.selectOptions(
+      screen.getByLabelText("供应商"),
+      "existing:builtin",
+    );
+    expect(
+      await screen.findByText(/当前供应商使用内置或尚未支持的配置格式/),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "保存并应用" })).toBeDisabled();
+  });
+
   it("fetches OpenCode models without clearing the key, then saves natively and clears it", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
@@ -471,6 +602,7 @@ describe("Models page", () => {
     await confirmWriteDisclosure(user);
     await waitFor(() =>
       expect(ports.opencodeModels.saveModels).toHaveBeenCalledWith({
+        providerId: null,
         providerName: "Gateway",
         baseUrl: "https://gateway.example.test/v1",
         apiKey: secret,

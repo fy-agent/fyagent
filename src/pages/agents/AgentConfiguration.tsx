@@ -59,7 +59,14 @@ export function AgentConfiguration({
         navigate(appendAgentReturnToPath("/mcp", returnDescriptor));
         break;
       case "prompts":
-        navigate(appendAgentReturnToPath("/prompts", returnDescriptor));
+        navigate(
+          appendAgentReturnToPath(
+            entry.promptAppId
+              ? `/prompts?target=${entry.promptAppId}`
+              : "/prompts",
+            returnDescriptor,
+          ),
+        );
         break;
     }
   };

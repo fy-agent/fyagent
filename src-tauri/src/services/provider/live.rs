@@ -1307,7 +1307,6 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
         AppType::OpenCode => {
             // OpenCode uses additive mode - write provider to config
             use crate::opencode_config;
-            use crate::provider::OpenCodeProviderConfig;
 
             // Defensive check: if settings_config is a full config structure, extract provider fragment
             let config_to_write = if let Some(obj) = provider.settings_config.as_object() {
@@ -1321,7 +1320,9 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
                     obj.get("provider")
                         .and_then(|p| p.get(&provider.id))
                         .cloned()
-                        .unwrap_or_else(|| provider.settings_config.clone())
+                        .ok_or_else(|| {
+                            AppError::Message("OpenCode provider fragment is missing".into())
+                        })?
                 } else {
                     provider.settings_config.clone()
                 }
@@ -1329,81 +1330,27 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
                 provider.settings_config.clone()
             };
 
-            // Convert settings_config to OpenCodeProviderConfig
-            let opencode_config_result =
-                serde_json::from_value::<OpenCodeProviderConfig>(config_to_write.clone());
-
-            match opencode_config_result {
-                Ok(config) => {
-                    opencode_config::set_typed_provider(&provider.id, &config)?;
-                    log::info!("OpenCode provider '{}' written to live config", provider.id);
-                }
-                Err(e) => {
-                    log::warn!(
-                        "Failed to parse OpenCode provider config for '{}': {}",
-                        provider.id,
-                        e
-                    );
-                    // Only write if config looks like a valid provider fragment
-                    if config_to_write.get("npm").is_some()
-                        || config_to_write.get("options").is_some()
-                    {
-                        opencode_config::set_provider(&provider.id, config_to_write)?;
-                        log::info!(
-                            "OpenCode provider '{}' written as raw JSON to live config",
-                            provider.id
-                        );
-                    } else {
-                        return Err(AppError::Message(format!(
-                            "OpenCode provider '{}' has invalid config structure for live config (must contain 'npm' or 'options')",
-                            provider.id
-                        )));
-                    }
-                }
+            // Preserve the original provider object on write.
+            // Re-serializing typed config can drop unknown nested fields or nulls.
+            if !config_to_write.is_object() {
+                return Err(AppError::Message(
+                    "OpenCode provider must be an object".into(),
+                ));
             }
+            opencode_config::set_provider(&provider.id, config_to_write)?;
         }
         AppType::OpenClaw => {
             // OpenClaw uses additive mode - write provider to config
             use crate::openclaw_config;
-            use crate::openclaw_config::OpenClawProviderConfig;
 
-            // Convert settings_config to OpenClawProviderConfig
-            let openclaw_config_result =
-                serde_json::from_value::<OpenClawProviderConfig>(provider.settings_config.clone());
-
-            match openclaw_config_result {
-                Ok(config) => {
-                    openclaw_config::set_typed_provider(&provider.id, &config)?;
-                    log::info!("OpenClaw provider '{}' written to live config", provider.id);
-                }
-                Err(e) => {
-                    log::warn!(
-                        "Failed to parse OpenClaw provider config for '{}': {}",
-                        provider.id,
-                        e
-                    );
-                    // Try to write as raw JSON if it looks valid
-                    if provider.settings_config.get("baseUrl").is_some()
-                        || provider.settings_config.get("api").is_some()
-                        || provider.settings_config.get("models").is_some()
-                    {
-                        openclaw_config::set_provider(
-                            &provider.id,
-                            provider.settings_config.clone(),
-                        )?;
-                        log::info!(
-                            "OpenClaw provider '{}' written as raw JSON to live config",
-                            provider.id
-                        );
-                    } else {
-                        return Err(AppError::Message(format!(
-                            "OpenClaw provider '{}' has invalid config structure for live config (must contain 'baseUrl', 'api', or 'models')",
-                            provider.id
-                        )));
-                    }
-                }
+            if !provider.settings_config.is_object() {
+                return Err(AppError::Message(
+                    "OpenClaw provider must be an object".into(),
+                ));
             }
+            openclaw_config::set_provider(&provider.id, provider.settings_config.clone())?;
         }
+
         AppType::Hermes => {
             crate::hermes_config::set_provider(&provider.id, provider.settings_config.clone())?;
             log::debug!("Hermes provider '{}' written to live config", provider.id);
@@ -1958,7 +1905,7 @@ pub(crate) fn remove_opencode_provider_from_live(provider_id: &str) -> Result<()
 pub fn import_opencode_providers_from_live(state: &AppState) -> Result<usize, AppError> {
     use crate::opencode_config;
 
-    let providers = opencode_config::get_typed_providers()?;
+    let providers = opencode_config::get_providers()?;
     if providers.is_empty() {
         return Ok(0);
     }
@@ -1968,19 +1915,28 @@ pub fn import_opencode_providers_from_live(state: &AppState) -> Result<usize, Ap
     let existing_ids = state.db.get_provider_ids("opencode")?;
 
     for (id, config) in providers {
-        // Convert to Value for settings_config
-        let settings_config = match serde_json::to_value(&config) {
-            Ok(v) => v,
-            Err(e) => {
-                log::warn!("Failed to serialize OpenCode provider '{id}': {e}");
-                continue;
-            }
-        };
+        if id.trim().is_empty() || !config.is_object() {
+            continue;
+        }
+        // Typed metadata is advisory; unknown vendor shapes still retain raw authority.
+        let display_name =
+            serde_json::from_value::<crate::provider::OpenCodeProviderConfig>(config.clone())
+                .ok()
+                .and_then(|projection| projection.name)
+                .or_else(|| {
+                    config
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                });
+        let settings_config = config;
 
         if existing_ids.contains(&id) {
             match state.db.get_provider_by_id(&id, "opencode") {
                 Ok(Some(existing)) => {
-                    let display_name = config.name.clone().unwrap_or_else(|| existing.name.clone());
+                    let display_name = display_name
+                        .clone()
+                        .unwrap_or_else(|| existing.name.clone());
                     if existing.settings_config != settings_config || existing.name != display_name
                     {
                         let mut provider = existing;
@@ -2005,7 +1961,7 @@ pub fn import_opencode_providers_from_live(state: &AppState) -> Result<usize, Ap
         }
 
         // Create provider
-        let display_name = config.name.clone().unwrap_or_else(|| id.clone());
+        let display_name = display_name.unwrap_or_else(|| id.clone());
         let mut provider = Provider::with_id(id.clone(), display_name, settings_config, None);
         provider.meta = Some(crate::provider::ProviderMeta {
             live_config_managed: Some(true),
@@ -2033,7 +1989,7 @@ pub fn import_opencode_providers_from_live(state: &AppState) -> Result<usize, Ap
 pub fn import_openclaw_providers_from_live(state: &AppState) -> Result<usize, AppError> {
     use crate::openclaw_config;
 
-    let providers = openclaw_config::get_typed_providers()?;
+    let providers = openclaw_config::get_providers()?;
     if providers.is_empty() {
         return Ok(0);
     }
@@ -2043,24 +1999,22 @@ pub fn import_openclaw_providers_from_live(state: &AppState) -> Result<usize, Ap
     let existing_ids = state.db.get_provider_ids("openclaw")?;
 
     for (id, config) in providers {
-        // Validate: skip entries with empty id or no models
-        if id.trim().is_empty() {
-            log::warn!("Skipping OpenClaw provider with empty id");
+        if id.trim().is_empty() || !config.is_object() {
             continue;
         }
-        if config.models.is_empty() {
-            log::warn!("Skipping OpenClaw provider '{id}': no models defined");
-            continue;
-        }
-
-        // Convert to Value for settings_config
-        let settings_config = match serde_json::to_value(&config) {
-            Ok(v) => v,
-            Err(e) => {
-                log::warn!("Failed to serialize OpenClaw provider '{id}': {e}");
-                continue;
-            }
-        };
+        let display_name =
+            serde_json::from_value::<crate::openclaw_config::OpenClawProviderConfig>(
+                config.clone(),
+            )
+            .ok()
+            .and_then(|projection| {
+                projection
+                    .models
+                    .first()
+                    .and_then(|model| model.name.clone())
+            })
+            .unwrap_or_else(|| id.clone());
+        let settings_config = config;
 
         if existing_ids.contains(&id) {
             match state.db.get_provider_by_id(&id, "openclaw") {
@@ -2085,13 +2039,6 @@ pub fn import_openclaw_providers_from_live(state: &AppState) -> Result<usize, Ap
             }
             continue;
         }
-
-        // Determine display name: use first model name if available, otherwise use id
-        let display_name = config
-            .models
-            .first()
-            .and_then(|m| m.name.clone())
-            .unwrap_or_else(|| id.clone());
 
         // Create provider
         let mut provider = Provider::with_id(id.clone(), display_name, settings_config, None);

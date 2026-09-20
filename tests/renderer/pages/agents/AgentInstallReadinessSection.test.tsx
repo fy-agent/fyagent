@@ -28,6 +28,7 @@ function readiness(
   const claudeCli = agentId === "claude-code";
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+    configurationEligibility: { state: "unknown", evidence: "none" },
     agentId,
     reviewedAt: "2026-08-29",
     installState: "unknown",

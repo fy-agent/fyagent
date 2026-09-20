@@ -40,8 +40,8 @@ const IMPORT_ALLOWED_PRAGMAS: &[&str] = &["foreign_keys", "user_version"];
 ///
 /// 普通表、索引和视图只是导入数据本身；持久 trigger 不同，它会在导入完成后继续
 /// 运行，并能在 Provider quick setup 等后续写入时复制凭据。因此 trigger 属于越过
-/// 本次导入生命周期的可执行输入，必须 fail closed。FyAgent 正式 schema 不依赖
-/// trigger，拒绝它不会破坏受支持备份；也避免维护一份容易漂移的 trigger allowlist。
+/// 本次导入生命周期的可执行输入，必须 fail closed。项目资源代际触发器由应用
+/// 重建且不写入 SQL 导出；二进制恢复仅接受与应用定义逐字匹配的版本。
 ///
 /// 越界动作是实测出来的，不是推断的：
 /// - `ATTACH DATABASE 'x'`、`VACUUM INTO 'x'`、裸 `VACUUM` **三者都**报
@@ -79,6 +79,9 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "provider_health",
     "proxy_live_backup",
     "usage_daily_rollups",
+    "verification_revocations",
+    "verification_evidence",
+    "verification_handoff",
     "change_plans",
     "change_jobs",
     "change_job_events",
@@ -87,6 +90,11 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "managed_auth_defaults",
     "managed_auth_connections",
     "managed_auth_migrations",
+    "fde_customers",
+    "fde_projects",
+    "fde_project_kit_intents",
+    "fde_project_context_versions",
+    "fde_resource_generations",
 ];
 
 /// Tables whose local data is preserved (restored from local snapshot) during WebDAV import.
@@ -96,6 +104,9 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "stream_check_logs",
     "proxy_live_backup",
     "usage_daily_rollups",
+    "verification_revocations",
+    "verification_evidence",
+    "verification_handoff",
     "change_plans",
     "change_jobs",
     "change_job_events",
@@ -104,6 +115,11 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "managed_auth_defaults",
     "managed_auth_connections",
     "managed_auth_migrations",
+    "fde_customers",
+    "fde_projects",
+    "fde_project_kit_intents",
+    "fde_project_context_versions",
+    "fde_resource_generations",
 ];
 
 /// A database backup entry for the UI
@@ -216,6 +232,7 @@ impl Database {
         if let Some(local_snapshot) = local_snapshot.as_ref() {
             Self::restore_tables(local_snapshot, &temp_conn, preserve_tables)?;
         }
+        Self::advance_project_resource_generations_on_conn(&temp_conn)?;
 
         // 使用 Backup 将临时库原子写回主库
         {
@@ -264,23 +281,36 @@ impl Database {
         ))
     }
 
+    fn is_owned_project_trigger(sql: &str) -> bool {
+        let normalize = |value: &str| {
+            value
+                .trim()
+                .trim_end_matches(';')
+                .replace("CREATE TRIGGER IF NOT EXISTS", "CREATE TRIGGER")
+        };
+        let candidate = normalize(sql);
+        Self::project_resource_trigger_sql()
+            .iter()
+            .any(|owned| normalize(owned) == candidate)
+    }
+
     fn reject_persistent_triggers(conn: &Connection) -> Result<(), AppError> {
-        let has_persistent_trigger: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'trigger')",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(format!("校验备份 schema 失败: {e}")))?;
-
-        if has_persistent_trigger {
-            return Err(AppError::localized(
-                "backup.sql.unsupported_trigger",
-                "导入的数据库备份包含不受支持的持久触发器。",
-                "The imported database backup contains unsupported persistent triggers.",
-            ));
+        let mut statement = conn
+            .prepare("SELECT sql FROM sqlite_schema WHERE type='trigger'")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let definitions = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        for definition in definitions {
+            let sql = definition.map_err(|e| AppError::Database(e.to_string()))?;
+            if !Self::is_owned_project_trigger(&sql) {
+                return Err(AppError::localized(
+                    "backup.sql.unsupported_trigger",
+                    "导入的数据库备份包含不受支持的持久触发器。",
+                    "The imported database backup contains unsupported persistent triggers.",
+                ));
+            }
         }
-
         Ok(())
     }
 
@@ -548,6 +578,11 @@ impl Database {
             }
 
             if obj_type == "trigger" {
+                // Owned generation counters are rebuilt by the application. External
+                // SQL never receives permission to install executable schema.
+                if Self::is_owned_project_trigger(&sql) {
+                    continue;
+                }
                 triggers.push(sql);
                 continue;
             }
@@ -749,6 +784,19 @@ impl Database {
         let source_conn =
             Connection::open(&backup_path).map_err(|e| AppError::Database(e.to_string()))?;
         Self::reject_persistent_triggers(&source_conn)?;
+        // Validate every new fallible migration before replacing the live database.
+        // Keep the selected backup immutable as well.
+        let mut candidate =
+            Connection::open_in_memory().map_err(|e| AppError::Database(e.to_string()))?;
+        {
+            let copy = Backup::new(&source_conn, &mut candidate)
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            copy.step(-1)
+                .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        Self::create_tables_on_conn(&candidate)?;
+        Self::apply_schema_migrations_on_conn(&candidate)?;
+        Self::advance_project_resource_generations_on_conn(&candidate)?;
 
         // Step 1: Create safety backup of current database
         let safety_backup = self.backup_database_file()?;
@@ -759,16 +807,13 @@ impl Database {
         // Step 2: Open the backup file and restore it to the main database
         {
             let mut main_conn = lock_conn!(self.conn);
-            let backup = Backup::new(&source_conn, &mut main_conn)
+            let backup = Backup::new(&candidate, &mut main_conn)
                 .map_err(|e| AppError::Database(e.to_string()))?;
             backup
                 .step(-1)
                 .map_err(|e| AppError::Database(e.to_string()))?;
         }
 
-        // Step 3: Run schema migrations (backup may be from an older version)
-        self.create_tables()?;
-        self.apply_schema_migrations()?;
         self.ensure_model_pricing_seeded()?;
 
         log::info!("Database restored from backup: {filename}, safety backup: {safety_id}");
@@ -866,6 +911,9 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    mod fde_restore_tests {
+        include!("fde_restore_tests.rs");
+    }
     use super::{Database, FYAGENT_SQL_EXPORT_HEADER};
     use crate::error::AppError;
     use crate::settings::{update_settings, AppSettings};
@@ -911,6 +959,29 @@ mod tests {
                 None => std::env::remove_var("FYAGENT_TEST_HOME"),
             }
         }
+    }
+
+    #[test]
+    fn verification_sync_preserves_ledger_and_revocations_in_one_transaction(
+    ) -> Result<(), AppError> {
+        let source = Connection::open_in_memory().map_err(|e| AppError::Database(e.to_string()))?;
+        let target = Connection::open_in_memory().map_err(|e| AppError::Database(e.to_string()))?;
+        for conn in [&source, &target] {
+            conn.execute_batch("PRAGMA foreign_keys=ON;")
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            Database::migrate_verification_v22(conn)?;
+        }
+        source.execute_batch("INSERT INTO verification_evidence VALUES('e','p','2026-09-19','{}'); INSERT INTO verification_revocations VALUES('e','2026-09-19'); INSERT INTO verification_handoff VALUES('p',3,'{}');").map_err(|e|AppError::Database(e.to_string()))?;
+        let tables = [
+            "verification_revocations",
+            "verification_evidence",
+            "verification_handoff",
+        ];
+        Database::restore_tables(&source, &target, &tables)?;
+        Database::restore_tables(&source, &target, &tables)?;
+        let values:(String,String,i64)=target.query_row("SELECT (SELECT id FROM verification_evidence),(SELECT evidence_id FROM verification_revocations),(SELECT revision FROM verification_handoff)",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(|e|AppError::Database(e.to_string()))?;
+        assert_eq!(values, ("e".into(), "e".into(), 3));
+        Ok(())
     }
 
     #[test]
@@ -1150,6 +1221,25 @@ mod tests {
             skill_snapshot.contains("legacy-skill"),
             "重建 skills 表时必须保留旧数据迁移快照"
         );
+        let generation = || -> Result<i64, rusqlite::Error> {
+            conn.query_row(
+                "SELECT generation FROM fde_resource_generations WHERE kind='provider' AND app_type='claude' AND resource_id='legacy-provider'",
+                [],
+                |row| row.get(0),
+            )
+        };
+        let imported_generation = generation()?;
+        conn.execute(
+            "UPDATE providers SET name='Updated Legacy Provider' WHERE id='legacy-provider' AND app_type='claude'",
+            [],
+        )?;
+        assert_eq!(generation()?, imported_generation + 1);
+        let skill_triggers: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name LIKE 'fde_resource_skill_%'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(skill_triggers, 4);
         Ok(())
     }
 
@@ -1892,6 +1982,35 @@ mod tests {
             preserved,
             ("plan-local".into(), "job-local".into(), "job-local".into())
         );
+        Ok(())
+    }
+
+    #[test]
+    fn projects_sync_preserves_device_rows_with_no_filesystem_access() -> Result<(), AppError> {
+        let source = Connection::open_in_memory()?;
+        let target = Connection::open_in_memory()?;
+        Database::create_project_tables_on_conn(&source)?;
+        Database::create_project_tables_on_conn(&target)?;
+        source.execute_batch("INSERT INTO fde_customers VALUES ('customer','local',0,0); INSERT INTO fde_projects VALUES ('project','customer',0,0,'{}'); INSERT INTO fde_project_kit_intents VALUES ('intent','project','request','result'); INSERT INTO fde_project_context_versions VALUES ('project','generation','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'); INSERT INTO fde_resource_generations VALUES ('provider','codex','deleted-provider',4);")?;
+        let tables = [
+            "fde_customers",
+            "fde_projects",
+            "fde_project_kit_intents",
+            "fde_project_context_versions",
+            "fde_resource_generations",
+        ];
+        for table in tables {
+            assert!(super::SYNC_SKIP_TABLES.contains(&table));
+            assert!(super::SYNC_PRESERVE_TABLES.contains(&table));
+        }
+        Database::restore_tables(&source, &target, &tables)?;
+        for table in tables {
+            assert_eq!(
+                target.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                    .get::<_, i64>(0))?,
+                1
+            );
+        }
         Ok(())
     }
 

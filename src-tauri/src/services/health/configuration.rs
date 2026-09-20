@@ -267,6 +267,44 @@ pub(super) fn expected_routing(
     )
 }
 
+/// Compare only route metadata. Never serialize the differing values.
+pub(super) fn drift_reason(expected: &RoutingFacts, live: &RoutingFacts) -> Reason {
+    let differences = [
+        (
+            expected.selected != live.selected || expected.official != live.official,
+            Reason::ConfigurationSourceDrifted,
+        ),
+        (
+            expected.endpoint != live.endpoint,
+            Reason::ConfigurationEndpointDrifted,
+        ),
+        (
+            expected.model != live.model,
+            Reason::ConfigurationModelDrifted,
+        ),
+        (
+            expected.credential != live.credential,
+            Reason::ConfigurationCredentialDrifted,
+        ),
+    ];
+    let mut changed = differences.into_iter().filter(|(changed, _)| *changed);
+    match (changed.next(), changed.next()) {
+        (None, _) => Reason::ConfigurationInSync,
+        (Some((_, reason)), None) => reason,
+        _ => Reason::ConfigurationDrifted,
+    }
+}
+
+pub(super) fn unrecognized_grok_profile(app: &AppType, live: Option<&Value>) -> bool {
+    *app == AppType::GrokBuild
+        && live.is_some_and(|value| {
+            toml_text(value).is_ok_and(|(text, _)| {
+                !crate::grok_config::is_official_live_config(text)
+                    && crate::grok_config::extract_model_config(text).is_none()
+            })
+        })
+}
+
 pub(super) fn observe(db: &Database, app: &AppType, at: &str) -> ConfigurationObservation {
     let live = crate::services::provider::read_live_settings(app.clone());
     let facts = live
@@ -336,18 +374,19 @@ pub(super) fn observe(db: &Database, app: &AppType, at: &str) -> ConfigurationOb
         let (state, reason) = if selection.is_err() || providers.is_err() {
             (State::Unknown, Reason::ReadFailed)
         } else if provider_id.is_some() && selected.is_none() {
-            (State::Attention, Reason::ConfigurationDrifted)
+            (State::Attention, Reason::ConfigurationSourceDrifted)
         } else if let Some(expected) = &expected {
             if expected == facts {
                 (State::Ok, Reason::ConfigurationInSync)
             } else {
-                (State::Attention, Reason::ConfigurationDrifted)
+                (State::Attention, drift_reason(expected, facts))
             }
         } else {
             (State::Unknown, Reason::ConfigurationDriftUnknown)
         };
         add(Id::Drift, state, reason, Some(Action::Configuration));
     } else {
+        let unknown_profile = unrecognized_grok_profile(app, live.as_ref().ok());
         let missing = match app {
             AppType::Codex => {
                 !crate::codex_config::get_codex_config_path().exists()
@@ -362,11 +401,15 @@ pub(super) fn observe(db: &Database, app: &AppType, at: &str) -> ConfigurationOb
             Id::Configuration,
             if missing {
                 State::NotConfigured
+            } else if unknown_profile {
+                State::Unknown
             } else {
                 State::Blocked
             },
             if missing {
                 Reason::ConfigurationMissing
+            } else if unknown_profile {
+                Reason::ConfigurationProfileUnknown
             } else {
                 Reason::ConfigurationUnreadable
             },
@@ -376,7 +419,11 @@ pub(super) fn observe(db: &Database, app: &AppType, at: &str) -> ConfigurationOb
             add(
                 id,
                 State::Unknown,
-                Reason::ReadFailed,
+                if unknown_profile {
+                    Reason::ConfigurationProfileUnknown
+                } else {
+                    Reason::ReadFailed
+                },
                 Some(Action::Configuration),
             );
         }

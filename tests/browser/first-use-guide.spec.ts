@@ -37,6 +37,13 @@ for (const choice of [
     await expect(guide.getByRole("heading", { level: 2 })).toHaveText(
       choice.names,
     );
+    const recommendationIcons = guide.locator(".fy-catalog-brand-frame");
+    for (const icon of await recommendationIcons.all()) {
+      await expect(icon).toHaveCSS("width", "64px");
+      await expect(icon).toHaveCSS("height", "64px");
+      await expect(icon.locator("img")).toHaveCSS("width", "48px");
+      await expect(icon.locator("img")).toHaveCSS("height", "48px");
+    }
     await expectNoHorizontalOverflow(page);
     const complete = guide.getByRole("button", { name: "查看全部软件" });
     const skip = guide.getByRole("button", { name: "跳过引导" });

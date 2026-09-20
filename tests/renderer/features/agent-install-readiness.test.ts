@@ -52,6 +52,7 @@ function readiness(
   const claudeCli = agentId === "claude-code";
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+    configurationEligibility: { state: "unknown", evidence: "none" },
     agentId,
     reviewedAt: "2026-08-29",
     installState: "unknown",
@@ -547,5 +548,67 @@ describe("Agent install readiness wire contract", () => {
         "qoderwork",
       ).reasonCodes,
     ).toEqual(["action_not_supported"]);
+  });
+});
+
+describe("configuration navigation evidence", () => {
+  it.each(["multiple", "unknown"] as const)(
+    "retains positive CLI evidence with %s inventory",
+    (inventoryState) => {
+      const wire = {
+        ...readiness("claude-code"),
+        inventoryState,
+        configurationEligibility: {
+          state: "eligible",
+          evidence: "cli_runnable",
+        },
+      };
+      const result = parseAgentInstallReadiness(wire, "claude-code");
+      expect(result.installState).toBe("unknown");
+      expect(result.configurationEligibility).toEqual(
+        wire.configurationEligibility,
+      );
+      expect(result.allowedActions).toEqual([]);
+    },
+  );
+
+  it.each([
+    undefined,
+    { state: "eligible", evidence: "none" },
+    { state: "unknown", evidence: "cli_runnable" },
+    { state: "eligible", evidence: "installation_detected" },
+    { state: "eligible", evidence: "cli_runnable", arbitrary: true },
+    { state: "assumed", evidence: "none" },
+  ])(
+    "rejects missing, contradictory, excess, and wrong-source evidence %j",
+    (configurationEligibility) => {
+      expect(() =>
+        parseAgentInstallReadiness(
+          { ...readiness("claude-code"), configurationEligibility },
+          "claude-code",
+        ),
+      ).toThrow();
+    },
+  );
+
+  it("rejects old readiness wire and CLI evidence on a desktop source", () => {
+    expect(() =>
+      parseAgentInstallReadiness(
+        { ...readiness(), contractVersion: 4 },
+        "qoderwork",
+      ),
+    ).toThrow();
+    expect(() =>
+      parseAgentInstallReadiness(
+        {
+          ...readiness(),
+          configurationEligibility: {
+            state: "eligible",
+            evidence: "cli_detected",
+          },
+        },
+        "qoderwork",
+      ),
+    ).toThrow();
   });
 });

@@ -1,0 +1,18 @@
+{
+  "src-tauri/src/commands/provider.rs": "65cadc7d73938a8a4500e6db15230df023e6c78d0e300501c22552578a898990",
+  "src-tauri/src/openclaw_config.rs": "db91606592f526009d5da1af921e2d73c26b52d6ca117d17e4bcf437197beb6e",
+  "src-tauri/src/opencode_config.rs": "bcce927c10fbcaabd2bca74d5f4858fc3eabeb6f2612074ae730ae4a397aa778",
+  "src-tauri/src/provider.rs": "b4f3bd2415306b433908e2fb1c729e6b83fecf9caed36921a0f740a6b2ccaf73",
+  "src-tauri/src/services/opencode_models.rs": "4b2c1de6f476e45b073cbd30082bf0daef0e8c217ec4336f7d8bb45462cd663b",
+  "src-tauri/src/services/provider/live.rs": "019cd0268a7e988c8c92af9f4897ae48d1adf47b7afd985424c5c35f131631b5",
+  "src-tauri/src/services/provider/mod.rs": "2d269ce29d68959ac8e84cf4808f862702c5ba541b4b647086697df9c5d9cbf1",
+  "src/domain/configuration/types.ts": "634c6e3c2a5c2df0ed6d11f96a8ba06e907f3e8f9128052e26a238515df0b4f1",
+  "src/pages/models/OpenCodeModelsPanel.tsx": "5b84d60ec7cc59f3d387c1aa3fe5fa3ee2d2e96a9ed5484e47df1858aa3a0b53",
+  "src/shared/features/models.ts": "7ff03789af1de7219952ed870c2b2a95fb935612373a1a59346a58fabae0b0c8",
+  "src/shared/platform/tauri/feature-ports/models.ts": "480d258eba22d3f664001244a0131bb744aca2712ceeb3832fb031cfcf9c7f93",
+  "tests/browser/support/features.ts": "49cf89f2ad5214992e994faa2befbbb077bc4b6c18082bad13739e79cd719d32",
+  "tests/renderer/pages/models/Page.test.tsx": "5b840358be1040c6abd0b42149650b233755026828d857e69c69c964b8c2b548",
+  "tests/renderer/platform/featurePorts.test.ts": "8edc32709d43c8ba8a521414826d72a577b44afc79a12176cda98ebb5b949d24",
+  ".trellis/spec/backend/external-agent-models.md": "0895d581a301522dfb11428ed66bbc4b4e70dd39a2fc95c8a016447a77e0360b",
+  ".trellis/spec/frontend/models.md": "1b052a5a69846f36ddbb1c6b78d03e7b6ed9a45c61d74a0de2ca900ca77a5543"
+}
