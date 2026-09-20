@@ -458,6 +458,272 @@ fn subscription_does_not_adopt_legacy_proxy_placeholders_as_native_preimage() {
 
 #[test]
 #[serial]
+fn subscription_upgrade_recovers_unchanged_legacy_binding() {
+    for app in ["claude", "codex", "grokbuild"] {
+        let (_home, _guard, state, auth) = fixture();
+        let account = seed(&auth, "selected");
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _entered = runtime.enter();
+        ephemeral(&runtime, &state);
+        native_target(app);
+        activate_target(&state, &auth, app, &account.identity_id, "model").unwrap();
+        let wrapped: Value = serde_json::from_str(
+            &state
+                .db
+                .get_live_backup_sync(app)
+                .unwrap()
+                .unwrap()
+                .original_config,
+        )
+        .unwrap();
+        let legacy = wrapped["fyagentManagedRestore"]["config"].to_string();
+        state.db.save_live_backup_sync(app, &legacy).unwrap();
+        runtime.block_on(state.proxy_service.stop()).unwrap();
+        runtime
+            .block_on(state.proxy_service.recover_from_crash())
+            .unwrap_or_else(|error| panic!("unchanged v0.4.5 {app} binding must recover: {error}"));
+        assert!(ProviderService::resume_managed_proxy(&state, app.parse().unwrap()).unwrap());
+        runtime
+            .block_on(state.proxy_service.stop_with_restore())
+            .unwrap();
+    }
+}
+
+fn legacy_backup(state: &AppState, app: &str) -> String {
+    let wrapped: Value = serde_json::from_str(
+        &state
+            .db
+            .get_live_backup_sync(app)
+            .unwrap()
+            .unwrap()
+            .original_config,
+    )
+    .unwrap();
+    let legacy = wrapped["fyagentManagedRestore"]["config"].to_string();
+    state.db.save_live_backup_sync(app, &legacy).unwrap();
+    legacy
+}
+
+fn assert_legacy_upgrade_shapes(app: &str) {
+    for scenario in ["single", "absent", "null", "rebind", "source-change"] {
+        if scenario == "null" && app != "claude" {
+            continue;
+        }
+        let (_home, _guard, state, auth) = fixture();
+        let account = seed_provider(&auth, "selected", ManagedAuthProvider::Xai);
+        let other = seed_provider(&auth, "other", ManagedAuthProvider::Openai);
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _entered = runtime.enter();
+        ephemeral(&runtime, &state);
+        let path = native_target(app);
+        if scenario == "null" {
+            std::fs::write(&path, " null \n").unwrap();
+        }
+        let original = std::fs::read(&path).unwrap();
+        if scenario == "absent" {
+            std::fs::remove_file(&path).unwrap();
+        }
+        let native_auth = crate::codex_config::get_codex_auth_path();
+        std::fs::create_dir_all(native_auth.parent().unwrap()).unwrap();
+        let auth_bytes = br#"{"auth_mode":"chatgpt","tokens":{"access_token":"native-access","refresh_token":"native-refresh","id_token":"native-id"}}"#;
+        std::fs::write(&native_auth, auth_bytes).unwrap();
+        activate_target(&state, &auth, app, &account.identity_id, "first").unwrap();
+        if matches!(scenario, "rebind" | "source-change") {
+            activate_target(&state, &auth, app, &account.identity_id, "second").unwrap();
+        }
+        if scenario == "source-change" {
+            activate_target(&state, &auth, app, &other.identity_id, "third").unwrap();
+        }
+        legacy_backup(&state, app);
+        runtime.block_on(state.proxy_service.stop()).unwrap();
+        runtime
+            .block_on(state.proxy_service.recover_from_crash())
+            .unwrap_or_else(|error| panic!("{app}/{scenario}: {error}"));
+        if scenario == "absent" {
+            assert!(
+                !path.exists(),
+                "{app}: originally absent config must stay absent"
+            );
+        } else if app == "claude" && matches!(scenario, "rebind" | "source-change") {
+            assert_eq!(
+                serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap(),
+                serde_json::from_slice::<Value>(&original).unwrap(),
+                "{app}/{scenario}"
+            );
+        } else {
+            assert_eq!(std::fs::read(&path).unwrap(), original, "{app}/{scenario}");
+        }
+        assert_eq!(std::fs::read(&native_auth).unwrap(), auth_bytes);
+        assert!(
+            ProviderService::resume_managed_proxy(&state, app.parse().unwrap()).unwrap(),
+            "{app}/{scenario}"
+        );
+        runtime
+            .block_on(state.proxy_service.stop_with_restore())
+            .unwrap();
+        assert_eq!(std::fs::read(&native_auth).unwrap(), auth_bytes);
+    }
+}
+
+#[test]
+#[serial]
+fn subscription_upgrade_claude_preserves_single_absent_null_rebind_and_source_change() {
+    assert_legacy_upgrade_shapes("claude");
+}
+
+#[test]
+#[serial]
+fn subscription_upgrade_codex_preserves_single_absent_rebind_and_source_change() {
+    assert_legacy_upgrade_shapes("codex");
+}
+
+#[test]
+#[serial]
+fn subscription_upgrade_grok_preserves_single_absent_rebind_and_source_change() {
+    assert_legacy_upgrade_shapes("grokbuild");
+}
+
+#[test]
+#[serial]
+fn subscription_upgrade_rebind_retains_legacy_database_restore_authority() {
+    let (_home, _guard, state, auth) = fixture();
+    let account = seed(&auth, "selected");
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let _entered = runtime.enter();
+    ephemeral(&runtime, &state);
+    let path = native_target("claude");
+    activate_target(&state, &auth, "claude", &account.identity_id, "first").unwrap();
+    activate_target(&state, &auth, "claude", &account.identity_id, "second").unwrap();
+    let mut original: Value = serde_json::from_str(&legacy_backup(&state, "claude")).unwrap();
+    // Both subscription projections mask these fields, and the rolling
+    // receipt no longer has the first native preimage. v0.4.5 did not retain
+    // an independent digest, so its DB backup remains the restore authority.
+    original["env"]["ANTHROPIC_API_KEY"] = json!("legacy-database-original-key");
+    original["env"]["ANTHROPIC_BASE_URL"] = json!("https://legacy-origin.example");
+    state
+        .db
+        .save_live_backup_sync("claude", &original.to_string())
+        .unwrap();
+    runtime.block_on(state.proxy_service.stop()).unwrap();
+    runtime
+        .block_on(state.proxy_service.recover_from_crash())
+        .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap(),
+        original
+    );
+}
+
+#[test]
+#[serial]
+fn subscription_upgrade_does_not_adopt_later_fyagent_edits_or_tampered_receipts() {
+    for app in ["claude", "codex", "grokbuild"] {
+        for scenario in [
+            "mcp",
+            "endpoint-port",
+            "endpoint-path",
+            "rolling-backup",
+            "receipt",
+            "database-backup",
+        ] {
+            let (_home, _guard, state, auth) = fixture();
+            let account = seed(&auth, "selected");
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            let _entered = runtime.enter();
+            ephemeral(&runtime, &state);
+            let path = native_target(app);
+            activate_target(&state, &auth, app, &account.identity_id, "model").unwrap();
+            let mut legacy = legacy_backup(&state, app);
+            match scenario {
+                "mcp" => {
+                    if app == "claude" {
+                        let mut value: Value =
+                            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                        value["permissions"]["allow"] = json!(["Read(added-later)"]);
+                        crate::config::write_json_file(&path, &value).unwrap();
+                    } else {
+                        let current = std::fs::read_to_string(&path).unwrap();
+                        crate::config::write_text_file(
+                            &path,
+                            &format!("{current}\n[mcp_servers.added_later]\ncommand = 'keep-me'\n"),
+                        )
+                        .unwrap();
+                    }
+                    assert!(
+                        crate::config::file_recovery(&path)
+                            .unwrap()
+                            .unwrap()
+                            .can_restore
+                    );
+                }
+                "endpoint-port" | "endpoint-path" => {
+                    let port = runtime
+                        .block_on(state.proxy_service.get_status())
+                        .unwrap()
+                        .port;
+                    let origin = format!("http://127.0.0.1:{port}");
+                    let altered = if scenario == "endpoint-port" {
+                        format!("http://127.0.0.1:{}", if port == 1 { 2 } else { 1 })
+                    } else {
+                        format!("{origin}/unproven")
+                    };
+                    let current = std::fs::read_to_string(&path).unwrap();
+                    assert!(current.contains(&origin));
+                    crate::config::write_text_file(&path, &current.replace(&origin, &altered))
+                        .unwrap();
+                    assert!(
+                        crate::config::file_recovery(&path)
+                            .unwrap()
+                            .unwrap()
+                            .can_restore
+                    );
+                }
+                "rolling-backup" => {
+                    std::fs::write(crate::config::rolling_backup_path(&path), "tampered-backup")
+                        .unwrap()
+                }
+                "receipt" => {
+                    let marker = path.with_file_name(format!(
+                        "{}.fyagent.undo.json",
+                        path.file_name().unwrap().to_str().unwrap()
+                    ));
+                    std::fs::write(marker, "{}").unwrap();
+                }
+                _ => {
+                    let mut value: Value = serde_json::from_str(&legacy).unwrap();
+                    if app == "claude" {
+                        value["permissions"]["unproven"] = json!(true);
+                    } else {
+                        value["config"] = json!("unproven = true\n");
+                    }
+                    legacy = value.to_string();
+                    state.db.save_live_backup_sync(app, &legacy).unwrap();
+                }
+            }
+            let before = std::fs::read(&path).unwrap();
+            assert!(
+                runtime
+                    .block_on(state.proxy_service.recover_from_crash())
+                    .is_err(),
+                "{app}/{scenario}"
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), before);
+            assert_eq!(
+                state
+                    .db
+                    .get_live_backup_sync(app)
+                    .unwrap()
+                    .unwrap()
+                    .original_config,
+                legacy
+            );
+            runtime.block_on(state.proxy_service.stop()).unwrap();
+        }
+    }
+}
+
+#[test]
+#[serial]
 fn subscription_upgrade_refuses_unproven_legacy_backup_but_keeps_recovery_evidence() {
     for app in ["claude", "codex", "grokbuild"] {
         let (_home, _guard, state, auth) = fixture();

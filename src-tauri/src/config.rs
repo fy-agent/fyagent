@@ -12,7 +12,7 @@ mod recovery;
 
 pub(crate) use recovery::{
     file_mutation_expected_hash, file_mutation_scope, file_recovery,
-    restore_file_preimage_if_owned, restore_file_recovery, FileRecovery,
+    restore_file_preimage_if_owned, restore_file_recovery, verified_file_recovery, FileRecovery,
 };
 
 /// Native-resolved display metadata. It is deliberately Serialize-only: a
