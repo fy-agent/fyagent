@@ -79,6 +79,33 @@ pub enum ProxyError {
     Internal(String),
 }
 
+impl ProxyError {
+    pub(super) fn status_code(&self) -> StatusCode {
+        match self {
+            Self::AlreadyRunning => StatusCode::CONFLICT,
+            Self::NotRunning
+            | Self::NoAvailableProvider
+            | Self::AllProvidersCircuitOpen
+            | Self::NoProvidersConfigured
+            | Self::ProviderUnhealthy(_)
+            | Self::MaxRetriesExceeded => StatusCode::SERVICE_UNAVAILABLE,
+            Self::UpstreamError { status, .. } => {
+                StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY)
+            }
+            Self::ForwardFailed(_) | Self::ResponseBodyTooLarge(_) => StatusCode::BAD_GATEWAY,
+            Self::ConfigError(_) | Self::InvalidRequest(_) => StatusCode::BAD_REQUEST,
+            Self::TransformError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::Timeout(_) | Self::StreamIdleTimeout(_) => StatusCode::GATEWAY_TIMEOUT,
+            Self::AuthError(_) => StatusCode::UNAUTHORIZED,
+            Self::BindFailed(_)
+            | Self::StopTimeout
+            | Self::StopFailed(_)
+            | Self::DatabaseError(_)
+            | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 impl IntoResponse for ProxyError {
     fn into_response(self) -> Response {
         let (status, body) = match &self {
@@ -86,8 +113,7 @@ impl IntoResponse for ProxyError {
                 status: upstream_status,
                 body: upstream_body,
             } => {
-                let http_status =
-                    StatusCode::from_u16(*upstream_status).unwrap_or(StatusCode::BAD_GATEWAY);
+                let http_status = self.status_code();
 
                 // 尝试解析上游响应体为 JSON，如果失败则包装为字符串
                 let error_body = if let Some(body_str) = upstream_body {
@@ -115,55 +141,8 @@ impl IntoResponse for ProxyError {
                 (http_status, error_body)
             }
             _ => {
-                let (http_status, message) = match &self {
-                    ProxyError::AlreadyRunning => (StatusCode::CONFLICT, self.to_string()),
-                    ProxyError::NotRunning => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
-                    ProxyError::BindFailed(_) => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                    }
-                    ProxyError::StopTimeout => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                    }
-                    ProxyError::StopFailed(_) => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                    }
-                    ProxyError::ForwardFailed(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
-                    ProxyError::NoAvailableProvider => {
-                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-                    }
-                    ProxyError::AllProvidersCircuitOpen => {
-                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-                    }
-                    ProxyError::NoProvidersConfigured => {
-                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-                    }
-                    ProxyError::ProviderUnhealthy(_) => {
-                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-                    }
-                    ProxyError::MaxRetriesExceeded => {
-                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-                    }
-                    ProxyError::DatabaseError(_) => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                    }
-                    ProxyError::ConfigError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-                    ProxyError::TransformError(_) => {
-                        (StatusCode::UNPROCESSABLE_ENTITY, self.to_string())
-                    }
-                    ProxyError::InvalidRequest(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-                    ProxyError::Timeout(_) => (StatusCode::GATEWAY_TIMEOUT, self.to_string()),
-                    ProxyError::StreamIdleTimeout(_) => {
-                        (StatusCode::GATEWAY_TIMEOUT, self.to_string())
-                    }
-                    ProxyError::AuthError(_) => (StatusCode::UNAUTHORIZED, self.to_string()),
-                    ProxyError::Internal(_) => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                    }
-                    ProxyError::ResponseBodyTooLarge(_) => {
-                        (StatusCode::BAD_GATEWAY, self.to_string())
-                    }
-                    ProxyError::UpstreamError { .. } => unreachable!(),
-                };
+                let http_status = self.status_code();
+                let message = self.to_string();
 
                 let error_body = json!({
                     "error": {
@@ -189,24 +168,4 @@ pub enum ErrorCategory {
     NonRetryable, // 认证失败、参数错误、4xx 错误
     #[allow(dead_code)]
     ClientAbort, // 客户端主动中断
-}
-
-/// 判断错误是否可重试
-#[allow(dead_code)]
-pub fn categorize_error(error: &reqwest::Error) -> ErrorCategory {
-    if error.is_timeout() || error.is_connect() {
-        return ErrorCategory::Retryable;
-    }
-
-    if let Some(status) = error.status() {
-        if status.is_server_error() {
-            ErrorCategory::Retryable
-        } else if status.is_client_error() {
-            ErrorCategory::NonRetryable
-        } else {
-            ErrorCategory::Retryable
-        }
-    } else {
-        ErrorCategory::Retryable
-    }
 }

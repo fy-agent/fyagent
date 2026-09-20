@@ -109,25 +109,6 @@ assuming that every checkout has the same configuration:
 Documentation and project tasks do not create, rename, or rewrite a
 contributor's remotes.
 
-## Repository and remote roles
-
-The canonical source of truth is [`fy-agent/fyagent`](https://github.com/fy-agent/fyagent).
-Remote names are local conventions, so verify the repository role instead of
-assuming that every checkout has the same configuration:
-
-- A maintainer checkout may use the canonical repository as its writable
-  `origin`.
-- An external contributor normally uses a personal fork as `origin` and adds
-  the canonical FyAgent repository as another fetch source. That source is
-  commonly named `upstream`, or `fyagent` when CC Switch maintenance reserves
-  `upstream` for its separate contract.
-- CC Switch synchronization uses a distinct fetch-only maintenance remote. It
-  is neither the canonical FyAgent repository nor a contributor's fork, and it
-  must never become a normal push target.
-
-Documentation and project tasks do not create, rename, or rewrite a
-contributor's remotes.
-
 ## Code Style
 
 - **Frontend**: Prettier formatting and strict TypeScript

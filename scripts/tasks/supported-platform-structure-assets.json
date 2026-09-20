@@ -183,7 +183,7 @@
     ],
     [
       "src-tauri/src/mcp/traework.rs",
-      "b59906679e7b89354997fe186c80443ae0a10d64ed76142572538cff1a053a32"
+      "2a452af2697f2f6bc0281fc5ce7722c572548cea417ae0e84becf8756b25e4e3"
     ],
     [
       "src-tauri/src/opencode_config.rs",
@@ -355,7 +355,7 @@
     ],
     [
       "src-tauri/src/settings.rs",
-      "02ddcaa503d348a988a17cb9aeee323f2ed6b706aad7f292485b8dfa3261758d"
+      "721d224a40efc77ad649745472e8b6c6158e16bf5fc5ea73571c0ee7988f9ffe"
     ],
     [
       "src-tauri/src/tray.rs",
@@ -439,7 +439,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "124fd5d09695b0e1132e18e43d74059d3eae4a4efea2247fd3aab3114fdb957a"
+      "6fc87fe3f0281d5ac23d9e96b5db1368a61288b9d16f3b97a383eddf86e7aacc"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

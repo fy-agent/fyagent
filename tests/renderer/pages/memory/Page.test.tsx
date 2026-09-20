@@ -742,7 +742,7 @@ describe("MemoryPage native business management", () => {
     expect(screen.queryByText("需要 FyAgent 桌面应用")).not.toBeInTheDocument();
   });
 
-  it("distinguishes real daily empty data and a daily list error", async () => {
+  it("opens today's draft from an empty daily list", async () => {
     const { ports } = statefulMemoryPorts({
       "openclaw-memory": "memory",
     });
@@ -752,9 +752,14 @@ describe("MemoryPage native business management", () => {
     await screen.findByRole("textbox", { name: "记忆内容" });
     await user.click(screen.getByRole("tab", { name: "每日记忆" }));
     expect(await screen.findByText("还没有每日记忆")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "创建或打开今天" }));
     expect(
-      screen.getAllByRole("button", { name: "创建或打开今天" }),
-    ).toHaveLength(2);
+      await screen.findByRole("heading", { name: localTodayFilename() }),
+    ).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "每日记忆内容" })).toHaveValue(
+      "",
+    );
+    expect(ports.memory.writeDailyFile).not.toHaveBeenCalled();
   });
 
   it("shows native operation errors for daily search and directory open", async () => {

@@ -688,7 +688,7 @@ describe("PromptsPage native business management", () => {
     renderPrompts(ports);
     await screen.findByText("Claude Code 还没有提示词");
 
-    await user.click(screen.getAllByRole("button", { name: "从文件导入" })[0]);
+    await user.click(screen.getByRole("button", { name: "从文件导入" }));
 
     expect(
       await screen.findByText("提示词已从文件导入失败：请稍后重试。"),

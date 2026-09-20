@@ -31,6 +31,8 @@ Provider、MCP、Prompt といった用語を先に理解する必要はあり�
 | 画面                | できること                                                                                                                                                             |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AI ソフトウェア設定 | QoderWork CN、TRAE Work CN、WorkBuddy、Grok Build、Codex、Claude Code、OpenCode をスキャンし、対応している場合はインストール、更新、起動、認証、リソース割り当てを行う |
+| 稼働状況            | ローカルのインストール・設定・接続状態を確認し、対応する操作へ進む |
+| アカウントと認証    | 公式アカウントを追加し、アプリとの接続や Codex のリクエスト元を管理する |
 | モデル管理          | 上記アプリのモデルと Provider 設定を確認・変更し、書き込み前のプレビューと保存後の結果を確認する                                                                       |
 | Skills 管理         | ローカルファイルまたは検索結果から Skills をインストールし、対応アプリへ割り当てる                                                                                     |
 | MCP 管理            | MCP サーバーを追加・インポート・管理し、対応アプリへ割り当てる                                                                                                         |
@@ -41,7 +43,7 @@ Provider、MCP、Prompt といった用語を先に理解する必要はあり�
 
 ## 画面
 
-以下は簡体字中国語の画面です。左側のナビゲーションから、AI ソフトウェア設定、モデル、Skills、MCP、プロンプト、メモリーを開きます。
+以下は簡体字中国語の画面です。左側のナビゲーションから、ソフトウェア設定、稼働状況、アカウント、モデル、Skills、MCP、プロンプト、メモリーを開きます。
 
 <table>
   <tr>
@@ -80,21 +82,21 @@ Provider、MCP、Prompt といった用語を先に理解する必要はあり�
 
 Windows 版は NSIS セットアップを使用し、MSI とポータブル ZIP は現在提供していません。macOS 版は Apple Developer ID で署名され、公証を受けています。
 
-インストール前にリリースノートを読み、公開されたチェックサム、`signing-status.json`、ビルド証明を確認してください。`NotSigned` は署名状態を示すもので、ファイルの安全性を証明するものではありません。各 OS の手順は[インストールガイド](docs/user-manual/ja/1-getting-started/1.2-installation.md)、変更履歴は[リリースノート一覧](docs/release-notes/README.md)を参照してください。
+インストール前にリリースノートを読み、公開されたチェックサム、`signing-status.json`、ビルド証明を確認してください。`NotSigned` は署名状態を示すもので、ファイルの安全性を証明するものではありません。各 OS の手順は[インストールガイド](docs/user-manual/ja/installation.md)、変更履歴は[リリースノート一覧](docs/release-notes/README.md)を参照してください。
 
 ## よくある質問
 
 <details>
 <summary><strong>FyAgent のデータはどこに保存されますか？</strong></summary>
 
-既定ではローカル端末の `~/.fyagent` に保存されます。正確な場所とバックアップ方法は[設定ファイル](docs/user-manual/ja/6-faq/6.1-config-files.md)をご覧ください。
+既定ではローカル端末の `~/.fyagent` に保存されます。正確な場所とバックアップ方法は[設定ファイル](docs/user-manual/ja/troubleshooting.md)をご覧ください。
 
 </details>
 
 <details>
 <summary><strong>インストールや設定について、どこで質問できますか？</strong></summary>
 
-[FAQ マニュアル](docs/user-manual/ja/6-faq/6.2-questions.md)を確認したうえで、FyAgent のバージョン、OS、関連アプリ、試した内容を [Q&A](https://github.com/fy-agent/fyagent/discussions/categories/q-a) に投稿してください。再現可能な不具合は [Bug Report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml) を利用してください。
+[FAQ マニュアル](docs/user-manual/ja/troubleshooting.md)を確認したうえで、FyAgent のバージョン、OS、関連アプリ、試した内容を [Q&A](https://github.com/fy-agent/fyagent/discussions/categories/q-a) に投稿してください。再現可能な不具合は [Bug Report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml) を利用してください。
 
 </details>
 

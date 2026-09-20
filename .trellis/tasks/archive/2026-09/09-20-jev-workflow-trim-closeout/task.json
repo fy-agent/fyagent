@@ -1,0 +1,29 @@
+{
+  "id": "jev-workflow-trim-closeout",
+  "name": "jev-workflow-trim-closeout",
+  "title": "Close out Jev workflow cleanup",
+  "description": "Record the verified Jev-assisted FyAgent cleanup after implementation, bind this closeout session, validate task context, and complete prearchive and postarchive contracts.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "trellis-closeout",
+  "package": null,
+  "priority": "P2",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-09-20",
+  "completedAt": "2026-09-20",
+  "branch": "codex/jev-workflow-trim-20260920",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "record_kind": "post-implementation-closeout",
+    "implementation_head": "664b8c16b4825f88a9e5cff0d392c0b09d8aaf73"
+  }
+}

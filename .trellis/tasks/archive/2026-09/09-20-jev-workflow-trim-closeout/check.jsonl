@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/trellis-prearchive-gate.md", "reason": "Owns direct-session prearchive and canonical postarchive checks"}
+{"file": ".trellis/tasks/09-20-jev-workflow-trim-closeout/completion.md", "reason": "Records completed implementation checks and exact revision boundaries"}

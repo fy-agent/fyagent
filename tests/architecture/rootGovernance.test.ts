@@ -143,7 +143,11 @@ describe("repository configuration ownership", () => {
     expect(settings.performance).toMatchObject({
       workers: 1,
       retries: 0,
-      use: { trace: "off", viewport: { width: 1232, height: 700 } },
+      use: {
+        channel: "chromium",
+        trace: "off",
+        viewport: { width: 1232, height: 700 },
+      },
       webServer: { reuseExistingServer: false },
     });
     expect(settings.performance.testMatch).toEqual(

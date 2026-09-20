@@ -48,8 +48,8 @@ Issue / planning context (if applicable):
 
 - [ ] `mise run check` passes on the current host / 当前宿主完整门禁通过
 - [ ] Tests cover observable success and failure behavior / 测试覆盖可观察成功与失败路径
-- [ ] User-visible text updates all four locales and accessibility states /
-      用户可见文本已同步四份 locale 与无障碍状态
+- [ ] User-visible text follows the Simplified Chinese UI and preserves accessibility /
+      用户可见文本符合简体中文界面，并保留无障碍语义
 - [ ] No secret, certificate, personal config, `.venv`, or user data is included /
       未包含 secret、证书、个人配置、`.venv` 或用户数据
 - [ ] Claims distinguish local checks from native runners and published Release

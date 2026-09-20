@@ -812,15 +812,6 @@ function DailyView({
         <EmptyState
           title="还没有每日记忆"
           description="打开并保存今天的记录后会自动创建。"
-          actions={
-            <Button
-              className="fy-control-button-primary"
-              onClick={() => selectFile(todayFilename())}
-              dialogOriginRef={originRef}
-            >
-              创建或打开今天
-            </Button>
-          }
         />
       ) : debouncedSearch &&
         !searchQuery.isFetching &&

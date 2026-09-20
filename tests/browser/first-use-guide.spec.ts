@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 import {
   expectHealthyPage,
@@ -11,6 +11,28 @@ import {
   installRichTauriFeatureFixture,
 } from "./support/features";
 
+async function expectRecommendationIcons(guide: Locator, count: number) {
+  const frames = guide.locator('.fy-catalog-brand-frame[data-size="detail"]');
+  await expect(frames).toHaveCount(count);
+  for (const frame of await frames.all()) {
+    await expect(frame).toHaveCSS("width", "64px");
+    await expect(frame).toHaveCSS("height", "64px");
+    const image = frame.locator("img");
+    await expect(image).toHaveCSS("width", "48px");
+    await expect(image).toHaveCSS("height", "48px");
+    await expect
+      .poll(() =>
+        image.evaluate(
+          (node) =>
+            node instanceof HTMLImageElement &&
+            node.complete &&
+            node.naturalWidth > 0,
+        ),
+      )
+      .toBe(true);
+  }
+}
+
 for (const choice of [
   { label: "日常办公", names: ["QoderWork CN", "TRAE Work CN", "WorkBuddy"] },
   {
@@ -21,7 +43,7 @@ for (const choice of [
 ]) {
   test(`first use recommends ${choice.label} and persists completion`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     await installRichTauriFeatureFixture(page, {
       firstUseGuideState: "pending",
     });
@@ -37,23 +59,20 @@ for (const choice of [
     await expect(guide.getByRole("heading", { level: 2 })).toHaveText(
       choice.names,
     );
-    const recommendationIcons = guide.locator(".fy-catalog-brand-frame");
-    for (const icon of await recommendationIcons.all()) {
-      await expect(icon).toHaveCSS("width", "64px");
-      await expect(icon).toHaveCSS("height", "64px");
-      await expect(icon.locator("img")).toHaveCSS("width", "48px");
-      await expect(icon.locator("img")).toHaveCSS("height", "48px");
-    }
+    await expectRecommendationIcons(guide, choice.names.length);
+    await page.screenshot({
+      path: testInfo.outputPath(`guide-${choice.label}-recommendations.png`),
+    });
     await expectNoHorizontalOverflow(page);
     const complete = guide.getByRole("button", { name: "查看全部软件" });
-    const skip = guide.getByRole("button", { name: "跳过引导" });
+    const reselect = guide.getByRole("button", { name: "重新选择" });
     // Center scrolled content instead of leaving it on a fractional clip edge.
     for (const item of [
       ...choice.names.map((name) =>
         guide.getByRole("heading", { name, exact: true }),
       ),
       complete,
-      skip,
+      reselect,
     ]) {
       await item.evaluate((node) =>
         node.scrollIntoView({
@@ -65,7 +84,7 @@ for (const choice of [
       await expect(item).toBeInViewport({ ratio: 1 });
     }
     await complete.click({ trial: true });
-    await skip.click({ trial: true });
+    await reselect.click({ trial: true });
     const calls = await featureFixtureCalls(page);
     expect(calls.map((call) => call.command)).not.toContain(
       "get_agent_install_readiness",
@@ -101,9 +120,7 @@ for (const choice of [
   });
 }
 
-test("skip works before and after a recommendation, and unfinished onboarding resumes", async ({
-  page,
-}) => {
+test("unfinished onboarding resumes and can be skipped", async ({ page }) => {
   await installRichTauriFeatureFixture(page, { firstUseGuideState: "pending" });
   const health = monitorPageHealth(page);
   await openRendererPage(page, "/agents");
@@ -129,11 +146,16 @@ for (const theme of ["light", "dark"] as const) {
     // Option-Tab reaches buttons even when ordinary Tab skips them on macOS.
     const tabKey = browserName === "webkit" ? "Alt+Tab" : "Tab";
     await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    await page.addInitScript(
+      (value) => localStorage.setItem("fyagent-theme", value),
+      theme,
+    );
     await installRichTauriFeatureFixture(page, {
       firstUseGuideState: "pending",
     });
     const health = monitorPageHealth(page);
     await openRendererPage(page, "/agents");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     const guide = page.getByRole("region", { name: "首次使用引导" });
     await expect(guide).toBeVisible();
     for (const viewport of [
@@ -161,14 +183,16 @@ for (const theme of ["light", "dark"] as const) {
     await expect(
       guide.getByRole("heading", { name: "推荐你从这些软件开始" }),
     ).toBeFocused();
+    await expectRecommendationIcons(guide, 3);
     await page.screenshot({
       path: testInfo.outputPath(`guide-recommendations-${theme}.png`),
     });
     await page.keyboard.press(tabKey);
     await expect(guide.getByRole("button", { name: "重新选择" })).toBeFocused();
     await page.keyboard.press(tabKey);
-    await page.keyboard.press(tabKey);
-    await expect(guide.getByRole("button", { name: "跳过引导" })).toBeFocused();
+    await expect(
+      guide.getByRole("button", { name: "查看全部软件" }),
+    ).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(
       page.getByRole("heading", { name: "我的 AI 软件" }),

@@ -116,6 +116,9 @@ the unified commands.
 
 ### CRUD and assignment ordering
 
+- Single-server operations load the named row through
+  `Database::get_mcp_server(id)`. Catalogue reads and full synchronization use
+  `get_all_mcp_servers`.
 - `upsert_server` acquires the Codex/provider writer lock, removes every target
   disabled relative to the previous row, saves the new row, and then projects
   the server to every enabled target.

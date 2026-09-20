@@ -150,12 +150,10 @@ McpPort.toggleApp(serverId, targetId, enabled) -> void
 - `AgentMcpSection` binds the same closed Agent assignment target, uses the MCP
   server ID as the pending item, calls `ports.mcp.toggleApp`, refetches the MCP
   map, and reads `server.apps[target]`.
-- These two current `readValue` adapters coerce a missing item/flag with
-  `Boolean(...)` to `false`. The helper can reject `undefined`, but these
-  adapters do not preserve it: an absent row can match a requested disable.
-  Do not claim explicit row-presence validation at these call sites. Changing
-  that behavior requires a separate implementation and missing-row regression,
-  not a documentation assertion that it already happens.
+- Both `readValue` adapters preserve `undefined` for a missing item or target
+  flag. Confirmation requires the saved boolean to match the requested value;
+  a missing row or flag uses the existing rejection feedback, including on disable.
+- Each section header owns its management action, including when its list is empty.
 - Management pages may use `AssignmentPanel` for a resource-wide target matrix,
   but the panel remains presentation-only. Real mutations still require the
   domain Port and authoritative reread behavior documented here or in the
@@ -211,8 +209,8 @@ Required assertion owners include:
   one callback with correct ID/value/source, and disabled behavior. Browser
   density tests verify actual sizing, grouping and repeated transitions;
 - Agent Skill/MCP section tests: domain Port wiring, fixed assignment target,
-  stable resource IDs, feature-specific reread/readValue, warning copy, and no
-  direct native invocation;
+  stable resource IDs, explicit disabled readback, missing records/target flags,
+  feature-specific reread/readValue, warning copy, and no direct native invocation;
 - Renderer platform tests: exact valid target-ID transport; native command tests:
   rejection of unknown IDs before mutation. Add renderer-parser rejection tests
   only when such a runtime parser actually becomes an owner;

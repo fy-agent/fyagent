@@ -227,13 +227,12 @@ export function sortManagedAuthAccounts(
 
 export function loginStagePresentation(stage: ManagedAuthLoginStage): {
   title: string;
-  description: string;
+  description?: string;
 } {
   switch (stage) {
     case "preparing":
       return {
         title: "正在准备官方登录",
-        description: "正在创建受控的登录会话。",
       };
     case "opening_browser":
       return {
@@ -247,44 +246,38 @@ export function loginStagePresentation(stage: ManagedAuthLoginStage): {
       };
     case "exchanging_code":
       return {
-        title: "已收到授权，正在验证",
-        description: "正在向官方服务确认本次登录。",
+        title: "正在确认官方登录",
       };
     case "saving_account":
       return {
-        title: "正在安全保存账号",
-        description: "账号凭据不会显示在此页面。",
+        title: "正在保存账号",
       };
     case "connecting_consumer":
       return {
         title: "正在连接软件",
-        description: "正在更新目标软件的登录连接。",
       };
     case "verifying":
       return {
-        title: "正在确认最终状态",
-        description: "正在检查账号是否已保存。",
+        title: "正在检查账号保存结果",
       };
     case "completed":
       return {
         title: "账号已保存",
-        description:
-          "尚未替换软件的认证文件。请在软件连接中检查文件影响并确认连接。",
+        description: "请在软件连接中检查文件更改并确认连接。",
       };
     case "partial":
       return {
-        title: "账号已安全保存",
+        title: "账号已保存",
         description: "仍有软件连接需要处理。",
       };
     case "failed":
       return {
         title: "登录未完成",
-        description: "没有确认成功的连接不会被标记为已完成。",
+        description: "请重新登录。",
       };
     case "cancelled":
       return {
         title: "登录已取消",
-        description: "未完成的登录不会改变现有账号连接。",
       };
     case "expired":
       return {

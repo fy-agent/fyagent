@@ -8,12 +8,12 @@ FyAgent is a source-available project maintained by volunteers. We're happy to h
 
 ### Before Asking
 
-1. **Read the [FAQ](https://github.com/fy-agent/fyagent#faq)** — most common questions are answered there.
+1. **Read the [troubleshooting guide](docs/user-manual/en/troubleshooting.md)** for common installation and configuration issues.
 2. **Search [existing issues](https://github.com/fy-agent/fyagent/issues)** (including closed ones) — someone may have had the same question.
 
 ### Asking a Question
 
-- **Usage or configuration questions**: [Open a Question issue](https://github.com/fy-agent/fyagent/issues/new?template=question.yml)
+- **Usage or configuration questions**: [Ask in Q&A](https://github.com/fy-agent/fyagent/discussions/categories/q-a)
 - **General discussion**: [GitHub Discussions](https://github.com/fy-agent/fyagent/discussions)
 
 ### Reporting Problems
@@ -39,12 +39,12 @@ FyAgent 是一个由志愿者维护的源码可用项目。我们很乐意提供
 
 ### 提问之前
 
-1. **阅读 [常见问题](https://github.com/fy-agent/fyagent#常见问题)** — 大多数常见问题都已在其中解答。
+1. **阅读[问题处理指南](docs/user-manual/zh/troubleshooting.md)**，查找常见安装与配置问题的处理方法。
 2. **搜索 [已有的 Issue](https://github.com/fy-agent/fyagent/issues)**（包括已关闭的） — 可能已经有人问过相同的问题。
 
 ### 提问
 
-- **使用或配置问题**：[提交问题 Issue](https://github.com/fy-agent/fyagent/issues/new?template=question.yml)
+- **使用或配置问题**：[前往 Q&A 提问](https://github.com/fy-agent/fyagent/discussions/categories/q-a)
 - **一般讨论**：[GitHub 讨论区](https://github.com/fy-agent/fyagent/discussions)
 
 ### 报告问题

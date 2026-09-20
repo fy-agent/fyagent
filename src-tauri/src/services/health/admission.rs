@@ -1,5 +1,5 @@
 //! The caller's deadline never releases capacity owned by an unfinished read.
-use super::{collect, AgentHealthSnapshot};
+use super::{collect, configuration, AgentHealthSnapshot};
 use crate::{
     services::{
         external_agents::AgentCatalogId,
@@ -24,12 +24,22 @@ pub(crate) async fn read<B: SecretBackend + 'static>(
     service: Arc<ManagedAuthService<B>>,
 ) -> Result<AgentHealthSnapshot, &'static str> {
     run_admitted(&HEALTH_READS, CALLER_DEADLINE, async move {
-        let overview = tauri::async_runtime::spawn_blocking(move || service.observe_overview())
-            .await
-            .unwrap_or_else(|_| ManagedAuthOverview::unavailable());
+        let overview = read_overview(agent, move || service.observe_overview()).await;
         collect(agent, &state, overview).await
     })
     .await
+}
+
+async fn read_overview(
+    agent: AgentCatalogId,
+    read: impl FnOnce() -> ManagedAuthOverview + Send + 'static,
+) -> ManagedAuthOverview {
+    if configuration::app_type(agent).is_none() {
+        return ManagedAuthOverview::unavailable();
+    }
+    tauri::async_runtime::spawn_blocking(read)
+        .await
+        .unwrap_or_else(|_| ManagedAuthOverview::unavailable())
 }
 
 async fn run_admitted<T: Send + 'static>(
@@ -58,6 +68,69 @@ async fn run_admitted<T: Send + 'static>(
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn health_vendor_checks_skip_managed_auth_overview() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        for agent in [
+            AgentCatalogId::QoderWork,
+            AgentCatalogId::TraeWork,
+            AgentCatalogId::WorkBuddy,
+        ] {
+            let reader_calls = reads.clone();
+            read_overview(agent, move || {
+                reader_calls.fetch_add(1, Ordering::SeqCst);
+                ManagedAuthOverview::unavailable()
+            })
+            .await;
+        }
+        assert_eq!(reads.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn health_configuration_checks_retain_managed_auth_overview() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        for agent in [
+            AgentCatalogId::Codex,
+            AgentCatalogId::ClaudeCode,
+            AgentCatalogId::GrokBuild,
+            AgentCatalogId::OpenCode,
+        ] {
+            let mut expected = ManagedAuthOverview::unavailable();
+            expected.checked_at = "2026-09-20T00:00:00.000Z".into();
+            expected.providers[0].available = true;
+            let result = expected.clone();
+            let reader_calls = reads.clone();
+            let observed = read_overview(agent, move || {
+                reader_calls.fetch_add(1, Ordering::SeqCst);
+                result
+            })
+            .await;
+            assert_eq!(
+                serde_json::to_value(observed).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+        }
+        assert_eq!(reads.load(Ordering::SeqCst), 4);
+    }
+
+    #[tokio::test]
+    async fn health_failed_overview_reader_retains_unavailable_fallback() {
+        for agent in [
+            AgentCatalogId::Codex,
+            AgentCatalogId::ClaudeCode,
+            AgentCatalogId::GrokBuild,
+            AgentCatalogId::OpenCode,
+        ] {
+            let observed = read_overview(agent, || panic!("failed overview reader")).await;
+            let mut expected = ManagedAuthOverview::unavailable();
+            expected.checked_at.clone_from(&observed.checked_at);
+            assert_eq!(
+                serde_json::to_value(observed).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+        }
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn health_timeout_keeps_admission_until_blocking_read_actually_finishes() {

@@ -172,10 +172,10 @@ Port/query layer but are not the current Skill discovery UI path.
 
 ### Paths, links, copy, and evidence
 
-- Installed detail shows source once in a header badge, optional description
-  only when supplied, and one flat installation section containing repository,
-  directory, dates and links. The existing assignment switches are the only
-  detailed assignment presentation; there is no duplicate read-only app card.
+- Installed detail shows source in a header badge and a description when
+  supplied. Repository, directory, dates and links share one installation
+  section, collapsed by default and expandable by keyboard. Main actions and
+  assignment switches remain directly visible.
 - Installed detail intentionally exposes `skill.path` when observed, otherwise
   `directory`, through `CopyablePath(revealValue=false)`. This is explicit
   user-initiated path UI; do not claim paths never enter the renderer.

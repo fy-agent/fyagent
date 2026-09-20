@@ -213,6 +213,13 @@ describe("MCP management", () => {
     expect(screen.getByRole("region", { name: "安装信息" })).toHaveTextContent(
       "npx",
     );
+    const installationToggle = screen.getByRole("button", { name: "安装信息" });
+    expect(installationToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(detail).getByText("npx").closest("[aria-hidden=true]"),
+    ).not.toBeNull();
+    await user.click(installationToggle);
+    expect(installationToggle).toHaveAttribute("aria-expanded", "true");
     appearsBefore(
       screen.getByRole("button", { name: "编辑" }),
       screen.getByRole("region", { name: "安装信息" }),
@@ -272,7 +279,7 @@ describe("MCP management", () => {
 
     renderFeature(<McpPage />, ports);
     await screen.findByText("还没有 MCP 服务");
-    await user.click(screen.getAllByRole("button", { name: "导入现有" })[0]);
+    await user.click(screen.getByRole("button", { name: "导入现有" }));
 
     expect(await screen.findByText("没有发现可导入的 MCP")).toBeVisible();
     expect(
@@ -344,7 +351,7 @@ describe("MCP management", () => {
 
     renderFeature(<McpPage />, ports);
     await screen.findByRole("heading", { name: "Docs server" });
-    await user.click(screen.getAllByRole("button", { name: "导入现有" })[0]);
+    await user.click(screen.getByRole("button", { name: "导入现有" }));
     expect(
       await screen.findByText(
         "MCP 配置中的敏感字段未通过校验，请检查对应字段格式",
@@ -456,7 +463,7 @@ describe("MCP management", () => {
 
     renderFeature(<McpPage />, ports);
     await screen.findByText("还没有 MCP 服务");
-    await user.click(screen.getAllByRole("button", { name: "导入现有" })[0]);
+    await user.click(screen.getByRole("button", { name: "导入现有" }));
 
     expect(
       await screen.findByText(
@@ -467,6 +474,7 @@ describe("MCP management", () => {
   });
 
   it("redacts secret-bearing MCP URLs and arguments in ordinary details", async () => {
+    const user = userEvent.setup();
     const secret = "amap-query-secret";
     const server: McpServer = {
       id: "amap",
@@ -485,6 +493,7 @@ describe("MCP management", () => {
     expect(
       await screen.findByRole("heading", { name: "高德地图 MCP" }),
     ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "安装信息" }));
     expect(document.body).not.toHaveTextContent(secret);
     expect(document.body).not.toHaveTextContent("feishu-app-secret");
     expect(document.body).toHaveTextContent(
@@ -533,6 +542,10 @@ describe("MCP management", () => {
     expect(
       await screen.findByRole("heading", { name: "node_repl" }),
     ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "复制安装目录" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "安装信息" }));
     const copyButton = screen.getByRole("button", { name: "复制安装目录" });
     const pathControl = copyButton.closest(".fy-feature-path");
     expect(pathControl).not.toBeNull();
@@ -984,7 +997,7 @@ describe("Skills management", () => {
     expect(screen.getByText("1 项失败，1 项成功")).toBeVisible();
   });
 
-  it("shows source once, compact metadata and editable assignments in skill details", async () => {
+  it("keeps skill actions visible and reveals installation metadata on demand", async () => {
     const user = userEvent.setup();
     const remote: InstalledSkill = {
       ...installedSkill("review-skill", "Review Skill"),
@@ -1021,6 +1034,14 @@ describe("Skills management", () => {
     expect(screen.getByRole("region", { name: "安装信息" })).toHaveTextContent(
       "acme/skills",
     );
+    const installationToggle = screen.getByRole("button", { name: "安装信息" });
+    expect(installationToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", { name: "复制安装目录" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "卸载" })).toBeVisible();
+    await user.click(installationToggle);
+    expect(installationToggle).toHaveAttribute("aria-expanded", "true");
     expect(
       within(screen.getByRole("region", { name: "Skill 详情" })).getByText(
         "Review changes in pull requests",
@@ -1054,11 +1075,10 @@ describe("Skills management", () => {
     });
     await user.click(screen.getByRole("button", { name: "复制安装目录" }));
     expect(writeText).toHaveBeenCalledWith(installPath);
+    await user.click(installationToggle);
+    expect(installationToggle).toHaveAttribute("aria-expanded", "false");
     expect(
-      screen.queryByRole("button", { name: "展开" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "收起" }),
+      screen.queryByRole("button", { name: "复制安装目录" }),
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Local Notes/ }));
@@ -1068,6 +1088,11 @@ describe("Skills management", () => {
     for (const assignment of screen.getAllByRole("switch")) {
       expect(assignment).not.toBeChecked();
     }
+    expect(screen.getByRole("button", { name: "安装信息" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    await user.click(screen.getByRole("button", { name: "安装信息" }));
     expect(
       screen.getByRole("region", { name: "安装信息" }),
     ).not.toHaveTextContent("安装时间");
@@ -1077,6 +1102,11 @@ describe("Skills management", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Market Review/ }));
+    expect(screen.getByRole("button", { name: "安装信息" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    await user.click(screen.getByRole("button", { name: "安装信息" }));
     expect(
       within(screen.getByRole("region", { name: "Skill 详情" })).getAllByText(
         "Skill 市场",

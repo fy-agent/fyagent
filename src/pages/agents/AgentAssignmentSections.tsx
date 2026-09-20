@@ -25,7 +25,6 @@ import {
 import { AgentSectionHeader } from "./AgentSectionHeader";
 
 type Feedback = {
-  itemId: string;
   tone: "info" | "warning";
   text: string;
 };
@@ -55,11 +54,7 @@ export function AgentSkillsSection({
       return { data: readback.data, error: readback.error };
     },
     readValue: (snapshot, skillId: string) =>
-      Boolean(
-        snapshot?.find((skill) => skill.id === skillId)?.apps[
-          entry.assignmentId
-        ],
-      ),
+      snapshot?.find((skill) => skill.id === skillId)?.apps[entry.assignmentId],
   });
 
   const toggle = async (skillId: string, enabled: boolean) => {
@@ -67,7 +62,6 @@ export function AgentSkillsSection({
     const outcome = await assignment.run(skillId, enabled);
     if (outcome.status === "confirmed") {
       setFeedback({
-        itemId: skillId,
         tone: "info",
         text: enabled
           ? `已在 ${entry.displayName} 中启用此 Skill。`
@@ -75,7 +69,6 @@ export function AgentSkillsSection({
       });
     } else if (outcome.status === "rejected") {
       setFeedback({
-        itemId: skillId,
         tone: "warning",
         text: "无法确认 Skill 设置是否已更新。请刷新后重试。",
       });
@@ -124,7 +117,6 @@ export function AgentSkillsSection({
         <EmptyState
           title="还没有可用的 Skill"
           description="请先到 Skills 页面安装或导入 Skill。"
-          actions={<Button onClick={onOpenManagement}>管理 Skills</Button>}
         />
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的 Skill" description="请调整搜索关键词。" />
@@ -208,7 +200,7 @@ export function AgentMcpSection({
       return { data: readback.data, error: readback.error };
     },
     readValue: (snapshot, serverId: string) =>
-      Boolean(snapshot?.[serverId]?.apps[entry.assignmentId]),
+      snapshot?.[serverId]?.apps[entry.assignmentId],
   });
 
   const toggle = async (serverId: string, enabled: boolean) => {
@@ -216,7 +208,6 @@ export function AgentMcpSection({
     const outcome = await assignment.run(serverId, enabled);
     if (outcome.status === "confirmed") {
       setFeedback({
-        itemId: serverId,
         tone: "info",
         text: enabled
           ? `已在 ${entry.displayName} 中启用此 MCP。`
@@ -227,7 +218,6 @@ export function AgentMcpSection({
       }
     } else if (outcome.status === "rejected") {
       setFeedback({
-        itemId: serverId,
         tone: "warning",
         text: "无法确认 MCP 设置是否已更新。请刷新后重试。",
       });
@@ -276,7 +266,6 @@ export function AgentMcpSection({
         <EmptyState
           title="还没有可用的 MCP"
           description="请先到 MCP 页面导入或添加服务器。"
-          actions={<Button onClick={onOpenManagement}>管理 MCP</Button>}
         />
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的 MCP" description="请调整搜索关键词。" />

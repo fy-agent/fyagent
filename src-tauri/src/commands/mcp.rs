@@ -82,10 +82,7 @@ pub async fn upsert_mcp_server_in_config(
     let app_ty = AppType::from_str(&app).map_err(|e| e.to_string())?;
 
     // 读取现有的服务器（如果存在）
-    let existing_server = {
-        let servers = state.db.get_all_mcp_servers().map_err(|e| e.to_string())?;
-        servers.get(&id).cloned()
-    };
+    let existing_server = state.db.get_mcp_server(&id).map_err(|e| e.to_string())?;
 
     // 构建新的统一服务器结构
     let mut new_server = if let Some(mut existing) = existing_server {

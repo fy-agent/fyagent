@@ -27,11 +27,7 @@ export {
   createMcpAssignments,
   createSkillAssignments,
 } from "./assignments";
-export type {
-  AppAssignments,
-  McpAssignments,
-  SkillAssignments,
-} from "./assignments";
+export type { McpAssignments, SkillAssignments } from "./assignments";
 
 export {
   SKILL_DISCOVERY_MAX_PAGE_SIZE,

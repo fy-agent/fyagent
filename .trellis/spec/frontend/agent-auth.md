@@ -178,12 +178,10 @@ The page never invokes native Auth commands directly.
   operation and require explicit confirmation. Cancelling calls no session
   mutation; rapid confirmation admits only one start. The dialog stays mounted
   for presence/focus restoration and uses the initiating control's origin ref.
-- The notice distinguishes vendor authorization from FyAgent file replacement:
-  Claude manages its credential storage (including macOS Keychain); FyAgent
-  does not copy those credentials or claim a backup can revoke/reverse an
-  official grant. No Claude Desktop install or launch occurs. Formal Windows
-  CLI authentication remains unavailable without the reviewed ordinary-user
-  auth boundary, independently of CLI installation support.
+- The confirmation states that restoring the account requires another login.
+  An operation already started continues after the window closes or waiting
+  stops. Native authentication behavior is owned by
+  [External Agent Auth](../backend/external-agent-auth.md).
 
 - When enabled, the hook first calls `getActiveSession(agentId)` so a remounted
   page resumes a native session instead of launching a duplicate flow.

@@ -148,14 +148,15 @@ export function FirstUseGuide({
               {isPending ? "正在保存…" : "查看全部软件"}
             </Button>
           </div>
-        ) : null}
-        <Button
-          className="fy-first-use-skip"
-          disabled={isPending || !visible}
-          onClick={() => void dismiss()}
-        >
-          跳过引导
-        </Button>
+        ) : (
+          <Button
+            className="fy-first-use-skip"
+            disabled={isPending || !visible}
+            onClick={() => void dismiss()}
+          >
+            跳过引导
+          </Button>
+        )}
       </footer>
     </section>
   );

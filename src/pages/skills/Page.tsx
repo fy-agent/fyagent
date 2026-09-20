@@ -1,3 +1,4 @@
+import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -39,6 +40,12 @@ import {
   type SkillTargetId,
 } from "../../shared/features/types";
 import { Button } from "../../shared/ui/Button";
+import {
+  Collapsible,
+  CollapsibleCaret,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../../shared/ui/Collapsible";
 import { AnimatePresence } from "../../shared/ui/motion";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import { useDialogState } from "../../shared/ui/useDialogState";
@@ -186,6 +193,7 @@ function Detail({
   onUninstall: () => void;
   showAssignment: boolean;
 }) {
+  const [installationOpen, setInstallationOpen] = useState(false);
   const repo =
     skill.repoOwner && skill.repoName
       ? `${skill.repoOwner}/${skill.repoName}`
@@ -231,50 +239,69 @@ function Detail({
         </div>
       </div>
       <div className="fy-feature-info-grid">
-        <section className="fy-feature-info-card" aria-label="安装信息">
-          <h3>安装信息</h3>
-          <dl className="fy-feature-definition">
-            {repo && !market && (
-              <>
-                <dt>仓库</dt>
-                <dd>{repo}</dd>
-              </>
-            )}
-            {skill.repoBranch && !market && (
-              <>
-                <dt>分支</dt>
-                <dd>{skill.repoBranch}</dd>
-              </>
-            )}
-            <dt>安装目录</dt>
-            <dd>
-              <CopyablePath
-                revealValue={false}
-                value={skillInstallPath(skill)}
-              />
-            </dd>
-            {skill.installedAt > 0 && (
-              <>
-                <dt>安装时间</dt>
-                <dd>{formatSkillTimestamp(skill.installedAt)}</dd>
-              </>
-            )}
-            <dt>最近更新</dt>
-            <dd>{formatSkillTimestamp(skill.updatedAt)}</dd>
-          </dl>
-          {(repoUrl || skill.readmeUrl) && (
-            <div className="fy-feature-actions">
-              {repoUrl && (
-                <ExternalLinkButton url={repoUrl}>打开仓库</ExternalLinkButton>
+        <Collapsible
+          open={installationOpen}
+          onOpenChange={setInstallationOpen}
+          asChild
+        >
+          <section className="fy-feature-info-card" aria-label="安装信息">
+            <h3>
+              <CollapsibleTrigger asChild>
+                <Button>
+                  安装信息
+                  <CollapsibleCaret open={installationOpen}>
+                    <CaretDownIcon size={16} />
+                  </CollapsibleCaret>
+                </Button>
+              </CollapsibleTrigger>
+            </h3>
+            <CollapsibleContent open={installationOpen}>
+              <dl className="fy-feature-definition">
+                {repo && !market && (
+                  <>
+                    <dt>仓库</dt>
+                    <dd>{repo}</dd>
+                  </>
+                )}
+                {skill.repoBranch && !market && (
+                  <>
+                    <dt>分支</dt>
+                    <dd>{skill.repoBranch}</dd>
+                  </>
+                )}
+                <dt>安装目录</dt>
+                <dd>
+                  <CopyablePath
+                    revealValue={false}
+                    value={skillInstallPath(skill)}
+                  />
+                </dd>
+                {skill.installedAt > 0 && (
+                  <>
+                    <dt>安装时间</dt>
+                    <dd>{formatSkillTimestamp(skill.installedAt)}</dd>
+                  </>
+                )}
+                <dt>最近更新</dt>
+                <dd>{formatSkillTimestamp(skill.updatedAt)}</dd>
+              </dl>
+              {(repoUrl || skill.readmeUrl) && (
+                <div className="fy-feature-actions">
+                  {repoUrl && (
+                    <ExternalLinkButton url={repoUrl}>
+                      打开仓库
+                    </ExternalLinkButton>
+                  )}
+                  {skill.readmeUrl && (
+                    <ExternalLinkButton url={skill.readmeUrl}>
+                      查看说明
+                    </ExternalLinkButton>
+                  )}
+                </div>
               )}
-              {skill.readmeUrl && (
-                <ExternalLinkButton url={skill.readmeUrl}>
-                  查看说明
-                </ExternalLinkButton>
-              )}
-            </div>
-          )}
-        </section>
+            </CollapsibleContent>
+          </section>
+        </Collapsible>
       </div>
       {showAssignment && (
         <div className="fy-feature-inline-assignment">

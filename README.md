@@ -28,21 +28,23 @@ FyAgent 面向正在使用 AI Agent、AI Worker 和智能助手的人。它把�
 
 ## 当前功能
 
-| 区域        | 可以做什么                                                                                                                                                          |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 客户项目    | 为 FDE 按客户保存工作说明和资源引用，装配版本化交付包，记录分阶段检查结果并导出交接材料；详见[客户项目与交付](docs/user-manual/zh/4-extensions/4.7-fde-projects.md) |
-| AI 软件配置 | 扫描 QoderWork CN、TRAE Work CN、WorkBuddy、Grok Build、Codex、Claude Code 和 OpenCode；在支持时提供安装、更新、启动、认证和资源分配入口                            |
-| 模型管理    | 为上述软件查看或修改模型与 Provider 设置；写入前预览变更，并在保存后检查结果                                                                                        |
-| Skills 管理 | 从本地或发现页安装 Skills，并分配给支持的软件                                                                                                                       |
-| MCP 管理    | 添加、导入和管理 MCP 服务，并分配给支持的软件                                                                                                                       |
-| 提示词管理  | 管理 Grok Build、Codex、Claude Code、OpenCode、Gemini、OpenClaw 和 Hermes 的提示词                                                                                  |
-| 记忆模块    | 编辑 OpenClaw 与 Hermes 的长期记忆文件，以及 OpenClaw 的每日记忆                                                                                                    |
+| 区域        | 可以做什么                                                                                                                               |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 客户项目    | 按客户保存工作说明和资源引用，整理交付包，记录检查结果并导出交接材料；详见[客户项目与交付](docs/user-manual/zh/4-extensions/4.7-fde-projects.md) |
+| AI 软件配置 | 扫描 QoderWork CN、TRAE Work CN、WorkBuddy、Grok Build、Codex、Claude Code 和 OpenCode；在支持时提供安装、更新、启动、认证和资源分配入口 |
+| 运行状态    | 检查软件安装、配置和连接状态，并进入对应的处理入口 |
+| 账号与认证  | 添加官方账号、管理软件连接，并选择 Codex 请求来源 |
+| 模型管理    | 为上述软件查看或修改模型与 Provider 设置；写入前预览变更，并在保存后检查结果                                                             |
+| Skills 管理 | 从本地或发现页安装 Skills，并分配给支持的软件                                                                                            |
+| MCP 管理    | 添加、导入和管理 MCP 服务，并分配给支持的软件                                                                                            |
+| 提示词管理  | 管理 Grok Build、Codex、Claude Code、OpenCode、Gemini、OpenClaw 和 Hermes 的提示词                                                       |
+| 记忆模块    | 编辑 OpenClaw 与 Hermes 的长期记忆文件，以及 OpenClaw 的每日记忆                                                                         |
 
 工作数据默认保存在本机 `~/.fyagent`。具体写入位置、备份方法和各软件的支持差异见[使用手册](docs/user-manual/zh/README.md)。
 
 ## 界面预览
 
-以下截图使用简体中文。左侧导航用于切换 AI 软件配置、模型、Skills、MCP、提示词和记忆。
+以下截图使用简体中文。左侧导航提供软件配置、运行状态、账号、模型、Skills、MCP、提示词和记忆入口。
 
 <table>
   <tr>
@@ -81,21 +83,21 @@ FyAgent 面向正在使用 AI Agent、AI Worker 和智能助手的人。它把�
 
 Windows 当前提供 NSIS 安装程序，不提供 MSI 或便携 ZIP。macOS 构建使用 Apple Developer ID 签名，并经过 Apple 公证。
 
-安装前请阅读发布说明，并核对校验和、`signing-status.json` 和构建证明。`NotSigned` 只表示签名状态，不能单独证明文件安全。各系统的步骤见[安装说明](docs/user-manual/zh/1-getting-started/1.2-installation.md)，版本记录见[发布说明索引](docs/release-notes/README.md)。
+安装前请阅读发布说明，并核对校验和、`signing-status.json` 和构建证明。`NotSigned` 只表示签名状态，不能单独证明文件安全。各系统的步骤见[安装说明](docs/user-manual/zh/installation.md)，版本记录见[发布说明索引](docs/release-notes/README.md)。
 
 ## 常见问题
 
 <details>
 <summary><strong>FyAgent 会把数据保存在哪里？</strong></summary>
 
-默认保存在本机 `~/.fyagent`。具体配置位置和备份方法见[配置文件说明](docs/user-manual/zh/6-faq/6.1-config-files.md)。
+默认保存在本机 `~/.fyagent`。具体配置位置和备份方法见[配置文件说明](docs/user-manual/zh/troubleshooting.md)。
 
 </details>
 
 <details>
 <summary><strong>遇到安装或配置问题，应该去哪里提问？</strong></summary>
 
-先查看[常见问题手册](docs/user-manual/zh/6-faq/6.2-questions.md)，再到 [Q&A 讨论区](https://github.com/fy-agent/fyagent/discussions/categories/q-a)说明 FyAgent 版本、操作系统、相关软件和已经尝试过的步骤。可稳定复现的软件缺陷请提交 [Bug Report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml)。
+先查看[常见问题手册](docs/user-manual/zh/troubleshooting.md)，再到 [Q&A 讨论区](https://github.com/fy-agent/fyagent/discussions/categories/q-a)说明 FyAgent 版本、操作系统、相关软件和已经尝试过的步骤。可稳定复现的软件缺陷请提交 [Bug Report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml)。
 
 </details>
 

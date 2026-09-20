@@ -1424,9 +1424,7 @@ function ProviderPanel({
       {app === "codex" && summaryQuery.data ? (
         <>
           <div className="fy-models-source-entry">
-            <p>
-              此处编辑模型参数，保存后将启用本次配置。登录账号或切换已有配置请前往账号管理。
-            </p>
+            <p>保存后将启用本次配置。</p>
             <Button
               onClick={() => {
                 const descriptor =

@@ -237,6 +237,11 @@ test("local Skill metadata, long content and enlarged text use bounded natural s
       .getByText("本地导入", { exact: true }),
   ).toHaveCount(1);
   await expect(sourceCard).not.toContainText("/fixture/private-location/");
+  const installationToggle = sourceCard.getByRole("button", {
+    name: "安装信息",
+  });
+  await expect(installationToggle).toHaveAttribute("aria-expanded", "false");
+  await installationToggle.click();
   await expect(
     sourceCard.getByRole("button", { name: "复制安装目录", exact: true }),
   ).toBeVisible();
