@@ -107,6 +107,17 @@ fn row_to_mcp_server(row: &Row<'_>) -> rusqlite::Result<(String, McpServer)> {
 }
 
 impl Database {
+    pub(crate) fn get_mcp_server(&self, id: &str) -> Result<Option<McpServer>, AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.query_row(
+            &format!("{MCP_SERVER_SELECT} WHERE id = ?1"),
+            params![id],
+            |row| row_to_mcp_server(row).map(|(_, server)| server),
+        )
+        .optional()
+        .map_err(|e| AppError::Database(e.to_string()))
+    }
+
     /// 获取所有 MCP 服务器
     pub fn get_all_mcp_servers(&self) -> Result<IndexMap<String, McpServer>, AppError> {
         let conn = lock_conn!(self.conn);
@@ -139,16 +150,7 @@ impl Database {
     ) -> Result<Option<McpServer>, AppError> {
         match McpTargetId::try_from(app) {
             Ok(target) => self.update_mcp_server_target_enabled(id, &target, enabled),
-            Err(_) => {
-                let conn = lock_conn!(self.conn);
-                conn.query_row(
-                    &format!("{MCP_SERVER_SELECT} WHERE id = ?1"),
-                    params![id],
-                    |row| row_to_mcp_server(row).map(|(_, server)| server),
-                )
-                .optional()
-                .map_err(|e| AppError::Database(e.to_string()))
-            }
+            Err(_) => self.get_mcp_server(id),
         }
     }
 
@@ -289,6 +291,76 @@ mod tests {
             docs: None,
             tags: vec!["shared".to_string()],
         }
+    }
+
+    #[test]
+    fn single_server_lookup_preserves_metadata_and_target_flags() {
+        let db = Database::memory().expect("create memory db");
+        let mut expected = test_server();
+        for target in McpTargetId::all() {
+            expected.apps.set_enabled_for_target(&target, true);
+        }
+        expected.docs = Some("https://example.com/docs".to_string());
+        db.save_mcp_server(&expected).expect("seed server");
+
+        let observed = db
+            .get_mcp_server(&expected.id)
+            .expect("read server")
+            .expect("server exists");
+        assert_eq!(
+            serde_json::to_value(observed).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+    }
+
+    #[test]
+    fn single_server_lookup_matches_literal_ids_and_leaves_missing_rows_absent() {
+        let db = Database::memory().expect("create memory db");
+        db.save_mcp_server(&test_server()).expect("seed server");
+        let mut quoted = test_server();
+        quoted.id = "server' OR 1=1 --".to_string();
+        db.save_mcp_server(&quoted).expect("seed quoted server");
+
+        let observed = db
+            .get_mcp_server(&quoted.id)
+            .expect("read quoted server")
+            .expect("quoted server exists");
+        assert_eq!(observed.id, quoted.id);
+        assert!(db
+            .get_mcp_server("missing")
+            .expect("read missing")
+            .is_none());
+        assert_eq!(db.get_all_mcp_servers().expect("read servers").len(), 2);
+    }
+
+    #[test]
+    fn single_server_lookup_isolates_unrelated_unreadable_records() {
+        let db = Database::memory().expect("create memory db");
+        let expected = test_server();
+        db.save_mcp_server(&expected).expect("seed server");
+        let mut unreadable = test_server();
+        unreadable.id = "unreadable".to_string();
+        db.save_mcp_server(&unreadable)
+            .expect("seed unreadable server");
+        db.conn
+            .lock()
+            .expect("lock database")
+            .execute(
+                "UPDATE mcp_servers SET server_config = ?1 WHERE id = ?2",
+                params![vec![0xffu8], unreadable.id],
+            )
+            .expect("set unreadable column");
+
+        let observed = db
+            .get_mcp_server(&expected.id)
+            .expect("read requested server")
+            .expect("requested server exists");
+        assert_eq!(
+            serde_json::to_value(observed).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+        assert!(db.get_mcp_server(&unreadable.id).is_err());
+        assert!(db.get_all_mcp_servers().is_err());
     }
 
     #[test]

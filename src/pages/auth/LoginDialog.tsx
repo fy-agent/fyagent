@@ -283,11 +283,6 @@ function LoginDialogContent({
           ? `重新登录 ${reauthenticateAccount.login}`
           : "添加官方账号"
       }
-      description={
-        session
-          ? "登录由官方服务完成；FyAgent 保存账号后，不会自动替换软件的认证文件。连接软件需要另行确认。"
-          : undefined
-      }
       actions={actions}
       size="comfortable"
     >
@@ -299,7 +294,9 @@ function LoginDialogContent({
             ) : null}
             <div>
               <h3>{sessionPresentation.title}</h3>
-              <p>{sessionPresentation.description}</p>
+              {sessionPresentation.description ? (
+                <p>{sessionPresentation.description}</p>
+              ) : null}
             </div>
           </div>
           <div className="fy-auth-login-summary">

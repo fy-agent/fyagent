@@ -27,38 +27,17 @@ impl McpService {
         // 读取旧状态：用于处理“编辑时取消勾选某个应用”的场景（需要从对应 live 配置中移除）
         let prev_apps = state
             .db
-            .get_all_mcp_servers()?
-            .get(&server.id)
-            .map(|s| s.apps.clone())
+            .get_mcp_server(&server.id)?
+            .map(|s| s.apps)
             .unwrap_or_default();
 
         // 处理禁用：若旧版本启用但新版本取消，则需要从该应用的 live 配置移除
-        if prev_apps.claude && !server.apps.claude {
-            Self::disable_server_for_app(state, &server.id, &AppType::Claude)?;
-        }
-        if prev_apps.codex && !server.apps.codex {
-            Self::disable_server_for_app(state, &server.id, &AppType::Codex)?;
-        }
-        if prev_apps.gemini && !server.apps.gemini {
-            Self::disable_server_for_app(state, &server.id, &AppType::Gemini)?;
-        }
-        if prev_apps.grokbuild && !server.apps.grokbuild {
-            Self::disable_server_for_app(state, &server.id, &AppType::GrokBuild)?;
-        }
-        if prev_apps.opencode && !server.apps.opencode {
-            Self::disable_server_for_app(state, &server.id, &AppType::OpenCode)?;
-        }
-        if prev_apps.hermes && !server.apps.hermes {
-            Self::disable_server_for_app(state, &server.id, &AppType::Hermes)?;
-        }
-        if prev_apps.workbuddy && !server.apps.workbuddy {
-            Self::disable_server_for_target(state, &server.id, McpTargetId::WorkBuddy)?;
-        }
-        if prev_apps.qoderwork && !server.apps.qoderwork {
-            Self::disable_server_for_target(state, &server.id, McpTargetId::QoderWork)?;
-        }
-        if prev_apps.trae_work && !server.apps.trae_work {
-            Self::disable_server_for_target(state, &server.id, McpTargetId::TraeWork)?;
+        for target in McpTargetId::all() {
+            if prev_apps.is_enabled_for_target(&target)
+                && !server.apps.is_enabled_for_target(&target)
+            {
+                Self::disable_server_for_target(state, &server.id, target)?;
+            }
         }
 
         // 安全相关的取消分配必须先在 live 配置生效，才能提交数据库状态；
@@ -66,7 +45,7 @@ impl McpService {
         state.db.save_mcp_server(&server)?;
 
         // 同步到各个启用的应用
-        Self::sync_server_to_apps(state, &server)?;
+        Self::sync_server_to_apps(&server)?;
 
         Ok(())
     }
@@ -78,7 +57,7 @@ impl McpService {
                 .proxy_service
                 .lock_switch_for_app(AppType::Codex.as_str()),
         );
-        let server = state.db.get_all_mcp_servers()?.shift_remove(id);
+        let server = state.db.get_mcp_server(id)?;
 
         if let Some(server) = server {
             // 从所有应用的 live 配置中移除
@@ -119,7 +98,7 @@ impl McpService {
             {
                 Self::sync_server_to_target(&server, &target)?;
             }
-        } else if state.db.get_all_mcp_servers()?.contains_key(server_id) {
+        } else if state.db.get_mcp_server(server_id)?.is_some() {
             Self::disable_server_for_target(state, server_id, target)?;
         }
 
@@ -127,7 +106,7 @@ impl McpService {
     }
 
     /// 将 MCP 服务器同步到所有启用的应用
-    fn sync_server_to_apps(_state: &AppState, server: &McpServer) -> Result<(), AppError> {
+    fn sync_server_to_apps(server: &McpServer) -> Result<(), AppError> {
         for target in server.apps.enabled_targets() {
             Self::sync_server_to_target(server, &target)?;
         }
@@ -136,11 +115,7 @@ impl McpService {
     }
 
     /// 将 MCP 服务器同步到指定应用
-    fn sync_server_to_app(
-        _state: &AppState,
-        server: &McpServer,
-        app: &AppType,
-    ) -> Result<(), AppError> {
+    fn sync_server_to_app(server: &McpServer, app: &AppType) -> Result<(), AppError> {
         if let Ok(target) = McpTargetId::try_from(app) {
             Self::sync_server_to_target(server, &target)?;
         }
@@ -150,51 +125,31 @@ impl McpService {
     fn sync_server_to_target(server: &McpServer, target: &McpTargetId) -> Result<(), AppError> {
         match target {
             McpTargetId::Claude => {
-                mcp::sync_single_server_to_claude(&Default::default(), &server.id, &server.server)?;
+                mcp::sync_single_server_to_claude(&server.id, &server.server)?;
             }
             McpTargetId::Codex => {
-                mcp::sync_single_server_to_codex(&Default::default(), &server.id, &server.server)?;
+                mcp::sync_single_server_to_codex(&server.id, &server.server)?;
             }
             McpTargetId::Gemini => {
-                mcp::sync_single_server_to_gemini(&Default::default(), &server.id, &server.server)?;
+                mcp::sync_single_server_to_gemini(&server.id, &server.server)?;
             }
             McpTargetId::GrokBuild => {
-                mcp::sync_single_server_to_grokbuild(
-                    &Default::default(),
-                    &server.id,
-                    &server.server,
-                )?;
+                mcp::sync_single_server_to_grokbuild(&server.id, &server.server)?;
             }
             McpTargetId::OpenCode => {
-                mcp::sync_single_server_to_opencode(
-                    &Default::default(),
-                    &server.id,
-                    &server.server,
-                )?;
+                mcp::sync_single_server_to_opencode(&server.id, &server.server)?;
             }
             McpTargetId::Hermes => {
-                mcp::sync_single_server_to_hermes(&Default::default(), &server.id, &server.server)?;
+                mcp::sync_single_server_to_hermes(&server.id, &server.server)?;
             }
             McpTargetId::WorkBuddy => {
-                mcp::sync_single_server_to_workbuddy(
-                    &Default::default(),
-                    &server.id,
-                    &server.server,
-                )?;
+                mcp::sync_single_server_to_workbuddy(&server.id, &server.server)?;
             }
             McpTargetId::QoderWork => {
-                mcp::sync_single_server_to_qoderwork(
-                    &Default::default(),
-                    &server.id,
-                    &server.server,
-                )?;
+                mcp::sync_single_server_to_qoderwork(&server.id, &server.server)?;
             }
             McpTargetId::TraeWork => {
-                mcp::sync_single_server_to_traework(
-                    &Default::default(),
-                    &server.id,
-                    &server.server,
-                )?;
+                mcp::sync_single_server_to_traework(&server.id, &server.server)?;
             }
         }
         Ok(())
@@ -207,13 +162,6 @@ impl McpService {
         server: &McpServer,
     ) -> Result<(), AppError> {
         for target in server.apps.enabled_targets() {
-            Self::disable_server_for_target(state, id, target)?;
-        }
-        Ok(())
-    }
-
-    fn disable_server_for_app(state: &AppState, id: &str, app: &AppType) -> Result<(), AppError> {
-        if let Ok(target) = McpTargetId::try_from(app) {
             Self::disable_server_for_target(state, id, target)?;
         }
         Ok(())
@@ -392,7 +340,7 @@ impl McpService {
 
         for server in servers.values() {
             if server.apps.is_enabled_for(&app) {
-                Self::sync_server_to_app(state, server, &app)?;
+                Self::sync_server_to_app(server, &app)?;
             }
         }
 

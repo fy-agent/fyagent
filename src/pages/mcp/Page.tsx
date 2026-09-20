@@ -471,17 +471,7 @@ export function McpPage() {
             title="还没有 MCP 服务"
             description="添加新的 MCP，从现有 Agent 配置导入，或到发现页浏览精选"
             actions={
-              <>
-                <Button onClick={() => void importExisting()}>导入现有</Button>{" "}
-                <Button
-                  className="fy-control-button-primary"
-                  onClick={() => setEditing("new")}
-                  dialogOriginRef={dialogOriginRef}
-                >
-                  添加 MCP
-                </Button>{" "}
-                <Button onClick={() => setTab("discovery")}>浏览发现</Button>
-              </>
+              <Button onClick={() => setTab("discovery")}>浏览发现</Button>
             }
           />
         ) : (
@@ -497,7 +487,7 @@ export function McpPage() {
             {filtered.length === 0 ? (
               <EmptyState
                 title="没有匹配的 MCP"
-                description="为保护敏感信息，密钥和请求头不会参与搜索。"
+                description="请尝试名称、命令、标签或来源。"
               />
             ) : (
               <SplitPanes
@@ -820,7 +810,6 @@ function McpEditor({
       open
       onOpenChange={(next) => !next && !busy && onClose()}
       title={initial ? `编辑 ${initial.name}` : "添加 MCP"}
-      description="密钥和请求头仅在此窗口显示。"
       size="wide"
       actions={
         <>

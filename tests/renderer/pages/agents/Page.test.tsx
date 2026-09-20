@@ -469,7 +469,9 @@ describe("first-use software guide", () => {
           .getAllByRole("heading", { level: 2 })
           .map((node) => node.textContent),
       ).toEqual(names);
-      expect(screen.getByRole("button", { name: "跳过引导" })).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: "查看全部软件" }),
+      ).toBeEnabled();
       expect(ports.settings.save).not.toHaveBeenCalled();
       expect(ports.settings.dismissFirstUseGuide).not.toHaveBeenCalled();
       expect(ports.agentInstallReadiness.get).not.toHaveBeenCalled();
@@ -481,7 +483,7 @@ describe("first-use software guide", () => {
     },
   );
 
-  it.each(["skip", "complete", "skip-recommendations"])(
+  it.each(["skip", "complete"])(
     "persists %s and does not reopen with a new query client",
     async (action) => {
       const user = userEvent.setup();
@@ -1485,6 +1487,112 @@ describe("V3 Agent directory and configuration shell", () => {
     ).toBeVisible();
     expect(mcpSwitch).not.toBeChecked();
   });
+
+  it("confirms disabled Skills and MCP from their saved assignment flags", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    renderPage(ports, "/agents?target=claude-code&section=skills");
+    const skillSwitch = await screen.findByRole("switch", {
+      name: "在 Claude Code 中使用 Review Companion",
+    });
+    expect(skillSwitch).toBeChecked();
+    await user.click(skillSwitch);
+    expect(
+      await screen.findByText("已在 Claude Code 中停用此 Skill。"),
+    ).toBeVisible();
+    expect(skillSwitch).not.toBeChecked();
+
+    await user.click(screen.getByRole("tab", { name: "MCP" }));
+    const mcpSwitch = await screen.findByRole("switch", {
+      name: "在 Claude Code 中使用 Context Server",
+    });
+    expect(mcpSwitch).toBeChecked();
+    await user.click(mcpSwitch);
+    expect(
+      await screen.findByText("已在 Claude Code 中停用此 MCP。"),
+    ).toBeVisible();
+    expect(mcpSwitch).not.toBeChecked();
+  });
+
+  it.each(["record", "target flag"])(
+    "reports a missing %s after disabling a Skill or MCP",
+    async (missing) => {
+      const user = userEvent.setup();
+      const ports = configuredPorts();
+      const readSkills = ports.skills.getInstalled;
+      const readMcp = ports.mcp.getAll;
+      let skillChanged = false;
+      let mcpChanged = false;
+      ports.skills.toggleApp = vi.fn(async () => {
+        skillChanged = true;
+        return true;
+      });
+      ports.skills.getInstalled = vi.fn(async () => {
+        const skills = await readSkills();
+        if (skillChanged) {
+          if (missing === "record") {
+            return skills.filter((skill) => skill.id !== "review");
+          }
+          Reflect.deleteProperty(skills[0].apps, "claude");
+        }
+        return skills;
+      });
+      ports.mcp.toggleApp = vi.fn(async () => {
+        mcpChanged = true;
+      });
+      ports.mcp.getAll = vi.fn(async () => {
+        const servers = await readMcp();
+        if (mcpChanged) {
+          if (missing === "record") {
+            delete servers.context;
+          } else {
+            Reflect.deleteProperty(servers.context.apps, "claude");
+          }
+        }
+        return servers;
+      });
+      renderPage(ports, "/agents?target=claude-code&section=skills");
+      const skillSwitch = await screen.findByRole("switch", {
+        name: "在 Claude Code 中使用 Review Companion",
+      });
+      expect(skillSwitch).toBeChecked();
+      await user.click(skillSwitch);
+      expect(
+        await screen.findByText(
+          "无法确认 Skill 设置是否已更新。请刷新后重试。",
+        ),
+      ).toBeVisible();
+
+      await user.click(screen.getByRole("tab", { name: "MCP" }));
+      const mcpSwitch = await screen.findByRole("switch", {
+        name: "在 Claude Code 中使用 Context Server",
+      });
+      expect(mcpSwitch).toBeChecked();
+      await user.click(mcpSwitch);
+      expect(
+        await screen.findByText("无法确认 MCP 设置是否已更新。请刷新后重试。"),
+      ).toBeVisible();
+    },
+  );
+
+  it.each([
+    ["skills", "还没有可用的 Skill", "管理 Skills"],
+    ["mcp", "还没有可用的 MCP", "管理 MCP"],
+  ])(
+    "opens %s management from an empty software section",
+    async (section, title, action) => {
+      const user = userEvent.setup();
+      const ports = configuredPorts();
+      ports.skills.getInstalled = vi.fn(async () => []);
+      ports.mcp.getAll = vi.fn(async () => ({}));
+      renderPage(ports, `/agents?target=workbuddy&section=${section}`);
+      await screen.findByText(title);
+      await user.click(screen.getByRole("button", { name: action }));
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        `/${section}?agentReturn=workbuddy&agentSection=${section}`,
+      );
+    },
+  );
 
   it("keeps model capability honest and uses PromptAppId only where an owner exists", async () => {
     const user = userEvent.setup();

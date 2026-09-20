@@ -182,8 +182,9 @@ untrusted or versioned response must add parsing at this adapter boundary.
   combining metadata must not turn that fact into a false redaction failure.
 - Discovery uses the local reviewed catalog and builds an `McpServer` for
   `McpPort.upsert`; it is not a runtime/network test of the recipe.
-- Import delegates to `importFromApps()` and reports the returned imported
-  count. Native code owns per-target parsing and conflict behavior.
+- The header owns add/import actions, including when the installed list is empty.
+  Import delegates to `importFromApps()` and reports the returned imported count.
+  Native code owns per-target parsing and conflict behavior.
 - The seven target rows and order come from `MCP_TARGETS`. Assignment pages do
   not construct vendor paths or choose the native write format.
 - Enabling/installing WorkBuddy opens the product's trust disclosure after the

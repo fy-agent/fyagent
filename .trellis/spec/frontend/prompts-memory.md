@@ -113,8 +113,9 @@ paths above.
   dirty-discard use
   the shared ConfirmDialog. An enabled prompt must be disabled before
   deletion. Do not open a Dialog to read or edit prompt content.
-- Import is explicit. Initial load only reads; it never imports, enables, or
-  writes a prompt.
+- The library toolbar owns new and import actions, including when the library
+  is empty. Import is explicit. Initial load only reads; it never imports,
+  enables, or writes a prompt.
 - `PromptService::upsert_prompt` distinguishes a library-only save from a
   live-state transition using the persisted `prompt.id` and its prior enabled
   state. Creating, editing, or importing a disabled entry preserves existing
@@ -167,7 +168,8 @@ The fixed resource mapping is:
   returning entries. A README or `2026-02-30.md` must not invalidate the whole
   list or search response; valid leap dates and descending filename order stay
   supported. Direct access to an invalid filename still fails before I/O.
-- Open-today creates no file until Save. Search is debounced by 300 ms. Daily
+- The daily toolbar owns open-today, including when the list is empty.
+  Open-today creates no file until Save. Search is debounced by 300 ms. Daily
   deletion always requires shared confirmation.
 - Opening the OpenClaw workspace or memory folder uses
   `openOpenClawDirectory`. That is not an HTTP(S) jump; do not route it

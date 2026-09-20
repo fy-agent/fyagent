@@ -360,7 +360,10 @@ test("Agent Auth keeps Claude local verification and routes managed consumers ce
   const confirmation = page.getByRole("dialog", {
     name: "打开 Claude Code 官方登录？",
   });
-  await expect(confirmation).toContainText("不能通过文件备份撤销");
+  await expect(confirmation).toContainText("恢复账号需重新登录。");
+  await expect(confirmation).toContainText(
+    "关闭窗口或停止等待后，已开始的操作仍会继续。",
+  );
   expect(
     (await featureFixtureCalls(page)).filter(
       (call) => call.command === "start_agent_auth_session",

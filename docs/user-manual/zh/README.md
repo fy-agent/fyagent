@@ -1,64 +1,28 @@
 # FyAgent 用户手册
 
-这份手册按实际任务组织。第一次使用，从第一章顺着做即可；已经知道自己要解决什么，也可以从下面的“按问题找入口”直接跳转。
+FyAgent 在 Windows 和 macOS 上集中管理 AI 软件的安装、账号、模型、Skills、MCP、提示词和记忆。桌面界面使用简体中文。
 
-> 部分旧截图仍在等待用真实 FyAgent 界面重拍，操作名称和正文以当前版本为准，不要把图里的 `CC Switch` 当成当前产品身份。
+## 快速开始
 
-## 按问题找入口
+1. 按 [安装指南](installation.md) 安装并启动 FyAgent。
+2. 在「AI软件配置」扫描本机软件，选定一个目标，完成需要的安装与登录。
+3. 打开「模型管理」，选择同一目标，填写或选择模型配置，测试后确认保存。
+4. 在目标软件中确认模型可用，再按需要分配 Skills、MCP 或启用提示词。
+5. 「运行状态」可检查本机安装与配置；「记忆模块」可编辑 OpenClaw 和 Hermes 的记忆。
 
-- 还没装好 FyAgent：看[安装说明](./1-getting-started/1.2-installation.md)。
-- 想先跑通一个供应商：看[五分钟快速上手](./1-getting-started/1.4-quickstart.md)。
-- 需要查看 CLI 版本或安装 **Grok Build**：看[工具安装](./2-agent-tools/2.1-install.md)和[冲突诊断](./2-agent-tools/2.2-update-diagnose.md)。Claude Desktop、Codex Desktop、OpenCode Desktop 请到 Agent 页面管理。
-- 想集中管理接口和模型：从[添加供应商](./3-providers/3.1-add.md)开始。
-- 想使用 MCP、Prompts 或 Skills：进入[扩展功能](#4-扩展功能)。
-- WorkBuddy 模型列表需要写入本地配置：看[WorkBuddy 模型配置](./4-extensions/4.6-workbuddy.md)。
-- 请求不稳定或需要统计用量：进入[代理与高可用](#5-代理与高可用)。
-- 配置没生效：先看[常见问题](./6-faq/6.2-questions.md)和[环境变量冲突](./6-faq/6.4-env-conflict.md)。
+## 按功能查找
 
-## 1. 快速入门
+| 侧栏入口    | 指南                                     |
+| ----------- | ---------------------------------------- |
+| AI软件配置  | [扫描、安装、更新和软件配置](agents.md)  |
+| 运行状态    | [本机检查与失败处理](health.md)          |
+| 账号与认证  | [登录、软件连接与来源切换](accounts.md)  |
+| 模型管理    | [模型配置、测试和账号订阅](models.md)    |
+| Skills 管理 | [安装、导入、分配和备份恢复](skills.md)  |
+| MCP 管理    | [添加、发现、导入和分配](mcp.md)         |
+| 提示词管理  | [编辑、预设、启用和当前内容](prompts.md) |
+| 记忆模块    | [长期与每日记忆](memory.md)              |
 
-- [1.1 认识 FyAgent](./1-getting-started/1.1-introduction.md)
-- [1.2 下载与安装](./1-getting-started/1.2-installation.md)
-- [1.3 界面说明](./1-getting-started/1.3-interface.md)
-- [1.4 五分钟快速上手](./1-getting-started/1.4-quickstart.md)
-- [1.5 个性化设置](./1-getting-started/1.5-settings.md)
+遇到问题请查看 [问题处理与配置位置](troubleshooting.md)。
 
-## 2. Agent 工具
-
-- [2.1 安装 Agent 工具并查看版本](./2-agent-tools/2.1-install.md)
-- [2.2 升级工具并诊断安装冲突](./2-agent-tools/2.2-update-diagnose.md)
-
-## 3. 供应商
-
-- [3.1 添加供应商](./3-providers/3.1-add.md)
-- [3.2 切换供应商](./3-providers/3.2-switch.md)
-- [3.3 编辑供应商](./3-providers/3.3-edit.md)
-- [3.4 排序、复制与删除](./3-providers/3.4-sort-duplicate.md)
-- [3.5 用量查询](./3-providers/3.5-usage-query.md)
-- [3.6 Claude Desktop](./3-providers/3.6-claude-desktop.md)
-
-## 4. 扩展功能
-
-- [4.1 MCP 服务](./4-extensions/4.1-mcp.md)
-- [4.2 Prompts](./4-extensions/4.2-prompts.md)
-- [4.3 Skills](./4-extensions/4.3-skills.md)
-- [4.4 会话](./4-extensions/4.4-sessions.md)
-- [4.5 工作区与记忆](./4-extensions/4.5-workspace.md)
-- [4.6 WorkBuddy 模型配置](./4-extensions/4.6-workbuddy.md)
-
-## 5. 代理与高可用
-
-- [5.1 本地代理服务](./5-proxy/5.1-service.md)
-- [5.2 应用路由](./5-proxy/5.2-routing.md)
-- [5.3 故障转移](./5-proxy/5.3-failover.md)
-- [5.4 用量统计](./5-proxy/5.4-usage.md)
-- [5.5 模型测试](./5-proxy/5.5-model-test.md)
-
-## 6. 常见问题
-
-- [6.1 配置文件与存储位置](./6-faq/6.1-config-files.md)
-- [6.2 常见问题解答](./6-faq/6.2-questions.md)
-- [6.3 Deep Link 导入](./6-faq/6.3-deeplink.md)
-- [6.4 环境变量冲突](./6-faq/6.4-env-conflict.md)
-
-这份手册描述当前仓库里的实际行为。安装包名称、签名和可信度会随发布变化，请以对应的 [GitHub Release](https://github.com/fy-agent/fyagent/releases) 及其证据为准。
+[中文](../zh/README.md) · [English](../en/README.md) · [日本語](../ja/README.md)

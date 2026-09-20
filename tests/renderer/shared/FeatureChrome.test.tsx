@@ -100,6 +100,27 @@ describe("FeatureTabs", () => {
 });
 
 describe("FeatureSearch", () => {
+  it("continues typing after clearing the search", async () => {
+    const user = userEvent.setup();
+    function Search() {
+      const [value, setValue] = useState("alpha");
+      return (
+        <FeatureSearch
+          value={value}
+          onValueChange={setValue}
+          placeholder="搜索名称"
+          ariaLabel="搜索项目"
+        />
+      );
+    }
+    render(<Search />);
+    const input = screen.getByRole("searchbox", { name: "搜索项目" });
+    await user.click(screen.getByRole("button", { name: "清除搜索" }));
+    expect(input).toHaveFocus();
+    await user.keyboard("beta");
+    expect(input).toHaveValue("beta");
+  });
+
   it("reports input changes with an accessible search field", () => {
     const onValueChange = vi.fn();
     render(

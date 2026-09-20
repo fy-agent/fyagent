@@ -4,63 +4,9 @@
 
 use super::ProxyError;
 
-/// 将 ProxyError 映射到 HTTP 状态码
-///
-/// 映射规则：
-/// - 上游错误：直接使用上游返回的状态码
-/// - 超时：504 Gateway Timeout
-/// - 连接失败：502 Bad Gateway
-/// - 无可用 Provider：503 Service Unavailable
-/// - 重试耗尽：503 Service Unavailable
-/// - 认证错误：401 Unauthorized
-/// - 配置/请求错误：400 Bad Request
-/// - 转换错误：422 Unprocessable Entity
-/// - 其他错误：500 Internal Server Error
+/// 将 ProxyError 映射到响应与日志共用的 HTTP 状态码。
 pub fn map_proxy_error_to_status(error: &ProxyError) -> u16 {
-    match error {
-        // 服务状态错误：与 IntoResponse 保持一致
-        ProxyError::AlreadyRunning => 409,
-        ProxyError::NotRunning => 503,
-
-        // 上游错误：使用实际状态码
-        ProxyError::UpstreamError { status, .. } => *status,
-
-        // 超时错误：504 Gateway Timeout
-        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => 504,
-
-        // 转发失败/连接失败：502 Bad Gateway
-        ProxyError::ForwardFailed(_) => 502,
-
-        // 无可用 Provider：503 Service Unavailable
-        ProxyError::NoAvailableProvider => 503,
-
-        // 所有供应商已熔断：503 Service Unavailable
-        ProxyError::AllProvidersCircuitOpen => 503,
-
-        // 未配置供应商：503 Service Unavailable
-        ProxyError::NoProvidersConfigured => 503,
-
-        // 重试耗尽：503 Service Unavailable
-        ProxyError::MaxRetriesExceeded => 503,
-
-        // Provider 不健康：503 Service Unavailable
-        ProxyError::ProviderUnhealthy(_) => 503,
-
-        // 配置错误/无效请求：400 Bad Request
-        ProxyError::ConfigError(_) | ProxyError::InvalidRequest(_) => 400,
-
-        // 认证错误：401 Unauthorized
-        ProxyError::AuthError(_) => 401,
-
-        // 数据库错误：500 Internal Server Error
-        ProxyError::DatabaseError(_) => 500,
-
-        // 转换错误：422 Unprocessable Entity
-        ProxyError::TransformError(_) => 422,
-
-        // 其他未知错误：500 Internal Server Error
-        _ => 500,
-    }
+    error.status_code().as_u16()
 }
 
 /// 将 ProxyError 转换为用户友好的错误消息
@@ -89,6 +35,7 @@ pub fn get_error_message(error: &ProxyError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::response::IntoResponse;
 
     #[test]
     fn test_map_upstream_error() {
@@ -119,26 +66,91 @@ mod tests {
 
     #[test]
     fn test_map_status_matches_proxy_error_response_semantics() {
-        assert_eq!(
-            map_proxy_error_to_status(&ProxyError::AuthError("bad token".to_string())),
-            401
-        );
-        assert_eq!(
-            map_proxy_error_to_status(&ProxyError::ConfigError("bad config".to_string())),
-            400
-        );
-        assert_eq!(
-            map_proxy_error_to_status(&ProxyError::InvalidRequest("bad request".to_string())),
-            400
-        );
-        assert_eq!(
-            map_proxy_error_to_status(&ProxyError::TransformError("bad transform".to_string())),
-            422
-        );
-        assert_eq!(
-            map_proxy_error_to_status(&ProxyError::StreamIdleTimeout(30)),
-            504
-        );
+        for (error, expected_status) in [
+            (ProxyError::AlreadyRunning, 409),
+            (ProxyError::NotRunning, 503),
+            (ProxyError::BindFailed("bind".into()), 500),
+            (ProxyError::StopTimeout, 500),
+            (ProxyError::StopFailed("stop".into()), 500),
+            (ProxyError::ForwardFailed("forward".into()), 502),
+            (ProxyError::NoAvailableProvider, 503),
+            (ProxyError::AllProvidersCircuitOpen, 503),
+            (ProxyError::NoProvidersConfigured, 503),
+            (ProxyError::ProviderUnhealthy("provider".into()), 503),
+            (ProxyError::MaxRetriesExceeded, 503),
+            (ProxyError::DatabaseError("database".into()), 500),
+            (ProxyError::ConfigError("config".into()), 400),
+            (ProxyError::TransformError("transform".into()), 422),
+            (ProxyError::InvalidRequest("request".into()), 400),
+            (ProxyError::Timeout("timeout".into()), 504),
+            (ProxyError::StreamIdleTimeout(30), 504),
+            (ProxyError::AuthError("auth".into()), 401),
+            (ProxyError::Internal("internal".into()), 500),
+            (ProxyError::ResponseBodyTooLarge(1024), 502),
+            (
+                ProxyError::UpstreamError {
+                    status: 429,
+                    body: None,
+                },
+                429,
+            ),
+            (
+                ProxyError::UpstreamError {
+                    status: 0,
+                    body: None,
+                },
+                502,
+            ),
+        ] {
+            assert_eq!(map_proxy_error_to_status(&error), expected_status);
+            assert_eq!(error.into_response().status().as_u16(), expected_status);
+        }
+    }
+
+    #[tokio::test]
+    async fn error_responses_preserve_json_text_and_generated_messages() {
+        let local = ProxyError::ResponseBodyTooLarge(1024);
+        let expected_local = serde_json::json!({
+            "error": {"message": local.to_string(), "type": "proxy_error"}
+        });
+        for (error, expected_body) in [
+            (
+                ProxyError::UpstreamError {
+                    status: 429,
+                    body: Some(r#"{"error":{"message":"rate limited","code":"limit"}}"#.into()),
+                },
+                serde_json::json!({"error": {"message": "rate limited", "code": "limit"}}),
+            ),
+            (
+                ProxyError::UpstreamError {
+                    status: 503,
+                    body: Some("temporarily unavailable".into()),
+                },
+                serde_json::json!({
+                    "error": {"message": "temporarily unavailable", "type": "upstream_error"}
+                }),
+            ),
+            (
+                ProxyError::UpstreamError {
+                    status: 502,
+                    body: None,
+                },
+                serde_json::json!({
+                    "error": {"message": "Upstream error (status 502)", "type": "upstream_error"}
+                }),
+            ),
+            (local, expected_local),
+        ] {
+            let response = error.into_response();
+            assert_eq!(response.headers()["content-type"], "application/json");
+            let body = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .expect("read response body");
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&body).expect("JSON response"),
+                expected_body
+            );
+        }
     }
 
     #[test]

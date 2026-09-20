@@ -429,11 +429,7 @@ fn remove_mcp_server_from_doc(doc: &mut toml_edit::DocumentMut, id: &str) {
     }
 }
 
-pub fn sync_single_server_to_codex(
-    _config: &MultiAppConfig,
-    id: &str,
-    server_spec: &Value,
-) -> Result<(), AppError> {
+pub fn sync_single_server_to_codex(id: &str, server_spec: &Value) -> Result<(), AppError> {
     if !should_sync_codex_mcp() {
         return Ok(());
     }

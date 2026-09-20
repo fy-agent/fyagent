@@ -358,6 +358,38 @@ mod tests {
 
         assert_eq!(providers.len(), 1);
         assert_eq!(providers[0].id, "a");
+
+        let unrelated = Provider::with_id(
+            "unreadable".to_string(),
+            "Unreadable provider".to_string(),
+            json!({}),
+            None,
+        );
+        db.save_provider("claude", &unrelated).unwrap();
+        db.conn
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE providers SET settings_config = ?1 WHERE id = ?2 AND app_type = ?3",
+                rusqlite::params![vec![0xffu8], unrelated.id, "claude"],
+            )
+            .unwrap();
+
+        let app = crate::app_config::AppType::Claude;
+        crate::settings::set_current_provider(&app, Some("b")).unwrap();
+        let providers = router.select_providers("claude").await.unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].id, "b");
+        assert_eq!(
+            crate::settings::get_current_provider(&app).as_deref(),
+            Some("b")
+        );
+
+        crate::settings::set_current_provider(&app, Some("missing")).unwrap();
+        let providers = router.select_providers("claude").await.unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].id, "a");
+        assert_eq!(crate::settings::get_current_provider(&app), None);
     }
 
     #[tokio::test]

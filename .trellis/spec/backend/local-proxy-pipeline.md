@@ -42,7 +42,7 @@ Core Rust boundaries are:
 
 ```text
 ProxyServer::start() / stop() / status()
-RequestContext + HandlerConfig
+RequestContext + UsageParserConfig
 
 ProviderRouter::select_providers(appType) -> Result<Vec<Provider>, AppError>
 ProviderRouter::allow_provider_request(providerId, appType) -> AllowResult
@@ -144,6 +144,9 @@ socket, database handle, or raw response-success override.
 
 ### Response, streaming, and usage
 
+- `ProxyError::status_code` supplies the HTTP status for general responses,
+  Codex error responses, and usage error logs. Oversized upstream bodies and
+  invalid upstream status codes resolve to `502 Bad Gateway`.
 - Rebuilt bodies remove hop-by-hop headers and stale entity headers. Streaming
   keeps bounded UTF-8/SSE framing across chunk boundaries and does not lose or
   duplicate the primed bytes.

@@ -46,9 +46,9 @@ rejects native-only dismissal instead of pretending to save.
 
 ### Recommendation projection
 
-- The question is one sentence, with office, coding and combined-use options.
-  Both steps expose skip. Selection shows a small set of recommendations, with
-  back/reselect and a full-directory action; it is not an installation wizard.
+- The question is one sentence, with office, coding and combined-use options
+  and a skip action. Selection shows a small set of recommendations, with
+  back/reselect and a full-directory action.
 - Office recommends QoderWork CN, TRAE Work CN and WorkBuddy; coding recommends
   Grok Build, Codex, Claude Code and OpenCode; combined use recommends WorkBuddy
   and Codex.
@@ -78,6 +78,8 @@ rejects native-only dismissal instead of pretending to save.
   update the shared state but must not steal focus, reopen portals or scan.
   Focus the guide heading on step changes and the directory heading on visible
   completion. Reuse Button/PressableButton, brand assets and semantic CSS tokens.
+  The common Agent page owns brand-size tokens; recommendations use a 64px
+  frame with 48px artwork.
 
 ## 4. Validation & Error Matrix
 
@@ -102,7 +104,7 @@ existing installations through onboarding after an upgrade.
 
 ## 6. Tests Required
 
-`pages/agents/Page.test.tsx` covers all three sets, reselection, both skip paths,
+`pages/agents/Page.test.tsx` covers all three sets, reselection, skip,
 completion, new query-client restart, delayed/failed persistence, duplicate
 clicks, unknown startup reads, target links and hidden completion. Native-port
 tests reject unknown states and pending write acknowledgements.
@@ -111,12 +113,13 @@ the shared catalog IDs, independently of per-choice expected names. Typecheck
 must reject a new closed catalog identity without an explicit purpose reason;
 tests also reject using the generic entry description as that reason. Keep Grok
 Build's coding reason, supplied catalog order and current-name regression.
-`browser/first-use-guide.spec.ts` covers keyboard focus, both themes,
+`browser/first-use-guide.spec.ts` covers keyboard focus, both saved themes,
+loaded brand artwork at the shared dimensions,
 large-small-large viewport changes, real click reachability, persistence and
 positive catalog copy in Chromium/WebKit. Run the existing directory/browser
 regressions and production boot gate. WebKit keyboard tests use its Option-Tab
 all-controls navigation, without changing the host keyboard-access setting.
-The four-item coding result must keep recommendations and completion/skip
+The four-item coding result must keep recommendations and completion
 controls reachable at the smallest supported viewport. Browser fixtures do not
 prove native first-install or Windows/macOS installer behavior.
 The production navigation smoke test also verifies that a fresh user loads the

@@ -24,11 +24,6 @@ use crate::services::managed_auth::{
     ManagedAuthProvider, ManagedAuthReasonCode,
 };
 
-/// Capability is decided by effective store + live evidence, not a blanket HIL gate.
-#[deprecated(note = "use effective store and live observation instead")]
-#[allow(dead_code)]
-pub(crate) const CODEX_FILE_PROJECTION_PRODUCTION_ENABLED: bool = true;
-
 pub(crate) fn file_projection_enabled() -> bool {
     // Retained as a soft helper for call sites that only need "is file projection
     // generally available". Unsupported stores still fail closed at plan time.
@@ -82,9 +77,6 @@ pub(crate) fn connection_summary(
         ManagedAuthConnectionState::PendingRestart
     } else if live_matches_bound {
         ManagedAuthConnectionState::Connected
-    } else if bound.is_some() || ready_saved.is_some() {
-        // Saved credential exists but live Codex is not using it.
-        ManagedAuthConnectionState::Disconnected
     } else {
         ManagedAuthConnectionState::Disconnected
     };

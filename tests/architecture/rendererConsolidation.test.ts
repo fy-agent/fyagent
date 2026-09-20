@@ -79,7 +79,7 @@ describe("one product renderer", () => {
 
   it("does not send users to retired generator downloads", () => {
     for (const language of ["zh", "en", "ja"]) {
-      for (const doc of ["3-providers/3.1-add.md", "6-faq/6.3-deeplink.md"]) {
+      for (const doc of ["models.md", "mcp.md"]) {
         expect(read(`docs/user-manual/${language}/${doc}`)).not.toContain(
           "deplink.html",
         );

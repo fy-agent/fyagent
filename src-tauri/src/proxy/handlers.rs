@@ -1735,7 +1735,7 @@ async fn handle_codex_chat_error_response(
 ///
 /// 与 `handle_codex_chat_error_response`（处理上游真实错误响应、复制上游头）不同，
 /// 这里没有上游响应可参照，只产出一个 `application/json` 错误体。状态码走
-/// `map_proxy_error_to_status`，该函数已与 `ProxyError::into_response` 对齐。
+/// `ProxyError::status_code`，与通用错误响应和日志一致。
 ///
 /// 注意：`endpoint` 经 `endpoint_with_query` 可能携带 query（如 `?beta=true`）并被
 /// 原样写入错误体。当前 Codex 端点不在 query 里放凭证，故安全；若将来复用到
@@ -1745,8 +1745,7 @@ fn build_codex_proxy_error_response(
     endpoint: &str,
     error: &ProxyError,
 ) -> Result<axum::response::Response, ProxyError> {
-    let status = axum::http::StatusCode::from_u16(map_proxy_error_to_status(error))
-        .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    let status = error.status_code();
     let body = codex_proxy_error_json(&ctx.provider.name, &ctx.request_model, endpoint, error);
     let body = serde_json::to_vec(&body).map_err(|e| {
         log::error!("[Codex] 序列化代理错误体失败: {e}");

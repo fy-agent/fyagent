@@ -36,11 +36,6 @@ pub(super) fn sync_to_target(db: &Arc<Database>, app: &SkillTargetId) -> Result<
     let ssot_dir = SkillService::get_ssot_dir()?;
     let app_dir = SkillService::get_target_skills_dir(app)?;
 
-    let indexed_skills: HashMap<String, &InstalledSkill> = skills
-        .values()
-        .map(|skill| (skill.directory.to_lowercase(), skill))
-        .collect();
-
     if app.requires_copy() {
         for skill in skills.values() {
             if skill.apps.is_enabled_for_target(app) {
@@ -59,6 +54,11 @@ pub(super) fn sync_to_target(db: &Arc<Database>, app: &SkillTargetId) -> Result<
         }
         return Ok(());
     }
+
+    let indexed_skills: HashMap<String, &InstalledSkill> = skills
+        .values()
+        .map(|skill| (skill.directory.to_lowercase(), skill))
+        .collect();
 
     if app_dir.exists() {
         for entry in fs::read_dir(&app_dir)? {

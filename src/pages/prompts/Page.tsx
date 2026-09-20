@@ -509,21 +509,6 @@ export function PromptsPage() {
     <EmptyState
       title={`${APP_LABELS[app]} 还没有提示词`}
       description="可以新建提示词，或从当前文件导入。"
-      actions={
-        <>
-          <Button disabled={busy} onClick={() => void importFromFile()}>
-            从文件导入
-          </Button>{" "}
-          <Button
-            className="fy-control-button-primary"
-            disabled={busy}
-            onClick={requestNew}
-            dialogOriginRef={dialogOriginRef}
-          >
-            新建提示词
-          </Button>
-        </>
-      }
     />
   ) : filtered.length === 0 && activeEditor?.mode !== "new" && !selected ? (
     <EmptyState

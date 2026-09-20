@@ -238,7 +238,7 @@ describe("MCP management", () => {
 
     renderFeature(<McpPage />, ports);
     await screen.findByText("还没有 MCP 服务");
-    await user.click(screen.getAllByRole("button", { name: "导入现有" })[0]);
+    await user.click(screen.getByRole("button", { name: "导入现有" }));
 
     expect(await screen.findByText("没有发现可导入的 MCP")).toBeVisible();
     expect(
@@ -310,7 +310,7 @@ describe("MCP management", () => {
 
     renderFeature(<McpPage />, ports);
     await screen.findByRole("heading", { name: "Docs server" });
-    await user.click(screen.getAllByRole("button", { name: "导入现有" })[0]);
+    await user.click(screen.getByRole("button", { name: "导入现有" }));
     expect(
       await screen.findByText(
         "MCP 配置中的敏感字段未通过校验，请检查对应字段格式",
@@ -422,7 +422,7 @@ describe("MCP management", () => {
 
     renderFeature(<McpPage />, ports);
     await screen.findByText("还没有 MCP 服务");
-    await user.click(screen.getAllByRole("button", { name: "导入现有" })[0]);
+    await user.click(screen.getByRole("button", { name: "导入现有" }));
 
     expect(
       await screen.findByText(

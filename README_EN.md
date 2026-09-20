@@ -31,6 +31,8 @@ You do not need to begin with terms such as Provider, MCP, or Prompt. To a perso
 | Area                      | Available tasks                                                                                                                                                                                |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AI software configuration | Scan QoderWork CN, TRAE Work CN, WorkBuddy, Grok Build, Codex, Claude Code, and OpenCode; where supported, open installation, update, launch, authentication, and resource-assignment controls |
+| Health                    | Check local installation, configuration, and connection status, then open the relevant action |
+| Accounts and authentication | Add official accounts, manage application connections, and select the Codex request source |
 | Models                    | View or change model and Provider settings for the applications above; preview writes and check the result after saving                                                                        |
 | Skills                    | Install Skills from local files or discovery results, then assign them to supported applications                                                                                               |
 | MCP                       | Add, import, and manage MCP servers, then assign them to supported applications                                                                                                                |
@@ -41,7 +43,7 @@ Working data is stored in `~/.fyagent` by default. See the [manual](docs/user-ma
 
 ## Interface
 
-The screenshots below use Simplified Chinese. The left navigation opens AI software configuration, Models, Skills, MCP, Prompts, and Memory.
+The screenshots below use Simplified Chinese. The left navigation opens software configuration, Health, Accounts, Models, Skills, MCP, Prompts, and Memory.
 
 <table>
   <tr>
@@ -80,21 +82,21 @@ Release files use these names:
 
 Windows releases use an NSIS setup program; MSI and portable ZIP packages are not part of the current release. macOS builds are signed with an Apple Developer ID and notarized.
 
-Before installing, read the release notes and check the published checksums, `signing-status.json`, and build attestation. `NotSigned` describes the signing state; it does not prove that a file is safe. See the [installation guide](docs/user-manual/en/1-getting-started/1.2-installation.md) for platform-specific steps and the [release notes index](docs/release-notes/README.md) for version history.
+Before installing, read the release notes and check the published checksums, `signing-status.json`, and build attestation. `NotSigned` describes the signing state; it does not prove that a file is safe. See the [installation guide](docs/user-manual/en/installation.md) for platform-specific steps and the [release notes index](docs/release-notes/README.md) for version history.
 
 ## FAQ
 
 <details>
 <summary><strong>Where does FyAgent store its data?</strong></summary>
 
-FyAgent uses `~/.fyagent` on the local device by default. See [Configuration files](docs/user-manual/en/6-faq/6.1-config-files.md) for exact locations and backup guidance.
+FyAgent uses `~/.fyagent` on the local device by default. See [Configuration files](docs/user-manual/en/troubleshooting.md) for exact locations and backup guidance.
 
 </details>
 
 <details>
 <summary><strong>Where should I ask for installation or configuration help?</strong></summary>
 
-Check the [FAQ manual](docs/user-manual/en/6-faq/6.2-questions.md), then open a [Q&A discussion](https://github.com/fy-agent/fyagent/discussions/categories/q-a) with the FyAgent version, operating system, related application, and steps already tried. Use the [Bug Report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml) form for a reproducible software defect.
+Check the [FAQ manual](docs/user-manual/en/troubleshooting.md), then open a [Q&A discussion](https://github.com/fy-agent/fyagent/discussions/categories/q-a) with the FyAgent version, operating system, related application, and steps already tried. Use the [Bug Report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml) form for a reproducible software defect.
 
 </details>
 

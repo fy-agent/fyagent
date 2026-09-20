@@ -87,19 +87,14 @@ test("a failed initial module shows a recoverable error rather than a permanent 
   page,
 }) => {
   await installRichTauriFeatureFixture(page);
-  await page.route(
-    (url) => url.pathname === "/pages/agents/Page.tsx",
-    (route) => route.abort(),
-  );
+  const failedModule = (url: URL) => url.pathname === "/pages/agents/Page.tsx";
+  await page.route(failedModule, (route) => route.abort());
   await page.goto("/#/agents", { waitUntil: "domcontentloaded" });
   await expect(
     page.getByRole("heading", { name: "页面暂时无法打开" }),
   ).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText(
-    "界面加载未完成。请重新加载后重试。",
-  );
   await expect(
-    page.getByRole("button", { name: "重新加载界面" }),
+    page.getByRole("alert").getByRole("button", { name: "重新加载界面" }),
   ).toBeVisible();
   await expect
     .poll(
@@ -111,4 +106,7 @@ test("a failed initial module shows a recoverable error rather than a permanent 
         ).length,
     )
     .toBe(1);
+  await page.unroute(failedModule);
+  await page.getByRole("button", { name: "重新加载界面" }).click();
+  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
 });
