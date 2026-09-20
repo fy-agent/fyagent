@@ -191,3 +191,27 @@ Completed four FDE workstreams, project UX refinement, independent review fixes,
 ### Status
 
 [OK] **Completed**
+
+
+## Session 11: FDE and subscription same-delivery integration
+<!-- trellis-session: v=2 fp=b69b1e6887f63bd6 -->
+
+**Date**: 2026-09-20
+**Task**: FDE and subscription same-delivery integration
+**Branch**: `codex/subscription-cross-agent-20260919`
+
+### Summary
+
+Created FDE PR #193 and stacked subscription PR #192 on its base. Resolved both schema-22 histories through schema 23, OpenCode binding/import/Health/probe compatibility, lazy-port contracts, and concrete workstation paths. Repaired FDE Windows fixtures and browser guide/animation/contrast checks. The final combined local gate passed 1869 frontend tests, 3700 Rust tests, and all 640 browser cases. Final hosted checks and merge-order readback are tracked in the two PR descriptions; real accounts, combined app UAT, Windows project-file support, installation and release remain outside this verification.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `31aa9d92` | feat(models): integrate subscription reuse with FDE delivery |
+| `ebbda4ac` | chore(integration): include verified FDE CI fixes |
+| `590f6f96` | fix(ci): repair FDE native fixtures and browser regressions |
+
+### Status
+
+[OK] **Completed**

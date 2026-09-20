@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
-- **Last Active**: 2026-09-19
+- **Total Sessions**: 11
+- **Last Active**: 2026-09-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~193 | Active |
+| `journal-1.md` | ~217 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-09-20 | FDE and subscription same-delivery integration | `31aa9d92`, `ebbda4ac`, `590f6f96` | `codex/subscription-cross-agent-20260919` |
 | 10 | 2026-09-19 | FDE delivery integration and native acceptance | `0a08c38f`, `d2a5dc7d`, `26efebed`, `cd8b4ced`, `c6cfbe94` | `codex/fde-delivery-integration` |
 | 9 | 2026-09-19 | Complete cross-agent subscription reuse | `61040031` | `codex/subscription-cross-agent-20260919` |
 | 8 | 2026-09-19 | macOS 0.4.5 upgrade and native audit | `1a924586`, `9dfb55bc` | `codex/macos-045-audit` |
