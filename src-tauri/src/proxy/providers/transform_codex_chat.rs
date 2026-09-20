@@ -877,8 +877,8 @@ fn merge_pending_tool_calls_into_adjacent_assistant(
     message["tool_calls"] = Value::Array(std::mem::take(pending_tool_calls));
     if let Some(reasoning) = pending_reasoning.take() {
         // Parallel calls can replay reasoning already carried by commentary.
-        // Compare whole segments, preserving the existing text and appending
-        // each missing segment once in its original order.
+        // Normalize only the comparison keys: added segments keep their
+        // indentation and trailing spaces, even when earlier segments repeat.
         let additional = {
             let mut seen: HashSet<&str> = message
                 .get("reasoning_content")
@@ -890,13 +890,21 @@ fn merge_pending_tool_calls_into_adjacent_assistant(
                 .collect();
             reasoning
                 .split("\n\n")
-                .map(str::trim)
-                .filter(|segment| !segment.is_empty() && seen.insert(*segment))
+                .filter(|segment| {
+                    let key = segment.trim();
+                    !key.is_empty() && seen.insert(key)
+                })
                 .collect::<Vec<_>>()
                 .join("\n\n")
         };
-        if let Some(object) = message.as_object_mut() {
-            append_reasoning_content(object, &additional);
+        if !additional.is_empty() {
+            match message.get_mut("reasoning_content") {
+                Some(Value::String(existing)) if !existing.is_empty() => {
+                    existing.push_str("\n\n");
+                    existing.push_str(&additional);
+                }
+                _ => message["reasoning_content"] = Value::String(additional),
+            }
         }
     }
     true
@@ -3835,6 +3843,39 @@ mod tests {
         );
         assert_eq!(messages[1]["tool_call_id"], "call_first");
         assert_eq!(messages[2]["tool_call_id"], "call_second");
+    }
+
+    #[test]
+    fn compat_stream_preserves_reasoning_segment_whitespace_after_dedup() {
+        let pending = "first paragraph\n\n    keep_indent  \n\nlast paragraph";
+        for (existing, expected) in [
+            (
+                "context",
+                "context\n\nfirst paragraph\n\n    keep_indent  \n\nlast paragraph",
+            ),
+            ("first paragraph", pending),
+            (
+                "first paragraph\n\nlast paragraph",
+                "first paragraph\n\nlast paragraph\n\n    keep_indent  ",
+            ),
+        ] {
+            let mut call = test_function_call("call_read");
+            call["reasoning_content"] = json!(pending);
+            let result = convert_test_input(vec![
+                json!({
+                    "role": "assistant",
+                    "content": "Reading the file now.",
+                    "reasoning_content": existing
+                }),
+                call,
+            ]);
+
+            assert_eq!(message_roles(&result), vec!["assistant"]);
+            assert_eq!(
+                result["messages"][0]["reasoning_content"], expected,
+                "existing reasoning: {existing:?}"
+            );
+        }
     }
 
     #[test]
