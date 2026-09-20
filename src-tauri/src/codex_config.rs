@@ -25,7 +25,8 @@ pub(crate) use model_provider_line::{
     uncomment_top_level_model_provider,
 };
 pub(crate) use source_switch::{
-    patch_source as patch_codex_source_config, validate_source as validate_codex_source_config,
+    patch_source as patch_codex_source_config, project_source as project_codex_source_config,
+    validate_source as validate_codex_source_config,
 };
 
 pub(crate) use auth::codex_auth_has_credential_login_material;
@@ -208,6 +209,24 @@ pub fn write_codex_provider_live_with_catalog(
     config_text: Option<&str>,
     profile: CodexCatalogToolProfile,
 ) -> Result<(), AppError> {
+    write_codex_provider_live_with_common_snippet(
+        settings,
+        category,
+        auth,
+        config_text,
+        profile,
+        None,
+    )
+}
+
+pub(crate) fn write_codex_provider_live_with_common_snippet(
+    settings: &Value,
+    category: Option<&str>,
+    auth: &Value,
+    config_text: Option<&str>,
+    profile: CodexCatalogToolProfile,
+    common_snippet: Option<&str>,
+) -> Result<(), AppError> {
     // Reject incomplete destinations before catalog preparation can create a
     // file. A missing API configuration must never become an empty live TOML.
     source_switch::validate_source(category, auth, config_text.unwrap_or(""))?;
@@ -216,7 +235,7 @@ pub fn write_codex_provider_live_with_catalog(
         .map(|text| prepare_codex_config_text_with_model_catalog(settings, text, profile))
         .transpose()?;
 
-    write_codex_live_for_provider(category, auth, prepared_config.as_deref())
+    write_codex_live_projection(category, auth, prepared_config.as_deref(), common_snippet)
 }
 
 /// Extract a provider-scoped `experimental_bearer_token` from Codex `config.toml`.
@@ -605,7 +624,7 @@ pub fn strip_codex_unified_session_bucket(config_text: &str) -> Result<String, A
 /// 统一会话开关开启时，把官方供应商 `{ auth, config }` 设置对象中的
 /// config 文本注入共享 custom 路由；开关关闭或非官方供应商时不做改动。
 ///
-/// 普通 live 写入（`write_codex_live_for_provider`）与代理接管备份
+/// 普通 live 写入（`write_codex_live_projection`）与代理接管备份
 /// （`update_live_backup_from_provider`）两条落盘路径共用：接管期间
 /// live 归代理所有，注入必须进备份，接管释放恢复的 live 才带统一路由。
 pub fn apply_codex_unified_session_bucket_to_settings(
@@ -692,19 +711,21 @@ pub fn strip_codex_mcp_servers_from_settings(settings: &mut Value) -> Result<(),
 /// A request-source switch owns routing/model fields, not account credentials
 /// or the rest of the user's configuration. Login projection has a separate
 /// consent and revision boundary in Managed Auth.
-pub fn write_codex_live_for_provider(
+fn write_codex_live_projection(
     category: Option<&str>,
     auth: &Value,
     config_text: Option<&str>,
+    common_snippet: Option<&str>,
 ) -> Result<(), AppError> {
     let current_live = read_and_validate_codex_config_text()?;
-    let config = source_switch::patch_source(
+    let config = source_switch::project_source(
         &current_live,
         category,
         auth,
         config_text.unwrap_or(""),
         &get_codex_config_dir(),
         crate::settings::unify_codex_session_history(),
+        common_snippet,
     )?;
     write_codex_live_config_atomic(Some(&config))
 }

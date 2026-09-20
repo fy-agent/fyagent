@@ -66,3 +66,7 @@ claim that all final checks have passed.
 
 Installer free-space admission beyond zero is also under focused review; do not
 claim adequate space merely from a nonzero available-byte observation.
+
+## Post-main common projection review
+
+Main `da91427e` is merged in `35848bef`. The subsequent candidate scan still has 119 paths, with only `src-tauri/src/codex_config.rs` and `src-tauri/src/services/provider/mod.rs` changed. GPT-6 reviewed both actual deltas: the first replaces the unused plain writer wrapper with the shared in-memory common-snippet projection and one atomic write; the second gives preview that same explicitly enabled snippet. Neither changes supported-host admission, platform attributes, package targets or native dispatch. Their exact source digests are updated after this review. No inventory additions, removals or fallback allowances. The still-separate CLI delta must receive its own source review.

@@ -324,6 +324,158 @@ fn common_config_keeps_legal_settings_but_redirect_requires_fresh_authorization(
 }
 
 #[test]
+#[serial_test::serial]
+fn common_config_preserves_live_siblings_and_preview_matches_write() {
+    super::super::tests::with_test_home(|state, _| {
+        let path = crate::codex_config::get_codex_config_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "model_provider = 'custom'\nmodel = 'live-model'\ncli_auth_credentials_store = 'keyring'\n[features]\nmulti_agent = true\n[mcp_servers.user]\ncommand = 'keep-user-mcp'\n[model_providers.custom]\nname = 'Live'\nbase_url = 'https://live.example/v1'\nwire_api = 'responses'\n[profiles.personal]\nmodel = 'personal-model'\n[tui]\nnotifications = true\nspinner = 'dots'\n",
+        )
+        .unwrap();
+        let mut provider = fixture();
+        provider.meta = Some(crate::provider::ProviderMeta {
+            common_config_enabled: Some(true),
+            ..Default::default()
+        });
+        let stored = provider.settings_config["config"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        provider.settings_config["config"] = json!(format!(
+            "{stored}[mcp_servers.stale]\ncommand = 'drop-me'\n"
+        ));
+        state
+            .db
+            .set_config_snippet("codex", Some("[tui]\nnotifications = false\n".into()))
+            .unwrap();
+        state.db.save_provider("codex", &provider).unwrap();
+        let original = saved(&state.db);
+        super::super::live::write_live_with_common_config(
+            &state.db,
+            &crate::app_config::AppType::Codex,
+            &original,
+        )
+        .unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        let parsed = written.parse::<toml::Value>().unwrap();
+        assert_eq!(parsed["tui"]["notifications"].as_bool(), Some(false));
+        assert_eq!(parsed["tui"]["spinner"].as_str(), Some("dots"));
+        assert_eq!(
+            parsed["mcp_servers"]["user"]["command"].as_str(),
+            Some("keep-user-mcp")
+        );
+        assert!(parsed
+            .get("mcp_servers")
+            .and_then(|value| value.get("stale"))
+            .is_none());
+        assert_eq!(parsed["features"]["multi_agent"].as_bool(), Some(true));
+        assert_eq!(
+            parsed["profiles"]["personal"]["model"].as_str(),
+            Some("personal-model")
+        );
+        assert_eq!(
+            parsed["cli_auth_credentials_store"].as_str(),
+            Some("keyring")
+        );
+
+        let environment =
+            crate::services::provider::inspect_codex_switch_environment(state).unwrap();
+        let preview = crate::services::provider::build_codex_switch_target_live_projection(
+            state,
+            &original,
+            &environment,
+        )
+        .unwrap();
+        let preview_config = preview["config"]
+            .as_str()
+            .unwrap()
+            .parse::<toml::Value>()
+            .unwrap();
+        assert_eq!(
+            preview_config["tui"]["notifications"],
+            parsed["tui"]["notifications"]
+        );
+        assert_eq!(preview_config["tui"]["spinner"], parsed["tui"]["spinner"]);
+        assert_eq!(preview_config["mcp_servers"], parsed["mcp_servers"]);
+        assert_eq!(
+            preview_config["cli_auth_credentials_store"],
+            parsed["cli_auth_credentials_store"]
+        );
+    });
+}
+
+#[test]
+#[serial_test::serial]
+fn disabled_common_config_does_not_import_stale_provider_tables() {
+    super::super::tests::with_test_home(|state, _| {
+        let path = crate::codex_config::get_codex_config_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "model_provider = 'custom'\nmodel = 'live-model'\n[mcp_servers.user]\ncommand = 'keep-user-mcp'\n[model_providers.custom]\nname = 'Live'\nbase_url = 'https://live.example/v1'\nwire_api = 'responses'\n[tui]\nspinner = 'dots'\n",
+        )
+        .unwrap();
+        let mut provider = fixture();
+        provider.meta = Some(crate::provider::ProviderMeta {
+            common_config_enabled: Some(false),
+            ..Default::default()
+        });
+        let stored = provider.settings_config["config"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        provider.settings_config["config"] = json!(format!(
+            "{stored}[mcp_servers.stale]\ncommand = 'drop-me'\n[tui]\nnotifications = false\n"
+        ));
+        state
+            .db
+            .set_config_snippet("codex", Some("[tui]\nnotifications = false\n".into()))
+            .unwrap();
+        state.db.save_provider("codex", &provider).unwrap();
+        super::super::live::write_live_with_common_config(
+            &state.db,
+            &crate::app_config::AppType::Codex,
+            &saved(&state.db),
+        )
+        .unwrap();
+        let written = std::fs::read_to_string(path).unwrap();
+        assert!(written.contains("keep-user-mcp"));
+        assert!(!written.contains("drop-me"));
+        assert!(written.contains("spinner = 'dots'"));
+        assert!(!written.contains("notifications = false"));
+    });
+}
+
+#[test]
+#[serial_test::serial]
+fn invalid_live_config_rejects_common_write_without_empty_replacement() {
+    super::super::tests::with_test_home(|state, _| {
+        let path = crate::codex_config::get_codex_config_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "[[[[not-toml").unwrap();
+        let mut provider = fixture();
+        provider.meta = Some(crate::provider::ProviderMeta {
+            common_config_enabled: Some(true),
+            ..Default::default()
+        });
+        state
+            .db
+            .set_config_snippet("codex", Some("[tui]\nnotifications = false\n".into()))
+            .unwrap();
+        state.db.save_provider("codex", &provider).unwrap();
+        assert!(super::super::live::write_live_with_common_config(
+            &state.db,
+            &crate::app_config::AppType::Codex,
+            &saved(&state.db),
+        )
+        .is_err());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "[[[[not-toml");
+    });
+}
+
+#[test]
 fn enabling_common_redirect_cannot_retain_inference_or_implicit_usage_keys() {
     let (db, _) = database();
     let mut provider = usage_fixture();
@@ -531,17 +683,23 @@ fn actual_usage_query_materializes_auxiliary_fields_before_script_validation() {
     super::super::tests::with_test_home(|state, _| {
         let mut provider = usage_fixture();
         let script = usage_mut(&mut provider);
-        script.template_type = Some("custom".into());
+        // Keep the built-in template so URL validation rejects HTTP before I/O.
+        // `custom` skips HTTPS enforcement and would send the request.
+        script.template_type = Some("token_plan".into());
         // Correct material reaches URL validation; empty/masked/wrong fields
         // fail JS evaluation first. Both paths stop before all network I/O.
         script.code = format!("(function() {{ if ('{{{{apiKey}}}}'.length !== {} || '{{{{accessToken}}}}'.length !== {}) throw new Error('fixture missing native material'); return {{request:{{url:'http://example.invalid',method:'GET'}}}}; }})()", USAGE_KEY.len(), USAGE_TOKEN.len());
         state.db.save_provider("codex", &provider).unwrap();
-        let result = futures::executor::block_on(super::super::usage::query_usage(
-            state,
-            crate::app_config::AppType::Codex,
-            &provider.id,
-        ))
-        .unwrap();
+        let result = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(super::super::usage::query_usage(
+                state,
+                crate::app_config::AppType::Codex,
+                &provider.id,
+            ))
+            .unwrap();
         assert!(!result.success);
         assert!(
             result.error.as_deref().unwrap().contains("HTTPS"),
@@ -1174,7 +1332,11 @@ fn blank_legacy_edit_does_not_erase_the_only_copy_when_migration_is_locked() {
     db.save_provider_record("codex", &fixture()).unwrap();
     let mut edit = fixture();
     edit.settings_config["auth"]["OPENAI_API_KEY"] = json!("");
-    edit.settings_config["config"] = json!("model='changed-model'");
+    let config = edit.settings_config["config"]
+        .as_str()
+        .unwrap()
+        .replace("model = 'fixture-model'", "model = 'changed-model'");
+    edit.settings_config["config"] = json!(config);
     backend.set_mode(MemoryFailureMode::Locked);
     assert!(db.save_provider("codex", &edit).is_err());
     assert_eq!(
@@ -1209,12 +1371,14 @@ fn usage_test_admission_rejects_changed_targets_before_using_saved_secrets() {
         &db,
         "codex",
         &stored,
-        &script,
-        Some(""),
-        None,
-        None,
-        None,
-        None,
+        &UsageTestInput {
+            script_code: &script,
+            api_key: Some(""),
+            base_url: None,
+            access_token: None,
+            user_id: None,
+            template_type: None,
+        },
     )
     .unwrap();
     assert_eq!(admitted.api_key, USAGE_KEY);
@@ -1223,36 +1387,43 @@ fn usage_test_admission_rejects_changed_targets_before_using_saved_secrets() {
         &db,
         "codex",
         &stored,
-        &(script.clone() + ";0"),
-        Some(""),
-        None,
-        None,
-        None,
-        None,
+        &UsageTestInput {
+            script_code: &(script.clone() + ";0"),
+            api_key: Some(""),
+            base_url: None,
+            access_token: None,
+            user_id: None,
+            template_type: None,
+        },
     )
     .is_err());
     assert!(ProviderCredentials::admit_usage_test(
         &db,
         "codex",
         &stored,
-        &script,
-        Some(""),
-        Some("https://changed.example.invalid/v1"),
-        None,
-        None,
-        None,
+        &UsageTestInput {
+            script_code: &script,
+            api_key: Some(""),
+            base_url: Some("https://changed.example.invalid/v1"),
+            access_token: None,
+            user_id: None,
+            template_type: None,
+        },
     )
     .is_err());
+    let fresh_script = script + ";1";
     let fresh = ProviderCredentials::admit_usage_test(
         &db,
         "codex",
         &stored,
-        &(script + ";1"),
-        Some("fixture-fresh-usage-key"),
-        Some("https://changed.example.invalid/v1"),
-        None,
-        Some("other-user"),
-        Some("custom"),
+        &UsageTestInput {
+            script_code: &fresh_script,
+            api_key: Some("fixture-fresh-usage-key"),
+            base_url: Some("https://changed.example.invalid/v1"),
+            access_token: None,
+            user_id: Some("other-user"),
+            template_type: Some("custom"),
+        },
     )
     .unwrap();
     assert_eq!(fresh.api_key, "fixture-fresh-usage-key");
@@ -1289,12 +1460,14 @@ fn usage_test_admission_allows_token_only_same_target_and_rejects_changes() {
         &db,
         "codex",
         &stored,
-        &script,
-        Some(""),
-        None,
-        Some("********"),
-        None,
-        None,
+        &UsageTestInput {
+            script_code: &script,
+            api_key: Some(""),
+            base_url: None,
+            access_token: Some("********"),
+            user_id: None,
+            template_type: None,
+        },
     )
     .unwrap();
     assert_eq!(admitted.api_key, "");
@@ -1303,24 +1476,29 @@ fn usage_test_admission_allows_token_only_same_target_and_rejects_changes() {
         &db,
         "codex",
         &stored,
-        &script,
-        Some(""),
-        Some("https://changed.example.invalid/v1"),
-        Some("********"),
-        None,
-        None,
+        &UsageTestInput {
+            script_code: &script,
+            api_key: Some(""),
+            base_url: Some("https://changed.example.invalid/v1"),
+            access_token: Some("********"),
+            user_id: None,
+            template_type: None,
+        },
     )
     .is_err());
+    let fresh_script = script + ";1";
     let fresh = ProviderCredentials::admit_usage_test(
         &db,
         "codex",
         &stored,
-        &(script + ";1"),
-        Some(""),
-        Some("https://changed.example.invalid/v1"),
-        Some("fixture-fresh-access-token"),
-        None,
-        Some("newapi"),
+        &UsageTestInput {
+            script_code: &fresh_script,
+            api_key: Some(""),
+            base_url: Some("https://changed.example.invalid/v1"),
+            access_token: Some("fixture-fresh-access-token"),
+            user_id: None,
+            template_type: Some("newapi"),
+        },
     )
     .unwrap();
     assert_eq!(fresh.api_key, "");
@@ -1335,16 +1513,19 @@ fn fresh_usage_token_does_not_inherit_a_saved_api_key() {
     let (db, _) = database();
     db.save_provider("codex", &usage_fixture()).unwrap();
     let stored = saved(&db);
+    let fresh_script = usage(&stored).code.clone() + ";fresh";
     let fresh = ProviderCredentials::admit_usage_test(
         &db,
         "codex",
         &stored,
-        &(usage(&stored).code.clone() + ";fresh"),
-        Some(""),
-        Some("https://changed.example.invalid/v1"),
-        Some("fixture-fresh-access-token"),
-        None,
-        Some("custom"),
+        &UsageTestInput {
+            script_code: &fresh_script,
+            api_key: Some(""),
+            base_url: Some("https://changed.example.invalid/v1"),
+            access_token: Some("fixture-fresh-access-token"),
+            user_id: None,
+            template_type: Some("custom"),
+        },
     )
     .unwrap();
     assert_eq!(fresh.api_key, "");

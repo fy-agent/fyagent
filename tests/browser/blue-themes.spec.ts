@@ -264,7 +264,10 @@ for (const theme of ["light", "dark"] as const) {
 
     expect(allSamples.filter((sample) => sample.ratio < 4.5)).toEqual([]);
 
-    const reviewDir = path.resolve("artifacts/ui-open-source-review");
+    const reviewDir = path.resolve(
+      "artifacts/ui-open-source-review",
+      info.project.name,
+    );
     fs.mkdirSync(reviewDir, { recursive: true });
     await grokCard.scrollIntoViewIfNeeded();
     await page.screenshot({

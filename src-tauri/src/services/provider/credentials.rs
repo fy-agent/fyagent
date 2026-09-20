@@ -30,6 +30,15 @@ pub(crate) struct AdmittedUsageTest {
     pub template_type: Option<String>,
 }
 
+pub(crate) struct UsageTestInput<'a> {
+    pub script_code: &'a str,
+    pub api_key: Option<&'a str>,
+    pub base_url: Option<&'a str>,
+    pub access_token: Option<&'a str>,
+    pub user_id: Option<&'a str>,
+    pub template_type: Option<&'a str>,
+}
+
 fn secret_error(error: SecretServiceError) -> AppError {
     let code = match error.code() {
         SecretErrorCode::Locked => "provider_secret_locked",
@@ -483,24 +492,26 @@ impl ProviderCredentials {
         db: &Database,
         app: &str,
         stored: &Provider,
-        script_code: &str,
-        api_key: Option<&str>,
-        base_url: Option<&str>,
-        access_token: Option<&str>,
-        user_id: Option<&str>,
-        template_type: Option<&str>,
+        input: &UsageTestInput<'_>,
     ) -> Result<AdmittedUsageTest, AppError> {
         if app != "codex" {
             return Err(invalid());
         }
         let snippet = db.get_config_snippet("codex")?;
         let effective = super::live::build_codex_credential_projection(stored, snippet.as_deref())?;
-        let requested =
-            requested_usage_script(stored, script_code, base_url, user_id, template_type);
-        let fresh_key = api_key
+        let requested = requested_usage_script(
+            stored,
+            input.script_code,
+            input.base_url,
+            input.user_id,
+            input.template_type,
+        );
+        let fresh_key = input
+            .api_key
             .map(str::trim)
             .filter(|value| !value.is_empty() && !blank_or_masked(value));
-        let fresh_token = access_token
+        let fresh_token = input
+            .access_token
             .map(str::trim)
             .filter(|value| !value.is_empty() && !blank_or_masked(value));
         if fresh_key.is_some() || fresh_token.is_some() {

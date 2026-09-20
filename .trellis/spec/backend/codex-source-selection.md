@@ -55,11 +55,11 @@ complete TOML with `toml_edit`; account projection retains its own observation
 and admission. Extending the lexical grammar requires parser-aware validation
 and preservation tests, not a broader text replacement.
 
-| Operation | Permitted effect |
-| --- | --- |
-| Official account connect/switch | Compute the auth delta separately; comment an active selector to use the built-in default route. Do not edit provider tables, model, MCP or features. |
-| Codex disconnect / restore source | Uncomment the recognized saved selector when present; keep `auth.json`. Connection metadata and restart evidence belong to the consumer. |
-| Saved Provider/source selection | Comment/uncomment as preparation, then patch the selected source's owned TOML fields. Preserve `auth.json` and unrelated configuration. |
+| Operation                         | Permitted effect                                                                                                                                      |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Official account connect/switch   | Compute the auth delta separately; comment an active selector to use the built-in default route. Do not edit provider tables, model, MCP or features. |
+| Codex disconnect / restore source | Uncomment the recognized saved selector when present; keep `auth.json`. Connection metadata and restart evidence belong to the consumer.              |
+| Saved Provider/source selection   | Comment/uncomment as preparation, then patch the selected source's owned TOML fields. Preserve `auth.json` and unrelated configuration.               |
 
 An auth delta of `Noop` can therefore still produce a config write for a
 matching official account with an active third-party selector. Conversely,
@@ -81,6 +81,11 @@ document. It is not limited to toggling one comment:
 - Replace only the selected custom provider table. Preserve other provider
   tables, MCP, features, profiles and the credential-store choice. Do not claim
   byte-for-byte preservation of the selected table that this operation owns.
+- An explicitly enabled common-config snippet may overlay only its own keys
+  onto that same projected document. Preview, writer and readback share
+  `project_source`. Do not copy the rest of a Provider snapshot, do not publish
+  a second live file, and do not treat a failed or invalid current-config read
+  as empty.
 - An empty official template uses the default route. An explicit compatible
   official template may supply a selector or native-capability table; the
   unified-session projection retains its existing ownership checks. Do not
@@ -88,16 +93,16 @@ document. It is not limited to toggling one comment:
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Matching auth plus active selector | Auth bytes can remain unchanged while the selector is commented; not a whole-operation no-op. |
-| Selector already commented or absent | Comment helper returns `None`; independently evaluate any auth/source changes. |
-| Selector inside a provider/MCP/other table | The line helper does not edit it. |
-| Desired TOML invalid or present model/selector is not nonempty text | Reject source projection before file side effects. |
-| Official desired source explicitly selects an incompatible auth route | Reject; a display name alone is not official-source evidence. |
-| Custom third-party source lacks its selected table or supported authentication | Reject; do not replace the live file with an empty template. |
-| Nonempty built-in-default configuration has an API key | Validate through the existing built-in source path; do not invent a custom-table requirement. |
-| Live TOML cannot be parsed | Reject Provider projection; never reconstruct unrelated user settings from a minimal form. |
+| Condition                                                                      | Required result                                                                               |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Matching auth plus active selector                                             | Auth bytes can remain unchanged while the selector is commented; not a whole-operation no-op. |
+| Selector already commented or absent                                           | Comment helper returns `None`; independently evaluate any auth/source changes.                |
+| Selector inside a provider/MCP/other table                                     | The line helper does not edit it.                                                             |
+| Desired TOML invalid or present model/selector is not nonempty text            | Reject source projection before file side effects.                                            |
+| Official desired source explicitly selects an incompatible auth route          | Reject; a display name alone is not official-source evidence.                                 |
+| Custom third-party source lacks its selected table or supported authentication | Reject; do not replace the live file with an empty template.                                  |
+| Nonempty built-in-default configuration has an API key                         | Validate through the existing built-in source path; do not invent a custom-table requirement. |
+| Live TOML cannot be parsed                                                     | Reject Provider projection; never reconstruct unrelated user settings from a minimal form.    |
 
 Custom source admission accepts the existing API-key, native-auth, `env_key`
 or auth-table alternatives. Reserved built-in routes retain their own auth
@@ -118,7 +123,9 @@ file write, connected account or running-process pickup.
 Run `mise run rust:test -- model_provider_line` and
 `mise run rust:test -- source_switch`. Their tests assert table isolation,
 LF/CRLF preservation, comment/uncomment round trips, no duplicate selector,
-desired-source rejection, and preservation of unrelated live configuration.
+desired-source rejection, preservation of unrelated live configuration, and
+that an enabled common snippet overlays only its keys while disabled/absent
+common config never imports stale Provider tables.
 
 `consumers/codex/project.rs` tests independently prove matching-account config
 changes without auth rotation, already-commented no-op, and stale auth/config

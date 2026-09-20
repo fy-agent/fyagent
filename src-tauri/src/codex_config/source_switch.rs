@@ -3,6 +3,7 @@
 //! credential-store choices stay with the live document.
 
 use super::*;
+use toml_edit::TableLike;
 
 fn invalid(message: &str) -> AppError {
     AppError::Config(message.to_string())
@@ -155,6 +156,58 @@ pub(crate) fn patch_source(
     }
 }
 
+/// Shared preview/write projection: the targeted source patch, then only the
+/// explicitly enabled common snippet. Unrelated live tables stay with the
+/// current document. Invalid current TOML is rejected by `patch_source`.
+pub(crate) fn project_source(
+    current_config: &str,
+    category: Option<&str>,
+    auth: &Value,
+    desired_config: &str,
+    config_dir: &Path,
+    unify_sessions: bool,
+    common_snippet: Option<&str>,
+) -> Result<String, AppError> {
+    let patched = patch_source(
+        current_config,
+        category,
+        auth,
+        desired_config,
+        config_dir,
+        unify_sessions,
+    )?;
+    apply_enabled_common_snippet(&patched, common_snippet)
+}
+
+fn apply_enabled_common_snippet(patched: &str, snippet: Option<&str>) -> Result<String, AppError> {
+    let Some(snippet) = snippet.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(patched.to_string());
+    };
+    let mut live = patched
+        .parse::<DocumentMut>()
+        .map_err(|_| invalid("现有 Codex 配置格式无效，请先检查原文件"))?;
+    let common = snippet
+        .parse::<DocumentMut>()
+        .map_err(|_| invalid("Codex 通用配置格式无效，未修改任何文件"))?;
+    merge_common_table(live.as_table_mut(), common.as_table());
+    Ok(live.to_string())
+}
+
+fn merge_common_table(target: &mut dyn TableLike, source: &dyn TableLike) {
+    for (key, item) in source.iter() {
+        match (target.get_mut(key), item.as_table_like()) {
+            (Some(existing), Some(source_table)) if existing.as_table_like().is_some() => {
+                if let Some(existing_table) = existing.as_table_like_mut() {
+                    merge_common_table(existing_table, source_table);
+                }
+            }
+            _ => {
+                target.insert(key, item.clone());
+            }
+        }
+    }
+}
+
 fn patch_owned_value(
     document: &mut DocumentMut,
     key: &str,
@@ -292,5 +345,78 @@ mod tests {
             &format!("{no_key}env_key = 'USER_MANAGED_KEY'\n")
         )
         .is_ok());
+    }
+
+    #[test]
+    fn enabled_common_snippet_overlays_only_its_keys_and_preserves_live_siblings() {
+        let dir = tempfile::tempdir().unwrap();
+        let current = format!("{CURRENT}[tui]\nnotifications = true\nspinner = 'dots'\n");
+        let desired = "model_provider = 'custom'\nmodel = 'fixture-model'\n[model_providers.custom]\nname = 'Fixture'\nbase_url = 'https://example.test/v1'\nwire_api = 'responses'\n[mcp_servers.stale]\ncommand = 'drop-me'\n";
+        let result = project_source(
+            &current,
+            None,
+            &json!({"OPENAI_API_KEY": "fixture"}),
+            desired,
+            dir.path(),
+            false,
+            Some("[tui]\nnotifications = false\n"),
+        )
+        .unwrap();
+        let before = current.parse::<toml::Value>().unwrap();
+        let after = result.parse::<toml::Value>().unwrap();
+        assert_eq!(after["tui"]["notifications"].as_bool(), Some(false));
+        assert_eq!(after["tui"]["spinner"].as_str(), Some("dots"));
+        for key in [
+            "features",
+            "mcp_servers",
+            "profiles",
+            "cli_auth_credentials_store",
+        ] {
+            assert_eq!(after.get(key), before.get(key), "{key}");
+        }
+        assert!(after
+            .get("mcp_servers")
+            .and_then(|value| value.get("stale"))
+            .is_none());
+    }
+
+    #[test]
+    fn absent_common_snippet_does_not_import_stale_provider_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let desired = "model_provider = 'custom'\nmodel = 'fixture-model'\n[model_providers.custom]\nname = 'Fixture'\nbase_url = 'https://example.test/v1'\nwire_api = 'responses'\n[mcp_servers.stale]\ncommand = 'drop-me'\n[tui]\nnotifications = false\n";
+        let result = project_source(
+            CURRENT,
+            None,
+            &json!({"OPENAI_API_KEY": "fixture"}),
+            desired,
+            dir.path(),
+            false,
+            None,
+        )
+        .unwrap();
+        let before = CURRENT.parse::<toml::Value>().unwrap();
+        let after = result.parse::<toml::Value>().unwrap();
+        assert_eq!(after.get("mcp_servers"), before.get("mcp_servers"));
+        assert!(after.get("tui").is_none());
+        assert!(after
+            .get("mcp_servers")
+            .and_then(|value| value.get("stale"))
+            .is_none());
+    }
+
+    #[test]
+    fn invalid_current_config_is_rejected_instead_of_empty_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let desired = "model_provider = 'custom'\nmodel = 'fixture-model'\n[model_providers.custom]\nname = 'Fixture'\nbase_url = 'https://example.test/v1'\nwire_api = 'responses'\n";
+        assert!(project_source(
+            "[[[[not-toml",
+            None,
+            &json!({"OPENAI_API_KEY": "fixture"}),
+            desired,
+            dir.path(),
+            false,
+            Some("[tui]\nnotifications = false\n"),
+        )
+        .is_err());
     }
 }

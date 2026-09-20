@@ -136,7 +136,12 @@ pub(crate) fn build_codex_switch_target_live_projection(
         );
     }
     let mut effective_settings = effective_provider.settings_config;
-    let config = crate::codex_config::patch_codex_source_config(
+    let snippet = state.db.get_config_snippet(AppType::Codex.as_str())?;
+    let common_snippet =
+        live::provider_uses_common_config(&AppType::Codex, provider, snippet.as_deref())
+            .then_some(snippet)
+            .flatten();
+    let config = crate::codex_config::project_codex_source_config(
         environment
             .live_settings
             .get("config")
@@ -150,6 +155,7 @@ pub(crate) fn build_codex_switch_target_live_projection(
             .unwrap_or_default(),
         &crate::codex_config::get_codex_config_dir(),
         crate::settings::unify_codex_session_history(),
+        common_snippet.as_deref(),
     )?;
     effective_settings["config"] = Value::String(config);
     effective_settings["auth"] = environment

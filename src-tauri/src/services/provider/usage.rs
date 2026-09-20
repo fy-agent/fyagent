@@ -217,12 +217,14 @@ pub async fn test_usage_script(
             &state.db,
             app_type.as_str(),
             provider,
-            script_code,
-            api_key,
-            base_url,
-            access_token,
-            user_id,
-            template_type,
+            &super::credentials::UsageTestInput {
+                script_code,
+                api_key,
+                base_url,
+                access_token,
+                user_id,
+                template_type,
+            },
         )?;
         return execute_and_format_usage_result(
             script_code,
@@ -394,36 +396,33 @@ base_url = "https://other.example.com/v1"
         run_test_with(
             state,
             provider_id,
-            script,
-            api_key,
-            base_url,
-            None,
-            user_id,
-            template_type,
+            super::super::credentials::UsageTestInput {
+                script_code: script,
+                api_key,
+                base_url,
+                access_token: None,
+                user_id,
+                template_type,
+            },
         )
     }
 
     fn run_test_with(
         state: &crate::store::AppState,
         provider_id: &str,
-        script: &str,
-        api_key: Option<&str>,
-        base_url: Option<&str>,
-        access_token: Option<&str>,
-        user_id: Option<&str>,
-        template_type: Option<&str>,
+        input: super::super::credentials::UsageTestInput<'_>,
     ) -> Result<crate::provider::UsageResult, crate::error::AppError> {
         futures::executor::block_on(super::test_usage_script(
             state,
             AppType::Codex,
             provider_id,
-            script,
+            input.script_code,
             5,
-            api_key,
-            base_url,
-            access_token,
-            user_id,
-            template_type,
+            input.api_key,
+            input.base_url,
+            input.access_token,
+            input.user_id,
+            input.template_type,
         ))
     }
 
@@ -645,36 +644,42 @@ base_url = "https://other.example.com/v1"
                 run_test_with(
                     state,
                     &provider.id,
-                    &script,
-                    Some(""),
-                    None,
-                    Some("********"),
-                    None,
-                    None,
+                    super::super::credentials::UsageTestInput {
+                        script_code: &script,
+                        api_key: Some(""),
+                        base_url: None,
+                        access_token: Some("********"),
+                        user_id: None,
+                        template_type: None,
+                    },
                 )
                 .unwrap(),
             );
             assert_rejected_without_execution(run_test_with(
                 state,
                 &provider.id,
-                &script,
-                Some(""),
-                Some("https://changed.example.invalid/v1"),
-                Some("********"),
-                None,
-                None,
+                super::super::credentials::UsageTestInput {
+                    script_code: &script,
+                    api_key: Some(""),
+                    base_url: Some("https://changed.example.invalid/v1"),
+                    access_token: Some("********"),
+                    user_id: None,
+                    template_type: None,
+                },
             ));
             let fresh = "fixture-fresh-access-token";
             assert_https_reject(
                 run_test_with(
                     state,
                     &provider.id,
-                    &script,
-                    Some(""),
-                    Some("https://changed.example.invalid/v1"),
-                    Some(fresh),
-                    None,
-                    Some("newapi"),
+                    super::super::credentials::UsageTestInput {
+                        script_code: &script,
+                        api_key: Some(""),
+                        base_url: Some("https://changed.example.invalid/v1"),
+                        access_token: Some(fresh),
+                        user_id: None,
+                        template_type: Some("newapi"),
+                    },
                 )
                 .unwrap(),
             );

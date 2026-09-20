@@ -774,6 +774,14 @@ pub(crate) fn write_live_with_common_config(
         return write_quick_setup_live_snapshot(app_type, &effective_provider);
     }
 
+    if matches!(app_type, AppType::Codex) {
+        let snippet = db.get_config_snippet(app_type.as_str())?;
+        let common_snippet = provider_uses_common_config(app_type, provider, snippet.as_deref())
+            .then_some(snippet)
+            .flatten();
+        return write_codex_live_snapshot(&effective_provider, common_snippet.as_deref());
+    }
+
     write_live_snapshot(app_type, &effective_provider)
 }
 
@@ -1280,6 +1288,29 @@ impl LiveSnapshot {
     }
 }
 
+fn write_codex_live_snapshot(
+    provider: &Provider,
+    common_snippet: Option<&str>,
+) -> Result<(), AppError> {
+    let obj = provider
+        .settings_config
+        .as_object()
+        .ok_or_else(|| AppError::Config("Codex 供应商配置必须是 JSON 对象".to_string()))?;
+    let auth = obj
+        .get("auth")
+        .ok_or_else(|| AppError::Config("Codex 供应商配置缺少 'auth' 字段".to_string()))?;
+    let config_str = obj.get("config").and_then(|v| v.as_str());
+    let profile = crate::proxy::providers::resolve_codex_catalog_tool_profile(provider);
+    crate::codex_config::write_codex_provider_live_with_common_snippet(
+        &provider.settings_config,
+        provider.category.as_deref(),
+        auth,
+        config_str,
+        profile,
+        common_snippet,
+    )
+}
+
 /// Write live configuration snapshot for a provider
 pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
     match app_type {
@@ -1295,30 +1326,7 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
                 "Claude Desktop configuration must be written through the provider switch flow",
             ));
         }
-        AppType::Codex => {
-            let obj = provider
-                .settings_config
-                .as_object()
-                .ok_or_else(|| AppError::Config("Codex 供应商配置必须是 JSON 对象".to_string()))?;
-            let auth = obj
-                .get("auth")
-                .ok_or_else(|| AppError::Config("Codex 供应商配置缺少 'auth' 字段".to_string()))?;
-            let config_str = obj.get("config").and_then(|v| v.as_str());
-
-            // Native (direct) Responses and Anthropic providers must suppress Codex's
-            // freeform apply_patch custom tool via the generated catalog; chat/proxy
-            // providers keep the default tool set. Uses the same Anthropic detection as
-            // the proxy router (apiFormat meta/settings + TOML wire_api).
-            let profile = crate::proxy::providers::resolve_codex_catalog_tool_profile(provider);
-
-            crate::codex_config::write_codex_provider_live_with_catalog(
-                &provider.settings_config,
-                provider.category.as_deref(),
-                auth,
-                config_str,
-                profile,
-            )?;
-        }
+        AppType::Codex => write_codex_live_snapshot(provider, None)?,
         AppType::Gemini => {
             // Delegate to write_gemini_live which handles env file writing correctly
             write_gemini_live(provider)?;

@@ -17,9 +17,7 @@
     },
     {
       "id": "secretref-35",
-      "issues": [
-        35
-      ],
+      "issues": [35],
       "executor": "native:/root/secretref_35",
       "model": "inherited parent; runtime not independently observed",
       "cwd": "~/.codex/worktrees/fyagent-next-secretref/fyagent",
@@ -38,10 +36,7 @@
     },
     {
       "id": "installer-27-29",
-      "issues": [
-        27,
-        29
-      ],
+      "issues": [27, 29],
       "executor": "native:/root/installer_27_29",
       "cwd": "~/.codex/worktrees/fyagent-next-installer/fyagent",
       "branch": "codex/next-installer-27-29",
@@ -52,10 +47,7 @@
     },
     {
       "id": "agent-entry-25-34",
-      "issues": [
-        25,
-        34
-      ],
+      "issues": [25, 34],
       "executor": "Antigravity desktop UI",
       "model_observed": "Gemini 3.8 Flash High",
       "project_id": "e7f72ebb-59ab-436f-98eb-d717ef0eb6b5",
@@ -86,9 +78,7 @@
     },
     {
       "id": "about-70",
-      "issues": [
-        70
-      ],
+      "issues": [70],
       "executor": "root integration after external failures; both old job worktrees clean",
       "attempts": [
         {
@@ -132,28 +122,17 @@
     },
     {
       "id": "preview-56",
-      "issues": [
-        56
-      ],
+      "issues": [56],
       "executor": "root integration",
-      "allowed_paths": [
-        "shared change-plans-ui",
-        "focused tests/specs"
-      ],
+      "allowed_paths": ["shared change-plans-ui", "focused tests/specs"],
       "lifecycle": "single save confirmation and native credential disclosure integrated",
       "acceptance_status": "50 focused integration tests passed; final aggregate/browser pending",
       "commit": "1300632b",
-      "integration_commits": [
-        "1300632b",
-        "9253946e",
-        "82750e30"
-      ]
+      "integration_commits": ["1300632b", "9253946e", "82750e30"]
     },
     {
       "id": "config-pack-73",
-      "issues": [
-        73
-      ],
+      "issues": [73],
       "executor": "native:/root/config_pack_73",
       "cwd": "~/.codex/worktrees/fyagent-next-config-pack/fyagent",
       "branch": "codex/next-config-pack-73",
@@ -166,9 +145,7 @@
     },
     {
       "id": "workbuddy-recovery-61",
-      "issues": [
-        61
-      ],
+      "issues": [61],
       "executor": "root integration",
       "allowed_paths": [
         "services/workbuddy/config.rs",
@@ -182,9 +159,7 @@
     },
     {
       "id": "api-presets-40",
-      "issues": [
-        40
-      ],
+      "issues": [40],
       "executor": "native:/root/config_pack_73",
       "cwd": "~/.codex/worktrees/fyagent-next-api-presets/fyagent",
       "branch": "codex/next-api-presets-40",
@@ -197,10 +172,7 @@
     },
     {
       "id": "auth-reuse-42-43",
-      "issues": [
-        42,
-        43
-      ],
+      "issues": [42, 43],
       "executor": "native:/root/secretref_35",
       "cwd": "~/.codex/worktrees/fyagent-next-auth-reuse/fyagent",
       "branch": "codex/next-auth-reuse-42-43",
@@ -213,9 +185,7 @@
     },
     {
       "id": "proxy-recovery-64",
-      "issues": [
-        64
-      ],
+      "issues": [64],
       "executor": "native:/root/installer_27_29",
       "cwd": "~/.codex/worktrees/fyagent-next-proxy-recovery/fyagent",
       "branch": "codex/next-proxy-recovery-64",
@@ -228,9 +198,7 @@
     },
     {
       "id": "demo-92",
-      "issues": [
-        92
-      ],
+      "issues": [92],
       "executor": "native:/root/installer_27_29",
       "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
       "allowed_paths": [
@@ -245,9 +213,7 @@
     },
     {
       "id": "live-config-summary-47",
-      "issues": [
-        47
-      ],
+      "issues": [47],
       "executor": "native:/root/config_pack_73 native projection; native:/root/installer_27_29 UI integration",
       "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
       "allowed_paths": [
@@ -262,23 +228,17 @@
     },
     {
       "id": "cli-disk-evidence",
-      "issues": [
-        27
-      ],
+      "issues": [27],
       "executor": "native:/root/cli_disk_requirements",
       "model": "gpt-5.6-luna",
       "effort": "medium",
-      "allowed_paths": [
-        "research/cli-disk-evidence.md"
-      ],
+      "allowed_paths": ["research/cli-disk-evidence.md"],
       "lifecycle": "completed",
       "acceptance_status": "accepted as bounded source evidence; Jev decision saved and root selected frozen metadata approach"
     },
     {
       "id": "cli-space-27",
-      "issues": [
-        27
-      ],
+      "issues": [27],
       "executor": "Antigravity desktop UI",
       "model_observed": "Gemini 3.8 Flash High",
       "cwd": "~/.codex/worktrees/fyagent-next-cli-space/fyagent",
@@ -291,17 +251,19 @@
       ],
       "artifacts": [
         "ANTIGRAVITY_CLI_TASK.md",
-        "ANTIGRAVITY_CLI_RESULT.md"
+        "ANTIGRAVITY_CLI_RESULT.md",
+        "ANTIGRAVITY_CLI_REPAIR_TASK.md",
+        "ANTIGRAVITY_CLI_FINAL_REPAIR_TASK.md"
       ],
-      "lifecycle": "running in observed Gemini 3.8 Flash High conversation; baseline native tests completed; implementation active",
-      "acceptance_status": "pending"
+      "lifecycle": "Antigravity final repair terminated with Insufficient AI Credits; writer stopped; no tracked edits after be21f653; remaining backend repair handed to existing Cursor recovery conversation",
+      "acceptance_status": "not integrated: root found empty version slice, fail-open malformed package, generic Windows preview volumes/target, unused Claude admission and unbound dependency registry",
+      "commit": "be21f65337bd0fa5769c010c03166a4571b809ce",
+      "error_id": "2f9c8b0e-2bb9-4aaa-8543-185c671d74d5-2293-2008",
+      "quota_refresh_observed": "2026-09-21 10:33:46 local; no overage enabled or purchase"
     },
     {
       "id": "cursor-backend-35-47",
-      "issues": [
-        35,
-        47
-      ],
+      "issues": [35, 47],
       "executor": "Cursor desktop Debug mode",
       "model_observed": "Cursor Grok 4.6 / High / Fast",
       "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
@@ -323,9 +285,7 @@
     },
     {
       "id": "grok-recovery-review",
-      "issues": [
-        64
-      ],
+      "issues": [64],
       "executor": "terminal Grok CLI",
       "model_observed": "grok-4.6",
       "product_version": "1.0.34 (3736acbc8658)",
@@ -343,9 +303,7 @@
     },
     {
       "id": "cursor-recovery-64",
-      "issues": [
-        64
-      ],
+      "issues": [64],
       "executor": "Cursor desktop",
       "model_observed": "existing High Fast selection; exact model not independently re-read for second chat",
       "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
@@ -362,6 +320,172 @@
       ],
       "lifecycle": "completed; writer stopped confirmed in actual Cursor UI",
       "acceptance_status": "source and regressions reviewed by GPT-6; final combined checks pending"
+    },
+    {
+      "id": "cursor-main-integration",
+      "issues": [35, 40],
+      "executor": "Cursor desktop Debug mode",
+      "model_observed": "existing Cursor Grok 4.6 / High / Fast conversation",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "branch": "codex/next-iteration-engineering-20260920",
+      "baseline": "35848bef",
+      "allowed_paths": [
+        "commands/provider.rs Kimi regression test",
+        "services/provider/universal.rs narrow integration regression",
+        "research/cursor-main-integration-result.md"
+      ],
+      "artifacts": ["research/cursor-main-integration-task.md"],
+      "lifecycle": "completed; writer stopped in observed Cursor UI",
+      "acceptance_status": "source reviewed; tests preserve original route/metadata assertions and add public redaction plus native resolver checks; 1 Kimi and 2 universal tests passed; full gate pending"
+    },
+    {
+      "id": "antigravity-ui-regressions",
+      "issues": [25, 34, 40, 43, 47, 56, 70],
+      "executor": "Antigravity desktop UI",
+      "model_observed": "Gemini 3.8 Flash High",
+      "project_id": "e7f72ebb-59ab-436f-98eb-d717ef0eb6b5",
+      "conversation_id": "fc6ad4d4-b8b7-492a-bc7b-e702798c35c2",
+      "cwd": "~/.codex/worktrees/fyagent-next-ui-regressions/fyagent",
+      "branch": "codex/next-ui-regressions",
+      "baseline": "35848bef",
+      "allowed_paths": [
+        "AgentSourceLinks CSS and narrow first-use/model geometry behavior if proven",
+        "agent-directory/agents-models/first-use-guide/blue-themes/shell/xai-subscription/press-feedback browser tests",
+        "necessary browser fixture and focused renderer tests/specs"
+      ],
+      "artifacts": [
+        "ANTIGRAVITY_UI_TASK.md",
+        "ANTIGRAVITY_UI_RESULT.md",
+        "artifacts/ui-review-input"
+      ],
+      "lifecycle": "completed; writer stopped; ccb1aa1b integrated as a0a170b2, ce555d45 integrated as 3df9c8df; browser window released",
+      "acceptance_status": "GPT-6 reviewed source and actual light/dark screenshots; worker 196 affected browser + 40 contrast tests passed; root isolated screenshot output by project and reran 10 opened-state tests successfully; full gate pending",
+      "commit": "ccb1aa1b",
+      "integration_commit": "a0a170b2",
+      "followup_integration_commit": "3df9c8df",
+      "root_result": "research/antigravity-ui-regressions-result.md"
+    },
+    {
+      "id": "cursor-native-gate",
+      "executor": "Cursor desktop Debug mode",
+      "model_observed": "existing Cursor Grok 4.6 / High / Fast conversation",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "branch": "codex/next-iteration-engineering-20260920",
+      "allowed_paths": [
+        "provider/usage.rs",
+        "provider/credentials.rs",
+        "exact failing stale plaintext fixture tests only",
+        "research/cursor-native-gate-result.md"
+      ],
+      "artifacts": [
+        "research/cursor-native-gate-task.md",
+        "artifacts/cursor-native-gate.log"
+      ],
+      "lifecycle": "completed; writer stopped in actual Cursor UI",
+      "acceptance_status": "typed input reviewed; fmt/check/clippy passed; native gate exposed 7 lib + 1 integration failures"
+    },
+    {
+      "id": "grok-cli-budget-review",
+      "issues": [27, 29],
+      "executor": "terminal Grok CLI",
+      "model_observed": "grok-4.6",
+      "job_id": "exec session 57721",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "review_target": "~/.codex/worktrees/fyagent-next-cli-space/fyagent",
+      "allowed_paths": [],
+      "artifacts": [
+        "research/grok-cli-budget-review-task.md",
+        "artifacts/grok-cli-budget-review.ndjson",
+        "research/grok-cli-budget-review.md",
+        "research/jev-cli-execution-decision.json"
+      ],
+      "lifecycle": "completed exit 0; final report persisted",
+      "acceptance_status": "root accepted dependency-carry direction as next implementation, not proof; requires existing-global/update fixtures and actual volume repair"
+    },
+    {
+      "id": "cursor-credential-gate-repair",
+      "issues": [35, 56],
+      "executor": "Cursor backend task implementation desktop Debug conversation",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "allowed_paths": [
+        "provider/credentials.rs and submodules",
+        "provider/usage.rs",
+        "change_plan/service.rs",
+        "focused specs/tests and own result"
+      ],
+      "artifacts": [
+        "research/cursor-credential-gate-repair-task.md",
+        "research/cursor-credential-gate-repair-result.md"
+      ],
+      "lifecycle": "completed; writer stopped in actual Cursor UI; five filters, rotation filter and 35 credentials tests passed",
+      "acceptance_status": "GPT-6 reviewing production delta; new common-table post-write path requires ownership/projection review; terminal Grok bounded review running"
+    },
+    {
+      "id": "cursor-recovery-integration",
+      "issues": [64],
+      "executor": "Cursor recovery task implementation desktop conversation",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "allowed_paths": [
+        "two failing recovery tests",
+        "existing proxy recovery implementation/spec only if proven necessary",
+        "own result"
+      ],
+      "artifacts": [
+        "research/cursor-recovery-integration-task.md",
+        "research/cursor-recovery-integration-result.md"
+      ],
+      "lifecycle": "completed; result records writer stopped; two focused tests and 21 receipt-backed recovery tests passed",
+      "acceptance_status": "GPT-6 reviewed test-only delta: unproven foreign bytes and original backup are preserved; final combined backend gate pending"
+    },
+    {
+      "id": "grok-final-credentials-review",
+      "executor": "terminal Grok CLI 1.0.34",
+      "model_observed": "grok-4.6",
+      "session_id": "01a0c11b-3792-73b3-ae02-da2baae8c870",
+      "allowed_paths": [],
+      "scope": "read-only review of the original common-table copy and upsert verification delta; excludes later replacement",
+      "artifacts": [
+        "research/grok-final-credentials-review-task.md",
+        "research/grok-final-credentials-review.md",
+        "artifacts/grok-credentials-reviewed-delta.patch"
+      ],
+      "lifecycle": "initial run hit 14-turn limit without final report; same session resumed for report only, zero further tool calls, exit 0",
+      "acceptance_status": "three common-copy defects confirm root findings; failed-create missing-row compensation defect accepted for repair; speculative questions not treated as defects"
+    },
+    {
+      "id": "cursor-common-projection-repair",
+      "issues": [35, 47, 56, 61],
+      "executor": "Cursor backend task implementation desktop Debug conversation",
+      "model_observed": "existing Cursor Grok 4.6 / High / Fast conversation",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "allowed_paths": [
+        "provider/live.rs and exact source projection callers/helpers",
+        "change_plan/adapter.rs and service.rs failed-create verification",
+        "focused tests, corresponding existing specs and own result"
+      ],
+      "artifacts": [
+        "research/cursor-common-projection-repair-task.md",
+        "research/cursor-common-projection-repair-result.md"
+      ],
+      "lifecycle": "completed; writer stopped confirmed in actual Cursor UI; focused tests passed per report",
+      "acceptance_status": "source accepted: strict read/shared single-write projection and narrow failed-create fallback; fresh-key retains source-ref snapshot; root removed unused wrapper; full backend running"
+    },
+    {
+      "id": "cursor-cli-final-repair",
+      "issues": [27],
+      "executor": "existing Cursor recovery task implementation desktop conversation",
+      "model_observed": "Cursor Grok 4.6 / High / Fast; read directly from current model parameter menu; unchanged",
+      "cwd": "~/.codex/worktrees/fyagent-next-cli-space/fyagent",
+      "branch": "codex/next-cli-space-27",
+      "baseline": "be21f65337bd0fa5769c010c03166a4571b809ce",
+      "allowed_paths": [
+        "tooling/preflight/helper and exact bounded Windows bridge",
+        "focused DTO/UI/tests",
+        "CURSOR_CLI_REPAIR_RESULT.md and ignored fixtures"
+      ],
+      "artifacts": ["CURSOR_CLI_REPAIR_TASK.md", "CURSOR_CLI_REPAIR_RESULT.md"],
+      "lifecycle": "running; isolated CLI directory/branch/HEAD confirmed in actual Cursor UI after initial sandbox workspace redirection; absolute-path commands used",
+      "acceptance_status": "pending four concrete source fixes and focused checks"
     }
   ],
   "entry_observations": [
@@ -371,17 +495,11 @@
     },
     {
       "entry": "OpenCode models google",
-      "result": [
-        "google/gemini-3.1-pro-preview",
-        "google/gemini-3.5-flash"
-      ]
+      "result": ["google/gemini-3.1-pro-preview", "google/gemini-3.5-flash"]
     },
     {
       "entry": "OpenCode models poe",
-      "result": [
-        "poe/anthropic/claude-opus-4.8",
-        "poe/google/gemini-3.5-flash"
-      ]
+      "result": ["poe/anthropic/claude-opus-4.8", "poe/google/gemini-3.5-flash"]
     }
   ],
   "known_coordination": {
@@ -396,5 +514,7 @@
     "release_pr194_status": "merged; origin/main da91427e verified by release owner and fetched",
     "native_agents": "config_pack_73, installer_27_29, integration_check all errored shared usage limit; writers stopped"
   },
-  "upstream_final_main": "da91427e2e564499a4dcc4d20f2874105072123c"
+  "upstream_final_main": "da91427e2e564499a4dcc4d20f2874105072123c",
+  "integration_checkpoint": "9fd852cd",
+  "main_integration_commit": "35848bef"
 }

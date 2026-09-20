@@ -1864,6 +1864,24 @@ fn normalize_job_projection(job: &mut ChangeJobSnapshot) {
     });
 }
 
+fn definition_matches_after_first_secretref(
+    stored: &StoredChangePlan,
+    readback: &CodexSwitchInspection,
+) -> bool {
+    if readback.target_definition_digest == stored.target_definition_digest {
+        return true;
+    }
+    // A first persist assigns credentialRef after preview. Compare the same
+    // unbound definition the plan hashed; rotation of an existing binding
+    // still mismatches because the stored digest includes that reference.
+    let mut unbound = readback.target.clone();
+    if let Some(settings) = unbound.settings_config.as_object_mut() {
+        settings.remove("credentialRef");
+    }
+    provider_definition_digest(&unbound)
+        .is_ok_and(|digest| digest == stored.target_definition_digest)
+}
+
 fn classify_job(
     stored: &StoredChangePlan,
     job: &mut ChangeJobSnapshot,
@@ -1890,7 +1908,7 @@ fn classify_job(
     let target_id = &stored.public.target_provider_id;
     let db_target = readback.db_current_provider_id.as_ref() == Some(target_id);
     let device_target = readback.device_current_provider_id.as_ref() == Some(target_id);
-    let definition_target = readback.target_definition_digest == stored.target_definition_digest;
+    let definition_target = definition_matches_after_first_secretref(stored, &readback);
     let live_target = readback.live_projection_available
         && readback.live_projection_digest == stored.target_projection_digest;
     let baseline_db = readback.db_current_provider_id == stored.public.db_baseline_provider_id;
@@ -2415,7 +2433,7 @@ mod tests {
             "auth": {},
             "config": "model_provider = \"active\"\nmodel = \"gpt-target\"\n[model_providers.active]\nname = \"Active\"\nbase_url = \"https://example.test/v1\"\nwire_api = \"responses\"\n[model_providers.inactive]\nexperimental_bearer_token = \"token-inactive\"\n"
         });
-        db.save_provider(AppType::Codex.as_str(), &inactive_token)
+        db.save_provider_record(AppType::Codex.as_str(), &inactive_token)
             .unwrap();
         assert_eq!(
             ChangePlanService::plan_codex_switch_at(&state, &inactive_token.id, 101),
@@ -3589,6 +3607,80 @@ mod tests {
         .unwrap();
         assert_eq!(replay.kind, ChangeApplyOutcomeKind::IdempotentReplay);
         assert_eq!(writer_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    #[serial]
+    fn upsert_failed_create_without_insert_restores_unchanged_baseline() {
+        let (_home, _guard, db, state, current, _target) = setup_switch_state();
+        let before_live = read_live_settings(AppType::Codex).unwrap();
+        let mut intended = provider(QUICK_SETUP_CODEX_PROVIDER_ID, "Gateway", "gpt-upsert");
+        intended.category = Some("custom".to_string());
+        let plan = ChangePlanService::plan_codex_upsert(&state, intended).unwrap();
+        let writer_calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_with_writers(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| {
+                writer_calls.fetch_add(1, Ordering::SeqCst);
+                Err::<WriterReceipt, ()>(())
+            },
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(outcome.kind, ChangeApplyOutcomeKind::Admitted);
+        let job = outcome.job.expect("failed create still produces a job");
+        assert_eq!(job.status, ChangeJobStatus::Failed);
+        assert_eq!(
+            job.result_code,
+            ChangeResultCode::WriterFailedBaselineRestored
+        );
+        assert_eq!(job.recovery_state, RecoveryState::Succeeded);
+        assert_eq!(writer_calls.load(Ordering::SeqCst), 1);
+        assert!(db
+            .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str()).unwrap(),
+            Some(current.id.clone())
+        );
+        assert_eq!(read_live_settings(AppType::Codex).unwrap(), before_live);
+    }
+
+    #[test]
+    #[serial]
+    fn upsert_retained_binding_rotation_is_stale_before_writer() {
+        let (_home, _guard, db, state, _current, _target) = setup_switch_state();
+        let mut reserved = provider(QUICK_SETUP_CODEX_PROVIDER_ID, "Gateway", "gpt-upsert");
+        reserved.category = Some("custom".to_string());
+        db.save_provider(AppType::Codex.as_str(), &reserved)
+            .unwrap();
+        let plan = ChangePlanService::plan_codex_upsert(&state, reserved.clone()).unwrap();
+        reserved.settings_config["auth"]["OPENAI_API_KEY"] = json!("fixture-rotated-native-key");
+        db.save_provider(AppType::Codex.as_str(), &reserved)
+            .unwrap();
+        let writer_calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_with_writers(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| {
+                writer_calls.fetch_add(1, Ordering::SeqCst);
+                Ok::<_, ()>(WriterReceipt {
+                    live_config_changed: false,
+                })
+            },
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
+        assert_eq!(writer_calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]

@@ -99,7 +99,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "fe8d7cffa53a186c0aa8f2bae3b5b80798527fc4cd9bf792a72a25528f36534a"
+      "70f5781ed2af5673c91623dacac6d56178f3a7b43ac84d5c5eba9ae77a6ff3f0"
     ],
     [
       "src-tauri/src/codex_config/catalog.rs",
@@ -279,7 +279,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "f54ba96ab3b1eb2d8dba07c3a0b2f88c39d033d94cade83c3ad599db8e9f2b55"
+      "54f5229fb3b14857acf6e52ef22dd6eaeb712f6bb92fd9c1adca39a95405475b"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
