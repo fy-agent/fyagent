@@ -141,3 +141,43 @@ Google AI Pro/Ultra 请求从 Gemini CLI 迁出，因此 Gemini CLI 仅保留为
 企业/付费 API 场景候选。OpenClaw 随后以 Gateway 感知方式接入；Cursor
 需要更多新的目录/安装/认证适配。此次不把调研候选标成已接入产品。
 详见 `research/catalog-candidates.md` 的官方来源和最小接入范围。
+
+
+## 2026-09-20: 0.4.6 merge follow-up
+
+The earlier schema-22 incompatibility finding above is **superseded** by the
+schema-23 integration in PR #192 and the archived release-integration record.
+Both historical layouts have forward-migration and data-preservation coverage.
+
+A new pre-merge regression was reproduced against an unchanged v0.4.5 Claude
+subscription binding: the new restore path required a proof format v0.4.5 did
+not store. The failing native test was preserved before repair. The fix uses
+existing path-bound writer receipts and reconstructs the complete legacy
+subscription projection. It rejects later edits, including another FyAgent
+writer changing only the listener endpoint; it preserves a literal `null`
+Claude preimage and absent original files. Codex login bytes and catalog data
+without a historical preimage are not invented or overwritten by this repair.
+
+Independent review found and closed the null-preimage and endpoint-only cases.
+The inherited v0.4.5 local database remains the restore authority for original
+fields hidden by repeated subscription projections: no historical signature
+exists for those fields. This is explicitly documented in proxy-runtime SPEC;
+it is not a claim to detect every possible database edit.
+
+Validation on the combined 0.4.6 candidate, with backend source at
+`2d1c08296ebf2470ed5612aa58111a32ed627f89`:
+
+- Native upgrade regression: 7 passed, 0 failed, 0 ignored.
+- Full canonical `mise run check:backend`: exit 0; formatting, Cargo check,
+  Clippy and all 19 test suites completed. 3,714 passed, 0 failed, 6 ignored.
+- Ignored cases remain the existing explicit performance, live S3, real Codex
+  corpus and native credential-store hardware/integration checks. They are not
+  evidence of real subscription generation or Windows desktop acceptance.
+- All four relevant archived task context manifests validate. Product source
+  was frozen before the full backend run; subsequent changes are release notes.
+
+This PR carries the same five-file repair as commit `d6b92663`, based directly
+on the previous PR head `fec6db08`. Only the two reviewed recovery source hashes
+in the platform structure inventory were refreshed. Final combination,
+post-archive contracts and exact-head/merge-queue CI are owned by the merge
+coordinator and must be read back before mainline admission.

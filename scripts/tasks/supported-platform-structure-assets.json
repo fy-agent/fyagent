@@ -147,11 +147,11 @@
     ],
     [
       "src-tauri/src/config.rs",
-      "48818e3539ed99248a278460f96d76b67932eff23cbf2457003ad534c630cfb0"
+      "d665a2bfd235ca5c0d6548b5abc138e2b36f41b2b4cb4eac7404015d1fb0b97b"
     ],
     [
       "src-tauri/src/config/recovery.rs",
-      "6f35ea0b5e3b238e7cd386323c2f299a654a3c980354d8b0614a571d157add0e"
+      "776f8d453ef7b452d8328152ec8ecd806955a7e3073b4eba6b43751aa4cd1ce1"
     ],
     [
       "src-tauri/src/gemini_config.rs",
