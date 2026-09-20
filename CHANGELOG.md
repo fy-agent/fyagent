@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Recover unchanged legacy subscription bindings from 0.4.5 using existing
+  write receipts and projection checks, protecting later edits and retaining
+  original bytes when available without requiring a proof format older
+  versions lacked.
 - Preserve both historical schema-22 layouts through the combined schema-23
   migration, including project verification records and proxy settings.
 - Preserve OpenCode native provider identities and prevent loopback projections
