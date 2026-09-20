@@ -944,7 +944,6 @@ function plantMacAppLayout(appPath: string) {
 <dict>
   <key>CFBundleExecutable</key><string>FyAgent</string>
   <key>CFBundleIdentifier</key><string>com.fyagent.desktop</string>
-<key>CFBundleExecutable</key><string>fyagent</string>
   <key>CFBundleShortVersionString</key><string>0.4.2</string>
   <key>CFBundleVersion</key><string>0.4.2</string>
 </dict>
