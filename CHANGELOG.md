@@ -8,6 +8,50 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - Unreleased
+
+### Added
+
+- Customer projects with versioned instructions, isolated resource references,
+  archival, delivery kits, staged verification and redacted handover exports.
+- Starter delivery kits for weekly reports, knowledge support and business
+  queries, including local deterministic weekly-report examples.
+- macOS project context publication and isolated Codex directory preparation.
+- OpenCode managed-subscription binding, lifecycle recovery and guarded
+  restoration, extending the existing supported targets.
+
+### Changed
+
+- Consolidated MCP and Skills actions and simplified installation and login
+  presentation while retaining confirmation and recovery behavior.
+- Reorganized Chinese, English and Japanese manuals around current features.
+- Read individual MCP records and current providers directly; consolidate
+  equivalent proxy error and streaming handling.
+
+### Fixed
+
+- Preserve both historical schema-22 layouts through the combined schema-23
+  migration, including project verification records and proxy settings.
+- Preserve OpenCode native provider identities and prevent loopback projections
+  from replacing their canonical upstream definitions during startup import.
+- Keep Health observation read-only and recognize valid subscription routes.
+- Reject missing assignment readbacks; avoid assigning a new MCP to every Agent
+  by default; preserve external configuration changes during restoration.
+- Preserve project drafts, resource generations and delivery-kit version
+  conflicts; invalidate outdated verification without deleting its history.
+- Restore focus after clearing search and constrain first-use guide icon sizes.
+- Correct macOS notarization ticket processing order and related packaging checks.
+
+### Compatibility
+
+- Local subscription forwarding requires FyAgent to remain running. Upstream
+  access and quota depend on the real vendor account.
+- Project context publication and isolated Codex directory preparation are
+  macOS-only. FDE saved-model probes report managed subscriptions as unsupported
+  before accessing credentials or sending a request.
+- Application and helper metadata move to 0.4.6; the helper minimum-client floor
+  remains unchanged. A main-branch merge does not itself publish release assets.
+
 ## [0.4.5] - 2026-09-18
 
 FyAgent 0.4.5 adds a read-only Agent Health Center, skippable first-use software
