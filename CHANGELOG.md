@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Preserve per-app proxy retry, timeout and circuit settings during shutdown
+  and ephemeral-port persistence; retain existing universal-provider child
+  metadata, creation time and ordering during synchronization.
+- Coalesce adjacent assistant commentary and tool calls without crossing
+  user, tool, media or emitted-batch boundaries; preserve reasoning text and
+  ignore empty reasoning deltas without dropping meaningful whitespace.
+- Adapt xAI native Responses tool schemas, agent messages and model mapping;
+  normalize complete integer tool arguments without losing decimal precision,
+  restore tool namespaces, and retain SSE event metadata. These changes cover
+  regular and streamed responses only for the effective xAI provider.
 - Recover unchanged legacy subscription bindings from 0.4.5 using existing
   write receipts and projection checks, protecting later edits and retaining
   original bytes when available without requiring a proof format older

@@ -136,6 +136,10 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 
 ### Migration metadata and official-provider ownership
 
+- Updating a universal Provider preserves an existing Codex child card's
+  metadata, creation time, sort position, and independently owned settings.
+  Parent-owned connection details still update; a newly generated child uses
+  normal initialization. The universal-provider service owns this merge.
 - `ProviderMeta.imageExtensionConfigured` is migration-only private metadata.
   For a non-official Provider, missing metadata plus no managed/conflicting
   header is a legacy pending-on draft; no bulk migration writes live TOML.
