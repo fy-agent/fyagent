@@ -267,7 +267,9 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
                                         }
 
                                         // 处理 reasoning（thinking）
-                                        if let Some(reasoning) = &choice.delta.reasoning {
+                                        // Empty placeholders are not thinking transitions;
+                                        // nonempty whitespace is still a valid streamed delta.
+                                        if let Some(reasoning) = choice.delta.reasoning.as_ref().filter(|reasoning| !reasoning.is_empty()) {
                                             if current_non_tool_block_type != Some("thinking") {
                                                 if let Some(index) = current_non_tool_block_index.take() {
                                                     let event = json!({
@@ -746,6 +748,116 @@ mod tests {
 
     fn event_type(event: &Value) -> Option<&str> {
         event.get("type").and_then(|v| v.as_str())
+    }
+
+    fn compat_stream_input(deltas: Vec<Value>) -> String {
+        let mut input = String::new();
+        for delta in deltas {
+            input.push_str(&format!(
+                "data: {}\n\n",
+                json!({"id": "compat", "model": "test-model", "choices": [{"delta": delta}]})
+            ));
+        }
+        input.push_str(
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+        );
+        input
+    }
+
+    #[tokio::test]
+    async fn compat_stream_empty_reasoning_does_not_split_text_blocks() {
+        for field in ["reasoning", "reasoning_content"] {
+            let mut empty = json!({});
+            empty[field] = json!("");
+            let mut final_text = empty.clone();
+            final_text["content"] = json!("world");
+            let events = collect_anthropic_events(&compat_stream_input(vec![
+                json!({"content": "Hello "}),
+                empty,
+                final_text,
+            ]))
+            .await;
+            let starts = events
+                .iter()
+                .filter(|event| event_type(event) == Some("content_block_start"))
+                .map(|event| {
+                    (
+                        event["index"].clone(),
+                        event["content_block"]["type"].clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(starts, vec![(json!(0), json!("text"))], "{field}");
+            assert!(!events
+                .iter()
+                .any(|event| event["delta"]["type"] == "thinking_delta"));
+            let text = events
+                .iter()
+                .filter(|event| event["delta"]["type"] == "text_delta")
+                .map(|event| {
+                    assert_eq!(event["index"], 0);
+                    event["delta"]["text"].as_str().unwrap()
+                })
+                .collect::<String>();
+            assert_eq!(text, "Hello world");
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|event| event_type(event) == Some("content_block_stop"))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|event| event_type(event) == Some("message_stop"))
+                    .count(),
+                1
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn compat_stream_preserves_real_reasoning_and_whitespace_deltas() {
+        for field in ["reasoning", "reasoning_content"] {
+            let deltas = [" ", "\n", "inspect files"]
+                .into_iter()
+                .map(|text| {
+                    let mut delta = json!({});
+                    delta[field] = json!(text);
+                    delta
+                })
+                .chain(std::iter::once(json!({"content": "Ready."})))
+                .collect();
+            let events = collect_anthropic_events(&compat_stream_input(deltas)).await;
+            let starts = events
+                .iter()
+                .filter(|event| event_type(event) == Some("content_block_start"))
+                .map(|event| {
+                    (
+                        event["index"].clone(),
+                        event["content_block"]["type"].clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                starts,
+                vec![(json!(0), json!("thinking")), (json!(1), json!("text"))],
+                "{field}"
+            );
+            let reasoning = events
+                .iter()
+                .filter(|event| event["delta"]["type"] == "thinking_delta")
+                .map(|event| {
+                    assert_eq!(event["index"], 0);
+                    event["delta"]["thinking"].as_str().unwrap()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(reasoning, vec![" ", "\n", "inspect files"]);
+            assert!(events
+                .iter()
+                .any(|event| event["delta"]["text"] == "Ready." && event["index"] == 1));
+        }
     }
 
     #[test]
