@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
-use serde_json::{json, Map, Number, Value};
+use serde_json::{json, Map, Value};
 
 use super::transform_codex_responses_namespace::{restore_sse_event_namespaces, NamespacedName};
 use crate::proxy::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
@@ -823,79 +823,115 @@ fn normalize_function_call_arguments_field(obj: &mut Map<String, Value>) -> bool
                 false
             }
         },
-        Some(other) => rewrite_whole_number_floats(other),
-        None => false,
+        // Parsed numeric values no longer retain the original decimal token.
+        _ => false,
     }
 }
 
 fn rewrite_whole_float_arguments_json(
     arguments: &str,
 ) -> Result<Option<String>, serde_json::Error> {
-    let mut value: Value = serde_json::from_str(arguments)?;
-    if !rewrite_whole_number_floats(&mut value) {
+    // Validate structure without rebuilding numbers through an f64-backed Value.
+    // Only replaced numeric tokens change; all other bytes remain original.
+    let _: serde::de::IgnoredAny = serde_json::from_str(arguments)?;
+    let bytes = arguments.as_bytes();
+    let mut cursor = 0;
+    let mut copied_until = 0;
+    let mut rewritten = String::new();
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'"' => {
+                cursor += 1;
+                while cursor < bytes.len() {
+                    match bytes[cursor] {
+                        b'\\' => cursor += 2,
+                        b'"' => {
+                            cursor += 1;
+                            break;
+                        }
+                        _ => cursor += 1,
+                    }
+                }
+            }
+            b'-' | b'0'..=b'9' => {
+                let start = cursor;
+                cursor += 1;
+                while cursor < bytes.len()
+                    && matches!(
+                        bytes[cursor],
+                        b'0'..=b'9' | b'.' | b'e' | b'E' | b'+' | b'-'
+                    )
+                {
+                    cursor += 1;
+                }
+                if let Some(integer) = exact_decimal_integer(&arguments[start..cursor]) {
+                    rewritten.push_str(&arguments[copied_until..start]);
+                    rewritten.push_str(&integer);
+                    copied_until = cursor;
+                }
+            }
+            _ => cursor += 1,
+        }
+    }
+    if copied_until == 0 {
         return Ok(None);
     }
-    Ok(Some(serde_json::to_string(&value)?))
+    rewritten.push_str(&arguments[copied_until..]);
+    Ok(Some(rewritten))
 }
 
-fn rewrite_whole_number_floats(value: &mut Value) -> bool {
-    match value {
-        Value::Number(number) => {
-            if let Some(integer) = whole_float_to_json_int(number) {
-                *number = integer;
-                true
-            } else {
-                false
-            }
-        }
-        Value::Array(items) => {
-            let mut changed = false;
-            for item in items {
-                changed |= rewrite_whole_number_floats(item);
-            }
-            changed
-        }
-        Value::Object(map) => {
-            let mut changed = false;
-            for child in map.values_mut() {
-                changed |= rewrite_whole_number_floats(child);
-            }
-            changed
-        }
-        _ => false,
-    }
-}
-
-/// Convert a JSON Number that is a finite whole float (`92116.0`) into an
-/// integer Number. Non-whole values (`1.5`), actual integers, infinities, and
-/// values that cannot round-trip stay unchanged. The positive upper bound is
-/// exclusive because `u64::MAX as f64` rounds up to 2^64.
-fn whole_float_to_json_int(number: &Number) -> Option<Number> {
-    if number.is_i64() || number.is_u64() {
+/// Convert a validated decimal/exponent JSON number only when its exact value
+/// is an integer in i64/u64 range. Decimal digits, including insignificant zeros,
+/// determine integrality; binary floating-point rounding is never involved.
+fn exact_decimal_integer(token: &str) -> Option<String> {
+    if !token.contains(['.', 'e', 'E']) {
         return None;
     }
-    let float = number.as_f64()?;
-    if !float.is_finite() || float.fract() != 0.0 {
-        return None;
+    let negative = token.starts_with('-');
+    let unsigned = token.strip_prefix('-').unwrap_or(token);
+    let (coefficient, exponent) = match unsigned.find(['e', 'E']) {
+        Some(index) => (
+            &unsigned[..index],
+            unsigned[index + 1..].parse::<i64>().ok()?,
+        ),
+        None => (unsigned, 0),
+    };
+    let fraction_digits = coefficient
+        .find('.')
+        .map_or(0, |index| coefficient.len() - index - 1);
+    let digits: String = coefficient.chars().filter(|ch| *ch != '.').collect();
+    let significant = digits.trim_start_matches('0');
+    if significant.is_empty() {
+        return Some("0".into());
     }
-    if float >= 0.0 {
-        if float >= u64::MAX as f64 {
+    let shift = exponent.checked_sub(i64::try_from(fraction_digits).ok()?)?;
+    let integer_digits = if shift < 0 {
+        let removed = usize::try_from(shift.checked_neg()?).ok()?;
+        let end = significant.len().checked_sub(removed)?;
+        if !significant.as_bytes()[end..]
+            .iter()
+            .all(|digit| *digit == b'0')
+        {
             return None;
         }
-        let integer = float as u64;
-        if integer as f64 != float {
-            return None;
-        }
-        Some(Number::from(integer))
+        significant[..end].to_string()
     } else {
-        if float < i64::MIN as f64 {
+        let added = usize::try_from(shift).ok()?;
+        if significant.len().checked_add(added)? > 20 {
             return None;
         }
-        let integer = float as i64;
-        if integer as f64 != float {
+        let mut integer = significant.to_string();
+        integer.extend(std::iter::repeat_n('0', added));
+        integer
+    };
+    let magnitude = integer_digits.parse::<u64>().ok()?;
+    if negative {
+        if magnitude > i64::MIN.unsigned_abs() {
             return None;
         }
-        Some(Number::from(integer))
+        Some(format!("-{magnitude}"))
+    } else {
+        Some(magnitude.to_string())
     }
 }
 
@@ -947,12 +983,8 @@ fn rewrite_xai_native_sse_block(
     block: &str,
     restore_map: &HashMap<String, NamespacedName>,
 ) -> Bytes {
-    let mut event_name: Option<&str> = None;
     let mut data_parts: Vec<&str> = Vec::new();
     for line in block.lines() {
-        if let Some(event) = strip_sse_field(line, "event") {
-            event_name = Some(event.trim());
-        }
         if let Some(data) = strip_sse_field(line, "data") {
             data_parts.push(data);
         }
@@ -978,16 +1010,31 @@ fn rewrite_xai_native_sse_block(
         return Bytes::from(format!("{block}\n\n"));
     }
 
-    let restored = serde_json::to_string(&event).unwrap_or(data);
+    let Ok(restored) = serde_json::to_string(&event) else {
+        return Bytes::from(format!("{block}\n\n"));
+    };
+    // Replace the data field group while preserving cursor, retry, comments,
+    // extension fields, and each non-data line's original position and ending.
     let mut out = String::new();
-    if let Some(name) = event_name {
-        out.push_str("event: ");
-        out.push_str(name);
-        out.push('\n');
+    let mut data_written = false;
+    for line in block.split_inclusive('\n') {
+        let content = line.trim_end_matches(['\r', '\n']);
+        if strip_sse_field(content, "data").is_some() {
+            if !data_written {
+                out.push_str("data: ");
+                out.push_str(&restored);
+                out.push_str(&line[content.len()..]);
+                data_written = true;
+            }
+        } else {
+            out.push_str(line);
+        }
     }
-    out.push_str("data: ");
-    out.push_str(&restored);
-    out.push_str("\n\n");
+    let newline = if block.contains("\r\n") { "\r\n" } else { "\n" };
+    if !out.ends_with('\n') {
+        out.push_str(newline);
+    }
+    out.push_str(newline);
     Bytes::from(out)
 }
 
@@ -1274,10 +1321,12 @@ mod tests {
 
     #[test]
     fn whole_floats_92116_and_120000_become_integers() {
-        let mut value: Value =
-            serde_json::from_str(r#"{"session_id":92116.0,"yield_time_ms":120000.0,"wait":1.5}"#)
-                .unwrap();
-        assert!(rewrite_whole_number_floats(&mut value));
+        let rewritten = rewrite_whole_float_arguments_json(
+            r#"{"session_id":92116.0,"yield_time_ms":120000.0,"wait":1.5}"#,
+        )
+        .unwrap()
+        .unwrap();
+        let value: Value = serde_json::from_str(&rewritten).unwrap();
         assert_eq!(value["session_id"].as_i64(), Some(92116));
         assert_eq!(value["yield_time_ms"].as_u64(), Some(120000));
         assert_eq!(value["wait"].as_f64(), Some(1.5));
@@ -1289,6 +1338,140 @@ mod tests {
         assert!(!encoded.contains("92116.0"));
         assert!(!encoded.contains("120000.0"));
         assert!(encoded.contains("1.5"));
+    }
+
+    #[test]
+    fn xai_integer_precision_preserves_original_decimal_values() {
+        let cases = [
+            (r#"{"id":9007199254740993.0}"#, r#"{"id":9007199254740993}"#),
+            (
+                r#"{"value":1.0000000000000001}"#,
+                r#"{"value":1.0000000000000001}"#,
+            ),
+            (
+                r#"{"id":-9223372036854775809.0}"#,
+                r#"{"id":-9223372036854775809.0}"#,
+            ),
+            (
+                r#"{"id":18446744073709551615.0,"count":1.0}"#,
+                r#"{"id":18446744073709551615,"count":1}"#,
+            ),
+            (r#"{"id":92116.0}"#, r#"{"id":92116}"#),
+            (
+                r#"{"value":1.0000000000000001,"count":1.0}"#,
+                r#"{"value":1.0000000000000001,"count":1}"#,
+            ),
+            (
+                r#"{"id":-9223372036854775809.0,"count":1.0}"#,
+                r#"{"id":-9223372036854775809.0,"count":1}"#,
+            ),
+            (
+                r#"{"id":18446744073709551616.0,"count":1.0}"#,
+                r#"{"id":18446744073709551616.0,"count":1}"#,
+            ),
+        ];
+        let actual: Vec<_> = cases
+            .iter()
+            .map(|(input, _)| {
+                rewrite_whole_float_arguments_json(input)
+                    .unwrap()
+                    .unwrap_or_else(|| input.to_string())
+            })
+            .collect();
+        let expected: Vec<_> = cases.iter().map(|(_, expected)| *expected).collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn xai_integer_precision_handles_decimal_exponents_and_limits_exactly() {
+        for (token, expected) in [
+            ("9007199254740993e0", Some("9007199254740993")),
+            ("90071992547409930e-1", Some("9007199254740993")),
+            ("184467440737095516150e-1", Some("18446744073709551615")),
+            ("-92233720368547758080e-1", Some("-9223372036854775808")),
+            ("1.0000000000000001e16", Some("10000000000000001")),
+            ("1.0000000000000001e15", None),
+            ("0.0001e4", Some("1")),
+            ("0.0001e3", None),
+            ("0.1000e1", Some("1")),
+            ("1e+0", Some("1")),
+            ("1e-1", None),
+            ("0.0", Some("0")),
+            ("-0.0", Some("0")),
+            ("-9223372036854775809e0", None),
+            ("18446744073709551616e0", None),
+            ("1e9223372036854775807", None),
+            ("1.0e-9223372036854775808", None),
+            ("1e999999999999999999999999", None),
+            ("9007199254740993", None),
+        ] {
+            assert_eq!(exact_decimal_integer(token).as_deref(), expected, "{token}");
+        }
+    }
+
+    #[test]
+    fn xai_integer_precision_preserves_strings_whitespace_and_non_target_tokens() {
+        let input = r#" { "count": 1.0, "nested": [1.0000000000000001, 2.0], "text": "说明 \"1.0\" \\ 9007199254740993.0", "id":18446744073709551616 } "#;
+        let expected = r#" { "count": 1, "nested": [1.0000000000000001, 2], "text": "说明 \"1.0\" \\ 9007199254740993.0", "id":18446744073709551616 } "#;
+        let rewritten = rewrite_whole_float_arguments_json(input).unwrap().unwrap();
+        assert_eq!(rewritten, expected);
+        assert!(rewrite_whole_float_arguments_json(&rewritten)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn xai_integer_precision_preserves_extreme_exponents_in_mixed_arguments() {
+        let input =
+            r#"{"huge":1e999999999999999999999999,"tiny":1e-999999999999999999999999,"count":1.0}"#;
+        assert_eq!(
+            rewrite_whole_float_arguments_json(input).unwrap().unwrap(),
+            r#"{"huge":1e999999999999999999999999,"tiny":1e-999999999999999999999999,"count":1}"#
+        );
+    }
+
+    #[test]
+    fn xai_integer_precision_passes_invalid_number_tokens_through() {
+        for invalid in ["01", "1.", "1e+", "+1", "NaN", "--1"] {
+            let arguments = format!("{{\"count\":1.0,\"invalid\":{invalid}}}");
+            let mut event = json!({
+                "type": "response.function_call_arguments.done",
+                "arguments": arguments
+            });
+            assert!(!normalize_xai_function_call_integer_arguments(&mut event));
+            assert_eq!(event["arguments"], arguments);
+        }
+    }
+
+    #[test]
+    fn xai_integer_precision_leaves_parsed_non_string_arguments_unchanged() {
+        let mut event = json!({
+            "type": "response.function_call_arguments.done",
+            "arguments": {"id": 9007199254740993.0, "count": 1.0}
+        });
+        let original = event.clone();
+        assert!(!normalize_xai_function_call_integer_arguments(&mut event));
+        assert_eq!(event, original);
+    }
+
+    #[test]
+    fn xai_integer_precision_sse_done_preserves_non_target_number_tokens() {
+        let event = json!({
+            "type": "response.function_call_arguments.done",
+            "arguments": r#"{"id":9007199254740993.0,"fraction":1.0000000000000001,"outside":-9223372036854775809.0,"count":1.0}"#
+        });
+        let block = format!("event: response.function_call_arguments.done\ndata: {event}");
+        let output = rewrite_xai_native_sse_block(&block, &HashMap::new());
+        let output = std::str::from_utf8(&output).unwrap();
+        let data = output
+            .lines()
+            .find_map(|line| strip_sse_field(line, "data"))
+            .unwrap();
+        let rewritten: Value = serde_json::from_str(data).unwrap();
+        assert_eq!(
+            rewritten["arguments"],
+            r#"{"id":9007199254740993,"fraction":1.0000000000000001,"outside":-9223372036854775809.0,"count":1}"#
+        );
     }
 
     #[test]
@@ -1379,6 +1562,141 @@ mod tests {
             String::from_utf8(passed.to_vec()).unwrap(),
             format!("{delta}\n\n")
         );
+    }
+
+    #[test]
+    fn xai_sse_metadata_preserves_non_data_lines_for_integer_rewrites() {
+        let original = json!({
+            "type": "response.function_call_arguments.done",
+            "arguments": "{\"count\":2.0}"
+        });
+        let rewritten = json!({
+            "type": "response.function_call_arguments.done",
+            "arguments": "{\"count\":2}"
+        });
+        for newline in ["\n", "\r\n"] {
+            let prefix = [
+                "id: cursor-42",
+                "retry: 5000",
+                ": vendor-comment",
+                "event:  response.function_call_arguments.done",
+                "x-vendor: retained",
+            ]
+            .join(newline);
+            let block = format!("{prefix}{newline}data: {original}{newline}: after-data");
+            let output = rewrite_xai_native_sse_block(&block, &HashMap::new());
+            assert_eq!(
+                std::str::from_utf8(&output).unwrap(),
+                format!(
+                    "{prefix}{newline}data: {rewritten}{newline}: after-data{newline}{newline}"
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn xai_sse_metadata_preserves_interleaved_fields_with_multiple_data_lines() {
+        let block = concat!(
+            "event: response.function_call_arguments.done\r\n",
+            "data: {\"type\":\"response.function_call_arguments.done\",\r\n",
+            "id: cursor-43\r\n",
+            ": between-data\r\n",
+            "retry: 4500\r\n",
+            r#"data: "arguments":"{\"count\":2.0}"}"#,
+            "\r\n",
+            "x-vendor: retained"
+        );
+        let rewritten = json!({
+            "type": "response.function_call_arguments.done",
+            "arguments": "{\"count\":2}"
+        });
+        let output = rewrite_xai_native_sse_block(block, &HashMap::new());
+        assert_eq!(
+            std::str::from_utf8(&output).unwrap(),
+            format!(
+                "event: response.function_call_arguments.done\r\ndata: {rewritten}\r\nid: cursor-43\r\n: between-data\r\nretry: 4500\r\nx-vendor: retained\r\n\r\n"
+            )
+        );
+    }
+
+    #[test]
+    fn xai_sse_metadata_preserves_fields_for_namespace_only_rewrites() {
+        let original = json!({"type": "response.output_item.done", "item": {
+            "type": "function_call", "name": "mcp__files____read", "arguments": "{}"
+        }});
+        let rewritten = json!({"type": "response.output_item.done", "item": {
+            "type": "function_call", "name": "read", "arguments": "{}", "namespace": "mcp__files__"
+        }});
+        let map = HashMap::from([(
+            "mcp__files____read".into(),
+            NamespacedName {
+                namespace: "mcp__files__".into(),
+                name: "read".into(),
+            },
+        )]);
+        let block =
+            format!("id: namespace-cursor\nretry: 3000\n: namespace-comment\ndata: {original}");
+        let output = rewrite_xai_native_sse_block(&block, &map);
+        assert_eq!(
+            std::str::from_utf8(&output).unwrap(),
+            format!(
+                "id: namespace-cursor\nretry: 3000\n: namespace-comment\ndata: {rewritten}\n\n"
+            )
+        );
+    }
+
+    #[test]
+    fn xai_sse_metadata_preserves_unchanged_frames() {
+        for data in [
+            r#"{"type":"response.function_call_arguments.delta","delta":"{\"count\":2.0"}"#,
+            r#"{"type":"response.function_call_arguments.done","arguments":"{\"count\":2}"}"#,
+            "not-json",
+            "[DONE]",
+        ] {
+            let block =
+                format!("id: unchanged-cursor\nretry: 1500\n: untouched-comment\ndata: {data}");
+            let output = rewrite_xai_native_sse_block(&block, &HashMap::new());
+            assert_eq!(
+                std::str::from_utf8(&output).unwrap(),
+                format!("{block}\n\n")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn xai_sse_metadata_preserves_complete_trailing_frames() {
+        let original = json!({
+            "type": "response.function_call_arguments.done",
+            "arguments": "{\"count\":2.0,\"label\":\"说明\"}"
+        });
+        let rewritten = json!({
+            "type": "response.function_call_arguments.done",
+            "arguments": "{\"count\":2,\"label\":\"说明\"}"
+        });
+        for (newline, tail_ending) in [("\n", ""), ("\r\n", "\r\n")] {
+            let prefix =
+                format!("id: tail-cursor{newline}: tail-comment{newline}retry: 2500{newline}");
+            let wire = format!(": keepalive\n\n{prefix}data: {original}{tail_ending}");
+            let chunks: Vec<_> = wire
+                .bytes()
+                .map(|byte| Ok::<_, std::io::Error>(Bytes::from(vec![byte])))
+                .collect();
+            let output = create_xai_native_responses_sse_stream(
+                futures::stream::iter(chunks),
+                HashMap::new(),
+            );
+            futures::pin_mut!(output);
+            assert_eq!(
+                output.next().await.unwrap().unwrap(),
+                Bytes::from_static(b": keepalive\n\n")
+            );
+            let tail = output.next().await.unwrap().unwrap();
+            assert_eq!(
+                std::str::from_utf8(&tail).unwrap(),
+                format!("{prefix}data: {rewritten}{newline}{newline}")
+            );
+            assert!(output.next().await.is_none());
+        }
     }
 
     #[test]
@@ -1645,16 +1963,12 @@ mod tests {
 
     #[test]
     fn whole_float_integer_bounds_do_not_saturate() {
-        let mut value: Value = serde_json::from_str(
-            "[18446744073709551616.0,18446744073709549568.0,-9223372036854775808.0,-9223372036854777856.0,1.25]"
-        ).unwrap();
-        assert!(rewrite_whole_number_floats(&mut value));
-        assert!(value[0].is_f64());
-        assert_eq!(value[1].as_u64(), Some(18_446_744_073_709_549_568));
-        assert_eq!(value[2].as_i64(), Some(i64::MIN));
-        assert!(value[3].is_f64());
-        assert!(value[4].is_f64());
-        assert!(!rewrite_whole_number_floats(&mut value));
+        let input = "[18446744073709551616.0,18446744073709549568.0,-9223372036854775808.0,-9223372036854777856.0,1.25]";
+        let rewritten = rewrite_whole_float_arguments_json(input).unwrap().unwrap();
+        assert_eq!(rewritten, "[18446744073709551616.0,18446744073709549568,-9223372036854775808,-9223372036854777856.0,1.25]");
+        assert!(rewrite_whole_float_arguments_json(&rewritten)
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
