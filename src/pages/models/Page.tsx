@@ -91,6 +91,7 @@ import {
 } from "./apply";
 import { changePlanErrorCode } from "../../shared/features/change-plans-ui/changePlanErrors";
 import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
+import { ConfigPackButton } from "../../shared/features/config-pack-ui/ConfigPackButton";
 import {
   addUniqueModelIds,
   filterModelIds,
@@ -1753,6 +1754,7 @@ export function ModelsPage() {
     >
       <header className="fy-models-page-heading">
         <h1>模型管理</h1>
+        <ConfigPackButton />
       </header>
       <CatalogMasterDetail>
         <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择应用">

@@ -11,6 +11,10 @@ import { createManagedAuthPort } from "./feature-ports/managedAuth";
 import { createSimpleFeaturePorts } from "./feature-ports/simple";
 
 export function createTauriFeaturePorts(): FeaturePorts {
+  const configPack = async () => {
+    const { createConfigPackPort } = await import("./feature-ports/configPack");
+    return createConfigPackPort();
+  };
   const configRecovery = async () => {
     const { createConfigRecoveryPort } = await import(
       "./feature-ports/configRecovery"
@@ -38,6 +42,17 @@ export function createTauriFeaturePorts(): FeaturePorts {
     return createVerificationPort();
   };
   return {
+    configPack: {
+      list: async (...args) => (await configPack()).list(...args),
+      pickFile: async (...args) => (await configPack()).pickFile(...args),
+      previewImport: async (...args) =>
+        (await configPack()).previewImport(...args),
+      apply: async (...args) => (await configPack()).apply(...args),
+      previewExport: async (...args) =>
+        (await configPack()).previewExport(...args),
+      saveExport: async (...args) => (await configPack()).saveExport(...args),
+      cancel: async (...args) => (await configPack()).cancel(...args),
+    },
     deliveryKits: {
       list: async (...args) => (await deliveryKits()).list(...args),
       previewBuiltin: async (...args) =>

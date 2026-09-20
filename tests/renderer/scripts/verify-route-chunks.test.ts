@@ -94,7 +94,9 @@ describe("verifyRouteChunks", () => {
     expect(result.routeChunks.map(({ route }) => route)).toContain(
       "app/ProjectsWorkspace.tsx",
     );
-    expect(result.deferredPortChunks).toHaveLength(8);
+    expect(result.deferredPortChunks).toHaveLength(
+      RENDERER_DEFERRED_PORT_ENTRIES.length,
+    );
     expect(result.initialChunks.map((chunk) => chunk.file).sort()).toEqual([
       "assets/index.js",
       "assets/main.js",
@@ -126,7 +128,7 @@ describe("verifyRouteChunks", () => {
       ];
     });
     await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
-      "must dynamically import exactly 9 product pages, 7 deferred ports and 1 shell dialogs",
+      `must dynamically import exactly 9 product pages, ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports and ${RENDERER_DEFERRED_SHELL_ENTRIES.length} shell dialogs`,
     );
   });
 

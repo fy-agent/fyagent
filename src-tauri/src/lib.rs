@@ -1759,6 +1759,7 @@ pub fn run() {
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
             app.manage(app_state.projects.clone());
             app.manage(commands::DeliveryKitsState(app_state.delivery_kits.clone()));
+            app.manage(commands::ConfigPackState::default());
             app.manage(app_state);
 
             // 初始化 SkillService
@@ -1999,6 +2000,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_delivery_kits,
+            commands::list_config_pack_candidates,
+            commands::preview_config_pack_export,
+            commands::preview_config_pack_import,
+            commands::apply_config_pack_import,
+            commands::cancel_config_pack_preview,
+            commands::pick_config_pack_file,
+            commands::save_config_pack_export,
             commands::preview_builtin_delivery_kit,
             commands::pick_delivery_kit_import,
             commands::apply_delivery_kit_import,

@@ -8,6 +8,15 @@ const rejectNativeOnly = async (): Promise<never> => {
 
 export function createBrowserFeaturePorts(): FeaturePorts {
   return {
+    configPack: {
+      list: rejectNativeOnly,
+      pickFile: rejectNativeOnly,
+      previewImport: rejectNativeOnly,
+      apply: rejectNativeOnly,
+      previewExport: rejectNativeOnly,
+      saveExport: rejectNativeOnly,
+      cancel: rejectNativeOnly,
+    },
     deliveryKits: {
       list: rejectNativeOnly,
       previewBuiltin: rejectNativeOnly,

@@ -1,6 +1,11 @@
 .fy-models-page-heading {
   flex: 0 0 auto;
   margin-bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .fy-models-source-entry {
   display: flex;

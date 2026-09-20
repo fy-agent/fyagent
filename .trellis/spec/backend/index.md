@@ -56,6 +56,9 @@ secret handling, native source checks, and residual-risk reporting.
 [Provider Credential Persistence](./provider-credentials.md) owns production Codex
 SecretRef saves, migration, native consumers and secret-free Provider exports.
 
+[Portable Configuration Pack](./config-pack.md) owns selected connection export,
+strict import previews, credentialless draft transactions and native file pickers.
+
 [Device-local First-use Guide](./first-use-guide.md) owns new-install eligibility,
 settings persistence, narrow commands and protection against stale settings saves.
 

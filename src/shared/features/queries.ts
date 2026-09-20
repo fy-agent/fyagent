@@ -27,6 +27,7 @@ const changeJobsKey = [scope, "change-plans", "job"] as const;
 const dailyMemorySearchKey = [scope, "memory", "daily", "search"] as const;
 
 export const featureKeys = {
+  configPackCandidates: [scope, "config-pack", "candidates"] as const,
   projects: [scope, "projects", "list"] as const,
   projectCustomers: [scope, "projects", "customers"] as const,
   projectResourceOptions: [scope, "projects", "resources"] as const,

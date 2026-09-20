@@ -267,6 +267,7 @@ export interface MemoryPort {
 }
 
 export interface FeaturePorts {
+  configPack: import("./config-pack").ConfigPackPort;
   deliveryKits: import("./delivery-kits").DeliveryKitsPort;
   projects: ProjectsPort;
   verification: import("@/domain/verification").VerificationPort;

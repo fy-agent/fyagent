@@ -1,0 +1,77 @@
+.fy-config-pack {
+  display: grid;
+  gap: 16px;
+  color: var(--fy-text);
+  font-size: var(--fy-font-body);
+}
+.fy-config-pack-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.fy-config-pack-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  max-height: 240px;
+  overflow: auto;
+}
+.fy-config-pack-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--fy-border);
+}
+.fy-config-pack-option > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.fy-config-pack-fill {
+  margin-left: auto;
+}
+.fy-config-pack-option span,
+.fy-config-pack-hint {
+  color: var(--fy-text-secondary);
+  font-size: var(--fy-font-caption);
+  line-height: 1.6;
+}
+.fy-config-pack-entry {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--fy-border);
+  display: grid;
+  gap: 12px;
+}
+.fy-config-pack-fields {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 0;
+}
+.fy-config-pack-fields dt {
+  color: var(--fy-text-secondary);
+}
+.fy-config-pack-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.fy-config-pack-text {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  font-family: ui-monospace, monospace;
+  font-size: var(--fy-font-caption);
+  line-height: 1.6;
+}
+.fy-config-pack label {
+  display: grid;
+  gap: 8px;
+}
+.fy-config-pack h3,
+.fy-config-pack p {
+  margin: 0;
+}

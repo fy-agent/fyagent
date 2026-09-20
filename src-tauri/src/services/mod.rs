@@ -5,6 +5,7 @@ pub(crate) mod codex_desktop;
 pub(crate) mod codex_oauth_models;
 pub(crate) mod coding_plan;
 pub(crate) mod config;
+pub(crate) mod config_pack;
 pub(crate) mod delivery_kits;
 pub(crate) mod env_checker;
 pub(crate) mod env_manager;
