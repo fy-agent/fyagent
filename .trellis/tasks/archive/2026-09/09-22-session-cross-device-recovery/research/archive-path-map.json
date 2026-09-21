@@ -13,7 +13,8 @@
     "The 133 previously tracked originals are recoverable from sourceSnapshotCommit and sourceSnapshotPath.",
     "The 5 previously ignored logs have no source-commit copy; exact original bytes are retained separately in the local-only archive-original-logs backup, outside the repository.",
     "Task identity/status/branch/commit/PR meanings and chronological conclusions are retained; only workstation-home text and archive link locations are normalized.",
-    "Plain historical path references remain portable provenance; original -> archived entries resolve their new file locations."
+    "Plain historical path references remain portable provenance; original -> archived entries resolve their new file locations.",
+    "Coordinator updated only task.json PR URL and final delivery/validation status after canonical check passed; their submitted-document hashes are refreshed, original source hashes unchanged."
   ],
   "entries": [
     {
@@ -1730,16 +1731,16 @@
       "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/delivery-readiness.md",
       "sourceBytes": 4957,
       "sourceSha256": "1b74346befccdcd5b69c2350d17611786ea97da4e18bfa3c267a4e769afcde02",
-      "archivedBytes": 5317,
-      "archivedSha256": "58097bc71076fae325a278f4929f2f6124c4f02ef75850e6acdce9132c007e0f",
+      "archivedBytes": 5605,
+      "archivedSha256": "bef5275278b3ce8f2656d1ae8c7d16a46eb146e7386ef204d1e5f6b882d61839",
       "originalRecovery": {
         "kind": "git-commit",
         "commit": "6e6a3b3870a047874354f8f685b163622325331b",
         "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/delivery-readiness.md"
       },
       "normalization": "semantic-workstation-home-placeholders",
-      "normalizedDocumentBytes": 5317,
-      "normalizedDocumentSha256": "58097bc71076fae325a278f4929f2f6124c4f02ef75850e6acdce9132c007e0f"
+      "normalizedDocumentBytes": 5605,
+      "normalizedDocumentSha256": "bef5275278b3ce8f2656d1ae8c7d16a46eb146e7386ef204d1e5f6b882d61839"
     },
     {
       "original": "implementation/environment-ready.md",
@@ -2604,16 +2605,16 @@
       "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/root-validation.md",
       "sourceBytes": 5108,
       "sourceSha256": "6c02bebc83eef727abdf5fb6b562d19a0a4fb7fdbcc7b15c4751bb9d2505af56",
-      "archivedBytes": 5356,
-      "archivedSha256": "2ba35dd23221d7314439a0ce45bfff15ad0b43457e73efc09bf460d57e722d62",
+      "archivedBytes": 5768,
+      "archivedSha256": "16420ff82aada8cf3f02e1b370d6f46cdab82013a5c37157267d2203d8023eff",
       "originalRecovery": {
         "kind": "git-commit",
         "commit": "6e6a3b3870a047874354f8f685b163622325331b",
         "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/root-validation.md"
       },
       "normalization": "semantic-workstation-home-placeholders",
-      "normalizedDocumentBytes": 5356,
-      "normalizedDocumentSha256": "2ba35dd23221d7314439a0ce45bfff15ad0b43457e73efc09bf460d57e722d62"
+      "normalizedDocumentBytes": 5768,
+      "normalizedDocumentSha256": "16420ff82aada8cf3f02e1b370d6f46cdab82013a5c37157267d2203d8023eff"
     },
     {
       "original": "implementation/strict-extraction-report.md",
@@ -2718,16 +2719,16 @@
       "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/task.json",
       "sourceBytes": 1075,
       "sourceSha256": "36ad9117e10b9d026e9968263fa17338645af2709db0fbe412f097b1fbf883bf",
-      "archivedBytes": 1074,
-      "archivedSha256": "e8bb702b2781c08e6a6ffe935a4be67b0b83d7bb5809fc0a261e8d2716880755",
+      "archivedBytes": 1117,
+      "archivedSha256": "8ff0c370311b1426daca2c5dd6f060ddfede82d4b2cc315db9d86ff681a5503f",
       "originalRecovery": {
         "kind": "git-commit",
         "commit": "6e6a3b3870a047874354f8f685b163622325331b",
         "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/task.json"
       },
       "normalization": "semantic-workstation-home-placeholders",
-      "normalizedDocumentBytes": 1074,
-      "normalizedDocumentSha256": "e8bb702b2781c08e6a6ffe935a4be67b0b83d7bb5809fc0a261e8d2716880755"
+      "normalizedDocumentBytes": 1117,
+      "normalizedDocumentSha256": "8ff0c370311b1426daca2c5dd6f060ddfede82d4b2cc315db9d86ff681a5503f"
     }
   ],
   "linkEdits": [

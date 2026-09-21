@@ -49,3 +49,7 @@
 
 - Canonical final rust:fmt:check and rust:clippy exit 0; rust:check exit 0 on unchanged product source before the final assertion-only correction. Full final rust:test exit 0: 3,754 library + 273 integration + 82 helper = **4,109 passed, 0 failed, 7 ignored**. Production migration integration 11/11. Grok regressions both passed. Root read actual exit receipt and full summary directly.
 - Final code is ready for commit/PR; remote CI is not yet claimed.
+
+## Canonical aggregate and PR handoff
+
+After archival normalization, `mise run check` exited 0 (environment, frontend, backend and all contract leaves); platform snapshot covered 3,141 current files. PR #197: https://github.com/fy-agent/fyagent/pull/197. Subsequent changes only record this result/PR URL and refresh those reviewed archive-document hashes. Remote CI remains separately observed on the PR head.

@@ -16,7 +16,7 @@
   "base_branch": "main",
   "worktree_path": "/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/fyagent-session",
   "commit": "345119d291745e82a181e95c08b67b1c557b3f18",
-  "pr_url": null,
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/197",
   "subtasks": [],
   "children": [],
   "parent": null,

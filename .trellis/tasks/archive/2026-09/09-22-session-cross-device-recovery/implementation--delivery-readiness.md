@@ -2,7 +2,7 @@
 
 # Session 跨设备恢复交付说明
 
-状态：实现、本机检查与独立评审已完成；正在提交 PR 并跟进远端检查。仓库 `fy-agent/fyagent`，分支 `codex/session-cross-device-recovery-20260922`，基线 `c0b2ec21`。
+状态：实现、本机完整聚合检查与独立评审已完成；[PR #197](https://github.com/fy-agent/fyagent/pull/197) 已创建，远端检查以 PR 当前状态为准。仓库 `fy-agent/fyagent`，分支 `codex/session-cross-device-recovery-20260922`，基线 `c0b2ec21`。
 
 ## 功能
 
@@ -25,6 +25,8 @@
 版本与内容形状均独立设门槛。四个写入器不代表七种软件全部支持。所有原生实验使用隔离合成历史和本机端点；HTTP 400 捕获只证明请求携带了什么，**没有真实模型回复或用户桌面 UAT**。
 
 **Windows 实机验收按用户决定略过。正式 Windows 提权宿主还缺普通用户 CLI 执行通道，因此相关能力探测/恢复保持禁用。** 这是实现边界，独立于实机验收豁免；不能绕过现有权限限制。
+
+归档规范化后，规范 `mise run check` 整体退出 0，包含环境、前端、后端与发布/平台契约全部叶节点；无临时 active-task 排除。归档后平台检查覆盖 3,141 文件。
 
 ## 最终本机检查
 
