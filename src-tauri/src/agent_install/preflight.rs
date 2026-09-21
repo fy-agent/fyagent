@@ -9,7 +9,7 @@ use std::{
 use serde::Serialize;
 
 use super::{
-    inventory::{FreshDestinationCapability, InstallationTargetCapability, ValidatedActionTarget},
+    inventory::{FreshDestinationCapability, ValidatedActionTarget},
     types::{AgentActionId, AgentReasonCode, AgentSurface, StartAgentActionRequest},
 };
 use crate::{
@@ -305,7 +305,7 @@ fn desktop_target_paths(
 ) -> Result<(Vec<PathBuf>, String, InstallExecution, InstallRuntime), AgentReasonCode> {
     #[cfg(target_os = "macos")]
     {
-        use super::types::InstallationScope;
+        use super::{inventory::InstallationTargetCapability, types::InstallationScope};
         let (path, label, execution) = match target {
             ValidatedActionTarget::Existing(InstallationTargetCapability::Desktop {
                 path,
@@ -513,11 +513,25 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn display_user_path_shows_ordinary_dos_destinations() {
+        struct RestoreHome(Option<std::ffi::OsString>);
+        impl Drop for RestoreHome {
+            fn drop(&mut self) {
+                match self.0.take() {
+                    Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+                    None => std::env::remove_var("FYAGENT_TEST_HOME"),
+                }
+            }
+        }
+        let home = tempfile::tempdir().unwrap();
+        let _restore = RestoreHome(std::env::var_os("FYAGENT_TEST_HOME"));
+        std::env::set_var("FYAGENT_TEST_HOME", home.path());
         assert_eq!(
             display_user_path(Path::new(r"D:\npm-prefix")),
             r"D:\npm-prefix"
         );
+        assert_eq!(display_user_path(&home.path().join("bin")), "~/bin");
         assert_eq!(
             display_user_path(Path::new("/tmp/not-a-known-location")),
             "当前安装工具管理的位置"

@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
-      "aea66ff72dc0aa4534f80e1b0e38f682dceec3ef1a28afcdee94f7598a7067f4"
+      "5933e324224749d58056e8b16e080eb10b3515407e1753909381ac5ff28ee698"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -115,7 +115,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform.rs",
-      "3013a4708353600852f4589fa88e0615dd326bf15e22b01299969000bb05e8bc"
+      "5bce43115c46065f88fda03903593235aa2b51135a96dd12cd42dc32a154d81d"
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
@@ -335,7 +335,7 @@
     ],
     [
       "src-tauri/src/services/tooling/install_preflight.rs",
-      "d797183e8683b5a33ec731c282295b705b374a39a03757cfcf717b9e5748c9ec"
+      "4e04b5be068fd9e1938c22d2a0d4070283bf4af21817fdd035d779a4fd8e5dc4"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",

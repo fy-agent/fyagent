@@ -271,6 +271,7 @@ impl PlatformInstallPlan {
         &self.additional_disk_paths
     }
 
+    #[cfg(target_os = "macos")]
     pub(crate) fn with_confirmation_target(mut self, target: PathBuf) -> Self {
         self.confirmation_target = Some(target);
         self

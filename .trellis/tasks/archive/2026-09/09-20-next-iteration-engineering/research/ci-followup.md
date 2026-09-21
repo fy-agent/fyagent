@@ -1,0 +1,15 @@
+# PR 195 CI follow-up
+
+The initial hosted commit-subject gate was repaired without changing any source tree, author metadata or merge topology; commit-message-repair.json preserves the mapping and a local branch retains the original objects. All 38 subjects then passed locally and on GitHub.
+
+On head 1a32c286, the hosted repository contracts, desktop mock contract, macOS backend and both Windows native architecture contracts passed. Windows annotations identified an unused InstallationTargetCapability import and an unused reject_closed_iarna_conflict function. Source review confirmed both belong only to the macOS desktop/preflight path: the import now lives inside that existing block, and the function/import guards no longer include every test target. Shared Windows helper dependency admission and execution behavior are unchanged. The exact identities of these two reviewed platform files were refreshed without changing scanner rules.
+
+The Windows backend and frontend jobs were still running when this correction was prepared. No final hosted success or Issue closure is claimed. Auto-merge was disabled before repair; the revised head must pass applicable local and hosted gates before renewed queue admission.
+
+The completed hosted run confirmed exactly three Windows Clippy errors: those two items plus the macOS-only PlatformInstallPlan::with_confirmation_target builder. Its method is now compiled only for macOS. The only failed native test was display_user_path_shows_ordinary_dos_destinations: it called the mandatory Windows user-context accessor before initialization. The test now uses the established serial lock and an RAII-restored temporary FYAGENT_TEST_HOME, retains both original DOS/unknown-location assertions, and checks home-relative display as well. Production user-context initialization and rejection behavior are unchanged. All other hosted jobs, including the full frontend browser job, passed.
+
+The first two condition changes passed canonical local check (2071 frontend, 3909 native, no failures). The final builder guard and isolated fixture are being validated with the native backend and repository-contract composites; renderer source is unchanged from the successful hosted frontend run.
+
+Final repair validation: check:backend exited 0 (format/check/Clippy; 19 native targets, 3909 passed, 0 failed, 6 ignored). check:contracts exited 0. These run after the final three guards and isolated fixture change. The successful hosted frontend run contains 3 production-boot checks and 655 browser regressions; its renderer sources are unchanged by this correction. Hosted Windows revalidation and exact-head queue admission remain required.
+
+Backend log SHA-256: `cda11212b895d3cc0059941b5f5db29deef563a106a692288aaad61d5683cfac`; contract log SHA-256: `5abfffc834c88474789b9837d709f42c63e29df89a35546a5e00782f7ca8ed63`.

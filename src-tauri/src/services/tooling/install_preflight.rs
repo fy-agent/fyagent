@@ -1,6 +1,6 @@
 //! Read-only CLI host checks shared by install confirmation and execution.
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 use fyagent_user_helper::closed_dep::admit_closed_iarna_toml_at_prefix;
 use fyagent_user_helper::GrokNpmInstallPlan;
 
@@ -19,7 +19,7 @@ fn map_cli_helper_platform_error(code: Option<&str>) -> AgentReasonCode {
     }
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 fn reject_closed_iarna_conflict(prefix: &std::path::Path) -> Result<(), AgentReasonCode> {
     admit_closed_iarna_toml_at_prefix(prefix).map_err(|_| AgentReasonCode::CandidateConflict)
 }
