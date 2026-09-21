@@ -1,5 +1,0 @@
-继续QA同一Cursor GPT5.6Sol high任务。上轮已exit0，已读回647pass/20fail，后续定向8/12真实capability门控失败。用户允许略过Windows实机，保留未验证不作远程重试。
-前端Antigravity现正执行 frontend-review-fixes-brief.md 关闭Grok4.7报告（grok-frontend-review.md）。你权限新增 tests/browser/shell.spec.ts，仅更新新增Sessions后的真实导航/键盘顺序断言，勿放宽其他逻辑或只+1掩盖可访问顺序。仍独占 tests/session-migration/**、tests/browser/session-migration.spec.ts、src-tauri/tests/session_migration*.rs与I/qa-*。
-任务：补空restore[]拒绝绿、导出预览异步重入关闭ready、probe error不能冒充未安装、同origin多个receipts不掩盖unknown，selected-binding不会受未选项变化影响。UI应逐条消息/条数而非虚假轮数。按已冻结契约新增/更新有意义组件测试，不为迎合实现取消失败断言。没有调用方的helper会被前端删掉，测试转为真实行为，不能要求保留死API。
-QA-IMP-008已确认为生产bug，root会在AGY本轮完成后定向补缺，你请保持断言。前端review-fixes-exit.json出现后先跑单元和定向两browser files（session-migration+shell），通过才完整browser最后一次；新问题写qa-final-findings.md供root，若生产仍失败先报告等待修复，勿全套重跑。最后Rust要等backend-rework-exit.json（不是backend-exit，后端二轮会并行整合身份/原生writer/extraction）。test-hooks接口在补，先写前端回归和shell修复，后端未就绪不要busy wait；可完成前端包交付，root之后派Rust精确验证。
-所有终端rtk，项目检查mise run，报告qa-final-report.md只列本轮实际证据，保留尚未通过的缺口。禁止生产修改/真实用户会话/真实模型推理/提交PR。

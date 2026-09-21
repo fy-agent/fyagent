@@ -1,3 +1,5 @@
+> 归档说明：本文的时间与结论保留；具体工作站用户目录已替换为语义占位符。历史路径映射、原稿及提交稿哈希见[归档路径映射](research/archive-path-map.json)。可解析的相对链接已调整。
+
 > 最终状态：实现与本机门禁已完成；当前证据与能力边界见 implementation/delivery-readiness.md。下列分工表保留实施期间责任记录，具体旧状态已 superseded。
 
 # 实施顺序与责任边界

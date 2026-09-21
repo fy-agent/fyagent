@@ -1,1 +1,0 @@
-mise bootstrap passed on macOS arm64; node/pnpm/rust/uv/managed Python all available. Optional Windows cross-tool advisory missing is not a required gate. Use mise run checks now. Coordinator owns Codex writer.

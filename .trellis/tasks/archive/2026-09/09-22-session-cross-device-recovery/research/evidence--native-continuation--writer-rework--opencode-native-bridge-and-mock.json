@@ -1,0 +1,58 @@
+{
+  "version": {
+    "exit_code": 0,
+    "stdout": "1.18.30\n",
+    "stderr": ""
+  },
+  "id": "ses_228715d069174f81b2af3fbc3a6de61f",
+  "target_model": "probe/local",
+  "import": {
+    "exit_code": 0,
+    "stdout": "Imported session: ses_228715d069174f81b2af3fbc3a6de61f\n",
+    "stderr": ""
+  },
+  "readback": {
+    "exit_code": 0,
+    "stdout": "{\n  \"info\": {\n    \"id\": \"ses_228715d069174f81b2af3fbc3a6de61f\",\n    \"slug\": \"restored-228715d0\",\n    \"projectID\": \"global\",\n    \"directory\": \"/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/opencode\",\n    \"path\": \"Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/opencode\",\n    \"title\": \"Synthetic recovery\",\n    \"model\": {\n      \"id\": \"local\",\n      \"providerID\": \"probe\"\n    },\n    \"version\": \"1.18.30\",\n    \"cost\": 0,\n    \"tokens\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"reasoning\": 0,\n      \"cache\": {\n        \"read\": 0,\n        \"write\": 0\n      }\n    },\n    \"time\": {\n      \"created\": 1790018989693,\n      \"updated\": 1790018989693\n    }\n  },\n  \"messages\": [\n    {\n      \"info\": {\n        \"role\": \"user\",\n        \"time\": {\n          \"created\": 1790018989693\n        },\n        \"agent\": \"build\",\n        \"model\": {\n          \"providerID\": \"probe\",\n          \"modelID\": \"local\"\n        },\n        \"id\": \"msg_0000000000_d12a9cb052bf4fdfb8e36817db422de1\",\n        \"sessionID\": \"ses_228715d069174f81b2af3fbc3a6de61f\"\n      },\n      \"parts\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"  Unanswered one\\r\\n\",\n          \"id\": \"prt_50f422b6b15040b38c66b99601b29522\",\n          \"sessionID\": \"ses_228715d069174f81b2af3fbc3a6de61f\",\n          \"messageID\": \"msg_0000000000_d12a9cb052bf4fdfb8e36817db422de1\"\n        }\n      ]\n    },\n    {\n      \"info\": {\n        \"role\": \"user\",\n        \"time\": {\n          \"created\": 1790018989694\n        },\n        \"agent\": \"build\",\n        \"model\": {\n          \"providerID\": \"probe\",\n          \"modelID\": \"local\"\n        },\n        \"id\": \"msg_0000000001_059267cba5b34fe8a7ea904d5b87c70e\",\n        \"sessionID\": \"ses_228715d069174f81b2af3fbc3a6de61f\"\n      },\n      \"parts\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Keep KITE-73 中文\",\n          \"id\": \"prt_cea8519e33b941b48639245936bed59c\",\n          \"sessionID\": \"ses_228715d069174f81b2af3fbc3a6de61f\",\n          \"messageID\": \"msg_0000000001_059267cba5b34fe8a7ea904d5b87c70e\"\n        }\n      ]\n    },\n    {\n      \"info\": {\n        \"role\": \"assistant\",\n        \"time\": {\n          \"created\": 1790018989695,\n          \"completed\": 1790018989695\n        },\n        \"parentID\": \"msg_0000000001_059267cba5b34fe8a7ea904d5b87c70e\",\n        \"modelID\": \"local\",\n        \"providerID\": \"probe\",\n        \"mode\": \"build\",\n        \"agent\": \"build\",\n        \"path\": {\n          \"cwd\": \"/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/opencode\",\n          \"root\": \"/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/opencode\"\n        },\n        \"cost\": 0,\n        \"tokens\": {\n          \"input\": 0,\n          \"output\": 0,\n          \"reasoning\": 0,\n          \"cache\": {\n            \"read\": 0,\n            \"write\": 0\n          }\n        },\n        \"finish\": \"stop\",\n        \"id\": \"msg_0000000002_a33cd7ed83444e5ba9d3ebffbc2ec273\",\n        \"sessionID\": \"ses_228715d069174f81b2af3fbc3a6de61f\"\n      },\n      \"parts\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"One final\\r\\n  \",\n          \"id\": \"prt_54dcae2e338244519e603f3ec47ec8a7\",\n          \"sessionID\": \"ses_228715d069174f81b2af3fbc3a6de61f\",\n          \"messageID\": \"msg_0000000002_a33cd7ed83444e5ba9d3ebffbc2ec273\"\n        }\n      ]\n    },\n    {\n      \"info\": {\n        \"role\": \"assistant\",\n        \"time\": {\n          \"created\": 1790018989696,\n          \"completed\": 1790018989696\n        },\n        \"parentID\": \"msg_0000000001_059267cba5b34fe8a7ea904d5b87c70e\",\n        \"modelID\": \"local\",\n        \"providerID\": \"probe\",\n        \"mode\": \"build\",\n        \"agent\": \"build\",\n        \"path\": {\n          \"cwd\": \"/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/opencode\",\n          \"root\": \"/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/opencode\"\n        },\n        \"cost\": 0,\n        \"tokens\": {\n          \"input\": 0,\n          \"output\": 0,\n          \"reasoning\": 0,\n          \"cache\": {\n            \"read\": 0,\n            \"write\": 0\n          }\n        },\n        \"finish\": \"stop\",\n        \"id\": \"msg_0000000003_465f13902984455aa39441e16c22aba3\",\n        \"sessionID\": \"ses_228715d069174f81b2af3fbc3a6de61f\"\n      },\n      \"parts\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Second final C:\\\\foo\",\n          \"id\": \"prt_7fbc11e1dd0f4139af9d13a46a0d14d4\",\n          \"sessionID\": \"ses_228715d069174f81b2af3fbc3a6de61f\",\n          \"messageID\": \"msg_0000000003_465f13902984455aa39441e16c22aba3\"\n        }\n      ]\n    },\n    {\n      \"info\": {\n        \"role\": \"user\",\n        \"time\": {\n          \"created\": 1790018989697\n        },\n        \"agent\": \"build\",\n        \"model\": {\n          \"providerID\": \"probe\",\n          \"modelID\": \"local\"\n        },\n        \"id\": \"msg_0000000004_d8d1a37a1a47419485eed53e1639fab7\",\n        \"sessionID\": \"ses_228715d069174f81b2af3fbc3a6de61f\"\n      },\n      \"parts\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Trailing unanswered\",\n          \"id\": \"prt_302ca46aba6d4e84b7490a2a8f46ec99\",\n          \"sessionID\": \"ses_228715d069174f81b2af3fbc3a6de61f\",\n          \"messageID\": \"msg_0000000004_d8d1a37a1a47419485eed53e1639fab7\"\n        }\n      ]\n    }\n  ]\n}\n",
+    "stderr": "Exporting session: ses_228715d069174f81b2af3fbc3a6de61f\n"
+  },
+  "continue": {
+    "exit_code": 1,
+    "stdout": "{\"type\":\"error\",\"timestamp\":1790018993135,\"sessionID\":\"ses_228715d069174f81b2af3fbc3a6de61f\",\"error\":{\"name\":\"APIError\",\"data\":{\"message\":\"synthetic capture complete; no inference\",\"statusCode\":400,\"isRetryable\":false,\"responseHeaders\":{\"content-type\":\"application/json\",\"date\":\"Mon, 21 Sep 2026 19:29:53 GMT\",\"server\":\"BaseHTTP/0.6 Python/3.14.6\"},\"responseBody\":\"{\\\"error\\\":{\\\"code\\\":400,\\\"message\\\":\\\"synthetic capture complete; no inference\\\",\\\"status\\\":\\\"INVALID_ARGUMENT\\\",\\\"type\\\":\\\"invalid_request_error\\\"}}\",\"metadata\":{\"url\":\"http://127.0.0.1:63018/v1/chat/completions\"}}}}\n",
+    "stderr": ""
+  },
+  "captured_requests": [
+    {
+      "path": "/v1/chat/completions",
+      "body": {
+        "model": "local",
+        "messages": [
+          {
+            "role": "user",
+            "content": "  Unanswered one\r\n"
+          },
+          {
+            "role": "user",
+            "content": "Keep KITE-73 中文"
+          },
+          {
+            "role": "assistant",
+            "content": "One final\r\n  "
+          },
+          {
+            "role": "assistant",
+            "content": "Second final C:\\foo"
+          },
+          {
+            "role": "user",
+            "content": "Trailing unanswered"
+          },
+          {
+            "role": "user",
+            "content": "\"Synthetic next turn; keep KITE-73.\""
+          }
+        ]
+      }
+    }
+  ]
+}

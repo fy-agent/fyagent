@@ -1,0 +1,2819 @@
+{
+  "schema": "fyagent-task-archive-path-map/v1",
+  "sourceSnapshotCommit": "6e6a3b3870a047874354f8f685b163622325331b",
+  "originalTaskRoot": ".trellis/tasks/09-22-session-cross-device-recovery",
+  "sourceArchiveRoot": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery",
+  "archiveRoot": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery",
+  "originalFileCount": 138,
+  "previouslyTrackedFileCount": 133,
+  "notes": [
+    "No historical source or log was executed during normalization.",
+    "Superseded: earlier claims that submitted task metadata, JSON records and fenced payloads retain exact original bytes no longer apply after workstation-path anonymization.",
+    "Original sourceBytes/sourceSha256 identify the pre-normalization originals; archived and normalized hashes identify the submitted documents or fenced payloads.",
+    "The 133 previously tracked originals are recoverable from sourceSnapshotCommit and sourceSnapshotPath.",
+    "The 5 previously ignored logs have no source-commit copy; exact original bytes are retained separately in the local-only archive-original-logs backup, outside the repository.",
+    "Task identity/status/branch/commit/PR meanings and chronological conclusions are retained; only workstation-home text and archive link locations are normalized.",
+    "Plain historical path references remain portable provenance; original -> archived entries resolve their new file locations."
+  ],
+  "entries": [
+    {
+      "original": "a2a-execution.json",
+      "archived": "research/a2a-execution.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/a2a-execution.json",
+      "sourceBytes": 4326,
+      "sourceSha256": "d403678a1e9b68ca64c66a373e9bc50affc888a55a0c14fd4a74831766285593",
+      "archivedBytes": 4320,
+      "archivedSha256": "ddcaf7dd0645f6e21260996955fa068a2b2d1dcb2a5e387bed57177fa5940a83",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/a2a-execution.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 4320,
+      "normalizedDocumentSha256": "ddcaf7dd0645f6e21260996955fa068a2b2d1dcb2a5e387bed57177fa5940a83"
+    },
+    {
+      "original": "briefs/architecture-revision.md",
+      "archived": "briefs--architecture-revision.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/architecture-revision.md",
+      "sourceBytes": 3594,
+      "sourceSha256": "5605741b5fb47aa3710aa3a8762fd85e478366096670aae6787c52ecdd4015e9",
+      "archivedBytes": 3841,
+      "archivedSha256": "d4ee0e83e193ca30f254c39eda68dd3a85cd24bb2418615fd8f2241cdf9733d2",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/architecture-revision.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3841,
+      "normalizedDocumentSha256": "d4ee0e83e193ca30f254c39eda68dd3a85cd24bb2418615fd8f2241cdf9733d2"
+    },
+    {
+      "original": "briefs/architecture.md",
+      "archived": "briefs--architecture.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/architecture.md",
+      "sourceBytes": 3090,
+      "sourceSha256": "8631d14bdd5cde9a374422b7ec7e7075dfd1cec280c4f83dd852ec55a9e09c20",
+      "archivedBytes": 3336,
+      "archivedSha256": "963a88f7020e09ffd14f1836824874408966c20a6222a9c7f3d988cb0b3439ae",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/architecture.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3336,
+      "normalizedDocumentSha256": "963a88f7020e09ffd14f1836824874408966c20a6222a9c7f3d988cb0b3439ae"
+    },
+    {
+      "original": "briefs/common.md",
+      "archived": "briefs--common.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/common.md",
+      "sourceBytes": 2492,
+      "sourceSha256": "a5ce8abd48b356803ea47d9543034dfeee586df0a90e8792ff88807496055514",
+      "archivedBytes": 2738,
+      "archivedSha256": "5b1dec2892951dffbb766ba9b040a1c2639250259492a1c645c431bf80e68001",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/common.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2738,
+      "normalizedDocumentSha256": "5b1dec2892951dffbb766ba9b040a1c2639250259492a1c645c431bf80e68001"
+    },
+    {
+      "original": "briefs/qa-revision.md",
+      "archived": "briefs--qa-revision.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/qa-revision.md",
+      "sourceBytes": 2373,
+      "sourceSha256": "e248ac5be819a9986b3346f5a8fe64c2305f8eec6a99a5e1969cb55d12f90593",
+      "archivedBytes": 2620,
+      "archivedSha256": "7826bfc0fa1e292290cb9bd73c2c7cc8719b8f661c4e4f618c0dd4799962897d",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/qa-revision.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2620,
+      "normalizedDocumentSha256": "7826bfc0fa1e292290cb9bd73c2c7cc8719b8f661c4e4f618c0dd4799962897d"
+    },
+    {
+      "original": "briefs/qa.md",
+      "archived": "briefs--qa.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/qa.md",
+      "sourceBytes": 3144,
+      "sourceSha256": "6b8bea3ac361068177fd7a86cc10fac12822c21a8adaea41124a790ba923436c",
+      "archivedBytes": 3390,
+      "archivedSha256": "0fffc1dde1e016fe29edb62d02e6b9438fc3bc07e736e28681f26ce1b27fba60",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/qa.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3390,
+      "normalizedDocumentSha256": "0fffc1dde1e016fe29edb62d02e6b9438fc3bc07e736e28681f26ce1b27fba60"
+    },
+    {
+      "original": "briefs/review.md",
+      "archived": "briefs--review.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/review.md",
+      "sourceBytes": 3074,
+      "sourceSha256": "6b6834e8b55111b202acb6bc606d582ed8691a3be30149753457ea15b6007a65",
+      "archivedBytes": 3320,
+      "archivedSha256": "676d9fd09f10bf273a9a7bc7ea5825c9407364d3d321e859e76415cebf088e70",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/review.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3320,
+      "normalizedDocumentSha256": "676d9fd09f10bf273a9a7bc7ea5825c9407364d3d321e859e76415cebf088e70"
+    },
+    {
+      "original": "briefs/review47.md",
+      "archived": "briefs--review47.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/review47.md",
+      "sourceBytes": 2522,
+      "sourceSha256": "7585651e4908f58c43ae5a30c26fbe9773f5e587ebcb276bd3c93dfefcf86fe4",
+      "archivedBytes": 2769,
+      "archivedSha256": "7f4c23538f7aca1ff9d9074b5c47b1d814f213c5a4ac39b3a5da55672d789ed8",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/review47.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2769,
+      "normalizedDocumentSha256": "7f4c23538f7aca1ff9d9074b5c47b1d814f213c5a4ac39b3a5da55672d789ed8"
+    },
+    {
+      "original": "briefs/ux-final-fixes.md",
+      "archived": "briefs--ux-final-fixes.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/ux-final-fixes.md",
+      "sourceBytes": 1724,
+      "sourceSha256": "d23453744b10355039933a67e443303096fc6c46a4a0f8ecea90fe54f2e93e22",
+      "archivedBytes": 1971,
+      "archivedSha256": "6ff60dec4fc05119441a9af06c76d74e09922b207b8fb8c04de906323d5c1e98",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/ux-final-fixes.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1971,
+      "normalizedDocumentSha256": "6ff60dec4fc05119441a9af06c76d74e09922b207b8fb8c04de906323d5c1e98"
+    },
+    {
+      "original": "briefs/ux-revision.md",
+      "archived": "briefs--ux-revision.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/ux-revision.md",
+      "sourceBytes": 1698,
+      "sourceSha256": "c4f1da4f2d6d6dc9c6f534b5fe361f0a596dd768e7de887ffba64f9a73a49ba9",
+      "archivedBytes": 1945,
+      "archivedSha256": "c55462ea8d22c4eec54099668b7e49bf6a6dccc33064d5bcdee70bff6e6af310",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/ux-revision.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1945,
+      "normalizedDocumentSha256": "c55462ea8d22c4eec54099668b7e49bf6a6dccc33064d5bcdee70bff6e6af310"
+    },
+    {
+      "original": "briefs/ux.md",
+      "archived": "briefs--ux.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/ux.md",
+      "sourceBytes": 3323,
+      "sourceSha256": "13e3da49b455e3b3a283105f9d06bc186971387ebd1080207d14b4a6151a7846",
+      "archivedBytes": 3569,
+      "archivedSha256": "82db27c51c1e7e436317e037833002702e2eecfd269af33ae20775e35b9322ac",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/briefs/ux.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3569,
+      "normalizedDocumentSha256": "82db27c51c1e7e436317e037833002702e2eecfd269af33ae20775e35b9322ac"
+    },
+    {
+      "original": "check.jsonl",
+      "archived": "check.jsonl",
+      "kind": "path-normalized-task-metadata",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/check.jsonl",
+      "sourceBytes": 496,
+      "sourceSha256": "6c367ce81ec9b1558b4d2bc31f5506cf22d056c15d66760351b11ccc6023c9d3",
+      "archivedBytes": 496,
+      "archivedSha256": "6c367ce81ec9b1558b4d2bc31f5506cf22d056c15d66760351b11ccc6023c9d3",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/check.jsonl"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 496,
+      "normalizedDocumentSha256": "6c367ce81ec9b1558b4d2bc31f5506cf22d056c15d66760351b11ccc6023c9d3"
+    },
+    {
+      "original": "decisions/pm-adjudication.md",
+      "archived": "decisions--pm-adjudication.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/decisions/pm-adjudication.md",
+      "sourceBytes": 2309,
+      "sourceSha256": "4be552d462622e1ad47719210d9e662b47f7fba691bdbbe320604dedae1f840f",
+      "archivedBytes": 2557,
+      "archivedSha256": "4493bd2f0d47342efd87f6e4dcef1a0aff0e9c1aa0cf012feb64c72400dfac06",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/decisions/pm-adjudication.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2557,
+      "normalizedDocumentSha256": "4493bd2f0d47342efd87f6e4dcef1a0aff0e9c1aa0cf012feb64c72400dfac06"
+    },
+    {
+      "original": "decisions/receipt-storage-response.json",
+      "archived": "research/decisions--receipt-storage-response.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/decisions/receipt-storage-response.json",
+      "sourceBytes": 1299,
+      "sourceSha256": "2840184a4460bc5618bb9d9ae0afba6bd6ddc874ddcad4e18df6965b82fc8937",
+      "archivedBytes": 1299,
+      "archivedSha256": "2840184a4460bc5618bb9d9ae0afba6bd6ddc874ddcad4e18df6965b82fc8937",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/decisions/receipt-storage-response.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1299,
+      "normalizedDocumentSha256": "2840184a4460bc5618bb9d9ae0afba6bd6ddc874ddcad4e18df6965b82fc8937"
+    },
+    {
+      "original": "decisions/restore-gate-response.json",
+      "archived": "research/decisions--restore-gate-response.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/decisions/restore-gate-response.json",
+      "sourceBytes": 1706,
+      "sourceSha256": "dabaffc388eb979fa6fa5e9377deb1979bf9854f24b34062256618f804b8ed75",
+      "archivedBytes": 1706,
+      "archivedSha256": "dabaffc388eb979fa6fa5e9377deb1979bf9854f24b34062256618f804b8ed75",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/decisions/restore-gate-response.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1706,
+      "normalizedDocumentSha256": "dabaffc388eb979fa6fa5e9377deb1979bf9854f24b34062256618f804b8ed75"
+    },
+    {
+      "original": "deliverables/coordination-acceptance.md",
+      "archived": "deliverables--coordination-acceptance.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/coordination-acceptance.md",
+      "sourceBytes": 2257,
+      "sourceSha256": "07aea348d3c3f84c15fc79cb6418fa3cd6c8b188c6b1a3a2ae3f7bd25acdf33c",
+      "archivedBytes": 2505,
+      "archivedSha256": "be9c1bece2647f1d632603636f32db879a3e1484243fa75c4156a344568d0583",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/coordination-acceptance.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2505,
+      "normalizedDocumentSha256": "be9c1bece2647f1d632603636f32db879a3e1484243fa75c4156a344568d0583"
+    },
+    {
+      "original": "deliverables/grok47-final-review.md",
+      "archived": "deliverables--grok47-final-review.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/grok47-final-review.md",
+      "sourceBytes": 10346,
+      "sourceSha256": "6804402f9b959601cae124b6177482d9c99ec309cd467fa10f99155a69fc1a18",
+      "archivedBytes": 10594,
+      "archivedSha256": "b5a73084426db0c380e8e212e93e66daf8f529ee097a57db9ac3186d081ab955",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/grok47-final-review.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 10594,
+      "normalizedDocumentSha256": "b5a73084426db0c380e8e212e93e66daf8f529ee097a57db9ac3186d081ab955"
+    },
+    {
+      "original": "deliverables/prior-research.md",
+      "archived": "deliverables--prior-research.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/prior-research.md",
+      "sourceBytes": 11416,
+      "sourceSha256": "2a1ce13859dc340298824193d6512bd6c916e238757c746c24c5902136e0be4f",
+      "archivedBytes": 11655,
+      "archivedSha256": "9ff318e4a15e4b97b048ce09946a6818e68cf0ff73f20e924d2cf2d700b767d1",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/prior-research.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 11655,
+      "normalizedDocumentSha256": "9ff318e4a15e4b97b048ce09946a6818e68cf0ff73f20e924d2cf2d700b767d1"
+    },
+    {
+      "original": "deliverables/redundancy-review.md",
+      "archived": "deliverables--redundancy-review.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/redundancy-review.md",
+      "sourceBytes": 24234,
+      "sourceSha256": "16ed4cf42953b7b70c6699e19feddce1a61070a44043d28a93a763c490e06cdc",
+      "archivedBytes": 24504,
+      "archivedSha256": "56dee56caab6a350ca581994954d444ba47a369517501f5dc5389bbc50c1ebfb",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/redundancy-review.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 24504,
+      "normalizedDocumentSha256": "56dee56caab6a350ca581994954d444ba47a369517501f5dc5389bbc50c1ebfb"
+    },
+    {
+      "original": "deliverables/session-prototype.html",
+      "archived": "deliverables--session-prototype.html.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/session-prototype.html",
+      "sourceBytes": 73999,
+      "sourceSha256": "5db45a940a56747e36e59c9d08b44dc7e3f2106698c7e4b70f40b66ae5764e8b",
+      "payloadStartByte": 975,
+      "payloadBytes": 73991,
+      "archivedBytes": 74970,
+      "archivedSha256": "a7b1303314d1ba2b0b72dbee503aa95d78af54791eaae83196ae4e1dc71bfc2f",
+      "normalizedPayloadBytes": 73991,
+      "normalizedPayloadSha256": "9683e410e75ce76dd17697d7eb31b0d17c5c4de515831aee61d368f70b1f7be7",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/session-prototype.html"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 74970,
+      "normalizedDocumentSha256": "a7b1303314d1ba2b0b72dbee503aa95d78af54791eaae83196ae4e1dc71bfc2f"
+    },
+    {
+      "original": "deliverables/technical-design.md",
+      "archived": "deliverables--technical-design.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/technical-design.md",
+      "sourceBytes": 68109,
+      "sourceSha256": "a1bb01d981752caae571af88569594f177ddcca1ba7ba3dd05daab5c5455db39",
+      "archivedBytes": 68357,
+      "archivedSha256": "4cb28aabae703a078add2f6a23c11f4608e0ab1033b92d5d634cedab7d8f2d66",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/technical-design.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 68357,
+      "normalizedDocumentSha256": "4cb28aabae703a078add2f6a23c11f4608e0ab1033b92d5d634cedab7d8f2d66"
+    },
+    {
+      "original": "deliverables/test-cases.json",
+      "archived": "research/deliverables--test-cases.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/test-cases.json",
+      "sourceBytes": 60400,
+      "sourceSha256": "3455395a7aedb7b3c5642094705134151a1924a0dde3d12af771896edcfa417c",
+      "archivedBytes": 60415,
+      "archivedSha256": "8900b4c7451403af22cf7a0136a876ec92e42ebd9c4304de1a137f242f9cb346",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/test-cases.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 60415,
+      "normalizedDocumentSha256": "8900b4c7451403af22cf7a0136a876ec92e42ebd9c4304de1a137f242f9cb346"
+    },
+    {
+      "original": "deliverables/test-plan.md",
+      "archived": "deliverables--test-plan.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/test-plan.md",
+      "sourceBytes": 24899,
+      "sourceSha256": "9ff06568500b4327fb1ca74d8e258e75cc775faedf107f57fa23f6ff1525540c",
+      "archivedBytes": 25152,
+      "archivedSha256": "d7f4250df56f3d29232827dbba2a5ad23d8af956cb4dbcbd71e740465478f49e",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/test-plan.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 25152,
+      "normalizedDocumentSha256": "d7f4250df56f3d29232827dbba2a5ad23d8af956cb4dbcbd71e740465478f49e"
+    },
+    {
+      "original": "deliverables/ux-spec.md",
+      "archived": "deliverables--ux-spec.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/ux-spec.md",
+      "sourceBytes": 9714,
+      "sourceSha256": "42e19d914562d7e5c254ee13b2aeb60812e519b38388e6b049c83f62fe15eacf",
+      "archivedBytes": 9962,
+      "archivedSha256": "5b1210036d898f41ef1486afb1ed5183ff4ab1c894868d584e86c6531e4df6d1",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/deliverables/ux-spec.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 9962,
+      "normalizedDocumentSha256": "5b1210036d898f41ef1486afb1ed5183ff4ab1c894868d584e86c6531e4df6d1"
+    },
+    {
+      "original": "design.md",
+      "archived": "design.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/design.md",
+      "sourceBytes": 4146,
+      "sourceSha256": "c7adf6fc82c0fcf0499779d9f783b92cdce74fbf3a5d31ed07e4a18dc171047d",
+      "archivedBytes": 4394,
+      "archivedSha256": "935a4bff1d6edbfcc83e538d02425ec720e9938867f4a4e868bd7ddc65253a5e",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/design.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 4394,
+      "normalizedDocumentSha256": "935a4bff1d6edbfcc83e538d02425ec720e9938867f4a4e868bd7ddc65253a5e"
+    },
+    {
+      "original": "evidence/browser-final-review/counterexample.log",
+      "archived": "evidence--browser-final-review--counterexample.log.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": false,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/browser-final-review/counterexample.log",
+      "sourceBytes": 1097,
+      "sourceSha256": "efbfbfb830e26689720006747bc3a4539fde383e885a39cdb486fa0dd7a634b3",
+      "payloadStartByte": 966,
+      "payloadBytes": 1097,
+      "archivedBytes": 2067,
+      "archivedSha256": "9d79e78fb79a0b01baab006b089bb789c46b6e51c8488be536fa08290170f243",
+      "normalizedPayloadBytes": 1097,
+      "normalizedPayloadSha256": "efbfbfb830e26689720006747bc3a4539fde383e885a39cdb486fa0dd7a634b3",
+      "originalRecovery": {
+        "kind": "local-only-log-backup",
+        "path": "work/archive-original-logs/evidence/browser-final-review/counterexample.log"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2067,
+      "normalizedDocumentSha256": "9d79e78fb79a0b01baab006b089bb789c46b6e51c8488be536fa08290170f243"
+    },
+    {
+      "original": "evidence/browser-final-review/diagnostic.log",
+      "archived": "evidence--browser-final-review--diagnostic.log.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": false,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/browser-final-review/diagnostic.log",
+      "sourceBytes": 6062,
+      "sourceSha256": "50e0fff231d71f53afa64cbf154a7f17bc91a451c77109865060446558790781",
+      "payloadStartByte": 962,
+      "payloadBytes": 6062,
+      "archivedBytes": 7028,
+      "archivedSha256": "07b2ad229d7af12912ea1f2547aa4611d83832ebe6992029e94b557128e4ad02",
+      "normalizedPayloadBytes": 6062,
+      "normalizedPayloadSha256": "50e0fff231d71f53afa64cbf154a7f17bc91a451c77109865060446558790781",
+      "originalRecovery": {
+        "kind": "local-only-log-backup",
+        "path": "work/archive-original-logs/evidence/browser-final-review/diagnostic.log"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 7028,
+      "normalizedDocumentSha256": "07b2ad229d7af12912ea1f2547aa4611d83832ebe6992029e94b557128e4ad02"
+    },
+    {
+      "original": "evidence/browser-final-review/motion-regression.log",
+      "archived": "evidence--browser-final-review--motion-regression.log.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": false,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/browser-final-review/motion-regression.log",
+      "sourceBytes": 10560,
+      "sourceSha256": "ad45773ff9e2593e8a44904e742ad89ab76115350360d6b97e85e2d3a9f41b8c",
+      "payloadStartByte": 971,
+      "payloadBytes": 10559,
+      "archivedBytes": 11534,
+      "archivedSha256": "5221b16fcedbf8918fdef492f3ddeff774a07ca1fcd8de06283a5da94902d546",
+      "normalizedPayloadBytes": 10559,
+      "normalizedPayloadSha256": "84e39c4f2f057f8ff934c59f46a43681860dc8caa2668af84495d67fdab28b4f",
+      "originalRecovery": {
+        "kind": "local-only-log-backup",
+        "path": "work/archive-original-logs/evidence/browser-final-review/motion-regression.log"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 11534,
+      "normalizedDocumentSha256": "5221b16fcedbf8918fdef492f3ddeff774a07ca1fcd8de06283a5da94902d546"
+    },
+    {
+      "original": "evidence/browser-final-review/screenshot-sha256.json",
+      "archived": "research/evidence--browser-final-review--screenshot-sha256.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/browser-final-review/screenshot-sha256.json",
+      "sourceBytes": 804,
+      "sourceSha256": "6ba639a7befa19828ffb1249af2013e8375174b75412bd4bcdfe54d118ed5357",
+      "archivedBytes": 804,
+      "archivedSha256": "6ba639a7befa19828ffb1249af2013e8375174b75412bd4bcdfe54d118ed5357",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/browser-final-review/screenshot-sha256.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 804,
+      "normalizedDocumentSha256": "6ba639a7befa19828ffb1249af2013e8375174b75412bd4bcdfe54d118ed5357"
+    },
+    {
+      "original": "evidence/browser-final-review/screenshots.log",
+      "archived": "evidence--browser-final-review--screenshots.log.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": false,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/browser-final-review/screenshots.log",
+      "sourceBytes": 2074,
+      "sourceSha256": "464b93ef5e01f4d5793c45d4b3e28d9b33b141d764a14e2d21970b784050a827",
+      "payloadStartByte": 963,
+      "payloadBytes": 2074,
+      "archivedBytes": 3041,
+      "archivedSha256": "5036941f4440b2a7fd8dbedbc5756adfd17676852f40ba42ed1bb887d6b19a38",
+      "normalizedPayloadBytes": 2074,
+      "normalizedPayloadSha256": "464b93ef5e01f4d5793c45d4b3e28d9b33b141d764a14e2d21970b784050a827",
+      "originalRecovery": {
+        "kind": "local-only-log-backup",
+        "path": "work/archive-original-logs/evidence/browser-final-review/screenshots.log"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3041,
+      "normalizedDocumentSha256": "5036941f4440b2a7fd8dbedbc5756adfd17676852f40ba42ed1bb887d6b19a38"
+    },
+    {
+      "original": "evidence/codex-native/capture-result.json",
+      "archived": "research/evidence--codex-native--capture-result.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/capture-result.json",
+      "sourceBytes": 4555,
+      "sourceSha256": "c79baae11ec20490f339818762dd60495c2508d0bcc8c9e39a8e5d92cdeb9b0e",
+      "archivedBytes": 4549,
+      "archivedSha256": "c0ce2f07d5a88aecb430f10d75cb9252934feba022872d862e9d2b7251fcb0a3",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/capture-result.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 4549,
+      "normalizedDocumentSha256": "c0ce2f07d5a88aecb430f10d75cb9252934feba022872d862e9d2b7251fcb0a3"
+    },
+    {
+      "original": "evidence/codex-native/capture.py",
+      "archived": "evidence--codex-native--capture.py.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/capture.py",
+      "sourceBytes": 3925,
+      "sourceSha256": "03f35ce68ff0b89d98c9a603def695ad06f5104827ba507c3834b1dd8c9dcac1",
+      "payloadStartByte": 969,
+      "payloadBytes": 3925,
+      "archivedBytes": 4898,
+      "archivedSha256": "fbc7958f29718a44bc5529ab2c45263a5471d05b84554a59b653a185c768f479",
+      "normalizedPayloadBytes": 3925,
+      "normalizedPayloadSha256": "03f35ce68ff0b89d98c9a603def695ad06f5104827ba507c3834b1dd8c9dcac1",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/capture.py"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 4898,
+      "normalizedDocumentSha256": "fbc7958f29718a44bc5529ab2c45263a5471d05b84554a59b653a185c768f479"
+    },
+    {
+      "original": "evidence/codex-native/edge-result.json",
+      "archived": "research/evidence--codex-native--edge-result.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/edge-result.json",
+      "sourceBytes": 1398,
+      "sourceSha256": "1a879468019fc79bea0285bfc480a6611568c3d265a13b7dc60208b602c3f0e0",
+      "archivedBytes": 1398,
+      "archivedSha256": "1a879468019fc79bea0285bfc480a6611568c3d265a13b7dc60208b602c3f0e0",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/edge-result.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1398,
+      "normalizedDocumentSha256": "1a879468019fc79bea0285bfc480a6611568c3d265a13b7dc60208b602c3f0e0"
+    },
+    {
+      "original": "evidence/codex-native/incomplete-result.json",
+      "archived": "research/evidence--codex-native--incomplete-result.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/incomplete-result.json",
+      "sourceBytes": 11485,
+      "sourceSha256": "648055c73ccca43a10f0dd645315636dbc55bfb9c801022cf31df9350b3a46ca",
+      "archivedBytes": 11474,
+      "archivedSha256": "0ff986a5621f74c3b53090af917838ccf0b673dae172a78667fc67a0b515631f",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/incomplete-result.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 11474,
+      "normalizedDocumentSha256": "0ff986a5621f74c3b53090af917838ccf0b673dae172a78667fc67a0b515631f"
+    },
+    {
+      "original": "evidence/codex-native/probe.py",
+      "archived": "evidence--codex-native--probe.py.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/probe.py",
+      "sourceBytes": 4024,
+      "sourceSha256": "5fc79c972265665480886b676a86a3be0c001cf036d1d0d0a4f2915db792e65b",
+      "payloadStartByte": 965,
+      "payloadBytes": 4024,
+      "archivedBytes": 4993,
+      "archivedSha256": "88294435352b0e8969561242d90e636a1fd1476bc2e4e5c12aeadcd930ddab50",
+      "normalizedPayloadBytes": 4024,
+      "normalizedPayloadSha256": "5fc79c972265665480886b676a86a3be0c001cf036d1d0d0a4f2915db792e65b",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/probe.py"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 4993,
+      "normalizedDocumentSha256": "88294435352b0e8969561242d90e636a1fd1476bc2e4e5c12aeadcd930ddab50"
+    },
+    {
+      "original": "evidence/codex-native/result.json",
+      "archived": "research/evidence--codex-native--result.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/result.json",
+      "sourceBytes": 10719,
+      "sourceSha256": "5dc15d39e548f5f889deae938c8c3e09a302449a8baba049640cae7b7f00cdcb",
+      "archivedBytes": 10708,
+      "archivedSha256": "bc5e2d875428be3d9bd5c428d513fd90311491fc0d64ce91cde8779849051c62",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-native/result.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 10708,
+      "normalizedDocumentSha256": "bc5e2d875428be3d9bd5c428d513fd90311491fc0d64ce91cde8779849051c62"
+    },
+    {
+      "original": "evidence/codex-probe/findings.md",
+      "archived": "evidence--codex-probe--findings.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-probe/findings.md",
+      "sourceBytes": 1213,
+      "sourceSha256": "4129daed8ee5a44ce22aaa726ca5cd32bede657d7b4574ba998d35486df90804",
+      "archivedBytes": 1461,
+      "archivedSha256": "f7cee6b392d9fcc3b723ced4f42fd78a2684cd720643542dfd52d01efa62774f",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/codex-probe/findings.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1461,
+      "normalizedDocumentSha256": "f7cee6b392d9fcc3b723ced4f42fd78a2684cd720643542dfd52d01efa62774f"
+    },
+    {
+      "original": "evidence/gemini-native/finish-result.json",
+      "archived": "research/evidence--gemini-native--finish-result.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/finish-result.json",
+      "sourceBytes": 1491,
+      "sourceSha256": "f6796880f4c30d04e6143e24d06a0051f6c1f05e6567862f0abec118cf6607ba",
+      "archivedBytes": 1491,
+      "archivedSha256": "f6796880f4c30d04e6143e24d06a0051f6c1f05e6567862f0abec118cf6607ba",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/finish-result.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1491,
+      "normalizedDocumentSha256": "f6796880f4c30d04e6143e24d06a0051f6c1f05e6567862f0abec118cf6607ba"
+    },
+    {
+      "original": "evidence/gemini-native/probe-finish.mjs",
+      "archived": "evidence--gemini-native--probe-finish.mjs.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/probe-finish.mjs",
+      "sourceBytes": 1859,
+      "sourceSha256": "725c9609a2dbdc7ab1c640c7993a271ee17996a2722326625b80b722ef5f179d",
+      "payloadStartByte": 987,
+      "payloadBytes": 1859,
+      "archivedBytes": 2850,
+      "archivedSha256": "f9be71a2cd04dc68aa8767105516ef7314f6e1a98c09eadb9b38ddf8f16c1f66",
+      "normalizedPayloadBytes": 1859,
+      "normalizedPayloadSha256": "725c9609a2dbdc7ab1c640c7993a271ee17996a2722326625b80b722ef5f179d",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/probe-finish.mjs"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2850,
+      "normalizedDocumentSha256": "f9be71a2cd04dc68aa8767105516ef7314f6e1a98c09eadb9b38ddf8f16c1f66"
+    },
+    {
+      "original": "evidence/gemini-native/probe.py",
+      "archived": "evidence--gemini-native--probe.py.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/probe.py",
+      "sourceBytes": 2977,
+      "sourceSha256": "101dd006d9a51803045baa51798be72848affe4034b5e0f2f74802b9d4aba4e0",
+      "payloadStartByte": 967,
+      "payloadBytes": 2977,
+      "archivedBytes": 3948,
+      "archivedSha256": "2682b64263f4efbbf27cf4be3825a1e44eda454dc2a8f5ee4acb116a4d5a7786",
+      "normalizedPayloadBytes": 2977,
+      "normalizedPayloadSha256": "101dd006d9a51803045baa51798be72848affe4034b5e0f2f74802b9d4aba4e0",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/probe.py"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3948,
+      "normalizedDocumentSha256": "2682b64263f4efbbf27cf4be3825a1e44eda454dc2a8f5ee4acb116a4d5a7786"
+    },
+    {
+      "original": "evidence/gemini-native/read-native.mjs",
+      "archived": "evidence--gemini-native--read-native.mjs.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/read-native.mjs",
+      "sourceBytes": 900,
+      "sourceSha256": "dce3087116530d7cd5f0a557b98477580b350456d78c1a768c5219fe74159a08",
+      "payloadStartByte": 983,
+      "payloadBytes": 900,
+      "archivedBytes": 1887,
+      "archivedSha256": "5df82c7720b5e6133481ce30d45840badafeec84567e4297b90c595a5345cf5c",
+      "normalizedPayloadBytes": 900,
+      "normalizedPayloadSha256": "dce3087116530d7cd5f0a557b98477580b350456d78c1a768c5219fe74159a08",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/read-native.mjs"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1887,
+      "normalizedDocumentSha256": "5df82c7720b5e6133481ce30d45840badafeec84567e4297b90c595a5345cf5c"
+    },
+    {
+      "original": "evidence/gemini-native/results.json",
+      "archived": "research/evidence--gemini-native--results.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/results.json",
+      "sourceBytes": 3641,
+      "sourceSha256": "ff4c77d175d421de79536ab1341858d46198bbea4c430a8dbc4af52e819098f1",
+      "archivedBytes": 3641,
+      "archivedSha256": "ff4c77d175d421de79536ab1341858d46198bbea4c430a8dbc4af52e819098f1",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/results.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3641,
+      "normalizedDocumentSha256": "ff4c77d175d421de79536ab1341858d46198bbea4c430a8dbc4af52e819098f1"
+    },
+    {
+      "original": "evidence/gemini-native/setup_probe.py",
+      "archived": "evidence--gemini-native--setup_probe.py.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/setup_probe.py",
+      "sourceBytes": 1194,
+      "sourceSha256": "507c78417bf41b32784078603f08846290748f99d6861b38c402a262cbe03da5",
+      "payloadStartByte": 979,
+      "payloadBytes": 1194,
+      "archivedBytes": 2177,
+      "archivedSha256": "0154aebbfbcc738d51ae00cfabb390d37b7f4c312e193d4dd25e83195228e4f8",
+      "normalizedPayloadBytes": 1194,
+      "normalizedPayloadSha256": "507c78417bf41b32784078603f08846290748f99d6861b38c402a262cbe03da5",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/setup_probe.py"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2177,
+      "normalizedDocumentSha256": "0154aebbfbcc738d51ae00cfabb390d37b7f4c312e193d4dd25e83195228e4f8"
+    },
+    {
+      "original": "evidence/gemini-native/source-manifest.json",
+      "archived": "research/evidence--gemini-native--source-manifest.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/source-manifest.json",
+      "sourceBytes": 586,
+      "sourceSha256": "ccb00930f6d88932020153b4c18c9dcbc920f8c4f231d200c5606a36d1ac337c",
+      "archivedBytes": 586,
+      "archivedSha256": "ccb00930f6d88932020153b4c18c9dcbc920f8c4f231d200c5606a36d1ac337c",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/source-manifest.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 586,
+      "normalizedDocumentSha256": "ccb00930f6d88932020153b4c18c9dcbc920f8c4f231d200c5606a36d1ac337c"
+    },
+    {
+      "original": "evidence/gemini-native/version-0.46.txt",
+      "archived": "evidence--gemini-native--version-0.46.txt.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/version-0.46.txt",
+      "sourceBytes": 7,
+      "sourceSha256": "b760182a94c463a8b4ee9fc2fce90723df5fa7cfa35413e9b3c80be53a649896",
+      "payloadStartByte": 975,
+      "payloadBytes": 7,
+      "archivedBytes": 986,
+      "archivedSha256": "3ff506aa618bb39c81ca83c7fe08664f64a02144d0d89535a6ca164832e499ba",
+      "normalizedPayloadBytes": 7,
+      "normalizedPayloadSha256": "b760182a94c463a8b4ee9fc2fce90723df5fa7cfa35413e9b3c80be53a649896",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/gemini-native/version-0.46.txt"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 986,
+      "normalizedDocumentSha256": "3ff506aa618bb39c81ca83c7fe08664f64a02144d0d89535a6ca164832e499ba"
+    },
+    {
+      "original": "evidence/native-continuation/create-only/captured-requests.json",
+      "archived": "research/evidence--native-continuation--create-only--captured-requests.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/captured-requests.json",
+      "sourceBytes": 573,
+      "sourceSha256": "3e1ace0f91302f1b9d208881d04a58ec9bc52648d39202c8cc07c0a985d21e73",
+      "archivedBytes": 573,
+      "archivedSha256": "3e1ace0f91302f1b9d208881d04a58ec9bc52648d39202c8cc07c0a985d21e73",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/captured-requests.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 573,
+      "normalizedDocumentSha256": "3e1ace0f91302f1b9d208881d04a58ec9bc52648d39202c8cc07c0a985d21e73"
+    },
+    {
+      "original": "evidence/native-continuation/create-only/continuation.json",
+      "archived": "research/evidence--native-continuation--create-only--continuation.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/continuation.json",
+      "sourceBytes": 652,
+      "sourceSha256": "a073fc13603e693969a11d5eb3a95afa1977b856b1517f4d8c8820942febb846",
+      "archivedBytes": 652,
+      "archivedSha256": "a073fc13603e693969a11d5eb3a95afa1977b856b1517f4d8c8820942febb846",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/continuation.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 652,
+      "normalizedDocumentSha256": "a073fc13603e693969a11d5eb3a95afa1977b856b1517f4d8c8820942febb846"
+    },
+    {
+      "original": "evidence/native-continuation/create-only/first-module-test-blocked.txt",
+      "archived": "evidence--native-continuation--create-only--first-module-test-blocked.txt.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/first-module-test-blocked.txt",
+      "sourceBytes": 297,
+      "sourceSha256": "b06763b05083d5e269a3186e955f832f3dd07e0bbdd8952378bff489909e4ecc",
+      "payloadStartByte": 1041,
+      "payloadBytes": 297,
+      "archivedBytes": 1342,
+      "archivedSha256": "11400dbea970fd44347c166d8637121fa02f513bbe11f3a478b80bc2d93dd232",
+      "normalizedPayloadBytes": 297,
+      "normalizedPayloadSha256": "b06763b05083d5e269a3186e955f832f3dd07e0bbdd8952378bff489909e4ecc",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/first-module-test-blocked.txt"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1342,
+      "normalizedDocumentSha256": "11400dbea970fd44347c166d8637121fa02f513bbe11f3a478b80bc2d93dd232"
+    },
+    {
+      "original": "evidence/native-continuation/create-only/official-export.json",
+      "archived": "research/evidence--native-continuation--create-only--official-export.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/official-export.json",
+      "sourceBytes": 5284,
+      "sourceSha256": "6cba764ef9807db50523490d6a2eb52b8a7ab75d327c5ffaf6766419974e00ef",
+      "archivedBytes": 5279,
+      "archivedSha256": "0f8e9e287b6b18ee216a0514f7aff80abdb2db360f9871c8f19fc8ad3d647916",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/official-export.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 5279,
+      "normalizedDocumentSha256": "0f8e9e287b6b18ee216a0514f7aff80abdb2db360f9871c8f19fc8ad3d647916"
+    },
+    {
+      "original": "evidence/native-continuation/create-only/rust-test.json",
+      "archived": "research/evidence--native-continuation--create-only--rust-test.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/rust-test.json",
+      "sourceBytes": 277,
+      "sourceSha256": "087729e06ac0700b9590f517291e9fd19c3230b9fa61220df39df4230da1a643",
+      "archivedBytes": 277,
+      "archivedSha256": "087729e06ac0700b9590f517291e9fd19c3230b9fa61220df39df4230da1a643",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/rust-test.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 277,
+      "normalizedDocumentSha256": "087729e06ac0700b9590f517291e9fd19c3230b9fa61220df39df4230da1a643"
+    },
+    {
+      "original": "evidence/native-continuation/create-only/rust-writer-result.json",
+      "archived": "research/evidence--native-continuation--create-only--rust-writer-result.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/rust-writer-result.json",
+      "sourceBytes": 1196,
+      "sourceSha256": "e7c61f866a1a731061bebedf78bd758238286862e91b279c9f551c7a73fbf3b4",
+      "archivedBytes": 1194,
+      "archivedSha256": "4313c622a6c2f6e182e24639590cad6649d2937228e75dfdc01bec1b6a8f36e7",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/rust-writer-result.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1194,
+      "normalizedDocumentSha256": "4313c622a6c2f6e182e24639590cad6649d2937228e75dfdc01bec1b6a8f36e7"
+    },
+    {
+      "original": "evidence/native-continuation/create-only/source-and-command.json",
+      "archived": "research/evidence--native-continuation--create-only--source-and-command.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/source-and-command.json",
+      "sourceBytes": 1086,
+      "sourceSha256": "c74542867adf0e4c17b5e80ed87769ba043179a4545a244dc64dce4a5b392154",
+      "archivedBytes": 1084,
+      "archivedSha256": "d896d0bb6813ccbe58c3b2d0303db98121c43815aaa76d5df4db4cea6cded030",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/source-and-command.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1084,
+      "normalizedDocumentSha256": "d896d0bb6813ccbe58c3b2d0303db98121c43815aaa76d5df4db4cea6cded030"
+    },
+    {
+      "original": "evidence/native-continuation/create-only/summary.json",
+      "archived": "research/evidence--native-continuation--create-only--summary.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/summary.json",
+      "sourceBytes": 1723,
+      "sourceSha256": "d2986acbcf074cba003f21d2e67567dee3c46d4cf27b171b61631e93ad720b8f",
+      "archivedBytes": 1720,
+      "archivedSha256": "b2d917879f44a249c5e6c7b01500f1fefddcd3659ac407a6f9bfc28570cfc953",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/summary.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1720,
+      "normalizedDocumentSha256": "b2d917879f44a249c5e6c7b01500f1fefddcd3659ac407a6f9bfc28570cfc953"
+    },
+    {
+      "original": "evidence/native-continuation/create-only/verify_create_only.py",
+      "archived": "evidence--native-continuation--create-only--verify_create_only.py.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/verify_create_only.py",
+      "sourceBytes": 6755,
+      "sourceSha256": "f8bed46241f6935e30c3cf01e682dafc1ea9c46dac486d385db6124c4032b87b",
+      "payloadStartByte": 1029,
+      "payloadBytes": 6754,
+      "archivedBytes": 7787,
+      "archivedSha256": "3f51e5b5e5b334ce1d868110fc3ac298fa8d3be4b92ed1eb42ea95a750f5f894",
+      "normalizedPayloadBytes": 6754,
+      "normalizedPayloadSha256": "7b5e59d2138aa496d2a5c0002daccdc6296303960fd3c2f6f47188c90082938d",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/create-only/verify_create_only.py"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 7787,
+      "normalizedDocumentSha256": "3f51e5b5e5b334ce1d868110fc3ac298fa8d3be4b92ed1eb42ea95a750f5f894"
+    },
+    {
+      "original": "evidence/native-continuation/hermes-export-help.txt",
+      "archived": "evidence--native-continuation--hermes-export-help.txt.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/hermes-export-help.txt",
+      "sourceBytes": 5441,
+      "sourceSha256": "7cd1cc09a391e27e577ad461c6d2de9622c1bbeb579e942077359ac1ddceb254",
+      "payloadStartByte": 1005,
+      "payloadBytes": 5441,
+      "archivedBytes": 6450,
+      "archivedSha256": "eb2b451ebe5ded008c705294e759e94769db55a55ae60f8be266a105773cf152",
+      "normalizedPayloadBytes": 5441,
+      "normalizedPayloadSha256": "7cd1cc09a391e27e577ad461c6d2de9622c1bbeb579e942077359ac1ddceb254",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/hermes-export-help.txt"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 6450,
+      "normalizedDocumentSha256": "eb2b451ebe5ded008c705294e759e94769db55a55ae60f8be266a105773cf152"
+    },
+    {
+      "original": "evidence/native-continuation/hermes-import-help.txt",
+      "archived": "evidence--native-continuation--hermes-import-help.txt.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/hermes-import-help.txt",
+      "sourceBytes": 589,
+      "sourceSha256": "686a0a138671f7396d5a11c5bcb4a5bcecd53b4d7843bca0a71c157d240e41b7",
+      "payloadStartByte": 1003,
+      "payloadBytes": 589,
+      "archivedBytes": 1596,
+      "archivedSha256": "c2db4e9cddd885de5f3dacf1d6d32fc2d34712b3636eb1392fe449dca8e13742",
+      "normalizedPayloadBytes": 589,
+      "normalizedPayloadSha256": "686a0a138671f7396d5a11c5bcb4a5bcecd53b4d7843bca0a71c157d240e41b7",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/hermes-import-help.txt"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1596,
+      "normalizedDocumentSha256": "c2db4e9cddd885de5f3dacf1d6d32fc2d34712b3636eb1392fe449dca8e13742"
+    },
+    {
+      "original": "evidence/native-continuation/hermes-version.txt",
+      "archived": "evidence--native-continuation--hermes-version.txt.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/hermes-version.txt",
+      "sourceBytes": 267,
+      "sourceSha256": "5ff3a575bbcb426c923a4cc551deb858adeea2e6792eec467ea1aa0a6c6afaf5",
+      "payloadStartByte": 995,
+      "payloadBytes": 266,
+      "archivedBytes": 1265,
+      "archivedSha256": "ffd7d201fc20169fbf918ecb395528c53ad41a28e0c02bfae81593e96cef93b2",
+      "normalizedPayloadBytes": 266,
+      "normalizedPayloadSha256": "7d6f330bad72928428e3c65bd9602f7f5b3d756891323b8cb481ae33b9c55c1f",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/hermes-version.txt"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1265,
+      "normalizedDocumentSha256": "ffd7d201fc20169fbf918ecb395528c53ad41a28e0c02bfae81593e96cef93b2"
+    },
+    {
+      "original": "evidence/native-continuation/opencode-debug-config-help.txt",
+      "archived": "evidence--native-continuation--opencode-debug-config-help.txt.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/opencode-debug-config-help.txt",
+      "sourceBytes": 565,
+      "sourceSha256": "2078cbf5afc8942d0308ff03823a6e6d1975182e60826abefcaa6864efa8e72c",
+      "payloadStartByte": 1019,
+      "payloadBytes": 565,
+      "archivedBytes": 1589,
+      "archivedSha256": "8021d9bce312c992138e5cd4e2b84dc8b9767f6ed653a4548497cf164495520e",
+      "normalizedPayloadBytes": 565,
+      "normalizedPayloadSha256": "2078cbf5afc8942d0308ff03823a6e6d1975182e60826abefcaa6864efa8e72c",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/opencode-debug-config-help.txt"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1589,
+      "normalizedDocumentSha256": "8021d9bce312c992138e5cd4e2b84dc8b9767f6ed653a4548497cf164495520e"
+    },
+    {
+      "original": "evidence/native-continuation/opencode-default-error-lines.txt",
+      "archived": "evidence--native-continuation--opencode-default-error-lines.txt.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/opencode-default-error-lines.txt",
+      "sourceBytes": 1351,
+      "sourceSha256": "bd8ad845f24f8c671c67107828be1203bdb7f00a5dc39857af5e0a114542274f",
+      "payloadStartByte": 1025,
+      "payloadBytes": 1351,
+      "archivedBytes": 2381,
+      "archivedSha256": "5f9a3a565ee718f2d6b553b47c9ffdde19d91a72d3a449ead02975729ef30aa6",
+      "normalizedPayloadBytes": 1351,
+      "normalizedPayloadSha256": "bd8ad845f24f8c671c67107828be1203bdb7f00a5dc39857af5e0a114542274f",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/opencode-default-error-lines.txt"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2381,
+      "normalizedDocumentSha256": "5f9a3a565ee718f2d6b553b47c9ffdde19d91a72d3a449ead02975729ef30aa6"
+    },
+    {
+      "original": "evidence/native-continuation/opencode-local-config-result.json",
+      "archived": "research/evidence--native-continuation--opencode-local-config-result.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/opencode-local-config-result.json",
+      "sourceBytes": 139,
+      "sourceSha256": "bb95c46ecf802bc54ee879faab10b5f56cae91aeadbbc71e36527d0136903cc4",
+      "archivedBytes": 139,
+      "archivedSha256": "bb95c46ecf802bc54ee879faab10b5f56cae91aeadbbc71e36527d0136903cc4",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/opencode-local-config-result.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 139,
+      "normalizedDocumentSha256": "bb95c46ecf802bc54ee879faab10b5f56cae91aeadbbc71e36527d0136903cc4"
+    },
+    {
+      "original": "evidence/native-continuation/opencode-version.txt",
+      "archived": "evidence--native-continuation--opencode-version.txt.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/opencode-version.txt",
+      "sourceBytes": 8,
+      "sourceSha256": "367dfc1bfa3818b2d1ba653e5e14e57eb67c754fb382d13c0a0000c329113dbb",
+      "payloadStartByte": 995,
+      "payloadBytes": 8,
+      "archivedBytes": 1007,
+      "archivedSha256": "b319e42baa449fa15e74302b877b4a0992655e26638a0d5ff2fb3675f9ac9eba",
+      "normalizedPayloadBytes": 8,
+      "normalizedPayloadSha256": "367dfc1bfa3818b2d1ba653e5e14e57eb67c754fb382d13c0a0000c329113dbb",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/opencode-version.txt"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1007,
+      "normalizedDocumentSha256": "b319e42baa449fa15e74302b877b4a0992655e26638a0d5ff2fb3675f9ac9eba"
+    },
+    {
+      "original": "evidence/native-continuation/probe_hermes_sdk.py",
+      "archived": "evidence--native-continuation--probe_hermes_sdk.py.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/probe_hermes_sdk.py",
+      "sourceBytes": 1662,
+      "sourceSha256": "e52ee5132e624903ed02dc981a9fc65dbd01bdb7c064fb26d5e7e46f42516114",
+      "payloadStartByte": 1001,
+      "payloadBytes": 1661,
+      "archivedBytes": 2666,
+      "archivedSha256": "5560336a4f5696213cefc29e4edd8b64885315dd4a78e5e2c77fffd18046c89e",
+      "normalizedPayloadBytes": 1661,
+      "normalizedPayloadSha256": "efd2807f792343a3d316c822d239f9d478bcb71da18c767b2f11de81e7c3a468",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/probe_hermes_sdk.py"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2666,
+      "normalizedDocumentSha256": "5560336a4f5696213cefc29e4edd8b64885315dd4a78e5e2c77fffd18046c89e"
+    },
+    {
+      "original": "evidence/native-continuation/probe_opencode.py",
+      "archived": "evidence--native-continuation--probe_opencode.py.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/probe_opencode.py",
+      "sourceBytes": 4609,
+      "sourceSha256": "532db79e482fdd6c9ebd779d544fd783c5cbfaf0529d1f1333ed97f94f0983b2",
+      "payloadStartByte": 997,
+      "payloadBytes": 4608,
+      "archivedBytes": 5609,
+      "archivedSha256": "997c418f7dd7313babbc5dd0d03b3daef98624924e2fb938992d26d0bae93cb1",
+      "normalizedPayloadBytes": 4608,
+      "normalizedPayloadSha256": "e9eee5cc923150ff33fca38f719607b6a4677439f7983f5717e64173e0782522",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/probe_opencode.py"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 5609,
+      "normalizedDocumentSha256": "997c418f7dd7313babbc5dd0d03b3daef98624924e2fb938992d26d0bae93cb1"
+    },
+    {
+      "original": "evidence/native-continuation/results.json",
+      "archived": "research/evidence--native-continuation--results.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/results.json",
+      "sourceBytes": 8667,
+      "sourceSha256": "032b32a846487b873dd881778ebaccdcb5dd1eb8282164eb465e35b561d1a89b",
+      "archivedBytes": 8667,
+      "archivedSha256": "032b32a846487b873dd881778ebaccdcb5dd1eb8282164eb465e35b561d1a89b",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/results.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 8667,
+      "normalizedDocumentSha256": "032b32a846487b873dd881778ebaccdcb5dd1eb8282164eb465e35b561d1a89b"
+    },
+    {
+      "original": "evidence/native-continuation/writer-rework/gemini-native-bridge-and-mock.json",
+      "archived": "research/evidence--native-continuation--writer-rework--gemini-native-bridge-and-mock.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/gemini-native-bridge-and-mock.json",
+      "sourceBytes": 6767,
+      "sourceSha256": "b6a59f89ec57aef8c2192655b50b818665abb4b88f05cca2a04d92e6c8bfbe96",
+      "archivedBytes": 6766,
+      "archivedSha256": "a807ac354e4c798457878dfd69211f9be97c947f0ab60a1d659720f964566b20",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/gemini-native-bridge-and-mock.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 6766,
+      "normalizedDocumentSha256": "a807ac354e4c798457878dfd69211f9be97c947f0ab60a1d659720f964566b20"
+    },
+    {
+      "original": "evidence/native-continuation/writer-rework/hermes-native-bridge-and-mock.json",
+      "archived": "research/evidence--native-continuation--writer-rework--hermes-native-bridge-and-mock.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/hermes-native-bridge-and-mock.json",
+      "sourceBytes": 6190,
+      "sourceSha256": "364ea04039cdd3099716576130f41ed9d11fcc559c314350d37491c8d8c44eb8",
+      "archivedBytes": 6189,
+      "archivedSha256": "940ccab8ff9b0c8868aad875dfe21e4561d3f47295fff2c22acb4a668dcbbf72",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/hermes-native-bridge-and-mock.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 6189,
+      "normalizedDocumentSha256": "940ccab8ff9b0c8868aad875dfe21e4561d3f47295fff2c22acb4a668dcbbf72"
+    },
+    {
+      "original": "evidence/native-continuation/writer-rework/hermes-unanswered-counterexample.json",
+      "archived": "research/evidence--native-continuation--writer-rework--hermes-unanswered-counterexample.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/hermes-unanswered-counterexample.json",
+      "sourceBytes": 740,
+      "sourceSha256": "bce786fd88696085e2c9d6e5497633c638f5b556438776bd1a04dba82c8fa803",
+      "archivedBytes": 740,
+      "archivedSha256": "bce786fd88696085e2c9d6e5497633c638f5b556438776bd1a04dba82c8fa803",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/hermes-unanswered-counterexample.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 740,
+      "normalizedDocumentSha256": "bce786fd88696085e2c9d6e5497633c638f5b556438776bd1a04dba82c8fa803"
+    },
+    {
+      "original": "evidence/native-continuation/writer-rework/opencode-native-bridge-and-mock.json",
+      "archived": "research/evidence--native-continuation--writer-rework--opencode-native-bridge-and-mock.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/opencode-native-bridge-and-mock.json",
+      "sourceBytes": 7908,
+      "sourceSha256": "25b3b8eb5ad4871c0143bcd33a5a462e47565c8a31bb323bd8f4dca953f1ad38",
+      "archivedBytes": 7903,
+      "archivedSha256": "fb23632ce6b075b7f703b77a913ce22bcd4323dae8567578fae816084e1db240",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/opencode-native-bridge-and-mock.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 7903,
+      "normalizedDocumentSha256": "fb23632ce6b075b7f703b77a913ce22bcd4323dae8567578fae816084e1db240"
+    },
+    {
+      "original": "evidence/native-continuation/writer-rework/rust-native-tests.log",
+      "archived": "evidence--native-continuation--writer-rework--rust-native-tests.log.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": false,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/rust-native-tests.log",
+      "sourceBytes": 3564,
+      "sourceSha256": "39db3804c9abd6e16981ae939692242c733b247e63e145d14582bf7a224970d4",
+      "payloadStartByte": 982,
+      "payloadBytes": 3563,
+      "archivedBytes": 4549,
+      "archivedSha256": "ba4bbbc22cedfd275e6ab6d18d4fff3dd707627a521daa327053727b17e08fe4",
+      "normalizedPayloadBytes": 3563,
+      "normalizedPayloadSha256": "5aaba0becb803b1dbc53c7bac48a1295a1a486789cdde71cdbf27fb1e6475c54",
+      "originalRecovery": {
+        "kind": "local-only-log-backup",
+        "path": "work/archive-original-logs/evidence/native-continuation/writer-rework/rust-native-tests.log"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 4549,
+      "normalizedDocumentSha256": "ba4bbbc22cedfd275e6ab6d18d4fff3dd707627a521daa327053727b17e08fe4"
+    },
+    {
+      "original": "evidence/native-continuation/writer-rework/verify_native_writers.py",
+      "archived": "evidence--native-continuation--writer-rework--verify_native_writers.py.md",
+      "kind": "path-normalized-fenced-source",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/verify_native_writers.py",
+      "sourceBytes": 11845,
+      "sourceSha256": "1b61f0c4e25e108d63ae6d1c76732bd9774d008d46008e623ed6da31fbd0cf04",
+      "payloadStartByte": 1041,
+      "payloadBytes": 11842,
+      "archivedBytes": 12887,
+      "archivedSha256": "ccc28f44eeb0e152364d530dc0ac8cb06f99c21535d27fbad2c553d116e8aa60",
+      "normalizedPayloadBytes": 11842,
+      "normalizedPayloadSha256": "1158d1474c29888d1d741ea5c0d794f1df43e3c827436868688101745d5d90e8",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/verify_native_writers.py"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 12887,
+      "normalizedDocumentSha256": "ccc28f44eeb0e152364d530dc0ac8cb06f99c21535d27fbad2c553d116e8aa60"
+    },
+    {
+      "original": "evidence/native-continuation/writer-rework/writer-source-sha256.json",
+      "archived": "research/evidence--native-continuation--writer-rework--writer-source-sha256.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/writer-source-sha256.json",
+      "sourceBytes": 253,
+      "sourceSha256": "5b8a194a799f4224cc34c589d70e6a03f69dd4eca5dd2fb00e25c95cd5093d0a",
+      "archivedBytes": 253,
+      "archivedSha256": "5b8a194a799f4224cc34c589d70e6a03f69dd4eca5dd2fb00e25c95cd5093d0a",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/evidence/native-continuation/writer-rework/writer-source-sha256.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 253,
+      "normalizedDocumentSha256": "5b8a194a799f4224cc34c589d70e6a03f69dd4eca5dd2fb00e25c95cd5093d0a"
+    },
+    {
+      "original": "implement.jsonl",
+      "archived": "implement.jsonl",
+      "kind": "path-normalized-task-metadata",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implement.jsonl",
+      "sourceBytes": 496,
+      "sourceSha256": "6c367ce81ec9b1558b4d2bc31f5506cf22d056c15d66760351b11ccc6023c9d3",
+      "archivedBytes": 496,
+      "archivedSha256": "6c367ce81ec9b1558b4d2bc31f5506cf22d056c15d66760351b11ccc6023c9d3",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implement.jsonl"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 496,
+      "normalizedDocumentSha256": "6c367ce81ec9b1558b4d2bc31f5506cf22d056c15d66760351b11ccc6023c9d3"
+    },
+    {
+      "original": "implement.md",
+      "archived": "implement.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implement.md",
+      "sourceBytes": 3345,
+      "sourceSha256": "b59daaf9e7de26a745487678cc8ae0994dbf5ba8c3e264f0a59ec9cc8f03bc72",
+      "archivedBytes": 3593,
+      "archivedSha256": "e4fce70e5f46ee7338c52e5a32c4b471484b5bd89d34a0a3ad39b9d78ce3489d",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implement.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3593,
+      "normalizedDocumentSha256": "e4fce70e5f46ee7338c52e5a32c4b471484b5bd89d34a0a3ad39b9d78ce3489d"
+    },
+    {
+      "original": "implementation/backend-brief.md",
+      "archived": "implementation--backend-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/backend-brief.md",
+      "sourceBytes": 2610,
+      "sourceSha256": "c651021501d28aacd86542e83e9b18d6213e49bce9657f4d7dcae0e8dd0dc101",
+      "archivedBytes": 2856,
+      "archivedSha256": "869b34acedc399729915117af1488b6a42aec7f3ae26660aebf1fb4cb4b82ee4",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/backend-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2856,
+      "normalizedDocumentSha256": "869b34acedc399729915117af1488b6a42aec7f3ae26660aebf1fb4cb4b82ee4"
+    },
+    {
+      "original": "implementation/backend-phase-handoff.json",
+      "archived": "research/implementation--backend-phase-handoff.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/backend-phase-handoff.json",
+      "sourceBytes": 806,
+      "sourceSha256": "9dc4cfc0a8e7bac7184667ceb3ac89fcd16c50a90621555f4e8cbdd1334556d7",
+      "archivedBytes": 805,
+      "archivedSha256": "7292b43cecfdb30b34e581e2d5ab6ed7674d1ab02df306d8a32e08cd7365304b",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/backend-phase-handoff.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 805,
+      "normalizedDocumentSha256": "7292b43cecfdb30b34e581e2d5ab6ed7674d1ab02df306d8a32e08cd7365304b"
+    },
+    {
+      "original": "implementation/backend-rework-brief.md",
+      "archived": "implementation--backend-rework-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/backend-rework-brief.md",
+      "sourceBytes": 8914,
+      "sourceSha256": "d8de2503af982abbf3575f8b2acd14ca68586c514c81951046b0ba58d213014a",
+      "archivedBytes": 9162,
+      "archivedSha256": "5edfaca508d2e5796ca010a0d2d6c89b65ef589b39d5cb8ad58bfa6d029ef04b",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/backend-rework-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 9162,
+      "normalizedDocumentSha256": "5edfaca508d2e5796ca010a0d2d6c89b65ef589b39d5cb8ad58bfa6d029ef04b"
+    },
+    {
+      "original": "implementation/backend-rework-handoff.md",
+      "archived": "implementation--backend-rework-handoff.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/backend-rework-handoff.md",
+      "sourceBytes": 353,
+      "sourceSha256": "1eccb220384b61b8e4541abb2ad24ed0ed4572654f356cc11e9483b7d5da1e18",
+      "archivedBytes": 601,
+      "archivedSha256": "94b1b341a3c5a2854132defc879d48e69ce8322539794deaf1a95df3bc542d84",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/backend-rework-handoff.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 601,
+      "normalizedDocumentSha256": "94b1b341a3c5a2854132defc879d48e69ce8322539794deaf1a95df3bc542d84"
+    },
+    {
+      "original": "implementation/backend-rework-interface.md",
+      "archived": "implementation--backend-rework-interface.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/backend-rework-interface.md",
+      "sourceBytes": 6734,
+      "sourceSha256": "1721432e0c2ffb5fa426a03e2da3731fabe1b88108c1b2cbbab15a590b85f6fb",
+      "archivedBytes": 6982,
+      "archivedSha256": "71fc287d74264d353529bd45c6f6cc3bc0994d85b1f81a64e7cb9356a5a52fc3",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/backend-rework-interface.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 6982,
+      "normalizedDocumentSha256": "71fc287d74264d353529bd45c6f6cc3bc0994d85b1f81a64e7cb9356a5a52fc3"
+    },
+    {
+      "original": "implementation/browser-final-review.md",
+      "archived": "implementation--browser-final-review.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/browser-final-review.md",
+      "sourceBytes": 6089,
+      "sourceSha256": "a1132fec17bb402c0f3278e6a3e51c341d84bbf0f35733237da6b4f00fe346e5",
+      "archivedBytes": 6336,
+      "archivedSha256": "efb11a352d984b141a4671e965718a7a4404c46d96c678f43c7e40e9a3b2f44a",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/browser-final-review.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 6336,
+      "normalizedDocumentSha256": "efb11a352d984b141a4671e965718a7a4404c46d96c678f43c7e40e9a3b2f44a"
+    },
+    {
+      "original": "implementation/bundle-report.md",
+      "archived": "implementation--bundle-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/bundle-report.md",
+      "sourceBytes": 2663,
+      "sourceSha256": "6451d728908058113a64f13b0d168ecc5780caa8beb0b459ff036756885be31a",
+      "archivedBytes": 2911,
+      "archivedSha256": "bc6c01f2f2004984bd7309c4ef63407ec548e1f59aeaabc72bf7d140284004c7",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/bundle-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2911,
+      "normalizedDocumentSha256": "bc6c01f2f2004984bd7309c4ef63407ec548e1f59aeaabc72bf7d140284004c7"
+    },
+    {
+      "original": "implementation/codex-implementation-handoff.md",
+      "archived": "implementation--codex-implementation-handoff.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/codex-implementation-handoff.md",
+      "sourceBytes": 9645,
+      "sourceSha256": "27ee4daaeab0f2e8209b901ab7e0fe1fea58b013247a8bdc50a3a2fb53ca9793",
+      "archivedBytes": 9893,
+      "archivedSha256": "c6f7868e86a9060705e4e6ee36f9654938ef2cf80210d2482860d0e31fa49792",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/codex-implementation-handoff.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 9893,
+      "normalizedDocumentSha256": "c6f7868e86a9060705e4e6ee36f9654938ef2cf80210d2482860d0e31fa49792"
+    },
+    {
+      "original": "implementation/codex-integration-contract.md",
+      "archived": "implementation--codex-integration-contract.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/codex-integration-contract.md",
+      "sourceBytes": 7742,
+      "sourceSha256": "7f58c944fb8ca9fc2eb445cf35857e2fb32582b6d8ebdaad6c29055b787bfe85",
+      "archivedBytes": 7990,
+      "archivedSha256": "4c35360b659052d575e4d9275e96923599438af8eb128c78aaf0469e1ead5c8a",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/codex-integration-contract.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 7990,
+      "normalizedDocumentSha256": "4c35360b659052d575e4d9275e96923599438af8eb128c78aaf0469e1ead5c8a"
+    },
+    {
+      "original": "implementation/contracts-integration-report.md",
+      "archived": "implementation--contracts-integration-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/contracts-integration-report.md",
+      "sourceBytes": 8545,
+      "sourceSha256": "aeda9f4516ad6c2ccbc71c6984250539b79c9db1262c52455066d9dcc4a3919f",
+      "archivedBytes": 8793,
+      "archivedSha256": "e1fe51b3fbdfa4e77abd140b9919a820b864d24ec31a700c00b3c74ff70b4cc6",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/contracts-integration-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 8793,
+      "normalizedDocumentSha256": "e1fe51b3fbdfa4e77abd140b9919a820b864d24ec31a700c00b3c74ff70b4cc6"
+    },
+    {
+      "original": "implementation/contracts-source-identity.json",
+      "archived": "research/implementation--contracts-source-identity.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/contracts-source-identity.json",
+      "sourceBytes": 3246,
+      "sourceSha256": "6386ef0d31510e7663180e1d57c31d4c4a56fb840fdc815fc3227a0c4f2c86d9",
+      "archivedBytes": 3246,
+      "archivedSha256": "6386ef0d31510e7663180e1d57c31d4c4a56fb840fdc815fc3227a0c4f2c86d9",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/contracts-source-identity.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3246,
+      "normalizedDocumentSha256": "6386ef0d31510e7663180e1d57c31d4c4a56fb840fdc815fc3227a0c4f2c86d9"
+    },
+    {
+      "original": "implementation/coordinator-codex-findings.md",
+      "archived": "implementation--coordinator-codex-findings.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/coordinator-codex-findings.md",
+      "sourceBytes": 1911,
+      "sourceSha256": "ace043dcc7c2fb08d9957f0cf8acf5e497515fdcc244b1e769d2b9da4008e043",
+      "archivedBytes": 2159,
+      "archivedSha256": "618c4acbc81a15af3fce09b0dcb3ce9cca2f62c92b615babfa983130c2aec8ba",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/coordinator-codex-findings.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2159,
+      "normalizedDocumentSha256": "618c4acbc81a15af3fce09b0dcb3ce9cca2f62c92b615babfa983130c2aec8ba"
+    },
+    {
+      "original": "implementation/delivery-readiness.md",
+      "archived": "implementation--delivery-readiness.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/delivery-readiness.md",
+      "sourceBytes": 4957,
+      "sourceSha256": "1b74346befccdcd5b69c2350d17611786ea97da4e18bfa3c267a4e769afcde02",
+      "archivedBytes": 5317,
+      "archivedSha256": "58097bc71076fae325a278f4929f2f6124c4f02ef75850e6acdce9132c007e0f",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/delivery-readiness.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 5317,
+      "normalizedDocumentSha256": "58097bc71076fae325a278f4929f2f6124c4f02ef75850e6acdce9132c007e0f"
+    },
+    {
+      "original": "implementation/environment-ready.md",
+      "archived": "implementation--environment-ready.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/environment-ready.md",
+      "sourceBytes": 211,
+      "sourceSha256": "c48298add1e9b1843d1c689494e67815e0a3426e64f2d5bdca6baa77e14dddb7",
+      "archivedBytes": 459,
+      "archivedSha256": "6113f48642b289d70447f08ee86176fb2ddd1095a456d4176ad20ecd1e1560d7",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/environment-ready.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 459,
+      "normalizedDocumentSha256": "6113f48642b289d70447f08ee86176fb2ddd1095a456d4176ad20ecd1e1560d7"
+    },
+    {
+      "original": "implementation/evidence-index.md",
+      "archived": "implementation--evidence-index.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/evidence-index.md",
+      "sourceBytes": 1045,
+      "sourceSha256": "f164b5cff1abafa6e5a192848acda776986a41d5312c2dad1fa7f625d89c8e02",
+      "archivedBytes": 1293,
+      "archivedSha256": "eff78cbb2e3d05882350339a2006459680abec8fab443e7e67c9fb9bf52653f7",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/evidence-index.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1293,
+      "normalizedDocumentSha256": "eff78cbb2e3d05882350339a2006459680abec8fab443e7e67c9fb9bf52653f7"
+    },
+    {
+      "original": "implementation/execution.json",
+      "archived": "research/implementation--execution.json",
+      "kind": "path-normalized-json",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/execution.json",
+      "sourceBytes": 1848,
+      "sourceSha256": "c33d50b1a272fd2489168dc0ba01ec5a12c37cb4b2c7f3a1f5ab6832655c6713",
+      "archivedBytes": 1844,
+      "archivedSha256": "af53c102b013b2e6e18d95eaf30a7b8cb0600042dbe9353a01628d94161d5448",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/execution.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1844,
+      "normalizedDocumentSha256": "af53c102b013b2e6e18d95eaf30a7b8cb0600042dbe9353a01628d94161d5448"
+    },
+    {
+      "original": "implementation/extraction-source-evidence.md",
+      "archived": "implementation--extraction-source-evidence.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/extraction-source-evidence.md",
+      "sourceBytes": 11075,
+      "sourceSha256": "e53910428abfbb15f6f69584f89b2a5aa1a90862faaebe247b526a3b33f621d7",
+      "archivedBytes": 11321,
+      "archivedSha256": "54bc645d43951dd3f33c8740db5f97ca716c80275b3ca1393db278c9b3a75b15",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/extraction-source-evidence.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 11321,
+      "normalizedDocumentSha256": "54bc645d43951dd3f33c8740db5f97ca716c80275b3ca1393db278c9b3a75b15"
+    },
+    {
+      "original": "implementation/final-frontend-validation.md",
+      "archived": "implementation--final-frontend-validation.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/final-frontend-validation.md",
+      "sourceBytes": 1386,
+      "sourceSha256": "6b67a379369231f094414fb7caea2bca81fc6ddd24796969649e0652eae3137d",
+      "archivedBytes": 1634,
+      "archivedSha256": "7c9ddb15a450a2f7b6efc15202c7024968b3cc64fe06e268591914c1b9a33031",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/final-frontend-validation.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1634,
+      "normalizedDocumentSha256": "7c9ddb15a450a2f7b6efc15202c7024968b3cc64fe06e268591914c1b9a33031"
+    },
+    {
+      "original": "implementation/final-rust-validation.md",
+      "archived": "implementation--final-rust-validation.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/final-rust-validation.md",
+      "sourceBytes": 3851,
+      "sourceSha256": "54d172ccbc75acf5fbdc792042cd5e4e5b034a31769dc45710de07ee3c139da2",
+      "archivedBytes": 4099,
+      "archivedSha256": "1bb7563679e7eacde88a948ce662886758e6a86940546d870bfbbb5a56ecccfc",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/final-rust-validation.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 4099,
+      "normalizedDocumentSha256": "1bb7563679e7eacde88a948ce662886758e6a86940546d870bfbbb5a56ecccfc"
+    },
+    {
+      "original": "implementation/frontend-brief.md",
+      "archived": "implementation--frontend-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-brief.md",
+      "sourceBytes": 2691,
+      "sourceSha256": "21068b7168b9628d05196544a71d739c4fa6f7e67dac2725dbd7c77c75088cf0",
+      "archivedBytes": 2937,
+      "archivedSha256": "c903565a8b191423b9223fc6abb4ebeac407edb0cd21ca9c86e0fc80e00f059d",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2937,
+      "normalizedDocumentSha256": "c903565a8b191423b9223fc6abb4ebeac407edb0cd21ca9c86e0fc80e00f059d"
+    },
+    {
+      "original": "implementation/frontend-final-fixes-brief.md",
+      "archived": "implementation--frontend-final-fixes-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-final-fixes-brief.md",
+      "sourceBytes": 3518,
+      "sourceSha256": "8291f88406930b2164eb3256bb7985db89cb1cae7dcd4abdc51efd9d825f2bf0",
+      "archivedBytes": 3765,
+      "archivedSha256": "364a91e9230f7cb639fcec8c3f9165c9b112de70957ef8816c1e5a39b803c2f0",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-final-fixes-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3765,
+      "normalizedDocumentSha256": "364a91e9230f7cb639fcec8c3f9165c9b112de70957ef8816c1e5a39b803c2f0"
+    },
+    {
+      "original": "implementation/frontend-followup-brief.md",
+      "archived": "implementation--frontend-followup-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-followup-brief.md",
+      "sourceBytes": 3411,
+      "sourceSha256": "17abbb7c8b2ad337697e99e94800d13b40a7da998705fbbe525ebd17eff5f620",
+      "archivedBytes": 3658,
+      "archivedSha256": "d37febbb6d0d1f14992f25433978d1b492b295c1a805dd420234202386f4efe9",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-followup-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3658,
+      "normalizedDocumentSha256": "d37febbb6d0d1f14992f25433978d1b492b295c1a805dd420234202386f4efe9"
+    },
+    {
+      "original": "implementation/frontend-report.md",
+      "archived": "implementation--frontend-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-report.md",
+      "sourceBytes": 10831,
+      "sourceSha256": "f5663cfd1a860fdc0e23d89329d23ac63960c80c413f483e30d1f75a355118cf",
+      "archivedBytes": 11079,
+      "archivedSha256": "1513f2482943f1347c70d110eb8466ef4889ed6c565c0ee909f89ceac32f95db",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 11079,
+      "normalizedDocumentSha256": "1513f2482943f1347c70d110eb8466ef4889ed6c565c0ee909f89ceac32f95db"
+    },
+    {
+      "original": "implementation/frontend-review-fixes-brief.md",
+      "archived": "implementation--frontend-review-fixes-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-review-fixes-brief.md",
+      "sourceBytes": 1783,
+      "sourceSha256": "18b764dd4331e5754b58e234a837120839c2cb6f84d2fdf87e8da7801b29cef6",
+      "archivedBytes": 2031,
+      "archivedSha256": "8352e8d054d196e582e72a97e0d7f273cf01572b8a1be098feb5ff57f73954cb",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-review-fixes-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2031,
+      "normalizedDocumentSha256": "8352e8d054d196e582e72a97e0d7f273cf01572b8a1be098feb5ff57f73954cb"
+    },
+    {
+      "original": "implementation/frontend-review-fixes-report.md",
+      "archived": "implementation--frontend-review-fixes-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-review-fixes-report.md",
+      "sourceBytes": 7587,
+      "sourceSha256": "672d9c6dca09076a5fb82051a5465e62c572e03bc4fe8f1a633b6d42e6bc31f6",
+      "archivedBytes": 7835,
+      "archivedSha256": "f2a587d019bdf79c7475d94397200dde9f0b65151ef9499c4761d8dcd85ae67c",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-review-fixes-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 7835,
+      "normalizedDocumentSha256": "f2a587d019bdf79c7475d94397200dde9f0b65151ef9499c4761d8dcd85ae67c"
+    },
+    {
+      "original": "implementation/frontend-root-integration.md",
+      "archived": "implementation--frontend-root-integration.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-root-integration.md",
+      "sourceBytes": 648,
+      "sourceSha256": "a0643f450b3020ea5a804875f6966f53fed52f6fbc2c8bdcc1a5ce28a37bf201",
+      "archivedBytes": 896,
+      "archivedSha256": "89e54b0295e4dbac137b4161c4f45694d61d6141bad0ff68f595aa2fdc48fc05",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/frontend-root-integration.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 896,
+      "normalizedDocumentSha256": "89e54b0295e4dbac137b4161c4f45694d61d6141bad0ff68f595aa2fdc48fc05"
+    },
+    {
+      "original": "implementation/gemini-native-report.md",
+      "archived": "implementation--gemini-native-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/gemini-native-report.md",
+      "sourceBytes": 11093,
+      "sourceSha256": "16f4ff8fc48b5d1656cb633591a15481d8453a85e1cfc6d40db1d2c4e440feb8",
+      "archivedBytes": 11340,
+      "archivedSha256": "ef690a4bfc115c0334689c3c626e6a1e3a1593018098e142f6d2916893608aae",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/gemini-native-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 11340,
+      "normalizedDocumentSha256": "ef690a4bfc115c0334689c3c626e6a1e3a1593018098e142f6d2916893608aae"
+    },
+    {
+      "original": "implementation/grok-codex-review-brief.md",
+      "archived": "implementation--grok-codex-review-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-codex-review-brief.md",
+      "sourceBytes": 2254,
+      "sourceSha256": "2a1c8272bd8567888bd6f0899f6731b308d2a1817cb944def1f2dc3489406176",
+      "archivedBytes": 2499,
+      "archivedSha256": "4f94549a2293b3563a47ffb94b04ddafc6396f1a77718fb9e9baa9fd4e027d3a",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-codex-review-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2499,
+      "normalizedDocumentSha256": "4f94549a2293b3563a47ffb94b04ddafc6396f1a77718fb9e9baa9fd4e027d3a"
+    },
+    {
+      "original": "implementation/grok-codex-review.md",
+      "archived": "implementation--grok-codex-review.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-codex-review.md",
+      "sourceBytes": 5859,
+      "sourceSha256": "5864292fbe2b12d5e945ed1df41e650baad4be9149172ea84787f0a203b975ac",
+      "archivedBytes": 6107,
+      "archivedSha256": "b8ebcdeea69e017de326f2e9eca41ea4fc1bdf714240b090fbb6111a1dfcd7b5",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-codex-review.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 6107,
+      "normalizedDocumentSha256": "b8ebcdeea69e017de326f2e9eca41ea4fc1bdf714240b090fbb6111a1dfcd7b5"
+    },
+    {
+      "original": "implementation/grok-final-integration-brief.md",
+      "archived": "implementation--grok-final-integration-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-final-integration-brief.md",
+      "sourceBytes": 2374,
+      "sourceSha256": "61e295984e8ed864b1a8431968eda9a60535f69bcfedd8502b2478d33b58cc70",
+      "archivedBytes": 2622,
+      "archivedSha256": "1298cf430165418026b4bea27340f5d3a1170a52fd10238f6320c20e6b6884ac",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-final-integration-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2622,
+      "normalizedDocumentSha256": "1298cf430165418026b4bea27340f5d3a1170a52fd10238f6320c20e6b6884ac"
+    },
+    {
+      "original": "implementation/grok-final-integration-review.md",
+      "archived": "implementation--grok-final-integration-review.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-final-integration-review.md",
+      "sourceBytes": 4151,
+      "sourceSha256": "590c7018c38ab673570048e5e936d4e7caeca085b1a4c728758c336060c3d43f",
+      "archivedBytes": 4399,
+      "archivedSha256": "1f15d0cb6ae4011c5a358b1ace4495a586678230c3b4d07871679118f6c8b6f4",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-final-integration-review.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 4399,
+      "normalizedDocumentSha256": "1f15d0cb6ae4011c5a358b1ace4495a586678230c3b4d07871679118f6c8b6f4"
+    },
+    {
+      "original": "implementation/grok-final-resolution.md",
+      "archived": "implementation--grok-final-resolution.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-final-resolution.md",
+      "sourceBytes": 1041,
+      "sourceSha256": "29748efbcf067c4c1e69badc86904aa9571707228439988266b496309f774af4",
+      "archivedBytes": 1289,
+      "archivedSha256": "f24d09603d1cddd226b2024172c90fdb25c6a11958ceeff2d0229b99c1983a51",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-final-resolution.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1289,
+      "normalizedDocumentSha256": "f24d09603d1cddd226b2024172c90fdb25c6a11958ceeff2d0229b99c1983a51"
+    },
+    {
+      "original": "implementation/grok-frontend-review-brief.md",
+      "archived": "implementation--grok-frontend-review-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-frontend-review-brief.md",
+      "sourceBytes": 1237,
+      "sourceSha256": "a8df887703bfbf74cafc67e4ed0dad9ed84f0c8c374ede9f218dc59661c014e8",
+      "archivedBytes": 1484,
+      "archivedSha256": "3efb5683bdfe3f288d04f6d63222d8960d43e7b6baf661e2f159af5f1b0a9758",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-frontend-review-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1484,
+      "normalizedDocumentSha256": "3efb5683bdfe3f288d04f6d63222d8960d43e7b6baf661e2f159af5f1b0a9758"
+    },
+    {
+      "original": "implementation/grok-frontend-review.md",
+      "archived": "implementation--grok-frontend-review.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-frontend-review.md",
+      "sourceBytes": 8319,
+      "sourceSha256": "424cf5d48126ad16e4611877b9cc84beda0d00ab7d071dd9ce6dc55a45d7fc81",
+      "archivedBytes": 8567,
+      "archivedSha256": "19bcf79098014f2e72d10dc62d4f64ec2b9975854e1904590f5dcdcf165e9caa",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-frontend-review.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 8567,
+      "normalizedDocumentSha256": "19bcf79098014f2e72d10dc62d4f64ec2b9975854e1904590f5dcdcf165e9caa"
+    },
+    {
+      "original": "implementation/grok-identity-review-brief.md",
+      "archived": "implementation--grok-identity-review-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-identity-review-brief.md",
+      "sourceBytes": 1539,
+      "sourceSha256": "47562df4bc6cc5396c5a63d186465d641bbdb11f242e6ca8b15383256724d5d4",
+      "archivedBytes": 1787,
+      "archivedSha256": "1abf09b8a342a42eb3926ce58edc535d347cf11ff256ff16e0f48ad760e668ed",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-identity-review-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1787,
+      "normalizedDocumentSha256": "1abf09b8a342a42eb3926ce58edc535d347cf11ff256ff16e0f48ad760e668ed"
+    },
+    {
+      "original": "implementation/grok-identity-review.md",
+      "archived": "implementation--grok-identity-review.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-identity-review.md",
+      "sourceBytes": 10120,
+      "sourceSha256": "1906caca43ee602f0309bc178ac5964613788b01a316b8f474332a03b7ea8087",
+      "archivedBytes": 10368,
+      "archivedSha256": "6dd53a0240be7c09f0a7cc7f5709043a6cf35f4587dd5702c6c603b6b57d571c",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-identity-review.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 10368,
+      "normalizedDocumentSha256": "6dd53a0240be7c09f0a7cc7f5709043a6cf35f4587dd5702c6c603b6b57d571c"
+    },
+    {
+      "original": "implementation/grok-native-resolution.md",
+      "archived": "implementation--grok-native-resolution.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-native-resolution.md",
+      "sourceBytes": 1720,
+      "sourceSha256": "77025e79afe1143d5dc199d91eece50231a9be860ce908524251ed878322ef16",
+      "archivedBytes": 1968,
+      "archivedSha256": "4225745d594897b864b0845bf0563ac1171531ec1fb415e30298943def818bfb",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-native-resolution.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1968,
+      "normalizedDocumentSha256": "4225745d594897b864b0845bf0563ac1171531ec1fb415e30298943def818bfb"
+    },
+    {
+      "original": "implementation/grok-native-review-brief.md",
+      "archived": "implementation--grok-native-review-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-native-review-brief.md",
+      "sourceBytes": 1796,
+      "sourceSha256": "fbcd3ddce8b6008e14447284b69193332c7a4558549eb1bcb350deef0fb7bff2",
+      "archivedBytes": 2044,
+      "archivedSha256": "55198541e002c5a08a969680865d841b7464b1efe2c41723bdee4a54fc477e8e",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-native-review-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2044,
+      "normalizedDocumentSha256": "55198541e002c5a08a969680865d841b7464b1efe2c41723bdee4a54fc477e8e"
+    },
+    {
+      "original": "implementation/grok-native-review.md",
+      "archived": "implementation--grok-native-review.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-native-review.md",
+      "sourceBytes": 7308,
+      "sourceSha256": "9c66c428575378cc84552fa9580e14271c01e55ddeee1ff7472b578ca2eedcbe",
+      "archivedBytes": 7556,
+      "archivedSha256": "7190959b2ca92c929be955dd8a353114be6426dd231b77f6de23a35314b1fcdc",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/grok-native-review.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 7556,
+      "normalizedDocumentSha256": "7190959b2ca92c929be955dd8a353114be6426dd231b77f6de23a35314b1fcdc"
+    },
+    {
+      "original": "implementation/identity-concurrency-fix.md",
+      "archived": "implementation--identity-concurrency-fix.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/identity-concurrency-fix.md",
+      "sourceBytes": 3389,
+      "sourceSha256": "d2d3e0d38a4beefdd17310976da5abb2af6d674c5b5af6a0801564a6482f58f4",
+      "archivedBytes": 3637,
+      "archivedSha256": "04b641b10b9463b1322cc40ffee60dd82fb82788df9d9da220fe37cc57e8f549",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/identity-concurrency-fix.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3637,
+      "normalizedDocumentSha256": "04b641b10b9463b1322cc40ffee60dd82fb82788df9d9da220fe37cc57e8f549"
+    },
+    {
+      "original": "implementation/identity-report.md",
+      "archived": "implementation--identity-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/identity-report.md",
+      "sourceBytes": 4005,
+      "sourceSha256": "4ccc12deb6be3622e767eb44da8d268ea8f717dc3fc8935a88486fc789c422fc",
+      "archivedBytes": 4253,
+      "archivedSha256": "8399c659b736dbecfbfe744cd42d159146d98097c6eda965744989a097037ac4",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/identity-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 4253,
+      "normalizedDocumentSha256": "8399c659b736dbecfbfe744cd42d159146d98097c6eda965744989a097037ac4"
+    },
+    {
+      "original": "implementation/identity-review-fixes.md",
+      "archived": "implementation--identity-review-fixes.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/identity-review-fixes.md",
+      "sourceBytes": 5103,
+      "sourceSha256": "259cec6b4b1ade4f9494f470304ee1857307c29ad3312056b2904869cf2288e2",
+      "archivedBytes": 5351,
+      "archivedSha256": "ecc18a75500b77cada15b327037ed15fd1972256cb5e74ce3fadc20ad0327e70",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/identity-review-fixes.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 5351,
+      "normalizedDocumentSha256": "ecc18a75500b77cada15b327037ed15fd1972256cb5e74ce3fadc20ad0327e70"
+    },
+    {
+      "original": "implementation/native-continuation-report.md",
+      "archived": "implementation--native-continuation-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/native-continuation-report.md",
+      "sourceBytes": 11018,
+      "sourceSha256": "aa3677f8e1f944e7fa0120cd3e312526b6bc9b627ae08020258245702e3de441",
+      "archivedBytes": 11262,
+      "archivedSha256": "17fce2316430e24ede5b4120c0013f7b90c97a4b26b12ef103ed4c86b24863bf",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/native-continuation-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 11262,
+      "normalizedDocumentSha256": "17fce2316430e24ede5b4120c0013f7b90c97a4b26b12ef103ed4c86b24863bf"
+    },
+    {
+      "original": "implementation/opencode-create-only-report.md",
+      "archived": "implementation--opencode-create-only-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/opencode-create-only-report.md",
+      "sourceBytes": 7222,
+      "sourceSha256": "a6750ba329d74c3e9492f9d1ce1a86a1d9e4d31e9a96cddd244521bd7d67f99e",
+      "archivedBytes": 7470,
+      "archivedSha256": "ad2ef60554441d7238a5882fca84123c40a4d38c15c5c56f114b0064c9f134a3",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/opencode-create-only-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 7470,
+      "normalizedDocumentSha256": "ad2ef60554441d7238a5882fca84123c40a4d38c15c5c56f114b0064c9f134a3"
+    },
+    {
+      "original": "implementation/qa-brief.md",
+      "archived": "implementation--qa-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-brief.md",
+      "sourceBytes": 2410,
+      "sourceSha256": "976008d0e4c23ad3e4aa0b6154dc6dc4bf0bab41099e446c1ac57b31d75899a9",
+      "archivedBytes": 2656,
+      "archivedSha256": "610dab69c4a3360f9f62a79db760d856d5c98f72437d8386a01112bbf91b2d8a",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2656,
+      "normalizedDocumentSha256": "610dab69c4a3360f9f62a79db760d856d5c98f72437d8386a01112bbf91b2d8a"
+    },
+    {
+      "original": "implementation/qa-case-map.md",
+      "archived": "implementation--qa-case-map.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-case-map.md",
+      "sourceBytes": 8830,
+      "sourceSha256": "4aa73b813c337b19a97677b7e838fe317db63430fd6d20c496fa00823059a6a7",
+      "archivedBytes": 9078,
+      "archivedSha256": "28cd04038b69babda2c7020416cf99d85c95d4938b12005ec6d0b67b9fef1884",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-case-map.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 9078,
+      "normalizedDocumentSha256": "28cd04038b69babda2c7020416cf99d85c95d4938b12005ec6d0b67b9fef1884"
+    },
+    {
+      "original": "implementation/qa-final-brief.md",
+      "archived": "implementation--qa-final-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-final-brief.md",
+      "sourceBytes": 1862,
+      "sourceSha256": "ef6d275cf0d740b270d487881619dc8644b5dee57a7345951329d18b80a30711",
+      "archivedBytes": 2110,
+      "archivedSha256": "b44494298b27dfd72cd3167609bcfc7b8f5b5894f7a12452f083bd4becccb672",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-final-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2110,
+      "normalizedDocumentSha256": "b44494298b27dfd72cd3167609bcfc7b8f5b5894f7a12452f083bd4becccb672"
+    },
+    {
+      "original": "implementation/qa-final-findings.md",
+      "archived": "implementation--qa-final-findings.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-final-findings.md",
+      "sourceBytes": 1836,
+      "sourceSha256": "4063d3a03202d491c79f4ecd57d74cfc7376e1ccba3716894b310105a115ca61",
+      "archivedBytes": 2084,
+      "archivedSha256": "837343e6e5cd05ab5c6a5c98b2eae5bc679c05a9c2765655d24e731a3bdc0b37",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-final-findings.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2084,
+      "normalizedDocumentSha256": "837343e6e5cd05ab5c6a5c98b2eae5bc679c05a9c2765655d24e731a3bdc0b37"
+    },
+    {
+      "original": "implementation/qa-final-report.md",
+      "archived": "implementation--qa-final-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-final-report.md",
+      "sourceBytes": 1767,
+      "sourceSha256": "de0f36c3ce398fb500a6ba1ae7ca5c6f332fffc8e46b80172a7e4055bebd353d",
+      "archivedBytes": 2015,
+      "archivedSha256": "da2d72560cd43149c0b002b7578baa43498339ab3cd6ed8fea4e0fac9d424a36",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-final-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2015,
+      "normalizedDocumentSha256": "da2d72560cd43149c0b002b7578baa43498339ab3cd6ed8fea4e0fac9d424a36"
+    },
+    {
+      "original": "implementation/qa-findings.md",
+      "archived": "implementation--qa-findings.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-findings.md",
+      "sourceBytes": 3870,
+      "sourceSha256": "18477edcf8f9b898ac09203ab6c34709ba116eb2a1e7d62e8262b2ac60254546",
+      "archivedBytes": 4118,
+      "archivedSha256": "aca1ffc1dac145fb8b609d6d66a7134732e6575b22c06ac1a8b77595511f0f3f",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-findings.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 4118,
+      "normalizedDocumentSha256": "aca1ffc1dac145fb8b609d6d66a7134732e6575b22c06ac1a8b77595511f0f3f"
+    },
+    {
+      "original": "implementation/qa-followup-brief.md",
+      "archived": "implementation--qa-followup-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-followup-brief.md",
+      "sourceBytes": 2248,
+      "sourceSha256": "5c54ac55a3a87b094f2dbc169f006c3d68367a30ee2327b704d59d8eb1488581",
+      "archivedBytes": 2495,
+      "archivedSha256": "b9a8bd7ca22f97398cf4ec53edbf4c6fb0b8d4cacee9ebb39cc4bffce217aed7",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-followup-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2495,
+      "normalizedDocumentSha256": "b9a8bd7ca22f97398cf4ec53edbf4c6fb0b8d4cacee9ebb39cc4bffce217aed7"
+    },
+    {
+      "original": "implementation/qa-interface-request.md",
+      "archived": "implementation--qa-interface-request.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-interface-request.md",
+      "sourceBytes": 1399,
+      "sourceSha256": "969792bc3883f06bba883414884ca32c92d68e24b8f0e86ad9c2c3d0698d58fc",
+      "archivedBytes": 1647,
+      "archivedSha256": "df19f779bb21cc12c300829908afabb9b8d86adfb43ac40a21e92fe8807ff5e3",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-interface-request.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1647,
+      "normalizedDocumentSha256": "df19f779bb21cc12c300829908afabb9b8d86adfb43ac40a21e92fe8807ff5e3"
+    },
+    {
+      "original": "implementation/qa-production-rust-brief.md",
+      "archived": "implementation--qa-production-rust-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-production-rust-brief.md",
+      "sourceBytes": 1689,
+      "sourceSha256": "74b49558b36c62f0f27a6c2dbbd9ae94c7b05b049d0aaa77658aad8ded00f329",
+      "archivedBytes": 1937,
+      "archivedSha256": "59c7512abe70fc5e5730b81aa7c3d4132ce37b7681c83907c8e1decb6dfc9b4c",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-production-rust-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1937,
+      "normalizedDocumentSha256": "59c7512abe70fc5e5730b81aa7c3d4132ce37b7681c83907c8e1decb6dfc9b4c"
+    },
+    {
+      "original": "implementation/qa-production-rust-report.md",
+      "archived": "implementation--qa-production-rust-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-production-rust-report.md",
+      "sourceBytes": 3725,
+      "sourceSha256": "79de676740fe4e9d4c290dcd0259ac5f3c231fe94bde05d3d9a0ce74d4524c81",
+      "archivedBytes": 3973,
+      "archivedSha256": "39fccf64de90a3293880bfbae8c7e04534877eec9b9716ec6bfc0ea0dec27cb8",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-production-rust-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3973,
+      "normalizedDocumentSha256": "39fccf64de90a3293880bfbae8c7e04534877eec9b9716ec6bfc0ea0dec27cb8"
+    },
+    {
+      "original": "implementation/qa-report.md",
+      "archived": "implementation--qa-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-report.md",
+      "sourceBytes": 6177,
+      "sourceSha256": "9825366fe697879e691ab36eb22b303e112230af7f26e651d9d30976188c4aca",
+      "archivedBytes": 6425,
+      "archivedSha256": "0677c9fd94f72ee4bf42fbcf3160aabaac2f67be07e1852e2737c9e1e5a3b3a9",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 6425,
+      "normalizedDocumentSha256": "0677c9fd94f72ee4bf42fbcf3160aabaac2f67be07e1852e2737c9e1e5a3b3a9"
+    },
+    {
+      "original": "implementation/qa-unit-contract-brief.md",
+      "archived": "implementation--qa-unit-contract-brief.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-unit-contract-brief.md",
+      "sourceBytes": 2356,
+      "sourceSha256": "f1ede2c2f36d93fe9376064f68dfa2d30335e56a899dac26bf88ed97fa9193ab",
+      "archivedBytes": 2604,
+      "archivedSha256": "2e1adaed3b4bb24d25cbb1ebcd51011512712f055616842d51f09dd42d9c0a35",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-unit-contract-brief.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 2604,
+      "normalizedDocumentSha256": "2e1adaed3b4bb24d25cbb1ebcd51011512712f055616842d51f09dd42d9c0a35"
+    },
+    {
+      "original": "implementation/qa-unit-contract-report.md",
+      "archived": "implementation--qa-unit-contract-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-unit-contract-report.md",
+      "sourceBytes": 3278,
+      "sourceSha256": "879e8759008393d68cee355bb0403a3c7f1a9026bff721adf9fbc1397f7771fd",
+      "archivedBytes": 3526,
+      "archivedSha256": "db8bf330a7b54a61ab7bda1aff7ed149b4fd43b55d302cda66ce44bcbaba0ce9",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/qa-unit-contract-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3526,
+      "normalizedDocumentSha256": "db8bf330a7b54a61ab7bda1aff7ed149b4fd43b55d302cda66ce44bcbaba0ce9"
+    },
+    {
+      "original": "implementation/remaining-provider-evidence.md",
+      "archived": "implementation--remaining-provider-evidence.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/remaining-provider-evidence.md",
+      "sourceBytes": 18448,
+      "sourceSha256": "dc7f715136bea2d977a63d042d74009787c1a5e7fb6ffee9997ce9c0b6be239c",
+      "archivedBytes": 18696,
+      "archivedSha256": "5a4e6109e0db865823a0b1d226f2572eb55d2e1152d453a5ce6e479f71116d6b",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/remaining-provider-evidence.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 18696,
+      "normalizedDocumentSha256": "5a4e6109e0db865823a0b1d226f2572eb55d2e1152d453a5ce6e479f71116d6b"
+    },
+    {
+      "original": "implementation/root-validation.md",
+      "archived": "implementation--root-validation.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/root-validation.md",
+      "sourceBytes": 5108,
+      "sourceSha256": "6c02bebc83eef727abdf5fb6b562d19a0a4fb7fdbcc7b15c4751bb9d2505af56",
+      "archivedBytes": 5356,
+      "archivedSha256": "2ba35dd23221d7314439a0ce45bfff15ad0b43457e73efc09bf460d57e722d62",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/root-validation.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 5356,
+      "normalizedDocumentSha256": "2ba35dd23221d7314439a0ce45bfff15ad0b43457e73efc09bf460d57e722d62"
+    },
+    {
+      "original": "implementation/strict-extraction-report.md",
+      "archived": "implementation--strict-extraction-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/strict-extraction-report.md",
+      "sourceBytes": 6693,
+      "sourceSha256": "d0e06b220f7a0393b7d877b65c59c8a42e5c73fd8c397d6a505a2499cb0fbda4",
+      "archivedBytes": 6941,
+      "archivedSha256": "8c8d945ca5df32a0625211a4ee07b62c606a9ec010c59a49e04f371336bc3113",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/strict-extraction-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 6941,
+      "normalizedDocumentSha256": "8c8d945ca5df32a0625211a4ee07b62c606a9ec010c59a49e04f371336bc3113"
+    },
+    {
+      "original": "implementation/user-scope-update.md",
+      "archived": "implementation--user-scope-update.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/user-scope-update.md",
+      "sourceBytes": 681,
+      "sourceSha256": "de11089f4abd6d241a2fac0a92bf85866a36730a7a758cc47efc62f55dbb56d3",
+      "archivedBytes": 929,
+      "archivedSha256": "866b804f4a3a6ebbb1ad5485686a5cd535e1282b2c887f3227200ab75f4b2b32",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/user-scope-update.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 929,
+      "normalizedDocumentSha256": "866b804f4a3a6ebbb1ad5485686a5cd535e1282b2c887f3227200ab75f4b2b32"
+    },
+    {
+      "original": "implementation/wire-contract.md",
+      "archived": "implementation--wire-contract.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/wire-contract.md",
+      "sourceBytes": 2847,
+      "sourceSha256": "cf101bbbccd416935363782b4ff061d5dec323ca8e22c611456ceca86f84c787",
+      "archivedBytes": 3095,
+      "archivedSha256": "832db47a9126d1490783def552559053f4bade65bc7294d1ad3450895c076577",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/wire-contract.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 3095,
+      "normalizedDocumentSha256": "832db47a9126d1490783def552559053f4bade65bc7294d1ad3450895c076577"
+    },
+    {
+      "original": "implementation/writer-rework-report.md",
+      "archived": "implementation--writer-rework-report.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/writer-rework-report.md",
+      "sourceBytes": 9307,
+      "sourceSha256": "0fff3912ed71bc6d1372559b93de0c2af6ecf7f196d9f29a1aacb2ca2a5972b6",
+      "archivedBytes": 9555,
+      "archivedSha256": "c906cccaf3acfc1aeb2082ac4f98ebb218fc17dc5305c757e84d180c7a63bec7",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/implementation/writer-rework-report.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 9555,
+      "normalizedDocumentSha256": "c906cccaf3acfc1aeb2082ac4f98ebb218fc17dc5305c757e84d180c7a63bec7"
+    },
+    {
+      "original": "prd.md",
+      "archived": "prd.md",
+      "kind": "markdown-with-archive-links",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/prd.md",
+      "sourceBytes": 1332,
+      "sourceSha256": "d2f08f2050187592de391d02bd3afaa341f249c71d40716a02201c07b76bf0a3",
+      "archivedBytes": 1580,
+      "archivedSha256": "51e91de0fd636dfc800eaaee74b408049133993fc954063b7e70152af3b18127",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/prd.md"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1580,
+      "normalizedDocumentSha256": "51e91de0fd636dfc800eaaee74b408049133993fc954063b7e70152af3b18127"
+    },
+    {
+      "original": "task.json",
+      "archived": "task.json",
+      "kind": "path-normalized-task-metadata",
+      "sourceTracked": true,
+      "sourceSnapshotPath": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/task.json",
+      "sourceBytes": 1075,
+      "sourceSha256": "36ad9117e10b9d026e9968263fa17338645af2709db0fbe412f097b1fbf883bf",
+      "archivedBytes": 1074,
+      "archivedSha256": "e8bb702b2781c08e6a6ffe935a4be67b0b83d7bb5809fc0a261e8d2716880755",
+      "originalRecovery": {
+        "kind": "git-commit",
+        "commit": "6e6a3b3870a047874354f8f685b163622325331b",
+        "path": ".trellis/tasks/archive/2026-09/09-22-session-cross-device-recovery/task.json"
+      },
+      "normalization": "semantic-workstation-home-placeholders",
+      "normalizedDocumentBytes": 1074,
+      "normalizedDocumentSha256": "e8bb702b2781c08e6a6ffe935a4be67b0b83d7bb5809fc0a261e8d2716880755"
+    }
+  ],
+  "linkEdits": [
+    {
+      "source": "implementation/delivery-readiness.md",
+      "originalTarget": "evidence-index.md",
+      "archivedTarget": "implementation--evidence-index.md"
+    },
+    {
+      "source": "implementation/delivery-readiness.md",
+      "originalTarget": "final-frontend-validation.md",
+      "archivedTarget": "implementation--final-frontend-validation.md"
+    },
+    {
+      "source": "implementation/delivery-readiness.md",
+      "originalTarget": "final-rust-validation.md",
+      "archivedTarget": "implementation--final-rust-validation.md"
+    },
+    {
+      "source": "implementation/delivery-readiness.md",
+      "originalTarget": "contracts-integration-report.md",
+      "archivedTarget": "implementation--contracts-integration-report.md"
+    },
+    {
+      "source": "implementation/delivery-readiness.md",
+      "originalTarget": "grok-final-resolution.md",
+      "archivedTarget": "implementation--grok-final-resolution.md"
+    },
+    {
+      "source": "implementation/delivery-readiness.md",
+      "originalTarget": "opencode-create-only-report.md",
+      "archivedTarget": "implementation--opencode-create-only-report.md"
+    },
+    {
+      "source": "implementation/delivery-readiness.md",
+      "originalTarget": "identity-concurrency-fix.md",
+      "archivedTarget": "implementation--identity-concurrency-fix.md"
+    }
+  ],
+  "preservedHistoricalAbsoluteLinks": [
+    {
+      "source": "deliverables/prior-research.md",
+      "target": "/Users/<username>/fyagent/.trellis/tasks/09-22-session-cross-device-recovery/prd.md"
+    },
+    {
+      "source": "deliverables/prior-research.md",
+      "target": "/Users/<username>/fyagent/research/session-recovery-20260921/%E6%81%A2%E5%A4%8D%E6%96%B9%E6%A1%88.md"
+    },
+    {
+      "source": "deliverables/prior-research.md",
+      "target": "/Users/<username>/fyagent/research/session-recovery-20260921/cli-formats.md"
+    },
+    {
+      "source": "deliverables/prior-research.md",
+      "target": "/Users/<username>/fyagent/research/session-recovery-20260921/codex-claude.md"
+    },
+    {
+      "source": "deliverables/prior-research.md",
+      "target": "/Users/<username>/fyagent/research/session-recovery-20260921/local-cli-evidence.json"
+    },
+    {
+      "source": "deliverables/prior-research.md",
+      "target": "/Users/<username>/fyagent/research/session-recovery-20260921/codex-protocol-excerpt.json"
+    },
+    {
+      "source": "deliverables/prior-research.md",
+      "target": "/Users/<username>/fyagent/research/session-recovery-20260921/opencode-synthetic-result.json"
+    },
+    {
+      "source": "deliverables/prior-research.md",
+      "target": "/Users/<username>/fyagent/research/session-recovery-20260921/hermes-synthetic-result.json"
+    }
+  ],
+  "normalizationHistory": [
+    {
+      "phase": "structure",
+      "originalFileCount": 138,
+      "trackedOriginals": 133,
+      "verbatimPayloads": 24,
+      "submissionByteIdentityClaim": "superseded by privacy normalization"
+    },
+    {
+      "phase": "privacy",
+      "method": "semantic workstation home placeholders, no encoding or checker exemption",
+      "originalLogBackups": 5,
+      "normalizedContentFiles": 48
+    }
+  ]
+}

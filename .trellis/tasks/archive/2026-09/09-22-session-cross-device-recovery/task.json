@@ -14,7 +14,7 @@
   "completedAt": "2026-09-22",
   "branch": "codex/session-cross-device-recovery-20260922",
   "base_branch": "main",
-  "worktree_path": "/Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/fyagent-session",
+  "worktree_path": "/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/fyagent-session",
   "commit": "345119d291745e82a181e95c08b67b1c557b3f18",
   "pr_url": null,
   "subtasks": [],

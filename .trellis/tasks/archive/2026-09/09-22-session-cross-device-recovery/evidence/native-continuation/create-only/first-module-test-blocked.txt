@@ -1,2 +1,0 @@
-Canonical command: rtk proxy mise run rust:test -- session_manager::migrate::native::opencode::tests
-Result: Cargo 101, E0433 at capability.rs:390: use of unresolved native in tests. No OpenCode compilation errors reported. Shared module remains owned by Cursor Opus; not modified by this worker.

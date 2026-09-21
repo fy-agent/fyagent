@@ -1,0 +1,8 @@
+> 归档说明：本文的时间与结论保留；具体工作站用户目录已替换为语义占位符。历史路径映射、原稿及提交稿哈希见[归档路径映射](research/archive-path-map.json)。可解析的相对链接已调整。
+
+Active task: /Users/<username>/Documents/Codex/2026-09-22/new-chat/work/fyagent-session/.trellis/tasks/09-22-session-cross-device-recovery
+你是Grok4.7 High独立复核者（Cursor入口；Grok CLI不支持4.7，无降级）。用户已授权实现功能直到PR，所有Grok统一4.7。只审阅、不能改生产源码，不调用真实模型或用户会话，不新增Agent，不提交PR。目录 /Users/<username>/Documents/Codex/2026-09-22/new-chat/work/fyagent-session，origin fy-agent/fyagent，基线 c0b2ec21。
+有界子任务：评审协调方实现的 src-tauri/src/session_manager/migrate/native/codex.rs，以及对应 native/mod.rs/model.rs/identity.rs接口和evidence/codex-native/result.json、capture-result.json、incomplete-result.json。其他后端/UI仍并行实现，不审未完成空文件或批评暂缺未派完包。审查Codex新路径是否有正确性/权限/崩溃/冗余问题。
+新证据：inject_items-only历史UI为空的问题，已通过0.154.0官方原生legacy rollout事件+response双投影解决。来源github openai/codex rust-v0.154.0 commit6b9826e3，官方 external-agent-migration/src/sessions/export.rs 与 protocol.rs。源码克隆只读在 /Users/<username>/Documents/Codex/2026-09-22/new-chat/work/codex-source。隔离nativeread/resume/restart返回四条原文；下一轮本机模拟请求exact角色与文本；没有真实推理。连续user/缺final原生返回interrupted。方案没有用DO NOT USE history。
+重点：1.写前本机ID回执+new-only原子发布，失败不能覆盖或盲重试。2.原生读回与纯磁盘读分开且内容hash保真。3.rpc child生命周期、输出限制、timeout、宿主Windows提权CLI约束，跨平台实际证据未覆盖要标明但不伪造bug。4.必要复杂度vs不必要框架，给能落地的最小修法。5.来源user.text/assistantfinal规则和未知内容处理。
+输出仅本任务 implementation/grok-codex-review.md，最多120行，按可复现发现与P0/P1/P2列出证据；没有发现就写没有发现，证据限制另列。不以准备包旧注入路径约束拒绝新证据。Jev如需决策可输出完整候选问题给协调者，不新增运行依赖。终端rtk。请实际读源码、返回独立意见。

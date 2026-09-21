@@ -1,3 +1,5 @@
+> 归档说明：本文的时间与结论保留；具体工作站用户目录已替换为语义占位符。历史路径映射、原稿及提交稿哈希见[归档路径映射](research/archive-path-map.json)。可解析的相对链接已调整。
+
 > 历史准备材料（superseded）：最终实现合同见 `.trellis/spec/backend/session-migration.md`，当前能力与验收见 `implementation/delivery-readiness.md`。下文的 src/v2、Codex inject-only 及早期 provider 缺口判断不作为当前产品事实。
 
 # 架构裁定（协调版）
