@@ -215,3 +215,31 @@ Created FDE PR #193 and stacked subscription PR #192 on its base. Resolved both 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: Next iteration engineering: 15 issues ready for delivery
+<!-- trellis-session: v=2 fp=c7c6a99deac0324b -->
+
+**Date**: 2026-09-21
+**Task**: Next iteration engineering: 15 issues ready for delivery
+**Branch**: `codex/next-iteration-engineering-20260920`
+
+### Summary
+
+Integrated 15 code-solvable Issues with Antigravity frontend work, Cursor backend repairs, terminal Grok review and advisory Jev checks. Final direct-session gate passed: 2071 frontend tests and 3909 native tests, no failures. Preserved the shared dirty worktree. Eight related tasks archived; post-archive contracts and GitHub exact-head delivery follow. Issues 67 and 68 retain human ownership and signed Windows release/acceptance requirements.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `02138296` | fix(installer): enforce confirmed CLI execution and finalize integration evidence |
+| `f324079a` | fix(tooling): pin CLI npm dest and reject non-exact closed-graph specs (#27) |
+| `b58163d6` | fix(tooling): enforce CLI execution identity, real volume preflight, and remove direct install bypass (#27) |
+| `955a8bde` | feat(agent_install): implement CLI installation space preflight and budget validation (#27) |
+| `fac051ea` | fix(config): preserve live siblings and verify failed creation recovery |
+| `3bc8c2e8` | docs(demo): adopt captioned current-flow recordings and source evidence |
+| `9fd852cd` | feat: integrate guarded configuration and recovery workflows |
+
+### Status
+
+[OK] **Completed**
