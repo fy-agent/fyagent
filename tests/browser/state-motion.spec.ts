@@ -220,6 +220,10 @@ test("revisiting a page keeps its lens size while real tab changes still interpo
     .getByRole("navigation", { name: "主导航" })
     .getByRole("link", { name: "AI软件配置", exact: true })
     .click();
+  // A completed click can precede Router's commit. Establish a real departure
+  // before returning, so the original visible auth page cannot start sampling.
+  await expect(page.getByTestId("agents-page")).toBeVisible();
+  await expect(page.getByTestId("auth-page")).toBeHidden();
   await page
     .getByRole("navigation", { name: "主导航" })
     .getByRole("link", { name: "账号与认证", exact: true })
