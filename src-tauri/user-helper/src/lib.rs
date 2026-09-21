@@ -30,8 +30,8 @@ pub use grok::{
 pub use grok_npm::{
     decode_plan_control, encode_plan_control, npm_install_argv_or_reject,
     npm_install_argv_or_reject_for, pinned_npm_install_invocation, GrokNpmInstallPlan,
-    GrokNpmPlanError, GrokNpmRegistry, PinnedNpmInvocation,
-    GROK_NPM_PLAN_CONTROL_BYTES, GROK_NPM_REGISTRY_ENV,
+    GrokNpmPlanError, GrokNpmRegistry, PinnedNpmInvocation, GROK_NPM_PLAN_CONTROL_BYTES,
+    GROK_NPM_REGISTRY_ENV,
 };
 pub use layout::{
     admission_event_name, cancel_event_name, derive_install_layout, InstallLayout, LayoutError,

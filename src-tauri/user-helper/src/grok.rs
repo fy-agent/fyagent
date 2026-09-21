@@ -798,7 +798,10 @@ mod tests {
             admit_confirmed_npm_target(Some(&expected), &same_space),
             Ok(())
         );
-        assert_eq!(admit_confirmed_npm_target(None, &observed), Err(NpmTargetError::Missing));
+        assert_eq!(
+            admit_confirmed_npm_target(None, &observed),
+            Err(NpmTargetError::Missing)
+        );
 
         let mut sibling_cache = observed.clone();
         sibling_cache.cache = r"D:\npm\cache-b".into();

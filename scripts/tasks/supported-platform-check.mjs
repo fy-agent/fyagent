@@ -495,7 +495,7 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
     next: "pub(super) async fn check(",
     block:
-      '#[cfg(not(any(target_os = "macos", target_os = "windows")))] pub(super) async fn check( _agent: AgentCatalogId, _action: crate::agent_install::AgentActionId, ) -> Result<CliInstallPreflight, AgentReasonCode> { Err(AgentReasonCode::PlatformUnsupported) }',
+      '#[cfg(not(any(target_os = "macos", target_os = "windows")))] pub(super) async fn check( _agent: AgentCatalogId, _action: crate::agent_install::AgentActionId, _plan: Option<&GrokNpmInstallPlan>, ) -> Result<CliInstallPreflight, AgentReasonCode> { Err(AgentReasonCode::PlatformUnsupported) }',
   }),
 ]);
 const RUST_CFG_MACRO_CONTRACT = Object.freeze(
@@ -1122,6 +1122,7 @@ const OPAQUE_BINARY_EXTENSIONS = new Set([
   ".ico",
   ".jpg",
   ".png",
+  ".webm",
   ".webp",
 ]);
 const RASTER_ASSET_SCHEMA = "fyagent-supported-platform-raster-baseline/v1";
@@ -1726,9 +1727,71 @@ function parseIcns(buffer, relativePath) {
   return budget.finish();
 }
 
+function parseWebm(buffer, relativePath) {
+  const invalid = () =>
+    new Error(`Invalid finite WebM container: ${relativePath}`);
+  const element = (offset, limit) => {
+    const vint = (start, maxBytes, stripMarker) => {
+      if (start >= limit || buffer[start] === 0) throw invalid();
+      let length = 1;
+      let marker = 0x80;
+      while ((buffer[start] & marker) === 0) {
+        marker >>= 1;
+        length++;
+      }
+      if (length > maxBytes || start + length > limit) throw invalid();
+      let value = BigInt(
+        stripMarker ? buffer[start] & (marker - 1) : buffer[start],
+      );
+      for (let i = 1; i < length; i++)
+        value = (value << 8n) | BigInt(buffer[start + i]);
+      if (stripMarker && value === (1n << BigInt(7 * length)) - 1n)
+        throw invalid();
+      if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw invalid();
+      return { length, value: Number(value) };
+    };
+    const id = vint(offset, 4, false);
+    const size = vint(offset + id.length, 8, true);
+    const start = offset + id.length + size.length;
+    const end = start + size.value;
+    if (end > limit) throw invalid();
+    return { id: id.value, start, end };
+  };
+  const header = element(0, buffer.length);
+  if (header.id !== 0x1a45dfa3) throw invalid();
+  let docType;
+  for (let offset = header.start; offset < header.end; ) {
+    const field = element(offset, header.end);
+    if (field.id === 0x4282) {
+      if (docType !== undefined) throw invalid();
+      docType = buffer.subarray(field.start, field.end).toString("utf8");
+    }
+    offset = field.end;
+  }
+  if (docType !== "webm") throw invalid();
+  const segment = element(header.end, buffer.length);
+  if (segment.id !== 0x18538067 || segment.end !== buffer.length)
+    throw invalid();
+  const budget = createImageMetadataBudget(relativePath);
+  budget.reserveSource(header.end);
+  budget.addDecoded(printableMetadata(buffer.subarray(0, header.end)));
+  for (let offset = segment.start; offset < segment.end; ) {
+    const child = element(offset, segment.end);
+    // Encoded frames are opaque only after path/mode/SHA admission and media review.
+    if (child.id !== 0x1f43b675) {
+      const payload = buffer.subarray(child.start, child.end);
+      budget.reserveSource(payload.length);
+      budget.addDecoded(printableMetadata(payload));
+    }
+    offset = child.end;
+  }
+  return budget.finish();
+}
+
 export function inspectKnownImage(relativePath, buffer) {
   const extension = path.posix.extname(relativePath).toLowerCase();
   if (!OPAQUE_BINARY_EXTENSIONS.has(extension)) return undefined;
+  if (extension === ".webm") return parseWebm(buffer, relativePath);
   if (
     buffer
       .subarray(0, 8)
@@ -1892,18 +1955,77 @@ export function validateArchiveEntry(root, relativePath, io = fs, indexMode) {
   return [];
 }
 
+// These are identities in upstream npm manifests, not supported host selectors.
+// Admit only complete, closed data tables in their reviewed metadata owner.
+export const VENDOR_NPM_METADATA_CONTRACT = Object.freeze(
+  [
+    ["GROK", false],
+    ["CLAUDE", true],
+  ].map(([product, musl]) => {
+    const suffixes = [
+      `${SURFACE_MARKERS.kernel}-x64`,
+      "win32-x64",
+      "darwin-x64",
+      `${SURFACE_MARKERS.kernel}-arm64`,
+      "win32-arm64",
+      "darwin-arm64",
+      ...(musl
+        ? [
+            `${SURFACE_MARKERS.kernel}-x64-musl`,
+            `${SURFACE_MARKERS.kernel}-arm64-musl`,
+          ]
+        : []),
+    ];
+    return Object.freeze({
+      id: `${product.toLowerCase()}-vendor-platform-metadata`,
+      file: "src-tauri/src/services/tooling/grok_npm.rs",
+      snippet: [
+        `const ${product}_PLATFORM_SUFFIXES: [&str; ${suffixes.length}] = [`,
+        ...suffixes.map((suffix) => `    "${suffix}",`),
+        "];",
+      ].join("\n"),
+    });
+  }),
+);
+
+function vendorNpmMetadataLines(relativePath, source) {
+  const lines = new Set();
+  for (const contract of VENDOR_NPM_METADATA_CONTRACT) {
+    if (contract.file !== relativePath) continue;
+    const start = source.indexOf(contract.snippet);
+    if (
+      start < 0 ||
+      start !== source.lastIndexOf(contract.snippet) ||
+      (start > 0 && source[start - 1] !== "\n")
+    ) {
+      continue;
+    }
+    const firstLine = source.slice(0, start).split("\n").length - 1;
+    for (
+      let offset = 1;
+      offset < contract.snippet.split("\n").length - 1;
+      offset++
+    ) {
+      lines.add(firstLine + offset);
+    }
+  }
+  return lines;
+}
+
 export function scanText(relativePath, source) {
   normalizeRepositoryPath(relativePath);
   const inspected = relativePath.toLowerCase().endsWith(".svg")
     ? stripOpaqueSvgPayload(source)
     : source;
   const findings = [];
+  const vendorMetadata = vendorNpmMetadataLines(relativePath, inspected);
   const skipIds = DEVELOPMENT_HOST_ADMISSION_PATHS.includes(relativePath)
     ? DEVELOPMENT_HOST_CONTENT_RULE_IDS
     : undefined;
   for (const [index, line] of inspected.split(/\r?\n/u).entries()) {
     for (const rule of CONTENT_RULES) {
       if (skipIds?.has(rule.id)) continue;
+      if (rule.id === "retired-kernel" && vendorMetadata.has(index)) continue;
       if (rule.pattern.test(line)) {
         findings.push(finding(relativePath, index + 1, rule.id, line));
       }

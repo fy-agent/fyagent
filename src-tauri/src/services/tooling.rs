@@ -240,6 +240,7 @@ pub async fn get_tool_versions(tools: Option<Vec<String>>) -> Result<Vec<ToolVer
     Ok(results)
 }
 
+#[cfg(test)]
 pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Result<(), String> {
     run_tool_lifecycle_action_with_manifest(tools, action, None, None).await
 }

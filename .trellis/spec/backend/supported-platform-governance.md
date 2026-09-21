@@ -63,6 +63,12 @@ built-ins only. CI Changes invokes it before dependency installation.
   CI is prohibited.
 - A platform guard added to a previously neutral module creates a new
   candidate. Add and review it rather than introducing an exclusion.
+- The historical raster inventory also pins adopted WebM demo files and their
+  raw originals. Each video requires the same regular-file mode, path and
+  SHA-256 checks, a finite EBML/WebM header and segment with exact bounds, and
+  bounded scanning of metadata outside encoded frame clusters. Unknown-size,
+  malformed or trailing containers fail. Human visual review and full media
+  decoding remain separate prerequisites; the scanner does not prove playback.
 
 ### Whole-repository snapshot validation
 
@@ -84,6 +90,13 @@ built-ins only. CI Changes invokes it before dependency installation.
   with its complete `TestHome` save/restore guard and the owning `#[cfg(test)]`
   module. Moving the override, removing cleanup or exposing that module in a
   product build must fail the exact source contract.
+- Official npm metadata may name vendor packages for other operating systems.
+  The checker admits foreign names only inside the two complete closed
+  `GROK_PLATFORM_SUFFIXES` and `CLAUDE_PLATFORM_SUFFIXES` data tables in
+  `services/tooling/grok_npm.rs`. The exact owner and whole table must match;
+  changed, duplicated or moved tables fail. This is metadata identity only:
+  surrounding code, host selectors, added suffixes and every other content
+  rule remain checked. It does not admit another product installation target.
 
 ### Runtime and CI boundary
 
@@ -139,6 +152,8 @@ built-ins only. CI Changes invokes it before dependency installation.
   scanner's inspected count plus zero findings within the dedicated watchdog.
 - Negative source-text fixtures move or widen protected operations and must
   fail even when an attribute/call token remains adjacent.
+- Vendor metadata fixtures reject changed/missing suffixes, duplicate tables,
+  moved owners, surrounding host selectors and appended foreign-name comments.
 - Clean-checkout tests prove the checker uses only Node built-ins and can run
   before dependency installation.
 - `tests/remainingPlatformSurface.test.ts`, the dedicated checker tests, and

@@ -1,0 +1,22 @@
+{
+  "npmVersion": "11.17.0",
+  "scope": "Real npm against local synthetic packages with scripts disabled and temporary user/prefix/cache. Proves npm scope resolution and path argv handling, not product UI or Windows runtime.",
+  "cases": [
+    {
+      "pinned": false,
+      "rootVersion": "1.0.34",
+      "dependencyVersion": "3.0.0",
+      "dependencyMarker": "ambient",
+      "requestDestinations": ["closed", "ambient"],
+      "pathWithSpacesVerified": true
+    },
+    {
+      "pinned": true,
+      "rootVersion": "1.0.34",
+      "dependencyVersion": "3.0.0",
+      "dependencyMarker": "closed",
+      "requestDestinations": ["closed"],
+      "pathWithSpacesVerified": true
+    }
+  ]
+}

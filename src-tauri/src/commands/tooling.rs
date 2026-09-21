@@ -11,7 +11,10 @@ pub async fn get_tool_versions(
 
 #[tauri::command]
 pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Result<(), String> {
-    crate::services::tooling::run_tool_lifecycle_action(tools, action).await
+    // Keep the legacy command shape, but installation authority belongs to
+    // the inventory-bound preflight and start_agent_action path.
+    let _ = (tools, action);
+    Err("请从软件详情检查安装条件并确认本次安装。".to_string())
 }
 
 #[tauri::command]
@@ -29,4 +32,25 @@ pub async fn open_provider_terminal(
     cwd: Option<String>,
 ) -> Result<bool, String> {
     crate::services::tooling::open_provider_terminal(state.inner(), app, providerId, cwd).await
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn legacy_cli_install_ipc_requires_confirmed_agent_action() {
+        for tool in ["grok", "claude"] {
+            for action in [
+                "install",
+                "install_official_npm",
+                "install_native",
+                "update",
+            ] {
+                assert_eq!(
+                    super::run_tool_lifecycle_action(vec![tool.to_string()], action.to_string())
+                        .await,
+                    Err("请从软件详情检查安装条件并确认本次安装。".to_string())
+                );
+            }
+        }
+    }
 }

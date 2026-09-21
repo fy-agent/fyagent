@@ -341,9 +341,7 @@ impl GrokNpmInstallPlan {
                 argv.push(format!("{name}@{version}"));
                 argv.push(format!(
                     "--{}:registry={}",
-                    name.split('/')
-                        .next()
-                        .expect("closed scoped dependency"),
+                    name.split('/').next().expect("closed scoped dependency"),
                     self.registry.as_str()
                 ));
             }
@@ -579,7 +577,10 @@ pub fn encode_plan_control(plan: Option<&GrokNpmInstallPlan>) -> [u8; GROK_NPM_P
     }
     if let Some(target) = plan.npm_target() {
         bytes[71] = 1;
-        encode_dest_slot(&mut bytes[80..80 + GROK_NPM_DEST_SLOT_BYTES], target.prefix());
+        encode_dest_slot(
+            &mut bytes[80..80 + GROK_NPM_DEST_SLOT_BYTES],
+            target.prefix(),
+        );
         encode_dest_slot(
             &mut bytes[80 + GROK_NPM_DEST_SLOT_BYTES..80 + 2 * GROK_NPM_DEST_SLOT_BYTES],
             target.cache(),
@@ -700,21 +701,24 @@ pub fn decode_plan_control(bytes: &[u8]) -> Result<Option<GrokNpmInstallPlan>, G
                     }
                     None
                 }
-                1 => Some(NpmTargetBinding::new(
-                    decode_dest_slot(&bytes[80..80 + GROK_NPM_DEST_SLOT_BYTES])?,
-                    decode_dest_slot(
-                        &bytes[80 + GROK_NPM_DEST_SLOT_BYTES..80 + 2 * GROK_NPM_DEST_SLOT_BYTES],
-                    )?,
-                    decode_dest_slot(
-                        &bytes[80 + 2 * GROK_NPM_DEST_SLOT_BYTES
-                            ..80 + 3 * GROK_NPM_DEST_SLOT_BYTES],
-                    )?,
-                    decode_dest_slot(
-                        &bytes[80 + 3 * GROK_NPM_DEST_SLOT_BYTES
-                            ..80 + 4 * GROK_NPM_DEST_SLOT_BYTES],
-                    )?,
-                )
-                .map_err(|_| GrokNpmPlanError::Missing)?),
+                1 => Some(
+                    NpmTargetBinding::new(
+                        decode_dest_slot(&bytes[80..80 + GROK_NPM_DEST_SLOT_BYTES])?,
+                        decode_dest_slot(
+                            &bytes
+                                [80 + GROK_NPM_DEST_SLOT_BYTES..80 + 2 * GROK_NPM_DEST_SLOT_BYTES],
+                        )?,
+                        decode_dest_slot(
+                            &bytes[80 + 2 * GROK_NPM_DEST_SLOT_BYTES
+                                ..80 + 3 * GROK_NPM_DEST_SLOT_BYTES],
+                        )?,
+                        decode_dest_slot(
+                            &bytes[80 + 3 * GROK_NPM_DEST_SLOT_BYTES
+                                ..80 + 4 * GROK_NPM_DEST_SLOT_BYTES],
+                        )?,
+                    )
+                    .map_err(|_| GrokNpmPlanError::Missing)?,
+                ),
                 _ => return Err(GrokNpmPlanError::Missing),
             };
             let mut plan = GrokNpmInstallPlan::for_execution(version, registry, allow)?;
@@ -988,9 +992,9 @@ mod tests {
         assert_eq!(decoded.reserve_budget_bytes(), Some(3072));
         let grok_argv = decoded.npm_argv_for(OfficialNpmTool::Grok);
         assert!(grok_argv.contains(&"@iarna/toml@3.0.0".to_string()));
-        assert!(grok_argv.contains(
-            &"--@iarna:registry=https://mirrors.tencent.com/npm/".to_string()
-        ));
+        assert!(
+            grok_argv.contains(&"--@iarna:registry=https://mirrors.tencent.com/npm/".to_string())
+        );
     }
 
     #[test]
@@ -1125,8 +1129,8 @@ mod tests {
         )
         .expect("config dest");
         let spaced = sample_plan(true).with_npm_target(config_dest.clone());
-        let invocation =
-            pinned_npm_install_invocation(Some(&spaced), OfficialNpmTool::Claude).expect("config path");
+        let invocation = pinned_npm_install_invocation(Some(&spaced), OfficialNpmTool::Claude)
+            .expect("config path");
         assert!(invocation
             .args()
             .iter()
@@ -1139,12 +1143,11 @@ mod tests {
         let latest = GrokNpmInstallPlan::for_execution("latest", GrokNpmRegistry::Npmjs, false);
         assert_eq!(latest, Err(GrokNpmPlanError::LatestForbidden));
         let closed = sample_plan(true);
-        assert_eq!(
-            npm_install_argv_or_reject_for(Some(&closed), OfficialNpmTool::Claude)
+        assert!(
+            !npm_install_argv_or_reject_for(Some(&closed), OfficialNpmTool::Claude)
                 .expect("closed argv")
                 .iter()
-                .any(|arg| arg.contains("@latest") || arg.contains("config")),
-            false
+                .any(|arg| arg.contains("@latest") || arg.contains("config"))
         );
     }
 

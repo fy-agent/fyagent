@@ -134,3 +134,67 @@ required bounded read/strict parser correction to the same writer. This
 intermediate code is not accepted. The writer also retains responsibility for
 actual npm destination binding and tool-specific execution admission; root will
 review the completed package before integration.
+
+Root provisionally integrated the two existing Antigravity commits as `955a8bde`
+and `b58163d6` while the independent Cursor writer continues. They are not yet
+accepted: the final repair remains necessary. No seed commit was cherry-picked.
+Renderer production build passed after these UI changes: 9 routes, 664049 initial
+JS bytes and 46775 CSS bytes. The live GitHub readback still shows main
+`da91427e`, required `CI / Required`, loose classic status checks and the active
+`MERGE` queue; no policy setting was changed.
+
+Root then returned a second concrete gap before worker validation: the first
+repair discarded npm identity and retained only existing-directory ancestors
+for cache/temp. This could admit different nonexistent sibling destinations,
+and the helper merely reobserved a new execution target without comparison.
+Required correction: retain exact native prefix/cache/temp/npm identity, exclude
+volatile available bytes from equality, and carry/recheck that authenticated
+bounded binding immediately before mutation for both npm tools. The worker owns
+the narrow plan/codec/dispatch changes and corresponding drift tests.
+
+After the Antigravity base integration, the root renderer checks passed: the
+Grok port test (1), installation readiness/confirmation tests (16), and the
+complete serial performance suite (36). Production navigation p95 was 43.5 ms
+at normal CPU and 88.3 ms at the 4x CPU-cost setting; these are browser fixture
+measurements under the repository definition, not native launch or OS latency.
+Logs: `artifacts/cli-renderer-final.log`,
+`artifacts/cli-renderer-components-final.log`, and
+`artifacts/integration-performance-final.log`.
+
+The adopted demo's 367 source identities were unchanged before this integration.
+Afterward exactly four renderer files differ: the installation-confirmation npm
+budget copy, the Grok-only owner panel, the corresponding budget parser enum,
+and the blocked legacy Grok install port. Root reviewed those deltas; none
+changes the seven recorded WorkBuddy/first-use/config-save states. The demo
+continues to name its original clean capture commit and does not claim to show
+the new CLI installer or its native behavior. No screenshot/video was silently
+relabeled as a different source version.
+
+Cursor's next coherent patch retained the four exact target strings in native
+prepared state and the bounded helper control frame, and compared them before
+execution. Root accepted that direction but found the actual invocation still
+resolved bare `npm` on a fresh macOS install and let npm reread ambient
+prefix/cache after comparison. The same writer now owns the final binding step:
+execute the observed absolute program and pin the admitted native prefix/cache
+with correct argument quoting, preserving the existing temp and tool/registry
+checks. Focused invocation tests must prove the confirmed target cannot be
+redirected by later PATH/config changes. Intermediate test results are retained,
+but acceptance waits for this actual invocation path.
+
+## Final bounded CLI metadata review
+
+Terminal Grok completed a narrow immutable-source review of the dependency budget graph at `b58163d6`. GPT-6 accepted three concrete admission gaps: extra root optionals, dependency maps on platform packages, and ignored peer/optional child maps. The suggestion to trust arbitrary package-name prefixes was rejected. Root checked the current public vendor package shapes and sent the existing Cursor writer a closed recognized-package repair, malformed/extra-map regression tests, and an explicit report/commit/stop completion requirement. This review does not assert the illustrative extra dependencies exist in published packages.
+
+The root runtime fixture used npm 11.17.0 with two loopback registries, synthetic packages, scripts disabled, and temporary user/prefix/cache directories. Without the explicit `@iarna` scope pin, the same root/global command fetched the dependency from the ambient scoped registry; with the pin, all requests used the closed registry and the installed package marker/version matched. Prefix/cache paths containing spaces and `.config` were used successfully. This proves npm scope resolution/argument behavior only, not product UI or Windows runtime. The earlier executor's draft fixture used synchronous subprocesses against an in-process HTTP server and was not treated as evidence. Safe result: `research/cli-npm-scope-runtime.json`.
+
+## Final integration corrections
+
+The CLI worker returned `1811093d`; root read back a clean tracked tree and the stopped Cursor UI before integrating it as `f324079a`. Root made the macOS permission fixture explicit, restricted its shared import on Windows production builds, applied Rust formatting, and moved the result into this task with semantic home paths. The three first aggregate frontend failures were a stale 160-command count after removal of the direct renderer invocation, a fixed-length source slice that truncated the now longer helper dispatch, and the staged old report path. Root updated the count to 159 with an explicit legacy-invoke absence assertion, bounded the security assertion by its actual owning function boundary, and staged the report move. All 12 focused tests passed afterward.
+
+Source review additionally closed the legacy native IPC itself: keeping the renderer from invoking it did not by itself prevent a direct native-install bypass. The compatibility command now always directs the user through software-detail preflight; the confirmed `start_agent_action` path remains the execution authority. A focused native regression covers both tools and all four legacy actions.
+
+The adopted WebM clips exposed an unsupported binary type in the repository scanner. Root extended the existing exact path/mode/SHA media inventory to the four reviewed adopted/raw clips, added finite EBML/WebM header/segment bounds and bounded non-frame metadata inspection, and retained full media decode/visual evidence as separate acceptance. New negative fixtures cover truncation, trailing bytes, wrong document type and unknown size. The 27-test scanner run had only a second stale inventory-count assertion, now corrected to 133. Final aggregate verification is still required.
+
+Jev returned all three narrowly stated scanner/evidence claims as verified, with low confidence for two and no concrete counterexample. This is advisory rather than acceptance; GPT-6 requires the actual scanner regressions and aggregate gate and retains the explicitly unverified Windows native boundary.
+
+The fourth aggregate reached 3908 native passes and one failure: the project read-only test compared timestamped SQL exports across a one-second boundary. Root decoded both assertion values; the generation-time header was the only difference. The test now excludes only that exact second header line and additionally asserts SQLite total_changes is unchanged. Database schema/data equality and the production snapshot remain intact. No retry or timing sleep masks the failure. The third aggregate helper failure was an outdated assertion that the maximum Error frame equals the newly larger absolute protocol bound; it now checks its exact 265-byte size and the bound separately, with a new maximum 1075-byte ToolResult round-trip and four individual overlength-field rejections.

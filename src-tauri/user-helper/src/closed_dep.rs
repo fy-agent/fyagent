@@ -234,7 +234,10 @@ mod tests {
 
         fs::write(
             package.join("package.json"),
-            format!("{{\"version\":\"3.0.0\",\"pad\":\"{}\"}}", "x".repeat(MAX_PACKAGE_JSON_BYTES)),
+            format!(
+                "{{\"version\":\"3.0.0\",\"pad\":\"{}\"}}",
+                "x".repeat(MAX_PACKAGE_JSON_BYTES)
+            ),
         )
         .unwrap();
         assert_eq!(
@@ -242,11 +245,15 @@ mod tests {
             Err(ClosedDepDocumentError::InvalidDocument)
         );
 
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         {
             use std::os::unix::fs::PermissionsExt;
             fs::write(package.join("package.json"), r#"{"version":"3.0.0"}"#).unwrap();
-            fs::set_permissions(package.join("package.json"), fs::Permissions::from_mode(0)).unwrap();
+            fs::set_permissions(
+                package.join("package.json"),
+                fs::Permissions::from_mode(0o000),
+            )
+            .unwrap();
             assert_eq!(
                 admit_closed_iarna_toml_at_prefix(prefix),
                 Err(ClosedDepDocumentError::Unreadable)

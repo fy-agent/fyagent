@@ -397,9 +397,8 @@ pub(crate) fn display_user_path(path: &Path) -> String {
     } else if path.starts_with("/Applications")
         || path.starts_with("/opt/homebrew")
         || path.starts_with("/usr/local")
+        || is_displayable_dos_destination(path)
     {
-        path.to_string_lossy().into_owned()
-    } else if is_displayable_dos_destination(path) {
         path.to_string_lossy().into_owned()
     } else {
         "当前安装工具管理的位置".to_string()

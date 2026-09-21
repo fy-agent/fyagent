@@ -95,7 +95,9 @@ use windows_future::{
 };
 
 use fyagent_user_helper::{
-    admission_event_name, cancel_event_name, encode_frame,
+    admission_event_name, cancel_event_name,
+    closed_dep::{admit_closed_iarna_toml_at_prefix, ClosedDepDocumentError},
+    encode_frame,
     grok::{
         grok_native_windows_powershell_command, grok_windows_executable_names, infer_source_marker,
         observe_owner_from_candidates, owner_from_install_paths, parse_cli_installer_hint,
@@ -105,11 +107,9 @@ use fyagent_user_helper::{
         TOOL_OPERATION_STARTED_IDENTITY,
     },
     grok_npm::{
-        decode_plan_control, parse_npm_major, pinned_npm_install_invocation,
-        version_is_at_least,
+        decode_plan_control, parse_npm_major, pinned_npm_install_invocation, version_is_at_least,
         OfficialNpmTool, GROK_NPM_PLAN_CONTROL_BYTES, GROK_NPM_REGISTRY_ENV,
     },
-    closed_dep::{admit_closed_iarna_toml_at_prefix, ClosedDepDocumentError},
     helper_error_code_for_deployment_hresult,
     layout::{
         pipe_name, USER_HELPER_CONTROL_EVENT_ACCESS_MASK, USER_HELPER_EXECUTABLE_FILE_NAME,
@@ -349,11 +349,8 @@ fn execute_grok_tool(
                 }
                 .ok_or(HelperErrorCode::ToolHostMissing)?;
                 let _ = npm_major_from(&npm)?;
-                let destination = inspect_npm_destination(
-                    &npm,
-                    npm_plan.as_ref(),
-                    OfficialNpmTool::Grok,
-                )?;
+                let destination =
+                    inspect_npm_destination(&npm, npm_plan.as_ref(), OfficialNpmTool::Grok)?;
                 return Ok(
                     observe_grok_result(&candidates, observation).with_npm_destination(destination)
                 );
@@ -760,14 +757,17 @@ fn execute_npm_plan(
     plan: &GrokNpmInstallPlan,
 ) -> Result<(), HelperErrorCode> {
     let plan = plan.clone().with_npm_major(npm_major_from(npm)?);
-    let invocation = pinned_npm_install_invocation(Some(&plan), tool).map_err(|error| match error {
-        fyagent_user_helper::GrokNpmPlanError::UnsupportedDependency => {
-            HelperErrorCode::ToolCandidateConflict
-        }
-        fyagent_user_helper::GrokNpmPlanError::InvalidSize => HelperErrorCode::ToolExecutionFailed,
-        fyagent_user_helper::GrokNpmPlanError::Missing => HelperErrorCode::ToolTargetChanged,
-        _ => HelperErrorCode::ToolExecutionFailed,
-    })?;
+    let invocation =
+        pinned_npm_install_invocation(Some(&plan), tool).map_err(|error| match error {
+            fyagent_user_helper::GrokNpmPlanError::UnsupportedDependency => {
+                HelperErrorCode::ToolCandidateConflict
+            }
+            fyagent_user_helper::GrokNpmPlanError::InvalidSize => {
+                HelperErrorCode::ToolExecutionFailed
+            }
+            fyagent_user_helper::GrokNpmPlanError::Missing => HelperErrorCode::ToolTargetChanged,
+            _ => HelperErrorCode::ToolExecutionFailed,
+        })?;
     let observed = inspect_npm_destination(npm, Some(&plan), tool)?;
     fyagent_user_helper::admit_confirmed_npm_target(plan.npm_target(), &observed).map_err(
         |error| match error {

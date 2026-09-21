@@ -1,5 +1,6 @@
 //! Read-only CLI host checks shared by install confirmation and execution.
 
+#[cfg(any(target_os = "macos", test))]
 use fyagent_user_helper::closed_dep::admit_closed_iarna_toml_at_prefix;
 use fyagent_user_helper::GrokNpmInstallPlan;
 

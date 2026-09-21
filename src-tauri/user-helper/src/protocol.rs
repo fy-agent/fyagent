@@ -511,10 +511,7 @@ fn decode_tool_result_payload(payload: &[u8]) -> Result<HelperMessage, ProtocolE
     }))
 }
 
-fn decode_tool_dest_field(
-    payload: &[u8],
-    index: usize,
-) -> Result<(String, usize), ProtocolError> {
+fn decode_tool_dest_field(payload: &[u8], index: usize) -> Result<(String, usize), ProtocolError> {
     let length = *payload
         .get(index)
         .ok_or(ProtocolError::InvalidMessageLength)? as usize;
@@ -811,7 +808,11 @@ mod tests {
             message: "x".repeat(MAX_ERROR_MESSAGE_BYTES),
         };
         let encoded = encode_frame(&message).expect("maximum message must fit");
-        assert_eq!(encoded.len(), MAX_FRAME_BYTES);
+        assert_eq!(
+            encoded.len(),
+            FRAME_LENGTH_BYTES + 5 + MAX_ERROR_MESSAGE_BYTES
+        );
+        assert!(encoded.len() <= MAX_FRAME_BYTES);
         assert_eq!(decode_frame(&encoded).unwrap(), message);
 
         let oversized = HelperMessage::Error {
@@ -1248,14 +1249,15 @@ mod tests {
 
     #[test]
     fn tool_result_round_trips_bounded_npm_destination() {
-        let result = ToolOperationResult::observed(true, Some(GrokOwner::Npm), Some("1.0.13".into()))
-            .with_npm_destination(NpmDestinationObservation {
-                prefix: r"D:\npm-prefix".into(),
-                cache: r"E:\npm-cache".into(),
-                temp: r"C:\Users\alice\AppData\Local\Temp".into(),
-                npm_identity: r"C:\Program Files\nodejs\npm.cmd".into(),
-                available_bytes: 4096,
-            });
+        let result =
+            ToolOperationResult::observed(true, Some(GrokOwner::Npm), Some("1.0.13".into()))
+                .with_npm_destination(NpmDestinationObservation {
+                    prefix: r"D:\npm-prefix".into(),
+                    cache: r"E:\npm-cache".into(),
+                    temp: r"C:\Users\alice\AppData\Local\Temp".into(),
+                    npm_identity: r"C:\Program Files\nodejs\npm.cmd".into(),
+                    available_bytes: 4096,
+                });
         let frame = encode_frame(&HelperMessage::ToolResult(result.clone())).expect("encode");
         assert!(frame.len() <= MAX_FRAME_BYTES);
         assert_eq!(
@@ -1267,5 +1269,40 @@ mod tests {
             decode_frame(&v3_tool_result).unwrap_err(),
             ProtocolError::UnsupportedVersion
         );
+    }
+
+    #[test]
+    fn maximum_tool_result_frame_round_trips_and_rejects_each_oversized_destination() {
+        let result = ToolOperationResult::observed(
+            true,
+            Some(GrokOwner::Npm),
+            Some("1".repeat(MAX_TOOL_VERSION_BYTES)),
+        )
+        .with_npm_destination(NpmDestinationObservation {
+            prefix: "p".repeat(MAX_TOOL_DEST_BYTES),
+            cache: "c".repeat(MAX_TOOL_DEST_BYTES),
+            temp: "t".repeat(MAX_TOOL_DEST_BYTES),
+            npm_identity: "n".repeat(MAX_TOOL_DEST_BYTES),
+            available_bytes: u64::MAX,
+        });
+        let message = HelperMessage::ToolResult(result.clone());
+        let encoded = encode_frame(&message).expect("maximum destination frame");
+        assert_eq!(encoded.len(), MAX_FRAME_BYTES);
+        assert_eq!(decode_frame(&encoded).unwrap(), message);
+        for field in 0..4 {
+            let mut oversized = result.clone();
+            let destination = oversized.npm_destination.as_mut().unwrap();
+            let value = match field {
+                0 => &mut destination.prefix,
+                1 => &mut destination.cache,
+                2 => &mut destination.temp,
+                _ => &mut destination.npm_identity,
+            };
+            value.push('x');
+            assert_eq!(
+                encode_frame(&HelperMessage::ToolResult(oversized)).unwrap_err(),
+                ProtocolError::ErrorMessageTooLong
+            );
+        }
     }
 }

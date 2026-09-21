@@ -7,169 +7,250 @@
       "title": "在软件详情提供官方来源与许可入口",
       "url": "https://github.com/fy-agent/fyagent/issues/25",
       "owner": "Antigravity desktop Gemini 3.8 Flash High",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
-      "evidence": ["a21a72ae", "2de30c8b"],
+      "evidence": [
+        "a21a72ae",
+        "2de30c8b",
+        "research/official-link-readback.md",
+        "research/antigravity-ui-regressions-result.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
+      ],
       "residuals": [
-        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 27,
       "title": "在安装前检查必要条件并展示实际变更",
       "url": "https://github.com/fy-agent/fyagent/issues/27",
       "owner": "installer_27_29",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
-      "evidence": ["d311a7d8", "268815ba"],
+      "evidence": [
+        "d311a7d8",
+        "268815ba",
+        "f324079a",
+        "research/cursor-cli-repair-result.md",
+        "research/cli-npm-scope-runtime.json",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
+      ],
       "residuals": [
-        "Desktop budget integrated; final native validation pending",
-        "Antigravity implementing frozen CLI artifact/dependency metadata, volume checks and helper transfer; acceptance pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00",
+      "evidence_boundary": "Native Mac tests and Windows source/helper contracts; actual signed Windows execution belongs to #68."
     },
     {
       "number": 29,
       "title": "核对已支持安装路径的用户身份与 Helper 行为",
       "url": "https://github.com/fy-agent/fyagent/issues/29",
       "owner": "installer_27_29",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
-      "evidence": ["d311a7d8", "268815ba"],
+      "evidence": [
+        "d311a7d8",
+        "268815ba",
+        "f324079a",
+        "research/cursor-cli-repair-result.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
+      ],
       "residuals": [
-        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00",
+      "evidence_boundary": "Native Mac tests and Windows source/helper contracts; actual signed Windows execution belongs to #68."
     },
     {
       "number": 34,
       "title": "让首次用途推荐直达可用的配置入口",
       "url": "https://github.com/fy-agent/fyagent/issues/34",
       "owner": "Antigravity desktop Gemini 3.8 Flash High",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
-      "evidence": ["2de30c8b"],
+      "evidence": [
+        "2de30c8b",
+        "research/antigravity-ui-regressions-result.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
+      ],
       "residuals": [
-        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 35,
       "title": "让 Provider 使用 SecretRef 并完成旧凭据迁移",
       "url": "https://github.com/fy-agent/fyagent/issues/35",
       "owner": "Cursor backend repair; GPT-6 acceptance",
-      "implementation_status": "review_repaired_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
-      "evidence": ["19a366ce", "ee301f66"],
+      "evidence": [
+        "19a366ce",
+        "ee301f66",
+        "fac051ea",
+        "research/cursor-common-projection-repair-result.md",
+        "research/provider-secretref-integration-repair.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
+      ],
       "residuals": [
-        "Final combined checks, latest-main integration, PR delivery and remote Issue readback pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 40,
       "title": "统一兼容 API 配置与厂商预设",
       "url": "https://github.com/fy-agent/fyagent/issues/40",
       "owner": "config_pack_73",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
-      "evidence": ["07519b37"],
+      "evidence": [
+        "07519b37",
+        "research/vendor-sources.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
+      ],
       "residuals": [
-        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 42,
       "title": "把同一接入源应用到当前支持的 Agent",
       "url": "https://github.com/fy-agent/fyagent/issues/42",
       "owner": "secretref_35",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
-      "evidence": ["94ab3244"],
+      "evidence": [
+        "94ab3244",
+        "research/auth-proxy-acceptance-review.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
+      ],
       "residuals": [
-        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 43,
       "title": "完善现有官方登录、过期与退出流程",
       "url": "https://github.com/fy-agent/fyagent/issues/43",
       "owner": "secretref_35",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
-      "evidence": ["94ab3244"],
+      "evidence": [
+        "94ab3244",
+        "research/auth-proxy-acceptance-review.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
+      ],
       "residuals": [
-        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 47,
       "title": "让已有配置保持可用并可明确替换",
       "url": "https://github.com/fy-agent/fyagent/issues/47",
       "owner": "Cursor backend route fix; existing native and UI package integrated",
-      "implementation_status": "review_repaired_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
-      "evidence": ["65 focused port/architecture tests passed"],
+      "evidence": [
+        "65 focused port/architecture tests passed",
+        "9fd852cd",
+        "research/cursor-backend-result.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
+      ],
       "residuals": [
-        "Final combined checks, latest-main integration, PR delivery and remote Issue readback pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 56,
       "title": "让配置预览展示实际变化与恢复入口",
       "url": "https://github.com/fy-agent/fyagent/issues/56",
       "owner": "root integration",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
       "evidence": [
         "1300632b",
         "41 focused tests passed; typecheck and lint passed",
         "9253946e",
-        "82750e30"
+        "82750e30",
+        "fac051ea",
+        "research/cursor-common-projection-repair-result.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
       ],
       "residuals": [
-        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 61,
       "title": "完善配置写入后的失败恢复",
       "url": "https://github.com/fy-agent/fyagent/issues/61",
       "owner": "root integration",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
       "evidence": [
         "Found blind WorkBuddy old-backup restoration on all writer errors; patch removes it and binds compensation to exact operation preimage/publication",
-        "ed37bcac"
+        "ed37bcac",
+        "fac051ea",
+        "research/cursor-common-projection-repair-result.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
       ],
       "residuals": [
-        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 64,
       "title": "让代理接管和退出可以可靠恢复",
       "url": "https://github.com/fy-agent/fyagent/issues/64",
       "owner": "Cursor targeted recovery repair; GPT-6 acceptance",
-      "implementation_status": "review_repaired_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
       "evidence": [
         "e18d9501",
         "16 native recovery tests passed; 137 focused frontend tests passed",
-        "Grok findings repaired; Cursor 21 recovery + 2 atomic-finish tests; root 42 Page tests passed"
+        "Grok findings repaired; Cursor 21 recovery + 2 atomic-finish tests; root 42 Page tests passed",
+        "research/cursor-recovery-result.md",
+        "research/cursor-recovery-integration-result.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
       ],
       "residuals": [
-        "Final combined checks, latest-main integration, PR delivery and remote Issue readback pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 67,
@@ -182,7 +263,8 @@
       "evidence": [],
       "residuals": [
         "Actual release/certificate owners, contact and expiry/recovery ownership require named human/service records; do not invent"
-      ]
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 68,
@@ -195,54 +277,78 @@
       "evidence": [],
       "residuals": [
         "Actual signed Windows x64/arm64 installers, Authenticode publisher/timestamp verification and clean Windows acceptance remain required"
-      ]
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 70,
       "title": "提供产品简介、版本和支持入口",
       "url": "https://github.com/fy-agent/fyagent/issues/70",
       "owner": "root integration",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
       "evidence": [
         "745b843b",
         "77 focused tests and 4 final focused tests passed",
-        "typecheck, lint, renderer build passed"
+        "typecheck, lint, renderer build passed",
+        "research/antigravity-ui-regressions-result.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
       ],
       "residuals": [
-        "Final combined checks, upstream main integration, and PR delivery pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 73,
       "title": "导出和导入选定配置",
       "url": "https://github.com/fy-agent/fyagent/issues/73",
       "owner": "config_pack_73",
-      "implementation_status": "integrated_pending_final_validation",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
-      "evidence": ["9d705c0e", "73460cf7"],
+      "evidence": [
+        "9d705c0e",
+        "73460cf7",
+        "research/antigravity-ui-regressions-result.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
+      ],
       "residuals": [
-        "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00"
     },
     {
       "number": 92,
       "title": "制作当前主要流程的使用演示",
       "url": "https://github.com/fy-agent/fyagent/issues/92",
       "owner": "installer_27_29",
-      "implementation_status": "formal_fixture_demo_adopted",
-      "acceptance_status": "pending",
+      "implementation_status": "complete",
+      "acceptance_status": "accepted_for_repository_delivery",
       "remote_status": "OPEN",
       "evidence": [
         "docs/fyagent/development/demos/0.4.6-fac051ea/manifest.json",
         "docs/fyagent/development/demos/0.4.6-fac051ea/adoption.json",
-        "7 PNG, 2 WebM (25.8s and 4.56s), 2 VTT and raw originals; clean source fac051ea; stable digest; 12 hashes; full playback/cue/decode and visual frame checks"
+        "7 PNG, 2 WebM (25.8s and 4.56s), 2 VTT and raw originals; clean source fac051ea; stable digest; 12 hashes; full playback/cue/decode and visual frame checks",
+        "3bc8c2e8",
+        "docs/fyagent/development/demos/0.4.6-fac051ea/README.md",
+        "research/final-acceptance.md",
+        "research/integration-checkpoint.md"
       ],
       "residuals": [
-        "Final integrated source-scope readback and PR delivery pending; fixture-only, in-app preview playback not accepted"
-      ]
+        "PR exact-head CI, Merge Queue admission and final remote Issue readback pending at this pre-merge snapshot."
+      ],
+      "remote_readback_at": "2026-09-21T01:31:55.967804+00:00",
+      "evidence_boundary": "Fixture capture at fac051ea, reviewed unchanged recorded states; no CLI install or actual service/release demonstration claimed."
     }
-  ]
+  ],
+  "acceptance_recorded_at": "2026-09-21T01:31:55.967804+00:00",
+  "closure_ready_issues": [
+    25, 27, 29, 34, 35, 40, 42, 43, 47, 56, 61, 64, 70, 73, 92
+  ],
+  "non_code_dependencies": [67, 68],
+  "remote_status_note": "Timestamped pre-merge snapshot; repository delivery and Issue closure are verified after merge, not asserted here."
 }

@@ -141,9 +141,28 @@ fn projects_bindings_reject_renderer_claims_and_snapshot_is_read_only() {
     assert!(s
         .bind_credential(&request(&p), "fake", "proxy_upstream", "fyagent_proxy")
         .is_err());
-    let before = s.db.export_sql_string().unwrap();
+    // Export timestamps are wall-clock metadata, not database state.
+    let snapshot = || {
+        s.db.export_sql_string()
+            .unwrap()
+            .lines()
+            .enumerate()
+            .filter(|(index, line)| !(*index == 1 && line.starts_with("-- 生成时间:")))
+            .map(|(_, line)| line.to_owned())
+            .collect::<Vec<_>>()
+    };
+    let writes = || {
+        s.db.conn
+            .lock()
+            .unwrap()
+            .query_row("SELECT total_changes()", [], |row| row.get::<_, i64>(0))
+            .unwrap()
+    };
+    let before = snapshot();
+    let writes_before = writes();
     s.dependency_snapshot(&p.project_id).unwrap();
-    assert_eq!(s.db.export_sql_string().unwrap(), before);
+    assert_eq!(snapshot(), before);
+    assert_eq!(writes(), writes_before);
 }
 
 #[test]

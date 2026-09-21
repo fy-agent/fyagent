@@ -176,6 +176,10 @@ Source and identity failure must remain evidence-strength preserving:
 
 ### Download preflight and confirmation
 
+- The legacy `run_tool_lifecycle_action` IPC keeps its argument shape but
+  rejects all install/update actions with a direction to the software detail
+  preflight. It cannot bypass confirmation through a native install action;
+  only `start_agent_action` forwards the native-owned confirmed target.
 - Install/update first calls `get_agent_install_preflight` with the same closed
   request used for execution. It creates no action job and performs no Agent
   mutation: validate the live inventory revision, release/platform/architecture,

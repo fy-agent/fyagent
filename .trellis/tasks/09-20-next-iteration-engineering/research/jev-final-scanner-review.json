@@ -1,0 +1,99 @@
+{
+  "tool": "jev_gate",
+  "model": "typesafe-ai/jev",
+  "provider": "vercel",
+  "truncated": false,
+  "action": "escalate",
+  "reason_codes": [
+    "review_escalated",
+    "claim_confidence_low",
+    "claim_confidence_below_auto_accept"
+  ],
+  "review": {
+    "safe_to_apply": 0.3,
+    "scores": {
+      "correctness": {
+        "score": 1.67,
+        "confidence": 0.51
+      },
+      "spec_match": {
+        "score": 1.87,
+        "confidence": 0.8
+      },
+      "test_gap": {
+        "score": 0.69,
+        "confidence": 0.32
+      },
+      "blast_radius": {
+        "score": 1.32,
+        "confidence": 0.39
+      }
+    },
+    "weights": {
+      "correctness": 0.4,
+      "spec_match": 0.3,
+      "test_gap": 0.15,
+      "blast_radius": 0.15
+    },
+    "thresholds": {
+      "auto_accept": 0.85,
+      "review_at": 0.5,
+      "composite_floor": 0.7
+    },
+    "action": "escalate",
+    "composite": 0.76375
+  },
+  "verification": {
+    "action": "escalate",
+    "summary": {
+      "verified": 3,
+      "contradicted": 0,
+      "unsupported": 0,
+      "needs_review": 2,
+      "invalid_response": 0
+    },
+    "thresholds": {
+      "auto_accept": 0.85,
+      "review_at": 0.5
+    },
+    "results": [
+      {
+        "claim": "Foreign platform words are admitted only for two complete closed vendor suffix tables in their named metadata owner; other surrounding host selectors and content rules still fail.",
+        "verdict": "verified",
+        "confidence": 0.46,
+        "probabilities": {
+          "verified": 0.64,
+          "contradicted": 0.01,
+          "unsupported": 0.35
+        },
+        "action": "escalate"
+      },
+      {
+        "claim": "WebM admission still requires exact path/mode/SHA inventory; its parser checks finite EBML/WebM header and segment bounds and scans bounded readable metadata outside encoded frame clusters.",
+        "verdict": "verified",
+        "confidence": 0.64,
+        "probabilities": {
+          "verified": 0.76,
+          "contradicted": 0.02,
+          "unsupported": 0.22
+        },
+        "action": "review"
+      },
+      {
+        "claim": "Full aggregate acceptance and Windows native execution are not yet claimed.",
+        "verdict": "verified",
+        "confidence": 0.89,
+        "probabilities": {
+          "verified": 0.93,
+          "contradicted": 0,
+          "unsupported": 0.07
+        },
+        "action": "auto"
+      }
+    ]
+  },
+  "usage": {
+    "input_tokens": 10209,
+    "output_tokens": 198
+  }
+}

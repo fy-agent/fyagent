@@ -979,9 +979,10 @@ mod tests {
             published.declared_dependencies.get("@iarna/toml"),
             Some(&"^3.0.0".to_string())
         );
-        assert!(!published.declared_dependencies.keys().any(|name| {
-            name.starts_with("@xai-official/grok-") || name == "left-pad"
-        }));
+        assert!(!published
+            .declared_dependencies
+            .keys()
+            .any(|name| { name.starts_with("@xai-official/grok-") || name == "left-pad" }));
 
         let claude_platform = OfficialNpmTool::Claude
             .current_platform_package()
@@ -1033,7 +1034,7 @@ mod tests {
         let claude_only_suffix = CLAUDE_PLATFORM_SUFFIXES
             .iter()
             .copied()
-            .find(|suffix| !GROK_PLATFORM_SUFFIXES.contains(&suffix))
+            .find(|suffix| !GROK_PLATFORM_SUFFIXES.contains(suffix))
             .expect("claude closed table has a suffix grok does not");
         assert!(is_closed_platform_optional(
             OfficialNpmTool::Claude,

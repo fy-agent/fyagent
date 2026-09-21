@@ -70,3 +70,24 @@ claim adequate space merely from a nonzero available-byte observation.
 ## Post-main common projection review
 
 Main `da91427e` is merged in `35848bef`. The subsequent candidate scan still has 119 paths, with only `src-tauri/src/codex_config.rs` and `src-tauri/src/services/provider/mod.rs` changed. GPT-6 reviewed both actual deltas: the first replaces the unused plain writer wrapper with the shared in-memory common-snippet projection and one atomic write; the second gives preview that same explicitly enabled snippet. Neither changes supported-host admission, platform attributes, package targets or native dispatch. Their exact source digests are updated after this review. No inventory additions, removals or fallback allowances. The still-separate CLI delta must receive its own source review.
+
+## Adopted demo raster identities
+
+The scanner reports exactly seven new raster candidates, all under
+`docs/fyagent/development/demos/0.4.6-fac051ea/`. Root already visually reviewed
+all seven actual screenshots while adopting the demo: first-use purpose and
+recommendations, existing configuration, WorkBuddy setup, save preview, recovered
+failure and saved result. They describe the actual fixture UI, show no extra
+supported operating system or release claim, and contain no real credentials or
+concrete personal home path. Their current SHA-256 values were matched against
+the immutable capture manifest before adding these exact seven entries to the
+raster inventory. All existing entries and hashes remain unchanged. This is
+asset review, not native or release acceptance.
+
+## Closed vendor npm metadata tables
+
+The final CLI dependency admission requires six Grok and eight Claude vendor package suffixes, including foreign-platform sibling identities. Those names describe registry data, not product dispatch. Root added a narrow scanner contract admitting only the complete two exact suffix tables in their sole host metadata owner. All surrounding code and other scanner rules still run. Negative fixtures reject changed/missing values, duplicate tables, moved owners, appended content, and a new foreign-host selector. The focused scanner fixture passed; complete repository validation remains part of the final gate.
+
+Final identities were recomputed only for the reviewed CLI target/plan/codec paths, helper dependency manifest, new bounded dependency-reader module, and corresponding scanner/contract tests. The unsupported-host preflight source contract was updated for its new optional plan parameter while retaining the exact `PlatformUnsupported` body. The two adopted videos and two byte-identical raw copies extend the existing reviewed media inventory; finite container bounds and non-frame metadata checks were added without excluding video paths from identity or filename scanning.
+
+Final test-only identity refresh: projects/tests.rs changes only the read-only snapshot assertion, excluding the volatile export header and retaining SQL content plus total-change checks. Existing host gates are unchanged.

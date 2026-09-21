@@ -4,7 +4,7 @@ Writer stopped after the scoped local commit below. No push, no PR, no Issue clo
 
 ## Location
 
-- Directory: `/Users/serendipity/.codex/worktrees/fyagent-next-cli-space/fyagent` (`pwd -P` same)
+- Directory: `~/.codex/worktrees/fyagent-next-cli-space/fyagent` (`pwd -P` same)
 - Branch: `codex/next-cli-space-27`
 - Baseline HEAD: `be21f65337bd0fa5769c010c03166a4571b809ce`
 - Remote: `origin` → `https://github.com/fy-agent/fyagent.git` (not pushed)
@@ -56,3 +56,5 @@ No on-disk npm registry fixture was added. Closed-graph cases use inline `serde_
 ## Commit
 
 See git log on this branch after `be21f653`. Writer stopped.
+
+Root integration: worker commit `1811093d3e17af978d25e9f1c354cc31b2de478f` was cherry-picked as `f324079a`. The actual Cursor UI reported completed/stopped before integration. Root narrowed the permission fixture guard to macOS and normalized formatting; aggregate validation remains pending.

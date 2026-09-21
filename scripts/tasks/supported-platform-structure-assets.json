@@ -27,7 +27,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "e41c3f0a1c3583e0f63c3195bec0717aad046f4323f7f190055556e0b5c9508b"
+      "4c48a9c583571b33a1fa1ff54757153cf16ab405020eab40e5b90195bec6c189"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -59,7 +59,7 @@
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "1221c61bac771ea2e49193a23205447a1f455d6dde8e3fede8a7fa7875686bf6"
+      "10bcb20756bd226d3da48c236afda50b512ab41e41e67f618c891869e8118820"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
@@ -67,11 +67,11 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "82a5a13f54fd9b2eb61252a13b832bfe866154aa7432ec38aeed50f7f4d5c9f1"
+      "c5086e69c1447324a3fda70c6fd79f631881a62b26dcf21874e993fad14337c5"
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
-      "61a867998d561d46d675ebf7396367de33858c1a4273be94969e081a504741cc"
+      "aea66ff72dc0aa4534f80e1b0e38f682dceec3ef1a28afcdee94f7598a7067f4"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -275,7 +275,7 @@
     ],
     [
       "src-tauri/src/services/projects/tests.rs",
-      "d4c8b64a1da1cf63ecbf7be44bbb2e7988793d5318b53d41bddf6045fb8983c3"
+      "93414d39fd882dd21362d4dc16549e90c48ec28654f4148ffc754d76f991ebca"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
@@ -311,11 +311,11 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "f3ad6b6549a28e707e0218664d5757ab489f641162285b0f7af5ebfd15437339"
+      "07dc9f6f7e50d1969941205278df9f0ae9f63552fbcc2503d328b6c17f641016"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",
-      "606c939420f54b3bd4904a2532933b58c3dc77f0b457e63f5e19a0943f30e38c"
+      "f910ca38badda0d2ebcf1f7de1ddce6fda26f778697ddee7328108806457a43d"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
@@ -323,11 +323,11 @@
     ],
     [
       "src-tauri/src/services/tooling/grok_npm.rs",
-      "a37f390cca12fc938aaf3746bb93221f74002523f7f880168b310e16e692a9f7"
+      "9e33ad02d117e569ae3e40de1d6c3522839c6cf7b821cf61e505aa50094f2a0b"
     ],
     [
       "src-tauri/src/services/tooling/grok.rs",
-      "136ef07f217c207f32b2b82a8c6d4c7e60753e7d83ac538b32eae3a0cae77ed8"
+      "bf48c0850dc792b21cea05f79d5a9c7bc5c17e9120cc8b9956dab8cdc2d082d3"
     ],
     [
       "src-tauri/src/services/tooling/health.rs",
@@ -335,7 +335,7 @@
     ],
     [
       "src-tauri/src/services/tooling/install_preflight.rs",
-      "3506b3ae2174a1fd186754c484607822fbbc843744b07ded9759a932bec86646"
+      "d797183e8683b5a33ec731c282295b705b374a39a03757cfcf717b9e5748c9ec"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
@@ -415,15 +415,19 @@
     ],
     [
       "src-tauri/user-helper/Cargo.toml",
-      "b544b13a47f5a5069211d117e1671f49d635846a9c0e89c42dbc952728a3e51f"
+      "b35f02ecde55b82598a22677ceb70e59f5e9b856a037f0904d2d6c591b22627e"
     ],
     [
       "src-tauri/user-helper/src/cli.rs",
       "957b9200610a03d8a856dfe1ac502d8613273c008b582b63955bcba58301c3c4"
     ],
     [
+      "src-tauri/user-helper/src/closed_dep.rs",
+      "85ec9b09caca336ad794a1459dbcbc7d8e7624527a3847f4cbd963a83801abe2"
+    ],
+    [
       "src-tauri/user-helper/src/grok_npm.rs",
-      "48033d8f8ee56755dfb869775080da517b91ff8e1f93905d6e440f34531ece2f"
+      "bbcadac18b838ae12cd92da557a5eb0862c8b24b5708c012aca945ddf43e438f"
     ],
     [
       "src-tauri/user-helper/src/layout.rs",
@@ -439,7 +443,7 @@
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "966e056c6655918bb7909c98753ffa1433d0c63ec353711c3062bc94360f8130"
+      "a4c6ec2291051988b741017a3dcb2aad48b07053f7334646689e8508d0f8a856"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
@@ -459,7 +463,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "8e946a81b75d24038d895f074cd2adf79aa580d8b0953c27800d9a147be84f41"
+      "2b47a73437e4cab405f301cbcccee20fc8c76def95d56a256675896b349a6d81"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
