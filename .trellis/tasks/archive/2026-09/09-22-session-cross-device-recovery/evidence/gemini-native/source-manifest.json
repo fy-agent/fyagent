@@ -1,0 +1,11 @@
+{
+  "exact_cli": "/opt/homebrew/bin/gemini",
+  "real_path": "/opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/gemini.js",
+  "version": "0.46.0",
+  "sources": {
+    "package.json": "37d168db3d9e4efe4e2e9c718814ab72229c6e2e012e56f7d840581cef141253",
+    "bundle/gemini.js": "579d124ba01e1d8ea83d33ba835acc503b1e9c4af123dee868d7accf91f7234c",
+    "bundle/gemini-YXO2QQ66.js": "c8febb84eb128043e6f468c18ab98eda9495415c4ab7e745807b46afaf3efea6",
+    "bundle/chunk-RCJSF5RP.js": "8ec6b06441aa91099d1b5c28bfa58869dc01f0b8b1e62ef030aaa0b96df5d51f"
+  }
+}

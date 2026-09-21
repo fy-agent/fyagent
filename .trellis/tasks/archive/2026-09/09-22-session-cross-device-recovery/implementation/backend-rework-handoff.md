@@ -1,0 +1,1 @@
+Cursor Opus rework process 15539 exited with code 1; process absence verified. No final report was produced. Completed interface/implementation retained; final validation not claimed. Root took ownership of orchestrator/common runner after exit to complete bounded output semantics and final integration. Raw CLI logs retained locally, not PR evidence.

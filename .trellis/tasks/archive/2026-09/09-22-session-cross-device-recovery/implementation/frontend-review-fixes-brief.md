@@ -1,0 +1,4 @@
+继续Antigravity同一UI实现session，前轮已exit0，本轮定向关闭独立Grok4.7发现，不重做视觉不扩大范围。先读grok-frontend-review.md，逐条回读代码验证后修复P1/P2。前端src/pages/sessions/**、shared/features/session-migration.ts、ports对应文件仍你独占；不要修改tests/后端/config。
+必须修：空restoreResult数组不能成功，抽成一个真正被Page和ImportDialog共用的结果分类helper，空结果/缺失receipt提示失败；连续user导出preview使用逐条消息，不用错误轮次配对，导入消息条数文案；ambiguous/packageVerified不得声称已提交写入；probe异常保留未知/错误原因而非写false误称未安装；稳定onPreviewSession引用，预览effect重入开始清ready、导出前不得用上次ready状态；多匹配receipt优先显示未解决而非第一条成功掩盖；已有恢复文案不承诺自动打开；幂等binding不要包含未选中第一条digest，selected snapshotIDs已经覆盖内容，可删除这一多余输入。
+去冗余：删除未调用的filterSnapshotsForProvider与validateBatchExportSessions（若tests有调用且你不能改，写精确QA请求，不为绿测试保留死生产函数）；纠正canExportSession注释；StatusBanners未用duplicatecollision分支可删但保持真实回执异常逻辑。
+不能以报告改写代替代码。当前QA做完一次完整browser已失败正在定位，可能是夹具/既有case，稍后root协调；你完成typecheck/lint/38unit后清楚说明与你改动有关测试需求，新增回归交QA，不自行改tests。所有终端rtk，验证mise run，用户已批准实现无需确认，不调用真实native会话。报告frontend-review-fixes-report.md，勿称100%生产闭环。

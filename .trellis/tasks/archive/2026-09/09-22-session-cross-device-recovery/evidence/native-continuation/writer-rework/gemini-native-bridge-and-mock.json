@@ -1,0 +1,104 @@
+{
+  "id": "d7c56774-5653-40f5-8f8c-45c66705241b",
+  "preflight": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\":1,\"status\":\"ready\"}\n",
+    "stderr": ""
+  },
+  "write": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\":1,\"status\":\"written\",\"id\":\"d7c56774-5653-40f5-8f8c-45c66705241b\"}\n",
+    "stderr": ""
+  },
+  "readback": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\":1,\"status\":\"visible\",\"id\":\"d7c56774-5653-40f5-8f8c-45c66705241b\",\"messages\":[{\"role\":\"user\",\"text\":\"  Unanswered one\\r\\n\"},{\"role\":\"user\",\"text\":\"Keep KITE-73 中文\"},{\"role\":\"assistant\",\"text\":\"One final\\r\\n  \"},{\"role\":\"assistant\",\"text\":\"Second final C:\\\\foo\"},{\"role\":\"user\",\"text\":\"Trailing unanswered\"}]}\n",
+    "stderr": ""
+  },
+  "restart_readback": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\":1,\"status\":\"visible\",\"id\":\"d7c56774-5653-40f5-8f8c-45c66705241b\",\"messages\":[{\"role\":\"user\",\"text\":\"  Unanswered one\\r\\n\"},{\"role\":\"user\",\"text\":\"Keep KITE-73 中文\"},{\"role\":\"assistant\",\"text\":\"One final\\r\\n  \"},{\"role\":\"assistant\",\"text\":\"Second final C:\\\\foo\"},{\"role\":\"user\",\"text\":\"Trailing unanswered\"}]}\n",
+    "stderr": ""
+  },
+  "repeat_write": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\":1,\"status\":\"alreadyExists\"}\n",
+    "stderr": ""
+  },
+  "reject_prefix": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\":1,\"status\":\"bodyNotPreserved\"}\n",
+    "stderr": ""
+  },
+  "continue": {
+    "exit_code": 144,
+    "stdout": "{\"type\":\"init\",\"timestamp\":\"2026-09-21T19:29:59.385Z\",\"session_id\":\"d7c56774-5653-40f5-8f8c-45c66705241b\",\"model\":\"gemini-2.5-flash\"}\n{\"type\":\"message\",\"timestamp\":\"2026-09-21T19:29:59.385Z\",\"role\":\"user\",\"content\":\"Synthetic next turn; keep KITE-73.\"}\n{\"type\":\"result\",\"timestamp\":\"2026-09-21T19:29:59.417Z\",\"status\":\"error\",\"error\":{\"type\":\"unknown\",\"message\":\"[API Error: {\\\"error\\\":{\\\"code\\\":400,\\\"message\\\":\\\"synthetic capture complete; no inference\\\",\\\"status\\\":\\\"INVALID_ARGUMENT\\\",\\\"type\\\":\\\"invalid_request_error\\\"}}]\"},\"stats\":{\"total_tokens\":0,\"input_tokens\":0,\"output_tokens\":0,\"cached\":0,\"input\":0,\"duration_ms\":0,\"tool_calls\":0,\"models\":{\"gemini-3.5-flash\":{\"total_tokens\":0,\"input_tokens\":0,\"output_tokens\":0,\"cached\":0,\"input\":0}}}}\n",
+    "stderr": "Warning: Basic terminal detected (TERM=dumb). Visual rendering will be limited. For the best experience, use a terminal emulator with truecolor support.\nWarning: 256-color support not detected. Using a terminal with at least 256-color support is recommended for a better visual experience.\nError when talking to Gemini API Full report available at: /Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/gemini/tmp/gemini-client-error-Turn.run-sendMessageStream-2026-09-21T19-29-59-400Z.json _ApiError: {\"error\":{\"code\":400,\"message\":\"synthetic capture complete; no inference\",\"status\":\"INVALID_ARGUMENT\",\"type\":\"invalid_request_error\"}}\n    at throwErrorIfNotOK (file:///opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/chunk-RCJSF5RP.js:264028:24)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/chunk-RCJSF5RP.js:263791:7\n    at async Models.generateContentStream (file:///opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/chunk-RCJSF5RP.js:264887:16)\n    at async file:///opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/chunk-RCJSF5RP.js:307841:19\n    at async file:///opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/chunk-RCJSF5RP.js:283590:23\n    at async retryWithBackoff (file:///opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/chunk-RCJSF5RP.js:304851:23)\n    at async GeminiChat.makeApiCallAndProcessStream (file:///opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/chunk-RCJSF5RP.js:328315:28)\n    at async GeminiChat.streamWithRetries (file:///opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/chunk-RCJSF5RP.js:328133:29)\n    at async Turn.run (file:///opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/chunk-RCJSF5RP.js:328879:24) {\n  status: 400\n}\n"
+  },
+  "captured_requests": [
+    {
+      "path": "/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse",
+      "body": {
+        "model": null,
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "<session_context>\nThis is the Gemini CLI. We are setting up the context for our chat.\nToday's date is Tuesday, September 22, 2026 (formatted according to the user's locale).\nMy operating system is: darwin\nThe project's temporary directory is: /Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/gemini/home/.gemini/tmp/project\n- **Workspace Directories:**\n  - /Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/gemini/project\n- **Directory Structure:**\n\nShowing up to 200 items (files + folders).\n\n/Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/gemini/project/\n\n\n\n</session_context>"
+              }
+            ],
+            "role": "user"
+          },
+          {
+            "parts": [
+              {
+                "text": "  Unanswered one\r\n"
+              }
+            ],
+            "role": "user"
+          },
+          {
+            "parts": [
+              {
+                "text": "Keep KITE-73 中文"
+              }
+            ],
+            "role": "user"
+          },
+          {
+            "parts": [
+              {
+                "text": "One final\r\n  "
+              }
+            ],
+            "role": "model"
+          },
+          {
+            "parts": [
+              {
+                "text": "Second final C:\\foo"
+              }
+            ],
+            "role": "model"
+          },
+          {
+            "parts": [
+              {
+                "text": "Trailing unanswered"
+              }
+            ],
+            "role": "user"
+          },
+          {
+            "parts": [
+              {
+                "text": "Synthetic next turn; keep KITE-73."
+              }
+            ],
+            "role": "user"
+          }
+        ]
+      }
+    }
+  ]
+}

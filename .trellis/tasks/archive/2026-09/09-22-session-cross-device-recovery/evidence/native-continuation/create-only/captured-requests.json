@@ -1,0 +1,32 @@
+[
+  {
+    "path": "/v1/chat/completions",
+    "model": "local",
+    "messages": [
+      {
+        "role": "user",
+        "content": "  first\r\n"
+      },
+      {
+        "role": "user",
+        "content": "KITE-73 中文"
+      },
+      {
+        "role": "assistant",
+        "content": " answer\r\n  "
+      },
+      {
+        "role": "assistant",
+        "content": "C:\\foo"
+      },
+      {
+        "role": "user",
+        "content": "unanswered"
+      },
+      {
+        "role": "user",
+        "content": "\"Synthetic next turn; keep KITE-73.\""
+      }
+    ]
+  }
+]

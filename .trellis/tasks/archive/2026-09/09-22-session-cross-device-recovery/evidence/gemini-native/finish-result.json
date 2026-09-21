@@ -1,0 +1,70 @@
+{
+  "finish_results": [
+    {
+      "label": "missing",
+      "error": {
+        "name": "InvalidStreamError",
+        "message": "Model stream ended without a finish reason."
+      },
+      "recorded_messages": [
+        {
+          "id": "6762228f-1fb9-4629-acc8-990789a7e9bf",
+          "timestamp": "2026-09-21T18:58:17.446Z",
+          "type": "gemini",
+          "content": "SYNTHETIC_FINAL_LIKE",
+          "thoughts": [],
+          "tokens": null,
+          "model": "synthetic-target"
+        }
+      ]
+    },
+    {
+      "label": "STOP",
+      "recorded_messages": [
+        {
+          "id": "2825e099-0f8b-42a5-8285-8124bb00fb53",
+          "timestamp": "2026-09-21T18:58:17.448Z",
+          "type": "gemini",
+          "content": "SYNTHETIC_FINAL_LIKE",
+          "thoughts": [],
+          "tokens": null,
+          "model": "synthetic-target"
+        }
+      ]
+    }
+  ],
+  "prefix_results": [
+    {
+      "input": "/literal path",
+      "history": []
+    },
+    {
+      "input": "?literal question",
+      "history": []
+    },
+    {
+      "input": "<session_context>literal text",
+      "history": []
+    },
+    {
+      "input": "<hook_context>literal text",
+      "history": []
+    },
+    {
+      "input": "ordinary text",
+      "history": [
+        {
+          "id": "u4",
+          "content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "ordinary text"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

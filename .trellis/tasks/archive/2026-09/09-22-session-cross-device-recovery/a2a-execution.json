@@ -1,0 +1,99 @@
+{
+  "user_model_update": "All future Grok assignments use 4.7",
+  "independent_cli": "updated 1.0.34 to 1.0.40; model catalog and explicit probe still reject grok-4.7; no fallback inference claimed",
+  "records": [
+    {
+      "task_id": "history",
+      "executor": "native subagent",
+      "requested_model": "gpt-5.6-luna/medium",
+      "observed_model": "unverified",
+      "job_id": "/root/prior_research",
+      "lifecycle": "completed",
+      "acceptance_status": "accepted_as_source_index",
+      "coordinator": "GPT-6 root",
+      "cwd": "/Users/serendipity/fyagent",
+      "baseline": "60d699fa00b3f275dcda556afc74a21eaa05379d",
+      "allowed_paths": [
+        ".trellis/tasks/09-22-session-cross-device-recovery/deliverables/prior-research.md"
+      ]
+    },
+    {
+      "task_id": "ux",
+      "executor": "Antigravity agy",
+      "requested_model": "gemini-3.8-flash-high",
+      "observed_model": "gemini-3.8-flash-high (CLI argument; provider-internal mapping unverified)",
+      "job_id": "c09f8f57-734c-4bc4-9a5e-46cdf1ac2a22",
+      "lifecycle": "completed",
+      "acceptance_status": "prototype_contract_tests_passed",
+      "coordinator": "GPT-6 root",
+      "cwd": "/Users/serendipity/fyagent",
+      "baseline": "60d699fa00b3f275dcda556afc74a21eaa05379d",
+      "allowed_paths": [
+        ".trellis/tasks/09-22-session-cross-device-recovery/deliverables/ux-spec.md",
+        ".trellis/tasks/09-22-session-cross-device-recovery/deliverables/session-prototype.html"
+      ]
+    },
+    {
+      "task_id": "architecture",
+      "executor": "Cursor CLI",
+      "requested_model": "claude-opus-5-thinking-high",
+      "observed_model": "Claude Opus 5 300K High (startup receipt)",
+      "job_id": "fbef42e6-1753-4ad5-b473-1347eb9ebceb",
+      "lifecycle": "completed",
+      "acceptance_status": "accepted_as_preparation_after_coordinator_integration_not_production_verified",
+      "coordinator": "GPT-6 root",
+      "cwd": "/Users/serendipity/fyagent",
+      "baseline": "60d699fa00b3f275dcda556afc74a21eaa05379d",
+      "allowed_paths": [
+        ".trellis/tasks/09-22-session-cross-device-recovery/deliverables/technical-design.md"
+      ]
+    },
+    {
+      "task_id": "qa",
+      "executor": "Cursor CLI",
+      "requested_model": "gpt-5.6-sol-high",
+      "observed_model": "GPT-5.6 Sol 272K High (startup receipt)",
+      "job_id": "49fa763f-fafe-483d-bd4c-a0419fc4b050",
+      "lifecycle": "completed",
+      "acceptance_status": "accepted_as_preparation_after_coordinator_integration_not_production_verified",
+      "coordinator": "GPT-6 root",
+      "cwd": "/Users/serendipity/fyagent",
+      "baseline": "60d699fa00b3f275dcda556afc74a21eaa05379d",
+      "allowed_paths": [
+        ".trellis/tasks/09-22-session-cross-device-recovery/deliverables/test-plan.md",
+        ".trellis/tasks/09-22-session-cross-device-recovery/deliverables/test-cases.json"
+      ]
+    },
+    {
+      "task_id": "review-initial",
+      "executor": "Grok CLI 1.0.34",
+      "requested_model": "grok-4.6",
+      "observed_model": "grok-4.6-build (usage receipt)",
+      "job_id": "01a0c4f2-e683-7ce2-8d1d-e1f798a5123c",
+      "lifecycle": "max_turns_reached_after_artifact",
+      "acceptance_status": "historical_only_superseded_by_user_4.7",
+      "coordinator": "GPT-6 root",
+      "cwd": "/Users/serendipity/fyagent",
+      "baseline": "60d699fa00b3f275dcda556afc74a21eaa05379d",
+      "allowed_paths": [
+        ".trellis/tasks/09-22-session-cross-device-recovery/deliverables/redundancy-review.md"
+      ]
+    },
+    {
+      "task_id": "review47",
+      "executor": "Cursor CLI",
+      "requested_model": "grok-4.7-high",
+      "observed_model": "Grok 4.7 256K High (startup receipt)",
+      "job_id": "878d0f1a-0e28-4243-8f72-75275aadf8a8",
+      "lifecycle": "completed",
+      "acceptance_status": "review_recorded_findings_adjudicated_by_coordinator_not_reviewer_approval_of_later_revision",
+      "coordinator": "GPT-6 root",
+      "cwd": "/Users/serendipity/fyagent",
+      "baseline": "60d699fa00b3f275dcda556afc74a21eaa05379d",
+      "allowed_paths": [
+        ".trellis/tasks/09-22-session-cross-device-recovery/deliverables/grok47-final-review.md"
+      ]
+    }
+  ],
+  "coordination": "file-based work packages, single writer ownership, actual external conversation IDs; no deployed A2A network service"
+}

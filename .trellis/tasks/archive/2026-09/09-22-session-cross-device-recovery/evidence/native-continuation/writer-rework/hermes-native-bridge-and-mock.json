@@ -1,0 +1,79 @@
+{
+  "id": "fyagent_6232509fc4ac4a6294acc068140b7b2c",
+  "preflight": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\": 1, \"status\": \"ready\"}\n",
+    "stderr": ""
+  },
+  "write": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\": 1, \"status\": \"written\", \"id\": \"fyagent_6232509fc4ac4a6294acc068140b7b2c\"}\n",
+    "stderr": ""
+  },
+  "repeat_write": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\": 1, \"status\": \"alreadyExists\"}\n",
+    "stderr": ""
+  },
+  "readback": {
+    "exit_code": 0,
+    "stdout": "{\"id\": \"fyagent_6232509fc4ac4a6294acc068140b7b2c\", \"source\": \"cli\", \"user_id\": null, \"session_key\": null, \"chat_id\": null, \"chat_type\": null, \"thread_id\": null, \"display_name\": null, \"origin_json\": null, \"expiry_finalized\": 0, \"model\": null, \"model_config\": null, \"system_prompt\": null, \"system_prompt_hash\": null, \"parent_session_id\": null, \"started_at\": 1790018993.465023, \"ended_at\": null, \"end_reason\": null, \"message_count\": 4, \"tool_call_count\": 0, \"input_tokens\": 0, \"output_tokens\": 0, \"cache_read_tokens\": 0, \"cache_write_tokens\": 0, \"reasoning_tokens\": 0, \"cwd\": \"/Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/run-6013a1ceaf/hermes\", \"git_branch\": null, \"git_repo_root\": null, \"git_metadata_generation\": 0, \"billing_provider\": null, \"billing_base_url\": null, \"billing_mode\": null, \"estimated_cost_usd\": null, \"actual_cost_usd\": null, \"cost_status\": null, \"cost_source\": null, \"pricing_version\": null, \"title\": \"Synthetic recovery\", \"title_source\": \"user\", \"last_activity_at\": null, \"last_activity_description\": null, \"last_activity_provenance\": null, \"api_call_count\": 0, \"handoff_state\": null, \"handoff_platform\": null, \"handoff_error\": null, \"compression_failure_cooldown_until\": null, \"compression_failure_error\": null, \"compression_fallback_streak\": 0, \"compression_ineffective_count\": 0, \"profile_name\": null, \"rewind_count\": 0, \"archived\": 0, \"pinned\": 0, \"hidden\": 0, \"last_read_at\": null, \"messages\": [{\"id\": 1, \"session_id\": \"fyagent_6232509fc4ac4a6294acc068140b7b2c\", \"role\": \"user\", \"content\": \"KITE-73 中文 C:\\\\temp\\\\x\", \"tool_call_id\": null, \"tool_calls\": null, \"tool_name\": null, \"effect_disposition\": null, \"timestamp\": 1790018993.4652128, \"token_count\": null, \"finish_reason\": null, \"reasoning\": null, \"reasoning_content\": null, \"reasoning_details\": null, \"codex_reasoning_items\": null, \"codex_message_items\": null, \"platform_message_id\": null, \"observed\": 0, \"active\": 1, \"compacted\": 0, \"api_content\": null, \"display_kind\": null, \"display_metadata\": null}, {\"id\": 2, \"session_id\": \"fyagent_6232509fc4ac4a6294acc068140b7b2c\", \"role\": \"assistant\", \"content\": \"answer\\r\\nsecond line\", \"tool_call_id\": null, \"tool_calls\": null, \"tool_name\": null, \"effect_disposition\": null, \"timestamp\": 1790018993.4654698, \"token_count\": null, \"finish_reason\": \"stop\", \"reasoning\": null, \"reasoning_content\": null, \"reasoning_details\": null, \"codex_reasoning_items\": null, \"codex_message_items\": null, \"platform_message_id\": null, \"observed\": 0, \"active\": 1, \"compacted\": 0, \"api_content\": null, \"display_kind\": null, \"display_metadata\": null}, {\"id\": 3, \"session_id\": \"fyagent_6232509fc4ac4a6294acc068140b7b2c\", \"role\": \"user\", \"content\": \"second question\", \"tool_call_id\": null, \"tool_calls\": null, \"tool_name\": null, \"effect_disposition\": null, \"timestamp\": 1790018993.465616, \"token_count\": null, \"finish_reason\": null, \"reasoning\": null, \"reasoning_content\": null, \"reasoning_details\": null, \"codex_reasoning_items\": null, \"codex_message_items\": null, \"platform_message_id\": null, \"observed\": 0, \"active\": 1, \"compacted\": 0, \"api_content\": null, \"display_kind\": null, \"display_metadata\": null}, {\"id\": 4, \"session_id\": \"fyagent_6232509fc4ac4a6294acc068140b7b2c\", \"role\": \"assistant\", \"content\": \"second final 中文\", \"tool_call_id\": null, \"tool_calls\": null, \"tool_name\": null, \"effect_disposition\": null, \"timestamp\": 1790018993.4657888, \"token_count\": null, \"finish_reason\": \"stop\", \"reasoning\": null, \"reasoning_content\": null, \"reasoning_details\": null, \"codex_reasoning_items\": null, \"codex_message_items\": null, \"platform_message_id\": null, \"observed\": 0, \"active\": 1, \"compacted\": 0, \"api_content\": null, \"display_kind\": null, \"display_metadata\": null}]}\n",
+    "stderr": ""
+  },
+  "reject_trim": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\": 1, \"status\": \"bodyNotPreserved\"}\n",
+    "stderr": ""
+  },
+  "reject_merge": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\": 1, \"status\": \"bodyNotPreserved\"}\n",
+    "stderr": ""
+  },
+  "reject_unanswered": {
+    "exit_code": 0,
+    "stdout": "{\"protocol\": 1, \"status\": \"bodyNotPreserved\"}\n",
+    "stderr": ""
+  },
+  "continue": {
+    "exit_code": 1,
+    "stdout": "  ⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only\nHTTP 400: synthetic capture complete; no inference\n",
+    "stderr": "↻ Resumed session fyagent_6232509fc4ac4a6294acc068140b7b2c \"Synthetic recovery\" (2 user messages, 4 total messages)\n\nsession_id: fyagent_6232509fc4ac4a6294acc068140b7b2c\n"
+  },
+  "captured_requests": [
+    {
+      "path": "/api/show",
+      "body": {
+        "model": null
+      }
+    },
+    {
+      "path": "/v1/responses",
+      "body": {
+        "model": "local-capture",
+        "input": [
+          {
+            "role": "user",
+            "content": "KITE-73 中文 C:\\temp\\x"
+          },
+          {
+            "role": "assistant",
+            "content": "answer\r\nsecond line"
+          },
+          {
+            "role": "user",
+            "content": "second question"
+          },
+          {
+            "role": "assistant",
+            "content": "second final 中文"
+          },
+          {
+            "role": "user",
+            "content": "Synthetic next turn; keep KITE-73."
+          }
+        ]
+      }
+    }
+  ]
+}

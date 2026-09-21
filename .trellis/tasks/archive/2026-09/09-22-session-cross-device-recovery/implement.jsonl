@@ -1,0 +1,5 @@
+{"file": "research/session-recovery-20260921/恢复方案.md", "reason": "产品正文与原生恢复边界"}
+{"file": ".trellis/spec/backend/session-migration.md", "reason": "跨层命令、身份、回执与验证合同"}
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "原生模块与IPC边界"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "严格DTO与unknown解析"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "复用公共交互与port owner"}

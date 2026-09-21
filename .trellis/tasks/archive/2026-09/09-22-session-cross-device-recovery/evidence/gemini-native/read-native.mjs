@@ -1,0 +1,11 @@
+import fs from 'node:fs/promises';
+import { resolveSessionId } from '/opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/gemini-YXO2QQ66.js';
+import { loadConversationRecord, convertSessionToClientHistory } from '/opt/homebrew/Cellar/gemini-cli/0.46.0/libexec/lib/node_modules/@google/gemini-cli/bundle/chunk-RCJSF5RP.js';
+const input=JSON.parse(await fs.readFile(process.argv[2],'utf8'));
+let result;
+if(input.op==='import') result=await resolveSessionId(undefined,undefined,input.path);
+if(input.op==='resume') result=await resolveSessionId(input.sessionId,undefined,undefined);
+if(input.op==='read') result={conversation:await loadConversationRecord(input.path)};
+const conversation=result.resumedSessionData?.conversation ?? result.conversation;
+result.clientHistory=convertSessionToClientHistory(conversation.messages);
+console.log(JSON.stringify(result));

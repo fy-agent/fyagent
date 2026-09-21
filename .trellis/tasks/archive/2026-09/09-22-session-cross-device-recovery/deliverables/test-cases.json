@@ -1,0 +1,1883 @@
+{
+  "schema": "fyagent.session-recovery.test-cases.v1",
+  "catalog_status": "not_run",
+  "generated_by": {
+    "role": "Cursor 测试架构师",
+    "model": "GPT-5.6 Sol"
+  },
+  "task": ".trellis/tasks/09-22-session-cross-device-recovery",
+  "execution_policy": {
+    "real_user_store_access": false,
+    "production_source_changes": false,
+    "success_stages": [
+      "packageVerified",
+      "nativeWritePending",
+      "nativeWritten",
+      "nativeReadbackVerified",
+      "targetOpened",
+      "restartReadbackVerified",
+      "nextTurnRequestVerified",
+      "nextTurnReplyVerified"
+    ],
+    "exception_stages": [
+      "needsReconciliation",
+      "ambiguous",
+      "failed"
+    ],
+    "orthogonal_fields": [
+      "userAttestation"
+    ],
+    "allowed_results": [
+      "passed",
+      "failed",
+      "blocked",
+      "not_run"
+    ]
+  },
+  "fixtures": {
+    "F-GOLDEN-3T": {
+      "description": "三轮完整用户原文与最终答复；第二轮夹有 progress、reasoning、tool、附件、文件快照事件。",
+      "retained_sentinels": [
+        "KITE-728",
+        "FINAL-T2-KEEP",
+        "AMBER-314",
+        "/Users/alice/demo",
+        "D:\\work\\demo",
+        "🪁"
+      ],
+      "forbidden_sentinels": [
+        "LEAK_TOOL_ARG_91",
+        "LEAK_TOOL_OUT_92",
+        "LEAK_PROGRESS_93",
+        "LEAK_REASONING_94",
+        "LEAK_ATTACHMENT_95",
+        "LEAK_FILE_96"
+      ]
+    },
+    "F-INDETERMINATE": {
+      "description": "同一 user 后存在两个无法用来源完成标志区分的 assistant 可见文本。"
+    },
+    "F-INCOMPLETE": {
+      "description": "user 后只有工具/进度事件，没有 assistant final；覆盖末尾未完成与中间未完成后再次提问。"
+    },
+    "F-ORDERED-USERS": {
+      "description": "有序序列 user(A) → user(B) → assistant(final B) → user(C unfinished)，不得强配成问答 turn。"
+    },
+    "F-IDENTITY-COLLISIONS": {
+      "description": "覆盖同正文不同来源、无 source ID、空 assistant 与缺 assistant、目标再导出丢失来源映射。"
+    },
+    "F-MALICIOUS-PACKAGE": {
+      "description": "合法包的重复 key、未知字段、路径穿越、命令、NUL、深嵌套、超大正文、错误 digest/version 变体。"
+    },
+    "F-REVISION-R1": {
+      "description": "F-GOLDEN-3T 的前两个完整 turn。"
+    },
+    "F-REVISION-R2": {
+      "description": "R1 为严格前缀，再增加第三个完整响应片段；不得原地自动追加。"
+    },
+    "F-DIVERGED": {
+      "description": "目标在 R1 后已有不同的本地第三轮。"
+    },
+    "F-MEMORY-SENTINELS": {
+      "description": "隔离 MEMORY.md、USER.md、memory/2026-09-22.md 及其内容 hash、权限和 mtime。"
+    }
+  },
+  "cases": [
+    {
+      "id": "QA-FID-001",
+      "priority": "P0",
+      "title": "完整多轮原文逐码点保真",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "provider extractor 可注入隔离源根目录",
+        "canonical package serializer 已实现"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "生成三轮 provider 原生合成事件，时间与 ID 固定。"
+      },
+      "steps": [
+        "执行导出到新路径",
+        "严格解析生成的 JSON",
+        "按 message_index、role、completion_state 对比全部正文码点",
+        "比较重复导出的 contentDigest"
+      ],
+      "exact_expected": [
+        "完整 fixture 的有序序列恰有 3 条 user 与 3 条 explicit-final assistant",
+        "所有保留哨兵逐字出现",
+        "CRLF、空格、Markdown、代码块、emoji 不被 trim 或归一化",
+        "相同输入的 contentDigest 相同"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "provider fixture + pure exporter"
+      },
+      "evidence_requirements": [
+        "输入 fixture SHA-256",
+        "导出包 SHA-256",
+        "逐字段 diff 报告",
+        "digest 报告"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-FID-002",
+      "priority": "P0",
+      "title": "工具、进度、思考、附件和文件彻底排除",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "final-only extractor 已实现"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "每类禁用事件写入唯一泄漏哨兵。"
+      },
+      "steps": [
+        "执行导出",
+        "扫描包原始 UTF-8 字节",
+        "递归扫描全部 JSON key/value",
+        "核对只剩白名单 user/final 文本"
+      ],
+      "exact_expected": [
+        "六个 LEAK_* 哨兵全部不存在",
+        "不存在 toolCalls、tool_result、reasoning、progress、attachment、fileSnapshot 或 rawEvents 容器",
+        "导出仍保留最终答复正文中的代码块"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "leak scanner + schema validator"
+      },
+      "evidence_requirements": [
+        "禁用键扫描 JSON",
+        "字节哨兵扫描 JSON",
+        "白名单消息清单"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-FID-003",
+      "priority": "P0",
+      "title": "用户主动粘贴路径和代码不被误删",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "正文与结构性 cwd 分离"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "用户正文和 final 正文均包含 Mac/Windows 路径与代码。"
+      },
+      "steps": [
+        "执行导出",
+        "定位正文路径字符串",
+        "检查 envelope 与目录元数据"
+      ],
+      "exact_expected": [
+        "正文中的 /Users/alice/demo 与 D:\\work\\demo 原样保留",
+        "结构性源 cwd 不作为目标 cwd 写入包",
+        "代码块内容与换行逐码点相同"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "serializer contract test"
+      },
+      "evidence_requirements": [
+        "正文 diff",
+        "envelope key 清单"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-FID-004",
+      "priority": "P0",
+      "title": "最终答复不可判定时失败关闭",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "extractor 能返回判定原因"
+      ],
+      "synthetic_fixture": {
+        "id": "F-INDETERMINATE",
+        "setup": "移除 provider completion/final 标志。"
+      },
+      "steps": [
+        "导出到不存在的目标路径",
+        "记录 extractor 判定",
+        "检查目标路径与临时文件"
+      ],
+      "exact_expected": [
+        "返回 finalAnswerIndeterminate",
+        "错误包含 provider、source session、message 定位但不包含敏感正文",
+        "不产生迁移包",
+        "不把最后一条 assistant 文本猜作 final；最后位置也不例外"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "extractor negative fixture"
+      },
+      "evidence_requirements": [
+        "结构化错误 JSON",
+        "导出目录前后清单"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-FID-005",
+      "priority": "P0",
+      "title": "真正未完成用户输入可保留且不伪造答复",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "turn completion validator 已实现"
+      ],
+      "synthetic_fixture": {
+        "id": "F-INCOMPLETE",
+        "setup": "分别生成末尾 user 无 final、以及中间 user 中断后再次提问的来源事件。"
+      },
+      "steps": [
+        "执行导出",
+        "解析有序消息序列与 completion_state",
+        "搜索是否生成空 assistant/占位文本或调用模型"
+      ],
+      "exact_expected": [
+        "导出成功且未完成 user 保持原始位置与原文",
+        "缺 assistant 明确编码为 missing，不创建 assistant 节点",
+        "后续重新提问不让前后 user 合并",
+        "不生成占位符、摘要或模型补写",
+        "网络/模型调用计数为 0"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "completion validator + network deny"
+      },
+      "evidence_requirements": [
+        "错误 JSON",
+        "网络调用审计",
+        "导出目录清单"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-FID-006",
+      "priority": "P0",
+      "title": "迁移包不夹带隐藏原生日志",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "包 schema 已冻结"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "源原生日志包含完整工具事件与独特大段随机字节。"
+      },
+      "steps": [
+        "导出包",
+        "枚举包全部字段",
+        "对源原生日志片段做 rolling hash 搜索",
+        "验证包不是 archive/polyglot"
+      ],
+      "exact_expected": [
+        "包只包含 schema 允许字段",
+        "任何连续原生日志片段均不存在",
+        "文件为单一 JSON 文档且无尾随数据",
+        "包大小与 final-only 文本量同阶，不包含隐藏附件"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "schema closure + substring scanner"
+      },
+      "evidence_requirements": [
+        "字段树",
+        "rolling hash 扫描结果",
+        "文件类型与尾随字节检查"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-FID-007",
+      "priority": "P0",
+      "title": "连续 user 与中断后再问保持有序角色序列",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "包模型支持有序消息与缺失 assistant 状态"
+      ],
+      "synthetic_fixture": {
+        "id": "F-ORDERED-USERS",
+        "setup": "A 无答复，B 为重问且有 explicit final，C 为尾部未完成。"
+      },
+      "steps": [
+        "执行导出",
+        "读取有序消息",
+        "导入到可控 native adapter 后读回"
+      ],
+      "exact_expected": [
+        "顺序严格为 user(A)、user(B)、assistant(final B)、user(C)",
+        "不合并 A/B，不丢弃 A/C，不把 final B 绑定或复制给 A",
+        "导入/读回保持同一序列语义"
+      ],
+      "automation_layer": {
+        "level": "L1/L2",
+        "harness": "ordered-message extractor and adapter contract"
+      },
+      "evidence_requirements": [
+        "源事件序列",
+        "包消息序列",
+        "native adapter 读回序列"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PKG-001",
+      "priority": "P0",
+      "title": "坏 JSON 与重复 key 在写入前拒绝",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "严格 JSON parser 支持重复 key 检测"
+      ],
+      "synthetic_fixture": {
+        "id": "F-MALICIOUS-PACKAGE",
+        "setup": "分别生成截断、尾随数据、重复 schema/session/message/text key。"
+      },
+      "steps": [
+        "逐个导入变体",
+        "监控 capability probe、native writer 和 receipt writer 调用"
+      ],
+      "exact_expected": [
+        "截断、尾随与重复 key 均返回 packageMalformed，detail 区分原因",
+        "capability/native/receipt 写调用均为 0",
+        "目标 provider 存储字节不变"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "strict parser fault corpus"
+      },
+      "evidence_requirements": [
+        "每个变体 hash 与错误码",
+        "mock 调用计数",
+        "目标存储前后 hash"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PKG-002",
+      "priority": "P0",
+      "title": "未知字段夹带一律拒绝",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "v1 闭集 schema validator 已实现"
+      ],
+      "synthetic_fixture": {
+        "id": "F-MALICIOUS-PACKAGE",
+        "setup": "在 envelope/session/turn/message 各层插入 toolCalls、reasoning、sourcePath、token。"
+      },
+      "steps": [
+        "逐层导入未知字段变体",
+        "检查错误 JSON pointer",
+        "检查无副作用"
+      ],
+      "exact_expected": [
+        "每个变体返回 packageUnknownField",
+        "错误精确指出首个未知字段 JSON pointer",
+        "没有忽略或透传未知字段",
+        "native/receipt 均无写入"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "schema mutation test"
+      },
+      "evidence_requirements": [
+        "mutation 矩阵",
+        "错误 pointer",
+        "写调用计数"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PKG-003",
+      "priority": "P0",
+      "title": "版本与 digest 不匹配拒绝",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "版本检查和 canonical digest 已实现"
+      ],
+      "synthetic_fixture": {
+        "id": "F-MALICIOUS-PACKAGE",
+        "setup": "schema 改为 v0/v2/随机值，或正文修改后保留旧 digest。"
+      },
+      "steps": [
+        "导入各版本变体",
+        "导入 digest 篡改变体"
+      ],
+      "exact_expected": [
+        "未知 schema/version 返回 packageSchemaUnsupported",
+        "contentDigest 篡改返回 packageMalformed 且 detail=digestMismatch",
+        "两类错误均发生在 provider probe/native write 前"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "version and digest contract"
+      },
+      "evidence_requirements": [
+        "包 hash",
+        "计算 digest 中间值",
+        "调用顺序 trace"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PKG-004",
+      "priority": "P0",
+      "title": "大小、深度和数量限制",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "测试与技术设计使用同一限制常量"
+      ],
+      "synthetic_fixture": {
+        "id": "F-MALICIOUS-PACKAGE",
+        "setup": "为 128 MiB 包、200 sessions、4000 messages/session、4 MiB 单消息、32 MiB session 文本、JSON 深度 64 分别生成 limit-1、limit、limit+1。"
+      },
+      "steps": [
+        "导入每个边界值",
+        "记录内存峰值与耗时",
+        "检查无 provider 写入"
+      ],
+      "exact_expected": [
+        "limit-1 与 limit 按其他合同继续处理",
+        "文件字节超限返回 packageTooLarge，会话数 201 返回 tooManySessions，消息数 4001 返回 tooManyMessages，单消息/会话文本超限分别返回 messageTooLarge/sessionTooLarge，深度 65 返回 jsonTooDeep",
+        "拒绝时不分配与声明大小同量级的无界内存",
+        "无 native/receipt 写入"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "boundary and resource test"
+      },
+      "evidence_requirements": [
+        "冻结限制值",
+        "边界矩阵",
+        "峰值内存/耗时",
+        "写调用计数"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PKG-005",
+      "priority": "P0",
+      "title": "路径穿越、命令、NUL 与目标路径注入",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "目标目录通过 typed path/argv 传递"
+      ],
+      "synthetic_fixture": {
+        "id": "F-MALICIOUS-PACKAGE",
+        "setup": "加入 ../../、UNC、file://、$(touch)、分号、换行、NUL 和 leading option。"
+      },
+      "steps": [
+        "导入每个变体",
+        "监控临时根目录外写入",
+        "监控子进程 argv 与 shell 调用"
+      ],
+      "exact_expected": [
+        "包不能指定目标绝对路径或命令",
+        "非法身份 metadata 返回 identityFieldInvalid 且不静默净化后参与身份计算",
+        "临时根目录外无新增/修改",
+        "不经 shell 拼接执行包内字符串"
+      ],
+      "automation_layer": {
+        "level": "L2",
+        "harness": "sandboxed filesystem + process spy"
+      },
+      "evidence_requirements": [
+        "filesystem journal",
+        "spawn argv trace",
+        "结构化错误"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-001",
+      "priority": "P0",
+      "title": "包导入与原生读回状态严格分离",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "adapter 有可控 native read-back stub"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "native write 成功，read-back stub 返回空历史。"
+      },
+      "steps": [
+        "导入合法包",
+        "让 native write 返回 ID",
+        "让 native read-back 返回空",
+        "读取结果与 receipt"
+      ],
+      "exact_expected": [
+        "结果最多到 nativeWritten",
+        "返回 nativeReadbackMismatch",
+        "不得标记 nativeReadbackVerified/targetOpened/restartReadbackVerified/nextTurnRequestVerified/nextTurnReplyVerified",
+        "receipt 保留待协调目标 ID"
+      ],
+      "automation_layer": {
+        "level": "L2",
+        "harness": "adapter contract with staged stubs"
+      },
+      "evidence_requirements": [
+        "状态迁移 trace",
+        "native write/read 原始返回",
+        "receipt 内容"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-002",
+      "priority": "P0",
+      "title": "完全重复导入幂等",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "首导入已到 nativeReadbackVerified",
+        "默认唯一 slot 已实现"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "同一包、同一目标目录、同一 provider 连续导入两次。"
+      },
+      "steps": [
+        "记录首导入 native ID 与存储快照",
+        "再次默认导入",
+        "比较结果、行数、文件和消息"
+      ],
+      "exact_expected": [
+        "第二次返回 idempotencySlotTaken 或等价 alreadyImported 结果",
+        "返回同一 attemptId 与 native ID",
+        "相同 snapshotId+targetProviderId+targetStoreId+currentDeviceBinding 的默认 slot 发生唯一约束命中",
+        "native writer 调用为 0",
+        "消息数、DB 行数、原生文件 hash 不变"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "isolated installed provider"
+      },
+      "evidence_requirements": [
+        "两次结果 JSON",
+        "writer 调用/CLI trace",
+        "存储前后清单与 hash"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-003",
+      "priority": "P0",
+      "title": "同源较新快照不原地追加并显式另存",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "R1 已导入且目标未分叉",
+        "SaveAsNewCopy 显式请求可用"
+      ],
+      "synthetic_fixture": {
+        "id": "F-REVISION-R2",
+        "setup": "先导入 F-REVISION-R1，再导入 R2。"
+      },
+      "steps": [
+        "快照 R1 原生消息和 mapping",
+        "默认导入 R2",
+        "确认无写",
+        "以独立 SaveAsNewCopy 请求显式另存",
+        "读回两个 native ID"
+      ],
+      "exact_expected": [
+        "默认导入不修改 R1，返回 sourceSnapshotConflict",
+        "不自动覆盖、合并或追加",
+        "SaveAsNewCopy 创建新 native ID 并写入完整 R2",
+        "R1 mapping 和原生消息保持不变",
+        "R2 有独立 attemptId/mapping"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "provider snapshot save-as integration"
+      },
+      "evidence_requirements": [
+        "R1/R2 包 hash",
+        "默认动作 writer 调用计数",
+        "两个原生读回",
+        "两组 receipt 行"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-004",
+      "priority": "P0",
+      "title": "目标已分叉时默认不改写",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "R1 已导入",
+        "目标可加入独立本地第三轮"
+      ],
+      "synthetic_fixture": {
+        "id": "F-DIVERGED",
+        "setup": "目标本地第三轮与 R2 不同。"
+      },
+      "steps": [
+        "记录分叉目标快照",
+        "默认导入 R2",
+        "读回目标与 receipt"
+      ],
+      "exact_expected": [
+        "返回 sourceSnapshotConflict",
+        "目标 native ID 与全部消息不变",
+        "不覆盖、不删除、不自动合并",
+        "结果可提供 SaveAsNewCopy 后续动作但不自动执行"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "provider divergence integration"
+      },
+      "evidence_requirements": [
+        "分叉前后读回",
+        "错误 JSON",
+        "native store hash"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-005",
+      "priority": "P0",
+      "title": "另存副本创建独立 native ID",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "同一包快照已有默认目标映射",
+        "SaveAsNewCopy 显式操作可用"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "首导入后以 requestId=copy-1 另存并重放，再以 copy-2 另存。"
+      },
+      "steps": [
+        "快照原目标",
+        "执行 copy-1",
+        "重放 copy-1",
+        "执行 copy-2",
+        "读回三个 native ID 与全部 receipt 行"
+      ],
+      "exact_expected": [
+        "copy-1 创建一个新 native ID；同一 requestId 重放返回同一 attemptId/native ID 且不再写",
+        "copy-2 才创建第三个 native ID",
+        "旧会话逐字节不变",
+        "三个 attemptId 的 mapping 全部保留，contentDigest 不覆盖旧副本"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "provider copy integration"
+      },
+      "evidence_requirements": [
+        "两个 native ID",
+        "两个原生读回",
+        "旧目标前后 hash",
+        "receipt 映射"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-006",
+      "priority": "P0",
+      "title": "原生写入成功但 SQLite receipt UPDATE 失败",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "现有 SQLite receipt DAO 支持 INSERT/UPDATE 故障注入",
+        "强相关 native 对账可用"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "预写 importing 行，native commit 成功后让 stage/native ID UPDATE 事务失败。"
+      },
+      "steps": [
+        "执行导入并触发 UPDATE 失败",
+        "检查 SQLite 事务结果与 native store",
+        "重放同一 request",
+        "执行 reconciliation"
+      ],
+      "exact_expected": [
+        "首次返回 reconciliationRequired；importing 行仍完整且无半列更新",
+        "不得回报纯粹未导入",
+        "同 request 重放不得再次调用 writer",
+        "只有已知 native ID 或唯一强相关+精确内容匹配才补 UPDATE 为 reconciled",
+        "0 或多候选均保持 needsReconciliation"
+      ],
+      "automation_layer": {
+        "level": "L2/L3",
+        "harness": "SQLite transaction fault injection + isolated provider"
+      },
+      "evidence_requirements": [
+        "SQL transaction trace",
+        "失败前后 receipt row",
+        "native store 会话计数",
+        "重放调用顺序",
+        "最终对账结果"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-007",
+      "priority": "P0",
+      "title": "崩溃窗口逐点恢复",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "导入状态机各阶段可注入进程终止"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "在 package validate 后、receipt INSERT 事务中、INSERT commit 后、native write 中、native commit 后、receipt UPDATE 事务中逐点 kill。"
+      },
+      "steps": [
+        "每个故障点使用全新隔离根运行",
+        "重启 FyAgent",
+        "重试同一包",
+        "统计原生会话与 receipt"
+      ],
+      "exact_expected": [
+        "未提交的 INSERT/UPDATE 全量回滚，不出现半行",
+        "INSERT 已提交后 native 结果不确定则进入 needsReconciliation",
+        "native 非0/超时也不得假定无副作用",
+        "needsReconciliation 状态重放不再写",
+        "最终默认 slot 至多绑定一个确认目标，任何阶段不覆盖已有会话"
+      ],
+      "automation_layer": {
+        "level": "L2/L3",
+        "harness": "process kill fault matrix"
+      },
+      "evidence_requirements": [
+        "每个故障点进程退出信息",
+        "重启前后 store 清单",
+        "最终会话计数",
+        "receipt"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-008",
+      "priority": "P0",
+      "title": "目标 provider 版本不支持",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "capability probe 可替换版本/help 输出"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "模拟已安装但缺少所需导入能力的版本。"
+      },
+      "steps": [
+        "导入合法包",
+        "运行实际或模拟 capability probe",
+        "观察 UI/结果和写调用"
+      ],
+      "exact_expected": [
+        "版本范围不支持返回 providerVersionUnsupported；探测本身失败返回 capabilityProbeFailed",
+        "结果包含检测到的精确版本与缺失能力",
+        "用户确认或改目录不能把 writeSupported 从 false 改为 true",
+        "不调用猜测命令、不静默换 provider/格式",
+        "native 与 receipt 无写入"
+      ],
+      "automation_layer": {
+        "level": "L2",
+        "harness": "capability probe contract"
+      },
+      "evidence_requirements": [
+        "probe argv/stdout/stderr/exit code",
+        "结构化错误",
+        "写调用计数"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-009",
+      "priority": "P0",
+      "title": "目标目录不存在且跨 OS 源路径不可复用",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "目录选择为显式目标机输入"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "包源提示为另一 OS 路径，选择一个不存在的目标目录。"
+      },
+      "steps": [
+        "尝试导入",
+        "检查文件系统",
+        "再选择存在的临时目录重试",
+        "读回原生目录元数据"
+      ],
+      "exact_expected": [
+        "首次返回 targetDirectoryNotFound",
+        "不自动创建、不回退当前目录、不写原生会话",
+        "改目录只修改 workspace 选择，不能解锁 capability",
+        "有效目录重试后结构性 cwd 只等于目标机所选目录",
+        "消息正文里的源路径原样保留"
+      ],
+      "automation_layer": {
+        "level": "L2/L3",
+        "harness": "filesystem + provider metadata readback"
+      },
+      "evidence_requirements": [
+        "目录存在性前后",
+        "两次结果",
+        "原生 cwd 元数据",
+        "消息正文 diff"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-010",
+      "priority": "P0",
+      "title": "认证与模型配置只取目标本机",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "包 schema 与 target options 已实现"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "源 fixture 带假 token/model/path，仅作为原生源噪声；目标指定本地模型。"
+      },
+      "steps": [
+        "导出",
+        "扫描包",
+        "目标导入并记录 provider argv/request",
+        "读回目标模型元数据（若 provider 暴露）"
+      ],
+      "exact_expected": [
+        "包不含 token、cookie、API key 或认证引用",
+        "目标请求使用目标本机登录上下文",
+        "模型来自目标显式选择/本机默认，不来自源噪声",
+        "缺登录时 native 调用返回 nativeImportFailed 或 nativeProtocolFailed，detail 标明 authRequired，并停止"
+      ],
+      "automation_layer": {
+        "level": "L2/L3",
+        "harness": "credential scanner + process spy"
+      },
+      "evidence_requirements": [
+        "secret scan",
+        "目标 request/argv 脱敏记录",
+        "模型元数据",
+        "缺登录错误"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-011",
+      "priority": "P0",
+      "title": "既有无关原生会话绝不覆盖",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "隔离 provider 中预置两个 sentinel 会话"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "目标已有相同原始 ID 字符串但不同内容，以及一个无关会话。"
+      },
+      "steps": [
+        "记录两个既有会话快照",
+        "导入包",
+        "读回全部会话"
+      ],
+      "exact_expected": [
+        "生成新 native ID 或明确冲突停止",
+        "两个既有会话内容、ID、mtime/行均不变",
+        "不以源 native ID 作为覆盖键"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "isolated provider collision test"
+      },
+      "evidence_requirements": [
+        "导入前后全量会话索引",
+        "既有会话 hash",
+        "新映射 receipt"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-IMP-012",
+      "priority": "P0",
+      "title": "旧记忆文件在所有流程中不变",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "隔离 HOME 中已放置记忆 sentinel"
+      ],
+      "synthetic_fixture": {
+        "id": "F-MEMORY-SENTINELS",
+        "setup": "与 F-GOLDEN-3T 一起运行导出、导入、重复、新快照另存和失败对账。"
+      },
+      "steps": [
+        "记录内容 hash、权限、mtime",
+        "依次运行核心流程",
+        "逐文件重新记录并比较"
+      ],
+      "exact_expected": [
+        "MEMORY.md、USER.md、每日记忆文件全部存在",
+        "内容 hash、权限、mtime 不变",
+        "无重命名、迁移或 Session 转换副本"
+      ],
+      "automation_layer": {
+        "level": "L2/L3",
+        "harness": "filesystem sentinel auditor"
+      },
+      "evidence_requirements": [
+        "每一步前后 sentinel manifest",
+        "filesystem journal"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-ID-001",
+      "priority": "P0",
+      "title": "纯正文 digest 与来源 identity 分离",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "contentDigest 与 OriginIdentity 为独立字段"
+      ],
+      "synthetic_fixture": {
+        "id": "F-IDENTITY-COLLISIONS",
+        "setup": "provider-A/source-1 与 provider-B/source-9 使用完全相同有序正文。"
+      },
+      "steps": [
+        "分别导出两个来源，并生成同包双 session 变体",
+        "比较 contentDigest、OriginIdentity 与默认 slot",
+        "导入同一 target store"
+      ],
+      "exact_expected": [
+        "两来源 contentDigest 相同，originId 与 snapshotId 不同",
+        "分包或同包均形成不同默认 slot，不静默折叠，也不因同正文报来源冲突",
+        "target mapping 分别指向独立 attemptId/native ID"
+      ],
+      "automation_layer": {
+        "level": "L1/L2",
+        "harness": "identity derivation + receipt DAO"
+      },
+      "evidence_requirements": [
+        "digest 输入字节与结果",
+        "OriginIdentity",
+        "snapshotId/slot 输入",
+        "receipt rows"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-ID-002",
+      "priority": "P0",
+      "title": "无 source ID 不以空串合并来源",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "OriginIdentity.sessionId 支持 None 且 UI 能提示来源身份缺失"
+      ],
+      "synthetic_fixture": {
+        "id": "F-IDENTITY-COLLISIONS",
+        "setup": "两个独立源均无 sourceSessionId 且正文相同；同一包文件重放一次。"
+      },
+      "steps": [
+        "分别首次导出",
+        "检查 OriginIdentity 与包快照",
+        "重放同一包",
+        "尝试把另一独立包导入同一 store"
+      ],
+      "exact_expected": [
+        "两来源原生 sessionId 缺省，但 originId 是独立 UUID",
+        "同一包复制和重放保留 originId、snapshotId 并命中原 slot",
+        "同包内两个未知来源同正文也保留两个 snapshotId；不自动折叠",
+        "无法识别的再次独立导出可产生新 originId，不猜同源"
+      ],
+      "automation_layer": {
+        "level": "L1/L2",
+        "harness": "identity fixture + receipt DAO"
+      },
+      "evidence_requirements": [
+        "两个包的 identity 字段",
+        "默认 slot keys",
+        "导入判定日志"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-ID-003",
+      "priority": "P0",
+      "title": "空 assistant 与缺 assistant 不碰撞",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "digest 编码包含 role、完成标记与 UTF-8 长度"
+      ],
+      "synthetic_fixture": {
+        "id": "F-IDENTITY-COLLISIONS",
+        "setup": "A 序列包含 explicit-final assistant text=\"\"；B 序列在同一位置缺 assistant。"
+      },
+      "steps": [
+        "序列化两份 digest 输入",
+        "计算 contentDigest",
+        "导出并严格解析"
+      ],
+      "exact_expected": [
+        "A 与 B 的 digest 输入字节不同",
+        "contentDigest 不同",
+        "A 保留空字符串 final 状态，B 保留 missing 状态",
+        "二者不命中同一默认 slot"
+      ],
+      "automation_layer": {
+        "level": "L1",
+        "harness": "canonical digest unit test"
+      },
+      "evidence_requirements": [
+        "十六进制 digest 输入",
+        "两个 digest",
+        "包消息节点"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-ID-004",
+      "priority": "P0",
+      "title": "目标再导出丢失来源映射时保守处理",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "目标 native 会话可再导出",
+        "测试可移除本机 receipt mapping"
+      ],
+      "synthetic_fixture": {
+        "id": "F-IDENTITY-COLLISIONS",
+        "setup": "导入后更换 native ID，再删除/失效来源 receipt 并从目标重新导出。"
+      },
+      "steps": [
+        "完成一次导入",
+        "使 receipt 对 targetStoreId/deviceBinding 失效",
+        "从目标 native 会话再导出",
+        "比较身份判定"
+      ],
+      "exact_expected": [
+        "contentDigest 可保持相同",
+        "系统不得把目标 native ID 填回原来源公式并声称原 OriginIdentity",
+        "新包只能使用当前目标作为新来源或明确来源映射已丢失，不能声称原血统",
+        "后续导入不自动覆盖/合并原映射"
+      ],
+      "automation_layer": {
+        "level": "L2/L3",
+        "harness": "receipt invalidation + provider re-export"
+      },
+      "evidence_requirements": [
+        "失效前后 mapping",
+        "再导出 identity/digest",
+        "判定日志"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-REC-001",
+      "priority": "P0",
+      "title": "SQLite receipt INSERT/UPDATE 事务与默认唯一 slot",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "session_recovery_receipts 或最终同名表已迁移",
+        "支持并发测试连接"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "两个并发默认导入请求使用相同 snapshotId、targetProviderId、targetStoreId 与 currentDeviceBinding。"
+      },
+      "steps": [
+        "并发 INSERT 默认 slot",
+        "在事务中注入约束错误和连接中断",
+        "提交赢家后 UPDATE stage/native ID",
+        "读取全部行"
+      ],
+      "exact_expected": [
+        "恰有一个默认 slot INSERT 成功",
+        "失败事务不留下半行",
+        "UPDATE 原子改变 stage 与 mapping，不出现 native ID/stage 撕裂",
+        "另存副本不占用或覆盖默认 slot"
+      ],
+      "automation_layer": {
+        "level": "L2",
+        "harness": "SQLite DAO concurrency/fault test"
+      },
+      "evidence_requirements": [
+        "SQL trace",
+        "事务结果",
+        "最终表行与唯一索引检查"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-REC-002",
+      "priority": "P0",
+      "title": "普通备份搬到另一机器后 receipt 失效",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "receipt 带 deviceBinding 与 targetStoreId",
+        "可模拟普通 SQL 备份恢复"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "在 store-A 写入已恢复 receipt，将 FyAgent 普通备份恢复到 device-B/store-B。"
+      },
+      "steps": [
+        "在 A 记录 receipt 与 target mapping",
+        "生成普通备份",
+        "在 B 恢复",
+        "读取包重复判定与 UI 状态"
+      ],
+      "exact_expected": [
+        "B 不得承认 A 的 nativeWritten/nativeReadbackVerified/targetOpened/restartReadbackVerified/nextTurnRequestVerified/nextTurnReplyVerified 阶段",
+        "deviceBinding 不匹配的 target mapping 在 B 标为来自其他设备且不参与幂等/对账",
+        "B 不因旧 receipt 跳过本机恢复",
+        "原 receipt 可留作审计但不能作为本机事实"
+      ],
+      "automation_layer": {
+        "level": "L2/L4",
+        "harness": "database backup/restore + store binding"
+      },
+      "evidence_requirements": [
+        "A/B identity",
+        "备份 hash",
+        "恢复后 receipt 判定",
+        "UI 状态"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-REC-003",
+      "priority": "P0",
+      "title": "native 非零、超时或断连可能有副作用",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "native writer stub 可先写后返回非零/超时/断连"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "三个变体均在目标产生会话后让调用表面失败。"
+      },
+      "steps": [
+        "逐变体执行默认导入",
+        "检查 receipt stage",
+        "重放同一 request",
+        "统计 writer 调用和目标会话"
+      ],
+      "exact_expected": [
+        "每个变体返回 reconciliationRequired 并进入 needsReconciliation",
+        "不得直接标 failed-safe 或无副作用",
+        "同 request 重放不再次调用 writer",
+        "目标不会因自动重试增加第二份"
+      ],
+      "automation_layer": {
+        "level": "L2/L3",
+        "harness": "side-effecting failure stub + isolated provider"
+      },
+      "evidence_requirements": [
+        "writer 时序",
+        "退出/超时/断连证据",
+        "receipt row",
+        "目标会话计数"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-REC-004",
+      "priority": "P0",
+      "title": "对账零命中或多命中均不再写",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "receipt 已为 needsReconciliation",
+        "候选扫描可控"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "分别返回 0 个候选、2 个同内容候选；候选含 developer/环境注入噪声。"
+      },
+      "steps": [
+        "执行对账",
+        "重放同一 request",
+        "检查 writer 调用与 stage"
+      ],
+      "exact_expected": [
+        "0 命中保持 needsReconciliation，不能解释为未写",
+        "多命中返回 ambiguousNativeMatch 并保持 needsReconciliation",
+        "单凭 contentDigest 或时间窗不算强相关证明",
+        "两种情形 writer 调用均为 0"
+      ],
+      "automation_layer": {
+        "level": "L2",
+        "harness": "reconciler contract stub"
+      },
+      "evidence_requirements": [
+        "候选列表",
+        "过滤 developer/环境注入结果",
+        "错误与 stage",
+        "writer 调用计数"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-REC-005",
+      "priority": "P0",
+      "title": "只有权威无副作用证明才允许同尝试安全重试",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "provider adapter 定义 authoritativeNoEffect 证据"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "预分配 target ID；权威 store 查询证明该 ID 从未创建且没有相关写入。"
+      },
+      "steps": [
+        "让首次调用在写前失败",
+        "保存 authoritativeNoEffect 证据",
+        "重放同一 request/attempt",
+        "完成写入并读回"
+      ],
+      "exact_expected": [
+        "仅有明确 authoritativeNoEffect 时允许 writer 第二次调用",
+        "重试复用同一 idempotencySlot 与 attemptId，attemptCount 加 1，不转成 SaveAsNewCopy",
+        "成功后默认 slot 仍只有一行和一个 native ID",
+        "缺少该证据的控制组保持 needsReconciliation"
+      ],
+      "automation_layer": {
+        "level": "L2/L3",
+        "harness": "authoritative absence adapter contract"
+      },
+      "evidence_requirements": [
+        "无副作用证明",
+        "两次调用 trace",
+        "receipt row",
+        "原生读回"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-XOS-001",
+      "priority": "P0",
+      "title": "Mac 到 Windows 完整恢复",
+      "provider_scope": [
+        "each-supported-provider"
+      ],
+      "prerequisites": [
+        "该 provider 单机 G0-G7 已通过",
+        "真实或明确标注 VM 的 Windows 目标机",
+        "两端版本已记录"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "macOS 生成包，源 cwd=/Users/alice/demo；Windows 选择存在的 D:\\qa\\demo。"
+      },
+      "steps": [
+        "Mac 导出",
+        "传输并核对包 hash",
+        "Windows 导入",
+        "原生读回与打开",
+        "完全重启 provider",
+        "再次读回并发送历史引用问题"
+      ],
+      "exact_expected": [
+        "包 hash 跨设备一致",
+        "目标结构性 cwd 仅为 D:\\qa\\demo",
+        "原生读回有序消息保真",
+        "重启后相同",
+        "先验证 nextTurnRequestVerified，再由真实回复引用 KITE-728|琥珀色|AMBER-314 推进到 nextTurnReplyVerified"
+      ],
+      "automation_layer": {
+        "level": "L5",
+        "harness": "two-device assisted E2E"
+      },
+      "evidence_requirements": [
+        "两端 result.json",
+        "传输前后 hash",
+        "Windows 原生读回",
+        "重启日志",
+        "完整续聊响应"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-XOS-002",
+      "priority": "P0",
+      "title": "Windows 到 Mac 完整恢复",
+      "provider_scope": [
+        "each-supported-provider"
+      ],
+      "prerequisites": [
+        "该 provider 单机 G0-G7 已通过",
+        "Windows 源机与 macOS 目标机可用"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "Windows 生成包，源 cwd=D:\\work\\demo；Mac 选择存在的 /tmp/fyagent-qa/demo。"
+      },
+      "steps": [
+        "Windows 导出",
+        "传输并核对包 hash",
+        "Mac 导入",
+        "原生读回与打开",
+        "完全重启 provider",
+        "再次读回并发送历史引用问题"
+      ],
+      "exact_expected": [
+        "包 hash 跨设备一致",
+        "目标结构性 cwd 仅为 /tmp/fyagent-qa/demo",
+        "原生读回有序消息保真",
+        "重启后相同",
+        "先验证 nextTurnRequestVerified，再由真实回复引用 KITE-728|琥珀色|AMBER-314 推进到 nextTurnReplyVerified"
+      ],
+      "automation_layer": {
+        "level": "L5",
+        "harness": "two-device assisted E2E"
+      },
+      "evidence_requirements": [
+        "两端 result.json",
+        "传输前后 hash",
+        "Mac 原生读回",
+        "重启日志",
+        "完整续聊响应"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-E2E-001",
+      "priority": "P0",
+      "title": "原生打开与重启读回不能由 receipt 代替",
+      "provider_scope": [
+        "each-supported-provider"
+      ],
+      "prerequisites": [
+        "G2/G3 已通过",
+        "provider 可完全退出并重启"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "正常导入后删除 FyAgent 内存缓存，只保留持久 receipt。"
+      },
+      "steps": [
+        "通过 provider 原生入口打开 native ID",
+        "确认历史可见",
+        "完全结束 provider 进程",
+        "重启并从原生列表再次打开",
+        "重新读回"
+      ],
+      "exact_expected": [
+        "打开前状态不超过 nativeReadbackVerified",
+        "实际装载后才到 targetOpened",
+        "重启前 receipt 存在不能自动到 restartReadbackVerified",
+        "重启原生读回完全一致后才升级状态"
+      ],
+      "automation_layer": {
+        "level": "L3/L4",
+        "harness": "provider process lifecycle + UI"
+      },
+      "evidence_requirements": [
+        "进程 PID/启动结束时间",
+        "两次原生读回",
+        "状态迁移日志",
+        "辅助截图"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-E2E-002",
+      "priority": "P0",
+      "title": "下一轮引用合成历史事实",
+      "provider_scope": [
+        "each-supported-provider"
+      ],
+      "prerequisites": [
+        "nextTurnRequestVerified",
+        "目标账号与模型可用",
+        "测试工作区不含答案"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "工作区扫描确认没有 KITE-728、AMBER-314 或琥珀色。"
+      },
+      "steps": [
+        "发送固定问题：只回答纸鹤编号、约定颜色和校验词，用编号|颜色|校验词格式",
+        "保存完整模型响应",
+        "判定历史引用",
+        "记录是否发生工具调用"
+      ],
+      "exact_expected": [
+        "业务答案包含 KITE-728|琥珀色|AMBER-314 且顺序正确",
+        "仅在真实模型响应后状态到 nextTurnReplyVerified",
+        "模拟端点、请求捕获和 userAttestation 均不能推进到该阶段",
+        "工具结果不作为历史恢复证据",
+        "模型/账号失败时为 blocked，不静默换模型"
+      ],
+      "automation_layer": {
+        "level": "L3/L5",
+        "harness": "provider continuation probe"
+      },
+      "evidence_requirements": [
+        "固定 prompt",
+        "完整 response",
+        "模型与版本",
+        "工作区无答案扫描",
+        "工具调用记录"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-E2E-003",
+      "priority": "P0",
+      "title": "下一轮请求上下文与真实回复分证",
+      "provider_scope": [
+        "each-supported-provider"
+      ],
+      "prerequisites": [
+        "restartReadbackVerified",
+        "可捕获请求载荷",
+        "模拟端点与真实端点可区分"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "先发往本机模拟端点，再在独立运行中发往真实模型。"
+      },
+      "steps": [
+        "捕获模拟请求",
+        "核对角色/顺序/final 标记",
+        "检查 stage",
+        "执行真实模型请求并保存响应"
+      ],
+      "exact_expected": [
+        "模拟请求正确时最多推进到 nextTurnRequestVerified",
+        "证据明确 modelCalled=false 且不得称续聊成功",
+        "只有真实端点 modelCalled=true、收到响应并通过历史事实 oracle 后才到 nextTurnReplyVerified"
+      ],
+      "automation_layer": {
+        "level": "L3/L5",
+        "harness": "request capture + real provider continuation"
+      },
+      "evidence_requirements": [
+        "captured request",
+        "endpoint identity",
+        "modelCalled",
+        "stage trace",
+        "真实完整 response"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PROV-001",
+      "priority": "P0",
+      "title": "Codex 0.154.0 能力门槛",
+      "provider_scope": [
+        "codex"
+      ],
+      "prerequisites": [
+        "隔离 CODEX_HOME",
+        "App Server 0.154.0",
+        "禁止 unstable resume history"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "用 thread/start + thread/inject_items 重建合成历史。"
+      },
+      "steps": [
+        "记录 G0 版本/schema",
+        "运行 G1 extractor",
+        "执行 inject_items",
+        "用 thread/items/list 与 thread/turns/list 原生读回",
+        "打开、重启、再读回",
+        "条件满足后运行续聊"
+      ],
+      "exact_expected": [
+        "不得调用标注 DO NOT USE 的 history 参数",
+        "只有 phase=final_answer 且 text block 合规的 assistant 可导出；commentary、缺 phase、多 final 或 unknown kind 阻止导出",
+        "inject 返回成功只满足 native write 候选，不自动满足 G3",
+        "items/turns 为空时 case 在 G3 failed 且产品不标支持",
+        "现有模拟 request capture 只可作为 G6 证据，真实模型未调用所以 G7 未通过"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "Codex App Server isolated-home probe"
+      },
+      "evidence_requirements": [
+        "完整 RPC log",
+        "隔离 rollout hash",
+        "items/turns 原始响应",
+        "重启与续聊证据"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PROV-002",
+      "priority": "P0",
+      "title": "OpenCode 1.18.30 能力门槛",
+      "provider_scope": [
+        "opencode"
+      ],
+      "prerequisites": [
+        "隔离 XDG store",
+        "精确版本 1.18.30"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "生成 1.18.30 可接受的 final-only 原生 JSON。"
+      },
+      "steps": [
+        "记录 G0 help/version",
+        "运行 G1",
+        "使用顶层 opencode import 导入",
+        "用顶层 export/原生 session 读回",
+        "resume 打开",
+        "重启后读回",
+        "运行续聊"
+      ],
+      "exact_expected": [
+        "不得混用新版 opencode session import/export 命令",
+        "原生读回有序消息保真且目标 directory 正确",
+        "重复与新快照显式另存符合共享合同",
+        "G2-G7 各自独立记录"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "installed OpenCode isolated XDG"
+      },
+      "evidence_requirements": [
+        "version/help",
+        "import/export stdout/stderr/exit",
+        "原生 JSON/DB 读回",
+        "重启和续聊"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PROV-003",
+      "priority": "P0",
+      "title": "Hermes v0.20.5 能力门槛",
+      "provider_scope": [
+        "hermes"
+      ],
+      "prerequisites": [
+        "隔离 HERMES_HOME/state.db",
+        "记录本地补丁 SHA"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "先由 FyAgent final-only extractor 生成输入，再调用安装版 importer。"
+      },
+      "steps": [
+        "运行 G0/G1",
+        "扫描 importer 输入",
+        "执行原生导入",
+        "从 SessionDB/官方会话面读回",
+        "检查 commentary/tool marker",
+        "重启并续聊"
+      ],
+      "exact_expected": [
+        "输入和读回均不含 [ran tool:]、工具名 marker 或 commentary 哨兵",
+        "现有 importer 的非 final-only 行为不能绕过 G1",
+        "只有过滤、读回、重启、请求上下文和真实回复全通过才到 G7"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "installed Hermes isolated state DB"
+      },
+      "evidence_requirements": [
+        "version/patch SHA",
+        "importer 输入 hash",
+        "DB 原生读回",
+        "泄漏扫描",
+        "重启续聊"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PROV-004",
+      "priority": "P1",
+      "title": "Gemini CLI 0.59.0 能力门槛",
+      "provider_scope": [
+        "gemini"
+      ],
+      "prerequisites": [
+        "隔离 GEMINI_HOME",
+        "精确版本 0.59.0"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "生成候选 --session-file 输入但不假定格式。"
+      },
+      "steps": [
+        "记录 G0 help/version",
+        "运行 G1",
+        "验证 --session-file 实际 schema 与目录绑定",
+        "若契约接受则进入 G2-G7，否则停止"
+      ],
+      "exact_expected": [
+        "help 有 flag 只满足 G0",
+        "格式拒绝时保留原始错误并标 capability unverified/unsupported",
+        "不得把 /chat share 输出假定为可导入",
+        "未过 G2 时不显示已恢复"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "installed Gemini isolated project"
+      },
+      "evidence_requirements": [
+        "help/version",
+        "候选文件 hash",
+        "CLI stdout/stderr/exit",
+        "实际 chats/project metadata"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PROV-005",
+      "priority": "P1",
+      "title": "Claude Code 2.1.220 能力门槛",
+      "provider_scope": [
+        "claude"
+      ],
+      "prerequisites": [
+        "隔离 CLAUDE_CONFIG_DIR",
+        "精确版本 2.1.220"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "构造最小精简 transcript 候选，不读取真实项目。"
+      },
+      "steps": [
+        "记录 G0",
+        "运行 G1",
+        "验证安装版是否接受精简原生重建",
+        "若接受则执行 G2-G7，否则记录缺口"
+      ],
+      "exact_expected": [
+        "resume/continue 存在不等于 import 存在",
+        "没有可写契约时状态为 unknown/unverified，不写 impossible",
+        "不得把文本粘贴或 cloud export 当恢复",
+        "只有原生读回与续聊通过才标支持"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "installed Claude isolated config"
+      },
+      "evidence_requirements": [
+        "help/version",
+        "候选 transcript",
+        "原始接受/拒绝证据",
+        "如进入 G2 则完整阶段证据"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PROV-006",
+      "priority": "P1",
+      "title": "Grok Build 1.0.34 能力门槛",
+      "provider_scope": [
+        "grokbuild"
+      ],
+      "prerequisites": [
+        "隔离 GROK_HOME",
+        "精确版本 1.0.34"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "合成 chat history 与 final-only 包。"
+      },
+      "steps": [
+        "运行安装版 help/version",
+        "运行 G1",
+        "只调用实际探测存在的 import 能力",
+        "若无 import 则停止于 G0/G1"
+      ],
+      "exact_expected": [
+        "1.0.34 help 无 import 时返回 providerVersionUnsupported 或 capabilityProbeFailed（依实际探测结果）",
+        "不得调用网页文档中的未知命令",
+        "Markdown export 不算 round-trip",
+        "无 G2 时不标恢复支持"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "installed Grok isolated home"
+      },
+      "evidence_requirements": [
+        "help/version 原文",
+        "能力决策 JSON",
+        "无写入 store diff",
+        "若未来有 import 则 G2-G7 证据"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-PROV-007",
+      "priority": "P1",
+      "title": "OpenClaw 2026.7.1-2 能力门槛",
+      "provider_scope": [
+        "openclaw"
+      ],
+      "prerequisites": [
+        "隔离 OpenClaw home/Gateway",
+        "精确版本 2026.7.1-2"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "合成 agent/session，不连接真实 Gateway。"
+      },
+      "steps": [
+        "运行 G0/G1",
+        "核验安装版受支持写入入口与会话归属",
+        "无写入口则停止",
+        "有入口才执行 G2-G7"
+      ],
+      "exact_expected": [
+        "sessions list/export-trajectory 只算读取能力",
+        "没有精简历史写入契约时状态为 unknown/unverified",
+        "不得直接据新版 SQLite 文档写本机未知格式",
+        "只读共享不标恢复"
+      ],
+      "automation_layer": {
+        "level": "L3",
+        "harness": "isolated OpenClaw Gateway/store"
+      },
+      "evidence_requirements": [
+        "version/help",
+        "Gateway 能力响应",
+        "store schema/version",
+        "如进入 G2 则完整阶段证据"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-UI-001",
+      "priority": "P0",
+      "title": "界面阶段文案不虚报恢复成功",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "Sessions UI 接入结构化恢复状态"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "stub 分别停在八个正常阶段和三个异常阶段，并独立切换 userAttestation、workspace 和 capability。"
+      },
+      "steps": [
+        "逐状态渲染详情与操作",
+        "检查徽标、主按钮和 aria-live",
+        "点击用户确认",
+        "修改目录",
+        "模拟 native readback 失败、请求捕获和真实续聊未运行"
+      ],
+      "exact_expected": [
+        "packageVerified 只显示包已验证；nativeWritePending 显示写入结果待定",
+        "nativeWritten 显示待原生读回，不显示已恢复",
+        "targetOpened 不等于 restart/next-turn-request/next-turn-reply",
+        "userAttestation 只记录用户自报，不推进系统 stage",
+        "改目录不能把 capability 从 false 改成 true",
+        "只有 nextTurnReplyVerified 显示真实续聊验证通过",
+        "未运行显示未验证，不显示失败或支持"
+      ],
+      "automation_layer": {
+        "level": "L4",
+        "harness": "component/E2E state fixture"
+      },
+      "evidence_requirements": [
+        "DOM 状态快照",
+        "可访问名称断言",
+        "状态事件日志",
+        "辅助截图"
+      ],
+      "status": "not_run"
+    },
+    {
+      "id": "QA-ID-005",
+      "priority": "P0",
+      "title": "语义快照不随包排版和导出时间改变",
+      "provider_scope": [
+        "all"
+      ],
+      "prerequisites": [
+        "语义快照与后端目标绑定实现"
+      ],
+      "synthetic_fixture": {
+        "id": "F-GOLDEN-3T",
+        "setup": "保持 originId 和消息不变，改变 exportedAt、JSON 缩进与属性顺序。"
+      },
+      "steps": [
+        "导入原包",
+        "用新 requestId 导入重新序列化的同一语义快照",
+        "另存副本并重放同一 requestId",
+        "相同 requestId 改目标参数"
+      ],
+      "exact_expected": [
+        "包字节 hash 可以不同，但 snapshotId 和默认 slot 相同",
+        "原生默认写入次数仍为 1",
+        "另存副本同一请求只写 1 次",
+        "同请求键不同参数返回 identityFieldInvalid 且无副作用"
+      ],
+      "automation_layer": {
+        "level": "L2/L3",
+        "harness": "SQLite receipt + counted native writer"
+      },
+      "evidence_requirements": [
+        "slot 字节输入",
+        "SQL unique conflict",
+        "writer 调用次数",
+        "请求参数核对结果"
+      ],
+      "status": "not_run"
+    }
+  ],
+  "integration_note": "GPT-6 定向修订身份与幂等合同；47 条生产用例均未执行。"
+}

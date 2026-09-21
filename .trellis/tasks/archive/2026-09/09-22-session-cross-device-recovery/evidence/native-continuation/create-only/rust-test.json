@@ -1,0 +1,5 @@
+{
+  "exit_code": 0,
+  "stdout": "\nrunning 1 test\ntest session_manager::migrate::native::opencode::tests::isolated_actual_writer_create_only_probe ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3755 filtered out; finished in 4.13s\n\n",
+  "stderr": ""
+}

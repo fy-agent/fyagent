@@ -1,0 +1,92 @@
+{
+  "scope": "Reviewed platform-sensitive source identities after root canonical rust:fmt and scoped formatter",
+  "mode": "100644",
+  "newCount": 9,
+  "changedCount": 3,
+  "reviewed": [
+    {
+      "path": "research/session-recovery-20260921/opencode-synthetic-result.json",
+      "mode": "100644",
+      "kind": "new",
+      "previousSha256": null,
+      "sha256": "600f14c64a74170c927d11f1e70481019939c103df63829ee19ed7a2680d502b"
+    },
+    {
+      "path": "scripts/tasks/supported-platform-check.mjs",
+      "mode": "100644",
+      "kind": "changed",
+      "previousSha256": "4c48a9c583571b33a1fa1ff54757153cf16ab405020eab40e5b90195bec6c189",
+      "sha256": "086e8d3af807904bba68d15d9798b47ee589f94564e6e53ec5c101232465d268"
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "mode": "100644",
+      "kind": "changed",
+      "previousSha256": "1c8af1a1f8776f68720efe7ec64a1c4b063cbc49a9927319cfb4ef846c6cd7b4",
+      "sha256": "58cf72220180d042e4c96d92acd79e1c26b408dd11220b38ea95cbc1e8bd848f"
+    },
+    {
+      "path": "src-tauri/src/session_manager/migrate/identity_platform.rs",
+      "mode": "100644",
+      "kind": "new",
+      "previousSha256": null,
+      "sha256": "795b85f70bcc7cdb5e69af601f34975fc22fb26f08a9f70e9318bdd2b59ec9b4"
+    },
+    {
+      "path": "src-tauri/src/session_manager/migrate/identity.rs",
+      "mode": "100644",
+      "kind": "new",
+      "previousSha256": null,
+      "sha256": "d6a823a64be889e1dd475511cff1d5d0bb1852024101bb2e3966c1d313b4ceee"
+    },
+    {
+      "path": "src-tauri/src/session_manager/migrate/native/codex.rs",
+      "mode": "100644",
+      "kind": "new",
+      "previousSha256": null,
+      "sha256": "f3d941fd68e0e99c0f19eab0d981ce9f0784ee601071a7cdbef56522362b6599"
+    },
+    {
+      "path": "src-tauri/src/session_manager/migrate/native/gemini.rs",
+      "mode": "100644",
+      "kind": "new",
+      "previousSha256": null,
+      "sha256": "d003bda63e22f51bf101962371d09ccbb3f994e38c23132b4006f4db53cceb34"
+    },
+    {
+      "path": "src-tauri/src/session_manager/migrate/native/hermes.rs",
+      "mode": "100644",
+      "kind": "new",
+      "previousSha256": null,
+      "sha256": "008efd209d3d0ebddbfe532314567f3c1be308080cd71859b5446694ee308874"
+    },
+    {
+      "path": "src-tauri/src/session_manager/migrate/native/mod.rs",
+      "mode": "100644",
+      "kind": "new",
+      "previousSha256": null,
+      "sha256": "5bd39587382b2a1bcb875a786ae7f6288bd871dd427ad6bfe15342a0d6ea4001"
+    },
+    {
+      "path": "src-tauri/src/session_manager/migrate/native/opencode.rs",
+      "mode": "100644",
+      "kind": "new",
+      "previousSha256": null,
+      "sha256": "c25af3d1f4817c378a39b4b1a279960f291c02ff2da86aaac0418461ad8485af"
+    },
+    {
+      "path": "src-tauri/src/session_manager/migrate/package.rs",
+      "mode": "100644",
+      "kind": "new",
+      "previousSha256": null,
+      "sha256": "c3b82f84bf879c3643d35ae9fd369c184724dc16e7ddebbe4589d921aa572f90"
+    },
+    {
+      "path": "tests/remainingPlatformSurface.test.ts",
+      "mode": "100644",
+      "kind": "changed",
+      "previousSha256": "2b47a73437e4cab405f301cbcccee20fc8c76def95d56a256675896b349a6d81",
+      "sha256": "71e2de3fb37459987893092996b55b8b9a79f0bea0e7e44a13212312c3d09ee4"
+    }
+  ]
+}

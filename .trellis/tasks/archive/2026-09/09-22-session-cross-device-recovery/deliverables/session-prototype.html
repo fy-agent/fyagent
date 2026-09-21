@@ -1,0 +1,1812 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FyAgent - 会话跨设备恢复交互原型 (最终修复版)</title>
+  <style>
+    /* ==========================================================================
+       1. Design Tokens (严格对齐 src/v2/app/styles/tokens.css 与 DESIGN.md)
+       ========================================================================== */
+    :root {
+      color-scheme: dark;
+      --fy-bg: #324d69;
+      --fy-bg-mid: #567495;
+      --fy-bg-air: #7b99b8;
+      --fy-bg-darkest: #1a2c3f;
+      --fy-text: #f6fbff;
+      --fy-text-secondary: rgba(239, 248, 255, 0.78);
+      --fy-text-tertiary: rgba(232, 244, 255, 0.62);
+      --fy-text-disabled: rgba(232, 244, 255, 0.42);
+      --fy-brand-blue: #9bd6ff;
+      --fy-brand-cyan: #8ce8f2;
+      --fy-accent: #9ddcff;
+      --fy-accent-hover: #c4ebff;
+      --fy-accent-text: #f8fcff;
+      --fy-accent-ink: #173d5a;
+      --fy-glass-ambient: rgba(222, 241, 255, 0.08);
+      --fy-glass-structural: rgba(222, 241, 255, 0.14);
+      --fy-glass-interactive: rgba(229, 246, 255, 0.22);
+      --fy-surface: var(--fy-glass-structural);
+      --fy-surface-strong: var(--fy-glass-interactive);
+      --fy-surface-soft: var(--fy-glass-ambient);
+      --fy-border: rgba(236, 248, 255, 0.20);
+      --fy-divider: rgba(236, 248, 255, 0.16);
+      --fy-border-strong: rgba(240, 250, 255, 0.36);
+      --fy-highlight: rgba(255, 255, 255, 0.54);
+      --fy-selected: rgba(218, 241, 255, 0.22);
+      --fy-selected-border: rgba(239, 250, 255, 0.46);
+      --fy-danger-soft: rgba(255, 121, 126, 0.18);
+      --fy-danger-border: rgba(255, 210, 212, 0.55);
+      --fy-danger-surface: rgba(126, 31, 43, 0.5);
+      --fy-danger-text: #ffd2d4;
+      --fy-warning-soft: rgba(245, 166, 35, 0.18);
+      --fy-warning-border: rgba(255, 211, 133, 0.45);
+      --fy-warning-surface: rgba(110, 70, 10, 0.5);
+      --fy-warning-text: #ffe2aa;
+      --fy-warning: #ffd385;
+      --fy-success: var(--fy-brand-cyan);
+      --fy-shadow-shell: 0 18px 46px rgba(12, 29, 47, 0.38);
+      --fy-shadow-card: 0 8px 24px rgba(10, 25, 42, 0.26);
+      --fy-focus: #b9eaff;
+      --fy-top-bar-height: 60px;
+      --fy-content-radius: 18px;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--fy-bg-darkest);
+      background-image: 
+        radial-gradient(circle at 15% 20%, rgba(86, 116, 149, 0.5) 0%, transparent 50%),
+        radial-gradient(circle at 85% 80%, rgba(50, 77, 105, 0.6) 0%, transparent 60%),
+        linear-gradient(135deg, #1f3347 0%, #2b435c 50%, #1e3044 100%);
+      color: var(--fy-text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 顶部控制栏 (带显式真实性警示与简要演示说明) */
+    .proto-controls {
+      background: rgba(14, 27, 41, 0.95);
+      border-bottom: 1px solid var(--fy-border-strong);
+      padding: 8px 18px;
+      font-size: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      z-index: 1000;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+
+    .proto-controls-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .proto-badge-warn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(245, 166, 35, 0.18);
+      border: 1px solid var(--fy-warning-border);
+      color: var(--fy-warning-text);
+      font-weight: 600;
+      font-size: 11px;
+    }
+
+    .proto-state-btn {
+      background: var(--fy-surface);
+      border: 1px solid var(--fy-border);
+      color: var(--fy-text-secondary);
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 550;
+      transition: all 0.15s ease;
+    }
+    .proto-state-btn:hover {
+      background: var(--fy-surface-strong);
+      color: var(--fy-text);
+      border-color: var(--fy-brand-blue);
+    }
+    .proto-state-btn.active {
+      background: var(--fy-brand-blue);
+      color: var(--fy-accent-ink);
+      border-color: var(--fy-brand-blue);
+      font-weight: 700;
+    }
+
+    .proto-btn-action {
+      background: rgba(140, 232, 242, 0.15);
+      border: 1px solid var(--fy-brand-cyan);
+      color: var(--fy-brand-cyan);
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* 容器与视口 */
+    .app-viewport-wrapper {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 16px;
+      transition: max-width 0.3s ease;
+    }
+    .app-viewport-wrapper.viewport-desktop { max-width: 100%; width: 100%; }
+    .app-viewport-wrapper.viewport-tablet { max-width: 1024px; width: 1024px; margin: 0 auto; }
+    .app-viewport-wrapper.viewport-mobile { max-width: 740px; width: 740px; margin: 0 auto; }
+
+    .fy-app-window {
+      width: 100%;
+      height: calc(100vh - 72px);
+      min-height: 680px;
+      background: var(--fy-surface);
+      border: 1px solid var(--fy-border-strong);
+      border-radius: var(--fy-content-radius);
+      box-shadow: var(--fy-shadow-shell);
+      backdrop-filter: blur(28px) saturate(1.35);
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* 侧边导航栏 */
+    .fy-side-nav {
+      width: 230px;
+      flex-shrink: 0;
+      background: rgba(30, 48, 68, 0.65);
+      border-right: 1px solid var(--fy-border);
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    .fy-nav-header {
+      height: var(--fy-top-bar-height);
+      padding: 0 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--fy-divider);
+    }
+
+    .fy-traffic-lights { display: flex; gap: 7px; }
+    .traffic-light { width: 11px; height: 11px; border-radius: 50%; }
+    .traffic-close { background: #ff5f56; }
+    .traffic-min { background: #ffbd2e; }
+    .traffic-max { background: #27c93f; }
+
+    .fy-brand-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--fy-text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 6px;
+    }
+    .fy-brand-logo {
+      width: 20px;
+      height: 20px;
+      background: linear-gradient(135deg, var(--fy-brand-blue), var(--fy-brand-cyan));
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #173d5a;
+      font-weight: 900;
+      font-size: 12px;
+    }
+
+    .fy-nav-body {
+      flex: 1;
+      padding: 14px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      overflow-y: auto;
+    }
+
+    .fy-nav-group-title {
+      font-size: 11px;
+      font-weight: 650;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--fy-text-tertiary);
+      padding: 0 10px 6px;
+    }
+
+    .fy-nav-list { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+
+    .fy-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 550;
+      color: var(--fy-text-secondary);
+      text-decoration: none;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s ease;
+    }
+    .fy-nav-item:hover { background: var(--fy-surface); color: var(--fy-text); }
+    .fy-nav-item.active {
+      background: var(--fy-selected);
+      color: var(--fy-text);
+      font-weight: 650;
+      border: 1px solid var(--fy-selected-border);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+    .fy-nav-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 20%;
+      bottom: 20%;
+      width: 3px;
+      background: var(--fy-brand-blue);
+      border-radius: 0 3px 3px 0;
+    }
+
+    .fy-nav-footer {
+      padding: 12px 14px;
+      border-top: 1px solid var(--fy-divider);
+      background: rgba(20, 35, 52, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* 保留原编辑能力入口 */
+    .fy-legacy-memory-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--fy-text-secondary);
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 1px solid var(--fy-border);
+      background: var(--fy-surface-soft);
+      transition: all 0.15s ease;
+    }
+    .fy-legacy-memory-link:hover {
+      background: var(--fy-surface-strong);
+      color: var(--fy-brand-blue);
+      border-color: var(--fy-brand-blue);
+    }
+
+    /* 主工作台 */
+    .fy-main-workspace {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: rgba(37, 58, 80, 0.45);
+    }
+
+    .fy-top-bar {
+      height: var(--fy-top-bar-height);
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--fy-divider);
+      background: rgba(25, 42, 60, 0.3);
+    }
+
+    .fy-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--fy-text-secondary);
+    }
+    .fy-breadcrumb .current { color: var(--fy-text); font-weight: 650; }
+
+    .fy-top-actions { display: flex; align-items: center; gap: 10px; }
+
+    .fy-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 9px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--fy-border-strong);
+      background: var(--fy-surface-strong);
+      color: var(--fy-text);
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+    .fy-btn:hover:not(:disabled) {
+      background: var(--fy-selected);
+      border-color: var(--fy-selected-border);
+    }
+    .fy-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .fy-btn-primary {
+      background: var(--fy-accent);
+      color: var(--fy-accent-ink);
+      border-color: var(--fy-accent);
+    }
+    .fy-btn-primary:hover:not(:disabled) {
+      background: var(--fy-accent-hover);
+      color: var(--fy-accent-ink);
+    }
+
+    .fy-btn-cyan {
+      background: var(--fy-brand-cyan);
+      color: #123743;
+      border-color: var(--fy-brand-cyan);
+    }
+    .fy-btn-cyan:hover:not(:disabled) {
+      background: #aaf1f9;
+    }
+
+    /* 分栏工作台 */
+    .fy-content-split {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      position: relative;
+    }
+
+    .fy-session-master {
+      width: 340px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--fy-divider);
+      display: flex;
+      flex-direction: column;
+      background: rgba(28, 45, 64, 0.25);
+    }
+
+    .fy-master-header {
+      padding: 14px 16px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-bottom: 1px solid var(--fy-divider);
+    }
+
+    .fy-provider-chips {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+    .fy-provider-chips::-webkit-scrollbar { display: none; }
+
+    .fy-chip {
+      font-size: 11px;
+      padding: 4px 9px;
+      border-radius: 12px;
+      background: var(--fy-surface);
+      border: 1px solid var(--fy-border);
+      color: var(--fy-text-secondary);
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .fy-chip:hover { background: var(--fy-surface-strong); color: var(--fy-text); }
+    .fy-chip.active {
+      background: var(--fy-brand-blue);
+      color: var(--fy-accent-ink);
+      border-color: var(--fy-brand-blue);
+      font-weight: 700;
+    }
+
+    .fy-search-box { position: relative; width: 100%; }
+    .fy-search-input {
+      width: 100%;
+      height: 32px;
+      padding: 0 28px 0 10px;
+      background: rgba(20, 38, 56, 0.6);
+      border: 1px solid var(--fy-border);
+      border-radius: 8px;
+      color: var(--fy-text);
+      font-size: 12px;
+      outline: none;
+    }
+    .fy-search-shortcut {
+      position: absolute;
+      right: 7px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 10px;
+      padding: 2px 5px;
+      background: var(--fy-surface);
+      border: 1px solid var(--fy-border);
+      border-radius: 4px;
+      color: var(--fy-text-tertiary);
+      font-family: var(--font-mono);
+    }
+
+    .fy-session-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .fy-session-item {
+      padding: 12px;
+      border-radius: 12px;
+      background: var(--fy-surface-soft);
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .fy-session-item:hover { background: var(--fy-surface); border-color: var(--fy-border); }
+    .fy-session-item.selected {
+      background: var(--fy-selected);
+      border-color: var(--fy-selected-border);
+    }
+
+    .fy-session-item-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .fy-provider-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+    }
+    .tag-codex { background: rgba(59, 130, 246, 0.25); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.4); }
+    .tag-opencode { background: rgba(16, 185, 129, 0.25); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .tag-hermes { background: rgba(245, 158, 11, 0.25); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .tag-gemini { background: rgba(139, 92, 246, 0.25); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); }
+    .tag-claude { background: rgba(236, 72, 153, 0.25); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.4); }
+    .tag-grok { background: rgba(244, 63, 94, 0.25); color: #fda4af; border: 1px solid rgba(244, 63, 94, 0.4); }
+    .tag-openclaw { background: rgba(6, 182, 212, 0.25); color: #67e8f9; border: 1px solid rgba(6, 182, 212, 0.4); }
+
+    .fy-session-time { font-size: 11px; color: var(--fy-text-tertiary); }
+    .fy-session-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fy-text);
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .fy-session-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--fy-text-tertiary);
+    }
+
+    .fy-status-dot { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+    .dot-indicator { width: 7px; height: 7px; border-radius: 50%; }
+    .dot-unverified { background: #94a3b8; }
+    .dot-user-confirmed { background: var(--fy-brand-blue); }
+    .dot-pending { background: var(--fy-warning); }
+    .dot-unsupported { background: var(--fy-danger-text); }
+    .dot-alert { background: #ff9800; }
+
+    /* 详情面板 */
+    .fy-session-detail {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: rgba(33, 53, 75, 0.2);
+    }
+
+    .fy-detail-header {
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--fy-divider);
+      background: rgba(22, 38, 55, 0.35);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .fy-detail-header-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .fy-detail-title-block { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .fy-detail-title { font-size: 17px; font-weight: 700; color: var(--fy-text); }
+    .fy-detail-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--fy-text-secondary); }
+    .fy-detail-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+    /* 工作目录映射条 (明确正文旧路径保真) */
+    .fy-workspace-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 12px;
+      background: rgba(18, 33, 49, 0.5);
+      border: 1px solid var(--fy-border);
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .fy-workspace-info { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+    .fy-workspace-path {
+      font-family: var(--font-mono);
+      color: var(--fy-brand-blue);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* 状态横幅 */
+    .fy-status-banner {
+      margin: 14px 22px 0;
+      padding: 12px 16px;
+      border-radius: 10px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .banner-warning { background: var(--fy-warning-soft); border: 1px solid var(--fy-warning-border); color: var(--fy-warning-text); }
+    .banner-danger { background: var(--fy-danger-soft); border: 1px solid var(--fy-danger-border); color: var(--fy-danger-text); }
+
+    /* 纯净问答流 */
+    .fy-conversation-stream {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .fy-turn-card { display: flex; flex-direction: column; gap: 14px; position: relative; }
+    .fy-turn-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11px;
+      font-weight: 650;
+      color: var(--fy-text-tertiary);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .fy-turn-divider::before, .fy-turn-divider::after { content: ''; flex: 1; height: 1px; background: var(--fy-divider); }
+
+    .fy-user-msg-wrap { display: flex; justify-content: flex-end; }
+    .fy-user-msg {
+      max-width: 82%;
+      background: var(--fy-surface-strong);
+      border: 1px solid var(--fy-border-strong);
+      border-radius: 14px 14px 2px 14px;
+      padding: 12px 16px;
+      color: var(--fy-text);
+      font-size: 13.5px;
+      line-height: 1.55;
+    }
+
+    .fy-ai-msg-wrap { display: flex; justify-content: flex-start; }
+    .fy-ai-msg {
+      max-width: 90%;
+      width: 100%;
+      background: rgba(30, 49, 70, 0.7);
+      border: 1px solid var(--fy-border);
+      border-radius: 14px 14px 14px 2px;
+      padding: 16px 18px;
+      box-shadow: var(--fy-shadow-card);
+    }
+    .fy-ai-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--fy-divider);
+    }
+    .fy-ai-agent-label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      font-weight: 650;
+      color: var(--fy-brand-blue);
+    }
+    .fy-final-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(140, 232, 242, 0.18);
+      border: 1px solid rgba(140, 232, 242, 0.35);
+      color: var(--fy-brand-cyan);
+      font-weight: 600;
+    }
+    .fy-indeterminate-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(245, 166, 35, 0.2);
+      border: 1px solid var(--fy-warning-border);
+      color: var(--fy-warning-text);
+      font-weight: 600;
+    }
+
+    .fy-ai-body {
+      font-size: 13.5px;
+      line-height: 1.65;
+      color: var(--fy-text);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* 代码块 */
+    .fy-code-block {
+      background: #172635;
+      border: 1px solid var(--fy-border);
+      border-radius: 8px;
+      overflow: hidden;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+    }
+    .fy-code-header {
+      background: rgba(18, 30, 43, 0.9);
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      color: var(--fy-text-tertiary);
+      font-size: 11px;
+    }
+    .fy-code-pre { padding: 12px; overflow-x: auto; color: #e2f0fc; }
+
+    /* 答复待判定提示 */
+    .fy-indeterminate-alert {
+      background: var(--fy-warning-soft);
+      border: 1px solid var(--fy-warning-border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12.5px;
+      color: var(--fy-warning-text);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    /* 未完成轮次占位卡片 (不承诺代跑) */
+    .fy-incomplete-box {
+      border: 2px dashed rgba(255, 211, 133, 0.45);
+      border-radius: 12px;
+      padding: 14px 18px;
+      background: rgba(110, 70, 10, 0.18);
+      color: var(--fy-warning-text);
+      font-size: 13px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    /* 底部操作底栏 */
+    .fy-bottom-toolbar {
+      padding: 12px 22px;
+      border-top: 1px solid var(--fy-divider);
+      background: rgba(20, 36, 52, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    /* 模态框 */
+    .fy-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 20, 32, 0.75);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 500;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .fy-modal-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    .fy-modal-card {
+      width: 540px;
+      max-width: 90%;
+      background: #233b54;
+      border: 1px solid var(--fy-border-strong);
+      border-radius: 16px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .fy-modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--fy-divider);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .fy-modal-title { font-size: 15px; font-weight: 700; color: var(--fy-text); }
+    .fy-modal-close { background: transparent; border: none; color: var(--fy-text-tertiary); cursor: pointer; font-size: 18px; }
+    .fy-modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; font-size: 13px; line-height: 1.5; }
+    .fy-modal-footer {
+      padding: 14px 20px;
+      border-top: 1px solid var(--fy-divider);
+      background: rgba(16, 29, 44, 0.4);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .fy-radio-card {
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--fy-border);
+      background: var(--fy-surface-soft);
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .fy-radio-card.selected { border-color: var(--fy-brand-blue); background: var(--fy-selected); }
+
+    /* 响应式断点 */
+    @media (max-width: 1024px) {
+      .fy-side-nav { width: 68px; }
+      .fy-brand-title span, .fy-nav-group-title, .fy-nav-item span:not(.fy-nav-icon), .fy-legacy-memory-link span:first-child { display: none; }
+      .fy-nav-item { justify-content: center; }
+      .fy-session-master { width: 280px; }
+    }
+    @media (max-width: 740px) {
+      .fy-content-split { flex-direction: column; }
+      .fy-session-master { width: 100%; height: 100%; }
+      .fy-session-detail { display: none; width: 100%; height: 100%; }
+      .app-viewport-wrapper.viewport-mobile.show-detail .fy-session-master { display: none; }
+      .app-viewport-wrapper.viewport-mobile.show-detail .fy-session-detail { display: flex; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. 顶部控制条 -->
+  <header class="proto-controls" role="banner">
+    <div class="proto-controls-group">
+      <span class="proto-badge-warn">
+        <span>⚠️ 原型模拟环境：默认未验证，所有操作均为交互演示</span>
+      </span>
+      <span style="color: var(--fy-text-tertiary);">状态切换：</span>
+      <button class="proto-state-btn active" data-state="normal">1. 正常已读回</button>
+      <button class="proto-state-btn" data-state="pending_verify">2. 待续聊验证</button>
+      <button class="proto-state-btn" data-state="indeterminate">3. 答复待判定(禁导出与恢复)</button>
+      <button class="proto-state-btn" data-state="incomplete">4. 未完成轮次(不承诺代跑)</button>
+      <button class="proto-state-btn" data-state="unsupported">5. 版本能力未验证(禁提升)</button>
+      <button class="proto-state-btn" data-state="duplicate">6. 重复导入(禁覆盖/默认跳过)</button>
+      <button class="proto-state-btn" data-state="remapping">7. 目录重映射(正文保真)</button>
+    </div>
+
+    <div class="proto-controls-group">
+      <span style="color: var(--fy-text-tertiary);">视口：</span>
+      <button class="proto-state-btn" id="vp-desktop" onclick="setViewport('desktop')">宽屏</button>
+      <button class="proto-state-btn" id="vp-tablet" onclick="setViewport('tablet')">平板</button>
+      <button class="proto-state-btn" id="vp-mobile" onclick="setViewport('mobile')">窄窗</button>
+      <button class="proto-btn-action" onclick="openDemoInfoModal()">ℹ️ 演示说明</button>
+    </div>
+  </header>
+
+  <!-- 2. 主应用视口 -->
+  <main class="app-viewport-wrapper viewport-desktop" id="viewport-container">
+    <div class="fy-app-window">
+      
+      <!-- 侧边导航栏 -->
+      <aside class="fy-side-nav" aria-label="主导航">
+        <div class="fy-nav-header">
+          <div class="fy-traffic-lights" aria-hidden="true">
+            <span class="traffic-light traffic-close"></span>
+            <span class="traffic-light traffic-min"></span>
+            <span class="traffic-light traffic-max"></span>
+          </div>
+          <div class="fy-brand-title">
+            <span class="fy-brand-logo">Fy</span>
+            <span>FyAgent</span>
+          </div>
+        </div>
+
+        <nav class="fy-nav-body">
+          <div>
+            <div class="fy-nav-group-title">AI软件配置</div>
+            <ul class="fy-nav-list">
+              <li><a class="fy-nav-item" href="#agents"><span class="fy-nav-icon">❖</span><span>AI软件配置</span></a></li>
+            </ul>
+          </div>
+
+          <div>
+            <div class="fy-nav-group-title">核心业务</div>
+            <ul class="fy-nav-list">
+              <li>
+                <a class="fy-nav-item active" href="#sessions" aria-current="page">
+                  <span class="fy-nav-icon">💬</span>
+                  <span>会话 Sessions</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <div class="fy-nav-group-title">配置管理</div>
+            <ul class="fy-nav-list">
+              <li><a class="fy-nav-item" href="#models"><span class="fy-nav-icon">⚡</span><span>模型管理</span></a></li>
+              <li><a class="fy-nav-item" href="#skills"><span class="fy-nav-icon">✦</span><span>Skills 管理</span></a></li>
+              <li><a class="fy-nav-item" href="#mcp"><span class="fy-nav-icon">⚙</span><span>MCP 管理</span></a></li>
+              <li><a class="fy-nav-item" href="#prompts"><span class="fy-nav-icon">📝</span><span>提示词管理</span></a></li>
+            </ul>
+          </div>
+        </nav>
+
+        <!-- 旧记忆入口：保留原编辑能力，直接去原界面，绝不削弱 -->
+        <footer class="fy-nav-footer">
+          <div class="fy-legacy-memory-link" onclick="openOriginalMemoryPage()" title="进入原有的完整记忆编辑页面">
+            <span>🧠 记忆管理 (/memory)</span>
+            <span style="font-size: 10px;">完整编辑 ↗</span>
+          </div>
+        </footer>
+      </aside>
+
+      <!-- 主工作区 -->
+      <section class="fy-main-workspace">
+        <div class="fy-top-bar">
+          <div class="fy-breadcrumb">
+            <span>会话中心</span>
+            <span>/</span>
+            <span class="current">跨设备会话管理</span>
+            <span class="proto-badge-warn" style="margin-left: 8px;">演示环境 · 未进行真实服务交互</span>
+          </div>
+
+          <div class="fy-top-actions">
+            <button class="fy-btn" id="btn-back-to-list" style="display: none;" onclick="backToList()">← 返回列表</button>
+            <button class="fy-btn" onclick="openImportModal()"><span>📥</span><span>导入会话包</span></button>
+            <!-- 修复点3：改为预览导出内容（演示），避免下载假标准包 -->
+            <button class="fy-btn fy-btn-primary" onclick="openExportPreviewModal()"><span>👁️</span><span>预览导出内容 (演示)</span></button>
+          </div>
+        </div>
+
+        <!-- 双栏工作台 -->
+        <div class="fy-content-split">
+          
+          <!-- Master 列表 -->
+          <div class="fy-session-master" id="pane-master">
+            <div class="fy-master-header">
+              <div class="fy-provider-chips" role="tablist">
+                <button class="fy-chip active" onclick="filterByProvider('all', this)">全部 (6)</button>
+                <button class="fy-chip" onclick="filterByProvider('codex', this)">Codex</button>
+                <button class="fy-chip" onclick="filterByProvider('opencode', this)">OpenCode</button>
+                <button class="fy-chip" onclick="filterByProvider('hermes', this)">Hermes</button>
+                <button class="fy-chip" onclick="filterByProvider('gemini', this)">Gemini</button>
+                <button class="fy-chip" onclick="filterByProvider('claude', this)">Claude</button>
+                <button class="fy-chip" onclick="filterByProvider('grok', this)">Grok</button>
+                <button class="fy-chip" onclick="filterByProvider('openclaw', this)">OpenClaw</button>
+              </div>
+
+              <div class="fy-search-box">
+                <input type="text" class="fy-search-input" id="search-input" placeholder="搜索会话..." oninput="handleSearch(this.value)">
+                <span class="fy-search-shortcut">⌘K</span>
+              </div>
+            </div>
+
+            <div class="fy-session-list" id="session-items-container"></div>
+          </div>
+
+          <!-- Detail 面板 -->
+          <div class="fy-session-detail" id="pane-detail">
+            <div class="fy-detail-header">
+              <div class="fy-detail-header-top">
+                <div class="fy-detail-title-block">
+                  <h1 class="fy-detail-title" id="detail-title">优化分布式会话恢复的重试机制</h1>
+                  <div class="fy-detail-tags">
+                    <span class="fy-provider-tag tag-opencode" id="detail-provider-badge">OpenCode</span>
+                    <span id="detail-turn-count">共 3 轮问答</span>
+                    <span>•</span>
+                    <span id="detail-time">2026-09-22 00:45</span>
+                    <span>•</span>
+                    <span style="font-family: var(--font-mono); font-size: 11px;" id="detail-session-id">源ID: ses_ea588fdb7d5b</span>
+                  </div>
+                </div>
+
+                <div class="fy-detail-actions">
+                  <button class="fy-btn" onclick="openRemapModal()"><span>📂</span><span>映射本机目录</span></button>
+                  <button class="fy-btn fy-btn-cyan" id="btn-primary-resume" onclick="handleResumeInTarget()">
+                    <span>▶</span><span>在目标软件中恢复</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 本地目录映射条 (明确正文旧路径保真) -->
+              <div class="fy-workspace-bar">
+                <div class="fy-workspace-info">
+                  <span style="color: var(--fy-text-tertiary); font-weight: 550;">目标软件逻辑工作区:</span>
+                  <span class="fy-workspace-path" id="detail-workspace-path">/Users/serendipity/workspace/fyagent</span>
+                </div>
+                <span style="font-size: 11px; color: var(--fy-text-tertiary);">（注：对话正文内的历史代码与旧路径保持绝对保真）</span>
+              </div>
+            </div>
+
+            <!-- 动态状态横幅 -->
+            <div id="dynamic-status-banner"></div>
+
+            <!-- 纯净问答流 -->
+            <div class="fy-conversation-stream" id="conversation-stream"></div>
+
+            <!-- 底部操作底栏 -->
+            <div class="fy-bottom-toolbar">
+              <div style="font-size: 12px; color: var(--fy-text-tertiary);">
+                <span>仅保留用户原文与最终答复；不包含工具日志、思考过程及文件。</span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <!-- 修复点2：查看启动说明 (模拟)，不生成可执行伪命令 -->
+                <button class="fy-btn" onclick="showStartupGuideModal()"><span>ℹ️</span><span>查看启动说明 (模拟)</span></button>
+                <!-- 修复点1：仅记录用户手动状态，绝不提升底层 capability -->
+                <button class="fy-btn fy-btn-primary" onclick="markUserConfirmed()"><span>✓</span><span>记录：我已手动续聊</span></button>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+    </div>
+  </main>
+
+  <!-- 3. 弹窗：导入会话包 -->
+  <div class="fy-modal-backdrop" id="modal-import" onclick="closeModalOnBackdrop(event, 'modal-import')">
+    <div class="fy-modal-card">
+      <div class="fy-modal-header">
+        <h3 class="fy-modal-title">导入跨设备会话包</h3>
+        <button class="fy-modal-close" onclick="closeModal('modal-import')">✕</button>
+      </div>
+      <div class="fy-modal-body">
+        <p style="color: var(--fy-text-secondary);">
+          导入精简会话文件。导入后在对应目标软件中原生重构并继续对话。
+        </p>
+
+        <div class="fy-dropzone" style="border: 2px dashed var(--fy-border-strong); border-radius: 12px; padding: 24px; text-align: center; background: var(--fy-surface-soft);">
+          <strong style="color: var(--fy-brand-blue);">已选择示例包 (3 轮纯净问答)</strong>
+          <div style="font-size: 11px; color: var(--fy-text-tertiary); margin-top: 4px;">来源软件: OpenCode</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label style="font-size: 12px; font-weight: 600;">绑定当前机器的工作目录：</label>
+          <input type="text" class="fy-search-input" id="import-dir-input" value="/Users/serendipity/workspace/fyagent" style="height: 34px;">
+          <span style="font-size: 11px; color: var(--fy-text-tertiary);">仅更新目标软件的元数据，正文中出现的历史路径不做篡改。</span>
+        </div>
+      </div>
+      <div class="fy-modal-footer">
+        <button class="fy-btn" onclick="closeModal('modal-import')">取消</button>
+        <button class="fy-btn fy-btn-primary" onclick="confirmImport()">写入目标原生存储</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 弹窗：重复导入冲突防护 (禁止覆盖已存历史，默认跳过/打开已有) -->
+  <div class="fy-modal-backdrop" id="modal-duplicate" onclick="closeModalOnBackdrop(event, 'modal-duplicate')">
+    <div class="fy-modal-card">
+      <div class="fy-modal-header">
+        <h3 class="fy-modal-title" style="color: var(--fy-warning-text);">⚠️ 检测到目标软件已存在相同会话</h3>
+        <button class="fy-modal-close" onclick="closeModal('modal-duplicate')">✕</button>
+      </div>
+      <div class="fy-modal-body">
+        <p style="color: var(--fy-text);">
+          目标设备的会话库中已存在相同来源的记录（源 ID: <code>ses_ea588fdb7d5b</code>）。
+          <br><strong style="color: var(--fy-danger-text);">规则禁止覆盖已有原生会话历史！</strong>
+        </p>
+
+        <div class="fy-radio-card-group" style="display: flex; flex-direction: column; gap: 8px;">
+          <label class="fy-radio-card selected" onclick="selectConflictOption(this)">
+            <input type="radio" name="dup-option" checked style="margin-top: 3px;">
+            <div>
+              <strong>打开已有记录 / 跳过导入 (默认安全)</strong>
+              <div style="color: var(--fy-text-tertiary); font-size: 11px;">放弃本次重复写入，直接定位至已存在的本地原生会话。</div>
+            </div>
+          </label>
+
+          <label class="fy-radio-card" onclick="selectConflictOption(this)">
+            <input type="radio" name="dup-option" style="margin-top: 3px;">
+            <div>
+              <strong>另存为独立新副本 (生成新原生ID)</strong>
+              <div style="color: var(--fy-text-tertiary); font-size: 11px;">创建一份完全隔离的分支记录，生成新的目标原生 ID，绝不影响原历史。</div>
+            </div>
+          </label>
+        </div>
+      </div>
+      <div class="fy-modal-footer">
+        <button class="fy-btn" onclick="closeModal('modal-duplicate')">取消</button>
+        <button class="fy-btn fy-btn-primary" onclick="resolveDuplicateConflict()">确认执行</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 弹窗：映射本地目录 -->
+  <div class="fy-modal-backdrop" id="modal-remap" onclick="closeModalOnBackdrop(event, 'modal-remap')">
+    <div class="fy-modal-card">
+      <div class="fy-modal-header">
+        <h3 class="fy-modal-title">映射目标工作区目录</h3>
+        <button class="fy-modal-close" onclick="closeModal('modal-remap')">✕</button>
+      </div>
+      <div class="fy-modal-body">
+        <p style="color: var(--fy-text-secondary);">
+          跨设备时原机器的路径在当前系统不可用。请指定本机对应目录：
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label style="font-size: 12px; font-weight: 600;">目标本机目录：</label>
+          <input type="text" class="fy-search-input" id="remap-input-path" value="/Users/serendipity/workspace/fyagent" style="height: 34px;">
+        </div>
+
+        <div class="banner-warning" style="padding: 10px; border-radius: 8px; font-size: 12px;">
+          <strong>正文保真说明：</strong>
+          系统仅在目标会话元数据中更新工作区绑定；正文中的所有历史路径均保持原文，不做消除。
+        </div>
+      </div>
+      <div class="fy-modal-footer">
+        <button class="fy-btn" onclick="closeModal('modal-remap')">取消</button>
+        <button class="fy-btn fy-btn-primary" onclick="applyRemap()">确认绑定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. 弹窗：预览导出内容（演示）-->
+  <div class="fy-modal-backdrop" id="modal-export-preview" onclick="closeModalOnBackdrop(event, 'modal-export-preview')">
+    <div class="fy-modal-card" style="width: 620px;">
+      <div class="fy-modal-header">
+        <h3 class="fy-modal-title">预览导出内容 (纯文本问答演示)</h3>
+        <button class="fy-modal-close" onclick="closeModal('modal-export-preview')">✕</button>
+      </div>
+      <div class="fy-modal-body">
+        <div style="font-size: 11.5px; color: var(--fy-warning-text); background: var(--fy-warning-soft); padding: 8px 12px; border-radius: 6px;">
+          💡 提示：技术方案与生产包格式尚未冻结。此原型仅作纯文本问答预览演示，不下载假标准包；无 final answer 时直接省略，不生成空字段。
+        </div>
+        <pre id="export-preview-content" style="background: #142434; border: 1px solid var(--fy-border); border-radius: 8px; padding: 14px; color: #e2f0fc; font-family: var(--font-mono); font-size: 12px; max-height: 280px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5;"></pre>
+      </div>
+      <div class="fy-modal-footer">
+        <button class="fy-btn fy-btn-primary" onclick="closeModal('modal-export-preview')">关闭预览</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. 弹窗：启动说明 (模拟) -->
+  <div class="fy-modal-backdrop" id="modal-startup-guide" onclick="closeModalOnBackdrop(event, 'modal-startup-guide')">
+    <div class="fy-modal-card">
+      <div class="fy-modal-header">
+        <h3 class="fy-modal-title">目标软件启动说明 (模拟)</h3>
+        <button class="fy-modal-close" onclick="closeModal('modal-startup-guide')">✕</button>
+      </div>
+      <div class="fy-modal-body">
+        <p style="color: var(--fy-text);">
+          由于各客户端的启动参数与目标会话 ID 格式不同，且技术方案仍在实施中，<strong>本原型不生成未经验证的可执行伪命令</strong>。
+        </p>
+        <div style="padding: 12px; background: rgba(18, 30, 43, 0.6); border-radius: 8px; font-size: 12px; border: 1px solid var(--fy-border);">
+          <div><strong>当前客户端：</strong><span id="guide-provider-name">OpenCode</span></div>
+          <div><strong>原生接入方式：</strong><span id="guide-channel-desc">需通过该软件的本地会话存储或官方 CLI resume 入口装载。</span></div>
+          <div style="margin-top: 6px; color: var(--fy-text-tertiary);">请在目标软件原生界面中查看会话列表并进行下一轮续聊。</div>
+        </div>
+      </div>
+      <div class="fy-modal-footer">
+        <button class="fy-btn fy-btn-primary" onclick="closeModal('modal-startup-guide')">了解</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. 弹窗：演示说明 (替代原本的大抽屉) -->
+  <div class="fy-modal-backdrop" id="modal-demo-info" onclick="closeModalOnBackdrop(event, 'modal-demo-info')">
+    <div class="fy-modal-card">
+      <div class="fy-modal-header">
+        <h3 class="fy-modal-title">ℹ️ 原型交互演示说明</h3>
+        <button class="fy-modal-close" onclick="closeModal('modal-demo-info')">✕</button>
+      </div>
+      <div class="fy-modal-body" style="font-size: 12.5px; line-height: 1.6;">
+        <p>本原型用于演示 Session 跨设备恢复的交互界面与状态边界：</p>
+        <ul style="padding-left: 18px; color: var(--fy-text-secondary); display: flex; flex-direction: column; gap: 6px;">
+          <li><strong>纯净契约：</strong>只展示用户原文与最终答复；不确定答复直接阻断导出与恢复。</li>
+          <li><strong>能力解耦：</strong>用户手动确认与目录重映射绝不提升底层的软件恢复能力。</li>
+          <li><strong>正文保真：</strong>正文内的旧路径绝对保真，不作虚假消除承诺。</li>
+          <li><strong>真实性声明：</strong>所有数据流转均为前端模拟演示，默认处于未验证状态。</li>
+        </ul>
+      </div>
+      <div class="fy-modal-footer">
+        <button class="fy-btn fy-btn-primary" onclick="closeModal('modal-demo-info')">关闭说明</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript 状态引擎 (严格解耦 capability、userConfirmed 与 workspace) -->
+  <script>
+    const SESSIONS_DATA = [
+      {
+        id: "ses-opencode-01",
+        title: "优化分布式会话恢复的重试机制",
+        provider: "opencode",
+        providerName: "OpenCode",
+        providerTagClass: "tag-opencode",
+        time: "2026-09-22 00:45",
+        originalId: "ses_ea588fdb7d5b",
+        workspace: "/Users/serendipity/workspace/fyagent",
+        capability: "supported", // 独立底层能力: supported | unverified
+        userConfirmed: false,    // 用户手动标记
+        status: "normal",        // 业务状态: normal | pending_verify
+        turns: [
+          {
+            turnNum: 1,
+            userText: "我们在多设备间同步会话时，如果目标环境网络波动导致写入中断，应该如何设计幂等重试？",
+            assistantText: "在分布式或跨设备会话恢复场景下，幂等重试应当围绕会话来源指纹与客户端写入原子性进行构建：\n\n1. 指纹校验：每次导出生成基于 source_session_id + turn_count 的哈希。\n2. 幂等存储写入：适配器写入前先执行原子探针检测，若发现已存在相同指纹，默认返回既有会话句柄而非覆盖。",
+            code: "// 重试防护结构体定义\npub struct RecoveryAttempt {\n    pub fingerprint: String,\n    pub target_provider: ProviderId,\n}\n\n// 默认禁止覆盖已有历史",
+            codeLang: "rust"
+          },
+          {
+            turnNum: 2,
+            userText: "目标设备原生会话 ID 变化的话，怎么关联？",
+            assistantText: "目标设备生成新原生会话 ID 是完全合法的。跨设备恢复的核心目标是让目标模型接上历史上下文，而不是强求全平台唯一键。\n\n可以在 FyAgent 本地元数据表里维护映射对：(source_device_id, source_session_id) -> target_session_id。",
+            code: null
+          },
+          {
+            turnNum: 3,
+            userText: "好的，请把这个方案总结为三条实施原则。",
+            assistantText: "归纳为以下三项核心实施原则：\n\n1. 内容纯净：只保存用户原文和最终答复，剔除任何中间工具调用碎片与执行日志；\n2. 禁止覆盖：重复同包默认打开已有，明确另存副本才生成新 ID，绝不破坏已有原生历史；\n3. 严肃区分验证：用户手动点击确认仅为主观记录，不等于客观自动化验收或重启验证通过。",
+            code: null
+          }
+        ]
+      },
+      {
+        id: "ses-codex-02",
+        title: "Codex App Server thread 注入协议调研",
+        provider: "codex",
+        providerName: "Codex",
+        providerTagClass: "tag-codex",
+        time: "2026-09-21 23:10",
+        originalId: "th_98bc72ef",
+        workspace: "/Users/serendipity/workspace/fyagent",
+        capability: "supported",
+        userConfirmed: false,
+        status: "pending_verify",
+        hasProbeWarning: true,
+        turns: [
+          {
+            turnNum: 1,
+            userText: "Codex 0.154.0 本机版本中，App Server 支持通过什么公开接口注入既有问答轮次？",
+            assistantText: "根据官方协议提取物与本地 JSON Schema 证据：\n\n在 Codex 0.154.0 中，可调用 thread/inject_items 接口注入消息。\n\n⚠️ 实测注意（来自 codex-probe 实测）：历史查询为空，桌面UI展示未验证；最新本机模拟请求已证明重启后四条历史进入下轮请求，但不是真实模型续聊。不得据此断言恢复成功！",
+            code: "{\n  \"method\": \"thread/inject_items\",\n  \"params\": {\n    \"threadId\": \"th_98bc72ef\",\n    \"items\": [\n      {\"type\": \"user_message\", \"content\": \"...\"},\n      {\"type\": \"assistant_message\", \"content\": \"...\"}\n    ]\n  }\n}",
+            codeLang: "json"
+          }
+        ]
+      },
+      {
+        id: "ses-hermes-03",
+        title: "Hermes SQLite 消息清理与最终答复提取",
+        provider: "hermes",
+        providerName: "Hermes",
+        providerTagClass: "tag-hermes",
+        time: "2026-09-21 21:30",
+        originalId: "hermes-session-42",
+        workspace: "/Users/serendipity/workspace/fyagent",
+        capability: "supported",
+        userConfirmed: false,
+        status: "normal",
+        turns: [
+          {
+            turnNum: 1,
+            userText: "从 Hermes 提取消息时如何识别最终答复？",
+            assistantText: "Hermes 导入器会将工具活动压缩为助手消息内的短注记 [ran tool: ...]。在迁移前必须准确剔除中途播报，保留最终答复。",
+            code: null
+          },
+          {
+            turnNum: 2,
+            userText: "如果遇到最后一轮正在生成时进程被杀呢？",
+            assistantText: "", // 修复点4：不展示未过滤的原始日志文本
+            isIndeterminate: true,
+            indeterminateReason: "模型推理被中断，存在中途执行日志。根据精简契约，未过滤执行内容已被隐藏。",
+            code: null
+          }
+        ]
+      },
+      {
+        id: "ses-grok-04",
+        title: "Grok Build 1.0.34 会话恢复能力核验",
+        provider: "grok",
+        providerName: "Grok Build",
+        providerTagClass: "tag-grok",
+        time: "2026-09-21 18:20",
+        originalId: "grok-sess-99a",
+        workspace: "/Users/serendipity/workspace/fyagent",
+        capability: "unverified", // 修复点1：底层能力未验证！
+        userConfirmed: false,
+        status: "normal",
+        turns: [
+          {
+            turnNum: 1,
+            userText: "为什么 Grok Build 1.0.34 无法直接恢复？",
+            assistantText: "经本机 1.0.34 --help 实机核验，该安装版本未列出顶层 import 命令。当前版本的恢复能力尚未验证（未知不等于不可能）。\n\n本轮产品要求对应软件原生恢复，因此不会将此会话擅自转换为其他客户端格式，以保护数据边界。",
+            code: null
+          }
+        ]
+      },
+      {
+        id: "ses-gemini-05",
+        title: "Gemini CLI 跨平台目录重映射测试",
+        provider: "gemini",
+        providerName: "Gemini CLI",
+        providerTagClass: "tag-gemini",
+        time: "2026-09-21 16:15",
+        originalId: "gemini-uuid-7712",
+        workspace: "D:\\old_win_work\\gemini-agent",
+        capability: "supported",
+        userConfirmed: false,
+        status: "normal",
+        turns: [
+          {
+            turnNum: 1,
+            userText: "我在 Windows 的 D:\\old_win_work\\gemini-agent 导出的会话，在 Mac 怎么映射？",
+            assistantText: "系统仅在目标机元数据中绑定当前 Mac 的合法工作目录。请注意：用户提问与回答正文中的历史路径（如 D:\\old_win_work\\gemini-agent）将绝对保真，不会被篡改。",
+            code: null
+          }
+        ]
+      },
+      {
+        id: "ses-claude-06",
+        title: "Claude Code 中断轮次测试",
+        provider: "claude",
+        providerName: "Claude Code",
+        providerTagClass: "tag-claude",
+        time: "2026-09-21 14:00",
+        originalId: "claude-pr-11",
+        workspace: "/Users/serendipity/workspace/fyagent",
+        capability: "supported",
+        userConfirmed: false,
+        status: "normal",
+        turns: [
+          {
+            turnNum: 1,
+            userText: "分析中断轮次在迁移中的处理规范。",
+            assistantText: "未完成轮次仅保留用户提问原文。导入目标软件后，目标软件不会自动代跑旧指令或继续生成，后续由用户主动发送新消息。",
+            code: null
+          },
+          {
+            turnNum: 2,
+            userText: "我在执行过程中按了 Ctrl+C 导致中断...",
+            assistantText: "",
+            isIncomplete: true
+          }
+        ]
+      }
+    ];
+
+    let currentSessions = [...SESSIONS_DATA];
+    let selectedSession = SESSIONS_DATA[0];
+    let activeFilter = 'all';
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderSessionList();
+      renderDetail(selectedSession);
+      setupKeyboardNavigation();
+    });
+
+    // 计算派生的显示状态与徽标
+    function getSessionDisplayStatus(sess) {
+      if (sess.capability === 'unverified') {
+        if (sess.userConfirmed) {
+          return { text: "用户记录已续聊 (能力未验证)", dotClass: "dot-unsupported" };
+        }
+        return { text: "恢复能力尚未验证", dotClass: "dot-unsupported" };
+      }
+      if (sess.turns.some(t => t.isIndeterminate)) {
+        return { text: "答复待判定(禁导出与恢复)", dotClass: "dot-alert" };
+      }
+      if (sess.userConfirmed) {
+        return { text: "用户确认已续聊", dotClass: "dot-user-confirmed" };
+      }
+      if (sess.status === 'pending_verify') {
+        return { text: "待续聊验证", dotClass: "dot-pending" };
+      }
+      if (sess.turns.some(t => t.isIncomplete)) {
+        return { text: "含未完成轮", dotClass: "dot-alert" };
+      }
+      return { text: "未验证 (演示数据)", dotClass: "dot-unverified" };
+    }
+
+    function renderSessionList() {
+      const container = document.getElementById('session-items-container');
+      container.innerHTML = '';
+      currentSessions.forEach((sess) => {
+        const item = document.createElement('div');
+        item.className = `fy-session-item ${selectedSession && selectedSession.id === sess.id ? 'selected' : ''}`;
+        item.onclick = () => selectSession(sess);
+
+        const statusInfo = getSessionDisplayStatus(sess);
+
+        item.innerHTML = `
+          <div class="fy-session-item-top">
+            <span class="fy-provider-tag ${sess.providerTagClass}">${sess.providerName}</span>
+            <span class="fy-session-time">${sess.time.split(' ')[1]}</span>
+          </div>
+          <div class="fy-session-title">${escapeHtml(sess.title)}</div>
+          <div class="fy-session-meta-row">
+            <span>${sess.turns.length} 轮问答</span>
+            <span class="fy-status-dot">
+              <span class="dot-indicator ${statusInfo.dotClass}"></span>
+              <span>${statusInfo.text}</span>
+            </span>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function selectSession(sess) {
+      selectedSession = sess;
+      renderSessionList();
+      renderDetail(sess);
+      const wrapper = document.getElementById('viewport-container');
+      if (wrapper.classList.contains('viewport-mobile')) {
+        wrapper.classList.add('show-detail');
+        document.getElementById('btn-back-to-list').style.display = 'inline-flex';
+      }
+    }
+
+    function backToList() {
+      const wrapper = document.getElementById('viewport-container');
+      wrapper.classList.remove('show-detail');
+      document.getElementById('btn-back-to-list').style.display = 'none';
+    }
+
+    function renderDetail(sess) {
+      if (!sess) return;
+      document.getElementById('detail-title').textContent = sess.title;
+      document.getElementById('detail-provider-badge').textContent = sess.providerName;
+      document.getElementById('detail-provider-badge').className = `fy-provider-tag ${sess.providerTagClass}`;
+      document.getElementById('detail-turn-count').textContent = `共 ${sess.turns.length} 轮问答`;
+      document.getElementById('detail-time').textContent = sess.time;
+      document.getElementById('detail-session-id').textContent = `源ID: ${sess.originalId}`;
+      document.getElementById('detail-workspace-path').textContent = sess.workspace;
+
+      const bannerContainer = document.getElementById('dynamic-status-banner');
+      bannerContainer.innerHTML = '';
+
+      // 修复点5：Codex 探针实测严谨表述
+      if (sess.hasProbeWarning) {
+        bannerContainer.innerHTML += `
+          <div class="fy-status-banner banner-warning">
+            <div>
+              <strong>⚠️ 探针实测警示 (Codex 0.154.0)：</strong>
+              经实测，协议注入成功且落盘，但<strong>历史查询为空，桌面UI展示未验证</strong>；最新本机模拟请求已证明重启后四条历史进入下轮请求，但非真实模型续聊。不得据此断言恢复成功。
+            </div>
+          </div>
+        `;
+      }
+
+      // 修复点1：capability 与业务横幅解耦
+      if (sess.capability === 'unverified') {
+        bannerContainer.innerHTML += `
+          <div class="fy-status-banner banner-warning">
+            <div>
+              <strong>⚠️ 当前版本的恢复能力尚未验证：</strong>
+              本机安装的 <strong>${sess.providerName}</strong> 缺少公开导入接口。产品遵循对应软件原生恢复，<strong>严禁擅自推荐跨软件格式转换</strong>。
+            </div>
+          </div>
+        `;
+      }
+
+      const hasIndeterminate = sess.turns.some(t => t.isIndeterminate);
+      if (hasIndeterminate) {
+        bannerContainer.innerHTML += `
+          <div class="fy-status-banner banner-danger">
+            <div>
+              <strong>🚫 最终答复待判定（锁定导出与恢复写入）：</strong>
+              会话中存在未判定是否为最终输出的轮次。根据精简契约，<strong>严禁将未判定内容导出入包或写回目标客户端</strong>。
+            </div>
+          </div>
+        `;
+      } else if (sess.status === 'pending_verify') {
+        bannerContainer.innerHTML += `
+          <div class="fy-status-banner banner-warning">
+            <div>
+              <strong>⏳ 待续聊验证：</strong>
+              数据已落入本地存储。请拉起目标软件发送下一条测试问题，验证能否准确接续历史。
+            </div>
+            <button class="fy-btn" style="height: 28px; font-size: 11px;" onclick="markUserConfirmed()">记录我已续聊</button>
+          </div>
+        `;
+      }
+
+      const stream = document.getElementById('conversation-stream');
+      stream.innerHTML = '';
+
+      sess.turns.forEach((turn, idx) => {
+        const turnCard = document.createElement('article');
+        turnCard.className = 'fy-turn-card';
+
+        const divider = document.createElement('div');
+        divider.className = 'fy-turn-divider';
+        divider.textContent = `第 ${turn.turnNum || idx + 1} 轮问答`;
+        turnCard.appendChild(divider);
+
+        const userWrap = document.createElement('div');
+        userWrap.className = 'fy-user-msg-wrap';
+        userWrap.innerHTML = `
+          <div class="fy-user-msg">
+            <div style="white-space: pre-wrap;">${escapeHtml(turn.userText)}</div>
+          </div>
+        `;
+        turnCard.appendChild(userWrap);
+
+        const aiWrap = document.createElement('div');
+        aiWrap.className = 'fy-ai-msg-wrap';
+
+        if (turn.isIncomplete) {
+          aiWrap.innerHTML = `
+            <div class="fy-ai-msg" style="border-style: dashed; border-color: var(--fy-warning);">
+              <div class="fy-incomplete-box">
+                <span style="font-size: 18px;">⏸</span>
+                <div>
+                  <strong>未完成轮次：AI 最终答复不存在</strong>
+                  <div style="font-size: 11px; color: var(--fy-text-secondary); margin-top: 4px;">
+                    该会话在提问后被中断。会话仅保留此提示词原文。<br>
+                    <strong>目标软件不会自动代跑旧指令或继续生成</strong>，导入后需由你在目标客户端中主动发送新消息。
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (turn.isIndeterminate) {
+          // 修复点4：不标“最终答复 Final Answer”，不显示原始日志！
+          aiWrap.innerHTML = `
+            <div class="fy-ai-msg" style="border-color: var(--fy-warning-border);">
+              <div class="fy-ai-header">
+                <div class="fy-ai-agent-label" style="color: var(--fy-warning-text);">
+                  <span>⚠️</span>
+                  <span>${sess.providerName} 答复待判定</span>
+                  <span class="fy-indeterminate-badge">待判定</span>
+                </div>
+              </div>
+              <div class="fy-ai-body">
+                <div class="fy-indeterminate-alert">
+                  <strong>未过滤执行内容已被隐藏</strong>
+                  <span>${escapeHtml(turn.indeterminateReason || "模型推理被中断，存在中途执行日志。根据精简契约，未过滤执行内容已被隐藏。")}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          let codeBlockHtml = '';
+          if (turn.code) {
+            codeBlockHtml = `
+              <div class="fy-code-block">
+                <div class="fy-code-header">
+                  <span>${turn.codeLang || 'code'}</span>
+                  <button class="fy-btn" style="height: 22px; padding: 0 6px; font-size: 10px;" onclick="copyCode(this)">复制</button>
+                </div>
+                <pre class="fy-code-pre"><code>${escapeHtml(turn.code)}</code></pre>
+              </div>
+            `;
+          }
+
+          aiWrap.innerHTML = `
+            <div class="fy-ai-msg">
+              <div class="fy-ai-header">
+                <div class="fy-ai-agent-label">
+                  <span>✦</span>
+                  <span>${sess.providerName} 最终答复</span>
+                  <span class="fy-final-badge">Final Answer</span>
+                </div>
+                <button class="fy-btn" style="height: 24px; font-size: 11px; padding: 0 8px;" onclick="copyAiAnswer(this)">复制答复</button>
+              </div>
+              <div class="fy-ai-body">
+                <div style="white-space: pre-wrap;">${escapeHtml(turn.assistantText)}</div>
+                ${codeBlockHtml}
+              </div>
+            </div>
+          `;
+        }
+
+        turnCard.appendChild(aiWrap);
+        stream.appendChild(turnCard);
+      });
+    }
+
+    // 状态切换控制器
+    document.querySelectorAll('.proto-state-btn[data-state]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.proto-state-btn[data-state]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyPrototypeState(btn.getAttribute('data-state'));
+      });
+    });
+
+    function applyPrototypeState(state) {
+      if (state === 'normal') {
+        selectedSession = SESSIONS_DATA[0];
+      } else if (state === 'pending_verify') {
+        selectedSession = SESSIONS_DATA[1];
+      } else if (state === 'indeterminate') {
+        selectedSession = SESSIONS_DATA[2];
+      } else if (state === 'unsupported') {
+        selectedSession = SESSIONS_DATA[3]; // Grok: capability 为 unverified
+      } else if (state === 'remapping') {
+        selectedSession = SESSIONS_DATA[4];
+      } else if (state === 'incomplete') {
+        selectedSession = SESSIONS_DATA[5];
+      } else if (state === 'duplicate') {
+        openDuplicateModal();
+        return;
+      }
+      renderSessionList();
+      renderDetail(selectedSession);
+    }
+
+    function setViewport(mode) {
+      const container = document.getElementById('viewport-container');
+      container.className = `app-viewport-wrapper viewport-${mode}`;
+      document.querySelectorAll('#vp-desktop, #vp-tablet, #vp-mobile').forEach(b => b.classList.remove('active'));
+      document.getElementById(`vp-${mode}`).classList.add('active');
+      if (mode !== 'mobile') {
+        document.getElementById('btn-back-to-list').style.display = 'none';
+        container.classList.remove('show-detail');
+      }
+    }
+
+    function filterByProvider(provider, chipEl) {
+      activeFilter = provider;
+      document.querySelectorAll('.fy-provider-chips .fy-chip').forEach(c => c.classList.remove('active'));
+      chipEl.classList.add('active');
+      currentSessions = provider === 'all' ? [...SESSIONS_DATA] : SESSIONS_DATA.filter(s => s.provider === provider);
+      selectedSession = currentSessions[0] || null;
+      renderSessionList();
+      renderDetail(selectedSession);
+    }
+
+    function handleSearch(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) {
+        filterByProvider(activeFilter, document.querySelector(`.fy-provider-chips .fy-chip.active`));
+        return;
+      }
+      currentSessions = SESSIONS_DATA.filter(s => 
+        s.title.toLowerCase().includes(q) || 
+        s.turns.some(t => t.userText.toLowerCase().includes(q) || (t.assistantText && t.assistantText.toLowerCase().includes(q)))
+      );
+      selectedSession = currentSessions[0] || null;
+      renderSessionList();
+      renderDetail(selectedSession);
+    }
+
+    // 修复点3：预览导出内容（演示），避免下载假标准包
+    function openExportPreviewModal() {
+      if (!selectedSession) return;
+
+      // 强拦截未判定答复
+      const hasIndeterminate = selectedSession.turns.some(t => t.isIndeterminate);
+      if (hasIndeterminate) {
+        showNotification("❌ 导出被强行拦截：会话存在待判定的答复，禁止导出！", true);
+        alert("【导出拦截】\n根据迁移契约：会话中存在不可判定的答复（可能包含中间工具/进度日志）。\n系统禁止导出该会话，不得用用户确认绕过精简契约。请在原软件中确认或清理。");
+        return;
+      }
+
+      // 生成纯文本预览问答：无 final 时直接省略，不填空串！
+      let previewText = `会话标题: ${selectedSession.title}\n来源软件: ${selectedSession.providerName}\n原始会话ID: ${selectedSession.originalId}\n\n`;
+      selectedSession.turns.forEach(t => {
+        previewText += `[第 ${t.turnNum || 1} 轮 · 用户输入]\n${t.userText}\n\n`;
+        if (t.assistantText && t.assistantText.trim().length > 0) {
+          previewText += `[第 ${t.turnNum || 1} 轮 · AI最终答复]\n${t.assistantText}\n\n`;
+        }
+        // 无 final 时直接省略最终答复行，不填空字段或占位假数据
+      });
+
+      document.getElementById('export-preview-content').textContent = previewText;
+      document.getElementById('modal-export-preview').classList.add('open');
+    }
+
+    // 修复点2：查看启动说明 (模拟)，不生成可执行伪命令
+    function showStartupGuideModal() {
+      if (!selectedSession) return;
+      document.getElementById('guide-provider-name').textContent = selectedSession.providerName;
+      if (selectedSession.capability === 'unverified') {
+        document.getElementById('guide-channel-desc').textContent = "⚠️ 当前版本的恢复能力尚未验证，无已验证的目标会话 ID。系统已禁用伪命令。";
+      } else {
+        document.getElementById('guide-channel-desc').textContent = `目标软件 (${selectedSession.providerName}) 原生接入仍在验证实施中。请直接打开该软件历史会话列表继续对话。`;
+      }
+      document.getElementById('modal-startup-guide').classList.add('open');
+    }
+
+    // 修复点1：严肃解耦，markUserConfirmed 绝不可将 capability 提升为 supported！
+    function markUserConfirmed() {
+      if (!selectedSession) return;
+      selectedSession.userConfirmed = true;
+      // 保持 capability 原样不变！
+      renderSessionList();
+      renderDetail(selectedSession);
+      showNotification('✓ 已记录：用户确认已手动续聊（注：不提升底层版本恢复能力，不等于自动化测试验证）');
+    }
+
+    // 修复点1：写入恢复双重强拦截
+    function handleResumeInTarget() {
+      if (!selectedSession) return;
+
+      // 拦截 1：底层 capability 为 unverified
+      if (selectedSession.capability === 'unverified') {
+        showNotification('⚠️ 当前版本恢复能力尚未验证，锁定写入操作。', true);
+        alert("【恢复锁定】\n当前版本的恢复能力尚未验证，锁定写入操作，防止破坏目标软件历史。");
+        return;
+      }
+
+      // 拦截 2：存在任一 isIndeterminate
+      if (selectedSession.turns.some(t => t.isIndeterminate)) {
+        showNotification('🚫 恢复写入被拦截：存在答复待判定轮次，严禁写入目标客户端！', true);
+        alert("【恢复拦截】\n会话中存在待判定的答复，可能包含中途执行日志。严禁向目标客户端写入未判定的内容。");
+        return;
+      }
+
+      showNotification(`[模拟演示] 正在向 ${selectedSession.providerName} 写入会话...`);
+      setTimeout(() => {
+        selectedSession.status = 'pending_verify';
+        renderSessionList();
+        renderDetail(selectedSession);
+        showNotification(`✓ [模拟] 写入就绪。请在目标客户端发送新问题进行续聊。`);
+      }, 500);
+    }
+
+    // 弹窗控制
+    function openImportModal() { document.getElementById('modal-import').classList.add('open'); }
+    function openDuplicateModal() { document.getElementById('modal-duplicate').classList.add('open'); }
+    function openRemapModal() { document.getElementById('modal-remap').classList.add('open'); }
+    function openDemoInfoModal() { document.getElementById('modal-demo-info').classList.add('open'); }
+
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+    function closeModalOnBackdrop(e, id) { if (e.target.id === id) closeModal(id); }
+
+    function openOriginalMemoryPage() {
+      alert("【保留原编辑能力】\n将直接导航至原有的 /memory 完整编辑界面。\n支持直接编辑 MEMORY.md、USER.md 等文件，原编辑功能无任何削弱。");
+    }
+
+    function confirmImport() {
+      closeModal('modal-import');
+      showNotification('✓ [模拟] 导入完成，已置为待续聊验证状态。');
+      applyPrototypeState('pending_verify');
+    }
+
+    function selectConflictOption(cardEl) {
+      document.querySelectorAll('.fy-radio-card').forEach(c => c.classList.remove('selected'));
+      cardEl.classList.add('selected');
+      cardEl.querySelector('input').checked = true;
+    }
+
+    function resolveDuplicateConflict() {
+      closeModal('modal-duplicate');
+      const isFork = document.querySelectorAll('.fy-radio-card')[1].classList.contains('selected');
+      if (isFork) {
+        showNotification('✓ 已另存为独立新副本 (生成新原生ID)，未修改既有历史。');
+      } else {
+        showNotification('✓ 已跳过导入，直接打开本地已有会话。');
+      }
+      applyPrototypeState('normal');
+    }
+
+    // 修复点1：applyRemap 仅更新 workspace 路径，绝不改变 capability！
+    function applyRemap() {
+      const newPath = document.getElementById('remap-input-path').value;
+      if (selectedSession) {
+        selectedSession.workspace = newPath;
+        // capability 保持原本不变！
+      }
+      closeModal('modal-remap');
+      renderSessionList();
+      renderDetail(selectedSession);
+      showNotification(`✓ 目标逻辑工作区已更新为: ${newPath}（正文旧路径绝对保真）`);
+    }
+
+    function copyAiAnswer(btn) {
+      const text = btn.closest('.fy-ai-msg').querySelector('.fy-ai-body').innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = '已复制！';
+        setTimeout(() => btn.textContent = '复制答复', 1500);
+      });
+    }
+
+    function copyCode(btn) {
+      const code = btn.closest('.fy-code-block').querySelector('code').innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = '已复制';
+        setTimeout(() => btn.textContent = '复制', 1500);
+      });
+    }
+
+    function showNotification(msg, isError = false) {
+      let toast = document.getElementById('fy-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'fy-toast';
+        toast.style.cssText = `
+          position: fixed; bottom: 24px; right: 24px; padding: 12px 18px;
+          background: #172a3d; border: 1px solid var(--fy-brand-blue); color: var(--fy-text);
+          border-radius: 10px; font-size: 13px; font-weight: 550; z-index: 9999;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.4); transition: all 0.25s ease;
+        `;
+        document.body.appendChild(toast);
+      }
+      toast.style.borderColor = isError ? 'var(--fy-danger-border)' : 'var(--fy-brand-blue)';
+      toast.style.color = isError ? 'var(--fy-danger-text)' : 'var(--fy-text)';
+      toast.textContent = msg;
+      toast.style.opacity = '1';
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 3200);
+    }
+
+    function setupKeyboardNavigation() {
+      document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); document.getElementById('search-input').focus(); }
+        if ((e.metaKey || e.ctrlKey) && e.key === 'e') { e.preventDefault(); openExportPreviewModal(); }
+        if ((e.metaKey || e.ctrlKey) && e.key === 'i') { e.preventDefault(); openImportModal(); }
+        if (e.key === 'Escape') {
+          document.querySelectorAll('.fy-modal-backdrop.open').forEach(el => el.classList.remove('open'));
+        }
+        if (document.activeElement.tagName !== 'INPUT' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+          e.preventDefault();
+          const currentIndex = currentSessions.findIndex(s => s.id === selectedSession.id);
+          if (currentIndex === -1) return;
+          let nextIndex = currentIndex;
+          if (e.key === 'ArrowUp' && currentIndex > 0) nextIndex = currentIndex - 1;
+          else if (e.key === 'ArrowDown' && currentIndex < currentSessions.length - 1) nextIndex = currentIndex + 1;
+          if (nextIndex !== currentIndex) selectSession(currentSessions[nextIndex]);
+        }
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>

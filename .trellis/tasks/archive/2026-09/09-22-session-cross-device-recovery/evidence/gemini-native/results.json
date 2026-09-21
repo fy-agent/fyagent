@@ -1,0 +1,151 @@
+{
+  "version": "0.46.0",
+  "entry": "/opt/homebrew/bin/gemini",
+  "scope": "synthetic isolated home/project; loopback-only model capture; no real inference",
+  "expected": [
+    [
+      "user",
+      "  Unanswered one\r\n"
+    ],
+    [
+      "user",
+      "Keep KITE-73 中文"
+    ],
+    [
+      "gemini",
+      "One final\r\n  "
+    ],
+    [
+      "gemini",
+      "Second final C:\\foo"
+    ],
+    [
+      "user",
+      "Trailing unanswered"
+    ]
+  ],
+  "import_list_exit": 0,
+  "import_list_stdout": "\nAvailable sessions for this project (3):\n  1. Unanswered one (1 minute ago) [0c621fe6-2c22-4c26-ac75-411e578964a0]\n  2. Synthetic recovery (Just now) [d56c1379-2ab7-4627-ab6b-42002ae4ec42]\n  3. Synthetic recovery (Just now) [6d33ae94-4ef0-4540-96b6-ab3022082e3c]\n",
+  "target_session_id": "6d33ae94-4ef0-4540-96b6-ab3022082e3c",
+  "restart_list_exit": 0,
+  "restart_list_stdout": "\nAvailable sessions for this project (3):\n  1. Unanswered one (1 minute ago) [0c621fe6-2c22-4c26-ac75-411e578964a0]\n  2. Synthetic recovery (Just now) [d56c1379-2ab7-4627-ab6b-42002ae4ec42]\n  3. Synthetic recovery (Just now) [6d33ae94-4ef0-4540-96b6-ab3022082e3c]\n",
+  "next_turn_exit": 144,
+  "next_turn_expected_failure": "local HTTP400 intentionally terminates before inference",
+  "requests": [
+    {
+      "url_path": "/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse",
+      "history_projection": [
+        [
+          "user",
+          "  Unanswered one\r\n"
+        ],
+        [
+          "user",
+          "Keep KITE-73 中文"
+        ],
+        [
+          "gemini",
+          "One final\r\n  "
+        ],
+        [
+          "gemini",
+          "Second final C:\\foo"
+        ],
+        [
+          "user",
+          "Trailing unanswered"
+        ]
+      ],
+      "history_exact": true,
+      "total_messages": 7,
+      "target_context_prefix_omitted": true,
+      "source_model_account_fields_absent": true
+    }
+  ],
+  "direct_import": {
+    "target_session_id": "0c621fe6-2c22-4c26-ac75-411e578964a0",
+    "projection": [
+      [
+        "user",
+        "  Unanswered one\r\n"
+      ],
+      [
+        "user",
+        "Keep KITE-73 中文"
+      ],
+      [
+        "gemini",
+        "One final\r\n  "
+      ],
+      [
+        "gemini",
+        "Second final C:\\foo"
+      ],
+      [
+        "user",
+        "Trailing unanswered"
+      ]
+    ],
+    "exact": true,
+    "official_exported_function": "resolveSessionId + loadConversationRecord"
+  },
+  "restart_direct": {
+    "target_session_id": "0c621fe6-2c22-4c26-ac75-411e578964a0",
+    "projection": [
+      [
+        "user",
+        "  Unanswered one\r\n"
+      ],
+      [
+        "user",
+        "Keep KITE-73 中文"
+      ],
+      [
+        "gemini",
+        "One final\r\n  "
+      ],
+      [
+        "gemini",
+        "Second final C:\\foo"
+      ],
+      [
+        "user",
+        "Trailing unanswered"
+      ]
+    ],
+    "exact": true,
+    "official_exported_function": "resolveSessionId + loadConversationRecord"
+  },
+  "restart_after_cli": {
+    "target_session_id": "6d33ae94-4ef0-4540-96b6-ab3022082e3c",
+    "projection": [
+      [
+        "user",
+        "  Unanswered one\r\n"
+      ],
+      [
+        "user",
+        "Keep KITE-73 中文"
+      ],
+      [
+        "gemini",
+        "One final\r\n  "
+      ],
+      [
+        "gemini",
+        "Second final C:\\foo"
+      ],
+      [
+        "user",
+        "Trailing unanswered"
+      ]
+    ],
+    "exact": true,
+    "official_exported_function": "resolveSessionId + loadConversationRecord"
+  },
+  "import_without_list_summary_probe": {
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "info": {
+    "id": "ses_00112233445566778899aabbccddeeff",
+    "slug": "restored-00112233",
+    "projectID": "67ef81bcf651055bc4f66e322d571073d849b3ea",
+    "directory": "/Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/create-only-720880cca1/project",
+    "path": "",
+    "title": "Restored session",
+    "model": {
+      "id": "local",
+      "providerID": "probe"
+    },
+    "version": "1.18.30",
+    "cost": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+        "read": 0,
+        "write": 0
+      }
+    },
+    "time": {
+      "created": 1790022035166,
+      "updated": 1790022035166
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1790022035166
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "probe",
+          "modelID": "local"
+        },
+        "id": "msg_0000000000_854f172a1b8b49738c7de89503a4eaec",
+        "sessionID": "ses_00112233445566778899aabbccddeeff"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "  first\r\n",
+          "id": "prt_11d85994132d4e6687e8792ee962dd81",
+          "sessionID": "ses_00112233445566778899aabbccddeeff",
+          "messageID": "msg_0000000000_854f172a1b8b49738c7de89503a4eaec"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1790022035167
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "probe",
+          "modelID": "local"
+        },
+        "id": "msg_0000000001_39018a2607aa4c82851111a3764ccda4",
+        "sessionID": "ses_00112233445566778899aabbccddeeff"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "KITE-73 中文",
+          "id": "prt_5e7831a7abfe4310b3baed0b305df06b",
+          "sessionID": "ses_00112233445566778899aabbccddeeff",
+          "messageID": "msg_0000000001_39018a2607aa4c82851111a3764ccda4"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1790022035168,
+          "completed": 1790022035168
+        },
+        "parentID": "msg_0000000001_39018a2607aa4c82851111a3764ccda4",
+        "modelID": "local",
+        "providerID": "probe",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/create-only-720880cca1/project",
+          "root": "/Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/create-only-720880cca1/project"
+        },
+        "cost": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "stop",
+        "id": "msg_0000000002_e9ebe270326c4c949a6896e7346ce4f2",
+        "sessionID": "ses_00112233445566778899aabbccddeeff"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": " answer\r\n  ",
+          "id": "prt_f148b396f29546609a737bcac29f0675",
+          "sessionID": "ses_00112233445566778899aabbccddeeff",
+          "messageID": "msg_0000000002_e9ebe270326c4c949a6896e7346ce4f2"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1790022035169,
+          "completed": 1790022035169
+        },
+        "parentID": "msg_0000000001_39018a2607aa4c82851111a3764ccda4",
+        "modelID": "local",
+        "providerID": "probe",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/create-only-720880cca1/project",
+          "root": "/Users/serendipity/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/create-only-720880cca1/project"
+        },
+        "cost": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "stop",
+        "id": "msg_0000000003_81a49199b16045a6b1c6e895a4468b52",
+        "sessionID": "ses_00112233445566778899aabbccddeeff"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "C:\\foo",
+          "id": "prt_dab6d7f009b7466a8b01f8cdd57bbcac",
+          "sessionID": "ses_00112233445566778899aabbccddeeff",
+          "messageID": "msg_0000000003_81a49199b16045a6b1c6e895a4468b52"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1790022035170
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "probe",
+          "modelID": "local"
+        },
+        "id": "msg_0000000004_65c75c4e29e04ce298c75c3cdc778e10",
+        "sessionID": "ses_00112233445566778899aabbccddeeff"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "unanswered",
+          "id": "prt_3364614f57b04a66a681d7b82c945305",
+          "sessionID": "ses_00112233445566778899aabbccddeeff",
+          "messageID": "msg_0000000004_65c75c4e29e04ce298c75c3cdc778e10"
+        }
+      ]
+    }
+  ]
+}
