@@ -29,6 +29,7 @@ Routes:
 ```text
 /agents
 /agents?target=<AgentCatalogId>&section=<AgentSection>
+/agents?setup=<AgentCatalogId>
 ```
 
 The page accepts only the seven closed catalog IDs:
@@ -45,6 +46,7 @@ Agent catalog          contractVersion 5
 Install readiness      contractVersion 5
 Installation inventory contractVersion 1
 Action/job snapshots   contractVersion 4
+Install preflight      contractVersion 1
 Runtime status         tri-state detected/running plus sanitized metadata
 ```
 
@@ -83,10 +85,12 @@ or bypass flag.
   unknown/excess keys, invalid capability mode/reason/evidence, or official
   link ID/order drift against the native v5 table does not degrade to
   partially trusted cards.
-- Official link IDs for the current catalog are: QoderWork/TRAE Work/WorkBuddy/
-  Grok Build `product`; Codex empty; Claude Code `product` (CLI setup, not
-  Desktop); OpenCode `product` then `desktop`. The platform parser owns this
-  allowlist; page copy must not invent a second link table.
+- Official link IDs are closed and ordered: QoderWork/TRAE Work/WorkBuddy/Claude
+  Code `product, download, terms`; Grok `product, docs, download, license`;
+  Codex `product, desktop, download, terms`; OpenCode `product, desktop, license,
+terms`. Native catalog owns URLs; the platform parser owns the ID allowlist.
+  Directory cards and software details reuse `AgentSourceLinks` through the
+  external-link adapter. License and vendor service terms remain distinct.
 - Pi is not an Agent product. It must not appear in types, filters, fixtures,
   navigation or empty states.
 - Official links are rendered only from the validated catalog and open through
@@ -128,18 +132,19 @@ grokbuild    surface=cli  sourceKind=cli_tooling
 claude-code  surface=cli  sourceKind=cli_tooling
 ```
 
-  Desktop products use `surface=desktop` and `managed_desktop` except Codex
-  (`codex_desktop` plus `fyagent_managed`). Compact single-surface payloads
-  omit `surfaces`. A legal CLI `not_installed` + `install` payload must parse;
-  requiring `managed_desktop` or treating `cli` as illegal for Claude Code
-  fails the directory scan as 「读取失败」 instead of showing install.
+Desktop products use `surface=desktop` and `managed_desktop` except Codex
+(`codex_desktop` plus `fyagent_managed`). Compact single-surface payloads
+omit `surfaces`. A legal CLI `not_installed` + `install` payload must parse;
+requiring `managed_desktop` or treating `cli` as illegal for Claude Code
+fails the directory scan as 「读取失败」 instead of showing install.
+
 - Inventory states remain exact: `not_observed`, `single`, `multiple`,
   `unsupported`, `unknown`. Multiple candidates show a selection surface and
   never choose the first item automatically.
 - Opaque `releaseId`, `inventoryId`, `targetId` and revision values are treated
   as uninterpreted strings. The UI may retain them only for the current
   interaction/query lifetime; it must not parse paths from them or persist them
-  as durable target preferences.
+  as durable target preferences. Preflight summaries are also interaction-local.
 - The page distinguishes installed, update available, latest unknown,
   unsupported, source unverified and inventory unknown. One generic
   green/red badge is insufficient.
@@ -166,9 +171,10 @@ claude-code  surface=cli  sourceKind=cli_tooling
   feature supports recovery.
 - Display raw transfer totals only when native provides them. Percent/speed are
   derived renderer values; unknown `totalBytes` does not become 100% or zero.
-- Cancellation is offered only while native reports `cancellable=true`.
+- Directory cards expose cancellation only while native reports `cancellable=true`.
   `operation_conflict` after a side-effect boundary is not presented as a
-  successful cancel.
+  successful cancel. A terminal recovery-required result stays inspectable and
+  disables automatic retry; a polling timeout does not authorize another install.
 
 ### Product and feature navigation
 
@@ -181,10 +187,21 @@ installation controls. Configuration navigation never starts an installation.
 When inventory reports more than one eligible install destination, the directory
 card opens a shared `Dialog` from the 「选择安装目标」 control (origin animation
 returns to that control) and reuses `LifecycleTargetPicker` with opaque
-`targetId` values. A `locationLabel` that starts with `/Applications` shows a
-small 「推荐」 mark; confirmation still requires an explicit dialog confirm.
-Confirming a destination starts the native action and immediately dismisses the
-dialog back to the originating control so the card can show transfer progress.
+`targetId` values. The default selection and recommendation prefer an eligible current-user destination.
+Confirming a destination closes the picker and performs native preflight. The
+confirmation shows both required reserve and minimum available capacity across
+temporary/target volumes. `source_size` means exact-artifact metadata ×3;
+`download_limit` means the existing 2 GiB download cap ×3, explicitly a conservative
+budget rather than a vendor requirement. `cli_unknown` shows an unmeasured reserve
+and must not describe nonzero free capacity as sufficient. The parser rejects
+unsafe/negative/mismatched budgets, insufficient available bytes, and wrong
+runtime/basis combinations. Confirmation repeats the native space check. A
+separate confirmation shows software/version or channel, actual target, planned
+change, necessary runtime and available space. Single-target installs use this
+same confirmation. Dismissing it never starts a job. Confirm forwards the exact
+preflight request without rereading or silently replacing the target. A changed
+revision requires a new selection and preflight. After confirmation the dialog
+closes so the card can show transfer progress.
 Do not keep the picker open until the job finishes, and do not unmount the
 return anchor when the slot switches to busy status.
 Do not send the user to the Models section to pick a filesystem destination.
@@ -224,6 +241,15 @@ Do not send the user to the Models section to pick a filesystem destination.
 
 ### State, errors and accessibility
 
+- Codex/Claude/Grok model details display the native `ProviderSummary.live`
+  file observation independently of the `FyAgent 已保存方案` list. Database
+  `currentId` means `已选方案`, never the current live model. Matching
+  `configured` observations show public model, endpoint and configuration file
+  paths; `missing`/`not_configured` remain visibly unconfigured even with saved
+  Providers. Missing legacy metadata, target mismatch, unreadable state and
+  failed rereads stay unknown. A failed reread must not present cached live
+  data as current; cached saved plans remain searchable and manageable.
+  These read-only views do not probe endpoints or apply configuration.
 - Query cache owns server/native observations; component state owns only the
   current selection, confirmation and transient presentation.
 - Mutation success invalidates/rereads readiness, inventory, runtime and job
@@ -237,24 +263,24 @@ Do not send the user to the Models section to pick a filesystem destination.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                           | Required UI result                                                                                     |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Catalog/version/order/parser failure                                | Fail the catalog boundary visibly; do not render a partial/legacy catalog.                             |
-| Unknown Agent target                                                | Replace invalid search with the directory; never issue an action for the unknown ID.                   |
-| Runtime value is `null`                                             | Render unknown/unverified, not absent/stopped.                                                         |
-| Inventory is `multiple`                                             | Require explicit target selection; no implicit first candidate.                                        |
-| Inventory is `unknown`/expired or target drifts                     | Refresh guidance; no action retry with stale capability.                                               |
-| Action is absent from `allowedActions`                              | Hide/disable with closed reason; do not call native except Retry of the last `operation_conflict` action. |
-| Native returns `operation_conflict`                                 | Preserve native job/other-operation state; keep last action for Retry; do not create a local parallel action. |
-| Background job remains active after UI poll budget                  | Stop/slow UI polling as designed, but do not mark failed.                                              |
-| Cancel is no longer permitted                                       | Disable cancel and preserve active/terminal state.                                                     |
-| Windows vendor wizard handoff succeeds but inventory remains absent | Explain handoff/completion scope; do not paint installed.                                              |
-| Native DTO contains unknown/excess/forbidden field                  | Strict parser failure; never spread raw object into UI.                                                |
+| Condition                                                           | Required UI result                                                                                                                                                                     |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Catalog/version/order/parser failure                                | Fail the catalog boundary visibly; do not render a partial/legacy catalog.                                                                                                             |
+| Unknown Agent target                                                | Replace invalid search with the directory; never issue an action for the unknown ID.                                                                                                   |
+| Runtime value is `null`                                             | Render unknown/unverified, not absent/stopped.                                                                                                                                         |
+| Inventory is `multiple`                                             | Require explicit target selection; no implicit first candidate.                                                                                                                        |
+| Inventory is `unknown`/expired or target drifts                     | Refresh guidance; no action retry with stale capability.                                                                                                                               |
+| Action is absent from `allowedActions`                              | Hide/disable with closed reason; do not call native except Retry of the last `operation_conflict` action.                                                                              |
+| Native returns `operation_conflict`                                 | Preserve native job/other-operation state; keep last action for Retry; do not create a local parallel action.                                                                          |
+| Background job remains active after UI poll budget                  | Stop/slow UI polling as designed, but do not mark failed.                                                                                                                              |
+| Cancel is no longer permitted                                       | Disable cancel and preserve active/terminal state.                                                                                                                                     |
+| Windows vendor wizard handoff succeeds but inventory remains absent | Explain handoff/completion scope; do not paint installed.                                                                                                                              |
+| Native DTO contains unknown/excess/forbidden field                  | Strict parser failure; never spread raw object into UI.                                                                                                                                |
 | Inventory is `multiple` and the user confirms a destination         | Start the native action and immediately dismiss the picker back to the originating control; the card shows job progress. Do not keep 「安装中…」 on the dialog until the job finishes. |
-| Claude/Grok compact CLI readiness uses `cli_tooling`                | Parse and project install/update; do not fail the directory scan.                                      |
-| Renderer embeds a reviewed Claude/Grok npm version                 | Contract regression; show native `latest_version` only.                                                 |
-| Claude/Grok readiness uses `managed_desktop` or `desktop` surface   | Fail closed at the parser; do not render a Desktop install card.                                       |
-| Route changes/unmounts                                              | Clear transient selection/confirmation; do not cancel native work unless user explicitly requested it. |
+| Claude/Grok compact CLI readiness uses `cli_tooling`                | Parse and project install/update; do not fail the directory scan.                                                                                                                      |
+| Renderer embeds a reviewed Claude/Grok npm version                  | Contract regression; show native `latest_version` only.                                                                                                                                |
+| Claude/Grok readiness uses `managed_desktop` or `desktop` surface   | Fail closed at the parser; do not render a Desktop install card.                                                                                                                       |
+| Route changes/unmounts                                              | Clear transient selection/confirmation; do not cancel native work unless user explicitly requested it.                                                                                 |
 
 ## 5. Good / Base / Bad Cases
 

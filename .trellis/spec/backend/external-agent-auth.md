@@ -14,7 +14,7 @@ Primary owners:
 - `src-tauri/src/agent_install/auth_sessions.rs`
 - `src-tauri/src/commands/agent_auth.rs`
 - `src/shared/features/agent-auth.ts`
-- `src/pages/agents/useAgentAuthSession.ts`
+- `src/shared/features/useAgentAuthSession.ts`
 
 Desktop target capability and launch admission are shared with
 [External Agent Lifecycle](./external-agent-lifecycle.md). Secret material

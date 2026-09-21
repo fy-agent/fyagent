@@ -3,6 +3,8 @@ import { listen } from "@tauri-apps/api/event";
 
 import {
   assertExpectedReleaseId,
+  assertInstallConfirmationId,
+  parseCodexInstallPreflight,
   parseJobSnapshot,
   parseLocalInstallStatus,
   parseOptionalJobSnapshot,
@@ -34,11 +36,21 @@ export function createCodexDesktopPort(): FeaturePorts["codexDesktop"] {
     },
     getJob: async () =>
       parseOptionalJobSnapshot(await invoke<unknown>("codex_desktop_get_job")),
-    startInstall: async (expectedReleaseId) =>
+    prepareInstall: async (expectedReleaseId) =>
+      parseCodexInstallPreflight(
+        await invoke<unknown>("codex_desktop_prepare_install", {
+          request: {
+            expectedReleaseId: assertExpectedReleaseId(expectedReleaseId),
+          },
+        }),
+        expectedReleaseId,
+      ),
+    startInstall: async (expectedReleaseId, confirmationId) =>
       parseJobSnapshot(
         await invoke<unknown>("codex_desktop_start_install", {
           request: {
             expectedReleaseId: assertExpectedReleaseId(expectedReleaseId),
+            confirmationId: assertInstallConfirmationId(confirmationId),
           },
         }),
       ),

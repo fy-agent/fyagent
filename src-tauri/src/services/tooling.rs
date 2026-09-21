@@ -6,8 +6,10 @@ use std::str::FromStr;
 mod claude;
 mod discovery;
 mod grok;
-mod grok_npm;
+pub(crate) mod grok_npm;
 mod health;
+mod install_preflight;
+pub(crate) use install_preflight::CliInstallPreflight;
 mod lifecycle;
 #[cfg(target_os = "macos")]
 mod npm_runtime;
@@ -18,13 +20,40 @@ pub(crate) use claude::ClaudeLifecycleError;
 pub(crate) use health::observe_local_tool_health;
 static CLI_LIFECYCLE_WRITER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+pub(crate) async fn preflight_cli_lifecycle(
+    agent: crate::services::external_agents::AgentCatalogId,
+    action: crate::agent_install::AgentActionId,
+) -> Result<CliInstallPreflight, crate::agent_install::AgentReasonCode> {
+    install_preflight::check(agent, action, None).await
+}
+
+pub(crate) async fn bind_cli_npm_preflight(
+    agent: crate::services::external_agents::AgentCatalogId,
+    action: crate::agent_install::AgentActionId,
+    manifest: &grok_npm::GrokNpmManifest,
+) -> Result<CliInstallPreflight, crate::agent_install::AgentReasonCode> {
+    let plan =
+        grok_npm::plan_for_registry(manifest, fyagent_user_helper::GrokNpmRegistry::Npmjs, false)
+            .map_err(|_| crate::agent_install::AgentReasonCode::SourceNotVerified)?;
+    install_preflight::check(agent, action, Some(&plan)).await
+}
+
+#[allow(dead_code)]
 pub(crate) async fn run_claude_cli_lifecycle(action: &str) -> Result<(), ClaudeLifecycleError> {
+    run_claude_cli_lifecycle_with_manifest(action, None, None).await
+}
+
+pub(crate) async fn run_claude_cli_lifecycle_with_manifest(
+    action: &str,
+    confirmed_manifest: Option<&grok_npm::GrokNpmManifest>,
+    confirmed_npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
+) -> Result<(), ClaudeLifecycleError> {
     let action = ToolLifecycleAction::from_str(action)
         .map_err(|_| ClaudeLifecycleError::UnsupportedAction)?;
     let _guard = CLI_LIFECYCLE_WRITER
         .try_lock()
         .map_err(|_| ClaudeLifecycleError::OperationConflict)?;
-    claude::run(action).await
+    claude::run(action, confirmed_manifest, confirmed_npm_target).await
 }
 
 #[cfg(target_os = "windows")]
@@ -211,11 +240,25 @@ pub async fn get_tool_versions(tools: Option<Vec<String>>) -> Result<Vec<ToolVer
     Ok(results)
 }
 
+#[cfg(test)]
 pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Result<(), String> {
+    run_tool_lifecycle_action_with_manifest(tools, action, None, None).await
+}
+
+pub(crate) async fn run_tool_lifecycle_action_with_manifest(
+    tools: Vec<String>,
+    action: String,
+    confirmed_manifest: Option<&grok_npm::GrokNpmManifest>,
+    confirmed_npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
+) -> Result<(), String> {
     if tools.len() == 1 && tools[0] == "claude" {
-        return run_claude_cli_lifecycle(&action)
-            .await
-            .map_err(|error| error.message().to_string());
+        return run_claude_cli_lifecycle_with_manifest(
+            &action,
+            confirmed_manifest,
+            confirmed_npm_target,
+        )
+        .await
+        .map_err(|error| error.message().to_string());
     }
     if let Some(tool) = tools
         .iter()
@@ -246,14 +289,20 @@ pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Re
     #[cfg(target_os = "macos")]
     {
         let _ = label;
-        grok::run_macos_grok_lifecycle(action).await
+        grok::run_macos_grok_lifecycle(action, confirmed_manifest, confirmed_npm_target).await
     }
 
     #[cfg(target_os = "windows")]
     {
         if grok_windows_uses_ordinary_user_helper() {
-            return grok::run_windows_grok_helper_lifecycle(action).await;
+            return grok::run_windows_grok_helper_lifecycle(
+                action,
+                confirmed_manifest,
+                confirmed_npm_target,
+            )
+            .await;
         }
+        let _ = confirmed_npm_target;
         let live_npm_commands = if matches!(action, ToolLifecycleAction::InstallNative) {
             Vec::new()
         } else {

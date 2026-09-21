@@ -205,8 +205,13 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 - A Grok connection uses a separate `purpose=grok_native` credential. It is
   never Proxy-resolved and is not copied from `purpose=proxy_upstream`.
 - `project_grok_native` returns `Unsupported` while the gate is closed and
-  writes no `auth.json`. Login can complete credential storage without a file
-  projection; the consumer remains unavailable, not connected.
+  writes no `auth.json`. New xAI consumer-purpose login for Grok is not offered
+  or admitted while the projection is gated. Existing stored credentials remain
+  available for safe account management without implying a native login.
+- Gated Grok summaries advertise only `refresh`; old account/pending metadata
+  must not offer a failing disconnect or imply current request source, preserved
+  official session, pending restart or native pickup. Request mode is `unknown`,
+  provider label/preserved-session are null, and pending restart is false.
 - When Grok tooling is available, Agent Auth observation stays
   `handoff_only`; unavailable tooling yields an unavailable observation. In
   neither case are CLI installation, a vault row, or opening a vendor page
@@ -232,6 +237,9 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
   `purpose=opencode_provider` credential. Proxy/Codex/Grok/Copilot purposes are
   rejected rather than copied. After successful file readback, the service
   attempts to transfer refresh ownership to `opencode`.
+- An unreadable OpenCode auth file exposes refresh only, even if an independent
+  ready credential exists. Provider-purpose choices exclude this target until a
+  fresh read confirms manual repair; observation itself writes zero bytes.
 - External-write hot reload is not proven. A successful FyAgent write remains
   `pending_restart`; do not also emit `native_projection_unavailable`, which
   means the write itself was unavailable.
@@ -245,33 +253,33 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                 | Required result                                                                                                      |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| connection/account/revision is malformed                                  | reject before dispatch; no file or metadata mutation                                                                 |
-| synchronous connection service runs directly on the Tauri command thread  | contract regression; validate first, then use `spawn_blocking`; map join failure to `invalid_response`               |
-| OpenCode write/delete/restart sees a stale revision                       | reject; leave the official file and connection metadata unchanged                                                    |
-| Codex auth swap sees a stale auth revision                                | reject; zero auth write                                                                                              |
-| OpenCode is offered Proxy/Codex/Grok/Copilot lineage                      | `provider_not_supported`; do not copy lineage                                                                        |
-| Codex has no purpose-compatible ready credential                          | `target_selection_required` / unavailable; no vendor file write                                                      |
-| Codex effective store is explicit auto/keyring/ephemeral/unknown          | store unsupported; zero auth write                                                                                   |
-| Codex/Grok/OpenCode summary has `target_id: None`                         | slot is unbound to a lifecycle install; not missing-install evidence                                                 |
-| ready CodexNative credential while live identity differs                  | disconnected / saved-not-projected; not connected                                                                    |
-| live Codex identity matches bound credential and no restart is pending     | connected; may still be third-party route with session preserved                                                     |
-| Grok has a ready `grok_native` credential while projection is unavailable | current summary is `unavailable` + `native_projection_unavailable`; not native pickup                                |
-| Grok helper/file gate is false                                            | `Unsupported` / `partial`; no vendor file write                                                                      |
-| Proxy tries to resolve `purpose=grok_native`                              | conflict; no refresh                                                                                                 |
-| OpenCode data dir exists but PATH CLI does not                            | observe `auth.json`; not `AuthObserverUnavailable`                                                                   |
-| OpenCode `auth.json` is missing                                           | empty provider set; not observer failure                                                                             |
-| OpenCode readback differs                                                 | report stale/uncertain; preserve backup and never blindly overwrite external bytes                                   |
-| OpenCode write and readback succeed while hot reload is unproven    | `completed` + `pending_restart`; returned overview marks the connection pending; not `native_projection_unavailable` |
-| Codex write succeeds while Desktop is `NotRunning` or `NotInstalled` | `completed` with no `pending_restart`; connect/switch status follows identity readback, disconnect clears the binding |
-| Codex write succeeds while Desktop is Running / Ambiguous / Untrusted / Unsupported / inspect error | `completed` + `pending_restart`; fail closed                                                                         |
-| token, SecretRef, auth bytes, or raw helper output reaches DTO/log/DOM    | security regression                                                                                                  |
-| Display paths arrive outside explicit impact/recovery metadata            | security regression                                                                                                  |
-| Connection mutation lacks a matching fresh single-use preview             | reject before vendor write                                                                                           |
+| Condition                                                                                             | Required result                                                                                                          |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| connection/account/revision is malformed                                                              | reject before dispatch; no file or metadata mutation                                                                     |
+| synchronous connection service runs directly on the Tauri command thread                              | contract regression; validate first, then use `spawn_blocking`; map join failure to `invalid_response`                   |
+| OpenCode write/delete/restart sees a stale revision                                                   | reject; leave the official file and connection metadata unchanged                                                        |
+| Codex auth swap sees a stale auth revision                                                            | reject; zero auth write                                                                                                  |
+| OpenCode is offered Proxy/Codex/Grok/Copilot lineage                                                  | `provider_not_supported`; do not copy lineage                                                                            |
+| Codex has no purpose-compatible ready credential                                                      | `target_selection_required` / unavailable; no vendor file write                                                          |
+| Codex effective store is explicit auto/keyring/ephemeral/unknown                                      | store unsupported; zero auth write                                                                                       |
+| Codex/Grok/OpenCode summary has `target_id: None`                                                     | slot is unbound to a lifecycle install; not missing-install evidence                                                     |
+| ready CodexNative credential while live identity differs                                              | disconnected / saved-not-projected; not connected                                                                        |
+| live Codex identity matches bound credential and no restart is pending                                | connected; may still be third-party route with session preserved                                                         |
+| Grok has a ready `grok_native` credential while projection is unavailable                             | current summary is `unavailable` + `native_projection_unavailable`; not native pickup                                    |
+| Grok helper/file gate is false                                                                        | `Unsupported` / `partial`; no vendor file write                                                                          |
+| Proxy tries to resolve `purpose=grok_native`                                                          | conflict; no refresh                                                                                                     |
+| OpenCode data dir exists but PATH CLI does not                                                        | observe `auth.json`; not `AuthObserverUnavailable`                                                                       |
+| OpenCode `auth.json` is missing                                                                       | empty provider set; not observer failure                                                                                 |
+| OpenCode readback differs                                                                             | report stale/uncertain; preserve backup and never blindly overwrite external bytes                                       |
+| OpenCode write and readback succeed while hot reload is unproven                                      | `completed` + `pending_restart`; returned overview marks the connection pending; not `native_projection_unavailable`     |
+| Codex write succeeds while Desktop is `NotRunning` or `NotInstalled`                                  | `completed` with no `pending_restart`; connect/switch status follows identity readback, disconnect clears the binding    |
+| Codex write succeeds while Desktop is Running / Ambiguous / Untrusted / Unsupported / inspect error   | `completed` + `pending_restart`; fail closed                                                                             |
+| token, SecretRef, auth bytes, or raw helper output reaches DTO/log/DOM                                | security regression                                                                                                      |
+| Display paths arrive outside explicit impact/recovery metadata                                        | security regression                                                                                                      |
+| Connection mutation lacks a matching fresh single-use preview                                         | reject before vendor write                                                                                               |
 | Codex official connect/switch comments an active top-level `model_provider` and keeps provider tables | required; deleting the selector, rewriting it to `openai`, or editing model/MCP/features/provider tables is a regression |
-| Codex account change uncomments `model_provider` or inserts a second selector | contract regression                                                                                                  |
-| Codex disconnect leaves a commented top-level `model_provider` in place   | contract regression                                                                                                  |
+| Codex account change uncomments `model_provider` or inserts a second selector                         | contract regression                                                                                                      |
+| Codex disconnect leaves a commented top-level `model_provider` in place                               | contract regression                                                                                                      |
 
 ## 5. Good / Base / Bad Cases
 

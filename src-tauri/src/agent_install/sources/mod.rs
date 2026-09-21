@@ -82,6 +82,8 @@ pub struct ResolvedDesktopSource {
     pub format: PackageFormat,
     pub release_id: String,
     pub display_version: Option<String>,
+    /// A size from metadata for this exact artifact, never a sibling ZIP/architecture.
+    pub artifact_size_bytes: Option<u64>,
     pub download_url: Url,
     pub versionless_latest: bool,
     pub official_page: &'static str,

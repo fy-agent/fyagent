@@ -1,4 +1,10 @@
 import { MODEL_DIRECTORY_IDS } from "../../shared/features/directory";
+import {
+  apiProtocolsForTarget,
+  isApiProtocol,
+  providerApiCredentialError,
+  type ApiProtocol,
+} from "../../domain/configuration/providerApi";
 
 export const MODEL_TARGETS = MODEL_DIRECTORY_IDS;
 
@@ -22,6 +28,7 @@ export interface QuickSetupFormInput {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  protocol?: ApiProtocol;
 }
 
 export type QuickSetupField = keyof QuickSetupFormInput;
@@ -32,6 +39,7 @@ export interface NormalizedQuickSetupInput {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  protocol?: ApiProtocol;
 }
 
 export type QuickSetupValidation =
@@ -83,25 +91,44 @@ export function parseModelTarget(value: string | null): ModelTarget {
 export function validateQuickSetup(
   input: QuickSetupFormInput,
   target?: ProviderQuickSetupTarget,
+  retainCodexCredential = false,
 ): QuickSetupValidation {
   const value: NormalizedQuickSetupInput = {
     name: input.name.trim(),
     baseUrl: input.baseUrl.trim(),
     apiKey: input.apiKey.trim(),
     modelId: input.modelId.trim(),
+    ...(input.protocol !== undefined ? { protocol: input.protocol } : {}),
   };
   const errors: QuickSetupErrors = {};
+  if (
+    input.protocol !== undefined &&
+    (!isApiProtocol(input.protocol) ||
+      (target && !apiProtocolsForTarget(target).includes(input.protocol)))
+  )
+    errors.protocol = "当前目标不支持所选协议。";
 
   if (!value.name) errors.name = "请输入配置名称";
   if (!isHttpUrl(value.baseUrl))
     errors.baseUrl = "请输入不含账号信息的 HTTP(S) 地址";
-  if (!value.apiKey) errors.apiKey = "请输入 API Key";
+  if (!value.apiKey && !(target === "codex" && retainCodexCredential))
+    errors.apiKey = "请输入 API Key";
+  const credentialError = providerApiCredentialError(
+    value.baseUrl,
+    value.apiKey,
+    value.protocol,
+  );
+  if (credentialError) errors.apiKey = credentialError;
   if (!value.modelId) errors.modelId = "请输入模型 ID";
   if (value.apiKey && value.name.includes(value.apiKey))
     errors.name = "配置名称不能包含 API Key";
   if (value.apiKey && value.modelId.includes(value.apiKey))
     errors.modelId = "模型 ID 不能包含 API Key";
-  if (target && QUICK_SETUP_PROVIDER_IDS[target].includes(value.apiKey))
+  if (
+    target &&
+    value.apiKey &&
+    QUICK_SETUP_PROVIDER_IDS[target].includes(value.apiKey)
+  )
     errors.apiKey = "API Key 不能使用该值";
   if (value.apiKey && isHttpUrl(value.baseUrl)) {
     const parsed = new URL(value.baseUrl);
@@ -135,6 +162,7 @@ export function buildQuickSetupRequest(
     baseUrl: input.baseUrl,
     apiKey: input.apiKey,
     modelId: input.modelId,
+    ...(input.protocol !== undefined ? { protocol: input.protocol } : {}),
     ...(target === "codex" && codexFeatures ? { codexFeatures } : {}),
   };
 }

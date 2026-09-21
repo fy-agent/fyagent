@@ -64,6 +64,14 @@ async function confirmSaveDisclosure(
   await dialog.getByRole("button", { name: "确认保存" }).click();
 }
 
+async function expectSingleSavePreview(
+  page: Parameters<typeof openRendererPage>[0],
+) {
+  await expect(page.getByRole("button", { name: "应用更改" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "保存前确认" })).toHaveCount(0);
+  await expect(page.getByText("将修改")).toBeVisible();
+}
+
 test("Agent directory keeps exact native order and accessible configuration entry points", async ({
   page,
 }) => {
@@ -261,7 +269,13 @@ test("Codex configuration loads safely without unsolicited mutation", async ({
   await openRendererPage(page, "/agents?target=codex&section=models");
 
   await expect(page.getByRole("region", { name: "Codex 配置" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "当前模型" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "实际配置文件" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "FyAgent 已保存方案" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "当前模型" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "管理模型" })).toBeVisible();
   await expect(page.getByRole("button", { name: "返回" })).toBeVisible();
   await expect(page.getByText("单 Agent 配置")).toHaveCount(0);
@@ -479,9 +493,7 @@ test("WorkBuddy save preview uses Change Plan and does not expose overwrite toke
   await page.getByLabel("API Key", { exact: true }).fill(apiKey);
   await page.getByLabel("自定义模型 ID").fill("manual-browser-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
-  await expect(page.getByRole("dialog", { name: "保存前确认" })).toBeVisible();
-  await expect(page.getByText("将修改")).toBeVisible();
-  await page.getByRole("button", { name: "确认保存" }).click();
+  await expectSingleSavePreview(page);
 
   await expect(page.getByRole("button", { name: "应用更改" })).toBeVisible();
   await expect(
@@ -537,7 +549,7 @@ test("WorkBuddy write failures stay redacted and clear the submitted credential"
   await page.getByLabel("API Key", { exact: true }).fill(apiKey);
   await page.getByLabel("自定义模型 ID").fill("failure-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
-  await page.getByRole("button", { name: "确认保存" }).click();
+  await expectSingleSavePreview(page);
   await page.getByRole("button", { name: "应用更改" }).click();
 
   await expect(page.locator("body")).toContainText("保存失败，已恢复原配置");
@@ -572,7 +584,7 @@ test("WorkBuddy concurrent modification rereads authority instead of claiming su
     .fill("browser-conflict-secret");
   await page.getByLabel("自定义模型 ID").fill("conflict-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
-  await page.getByRole("button", { name: "确认保存" }).click();
+  await expectSingleSavePreview(page);
   await page.getByRole("button", { name: "应用更改" }).click();
 
   await expect(page.locator("body")).toContainText("预览已过期");
@@ -613,18 +625,21 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
   await page.getByLabel("模型 ID", { exact: true }).fill("gpt-browser");
   const submit = page.getByRole("button", { name: "保存并设为当前配置" });
   await submit.click();
-  await confirmSaveDisclosure(page);
-  // Radix correctly hides background controls while the confirmation exits.
-  // Hold IPC deterministically rather than racing a 250ms simulated request.
   const busySubmit = page.getByRole("button", {
     name: "配置中…",
     includeHidden: true,
   });
   await expect(busySubmit).toBeDisabled();
   await busySubmit.dispatchEvent("click");
+  expect(
+    (await featureFixtureCalls(page)).filter(
+      (call) => call.command === "apply_change_plan",
+    ),
+  ).toHaveLength(0);
   await page.evaluate(() =>
     window.__FYAGENT_FEATURE_FIXTURE__.releaseProviderWrite(),
   );
+  await expectSingleSavePreview(page);
   const saveWorkspace = page.getByRole("region", {
     name: "保存 Codex Provider",
   });
@@ -705,7 +720,10 @@ test("Models shared API key reveal toggle stays anchored inside the input", asyn
   const health = monitorPageHealth(page);
   await openRendererPage(page, "/models?target=codex");
 
+  await expect(page.getByText("ChatGPT · Browser Fixture")).toBeVisible();
+  await expect(page.getByLabel("配置名称")).toHaveValue("FyAgent Codex");
   const input = page.getByLabel("API Key", { exact: true });
+  await input.scrollIntoViewIfNeeded();
   await input.fill("fixture-secret-".repeat(24));
   const hiddenToggle = page.getByRole("button", { name: "显示 API Key" });
   const inputBox = await requiredBox(input, "Codex API key input");
@@ -815,7 +833,7 @@ test("Provider atomic failure reports rollback instead of a partial result", asy
   await page.getByLabel("API Key", { exact: true }).fill("partial-secret");
   await page.getByLabel("模型 ID", { exact: true }).fill("partial-model");
   await page.getByRole("button", { name: "保存并设为当前配置" }).click();
-  await confirmSaveDisclosure(page);
+  await expectSingleSavePreview(page);
   await page
     .getByRole("region", { name: "保存 Codex Provider" })
     .getByRole("button", { name: "应用更改" })

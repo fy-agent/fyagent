@@ -34,6 +34,9 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 
 ## Shell and feature owners
 
+[Configuration Pack Dialog](./config-pack.md) owns Models connection selection,
+portable import previews, explicit save confirmation and typed-port readback.
+
 Delivery kits: [Project Delivery Kits Panel](./delivery-kits.md) owns the independent Projects panel and strict package native port.
 
 | Contract                                              | Owns                                                                            |

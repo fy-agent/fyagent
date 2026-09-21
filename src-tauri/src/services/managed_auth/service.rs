@@ -1220,9 +1220,13 @@ where
             contract_version: MANAGED_AUTH_CONTRACT_VERSION,
             checked_at: now_timestamp(),
             providers: vec![
-                provider_summary(ManagedAuthProvider::Openai, &fail),
-                provider_summary(ManagedAuthProvider::Xai, &fail),
-                provider_summary(ManagedAuthProvider::GithubCopilot, &fail),
+                provider_summary(ManagedAuthProvider::Openai, &fail, &connection_summaries),
+                provider_summary(ManagedAuthProvider::Xai, &fail, &connection_summaries),
+                provider_summary(
+                    ManagedAuthProvider::GithubCopilot,
+                    &fail,
+                    &connection_summaries,
+                ),
             ],
             accounts,
             connections: connection_summaries,
@@ -1935,6 +1939,7 @@ fn account_health(rows: &[&CredentialWithIdentity], fail: &FailClosedState) -> M
 fn provider_summary(
     provider: ManagedAuthProvider,
     fail: &FailClosedState,
+    connections: &[super::ManagedAuthConnectionSummary],
 ) -> ManagedAuthProviderSummary {
     let mut reason_codes = Vec::new();
     if fail.secret_unavailable {
@@ -1943,22 +1948,33 @@ fn provider_summary(
     if fail.migration_blocked {
         reason_codes.push(ManagedAuthReasonCode::MigrationBlocked);
     }
-    let consumers = match provider {
+    let mut consumers = match provider {
         ManagedAuthProvider::Openai => vec![
             ManagedAuthConsumer::Codex,
             ManagedAuthConsumer::Opencode,
             ManagedAuthConsumer::FyagentProxy,
         ],
         ManagedAuthProvider::Xai => vec![
-            ManagedAuthConsumer::Grokbuild,
             ManagedAuthConsumer::Opencode,
             ManagedAuthConsumer::FyagentProxy,
         ],
-        ManagedAuthProvider::GithubCopilot => vec![
-            ManagedAuthConsumer::Opencode,
-            ManagedAuthConsumer::FyagentProxy,
-        ],
+        ManagedAuthProvider::GithubCopilot => Vec::new(),
     };
+    // A grant may be saved independently, but the purpose picker must not
+    // promise a consumer whose current native store cannot be written safely.
+    consumers.retain(|consumer| {
+        !connections.iter().any(|connection| {
+            connection.consumer == *consumer
+                && connection.provider == Some(provider)
+                && connection.reason_codes.iter().any(|reason| {
+                    matches!(
+                        reason,
+                        ManagedAuthReasonCode::NativeProjectionUnavailable
+                            | ManagedAuthReasonCode::ObserverUnavailable
+                    )
+                })
+        })
+    });
     let vault_ready = !fail.secret_unavailable && !fail.migration_blocked;
     let (available, login_methods) = match provider {
         ManagedAuthProvider::Openai if vault_ready => (
@@ -2195,6 +2211,25 @@ mod tests {
             dir.path().to_path_buf(),
         );
         (service, dir)
+    }
+
+    struct TestHome(Option<std::ffi::OsString>);
+
+    impl TestHome {
+        fn set(path: &std::path::Path) -> Self {
+            let previous = std::env::var_os("FYAGENT_TEST_HOME");
+            std::env::set_var("FYAGENT_TEST_HOME", path);
+            Self(previous)
+        }
+    }
+
+    impl Drop for TestHome {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+                None => std::env::remove_var("FYAGENT_TEST_HOME"),
+            }
+        }
     }
 
     fn service_with_shared_memory() -> (
@@ -2444,6 +2479,13 @@ mod tests {
             .expect("xai");
         assert!(xai.available);
         assert_eq!(
+            xai.consumers,
+            vec![
+                ManagedAuthConsumer::Opencode,
+                ManagedAuthConsumer::FyagentProxy
+            ]
+        );
+        assert_eq!(
             xai.login_methods,
             vec![crate::services::managed_auth::ManagedAuthLoginMethod::DeviceCode]
         );
@@ -2459,6 +2501,13 @@ mod tests {
         assert!(grok
             .reason_codes
             .contains(&ManagedAuthReasonCode::NativeProjectionUnavailable));
+        assert_eq!(
+            grok.allowed_actions,
+            vec![super::super::ManagedAuthConnectionAction::Refresh]
+        );
+        assert_eq!(grok.official_session_preserved, None);
+        assert_eq!(grok.request_mode, ManagedAuthRequestMode::Unknown);
+        assert_eq!(grok.request_provider_label, None);
     }
 
     #[test]
@@ -2481,6 +2530,67 @@ mod tests {
             .expect("grok bundle");
         assert_eq!(proxy_bundle.refresh_token(), Some("refresh-proxy"));
         assert_eq!(grok_bundle.refresh_token(), Some("refresh-grok"));
+    }
+
+    #[test]
+    fn unreadable_opencode_file_exposes_no_write_action_until_repaired() {
+        let (service, _dir) = service_with_memory();
+        let mut input = sample_input("opencode-auth-reuse", "fixture-refresh", false);
+        input.purpose = CredentialPurpose::OpencodeProvider;
+        input.consumer = Some(ManagedAuthConsumer::Opencode);
+        service
+            .provision_legacy_credential(input)
+            .expect("fixture credential");
+        let path = service.opencode_auth_path();
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("temp dir");
+        std::fs::write(&path, b"{broken fixture}").expect("malformed fixture");
+        let summary = service
+            .overview()
+            .connections
+            .into_iter()
+            .find(|row| {
+                row.consumer == ManagedAuthConsumer::Opencode
+                    && row.provider == Some(ManagedAuthProvider::Openai)
+            })
+            .expect("slot");
+        assert_eq!(
+            summary.allowed_actions,
+            vec![super::super::ManagedAuthConnectionAction::Refresh]
+        );
+        assert!(!service
+            .overview()
+            .providers
+            .iter()
+            .find(|row| row.provider == ManagedAuthProvider::Openai)
+            .expect("provider")
+            .consumers
+            .contains(&ManagedAuthConsumer::Opencode));
+        assert_eq!(
+            std::fs::read(&path).expect("unchanged fixture"),
+            b"{broken fixture}"
+        );
+        std::fs::write(&path, b"{}").expect("manual repair");
+        let summary = service
+            .overview()
+            .connections
+            .into_iter()
+            .find(|row| {
+                row.consumer == ManagedAuthConsumer::Opencode
+                    && row.provider == Some(ManagedAuthProvider::Openai)
+            })
+            .expect("repaired slot");
+        assert!(summary
+            .allowed_actions
+            .contains(&super::super::ManagedAuthConnectionAction::ConnectAccount));
+        assert!(service
+            .overview()
+            .providers
+            .iter()
+            .find(|row| row.provider == ManagedAuthProvider::Openai)
+            .expect("provider")
+            .consumers
+            .contains(&ManagedAuthConsumer::Opencode));
+        assert_eq!(std::fs::read(&path).expect("read-only observation"), b"{}");
     }
 
     #[test]
@@ -3005,8 +3115,10 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn opencode_connect_projects_independent_session_and_rejects_proxy_lineage() {
         let (service, dir) = service_with_memory();
+        let _home = TestHome::set(dir.path());
         let proxy = service
             .provision_legacy_credential(sample_input("proxy-lineage", "refresh-value", true))
             .expect("proxy");

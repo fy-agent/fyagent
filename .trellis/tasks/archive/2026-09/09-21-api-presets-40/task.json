@@ -1,0 +1,38 @@
+{
+  "id": "api-presets-40",
+  "name": "api-presets-40",
+  "title": "Production API protocols and vendor presets #40",
+  "description": "Connect shared model quick setup presets and explicit protocols through typed native save and credential-free readback.",
+  "status": "completed",
+  "dev_type": "fullstack",
+  "scope": "models",
+  "package": null,
+  "priority": "P1",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-09-21",
+  "completedAt": "2026-09-21",
+  "branch": "codex/next-api-presets-40",
+  "base_branch": "main",
+  "worktree_path": "~/.codex/worktrees/fyagent-next-api-presets/fyagent",
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/domain/configuration/providerApi.ts",
+    "src/shared/features/controls/ProviderApiFields.tsx",
+    "src/pages/models/Page.tsx",
+    "src-tauri/src/services/provider_api.rs",
+    "src-tauri/src/commands/provider.rs"
+  ],
+  "notes": "Execution complete; local commit and writer freeze. Root owns native compilation/integrated checks and acceptance; status intentionally remains in_progress.",
+  "meta": {
+    "issue": 40,
+    "parentTask": "09-20-next-iteration-engineering (root integration worktree)",
+    "baseCommit": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+    "executionStatus": "complete",
+    "acceptanceStatus": "pending_root_integration"
+  }
+}

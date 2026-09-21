@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/agent-auth.md","reason":"Agent session and handoff boundary"}
+{"file":".trellis/spec/frontend/managed-auth.md","reason":"Central auth and per-connection preview contract"}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Shared hook ownership"}
+{"file":".trellis/spec/backend/managed-auth-consumers.md","reason":"Consumer projection capability and readback"}
+{"file":".trellis/spec/backend/managed-auth-login.md","reason":"Purpose admission and device-code naming"}
+{"file":".trellis/spec/backend/external-agent-auth.md","reason":"Closed Grok CLI handoff semantics"}

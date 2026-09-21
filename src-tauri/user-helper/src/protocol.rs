@@ -1,12 +1,22 @@
 use std::{fmt, mem::size_of};
 
 use crate::cli::UserHelperAction;
-use crate::grok::{GrokOutcome, GrokOwner, ToolOperationResult};
+use crate::grok::{GrokOutcome, GrokOwner, NpmDestinationObservation, ToolOperationResult};
 
-pub const PROTOCOL_VERSION: u8 = 3;
+/// v4 appends an optional bounded npm destination to ToolResult. A v3
+/// ToolResult frame is rejected as `UnsupportedVersion`.
+pub const PROTOCOL_VERSION: u8 = 4;
 pub const FRAME_LENGTH_BYTES: usize = 4;
 pub const MAX_ERROR_MESSAGE_BYTES: usize = 256;
-pub const MAX_PAYLOAD_BYTES: usize = 2 + 1 + 2 + MAX_ERROR_MESSAGE_BYTES;
+pub const MAX_TOOL_DEST_BYTES: usize = 255;
+const TOOL_RESULT_FIXED_BYTES: usize = 4;
+const TOOL_DEST_FIELD_COUNT: usize = 4;
+const TOOL_DEST_OVERHEAD_BYTES: usize = 1 + 8 + TOOL_DEST_FIELD_COUNT;
+pub const MAX_PAYLOAD_BYTES: usize = 2
+    + TOOL_RESULT_FIXED_BYTES
+    + crate::grok::MAX_NORMALIZED_VERSION_BYTES
+    + TOOL_DEST_OVERHEAD_BYTES
+    + TOOL_DEST_FIELD_COUNT * MAX_TOOL_DEST_BYTES;
 pub const MAX_FRAME_BYTES: usize = FRAME_LENGTH_BYTES + MAX_PAYLOAD_BYTES;
 pub const MAX_PROTOCOL_MESSAGES: usize = 104;
 
@@ -17,7 +27,6 @@ const ERROR_KIND: u8 = 4;
 const HELLO_KIND: u8 = 5;
 const TOOL_RESULT_KIND: u8 = 6;
 const STARTED_IDENTITY_BYTES: usize = 3 * size_of::<u64>();
-const TOOL_RESULT_FIXED_BYTES: usize = 4;
 const MAX_TOOL_VERSION_BYTES: usize = crate::grok::MAX_NORMALIZED_VERSION_BYTES;
 
 /// Opaque identity for the helper's no-follow, handle-relative MSIX pin.
@@ -83,10 +92,14 @@ pub enum HelperErrorCode {
     ToolOwnerMismatch = 24,
     ToolNotDetected = 25,
     ToolExecutionFailed = 26,
+    ToolPermissionDenied = 27,
+    InsufficientDiskSpace = 28,
+    ToolCandidateConflict = 29,
+    ToolTargetChanged = 30,
 }
 
 impl HelperErrorCode {
-    pub const ALL: [Self; 26] = [
+    pub const ALL: [Self; 30] = [
         Self::InstallLayoutInvalid,
         Self::WinRtInitializationFailed,
         Self::PackageUriInvalid,
@@ -113,6 +126,10 @@ impl HelperErrorCode {
         Self::ToolOwnerMismatch,
         Self::ToolNotDetected,
         Self::ToolExecutionFailed,
+        Self::ToolPermissionDenied,
+        Self::InsufficientDiskSpace,
+        Self::ToolCandidateConflict,
+        Self::ToolTargetChanged,
     ];
 
     pub const fn wire_code(self) -> u8 {
@@ -151,6 +168,16 @@ impl HelperErrorCode {
             Self::ToolOwnerMismatch => "The Grok Build installation owner does not match",
             Self::ToolNotDetected => "Grok Build is not installed for the current user",
             Self::ToolExecutionFailed => "The Grok Build operation failed",
+            Self::ToolPermissionDenied => {
+                "The current user cannot write to the CLI installation directory"
+            }
+            Self::InsufficientDiskSpace => {
+                "The current user does not have enough disk space for the CLI install"
+            }
+            Self::ToolCandidateConflict => {
+                "A conflicting global CLI dependency is already installed"
+            }
+            Self::ToolTargetChanged => "The confirmed npm install destination changed",
         }
     }
 
@@ -383,6 +410,29 @@ fn encode_tool_result(
     payload.push(result.outcome.wire());
     payload.push(version.len() as u8);
     payload.extend_from_slice(version.as_bytes());
+    match &result.npm_destination {
+        None => payload.push(0),
+        Some(destination) => {
+            payload.push(1);
+            payload.extend_from_slice(&destination.available_bytes.to_le_bytes());
+            encode_tool_dest_field(payload, &destination.prefix)?;
+            encode_tool_dest_field(payload, &destination.cache)?;
+            encode_tool_dest_field(payload, &destination.temp)?;
+            encode_tool_dest_field(payload, &destination.npm_identity)?;
+        }
+    }
+    Ok(())
+}
+
+fn encode_tool_dest_field(payload: &mut Vec<u8>, value: &str) -> Result<(), ProtocolError> {
+    if value.len() > MAX_TOOL_DEST_BYTES {
+        return Err(ProtocolError::ErrorMessageTooLong);
+    }
+    if value.is_empty() || value.chars().any(char::is_control) {
+        return Err(ProtocolError::ErrorMessageContainsControl);
+    }
+    payload.push(value.len() as u8);
+    payload.extend_from_slice(value.as_bytes());
     Ok(())
 }
 
@@ -394,7 +444,8 @@ fn decode_tool_result_payload(payload: &[u8]) -> Result<HelperMessage, ProtocolE
     if version_len > MAX_TOOL_VERSION_BYTES {
         return Err(ProtocolError::ErrorMessageTooLong);
     }
-    if payload.len() != 2 + TOOL_RESULT_FIXED_BYTES + version_len {
+    let version_end = 6 + version_len;
+    if payload.len() < version_end + 1 {
         return Err(ProtocolError::InvalidMessageLength);
     }
     let detected = match payload[2] {
@@ -410,18 +461,72 @@ fn decode_tool_result_payload(payload: &[u8]) -> Result<HelperMessage, ProtocolE
     let version = if version_len == 0 {
         None
     } else {
-        let text = std::str::from_utf8(&payload[6..]).map_err(|_| ProtocolError::InvalidUtf8)?;
+        let text = std::str::from_utf8(&payload[6..version_end])
+            .map_err(|_| ProtocolError::InvalidUtf8)?;
         if text.chars().any(char::is_control) {
             return Err(ProtocolError::ErrorMessageContainsControl);
         }
         Some(text.to_owned())
+    };
+    let npm_destination = match payload[version_end] {
+        0 => {
+            if payload.len() != version_end + 1 {
+                return Err(ProtocolError::InvalidMessageLength);
+            }
+            None
+        }
+        1 => {
+            let available_end = version_end + 1 + 8;
+            if payload.len() < available_end {
+                return Err(ProtocolError::InvalidMessageLength);
+            }
+            let available_bytes = u64::from_le_bytes(
+                payload[version_end + 1..available_end]
+                    .try_into()
+                    .map_err(|_| ProtocolError::InvalidMessageLength)?,
+            );
+            let (prefix, after_prefix) = decode_tool_dest_field(payload, available_end)?;
+            let (cache, after_cache) = decode_tool_dest_field(payload, after_prefix)?;
+            let (temp, after_temp) = decode_tool_dest_field(payload, after_cache)?;
+            let (npm_identity, end) = decode_tool_dest_field(payload, after_temp)?;
+            if payload.len() != end {
+                return Err(ProtocolError::InvalidMessageLength);
+            }
+            Some(NpmDestinationObservation {
+                prefix,
+                cache,
+                temp,
+                npm_identity,
+                available_bytes,
+            })
+        }
+        _ => return Err(ProtocolError::InvalidMessageLength),
     };
     Ok(HelperMessage::ToolResult(ToolOperationResult {
         detected,
         normalized_version: version,
         owner,
         outcome,
+        npm_destination,
     }))
+}
+
+fn decode_tool_dest_field(payload: &[u8], index: usize) -> Result<(String, usize), ProtocolError> {
+    let length = *payload
+        .get(index)
+        .ok_or(ProtocolError::InvalidMessageLength)? as usize;
+    if length == 0 || length > MAX_TOOL_DEST_BYTES {
+        return Err(ProtocolError::ErrorMessageTooLong);
+    }
+    let end = index + 1 + length;
+    let text = payload
+        .get(index + 1..end)
+        .ok_or(ProtocolError::InvalidMessageLength)?;
+    let text = std::str::from_utf8(text).map_err(|_| ProtocolError::InvalidUtf8)?;
+    if text.chars().any(char::is_control) {
+        return Err(ProtocolError::ErrorMessageContainsControl);
+    }
+    Ok((text.to_owned(), end))
 }
 
 fn decode_error_payload(payload: &[u8]) -> Result<HelperMessage, ProtocolError> {
@@ -613,32 +718,32 @@ mod tests {
 
     #[test]
     fn exact_wire_codes_are_stable_and_unique() {
-        assert_eq!(PROTOCOL_VERSION, 3);
+        assert_eq!(PROTOCOL_VERSION, 4);
         assert_eq!(
             HelperErrorCode::ALL.map(HelperErrorCode::wire_code),
             [
                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                24, 25, 26,
+                24, 25, 26, 27, 28, 29, 30,
             ]
         );
-        assert_eq!(encode_frame(&hello()).unwrap(), [3, 0, 0, 0, 3, 5, 1]);
+        assert_eq!(encode_frame(&hello()).unwrap(), [3, 0, 0, 0, 4, 5, 1]);
         assert_eq!(
             encode_frame(&HelperMessage::Started {
                 package: PINNED_PACKAGE,
             })
             .unwrap(),
             [
-                26, 0, 0, 0, 3, 1, 8, 7, 6, 5, 4, 3, 2, 1, 24, 23, 22, 21, 20, 19, 18, 17, 40, 39,
+                26, 0, 0, 0, 4, 1, 8, 7, 6, 5, 4, 3, 2, 1, 24, 23, 22, 21, 20, 19, 18, 17, 40, 39,
                 38, 37, 36, 35, 34, 33,
             ]
         );
         assert_eq!(
             encode_frame(&HelperMessage::Progress { completed: 42 }).unwrap(),
-            [3, 0, 0, 0, 3, 2, 42]
+            [3, 0, 0, 0, 4, 2, 42]
         );
         assert_eq!(
             encode_frame(&HelperMessage::Success).unwrap(),
-            [2, 0, 0, 0, 3, 3]
+            [2, 0, 0, 0, 4, 3]
         );
     }
 
@@ -684,6 +789,7 @@ mod tests {
                 normalized_version: Some("1.2.3".to_owned()),
                 owner: Some(crate::grok::GrokOwner::Native),
                 outcome: crate::grok::GrokOutcome::Observed,
+                npm_destination: None,
             }),
         ];
         messages.extend(HelperErrorCode::ALL.map(HelperMessage::error));
@@ -702,7 +808,11 @@ mod tests {
             message: "x".repeat(MAX_ERROR_MESSAGE_BYTES),
         };
         let encoded = encode_frame(&message).expect("maximum message must fit");
-        assert_eq!(encoded.len(), MAX_FRAME_BYTES);
+        assert_eq!(
+            encoded.len(),
+            FRAME_LENGTH_BYTES + 5 + MAX_ERROR_MESSAGE_BYTES
+        );
+        assert!(encoded.len() <= MAX_FRAME_BYTES);
         assert_eq!(decode_frame(&encoded).unwrap(), message);
 
         let oversized = HelperMessage::Error {
@@ -1100,6 +1210,7 @@ mod tests {
             normalized_version: None,
             owner: None,
             outcome: crate::grok::GrokOutcome::Observed,
+            npm_destination: None,
         };
         assert_eq!(
             sequence.accept(HelperMessage::ToolResult(result.clone())),
@@ -1134,5 +1245,64 @@ mod tests {
             sequence.accept(HelperMessage::Success),
             Err(ProtocolSequenceError::MessageLimitExceeded)
         );
+    }
+
+    #[test]
+    fn tool_result_round_trips_bounded_npm_destination() {
+        let result =
+            ToolOperationResult::observed(true, Some(GrokOwner::Npm), Some("1.0.13".into()))
+                .with_npm_destination(NpmDestinationObservation {
+                    prefix: r"D:\npm-prefix".into(),
+                    cache: r"E:\npm-cache".into(),
+                    temp: r"C:\Users\alice\AppData\Local\Temp".into(),
+                    npm_identity: r"C:\Program Files\nodejs\npm.cmd".into(),
+                    available_bytes: 4096,
+                });
+        let frame = encode_frame(&HelperMessage::ToolResult(result.clone())).expect("encode");
+        assert!(frame.len() <= MAX_FRAME_BYTES);
+        assert_eq!(
+            decode_frame(&frame).expect("decode"),
+            HelperMessage::ToolResult(result)
+        );
+        let v3_tool_result = [6, 0, 0, 0, 3, TOOL_RESULT_KIND, 0, 0, 0, 0];
+        assert_eq!(
+            decode_frame(&v3_tool_result).unwrap_err(),
+            ProtocolError::UnsupportedVersion
+        );
+    }
+
+    #[test]
+    fn maximum_tool_result_frame_round_trips_and_rejects_each_oversized_destination() {
+        let result = ToolOperationResult::observed(
+            true,
+            Some(GrokOwner::Npm),
+            Some("1".repeat(MAX_TOOL_VERSION_BYTES)),
+        )
+        .with_npm_destination(NpmDestinationObservation {
+            prefix: "p".repeat(MAX_TOOL_DEST_BYTES),
+            cache: "c".repeat(MAX_TOOL_DEST_BYTES),
+            temp: "t".repeat(MAX_TOOL_DEST_BYTES),
+            npm_identity: "n".repeat(MAX_TOOL_DEST_BYTES),
+            available_bytes: u64::MAX,
+        });
+        let message = HelperMessage::ToolResult(result.clone());
+        let encoded = encode_frame(&message).expect("maximum destination frame");
+        assert_eq!(encoded.len(), MAX_FRAME_BYTES);
+        assert_eq!(decode_frame(&encoded).unwrap(), message);
+        for field in 0..4 {
+            let mut oversized = result.clone();
+            let destination = oversized.npm_destination.as_mut().unwrap();
+            let value = match field {
+                0 => &mut destination.prefix,
+                1 => &mut destination.cache,
+                2 => &mut destination.temp,
+                _ => &mut destination.npm_identity,
+            };
+            value.push('x');
+            assert_eq!(
+                encode_frame(&HelperMessage::ToolResult(oversized)).unwrap_err(),
+                ProtocolError::ErrorMessageTooLong
+            );
+        }
     }
 }

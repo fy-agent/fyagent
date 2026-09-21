@@ -51,12 +51,12 @@ use windows::{
             SE_GROUP_DEFAULTED, SE_OWNER_DEFAULTED, TOKEN_DUPLICATE, TOKEN_QUERY, TOKEN_USER,
         },
         Storage::FileSystem::{
-            CreateFileW, FileAttributeTagInfo, FileStandardInfo, GetDriveTypeW,
-            GetFileInformationByHandle, GetFileInformationByHandleEx, GetVolumeInformationW,
-            GetVolumePathNameW, ReadFile, WriteFile, BY_HANDLE_FILE_INFORMATION, DELETE,
-            FILE_ACCESS_RIGHTS, FILE_ADD_FILE, FILE_ADD_SUBDIRECTORY, FILE_ALL_ACCESS,
-            FILE_APPEND_DATA, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
-            FILE_ATTRIBUTE_OFFLINE, FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS,
+            CreateFileW, FileAttributeTagInfo, FileStandardInfo, GetDiskFreeSpaceExW,
+            GetDriveTypeW, GetFileInformationByHandle, GetFileInformationByHandleEx,
+            GetVolumeInformationW, GetVolumePathNameW, ReadFile, WriteFile,
+            BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ACCESS_RIGHTS, FILE_ADD_FILE,
+            FILE_ADD_SUBDIRECTORY, FILE_ALL_ACCESS, FILE_APPEND_DATA, FILE_ATTRIBUTE_DIRECTORY,
+            FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_OFFLINE, FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS,
             FILE_ATTRIBUTE_RECALL_ON_OPEN, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO,
             FILE_DELETE_CHILD, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_BACKUP_SEMANTICS,
             FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_OVERLAPPED, FILE_GENERIC_EXECUTE,
@@ -95,7 +95,9 @@ use windows_future::{
 };
 
 use fyagent_user_helper::{
-    admission_event_name, cancel_event_name, encode_frame,
+    admission_event_name, cancel_event_name,
+    closed_dep::{admit_closed_iarna_toml_at_prefix, ClosedDepDocumentError},
+    encode_frame,
     grok::{
         grok_native_windows_powershell_command, grok_windows_executable_names, infer_source_marker,
         observe_owner_from_candidates, owner_from_install_paths, parse_cli_installer_hint,
@@ -105,8 +107,8 @@ use fyagent_user_helper::{
         TOOL_OPERATION_STARTED_IDENTITY,
     },
     grok_npm::{
-        decode_plan_control, npm_install_argv_or_reject, parse_npm_major, version_is_at_least,
-        GROK_NPM_PLAN_CONTROL_BYTES, GROK_NPM_REGISTRY_ENV,
+        decode_plan_control, parse_npm_major, pinned_npm_install_invocation, version_is_at_least,
+        OfficialNpmTool, GROK_NPM_PLAN_CONTROL_BYTES, GROK_NPM_REGISTRY_ENV,
     },
     helper_error_code_for_deployment_hresult,
     layout::{
@@ -115,9 +117,9 @@ use fyagent_user_helper::{
     },
     AgentInstallerProduct, BridgeOperationId, GrokNpmInstallPlan, GrokOwner, GrokPlanFailure,
     GrokPlanKind, GrokToolAction, HelperErrorCode, HelperMessage, InstallRequest,
-    PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity, ToolOperationResult,
-    UserHelperAction, BRIDGE_CONTROL_BYTES, PACKAGE_BRIDGE_ROOT_DIRECTORY,
-    PACKAGE_BRIDGE_VERSION_DIRECTORY,
+    NpmDestinationObservation, PackageBridgeArtifactKind, PackageBridgeControl,
+    PinnedPackageIdentity, ToolOperationResult, UserHelperAction, BRIDGE_CONTROL_BYTES,
+    PACKAGE_BRIDGE_ROOT_DIRECTORY, PACKAGE_BRIDGE_VERSION_DIRECTORY,
 };
 
 // Covers the parent's 30-second Explorer COM launch wait, pipe connection,
@@ -328,6 +330,33 @@ fn execute_grok_tool(
         )?;
     match plan {
         GrokPlanKind::Observe => Ok(observe_grok_result(&candidates, observation)),
+        GrokPlanKind::Preflight => {
+            if observation.owner() == Some(GrokOwner::Native) {
+                let binary = preferred_candidate(&candidates, GrokOwner::Native)
+                    .ok_or(HelperErrorCode::ToolNotDetected)?;
+                run_grok_binary(&binary.path, &["--version"], grok_version_timeout())?;
+                ensure_install_directory_writable(
+                    binary
+                        .path
+                        .parent()
+                        .ok_or(HelperErrorCode::ToolOwnerMismatch)?,
+                )?;
+            } else {
+                let npm = if let Some(binary) = preferred_candidate(&candidates, GrokOwner::Npm) {
+                    sibling_npm(&binary.path)
+                } else {
+                    find_path_program(&["npm.cmd", "npm.exe"])
+                }
+                .ok_or(HelperErrorCode::ToolHostMissing)?;
+                let _ = npm_major_from(&npm)?;
+                let destination =
+                    inspect_npm_destination(&npm, npm_plan.as_ref(), OfficialNpmTool::Grok)?;
+                return Ok(
+                    observe_grok_result(&candidates, observation).with_npm_destination(destination)
+                );
+            }
+            Ok(observe_grok_result(&candidates, observation))
+        }
         GrokPlanKind::NativeFresh => {
             run_native_fresh_install()?;
             finalize_after_mutation(GrokToolAction::Install, expected_owner)
@@ -365,7 +394,9 @@ fn finalize_after_mutation(
             result.outcome = match action {
                 GrokToolAction::Install => fyagent_user_helper::GrokOutcome::Installed,
                 GrokToolAction::Update => fyagent_user_helper::GrokOutcome::Updated,
-                GrokToolAction::Observe => fyagent_user_helper::GrokOutcome::Observed,
+                GrokToolAction::Observe | GrokToolAction::Preflight => {
+                    fyagent_user_helper::GrokOutcome::Observed
+                }
             };
             Ok(result)
         }
@@ -591,24 +622,175 @@ fn sibling_npm(grok_path: &Path) -> Option<PathBuf> {
     None
 }
 
+fn ensure_install_directory_writable(path: &Path) -> Result<(), HelperErrorCode> {
+    validate_ordinary_dos_path(path).map_err(|_| HelperErrorCode::ToolOwnerMismatch)?;
+    let directory = path
+        .ancestors()
+        .find(|parent| parent.exists())
+        .ok_or(HelperErrorCode::ToolPermissionDenied)?;
+    let metadata =
+        std::fs::symlink_metadata(directory).map_err(|_| HelperErrorCode::ToolPermissionDenied)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(HelperErrorCode::ToolOwnerMismatch);
+    }
+    let wide: Vec<u16> = directory.as_os_str().encode_wide().chain(Some(0)).collect();
+    // Query the ordinary helper token's ability to create inside the selected
+    // prefix, without creating files and without borrowing the elevated host.
+    let handle = unsafe {
+        CreateFileW(
+            PCWSTR(wide.as_ptr()),
+            FILE_ADD_FILE.0 | FILE_ADD_SUBDIRECTORY.0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            None,
+        )
+    }
+    .map_err(|_| HelperErrorCode::ToolPermissionDenied)?;
+    let _handle =
+        OwnedKernelHandle::new(handle).map_err(|_| HelperErrorCode::ToolPermissionDenied)?;
+    Ok(())
+}
+
+fn inspect_npm_destination(
+    npm: &Path,
+    plan: Option<&GrokNpmInstallPlan>,
+    tool: OfficialNpmTool,
+) -> Result<NpmDestinationObservation, HelperErrorCode> {
+    let prefix = claude::npm_prefix(npm)?;
+    let cache = claude::npm_cache(npm)?;
+    let temp = observe_npm_temp()?;
+    ensure_install_directory_writable(&prefix)?;
+    ensure_install_directory_writable(&cache)?;
+    ensure_install_directory_writable(&temp)?;
+    if tool == OfficialNpmTool::Grok {
+        if let Err(error) = admit_closed_iarna_toml_at_prefix(&prefix) {
+            return Err(closed_dep_helper_error(error));
+        }
+    }
+    let mut available = u64::MAX;
+    for path in [&prefix, &cache, &temp] {
+        available = available.min(volume_available_bytes(path)?);
+    }
+    if let Some(budget) = plan.and_then(GrokNpmInstallPlan::reserve_budget_bytes) {
+        if available < budget {
+            return Err(HelperErrorCode::InsufficientDiskSpace);
+        }
+    }
+    observation_from_resolved_paths(&prefix, &cache, &temp, npm, available)
+}
+
+fn observe_npm_temp() -> Result<PathBuf, HelperErrorCode> {
+    for name in [windows::core::w!("TEMP"), windows::core::w!("TMP")] {
+        let mut buffer = vec![0_u16; MAX_DOS_PATH_U16];
+        let written = unsafe { GetEnvironmentVariableW(name, Some(&mut buffer)) };
+        if written == 0 || written as usize >= buffer.len() {
+            continue;
+        }
+        let path = PathBuf::from(OsString::from_wide(&buffer[..written as usize]));
+        validate_ordinary_dos_path(&path).map_err(|_| HelperErrorCode::ToolOwnerMismatch)?;
+        return Ok(path);
+    }
+    Err(HelperErrorCode::ToolHostMissing)
+}
+
+fn volume_available_bytes(path: &Path) -> Result<u64, HelperErrorCode> {
+    let ancestor = path
+        .ancestors()
+        .find(|parent| parent.exists())
+        .ok_or(HelperErrorCode::ToolPermissionDenied)?;
+    let wide: Vec<u16> = ancestor
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut available = 0_u64;
+    unsafe { GetDiskFreeSpaceExW(PCWSTR(wide.as_ptr()), Some(&mut available), None, None) }
+        .map_err(|_| HelperErrorCode::ToolHostMissing)?;
+    if available == 0 {
+        return Err(HelperErrorCode::InsufficientDiskSpace);
+    }
+    Ok(available)
+}
+
+fn observation_from_resolved_paths(
+    prefix: &Path,
+    cache: &Path,
+    temp: &Path,
+    npm: &Path,
+    available_bytes: u64,
+) -> Result<NpmDestinationObservation, HelperErrorCode> {
+    Ok(NpmDestinationObservation {
+        prefix: bounded_dest_text(prefix)?,
+        cache: bounded_dest_text(cache)?,
+        temp: bounded_dest_text(temp)?,
+        npm_identity: bounded_dest_text(npm)?,
+        available_bytes,
+    })
+}
+
+fn bounded_dest_text(path: &Path) -> Result<String, HelperErrorCode> {
+    let text = path.to_string_lossy();
+    if text.is_empty()
+        || text.len() > fyagent_user_helper::MAX_TOOL_DEST_BYTES
+        || text.chars().any(char::is_control)
+    {
+        return Err(HelperErrorCode::ToolOwnerMismatch);
+    }
+    Ok(text.into_owned())
+}
+
+fn closed_dep_helper_error(error: ClosedDepDocumentError) -> HelperErrorCode {
+    match error {
+        ClosedDepDocumentError::Unreadable
+        | ClosedDepDocumentError::InvalidDocument
+        | ClosedDepDocumentError::MissingVersion
+        | ClosedDepDocumentError::WrongType
+        | ClosedDepDocumentError::DifferentVersion => HelperErrorCode::ToolCandidateConflict,
+    }
+}
+
 fn execute_npm_plan(
     npm: &Path,
-    tool: fyagent_user_helper::grok_npm::OfficialNpmTool,
+    tool: OfficialNpmTool,
     plan: &GrokNpmInstallPlan,
 ) -> Result<(), HelperErrorCode> {
-    use fyagent_user_helper::grok_npm::OfficialNpmTool;
     let plan = plan.clone().with_npm_major(npm_major_from(npm)?);
-    let argv = match tool {
-        OfficialNpmTool::Grok => npm_install_argv_or_reject(Some(&plan))
-            .map_err(|_| HelperErrorCode::ToolExecutionFailed)?,
-        OfficialNpmTool::Claude => plan.npm_argv_for(tool),
-    };
-    let refs = argv.iter().map(String::as_str).collect::<Vec<_>>();
-    let env = match tool {
-        OfficialNpmTool::Grok => vec![(GROK_NPM_REGISTRY_ENV, plan.registry_url())],
-        OfficialNpmTool::Claude => Vec::new(),
-    };
-    run_grok_binary_with_env(npm, &refs, grok_lifecycle_timeout(), &env).map(|_| ())
+    let invocation =
+        pinned_npm_install_invocation(Some(&plan), tool).map_err(|error| match error {
+            fyagent_user_helper::GrokNpmPlanError::UnsupportedDependency => {
+                HelperErrorCode::ToolCandidateConflict
+            }
+            fyagent_user_helper::GrokNpmPlanError::InvalidSize => {
+                HelperErrorCode::ToolExecutionFailed
+            }
+            fyagent_user_helper::GrokNpmPlanError::Missing => HelperErrorCode::ToolTargetChanged,
+            _ => HelperErrorCode::ToolExecutionFailed,
+        })?;
+    let observed = inspect_npm_destination(npm, Some(&plan), tool)?;
+    fyagent_user_helper::admit_confirmed_npm_target(plan.npm_target(), &observed).map_err(
+        |error| match error {
+            fyagent_user_helper::NpmTargetError::Missing
+            | fyagent_user_helper::NpmTargetError::Drifted => HelperErrorCode::ToolTargetChanged,
+        },
+    )?;
+    let program = std::path::Path::new(invocation.program());
+    let refs = invocation
+        .args()
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let mut env = vec![
+        ("TEMP", invocation.temp()),
+        ("TMP", invocation.temp()),
+        ("npm_config_prefix", invocation.prefix()),
+        ("npm_config_cache", invocation.cache()),
+    ];
+    if tool == OfficialNpmTool::Grok {
+        env.push((GROK_NPM_REGISTRY_ENV, plan.registry_url()));
+    }
+    run_grok_binary_with_env(program, &refs, grok_lifecycle_timeout(), &env).map(|_| ())
 }
 
 fn npm_major_from(npm: &Path) -> Result<u32, HelperErrorCode> {

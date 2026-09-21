@@ -70,6 +70,11 @@ description = "Run production boot and Chromium/WebKit renderer regressions"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = "pnpm test:browser"
 
+["demo:capture"]
+description = "Capture fixture-only usage screenshots, video, captions and source manifest"
+env = { FYAGENT_TASK_EFFECT = "build-output" }
+run = "pnpm exec playwright test --config config/playwright.demo.config.ts"
+
 ["test:performance"]
 description = "Profile the production renderer serially with real animations"
 env = { FYAGENT_TASK_EFFECT = "read-only" }

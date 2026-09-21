@@ -293,7 +293,9 @@ impl ProviderService {
             .map_err(|_| BindManagedProxyError::ApplyFailedRolledBack)?;
         if let Some(existing) = &existing {
             provider.name = existing.name.clone();
-            if !Self::quick_setup_persisted_provider_matches(&provider, existing).unwrap_or(false) {
+            if !Self::quick_setup_persisted_provider_matches(&state.db, &provider, existing)
+                .unwrap_or(false)
+            {
                 return Err(BindManagedProxyError::ProviderConflict);
             }
         }
@@ -470,7 +472,9 @@ impl ProviderService {
             // Names are presentation, not binding authority. Preserve a saved
             // name when public account labels or the user's own label change.
             provider.name = existing.name.clone();
-            if !Self::quick_setup_persisted_provider_matches(&provider, existing).unwrap_or(false) {
+            if !Self::quick_setup_persisted_provider_matches(&state.db, &provider, existing)
+                .unwrap_or(false)
+            {
                 return Err(BindXaiManagedError::ProviderConflict);
             }
         }
@@ -505,7 +509,7 @@ impl ProviderService {
                     .flatten()
                     .as_ref()
                     .is_some_and(|row| {
-                        Self::quick_setup_persisted_provider_matches(&provider, row)
+                        Self::quick_setup_persisted_provider_matches(&state.db, &provider, row)
                             .unwrap_or(false)
                     })
                 && state

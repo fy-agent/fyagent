@@ -10,18 +10,22 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::types::*;
-use crate::services::provider::{
-    build_effective_settings_with_common_config, write_live_with_common_config,
-};
+use crate::services::provider::build_effective_settings_with_common_config;
 use serde_json::{json, Map, Value};
 use std::str::FromStr;
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::RwLock;
 
+mod legacy_recovery;
 mod managed_recovery;
 mod opencode;
+#[cfg(test)]
+mod recovery_tests;
+mod restore_preview;
 mod takeover;
+
+pub use restore_preview::ProxyRestorePreview;
 
 use takeover::{codex_config_has_base_url_matching, is_local_proxy_url, proxy_urls_match};
 
@@ -1330,37 +1334,27 @@ impl ProxyService {
 
         // 1) 恢复 Live 配置
         //
-        // 必须走 with_fallback 版本：备份 → SSOT → 清理占位符 的三层兜底。
+        // 必须走 with_fallback 版本：备份 → 经验证来源 → 原始文件收据 的三层兜底。
         // 简版 restore_live_config_for_app 在备份缺失时会静默 Ok(())，
         // 留下接管时写入的占位符（代理地址/PROXY_MANAGED token），客户端无法工作。
         self.restore_live_config_for_app_with_fallback_inner(&app)
             .await?;
 
-        // 2) 删除该 app 的备份（避免长期存储敏感 Token）
+        // After owned files are restored and verified, clear only this app's
+        // enabled flag and delete its live backup in one SQL transaction.
+        // Native I/O stays outside the DAO mutex so a failed second statement
+        // can still present a retryable preview.
         self.db
-            .delete_live_backup(app_type_str)
-            .await
-            .map_err(|e| format!("删除 {app_type_str} Live 备份失败: {e}"))?;
+            .complete_app_restore(app_type_str)
+            .map_err(|e| format!("完成 {app_type_str} 恢复收尾失败: {e}"))?;
 
-        // 3) 设置 proxy_config.enabled = false
-        let mut updated_config = self
-            .db
-            .get_proxy_config_for_app(app_type_str)
-            .await
-            .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
-        updated_config.enabled = false;
-        self.db
-            .update_proxy_config_for_app(updated_config)
-            .await
-            .map_err(|e| format!("清除 {app_type_str} enabled 状态失败: {e}"))?;
-
-        // 4) 清除该应用的健康状态（关闭代理时重置队列状态）
+        // 3) 清除该应用的健康状态（关闭代理时重置队列状态）
         self.db
             .clear_provider_health_for_app(app_type_str)
             .await
             .map_err(|e| format!("清除 {app_type_str} 健康状态失败: {e}"))?;
 
-        // 5) 若无其它接管，更新旧标志，并停止代理服务
+        // 4) 若无其它接管，更新旧标志，并停止代理服务
         // 检查是否还有其它 app 的 enabled = true
         let any_enabled = self
             .db
@@ -1392,29 +1386,19 @@ impl ProxyService {
     pub fn disable_takeover_for_app_sync(&self, app_type: &AppType) -> Result<(), String> {
         let app_type_str = app_type.as_str();
 
-        // 1) 恢复原始 Live 配置（备份 → SSOT → 清理占位符 三层兜底）
+        // 1) 恢复原始 Live 配置（备份 → 经验证来源 → 原始文件收据 三层兜底）
         futures::executor::block_on(self.restore_live_config_for_app_with_fallback_inner(app_type))
             .map_err(|e| format!("恢复 {app_type_str} Live 配置失败: {e}"))?;
 
-        // 2) 删除该 app 的备份
-        futures::executor::block_on(self.db.delete_live_backup(app_type_str))
-            .map_err(|e| format!("删除 {app_type_str} Live 备份失败: {e}"))?;
+        self.db
+            .complete_app_restore(app_type_str)
+            .map_err(|e| format!("完成 {app_type_str} 恢复收尾失败: {e}"))?;
 
-        // 3) 设置 proxy_config.enabled = false
-        let mut config =
-            futures::executor::block_on(self.db.get_proxy_config_for_app(app_type_str))
-                .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
-        if config.enabled {
-            config.enabled = false;
-            futures::executor::block_on(self.db.update_proxy_config_for_app(config))
-                .map_err(|e| format!("清除 {app_type_str} enabled 状态失败: {e}"))?;
-        }
-
-        // 4) 清除该应用的健康状态
+        // 3) 清除该应用的健康状态
         futures::executor::block_on(self.db.clear_provider_health_for_app(app_type_str))
             .map_err(|e| format!("清除 {app_type_str} 健康状态失败: {e}"))?;
 
-        // 5) 清旧标志
+        // 4) 清旧标志
         let _ = futures::executor::block_on(self.db.set_live_takeover_active(false));
 
         Ok(())
@@ -2218,12 +2202,13 @@ impl ProxyService {
         {
             let config: Value = serde_json::from_str(&backup.original_config)
                 .map_err(|_| "Restore backup unavailable")?;
-            let (config, managed) = self.verify_and_unwrap_managed_restore(app_type, config)?;
+            let (config, managed) =
+                self.verify_and_unwrap_managed_restore_for_exit(app_type, config)?;
             self.require_managed_restore_proof(app_type, managed)?;
             if managed {
                 self.restore_verified_managed_config(app_type)?;
             } else {
-                self.write_live_config_for_app(app_type, &config)?;
+                self.restore_legacy_config_if_owned(app_type, &config)?;
             }
         }
         Ok(())
@@ -2282,7 +2267,8 @@ impl ProxyService {
         if let Some(backup) = backup {
             let config: Value = serde_json::from_str(&backup.original_config)
                 .map_err(|e| format!("解析 {app_type_str} 备份失败: {e}"))?;
-            let (config, managed) = self.verify_and_unwrap_managed_restore(app_type, config)?;
+            let (config, managed) =
+                self.verify_and_unwrap_managed_restore_for_exit(app_type, config)?;
             self.require_managed_restore_proof(app_type, managed)?;
 
             // 备份若是代理占位符（异常历史：上次 stop 失败导致 Live 留在了代理状态，
@@ -2296,7 +2282,7 @@ impl ProxyService {
                 if managed {
                     self.restore_verified_managed_config(app_type)?;
                 } else {
-                    self.write_live_config_for_app(app_type, &config)?;
+                    self.restore_legacy_config_if_owned(app_type, &config)?;
                 }
                 log::info!("{app_type_str} Live 配置已从备份恢复");
                 return Ok(());
@@ -2316,20 +2302,15 @@ impl ProxyService {
                 return Ok(());
             }
             Ok(false) => {
-                log::warn!(
-                    "{app_type_str} Live 备份缺失，且无法从 SSOT 恢复，将尝试清理接管占位符"
-                );
+                log::warn!("{app_type_str} Live 备份缺失，将检查原始文件收据");
             }
-            Err(e) => {
-                log::error!(
-                    "{app_type_str} Live 备份缺失，SSOT 恢复失败，将尝试清理接管占位符: {e}"
-                );
-            }
+            Err(e) => return Err(e),
         }
 
-        // 2.2) 最后兜底：尽力清理占位符与本地代理地址，避免长期卡在代理占位符状态
-        self.cleanup_takeover_placeholders_in_live_for_app(app_type)?;
-        log::info!("{app_type_str} Live 接管占位符已清理（无备份兜底）");
+        // No source may be invented by deleting credentials/endpoints. A
+        // verified first-write receipt can still retain the real original.
+        self.restore_legacy_receipt_preimage(app_type)?;
+        log::info!("{app_type_str} Live 配置已从原始文件收据恢复");
         Ok(())
     }
 
@@ -2391,31 +2372,20 @@ impl ProxyService {
 
         // 供应商配置本身含接管占位符时不可写回（历史异常：接管期间 Live 被
         // 误导入成了供应商）。写回只会把占位符固化进 Live；返回 Ok(false)
-        // 让调用方落到"清理占位符"兜底。
+        // 让调用方检查原始文件收据。
         if Self::live_has_proxy_placeholder_for_app(app_type, &provider.settings_config) {
             log::warn!(
-                "{app_type:?} 当前供应商配置含代理接管占位符（疑似接管期间被导入的残留），跳过 SSOT 写回，改走占位符清理"
+                "{app_type:?} 当前供应商配置含代理接管占位符（疑似接管期间被导入的残留），跳过 SSOT 写回，检查原始文件收据"
             );
             return Ok(false);
         }
 
-        write_live_with_common_config(self.db.as_ref(), app_type, provider)
-            .map_err(|e| format!("写入 {app_type:?} Live 配置失败: {e}"))?;
+        let original =
+            build_effective_settings_with_common_config(self.db.as_ref(), app_type, provider)
+                .map_err(|_| "无法读取原模型来源；已保留当前配置".to_owned())?;
+        self.restore_legacy_config_if_owned(app_type, &original)?;
 
         Ok(true)
-    }
-
-    fn cleanup_takeover_placeholders_in_live_for_app(
-        &self,
-        app_type: &AppType,
-    ) -> Result<(), String> {
-        match app_type {
-            AppType::Claude => self.cleanup_claude_takeover_placeholders_in_live(),
-            AppType::Codex => self.cleanup_codex_takeover_placeholders_in_live(),
-            AppType::Gemini => self.cleanup_gemini_takeover_placeholders_in_live(),
-            AppType::GrokBuild => self.cleanup_grok_takeover_placeholders_in_live(),
-            _ => Ok(()),
-        }
     }
 
     async fn live_takeover_matches_current_proxy(
@@ -2489,101 +2459,6 @@ impl ProxyService {
             }
             _ => Ok(false),
         }
-    }
-
-    fn cleanup_claude_takeover_placeholders_in_live(&self) -> Result<(), String> {
-        let mut config = self.read_claude_live()?;
-
-        let Some(env) = config.get_mut("env").and_then(|v| v.as_object_mut()) else {
-            return Ok(());
-        };
-
-        for key in [
-            "ANTHROPIC_AUTH_TOKEN",
-            "ANTHROPIC_API_KEY",
-            "OPENROUTER_API_KEY",
-            "OPENAI_API_KEY",
-        ] {
-            if env.get(key).and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER) {
-                env.remove(key);
-            }
-        }
-
-        if env
-            .get("ANTHROPIC_BASE_URL")
-            .and_then(|v| v.as_str())
-            .map(is_local_proxy_url)
-            .unwrap_or(false)
-        {
-            env.remove("ANTHROPIC_BASE_URL");
-        }
-
-        self.write_claude_live(&config)?;
-        Ok(())
-    }
-
-    fn cleanup_codex_takeover_placeholders_in_live(&self) -> Result<(), String> {
-        let config = self.read_codex_live()?;
-        let Some(cfg_str) = config.get("config").and_then(|v| v.as_str()) else {
-            return Ok(());
-        };
-        let updated = Self::remove_local_toml_base_url(cfg_str);
-        let updated =
-            crate::codex_config::remove_codex_experimental_bearer_token_if(&updated, |token| {
-                token == PROXY_TOKEN_PLACEHOLDER
-            })
-            .map_err(|e| format!("清理 Codex 接管占位符失败: {e}"))?;
-        let updated = crate::codex_config::remove_codex_official_proxy_route(&updated)
-            .map_err(|e| format!("清理 Codex 官方接管路由失败: {e}"))?;
-        crate::codex_config::write_codex_live_config_atomic(Some(&updated))
-            .map_err(|e| format!("清理 Codex 接管占位符失败: {e}"))?;
-        Ok(())
-    }
-
-    /// Remove local proxy base_url from TOML（委托给 codex_config 共享实现）
-    fn remove_local_toml_base_url(toml_str: &str) -> String {
-        crate::codex_config::remove_codex_toml_base_url_if(toml_str, is_local_proxy_url)
-    }
-
-    fn cleanup_gemini_takeover_placeholders_in_live(&self) -> Result<(), String> {
-        let mut config = self.read_gemini_live()?;
-
-        let Some(env) = config.get_mut("env").and_then(|v| v.as_object_mut()) else {
-            return Ok(());
-        };
-
-        if env.get("GEMINI_API_KEY").and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER) {
-            env.remove("GEMINI_API_KEY");
-        }
-
-        if env
-            .get("GOOGLE_GEMINI_BASE_URL")
-            .and_then(|v| v.as_str())
-            .map(is_local_proxy_url)
-            .unwrap_or(false)
-        {
-            env.remove("GOOGLE_GEMINI_BASE_URL");
-        }
-
-        self.write_gemini_live(&config)?;
-        Ok(())
-    }
-
-    fn cleanup_grok_takeover_placeholders_in_live(&self) -> Result<(), String> {
-        let config = self.read_grok_live()?;
-        let Some(config_toml) = config.get("config").and_then(Value::as_str) else {
-            return Ok(());
-        };
-        if !crate::grok_config::has_proxy_placeholder(config_toml, PROXY_TOKEN_PLACEHOLDER) {
-            return Ok(());
-        }
-
-        // A valid provider snapshot should normally restore before this fallback.
-        // Clearing the token prevents a stale local route from looking usable.
-        let updated = crate::grok_config::update_api_key(config_toml, "")
-            .map_err(|e| format!("清理 Grok Build 接管占位符失败: {e}"))?;
-        crate::config::write_text_file(&crate::grok_config::get_grok_config_path(), &updated)
-            .map_err(|e| format!("写入 Grok Build 配置失败: {e}"))
     }
 
     /// 检查是否处于 Live 接管模式
@@ -3678,7 +3553,7 @@ mod tests {
     use std::env;
     use tempfile::TempDir;
 
-    struct TempHome {
+    pub(super) struct TempHome {
         #[allow(dead_code)]
         dir: TempDir,
         original_home: Option<String>,
@@ -3687,7 +3562,7 @@ mod tests {
     }
 
     impl TempHome {
-        fn new() -> Self {
+        pub(super) fn new() -> Self {
             let dir = TempDir::new().expect("failed to create temp home");
             let original_home = env::var("HOME").ok();
             let original_userprofile = env::var("USERPROFILE").ok();
@@ -3735,11 +3610,6 @@ mod tests {
         db.update_proxy_config(proxy_config)
             .await
             .expect("set test proxy config to an ephemeral port");
-    }
-
-    async fn running_codex_base_url(service: &ProxyService) -> String {
-        let status = service.get_status().await.expect("get proxy status");
-        format!("http://127.0.0.1:{}/v1", status.port)
     }
 
     async fn seed_distinct_app_proxy_settings(db: &Database) -> Vec<Value> {
@@ -3863,6 +3733,32 @@ mod tests {
             .expect("serialize models_cache"),
         )
         .expect("write models_cache.json");
+    }
+
+    fn seed_codex_restore_receipt(service: &ProxyService, encoded: &str) {
+        let original: Value = serde_json::from_str(encoded).unwrap();
+        service.write_codex_live_verbatim(&original).unwrap();
+        let provider = Provider::with_id(
+            "restore-fixture".into(),
+            "Restore fixture".into(),
+            original.clone(),
+            None,
+        );
+        service.db.save_provider("codex", &provider).unwrap();
+        service
+            .db
+            .set_current_provider("codex", &provider.id)
+            .unwrap();
+        let mut projected = original;
+        ProxyService::apply_codex_takeover_fields_for_provider(
+            &mut projected,
+            "http://127.0.0.1:12345/v1",
+            &provider,
+        )
+        .unwrap();
+        service
+            .write_codex_takeover_live_for_provider(&projected, Some(&provider))
+            .unwrap();
     }
 
     #[test]
@@ -5294,7 +5190,7 @@ wire_api = "responses"
 
     #[tokio::test]
     #[serial]
-    async fn codex_set_takeover_rebuilds_stale_enabled_state_without_overwriting_backup() {
+    async fn codex_stale_enabled_rebuild_preserves_unproven_live_and_backup() {
         let _home = TempHome::new();
         crate::settings::reload_settings().expect("reload settings");
         crate::settings::update_settings(crate::settings::AppSettings {
@@ -5378,63 +5274,55 @@ wire_api = "responses"
             .await
             .expect("mark Codex takeover enabled");
 
-        service
+        let auth_path = crate::codex_config::get_codex_auth_path();
+        let config_path = crate::codex_config::get_codex_config_path();
+        let live_auth_before = std::fs::read(&auth_path).expect("read seeded auth");
+        let live_config_before = std::fs::read(&config_path).expect("read seeded config");
+        let backup_before = db
+            .get_live_backup("codex")
+            .await
+            .expect("get Codex live backup")
+            .expect("backup exists")
+            .original_config;
+
+        let error = service
             .set_takeover_for_app("codex", true)
             .await
-            .expect("rebuild Codex takeover");
-
-        let live_auth: Value =
-            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
-                .expect("read live auth");
+            .expect_err("unproven stale live must not be rebuilt from the backup");
+        assert!(
+            error.contains("无法确认代理配置仍可安全恢复"),
+            "stale rebuild without ownership proof must report conflict: {error}"
+        );
         assert_eq!(
-            live_auth, oauth_auth,
-            "repairing stale takeover must restore the preserved OAuth auth from backup"
+            std::fs::read(&auth_path).expect("reread auth"),
+            live_auth_before,
+            "conflict must preserve the unproven live auth bytes"
         );
-
-        let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
-            .expect("read live config");
-        let expected_base_url = running_codex_base_url(&service).await;
-        assert!(
-            live_config.contains(&expected_base_url),
-            "stale enabled takeover must be rebuilt to the current proxy base_url"
+        assert_eq!(
+            std::fs::read(&config_path).expect("reread config"),
+            live_config_before,
+            "conflict must preserve the unproven live config bytes"
         );
-        assert!(
-            live_config.contains(PROXY_TOKEN_PLACEHOLDER),
-            "rebuilt takeover should keep the proxy bearer placeholder"
-        );
-        assert!(
-            service
-                .live_takeover_matches_current_proxy(&AppType::Codex)
-                .await
-                .expect("detect rebuilt Codex takeover"),
-            "rebuilt Codex live config should match the active proxy address"
-        );
-
-        let backup = db
+        let backup_after = db
             .get_live_backup("codex")
             .await
             .expect("get Codex live backup")
             .expect("backup exists");
-        let backup_value: Value =
-            serde_json::from_str(&backup.original_config).expect("parse backup");
         assert_eq!(
-            backup_value.get("auth"),
-            Some(&oauth_auth),
-            "rebuilding stale takeover must not overwrite the original OAuth backup"
+            backup_after.original_config, backup_before,
+            "conflict must preserve the original recovery backup"
         );
         assert!(
-            backup_value
-                .get("config")
-                .and_then(|value| value.as_str())
-                .is_some_and(|config| config.contains("deepseek-key")
-                    && !config.contains("http://127.0.0.1")),
-            "backup should remain the restorable DeepSeek config, not the proxy config"
+            db.get_proxy_config_for_app("codex")
+                .await
+                .expect("get Codex proxy config")
+                .enabled,
+            "unowned rebuild must leave takeover enabled"
         );
 
-        service
-            .set_takeover_for_app("codex", false)
-            .await
-            .expect("disable Codex takeover");
+        if service.is_running().await {
+            let _ = service.stop().await;
+        }
         crate::settings::update_settings(crate::settings::AppSettings::default())
             .expect("reset settings");
     }
@@ -5522,7 +5410,7 @@ wire_api = "responses"
 
     #[test]
     #[serial]
-    fn codex_takeover_cleanup_removes_config_placeholder_without_touching_oauth_auth() {
+    fn codex_takeover_recovery_without_original_refuses_cleanup_and_keeps_oauth() {
         let _home = TempHome::new();
         crate::settings::reload_settings().expect("reload settings");
 
@@ -5556,9 +5444,14 @@ experimental_bearer_token = "PROXY_MANAGED"
             "config.toml placeholder should be detected before cleanup"
         );
 
-        service
-            .cleanup_codex_takeover_placeholders_in_live()
-            .expect("cleanup Codex takeover placeholders");
+        let before = std::fs::read(crate::codex_config::get_codex_config_path()).unwrap();
+        assert!(service
+            .restore_legacy_receipt_preimage(&AppType::Codex)
+            .is_err());
+        assert_eq!(
+            std::fs::read(crate::codex_config::get_codex_config_path()).unwrap(),
+            before
+        );
 
         let live_auth: Value =
             crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
@@ -5566,17 +5459,6 @@ experimental_bearer_token = "PROXY_MANAGED"
         assert_eq!(
             live_auth, oauth_auth,
             "cleanup should preserve ChatGPT OAuth auth"
-        );
-
-        let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
-            .expect("read live config");
-        assert!(
-            !live_config.contains(PROXY_TOKEN_PLACEHOLDER),
-            "cleanup should remove config.toml proxy bearer placeholder"
-        );
-        assert!(
-            !live_config.contains("http://127.0.0.1:15721"),
-            "cleanup should remove local proxy base_url"
         );
     }
 
@@ -6427,8 +6309,15 @@ model = "gpt-5.1-codex"
         .await
         .expect("seed live backup");
         service
-            .write_claude_live(&json!({ "env": { "ANTHROPIC_API_KEY": "stale" } }))
-            .expect("seed live file");
+            .write_claude_live(&provider_a.settings_config)
+            .unwrap();
+        let mut projected = provider_a.settings_config.clone();
+        ProxyService::apply_claude_takeover_fields_for_provider(
+            &mut projected,
+            "http://127.0.0.1:15721",
+            &provider_a,
+        );
+        service.write_claude_live(&projected).unwrap();
 
         let guard = service.lock_switch_for_test("claude").await;
         let service_for_switch = service.clone();
@@ -7495,6 +7384,7 @@ requires_openai_auth = true
             "config": backup_config,
         }))
         .expect("serialize backup");
+        seed_codex_restore_receipt(&service, &backup_json);
         db.save_live_backup("codex", &backup_json)
             .await
             .expect("seed live backup");
@@ -7553,6 +7443,7 @@ requires_openai_auth = true
             }
         }))
         .expect("serialize backup");
+        seed_codex_restore_receipt(&service, &backup_json);
         db.save_live_backup("codex", &backup_json)
             .await
             .expect("seed live backup");
@@ -7623,6 +7514,7 @@ requires_openai_auth = true
             }
         }))
         .expect("serialize backup");
+        seed_codex_restore_receipt(&service, &backup_json);
         db.save_live_backup("codex", &backup_json)
             .await
             .expect("seed live backup");
@@ -7691,15 +7583,17 @@ requires_openai_auth = true
             .await
             .expect("seed corrupted backup");
 
-        // Seed Live with the same proxy placeholder (matches the corrupted state)
+        // Retain a real original preimage and the actual full takeover projection.
         service
-            .write_claude_live(&json!({
-                "env": {
-                    "ANTHROPIC_AUTH_TOKEN": PROXY_TOKEN_PLACEHOLDER,
-                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721"
-                }
-            }))
-            .expect("seed taken-over live file");
+            .write_claude_live(&provider.settings_config)
+            .unwrap();
+        let mut projected = provider.settings_config.clone();
+        ProxyService::apply_claude_takeover_fields_for_provider(
+            &mut projected,
+            "http://127.0.0.1:15721",
+            &provider,
+        );
+        service.write_claude_live(&projected).unwrap();
 
         // Restore: must NOT use the corrupted backup
         service

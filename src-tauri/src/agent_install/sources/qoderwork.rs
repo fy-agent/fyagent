@@ -64,6 +64,10 @@ pub fn parse_qoderwork_latest(
 
     let download_url = Url::parse(url).map_err(|_| SourceResolveError::SchemaInvalid)?;
     https_url_on_allowlist(&download_url, QODERWORK_REDIRECT_HOSTS)?;
+    let artifact_size_bytes = artifact_size_for_url(body, &download_url)?;
+    let size_binding = artifact_size_bytes
+        .map(|size| size.to_string())
+        .unwrap_or_default();
 
     Ok(ResolvedDesktopSource {
         product: AgentCatalogId::QoderWork,
@@ -78,12 +82,44 @@ pub fn parse_qoderwork_latest(
             ("alias", "latest"),
             ("version", version),
             ("endpoint", endpoint_kind),
+            ("artifact_url", download_url.as_str()),
+            ("artifact_size", &size_binding),
         ]),
         display_version: Some(version.to_string()),
+        artifact_size_bytes,
         download_url,
         versionless_latest: false,
         official_page: qoderwork_official_page(),
     })
+}
+
+fn artifact_size_for_url(body: &[u8], selected: &Url) -> Result<Option<u64>, SourceResolveError> {
+    let value: serde_yaml::Value =
+        serde_yaml::from_slice(body).map_err(|_| SourceResolveError::SchemaInvalid)?;
+    let Some(files) = value.get("files").and_then(serde_yaml::Value::as_sequence) else {
+        return Ok(None);
+    };
+    let mut matching_size = None;
+    let mut matched = false;
+    for file in files {
+        let Some(raw_url) = file.get("url").and_then(serde_yaml::Value::as_str) else {
+            continue;
+        };
+        // Relative metadata names are accepted only when they resolve to the exact
+        // already-admitted alias. ZIP and other architecture sizes stay unknown.
+        if selected.join(raw_url).ok().as_ref() != Some(selected) {
+            continue;
+        }
+        if matched {
+            return Err(SourceResolveError::SchemaInvalid);
+        }
+        matched = true;
+        matching_size = file
+            .get("size")
+            .and_then(serde_yaml::Value::as_u64)
+            .filter(|size| *size > 0);
+    }
+    Ok(matching_size)
 }
 
 fn parse_qoderwork_latest_version(body: &[u8]) -> Result<&str, SourceResolveError> {
@@ -139,7 +175,7 @@ releaseDate: 2026-08-21T09:06:52.222Z
 ";
 
     #[test]
-    fn qoderwork_keeps_archived_aliases_and_reads_yml_version_only() {
+    fn qoderwork_keeps_archived_aliases_and_reads_yml_metadata() {
         let macos = parse_qoderwork_latest(
             MACOS_YML.as_bytes(),
             AgentPlatform::Macos,
@@ -245,6 +281,51 @@ releaseDate: 2026-08-21T09:06:52.222Z
                 AgentArch::Aarch64
             ),
             Err(SourceResolveError::SchemaInvalid)
+        );
+    }
+
+    #[test]
+    fn size_hint_is_bound_to_exact_artifact_and_release() {
+        let windows = parse_qoderwork_latest(
+            WINDOWS_YML.as_bytes(),
+            AgentPlatform::Windows,
+            AgentArch::X86_64,
+        )
+        .unwrap();
+        assert_eq!(windows.artifact_size_bytes, Some(253565152));
+        let changed = WINDOWS_YML.replace("253565152", "253565153");
+        assert_ne!(
+            windows.release_id,
+            parse_qoderwork_latest(
+                changed.as_bytes(),
+                AgentPlatform::Windows,
+                AgentArch::X86_64
+            )
+            .unwrap()
+            .release_id
+        );
+        let mac = parse_qoderwork_latest(
+            MACOS_YML.as_bytes(),
+            AgentPlatform::Macos,
+            AgentArch::Aarch64,
+        )
+        .unwrap();
+        assert_eq!(
+            mac.artifact_size_bytes, None,
+            "ZIP size must never describe the DMG"
+        );
+        let dmg = MACOS_YML.replace("QoderWorkCN-arm64-mac.zip", "QoderWorkCN-arm64.dmg");
+        assert_eq!(
+            parse_qoderwork_latest(dmg.as_bytes(), AgentPlatform::Macos, AgentArch::Aarch64)
+                .unwrap()
+                .artifact_size_bytes,
+            Some(243552125)
+        );
+        assert_eq!(
+            parse_qoderwork_latest(dmg.as_bytes(), AgentPlatform::Macos, AgentArch::X86_64)
+                .unwrap()
+                .artifact_size_bytes,
+            None
         );
     }
 }

@@ -47,12 +47,9 @@ export type ApplyRiskPresentation = {
 export type ApplyPreviewModel = {
   readonly semantic: {
     readonly summary: string;
-    readonly targetName: string;
-    readonly operationLabel: string;
-    readonly confirmationLabel: string;
   };
   readonly risk: {
-    readonly restartLabel: string;
+    readonly restartLabel: string | null;
     readonly items: readonly ApplyRiskPresentation[];
     readonly empty: boolean;
   };
@@ -72,6 +69,7 @@ export type ApplyPartialTruth = {
   readonly succeededCount: number;
   readonly compensatedCount: number;
   readonly unverifiedCount: number;
+  readonly unconfirmed: boolean;
   readonly remainingEffects: readonly string[];
   readonly manualActions: readonly string[];
 };
@@ -154,12 +152,12 @@ function assertNever(value: never): never {
 
 function restartExpectationLabel(
   value: ChangePlan["restartExpectation"],
-): string {
+): string | null {
   switch (value) {
     case "recommended":
       return "建议重启 Codex";
     case "not_required":
-      return "无需重启";
+      return null;
     case "unknown":
       return "尚未确认";
     default:
@@ -210,46 +208,48 @@ function previewValidityLabel(plan: ChangePlan): string {
 }
 
 function createPreviewModel(plan: ChangePlan): ApplyPreviewModel {
-  const semantic =
+  const summary =
     plan.operation === "workbuddy_models_save"
-      ? {
-          summary: `保存 WorkBuddy 模型设置，服务地址为 ${plan.targetProviderName}。`,
-          operationLabel: "保存 WorkBuddy 模型设置",
-        }
+      ? `保存 WorkBuddy 模型设置，服务地址为 ${plan.targetProviderName}。`
       : plan.operation === "codex_provider_upsert_and_switch"
-        ? {
-            summary: `保存 ${plan.targetProviderName} 并设为 Codex 当前 Provider。`,
-            operationLabel: "保存并启用 Codex Provider",
-          }
-        : {
-            summary: `将 Codex 当前 Provider 切换为 ${plan.targetProviderName}。`,
-            operationLabel: "切换 Codex Provider",
-          };
+        ? `保存 ${plan.targetProviderName} 并设为 Codex 当前 Provider。`
+        : `将 Codex 当前 Provider 切换为 ${plan.targetProviderName}。`;
   return {
-    semantic: {
-      summary: semantic.summary,
-      targetName: plan.targetProviderName,
-      operationLabel: semantic.operationLabel,
-      confirmationLabel:
-        plan.status === "ready" ? "等待确认" : "请重新生成预览",
-    },
+    semantic: { summary },
     risk: {
       restartLabel: restartExpectationLabel(plan.restartExpectation),
-      items: plan.risks.map((risk, index) => ({
-        key: `${risk.code}-${String(index)}`,
-        label: riskLabel(risk.code),
-        levelLabel: riskLevelLabel(risk.severity),
-      })),
-      empty: plan.risks.length === 0,
+      items: plan.risks
+        .filter(
+          (risk) =>
+            ![
+              "local_configuration_write",
+              "save_provider_then_set_current",
+            ].includes(risk.code) || risk.severity !== "notice",
+        )
+        .map((risk, index) => ({
+          key: `${risk.code}-${String(index)}`,
+          label: riskLabel(risk.code),
+          levelLabel: riskLevelLabel(risk.severity),
+        })),
+      empty: plan.risks.every(
+        (risk) =>
+          [
+            "local_configuration_write",
+            "save_provider_then_set_current",
+          ].includes(risk.code) && risk.severity === "notice",
+      ),
     },
     scope: {
       readLabels: plan.adapter.readSet.map((kind) => RESOURCE_LABELS[kind]),
-      writeLabels: plan.adapter.writeSet.map((kind) => RESOURCE_LABELS[kind]),
+      writeLabels: [...new Set(plan.adapter.writeSet)].map(
+        (kind) => RESOURCE_LABELS[kind],
+      ),
       secretLabel: secretCapabilityLabel(plan.secretCapability),
       expiresLabel: previewValidityLabel(plan),
     },
     recovery: {
-      rollbackLabel: "保存失败时会恢复修改前的设置。",
+      rollbackLabel:
+        "保存失败时会尝试恢复原设置；如果文件已被其他软件修改，会保留新内容并提示你检查。",
       interruptionLabel:
         "如果操作中断，FyAgent 只检查当前设置，不会自动再次修改。",
     },
@@ -257,13 +257,17 @@ function createPreviewModel(plan: ChangePlan): ApplyPreviewModel {
 }
 
 function projectPartialTruth(
-  partial: ChangeJobSnapshot["partialResult"],
+  job: ChangeJobSnapshot | null,
 ): ApplyPartialTruth | null {
-  if (!partial) return null;
+  const partial = job?.partialResult;
+  if (!job || !partial || job.status === "planned" || job.status === "running")
+    return null;
   return {
     succeededCount: partial.succeededSteps.length,
     compensatedCount: partial.compensatedSteps.length,
     unverifiedCount: partial.unverifiedSteps.length,
+    unconfirmed:
+      partial.unverifiedSteps.length > 0 || hasUnconfirmedAuthority(job),
     remainingEffects: partial.remainingEffects.map(
       (kind) => RESOURCE_LABELS[kind],
     ),
@@ -278,6 +282,7 @@ function stepStatus(
 ): ApplyStepPresentation["status"] {
   switch (status) {
     case "pending":
+      return "pending";
     case "running":
     case "compensating":
       return "running";
@@ -560,7 +565,7 @@ export function createApplyViewModel(
         : null,
     plan,
     preview: plan ? createPreviewModel(plan) : null,
-    partialTruth: projectPartialTruth(job?.partialResult ?? null),
+    partialTruth: projectPartialTruth(job),
     steps,
     resources,
     canConfirm,

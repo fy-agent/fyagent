@@ -1,0 +1,11 @@
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Configuration pack authority, persistence and renderer boundary"}
+{"file":".trellis/spec/backend/reuse.md","reason":"Configuration pack authority, persistence and renderer boundary"}
+{"file":".trellis/spec/backend/database-persistence.md","reason":"Configuration pack authority, persistence and renderer boundary"}
+{"file":".trellis/spec/backend/reversible-user-config.md","reason":"Configuration pack authority, persistence and renderer boundary"}
+{"file":".trellis/spec/backend/change-plan-executor.md","reason":"Configuration pack authority, persistence and renderer boundary"}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Configuration pack authority, persistence and renderer boundary"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Configuration pack authority, persistence and renderer boundary"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Configuration pack authority, persistence and renderer boundary"}
+{"file":".trellis/spec/frontend/dialog-lifecycle.md","reason":"Configuration pack authority, persistence and renderer boundary"}
+{"file":".trellis/spec/backend/config-pack.md","reason":"Portable format, native preview authority and atomic inactive-draft contract"}
+{"file":".trellis/spec/frontend/config-pack.md","reason":"Typed port, lazy dialog, edit invalidation and actual readback UX"}

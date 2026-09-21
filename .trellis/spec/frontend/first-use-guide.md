@@ -66,6 +66,23 @@ rejects native-only dismissal instead of pretending to save.
   the full catalog union.
 - Purpose is component-local. Choosing it performs no native write, auth,
   install, model change or telemetry.
+- A recommendation checks existing configuration through read-only metadata.
+  A failed read remains unknown and offers retry or inspection; do not assume
+  absence or show raw native errors. Codex, Claude Code and Grok read
+  `getSummary(app).live`: only a matching target with `configured` state admits
+  keep/replace, displaying the public file model/endpoint summary. Only
+  `missing` or `not_configured` means empty. An absent live field (older host),
+  mismatched target, `unreadable`, or rejected read remains unknown even when
+  the database has a selected Provider. WorkBuddy/OpenCode retain their direct
+  file observations. Existing file settings do not prove a tested connection.
+- Keep opens the software's configuration view with a no-change notice and
+  never probes a model. Replace/inspect opens `/agents?setup=<closed Agent ID>`:
+  the existing directory renders that software's real install/configure controls.
+  Installation is never auto-started; its existing target/preflight/confirmation
+  owns admission. An eligible configuration action enters the actual Models page
+  with an Agent return descriptor. Back returns to the guide until it is dismissed.
+- Starting instructions reuse the current prompt preset definitions in the lazy
+  guide chunk; they do not introduce a second preset or Agent URL authority.
 
 ### Completion and lifecycle
 
@@ -110,6 +127,9 @@ existing installations through onboarding after an upgrade.
 completion, new query-client restart, delayed/failed persistence, duplicate
 clicks, unknown startup reads, target links and hidden completion. Native-port
 tests reject unknown states and pending write acknowledgements.
+`FirstUseGuide.test.tsx` additionally covers live/DB contradictions, all three
+Provider targets, older hosts, unreadable/mismatched observations and keep
+without model probes or writes.
 The office/coding coverage assertion compares recommendation identities with
 the shared catalog IDs, independently of per-choice expected names. Typecheck
 must reject a new closed catalog identity without an explicit purpose reason;

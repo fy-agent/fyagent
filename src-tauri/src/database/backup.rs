@@ -90,6 +90,7 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "managed_auth_defaults",
     "managed_auth_connections",
     "managed_auth_migrations",
+    "provider_credentials",
     "fde_customers",
     "fde_projects",
     "fde_project_kit_intents",
@@ -115,6 +116,7 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "managed_auth_defaults",
     "managed_auth_connections",
     "managed_auth_migrations",
+    "provider_credentials",
     "fde_customers",
     "fde_projects",
     "fde_project_kit_intents",
@@ -135,13 +137,79 @@ impl Database {
     /// 导出为 SQLite 兼容的 SQL 文本（内存字符串，完整导出）
     pub fn export_sql_string(&self) -> Result<String, AppError> {
         let snapshot = self.snapshot_to_memory()?;
-        Self::dump_sql(&snapshot, &[])
+        Self::sanitize_provider_export(&snapshot)?;
+        Self::dump_sql(&snapshot, &["provider_credentials", "proxy_live_backup"])
     }
 
     /// Export SQL for sync (WebDAV), skipping local-only tables' data
     pub fn export_sql_string_for_sync(&self) -> Result<String, AppError> {
         let snapshot = self.snapshot_to_memory()?;
+        Self::sanitize_provider_export(&snapshot)?;
         Self::dump_sql(&snapshot, SYNC_SKIP_TABLES)
+    }
+
+    // Ordinary SQL exports are portable configuration, unlike private binary
+    // recovery backups. Never resolve a reference or export legacy API keys.
+    fn sanitize_provider_export(conn: &Connection) -> Result<(), AppError> {
+        // Snapshot-only projection must not activate persisted triggers while
+        // removing plaintext, or a trigger could duplicate its OLD value.
+        conn.set_db_config(
+            rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_TRIGGER,
+            false,
+        )
+        .map_err(|_| AppError::Database("provider_export_failed".into()))?;
+        let mut statement = conn
+            .prepare("SELECT id, app_type, name, settings_config, meta, notes, website_url FROM providers")
+            .map_err(|_| AppError::Database("provider_export_failed".into()))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                ))
+            })
+            .map_err(|_| AppError::Database("provider_export_failed".into()))?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|_| AppError::Database("provider_export_failed".into()))?;
+        drop(statement);
+        // These snapshot containers can embed full historical Provider copies
+        // and arbitrary user scripts. They are private recovery data, not a
+        // safe ordinary-export surface. Keep their local originals untouched.
+        conn.execute("DELETE FROM provider_endpoints", [])
+            .map_err(|_| AppError::Database("provider_export_failed".into()))?;
+        conn.execute("DELETE FROM profiles", [])
+            .map_err(|_| AppError::Database("provider_export_failed".into()))?;
+        conn.execute(
+            "DELETE FROM settings WHERE key = 'universal_providers' OR key LIKE 'common_config_%'",
+            [],
+        )
+        .map_err(|_| AppError::Database("provider_export_failed".into()))?;
+        for (id, app, name, settings, meta, notes, website) in rows {
+            let mut provider = crate::provider::Provider::with_id(
+                id.clone(),
+                name,
+                serde_json::from_str(&settings).unwrap_or(serde_json::json!({})),
+                None,
+            );
+            provider.meta = serde_json::from_str(&meta).ok();
+            provider.notes = notes;
+            provider.website_url = website;
+            let clean = crate::provider::portable_provider_for_export(&provider);
+            if clean.id != id {
+                return Err(AppError::Database(
+                    "provider_export_unsafe_identifier".into(),
+                ));
+            }
+            conn.execute("UPDATE providers SET name = ?1, settings_config = ?2, meta = ?3, notes = ?4, is_current = 0, in_failover_queue = 0, website_url = NULL, icon = NULL, icon_color = NULL WHERE id = ?5 AND app_type = ?6", rusqlite::params![
+                clean.name, clean.settings_config.to_string(), serde_json::to_string(&clean.meta.unwrap_or_default()).map_err(|_| AppError::Database("provider_export_failed".into()))?, clean.notes, id, app
+            ]).map_err(|_| AppError::Database("provider_export_failed".into()))?;
+        }
+        Ok(())
     }
 
     /// 导出为 SQLite 兼容的 SQL 文本
@@ -185,17 +253,17 @@ impl Database {
         sql_raw: &str,
         preserve_tables: &[&str],
     ) -> Result<String, AppError> {
+        let _credential_guard = self
+            .provider_secret_guard
+            .lock()
+            .map_err(|_| AppError::Database("provider_import_failed".into()))?;
         let sql_content = sql_raw.trim_start_matches('\u{feff}');
         Self::validate_fyagent_sql_export(sql_content)?;
 
         // 导入前备份现有数据库
         let backup_path = self.backup_database_file()?;
 
-        let local_snapshot = if preserve_tables.is_empty() {
-            None
-        } else {
-            Some(self.snapshot_to_memory()?)
-        };
+        let local_snapshot = self.snapshot_to_memory()?;
 
         // 在临时数据库执行导入，确保失败不会污染主库
         let temp_root = crate::config::get_user_temp_dir();
@@ -229,9 +297,9 @@ impl Database {
         Self::create_tables_on_conn(&temp_conn)?;
         Self::apply_schema_migrations_on_conn(&temp_conn)?;
         Self::validate_basic_state(&temp_conn)?;
-        if let Some(local_snapshot) = local_snapshot.as_ref() {
-            Self::restore_tables(local_snapshot, &temp_conn, preserve_tables)?;
-        }
+        Self::restore_tables(&local_snapshot, &temp_conn, preserve_tables)?;
+        Self::restore_tables(&local_snapshot, &temp_conn, &["provider_credentials"])?;
+        Self::restore_local_provider_credentials(&local_snapshot, &temp_conn)?;
         Self::advance_project_resource_generations_on_conn(&temp_conn)?;
 
         // 使用 Backup 将临时库原子写回主库
@@ -249,6 +317,84 @@ impl Database {
             .unwrap_or_default();
 
         Ok(backup_id)
+    }
+
+    // Native credentials are device-local. Preserve the whole local route
+    // with them; never graft an existing key onto an imported remote endpoint.
+    fn restore_local_provider_credentials(
+        source: &Connection,
+        target: &Connection,
+    ) -> Result<(), AppError> {
+        let safe_error = |_| AppError::Database("provider_import_failed".into());
+        let columns = Self::get_table_columns(source, "providers")?;
+        let names = columns
+            .iter()
+            .map(|c| Self::quote_identifier(c))
+            .collect::<Vec<_>>()
+            .join(",");
+        let placeholders = (1..=columns.len())
+            .map(|i| format!("?{i}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let mut stmt = source
+            .prepare(&format!("SELECT {names} FROM providers"))
+            .map_err(safe_error)?;
+        let mut rows = stmt.query([]).map_err(safe_error)?;
+        let tx = target.unchecked_transaction().map_err(safe_error)?;
+        while let Some(row) = rows.next().map_err(safe_error)? {
+            let id: String = row.get("id").map_err(safe_error)?;
+            let app: String = row.get("app_type").map_err(safe_error)?;
+            let settings: String = row.get("settings_config").map_err(safe_error)?;
+            let mut provider = crate::provider::Provider::with_id(
+                id.clone(),
+                String::new(),
+                serde_json::from_str(&settings).unwrap_or(serde_json::Value::Null),
+                None,
+            );
+            let meta: String = row.get("meta").map_err(safe_error)?;
+            provider.meta = serde_json::from_str(&meta).ok();
+            if !crate::provider::provider_contains_credentials(&provider) {
+                continue;
+            }
+            if row.get::<_, bool>("is_current").map_err(safe_error)? {
+                tx.execute(
+                    "UPDATE providers SET is_current=0 WHERE app_type=?1",
+                    [&app],
+                )
+                .map_err(safe_error)?;
+            }
+            tx.execute(
+                "DELETE FROM provider_endpoints WHERE provider_id=?1 AND app_type=?2",
+                [&id, &app],
+            )
+            .map_err(safe_error)?;
+            tx.execute(
+                "DELETE FROM providers WHERE id=?1 AND app_type=?2",
+                [&id, &app],
+            )
+            .map_err(safe_error)?;
+            let values = (0..columns.len())
+                .map(|i| row.get::<_, rusqlite::types::Value>(i))
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(safe_error)?;
+            tx.execute(
+                &format!("INSERT INTO providers ({names}) VALUES ({placeholders})"),
+                rusqlite::params_from_iter(values.iter()),
+            )
+            .map_err(safe_error)?;
+            let mut endpoints = source.prepare("SELECT url, added_at FROM provider_endpoints WHERE provider_id=?1 AND app_type=?2").map_err(safe_error)?;
+            let endpoints = endpoints
+                .query_map([&id, &app], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
+                })
+                .map_err(safe_error)?;
+            for endpoint in endpoints {
+                let (url, added) = endpoint.map_err(safe_error)?;
+                tx.execute("INSERT INTO provider_endpoints (provider_id,app_type,url,added_at) VALUES (?1,?2,?3,?4)", rusqlite::params![id, app, url, added]).map_err(safe_error)?;
+            }
+        }
+        tx.commit().map_err(safe_error)?;
+        Ok(())
     }
 
     /// 创建内存快照以避免长时间持有数据库锁
@@ -1631,13 +1777,14 @@ mod tests {
             conn.execute(
                 "INSERT INTO providers (id, app_type, name, settings_config, meta)
                  VALUES ('special', 'claude', ?1, ?2, '{}')",
-                rusqlite::params!["O'Brien,\n第二行 \"quoted\" 😀", "{\"key\": \"it's, ok\"}"],
+                rusqlite::params![
+                    "O'Brien,\n第二行 \"quoted\" 😀",
+                    "{\"model\": \"it's, ok\"}"
+                ],
             )?;
-            conn.execute(
-                "INSERT INTO providers (id, app_type, name, settings_config, meta)
-                 VALUES ('with-blob', 'claude', 'blob', X'00FF10', '{}')",
-                [],
-            )?;
+            // BLOB is valid generic SQLite data, but never a valid Provider
+            // configuration. Keep escaping coverage outside the credential DTO.
+            conn.execute_batch("CREATE TABLE fixture_scalars (id TEXT, payload BLOB); INSERT INTO fixture_scalars VALUES ('with-blob', X'00FF10');")?;
             conn.execute(
                 "INSERT INTO providers (id, app_type, name, settings_config, meta, category)
                  VALUES ('with-null', 'claude', 'nullcat', '{}', '{}', NULL)",
@@ -1661,16 +1808,19 @@ mod tests {
             [],
             |row| row.get(0),
         )?;
-        assert_eq!(cfg, "{\"key\": \"it's, ok\"}");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&cfg).unwrap(),
+            serde_json::json!({"model": "it's, ok"})
+        );
 
         let blob_type: String = conn.query_row(
-            "SELECT typeof(settings_config) FROM providers WHERE id = 'with-blob'",
+            "SELECT typeof(payload) FROM fixture_scalars WHERE id = 'with-blob'",
             [],
             |row| row.get(0),
         )?;
         assert_eq!(blob_type, "blob", "BLOB 存储类型必须在往返后保留");
         let blob: Vec<u8> = conn.query_row(
-            "SELECT settings_config FROM providers WHERE id = 'with-blob'",
+            "SELECT payload FROM fixture_scalars WHERE id = 'with-blob'",
             [],
             |row| row.get(0),
         )?;
@@ -1682,6 +1832,28 @@ mod tests {
             |row| row.get(0),
         )?;
         assert_eq!(category, None, "NULL 必须在往返后保留");
+        Ok(())
+    }
+
+    #[test]
+    fn provider_export_rejects_non_json_storage_without_mutating_source() -> Result<(), AppError> {
+        let source = Database::memory()?;
+        source.conn.lock().unwrap().execute_batch("INSERT INTO providers (id, app_type, name, settings_config, meta) VALUES ('corrupt-provider', 'codex', 'Fixture', X'00FF10', '{}');")?;
+        for result in [
+            source.export_sql_string(),
+            source.export_sql_string_for_sync(),
+        ] {
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                AppError::Database("provider_export_failed".into()).to_string()
+            );
+        }
+        let bytes: Vec<u8> = source.conn.lock().unwrap().query_row(
+            "SELECT settings_config FROM providers WHERE id = 'corrupt-provider'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(bytes, [0x00, 0xff, 0x10]);
         Ok(())
     }
 

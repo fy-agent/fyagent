@@ -115,7 +115,14 @@ impl ProviderRouter {
             }
         }
 
-        Ok(result)
+        result
+            .into_iter()
+            .map(|provider| {
+                crate::services::provider::ProviderCredentials::resolve(
+                    &self.db, app_type, &provider,
+                )
+            })
+            .collect()
     }
 
     /// 请求执行前获取熔断器“放行许可”

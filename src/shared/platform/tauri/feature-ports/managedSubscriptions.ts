@@ -5,7 +5,10 @@ import type {
   BindXaiManagedResult,
   BindManagedProxyRequest,
   BindOpenCodeManagedRequest,
+  ProviderAppId,
+  ProviderProxyRestorePreview,
 } from "../../../features/types";
+import { parseFileDisplayPath } from "../../../features/file-writes";
 import {
   isXaiSubscriptionModelId,
   xaiBindErrorCode,
@@ -14,6 +17,41 @@ import { hasExactKeys, isOneOf, isRecord } from "./validation";
 
 function isManagedAccountId(value: unknown): value is string {
   return typeof value === "string" && /^ma1:[0-9a-f]{32}$/u.test(value);
+}
+
+function assertRestoreApp(app: ProviderAppId): ProviderAppId {
+  if (!isOneOf(app, ["claude", "codex", "grokbuild"]))
+    throw new Error("Proxy restore target is invalid");
+  return app;
+}
+
+function parseRestorePreview(
+  value: unknown,
+  app: ProviderAppId,
+): ProviderProxyRestorePreview {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["app", "enabled", "canRestore", "targets"]) ||
+    value.app !== app ||
+    typeof value.enabled !== "boolean" ||
+    typeof value.canRestore !== "boolean" ||
+    !Array.isArray(value.targets) ||
+    value.targets.length > 8 ||
+    (value.canRestore && (!value.enabled || value.targets.length === 0))
+  )
+    throw new Error("Proxy restore preview is unavailable");
+  const targets = value.targets.map((target) => {
+    if (
+      !isRecord(target) ||
+      !hasExactKeys(target, ["path", "exists"]) ||
+      typeof target.exists !== "boolean"
+    )
+      throw new Error("Proxy restore preview is unavailable");
+    return { path: parseFileDisplayPath(target.path), exists: target.exists };
+  });
+  if (new Set(targets.map((target) => target.path)).size !== targets.length)
+    throw new Error("Proxy restore preview is unavailable");
+  return { app, enabled: value.enabled, canRestore: value.canRestore, targets };
 }
 
 function assertSubscriptionBindRequest<
@@ -110,8 +148,29 @@ async function invokeSubscriptionBind<
 
 export const managedProviderPorts: Pick<
   FeaturePorts["providers"],
-  "bindXaiManaged" | "bindManagedProxy" | "fetchXaiManagedModels"
+  | "bindXaiManaged"
+  | "bindManagedProxy"
+  | "fetchXaiManagedModels"
+  | "getProxyRestorePreview"
+  | "restoreManagedProxy"
 > = {
+  getProxyRestorePreview: async (app) => {
+    const target = assertRestoreApp(app);
+    return parseRestorePreview(
+      await invoke<unknown>("get_proxy_restore_preview", { app: target }),
+      target,
+    );
+  },
+  restoreManagedProxy: async (app) => {
+    const target = assertRestoreApp(app);
+    if (
+      (await invoke<unknown>("set_proxy_takeover_for_app", {
+        appType: target,
+        enabled: false,
+      })) !== null
+    )
+      throw new Error("Proxy restore is unconfirmed");
+  },
   bindXaiManaged: async (request) => {
     const validated = assertSubscriptionBindRequest(request, [
       "claude",

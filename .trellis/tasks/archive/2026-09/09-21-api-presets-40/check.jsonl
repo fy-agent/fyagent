@@ -1,0 +1,9 @@
+{"file":".trellis/spec/frontend/models.md","reason":"Shared production API protocol, preset, persistence and preview ownership"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Shared production API protocol, preset, persistence and preview ownership"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Shared production API protocol, preset, persistence and preview ownership"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Shared production API protocol, preset, persistence and preview ownership"}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Shared production API protocol, preset, persistence and preview ownership"}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Shared production API protocol, preset, persistence and preview ownership"}
+{"file":".trellis/spec/backend/change-plan-executor.md","reason":"Shared production API protocol, preset, persistence and preview ownership"}
+{"file":".trellis/spec/backend/database-persistence.md","reason":"Shared production API protocol, preset, persistence and preview ownership"}
+{"file":".trellis/spec/backend/reuse.md","reason":"Shared production API protocol, preset, persistence and preview ownership"}

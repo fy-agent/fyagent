@@ -1,3 +1,4 @@
+import { installPreflightFixture } from "../../../fixtures/agentInstallPreflight";
 import {
   fireEvent,
   render,
@@ -151,6 +152,7 @@ function portFor(data: AgentInstallReadiness): AgentInstallReadinessPort {
     getInventory: vi.fn(async (agentId) =>
       inventory(agentId as "qoderwork" | "codex" | "opencode"),
     ),
+    preflight: async (request) => installPreflightFixture(request),
     startAction: vi.fn(),
     cancelAction: vi.fn(),
     getActionJob: vi.fn(),
@@ -202,6 +204,7 @@ describe("AgentInstallReadinessSection", () => {
           getInventory: async () => {
             throw new Error("offline");
           },
+          preflight: async (request) => installPreflightFixture(request),
           startAction: async () => {
             throw new Error("offline");
           },
@@ -239,6 +242,7 @@ describe("AgentInstallReadinessSection", () => {
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => (stage === "succeeded" ? current : available)),
       getInventory: vi.fn(async () => inventory("opencode", true)),
+      preflight: async (request) => installPreflightFixture(request),
       startAction: vi.fn(
         async (): Promise<AgentActionResult> => ({
           contractVersion: AGENT_ACTION_CONTRACT_VERSION,
@@ -278,6 +282,8 @@ describe("AgentInstallReadinessSection", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "更新当前位置" }),
     );
+    expect(port.startAction).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "确认更新" }));
     expect(await screen.findByText("正在下载安装包")).toBeVisible();
     stage = "succeeded";
     await waitFor(
@@ -312,6 +318,7 @@ describe("AgentInstallReadinessSection", () => {
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => data),
       getInventory: vi.fn(async () => desktopInventory),
+      preflight: async (request) => installPreflightFixture(request),
       startAction: vi.fn(
         async (): Promise<AgentActionResult> => ({
           contractVersion: AGENT_ACTION_CONTRACT_VERSION,
@@ -448,6 +455,7 @@ describe("AgentInstallReadinessSection", () => {
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => available),
       getInventory: vi.fn(async () => dests),
+      preflight: async (request) => installPreflightFixture(request),
       startAction: vi.fn(),
       cancelAction: vi.fn(),
       getActionJob: vi.fn(),
@@ -475,6 +483,7 @@ describe("AgentInstallReadinessSection", () => {
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => available),
       getInventory: vi.fn(async () => inventory("qoderwork")),
+      preflight: async (request) => installPreflightFixture(request),
       startAction: vi.fn(
         async (): Promise<AgentActionResult> => ({
           contractVersion: AGENT_ACTION_CONTRACT_VERSION,
@@ -509,12 +518,13 @@ describe("AgentInstallReadinessSection", () => {
     };
     render(<AgentInstallReadinessSection agentId="qoderwork" port={port} />);
     fireEvent.click(await screen.findByRole("button", { name: "安装" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认安装" }));
     expect(await screen.findByText("下载中 37.4%")).toBeVisible();
     expect(screen.queryByText(/0 B\/s/)).not.toBeInTheDocument();
     stage = "succeeded";
   });
 
-  it("shows Grok official native as an explicit choice and does not auto-run it", async () => {
+  it("shows Grok official native guidance and forbids direct installer bypass", async () => {
     const grokTooling = {
       getSnapshot: vi.fn(async () => ({
         localVersion: null,
@@ -534,21 +544,22 @@ describe("AgentInstallReadinessSection", () => {
         grokTooling={grokTooling}
       />,
     );
-    expect(await screen.findByText("使用官方命令行安装")).toBeVisible();
+    expect(await screen.findByText("官方 npm 最新")).toBeVisible();
     expect(screen.getByText(/安装按钮会安装官方 npm 包/)).toBeVisible();
-    expect(screen.getByText("官方 npm 最新")).toBeVisible();
+    expect(
+      screen.getByText(/如需使用官方原生命令行安装，请参考官方说明手动安装/),
+    ).toBeVisible();
     expect(grokTooling.installNative).not.toHaveBeenCalled();
     expect(grokTooling.installOfficialNpm).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "使用官方命令行安装" }));
-    await waitFor(() =>
-      expect(grokTooling.installNative).toHaveBeenCalledTimes(1),
-    );
+    expect(
+      screen.queryByRole("button", { name: "使用官方命令行安装" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "打开软件" }),
     ).not.toBeInTheDocument();
   });
 
-  it("offers 改用官方 npm 方式 for a native install and does not auto-run it", async () => {
+  it("offers honest official/manual handoff for native install and preserves observed installation", async () => {
     const installed: AgentInstallReadiness = {
       ...readiness("grokbuild"),
       installState: "installed",
@@ -578,15 +589,17 @@ describe("AgentInstallReadinessSection", () => {
     );
     expect(await screen.findByText("官方命令行")).toBeVisible();
     expect(
-      await screen.findByRole("button", { name: "改用官方 npm 方式" }),
+      screen.getByText(
+        /当前环境检测到官方原生命令行安装。原安装方式已保留；如需改用 npm 官方包或更新原生版本，请前往官方页面手动完成。/,
+      ),
     ).toBeVisible();
     expect(grokTooling.installOfficialNpm).not.toHaveBeenCalled();
+    expect(grokTooling.installNative).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "改用官方 npm 方式" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "打开软件" }),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "改用官方 npm 方式" }));
-    await waitFor(() =>
-      expect(grokTooling.installOfficialNpm).toHaveBeenCalledTimes(1),
-    );
   });
 });

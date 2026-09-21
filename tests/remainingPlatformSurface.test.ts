@@ -51,6 +51,7 @@ type RustAllowance = {
   condition: string;
   next: string;
   nextPrefix?: boolean;
+  block?: string;
 };
 
 type SourceContract = { id: string; file: string; snippet: string };
@@ -60,6 +61,7 @@ type CheckerModule = {
   DEVELOPMENT_HOST_ADMISSION_PATHS: readonly string[];
   GENERATED_STANDALONE_PREVIEW_PATH: string;
   MACOS_POSIX_CONTRACT: readonly SourceContract[];
+  VENDOR_NPM_METADATA_CONTRACT: readonly SourceContract[];
   RUST_ALLOWANCE_CONTRACT: readonly RustAllowance[];
   RASTER_ASSET_CONTRACT: readonly { path: string; digest: string }[];
   STRUCTURE_ASSET_CONTRACT: readonly { path: string; digest: string }[];
@@ -278,6 +280,32 @@ describe("durable supported-platform surface contract", () => {
     expect(
       checker.scanText("src/notes.ts", checker.SURFACE_MARKERS.runnerFamily),
     ).toEqual([]);
+  });
+
+  it("admits only complete closed vendor npm metadata tables in their owner", () => {
+    const kernel = checker.SURFACE_MARKERS.kernel;
+    for (const { file, snippet } of checker.VENDOR_NPM_METADATA_CONTRACT) {
+      expect(checker.scanText(file, snippet)).toEqual([]);
+      for (const invalid of [
+        snippet.replace(`"${kernel}-x64"`, `"${kernel}-riscv64"`),
+        snippet.replace('    "win32-x64",\n', ""),
+        `${snippet}\n${snippet}`,
+        `${snippet} // ${kernel}`,
+        `${snippet}\n#[cfg(target_os = "${kernel}")]\nfn install() {}`,
+      ]) {
+        expect(checker.scanText(file, invalid)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ rule: "retired-kernel" }),
+          ]),
+        );
+      }
+      expect(checker.scanText("src-tauri/src/install.rs", snippet)).not.toEqual(
+        [],
+      );
+      expect(
+        checker.scanText(file, `const HOST: &str = "${kernel}";`),
+      ).not.toEqual([]);
+    }
   });
 
   it("keeps the always-run checker import closure on Node builtins only", () => {
@@ -758,9 +786,50 @@ describe("durable supported-platform surface contract", () => {
     ).toThrow(/not directly active/);
   });
 
+  it("rejects preflight fallbacks that stop rejecting unsupported hosts", () => {
+    const entries = permittedRustEntries();
+    const guarded = checker.RUST_ALLOWANCE_CONTRACT.filter(
+      (item): item is RustAllowance & { block: string } => Boolean(item.block),
+    );
+    expect(guarded).toHaveLength(4);
+    for (const allowance of guarded) {
+      const pattern = new RegExp(
+        allowance.block
+          .split(/\s+/u)
+          .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+          .join("\\s+"),
+        "u",
+      );
+      const drifted = entries.map((entry) =>
+        entry.path === allowance.file
+          ? {
+              ...entry,
+              source: entry.source.replace(pattern, (block) =>
+                block.replace(/Err\(|\bfalse\b/u, (token) =>
+                  token === "false" ? "true" : "Ok(",
+                ),
+              ),
+            }
+          : entry,
+      );
+      expect(checker.scanRustImplicitPredicates(drifted)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: allowance.file,
+            rule: "rust:implicit-target",
+          }),
+          expect.objectContaining({
+            rule: "rust:allowance-drift",
+            excerpt: allowance.id,
+          }),
+        ]),
+      );
+    }
+  });
+
   it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", () => {
     const entries = permittedRustEntries();
-    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(33);
+    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(37);
     expect(checker.scanRustImplicitPredicates(entries)).toEqual([]);
 
     const first = checker.RUST_ALLOWANCE_CONTRACT[0];
@@ -1326,8 +1395,8 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes the decoded and visually reviewed raster inventory by path and digest", () => {
     const currentPaths = checker.listCurrentFiles(ROOT);
-    // The reviewed health-center native evidence adds one archived raster.
-    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(122);
+    // Includes seven reviewed demo screenshots and four adopted/raw video identities.
+    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(133);
     expect(checker.RASTER_ASSET_CONTRACT).toContainEqual({
       path: "docs/images/health-center/native-health-recovered.png",
       digest:
@@ -1539,6 +1608,55 @@ describe("durable supported-platform surface contract", () => {
     }
   });
 
+  it("checks finite WebM framing and scans metadata outside encoded frames", () => {
+    const element = (id: number[], payload: Buffer) => {
+      expect(payload.length).toBeLessThan(127);
+      return Buffer.concat([
+        Buffer.from([...id, 0x80 | payload.length]),
+        payload,
+      ]);
+    };
+    const header = element(
+      [0x1a, 0x45, 0xdf, 0xa3],
+      element([0x42, 0x82], Buffer.from("webm")),
+    );
+    const marker = checker.SURFACE_MARKERS.kernel;
+    const body = element(
+      [0x15, 0x49, 0xa9, 0x66],
+      element([0x7b, 0xa9], Buffer.from(marker)),
+    );
+    const webm = Buffer.concat([
+      header,
+      element([0x18, 0x53, 0x80, 0x67], body),
+    ]);
+    const metadata = checker.inspectKnownImage("demo.webm", webm);
+    expect(metadata).toContain(marker);
+    expect(checker.scanText("demo.webm", metadata!)).not.toEqual([]);
+    for (const invalid of [
+      Buffer.from("not a video"),
+      webm.subarray(0, webm.length - 1),
+      Buffer.concat([webm, Buffer.from("trailing data")]),
+      Buffer.from(
+        webm
+          .toString("hex")
+          .replace(
+            Buffer.from("webm").toString("hex"),
+            Buffer.from("nope").toString("hex"),
+          ),
+        "hex",
+      ),
+    ]) {
+      expect(() => checker.inspectKnownImage("demo.webm", invalid)).toThrow(
+        /WebM container/u,
+      );
+    }
+    const unknownSize = Buffer.from(webm);
+    unknownSize[header.length + 4] = 0xff;
+    expect(() => checker.inspectKnownImage("demo.webm", unknownSize)).toThrow(
+      /WebM container/u,
+    );
+  });
+
   it("loads only an exact regular raster manifest", () => {
     const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-manifest-"));
     const manifestPath = path.join(fixture, "raster.json");
@@ -1555,7 +1673,7 @@ describe("durable supported-platform surface contract", () => {
         ),
       );
       fs.writeFileSync(manifestPath, JSON.stringify(current));
-      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(122);
+      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(133);
 
       fs.writeFileSync(
         manifestPath,

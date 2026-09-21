@@ -33,7 +33,7 @@ export function createAgentAuthPort(): AgentAuthPort {
     },
     startSession: async (request: StartAgentAuthSessionRequest) => {
       const safeAgentId = assertAgentAuthId(request.agentId);
-      return parseAgentAuthSessionSnapshot(
+      const snapshot = parseAgentAuthSessionSnapshot(
         await invoke<unknown>("start_agent_auth_session", {
           request: {
             agentId: safeAgentId,
@@ -49,14 +49,29 @@ export function createAgentAuthPort(): AgentAuthPort {
           },
         }),
       );
+      if (
+        snapshot.agentId !== safeAgentId ||
+        snapshot.intent !== request.intent
+      ) {
+        throw new Error("Agent auth session is unavailable");
+      }
+      return snapshot;
     },
-    getSession: async (sessionId) =>
-      parseAgentAuthSessionSnapshot(
+    getSession: async (sessionId) => {
+      const snapshot = parseAgentAuthSessionSnapshot(
         await invoke<unknown>("get_agent_auth_session", { sessionId }),
-      ),
-    stopWaiting: async (sessionId) =>
-      parseAgentAuthSessionSnapshot(
+      );
+      if (snapshot.sessionId !== sessionId)
+        throw new Error("Agent auth session is unavailable");
+      return snapshot;
+    },
+    stopWaiting: async (sessionId) => {
+      const snapshot = parseAgentAuthSessionSnapshot(
         await invoke<unknown>("stop_waiting_for_agent_auth", { sessionId }),
-      ),
+      );
+      if (snapshot.sessionId !== sessionId)
+        throw new Error("Agent auth session is unavailable");
+      return snapshot;
+    },
   };
 }

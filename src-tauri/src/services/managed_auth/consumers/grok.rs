@@ -257,7 +257,7 @@ pub(crate) fn connection_summary(
     checked_at: String,
 ) -> ManagedAuthConnectionSummary {
     let projection_ready = file_projection_enabled() || auth_provider_command_enabled();
-    let pending_restart = connection.is_some_and(|row| row.pending_restart);
+    let pending_restart = projection_ready && connection.is_some_and(|row| row.pending_restart);
     let auth_status = if pending_restart {
         ManagedAuthConnectionState::PendingRestart
     } else if projection_ready && account_connectable(account) {
@@ -269,7 +269,7 @@ pub(crate) fn connection_summary(
     };
     let reason_codes = vec![ManagedAuthReasonCode::NativeProjectionUnavailable];
     let mut allowed_actions = vec![ManagedAuthConnectionAction::Refresh];
-    if account.is_some() {
+    if projection_ready && account.is_some() {
         allowed_actions.push(ManagedAuthConnectionAction::Disconnect);
     } else if account_connectable(account) {
         allowed_actions.push(ManagedAuthConnectionAction::ConnectAccount);
@@ -291,9 +291,9 @@ pub(crate) fn connection_summary(
         auth_status,
         unmanaged_native_session: false,
         credential_manager: ManagedAuthCredentialManager::Unavailable,
-        request_mode: ManagedAuthRequestMode::OfficialSubscription,
-        request_provider_label: Some("xai".to_string()),
-        official_session_preserved: Some(true),
+        request_mode: ManagedAuthRequestMode::Unknown,
+        request_provider_label: None,
+        official_session_preserved: None,
         pending_restart,
         allowed_actions,
         checked_at,
@@ -438,6 +438,13 @@ mod tests {
         assert_eq!(
             summary.credential_manager,
             ManagedAuthCredentialManager::Unavailable
+        );
+        assert_eq!(summary.request_mode, ManagedAuthRequestMode::Unknown);
+        assert_eq!(summary.request_provider_label, None);
+        assert_eq!(summary.official_session_preserved, None);
+        assert_eq!(
+            summary.allowed_actions,
+            vec![ManagedAuthConnectionAction::Refresh]
         );
         assert!(summary
             .reason_codes

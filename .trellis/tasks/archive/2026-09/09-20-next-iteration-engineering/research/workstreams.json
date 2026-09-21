@@ -1,0 +1,654 @@
+{
+  "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+  "coordinator": "01a0bf4c-7b39-7761-bbe9-f0072d4c6bbf",
+  "release_owner": "01a0bf06-73ca-7771-997f-903022f3410f",
+  "items": [
+    {
+      "id": "intake",
+      "executor": "native:/root/issue_gap_map",
+      "model": "gpt-5.6-luna",
+      "effort": "medium",
+      "allowed_paths": [
+        "research/issue-gap-map.md",
+        "research/issue-gap-map.json"
+      ],
+      "lifecycle": "completed",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "accepted as initial index; code-only closure labels require root adjudication"
+      ]
+    },
+    {
+      "id": "secretref-35",
+      "issues": [35],
+      "executor": "native:/root/secretref_35",
+      "model": "inherited parent; runtime not independently observed",
+      "cwd": "~/.codex/worktrees/fyagent-next-secretref/fyagent",
+      "branch": "codex/next-secretref-35",
+      "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+      "allowed_paths": [
+        "provider lifecycle and credential modules",
+        "focused tests",
+        "focused specs",
+        "own task artifacts"
+      ],
+      "lifecycle": "integrated; scoped root credential repair includes usage secret bundle and effective common-overlay target binding",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "commit": "19a366cedb720aea33c57ae5796aeb3c3e1f9a29",
+      "integration_commit": "ee301f66",
+      "acceptance_history": ["pending new native compile/tests"]
+    },
+    {
+      "id": "installer-27-29",
+      "issues": [27, 29],
+      "executor": "native:/root/installer_27_29",
+      "cwd": "~/.codex/worktrees/fyagent-next-installer/fyagent",
+      "branch": "codex/next-installer-27-29",
+      "lifecycle": "Integrated desktop exact-size/download-cap space budget; writer stopped for installer files; native tests pending",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "commit": "d311a7d8b444fd8cbebed05eb8677e9a699a2415",
+      "integration_commit": "268815ba",
+      "acceptance_history": ["root final native/renderer checks pending"]
+    },
+    {
+      "id": "agent-entry-25-34",
+      "issues": [25, 34],
+      "executor": "Antigravity desktop UI",
+      "model_observed": "Gemini 3.8 Flash High",
+      "project_id": "e7f72ebb-59ab-436f-98eb-d717ef0eb6b5",
+      "conversation_id": "69885734-0ed8-4d39-a333-da8b3b75d5b6",
+      "cwd": "~/.codex/worktrees/fyagent-next-agent-entry/fyagent",
+      "branch": "codex/next-agent-entry-25-34",
+      "allowed_paths": [
+        "agents catalog",
+        "FirstUseGuide",
+        "new source links component",
+        "focused tests/specs",
+        "native commands/agent_catalog.rs and typed catalog parser/fixtures (narrow official-link extension)"
+      ],
+      "excluded_paths": [
+        "AgentDirectory.tsx",
+        "nav",
+        "providers",
+        "database",
+        "proxy"
+      ],
+      "lifecycle": "Both implementation and regional-link follow-up completed; writer stopped in original tree",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "review_feedback": "Typed keep/replace/inspect handler; existing saved summary is distinct from installation eligibility; failed reads block replacement with retry/details; no duplicate URL authority.",
+      "commit": "3c1b4e29c00c232658c082b8eeaebb52a1acf3db",
+      "integration_commit": "2de30c8b",
+      "followup_commit": "09b784c1ccd0154efeffada3e2f5d077b069767f",
+      "followup_integration": "reviewed patch applied to root, pending integration commit",
+      "acceptance_history": [
+        "171 worker focused tests passed; parent wiring integrated; final native/browser checks pending"
+      ]
+    },
+    {
+      "id": "about-70",
+      "issues": [70],
+      "executor": "root integration after external failures; both old job worktrees clean",
+      "attempts": [
+        {
+          "job": "~/.codex/worktrees/fyagent-next-jobs/about-70-google",
+          "model": "google/gemini-3.5-flash",
+          "lifecycle": "failed",
+          "error": "401 ACCOUNT_STATE_INVALID; service account deleted or disabled",
+          "server_stopped": true
+        },
+        {
+          "job": "~/.codex/worktrees/fyagent-next-jobs/about-70-claude",
+          "model": "poe/anthropic/claude-opus-4.8",
+          "lifecycle": "failed",
+          "server_stopped": true,
+          "error": "unknown certificate verification error; no TLS bypass; no product change"
+        }
+      ],
+      "lifecycle": "committed; focused tests, typecheck, lint and renderer build passed",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "branch": "codex/next-iteration-engineering-20260920",
+      "evidence": [
+        "77 focused tests passed; final shell state simplification repeated 4 tests passed",
+        "Final typecheck and lint passed",
+        "Renderer build passed: 9 routes; 665584 initial JS bytes within unchanged 665600 budget",
+        "GitHub project/release/licensing links read back live"
+      ],
+      "commit": "745b843b",
+      "acceptance_history": [
+        "pending native integration readback; browser visual inspection in progress"
+      ]
+    },
+    {
+      "id": "vendor-sources",
+      "executor": "native:/root/issue_gap_map",
+      "model": "gpt-5.6-luna",
+      "effort": "medium",
+      "lifecycle": "completed",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "artifacts": [
+        "research/vendor-sources.md",
+        "research/vendor-sources.json"
+      ],
+      "acceptance_history": [
+        "accepted as official-source map; regional caveats retained"
+      ]
+    },
+    {
+      "id": "preview-56",
+      "issues": [56],
+      "executor": "root integration",
+      "allowed_paths": ["shared change-plans-ui", "focused tests/specs"],
+      "lifecycle": "single save confirmation and native credential disclosure integrated",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "commit": "1300632b",
+      "integration_commits": ["1300632b", "9253946e", "82750e30"],
+      "acceptance_history": [
+        "50 focused integration tests passed; final aggregate/browser pending"
+      ]
+    },
+    {
+      "id": "config-pack-73",
+      "issues": [73],
+      "executor": "native:/root/config_pack_73",
+      "cwd": "~/.codex/worktrees/fyagent-next-config-pack/fyagent",
+      "branch": "codex/next-config-pack-73",
+      "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+      "lifecycle": "integrated; writer stopped",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "scope": "Selected portable connection settings only; explicit preview, bounded import, no activation, no secrets or device paths. Native provider add_draft authority; coordinate SecretRef.",
+      "commit": "9d705c0e1b0bd831ebecff3ec5ebc50eb17eaf85",
+      "integration_commit": "73460cf7",
+      "acceptance_history": [
+        "production form fill connected; credential/options reset and same-endpoint fresh-key regression passed; final native/browser pending"
+      ]
+    },
+    {
+      "id": "workbuddy-recovery-61",
+      "issues": [61],
+      "executor": "root integration",
+      "allowed_paths": [
+        "services/workbuddy/config.rs",
+        "services/workbuddy/mod.rs",
+        "change_plan/service.rs WorkBuddy writer and focused regression tests",
+        "own specs/task"
+      ],
+      "lifecycle": "integrated; targeted tests passed in native suite",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "commit": "ed37bcac",
+      "acceptance_history": ["final aggregate and upstream integration pending"]
+    },
+    {
+      "id": "api-presets-40",
+      "issues": [40],
+      "executor": "native:/root/config_pack_73",
+      "cwd": "~/.codex/worktrees/fyagent-next-api-presets/fyagent",
+      "branch": "codex/next-api-presets-40",
+      "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+      "lifecycle": "integrated; worker writer stopped",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "scope": "production Quick Setup protocol and vendor presets, schema-preserving config-pack form fill dependency",
+      "commit": "cee53a92",
+      "integration_commit": "07519b37",
+      "acceptance_history": [
+        "101 worker focused tests passed; root protocol/credential-retention tests passed; final native pending"
+      ]
+    },
+    {
+      "id": "auth-reuse-42-43",
+      "issues": [42, 43],
+      "executor": "native:/root/secretref_35",
+      "cwd": "~/.codex/worktrees/fyagent-next-auth-reuse/fyagent",
+      "branch": "codex/next-auth-reuse-42-43",
+      "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+      "lifecycle": "integrated; writer stopped",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "scope": "official Grok handoff, honest xAI account/provider admission, independent connection outcomes",
+      "commit": "216f30fc101550d48106376965a3f50f0b1a0d57",
+      "integration_commit": "94ab3244",
+      "acceptance_history": [
+        "127 focused tests and 32 final affected tests passed by worker; root native/final checks pending"
+      ]
+    },
+    {
+      "id": "proxy-recovery-64",
+      "issues": [64],
+      "executor": "native:/root/installer_27_29",
+      "cwd": "~/.codex/worktrees/fyagent-next-proxy-recovery/fyagent",
+      "branch": "codex/next-proxy-recovery-64",
+      "baseline": "2c09c4be2c5f50b4060fd6f7a13a7be31c364c54",
+      "lifecycle": "review findings repaired, including root-discovered interruption gap; Cursor writer stopped",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "scope": "owned-file restoration, idempotent recovery, external-edit preservation; minimal shared config/recovery.rs guard authorized",
+      "commit": "fc01826906713bfb57e9c5acc14dc9d6e951be7b",
+      "integration_commit": "e18d9501",
+      "acceptance_history": [
+        "21 recovery and 2 atomic-finish focused tests passed; 42 parent-page tests passed; final combined checks pending"
+      ]
+    },
+    {
+      "id": "demo-92",
+      "issues": [92],
+      "executor": "native:/root/installer_27_29",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "allowed_paths": [
+        "config/playwright.demo.config.ts",
+        "tests/demo/current-flows.demo.ts",
+        "docs/fyagent/development/usage-demo.md",
+        "tests/browser/support/features.ts",
+        "tests/browser/agent-directory.spec.ts"
+      ],
+      "lifecycle": "formal fixture capture and adoption complete on clean commit fac051ea; GPT-6 checked 7 screenshots and 7 video cue frames",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "adopted_artifacts": "docs/fyagent/development/demos/0.4.6-fac051ea",
+      "acceptance_history": [
+        "12 asset hashes, 2 full media decodes, full Chromium playback and every subtitle cue passed; in-app preview crashed and is not accepted; final source-scope readback and PR delivery pending"
+      ]
+    },
+    {
+      "id": "live-config-summary-47",
+      "issues": [47],
+      "executor": "native:/root/config_pack_73 native projection; native:/root/installer_27_29 UI integration",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "allowed_paths": [
+        "commands/provider.rs and provider/live_summary.rs",
+        "shared provider public DTO/typed parser and focused tests",
+        "FirstUseGuide.tsx and AgentModelsSection.tsx",
+        "focused UI tests, browser fixtures, specs"
+      ],
+      "lifecycle": "Native and renderer integration complete; Cursor owns top-level Codex route repair",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "scope": "Read-only real target configuration with configured/not_configured/missing/unreadable; DB saved candidates never imply live state",
+      "acceptance_history": [
+        "65 port/architecture and 29 UI tests passed; new native route regression pending"
+      ]
+    },
+    {
+      "id": "cli-disk-evidence",
+      "issues": [27],
+      "executor": "native:/root/cli_disk_requirements",
+      "model": "gpt-5.6-luna",
+      "effort": "medium",
+      "allowed_paths": ["research/cli-disk-evidence.md"],
+      "lifecycle": "completed",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "accepted as bounded source evidence; Jev decision saved and root selected frozen metadata approach"
+      ]
+    },
+    {
+      "id": "cli-space-27",
+      "issues": [27],
+      "executor": "Antigravity desktop UI",
+      "model_observed": "Gemini 3.8 Flash High",
+      "cwd": "~/.codex/worktrees/fyagent-next-cli-space/fyagent",
+      "branch": "codex/next-cli-space-27",
+      "baseline": "e0cb6f69",
+      "job_id": "69885734-0ed8-4d39-a333-da8b3b75d5b6",
+      "allowed_paths": [
+        "tooling and helper CLI preflight/installation",
+        "focused CLI tests and existing DTO/UI type extensions if required"
+      ],
+      "artifacts": [
+        "ANTIGRAVITY_CLI_TASK.md",
+        "ANTIGRAVITY_CLI_RESULT.md",
+        "ANTIGRAVITY_CLI_REPAIR_TASK.md",
+        "ANTIGRAVITY_CLI_FINAL_REPAIR_TASK.md"
+      ],
+      "lifecycle": "Antigravity final repair terminated with Insufficient AI Credits; writer stopped; no tracked edits after be21f653; remaining backend repair handed to existing Cursor recovery conversation",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "commit": "be21f65337bd0fa5769c010c03166a4571b809ce",
+      "error_id": "2f9c8b0e-2bb9-4aaa-8543-185c671d74d5-2293-2008",
+      "quota_refresh_observed": "2026-09-21 10:33:46 local; no overage enabled or purchase",
+      "acceptance_history": [
+        "Antigravity base and Cursor final repair integrated; root final aggregate pending"
+      ]
+    },
+    {
+      "id": "cursor-backend-35-47",
+      "issues": [35, 47],
+      "executor": "Cursor desktop Debug mode",
+      "model_observed": "Cursor Grok 4.6 / High / Fast",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "branch": "codex/next-iteration-engineering-20260920",
+      "baseline": "07519b37 plus existing dirty changes",
+      "allowed_paths": [
+        "services/provider/usage.rs",
+        "services/provider/credentials.rs and credentials submodules",
+        "commands/provider/live_summary.rs and tests",
+        "spec/backend/provider-credentials.md",
+        "research/cursor-backend-result.md and focused logs"
+      ],
+      "artifacts": [
+        "research/cursor-backend-task.md",
+        "research/cursor-backend-result.md"
+      ],
+      "lifecycle": "completed; writer stopped confirmed in actual Cursor UI",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "source and regressions reviewed by GPT-6; final combined checks pending"
+      ]
+    },
+    {
+      "id": "grok-recovery-review",
+      "issues": [64],
+      "executor": "terminal Grok CLI",
+      "model_observed": "grok-4.6",
+      "product_version": "1.0.34 (3736acbc8658)",
+      "account_pool_observed": "grok.com login; no credential values read",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "job_id": "exec session 29208",
+      "allowed_paths": [],
+      "scope": "read-only bounded proxy restoration review; final output persisted by root",
+      "artifacts": [
+        "research/grok-recovery-review-task.md",
+        "research/grok-recovery-review.md"
+      ],
+      "lifecycle": "completed exit 0; read-only findings reviewed by root",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "three concrete findings accepted for targeted repair; no Issue closure"
+      ]
+    },
+    {
+      "id": "cursor-recovery-64",
+      "issues": [64],
+      "executor": "Cursor desktop",
+      "model_observed": "existing High Fast selection; exact model not independently re-read for second chat",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "branch": "codex/next-iteration-engineering-20260920",
+      "allowed_paths": [
+        "services/proxy.rs and legacy_recovery/managed_recovery/restore_preview/recovery_tests",
+        "database/dao/proxy.rs and narrow tests",
+        "backend/proxy-runtime.md",
+        "research/cursor-recovery-result.md and focused logs"
+      ],
+      "artifacts": [
+        "research/cursor-recovery-task.md",
+        "research/jev-recovery-decision.json"
+      ],
+      "lifecycle": "completed; writer stopped confirmed in actual Cursor UI",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "source and regressions reviewed by GPT-6; final combined checks pending"
+      ]
+    },
+    {
+      "id": "cursor-main-integration",
+      "issues": [35, 40],
+      "executor": "Cursor desktop Debug mode",
+      "model_observed": "existing Cursor Grok 4.6 / High / Fast conversation",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "branch": "codex/next-iteration-engineering-20260920",
+      "baseline": "35848bef",
+      "allowed_paths": [
+        "commands/provider.rs Kimi regression test",
+        "services/provider/universal.rs narrow integration regression",
+        "research/cursor-main-integration-result.md"
+      ],
+      "artifacts": ["research/cursor-main-integration-task.md"],
+      "lifecycle": "completed; writer stopped in observed Cursor UI",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "source reviewed; tests preserve original route/metadata assertions and add public redaction plus native resolver checks; 1 Kimi and 2 universal tests passed; full gate pending"
+      ]
+    },
+    {
+      "id": "antigravity-ui-regressions",
+      "issues": [25, 34, 40, 43, 47, 56, 70],
+      "executor": "Antigravity desktop UI",
+      "model_observed": "Gemini 3.8 Flash High",
+      "project_id": "e7f72ebb-59ab-436f-98eb-d717ef0eb6b5",
+      "conversation_id": "fc6ad4d4-b8b7-492a-bc7b-e702798c35c2",
+      "cwd": "~/.codex/worktrees/fyagent-next-ui-regressions/fyagent",
+      "branch": "codex/next-ui-regressions",
+      "baseline": "35848bef",
+      "allowed_paths": [
+        "AgentSourceLinks CSS and narrow first-use/model geometry behavior if proven",
+        "agent-directory/agents-models/first-use-guide/blue-themes/shell/xai-subscription/press-feedback browser tests",
+        "necessary browser fixture and focused renderer tests/specs"
+      ],
+      "artifacts": [
+        "ANTIGRAVITY_UI_TASK.md",
+        "ANTIGRAVITY_UI_RESULT.md",
+        "artifacts/ui-review-input"
+      ],
+      "lifecycle": "completed; writer stopped; ccb1aa1b integrated as a0a170b2, ce555d45 integrated as 3df9c8df; browser window released",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "commit": "ccb1aa1b",
+      "integration_commit": "a0a170b2",
+      "followup_integration_commit": "3df9c8df",
+      "root_result": "research/antigravity-ui-regressions-result.md",
+      "acceptance_history": [
+        "GPT-6 reviewed source and actual light/dark screenshots; worker 196 affected browser + 40 contrast tests passed; root isolated screenshot output by project and reran 10 opened-state tests successfully; full gate pending"
+      ]
+    },
+    {
+      "id": "cursor-native-gate",
+      "executor": "Cursor desktop Debug mode",
+      "model_observed": "existing Cursor Grok 4.6 / High / Fast conversation",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "branch": "codex/next-iteration-engineering-20260920",
+      "allowed_paths": [
+        "provider/usage.rs",
+        "provider/credentials.rs",
+        "exact failing stale plaintext fixture tests only",
+        "research/cursor-native-gate-result.md"
+      ],
+      "artifacts": [
+        "research/cursor-native-gate-task.md",
+        "artifacts/cursor-native-gate.log"
+      ],
+      "lifecycle": "completed; writer stopped in actual Cursor UI",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "typed input reviewed; fmt/check/clippy passed; native gate exposed 7 lib + 1 integration failures"
+      ]
+    },
+    {
+      "id": "grok-cli-budget-review",
+      "issues": [27, 29],
+      "executor": "terminal Grok CLI",
+      "model_observed": "grok-4.6",
+      "job_id": "exec session 57721",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "review_target": "~/.codex/worktrees/fyagent-next-cli-space/fyagent",
+      "allowed_paths": [],
+      "artifacts": [
+        "research/grok-cli-budget-review-task.md",
+        "artifacts/grok-cli-budget-review.ndjson",
+        "research/grok-cli-budget-review.md",
+        "research/jev-cli-execution-decision.json"
+      ],
+      "lifecycle": "completed exit 0; final report persisted",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "root accepted dependency-carry direction as next implementation, not proof; requires existing-global/update fixtures and actual volume repair"
+      ]
+    },
+    {
+      "id": "cursor-credential-gate-repair",
+      "issues": [35, 56],
+      "executor": "Cursor backend task implementation desktop Debug conversation",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "allowed_paths": [
+        "provider/credentials.rs and submodules",
+        "provider/usage.rs",
+        "change_plan/service.rs",
+        "focused specs/tests and own result"
+      ],
+      "artifacts": [
+        "research/cursor-credential-gate-repair-task.md",
+        "research/cursor-credential-gate-repair-result.md"
+      ],
+      "lifecycle": "completed; writer stopped in actual Cursor UI; five filters, rotation filter and 35 credentials tests passed",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "GPT-6 reviewing production delta; new common-table post-write path requires ownership/projection review; terminal Grok bounded review running"
+      ]
+    },
+    {
+      "id": "cursor-recovery-integration",
+      "issues": [64],
+      "executor": "Cursor recovery task implementation desktop conversation",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "allowed_paths": [
+        "two failing recovery tests",
+        "existing proxy recovery implementation/spec only if proven necessary",
+        "own result"
+      ],
+      "artifacts": [
+        "research/cursor-recovery-integration-task.md",
+        "research/cursor-recovery-integration-result.md"
+      ],
+      "lifecycle": "completed; result records writer stopped; two focused tests and 21 receipt-backed recovery tests passed",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "GPT-6 reviewed test-only delta: unproven foreign bytes and original backup are preserved; final combined backend gate pending"
+      ]
+    },
+    {
+      "id": "grok-final-credentials-review",
+      "executor": "terminal Grok CLI 1.0.34",
+      "model_observed": "grok-4.6",
+      "session_id": "01a0c11b-3792-73b3-ae02-da2baae8c870",
+      "allowed_paths": [],
+      "scope": "read-only review of the original common-table copy and upsert verification delta; excludes later replacement",
+      "artifacts": [
+        "research/grok-final-credentials-review-task.md",
+        "research/grok-final-credentials-review.md",
+        "artifacts/grok-credentials-reviewed-delta.patch"
+      ],
+      "lifecycle": "initial run hit 14-turn limit without final report; same session resumed for report only, zero further tool calls, exit 0",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "three common-copy defects confirm root findings; failed-create missing-row compensation defect accepted for repair; speculative questions not treated as defects"
+      ]
+    },
+    {
+      "id": "cursor-common-projection-repair",
+      "issues": [35, 47, 56, 61],
+      "executor": "Cursor backend task implementation desktop Debug conversation",
+      "model_observed": "existing Cursor Grok 4.6 / High / Fast conversation",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "allowed_paths": [
+        "provider/live.rs and exact source projection callers/helpers",
+        "change_plan/adapter.rs and service.rs failed-create verification",
+        "focused tests, corresponding existing specs and own result"
+      ],
+      "artifacts": [
+        "research/cursor-common-projection-repair-task.md",
+        "research/cursor-common-projection-repair-result.md"
+      ],
+      "lifecycle": "completed; writer stopped confirmed in actual Cursor UI; focused tests passed per report",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "source accepted: strict read/shared single-write projection and narrow failed-create fallback; fresh-key retains source-ref snapshot; root removed unused wrapper; full backend running"
+      ]
+    },
+    {
+      "id": "grok-cli-graph-review",
+      "issues": [27],
+      "executor": "terminal Grok CLI, existing login",
+      "model_configured": "grok-4.6; plan permission mode; no web or subagents",
+      "job_id": "exec sessions 36165 and 33273; Grok session 01a0c15f-388f-7333-a322-43aebe6dfc97",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "review_target": "immutable b58163d69d44a548ca18ebd3017f73d67c74b8f9",
+      "allowed_paths": [],
+      "scope": "read-only narrow review of npm dependency metadata completeness; excludes active Cursor destination and JSON repairs",
+      "artifacts": [
+        "research/grok-cli-graph-review-task.md",
+        "artifacts/grok-cli-graph-review.ndjson",
+        "artifacts/grok-cli-graph-review-final.ndjson",
+        "research/grok-cli-graph-review.md"
+      ],
+      "lifecycle": "completed; initial bounded run reached turn limit, same session resumed from immutable excerpts and returned final report without tools",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "model_observed": "CLI grok-4.6; runtime grok-4.6-build",
+      "acceptance_history": [
+        "three concrete metadata graph findings accepted and handed to existing Cursor CLI writer; prefix-only optional package admission explicitly rejected; no broad repeat review"
+      ]
+    },
+    {
+      "id": "cursor-cli-final-repair",
+      "issues": [27],
+      "executor": "existing Cursor recovery task implementation desktop conversation",
+      "model_observed": "Cursor Grok 4.6 / High / Fast; read directly from current model parameter menu; unchanged",
+      "cwd": "~/.codex/worktrees/fyagent-next-cli-space/fyagent",
+      "branch": "codex/next-cli-space-27",
+      "baseline": "be21f65337bd0fa5769c010c03166a4571b809ce",
+      "allowed_paths": [
+        "tooling/preflight/helper and exact bounded Windows bridge",
+        "focused DTO/UI/tests",
+        "CURSOR_CLI_REPAIR_RESULT.md and ignored fixtures"
+      ],
+      "artifacts": ["CURSOR_CLI_REPAIR_TASK.md", "CURSOR_CLI_REPAIR_RESULT.md"],
+      "lifecycle": "completed; scoped commit and actual Cursor stopped UI read back; integrated as f324079a",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "commit": "1811093d3e17af978d25e9f1c354cc31b2de478f",
+      "integration_commit": "f324079a",
+      "root_result": "research/cursor-cli-repair-result.md",
+      "acceptance_history": [
+        "root source review accepted strict parser, full target binding/pinned invocation and closed dependency graph admission; worker focused checks passed; final aggregate pending"
+      ]
+    },
+    {
+      "id": "cursor-auth-flake",
+      "executor": "Cursor backend task implementation desktop Debug conversation",
+      "model_observed": "existing Cursor Grok 4.6 / High / Fast",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "baseline": "fac051ea",
+      "allowed_paths": [
+        "exact managed-auth failing test/fixture and proven related target snapshot implementation",
+        "focused spec/result"
+      ],
+      "artifacts": [
+        "research/cursor-auth-flake-task.md",
+        "research/cursor-auth-flake-result.md",
+        "artifacts/integration-prearchive.log"
+      ],
+      "lifecycle": "completed; writer stopped confirmed in actual Cursor UI",
+      "acceptance_status": "Final integrated result accepted; earlier provisional or failing conclusions superseded by research/final-acceptance.md. Source-only reviews remain advisory evidence.",
+      "acceptance_history": [
+        "root accepted exact test-only isolation fix after runtime HOME-flip reproduction; guard unchanged; 2 focused filters passed; full integrated gate pending"
+      ]
+    }
+  ],
+  "entry_observations": [
+    {
+      "entry": "Antigravity agy models",
+      "result": "timeout; no inference runtime verified"
+    },
+    {
+      "entry": "OpenCode models google",
+      "result": ["google/gemini-3.1-pro-preview", "google/gemini-3.5-flash"]
+    },
+    {
+      "entry": "OpenCode models poe",
+      "result": ["poe/anthropic/claude-opus-4.8", "poe/google/gemini-3.5-flash"]
+    }
+  ],
+  "known_coordination": {
+    "release_main_after_193": "d07eaef982c7ede3a84c0dd4e14a67c7b34af826",
+    "upstream_grok_commit": "superseded; included in release PR194 final candidate c99889ab; wait for final main",
+    "upstream_kimi_tests_commit": "f24295dfd60eaefc960d1753c1683c4cd1b135a3",
+    "release_window": "released; root serializes integrated heavy checks",
+    "issue_owner": "root only; no Issue closed by this task yet",
+    "antigravity_review": "returned for targeted fixes: eligibility is not existing config, post-await hidden guard, native external links, no releaseId verification claim, actual preset reuse",
+    "release_pr194_head": "c99889abd2b7802ed160f9f8e2f5abc13c5c8ac8",
+    "cua_window": "released by release owner; root controls Antigravity",
+    "release_pr194_status": "merged; origin/main da91427e verified by release owner and fetched",
+    "native_agents": "config_pack_73, installer_27_29, integration_check all errored shared usage limit; writers stopped"
+  },
+  "upstream_final_main": "da91427e2e564499a4dcc4d20f2874105072123c",
+  "integration_checkpoint": "9fd852cd",
+  "main_integration_commit": "35848bef",
+  "final_acceptance": {
+    "at": "2026-09-21T01:31:55.967804+00:00",
+    "coordinator": "GPT-6",
+    "result": "accepted_for_repository_delivery",
+    "evidence": "research/final-acceptance.md",
+    "closed_writers": true,
+    "remaining": "Hosted exact-head CI, Merge Queue, post-merge Issue readback; #67 and #68 remain external requirements."
+  }
+}

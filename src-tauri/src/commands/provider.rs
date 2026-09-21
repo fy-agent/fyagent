@@ -8,6 +8,7 @@ use crate::commands::xai_oauth::XaiOAuthState;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider, ProviderMeta, ProviderMutationResult};
 use crate::services::provider::QuickSetupApplyFailureCode;
+use crate::services::provider_api::{validate_credential_scope, ApiProtocol};
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, QuickSetupWriteTarget, SpeedtestService,
     SwitchResult,
@@ -15,13 +16,105 @@ use crate::services::{
 use crate::store::AppState;
 use std::str::FromStr;
 
+mod live_summary;
+use live_summary::ProviderLiveSummary;
+
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderPublicSummary {
     id: String,
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    connection: Option<ProviderPublicConnection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     write_targets: Option<Vec<QuickSetupWriteTarget>>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderPublicConnection {
+    base_url: String,
+    model_id: String,
+    protocol: ApiProtocol,
+}
+
+// Project only recognized connection fields. Unsupported shapes remain visible
+// as sources but are not offered as editable quick setup forms.
+fn provider_public_connection(
+    provider: &Provider,
+    credentials: &[String],
+) -> Option<ProviderPublicConnection> {
+    let settings = &provider.settings_config;
+    let (base_url, model_id, protocol) = if let Some(env) = settings.get("env") {
+        (
+            env.get("ANTHROPIC_BASE_URL")?.as_str()?.to_owned(),
+            env.get("ANTHROPIC_MODEL")?.as_str()?.to_owned(),
+            ApiProtocol::Anthropic,
+        )
+    } else {
+        let config = settings
+            .get("config")?
+            .as_str()?
+            .parse::<toml::Value>()
+            .ok()?;
+        if let Some(selected) = config.get("model_provider").and_then(toml::Value::as_str) {
+            let selected = config.get("model_providers")?.get(selected)?;
+            let protocol = match selected.get("wire_api") {
+                None => ApiProtocol::Responses,
+                Some(value) => match value.as_str()? {
+                    "responses" => ApiProtocol::Responses,
+                    "chat" => ApiProtocol::Chat,
+                    _ => return None,
+                },
+            };
+            (
+                selected.get("base_url")?.as_str()?.to_owned(),
+                config.get("model")?.as_str()?.to_owned(),
+                protocol,
+            )
+        } else {
+            let selected = config.get("models")?.get("default")?.as_str()?;
+            let model = config.get("model")?.get(selected)?;
+            if model.get("api_backend")?.as_str()? != "responses" {
+                return None;
+            }
+            (
+                model.get("base_url")?.as_str()?.to_owned(),
+                model.get("model")?.as_str()?.to_owned(),
+                ApiProtocol::Responses,
+            )
+        }
+    };
+    let url = url::Url::parse(&base_url).ok()?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || credentials.iter().any(|credential| {
+            crate::services::workbuddy::url::reject_parsed_url_credential_collision(
+                &url, credential,
+            )
+            .is_err()
+        })
+        || base_url.len() > 2048
+        || model_id.trim().is_empty()
+        || model_id.len() > 256
+        || [&base_url, &model_id].iter().any(|value| {
+            value.chars().any(char::is_control)
+                || credentials
+                    .iter()
+                    .any(|credential| value.contains(credential))
+        })
+    {
+        return None;
+    }
+    Some(ProviderPublicConnection {
+        base_url,
+        model_id,
+        protocol,
+    })
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -30,6 +123,7 @@ pub struct ProviderPublicSummaryResult {
     providers: IndexMap<String, ProviderPublicSummary>,
     current_id: String,
     write_targets: Vec<QuickSetupWriteTarget>,
+    live: ProviderLiveSummary,
 }
 
 const PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE: &str = "Provider public summary is unavailable";
@@ -147,7 +241,7 @@ fn collect_provider_credentials(
     }
 }
 
-fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary, String> {
+fn provider_known_credentials(provider: &Provider) -> Result<Vec<String>, String> {
     let mut credentials = Vec::new();
     collect_provider_credentials(&provider.settings_config, &mut credentials)
         .map_err(|_| PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string())?;
@@ -195,6 +289,19 @@ fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary,
         collect_provider_credentials(&config, &mut credentials)
             .map_err(|_| PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string())?;
     }
+    Ok(credentials)
+}
+
+#[cfg(test)]
+fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary, String> {
+    let credentials = provider_known_credentials(provider)?;
+    project_provider_public_summary(provider, &credentials)
+}
+
+fn project_provider_public_summary(
+    provider: &Provider,
+    credentials: &[String],
+) -> Result<ProviderPublicSummary, String> {
     if [provider.id.as_str(), provider.name.as_str()]
         .into_iter()
         .any(|public| {
@@ -210,20 +317,29 @@ fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary,
     Ok(ProviderPublicSummary {
         id: provider.id.clone(),
         name: provider.name.clone(),
+        connection: provider_public_connection(provider, credentials),
         write_targets: None,
     })
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderQuickSetupRequest {
     name: String,
     base_url: String,
     api_key: String,
     model_id: String,
+    #[serde(default)]
+    protocol: Option<ApiProtocol>,
     /// Codex 原生能力意图（生图扩展 / WebSocket），仅 codex 目标生效。
     #[serde(default)]
     codex_features: Option<CodexProviderFeatureIntent>,
+}
+
+impl std::fmt::Debug for ProviderQuickSetupRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ProviderQuickSetupRequest([REDACTED])")
+    }
 }
 
 impl ProviderQuickSetupRequest {
@@ -231,12 +347,26 @@ impl ProviderQuickSetupRequest {
         self,
         app_type: &AppType,
     ) -> Result<Provider, ProviderQuickSetupCommandError> {
+        let protocol = ApiProtocol::for_target(app_type.as_str(), self.protocol).map_err(|_| {
+            ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
+        })?;
         let codex_features = self.codex_features.unwrap_or_default();
+        if protocol != ApiProtocol::Responses
+            && (codex_features.image_extension == Some(true)
+                || codex_features.websockets == Some(true))
+        {
+            return Err(ProviderQuickSetupCommandError::new(
+                QuickSetupApplyFailureCode::ApplyFailedRolledBack,
+            ));
+        }
         let name = self.name.trim().to_string();
         let base_url = self.base_url.trim().to_string();
         let api_key = self.api_key.trim().to_string();
         let model_id = self.model_id.trim().to_string();
-        if name.is_empty() || api_key.is_empty() || model_id.is_empty() {
+        if name.is_empty()
+            || (api_key.is_empty() && *app_type != AppType::Codex)
+            || model_id.is_empty()
+        {
             return Err(ProviderQuickSetupCommandError::new(
                 QuickSetupApplyFailureCode::ApplyFailedRolledBack,
             ));
@@ -247,12 +377,18 @@ impl ProviderQuickSetupRequest {
             AppType::GrokBuild => "fyagent-v2-quick-setup-grokbuild",
             _ => "",
         };
-        if name.contains(&api_key) || model_id.contains(&api_key) || reserved_id.contains(&api_key)
+        if !api_key.is_empty()
+            && (name.contains(&api_key)
+                || model_id.contains(&api_key)
+                || reserved_id.contains(&api_key))
         {
             return Err(ProviderQuickSetupCommandError::new(
                 QuickSetupApplyFailureCode::ApplyFailedRolledBack,
             ));
         }
+        validate_credential_scope(&base_url, &api_key, protocol).map_err(|_| {
+            ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
+        })?;
         let (id, settings_config) = match app_type {
             AppType::Claude => (
                 "fyagent-v2-quick-setup-claude",
@@ -277,10 +413,11 @@ impl ProviderQuickSetupRequest {
                 let websockets = codex_features.websockets.unwrap_or(false);
                 let requires_openai_auth = !image_extension;
                 let mut config = format!(
-                    "model_provider = \"custom\"\nmodel = {}\ndisable_response_storage = true\n\n[model_providers.custom]\nname = {}\nbase_url = {}\nwire_api = \"responses\"\nrequires_openai_auth = {}",
+                    "model_provider = \"custom\"\nmodel = {}\ndisable_response_storage = true\n\n[model_providers.custom]\nname = {}\nbase_url = {}\nwire_api = {}\nrequires_openai_auth = {}",
                     quote(&model_id),
                     quote(&name),
                     quote(&base_url),
+                    quote(protocol.wire_name()),
                     requires_openai_auth,
                 );
                 if image_extension {
@@ -325,7 +462,7 @@ impl ProviderQuickSetupRequest {
         provider.notes = Some("Created by FyAgent V2 quick setup".to_string());
         // 显式生图选择视为已完成迁移，避免 prepare_codex_provider_features_for_save
         // 的默认迁移覆盖用户的一键配置选择。
-        if codex_features.image_extension.is_some() {
+        if codex_features.image_extension.is_some() || protocol == ApiProtocol::Chat {
             provider
                 .meta
                 .get_or_insert_with(ProviderMeta::default)
@@ -404,33 +541,81 @@ pub async fn get_provider_summary(
             .db
             .get_all_providers(app_type.as_str())
             .map_err(|_| "Provider public summary is unavailable".to_string())?;
-        let mut providers = IndexMap::new();
-        for (key, provider) in all {
-            let mut summary = provider_public_summary(&provider)?;
-            summary.write_targets = Some(
-                ProviderService::source_write_targets(&app_type, &provider)
-                    .map_err(|_| "Provider public summary is unavailable".to_string())?,
-            );
-            if key != summary.id {
-                return Err("Provider public summary is unavailable".to_string());
-            }
-            providers.insert(key, summary);
-        }
-        let write_targets = ProviderService::quick_setup_write_targets(&app_type)
+        let current_id = ProviderService::current(state.inner(), app_type.clone())
             .map_err(|_| "Provider public summary is unavailable".to_string())?;
-        let current_id = ProviderService::current(state.inner(), app_type)
-            .map_err(|_| "Provider public summary is unavailable".to_string())?;
-        if !current_id.is_empty() && !providers.contains_key(&current_id) {
-            return Err("Provider public summary is unavailable".to_string());
-        }
-        Ok(ProviderPublicSummaryResult {
-            providers,
-            current_id,
-            write_targets,
-        })
+        build_provider_public_summary_result(&app_type, all, current_id)
     })
     .await
     .map_err(|_| "Provider public summary is unavailable".to_string())?
+}
+
+fn build_provider_public_summary_result(
+    app_type: &AppType,
+    all: IndexMap<String, Provider>,
+    current_id: String,
+) -> Result<ProviderPublicSummaryResult, String> {
+    let mut providers = IndexMap::new();
+    let mut known_credentials = Vec::new();
+    let mut targets_unreadable = false;
+    for (key, provider) in all {
+        let credentials = provider_known_credentials(&provider)?;
+        let mut summary = project_provider_public_summary(&provider, &credentials)?;
+        known_credentials.extend(credentials);
+        summary.connection = summary.connection.filter(|connection| {
+            ApiProtocol::for_target(app_type.as_str(), Some(connection.protocol)).is_ok()
+        });
+        summary.write_targets = Some(
+            ProviderService::source_write_targets(app_type, &provider).unwrap_or_else(|_| {
+                targets_unreadable = true;
+                Vec::new()
+            }),
+        );
+        if key != summary.id {
+            return Err(PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string());
+        }
+        providers.insert(key, summary);
+    }
+    if !current_id.is_empty() && !providers.contains_key(&current_id) {
+        return Err(PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string());
+    }
+    let write_targets = ProviderService::quick_setup_write_targets(app_type).unwrap_or_else(|_| {
+        targets_unreadable = true;
+        Vec::new()
+    });
+    let live = if targets_unreadable {
+        ProviderLiveSummary::unreadable(app_type, None)
+    } else {
+        live_summary::observe(app_type, &write_targets, &known_credentials)
+    };
+    Ok(ProviderPublicSummaryResult {
+        providers,
+        current_id,
+        write_targets,
+        live,
+    })
+}
+
+fn provider_command_error(app: &str, error: AppError) -> String {
+    if app != "codex" {
+        return error.to_string();
+    }
+    if let AppError::Message(code) = &error {
+        if matches!(
+            code.as_str(),
+            "provider_secret_invalid"
+                | "provider_secret_locked"
+                | "provider_secret_denied"
+                | "provider_secret_missing"
+                | "provider_secret_unavailable"
+                | "provider_secret_operation_failed"
+                | "provider_secret_revoked"
+                | "provider_secret_persistence_failed"
+                | "provider_secret_recovery_required"
+        ) {
+            return code.clone();
+        }
+    }
+    "provider_operation_failed".into()
 }
 
 #[tauri::command]
@@ -442,7 +627,7 @@ pub fn add_provider(
 ) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     ProviderService::add(state.inner(), app_type, provider, addToLive.unwrap_or(true))
-        .map_err(|e| e.to_string())
+        .map_err(|e| provider_command_error(&app, e))
 }
 
 /// Compatible mutation envelope for clients that coordinate a Codex Desktop
@@ -468,7 +653,7 @@ pub fn add_provider_with_result(
             addToLive.unwrap_or(true),
         )
     })
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| provider_command_error(&app, e))?;
     let saved_provider = state
         .db
         .get_provider_by_id(&provider_id, warning_app_type.as_str())
@@ -589,7 +774,7 @@ pub fn update_provider(
 ) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     ProviderService::update(state.inner(), app_type, originalId.as_deref(), provider)
-        .map_err(|e| e.to_string())
+        .map_err(|e| provider_command_error(&app, e))
 }
 
 #[tauri::command]
@@ -612,7 +797,7 @@ pub fn update_provider_with_result(
             provider,
         )
     })
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| provider_command_error(&app, e))?;
     let saved_provider = state
         .db
         .get_provider_by_id(&provider_id, warning_app_type.as_str())
@@ -633,7 +818,7 @@ pub fn delete_provider(
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     ProviderService::delete(state.inner(), app_type, &id)
         .map(|_| true)
-        .map_err(|e| e.to_string())
+        .map_err(|e| provider_command_error(&app, e))
 }
 
 #[tauri::command]
@@ -647,7 +832,7 @@ pub fn delete_provider_with_result(
     ProviderService::with_live_config_result(app_type, || {
         ProviderService::delete(state.inner(), mutation_app_type, &id).map(|_| true)
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| provider_command_error(&app, e))
 }
 
 /// Analyze a form-only Codex provider draft. This command never writes the
@@ -729,7 +914,8 @@ pub async fn switch_provider(
         let state = app_handle
             .try_state::<AppState>()
             .ok_or_else(|| "应用状态不可用".to_string())?;
-        switch_provider_internal(state.inner(), app_type, &id).map_err(|e| e.to_string())
+        switch_provider_internal(state.inner(), app_type, &id)
+            .map_err(|e| provider_command_error(&app, e))
     })
     .await
     .map_err(|e| format!("供应商切换任务执行失败: {e}"))?
@@ -750,7 +936,7 @@ pub async fn switch_provider_with_result(
         ProviderService::with_live_config_result(app_type, || {
             switch_provider_internal(state.inner(), mutation_app_type, &id)
         })
-        .map_err(|error| error.to_string())
+        .map_err(|error| provider_command_error(&app, error))
     })
     .await
     .map_err(|e| format!("供应商切换任务执行失败: {e}"))?
@@ -1194,7 +1380,18 @@ async fn query_provider_usage_inner(
         .db
         .get_all_providers(app_type.as_str())
         .map_err(|e| format!("Failed to get providers: {e}"))?;
-    let provider = providers.get(provider_id);
+    let resolved = providers
+        .get(provider_id)
+        .map(|provider| {
+            crate::services::provider::ProviderCredentials::resolve(
+                &state.db,
+                app_type.as_str(),
+                provider,
+            )
+        })
+        .transpose()
+        .map_err(|_| "provider_credentials_unavailable".to_owned())?;
+    let provider = resolved.as_ref();
     let usage_script = provider
         .and_then(|p| p.meta.as_ref())
         .and_then(|m| m.usage_script.as_ref());
@@ -1439,7 +1636,14 @@ pub async fn testUsageScript(
 #[tauri::command]
 pub fn read_live_provider_settings(app: String) -> Result<serde_json::Value, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    ProviderService::read_live_settings(app_type).map_err(|e| e.to_string())
+    let value = ProviderService::read_live_settings(app_type.clone())
+        .map_err(|_| "provider_live_settings_unavailable".to_owned())?;
+    if app_type == AppType::Codex {
+        let provider = Provider::with_id(String::new(), String::new(), value, None);
+        Ok(crate::provider::sanitize_provider_for_export(&provider).settings_config)
+    } else {
+        Ok(value)
+    }
 }
 
 #[tauri::command]
@@ -1609,6 +1813,7 @@ mod provider_draft_command_tests {
     use super::{parse_provider_draft_app, provider_public_summary, ProviderQuickSetupRequest};
     use crate::app_config::AppType;
     use crate::provider::Provider;
+    use crate::services::provider::ProviderCredentials;
 
     #[test]
     fn quick_setup_drafts_allow_claude_codex_and_grokbuild() {
@@ -1817,6 +2022,95 @@ mod provider_draft_command_tests {
     }
 
     #[test]
+    fn quick_setup_protocol_is_preserved_in_public_readback_without_credentials() {
+        for protocol in ["responses", "chat"] {
+            let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
+                "name": "Gateway", "baseUrl": "https://example.test/v1", "apiKey": "fixture-secret",
+                "modelId": "vendor/model-a", "protocol": protocol
+            }))
+            .unwrap();
+            let mut provider = request.into_provider(&AppType::Codex).unwrap();
+            if protocol == "chat" {
+                crate::codex_config::prepare_codex_provider_features_for_save(&mut provider, true)
+                    .unwrap();
+                assert_eq!(
+                    provider
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.image_extension_configured),
+                    Some(true)
+                );
+            }
+            let config: toml::Value = provider.settings_config["config"]
+                .as_str()
+                .unwrap()
+                .parse()
+                .unwrap();
+            assert_eq!(
+                config["model_providers"]["custom"]["wire_api"].as_str(),
+                Some(protocol)
+            );
+            let summary =
+                serde_json::to_value(provider_public_summary(&provider).unwrap()).unwrap();
+            assert_eq!(
+                summary["connection"],
+                serde_json::json!({"baseUrl":"https://example.test/v1", "modelId":"vendor/model-a", "protocol":protocol})
+            );
+            assert!(!summary.to_string().contains("fixture-secret"));
+            assert!(!summary.to_string().contains("auth"));
+        }
+    }
+
+    #[test]
+    fn quick_setup_protocol_rejects_wrong_target_unknown_and_responses_features_for_chat() {
+        let value = serde_json::json!({"name":"Gateway", "baseUrl":"https://example.test/v1", "apiKey":"fixture-secret", "modelId":"model-a", "protocol":"chat"});
+        for app in [AppType::Claude, AppType::GrokBuild] {
+            let request: ProviderQuickSetupRequest = serde_json::from_value(value.clone()).unwrap();
+            assert!(request.into_provider(&app).is_err());
+        }
+        let mut invalid = value.clone();
+        invalid["protocol"] = "unknown".into();
+        assert!(serde_json::from_value::<ProviderQuickSetupRequest>(invalid).is_err());
+        for feature in ["imageExtension", "websockets"] {
+            let mut invalid = value.clone();
+            invalid["codexFeatures"] = serde_json::json!({(feature): true});
+            let request: ProviderQuickSetupRequest = serde_json::from_value(invalid).unwrap();
+            assert!(request.into_provider(&AppType::Codex).is_err());
+        }
+    }
+
+    #[test]
+    fn public_connection_omits_secret_urls_and_unsupported_protocols() {
+        for endpoint in [
+            "https://user:pass@example.test/v1",
+            "https://example.test/v1?key=fixture-secret",
+            "https://example.test/fixture%2Dsecret/v1",
+        ] {
+            let provider = Provider::with_id(
+                "safe".into(),
+                "Gateway".into(),
+                serde_json::json!({"env": {
+                    "ANTHROPIC_BASE_URL":endpoint, "ANTHROPIC_AUTH_TOKEN":"fixture-secret", "ANTHROPIC_MODEL":"model-a"
+                }}),
+                None,
+            );
+            let summary =
+                serde_json::to_value(provider_public_summary(&provider).unwrap()).unwrap();
+            assert!(summary.get("connection").is_none());
+        }
+        let provider = Provider::with_id(
+            "safe".into(),
+            "Gateway".into(),
+            serde_json::json!({"config":"model_provider='custom'\nmodel='m'\n[model_providers.custom]\nbase_url='https://example.test/v1'\nwire_api='unknown'"}),
+            None,
+        );
+        assert!(provider_public_summary(&provider)
+            .unwrap()
+            .connection
+            .is_none());
+    }
+
+    #[test]
     fn quick_setup_request_derives_the_fixed_provider_shape() {
         let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
             "name": " Gateway ", "baseUrl": " https://example.test/v1 ",
@@ -1917,17 +2211,56 @@ mod provider_draft_command_tests {
                 .get_provider_by_id(&provider.id, AppType::Codex.as_str())
                 .unwrap()
                 .expect("new Kimi setup was saved");
-            assert_eq!(reread.settings_config, provider.settings_config);
+            assert_public_codex_secretref(&reread, &["new-kimi-key", "saved-kimi-key"]);
+            assert_eq!(
+                reread.settings_config["config"],
+                provider.settings_config["config"]
+            );
+            assert_eq!(
+                ProviderCredentials::resolve(&db, "codex", &reread)
+                    .unwrap()
+                    .settings_config["auth"]["OPENAI_API_KEY"],
+                "new-kimi-key"
+            );
             let saved_reread = db
                 .get_provider_by_id(&saved.id, AppType::Codex.as_str())
                 .unwrap()
                 .expect("existing Kimi provider is retained");
-            assert_eq!(saved_reread.settings_config, saved.settings_config);
+            assert_public_codex_secretref(&saved_reread, &["new-kimi-key", "saved-kimi-key"]);
+            assert_eq!(
+                saved_reread.settings_config["config"],
+                saved.settings_config["config"]
+            );
+            assert_eq!(
+                saved_reread.settings_config["modelCatalog"],
+                saved.settings_config["modelCatalog"]
+            );
+            assert_eq!(
+                ProviderCredentials::resolve(&db, "codex", &saved_reread)
+                    .unwrap()
+                    .settings_config["auth"]["OPENAI_API_KEY"],
+                "saved-kimi-key"
+            );
             assert_eq!(
                 serde_json::to_value(saved_reread.meta).unwrap(),
                 serde_json::to_value(saved.meta).unwrap(),
                 "existing Chat routing and user overrides must remain unchanged"
             );
+        }
+    }
+
+    fn assert_public_codex_secretref(stored: &Provider, secrets: &[&str]) {
+        let reference = stored.settings_config["credentialRef"]
+            .as_str()
+            .expect("public Codex row stores SecretRef");
+        assert!(
+            reference.starts_with("pc_"),
+            "public credential id must stay opaque: {reference}"
+        );
+        assert_eq!(stored.settings_config["auth"], serde_json::json!({}));
+        let public = serde_json::to_string(stored).unwrap();
+        for secret in secrets {
+            assert!(!public.contains(secret), "public readback leaked {secret}");
         }
     }
 

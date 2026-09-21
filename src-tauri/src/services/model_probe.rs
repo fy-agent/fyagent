@@ -15,6 +15,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::error::AppError;
+use crate::services::provider_api::{
+    ensure_generic_api_allowed, validate_credential_scope, ApiProtocol,
+};
 use crate::services::stream_check::{HealthStatus, StreamCheckService};
 
 const MIN_PROBE_INPUT_TOKENS: usize = 1024;
@@ -190,18 +193,21 @@ pub async fn probe(
     api_key: &str,
     model_id: &str,
     codex_image_extension: bool,
+    protocol: Option<ApiProtocol>,
 ) -> Result<ModelProbeResult, AppError> {
-    probe_with_client(
+    probe_with_client_for_protocol(
         &crate::proxy::http_client::get(),
         app,
         base_url,
         api_key,
         model_id,
         codex_image_extension,
+        protocol,
     )
     .await
 }
 
+#[cfg(test)]
 pub async fn probe_with_client(
     client: &Client,
     app: ModelProbeApp,
@@ -209,6 +215,27 @@ pub async fn probe_with_client(
     api_key: &str,
     model_id: &str,
     codex_image_extension: bool,
+) -> Result<ModelProbeResult, AppError> {
+    probe_with_client_for_protocol(
+        client,
+        app,
+        base_url,
+        api_key,
+        model_id,
+        codex_image_extension,
+        None,
+    )
+    .await
+}
+
+async fn probe_with_client_for_protocol(
+    client: &Client,
+    app: ModelProbeApp,
+    base_url: &str,
+    api_key: &str,
+    model_id: &str,
+    codex_image_extension: bool,
+    protocol: Option<ApiProtocol>,
 ) -> Result<ModelProbeResult, AppError> {
     StreamCheckService::validate_probe_url(base_url)?;
     let model_id = model_id.trim();
@@ -229,6 +256,7 @@ pub async fn probe_with_client(
             api_key,
             model_id,
             codex_image_extension,
+            protocol,
         )
         .await;
         let wrapped = build_result(
@@ -260,19 +288,18 @@ async fn probe_once(
     api_key: &str,
     model_id: &str,
     codex_image_extension: bool,
+    protocol: Option<ApiProtocol>,
 ) -> Result<(u16, String), AppError> {
-    let (spec, actual_model) =
-        build_probe_spec(app, base_url, api_key, model_id, codex_image_extension)?;
+    let (spec, actual_model) = build_probe_spec_for_protocol(
+        app,
+        base_url,
+        api_key,
+        model_id,
+        codex_image_extension,
+        protocol,
+    )?;
     let status = send_stream_request(client, &spec).await?;
     Ok((status, actual_model))
-}
-
-fn protocol_for_app(app: ModelProbeApp) -> ProbeProtocol {
-    match app {
-        ModelProbeApp::Claude => ProbeProtocol::AnthropicMessages,
-        ModelProbeApp::Codex | ModelProbeApp::GrokBuild => ProbeProtocol::OpenAiResponses,
-        ModelProbeApp::WorkBuddy | ModelProbeApp::OpenCode => ProbeProtocol::OpenAiChat,
-    }
 }
 
 fn build_probe_spec(
@@ -282,9 +309,48 @@ fn build_probe_spec(
     model_id: &str,
     codex_image_extension: bool,
 ) -> Result<(ProbeRequestSpec, String), AppError> {
-    let protocol = protocol_for_app(app);
+    build_probe_spec_for_protocol(
+        app,
+        base_url,
+        api_key,
+        model_id,
+        codex_image_extension,
+        None,
+    )
+}
+
+fn build_probe_spec_for_protocol(
+    app: ModelProbeApp,
+    base_url: &str,
+    api_key: &str,
+    model_id: &str,
+    codex_image_extension: bool,
+    requested: Option<ApiProtocol>,
+) -> Result<(ProbeRequestSpec, String), AppError> {
+    let target = match app {
+        ModelProbeApp::Claude => "claude",
+        ModelProbeApp::Codex => "codex",
+        ModelProbeApp::GrokBuild => "grokbuild",
+        ModelProbeApp::WorkBuddy => "workbuddy",
+        ModelProbeApp::OpenCode => "opencode",
+    };
+    let selected = ApiProtocol::for_target(target, requested)?;
+    ensure_generic_api_allowed(base_url, api_key)?;
+    validate_credential_scope(base_url, api_key, selected)?;
+    if codex_image_extension && selected != ApiProtocol::Responses {
+        return Err(AppError::Message("生图扩展需要 Responses 协议".into()));
+    }
+    let protocol = match selected {
+        ApiProtocol::Anthropic => ProbeProtocol::AnthropicMessages,
+        ApiProtocol::Responses => ProbeProtocol::OpenAiResponses,
+        ApiProtocol::Chat => ProbeProtocol::OpenAiChat,
+    };
     let (actual_model, reasoning_effort) = parse_model_with_effort(model_id);
-    let url = probe_url(app, base_url)?;
+    let url = if app == ModelProbeApp::Codex && selected == ApiProtocol::Chat {
+        openai_compatible_url(base_url, "chat/completions")
+    } else {
+        probe_url(app, base_url)?
+    };
     let body = request_body(protocol, &actual_model, reasoning_effort.as_deref());
     let headers = probe_headers(app, api_key, codex_image_extension);
     Ok((ProbeRequestSpec { url, headers, body }, actual_model))
@@ -783,6 +849,62 @@ mod tests {
             .unwrap_or("")
     }
 
+    #[test]
+    fn explicit_chat_probe_uses_chat_endpoint_and_body() {
+        let (spec, model) = build_probe_spec_for_protocol(
+            ModelProbeApp::Codex,
+            "https://example.test/v1",
+            "fixture-key",
+            "model-a",
+            false,
+            Some(ApiProtocol::Chat),
+        )
+        .unwrap();
+        assert_eq!(spec.url, "https://example.test/v1/chat/completions");
+        assert_eq!(model, "model-a");
+        assert!(spec.body.get("messages").is_some());
+        assert!(spec.body.get("input").is_none());
+        assert!(build_probe_spec_for_protocol(
+            ModelProbeApp::Codex,
+            "https://example.test/v1",
+            "fixture-key",
+            "model-a",
+            true,
+            Some(ApiProtocol::Chat)
+        )
+        .is_err());
+        assert!(build_probe_spec_for_protocol(
+            ModelProbeApp::Claude,
+            "https://example.test",
+            "fixture-key",
+            "model-a",
+            false,
+            Some(ApiProtocol::Chat)
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn restricted_plan_cannot_build_a_generic_probe() {
+        assert!(build_probe_spec_for_protocol(
+            ModelProbeApp::Codex,
+            "https://coding.dashscope.aliyuncs.com/v1",
+            "sk-sp-fixture",
+            "model-a",
+            false,
+            Some(ApiProtocol::Chat)
+        )
+        .is_err());
+        assert!(build_probe_spec(
+            ModelProbeApp::Codex,
+            "https://ark.cn-beijing.volces.com/api/coding/v3",
+            "fixture-key",
+            "model-a",
+            false
+        )
+        .is_err());
+    }
+
     fn spec_for(app: ModelProbeApp, base_url: &str, model_id: &str) -> ProbeRequestSpec {
         build_probe_spec(app, base_url, "sk-test", model_id, false)
             .expect("spec")
@@ -997,27 +1119,17 @@ mod tests {
     }
 
     #[test]
-    fn protocol_matches_product() {
-        assert_eq!(
-            protocol_for_app(ModelProbeApp::Claude),
-            ProbeProtocol::AnthropicMessages
-        );
-        assert_eq!(
-            protocol_for_app(ModelProbeApp::Codex),
-            ProbeProtocol::OpenAiResponses
-        );
-        assert_eq!(
-            protocol_for_app(ModelProbeApp::WorkBuddy),
-            ProbeProtocol::OpenAiChat
-        );
-        assert_eq!(
-            protocol_for_app(ModelProbeApp::GrokBuild),
-            ProbeProtocol::OpenAiResponses
-        );
-        assert_eq!(
-            protocol_for_app(ModelProbeApp::OpenCode),
-            ProbeProtocol::OpenAiChat
-        );
+    fn default_protocol_matches_product_wire_body() {
+        for (app, field) in [
+            (ModelProbeApp::Claude, "messages"),
+            (ModelProbeApp::Codex, "input"),
+            (ModelProbeApp::GrokBuild, "input"),
+            (ModelProbeApp::WorkBuddy, "messages"),
+            (ModelProbeApp::OpenCode, "messages"),
+        ] {
+            let spec = spec_for(app, "https://gateway.example", "model-a");
+            assert!(spec.body.get(field).is_some());
+        }
     }
 
     #[test]

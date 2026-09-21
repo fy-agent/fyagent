@@ -574,15 +574,13 @@ pub(crate) fn remove_common_config_from_settings(
             let mut target_doc = if config_toml.trim().is_empty() {
                 DocumentMut::new()
             } else {
-                config_toml.parse::<DocumentMut>().map_err(|e| {
-                    AppError::Message(format!(
-                        "Invalid Codex config.toml while removing common config: {e}"
-                    ))
-                })?
+                config_toml
+                    .parse::<DocumentMut>()
+                    .map_err(|_| AppError::Message("provider_codex_config_invalid".into()))?
             };
-            let source_doc = trimmed.parse::<DocumentMut>().map_err(|e| {
-                AppError::Message(format!("Invalid Codex common config snippet: {e}"))
-            })?;
+            let source_doc = trimmed
+                .parse::<DocumentMut>()
+                .map_err(|_| AppError::Message("provider_codex_common_config_invalid".into()))?;
 
             remove_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
             if let Some(obj) = result.as_object_mut() {
@@ -631,15 +629,13 @@ fn apply_common_config_to_settings(
             let mut target_doc = if config_toml.trim().is_empty() {
                 DocumentMut::new()
             } else {
-                config_toml.parse::<DocumentMut>().map_err(|e| {
-                    AppError::Message(format!(
-                        "Invalid Codex config.toml while applying common config: {e}"
-                    ))
-                })?
+                config_toml
+                    .parse::<DocumentMut>()
+                    .map_err(|_| AppError::Message("provider_codex_config_invalid".into()))?
             };
-            let source_doc = trimmed.parse::<DocumentMut>().map_err(|e| {
-                AppError::Message(format!("Invalid Codex common config snippet: {e}"))
-            })?;
+            let source_doc = trimmed
+                .parse::<DocumentMut>()
+                .map_err(|_| AppError::Message("provider_codex_common_config_invalid".into()))?;
 
             merge_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
             if let Some(obj) = result.as_object_mut() {
@@ -666,13 +662,39 @@ fn apply_common_config_to_settings(
     }
 }
 
+/// Pure Codex projection shared by credential admission and its native
+/// consumers. Callers pass one snippet snapshot; no secret is resolved here.
+pub(crate) fn build_codex_credential_projection(
+    provider: &Provider,
+    snippet: Option<&str>,
+) -> Result<Provider, AppError> {
+    let mut projected = provider.clone();
+    if provider_uses_common_config(&AppType::Codex, provider, snippet) {
+        if let Some(snippet) = snippet {
+            projected.settings_config = apply_common_config_to_settings(
+                &AppType::Codex,
+                &provider.settings_config,
+                snippet,
+            )?;
+        }
+    }
+    Ok(projected)
+}
+
 pub(crate) fn build_effective_settings_with_common_config(
     db: &Database,
     app_type: &AppType,
     provider: &Provider,
 ) -> Result<Value, AppError> {
+    if *app_type == AppType::Codex {
+        // The credential owner validates and materializes the same effective
+        // snapshot. Applying another snippet afterwards could redirect a key
+        // after its destination had already been checked.
+        return Ok(super::ProviderCredentials::resolve(db, "codex", provider)?.settings_config);
+    }
     let snippet = db.get_config_snippet(app_type.as_str())?;
-    let mut effective_settings = provider.settings_config.clone();
+    let resolved = super::ProviderCredentials::resolve(db, app_type.as_str(), provider)?;
+    let mut effective_settings = resolved.settings_config;
 
     if provider_uses_common_config(app_type, provider, snippet.as_deref()) {
         if let Some(snippet_text) = snippet.as_deref() {
@@ -750,6 +772,14 @@ pub(crate) fn write_live_with_common_config(
 
     if super::is_quick_setup_provider_id(app_type, &effective_provider.id) {
         return write_quick_setup_live_snapshot(app_type, &effective_provider);
+    }
+
+    if matches!(app_type, AppType::Codex) {
+        let snippet = db.get_config_snippet(app_type.as_str())?;
+        let common_snippet = provider_uses_common_config(app_type, provider, snippet.as_deref())
+            .then_some(snippet)
+            .flatten();
+        return write_codex_live_snapshot(&effective_provider, common_snippet.as_deref());
     }
 
     write_live_snapshot(app_type, &effective_provider)
@@ -1258,6 +1288,29 @@ impl LiveSnapshot {
     }
 }
 
+fn write_codex_live_snapshot(
+    provider: &Provider,
+    common_snippet: Option<&str>,
+) -> Result<(), AppError> {
+    let obj = provider
+        .settings_config
+        .as_object()
+        .ok_or_else(|| AppError::Config("Codex 供应商配置必须是 JSON 对象".to_string()))?;
+    let auth = obj
+        .get("auth")
+        .ok_or_else(|| AppError::Config("Codex 供应商配置缺少 'auth' 字段".to_string()))?;
+    let config_str = obj.get("config").and_then(|v| v.as_str());
+    let profile = crate::proxy::providers::resolve_codex_catalog_tool_profile(provider);
+    crate::codex_config::write_codex_provider_live_with_common_snippet(
+        &provider.settings_config,
+        provider.category.as_deref(),
+        auth,
+        config_str,
+        profile,
+        common_snippet,
+    )
+}
+
 /// Write live configuration snapshot for a provider
 pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
     match app_type {
@@ -1273,30 +1326,7 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
                 "Claude Desktop configuration must be written through the provider switch flow",
             ));
         }
-        AppType::Codex => {
-            let obj = provider
-                .settings_config
-                .as_object()
-                .ok_or_else(|| AppError::Config("Codex 供应商配置必须是 JSON 对象".to_string()))?;
-            let auth = obj
-                .get("auth")
-                .ok_or_else(|| AppError::Config("Codex 供应商配置缺少 'auth' 字段".to_string()))?;
-            let config_str = obj.get("config").and_then(|v| v.as_str());
-
-            // Native (direct) Responses and Anthropic providers must suppress Codex's
-            // freeform apply_patch custom tool via the generated catalog; chat/proxy
-            // providers keep the default tool set. Uses the same Anthropic detection as
-            // the proxy router (apiFormat meta/settings + TOML wire_api).
-            let profile = crate::proxy::providers::resolve_codex_catalog_tool_profile(provider);
-
-            crate::codex_config::write_codex_provider_live_with_catalog(
-                &provider.settings_config,
-                provider.category.as_deref(),
-                auth,
-                config_str,
-                profile,
-            )?;
-        }
+        AppType::Codex => write_codex_live_snapshot(provider, None)?,
         AppType::Gemini => {
             // Delegate to write_gemini_live which handles env file writing correctly
             write_gemini_live(provider)?;

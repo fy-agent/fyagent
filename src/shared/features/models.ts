@@ -1,12 +1,18 @@
 import type { FileWriteTarget } from "./file-writes";
+import type {
+  ApiConfigTarget,
+  ApiConnection,
+  ApiProtocol,
+} from "../../domain/configuration/providerApi";
 
-export type ProviderAppId = "claude" | "codex" | "grokbuild";
+export type ProviderAppId = ApiConfigTarget;
 
 export interface ProviderQuickSetupRequest {
   name: string;
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  protocol?: ApiProtocol;
   codexFeatures?: {
     imageExtension?: boolean;
     websockets?: boolean;
@@ -17,16 +23,40 @@ export interface ProviderSummary {
   id: string;
   name: string;
   modelId?: string;
+  connection?: ApiConnection;
   writeTargets?: ModelWriteTarget[];
 }
 
 export type ModelWriteTarget = FileWriteTarget;
 
 export type ProviderSummaryMap = Record<string, ProviderSummary>;
+
+export interface ProviderLiveConnection {
+  baseUrl: string | null;
+  modelId: string | null;
+  protocol: ApiProtocol | null;
+}
+
+export type ProviderLiveSummary = { target: ProviderAppId } & (
+  | { state: "configured"; exists: true; connection: ProviderLiveConnection }
+  | { state: "not_configured"; exists: true; connection: null }
+  | { state: "missing"; exists: false; connection: null }
+  | { state: "unreadable"; exists: boolean | null; connection: null }
+);
+
 export interface ProviderSummaryQueryData {
   providers: ProviderSummaryMap;
   currentId: string;
   writeTargets: ModelWriteTarget[];
+  /** Absent on older hosts; absence means unknown, never missing. */
+  live?: ProviderLiveSummary;
+}
+
+export interface ProviderProxyRestorePreview {
+  app: ProviderAppId;
+  enabled: boolean;
+  canRestore: boolean;
+  targets: { path: string; exists: boolean }[];
 }
 
 export type CodexProviderMutationWarning =
@@ -180,6 +210,7 @@ export interface ModelProbeRequest {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  protocol?: ApiProtocol;
   codexImageExtension?: boolean;
 }
 

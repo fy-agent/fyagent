@@ -142,6 +142,9 @@ describe("OpenCode subscription restoration", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(writeTargets[0].path)).toBeVisible();
     expect(within(dialog).getByText(writeTargets[0].backupPath)).toBeVisible();
+    expect(
+      within(dialog).getByText(/恢复完成后，请重新打开 OpenCode/),
+    ).toBeVisible();
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     expect(ports.opencodeModels.restoreManagedProxy).not.toHaveBeenCalled();
     expect(ports.opencodeModels.getSnapshot).not.toHaveBeenCalled();
@@ -231,6 +234,9 @@ describe("OpenCode subscription restoration", () => {
       expect(ports.opencodeModels.getSnapshot).toHaveBeenCalledOnce();
       expect(ports.managedAuth.getOverview).toHaveBeenCalledOnce();
       expect(onEnd).toHaveBeenCalledOnce();
+      expect(screen.getByText(/未能确认原配置已恢复/)).toBeVisible();
+      expect(screen.getByText(writeTargets[0].path)).toBeVisible();
+      expect(screen.getByText(writeTargets[0].backupPath)).toBeVisible();
       expect(
         screen.getByRole("button", { name: "恢复之前的模型配置" }),
       ).toBeDisabled();

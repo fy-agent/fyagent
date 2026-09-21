@@ -261,6 +261,27 @@ impl ChangeAdapter for CodexProviderUpsertAdapter<'_> {
     }
 
     fn precheck(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        if self.existing_reserved_row {
+            let current = self
+                .state
+                .db
+                .get_provider_by_id(&self.provider.id, AppType::Codex.as_str())
+                .map_err(|_| ChangePlanErrorCode::Internal)?
+                .ok_or(ChangePlanErrorCode::TargetNotFound)?;
+            let current_ref = current
+                .settings_config
+                .get("credentialRef")
+                .and_then(|value| value.as_str());
+            let planned_ref = self
+                .provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.native_credential_draft.as_ref())
+                .and_then(|draft| draft.source_ref.as_deref());
+            if current_ref != planned_ref {
+                return Err(ChangePlanErrorCode::Stale);
+            }
+        }
         self.inspect()
     }
 
@@ -273,7 +294,17 @@ impl ChangeAdapter for CodexProviderUpsertAdapter<'_> {
     }
 
     fn verify(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
-        self.inspect()
+        // Success must read the persisted row. A failed create that never
+        // inserted must still inspect the unchanged baseline from the frozen
+        // draft — TargetNotFound is not a generic readback outage. Other
+        // inspect errors stay fail-closed.
+        match inspect_codex_switch(self.state, &self.provider.id) {
+            Ok(inspection) => Ok(inspection),
+            Err(ChangePlanErrorCode::TargetNotFound) => {
+                inspect_codex_intended_provider(self.state, self.provider.clone())
+            }
+            Err(error) => Err(error),
+        }
     }
 
     fn compensation_capability(&self) -> ChangeCompensationMode {

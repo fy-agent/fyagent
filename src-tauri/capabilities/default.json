@@ -26,6 +26,7 @@
     "allow-user-config-recovery",
     "allow-projects",
     "allow-delivery-kits",
+    "allow-config-pack",
     "allow-project-verification"
   ]
 }

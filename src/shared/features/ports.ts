@@ -1,6 +1,7 @@
 import type { ProjectsPort } from "./projects";
 import type { FirstUseGuideState } from "./first-use-guide";
 import type {
+  CodexInstallPreflight,
   JobSnapshot,
   LocalInstallStatus,
   RemoteReleaseStatus,
@@ -28,6 +29,7 @@ import type {
   ProviderAppId,
   ProviderQuickSetupRequest,
   ProviderMutationResult,
+  ProviderProxyRestorePreview,
   ProviderSummaryQueryData,
   ProviderSwitchResult,
   WorkBuddyFetchModelsRequest,
@@ -122,7 +124,11 @@ export interface CodexDesktopPort {
   getLocalStatus(): Promise<LocalInstallStatus>;
   checkLatest(force: boolean): Promise<RemoteReleaseStatus>;
   getJob(): Promise<JobSnapshot | null>;
-  startInstall(expectedReleaseId: string): Promise<JobSnapshot>;
+  prepareInstall(expectedReleaseId: string): Promise<CodexInstallPreflight>;
+  startInstall(
+    expectedReleaseId: string,
+    confirmationId: string,
+  ): Promise<JobSnapshot>;
   cancelInstall(jobId: string): Promise<JobSnapshot>;
   launch(): Promise<void>;
   openLogDirectory(): Promise<void>;
@@ -133,6 +139,10 @@ export interface CodexDesktopPort {
 
 export interface ProvidersPort {
   getSummary(app: ProviderAppId): Promise<ProviderSummaryQueryData>;
+  getProxyRestorePreview(
+    app: ProviderAppId,
+  ): Promise<ProviderProxyRestorePreview>;
+  restoreManagedProxy(app: ProviderAppId): Promise<void>;
   applyQuickSetupWithResult(
     request: ProviderQuickSetupRequest,
     app: ProviderAppId,
@@ -231,6 +241,7 @@ export interface McpPort {
 }
 
 export interface SettingsPort {
+  getAppVersion(): Promise<string>;
   get(): Promise<FeatureSettings>;
   save(settings: FeatureSettings): Promise<boolean>;
   getFirstUseGuideState(): Promise<FirstUseGuideState>;
@@ -261,6 +272,7 @@ export interface MemoryPort {
 }
 
 export interface FeaturePorts {
+  configPack: import("./config-pack").ConfigPackPort;
   deliveryKits: import("./delivery-kits").DeliveryKitsPort;
   projects: ProjectsPort;
   verification: import("@/domain/verification").VerificationPort;

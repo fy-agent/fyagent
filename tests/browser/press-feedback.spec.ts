@@ -95,6 +95,10 @@ test("positioned search/reveal controls animate their child without losing cente
 }) => {
   await installRichTauriFeatureFixture(page);
   await openRendererPage(page, "/models?target=workbuddy");
+  await expect(
+    page.getByRole("status", { name: "正在读取 WorkBuddy 状态" }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("搜索已有模型")).toBeVisible();
   const control = page
     .getByRole("region", { name: "WorkBuddy 模型配置" })
     .getByRole("button", { name: "显示 API Key", exact: true });

@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { FileWriteDisclosure } from "../../shared/features/controls/FileWriteDisclosure";
+import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import {
   isManagedOpenCodeProvider,
   type ModelWriteTarget,
@@ -29,6 +30,7 @@ export function OpenCodeSubscriptionRestore({
   const { ports } = useFeatures();
   const queries = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [unconfirmed, setUnconfirmed] = useState(false);
   const mounted = useRef(true);
   const origin = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -41,6 +43,11 @@ export function OpenCodeSubscriptionRestore({
   const restore = async () => {
     if (disabled || !onBeginWrite()) return;
     setOpen(false);
+    setUnconfirmed(false);
+    const markUnconfirmed = () => {
+      if (mounted.current) setUnconfirmed(true);
+      onUnconfirmed();
+    };
     try {
       await ports.opencodeModels.restoreManagedProxy();
       await Promise.all([
@@ -64,10 +71,10 @@ export function OpenCodeSubscriptionRestore({
         }),
       ]);
       if (snapshot.providers.some((item) => isManagedOpenCodeProvider(item.id)))
-        onUnconfirmed();
+        markUnconfirmed();
       else onRestored?.();
     } catch {
-      onUnconfirmed();
+      markUnconfirmed();
     } finally {
       // Parent ownership survives unmount/target switches; only local state
       // is guarded. A missing readback must still block further target writes.
@@ -84,6 +91,21 @@ export function OpenCodeSubscriptionRestore({
           恢复之前的模型配置
         </Button>
       </InlineNotice>
+      {unconfirmed && (
+        <InlineNotice tone="warning">
+          <p>
+            未能确认原配置已恢复。当前文件或备份可能已有变化；请先退出
+            OpenCode，
+            对比现有配置和备份，保留后续改动，再重新打开模型页面检查。
+          </p>
+          {writeTargets.map((target) => (
+            <div key={target.path}>
+              <CopyablePath label="现有配置" value={target.path} />
+              <CopyablePath label="备份位置" value={target.backupPath} />
+            </div>
+          ))}
+        </InlineNotice>
+      )}
       <Dialog
         open={open}
         onOpenChange={setOpen}
@@ -100,6 +122,9 @@ export function OpenCodeSubscriptionRestore({
         }
       >
         <FileWriteDisclosure targets={writeTargets} />
+        <p>
+          恢复完成后，请重新打开 OpenCode 或新建会话，让软件读取恢复后的配置。
+        </p>
       </Dialog>
     </>
   );

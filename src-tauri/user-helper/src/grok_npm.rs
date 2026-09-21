@@ -4,7 +4,9 @@
 //! registry allowlisting, and the bounded helper control payload. It is
 //! pure: no process launch, filesystem, or network I/O.
 
-use crate::grok::{GROK_NPM_PACKAGE, MAX_NORMALIZED_VERSION_BYTES};
+use crate::grok::{
+    NpmTargetBinding, GROK_NPM_PACKAGE, MAX_NORMALIZED_VERSION_BYTES, MAX_NPM_TARGET_BYTES,
+};
 
 pub const GROK_NPM_REGISTRY_ENV: &str = "GROK_NPM_REGISTRY";
 pub const GROK_NPM_VERSION_ENV: &str = "GROK_NPM_VERSION";
@@ -14,8 +16,16 @@ pub const GROK_NPM_PLATFORM_INTEGRITY_ENV: &str = "GROK_NPM_PLATFORM_INTEGRITY";
 pub const GROK_NPM_ALLOW_SCRIPTS_ENV: &str = "GROK_NPM_ALLOW_SCRIPTS";
 pub const GROK_NPM_ALLOW_SCRIPTS_PACKAGE: &str = "@xai-official/grok";
 pub const GROK_NPM_ALLOW_SCRIPTS_MAJOR: u32 = 12;
-pub const GROK_NPM_PLAN_CONTROL_BYTES: usize = 80;
-pub const GROK_NPM_PLAN_CONTROL_VERSION: u8 = 1;
+pub const GROK_NPM_PLAN_HEADER_BYTES: usize = 80;
+pub const GROK_NPM_DEST_SLOT_BYTES: usize = 1 + MAX_NPM_TARGET_BYTES;
+pub const GROK_NPM_PLAN_CONTROL_BYTES: usize =
+    GROK_NPM_PLAN_HEADER_BYTES + 4 * GROK_NPM_DEST_SLOT_BYTES;
+pub const GROK_NPM_PLAN_CONTROL_VERSION: u8 = 3;
+
+pub const CLOSED_DEP_TAG_NONE: u8 = 0;
+pub const CLOSED_DEP_TAG_IARNA_TOML: u8 = 1;
+pub const CLOSED_DEP_IARNA_TOML_NAME: &str = "@iarna/toml";
+pub const CLOSED_DEP_VERSION_MAX_BYTES: usize = 16;
 
 const PLAN_MAGIC: [u8; 8] = *b"FYAGROKP";
 const VERSION_FIELD_BYTES: usize = 32;
@@ -142,6 +152,10 @@ pub struct GrokNpmInstallPlan {
     platform_package: String,
     platform_integrity: String,
     allow_install_scripts: bool,
+    dependency_name: Option<String>,
+    dependency_version: Option<String>,
+    reserve_budget_bytes: Option<u64>,
+    npm_target: Option<NpmTargetBinding>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,6 +166,9 @@ pub enum GrokNpmPlanError {
     InvalidIntegrity,
     InvalidPlatformPackage,
     LatestForbidden,
+    InvalidSize,
+    UnsupportedDependency,
+    ArithmeticOverflow,
 }
 
 impl GrokNpmInstallPlan {
@@ -184,6 +201,10 @@ impl GrokNpmInstallPlan {
             platform_package,
             platform_integrity,
             allow_install_scripts,
+            dependency_name: None,
+            dependency_version: None,
+            reserve_budget_bytes: None,
+            npm_target: None,
         })
     }
 
@@ -202,6 +223,75 @@ impl GrokNpmInstallPlan {
 
     pub fn with_npm_major(self, major: u32) -> Self {
         self.with_allow_install_scripts(npm_major_allows_scripts(major))
+    }
+
+    pub fn with_dependency(
+        mut self,
+        name: impl Into<String>,
+        version: impl Into<String>,
+    ) -> Result<Self, GrokNpmPlanError> {
+        let name = name.into();
+        let version = version.into();
+        if name != CLOSED_DEP_IARNA_TOML_NAME {
+            return Err(GrokNpmPlanError::UnsupportedDependency);
+        }
+        validate_exact_version(&version)?;
+        if version.len() > CLOSED_DEP_VERSION_MAX_BYTES {
+            return Err(GrokNpmPlanError::InvalidVersion);
+        }
+        self.dependency_name = Some(name);
+        self.dependency_version = Some(version);
+        Ok(self)
+    }
+
+    pub fn with_reserve_budget_bytes(mut self, budget: u64) -> Result<Self, GrokNpmPlanError> {
+        if budget == 0 || budget > 2 * 1024 * 1024 * 1024 * 3 {
+            return Err(GrokNpmPlanError::InvalidSize);
+        }
+        self.reserve_budget_bytes = Some(budget);
+        Ok(self)
+    }
+
+    pub fn dependency(&self) -> Option<(&str, &str)> {
+        match (&self.dependency_name, &self.dependency_version) {
+            (Some(name), Some(ver)) => Some((name.as_str(), ver.as_str())),
+            _ => None,
+        }
+    }
+
+    pub fn dependency_name(&self) -> Option<&str> {
+        self.dependency_name.as_deref()
+    }
+
+    pub fn dependency_version(&self) -> Option<&str> {
+        self.dependency_version.as_deref()
+    }
+
+    pub fn reserve_budget_bytes(&self) -> Option<u64> {
+        self.reserve_budget_bytes
+    }
+
+    pub fn with_npm_target(mut self, target: NpmTargetBinding) -> Self {
+        self.npm_target = Some(target);
+        self
+    }
+
+    pub fn npm_target(&self) -> Option<&NpmTargetBinding> {
+        self.npm_target.as_ref()
+    }
+
+    pub fn has_dependency(&self) -> bool {
+        self.dependency_name.is_some()
+    }
+
+    pub fn validate_for_tool(&self, tool: OfficialNpmTool) -> Result<(), GrokNpmPlanError> {
+        if tool == OfficialNpmTool::Claude && self.has_dependency() {
+            return Err(GrokNpmPlanError::UnsupportedDependency);
+        }
+        match self.reserve_budget_bytes {
+            Some(budget) if budget > 0 => Ok(()),
+            _ => Err(GrokNpmPlanError::InvalidSize),
+        }
     }
 
     pub fn version(&self) -> &str {
@@ -245,16 +335,26 @@ impl GrokNpmInstallPlan {
             "i".to_string(),
             "-g".to_string(),
             format!("{}@{}", tool.package(), self.version),
-            format!("--registry={}", self.registry.as_str()),
-            format!(
-                "--{}:registry={}",
-                tool.package()
-                    .split('/')
-                    .next()
-                    .expect("closed scoped package"),
-                self.registry.as_str()
-            ),
         ];
+        if tool == OfficialNpmTool::Grok {
+            if let (Some(name), Some(version)) = (&self.dependency_name, &self.dependency_version) {
+                argv.push(format!("{name}@{version}"));
+                argv.push(format!(
+                    "--{}:registry={}",
+                    name.split('/').next().expect("closed scoped dependency"),
+                    self.registry.as_str()
+                ));
+            }
+        }
+        argv.push(format!("--registry={}", self.registry.as_str()));
+        argv.push(format!(
+            "--{}:registry={}",
+            tool.package()
+                .split('/')
+                .next()
+                .expect("closed scoped package"),
+            self.registry.as_str()
+        ));
         if tool == OfficialNpmTool::Claude {
             // The official launcher links its native optional package. Do not
             // let an ambient omit=optional setting trigger an external fallback.
@@ -305,8 +405,16 @@ impl GrokNpmInstallPlan {
 pub fn npm_install_argv_or_reject(
     plan: Option<&GrokNpmInstallPlan>,
 ) -> Result<Vec<String>, GrokNpmPlanError> {
+    npm_install_argv_or_reject_for(plan, OfficialNpmTool::Grok)
+}
+
+pub fn npm_install_argv_or_reject_for(
+    plan: Option<&GrokNpmInstallPlan>,
+    tool: OfficialNpmTool,
+) -> Result<Vec<String>, GrokNpmPlanError> {
     let plan = plan.ok_or(GrokNpmPlanError::Missing)?;
-    let argv = plan.npm_argv();
+    plan.validate_for_tool(tool)?;
+    let argv = plan.npm_argv_for(tool);
     if argv
         .iter()
         .any(|arg| arg.contains("@latest") || arg.contains("config"))
@@ -314,6 +422,56 @@ pub fn npm_install_argv_or_reject(
         return Err(GrokNpmPlanError::LatestForbidden);
     }
     Ok(argv)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PinnedNpmInvocation {
+    program: String,
+    args: Vec<String>,
+    prefix: String,
+    cache: String,
+    temp: String,
+}
+
+impl PinnedNpmInvocation {
+    pub fn program(&self) -> &str {
+        &self.program
+    }
+
+    pub fn args(&self) -> &[String] {
+        &self.args
+    }
+
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
+    pub fn cache(&self) -> &str {
+        &self.cache
+    }
+
+    pub fn temp(&self) -> &str {
+        &self.temp
+    }
+}
+
+pub fn pinned_npm_install_invocation(
+    plan: Option<&GrokNpmInstallPlan>,
+    tool: OfficialNpmTool,
+) -> Result<PinnedNpmInvocation, GrokNpmPlanError> {
+    let mut args = npm_install_argv_or_reject_for(plan, tool)?;
+    let dest = plan
+        .and_then(GrokNpmInstallPlan::npm_target)
+        .ok_or(GrokNpmPlanError::Missing)?;
+    args.push(format!("--prefix={}", dest.prefix()));
+    args.push(format!("--cache={}", dest.cache()));
+    Ok(PinnedNpmInvocation {
+        program: dest.npm_identity().to_string(),
+        args,
+        prefix: dest.prefix().to_string(),
+        cache: dest.cache().to_string(),
+        temp: dest.temp().to_string(),
+    })
 }
 
 pub fn npm_major_allows_scripts(major: u32) -> bool {
@@ -404,7 +562,63 @@ pub fn encode_plan_control(plan: Option<&GrokNpmInstallPlan>) -> [u8; GROK_NPM_P
     let version = plan.version.as_bytes();
     bytes[12] = version.len() as u8;
     bytes[13..13 + version.len()].copy_from_slice(version);
+    if let (Some(name), Some(dep_version)) = (&plan.dependency_name, &plan.dependency_version) {
+        if name == CLOSED_DEP_IARNA_TOML_NAME {
+            bytes[45] = CLOSED_DEP_TAG_IARNA_TOML;
+            let dep_bytes = dep_version.as_bytes();
+            if dep_bytes.len() <= CLOSED_DEP_VERSION_MAX_BYTES {
+                bytes[46] = dep_bytes.len() as u8;
+                bytes[47..47 + dep_bytes.len()].copy_from_slice(dep_bytes);
+            }
+        }
+    }
+    if let Some(budget) = plan.reserve_budget_bytes {
+        bytes[63..71].copy_from_slice(&budget.to_le_bytes());
+    }
+    if let Some(target) = plan.npm_target() {
+        bytes[71] = 1;
+        encode_dest_slot(
+            &mut bytes[80..80 + GROK_NPM_DEST_SLOT_BYTES],
+            target.prefix(),
+        );
+        encode_dest_slot(
+            &mut bytes[80 + GROK_NPM_DEST_SLOT_BYTES..80 + 2 * GROK_NPM_DEST_SLOT_BYTES],
+            target.cache(),
+        );
+        encode_dest_slot(
+            &mut bytes[80 + 2 * GROK_NPM_DEST_SLOT_BYTES..80 + 3 * GROK_NPM_DEST_SLOT_BYTES],
+            target.temp(),
+        );
+        encode_dest_slot(
+            &mut bytes[80 + 3 * GROK_NPM_DEST_SLOT_BYTES..80 + 4 * GROK_NPM_DEST_SLOT_BYTES],
+            target.npm_identity(),
+        );
+    }
     bytes
+}
+
+fn encode_dest_slot(slot: &mut [u8], value: &str) {
+    let bytes = value.as_bytes();
+    slot[0] = bytes.len() as u8;
+    slot[1..1 + bytes.len()].copy_from_slice(bytes);
+}
+
+fn decode_dest_slot(slot: &[u8]) -> Result<String, GrokNpmPlanError> {
+    if slot.len() != GROK_NPM_DEST_SLOT_BYTES {
+        return Err(GrokNpmPlanError::Missing);
+    }
+    let length = usize::from(slot[0]);
+    if length == 0 || length > MAX_NPM_TARGET_BYTES {
+        return Err(GrokNpmPlanError::Missing);
+    }
+    let text = std::str::from_utf8(&slot[1..1 + length]).map_err(|_| GrokNpmPlanError::Missing)?;
+    if text.chars().any(char::is_control) {
+        return Err(GrokNpmPlanError::Missing);
+    }
+    if slot[1 + length..].iter().any(|byte| *byte != 0) {
+        return Err(GrokNpmPlanError::Missing);
+    }
+    Ok(text.to_owned())
 }
 
 pub fn decode_plan_control(bytes: &[u8]) -> Result<Option<GrokNpmInstallPlan>, GrokNpmPlanError> {
@@ -438,19 +652,84 @@ pub fn decode_plan_control(bytes: &[u8]) -> Result<Option<GrokNpmInstallPlan>, G
             }
             let version = std::str::from_utf8(&bytes[13..13 + version_len])
                 .map_err(|_| GrokNpmPlanError::InvalidVersion)?;
-            if bytes[13 + version_len..13 + VERSION_FIELD_BYTES]
-                .iter()
-                .any(|byte| *byte != 0)
-            {
+            validate_exact_version(version)?;
+            if bytes[13 + version_len..45].iter().any(|byte| *byte != 0) {
                 return Err(GrokNpmPlanError::InvalidVersion);
             }
-            if bytes[13 + VERSION_FIELD_BYTES..]
-                .iter()
-                .any(|byte| *byte != 0)
-            {
+            let dep_tag = bytes[45];
+            let dep_version_len = usize::from(bytes[46]);
+            let dep_info = match dep_tag {
+                CLOSED_DEP_TAG_NONE => {
+                    if dep_version_len != 0 || bytes[47..63].iter().any(|byte| *byte != 0) {
+                        return Err(GrokNpmPlanError::Missing);
+                    }
+                    None
+                }
+                CLOSED_DEP_TAG_IARNA_TOML => {
+                    if dep_version_len == 0 || dep_version_len > CLOSED_DEP_VERSION_MAX_BYTES {
+                        return Err(GrokNpmPlanError::InvalidVersion);
+                    }
+                    let dep_version = std::str::from_utf8(&bytes[47..47 + dep_version_len])
+                        .map_err(|_| GrokNpmPlanError::InvalidVersion)?;
+                    validate_exact_version(dep_version)?;
+                    if bytes[47 + dep_version_len..63]
+                        .iter()
+                        .any(|byte| *byte != 0)
+                    {
+                        return Err(GrokNpmPlanError::InvalidVersion);
+                    }
+                    Some((CLOSED_DEP_IARNA_TOML_NAME, dep_version))
+                }
+                _ => return Err(GrokNpmPlanError::UnsupportedDependency),
+            };
+            let raw_budget = u64::from_le_bytes(
+                bytes[63..71]
+                    .try_into()
+                    .map_err(|_| GrokNpmPlanError::InvalidSize)?,
+            );
+            if raw_budget == 0 || raw_budget > 2 * 1024 * 1024 * 1024 * 3 {
+                return Err(GrokNpmPlanError::InvalidSize);
+            }
+            if bytes[72..80].iter().any(|byte| *byte != 0) {
                 return Err(GrokNpmPlanError::Missing);
             }
-            GrokNpmInstallPlan::for_execution(version, registry, allow).map(Some)
+            let dest_present = bytes[71];
+            let dest = match dest_present {
+                0 => {
+                    if bytes[80..].iter().any(|byte| *byte != 0) {
+                        return Err(GrokNpmPlanError::Missing);
+                    }
+                    None
+                }
+                1 => Some(
+                    NpmTargetBinding::new(
+                        decode_dest_slot(&bytes[80..80 + GROK_NPM_DEST_SLOT_BYTES])?,
+                        decode_dest_slot(
+                            &bytes
+                                [80 + GROK_NPM_DEST_SLOT_BYTES..80 + 2 * GROK_NPM_DEST_SLOT_BYTES],
+                        )?,
+                        decode_dest_slot(
+                            &bytes[80 + 2 * GROK_NPM_DEST_SLOT_BYTES
+                                ..80 + 3 * GROK_NPM_DEST_SLOT_BYTES],
+                        )?,
+                        decode_dest_slot(
+                            &bytes[80 + 3 * GROK_NPM_DEST_SLOT_BYTES
+                                ..80 + 4 * GROK_NPM_DEST_SLOT_BYTES],
+                        )?,
+                    )
+                    .map_err(|_| GrokNpmPlanError::Missing)?,
+                ),
+                _ => return Err(GrokNpmPlanError::Missing),
+            };
+            let mut plan = GrokNpmInstallPlan::for_execution(version, registry, allow)?;
+            plan = plan.with_reserve_budget_bytes(raw_budget)?;
+            if let Some((dep_name, dep_version)) = dep_info {
+                plan = plan.with_dependency(dep_name, dep_version)?;
+            }
+            if let Some(dest) = dest {
+                plan = plan.with_npm_target(dest);
+            }
+            Ok(Some(plan))
         }
         _ => Err(GrokNpmPlanError::Missing),
     }
@@ -552,6 +831,8 @@ mod tests {
             allow,
         )
         .expect("valid sample plan")
+        .with_reserve_budget_bytes(1024 * 1024 * 3)
+        .expect("valid budget")
     }
 
     #[test]
@@ -645,7 +926,12 @@ mod tests {
     #[test]
     fn compact_control_round_trips_and_absent_is_empty() {
         let plan = sample_plan(true);
-        assert_eq!(GROK_NPM_PLAN_CONTROL_BYTES, crate::BRIDGE_CONTROL_BYTES);
+        assert_eq!(GROK_NPM_PLAN_HEADER_BYTES, crate::BRIDGE_CONTROL_BYTES);
+        assert_eq!(MAX_NPM_TARGET_BYTES, crate::MAX_TOOL_DEST_BYTES);
+        assert_eq!(
+            GROK_NPM_PLAN_CONTROL_BYTES,
+            GROK_NPM_PLAN_HEADER_BYTES + 4 * GROK_NPM_DEST_SLOT_BYTES
+        );
         let encoded = plan.encode_control();
         assert_eq!(encoded.len(), GROK_NPM_PLAN_CONTROL_BYTES);
         let decoded = decode_plan_control(&encoded)
@@ -654,6 +940,7 @@ mod tests {
         assert_eq!(decoded.version(), "1.0.13");
         assert_eq!(decoded.registry(), GrokNpmRegistry::Tencent);
         assert!(decoded.allow_install_scripts());
+        assert_eq!(decoded.npm_target(), None);
         let absent = encode_plan_control(None);
         assert_eq!(decode_plan_control(&absent), Ok(None));
     }
@@ -686,5 +973,254 @@ mod tests {
         assert!(version_is_at_least("1.0.13", "1.0.13"));
         assert!(version_is_at_least("1.0.14", "1.0.13"));
         assert!(!version_is_at_least("1.0.12", "1.0.13"));
+    }
+
+    #[test]
+    fn control_v2_round_trips_dependency_and_budget() {
+        let plan = sample_plan(true)
+            .with_dependency(CLOSED_DEP_IARNA_TOML_NAME, "3.0.0")
+            .unwrap()
+            .with_reserve_budget_bytes(3072)
+            .unwrap();
+        let encoded = plan.encode_control();
+        let decoded = decode_plan_control(&encoded).unwrap().unwrap();
+        assert_eq!(decoded.version(), "1.0.13");
+        assert_eq!(
+            decoded.dependency(),
+            Some((CLOSED_DEP_IARNA_TOML_NAME, "3.0.0"))
+        );
+        assert_eq!(decoded.reserve_budget_bytes(), Some(3072));
+        let grok_argv = decoded.npm_argv_for(OfficialNpmTool::Grok);
+        assert!(grok_argv.contains(&"@iarna/toml@3.0.0".to_string()));
+        assert!(
+            grok_argv.contains(&"--@iarna:registry=https://mirrors.tencent.com/npm/".to_string())
+        );
+    }
+
+    #[test]
+    fn control_v2_rejects_dirty_tail_and_v1_and_unknown_tag() {
+        let plan = sample_plan(true)
+            .with_dependency(CLOSED_DEP_IARNA_TOML_NAME, "3.0.0")
+            .unwrap();
+        let mut encoded = plan.encode_control();
+
+        // 1. Dirty unused tail (byte 75 != 0) fails closed with Missing
+        encoded[75] = 0xAA;
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::Missing)
+        );
+        encoded[75] = 0;
+
+        // 2. Older protocol v1 payload fails with Missing
+        encoded[8] = 1;
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::Missing)
+        );
+        encoded[8] = GROK_NPM_PLAN_CONTROL_VERSION;
+
+        // 3. Unknown dep tag fails closed with UnsupportedDependency
+        encoded[45] = 2;
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        encoded[45] = CLOSED_DEP_TAG_IARNA_TOML;
+
+        // 4. Zero budget fails closed with InvalidSize
+        encoded[63..71].copy_from_slice(&0_u64.to_le_bytes());
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::InvalidSize)
+        );
+    }
+
+    fn sample_npm_target() -> crate::NpmTargetBinding {
+        crate::NpmTargetBinding::new(
+            r"D:\npm-prefix",
+            r"D:\npm\cache-a",
+            r"C:\Users\alice\AppData\Local\Temp",
+            r"C:\Program Files\nodejs\npm.cmd",
+        )
+        .expect("dest")
+    }
+
+    #[test]
+    fn control_v3_round_trips_exact_npm_target_and_rejects_sibling_or_identity_drift() {
+        use crate::admit_confirmed_npm_target;
+        let plan = sample_plan(true)
+            .with_dependency(CLOSED_DEP_IARNA_TOML_NAME, "3.0.0")
+            .unwrap()
+            .with_reserve_budget_bytes(3072)
+            .unwrap()
+            .with_npm_target(sample_npm_target());
+        let encoded = plan.encode_control();
+        assert_eq!(encoded[8], 3);
+        assert_eq!(encoded[71], 1);
+        let decoded = decode_plan_control(&encoded).unwrap().unwrap();
+        assert_eq!(decoded.npm_target(), Some(&sample_npm_target()));
+        let observed = crate::NpmDestinationObservation {
+            prefix: sample_npm_target().prefix().to_string(),
+            cache: sample_npm_target().cache().to_string(),
+            temp: sample_npm_target().temp().to_string(),
+            npm_identity: sample_npm_target().npm_identity().to_string(),
+            available_bytes: 99,
+        };
+        assert_eq!(
+            admit_confirmed_npm_target(decoded.npm_target(), &observed),
+            Ok(())
+        );
+        let mut sibling = observed.clone();
+        sibling.cache = r"D:\npm\cache-b".into();
+        assert_eq!(
+            admit_confirmed_npm_target(decoded.npm_target(), &sibling),
+            Err(crate::NpmTargetError::Drifted)
+        );
+        let mut identity = observed.clone();
+        identity.npm_identity = r"E:\Volta\bin\npm.cmd".into();
+        assert_eq!(
+            admit_confirmed_npm_target(decoded.npm_target(), &identity),
+            Err(crate::NpmTargetError::Drifted)
+        );
+        encoded_v2_is_rejected(&encoded);
+        let mut dirty_dest = encoded;
+        dirty_dest[80 + GROK_NPM_DEST_SLOT_BYTES - 1] = 0xAA;
+        assert_eq!(
+            decode_plan_control(&dirty_dest),
+            Err(GrokNpmPlanError::Missing)
+        );
+    }
+
+    #[test]
+    fn pinned_invocation_uses_confirmed_executable_and_cannot_follow_later_path_or_config() {
+        let dest = sample_npm_target();
+        let plan = sample_plan(true)
+            .with_dependency(CLOSED_DEP_IARNA_TOML_NAME, "3.0.0")
+            .unwrap()
+            .with_npm_target(dest.clone());
+        let invocation =
+            pinned_npm_install_invocation(Some(&plan), OfficialNpmTool::Grok).expect("pinned");
+        assert_eq!(invocation.program(), dest.npm_identity());
+        assert_ne!(invocation.program(), "npm");
+        assert!(invocation
+            .args()
+            .iter()
+            .any(|arg| arg == &format!("--prefix={}", dest.prefix())));
+        assert!(invocation
+            .args()
+            .iter()
+            .any(|arg| arg == &format!("--cache={}", dest.cache())));
+        assert_eq!(invocation.temp(), dest.temp());
+        assert!(!invocation.program().contains("Volta"));
+        assert!(!invocation
+            .args()
+            .iter()
+            .any(|arg| arg.contains("cache-b") || arg.contains("other-prefix")));
+        assert_eq!(
+            pinned_npm_install_invocation(Some(&sample_plan(true)), OfficialNpmTool::Claude),
+            Err(GrokNpmPlanError::Missing)
+        );
+        let config_dest = crate::NpmTargetBinding::new(
+            "/Users/demo/.config/npm",
+            "/Users/demo/Library/Caches/config-cache",
+            "/tmp/npm temp",
+            "/usr/local/bin/npm",
+        )
+        .expect("config dest");
+        let spaced = sample_plan(true).with_npm_target(config_dest.clone());
+        let invocation = pinned_npm_install_invocation(Some(&spaced), OfficialNpmTool::Claude)
+            .expect("config path");
+        assert!(invocation
+            .args()
+            .iter()
+            .any(|arg| arg == "--prefix=/Users/demo/.config/npm"));
+        assert!(invocation
+            .args()
+            .iter()
+            .any(|arg| arg == "--cache=/Users/demo/Library/Caches/config-cache"));
+        assert_eq!(invocation.temp(), "/tmp/npm temp");
+        let latest = GrokNpmInstallPlan::for_execution("latest", GrokNpmRegistry::Npmjs, false);
+        assert_eq!(latest, Err(GrokNpmPlanError::LatestForbidden));
+        let closed = sample_plan(true);
+        assert!(
+            !npm_install_argv_or_reject_for(Some(&closed), OfficialNpmTool::Claude)
+                .expect("closed argv")
+                .iter()
+                .any(|arg| arg.contains("@latest") || arg.contains("config"))
+        );
+    }
+
+    fn encoded_v2_is_rejected(encoded: &[u8; GROK_NPM_PLAN_CONTROL_BYTES]) {
+        let mut v2 = *encoded;
+        v2[8] = 2;
+        assert_eq!(decode_plan_control(&v2), Err(GrokNpmPlanError::Missing));
+    }
+
+    #[test]
+    fn claude_never_installs_toml_and_rejects_plan_with_dependency() {
+        let grok_plan = sample_plan(true)
+            .with_dependency(CLOSED_DEP_IARNA_TOML_NAME, "3.0.0")
+            .unwrap();
+        assert_eq!(
+            npm_install_argv_or_reject_for(Some(&grok_plan), OfficialNpmTool::Claude),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        let claude_plan = sample_plan(true);
+        let claude_argv =
+            npm_install_argv_or_reject_for(Some(&claude_plan), OfficialNpmTool::Claude)
+                .expect("claude admission");
+        assert!(!claude_argv.iter().any(|arg| arg.contains("toml")));
+        assert!(!claude_argv.iter().any(|arg| arg.contains("@iarna")));
+    }
+
+    #[test]
+    fn windows_dispatch_admission_rejects_old_frame_and_zero_budget() {
+        assert_eq!(
+            npm_install_argv_or_reject_for(None, OfficialNpmTool::Claude),
+            Err(GrokNpmPlanError::Missing)
+        );
+        let mut encoded = sample_plan(true)
+            .with_dependency(CLOSED_DEP_IARNA_TOML_NAME, "3.0.0")
+            .unwrap()
+            .encode_control();
+        encoded[8] = 1;
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::Missing)
+        );
+        encoded[8] = GROK_NPM_PLAN_CONTROL_VERSION;
+        encoded[75] = 0xAA;
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::Missing)
+        );
+        encoded[75] = 0;
+        encoded[45] = 2;
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        encoded[45] = CLOSED_DEP_TAG_IARNA_TOML;
+        encoded[63..71].copy_from_slice(&0_u64.to_le_bytes());
+        assert_eq!(
+            decode_plan_control(&encoded),
+            Err(GrokNpmPlanError::InvalidSize)
+        );
+        let unbounded =
+            GrokNpmInstallPlan::for_execution("1.0.13", GrokNpmRegistry::Tencent, true).unwrap();
+        assert_eq!(
+            npm_install_argv_or_reject_for(Some(&unbounded), OfficialNpmTool::Grok),
+            Err(GrokNpmPlanError::InvalidSize)
+        );
+    }
+
+    #[test]
+    fn for_execution_plan_lacks_dependency_proving_macos_must_use_plan_for_registry() {
+        let execution_plan =
+            GrokNpmInstallPlan::for_execution("1.0.13", GrokNpmRegistry::Tencent, true).unwrap();
+        let grok_argv = execution_plan.npm_argv_for(OfficialNpmTool::Grok);
+        // for_execution does NOT include @iarna/toml@3.0.0, which catches the old macOS bug!
+        assert!(!grok_argv.iter().any(|arg| arg.contains("@iarna/toml")));
     }
 }

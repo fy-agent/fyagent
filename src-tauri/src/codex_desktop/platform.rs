@@ -253,6 +253,7 @@ fn default_restart_candidate(application: InstalledApplication) -> TrustedInstal
 #[derive(Clone, Default)]
 pub struct PlatformInstallPlan {
     additional_disk_paths: Vec<PathBuf>,
+    confirmation_target: Option<PathBuf>,
 }
 
 impl PlatformInstallPlan {
@@ -262,12 +263,29 @@ impl PlatformInstallPlan {
     pub(crate) fn new(additional_disk_paths: Vec<PathBuf>) -> Self {
         Self {
             additional_disk_paths,
+            confirmation_target: None,
         }
     }
 
     pub(crate) fn additional_disk_paths(&self) -> &[PathBuf] {
         &self.additional_disk_paths
     }
+
+    #[cfg(any(target_os = "macos", test))]
+    pub(crate) fn with_confirmation_target(mut self, target: PathBuf) -> Self {
+        self.confirmation_target = Some(target);
+        self
+    }
+
+    pub(crate) fn confirmation_target(&self) -> Option<&Path> {
+        self.confirmation_target.as_deref()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct ConfirmedInstallTarget {
+    pub(crate) local: LocalInstallStatus,
+    pub(crate) target_root: Option<PathBuf>,
 }
 
 impl fmt::Debug for PlatformInstallPlan {
@@ -291,6 +309,7 @@ impl fmt::Debug for PlatformInstallPlan {
 /// accepting a caller-controlled path.
 #[derive(Clone)]
 pub struct PreparedInstallPackage {
+    confirmed_target: Option<ConfirmedInstallTarget>,
     // Windows production consumes the downloader-retained file capability.
     // The raw path remains necessary for macOS production and regression tests.
     #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
@@ -312,10 +331,15 @@ impl PreparedInstallPackage {
         let artifact_path = artifact.path().to_path_buf();
 
         Ok(Self {
+            confirmed_target: None,
             artifact_path,
             locked_release: release.clone(),
             artifact: Some(artifact),
         })
+    }
+
+    pub(crate) fn bind_confirmed_target(&mut self, target: ConfirmedInstallTarget) {
+        self.confirmed_target = Some(target);
     }
 
     #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
@@ -401,6 +425,7 @@ impl PreparedInstallPackage {
             artifact_path,
             locked_release: release.clone(),
             artifact: None,
+            confirmed_target: None,
         }
     }
 }

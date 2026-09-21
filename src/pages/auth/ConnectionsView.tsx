@@ -16,6 +16,7 @@ import { Button } from "../../shared/ui/Button";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import { EmptyState } from "../../shared/ui/primitives";
 import { PersistentSurface } from "../../shared/ui/PersistentSurface";
+import { GrokOfficialLogin } from "./GrokOfficialLogin";
 import {
   AuthListItem,
   DefinitionRow,
@@ -188,6 +189,7 @@ function ConnectionCard({
 }
 
 export function ConnectionsView({
+  active = true,
   originRef,
   overview,
   selectedConsumer,
@@ -197,6 +199,7 @@ export function ConnectionsView({
   onAction,
   codexSourceControls,
 }: {
+  active?: boolean;
   overview: ManagedAuthOverview;
   selectedConsumer: ManagedAuthConsumer | null;
   originRef?: DialogOriginRef;
@@ -291,6 +294,9 @@ export function ConnectionsView({
         )}
         <PersistentSurface active={selectedConsumer === "codex"}>
           {codexSourceControls}
+        </PersistentSurface>
+        <PersistentSurface active={active && selectedConsumer === "grokbuild"}>
+          <GrokOfficialLogin />
         </PersistentSurface>
       </CatalogDetail>
     </CatalogMasterDetail>

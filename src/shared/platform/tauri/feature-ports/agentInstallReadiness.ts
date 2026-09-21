@@ -6,12 +6,42 @@ import {
   parseAgentActionResult,
   parseAgentInstallationInventory,
   parseAgentInstallReadiness,
+  parseAgentInstallPreflight,
   type AgentInstallReadinessPort,
   type StartAgentActionRequest,
 } from "../../../features/agent-install-readiness";
 
+function actionPayload(
+  request: StartAgentActionRequest,
+): StartAgentActionRequest {
+  return {
+    agentId: assertAgentInstallReadinessId(request.agentId),
+    action: request.action,
+    ...(request.expectedReleaseId
+      ? { expectedReleaseId: request.expectedReleaseId }
+      : {}),
+    ...(request.inventoryId ? { inventoryId: request.inventoryId } : {}),
+    ...(request.targetId ? { targetId: request.targetId } : {}),
+    ...(request.expectedTargetRevision
+      ? { expectedTargetRevision: request.expectedTargetRevision }
+      : {}),
+    ...(request.surface ? { surface: request.surface } : {}),
+  };
+}
+
 export function createAgentInstallReadinessPort(): AgentInstallReadinessPort {
   return {
+    preflight: async (request) => {
+      if (request.action !== "install" && request.action !== "update")
+        throw new Error("Agent install readiness request is invalid");
+      const payload = actionPayload(request);
+      return parseAgentInstallPreflight(
+        await invoke<unknown>("get_agent_install_preflight", {
+          request: payload,
+        }),
+        payload,
+      );
+    },
     get: async (agentId) => {
       const safeAgentId = assertAgentInstallReadinessId(agentId);
       return parseAgentInstallReadiness(
@@ -35,21 +65,7 @@ export function createAgentInstallReadinessPort(): AgentInstallReadinessPort {
       const safeAgentId = assertAgentInstallReadinessId(request.agentId);
       return parseAgentActionResult(
         await invoke<unknown>("start_agent_action", {
-          request: {
-            agentId: safeAgentId,
-            action: request.action,
-            ...(request.expectedReleaseId
-              ? { expectedReleaseId: request.expectedReleaseId }
-              : {}),
-            ...(request.inventoryId
-              ? { inventoryId: request.inventoryId }
-              : {}),
-            ...(request.targetId ? { targetId: request.targetId } : {}),
-            ...(request.expectedTargetRevision
-              ? { expectedTargetRevision: request.expectedTargetRevision }
-              : {}),
-            ...(request.surface ? { surface: request.surface } : {}),
-          },
+          request: actionPayload(request),
         }),
         safeAgentId,
         request.action,

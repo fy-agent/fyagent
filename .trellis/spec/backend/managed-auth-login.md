@@ -59,15 +59,18 @@ Request shape is closed:
 
 The advertised `connect_consumer` pairs are also closed:
 
-| Provider         | Admitted consumers                       |
-| ---------------- | ---------------------------------------- |
-| `openai`         | `codex`, `opencode`, `fyagent_proxy`     |
-| `xai`            | `grokbuild`, `opencode`, `fyagent_proxy` |
-| `github_copilot` | none; provider login is unavailable      |
+| Provider         | Admitted consumers                   |
+| ---------------- | ------------------------------------ |
+| `openai`         | `codex`, `opencode`, `fyagent_proxy` |
+| `xai`            | `opencode`, `fyagent_proxy`          |
+| `github_copilot` | none; provider login is unavailable  |
 
 The renderer derives these choices from `ManagedAuthProviderSummary`; it must
 not synthesize a cross-provider pair. xAI repeats this compatibility check in
-native admission. OpenAI's fallback purpose mapping is reserved for the
+native admission. The provider summary further removes consumers with current
+`native_projection_unavailable` / `observer_unavailable` observations; unavailable
+GitHub Copilot login advertises no consumers. Saving an account remains a separate
+purpose and never claims consumer login. OpenAI's fallback purpose mapping is reserved for the
 advertised `fyagent_proxy` pair, not a generic authorization for every consumer
 enum. Do not widen this matrix without adding provider-side admission, purpose
 mapping, projection behavior, and negative tests together.
@@ -199,8 +202,9 @@ malformed or zero-version UUID.
   same way startup `upsert_proxy_connections` does.
 - **Good:** both registered loopback ports are occupied, so the same request
   becomes a Device Code session without touching either process.
-- **Base:** a valid xAI Device Code flow stores a separate `grok_native`
-  credential and completes; the Grok connection remains unavailable.
+- **Base:** an xAI Device Code request targeting `grokbuild` is rejected before
+  session creation/provider I/O while native projection is unavailable. Existing
+  `grok_native` records remain isolated and are not retagged or proxy-resolved.
 - **Base:** cancel succeeds while an HTTP poll is outstanding; the later grant
   is ignored because its generation is stale.
 - **Bad:** return the authorize URL to React, let React poll the token endpoint,

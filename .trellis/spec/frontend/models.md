@@ -61,6 +61,10 @@ interface ProvidersPort {
   getSummary(
     app: "claude" | "codex" | "grokbuild",
   ): Promise<ProviderSummaryQueryData>;
+  getProxyRestorePreview(
+    app: ProviderAppId,
+  ): Promise<ProviderProxyRestorePreview>;
+  restoreManagedProxy(app: ProviderAppId): Promise<void>;
   applyQuickSetupWithResult(
     request: ProviderQuickSetupRequest,
     app: "claude" | "codex" | "grokbuild",
@@ -148,6 +152,7 @@ interface ProviderQuickSetupRequest {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  protocol?: "anthropic" | "responses" | "chat";
   codexFeatures?: { imageExtension?: boolean; websockets?: boolean };
 }
 ```
@@ -202,7 +207,10 @@ an apply instruction.
   API key in the current draft so the same credential can be used for probe or
   save. Fetch success is not a persisted configuration.
 - The save confirmation shows the native `writeTargets` returned by
-  `getSummary`; React never constructs target or backup paths.
+  `getSummary`; React never constructs target or backup paths. Codex and
+  WorkBuddy disclose those targets in the single Change Plan preview, without
+  an earlier write-confirmation dialog. Closing that preview preserves the form
+  draft and does not apply or save it.
 - Claude and Grok Build call `applyQuickSetupWithResult`, then reread
   `getSummary`. They claim the new provider is current only when the reread
   `currentId` equals the closed quick-setup provider ID.
@@ -211,13 +219,70 @@ an apply instruction.
   `ROLLBACK_PARTIAL_STATE_UNKNOWN` blocks further writes for that target until
   the owning `/models` page is unmounted/remounted and authority can be reread.
   `blockedProviderWrites` lives on `ModelsPage`; switching targets or merely
-  remounting a child Provider panel does not clear the block.
+  remounting a child Provider panel does not clear the block. An explicit
+  subscription exit may clear only its own target after the complete recovery
+  readback specified in [Managed Account Subscriptions](./managed-account-subscriptions.md).
 - Codex does not call the direct apply path. It creates a parsed Change Plan
   through `createCodexProviderUpsertPlan`, shows the closed preview, and applies
   only its `planId` and `planDigest` through the Change Plan workspace.
 - Codex image-extension and WebSocket choices exist only in the Codex request.
   The page sanitizes returned warning codes against the closed
   `CodexProviderMutationWarning` union.
+
+### Saved sources and actual target configuration
+
+- `ProviderSummaryQueryData.live` is an independent native file observation:
+  `{ target, state, exists, connection }`. Native always returns it. The optional
+  TypeScript member preserves older host/mock compatibility; absence means
+  unknown and the Tauri adapter normalizes it to `unreadable`, never `missing`.
+- States are `configured`, `not_configured`, `missing`, and `unreadable`.
+  `configured` requires an existing file and at least one safe model/endpoint;
+  its connection has exactly `baseUrl`, `modelId`, and `protocol`, each nullable
+  when unspecified. `not_configured` means the file is present without an
+  explicit usable model/endpoint. `missing` requires known absence; unreadable
+  existence may be `true`, `false`, or `null` when metadata is unknown.
+- DB `currentId` and saved `connection` are not evidence of actual target state.
+  The actual file may have been changed outside FyAgent. Keep/replace UI uses
+  the independent observation and does not infer successful authentication,
+  connectivity, CLI overrides, or process runtime configuration from it.
+- Malformed/secret-bearing/wrong-target live wire fields produce a neutral
+  `unreadable` observation while retaining an independently valid saved list.
+  The root and saved-source allowlists still fail closed. Target metadata
+  failure also marks live unreadable rather than silently making an empty
+  `writeTargets` list look like a ready save target.
+
+### Shared API protocols and production presets
+
+- `domain/configuration/providerApi.ts` owns the closed protocol and production
+  preset matrix. `ProviderApiFields` fills the actual shared ProviderPanel;
+  retired provider snapshots are not a second preset authority for this flow.
+- Claude accepts Anthropic Messages, Codex Responses or Chat, and Grok Build
+  Responses. Omitted request protocol preserves the previous target default.
+  Explicit protocol travels through validation, the Quick Setup DTO, the
+  Change Plan port, native derivation, public readback and model probes.
+- Alibaba pay-as-you-go/Coding Plan and Ark general API/Coding Plan remain
+  separate options with distinct endpoint/key-scope/use copy. Tencent means
+  TokenHub Hy3 with a Hy3-scoped API key, not Cloud SecretId/SecretKey or a
+  Coding/Token Plan key. Account-specific model IDs remain editable.
+- Selecting a preset or explicitly filling a saved source changes only local
+  form fields and clears both the Key state and its ref. Blank Key is rejected
+  even if the fixed Quick Setup row exists: a source/product change must never
+  become implicit reuse of that row's credential. No fetch, probe or write runs
+  on selection. A failed preview preserves the public draft fields.
+- Public Provider summaries may carry exactly `connection: {baseUrl, modelId,
+protocol}`. Unsupported shapes omit that projection. Keys/references/private
+  settings are never returned to refill a form. The selected saved source is
+  copied into this page's existing Quick Setup form; this does not retarget the
+  existing native writer to arbitrary provider IDs.
+- Chat remains a valid persisted protocol. The UI states that modern Codex
+  direct clients may require a compatible client or existing conversion setup;
+  choosing Chat does not turn on a proxy. Responses-only image/WebSocket
+  controls are disabled and cleared for Chat.
+- Known tool-restricted plan endpoints and dedicated `sk-sp-` credentials cannot
+  use generic model discovery/probes. Renderer and native both enforce this;
+  the page directs users to their permitted target tool. Other probes remain
+  user initiated and use the selected protocol. Success does not prove the
+  target client reloaded the saved configuration.
 
 ### Existing account subscription to a local Agent
 
@@ -422,6 +487,9 @@ assertion owners include:
   the adapter. Reachability payload tests pass URL only; a future model-probe
   request/response identity check needs an explicit mismatched-`modelUsed`
   regression;
+- `tests/renderer/platform/providerLiveSummaryPort.test.ts`: independent actual
+  target state, old-host unknown fallback, partial explicit fields, target
+  binding, closed live fields, and preserved saved-source error boundaries;
 - `tests/renderer/features/change-plans.test.ts` and
   `tests/renderer/platform/changePlansPort.test.ts`: exact plan/job parsing, request
   validation, digest/ID binding, and command names;

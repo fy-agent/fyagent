@@ -1,3 +1,7 @@
+import {
+  codexInstallPreflightFixture,
+  confirmationId,
+} from "../../fixtures/codexInstallPreflight";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CODEX_DESKTOP_PAYLOAD_ERROR } from "@/domain/codex-desktop";
@@ -128,14 +132,14 @@ function catalogEntry(
     capabilities: agentCapabilityIds.map((capabilityId) => ({
       id: capabilityId,
       mode:
-        capabilityId === "product.open" && id === "codex"
-          ? "unsupported"
+        capabilityId === "product.open"
+          ? "direct"
           : capabilityId === "app.detect" || capabilityId === "app.launch"
             ? "unverified"
             : "direct",
       reasonCode:
-        capabilityId === "product.open" && id === "codex"
-          ? "no_catalog_product_link"
+        capabilityId === "product.open"
+          ? "official_link_reviewed"
           : capabilityId === "app.detect" || capabilityId === "app.launch"
             ? "trusted_runtime_identity_unavailable"
             : "dedicated_native_contract",
@@ -155,34 +159,110 @@ function catalogFixture(): AgentCatalogResult {
           label: "打开 QoderWork 官方页面",
           url: "https://qoder.com.cn/qoderwork",
         },
+        {
+          id: "download",
+          label: "打开 QoderWork 官方下载页",
+          url: "https://qoder.com.cn/download",
+        },
+        {
+          id: "terms",
+          label: "Qoder 产品服务协议",
+          url: "https://qoder.com.cn/product-service",
+        },
       ]),
       catalogEntry("trae-work", "TRAE Work CN", [
         {
           id: "product",
           label: "打开 TRAE Work CN 官方页面",
-          url: "https://www.trae.cn/sem-work",
+          url: "https://www.trae.cn/work",
+        },
+        {
+          id: "download",
+          label: "打开 TRAE Work CN 官方下载页",
+          url: "https://www.trae.cn/download",
+        },
+        {
+          id: "terms",
+          label: "TRAE 用户服务协议",
+          url: "https://www.trae.cn/terms-of-service/cn",
         },
       ]),
       catalogEntry("workbuddy", "WorkBuddy", [
         {
           id: "product",
           label: "打开 WorkBuddy 官方页面",
-          url: "https://www.workbuddy.cn/",
+          url: "https://www.workbuddy.cn/home",
+        },
+        {
+          id: "download",
+          label: "打开 WorkBuddy 官方下载页",
+          url: "https://www.workbuddy.cn/home",
+        },
+        {
+          id: "terms",
+          label: "WorkBuddy 软件许可及服务协议",
+          url: "https://www.workbuddy.cn/document/term",
         },
       ]),
       catalogEntry("grokbuild", "Grok Build", [
         {
           id: "product",
           label: "打开 Grok Build 官方页面",
-          url: "https://x.ai/grok",
+          url: "https://x.ai/build",
+        },
+        {
+          id: "docs",
+          label: "打开 Grok Build 官方文档",
+          url: "https://docs.x.ai/build/overview",
+        },
+        {
+          id: "download",
+          label: "Grok Build 源码与安装说明",
+          url: "https://github.com/xai-org/grok-build/blob/main/README.md",
+        },
+        {
+          id: "license",
+          label: "开源许可证 (Apache-2.0)",
+          url: "https://github.com/xai-org/grok-build/blob/main/LICENSE",
         },
       ]),
-      catalogEntry("codex", "Codex", []),
+      catalogEntry("codex", "Codex", [
+        {
+          id: "product",
+          label: "打开 OpenAI Codex 官方主页",
+          url: "https://openai.com/codex/",
+        },
+        {
+          id: "desktop",
+          label: "Codex Desktop 官方页面",
+          url: "https://openai.com/codex/",
+        },
+        {
+          id: "download",
+          label: "Codex CLI 安装与使用说明",
+          url: "https://help.openai.com/en/articles/11096431",
+        },
+        {
+          id: "terms",
+          label: "OpenAI 使用条款",
+          url: "https://openai.com/policies/terms-of-use/",
+        },
+      ]),
       catalogEntry("claude-code", "Claude Code", [
         {
           id: "product",
+          label: "打开 Claude Code 官方页面",
+          url: "https://code.claude.com/docs/en/setup",
+        },
+        {
+          id: "download",
           label: "Claude Code CLI 安装说明",
           url: "https://code.claude.com/docs/en/setup",
+        },
+        {
+          id: "terms",
+          label: "Anthropic 消费者服务条款",
+          url: "https://www.anthropic.com/legal/consumer-terms",
         },
       ]),
       catalogEntry("opencode", "OpenCode", [
@@ -195,6 +275,16 @@ function catalogFixture(): AgentCatalogResult {
           id: "desktop",
           label: "打开 OpenCode 官方下载页",
           url: "https://opencode.ai/download",
+        },
+        {
+          id: "license",
+          label: "开源许可证 (MIT)",
+          url: "https://github.com/anomalyco/opencode/blob/dev/LICENSE",
+        },
+        {
+          id: "terms",
+          label: "OpenCode 服务条款",
+          url: "https://opencode.ai/legal/terms-of-service",
         },
       ]),
     ],
@@ -340,7 +430,7 @@ describe("Renderer feature ports", () => {
       NATIVE_ONLY_ERROR,
     );
     await expect(
-      ports.codexDesktop.startInstall(installerReleaseId),
+      ports.codexDesktop.startInstall(installerReleaseId, confirmationId),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(
       ports.codexDesktop.cancelInstall("fixture-job-001"),
@@ -1170,6 +1260,8 @@ describe("Renderer feature ports", () => {
           return installerRemote;
         case "codex_desktop_get_job":
           return null;
+        case "codex_desktop_prepare_install":
+          return codexInstallPreflightFixture(installerReleaseId);
         case "codex_desktop_start_install":
           return installerJob("checking", 1);
         case "codex_desktop_cancel_install":
@@ -1194,7 +1286,10 @@ describe("Renderer feature ports", () => {
     );
     await expect(ports.codexDesktop.getJob()).resolves.toBeNull();
     await expect(
-      ports.codexDesktop.startInstall(installerReleaseId),
+      ports.codexDesktop.prepareInstall(installerReleaseId),
+    ).resolves.toEqual(codexInstallPreflightFixture(installerReleaseId));
+    await expect(
+      ports.codexDesktop.startInstall(installerReleaseId, confirmationId),
     ).resolves.toEqual(installerJob("checking", 1));
     await expect(
       ports.codexDesktop.cancelInstall("fixture-job-001"),
@@ -1209,8 +1304,12 @@ describe("Renderer feature ports", () => {
       ["codex_desktop_check_latest", { force: true }],
       ["codex_desktop_get_job"],
       [
-        "codex_desktop_start_install",
+        "codex_desktop_prepare_install",
         { request: { expectedReleaseId: installerReleaseId } },
+      ],
+      [
+        "codex_desktop_start_install",
+        { request: { expectedReleaseId: installerReleaseId, confirmationId } },
       ],
       ["codex_desktop_cancel_install", { jobId: "fixture-job-001" }],
       ["codex_desktop_launch"],
@@ -1249,7 +1348,10 @@ describe("Renderer feature ports", () => {
     const ports = createTauriFeaturePorts();
 
     await expect(
-      ports.codexDesktop.startInstall("https://example.test/release.msix"),
+      ports.codexDesktop.startInstall(
+        "https://example.test/release.msix",
+        confirmationId,
+      ),
     ).rejects.toThrow(CODEX_DESKTOP_PAYLOAD_ERROR);
     await expect(ports.codexDesktop.cancelInstall(" job-001 ")).rejects.toThrow(
       "Codex desktop installer request is invalid",

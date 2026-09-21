@@ -885,6 +885,29 @@ impl Database {
         Ok(())
     }
 
+    /// After owned files are restored, clear only this app's enabled flag and
+    /// delete its live backup in one SQL transaction. Other proxy parameters
+    /// stay untouched. Native I/O must stay outside this mutex.
+    pub(crate) fn complete_app_restore(&self, app_type: &str) -> Result<(), AppError> {
+        let mut conn = lock_conn!(self.conn);
+        let tx = conn
+            .transaction()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        tx.execute(
+            "UPDATE proxy_config SET enabled = 0, updated_at = datetime('now') WHERE app_type = ?1",
+            rusqlite::params![app_type],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        tx.execute(
+            "DELETE FROM proxy_live_backup WHERE app_type = ?1",
+            rusqlite::params![app_type],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        tx.commit().map_err(|e| AppError::Database(e.to_string()))?;
+        log::info!("已完成 {app_type} 恢复收尾");
+        Ok(())
+    }
+
     /// 删除所有 Live 配置备份
     pub async fn delete_all_live_backups(&self) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
@@ -1019,6 +1042,43 @@ mod tests {
             }
         ));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_app_restore_rolls_back_when_second_statement_fails() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        let mut config = db.get_proxy_config_for_app("claude").await?;
+        let retries = config.max_retries;
+        config.enabled = true;
+        db.update_proxy_config_for_app(config).await?;
+        db.save_live_backup_sync("claude", r#"{"env":{}}"#)?;
+        {
+            let conn = db.conn.lock().expect("db lock");
+            conn.execute_batch(
+                "CREATE TEMP TRIGGER fixture_fail_complete_app_restore
+                 BEFORE DELETE ON proxy_live_backup
+                 BEGIN
+                   SELECT RAISE(ABORT, 'fixture sql failure after first statement');
+                 END;",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        assert!(db.complete_app_restore("claude").is_err());
+        let rolled_back = db.get_proxy_config_for_app("claude").await?;
+        assert!(rolled_back.enabled);
+        assert_eq!(rolled_back.max_retries, retries);
+        assert!(db.get_live_backup_sync("claude")?.is_some());
+        {
+            let conn = db.conn.lock().expect("db lock");
+            conn.execute_batch("DROP TRIGGER IF EXISTS fixture_fail_complete_app_restore;")
+                .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        db.complete_app_restore("claude")?;
+        let finished = db.get_proxy_config_for_app("claude").await?;
+        assert!(!finished.enabled);
+        assert_eq!(finished.max_retries, retries);
+        assert!(db.get_live_backup_sync("claude")?.is_none());
         Ok(())
     }
 }

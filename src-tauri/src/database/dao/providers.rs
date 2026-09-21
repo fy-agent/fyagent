@@ -177,7 +177,11 @@ impl Database {
         }
     }
 
-    pub fn save_provider(&self, app_type: &str, provider: &Provider) -> Result<(), AppError> {
+    pub(crate) fn save_provider_record(
+        &self,
+        app_type: &str,
+        provider: &Provider,
+    ) -> Result<(), AppError> {
         let mut conn = lock_conn!(self.conn);
         let tx = conn
             .transaction()
@@ -319,27 +323,6 @@ impl Database {
         conn.execute(
             "UPDATE providers SET is_current = 0 WHERE app_type = ?1",
             params![app_type],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    pub fn update_provider_settings_config(
-        &self,
-        app_type: &str,
-        provider_id: &str,
-        settings_config: &serde_json::Value,
-    ) -> Result<(), AppError> {
-        let conn = lock_conn!(self.conn);
-        conn.execute(
-            "UPDATE providers SET settings_config = ?1 WHERE id = ?2 AND app_type = ?3",
-            params![
-                serde_json::to_string(settings_config).map_err(|e| AppError::Database(format!(
-                    "Failed to serialize settings_config: {e}"
-                )))?,
-                provider_id,
-                app_type
-            ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())

@@ -13,6 +13,7 @@ import type {
   AgentUpdateState,
 } from "../../shared/features/agent-install-readiness";
 import { installationTargetsForAction } from "../../shared/features/agent-install-readiness";
+import { AgentInstallConfirmation } from "./AgentInstallConfirmation";
 import {
   grokLatestLabel,
   grokOwnerCopy,
@@ -39,6 +40,9 @@ const LAUNCH_COPY = "打开软件";
 const LIFECYCLE_ACTION_ORDER = ["install", "update", "launch"] as const;
 
 const unavailablePort: ReadinessPort = {
+  preflight: async () => {
+    throw new Error(NATIVE_ONLY_COPY);
+  },
   get: async () => {
     throw new Error(NATIVE_ONLY_COPY);
   },
@@ -376,21 +380,6 @@ function ReadinessSummary({
 function GrokOwnerPanel({ port }: { port: GrokToolingPort }) {
   const [snapshot, setSnapshot] = useState<GrokToolSnapshot | null>(null);
   const [unavailable, setUnavailable] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  const refresh = () => {
-    void port.getSnapshot().then(
-      (data) => {
-        setSnapshot(data);
-        setUnavailable(false);
-      },
-      () => {
-        setUnavailable(true);
-      },
-    );
-  };
 
   useEffect(() => {
     let active = true;
@@ -409,31 +398,6 @@ function GrokOwnerPanel({ port }: { port: GrokToolingPort }) {
     };
   }, [port]);
 
-  const runAction = async (kind: "npm" | "native") => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      if (kind === "npm") {
-        await port.installOfficialNpm();
-        setSuccess("官方 npm 包已安装，安装状态已更新。");
-      } else {
-        await port.installNative();
-        setSuccess("官方命令行已安装，安装状态已更新。");
-      }
-      refresh();
-    } catch {
-      setError(
-        kind === "npm"
-          ? "官方 npm 安装未完成。原安装方式未改动。"
-          : "官方命令行安装未完成。原安装方式未改动。",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
   if (unavailable) {
     return (
       <p className="fy-agent-install-readiness-note">
@@ -445,9 +409,7 @@ function GrokOwnerPanel({ port }: { port: GrokToolingPort }) {
 
   const notInstalled =
     snapshot.localVersion === null && !snapshot.installedButBroken;
-  const showNativeChoice =
-    notInstalled || snapshot.distributionOwner === "official_npm";
-  const showNpmSwitch = snapshot.distributionOwner === "native_internal";
+  const isNative = snapshot.distributionOwner === "native_internal";
 
   return (
     <div className="fy-agent-grok-owner">
@@ -468,30 +430,14 @@ function GrokOwnerPanel({ port }: { port: GrokToolingPort }) {
       {notInstalled ? (
         <p className="fy-agent-install-readiness-note">
           安装按钮会安装官方 npm
-          包。登录和在线服务是否可用取决于你的网络。也可改用官方命令行，两种方式不会自动切换。
+          包。登录和在线服务是否可用取决于你的网络。如需使用官方原生命令行安装，请参考官方说明手动安装。两种方式不会自动切换。
         </p>
       ) : null}
-      {busy ? (
-        <div className="fy-agent-install-readiness-loading">
-          <Spinner label="正在安装 Grok Build" />
-          <span>正在安装 Grok Build</span>
-        </div>
-      ) : null}
-      {error ? <InlineNotice tone="warning">{error}</InlineNotice> : null}
-      {success ? <InlineNotice tone="info">{success}</InlineNotice> : null}
-      {showNativeChoice && !busy ? (
-        <div className="fy-agent-action-row">
-          <Button onClick={() => void runAction("native")}>
-            {notInstalled ? "使用官方命令行安装" : "改用官方命令行"}
-          </Button>
-        </div>
-      ) : null}
-      {showNpmSwitch && !busy ? (
-        <div className="fy-agent-action-row">
-          <Button onClick={() => void runAction("npm")}>
-            改用官方 npm 方式
-          </Button>
-        </div>
+      {isNative ? (
+        <p className="fy-agent-install-readiness-note">
+          当前环境检测到官方原生命令行安装。原安装方式已保留；如需改用 npm
+          官方包或更新原生版本，请前往官方页面手动完成。
+        </p>
       ) : null}
     </div>
   );
@@ -606,7 +552,7 @@ function AgentInstallReadinessContent({
         (action === "install" || action === "update" || action === "launch")) ||
       (action === "launch" && launchEligibleCount > 1);
     if (!needsTarget) {
-      void lifecycle.run(action, null);
+      void lifecycle.prepare(action, null);
       return;
     }
     setTargetAction({ action, surface: projection.surface });
@@ -622,12 +568,12 @@ function AgentInstallReadinessContent({
       ? eligible.find((target) => target.targetId === selectedTarget.targetId)
       : undefined;
     if (current) {
-      void lifecycle.run(action, current);
+      void lifecycle.prepare(action, current);
       return;
     }
     if (eligible.length === 1 && !hasDisabledSystem) {
       setSelectedTarget(eligible[0]);
-      void lifecycle.run(action, eligible[0]);
+      void lifecycle.prepare(action, eligible[0]);
       return;
     }
     setSelectedTarget(null);
@@ -676,6 +622,22 @@ function AgentInstallReadinessContent({
 
   return (
     <section className="fy-agent-section" aria-label="安装与更新">
+      <AgentInstallConfirmation
+        name={
+          agentId === "claude-code"
+            ? "Claude Code"
+            : agentId === "grokbuild"
+              ? "Grok Build"
+              : agentId === "trae-work"
+                ? "TRAE Work"
+                : agentId === "qoderwork"
+                  ? "QoderWork"
+                  : agentId === "workbuddy"
+                    ? "WorkBuddy"
+                    : "OpenCode"
+        }
+        lifecycle={lifecycle}
+      />
       <h3>安装与更新</h3>
       <div className="fy-agent-install-readiness">
         {state.status === "loading" ? (

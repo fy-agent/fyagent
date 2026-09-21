@@ -17,8 +17,8 @@ use crate::services::workbuddy::url::{
 };
 use crate::services::workbuddy::{
     credential_matches_model_id, current_paths, load_workbuddy_files, normalized_target_ids,
-    restore_workbuddy_from_backup_at_locked, save_workbuddy_models_at_locked, write_lock,
-    SaveWorkBuddyModelsOutcome, SaveWorkBuddyModelsRequest,
+    save_workbuddy_models_at_locked, write_lock, SaveWorkBuddyModelsOutcome,
+    SaveWorkBuddyModelsRequest,
 };
 use crate::services::ProviderService;
 use crate::store::AppState;
@@ -339,7 +339,10 @@ impl ChangePlanService {
             .get_provider_by_id(&provider.id, AppType::Codex.as_str())
             .map_err(|_| ChangePlanErrorCode::Internal)?
             .is_some();
-        let mut provider = provider;
+        let mut provider = crate::services::provider::ProviderCredentials::merge_edit(
+            &state.db, "codex", &provider,
+        )
+        .map_err(|_| ChangePlanErrorCode::SecretDependencyUnavailable)?;
         crate::codex_config::prepare_codex_provider_features_for_save(
             &mut provider,
             !existing_reserved_row,
@@ -1593,17 +1596,11 @@ pub(crate) fn write_workbuddy_save_locked(
                 }),
                 Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification) => Err(()),
                 Ok(SaveWorkBuddyModelsOutcome::OverwriteConfirmationRequired { .. }) => Err(()),
-                Err(_) => {
-                    let _ = restore_workbuddy_from_backup_at_locked(&paths);
-                    Err(())
-                }
+                Err(_) => Err(()),
             }
         }
         Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification) => Err(()),
-        Err(_) => {
-            let _ = restore_workbuddy_from_backup_at_locked(&paths);
-            Err(())
-        }
+        Err(_) => Err(()),
     }
 }
 
@@ -1611,7 +1608,14 @@ fn prove_codex_target_credential_capability(
     state: &AppState,
     inspection: &CodexSwitchInspection,
 ) -> SecretCapabilityResult {
-    let provider = &inspection.target;
+    let Ok(resolved) = crate::services::provider::ProviderCredentials::resolve(
+        &state.db,
+        "codex",
+        &inspection.target,
+    ) else {
+        return SecretCapabilityResult::SecretDependencyUnavailable;
+    };
+    let provider = &resolved;
     if ProviderService::managed_proxy_account_is_ready(state, provider) {
         return prove_managed_proxy_switch_shape(provider);
     }
@@ -1860,6 +1864,24 @@ fn normalize_job_projection(job: &mut ChangeJobSnapshot) {
     });
 }
 
+fn definition_matches_after_first_secretref(
+    stored: &StoredChangePlan,
+    readback: &CodexSwitchInspection,
+) -> bool {
+    if readback.target_definition_digest == stored.target_definition_digest {
+        return true;
+    }
+    // A first persist assigns credentialRef after preview. Compare the same
+    // unbound definition the plan hashed; rotation of an existing binding
+    // still mismatches because the stored digest includes that reference.
+    let mut unbound = readback.target.clone();
+    if let Some(settings) = unbound.settings_config.as_object_mut() {
+        settings.remove("credentialRef");
+    }
+    provider_definition_digest(&unbound)
+        .is_ok_and(|digest| digest == stored.target_definition_digest)
+}
+
 fn classify_job(
     stored: &StoredChangePlan,
     job: &mut ChangeJobSnapshot,
@@ -1886,7 +1908,7 @@ fn classify_job(
     let target_id = &stored.public.target_provider_id;
     let db_target = readback.db_current_provider_id.as_ref() == Some(target_id);
     let device_target = readback.device_current_provider_id.as_ref() == Some(target_id);
-    let definition_target = readback.target_definition_digest == stored.target_definition_digest;
+    let definition_target = definition_matches_after_first_secretref(stored, &readback);
     let live_target = readback.live_projection_available
         && readback.live_projection_digest == stored.target_projection_digest;
     let baseline_db = readback.db_current_provider_id == stored.public.db_baseline_provider_id;
@@ -2411,7 +2433,7 @@ mod tests {
             "auth": {},
             "config": "model_provider = \"active\"\nmodel = \"gpt-target\"\n[model_providers.active]\nname = \"Active\"\nbase_url = \"https://example.test/v1\"\nwire_api = \"responses\"\n[model_providers.inactive]\nexperimental_bearer_token = \"token-inactive\"\n"
         });
-        db.save_provider(AppType::Codex.as_str(), &inactive_token)
+        db.save_provider_record(AppType::Codex.as_str(), &inactive_token)
             .unwrap();
         assert_eq!(
             ChangePlanService::plan_codex_switch_at(&state, &inactive_token.id, 101),
@@ -2491,7 +2513,9 @@ mod tests {
     fn malformed_target_and_live_read_error_fail_closed_without_plan() {
         let (_home, _guard, db, state, _current, mut target) = setup_switch_state();
         target.settings_config["config"] = Value::String("not = [valid".to_string());
-        db.save_provider(AppType::Codex.as_str(), &target).unwrap();
+        // A legacy/corrupt row can predate the credential-aware save boundary.
+        db.save_provider_record(AppType::Codex.as_str(), &target)
+            .unwrap();
         assert_eq!(
             ChangePlanService::plan_codex_switch_at(&state, &target.id, 100),
             Err(ChangePlanErrorCode::Internal)
@@ -2518,10 +2542,15 @@ mod tests {
     #[test]
     #[serial]
     fn apply_revalidates_credentials_before_consuming_plan_or_calling_writer() {
-        let (_home, _guard, db, state, _current, mut target) = setup_switch_state();
+        let (_home, _guard, db, state, _current, target) = setup_switch_state();
         let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
-        target.settings_config["auth"] = json!({});
-        db.save_provider(AppType::Codex.as_str(), &target).unwrap();
+        let stored = db.get_provider_by_id(&target.id, "codex").unwrap().unwrap();
+        let reference = stored.settings_config["credentialRef"].as_str().unwrap();
+        let credential = db
+            .provider_credential(reference, &target.id)
+            .unwrap()
+            .unwrap();
+        db.provider_secrets.delete(&credential.handle).unwrap();
         let calls = AtomicUsize::new(0);
 
         let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
@@ -2984,6 +3013,31 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    #[serial]
+    fn credential_rotation_after_plan_is_stale_before_writer() {
+        let (_home, _guard, db, state, _current, mut target) = setup_switch_state();
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+        target.settings_config["auth"]["OPENAI_API_KEY"] = json!("fixture-rotated-native-key");
+        db.save_provider("codex", &target).unwrap();
+        let calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            |_| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok::<_, ()>(WriterReceipt {
+                    live_config_changed: false,
+                })
+            },
+        )
+        .unwrap();
+        assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]
@@ -3557,6 +3611,80 @@ mod tests {
 
     #[test]
     #[serial]
+    fn upsert_failed_create_without_insert_restores_unchanged_baseline() {
+        let (_home, _guard, db, state, current, _target) = setup_switch_state();
+        let before_live = read_live_settings(AppType::Codex).unwrap();
+        let mut intended = provider(QUICK_SETUP_CODEX_PROVIDER_ID, "Gateway", "gpt-upsert");
+        intended.category = Some("custom".to_string());
+        let plan = ChangePlanService::plan_codex_upsert(&state, intended).unwrap();
+        let writer_calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_with_writers(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| {
+                writer_calls.fetch_add(1, Ordering::SeqCst);
+                Err::<WriterReceipt, ()>(())
+            },
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(outcome.kind, ChangeApplyOutcomeKind::Admitted);
+        let job = outcome.job.expect("failed create still produces a job");
+        assert_eq!(job.status, ChangeJobStatus::Failed);
+        assert_eq!(
+            job.result_code,
+            ChangeResultCode::WriterFailedBaselineRestored
+        );
+        assert_eq!(job.recovery_state, RecoveryState::Succeeded);
+        assert_eq!(writer_calls.load(Ordering::SeqCst), 1);
+        assert!(db
+            .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str()).unwrap(),
+            Some(current.id.clone())
+        );
+        assert_eq!(read_live_settings(AppType::Codex).unwrap(), before_live);
+    }
+
+    #[test]
+    #[serial]
+    fn upsert_retained_binding_rotation_is_stale_before_writer() {
+        let (_home, _guard, db, state, _current, _target) = setup_switch_state();
+        let mut reserved = provider(QUICK_SETUP_CODEX_PROVIDER_ID, "Gateway", "gpt-upsert");
+        reserved.category = Some("custom".to_string());
+        db.save_provider(AppType::Codex.as_str(), &reserved)
+            .unwrap();
+        let plan = ChangePlanService::plan_codex_upsert(&state, reserved.clone()).unwrap();
+        reserved.settings_config["auth"]["OPENAI_API_KEY"] = json!("fixture-rotated-native-key");
+        db.save_provider(AppType::Codex.as_str(), &reserved)
+            .unwrap();
+        let writer_calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_with_writers(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| {
+                writer_calls.fetch_add(1, Ordering::SeqCst);
+                Ok::<_, ()>(WriterReceipt {
+                    live_config_changed: false,
+                })
+            },
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
+        assert_eq!(writer_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    #[serial]
     fn upsert_plan_for_existing_reserved_row_is_update_and_side_effect_free() {
         let (_home, _guard, db, state, current, _target) = setup_switch_state();
         let mut intended = provider(QUICK_SETUP_CODEX_PROVIDER_ID, "Gateway", "gpt-upsert");
@@ -3824,6 +3952,44 @@ mod tests {
         assert_eq!(outcome.kind, ChangeApplyOutcomeKind::Rejected);
         assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
         assert_eq!(writer_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    #[serial]
+    fn workbuddy_read_failure_does_not_restore_an_unrelated_backup() {
+        let (home, _guard, _db, _state, _current, _target) = setup_switch_state();
+        let external = b"user's unfinished JSON edit";
+        write_workbuddy_models(home.path(), std::str::from_utf8(external).unwrap());
+        let backup = home.path().join(".workbuddy/models.json.backup");
+        std::fs::write(&backup, br#"{"models":[{"id":"old"}]}"#).unwrap();
+        let backup_before = std::fs::read(&backup).unwrap();
+
+        assert!(write_workbuddy_save_locked(workbuddy_save_request(None, None)).is_err());
+        assert_eq!(
+            std::fs::read(home.path().join(".workbuddy/models.json")).unwrap(),
+            external
+        );
+        assert_eq!(std::fs::read(&backup).unwrap(), backup_before);
+    }
+
+    #[test]
+    #[serial]
+    fn workbuddy_invalid_request_does_not_roll_back_a_previous_success() {
+        let (home, _guard, _db, _state, _current, _target) = setup_switch_state();
+        let current = br#"{"models":[{"id":"current"}]}"#;
+        write_workbuddy_models(home.path(), std::str::from_utf8(current).unwrap());
+        let backup = home.path().join(".workbuddy/models.json.backup");
+        std::fs::write(&backup, br#"{"models":[{"id":"older"}]}"#).unwrap();
+        let backup_before = std::fs::read(&backup).unwrap();
+        let mut request = workbuddy_save_request(None, None);
+        request.api_key.clear();
+
+        assert!(write_workbuddy_save_locked(request).is_err());
+        assert_eq!(
+            std::fs::read(home.path().join(".workbuddy/models.json")).unwrap(),
+            current
+        );
+        assert_eq!(std::fs::read(&backup).unwrap(), backup_before);
     }
 
     #[test]

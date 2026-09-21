@@ -1,0 +1,63 @@
+{
+  "query": "Official source verification for Issues #25 and #40",
+  "scope": "mixed",
+  "date": "2026-09-20",
+  "issues": {
+    "25": {
+      "repository": [
+        "src-tauri/src/commands/agent_catalog.rs:78-119",
+        "src-tauri/src/agent_install/sources/mod.rs:77-88",
+        "src/shared/features/agents.ts:3-10,85-99"
+      ],
+      "confirmed_gaps": [
+        "Only product|cli|desktop link kinds; no license/terms kind",
+        "Codex official_links is explicitly empty",
+        "QoderWork/Grok product links are not the current focused download/Build entries",
+        "No complete seven-entry license/terms link matrix"
+      ],
+      "minimum_fix": "Add closed license/terms link representation or a legal disclosure, populate seven entries, keep mutable artifact URLs native-owned, and test link completeness/HTTPS/review date."
+    },
+    "40": {
+      "confirmed": [
+        "Alibaba pay-as-you-go endpoint and generic sk- key are documented separately from Coding Plan sk-sp- key and coding[-intl] domain",
+        "Tencent Hunyuan OpenAI-compatible API uses api.hunyuan.cloud.tencent.com/v1; existing TokenHub Hy3 preset is a separate surface",
+        "Ark general /api/v3 is separate from Coding Plan OpenAI /api/coding/v3 and Anthropic /api/coding",
+        "Repository already has Bailian payg, Tencent TokenHub Hy3 and Ark Agentplan/DouBaoSeed presets"
+      ],
+      "confirmed_gaps": [
+        "No distinct Alibaba Coding Plan preset/usage guard",
+        "Generic API-key field does not encode billing plan, protocol, region or key kind",
+        "BytePlus international Ark protocol remains explicitly unverified in current source"
+      ],
+      "minimum_fix": "Add closed billingPlan/protocol/region/keyKind/allowedUse metadata and reject known endpoint/key mismatches; keep Tencent legacy and TokenHub variants separate."
+    }
+  },
+  "official_urls": [
+    "https://qoder.com/download",
+    "https://qoder.com/product-service",
+    "https://www.trae.cn/download",
+    "https://www.trae.cn/terms-of-service/cn",
+    "https://www.workbuddy.cn/home",
+    "https://www.workbuddy.ai/document/term",
+    "https://x.ai/build",
+    "https://docs.x.ai/build/overview",
+    "https://github.com/xai-org/grok-build/blob/main/LICENSE",
+    "https://openai.com/codex/",
+    "https://help.openai.com/en/articles/11096431",
+    "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+    "https://opencode.ai/download",
+    "https://github.com/anomalyco/opencode/blob/dev/LICENSE",
+    "https://help.aliyun.com/en/model-studio/base-url",
+    "https://www.alibabacloud.com/help/en/model-studio/get-api-key",
+    "https://www.alibabacloud.com/help/en/model-studio/coding-plan-faq",
+    "https://cloud.tencent.com/document/product/1729/111007",
+    "https://www.volcengine.com/article/37911",
+    "https://www.volcengine.com/docs/82379/1541595?lang=zh"
+  ],
+  "caveats": [
+    "No credentials or model requests used",
+    "TRAE terms content was intermittently unavailable, URL is official",
+    "Alibaba Coding Plan exact regional hostname should be frozen from plan-specific regional docs during implementation",
+    "Proprietary service terms are not OSS redistribution licenses"
+  ]
+}

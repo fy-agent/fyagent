@@ -8,6 +8,15 @@ const rejectNativeOnly = async (): Promise<never> => {
 
 export function createBrowserFeaturePorts(): FeaturePorts {
   return {
+    configPack: {
+      list: rejectNativeOnly,
+      pickFile: rejectNativeOnly,
+      previewImport: rejectNativeOnly,
+      apply: rejectNativeOnly,
+      previewExport: rejectNativeOnly,
+      saveExport: rejectNativeOnly,
+      cancel: rejectNativeOnly,
+    },
     deliveryKits: {
       list: rejectNativeOnly,
       previewBuiltin: rejectNativeOnly,
@@ -77,6 +86,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       stopWaiting: rejectNativeOnly,
     },
     agentInstallReadiness: {
+      preflight: rejectNativeOnly,
       get: rejectNativeOnly,
       getInventory: rejectNativeOnly,
       startAction: rejectNativeOnly,
@@ -136,6 +146,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       getLocalStatus: rejectNativeOnly,
       checkLatest: rejectNativeOnly,
       getJob: rejectNativeOnly,
+      prepareInstall: rejectNativeOnly,
       startInstall: rejectNativeOnly,
       cancelInstall: rejectNativeOnly,
       launch: rejectNativeOnly,
@@ -144,6 +155,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     },
     providers: {
       getSummary: rejectNativeOnly,
+      getProxyRestorePreview: rejectNativeOnly,
+      restoreManagedProxy: rejectNativeOnly,
       applyQuickSetupWithResult: rejectNativeOnly,
       fetchModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
@@ -224,6 +237,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       openOpenClawDirectory: rejectNativeOnly,
     },
     settings: {
+      getAppVersion: rejectNativeOnly,
       get: async () => ({}),
       save: rejectNativeOnly,
       getFirstUseGuideState: async () => "dismissed",

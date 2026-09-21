@@ -38,7 +38,7 @@ function SelectTargetButton({
 }
 
 export type AgentLifecycleActionSlotView =
-  | { kind: "status"; label: string }
+  | { kind: "status"; label: string; onCancel?: () => void }
   | { kind: "primary"; action: "install" | "update"; onClick: () => void }
   | { kind: "retry"; onClick: () => void }
   | { kind: "select_target"; onClick: () => void; originRef?: DialogOriginRef }
@@ -54,7 +54,10 @@ export function AgentLifecycleActionSlot({
   return (
     <div ref={hostRef} className="fy-agent-directory-lifecycle-host">
       {view.kind === "status" ? (
-        <StatusSlot label={view.label} />
+        <>
+          <StatusSlot label={view.label} />
+          {view.onCancel ? <Button onClick={view.onCancel}>取消</Button> : null}
+        </>
       ) : view.kind === "primary" ? (
         <Button onClick={view.onClick}>
           {directoryPrimaryActionLabel(view.action)}

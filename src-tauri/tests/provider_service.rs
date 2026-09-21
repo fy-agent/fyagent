@@ -8,8 +8,9 @@ use fyagent_lib::{
 #[path = "support.rs"]
 mod support;
 use support::{
-    create_test_state, create_test_state_with_config, enable_codex_official_auth_preservation,
-    ensure_test_home, reset_test_fs, test_mutex,
+    create_credential_test_state as create_test_state,
+    create_credential_test_state_with_config as create_test_state_with_config,
+    enable_codex_official_auth_preservation, ensure_test_home, reset_test_fs, test_mutex,
 };
 
 fn sanitize_provider_name(name: &str) -> String {
@@ -104,7 +105,13 @@ fn provider_service_switch_codex_updates_live_and_config() {
     let _home = ensure_test_home();
 
     let legacy_auth = json!({ "OPENAI_API_KEY": "legacy-key" });
-    let legacy_config = r#"[mcp_servers.legacy]
+    let legacy_config = r#"model_provider = "legacy"
+model = "fixture-model"
+[model_providers.legacy]
+name = "Legacy"
+base_url = "https://legacy.example.invalid/v1"
+wire_api = "responses"
+[mcp_servers.legacy]
 type = "stdio"
 command = "echo"
 "#;
@@ -136,7 +143,13 @@ command = "echo"
                 "Latest".to_string(),
                 json!({
                     "auth": {"OPENAI_API_KEY": "fresh-key"},
-                    "config": r#"[mcp_servers.latest]
+                    "config": r#"model_provider = "latest"
+model = "fixture-model"
+[model_providers.latest]
+name = "Latest"
+base_url = "https://latest.example.invalid/v1"
+wire_api = "responses"
+[mcp_servers.latest]
 type = "stdio"
 command = "say"
 "#
@@ -237,16 +250,17 @@ command = "say"
     let legacy = providers
         .get("old-provider")
         .expect("legacy provider still exists");
-    let legacy_auth_value = legacy
+    assert!(legacy
         .settings_config
-        .get("auth")
-        .and_then(|v| v.get("OPENAI_API_KEY"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    assert_eq!(
-        legacy_auth_value, "legacy-key",
-        "previous provider should be backfilled with live auth"
-    );
+        .pointer("/auth/OPENAI_API_KEY")
+        .is_none());
+    assert!(legacy.settings_config["credentialRef"].as_str().is_some());
+    // Restoring the saved source proves the backfilled native material resolves.
+    ProviderService::switch(&state, AppType::Codex, "old-provider")
+        .expect("switch back to the reference-backed source");
+    let restored = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
+        .expect("read restored Codex config");
+    assert!(restored.contains("legacy-key"));
 }
 
 #[test]
@@ -506,8 +520,8 @@ requires_openai_auth = true
             .settings_config
             .pointer("/auth/OPENAI_API_KEY")
             .and_then(|v| v.as_str()),
-        Some("bridge-key"),
-        "backfill should restore the API key into stored provider auth"
+        None,
+        "backfill must retain only the native credential reference"
     );
     assert!(
         stored_bridge
@@ -515,6 +529,18 @@ requires_openai_auth = true
             .pointer("/auth/tokens")
             .is_none(),
         "backfill should not persist ChatGPT OAuth tokens into provider storage"
+    );
+    assert!(stored_bridge.settings_config.get("credentialRef").is_some());
+    assert!(!stored_bridge
+        .settings_config
+        .to_string()
+        .contains("bridge-key"));
+    ProviderService::switch(&state, AppType::Codex, "bridge-provider")
+        .expect("resolve migrated key on switch back");
+    assert!(
+        std::fs::read_to_string(fyagent_lib::get_codex_config_path())
+            .unwrap()
+            .contains("bridge-key")
     );
     assert!(
         !stored_bridge
@@ -1019,16 +1045,17 @@ requires_openai_auth = true
         .db
         .get_all_providers(AppType::Codex.as_str())
         .expect("read providers after switch");
-    assert_eq!(
-        providers
-            .get("third-party")
-            .expect("third-party provider exists")
-            .settings_config
-            .pointer("/auth/OPENAI_API_KEY")
-            .and_then(|v| v.as_str()),
-        Some("stale-live-key"),
-        "the live key must be backfilled into the outgoing provider before deletion"
-    );
+    let outgoing = providers
+        .get("third-party")
+        .expect("third-party provider exists");
+    assert!(outgoing
+        .settings_config
+        .pointer("/auth/OPENAI_API_KEY")
+        .is_none());
+    assert!(outgoing.settings_config["credentialRef"].as_str().is_some());
+    assert!(!serde_json::to_string(outgoing)
+        .unwrap()
+        .contains("stale-live-key"));
 
     let live_config =
         std::fs::read_to_string(fyagent_lib::get_codex_config_path()).expect("read config.toml");
@@ -1036,6 +1063,10 @@ requires_openai_auth = true
         !live_config.contains("experimental_bearer_token"),
         "official provider has no API key to inject"
     );
+    ProviderService::switch(&state, AppType::Codex, "third-party")
+        .expect("restore outgoing source from native credentials");
+    let restored = std::fs::read_to_string(fyagent_lib::get_codex_config_path()).unwrap();
+    assert!(restored.contains("stale-live-key"));
 }
 
 #[test]
@@ -3077,7 +3108,7 @@ fn provider_service_delete_current_provider_returns_error() {
 }
 
 #[test]
-fn recover_from_crash_without_backup_cleans_placeholder_instead_of_writing_it_back() {
+fn recover_from_crash_without_owned_proof_preserves_placeholder() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
     let _home = ensure_test_home();
@@ -3091,11 +3122,8 @@ fn recover_from_crash_without_backup_cleans_placeholder_instead_of_writing_it_ba
     });
     let settings_path = get_claude_settings_path();
     std::fs::create_dir_all(settings_path.parent().expect("settings dir")).expect("create dir");
-    std::fs::write(
-        &settings_path,
-        serde_json::to_string_pretty(&taken_over_live).expect("serialize taken over live"),
-    )
-    .expect("write taken over live");
+    let seeded = serde_json::to_string_pretty(&taken_over_live).expect("serialize taken over live");
+    std::fs::write(&settings_path, &seeded).expect("write taken over live");
 
     let state = create_test_state().expect("create test state");
 
@@ -3115,22 +3143,30 @@ fn recover_from_crash_without_backup_cleans_placeholder_instead_of_writing_it_ba
         .set_current_provider(AppType::Claude.as_str(), "default")
         .expect("set current provider");
 
-    futures::executor::block_on(state.proxy_service.recover_from_crash())
-        .expect("recover from crash");
+    let before = std::fs::read(&settings_path).expect("read seeded live");
+    let error = futures::executor::block_on(state.proxy_service.recover_from_crash())
+        .expect_err("unowned placeholder must not be rewritten");
+    assert!(
+        error.contains("无法确认代理配置仍可安全恢复"),
+        "crash recovery without backup/receipt must report conflict: {error}"
+    );
+    assert_eq!(
+        std::fs::read(&settings_path).expect("reread live"),
+        before,
+        "conflict must preserve the unproven placeholder bytes"
+    );
 
     let live_after: serde_json::Value =
         read_json_file(&settings_path).expect("read live settings after recovery");
     let env = live_after.get("env").cloned().unwrap_or_else(|| json!({}));
-    assert_ne!(
+    assert_eq!(
         env.get("ANTHROPIC_AUTH_TOKEN").and_then(|v| v.as_str()),
         Some("PROXY_MANAGED"),
-        "recovery must not write the placeholder back to live"
+        "recovery must not manufacture an original by deleting the placeholder"
     );
-    assert!(
-        env.get("ANTHROPIC_BASE_URL")
-            .and_then(|v| v.as_str())
-            .map(|url| !url.starts_with("http://127.0.0.1"))
-            .unwrap_or(true),
-        "recovery must drop the local proxy base URL"
+    assert_eq!(
+        env.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str()),
+        Some("http://127.0.0.1:15721"),
+        "recovery must not drop an unproven local proxy URL"
     );
 }

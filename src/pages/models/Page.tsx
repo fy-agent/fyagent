@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  defaultApiProtocol,
+  isToolOnlyApi,
+  providerApiCredentialError,
+  type ApiProtocol,
+} from "../../domain/configuration/providerApi";
+import {
+  ProviderApiFields,
+  type ProviderApiFormFill,
+} from "../../shared/features/controls/ProviderApiFields";
+import {
   appendAgentReturnToPath,
   agentReturnDescriptorFromManagementSearch,
 } from "../../shared/features/agent-navigation";
@@ -91,6 +101,8 @@ import {
 } from "./apply";
 import { changePlanErrorCode } from "../../shared/features/change-plans-ui/changePlanErrors";
 import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
+import { ConfigPackButton } from "../../shared/features/config-pack-ui/ConfigPackButton";
+import type { PortableProvider } from "../../domain/config-pack";
 import {
   addUniqueModelIds,
   filterModelIds,
@@ -156,12 +168,9 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     useFieldNotices<WorkBuddyNoticeField>();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const deleteOriginRef = useRef<HTMLElement | null>(null);
-  const writeConfirm = useModelsWriteConfirm<{
-    request: WorkBuddySaveRequest;
-    revision: number;
-    draftIds: string[];
-    targets: readonly ModelWriteTarget[];
-  }>();
+  const [workBuddyWriteTargets, setWorkBuddyWriteTargets] = useState<
+    readonly ModelWriteTarget[]
+  >([]);
   const [workBuddySaveRequest, setWorkBuddySaveRequest] =
     useState<WorkBuddySaveRequest | null>(null);
   const [workBuddySavePlan, setWorkBuddySavePlan] = useState<ChangePlan | null>(
@@ -359,7 +368,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   };
 
   const startSave = () => {
-    if (writeLock.current || writeConfirm.open) return;
+    if (writeLock.current) return;
     const draftIds = collectDraftIds();
     const hasDraft = draftIds.length > 0;
     if (!hasDraft) {
@@ -391,27 +400,16 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       focusControl(manualModelsInputRef.current);
       return;
     }
-    writeConfirm.requestConfirm({
-      request,
-      revision: submittedRevision,
-      draftIds,
-      targets: [
-        {
-          path: status.path,
-          backupPath: status.backupPath,
-          exists: status.exists,
-        },
-      ],
-    });
-  };
-
-  const confirmWrite = () => {
-    if (writeLock.current) return;
-    const pending = writeConfirm.takePending();
-    if (!pending) return;
-    setDraftModelIds(pending.draftIds);
+    setWorkBuddyWriteTargets([
+      {
+        path: status.path,
+        backupPath: status.backupPath,
+        exists: status.exists,
+      },
+    ]);
+    setDraftModelIds(draftIds);
     setManualDraft("");
-    void createSavePlan(pending.request, pending.revision);
+    void createSavePlan(request, submittedRevision);
   };
 
   const createSavePlan = async (
@@ -443,6 +441,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     setWorkBuddySaveRequest(null);
     setWorkBuddySavePlan(null);
     setWorkBuddySavePreviewError(null);
+    setWorkBuddyWriteTargets([]);
     writeLock.current = false;
     if (mountedRef.current) setBusy(null);
   };
@@ -601,7 +600,6 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
             )
           }
           onClick={startSave}
-          dialogOriginRef={writeConfirm.originRef}
         >
           {busy === "save" ? "保存中…" : "保存并应用"}
         </Button>
@@ -610,6 +608,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       <WorkBuddySavePlanWorkspace
         key={workBuddySavePlan?.planId ?? "workbuddy-save-preview"}
         active={active}
+        writeTargets={workBuddyWriteTargets}
         request={workBuddySaveRequest}
         plan={workBuddySavePlan}
         previewError={workBuddySavePreviewError}
@@ -876,15 +875,6 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           </p>
         ) : null}
       </Dialog>
-      <ModelsWriteConfirmDialog
-        originRef={writeConfirm.originRef}
-        open={writeConfirm.open}
-        targets={writeConfirm.pending?.targets ?? []}
-        onConfirm={confirmWrite}
-        onCancel={() => {
-          writeConfirm.takePending();
-        }}
-      />
     </CatalogDetail>
   );
 }
@@ -927,21 +917,33 @@ function ProviderPanel({
   active,
   writesBlocked,
   onBlockWrites,
+  onRecoverWrites,
+  initialForm,
 }: {
   app: ProviderAppId;
   active: boolean;
   writesBlocked: boolean;
   onBlockWrites: (app: ProviderAppId) => void;
+  onRecoverWrites: (app: ProviderAppId) => void;
+  initialForm?: ProviderApiFormFill;
 }) {
   const navigate = useNavigate();
   const { search } = useLocation();
   const { ports } = useFeatures();
   const summaryQuery = useProviderSummary(app, active);
-  const [name, setName] = useState(PROVIDER_DEFAULT_NAMES[app]);
-  const [baseUrl, setBaseUrl] = useState("");
+  const [name, setName] = useState(
+    initialForm?.name ?? PROVIDER_DEFAULT_NAMES[app],
+  );
+  const [baseUrl, setBaseUrl] = useState(initialForm?.connection.baseUrl ?? "");
   const [apiKey, setApiKeyState] = useState("");
   const apiKeyRef = useRef("");
-  const [modelId, setModelId] = useState("");
+  const [modelId, setModelId] = useState(initialForm?.connection.modelId ?? "");
+  const [protocol, setProtocol] = useState<ApiProtocol>(
+    initialForm?.connection.protocol ?? defaultApiProtocol(app),
+  );
+  const [requiresFreshKey, setRequiresFreshKey] = useState(
+    Boolean(initialForm),
+  );
   const [fetchedModelIds, setFetchedModelIds] = useState<string[]>([]);
   const [ownedByById, setOwnedByById] = useState<Record<string, string>>({});
   const [fetchBusy, setFetchBusy] = useState(false);
@@ -957,6 +959,9 @@ function ProviderPanel({
   >([]);
   const [codexSaveRequest, setCodexSaveRequest] =
     useState<ProviderQuickSetupRequest | null>(null);
+  const [codexWriteTargets, setCodexWriteTargets] = useState<
+    readonly ModelWriteTarget[]
+  >([]);
   const [codexSavePlan, setCodexSavePlan] = useState<ChangePlan | null>(null);
   const [codexSavePreviewError, setCodexSavePreviewError] = useState<{
     code: ChangePlanErrorCode;
@@ -974,7 +979,7 @@ function ProviderPanel({
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const modelIdInputRef = useRef<HTMLInputElement>(null);
-  const draftCommit = useModelsDraftCommit();
+  const draftCommit = useModelsDraftCommit(Boolean(initialForm));
 
   const setApiKey = (value: string) => {
     apiKeyRef.current = value;
@@ -997,9 +1002,33 @@ function ProviderPanel({
   const providerId = QUICK_SETUP_PROVIDER_IDS[app];
   const providerExists = Boolean(summaryQuery.data?.providers[providerId]);
   const currentId = summaryQuery.data?.currentId ?? "";
+  const savedConnection = summaryQuery.data?.providers[providerId]?.connection;
+  const canRetainCodexCredential =
+    app === "codex" &&
+    !requiresFreshKey &&
+    savedConnection !== undefined &&
+    savedConnection.baseUrl === baseUrl.trim() &&
+    savedConnection.protocol === protocol;
+
+  const restrictedPlan = isToolOnlyApi(baseUrl, apiKey);
+  const fillApiForm = (value: ProviderApiFormFill) => {
+    setRequiresFreshKey(true);
+    setName(value.name);
+    setBaseUrl(value.connection.baseUrl);
+    setModelId(value.connection.modelId);
+    setProtocol(value.connection.protocol);
+    clearApiKey();
+    setFetchedModelIds([]);
+    setOwnedByById({});
+    setImageExtension(false);
+    setWebsockets(false);
+    setErrors({});
+    setNotice(null);
+    draftCommit.markDirty();
+  };
 
   const fetchProviderModels = async () => {
-    if (fetchBusy || busy || writesBlocked) return;
+    if (fetchBusy || busy || writesBlocked || restrictedPlan) return;
     if (!isHttpUrl(baseUrl.trim())) {
       setErrors((current) => ({
         ...current,
@@ -1011,6 +1040,15 @@ function ProviderPanel({
     if (!apiKeyRef.current.trim()) {
       setErrors((current) => ({ ...current, apiKey: "请输入 API Key" }));
       apiKeyInputRef.current?.focus();
+      return;
+    }
+    const credentialError = providerApiCredentialError(
+      baseUrl,
+      apiKeyRef.current,
+      protocol,
+    );
+    if (credentialError) {
+      setErrors((current) => ({ ...current, apiKey: credentialError }));
       return;
     }
     setFetchBusy(true);
@@ -1051,6 +1089,16 @@ function ProviderPanel({
   );
 
   const prepareModelProbe = () => {
+    if (restrictedPlan) return false;
+    const credentialError = providerApiCredentialError(
+      baseUrl,
+      apiKeyRef.current,
+      protocol,
+    );
+    if (credentialError) {
+      setErrors((current) => ({ ...current, apiKey: credentialError }));
+      return false;
+    }
     if (!isHttpUrl(baseUrl.trim())) {
       setErrors((current) => ({
         ...current,
@@ -1086,8 +1134,10 @@ function ProviderPanel({
         baseUrl,
         apiKey: apiKeyRef.current,
         modelId,
+        protocol,
       },
       app,
+      canRetainCodexCredential,
     );
     if (!validated.ok) {
       setErrors(validated.errors);
@@ -1105,15 +1155,20 @@ function ProviderPanel({
     }
     const targets = summaryQuery.data?.writeTargets ?? [];
     if (targets.length === 0) return;
-    writeConfirm.requestConfirm({
-      request: buildQuickSetupRequest(
-        app,
-        validated.value,
-        app === "codex" ? { imageExtension, websockets } : undefined,
-      ),
-      revision: draftCommit.captureRevision(),
-      targets,
-    });
+    const request = buildQuickSetupRequest(
+      app,
+      validated.value,
+      app === "codex" ? { imageExtension, websockets } : undefined,
+    );
+    const revision = draftCommit.captureRevision();
+    if (app === "codex") {
+      // Plan creation is read-only. Its shared preview owns the one save
+      // confirmation, including the native-owned file impact disclosure.
+      setCodexWriteTargets(targets);
+      void submit(request, revision);
+    } else {
+      writeConfirm.requestConfirm({ request, revision, targets });
+    }
   };
 
   const confirmWrite = () => {
@@ -1229,6 +1284,7 @@ function ProviderPanel({
 
   const handleCodexSaveDismiss = useCallback(() => {
     setCodexSaveRequest(null);
+    setCodexWriteTargets([]);
     setCodexSavePlan(null);
     setCodexSavePreviewError(null);
     writeLock.current = false;
@@ -1380,11 +1436,38 @@ function ProviderPanel({
           active={active}
           disabled={
             busy ||
+            fetchBusy ||
+            probeBusy ||
+            subscriptionBusy ||
             writesBlocked ||
             writeConfirm.open ||
             Boolean(codexSaveRequest || codexSavePlan)
           }
           writeTargets={summaryQuery.data?.writeTargets ?? []}
+          recoveryDisabled={
+            busy ||
+            fetchBusy ||
+            probeBusy ||
+            subscriptionBusy ||
+            writeConfirm.open ||
+            Boolean(codexSaveRequest || codexSavePlan)
+          }
+          onBeginRecovery={() => {
+            if (
+              writeLock.current ||
+              busy ||
+              fetchBusy ||
+              probeBusy ||
+              writeConfirm.open ||
+              codexSaveRequest ||
+              codexSavePlan
+            )
+              return false;
+            writeLock.current = true;
+            setSubscriptionBusy(true);
+            return true;
+          }}
+          onRecoveryConfirmed={() => onRecoverWrites(app)}
           onBeginWrite={() => {
             if (writeLock.current || writesBlocked) return false;
             writeLock.current = true;
@@ -1441,6 +1524,7 @@ function ProviderPanel({
           <CodexSavePlanWorkspace
             key={codexSavePlan?.planId ?? "codex-save-preview"}
             active={active}
+            writeTargets={codexWriteTargets}
             request={codexSaveRequest}
             plan={codexSavePlan}
             previewError={codexSavePreviewError}
@@ -1452,6 +1536,30 @@ function ProviderPanel({
       ) : null}
 
       <div className="fy-models-form">
+        <ProviderApiFields
+          app={app}
+          baseUrl={baseUrl}
+          protocol={protocol}
+          saved={Object.values(summaryQuery.data?.providers ?? {})}
+          disabled={
+            busy ||
+            fetchBusy ||
+            probeBusy ||
+            writesBlocked ||
+            writeConfirm.open ||
+            Boolean(codexSaveRequest || codexSavePlan)
+          }
+          error={errors.protocol}
+          onFill={fillApiForm}
+          onProtocolChange={(next) => {
+            setProtocol(next);
+            if (next !== "responses") {
+              setImageExtension(false);
+              setWebsockets(false);
+            }
+            draftCommit.markDirty();
+          }}
+        />
         <div className="fy-control-field">
           <label htmlFor={`${app}-quick-setup-name`}>配置名称</label>
           <Input
@@ -1530,6 +1638,11 @@ function ProviderPanel({
         </div>
         <div className="fy-control-field">
           <label htmlFor={`${app}-quick-setup-api-key`}>API Key</label>
+          {canRetainCodexCredential && (
+            <p className="fy-models-muted">
+              留空保留已保存的 API Key，填写新值会替换它。
+            </p>
+          )}
           <SecretInput
             ref={apiKeyInputRef}
             id={`${app}-quick-setup-api-key`}
@@ -1592,7 +1705,7 @@ function ProviderPanel({
               searchId={`${app}-probe-search`}
               modelIds={selectableModelIds}
               ownedByById={ownedByById}
-              disabled={busy || fetchBusy || writesBlocked}
+              disabled={busy || fetchBusy || writesBlocked || restrictedPlan}
               resetVersion={draftCommit.resetVersion}
               onPrepare={prepareModelProbe}
               onBusyChange={setProbeBusy}
@@ -1602,6 +1715,7 @@ function ProviderPanel({
                   baseUrl: baseUrl.trim(),
                   apiKey: apiKeyRef.current.trim(),
                   modelId: selectedModelId,
+                  protocol,
                   ...(app === "codex"
                     ? { codexImageExtension: imageExtension }
                     : {}),
@@ -1609,13 +1723,26 @@ function ProviderPanel({
               }
             />
             <Button
-              disabled={busy || fetchBusy || probeBusy || writesBlocked}
+              disabled={
+                busy ||
+                fetchBusy ||
+                probeBusy ||
+                writesBlocked ||
+                restrictedPlan
+              }
               onClick={() => void fetchProviderModels()}
             >
               {fetchBusy ? "读取中…" : "拉取模型"}
             </Button>
           </div>
         </div>
+        {restrictedPlan && (
+          <div className="fy-models-form-wide">
+            <InlineNotice tone="info">
+              此套餐请在允许的目标编程工具中验证；本页不发送模型拉取或测试请求。
+            </InlineNotice>
+          </div>
+        )}
         <div className="fy-models-form-wide">
           <GroupedModelChips
             ids={selectableModelIds}
@@ -1646,6 +1773,7 @@ function ProviderPanel({
           >
             <div className="fy-models-checkbox-row">
               <Checkbox
+                disabled={protocol !== "responses"}
                 checked={imageExtension}
                 onCheckedChange={(checked) => {
                   setImageExtension(checked);
@@ -1657,6 +1785,7 @@ function ProviderPanel({
             </div>
             <div className="fy-models-checkbox-row">
               <Checkbox
+                disabled={protocol !== "responses"}
                 checked={websockets}
                 onCheckedChange={(checked) => {
                   setWebsockets(checked);
@@ -1699,6 +1828,12 @@ function renderTargetPanel(
   active: boolean,
   blockedProviderWrites: Partial<Record<ProviderAppId | "opencode", boolean>>,
   onBlockProviderWrites: (app: ProviderAppId | "opencode") => void,
+  onRecoverProviderWrites: (app: ProviderAppId) => void,
+  importedForm: {
+    app: "claude" | "codex";
+    sequence: number;
+    form: ProviderApiFormFill;
+  } | null,
 ) {
   switch (target) {
     case "workbuddy":
@@ -1708,10 +1843,15 @@ function renderTargetPanel(
     case "grokbuild":
       return (
         <ProviderPanel
+          key={`${target}:${importedForm?.app === target ? importedForm.sequence : 0}`}
           app={target}
           active={active}
           writesBlocked={Boolean(blockedProviderWrites[target])}
           onBlockWrites={onBlockProviderWrites}
+          onRecoverWrites={onRecoverProviderWrites}
+          initialForm={
+            importedForm?.app === target ? importedForm.form : undefined
+          }
         />
       );
     case "qoderwork":
@@ -1735,6 +1875,26 @@ export function ModelsPage() {
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
     Partial<Record<ProviderAppId | "opencode", boolean>>
   >({});
+  const [importedForm, setImportedForm] = useState<{
+    app: "claude" | "codex";
+    sequence: number;
+    form: ProviderApiFormFill;
+  } | null>(null);
+  const fillImportedForm = (provider: Readonly<PortableProvider>) => {
+    setImportedForm((current) => ({
+      app: provider.app,
+      sequence: (current?.sequence ?? 0) + 1,
+      form: {
+        name: provider.name,
+        connection: {
+          baseUrl: provider.endpoint,
+          modelId: provider.model,
+          protocol: provider.wireApi ?? "anthropic",
+        },
+      },
+    }));
+    setSearchParams({ target: provider.app });
+  };
   const rawTarget = searchParams.get("target");
   const target = useStickyVisibleValue(
     visible,
@@ -1749,6 +1909,9 @@ export function ModelsPage() {
       [app]: true,
     }));
   };
+  const recoverProviderWrites = (app: ProviderAppId) => {
+    setBlockedProviderWrites((current) => ({ ...current, [app]: false }));
+  };
 
   return (
     <div
@@ -1758,6 +1921,7 @@ export function ModelsPage() {
     >
       <header className="fy-models-page-heading">
         <h1>模型管理</h1>
+        <ConfigPackButton onFillModelForm={fillImportedForm} />
       </header>
       <CatalogMasterDetail>
         <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择应用">
@@ -1789,6 +1953,8 @@ export function ModelsPage() {
             visible,
             blockedProviderWrites,
             blockProviderWrites,
+            recoverProviderWrites,
+            importedForm,
           )}
         </div>
       </CatalogMasterDetail>

@@ -116,7 +116,11 @@ generic command execution capability is added.
   npm owner. Do not replace this with an arbitrary shell command from IPC.
 - Windows always uses the existing Explorer-user helper boundary, never
   elevated PATH/npm execution. Frozen user, authenticated pipe, job nonce,
-  signed helper and admission ordering remain unchanged.
+  signed helper and admission ordering remain unchanged. Claude and Grok
+  preflight both resolve the live npm prefix/cache/temp and npm identity;
+  execution reuses `pinned_npm_install_invocation` so the confirmed absolute
+  npm identity, prefix and cache are the spawned command; dest drift is
+  compared immediately before any mutation.
 - Windows discovers `npm.cmd` then `npm.exe`. `.cmd` / `.bat` shims are
   launched as `cmd.exe /D /S /C call "{quoted-program}" …` via `CommandExt::raw_arg`.
   Keep this explicit shared dispatch as project policy, not a claim that

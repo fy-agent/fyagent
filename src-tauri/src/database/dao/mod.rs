@@ -3,6 +3,7 @@
 //! Database access operations for each domain
 
 pub(crate) mod change_plan;
+mod config_pack;
 pub mod failover;
 pub(crate) mod health;
 pub(crate) mod managed_auth;
@@ -24,4 +25,5 @@ pub mod usage_rollup;
 pub use failover::FailoverQueueItem;
 pub use profiles::Profile;
 
+pub(super) mod provider_credentials;
 mod verification;

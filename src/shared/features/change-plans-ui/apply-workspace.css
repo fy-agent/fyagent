@@ -131,6 +131,18 @@
   font-size: 17px;
 }
 
+.fy-apply-details > summary {
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.fy-apply-details > summary:focus-visible {
+  outline: 2px solid var(--fy-accent-text);
+  outline-offset: 4px;
+  border-radius: var(--fy-radius-control);
+}
+
 .fy-apply-plan-details,
 .fy-apply-step-list,
 .fy-apply-resource-list,

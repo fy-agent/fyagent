@@ -101,6 +101,18 @@ pub fn parse_workbuddy_update(
         return Err(SourceResolveError::ArtifactRejected);
     }
 
+    // macOS metadata names a ZIP; its size cannot describe the DMG alias.
+    let artifact_size_bytes = if format == PackageFormat::Exe {
+        value
+            .get("size")
+            .and_then(Value::as_u64)
+            .filter(|size| *size > 0)
+    } else {
+        None
+    };
+    let size_binding = artifact_size_bytes
+        .map(|size| size.to_string())
+        .unwrap_or_default();
     Ok(ResolvedDesktopSource {
         product: AgentCatalogId::WorkBuddy,
         platform,
@@ -113,8 +125,11 @@ pub fn parse_workbuddy_update(
             ("format", format.as_str()),
             ("version", version),
             ("endpoint", endpoint_kind),
+            ("artifact_url", download_url.as_str()),
+            ("artifact_size", &size_binding),
         ]),
         display_version: Some(version.to_string()),
+        artifact_size_bytes,
         download_url,
         versionless_latest: false,
         official_page: workbuddy_official_page(),
@@ -237,6 +252,39 @@ mod tests {
                 AgentArch::Aarch64
             ),
             Err(SourceResolveError::PlatformUnsupported)
+        );
+    }
+
+    #[test]
+    fn workbuddy_size_is_for_exact_exe_not_rewritten_dmg() {
+        let mut windows: Value = serde_json::from_str(WIN_FIXTURE).unwrap();
+        windows["size"] = serde_json::json!(100_000);
+        let first = parse_workbuddy_update(
+            &serde_json::to_vec(&windows).unwrap(),
+            AgentPlatform::Windows,
+            AgentArch::X86_64,
+        )
+        .unwrap();
+        assert_eq!(first.artifact_size_bytes, Some(100_000));
+        windows["size"] = serde_json::json!(200_000);
+        let second = parse_workbuddy_update(
+            &serde_json::to_vec(&windows).unwrap(),
+            AgentPlatform::Windows,
+            AgentArch::X86_64,
+        )
+        .unwrap();
+        assert_ne!(first.release_id, second.release_id);
+        let mut mac: Value = serde_json::from_str(ARM_FIXTURE).unwrap();
+        mac["size"] = serde_json::json!(100_000);
+        assert_eq!(
+            parse_workbuddy_update(
+                &serde_json::to_vec(&mac).unwrap(),
+                AgentPlatform::Macos,
+                AgentArch::Aarch64
+            )
+            .unwrap()
+            .artifact_size_bytes,
+            None
         );
     }
 

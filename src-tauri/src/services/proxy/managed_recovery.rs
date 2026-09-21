@@ -156,19 +156,54 @@ impl ProxyService {
             Some(proof) => (proof.config, proof.preimages),
             None => (raw, read_files(app)?),
         };
-        let proof = ManagedRestoreProof {
-            version: 1,
-            config,
-            preimages,
-            files,
-        };
+        self.save_managed_restore_proof(
+            app,
+            &ManagedRestoreProof {
+                version: 1,
+                config,
+                preimages,
+                files,
+            },
+        )
+    }
+
+    fn save_managed_restore_proof(
+        &self,
+        app: &AppType,
+        proof: &ManagedRestoreProof,
+    ) -> Result<(), String> {
         self.db
             .save_live_backup_sync(
                 app.as_str(),
-                &serde_json::to_string(&json!({MARKER: proof}))
+                &serde_json::to_string(&json!({ MARKER: proof }))
                     .map_err(|_| "Managed restore proof unavailable")?,
             )
             .map_err(|_| "Managed restore proof write failed".into())
+    }
+
+    pub(super) fn closed_restore_preview_paths(
+        app: &AppType,
+    ) -> Result<Vec<std::path::PathBuf>, String> {
+        paths(app)
+    }
+
+    fn restore_verified_managed_proof(
+        &self,
+        app: &AppType,
+        config: Value,
+    ) -> Result<ManagedRestoreProof, String> {
+        let proof = match decode(&config)? {
+            Some(proof) => proof,
+            None => self
+                .compute_legacy_managed_restore_proof(
+                    app,
+                    &config,
+                    self.get_current_provider_for_app(app)?,
+                )?
+                .ok_or("Managed restore proof missing")?,
+        };
+        verify_proof(app, &proof, true)?;
+        Ok(proof)
     }
 
     pub(super) fn restore_verified_managed_config(&self, app: &AppType) -> Result<(), String> {
@@ -179,14 +214,21 @@ impl ProxyService {
             .ok_or("Managed restore backup missing")?;
         let raw: Value = serde_json::from_str(&backup.original_config)
             .map_err(|_| "Managed restore backup unavailable")?;
-        self.verify_and_unwrap_managed_restore(app, raw.clone())?;
-        let proof = decode(&raw)?.ok_or("Managed restore proof missing")?;
+        let proof = self.restore_verified_managed_proof(app, raw)?;
+        // Persist the just-verified proof before any live write. A crash after
+        // the first file is restored can then decode original preimages and
+        // owned hashes; recomputing a pre-MARKER proof would require the live
+        // proxy endpoint and reject already-restored originals.
+        self.save_managed_restore_proof(app, &proof)?;
         let expected = hashes(&proof.preimages);
         let paths = paths(app)?;
         if paths.len() != proof.preimages.len() {
             return Err("Managed restore proof unavailable".into());
         }
-        let owned = proof.files.ok_or("Managed restore proof unavailable")?;
+        let owned = proof
+            .files
+            .clone()
+            .ok_or("Managed restore proof unavailable")?;
         for (index, ((path, bytes), hash)) in paths
             .into_iter()
             .zip(proof.preimages)
@@ -210,33 +252,68 @@ impl ProxyService {
         app: &AppType,
         config: Value,
     ) -> Result<(Value, bool), String> {
+        self.verify_managed_restore(app, config, false)
+    }
+
+    pub(super) fn verify_and_unwrap_managed_restore_for_exit(
+        &self,
+        app: &AppType,
+        config: Value,
+    ) -> Result<(Value, bool), String> {
+        self.verify_managed_restore(app, config, true)
+    }
+
+    fn verify_managed_restore(
+        &self,
+        app: &AppType,
+        config: Value,
+        allow_restored: bool,
+    ) -> Result<(Value, bool), String> {
         let proof = match decode(&config)? {
             Some(proof) => proof,
-            None => match self.legacy_managed_restore_proof(app, &config)? {
+            None => match self.compute_legacy_managed_restore_proof(
+                app,
+                &config,
+                self.get_current_provider_for_app(app)?,
+            )? {
                 Some(proof) => proof,
                 None => return Ok((config, false)),
             },
         };
-        if proof.version != 1 || proof.files.as_ref() != Some(&fingerprints(app)?) {
-            return Err(
-                "Managed subscription configuration changed; recovery requires review".into(),
-            );
-        }
+        verify_proof(app, &proof, allow_restored)?;
         Ok((proof.config, true))
+    }
+
+    pub(super) fn managed_restore_preview_paths(
+        &self,
+        app: &AppType,
+        config: &Value,
+    ) -> Result<Option<Vec<std::path::PathBuf>>, String> {
+        let proof = match decode(config)? {
+            Some(proof) => Some(proof),
+            None => self.compute_legacy_managed_restore_proof(
+                app,
+                config,
+                self.current_provider_for_restore_preview(app)?,
+            )?,
+        };
+        let Some(proof) = proof else {
+            return Ok(None);
+        };
+        verify_proof(app, &proof, true)?;
+        Ok(Some(paths(app)?))
     }
 
     /// v0.4.5 stored logical backups but its atomic writers already retained
     /// path-bound receipts. A receipt alone is insufficient: a later MCP edit
     /// also has one. Admit only complete, reproducible subscription projections.
-    fn legacy_managed_restore_proof(
+    fn compute_legacy_managed_restore_proof(
         &self,
         app: &AppType,
         original: &Value,
+        provider: Option<Provider>,
     ) -> Result<Option<ManagedRestoreProof>, String> {
-        let Some(provider) = self
-            .get_current_provider_for_app(app)?
-            .filter(Provider::uses_subscription_proxy)
-        else {
+        let Some(provider) = provider.filter(Provider::uses_subscription_proxy) else {
             return Ok(None);
         };
         let paths = paths(app)?;
@@ -307,13 +384,6 @@ impl ProxyService {
             preimages,
             files: Some(expected),
         };
-        self.db
-            .save_live_backup_sync(
-                app.as_str(),
-                &serde_json::to_string(&json!({MARKER: proof}))
-                    .map_err(|_| "Legacy subscription recovery proof unavailable")?,
-            )
-            .map_err(|_| "Legacy subscription recovery proof write failed")?;
         Ok(Some(proof))
     }
 
@@ -476,4 +546,29 @@ fn legacy_proxy_origin(app: &AppType, bytes: &[u8]) -> Option<String> {
         && parsed.query().is_none()
         && parsed.fragment().is_none())
     .then_some(url)
+}
+
+fn verify_proof(
+    app: &AppType,
+    proof: &ManagedRestoreProof,
+    allow_restored: bool,
+) -> Result<(), String> {
+    let current = fingerprints(app)?;
+    let original = hashes(&proof.preimages);
+    let owned = proof
+        .files
+        .as_ref()
+        .ok_or("Managed restore proof unavailable")?;
+    if proof.version != 1
+        || owned.len() != current.len()
+        || original.len() != current.len()
+        || !current
+            .iter()
+            .zip(owned)
+            .zip(&original)
+            .all(|((live, written), before)| live == written || (allow_restored && live == before))
+    {
+        return Err("Managed subscription configuration changed; recovery requires review".into());
+    }
+    Ok(())
 }

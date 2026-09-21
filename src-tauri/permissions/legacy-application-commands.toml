@@ -37,6 +37,7 @@ commands.allow = [
   "codex_desktop_launch",
   "codex_desktop_open_log_directory",
   "codex_desktop_start_install",
+  "codex_desktop_prepare_install",
   "continue_codex_desktop_restart_with_force",
   "copilot_get_auth_status",
   "copilot_get_models",

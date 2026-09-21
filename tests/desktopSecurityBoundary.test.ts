@@ -182,10 +182,12 @@ describe("desktop IPC capability and CSP boundary", () => {
       "if elevated_windows_cli_boundary_active()",
     );
     expect(lifecycleCommand).toBeGreaterThan(-1);
-    const lifecycleSource = source.slice(
+    const lifecycleEnd = source.indexOf(
+      "\nfn lifecycle_write_rejection",
       lifecycleCommand,
-      lifecycleCommand + 1800,
     );
+    expect(lifecycleEnd).toBeGreaterThan(lifecycleCommand);
+    const lifecycleSource = source.slice(lifecycleCommand, lifecycleEnd);
     expect(lifecycleSource).toContain("is_lifecycle_writable");
     expect(lifecycleSource).toContain("GROK_CLI_LIFECYCLE_ONLY_MESSAGE");
     expect(lifecycleSource).toContain("grok_windows_uses_ordinary_user_helper");

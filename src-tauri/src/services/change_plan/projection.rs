@@ -66,10 +66,13 @@ pub(crate) fn provider_definition_digest(
         "id": provider.id,
         "name": sanitize_display_name(&provider.name),
         "category": category,
+        // A reference is an opaque versioned binding, never credential bytes.
+        // Rotating it invalidates already approved plans before admission.
+        "credentialBinding": provider.settings_config.get("credentialRef"),
         "codex": credential_neutral_codex_projection(&provider.settings_config)?,
     });
     Ok(digest_json(
-        "fyagent.change-plan.provider-definition.v2",
+        "fyagent.change-plan.provider-definition.v3",
         &projection,
     ))
 }
@@ -242,5 +245,25 @@ mod tests {
             digest_json("projection", &left),
             digest_json("projection", &right)
         );
+    }
+}
+
+#[cfg(test)]
+mod credential_binding_tests {
+    use super::*;
+    #[test]
+    fn reference_rotation_changes_definition_without_hashing_material() {
+        let mut provider = Provider::with_id(
+            "fixture-codex".into(),
+            "Fixture".into(),
+            json!({"config":"model = 'fixture-model'", "credentialRef":"pc_version_one"}),
+            None,
+        );
+        let before = provider_definition_digest(&provider).unwrap();
+        provider.settings_config["credentialRef"] = json!("pc_version_two");
+        assert_ne!(before, provider_definition_digest(&provider).unwrap());
+        let after = provider_definition_digest(&provider).unwrap();
+        provider.settings_config["auth"] = json!({"OPENAI_API_KEY":"fixture-never-hashed"});
+        assert_eq!(after, provider_definition_digest(&provider).unwrap());
     }
 }

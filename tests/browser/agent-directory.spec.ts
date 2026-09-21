@@ -190,6 +190,26 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
   const directory = page.getByRole("region", { name: "AI 软件目录" });
   await expect(directory).toBeVisible();
   await expect(directory.getByRole("article")).toHaveCount(7);
+  const workbuddyCard = directory.locator('[data-agent-id="workbuddy"]');
+  await workbuddyCard.getByText("官方资料与许可", { exact: true }).click();
+  const officialSources = workbuddyCard.getByRole("region", {
+    name: "官方来源与许可链接",
+  });
+  await expect(officialSources.getByRole("button")).toHaveCount(3);
+  await officialSources
+    .getByRole("button", { name: /WorkBuddy 软件许可及服务协议/ })
+    .click();
+  expect(
+    (await featureFixtureCalls(page)).filter(
+      ({ command }) => command === "open_external",
+    ),
+  ).toEqual([
+    {
+      command: "open_external",
+      payload: { url: "https://www.workbuddy.cn/document/term" },
+    },
+  ]);
+  await workbuddyCard.getByText("官方资料与许可", { exact: true }).click();
   await expect
     .poll(
       async () =>

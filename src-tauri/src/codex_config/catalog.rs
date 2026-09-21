@@ -48,7 +48,7 @@ pub(crate) fn codex_top_level_model(config_text: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-pub(super) fn codex_native_gateway_rejects_web_search(config_text: &str) -> bool {
+pub(crate) fn codex_native_gateway_rejects_web_search(config_text: &str) -> bool {
     if let Some(base_url) = extract_codex_base_url(config_text) {
         let base_url = base_url.to_ascii_lowercase();
         if CODEX_WEB_SEARCH_REJECT_HOSTS
@@ -718,7 +718,7 @@ pub(super) fn codex_model_catalog_from_settings(
     )))
 }
 
-pub(super) fn set_codex_model_catalog_json_field(
+pub(crate) fn set_codex_model_catalog_json_field(
     config_text: &str,
     catalog_path: Option<&Path>,
 ) -> Result<String, AppError> {
@@ -746,7 +746,7 @@ pub(super) fn set_codex_model_catalog_json_field(
     Ok(doc.to_string())
 }
 
-pub(super) fn set_codex_native_web_search_field(
+pub(crate) fn set_codex_native_web_search_field(
     config_text: &str,
     disable: bool,
 ) -> Result<String, AppError> {

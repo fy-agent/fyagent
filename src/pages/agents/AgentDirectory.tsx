@@ -11,6 +11,8 @@ import { useNavigate } from "react-router-dom";
 import { agentHealthPath } from "../../shared/features/health";
 
 import { getAgentBrand } from "../../shared/assets/agents";
+import { codexInstallerErrorCopy } from "../../shared/codex-desktop/installerErrorCopy";
+import { CodexInstallConfirmation } from "../../shared/codex-desktop/CodexInstallConfirmation";
 import { useCodexDesktopInstaller } from "../../shared/codex-desktop/useCodexDesktopInstaller";
 import {
   installationTargetsForAction,
@@ -57,6 +59,8 @@ import {
   type AgentLifecycleActionView,
 } from "./useAgentLifecycleAction";
 import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";
+import { AgentInstallConfirmation } from "./AgentInstallConfirmation";
+import { AgentSourceLinks } from "./AgentSourceLinks";
 
 function isInstalledReadiness(
   data: AgentInstallReadiness | undefined,
@@ -197,6 +201,10 @@ function DirectoryCardShell({
           ) : null}
         </div>
         <p className="fy-agent-directory-description">{entry.description}</p>
+        <details>
+          <summary>官方资料与许可</summary>
+          <AgentSourceLinks catalogLinks={entry.officialLinks} />
+        </details>
         {configurationObservationCopy(observation.readiness) ? (
           <p className="fy-agent-directory-card-feedback" data-tone="info">
             {configurationObservationCopy(observation.readiness)}
@@ -245,7 +253,7 @@ function preferredInstallTarget(
   targets: readonly AgentInstallationTarget[],
 ): AgentInstallationTarget | null {
   return (
-    targets.find((target) => target.label.startsWith("/Applications")) ??
+    targets.find((target) => target.scope === "current_user") ??
     targets[0] ??
     null
   );
@@ -345,7 +353,7 @@ function GenericDirectoryCard({
         size="comfortable"
         originRef={pickerOriginRef}
         title={`选择 ${entry.displayName} 的安装位置`}
-        description="选择要安装到的目录。根目录 Applications 是推荐位置。"
+        description="选择安装位置后检查环境并确认本次变化。"
         onOpenChange={(open) => {
           if (!open) setPickingTarget(null);
         }}
@@ -365,10 +373,13 @@ function GenericDirectoryCard({
                 onClick={() => {
                   if (!lifecycle.primaryAction || !selectedTarget) return;
                   setPickingTarget(null);
-                  void lifecycle.run(lifecycle.primaryAction, selectedTarget);
+                  void lifecycle.prepare(
+                    lifecycle.primaryAction,
+                    selectedTarget,
+                  );
                 }}
               >
-                {lifecycle.primaryAction === "update" ? "确认更新" : "确认安装"}
+                检查并继续
               </Button>
             </>
           ) : undefined
@@ -390,6 +401,10 @@ function GenericDirectoryCard({
           />
         ) : null}
       </Dialog>
+      <AgentInstallConfirmation
+        name={entry.displayName}
+        lifecycle={lifecycle}
+      />
     </>
   );
 }
@@ -408,7 +423,11 @@ function genericLifecycleSlotView(
   onConfigure: () => void,
 ): AgentLifecycleActionSlotView {
   if (lifecycle.busy) {
-    return { kind: "status", label: genericBusyCopy(lifecycle) };
+    return {
+      kind: "status",
+      label: genericBusyCopy(lifecycle),
+      onCancel: lifecycle.canCancel ? () => void lifecycle.cancel() : undefined,
+    };
   }
   if (lifecycle.canRetry) {
     return { kind: "retry", onClick: () => void lifecycle.retry() };
@@ -478,15 +497,19 @@ function CodexDirectoryCard({
   projection,
   onConfigure,
   onRun,
+  onCancel,
 }: {
   entry: AgentCatalogEntry;
   observation: AgentDirectoryRowObservation;
   projection: CodexDirectoryActionProjection;
   onConfigure: (agentId: AgentCatalogId) => void;
   onRun: () => Promise<void>;
+  onCancel: () => Promise<void>;
 }) {
   const scanningCopy = directoryBusyCopy(observation);
-  const error = projection.error?.details.redactedMessage ?? null;
+  const error = projection.error
+    ? codexInstallerErrorCopy(projection.error)
+    : null;
   return (
     <DirectoryCardShell
       entry={entry}
@@ -507,6 +530,7 @@ function CodexDirectoryCard({
           observation={observation}
           projection={projection}
           onRun={onRun}
+          onCancel={onCancel}
         />
       }
     />
@@ -518,9 +542,14 @@ function codexLifecycleSlotView(
   observation: AgentDirectoryRowObservation,
   projection: CodexDirectoryActionProjection,
   onRun: () => Promise<void>,
+  onCancel: () => Promise<void>,
 ): AgentLifecycleActionSlotView {
   if (projection.busy) {
-    return { kind: "status", label: codexBusyCopy(projection) };
+    return {
+      kind: "status",
+      label: codexBusyCopy(projection),
+      onCancel: projection.canCancel ? () => void onCancel() : undefined,
+    };
   }
   if (projection.canRetry) {
     return { kind: "retry", onClick: () => void onRun() };
@@ -546,11 +575,13 @@ function CodexLifecycleSlot({
   observation,
   projection,
   onRun,
+  onCancel,
 }: {
   scanningCopy: string | null;
   observation: AgentDirectoryRowObservation;
   projection: CodexDirectoryActionProjection;
   onRun: () => Promise<void>;
+  onCancel: () => Promise<void>;
 }) {
   return (
     <AgentLifecycleActionSlot
@@ -559,6 +590,7 @@ function CodexLifecycleSlot({
         observation,
         projection,
         onRun,
+        onCancel,
       )}
     />
   );
@@ -569,11 +601,15 @@ export function AgentDirectory({
   entries,
   scanController,
   onConfigure,
+  selectedAgentId,
+  onBack,
 }: {
   headingRef?: RefObject<HTMLHeadingElement>;
   entries: readonly AgentCatalogEntry[];
   scanController: AgentDirectoryScanController;
   onConfigure: (agentId: AgentCatalogId) => void;
+  selectedAgentId?: AgentCatalogId;
+  onBack?: () => void;
 }) {
   const { ports } = useFeatures();
   const installer = useCodexDesktopInstaller();
@@ -583,7 +619,7 @@ export function AgentDirectory({
   const visibleEntries = applyCommittedAgentDirectoryOrder(
     entries,
     state.committedOrderIds,
-  );
+  ).filter((entry) => !selectedAgentId || entry.id === selectedAgentId);
   const hasSuccessfulResults = Object.keys(state.results).length > 0;
   const currentReadiness = state.currentSuccessIds
     .map((id) => state.results[id])
@@ -610,9 +646,12 @@ export function AgentDirectory({
         <div className="fy-agent-directory-title-row">
           <div className="fy-agent-directory-title-group">
             <h1 ref={headingRef} tabIndex={-1}>
-              我的 AI 软件
+              {selectedAgentId
+                ? `设置 ${visibleEntries[0]?.displayName ?? "AI 软件"}`
+                : "我的 AI 软件"}
             </h1>
           </div>
+          {onBack ? <Button onClick={onBack}>返回</Button> : null}
           <Button
             className="fy-control-button-primary fy-agent-scan-button"
             disabled={scanning}
@@ -664,6 +703,7 @@ export function AgentDirectory({
                 projection={codexProjection}
                 onConfigure={onConfigure}
                 onRun={runCodexAndReread}
+                onCancel={installer.cancel}
               />
             );
           }
@@ -678,6 +718,7 @@ export function AgentDirectory({
           );
         })}
       </div>
+      <CodexInstallConfirmation installer={installer} />
     </section>
   );
 }

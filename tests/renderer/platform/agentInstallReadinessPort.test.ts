@@ -5,6 +5,7 @@ import {
   AGENT_INSTALL_READINESS_CONTRACT_VERSION,
 } from "@/shared/features/agent-install-readiness";
 import { createAgentInstallReadinessPort } from "@/shared/platform/tauri/feature-ports/agentInstallReadiness";
+import { installPreflightFixture } from "../../fixtures/agentInstallPreflight";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -68,6 +69,126 @@ function inventoryWire(agentId = "qoderwork") {
 
 describe("Tauri Agent install readiness port", () => {
   beforeEach(() => invoke.mockReset());
+
+  it("checks before starting and rejects a substituted preflight target", async () => {
+    const request = {
+      agentId: "qoderwork" as const,
+      action: "install" as const,
+      inventoryId: `i1:${"a".repeat(32)}`,
+      targetId: `d1:${"b".repeat(32)}`,
+      expectedTargetRevision: `r1:${"c".repeat(64)}`,
+    };
+    const checked = installPreflightFixture(request);
+    invoke.mockResolvedValueOnce(checked);
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).resolves.toEqual(checked);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      "get_agent_install_preflight",
+      { request },
+    );
+    invoke.mockResolvedValueOnce({
+      ...checked,
+      request: { ...request, targetId: `d1:${"e".repeat(32)}` },
+    });
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).rejects.toThrow();
+    invoke.mockResolvedValueOnce({
+      ...checked,
+      downloadUrl: "javascript:alert(1)",
+    });
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).rejects.toThrow();
+    invoke.mockResolvedValueOnce({
+      ...checked,
+      installerPath: "/tmp/untrusted",
+    });
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).rejects.toThrow();
+    invoke.mockReset();
+    await expect(
+      createAgentInstallReadinessPort().preflight({
+        ...request,
+        action: "launch",
+      }),
+    ).rejects.toThrow();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid or insufficient space budgets and admits exact capacity", async () => {
+    const request = {
+      agentId: "qoderwork" as const,
+      action: "install" as const,
+    };
+    const checked = installPreflightFixture(request);
+    const requiredBytes = 3 * 1024 ** 3;
+    const known = {
+      ...checked,
+      spaceBudgetBasis: "source_size",
+      artifactSizeBytes: 1024 ** 3,
+      requiredBytes,
+      availableBytes: requiredBytes,
+    };
+    invoke.mockResolvedValueOnce(known);
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).resolves.toEqual(known);
+    for (const invalid of [
+      { ...known, availableBytes: 1024 },
+      { ...known, availableBytes: requiredBytes - 1 },
+      { ...known, requiredBytes: 0 },
+      { ...known, requiredBytes: 1 },
+      { ...known, requiredBytes: null },
+      { ...known, requiredBytes: requiredBytes + 3 },
+      { ...known, requiredBytes: Number.MAX_SAFE_INTEGER + 1 },
+      { ...known, requiredBytes: Number.NaN },
+      { ...known, artifactSizeBytes: Number.MAX_SAFE_INTEGER },
+      { ...known, artifactSizeBytes: null },
+      { ...known, spaceBudgetBasis: "vendor_guarantee" },
+      { ...checked, spaceBudgetBasis: "cli_unknown", requiredBytes: null },
+      { ...checked, runtime: "node_npm" },
+      { ...checked, requiredBytes: 3 },
+      {
+        ...known,
+        artifactSizeBytes: 3 * 1024 ** 3,
+        requiredBytes: 9 * 1024 ** 3,
+        availableBytes: 10 * 1024 ** 3,
+      },
+    ]) {
+      invoke.mockResolvedValueOnce(invalid);
+      await expect(
+        createAgentInstallReadinessPort().preflight(request),
+      ).rejects.toThrow("Invalid Agent installation preflight");
+    }
+    const cliReserve = {
+      ...checked,
+      runtime: "node_npm" as const,
+      artifactSizeBytes: 29410539,
+      requiredBytes: 29410539 * 3,
+      availableBytes: 29410539 * 3,
+      spaceBudgetBasis: "package_reserve" as const,
+      downloadUrl: null,
+    };
+    invoke.mockResolvedValueOnce(cliReserve);
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).resolves.toEqual(cliReserve);
+    const cli = {
+      ...checked,
+      runtime: "node_npm",
+      requiredBytes: null,
+      artifactSizeBytes: null,
+      spaceBudgetBasis: "cli_unknown",
+      downloadUrl: null,
+    };
+    invoke.mockResolvedValueOnce(cli);
+    await expect(
+      createAgentInstallReadinessPort().preflight(request),
+    ).resolves.toEqual(cli);
+  });
 
   it("invokes readiness and action commands with closed payloads", async () => {
     invoke.mockResolvedValue(wire("codex"));

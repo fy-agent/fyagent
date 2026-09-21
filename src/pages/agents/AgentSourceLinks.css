@@ -1,0 +1,118 @@
+.fy-agent-source-links {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--fy-surface-opaque);
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-panel);
+}
+
+details:not([open]) > .fy-agent-source-links {
+  display: none;
+}
+
+.fy-agent-source-links-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fy-agent-source-links-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fy-text-secondary);
+  letter-spacing: -0.01em;
+}
+
+.fy-agent-source-links-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fy-agent-source-link-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--fy-text);
+  background: var(--fy-surface-raised);
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-compact);
+  text-decoration: none;
+  transition:
+    background var(--fy-motion-control) var(--fy-motion-ease),
+    border-color var(--fy-motion-control) var(--fy-motion-ease);
+}
+
+.fy-agent-source-link-card:hover {
+  background: var(--fy-surface-hover);
+  border-color: var(--fy-border-strong);
+  text-decoration: none;
+}
+
+.fy-agent-source-link-card:focus-visible {
+  outline: 2px solid var(--fy-focus, #3b82f6);
+  outline-offset: 1px;
+}
+
+.fy-agent-source-link-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--fy-radius-compact);
+  border: 1px solid var(--fy-border);
+  background: var(--fy-surface-raised);
+  color: var(--fy-text-secondary);
+}
+
+.fy-agent-source-link-badge-homepage {
+  border-color: var(--fy-selected-border);
+  background: var(--fy-selected);
+  color: var(--fy-accent-text);
+}
+
+.fy-agent-source-link-badge-download {
+  border-color: var(--fy-selected-border);
+  background: var(--fy-selected-bg);
+  color: var(--fy-accent-text);
+}
+
+.fy-agent-source-link-badge-license {
+  border-color: var(--fy-border-strong);
+  background: var(--fy-surface-raised);
+  color: var(--fy-text);
+}
+
+.fy-agent-source-link-badge-terms {
+  border-color: var(--fy-warning-border);
+  background: var(--fy-warning-soft);
+  color: var(--fy-warning-text);
+}
+
+.fy-agent-source-link-badge-docs {
+  border-color: var(--fy-border);
+  background: var(--fy-surface-soft);
+  color: var(--fy-text-secondary);
+}
+
+.fy-agent-source-link-label {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fy-agent-source-link-arrow {
+  font-size: 11px;
+  color: var(--fy-text-muted);
+  transition: transform var(--fy-motion-control) var(--fy-motion-ease);
+}
+
+.fy-agent-source-link-card:hover .fy-agent-source-link-arrow {
+  transform: translate(1px, -1px);
+  color: var(--fy-text);
+}

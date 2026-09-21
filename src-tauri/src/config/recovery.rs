@@ -22,6 +22,31 @@ static WRITER: Mutex<()> = Mutex::new(());
 
 thread_local! {
     static OPERATION: RefCell<Option<HashMap<PathBuf, String>>> = const { RefCell::new(None) };
+    static RESTORE_EXPECTED: RefCell<Option<HashMap<PathBuf, Option<String>>>> = const { RefCell::new(None) };
+}
+
+/// Restrict existing synchronous format writers to a domain-verified set of
+/// files/postimages. This adds no write authority: every actual write checks
+/// under WRITER, including later internal writes. Never cross an await.
+pub(crate) struct FileRestoreScope(PhantomData<Rc<()>>);
+
+pub(crate) fn file_restore_scope(
+    expected: Vec<(PathBuf, Option<String>)>,
+) -> Result<FileRestoreScope, AppError> {
+    RESTORE_EXPECTED.with(|state| {
+        let mut state = state.borrow_mut();
+        if state.is_some() {
+            return Err(failure("config_restore_already_active"));
+        }
+        *state = Some(expected.into_iter().collect());
+        Ok(FileRestoreScope(PhantomData))
+    })
+}
+
+impl Drop for FileRestoreScope {
+    fn drop(&mut self) {
+        RESTORE_EXPECTED.with(|state| *state.borrow_mut() = None);
+    }
 }
 
 /// Synchronous domain writers may touch one config several times (for example
@@ -197,6 +222,14 @@ fn write_with(
         return Err(failure("config_file_size_or_type_invalid"));
     }
     let before = read_file(path, MAX_FILE_BYTES)?;
+    RESTORE_EXPECTED.with(|state| {
+        if let Some(expected) = state.borrow().as_ref() {
+            if expected.get(path) != Some(&digest(before.as_deref())) {
+                return Err(failure("config_external_change"));
+            }
+        }
+        Ok(())
+    })?;
     if before.as_deref() == bytes {
         return Ok(()); // Preserve the last useful undo, including on repeated saves.
     }
@@ -254,6 +287,11 @@ fn write_with(
     let result = apply(path, bytes);
     let after = read_file(path, MAX_FILE_BYTES);
     if result.is_ok() && after.as_ref().is_ok_and(|after| after.as_deref() == bytes) {
+        RESTORE_EXPECTED.with(|state| {
+            if let Some(expected) = state.borrow_mut().as_mut() {
+                expected.insert(path.to_path_buf(), digest(bytes));
+            }
+        });
         OPERATION.with(|operation| {
             if let Some(paths) = operation.borrow_mut().as_mut() {
                 paths.insert(path.to_path_buf(), record.receipt_id);
@@ -424,6 +462,58 @@ pub(crate) fn restore_file_preimage_if_owned(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restore_scope_rechecks_external_edits_and_rejects_unplanned_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let auth = dir.path().join("auth.json");
+        write(&path, Some(b"proxy"), false).unwrap();
+        let before = fs::read(record_path(&path)).unwrap();
+        let _scope = file_restore_scope(vec![(path.clone(), digest(Some(b"proxy")))]).unwrap();
+        assert!(write(&auth, Some(b"must not write login"), false).is_err());
+        assert!(!auth.exists());
+        fs::write(&path, b"external edit").unwrap();
+        assert!(write(&path, Some(b"restored"), false).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"external edit");
+        assert_eq!(fs::read(record_path(&path)).unwrap(), before);
+    }
+
+    #[test]
+    fn restore_scope_tracks_internal_writes_without_reentry_or_lock_recursion() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, b"proxy").unwrap();
+        {
+            let _restore =
+                file_restore_scope(vec![(path.clone(), digest(Some(b"proxy")))]).unwrap();
+            let _operation = file_mutation_scope();
+            assert!(file_restore_scope(vec![]).is_err());
+            write(&path, Some(b"source"), false).unwrap();
+            write(&path, Some(b"source and mcp"), false).unwrap();
+            assert_eq!(fs::read(rolling_backup_path(&path)).unwrap(), b"proxy");
+        }
+        write(&path, Some(b"next normal save"), false).unwrap();
+    }
+
+    #[test]
+    fn restore_scope_keeps_prior_completed_file_when_later_file_conflicts() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("catalog.json");
+        let second = dir.path().join("config.toml");
+        fs::write(&first, b"projected catalog").unwrap();
+        fs::write(&second, b"projected config").unwrap();
+        let _restore = file_restore_scope(vec![
+            (first.clone(), digest(Some(b"projected catalog"))),
+            (second.clone(), digest(Some(b"projected config"))),
+        ])
+        .unwrap();
+        write(&first, Some(b"original catalog"), false).unwrap();
+        fs::write(&second, b"external config").unwrap();
+        assert!(write(&second, Some(b"original config"), false).is_err());
+        assert_eq!(fs::read(first).unwrap(), b"original catalog");
+        assert_eq!(fs::read(second).unwrap(), b"external config");
+    }
 
     #[test]
     fn subscription_compensation_rechecks_postimage_at_the_writer_boundary() {

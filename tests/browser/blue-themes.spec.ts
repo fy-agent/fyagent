@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { installRichTauriFeatureFixture } from "./support/features";
 import {
@@ -198,6 +200,81 @@ test("Agent directory cards preserve text contrast on the bright CI backing", as
   });
   expect(samples.filter((sample) => sample.ratio < 4.5)).toEqual([]);
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`opened official source disclosures preserve text and badge contrast in ${theme} mode on bright CI backing`, async ({
+    page,
+  }, info) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.addInitScript(
+      (currentTheme) => localStorage.setItem("fyagent-theme", currentTheme),
+      theme,
+    );
+    await installRichTauriFeatureFixture(page);
+    await openRendererPage(page, "/agents");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(
+      page.getByRole("button", { name: "重新扫描", exact: true }),
+    ).toBeEnabled();
+    await expect(page.getByRole("progressbar")).toHaveCount(0);
+    const directory = page.locator(".fy-agent-directory-list");
+    await expect(
+      directory.getByRole("heading", { name: "Grok Build", exact: true }),
+    ).toBeVisible();
+
+    await directory.evaluate((element) => {
+      (element as HTMLElement).style.backgroundColor = "rgb(111, 141, 164)";
+    });
+
+    const grokCard = directory.locator('[data-agent-id="grokbuild"]');
+    const codexCard = directory.locator('[data-agent-id="codex"]');
+
+    await grokCard.getByText("官方资料与许可", { exact: true }).click();
+    await expect(grokCard.locator(".fy-agent-source-links")).toBeVisible();
+
+    await codexCard.getByText("官方资料与许可", { exact: true }).click();
+    await expect(codexCard.locator(".fy-agent-source-links")).toBeVisible();
+
+    await grokCard.scrollIntoViewIfNeeded();
+    const grokSamples = await sampleTextContrast(
+      page,
+      '.fy-agent-directory-card[data-agent-id="grokbuild"] .fy-agent-source-links',
+    );
+    expect(grokSamples.length).toBeGreaterThan(3);
+
+    await codexCard.scrollIntoViewIfNeeded();
+    const codexSamples = await sampleTextContrast(
+      page,
+      '.fy-agent-directory-card[data-agent-id="codex"] .fy-agent-source-links',
+    );
+    expect(codexSamples.length).toBeGreaterThan(3);
+
+    const allSamples = [...grokSamples, ...codexSamples];
+    const badgesSampled = allSamples.map((sample) => sample.text);
+    expect(badgesSampled.some((text) => text.includes("官方主页"))).toBe(true);
+    expect(badgesSampled.some((text) => text.includes("官方文档"))).toBe(true);
+    expect(badgesSampled.some((text) => text.includes("官方下载"))).toBe(true);
+    expect(badgesSampled.some((text) => text.includes("开源许可"))).toBe(true);
+    expect(badgesSampled.some((text) => text.includes("服务协议"))).toBe(true);
+
+    await info.attach(`open-source-links-${theme}`, {
+      body: JSON.stringify(allSamples),
+      contentType: "application/json",
+    });
+
+    expect(allSamples.filter((sample) => sample.ratio < 4.5)).toEqual([]);
+
+    const reviewDir = path.resolve(
+      "artifacts/ui-open-source-review",
+      info.project.name,
+    );
+    fs.mkdirSync(reviewDir, { recursive: true });
+    await grokCard.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: path.join(reviewDir, `open-source-links-${theme}.png`),
+    });
+  });
+}
 
 test("theme reveal has one real circular track and survives quick reversal and resize", async ({
   page,

@@ -10,6 +10,7 @@ mod inventory;
 mod jobs;
 mod lifecycle_policy;
 mod macos;
+mod preflight;
 mod sources;
 mod types;
 mod windows;
@@ -24,6 +25,10 @@ pub use auth_sessions::{
 pub(crate) use inventory::local_health_inventory_for;
 pub use inventory::{inventory_for, AgentInstallationInventoryStore};
 pub use jobs::AgentActionJobStore;
+#[cfg(target_os = "macos")]
+pub(crate) use preflight::directory_writable;
+pub(crate) use preflight::{display_user_path, existing_directory};
+pub use preflight::{preflight_for, AgentInstallPreflightDto};
 pub use types::{
     resolve_requested_surface, validate_opaque_release_id, AgentActionErrorDto, AgentActionId,
     AgentActionJobSnapshot, AgentActionJobStage, AgentActionResult, AgentAuthErrorDto,
@@ -564,6 +569,15 @@ pub async fn start_agent_action(
         }
     }
     let target = validate_action_target(&request, state).await?;
+    let confirmed_target = if request.agent_id != AgentCatalogId::Codex
+        && matches!(
+            request.action,
+            AgentActionId::Install | AgentActionId::Update
+        ) {
+        Some(preflight::confirm_preflight(request.clone(), state).await?)
+    } else {
+        None
+    };
     match (request.agent_id, surface, request.action) {
         (
             AgentCatalogId::Codex,
@@ -589,7 +603,14 @@ pub async fn start_agent_action(
             AgentSurface::Cli,
             AgentActionId::Install | AgentActionId::Update,
         ) => {
-            run_cli_lifecycle(request.agent_id, request.action).await?;
+            let manifest = match confirmed_target.as_ref().map(|target| &target.plan) {
+                Some(preflight::PreparedPlanPayload::CliNpm(manifest)) => Some(manifest),
+                _ => None,
+            };
+            let npm_target = confirmed_target
+                .as_ref()
+                .and_then(|target| target.npm_target.clone());
+            run_cli_lifecycle(request.agent_id, request.action, manifest, npm_target).await?;
             Ok(immediate_result(
                 request.agent_id,
                 request.action,
@@ -1071,6 +1092,9 @@ fn map_windows_installer_error_parts(
         }
         Some("agent_installer_timed_out") => return AgentReasonCode::InstallerTimedOut,
         Some("agent_installer_exited_nonzero") => return AgentReasonCode::InstallerExitedNonzero,
+        Some("insufficient_disk_space") => return AgentReasonCode::InsufficientDiskSpace,
+        Some("tool_candidate_conflict") => return AgentReasonCode::CandidateConflict,
+        Some("tool_target_changed") => return AgentReasonCode::TargetChanged,
         _ => {}
     }
     match code {
@@ -1442,6 +1466,13 @@ mod tests {
         assert_eq!(
             map_windows_installer_error_parts(InstallerErrorCode::JobAlreadyRunning, None),
             AgentReasonCode::OperationConflict
+        );
+        assert_eq!(
+            map_windows_installer_error_parts(
+                InstallerErrorCode::WindowsDeploymentFailed,
+                Some("tool_target_changed"),
+            ),
+            AgentReasonCode::TargetChanged
         );
     }
 

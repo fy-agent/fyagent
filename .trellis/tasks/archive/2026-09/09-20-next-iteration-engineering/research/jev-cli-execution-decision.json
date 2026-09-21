@@ -1,0 +1,87 @@
+{
+  "tool": "jev_decide",
+  "model": "typesafe-ai/jev",
+  "provider": "vercel",
+  "recommendation": {
+    "selected": "closed_exact_specs_with_guards",
+    "escaped": false,
+    "confidence": 0.99,
+    "probabilities": {
+      "defer_dependency_path": 0,
+      "investigate": 0,
+      "accept_metadata_only": 0,
+      "replace_with_locked_staging_installer": 0,
+      "none": 0,
+      "closed_exact_specs_with_guards": 1,
+      "ask_user": 0
+    }
+  },
+  "requirements_checked": 3,
+  "checks": [
+    {
+      "candidate": "closed_exact_specs_with_guards",
+      "requirement": 0,
+      "answer": "supported"
+    },
+    {
+      "candidate": "closed_exact_specs_with_guards",
+      "requirement": 1,
+      "answer": "supported"
+    },
+    {
+      "candidate": "closed_exact_specs_with_guards",
+      "requirement": 2,
+      "answer": "supported"
+    },
+    {
+      "candidate": "replace_with_locked_staging_installer",
+      "requirement": 0,
+      "answer": "contradicted"
+    },
+    {
+      "candidate": "replace_with_locked_staging_installer",
+      "requirement": 1,
+      "answer": "unknown"
+    },
+    {
+      "candidate": "replace_with_locked_staging_installer",
+      "requirement": 2,
+      "answer": "unknown"
+    },
+    {
+      "candidate": "accept_metadata_only",
+      "requirement": 0,
+      "answer": "contradicted"
+    },
+    {
+      "candidate": "accept_metadata_only",
+      "requirement": 1,
+      "answer": "contradicted"
+    },
+    {
+      "candidate": "accept_metadata_only",
+      "requirement": 2,
+      "answer": "unknown"
+    },
+    {
+      "candidate": "defer_dependency_path",
+      "requirement": 0,
+      "answer": "unknown"
+    },
+    {
+      "candidate": "defer_dependency_path",
+      "requirement": 1,
+      "answer": "contradicted"
+    },
+    {
+      "candidate": "defer_dependency_path",
+      "requirement": 2,
+      "answer": "unknown"
+    }
+  ],
+  "warnings": [],
+  "usage": {
+    "input_tokens": 2624,
+    "output_tokens": 599
+  }
+}

@@ -76,7 +76,8 @@
   background: var(--fy-surface-inset);
 }
 
-.fy-first-use-recommendation > div {
+.fy-first-use-recommendation-content {
+  flex: 1;
   min-width: 0;
 }
 
@@ -88,6 +89,42 @@
 
 .fy-first-use-recommendation p {
   margin-top: 4px;
+}
+
+.fy-first-use-preset-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.fy-first-use-preset-category {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--fy-radius-compact);
+  background: var(--fy-surface-elevated, rgba(255, 255, 255, 0.08));
+  color: var(--fy-text-secondary);
+  border: 1px solid var(--fy-border);
+}
+
+.fy-first-use-preset-name {
+  color: var(--fy-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fy-first-use-recommendation-action {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.fy-first-use-entry-btn {
+  white-space: nowrap;
 }
 
 .fy-first-use-actions {
@@ -106,4 +143,27 @@
   color: var(--fy-text-secondary);
   background: transparent;
   border-color: transparent;
+}
+
+.fy-first-use-existing-config-content {
+  display: grid;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fy-text);
+}
+
+.fy-first-use-existing-config-content > p {
+  margin: 0;
+}
+
+.fy-first-use-keep-notice {
+  font-size: 12px;
+  color: var(--fy-text-secondary);
+}
+
+.fy-first-use-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }

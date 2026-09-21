@@ -1,0 +1,12 @@
+[[permission]]
+identifier = "allow-config-pack"
+description = "Preview selected portable connection settings, import only inactive credentialless drafts, and use native file pickers. No activation or execution."
+commands.allow = [
+  "list_config_pack_candidates",
+  "preview_config_pack_export",
+  "preview_config_pack_import",
+  "apply_config_pack_import",
+  "cancel_config_pack_preview",
+  "pick_config_pack_file",
+  "save_config_pack_export",
+]

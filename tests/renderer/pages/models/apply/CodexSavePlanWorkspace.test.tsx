@@ -175,7 +175,11 @@ describe("Codex save Change Plan workspace", () => {
       </FeatureProvider>,
     );
 
-    expect(screen.getByText("保存并启用 Codex Provider")).toBeVisible();
+    expect(
+      screen.getByText(
+        `保存 ${changePlanUpsertWire.targetProviderName} 并设为 Codex 当前 Provider。`,
+      ),
+    ).toBeVisible();
     expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
     await waitFor(() => expect(apply).toHaveBeenCalledTimes(1));

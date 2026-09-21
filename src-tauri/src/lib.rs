@@ -1652,6 +1652,13 @@ pub fn run() {
 
             // 启动阶段不再无条件保存,避免意外覆盖用户配置。
 
+            // Only legacy Codex credential rows are migrated. Locked stores
+            // retain the original row; this never writes an external file.
+            if crate::services::provider::ProviderCredentials::migrate_legacy(&app_state.db).is_err() {
+                log::warn!("Provider credential migration deferred");
+            }
+            crate::services::provider::ProviderCredentials::settle(&app_state.db);
+
             // 注册 deep-link URL 处理器（使用正确的 DeepLinkExt API）
             log::info!("=== Registering deep-link URL handler ===");
 
@@ -1752,6 +1759,7 @@ pub fn run() {
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
             app.manage(app_state.projects.clone());
             app.manage(commands::DeliveryKitsState(app_state.delivery_kits.clone()));
+            app.manage(commands::ConfigPackState::default());
             app.manage(app_state);
 
             // 初始化 SkillService
@@ -1992,6 +2000,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_delivery_kits,
+            commands::list_config_pack_candidates,
+            commands::preview_config_pack_export,
+            commands::preview_config_pack_import,
+            commands::apply_config_pack_import,
+            commands::cancel_config_pack_preview,
+            commands::pick_config_pack_file,
+            commands::save_config_pack_export,
             commands::preview_builtin_delivery_kit,
             commands::pick_delivery_kit_import,
             commands::apply_delivery_kit_import,
@@ -2030,6 +2045,7 @@ pub fn run() {
             commands::restore_config_file_recovery,
             commands::get_agent_install_readiness,
             commands::get_agent_installation_inventory,
+            commands::get_agent_install_preflight,
             commands::start_agent_action,
             commands::cancel_agent_action,
             commands::get_agent_action_job,
@@ -2266,6 +2282,7 @@ pub fn run() {
             commands::stop_proxy_server,
             commands::stop_proxy_with_restore,
             commands::get_proxy_takeover_status,
+            commands::get_proxy_restore_preview,
             commands::set_proxy_takeover_for_app,
             commands::get_proxy_status,
             commands::get_proxy_config,
@@ -2435,6 +2452,7 @@ pub fn run() {
             commands::codex_desktop_check_latest,
             commands::codex_desktop_get_job,
             commands::codex_desktop_start_install,
+            commands::codex_desktop_prepare_install,
             commands::codex_desktop_cancel_install,
             commands::codex_desktop_launch,
             commands::codex_desktop_open_log_directory,
@@ -3899,11 +3917,12 @@ mod tests {
 
     #[test]
     fn codex_desktop_ipc_keeps_seven_ordinary_commands_and_four_trusted_restart_commands() {
-        const ORDINARY_COMMANDS: [&str; 7] = [
+        const ORDINARY_COMMANDS: [&str; 8] = [
             "codex_desktop_get_local_status",
             "codex_desktop_check_latest",
             "codex_desktop_get_job",
             "codex_desktop_start_install",
+            "codex_desktop_prepare_install",
             "codex_desktop_cancel_install",
             "codex_desktop_launch",
             "codex_desktop_open_log_directory",

@@ -27,6 +27,7 @@ export type RouteChunkVerification = Readonly<{
 
 export const RENDERER_ROUTE_ENTRIES: readonly string[];
 export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES: readonly string[];
+export const RENDERER_DEFERRED_SHELL_ENTRIES: readonly string[];
 export const RENDERER_NESTED_SUBSCRIPTION_PORT: Readonly<{
   importer: string;
   entry: string;

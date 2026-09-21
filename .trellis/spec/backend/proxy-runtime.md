@@ -100,6 +100,9 @@ backup body, or replacement routing implementation.
   remain intact and keep their backup/recovery evidence. Incomplete ownership
   yields recovery-required/state-unknown, never a confirmed rollback. This
   narrower protection does not redefine legacy API-key backup formats.
+  Exit/recovery accepts each exact preimage as already restored when another
+  file failed. Binding/rebinding still requires every owned postimage. A partial
+  exit must not authorize a new activation over an uncertain projection.
 - Expected postimages come from this operation's atomic-writer receipt, never
   a new sample of current bytes after asynchronous work. Rebinding verifies
   the prior proof before replacing it, so earlier external edits cannot become
@@ -201,12 +204,57 @@ backup body, or replacement routing implementation.
 - A switch lock serializes conflicting transitions for the same application.
   A concurrent writer must wait or fail with a conflict; it must not race the
   backup, Provider selection, live write, or active-target update.
+- `get_proxy_restore_preview({app})` admits only `claude`, `codex`, and
+  `grokbuild`. Under the same target lock it returns `{app, enabled,
+  canRestore, targets: [{path, exists}]}` from the current DB backup and the
+  actual managed/legacy exit ownership checks. It cannot repair a stale
+  selection, upgrade a legacy proof, generate a catalog, or mutate a file.
+  Missing proof keeps `enabled=true`, `canRestore=false`, and empty targets.
+  Conflicting proof keeps `enabled=true` and `canRestore=false`, but retains
+  closed target `path`/`exists` when that metadata can be obtained without
+  trusting the conflicting backup or granting restore authority. An already
+  restored live file is a no-op write; its preview still discloses the same
+  closed native target list with `canRestore=true`. A failed status read is
+  an error, never a fabricated disabled state.
+  Managed Codex discloses config and catalog, never native auth. No raw
+  backup, token, or rolling-backup authority is projected to the Renderer.
+  Confirmation calls the existing per-app disable operation, which rechecks
+  ownership at mutation time. After owned files are restored and verified,
+  only this app's `enabled` flag is cleared and its live backup deleted, in
+  one SQL transaction; other proxy parameters stay. Native I/O stays outside
+  the DAO mutex. A failed second statement rolls both changes back so the
+  restored files still yield a retryable preview.
+  v0.4.5 logical backups are verified before any recovery record is replaced.
+  After `verify_proof` succeeds and before any restore write, persist that
+  complete proof with its original preimages and owned hashes. File restore
+  is then idempotent. Update hashes only after the owned restore finishes.
+  A failed last ownership check leaves the logical backup untouched.
+  Success requires fresh disabled state, actual
+  target live summary, and managed-account overview readback.
 - If a live write, later switch step, or readback fails, run the existing
   compensation/restore path and report whether recovery completed. Never claim
   activation from a Provider database row when the live Agent state is unknown.
 - Takeover matching helpers in `services/proxy/takeover.rs` are pure URL/config
   recognition. Stateful reads, writes, locks, backup ownership, and transition
   order stay in `ProxyService`.
+- Legacy API-key exit keeps the historical DB backup format. A current file
+  already equivalent to the intended restored configuration is a no-op. Any
+  changed file requires a valid path-bound atomic-writer receipt and the full
+  takeover projection reproduced from its original/source configuration; a
+  loopback URL, placeholder or newer FyAgent writer receipt alone is not
+  ownership. Unrelated external edits and invalid/missing receipts preserve
+  the file and DB backup and return actionable conflict guidance.
+- If a receipt still retains the real original, restore its exact bytes at
+  the shared guarded writer. A hot-switch backup may instead require existing
+  format writers; constrain them using `file_restore_scope`, including catalog
+  writes, and never restore Codex native auth from a proxy backup. Catalog
+  admission uses existing pure field transforms and cannot generate a catalog
+  or launch CLI discovery. Legacy backups still cannot prove changes to DB-only
+  fields masked by both projections; DB remains the source authority there.
+- Missing/corrupt placeholder backups may use a guarded SSOT projection or a
+  verified original file receipt. Never fall through from an ownership failure
+  into unchecked cleanup, or manufacture a usable original by deleting keys
+  and endpoints. Unverifiable historical evidence requires manual comparison.
 
 ### Provider switching and crash recovery
 
@@ -287,7 +335,13 @@ backup body, or replacement routing implementation.
   behavior, persisted/live/runtime ordering, concurrent switches, and rollback.
 - Recovery tests cover clean shutdown, interrupted takeover, missing/uncertain
   backup, recognized local-proxy state, unrecognized user state, and idempotent
-  rerun.
+  rerun. They also cover already-restored legacy previews while `enabled=true`,
+  second-statement SQL rollback of the disable/delete transaction with a later
+  successful retry, conflict previews that keep closed path metadata, and a
+  v0.4.5 logical-backup preview → external-edit → exit path that does not
+  replace the logical backup until owned restore proof is checked, and a
+  first-file restore interrupt that keeps a retryable preview because the
+  verified proof was persisted before any live write.
 - Managed subscription tests cover lock ordering across concurrent targets,
   listener reuse, port-conflict compensation, preservation of target auth/MCP,
   exact endpoint readback and effective-Provider route observation. They do not

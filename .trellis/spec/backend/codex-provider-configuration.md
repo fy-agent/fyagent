@@ -112,11 +112,13 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   `requires_openai_auth = false` in the stored TOML and sets
   `experimental_bearer_token` on the active `[model_providers.<id>]` table.
   Disabling image-extension restores stored `requires_openai_auth = true` and
-  omits the stored bearer field. The stored Provider always keeps
-  `auth.OPENAI_API_KEY`.
+  omits the stored bearer field. Form/native drafts carry `auth.OPENAI_API_KEY`;
+  [Provider Credential Persistence](./provider-credentials.md) converts successful
+  saves to `credentialRef` and strips both plaintext representations. Native
+  projection resolves the reference before feature and live-file preparation.
 - Third-party live writes are always config-only: they never create, replace,
   or delete `auth.json`. `prepare_codex_provider_live_config` projects the
-  stored API key onto `experimental_bearer_token` so Codex can authenticate
+  natively resolved API key onto `experimental_bearer_token` so Codex can authenticate
   without touching the ChatGPT login cache. This is a hard invariant, not the
   leftover `preserveCodexOfficialAuthOnSwitch` setting. Proxy restore
   (`write_codex_live_verbatim`) follows the same split: ChatGPT OAuth login
@@ -220,7 +222,7 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 - Switch admission accepts only an existing saved Codex Provider whose
   already-saved material proves that no new credential is needed. Upsert
   admission proves the same capability from the process-private intended
-  Provider and does not call SecretRef. Unknown or managed auth is
+  Provider; bound rows resolve their exact native SecretRef at admission. Unknown or managed auth is
   `secret_dependency_unavailable`; API keys, auth objects, raw config, paths,
   SecretRef/Keychain values, and credential-derived values never enter DTOs,
   ledger rows, errors, or logs.
@@ -265,8 +267,8 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 | A consumed v2 Change Plan is reapplied with the exact same digest                                    | Return the already-created execution as `idempotent_replay`; invoke the Provider writer zero additional times.          |
 | Change Plan readback is mixed/unavailable                                                            | Persist `recovery_required`; later recovery performs readback only and never replays the writer.                        |
 | Change Plan targets the fixed Quick Setup row while live TOML contains unrelated user content        | Preview and writer use the same targeted projection; preserved content does not create a false readback mismatch.       |
-| Codex image-extension is enabled (`requires_openai_auth = false`) and the Provider has an API key    | Stored and live `[model_providers.<id>]` contain `experimental_bearer_token` equal to `auth.OPENAI_API_KEY`.            |
-| Codex image-extension is disabled (`requires_openai_auth = true`)                                    | Stored TOML has no image-mode bearer token; the stored Provider still keeps `auth.OPENAI_API_KEY`.                      |
+| Codex image-extension is enabled (`requires_openai_auth = false`) and the Provider has an API key    | Stored row holds `credentialRef`; native draft/live bearer equals the resolved key.                                     |
+| Codex image-extension is disabled (`requires_openai_auth = true`)                                    | Stored TOML has no image-mode bearer token; the stored Provider keeps only `credentialRef`.                             |
 | Third-party Codex live write (any leftover preserve setting)                                         | Config-only; live `auth.json` bytes unchanged; API key projected to `experimental_bearer_token`.                        |
 | Restore a third-party Codex backup whose `auth` is only `OPENAI_API_KEY`                             | Config-only; do not write `auth.json`; project the key onto live `experimental_bearer_token`.                           |
 | Official Provider/source switch                                                                      | Config-only; preserve the current auth bytes; do not project a saved Provider credential                                |
@@ -454,6 +456,66 @@ write_live_with_common_config(Codex, fixedQuickSetupProvider)
 - Official source admission requires an already-preserved strict consumer
   login, not credentials stored on the selected Provider. Establishing or
   changing that account uses the independent Auth confirmation flow.
+
+### Explicit API protocol and public connection readback
+
+`ProviderQuickSetupRequest.protocol` is optional and closed to
+`anthropic | responses | chat`. Native `services/provider_api.rs` resolves
+compatible defaults before derivation and rejects target/protocol mismatches.
+Codex accepts Responses/Chat; Claude accepts Anthropic; Grok Build accepts
+Responses. Codex TOML carries the selected `wire_api` verbatim. Chat rejects
+Responses-only image/WebSocket intent and marks image migration complete with
+the feature off, preventing save normalization from changing its protocol.
+
+The same policy rejects known Alibaba plan/key/address mismatches. Generic
+model-fetch/model-probe commands reject known tool-only plan endpoints or
+`sk-sp-` credentials before network; alternate model-list URLs cannot bypass
+the guard. Explicit model-probe protocol chooses both the URL and request body.
+No credentials are tested by preset selection.
+
+`get_provider_summary` may serialize a closed optional `connection` projection:
+`baseUrl`, `modelId`, `protocol`. It reads only recognized Claude env, selected
+Codex provider TOML or selected Grok model TOML. Wrong target/protocol, unknown
+shape, unsafe URL, control/oversized fields or collisions with known credential
+sources omit the projection. Encoded URL credential collisions reuse the
+existing URL collision owner. No credential/reference is resolved or returned.
+
+Quick Setup continues to require a nonempty submitted Key before invoking the
+existing Provider persistence facade; it does not infer same-identity credential
+reuse from the fixed row ID. Existing transaction, targeted file patch,
+compensation and authoritative readback remain the sole mutation authority.
+
+### Actual target summary observation
+
+`get_provider_summary.live` is a closed read-only projection of the actual
+target, independent of DB `currentId` and saved Provider snapshots. The command
+uses `ProviderService::quick_setup_write_targets` for native target existence
+and `ProviderService::read_live_settings` for the file read. It never reuses the
+display path as read authority, resolves credentials, calls a model endpoint,
+or writes config/backups. Existing reader errors are reduced to an unreadable
+state without logging/returning their text.
+
+The projection exposes target identity, `configured | not_configured | missing |
+unreadable`, nullable existence, and an optional partial public connection.
+Missing fields stay null. A file without explicit model/endpoint is
+not_configured; protocol alone is insufficient. Codex honors an explicit file
+profile and selected provider, with no inferred protocol/endpoint defaults or
+CLI/runtime overrides. Claude env and Grok selected-model formats are separately
+projected through the same boundary.
+
+Known credential leaves/headers from saved records and the live document
+(including parsed TOML and auth) are collected without secret resolution. Public
+model/endpoint fields are bounded and reject control characters, unsafe URLs,
+and credential collisions; encoded URL collisions use the existing WorkBuddy
+URL owner. Unknown/raw secret fields never enter the DTO. Live failures and
+write-target metadata failures preserve valid saved sources, but bad saved
+identity/credential collisions still fail the whole public summary closed.
+
+`commands/provider/live_summary/tests.rs` uses real temporary target files and
+an in-memory DB to prove external routing can differ from the saved current
+source, missing/empty/corrupt/unsafe files remain distinct, read errors do not
+echo secret text, metadata failure preserves saved sources, and reads leave
+primary bytes and backup absence unchanged.
 
 ### 4. Validation & Error Matrix
 

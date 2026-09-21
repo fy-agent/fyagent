@@ -112,4 +112,31 @@ describe("Tauri Agent auth port", () => {
       createAgentAuthPort().getObservation("claude-code"),
     ).rejects.toThrow("Agent auth is unavailable");
   });
+
+  it("binds a started session to both requested Agent and intent", async () => {
+    invoke.mockResolvedValue(session());
+    await expect(
+      createAgentAuthPort().startSession({
+        agentId: "grokbuild",
+        intent: "login",
+      }),
+    ).rejects.toThrow("Agent auth session is unavailable");
+    await expect(
+      createAgentAuthPort().startSession({
+        agentId: "claude-code",
+        intent: "logout",
+      }),
+    ).rejects.toThrow("Agent auth session is unavailable");
+  });
+
+  it("rejects another session from both polling and stop-waiting responses", async () => {
+    invoke.mockResolvedValue(session());
+    const another = "223e4567-e89b-42d3-a456-426614174000";
+    await expect(createAgentAuthPort().getSession(another)).rejects.toThrow(
+      "Agent auth session is unavailable",
+    );
+    await expect(createAgentAuthPort().stopWaiting(another)).rejects.toThrow(
+      "Agent auth session is unavailable",
+    );
+  });
 });

@@ -1,0 +1,8 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\n  \"tool\": \"jev_decide\",\n  \"model\": \"typesafe-ai/jev\",\n  \"provider\": \"vercel\",\n  \"recommendation\": {\n    \"selected\": \"atomic_db_finish\",\n    \"escaped\": false,\n    \"confidence\": 0.99,\n    \"probabilities\": {\n      \"none\": 0,\n      \"ui_bypass\": 0,\n      \"ask_user\": 0,\n      \"reorder_existing\": 0.01,\n      \"investigate\": 0,\n      \"atomic_db_finish\": 0.99\n    }\n  },\n  \"requirements_checked\": 3,\n  \"checks\": [\n    {\n      \"candidate\": \"atomic_db_finish\",\n      \"requirement\": 0,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"atomic_db_finish\",\n      \"requirement\": 1,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"atomic_db_finish\",\n      \"requirement\": 2,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"reorder_existing\",\n      \"requirement\": 0,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"reorder_existing\",\n      \"requirement\": 1,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"reorder_existing\",\n      \"requirement\": 2,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"ui_bypass\",\n      \"requirement\": 0,\n      \"answer\": \"contradicted\"\n    },\n    {\n      \"candidate\": \"ui_bypass\",\n      \"requirement\": 1,\n      \"answer\": \"contradicted\"\n    },\n    {\n      \"candidate\": \"ui_bypass\",\n      \"requirement\": 2,\n      \"answer\": \"contradicted\"\n    }\n  ],\n  \"warnings\": [],\n  \"usage\": {\n    \"input_tokens\": 2132,\n    \"output_tokens\": 461\n  }\n}"
+    }
+  ]
+}

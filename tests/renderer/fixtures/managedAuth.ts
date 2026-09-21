@@ -62,7 +62,7 @@ export function managedAuthOverviewFixture(): ManagedAuthOverview {
         provider: "xai",
         available: true,
         loginMethods: ["device_code"],
-        consumers: ["grokbuild", "opencode", "fyagent_proxy"],
+        consumers: ["opencode", "fyagent_proxy"],
         reasonCodes: [],
       },
       {

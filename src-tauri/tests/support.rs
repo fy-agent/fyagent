@@ -116,3 +116,19 @@ pub fn create_test_state_with_config(
     db.migrate_from_json(config)?;
     Ok(AppState::new(db))
 }
+
+/// Provider lifecycle tests explicitly use the in-memory credential backend.
+/// Live configuration still goes through the isolated real filesystem above.
+#[allow(dead_code)]
+pub fn create_credential_test_state() -> Result<AppState, Box<dyn std::error::Error>> {
+    Ok(AppState::new(Arc::new(Database::memory()?)))
+}
+
+#[allow(dead_code)]
+pub fn create_credential_test_state_with_config(
+    config: &MultiAppConfig,
+) -> Result<AppState, Box<dyn std::error::Error>> {
+    let state = create_credential_test_state()?;
+    state.db.migrate_from_json(config)?;
+    Ok(state)
+}

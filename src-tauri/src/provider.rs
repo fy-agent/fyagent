@@ -1,3 +1,9 @@
+mod redaction;
+pub(crate) use redaction::{
+    is_sensitive_config_key, portable_provider_for_export, provider_contains_credentials,
+    sanitize_provider_for_export,
+};
+
 use http::header::{HeaderValue, InvalidHeaderValue};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -7,7 +13,7 @@ use std::collections::HashMap;
 // SSOT 模式：不再写供应商副本文件
 
 /// 供应商结构体
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Provider {
     pub id: String,
     pub name: String,
@@ -41,6 +47,12 @@ pub struct Provider {
     #[serde(default)]
     #[serde(rename = "inFailoverQueue")]
     pub in_failover_queue: bool,
+}
+
+impl std::fmt::Debug for Provider {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Provider([REDACTED])")
+    }
 }
 
 /// Backward-compatible envelope for provider mutations that need to report a
@@ -446,9 +458,28 @@ impl LocalProxyRequestOverrides {
     }
 }
 
+/// Opaque native-only admission context. Serde never imports or exports it;
+/// only the credential owner constructs it during native edit preparation.
+#[doc(hidden)]
+#[derive(Clone)]
+pub struct NativeCredentialDraft {
+    pub(crate) provider_id: String,
+    pub(crate) source_ref: Option<String>,
+    pub(crate) target_fingerprint: [u8; 32],
+}
+
+impl std::fmt::Debug for NativeCredentialDraft {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("NativeCredentialDraft([REDACTED])")
+    }
+}
+
 /// 供应商元数据
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderMeta {
+    #[doc(hidden)]
+    #[serde(skip)]
+    pub native_credential_draft: Option<NativeCredentialDraft>,
     /// 自定义端点列表（按 URL 去重存储）
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub custom_endpoints: HashMap<String, crate::settings::CustomEndpoint>,

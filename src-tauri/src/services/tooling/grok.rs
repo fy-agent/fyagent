@@ -400,7 +400,10 @@ pub(super) fn grok_plan_from_installs(
         Ok(fyagent_user_helper::GrokPlanKind::OfficialNpm) => Ok(GrokPlan::OfficialNpm {
             bin_path: default_install(installs).map(|install| install.path.clone()),
         }),
-        Ok(fyagent_user_helper::GrokPlanKind::Observe) => Err(GrokPlanError::new(
+        Ok(
+            fyagent_user_helper::GrokPlanKind::Observe
+            | fyagent_user_helper::GrokPlanKind::Preflight,
+        ) => Err(GrokPlanError::new(
             "distribution_owner_mismatch",
             None,
             "Grok Build 安装来源不一致，需要先选择目标",
@@ -623,7 +626,11 @@ fn succeed_job(
 }
 
 #[cfg(target_os = "macos")]
-pub(super) async fn run_macos_grok_lifecycle(action: ToolLifecycleAction) -> Result<(), String> {
+pub(super) async fn run_macos_grok_lifecycle(
+    action: ToolLifecycleAction,
+    confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
+    confirmed_npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
+) -> Result<(), String> {
     store_stage(GrokLifecycleStage::Checking, action, None, None);
 
     let prepared = tokio::task::spawn_blocking(move || {
@@ -660,7 +667,9 @@ pub(super) async fn run_macos_grok_lifecycle(action: ToolLifecycleAction) -> Res
     match plan {
         GrokPlan::NativeFresh => run_native_fresh_install(action).await,
         GrokPlan::NativeUpdate { bin_path } => run_native_update(action, bin_path).await,
-        GrokPlan::OfficialNpm { bin_path } => run_official_npm(action, bin_path).await,
+        GrokPlan::OfficialNpm { bin_path } => {
+            run_official_npm(action, bin_path, confirmed_manifest, confirmed_npm_target).await
+        }
     }
 }
 
@@ -858,6 +867,8 @@ fn execute_native_update(action: ToolLifecycleAction, bin_path: String) -> Resul
 async fn run_official_npm(
     action: ToolLifecycleAction,
     bin_path: Option<String>,
+    confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
+    confirmed_npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
 ) -> Result<(), String> {
     let is_update = matches!(action, ToolLifecycleAction::Update);
     if is_update && bin_path.is_none() {
@@ -872,22 +883,27 @@ async fn run_official_npm(
         ));
     }
 
-    let manifest = match super::grok_npm::resolve_published_manifest(
-        fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
-    )
-    .await
-    {
-        Ok(manifest) => manifest,
-        Err(_) => {
-            return Err(fail_job(
-                action,
-                Some(GrokDistributionOwner::OfficialNpm),
-                "official_source_unreachable",
-                "暂时无法读取官方 npm 最新版本",
-                None,
-                false,
-                Some("official_npm"),
-            ));
+    let manifest = match confirmed_manifest {
+        Some(manifest) => manifest.clone(),
+        None => {
+            match super::grok_npm::resolve_published_manifest(
+                fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
+            )
+            .await
+            {
+                Ok(manifest) => manifest,
+                Err(_) => {
+                    return Err(fail_job(
+                        action,
+                        Some(GrokDistributionOwner::OfficialNpm),
+                        "official_source_unreachable",
+                        "暂时无法读取官方 npm 最新版本",
+                        None,
+                        false,
+                        Some("official_npm"),
+                    ));
+                }
+            }
         }
     };
 
@@ -905,7 +921,7 @@ async fn run_official_npm(
     }
 
     tokio::task::spawn_blocking(move || {
-        execute_official_npm(action, bin_path, manifest.version().to_string(), matching)
+        execute_official_npm(action, bin_path, manifest, matching, confirmed_npm_target)
     })
     .await
     .map_err(|error| format!("tool lifecycle task join error: {error}"))?
@@ -915,9 +931,11 @@ async fn run_official_npm(
 fn execute_official_npm(
     action: ToolLifecycleAction,
     bin_path: Option<String>,
-    target_version: String,
+    manifest: super::grok_npm::GrokNpmManifest,
     registries: Vec<fyagent_user_helper::GrokNpmRegistry>,
+    confirmed_npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
 ) -> Result<(), String> {
+    let target_version = manifest.version().to_string();
     let before = grok_post_observe().ok();
     if let Some(local) = before
         .as_ref()
@@ -962,13 +980,16 @@ fn execute_official_npm(
     let npm_major = detect_npm_major(bin_path.as_deref());
     let mut last_detail = String::from("官方 npm 安装未完成");
     for registry in registries {
-        let Ok(plan) = fyagent_user_helper::GrokNpmInstallPlan::for_execution(
-            &target_version,
+        let Ok(mut plan) = super::grok_npm::plan_for_registry(
+            &manifest,
             registry,
             npm_major.is_some_and(fyagent_user_helper::grok_npm::npm_major_allows_scripts),
         ) else {
             continue;
         };
+        if let Some(target) = confirmed_npm_target.clone() {
+            plan = plan.with_npm_target(target);
+        }
         let output = run_npm_install_plan(bin_path.as_deref(), &plan);
         match output {
             Ok(output) if output.status.success() => {
@@ -1257,9 +1278,12 @@ fn run_bash_script(path: &Path, timeout: Duration) -> Result<std::process::Outpu
 #[cfg(target_os = "windows")]
 pub(super) async fn run_windows_grok_helper_lifecycle(
     action: ToolLifecycleAction,
+    confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
+    confirmed_npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
 ) -> Result<(), String> {
     let (tool_action, expected_owner) = grok_helper_request(action);
-    let plans = windows_npm_plans_for_action(action).await;
+    let plans =
+        windows_npm_plans_for_action(action, confirmed_manifest, confirmed_npm_target).await;
     let requires_npm_plan = matches!(
         action,
         ToolLifecycleAction::Install | ToolLifecycleAction::InstallOfficialNpm
@@ -1302,6 +1326,8 @@ pub(super) async fn run_windows_grok_helper_lifecycle(
 #[cfg(target_os = "windows")]
 async fn windows_npm_plans_for_action(
     action: ToolLifecycleAction,
+    confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
+    confirmed_npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
 ) -> Vec<fyagent_user_helper::GrokNpmInstallPlan> {
     if matches!(action, ToolLifecycleAction::InstallNative)
         || matches!(
@@ -1311,23 +1337,36 @@ async fn windows_npm_plans_for_action(
     {
         return Vec::new();
     }
-    let Ok(manifest) = super::grok_npm::resolve_published_manifest(
-        fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
-    )
-    .await
-    else {
-        return Vec::new();
+    let manifest = match confirmed_manifest {
+        Some(manifest) => manifest.clone(),
+        None => {
+            let Ok(manifest) = super::grok_npm::resolve_published_manifest(
+                fyagent_user_helper::grok_npm::OfficialNpmTool::Grok,
+            )
+            .await
+            else {
+                return Vec::new();
+            };
+            manifest
+        }
     };
     let matching = super::grok_npm::registries_matching_manifest(&manifest).await;
     matching
         .into_iter()
-        .filter_map(|registry| super::grok_npm::plan_for_registry(&manifest, registry, false).ok())
+        .filter_map(|registry| {
+            super::grok_npm::plan_for_registry(&manifest, registry, false)
+                .ok()
+                .map(|plan| match confirmed_npm_target.clone() {
+                    Some(target) => plan.with_npm_target(target),
+                    None => plan,
+                })
+        })
         .collect()
 }
 
 #[cfg(target_os = "windows")]
 pub(super) async fn windows_live_npm_install_commands() -> Vec<String> {
-    windows_npm_plans_for_action(ToolLifecycleAction::Install)
+    windows_npm_plans_for_action(ToolLifecycleAction::Install, None, None)
         .await
         .iter()
         .map(super::grok_npm::command_for_plan)
@@ -1384,6 +1423,13 @@ fn map_grok_helper_error(error: crate::codex_desktop::error::InstallerError) -> 
         Some("grok_tool_execution_failed") => {
             HelperErrorCode::ToolExecutionFailed.redacted_message()
         }
+        Some("insufficient_disk_space") => {
+            HelperErrorCode::InsufficientDiskSpace.redacted_message()
+        }
+        Some("tool_candidate_conflict") => {
+            HelperErrorCode::ToolCandidateConflict.redacted_message()
+        }
+        Some("tool_target_changed") => HelperErrorCode::ToolTargetChanged.redacted_message(),
         _ => "Grok Build is unavailable for the current Windows user.",
     }
     .to_owned()

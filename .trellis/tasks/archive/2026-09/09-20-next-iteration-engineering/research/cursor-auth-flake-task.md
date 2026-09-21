@@ -1,0 +1,11 @@
+# Bounded aggregate-only managed-auth failure
+
+The common projection package is accepted in root commit fac051ea19f6b2d4be69b490cde918a8c8ab5fd4. Root removed the unused writer wrapper, then fixed three new fixture-home tests missing the adjacent serial_test::serial lock. Full canonical rust:test then passed 3883 tests, 0 failed, 6 ignored.
+
+A subsequent complete prearchive run on the same source passed all 216 frontend files (2068 passed, 1 skipped), type/lint/format and Rust fmt/check/Clippy. Its native lib run instead failed ONE test:
+`services::managed_auth::service::tests::opencode_connect_projects_independent_session_and_rejects_proxy_lineage`, src/services/managed_auth/service.rs:3180, `project: ManagedAuthErrorDto { contract_version: 1, reason_code: TargetChanged }`.
+Evidence: artifacts/integration-prearchive.log, earlier passing artifacts/integration-native-serial.log. This is not a claim that the production guard is wrong.
+
+Use this existing Cursor backend conversation/current authorized model, in the integration tree ~/.codex/worktrees/fyagent-next-night-20260920/fyagent, branch codex/next-iteration-engineering-20260920. The separate Cursor recovery conversation is writing only its CLI worktree; do not touch installer/helper code. You are not alone; preserve existing unrelated changes, do not reset/stash/clean/switch/commit/push.
+
+Determine the concrete root cause of this aggregate-only managed-auth failure (fixture isolation, global state or a real guard bug), repair the narrow cause and add meaningful coverage only if needed. Allowed writes: this exact test/fixture helper; the existing managed-auth target snapshot implementation only if runtime evidence proves a production defect; focused spec/result. Do not weaken TargetChanged or remove checks. Do not globally serialize the whole suite or merely increase timeouts. The environment-modifying fixtures need the same existing lock. Read local AGENTS/spec before edits. Use canonical mise / RTK and correct CARGO_TARGET_DIR. You may use Debug mode for temporary narrow instrumentation, remove it before final evidence. Return result in research/cursor-auth-flake-result.md, with cause, diff, focused evidence and writer-stopped status. No full aggregate run until root coordinates it; root owns final gate.

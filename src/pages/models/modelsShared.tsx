@@ -26,9 +26,9 @@ export function NoticeView({ notice }: { notice: Notice | null }) {
   return <FieldFeedback notice={notice} />;
 }
 
-export function useModelsDraftCommit() {
-  const draftRevisionRef = useRef(0);
-  const [draftRevision, setDraftRevision] = useState(0);
+export function useModelsDraftCommit(initiallyDirty = false) {
+  const draftRevisionRef = useRef(initiallyDirty ? 1 : 0);
+  const [draftRevision, setDraftRevision] = useState(initiallyDirty ? 1 : 0);
   const [committedRevision, setCommittedRevision] = useState(0);
 
   const markDirty = useCallback(() => {

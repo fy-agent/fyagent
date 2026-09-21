@@ -9,6 +9,8 @@ import {
 } from "@/domain/codex-desktop";
 import { Button } from "../ui/Button";
 import { InlineNotice, Spinner } from "../ui/primitives";
+import { codexInstallerErrorCopy } from "./installerErrorCopy";
+import { CodexInstallConfirmation } from "./CodexInstallConfirmation";
 import { useCodexDesktopInstaller } from "./useCodexDesktopInstaller";
 
 const stateLabels: Readonly<Record<InstallerViewState, string>> = {
@@ -190,9 +192,7 @@ export function CodexDesktopInstallerPanel() {
 
         {installer.error && (
           <InlineNotice tone="error">
-            {installer.error.code === "METADATA_CHANGED"
-              ? "版本信息已更新，请刷新后重新确认安装。"
-              : "安装未完成，请重试。"}
+            {codexInstallerErrorCopy(installer.error)}
           </InlineNotice>
         )}
         {installer.operationFailed && !installer.error && (
@@ -232,6 +232,7 @@ export function CodexDesktopInstallerPanel() {
           )}
         </div>
       </div>
+      <CodexInstallConfirmation installer={installer} />
     </section>
   );
 }

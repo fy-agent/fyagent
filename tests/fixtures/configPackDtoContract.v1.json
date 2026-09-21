@@ -1,0 +1,19 @@
+{
+  "format": "fyagent-config-pack/v1",
+  "providers": [
+    {
+      "app": "codex",
+      "name": "Team Codex",
+      "endpoint": "https://api.example.com/v1",
+      "model": "example-model",
+      "wireApi": "responses"
+    },
+    {
+      "app": "claude",
+      "name": "Team Claude",
+      "endpoint": "https://claude.example.com",
+      "model": "example-claude",
+      "wireApi": null
+    }
+  ]
+}

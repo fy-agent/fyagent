@@ -1,0 +1,10 @@
+.fy-top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-about-trigger {
+  min-height: 36px;
+  padding: 6px 12px;
+}

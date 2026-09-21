@@ -65,6 +65,10 @@ export function createSimpleFeaturePorts(): Pick<
       importFromApps: () => invoke("import_mcp_from_apps"),
     },
     settings: {
+      getAppVersion: async () => {
+        const { readAppVersion } = await import("./application");
+        return readAppVersion();
+      },
       get: () => invoke("get_settings"),
       save: (settings) => invoke("save_settings", { settings }),
       getFirstUseGuideState: async () =>

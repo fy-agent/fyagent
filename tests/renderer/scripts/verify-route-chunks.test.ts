@@ -7,6 +7,7 @@ import {
   RENDERER_ROUTE_ENTRIES,
   RENDERER_DEFERRED_PORT_ENTRIES,
   RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
+  RENDERER_DEFERRED_SHELL_ENTRIES,
   RENDERER_NESTED_SUBSCRIPTION_PORT,
   verifyRouteChunks,
 } from "../../../scripts/verify-route-chunks.mjs";
@@ -33,6 +34,7 @@ async function fixture(
       dynamicImports: [
         ...RENDERER_ROUTE_ENTRIES,
         ...RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
+        ...RENDERER_DEFERRED_SHELL_ENTRIES,
       ],
       css: ["assets/main.css"],
     },
@@ -56,6 +58,10 @@ async function fixture(
       path.join(root, `assets/port-${index}.js`),
       "deferred port",
     );
+  }
+  for (const [index, key] of RENDERER_DEFERRED_SHELL_ENTRIES.entries()) {
+    manifest[key] = { file: `assets/shell-${index}.js`, isDynamicEntry: true };
+    await writeFile(path.join(root, `assets/shell-${index}.js`), "shell");
   }
   manifest[RENDERER_NESTED_SUBSCRIPTION_PORT.importer].dynamicImports = [
     RENDERER_NESTED_SUBSCRIPTION_PORT.entry,
@@ -88,7 +94,9 @@ describe("verifyRouteChunks", () => {
     expect(result.routeChunks.map(({ route }) => route)).toContain(
       "app/ProjectsWorkspace.tsx",
     );
-    expect(result.deferredPortChunks).toHaveLength(7);
+    expect(result.deferredPortChunks).toHaveLength(
+      RENDERER_DEFERRED_PORT_ENTRIES.length,
+    );
     expect(result.initialChunks.map((chunk) => chunk.file).sort()).toEqual([
       "assets/index.js",
       "assets/main.js",
@@ -96,17 +104,18 @@ describe("verifyRouteChunks", () => {
     ]);
   });
 
-  it.each([RENDERER_ROUTE_ENTRIES[0], ...RENDERER_DEFERRED_PORT_ENTRIES])(
-    "rejects %s if it leaks into the initial graph",
-    async (key) => {
-      const distributionDirectory = await fixture((manifest) => {
-        manifest["_vendor.js"].imports = [key];
-      });
-      await expect(
-        verifyRouteChunks({ distributionDirectory }),
-      ).rejects.toThrow("leaked into the initial graph");
-    },
-  );
+  it.each([
+    RENDERER_ROUTE_ENTRIES[0],
+    ...RENDERER_DEFERRED_PORT_ENTRIES,
+    ...RENDERER_DEFERRED_SHELL_ENTRIES,
+  ])("rejects %s if it leaks into the initial graph", async (key) => {
+    const distributionDirectory = await fixture((manifest) => {
+      manifest["_vendor.js"].imports = [key];
+    });
+    await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
+      "leaked into the initial graph",
+    );
+  });
 
   it("rejects a missing Projects composition entry", async () => {
     const distributionDirectory = await fixture((manifest) => {
@@ -115,10 +124,11 @@ describe("verifyRouteChunks", () => {
           (entry) => entry !== "app/ProjectsWorkspace.tsx",
         ),
         ...RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
+        ...RENDERER_DEFERRED_SHELL_ENTRIES,
       ];
     });
     await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
-      "must dynamically import exactly 9 product pages and 6 deferred ports",
+      `must dynamically import exactly 9 product pages, ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports and ${RENDERER_DEFERRED_SHELL_ENTRIES.length} shell dialogs`,
     );
   });
 

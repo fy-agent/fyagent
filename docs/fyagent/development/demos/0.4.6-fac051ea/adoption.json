@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "status": "adopted_fixture_demo",
+  "sourceCommit": "fac051ea19f6b2d4be69b490cde918a8c8ab5fd4",
+  "captureManifestSha256": "00e34d832cc68acd97b30e2a66254c4100e9cd4937d6d2bcc92e720e19ed3d6e",
+  "reviewer": "GPT-6 coordinator",
+  "reviewDate": "2026-09-21",
+  "checks": {
+    "cleanCommittedSource": true,
+    "stableSourceDigest": true,
+    "publicAssetHashes": 12,
+    "allScreenshotsVisuallyReviewed": 7,
+    "videoCueMidpointFramesVisuallyReviewed": 7,
+    "fullPlaywrightPlaybackAndCaptionCueReadback": true,
+    "fullFfmpegDecode": 2
+  },
+  "clipsMs": {
+    "current-flows.webm": 25800,
+    "saved-result.webm": 4560
+  },
+  "rawAssets": [
+    {
+      "file": "raw/page@5c6d37657971c750904b531204db165d.webm",
+      "sha256": "6272173257920e1cb518d694657c9d29a2e4947265889c6e61b0f1a8c1e49f94"
+    },
+    {
+      "file": "raw/page@c11ef8f6b690621facc66b28fa7bb15f.webm",
+      "sha256": "d7d59e59ad4c3a0eeb5f796b1edd296cb423462403ad42d89d68e1e7e0c7963c"
+    }
+  ],
+  "limitations": [
+    "Browser fixture demonstration only; no native account, installer, keychain, rollback, Windows UAT or release claim.",
+    "Codex in-app browser preview crashed at play; independent Chromium playback and FFmpeg decode passed. In-app preview playback is not accepted.",
+    "Source commit identifies the demonstrated renderer snapshot, not a released installation package."
+  ]
+}

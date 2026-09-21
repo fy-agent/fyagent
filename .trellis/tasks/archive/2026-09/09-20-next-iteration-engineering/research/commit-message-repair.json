@@ -1,0 +1,35 @@
+{
+  "reason": "PR #195 Commit Convention rejected one underscore scope and one nonconforming merge subject. Only two messages and derived parent IDs were repaired; all trees, authors, committer metadata, and merge topology were preserved.",
+  "original_head": "e632316b34d8ae04b7eec73b8483c8240e6d2a06",
+  "reworded_head": "27e356d759a9cf896ff50f5b3ae5e6cadd491cf2",
+  "same_tree": "e6a1eaba53428292a019859ec49a90cf78a954fa",
+  "local_backup_ref": "refs/heads/codex/next-iteration-engineering-before-message-repair",
+  "subject_changes": {
+    "35848befda2f3690270612a999ff06ec600b442c": "merge: integrate latest 0.4.6 main into next-iteration engineering",
+    "955a8bde98657f73934e23bd9724b1716bf4d989": "feat(agent-install): implement CLI installation space preflight and budget validation (#27)"
+  },
+  "old_to_new_commit_ids": {
+    "35848befda2f3690270612a999ff06ec600b442c": "821c729bebae447b1b6d1a4ffe9ac875e998e86f",
+    "a0a170b2d745a5976a035c1a5a9860852f3f3477": "c450e621135b0fca097b78486acd89fd5a7a74da",
+    "2ad28ef83cbbf3b8039d8ff4d54f2d94338d3b1b": "8a6f262f7a0f50610e7294c60888cb099db6a633",
+    "3df9c8df077586617ea23998e6a3efd325ac51f4": "99464372323e1a3f8f98bf287664786a71c1da2b",
+    "fac051ea19f6b2d4be69b490cde918a8c8ab5fd4": "2faaefc10c1af19bfa015d09a4e244d530ab50f9",
+    "3bc8c2e8ea7a4a142e603d6c84b24252ff303c5f": "9445dea1401f32fed6c0a4bedbb213e3ed2c5c47",
+    "11a154b5c6d47ccb74b5bbb5059618e33938bf5d": "aab38197d35efb1c9376f2f6dc1344786ccfac23",
+    "d0e830dd582a7af5e47f92a2f43f3ba396429a65": "3e3180571208ebc7d6dab1d0a8ae23d3e65eecd4",
+    "955a8bde98657f73934e23bd9724b1716bf4d989": "e259ae9f2da131fe5b0ae3859f0c3ad0d615d918",
+    "b58163d69d44a548ca18ebd3017f73d67c74b8f9": "dddb4cd45e32ed0091b0f48e91c89e9d7bd023cf",
+    "f324079ad8b51b56975a698b8a1c0411e1942a2f": "ee5aeae9b3752918923949eebe681c260fc59389",
+    "02138296c42b7c81693a21ad617ac308b89661e7": "3330984be4aa9b0870a5a3e96b5287a9008fab38",
+    "b0afd7d694d5ee55c4102c854c302bc7c5b6e1d2": "1f23ee100c9bdbd423303152fdacb0e69359988c",
+    "d6285acfa8b72ede67b1077ef07034936c638efc": "9e12c231b9cad74f2e60b20eb7c5c3b9b9443d40",
+    "c06f62a630f215ddbce62e4d111033c5f1546232": "04976eb7bd1f53027a7ac745e4d143d84ba257b5",
+    "e95ca2a12a21582d38b1f7ea0d1542fddafa1ebc": "db91214e3d6a9ad22459ffc132a85caee459c9b5",
+    "da4b2d96aeb733cbaf8663e4e11ef58ed05440e4": "6c3cf1e464bc386b434f9154e56fa358f85e6922",
+    "076c17f9e64629d4b00439226cf0dc23e88d5c47": "3aecfcbf0aac008deb08a46d6757554dc7b38d4d",
+    "22707eff5fb3d90623ffed3a09335101269a67dd": "4ed9aec948f9a22aae8b81b8d3282cd21d1043d9",
+    "65a1012090d9d7ac51eb97a6429a01bb17d2778f": "234e64cc313e501c7a9c20d7207fa6db0b855c7e",
+    "0c7738f5df0b11fb2f7ab817655d9b33465fdf78": "d2353ea57a082ef8c31f79c59ce64801e650baa4",
+    "e632316b34d8ae04b7eec73b8483c8240e6d2a06": "27e356d759a9cf896ff50f5b3ae5e6cadd491cf2"
+  }
+}

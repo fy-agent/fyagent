@@ -63,6 +63,7 @@ impl GrokOwner {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GrokToolAction {
     Observe,
+    Preflight,
     Install,
     Update,
 }
@@ -71,6 +72,7 @@ impl GrokToolAction {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Observe => "observe",
+            Self::Preflight => "preflight",
             Self::Install => "install",
             Self::Update => "update",
         }
@@ -79,6 +81,7 @@ impl GrokToolAction {
     pub fn parse_cli(value: &str) -> Option<Self> {
         match value {
             "observe" => Some(Self::Observe),
+            "preflight" => Some(Self::Preflight),
             "install" => Some(Self::Install),
             "update" => Some(Self::Update),
             _ => None,
@@ -133,12 +136,115 @@ impl GrokOutcome {
     }
 }
 
+pub const MAX_NPM_TARGET_BYTES: usize = 255;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NpmDestinationObservation {
+    pub prefix: String,
+    pub cache: String,
+    pub temp: String,
+    pub npm_identity: String,
+    pub available_bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NpmTargetBinding {
+    prefix: String,
+    cache: String,
+    temp: String,
+    npm_identity: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NpmTargetError {
+    Missing,
+    Drifted,
+}
+
+impl NpmTargetBinding {
+    pub fn new(
+        prefix: impl Into<String>,
+        cache: impl Into<String>,
+        temp: impl Into<String>,
+        npm_identity: impl Into<String>,
+    ) -> Result<Self, NpmTargetError> {
+        let binding = Self {
+            prefix: prefix.into(),
+            cache: cache.into(),
+            temp: temp.into(),
+            npm_identity: npm_identity.into(),
+        };
+        if [
+            &binding.prefix,
+            &binding.cache,
+            &binding.temp,
+            &binding.npm_identity,
+        ]
+        .into_iter()
+        .any(|value| {
+            value.is_empty()
+                || value.len() > MAX_NPM_TARGET_BYTES
+                || value.chars().any(char::is_control)
+        }) {
+            return Err(NpmTargetError::Missing);
+        }
+        Ok(binding)
+    }
+
+    pub fn from_observation(
+        observation: &NpmDestinationObservation,
+    ) -> Result<Self, NpmTargetError> {
+        Self::new(
+            observation.prefix.clone(),
+            observation.cache.clone(),
+            observation.temp.clone(),
+            observation.npm_identity.clone(),
+        )
+    }
+
+    pub fn matches_observation(&self, observation: &NpmDestinationObservation) -> bool {
+        self.prefix == observation.prefix
+            && self.cache == observation.cache
+            && self.temp == observation.temp
+            && self.npm_identity == observation.npm_identity
+    }
+
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
+    pub fn cache(&self) -> &str {
+        &self.cache
+    }
+
+    pub fn temp(&self) -> &str {
+        &self.temp
+    }
+
+    pub fn npm_identity(&self) -> &str {
+        &self.npm_identity
+    }
+}
+
+pub fn admit_confirmed_npm_target(
+    expected: Option<&NpmTargetBinding>,
+    observed: &NpmDestinationObservation,
+) -> Result<(), NpmTargetError> {
+    let expected = expected.ok_or(NpmTargetError::Missing)?;
+    if expected.matches_observation(observed) {
+        Ok(())
+    } else {
+        Err(NpmTargetError::Drifted)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolOperationResult {
     pub detected: bool,
     pub normalized_version: Option<String>,
     pub owner: Option<GrokOwner>,
     pub outcome: GrokOutcome,
+    pub npm_destination: Option<NpmDestinationObservation>,
 }
 
 impl ToolOperationResult {
@@ -152,7 +258,13 @@ impl ToolOperationResult {
             normalized_version,
             owner,
             outcome: GrokOutcome::Observed,
+            npm_destination: None,
         }
+    }
+
+    pub fn with_npm_destination(mut self, destination: NpmDestinationObservation) -> Self {
+        self.npm_destination = Some(destination);
+        self
     }
 }
 
@@ -368,6 +480,7 @@ pub fn infer_source_marker(path: &str) -> &'static str {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GrokPlanKind {
     Observe,
+    Preflight,
     NativeFresh,
     NativeUpdate,
     OfficialNpm,
@@ -386,6 +499,16 @@ pub fn plan_grok_operation(
 ) -> Result<GrokPlanKind, GrokPlanFailure> {
     match action {
         GrokToolAction::Observe => Ok(GrokPlanKind::Observe),
+        GrokToolAction::Preflight => {
+            if observation == GrokOwnerObservation::Ambiguous
+                || expected_owner
+                    .is_some_and(|owner| observation.owner().is_some_and(|actual| actual != owner))
+            {
+                Err(GrokPlanFailure::OwnerMismatch)
+            } else {
+                Ok(GrokPlanKind::Preflight)
+            }
+        }
         GrokToolAction::Install => plan_install(observation, expected_owner),
         GrokToolAction::Update => plan_update(observation, expected_owner),
     }
@@ -442,6 +565,36 @@ fn plan_update(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn preflight_never_selects_a_mutation_and_refuses_ambiguous_owner() {
+        for owner in [
+            GrokOwnerObservation::Absent,
+            GrokOwnerObservation::Native,
+            GrokOwnerObservation::Npm,
+        ] {
+            assert_eq!(
+                plan_grok_operation(GrokToolAction::Preflight, owner, None),
+                Ok(GrokPlanKind::Preflight)
+            );
+        }
+        assert_eq!(
+            plan_grok_operation(
+                GrokToolAction::Preflight,
+                GrokOwnerObservation::Ambiguous,
+                None
+            ),
+            Err(GrokPlanFailure::OwnerMismatch)
+        );
+        assert_eq!(
+            plan_grok_operation(
+                GrokToolAction::Preflight,
+                GrokOwnerObservation::Native,
+                Some(GrokOwner::Npm)
+            ),
+            Err(GrokPlanFailure::OwnerMismatch)
+        );
+    }
+
     use super::*;
 
     #[test]
@@ -623,5 +776,52 @@ mod tests {
             .starts_with("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "));
         assert!(GROK_NATIVE_WINDOWS_INSTALL_SCRIPT.contains("https://x.ai/cli/install.ps1"));
         assert!(!GROK_NATIVE_WINDOWS_INSTALL_SCRIPT.contains("npm"));
+    }
+
+    fn sample_observation() -> NpmDestinationObservation {
+        NpmDestinationObservation {
+            prefix: r"D:\npm-prefix".into(),
+            cache: r"D:\npm\cache-a".into(),
+            temp: r"C:\Users\alice\AppData\Local\Temp".into(),
+            npm_identity: r"C:\Program Files\nodejs\npm.cmd".into(),
+            available_bytes: 4096,
+        }
+    }
+
+    #[test]
+    fn confirmed_npm_target_ignores_available_bytes_and_rejects_exact_drift() {
+        let observed = sample_observation();
+        let expected = NpmTargetBinding::from_observation(&observed).expect("binding");
+        let mut same_space = observed.clone();
+        same_space.available_bytes = 1;
+        assert_eq!(
+            admit_confirmed_npm_target(Some(&expected), &same_space),
+            Ok(())
+        );
+        assert_eq!(
+            admit_confirmed_npm_target(None, &observed),
+            Err(NpmTargetError::Missing)
+        );
+
+        let mut sibling_cache = observed.clone();
+        sibling_cache.cache = r"D:\npm\cache-b".into();
+        assert_eq!(
+            admit_confirmed_npm_target(Some(&expected), &sibling_cache),
+            Err(NpmTargetError::Drifted)
+        );
+
+        let mut npm_changed = observed.clone();
+        npm_changed.npm_identity = r"E:\Volta\bin\npm.cmd".into();
+        assert_eq!(
+            admit_confirmed_npm_target(Some(&expected), &npm_changed),
+            Err(NpmTargetError::Drifted)
+        );
+
+        let mut prefix_changed = observed.clone();
+        prefix_changed.prefix = r"E:\other-prefix".into();
+        assert_eq!(
+            admit_confirmed_npm_target(Some(&expected), &prefix_changed),
+            Err(NpmTargetError::Drifted)
+        );
     }
 }

@@ -3,12 +3,15 @@
 //! Handles provider CRUD operations, switching, and configuration management.
 
 mod common_config;
+mod credentials;
 mod endpoints;
 mod gemini_auth;
 mod live;
 mod managed_proxy;
 mod universal;
 mod usage;
+
+pub(crate) use credentials::ProviderCredentials;
 
 pub use managed_proxy::{
     BindManagedProxyError, BindManagedProxyRequest, BindManagedProxyResult,
@@ -133,7 +136,12 @@ pub(crate) fn build_codex_switch_target_live_projection(
         );
     }
     let mut effective_settings = effective_provider.settings_config;
-    let config = crate::codex_config::patch_codex_source_config(
+    let snippet = state.db.get_config_snippet(AppType::Codex.as_str())?;
+    let common_snippet =
+        live::provider_uses_common_config(&AppType::Codex, provider, snippet.as_deref())
+            .then_some(snippet)
+            .flatten();
+    let config = crate::codex_config::project_codex_source_config(
         environment
             .live_settings
             .get("config")
@@ -147,6 +155,7 @@ pub(crate) fn build_codex_switch_target_live_projection(
             .unwrap_or_default(),
         &crate::codex_config::get_codex_config_dir(),
         crate::settings::unify_codex_session_history(),
+        common_snippet.as_deref(),
     )?;
     effective_settings["config"] = Value::String(config);
     effective_settings["auth"] = environment
@@ -244,31 +253,32 @@ pub enum QuickSetupApplyFailureCode {
 #[derive(Debug)]
 pub struct QuickSetupApplyError {
     pub code: QuickSetupApplyFailureCode,
-    detail: String,
 }
 
 impl QuickSetupApplyError {
-    fn rolled_back(error: impl fmt::Display) -> Self {
+    fn rolled_back(_error: impl fmt::Display) -> Self {
         Self {
             code: QuickSetupApplyFailureCode::ApplyFailedRolledBack,
-            detail: error.to_string(),
         }
     }
 
-    fn state_unknown(primary: impl fmt::Display, rollback_errors: &[String]) -> Self {
+    fn state_unknown(_primary: impl fmt::Display, _rollback_errors: &[String]) -> Self {
         Self {
             code: QuickSetupApplyFailureCode::RollbackPartialStateUnknown,
-            detail: format!(
-                "quick setup apply failed: {primary}; rollback partially failed: {}",
-                rollback_errors.join("; ")
-            ),
         }
     }
 }
 
 impl fmt::Display for QuickSetupApplyError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.detail)
+        formatter.write_str(match self.code {
+            QuickSetupApplyFailureCode::ApplyFailedRolledBack => {
+                "provider_apply_failed_rolled_back"
+            }
+            QuickSetupApplyFailureCode::RollbackPartialStateUnknown => {
+                "provider_rollback_partial_state_unknown"
+            }
+        })
     }
 }
 
@@ -596,7 +606,7 @@ mod tests {
             .unwrap_or_else(|err| err.into_inner())
     }
 
-    fn with_test_home<T>(test: impl FnOnce(&AppState, &Path) -> T) -> T {
+    pub(super) fn with_test_home<T>(test: impl FnOnce(&AppState, &Path) -> T) -> T {
         let _guard = test_guard();
         let temp = tempfile::tempdir().expect("tempdir");
         let old_test_home = std::env::var_os("FYAGENT_TEST_HOME");
@@ -734,8 +744,8 @@ mod tests {
             template_type: template_type.map(str::to_string),
             auto_query_interval: None,
             coding_plan_provider: None,
-            access_key_id: Some("ak-test".to_string()),
-            secret_access_key: Some("sk-test".to_string()),
+            access_key_id: (template_type == Some("token_plan")).then(|| "ak-test".to_string()),
+            secret_access_key: (template_type == Some("token_plan")).then(|| "sk-test".to_string()),
             team_organization_id: None,
             team_project_id: None,
         }
@@ -1403,9 +1413,7 @@ mod tests {
                 error.code,
                 QuickSetupApplyFailureCode::RollbackPartialStateUnknown
             );
-            assert!(error
-                .to_string()
-                .contains("persistence verification failed"));
+            assert_eq!(error.to_string(), "provider_rollback_partial_state_unknown");
             let restored = state
                 .db
                 .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, "codex")
@@ -1438,6 +1446,11 @@ mod tests {
             );
             original.name = "Original quick setup provider".to_string();
             state.db.save_provider("codex", &original).unwrap();
+            let original = state
+                .db
+                .get_provider_by_id(&original.id, "codex")
+                .unwrap()
+                .unwrap();
             state
                 .db
                 .conn
@@ -1505,6 +1518,11 @@ mod tests {
                 None,
             );
             state.db.save_provider("codex", &original).unwrap();
+            let original = state
+                .db
+                .get_provider_by_id(&original.id, "codex")
+                .unwrap()
+                .unwrap();
             let original_backup = crate::proxy::types::LiveBackup {
                 app_type: "codex".to_string(),
                 original_config: "{\"preimage\":true}".to_string(),
@@ -1803,7 +1821,11 @@ mod tests {
             );
             let stored_config = stored.settings_config["config"].as_str().unwrap();
             let live_config = fs::read_to_string(get_codex_config_path()).unwrap();
-            let stored_key = stored.settings_config["auth"]["OPENAI_API_KEY"]
+            assert!(stored.settings_config["auth"]
+                .get("OPENAI_API_KEY")
+                .is_none());
+            let resolved = ProviderCredentials::resolve(&state.db, "codex", &stored).unwrap();
+            let stored_key = resolved.settings_config["auth"]["OPENAI_API_KEY"]
                 .as_str()
                 .unwrap();
             assert!(
@@ -2309,6 +2331,13 @@ context_window = 262144
                 .get_provider_by_id("codex-usage-old", AppType::Codex.as_str())
                 .expect("query updated provider")
                 .expect("updated provider should exist");
+            let serialized = serde_json::to_string(&saved).unwrap();
+            for secret in [
+                "sk-main", "sk-usage", "sk-plan", "sk-a", "ak-test", "sk-test",
+            ] {
+                assert!(!serialized.contains(secret));
+            }
+            let saved = ProviderCredentials::resolve(&state.db, "codex", &saved).unwrap();
             let script = saved
                 .meta
                 .as_ref()
@@ -2376,7 +2405,9 @@ context_window = 262144
             assert_eq!(script_after_update.api_key, None);
             assert_eq!(script_after_update.base_url, None);
             assert_eq!(
-                saved_after_update.resolve_usage_credentials(&AppType::Codex),
+                ProviderCredentials::resolve(&state.db, "codex", &saved_after_update)
+                    .unwrap()
+                    .resolve_usage_credentials(&AppType::Codex),
                 ("https://api.b.example/v1".to_string(), "sk-b".to_string())
             );
         });
@@ -2449,6 +2480,13 @@ context_window = 262144
                 .get_provider_by_id("codex-distinct", AppType::Codex.as_str())
                 .expect("query saved provider")
                 .expect("saved provider should exist");
+            let serialized = serde_json::to_string(&saved).unwrap();
+            for secret in [
+                "sk-main", "sk-usage", "sk-plan", "sk-a", "ak-test", "sk-test",
+            ] {
+                assert!(!serialized.contains(secret));
+            }
+            let saved = ProviderCredentials::resolve(&state.db, "codex", &saved).unwrap();
             let script = saved
                 .meta
                 .as_ref()
@@ -2483,6 +2521,13 @@ context_window = 262144
                 .get_provider_by_id("codex-token-plan", AppType::Codex.as_str())
                 .expect("query saved provider")
                 .expect("saved provider should exist");
+            let serialized = serde_json::to_string(&saved).unwrap();
+            for secret in [
+                "sk-main", "sk-usage", "sk-plan", "sk-a", "ak-test", "sk-test",
+            ] {
+                assert!(!serialized.contains(secret));
+            }
+            let saved = ProviderCredentials::resolve(&state.db, "codex", &saved).unwrap();
             let script = saved
                 .meta
                 .as_ref()
@@ -4483,9 +4528,11 @@ impl ProviderService {
     }
 
     fn quick_setup_persisted_provider_matches(
+        db: &crate::database::Database,
         expected: &Provider,
         persisted: &Provider,
     ) -> Result<bool, AppError> {
+        let expected = ProviderCredentials::comparison(db, expected, persisted)?;
         // Compare every persisted provider field, including custom endpoints
         // stored in the companion table, so an imported SQLite trigger cannot
         // alter a credential, endpoint, model, or other provider field while
@@ -4787,7 +4834,21 @@ impl ProviderService {
         state: &AppState,
         app_type: AppType,
     ) -> Result<IndexMap<String, Provider>, AppError> {
-        state.db.get_all_providers(app_type.as_str())
+        Ok(state
+            .db
+            .get_all_providers(app_type.as_str())?
+            .into_iter()
+            .map(|(id, provider)| {
+                (
+                    id,
+                    if app_type == AppType::Codex {
+                        ProviderCredentials::renderer_projection(&provider)
+                    } else {
+                        provider
+                    },
+                )
+            })
+            .collect())
     }
 
     /// Get current provider ID
@@ -4904,6 +4965,8 @@ impl ProviderService {
         app_type: AppType,
         mut provider: Provider,
     ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        provider = ProviderCredentials::merge_edit(&state.db, app_type.as_str(), &provider)
+            .map_err(QuickSetupApplyError::rolled_back)?;
         let _file_scope = crate::config::file_mutation_scope();
         let existing_provider = state
             .db
@@ -5045,7 +5108,7 @@ impl ProviderService {
                         "Provider quick setup persistence verification failed".to_string(),
                     )
                 })?;
-            if !Self::quick_setup_persisted_provider_matches(&provider, &persisted)?
+            if !Self::quick_setup_persisted_provider_matches(&state.db, &provider, &persisted)?
                 || state.db.get_current_provider(app_type.as_str())?.as_deref()
                     != Some(provider.id.as_str())
                 || crate::settings::get_current_provider(&app_type).as_deref()
@@ -5086,7 +5149,7 @@ impl ProviderService {
                     );
                 }
                 let restore_provider = match &existing_provider {
-                    Some(previous) => state.db.save_provider(app_type.as_str(), previous),
+                    Some(previous) => state.db.save_provider_record(app_type.as_str(), previous),
                     None => state.db.delete_provider(app_type.as_str(), &provider.id),
                 };
                 if let Err(error) = restore_provider {
@@ -5157,7 +5220,9 @@ impl ProviderService {
                         let matches = match (&existing_provider, restored.as_ref()) {
                             (None, None) => Ok(true),
                             (Some(expected), Some(actual)) => {
-                                Self::quick_setup_persisted_provider_matches(expected, actual)
+                                Self::quick_setup_persisted_provider_matches(
+                                    &state.db, expected, actual,
+                                )
                             }
                             _ => Ok(false),
                         };
@@ -5230,6 +5295,9 @@ impl ProviderService {
             }
         };
 
+        if app_type == AppType::Codex {
+            ProviderCredentials::settle(&state.db);
+        }
         Ok(ProviderMutationResult {
             value,
             live_config_changed: live_before
@@ -5258,6 +5326,20 @@ impl ProviderService {
         Self::normalize_usage_script_credential_overrides(&app_type, &mut provider);
         if app_type.is_additive_mode() {
             Self::set_provider_live_config_managed(&mut provider, add_to_live);
+        }
+
+        if app_type == AppType::Codex {
+            if activate_if_no_current_provider && state.db.get_current_provider("codex")?.is_none()
+            {
+                return Self::apply_provider_activation_transaction_locked(
+                    state, app_type, provider,
+                )
+                .map(|_| true)
+                .map_err(|_| AppError::Message("provider_save_failed".into()));
+            }
+            state.db.save_provider("codex", &provider)?;
+            ProviderCredentials::settle(&state.db);
+            return Ok(true);
         }
 
         // Save to database
@@ -5313,6 +5395,7 @@ impl ProviderService {
         let existing_provider = state
             .db
             .get_provider_by_id(&original_id, app_type.as_str())?;
+        provider = ProviderCredentials::merge_edit(&state.db, app_type.as_str(), &provider)?;
         // Normalize Claude model keys
         Self::normalize_provider_if_claude(&app_type, &mut provider);
         Self::validate_provider_settings(&app_type, &provider)?;
@@ -5449,6 +5532,20 @@ impl ProviderService {
                 return Ok(true);
             }
             write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
+            return Ok(true);
+        }
+
+        if app_type == AppType::Codex {
+            let current = crate::settings::get_effective_current_provider(&state.db, &app_type)?;
+            if current.as_deref() == Some(provider.id.as_str()) {
+                return Self::apply_provider_activation_transaction_locked(
+                    state, app_type, provider,
+                )
+                .map(|_| true)
+                .map_err(|_| AppError::Message("provider_save_failed".into()));
+            }
+            state.db.save_provider("codex", &provider)?;
+            ProviderCredentials::settle(&state.db);
             return Ok(true);
         }
 
@@ -5671,10 +5768,14 @@ impl ProviderService {
             let local_current = crate::settings::get_current_provider(&app_type);
             let db_current = state.db.get_current_provider(app_type.as_str())?;
             if local_current.as_deref() == Some(id) || db_current.as_deref() == Some(id) {
-                return Self::delete_current_codex_provider(state, id, local_current, db_current);
+                Self::delete_current_codex_provider(state, id, local_current, db_current)?;
+                ProviderCredentials::settle(&state.db);
+                return Ok(());
             }
 
-            return state.db.delete_provider(app_type.as_str(), id);
+            state.db.delete_provider(app_type.as_str(), id)?;
+            ProviderCredentials::settle(&state.db);
+            return Ok(());
         }
 
         // For all remaining non-additive apps: check both local settings and database.
@@ -5843,6 +5944,10 @@ impl ProviderService {
         let _provider = providers
             .get(id)
             .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?;
+
+        // Resolve before backfill/current-provider mutations, including the
+        // reserved quick-setup provider whose source validation differs.
+        ProviderCredentials::resolve(&state.db, app_type.as_str(), _provider)?;
 
         if matches!(app_type, AppType::Codex)
             && !is_quick_setup_provider_id(&app_type, id)
@@ -6816,7 +6921,9 @@ impl ProviderService {
                         ));
                     }
                     if let Some(cfg_text) = config_value.as_str() {
-                        crate::codex_config::validate_config_toml(cfg_text)?;
+                        crate::codex_config::validate_config_toml(cfg_text).map_err(|_| {
+                            AppError::Message("provider_codex_config_invalid".into())
+                        })?;
                     }
                 }
                 crate::codex_config::validate_codex_provider_features(provider)?;

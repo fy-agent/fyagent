@@ -87,6 +87,26 @@ No renderer IPC, ordinary CLI, helper CLI, bridge protocol, or future installer
 API may accept an arbitrary URL, filesystem path, identity, publisher, hash,
 install scope, or validation-bypass switch.
 
+### Installation confirmation
+
+`codex_desktop_prepare_install` accepts only `expectedReleaseId` and returns a
+v1 summary with a five-minute opaque `confirmationId`, the same release ID,
+platform/architecture, display version, redacted target, install/update kind,
+available bytes, optional size hint and the actual closed download endpoint URL.
+The source disclosure shows that endpoint verbatim (including the configured
+mirror); it does not relabel it as the official homepage or imply artifact
+verification before download. It uses existing platform preflight,
+temporary-directory ownership and disk probes; it does not create an install job
+or download the package. `codex_desktop_start_install` now requires both IDs and
+consumes the confirmation once. Local installation identity and the chosen root
+are rechecked before download and immediately before platform install.
+
+Fresh macOS installs confirm `~/Applications`; updates keep the exact existing
+bundle path. The transaction filters its candidates to the confirmed root and
+never changes roots on permission failure. A non-writable target fails before
+download with a bounded permission reason. Windows retains the frozen interactive
+user's system-managed MSIX destination and existing helper/deployment boundary.
+
 ## 2. Signatures
 
 Renderer input remains only:
@@ -356,8 +376,10 @@ Installation still:
 
 Fixed Stable bundle ID remains allowed only to discover and safely manage an
 already installed Stable application. It is not a downloaded-content gate.
-System/user Applications targeting, permission fallback, running-app checks,
-path containment, atomic replacement, and rollback remain unchanged.
+Confirmed user Applications targeting, exact existing-path updates, running-app
+checks, path containment, atomic replacement, and rollback are retained. Legacy
+unconfirmed transaction fixtures may exercise fallback; production admission
+requires the confirmed root and cannot fall back.
 
 The shared transaction also exposes a crate-private managed-Agent entry point.
 It reuses the same controlled mount, direct-child discovery, executable

@@ -13,6 +13,7 @@ import {
   shouldAcceptJobSnapshot,
   updateDownloadSpeedState,
   type CodexDesktopProgress,
+  type CodexInstallPreflight,
   type DownloadSpeedState,
   type InstallerErrorDto,
   type InstallerPrimaryAction,
@@ -42,6 +43,9 @@ export interface CodexDesktopInstallerViewModel {
   operationFailed: boolean;
   refresh: () => Promise<void>;
   runPrimaryAction: () => Promise<void>;
+  preflight: CodexInstallPreflight | null;
+  confirmInstall: () => Promise<void>;
+  dismissPreflight: () => void;
   cancel: () => Promise<void>;
   openLogs: () => Promise<void>;
 }
@@ -61,6 +65,10 @@ function isWorkingState(state: InstallerViewState): boolean {
 export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   const { ports } = useFeatures();
   const port = ports.codexDesktop;
+  const confirmationRef = useRef<CodexInstallPreflight | null>(null);
+  const [preflight, setPreflight] = useState<CodexInstallPreflight | null>(
+    null,
+  );
   const aliveRef = useRef(false);
   const operationLockRef = useRef(false);
   const localRequestRef = useRef(0);
@@ -282,6 +290,10 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   const authorityUnavailable =
     !local && !remote && localFailure !== null && remoteFailure !== null;
   const working = isWorkingState(state);
+  const currentPrimaryAction =
+    !working && asInstallerError(actionFailure)?.suggestedAction === "refresh"
+      ? "refresh"
+      : actionState.primaryAction;
 
   const performLocked = useCallback(
     async (operation: () => Promise<void>): Promise<void> => {
@@ -310,7 +322,7 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   const refresh = useCallback(
     async () =>
       performLocked(async () => {
-        await readRemote(true);
+        await Promise.all([readRemote(true), readLocal()]);
         if (
           effectiveJob?.stage === "failed" &&
           effectiveJob.error?.suggestedAction === "refresh"
@@ -318,34 +330,40 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
           setDismissedTerminal(terminalIdentity(effectiveJob));
         }
       }),
-    [effectiveJob, performLocked, readRemote],
+    [effectiveJob, performLocked, readRemote, readLocal],
   );
 
   const runPrimaryAction = useCallback(async () => {
     return performLocked(async () => {
-      switch (actionState.primaryAction) {
+      switch (currentPrimaryAction) {
         case "install":
         case "update": {
           if (!remote) {
             return;
           }
-          const snapshot = await port.startInstall(remote.releaseId);
-          acceptSnapshot(snapshot);
+          const checked = await port.prepareInstall(remote.releaseId);
+          if (aliveRef.current) {
+            confirmationRef.current = checked;
+            setPreflight(checked);
+          }
           return;
         }
         case "launch":
           await port.launch();
           return;
         case "refresh":
-          await readRemote(true);
+          await Promise.all([readRemote(true), readLocal()]);
           if (effectiveJob?.stage === "failed") {
             setDismissedTerminal(terminalIdentity(effectiveJob));
           }
           return;
         case "retry":
           if (state === "failed" && remote) {
-            const snapshot = await port.startInstall(remote.releaseId);
-            acceptSnapshot(snapshot);
+            const checked = await port.prepareInstall(remote.releaseId);
+            if (aliveRef.current) {
+              confirmationRef.current = checked;
+              setPreflight(checked);
+            }
           } else {
             await readRemote(true);
           }
@@ -355,15 +373,36 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
       }
     });
   }, [
-    acceptSnapshot,
-    actionState.primaryAction,
+    currentPrimaryAction,
     effectiveJob,
     performLocked,
     port,
     readRemote,
+    readLocal,
     remote,
     state,
   ]);
+
+  const dismissPreflight = useCallback(() => {
+    confirmationRef.current = null;
+    setPreflight(null);
+  }, []);
+
+  const confirmInstall = useCallback(
+    async () =>
+      performLocked(async () => {
+        const checked = confirmationRef.current;
+        if (!checked) return;
+        confirmationRef.current = null;
+        setPreflight(null);
+        const snapshot = await port.startInstall(
+          checked.expectedReleaseId,
+          checked.confirmationId,
+        );
+        acceptSnapshot(snapshot);
+      }),
+    [acceptSnapshot, performLocked, port],
+  );
 
   const cancel = useCallback(
     async () =>
@@ -387,7 +426,7 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     remoteVersion,
     progress,
     error,
-    primaryAction: actionState.primaryAction,
+    primaryAction: currentPrimaryAction,
     primaryDisabled: actionState.primaryDisabled || working,
     canCancel: Boolean(effectiveJob?.cancellable) && !isActing,
     canOpenLogs: !isActing && (state === "failed" || operationFailed),
@@ -398,6 +437,9 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     operationFailed,
     refresh,
     runPrimaryAction,
+    preflight,
+    confirmInstall,
+    dismissPreflight,
     cancel,
     openLogs,
   };

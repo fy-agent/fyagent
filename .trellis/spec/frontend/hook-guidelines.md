@@ -34,7 +34,7 @@ content commits; preserve the hidden-window bootstrap exception.
 
 ## Concrete owners
 
-`pages/agents/useAgentAuthSession.ts` owns external-auth sessions;
+`shared/features/useAgentAuthSession.ts` owns external-auth sessions;
 `pages/auth/useManagedAuthLoginSession.ts` owns managed login observation;
 `shared/features/change-plans-ui/useChangeJob.ts` owns Query-based change-job
 observation. `shared/ui/useDialogState.ts` owns conditional dialog session

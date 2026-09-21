@@ -151,19 +151,19 @@ Parser drift against this table rejects the whole catalog.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                       | Required result                                                                   |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Unknown/legacy Agent ID                                         | Reject the request; do not map to another product.                                |
-| Catalog version, product order, capability order or enum drifts | Strict Rust/TypeScript parser rejects the whole catalog.                          |
-| Duplicate product/capability/link ID                            | Reject the catalog; do not deduplicate in the UI.                                 |
-| Official link is non-HTTPS, unexpected or malformed             | Reject the catalog entry/catalog according to the strict parser.                  |
-| Claude official link is `desktop`, `cli`, or both               | Reject the whole catalog. Native v5 is one `product` CLI setup link.              |
-| Runtime adapter cannot answer                                   | Return `null`/closed unknown reason; never manufacture `false`.                   |
-| Renderer supplies path, URL, command, executable or extra field | Reject before filesystem/process/network side effect.                             |
-| Launch identity is missing, ambiguous or untrusted              | Controlled unavailable/unverified result; start nothing.                          |
-| Browser/app launch completes                                    | Report handoff/launch only; do not report installed, configured or authenticated. |
-| Catalog/status/launch permission is omitted from ACL union      | Permission contract test fails.                                                   |
-| Pi appears in catalog/runtime/UI tests                          | Contract regression.                                                              |
+| Condition                                                       | Required result                                                                        |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Unknown/legacy Agent ID                                         | Reject the request; do not map to another product.                                     |
+| Catalog version, product order, capability order or enum drifts | Strict Rust/TypeScript parser rejects the whole catalog.                               |
+| Duplicate product/capability/link ID                            | Reject the catalog; do not deduplicate in the UI.                                      |
+| Official link is non-HTTPS, unexpected or malformed             | Reject the catalog entry/catalog according to the strict parser.                       |
+| Claude official link is `desktop` or `cli`                      | Reject the whole catalog. Native v5 uses ordered `product, download, terms` CLI links. |
+| Runtime adapter cannot answer                                   | Return `null`/closed unknown reason; never manufacture `false`.                        |
+| Renderer supplies path, URL, command, executable or extra field | Reject before filesystem/process/network side effect.                                  |
+| Launch identity is missing, ambiguous or untrusted              | Controlled unavailable/unverified result; start nothing.                               |
+| Browser/app launch completes                                    | Report handoff/launch only; do not report installed, configured or authenticated.      |
+| Catalog/status/launch permission is omitted from ACL union      | Permission contract test fails.                                                        |
+| Pi appears in catalog/runtime/UI tests                          | Contract regression.                                                                   |
 
 ## 5. Good / Base / Bad Cases
 

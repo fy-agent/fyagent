@@ -25,7 +25,8 @@ pub(crate) use model_provider_line::{
     uncomment_top_level_model_provider,
 };
 pub(crate) use source_switch::{
-    patch_source as patch_codex_source_config, validate_source as validate_codex_source_config,
+    patch_source as patch_codex_source_config, project_source as project_codex_source_config,
+    validate_source as validate_codex_source_config,
 };
 
 pub(crate) use auth::codex_auth_has_credential_login_material;
@@ -43,8 +44,10 @@ pub(crate) use credential_store::{
 #[cfg(test)]
 use catalog::*;
 pub(crate) use catalog::{
-    codex_model_catalog_write_required, codex_top_level_model, read_codex_model_catalog_text,
-    resolve_fyagent_catalog_path, CODEX_WEB_SEARCH_DISABLED, CODEX_WEB_SEARCH_FIELD,
+    codex_model_catalog_write_required, codex_native_gateway_rejects_web_search,
+    codex_top_level_model, read_codex_model_catalog_text, resolve_fyagent_catalog_path,
+    set_codex_model_catalog_json_field, set_codex_native_web_search_field,
+    CODEX_WEB_SEARCH_DISABLED, CODEX_WEB_SEARCH_FIELD,
 };
 pub use catalog::{
     prepare_codex_config_text_with_model_catalog, read_codex_model_catalog_simplified_from_live,
@@ -206,6 +209,24 @@ pub fn write_codex_provider_live_with_catalog(
     config_text: Option<&str>,
     profile: CodexCatalogToolProfile,
 ) -> Result<(), AppError> {
+    write_codex_provider_live_with_common_snippet(
+        settings,
+        category,
+        auth,
+        config_text,
+        profile,
+        None,
+    )
+}
+
+pub(crate) fn write_codex_provider_live_with_common_snippet(
+    settings: &Value,
+    category: Option<&str>,
+    auth: &Value,
+    config_text: Option<&str>,
+    profile: CodexCatalogToolProfile,
+    common_snippet: Option<&str>,
+) -> Result<(), AppError> {
     // Reject incomplete destinations before catalog preparation can create a
     // file. A missing API configuration must never become an empty live TOML.
     source_switch::validate_source(category, auth, config_text.unwrap_or(""))?;
@@ -214,7 +235,7 @@ pub fn write_codex_provider_live_with_catalog(
         .map(|text| prepare_codex_config_text_with_model_catalog(settings, text, profile))
         .transpose()?;
 
-    write_codex_live_for_provider(category, auth, prepared_config.as_deref())
+    write_codex_live_projection(category, auth, prepared_config.as_deref(), common_snippet)
 }
 
 /// Extract a provider-scoped `experimental_bearer_token` from Codex `config.toml`.
@@ -496,34 +517,6 @@ pub fn codex_config_has_official_proxy_route(config_text: &str) -> bool {
         == Some(FYAGENT_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
 }
 
-/// Remove only the official takeover route owned by FyAgent. This is a
-/// last-resort crash cleanup when no live backup or provider SSOT is usable.
-pub fn remove_codex_official_proxy_route(config_text: &str) -> Result<String, AppError> {
-    let mut doc = config_text
-        .parse::<DocumentMut>()
-        .map_err(|e| AppError::Message(format!("Invalid Codex config.toml: {e}")))?;
-    if doc.get("model_provider").and_then(|item| item.as_str())
-        != Some(FYAGENT_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
-    {
-        return Ok(config_text.to_string());
-    }
-
-    doc.as_table_mut().remove("model_provider");
-    if let Some(item) = doc.as_table_mut().remove("model_providers") {
-        let mut providers = item.into_table().map_err(|_| {
-            AppError::Message(
-                "Invalid Codex config.toml: model_providers must be a table".to_string(),
-            )
-        })?;
-        providers.remove(FYAGENT_CODEX_OFFICIAL_PROXY_PROVIDER_ID);
-        remove_codex_proxy_placeholders_from_providers(&mut providers);
-        if !providers.is_empty() {
-            doc["model_providers"] = toml_edit::Item::Table(providers);
-        }
-    }
-    Ok(doc.to_string())
-}
-
 fn table_matches_codex_unified_official_provider(table: &toml_edit::Table) -> bool {
     table.len() == 4
         && table.get("name").and_then(|item| item.as_str()) == Some("OpenAI")
@@ -631,7 +624,7 @@ pub fn strip_codex_unified_session_bucket(config_text: &str) -> Result<String, A
 /// 统一会话开关开启时，把官方供应商 `{ auth, config }` 设置对象中的
 /// config 文本注入共享 custom 路由；开关关闭或非官方供应商时不做改动。
 ///
-/// 普通 live 写入（`write_codex_live_for_provider`）与代理接管备份
+/// 普通 live 写入（`write_codex_live_projection`）与代理接管备份
 /// （`update_live_backup_from_provider`）两条落盘路径共用：接管期间
 /// live 归代理所有，注入必须进备份，接管释放恢复的 live 才带统一路由。
 pub fn apply_codex_unified_session_bucket_to_settings(
@@ -718,19 +711,21 @@ pub fn strip_codex_mcp_servers_from_settings(settings: &mut Value) -> Result<(),
 /// A request-source switch owns routing/model fields, not account credentials
 /// or the rest of the user's configuration. Login projection has a separate
 /// consent and revision boundary in Managed Auth.
-pub fn write_codex_live_for_provider(
+fn write_codex_live_projection(
     category: Option<&str>,
     auth: &Value,
     config_text: Option<&str>,
+    common_snippet: Option<&str>,
 ) -> Result<(), AppError> {
     let current_live = read_and_validate_codex_config_text()?;
-    let config = source_switch::patch_source(
+    let config = source_switch::project_source(
         &current_live,
         category,
         auth,
         config_text.unwrap_or(""),
         &get_codex_config_dir(),
         crate::settings::unify_codex_session_history(),
+        common_snippet,
     )?;
     write_codex_live_config_atomic(Some(&config))
 }
@@ -998,54 +993,6 @@ pub fn update_codex_toml_field(toml_str: &str, field: &str, value: &str) -> Resu
     }
 
     Ok(doc.to_string())
-}
-
-/// Remove `base_url` from the active model_provider section only if it matches `predicate`.
-/// Also removes top-level `base_url` if it matches.
-/// Used by proxy cleanup to strip local proxy URLs without touching user-configured URLs.
-pub fn remove_codex_toml_base_url_if(toml_str: &str, predicate: impl Fn(&str) -> bool) -> String {
-    let mut doc = match toml_str.parse::<DocumentMut>() {
-        Ok(doc) => doc,
-        Err(_) => return toml_str.to_string(),
-    };
-
-    let model_provider = doc
-        .get("model_provider")
-        .and_then(|item| item.as_str())
-        .map(str::to_string);
-
-    if let Some(provider_key) = model_provider {
-        if let Some(model_providers) = doc
-            .get_mut("model_providers")
-            .and_then(|v| v.as_table_mut())
-        {
-            if let Some(provider_table) = model_providers
-                .get_mut(provider_key.as_str())
-                .and_then(|v| v.as_table_mut())
-            {
-                let should_remove = provider_table
-                    .get("base_url")
-                    .and_then(|item| item.as_str())
-                    .map(&predicate)
-                    .unwrap_or(false);
-                if should_remove {
-                    provider_table.remove("base_url");
-                }
-            }
-        }
-    }
-
-    // Fallback: also clean up top-level base_url if it matches
-    let should_remove_root = doc
-        .get("base_url")
-        .and_then(|item| item.as_str())
-        .map(&predicate)
-        .unwrap_or(false);
-    if should_remove_root {
-        doc.as_table_mut().remove("base_url");
-    }
-
-    doc.to_string()
 }
 
 #[cfg(test)]
@@ -1964,21 +1911,6 @@ http_headers = {{ "{CODEX_IMAGE_EXTENSION_HEADER}" = "{CODEX_IMAGE_EXTENSION_VAL
     }
 
     #[test]
-    fn official_proxy_route_cleanup_only_removes_owned_provider() {
-        let projected =
-            apply_codex_official_proxy_route("model = \"gpt-5.4\"\n", "http://127.0.0.1:15721/v1")
-                .expect("project");
-        let cleaned = remove_codex_official_proxy_route(&projected).expect("clean");
-        let doc: toml::Value = toml::from_str(&cleaned).expect("parse cleaned");
-        assert!(doc.get("model_provider").is_none());
-        assert!(doc.get("model_providers").is_none());
-        assert_eq!(
-            doc.get("model").and_then(toml::Value::as_str),
-            Some("gpt-5.4")
-        );
-    }
-
-    #[test]
     fn official_proxy_route_rejects_non_table_model_providers_without_panicking() {
         for input in [
             "model_providers = 3\n",
@@ -2003,14 +1935,6 @@ model_providers = { rightcode = { name = "RightCode", experimental_bearer_token 
         assert!(projected_doc["model_providers"]
             .get(FYAGENT_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
             .is_some());
-
-        let cleaned = remove_codex_official_proxy_route(&projected).expect("clean projected");
-        let cleaned_doc: toml::Value = toml::from_str(&cleaned).expect("parse cleaned");
-        assert!(cleaned_doc.get("model_provider").is_none());
-        assert!(cleaned_doc["model_providers"].get("rightcode").is_some());
-        assert!(cleaned_doc["model_providers"]
-            .get(FYAGENT_CODEX_OFFICIAL_PROXY_PROVIDER_ID)
-            .is_none());
     }
 
     #[test]
@@ -2645,51 +2569,6 @@ model = "gpt-4"
             .and_then(|v| v.get("model"))
             .and_then(|v| v.as_str());
         assert_eq!(profile_model, Some("gpt-4"));
-    }
-
-    #[test]
-    fn remove_base_url_if_predicate() {
-        let input = r#"model_provider = "any"
-
-[model_providers.any]
-name = "any"
-base_url = "http://127.0.0.1:5000/v1"
-wire_api = "responses"
-"#;
-
-        let result =
-            remove_codex_toml_base_url_if(input, |url| url.starts_with("http://127.0.0.1"));
-        let parsed: toml::Value = toml::from_str(&result).unwrap();
-
-        let any_section = parsed
-            .get("model_providers")
-            .and_then(|v| v.get("any"))
-            .unwrap();
-        assert!(any_section.get("base_url").is_none());
-        assert_eq!(
-            any_section.get("wire_api").and_then(|v| v.as_str()),
-            Some("responses")
-        );
-    }
-
-    #[test]
-    fn remove_base_url_if_keeps_non_matching() {
-        let input = r#"model_provider = "any"
-
-[model_providers.any]
-base_url = "https://production.api/v1"
-"#;
-
-        let result =
-            remove_codex_toml_base_url_if(input, |url| url.starts_with("http://127.0.0.1"));
-        let parsed: toml::Value = toml::from_str(&result).unwrap();
-
-        let base_url = parsed
-            .get("model_providers")
-            .and_then(|v| v.get("any"))
-            .and_then(|v| v.get("base_url"))
-            .and_then(|v| v.as_str());
-        assert_eq!(base_url, Some("https://production.api/v1"));
     }
 
     #[test]

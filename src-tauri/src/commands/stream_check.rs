@@ -65,6 +65,7 @@ pub async fn stream_check_model(
     api_key: String,
     model_id: String,
     codex_image_extension: Option<bool>,
+    protocol: Option<crate::services::provider_api::ApiProtocol>,
 ) -> Result<ModelProbeResult, AppError> {
     model_probe::probe(
         app,
@@ -72,6 +73,7 @@ pub async fn stream_check_model(
         &api_key,
         &model_id,
         codex_image_extension.unwrap_or(false),
+        protocol,
     )
     .await
 }

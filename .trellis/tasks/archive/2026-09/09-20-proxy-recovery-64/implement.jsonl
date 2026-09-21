@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/proxy-runtime.md","reason":"Proxy restore ownership and lifecycle"}
+{"file":".trellis/spec/backend/reversible-user-config.md","reason":"Authoritative shared file writer and guarded recovery"}
+{"file":".trellis/spec/backend/managed-auth-consumers.md","reason":"Managed consumer recovery limits"}
+{"file":".trellis/spec/frontend/managed-auth.md","reason":"Existing recovery controls and fresh readback"}

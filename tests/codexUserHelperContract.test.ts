@@ -243,8 +243,8 @@ describe("Codex current-user helper static contract", () => {
     expect(runtime).not.toContain("derive_install_layout(");
   });
 
-  it("pins protocol v3 and binds Hello to the closed installer action", () => {
-    expect(protocol).toMatch(/PROTOCOL_VERSION:\s*u8\s*=\s*3\s*;/u);
+  it("pins protocol v4 and binds Hello to the closed installer action", () => {
+    expect(protocol).toMatch(/PROTOCOL_VERSION:\s*u8\s*=\s*4\s*;/u);
     expect(protocol).toMatch(/FRAME_LENGTH_BYTES:\s*usize\s*=\s*4\s*;/u);
     expect(protocol).toMatch(/MAX_PROTOCOL_MESSAGES:\s*usize\s*=\s*104\s*;/u);
     expect(protocol).toMatch(/MAX_ERROR_MESSAGE_BYTES:\s*usize\s*=\s*256\s*;/u);
@@ -305,7 +305,7 @@ describe("Codex current-user helper static contract", () => {
     );
 
     const mutations = [
-      protocol.replace("PROTOCOL_VERSION: u8 = 3", "PROTOCOL_VERSION: u8 = 2"),
+      protocol.replace("PROTOCOL_VERSION: u8 = 4", "PROTOCOL_VERSION: u8 = 3"),
       protocol.replace(
         "self.phase = ProtocolPhase::AwaitingControl;",
         "self.phase = ProtocolPhase::AwaitingStarted;",
@@ -316,7 +316,7 @@ describe("Codex current-user helper static contract", () => {
       ),
     ];
     const hasV3Ordering = (source: string) =>
-      source.includes("PROTOCOL_VERSION: u8 = 3") &&
+      source.includes("PROTOCOL_VERSION: u8 = 4") &&
       source.includes("HelperMessage::Hello { action }") &&
       source.includes("HelperProtocolAction::Hello(action)") &&
       source.includes("fn mark_control_sent") &&

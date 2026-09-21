@@ -199,6 +199,7 @@ struct SnapshotDestination {
 }
 
 struct InventorySnapshot {
+    prepared: Option<super::preflight::PreparedInstallTarget>,
     created_at: Instant,
     agent_id: AgentCatalogId,
     candidates: HashMap<String, SnapshotCandidate>,
@@ -235,6 +236,44 @@ impl AgentInstallationInventoryStore {
                 cache.snapshots.remove(&oldest);
             }
         }
+    }
+
+    pub(super) fn record_preflight(
+        &self,
+        inventory_id: &str,
+        target: super::preflight::PreparedInstallTarget,
+    ) -> Result<(), AgentReasonCode> {
+        let mut cache = self
+            .cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        prune_expired(&mut cache);
+        let snapshot = cache
+            .snapshots
+            .get_mut(inventory_id)
+            .ok_or(AgentReasonCode::InventoryExpired)?;
+        snapshot.prepared = Some(target);
+        Ok(())
+    }
+
+    pub(super) fn consume_preflight(
+        &self,
+        inventory_id: &str,
+        target: &super::preflight::PreparedInstallTarget,
+    ) -> Result<(), AgentReasonCode> {
+        let mut cache = self
+            .cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        prune_expired(&mut cache);
+        let snapshot = cache
+            .snapshots
+            .get_mut(inventory_id)
+            .ok_or(AgentReasonCode::InventoryExpired)?;
+        if snapshot.prepared.take().as_ref() != Some(target) {
+            return Err(AgentReasonCode::TargetChanged);
+        }
+        Ok(())
     }
 
     fn snapshot_target(
@@ -616,6 +655,7 @@ fn project_and_store(
     store.insert(
         inventory_id.clone(),
         InventorySnapshot {
+            prepared: None,
             created_at: Instant::now(),
             agent_id,
             candidates: snapshot_candidates,
@@ -1225,6 +1265,107 @@ mod tests {
         };
         refresh_candidate_revision(&mut candidate);
         candidate
+    }
+
+    #[test]
+    fn preflight_is_bound_to_exact_request_and_native_destination_and_consumed_once() {
+        use super::super::preflight::{InstallExecution, InstallRuntime, PreparedInstallTarget};
+        let store = AgentInstallationInventoryStore::new();
+        let dto = project_and_store(
+            AgentCatalogId::OpenCode,
+            AgentSurface::Desktop,
+            InventoryProbe {
+                state_override: None,
+                candidates: vec![candidate("one", InstallationEvidenceCode::KnownPath)],
+                destinations: Vec::new(),
+                reason_codes: Vec::new(),
+            },
+            &store,
+        );
+        let selected = &dto.candidates[0];
+        let binding = PreparedInstallTarget {
+            request: StartAgentActionRequest {
+                agent_id: AgentCatalogId::OpenCode,
+                action: AgentActionId::Update,
+                expected_release_id: None,
+                inventory_id: Some(dto.inventory_id.clone()),
+                target_id: Some(selected.candidate_id.clone()),
+                expected_target_revision: Some(selected.candidate_revision.clone()),
+                surface: None,
+            },
+            paths: vec![PathBuf::from("/original")],
+            runtime: InstallRuntime::NativeInstaller,
+            execution: InstallExecution::CurrentUser,
+            target_label: "Original".to_string(),
+            download_url: None,
+            storage_budget: super::super::preflight::storage_budget(
+                AgentSurface::Desktop,
+                InstallRuntime::NativeInstaller,
+                None,
+            )
+            .unwrap(),
+            plan: super::super::preflight::PreparedPlanPayload::Desktop,
+            npm_target: None,
+        };
+        store
+            .record_preflight(&dto.inventory_id, binding.clone())
+            .unwrap();
+        let mut changed = binding.clone();
+        changed.paths = vec![PathBuf::from("/changed")];
+        assert_eq!(
+            store.consume_preflight(&dto.inventory_id, &changed),
+            Err(AgentReasonCode::TargetChanged)
+        );
+        // Reconfirm after a failed comparison; no silent acceptance of the old record.
+        assert_eq!(
+            store.consume_preflight(&dto.inventory_id, &binding),
+            Err(AgentReasonCode::TargetChanged)
+        );
+        let mut changed_source = binding.clone();
+        changed_source.download_url = Some("https://opencode.ai/changed".to_string());
+        let mut changed_budget = binding.clone();
+        changed_budget.storage_budget = super::super::preflight::storage_budget(
+            AgentSurface::Desktop,
+            InstallRuntime::NativeInstaller,
+            Some(4096),
+        )
+        .unwrap();
+        for changed in [changed_source, changed_budget] {
+            store
+                .record_preflight(&dto.inventory_id, binding.clone())
+                .unwrap();
+            assert_eq!(
+                store.consume_preflight(&dto.inventory_id, &changed),
+                Err(AgentReasonCode::TargetChanged)
+            );
+        }
+        let mut changed_dest = binding.clone();
+        changed_dest.npm_target = Some(
+            fyagent_user_helper::NpmTargetBinding::new(
+                r"D:\npm-prefix",
+                r"D:\npm\cache-a",
+                r"C:\Users\alice\AppData\Local\Temp",
+                r"C:\Program Files\nodejs\npm.cmd",
+            )
+            .unwrap(),
+        );
+        store
+            .record_preflight(&dto.inventory_id, binding.clone())
+            .unwrap();
+        assert_eq!(
+            store.consume_preflight(&dto.inventory_id, &changed_dest),
+            Err(AgentReasonCode::TargetChanged)
+        );
+        store
+            .record_preflight(&dto.inventory_id, binding.clone())
+            .unwrap();
+        store
+            .consume_preflight(&dto.inventory_id, &binding)
+            .unwrap();
+        assert_eq!(
+            store.consume_preflight(&dto.inventory_id, &binding),
+            Err(AgentReasonCode::TargetChanged)
+        );
     }
 
     #[test]

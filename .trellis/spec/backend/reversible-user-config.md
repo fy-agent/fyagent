@@ -16,6 +16,7 @@ config::atomic_write(path, bytes) -> Result<(), AppError>
 config::atomic_write_private(path, bytes) -> Result<(), AppError>
 config::delete_file(path) -> Result<(), AppError>
 config::file_mutation_scope() -> synchronous, non-Send RAII guard
+config::file_restore_scope(native_expected_files) -> synchronous, non-Send RAII guard
 config::file_write_target(path) -> { path, backupPath, exists }
 config::file_recovery(path) -> optional native recovery receipt
 config::restore_file_recovery(path, receiptId) -> Result<(), AppError>
@@ -75,6 +76,17 @@ receipt/source mismatch aborts rather than treating an external write as an
 internal continuation. The guard is non-Send and must not cross an await or
 thread handoff. This grouping does not make several files or database rows one
 atomic transaction.
+
+Proxy exit can constrain existing format writers with `file_restore_scope`.
+The native proxy owner first admits the backup and path-bound receipts. Each
+ordinary write then compares the current file to that expected postimage while
+holding the existing writer lock, before rotating any backup or writing bytes.
+Unlisted paths are rejected, including native login files outside proxy
+ownership. Successful internal writes advance only that scope's expected hash;
+an external edit between files stops the next write and preserves completed
+files. The scope does not hold the writer lock while invoking format writers,
+does not nest, never crosses an await, and changes no ordinary writer behavior
+after drop. This is per-file conflict protection, not cross-file atomicity.
 
 ### Explicit exceptions are not alternate normal writers
 

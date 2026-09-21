@@ -74,6 +74,14 @@ constraints, hooks, or error mapping.
   not use `unwrap` to acquire the shared connection or serialize persisted
   JSON.
 
+### Provider credential export boundary
+
+[Provider Credential Persistence](./provider-credentials.md) owns schema v24,
+reference-only Codex saves and migration. Ordinary SQL export is a portable
+connection/model projection, not a lossless credential backup; it omits full
+Provider snapshots and private fields. SQL import preserves local credential
+bindings together with their full route. Private binary backups stay lossless.
+
 ### Schema and migration
 
 - `SCHEMA_VERSION` and `PRAGMA user_version` move together. Every schema

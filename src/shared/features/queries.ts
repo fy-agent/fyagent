@@ -27,6 +27,7 @@ const changeJobsKey = [scope, "change-plans", "job"] as const;
 const dailyMemorySearchKey = [scope, "memory", "daily", "search"] as const;
 
 export const featureKeys = {
+  configPackCandidates: [scope, "config-pack", "candidates"] as const,
   projects: [scope, "projects", "list"] as const,
   projectCustomers: [scope, "projects", "customers"] as const,
   projectResourceOptions: [scope, "projects", "resources"] as const,
@@ -56,6 +57,8 @@ export const featureKeys = {
   changeJob: (jobId: string | null) => [...changeJobsKey, jobId] as const,
   providerSummary: (app: ProviderAppId) =>
     [scope, "providers", app, "summary"] as const,
+  providerProxyRestorePreview: (app: ProviderAppId) =>
+    [scope, "providers", app, "proxy-restore-preview"] as const,
   workbuddyStatus: [scope, "workbuddy", "status"] as const,
   workbuddyModelIds: [scope, "workbuddy", "model-ids"] as const,
   traeWorkModelIds: [scope, "trae-work", "model-ids"] as const,

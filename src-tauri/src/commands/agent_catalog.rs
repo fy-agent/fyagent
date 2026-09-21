@@ -15,6 +15,10 @@ pub enum AgentOfficialLinkId {
     Product,
     Cli,
     Desktop,
+    Download,
+    License,
+    Terms,
+    Docs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -75,37 +79,125 @@ const fn capability(
     }
 }
 
-const QODERWORK_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
-    AgentOfficialLinkId::Product,
-    "打开 QoderWork 官方页面",
-    "https://qoder.com.cn/qoderwork",
-)];
+const QODERWORK_OFFICIAL_LINKS: [AgentOfficialLink; 3] = [
+    official_link(
+        AgentOfficialLinkId::Product,
+        "打开 QoderWork 官方页面",
+        "https://qoder.com.cn/qoderwork",
+    ),
+    official_link(
+        AgentOfficialLinkId::Download,
+        "打开 QoderWork 官方下载页",
+        "https://qoder.com.cn/download",
+    ),
+    official_link(
+        AgentOfficialLinkId::Terms,
+        "Qoder 产品服务协议",
+        "https://qoder.com.cn/product-service",
+    ),
+];
 
-const TRAE_WORK_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
-    AgentOfficialLinkId::Product,
-    "打开 TRAE Work CN 官方页面",
-    "https://www.trae.cn/sem-work",
-)];
+const TRAE_WORK_OFFICIAL_LINKS: [AgentOfficialLink; 3] = [
+    official_link(
+        AgentOfficialLinkId::Product,
+        "打开 TRAE Work CN 官方页面",
+        "https://www.trae.cn/work",
+    ),
+    official_link(
+        AgentOfficialLinkId::Download,
+        "打开 TRAE Work CN 官方下载页",
+        "https://www.trae.cn/download",
+    ),
+    official_link(
+        AgentOfficialLinkId::Terms,
+        "TRAE 用户服务协议",
+        "https://www.trae.cn/terms-of-service/cn",
+    ),
+];
 
-const WORKBUDDY_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
-    AgentOfficialLinkId::Product,
-    "打开 WorkBuddy 官方页面",
-    "https://www.workbuddy.cn/",
-)];
+const WORKBUDDY_OFFICIAL_LINKS: [AgentOfficialLink; 3] = [
+    official_link(
+        AgentOfficialLinkId::Product,
+        "打开 WorkBuddy 官方页面",
+        "https://www.workbuddy.cn/home",
+    ),
+    official_link(
+        AgentOfficialLinkId::Download,
+        "打开 WorkBuddy 官方下载页",
+        "https://www.workbuddy.cn/home",
+    ),
+    official_link(
+        AgentOfficialLinkId::Terms,
+        "WorkBuddy 软件许可及服务协议",
+        "https://www.workbuddy.cn/document/term",
+    ),
+];
 
-const GROKBUILD_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
-    AgentOfficialLinkId::Product,
-    "打开 Grok Build 官方页面",
-    "https://x.ai/grok",
-)];
+const GROKBUILD_OFFICIAL_LINKS: [AgentOfficialLink; 4] = [
+    official_link(
+        AgentOfficialLinkId::Product,
+        "打开 Grok Build 官方页面",
+        "https://x.ai/build",
+    ),
+    official_link(
+        AgentOfficialLinkId::Docs,
+        "打开 Grok Build 官方文档",
+        "https://docs.x.ai/build/overview",
+    ),
+    official_link(
+        AgentOfficialLinkId::Download,
+        "Grok Build 源码与安装说明",
+        "https://github.com/xai-org/grok-build/blob/main/README.md",
+    ),
+    official_link(
+        AgentOfficialLinkId::License,
+        "开源许可证 (Apache-2.0)",
+        "https://github.com/xai-org/grok-build/blob/main/LICENSE",
+    ),
+];
 
-const CLAUDE_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
-    AgentOfficialLinkId::Product,
-    "Claude Code CLI 安装说明",
-    "https://code.claude.com/docs/en/setup",
-)];
+const CODEX_OFFICIAL_LINKS: [AgentOfficialLink; 4] = [
+    official_link(
+        AgentOfficialLinkId::Product,
+        "打开 OpenAI Codex 官方主页",
+        "https://openai.com/codex/",
+    ),
+    official_link(
+        AgentOfficialLinkId::Desktop,
+        "Codex Desktop 官方页面",
+        "https://openai.com/codex/",
+    ),
+    official_link(
+        AgentOfficialLinkId::Download,
+        "Codex CLI 安装与使用说明",
+        "https://help.openai.com/en/articles/11096431",
+    ),
+    official_link(
+        AgentOfficialLinkId::Terms,
+        "OpenAI 使用条款",
+        "https://openai.com/policies/terms-of-use/",
+    ),
+];
 
-const OPENCODE_OFFICIAL_LINKS: [AgentOfficialLink; 2] = [
+const CLAUDE_OFFICIAL_LINKS: [AgentOfficialLink; 3] = [
+    official_link(
+        AgentOfficialLinkId::Product,
+        "打开 Claude Code 官方页面",
+        "https://code.claude.com/docs/en/setup",
+    ),
+    official_link(
+        AgentOfficialLinkId::Download,
+        "Claude Code CLI 安装说明",
+        "https://code.claude.com/docs/en/setup",
+    ),
+    official_link(
+        AgentOfficialLinkId::Terms,
+        "Anthropic 消费者服务条款",
+        "https://www.anthropic.com/legal/consumer-terms",
+    ),
+];
+
+const OPENCODE_OFFICIAL_LINKS: [AgentOfficialLink; 4] = [
     official_link(
         AgentOfficialLinkId::Product,
         "打开 OpenCode 官方页面",
@@ -115,6 +207,16 @@ const OPENCODE_OFFICIAL_LINKS: [AgentOfficialLink; 2] = [
         AgentOfficialLinkId::Desktop,
         "打开 OpenCode 官方下载页",
         "https://opencode.ai/download",
+    ),
+    official_link(
+        AgentOfficialLinkId::License,
+        "开源许可证 (MIT)",
+        "https://github.com/anomalyco/opencode/blob/dev/LICENSE",
+    ),
+    official_link(
+        AgentOfficialLinkId::Terms,
+        "OpenCode 服务条款",
+        "https://opencode.ai/legal/terms-of-service",
     ),
 ];
 
@@ -435,8 +537,8 @@ const GROKBUILD_CAPABILITIES: [DeclaredAgentCapability; 11] = [
 const CODEX_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     capability(
         AgentCapabilityId::ProductOpen,
-        AgentCapabilityMode::Unsupported,
-        AgentCapabilityReasonCode::NoCatalogProductLink,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::OfficialLinkReviewed,
         CODEX_EVIDENCE,
     ),
     capability(
@@ -677,7 +779,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         variant_id: AgentVariantId::Codex,
         display_name: "Codex",
         description: "支持桌面安装、Skills、模型配置与 MCP。",
-        official_links: &[],
+        official_links: &CODEX_OFFICIAL_LINKS,
         capabilities: &CODEX_CAPABILITIES,
     },
     AgentCatalogEntry {
@@ -997,12 +1099,12 @@ mod tests {
         assert!(!grok.description.contains("本机识别和启动暂无法确认"));
         assert_eq!(grok.display_name, "Grok Build");
         assert_eq!(grok.official_links[0].label, "打开 Grok Build 官方页面");
-        assert_eq!(grok.official_links[0].url, "https://x.ai/grok");
+        assert_eq!(grok.official_links[0].url, "https://x.ai/build");
         assert!(grok.description.contains("支持 Skills 同步"));
         assert!(grok.description.contains("MCP 直接分配"));
         assert_eq!(trae.display_name, "TRAE Work CN");
         assert_eq!(trae.official_links[0].label, "打开 TRAE Work CN 官方页面");
-        assert_eq!(trae.official_links[0].url, "https://www.trae.cn/sem-work");
+        assert_eq!(trae.official_links[0].url, "https://www.trae.cn/work");
         assert!(!qoder.description.contains("第三方模型配置"));
         assert!(qoder.description.contains("MCP 直接分配"));
         assert!(
@@ -1041,13 +1143,20 @@ mod tests {
                 OPENCODE_MODELS_EVIDENCE,
             )
         );
-        assert!(codex.official_links.is_empty());
+        assert_eq!(
+            codex.official_links[0],
+            AgentOfficialLink {
+                id: AgentOfficialLinkId::Product,
+                label: "打开 OpenAI Codex 官方主页",
+                url: "https://openai.com/codex/",
+            }
+        );
         assert_eq!(
             codex.capabilities[0],
             capability(
                 AgentCapabilityId::ProductOpen,
-                AgentCapabilityMode::Unsupported,
-                AgentCapabilityReasonCode::NoCatalogProductLink,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityReasonCode::OfficialLinkReviewed,
                 CODEX_EVIDENCE,
             )
         );
@@ -1059,11 +1168,23 @@ mod tests {
                 .iter()
                 .map(|link| (link.id, link.label, link.url))
                 .collect::<Vec<_>>(),
-            [(
-                AgentOfficialLinkId::Product,
-                "Claude Code CLI 安装说明",
-                "https://code.claude.com/docs/en/setup",
-            )]
+            [
+                (
+                    AgentOfficialLinkId::Product,
+                    "打开 Claude Code 官方页面",
+                    "https://code.claude.com/docs/en/setup",
+                ),
+                (
+                    AgentOfficialLinkId::Download,
+                    "Claude Code CLI 安装说明",
+                    "https://code.claude.com/docs/en/setup",
+                ),
+                (
+                    AgentOfficialLinkId::Terms,
+                    "Anthropic 消费者服务条款",
+                    "https://www.anthropic.com/legal/consumer-terms",
+                ),
+            ]
         );
         assert_eq!(
             opencode
@@ -1081,6 +1202,16 @@ mod tests {
                     AgentOfficialLinkId::Desktop,
                     "打开 OpenCode 官方下载页",
                     "https://opencode.ai/download",
+                ),
+                (
+                    AgentOfficialLinkId::License,
+                    "开源许可证 (MIT)",
+                    "https://github.com/anomalyco/opencode/blob/dev/LICENSE",
+                ),
+                (
+                    AgentOfficialLinkId::Terms,
+                    "OpenCode 服务条款",
+                    "https://opencode.ai/legal/terms-of-service",
                 ),
             ]
         );
@@ -1294,6 +1425,7 @@ mod tests {
             include_str!("../../permissions/projects.toml"),
             include_str!("../../permissions/delivery-kits.toml"),
             include_str!("../../permissions/project-verification.toml"),
+            include_str!("../../permissions/config-pack.toml"),
         ] {
             let commands = allowed_commands(manifest);
             assert!(allowed.is_disjoint(&commands));
@@ -1319,7 +1451,7 @@ mod tests {
         assert!(registered.contains("get_agent_health"));
         assert!(registered.contains("get_first_use_guide_state"));
         assert!(registered.contains("dismiss_first_use_guide"));
-        assert_eq!(registered.len(), 407, "review intentional handler changes");
+        assert_eq!(registered.len(), 417, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }
