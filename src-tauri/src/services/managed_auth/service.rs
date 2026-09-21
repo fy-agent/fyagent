@@ -2213,6 +2213,25 @@ mod tests {
         (service, dir)
     }
 
+    struct TestHome(Option<std::ffi::OsString>);
+
+    impl TestHome {
+        fn set(path: &std::path::Path) -> Self {
+            let previous = std::env::var_os("FYAGENT_TEST_HOME");
+            std::env::set_var("FYAGENT_TEST_HOME", path);
+            Self(previous)
+        }
+    }
+
+    impl Drop for TestHome {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+                None => std::env::remove_var("FYAGENT_TEST_HOME"),
+            }
+        }
+    }
+
     fn service_with_shared_memory() -> (
         ManagedAuthService<MemorySecretBackend>,
         tempfile::TempDir,
@@ -3096,8 +3115,10 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn opencode_connect_projects_independent_session_and_rejects_proxy_lineage() {
         let (service, dir) = service_with_memory();
+        let _home = TestHome::set(dir.path());
         let proxy = service
             .provision_legacy_credential(sample_input("proxy-lineage", "refresh-value", true))
             .expect("proxy");

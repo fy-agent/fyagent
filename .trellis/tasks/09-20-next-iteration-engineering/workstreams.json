@@ -503,8 +503,8 @@
         "research/cursor-auth-flake-result.md",
         "artifacts/integration-prearchive.log"
       ],
-      "lifecycle": "running; aggregate-only OpenCode TargetChanged diagnosis",
-      "acceptance_status": "pending; do not weaken target guard"
+      "lifecycle": "completed; writer stopped confirmed in actual Cursor UI",
+      "acceptance_status": "root accepted exact test-only isolation fix after runtime HOME-flip reproduction; guard unchanged; 2 focused filters passed; full integrated gate pending"
     }
   ],
   "entry_observations": [
