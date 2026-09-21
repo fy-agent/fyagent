@@ -78,6 +78,7 @@ pub async fn run_cli_lifecycle(
     agent_id: AgentCatalogId,
     action: super::types::AgentActionId,
     confirmed_manifest: Option<&crate::services::tooling::grok_npm::GrokNpmManifest>,
+    confirmed_npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
 ) -> Result<(), super::types::AgentReasonCode> {
     let tool =
         tooling_id_for(agent_id).ok_or(super::types::AgentReasonCode::ExecutorNotImplemented)?;
@@ -87,30 +88,34 @@ pub async fn run_cli_lifecycle(
         _ => return Err(super::types::AgentReasonCode::ExecutorNotImplemented),
     };
     if agent_id == AgentCatalogId::ClaudeCode {
-        return tooling::run_claude_cli_lifecycle_with_manifest(lifecycle, confirmed_manifest)
-            .await
-            .map_err(|error| {
-                use super::types::AgentReasonCode;
-                use tooling::ClaudeLifecycleError;
-                match error {
-                    ClaudeLifecycleError::UnsupportedAction => AgentReasonCode::ActionNotSupported,
-                    ClaudeLifecycleError::OperationConflict => AgentReasonCode::OperationConflict,
-                    ClaudeLifecycleError::HostMissing => AgentReasonCode::ToolHostMissing,
-                    ClaudeLifecycleError::OwnerUnsupported => AgentReasonCode::ToolOwnerUnsupported,
-                    ClaudeLifecycleError::SourceUnverified => AgentReasonCode::SourceNotVerified,
-                    ClaudeLifecycleError::ExecutionFailed => {
-                        AgentReasonCode::InstallerExitedNonzero
-                    }
-                    ClaudeLifecycleError::VerificationFailed => {
-                        AgentReasonCode::InstallationVerificationFailed
-                    }
+        return tooling::run_claude_cli_lifecycle_with_manifest(
+            lifecycle,
+            confirmed_manifest,
+            confirmed_npm_target,
+        )
+        .await
+        .map_err(|error| {
+            use super::types::AgentReasonCode;
+            use tooling::ClaudeLifecycleError;
+            match error {
+                ClaudeLifecycleError::UnsupportedAction => AgentReasonCode::ActionNotSupported,
+                ClaudeLifecycleError::OperationConflict => AgentReasonCode::OperationConflict,
+                ClaudeLifecycleError::HostMissing => AgentReasonCode::ToolHostMissing,
+                ClaudeLifecycleError::OwnerUnsupported => AgentReasonCode::ToolOwnerUnsupported,
+                ClaudeLifecycleError::SourceUnverified => AgentReasonCode::SourceNotVerified,
+                ClaudeLifecycleError::TargetChanged => AgentReasonCode::TargetChanged,
+                ClaudeLifecycleError::ExecutionFailed => AgentReasonCode::InstallerExitedNonzero,
+                ClaudeLifecycleError::VerificationFailed => {
+                    AgentReasonCode::InstallationVerificationFailed
                 }
-            });
+            }
+        });
     }
     tooling::run_tool_lifecycle_action_with_manifest(
         vec![tool.to_string()],
         lifecycle.to_string(),
         confirmed_manifest,
+        confirmed_npm_target,
     )
     .await
     .map_err(|error| {
@@ -118,6 +123,14 @@ pub async fn run_cli_lifecycle(
             || error.contains("unavailable for the current Windows user")
         {
             super::types::AgentReasonCode::InteractiveUserUnavailable
+        } else if error.contains("confirmed npm install destination")
+            || error.contains("确认后的 npm 安装目标")
+        {
+            super::types::AgentReasonCode::TargetChanged
+        } else if error.contains("enough disk space") {
+            super::types::AgentReasonCode::InsufficientDiskSpace
+        } else if error.contains("conflicting global CLI") {
+            super::types::AgentReasonCode::CandidateConflict
         } else if error.contains("Codex CLI lifecycle")
             || error.contains("only available for Grok Build")
         {

@@ -607,7 +607,10 @@ pub async fn start_agent_action(
                 Some(preflight::PreparedPlanPayload::CliNpm(manifest)) => Some(manifest),
                 _ => None,
             };
-            run_cli_lifecycle(request.agent_id, request.action, manifest).await?;
+            let npm_target = confirmed_target
+                .as_ref()
+                .and_then(|target| target.npm_target.clone());
+            run_cli_lifecycle(request.agent_id, request.action, manifest, npm_target).await?;
             Ok(immediate_result(
                 request.agent_id,
                 request.action,
@@ -1089,6 +1092,9 @@ fn map_windows_installer_error_parts(
         }
         Some("agent_installer_timed_out") => return AgentReasonCode::InstallerTimedOut,
         Some("agent_installer_exited_nonzero") => return AgentReasonCode::InstallerExitedNonzero,
+        Some("insufficient_disk_space") => return AgentReasonCode::InsufficientDiskSpace,
+        Some("tool_candidate_conflict") => return AgentReasonCode::CandidateConflict,
+        Some("tool_target_changed") => return AgentReasonCode::TargetChanged,
         _ => {}
     }
     match code {
@@ -1460,6 +1466,13 @@ mod tests {
         assert_eq!(
             map_windows_installer_error_parts(InstallerErrorCode::JobAlreadyRunning, None),
             AgentReasonCode::OperationConflict
+        );
+        assert_eq!(
+            map_windows_installer_error_parts(
+                InstallerErrorCode::WindowsDeploymentFailed,
+                Some("tool_target_changed"),
+            ),
+            AgentReasonCode::TargetChanged
         );
     }
 

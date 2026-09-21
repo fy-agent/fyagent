@@ -403,7 +403,7 @@ async fn load_manifest_from_registry(
     let root = fetch_json(client, registry, tool.package(), "latest")
         .await
         .ok_or(GrokNpmPlanError::Missing)?;
-    let published = parse_published_root(tool.package(), platform, &root)?;
+    let published = parse_published_root(tool, platform, &root)?;
     let platform_doc = fetch_json(client, registry, platform, &published.platform_version)
         .await
         .ok_or(GrokNpmPlanError::InvalidPlatformPackage)?;
@@ -413,6 +413,7 @@ async fn load_manifest_from_registry(
     {
         return Err(GrokNpmPlanError::InvalidPlatformPackage);
     }
+    reject_published_child_graph(&platform_doc)?;
     let platform_integrity = platform_doc
         .get("dist")
         .and_then(|value| value.get("integrity"))
@@ -444,14 +445,7 @@ async fn load_manifest_from_registry(
         {
             return Err(GrokNpmPlanError::InvalidVersion);
         }
-        if let Some(transitive) = dep_doc.get("dependencies") {
-            let transitive_obj = transitive
-                .as_object()
-                .ok_or(GrokNpmPlanError::UnsupportedDependency)?;
-            if !transitive_obj.is_empty() {
-                return Err(GrokNpmPlanError::UnsupportedDependency);
-            }
-        }
+        reject_published_child_graph(&dep_doc)?;
         let dep_integrity = dep_doc
             .get("dist")
             .and_then(|value| value.get("integrity"))
@@ -518,12 +512,97 @@ pub(super) fn resolve_declared_dependency(
     }
 }
 
+const GROK_PLATFORM_SUFFIXES: [&str; 6] = [
+    "linux-x64",
+    "win32-x64",
+    "darwin-x64",
+    "linux-arm64",
+    "win32-arm64",
+    "darwin-arm64",
+];
+const CLAUDE_PLATFORM_SUFFIXES: [&str; 8] = [
+    "linux-x64",
+    "win32-x64",
+    "darwin-x64",
+    "linux-arm64",
+    "win32-arm64",
+    "darwin-arm64",
+    "linux-x64-musl",
+    "linux-arm64-musl",
+];
+
+fn closed_platform_suffixes(tool: OfficialNpmTool) -> &'static [&'static str] {
+    match tool {
+        OfficialNpmTool::Grok => &GROK_PLATFORM_SUFFIXES,
+        OfficialNpmTool::Claude => &CLAUDE_PLATFORM_SUFFIXES,
+    }
+}
+
+fn is_closed_platform_optional(tool: OfficialNpmTool, name: &str) -> bool {
+    let prefix = format!("{}-", tool.package());
+    name.strip_prefix(&prefix)
+        .is_some_and(|suffix| closed_platform_suffixes(tool).contains(&suffix))
+}
+
+fn reject_nonempty_or_malformed_map(
+    json: &serde_json::Value,
+    field: &str,
+) -> Result<(), GrokNpmPlanError> {
+    match json.get(field) {
+        None => Ok(()),
+        Some(value) => {
+            let object = value
+                .as_object()
+                .ok_or(GrokNpmPlanError::UnsupportedDependency)?;
+            if object.is_empty() {
+                Ok(())
+            } else {
+                Err(GrokNpmPlanError::UnsupportedDependency)
+            }
+        }
+    }
+}
+
+fn reject_published_child_graph(json: &serde_json::Value) -> Result<(), GrokNpmPlanError> {
+    reject_nonempty_or_malformed_map(json, "dependencies")?;
+    reject_nonempty_or_malformed_map(json, "optionalDependencies")?;
+    reject_nonempty_or_malformed_map(json, "peerDependencies")
+}
+
+fn admit_root_optional_dependencies<'a>(
+    tool: OfficialNpmTool,
+    platform: &str,
+    json: &'a serde_json::Value,
+    fallback_version: &'a str,
+) -> Result<&'a str, GrokNpmPlanError> {
+    let Some(optionals) = json.get("optionalDependencies") else {
+        return Ok(fallback_version);
+    };
+    let optionals = optionals
+        .as_object()
+        .ok_or(GrokNpmPlanError::UnsupportedDependency)?;
+    let mut platform_version = None;
+    for (name, spec) in optionals {
+        if !is_closed_platform_optional(tool, name) {
+            return Err(GrokNpmPlanError::UnsupportedDependency);
+        }
+        let spec = spec
+            .as_str()
+            .ok_or(GrokNpmPlanError::UnsupportedDependency)?;
+        GrokNpmInstallPlan::for_execution(spec, GrokNpmRegistry::Npmjs, false)?;
+        if name == platform {
+            platform_version = Some(spec);
+        }
+    }
+    Ok(platform_version.unwrap_or(fallback_version))
+}
+
 fn parse_published_root(
-    package: &str,
+    tool: OfficialNpmTool,
     platform: &str,
     json: &serde_json::Value,
 ) -> Result<PublishedRoot, GrokNpmPlanError> {
-    if json.get("name").and_then(|value| value.as_str()) != Some(package) {
+    if json.get("name").and_then(|value| value.as_str()) != Some(tool.package()) {
         return Err(GrokNpmPlanError::InvalidPlatformPackage);
     }
     let version = json
@@ -543,12 +622,9 @@ fn parse_published_root(
         .and_then(|value| value.as_u64())
         .filter(|&size| size > 0)
         .ok_or(GrokNpmPlanError::InvalidSize)?;
-    let platform_version = json
-        .get("optionalDependencies")
-        .and_then(|value| value.get(platform))
-        .and_then(|value| value.as_str())
-        .unwrap_or(version);
+    let platform_version = admit_root_optional_dependencies(tool, platform, json, version)?;
     GrokNpmInstallPlan::for_execution(platform_version, GrokNpmRegistry::Npmjs, false)?;
+    reject_nonempty_or_malformed_map(json, "peerDependencies")?;
     let mut declared_dependencies = BTreeMap::new();
     if let Some(deps_val) = json.get("dependencies") {
         let deps = deps_val
@@ -706,12 +782,12 @@ mod tests {
             "version": "1.0.25",
             "dist": { "integrity": hash, "unpackedSize": 18363 },
         });
-        let published = parse_published_root("@xai-official/grok", platform, &json).unwrap();
+        let published = parse_published_root(OfficialNpmTool::Grok, platform, &json).unwrap();
         assert_eq!(published.version, "1.0.25");
         assert_eq!(published.platform_version, "1.0.25");
         assert_eq!(published.root_size, 18363);
         assert!(parse_published_root(
-            "@xai-official/grok",
+            OfficialNpmTool::Grok,
             platform,
             &serde_json::json!({
                 "name": "@xai-official/grok",
@@ -742,7 +818,7 @@ mod tests {
             "optionalDependencies".to_string(),
             serde_json::Value::Object(deps),
         );
-        let published = parse_published_root("@xai-official/grok", platform, &json).unwrap();
+        let published = parse_published_root(OfficialNpmTool::Grok, platform, &json).unwrap();
         assert_eq!(published.version, "1.0.25");
         assert_eq!(published.platform_version, "1.0.26");
         assert_eq!(published.root_size, 18363);
@@ -773,7 +849,7 @@ mod tests {
                 "dist": invalid_dist,
             });
             assert_eq!(
-                parse_published_root("@xai-official/grok", platform, &json).unwrap_err(),
+                parse_published_root(OfficialNpmTool::Grok, platform, &json).unwrap_err(),
                 GrokNpmPlanError::InvalidSize
             );
         }
@@ -852,10 +928,220 @@ mod tests {
                 "dependencies": invalid_deps,
             });
             assert_eq!(
-                parse_published_root("@xai-official/grok", platform, &json).unwrap_err(),
+                parse_published_root(OfficialNpmTool::Grok, platform, &json).unwrap_err(),
                 GrokNpmPlanError::UnsupportedDependency
             );
         }
+    }
+
+    fn platform_optional_name(tool: OfficialNpmTool, suffix: &str) -> String {
+        format!("{}-{suffix}", tool.package())
+    }
+
+    fn sibling_platform_package(tool: OfficialNpmTool, current: &str) -> String {
+        closed_platform_suffixes(tool)
+            .iter()
+            .map(|suffix| platform_optional_name(tool, suffix))
+            .find(|name| name != current)
+            .expect("closed suffix table has a non-current sibling")
+    }
+
+    fn vendor_optionals(tool: OfficialNpmTool, version: &str) -> serde_json::Value {
+        let mut deps = serde_json::Map::new();
+        for suffix in closed_platform_suffixes(tool) {
+            deps.insert(
+                platform_optional_name(tool, suffix),
+                serde_json::json!(version),
+            );
+        }
+        serde_json::Value::Object(deps)
+    }
+
+    #[test]
+    fn published_root_admits_vendor_sibling_shapes_and_rejects_unknown_or_peer_graphs() {
+        let hash = fixture_sha512();
+        let grok_platform = OfficialNpmTool::Grok
+            .current_platform_package()
+            .expect("platform");
+        let grok_valid = serde_json::json!({
+            "name": "@xai-official/grok",
+            "version": "1.0.34",
+            "dist": { "integrity": hash, "unpackedSize": 18363 },
+            "dependencies": { "@iarna/toml": "^3.0.0" },
+            "optionalDependencies": vendor_optionals(OfficialNpmTool::Grok, "1.0.34"),
+            "peerDependencies": {}
+        });
+        let published = parse_published_root(OfficialNpmTool::Grok, grok_platform, &grok_valid)
+            .expect("grok vendor shape");
+        assert_eq!(published.version, "1.0.34");
+        assert_eq!(published.platform_version, "1.0.34");
+        assert_eq!(
+            published.declared_dependencies.get("@iarna/toml"),
+            Some(&"^3.0.0".to_string())
+        );
+        assert!(!published.declared_dependencies.keys().any(|name| {
+            name.starts_with("@xai-official/grok-") || name == "left-pad"
+        }));
+
+        let claude_platform = OfficialNpmTool::Claude
+            .current_platform_package()
+            .expect("claude platform");
+        let claude_valid = serde_json::json!({
+            "name": "@anthropic-ai/claude-code",
+            "version": "2.1.278",
+            "dist": { "integrity": hash, "unpackedSize": 4096 },
+            "dependencies": {},
+            "optionalDependencies": vendor_optionals(OfficialNpmTool::Claude, "2.1.278")
+        });
+        let claude = parse_published_root(OfficialNpmTool::Claude, claude_platform, &claude_valid)
+            .expect("claude vendor shape");
+        assert_eq!(claude.declared_dependencies.len(), 0);
+        assert_eq!(claude.platform_version, "2.1.278");
+
+        let mut extra_optionals = serde_json::Map::new();
+        extra_optionals.insert(grok_platform.to_string(), serde_json::json!("1.0.25"));
+        extra_optionals.insert("left-pad".to_string(), serde_json::json!("1.3.0"));
+        let extra_optional = serde_json::json!({
+            "name": "@xai-official/grok",
+            "version": "1.0.25",
+            "dist": { "integrity": hash, "unpackedSize": 18363 },
+            "dependencies": { "@iarna/toml": "^3.0.0" },
+            "optionalDependencies": extra_optionals
+        });
+        assert_eq!(
+            parse_published_root(OfficialNpmTool::Grok, grok_platform, &extra_optional)
+                .unwrap_err(),
+            GrokNpmPlanError::UnsupportedDependency
+        );
+
+        let mut prefix_only_optionals = serde_json::Map::new();
+        prefix_only_optionals.insert(grok_platform.to_string(), serde_json::json!("1.0.25"));
+        prefix_only_optionals.insert(
+            platform_optional_name(OfficialNpmTool::Grok, "invented"),
+            serde_json::json!("1.0.25"),
+        );
+        let prefix_only = serde_json::json!({
+            "name": "@xai-official/grok",
+            "version": "1.0.25",
+            "dist": { "integrity": hash, "unpackedSize": 18363 },
+            "optionalDependencies": prefix_only_optionals
+        });
+        assert_eq!(
+            parse_published_root(OfficialNpmTool::Grok, grok_platform, &prefix_only).unwrap_err(),
+            GrokNpmPlanError::UnsupportedDependency
+        );
+        let claude_only_suffix = CLAUDE_PLATFORM_SUFFIXES
+            .iter()
+            .copied()
+            .find(|suffix| !GROK_PLATFORM_SUFFIXES.contains(&suffix))
+            .expect("claude closed table has a suffix grok does not");
+        assert!(is_closed_platform_optional(
+            OfficialNpmTool::Claude,
+            &platform_optional_name(OfficialNpmTool::Claude, claude_only_suffix)
+        ));
+        assert!(!is_closed_platform_optional(
+            OfficialNpmTool::Grok,
+            &platform_optional_name(OfficialNpmTool::Grok, claude_only_suffix)
+        ));
+        assert!(!is_closed_platform_optional(
+            OfficialNpmTool::Grok,
+            &platform_optional_name(OfficialNpmTool::Grok, "invented")
+        ));
+
+        let sibling = sibling_platform_package(OfficialNpmTool::Grok, grok_platform);
+        for invalid_sibling_spec in ["npm:left-pad@1.3.0", "^1.0.25", "latest", "@latest"] {
+            let mut optionals = serde_json::Map::new();
+            optionals.insert(grok_platform.to_string(), serde_json::json!("1.0.25"));
+            optionals.insert(sibling.clone(), serde_json::json!(invalid_sibling_spec));
+            let alias = serde_json::json!({
+                "name": "@xai-official/grok",
+                "version": "1.0.25",
+                "dist": { "integrity": hash, "unpackedSize": 18363 },
+                "optionalDependencies": optionals
+            });
+            assert!(
+                parse_published_root(OfficialNpmTool::Grok, grok_platform, &alias).is_err(),
+                "{invalid_sibling_spec}"
+            );
+        }
+        let mut distinct = serde_json::Map::new();
+        distinct.insert(grok_platform.to_string(), serde_json::json!("1.0.25"));
+        distinct.insert(sibling, serde_json::json!("1.0.26"));
+        let distinct_sibling = serde_json::json!({
+            "name": "@xai-official/grok",
+            "version": "1.0.25",
+            "dist": { "integrity": hash, "unpackedSize": 18363 },
+            "optionalDependencies": distinct
+        });
+        assert_eq!(
+            parse_published_root(OfficialNpmTool::Grok, grok_platform, &distinct_sibling)
+                .expect("distinct exact siblings")
+                .platform_version,
+            "1.0.25"
+        );
+
+        let root_peers = serde_json::json!({
+            "name": "@xai-official/grok",
+            "version": "1.0.25",
+            "dist": { "integrity": hash, "unpackedSize": 18363 },
+            "dependencies": { "@iarna/toml": "^3.0.0" },
+            "optionalDependencies": vendor_optionals(OfficialNpmTool::Grok, "1.0.25"),
+            "peerDependencies": { "bar": "1.0.0" }
+        });
+        assert_eq!(
+            parse_published_root(OfficialNpmTool::Grok, grok_platform, &root_peers).unwrap_err(),
+            GrokNpmPlanError::UnsupportedDependency
+        );
+        assert_eq!(
+            parse_published_root(
+                OfficialNpmTool::Grok,
+                grok_platform,
+                &serde_json::json!({
+                    "name": "@xai-official/grok",
+                    "version": "1.0.25",
+                    "dist": { "integrity": hash, "unpackedSize": 18363 },
+                    "peerDependencies": ["bar"]
+                })
+            )
+            .unwrap_err(),
+            GrokNpmPlanError::UnsupportedDependency
+        );
+    }
+
+    #[test]
+    fn published_child_graph_rejects_nonempty_or_malformed_maps() {
+        assert_eq!(reject_published_child_graph(&serde_json::json!({})), Ok(()));
+        assert_eq!(
+            reject_published_child_graph(&serde_json::json!({
+                "dependencies": {},
+                "optionalDependencies": {},
+                "peerDependencies": {}
+            })),
+            Ok(())
+        );
+        assert_eq!(
+            reject_published_child_graph(&serde_json::json!({
+                "name": "child-package",
+                "dependencies": { "node-addon-api": "8.0.0" }
+            })),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        assert_eq!(
+            reject_published_child_graph(&serde_json::json!({
+                "name": "@iarna/toml",
+                "version": "3.0.0",
+                "dependencies": {},
+                "optionalDependencies": { "foo": "1.0.0" },
+                "peerDependencies": { "bar": "1.0.0" }
+            })),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
+        assert_eq!(
+            reject_published_child_graph(&serde_json::json!({
+                "optionalDependencies": ["foo"]
+            })),
+            Err(GrokNpmPlanError::UnsupportedDependency)
+        );
     }
 
     #[test]
@@ -1037,6 +1323,7 @@ mod tests {
         let grok_argv = grok_plan.npm_argv_for(OfficialNpmTool::Grok);
         assert!(grok_argv.contains(&"@xai-official/grok@1.2.3".to_string()));
         assert!(grok_argv.contains(&"@iarna/toml@3.0.0".to_string()));
+        assert!(grok_argv.contains(&"--@iarna:registry=https://registry.npmjs.org/".to_string()));
         assert!(!grok_argv.iter().any(|arg| arg.contains("@latest")));
         assert_eq!(grok_plan.reserve_budget_bytes(), Some(600 * 3));
 

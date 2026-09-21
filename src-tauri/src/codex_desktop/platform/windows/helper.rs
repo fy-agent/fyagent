@@ -1453,6 +1453,18 @@ fn map_helper_error(code: HelperErrorCode) -> InstallerError {
             return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
                 .with_platform_error_code("grok_tool_execution_failed")
         }
+        HelperErrorCode::InsufficientDiskSpace => {
+            return InstallerError::new(InstallerErrorCode::InsufficientDiskSpace)
+                .with_platform_error_code("insufficient_disk_space")
+        }
+        HelperErrorCode::ToolCandidateConflict => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("tool_candidate_conflict")
+        }
+        HelperErrorCode::ToolTargetChanged => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("tool_target_changed")
+        }
         HelperErrorCode::InstallLayoutInvalid
         | HelperErrorCode::WinRtInitializationFailed
         | HelperErrorCode::PackageUriInvalid

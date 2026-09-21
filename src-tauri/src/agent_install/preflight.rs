@@ -133,6 +133,7 @@ pub(super) struct PreparedInstallTarget {
     pub(super) download_url: Option<String>,
     pub(super) storage_budget: StorageBudget,
     pub(super) plan: PreparedPlanPayload,
+    pub(super) npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
 }
 
 pub async fn preflight_for(
@@ -182,6 +183,7 @@ async fn inspect_preflight(
     let target = super::inventory::validate_action_target(&request, state).await?;
     let (platform, architecture) =
         super::sources::current_host_target().ok_or(AgentReasonCode::PlatformUnsupported)?;
+    let mut npm_target = None;
     let (
         paths,
         target_label,
@@ -217,7 +219,9 @@ async fn inspect_preflight(
             let checked =
                 crate::services::tooling::preflight_cli_lifecycle(request.agent_id, request.action)
                     .await?;
-            let (runtime, version_or_channel, artifact_size_bytes, plan) = if checked.requires_npm {
+            let (runtime, version_or_channel, artifact_size_bytes, plan, checked) = if checked
+                .requires_npm
+            {
                 let tool = match request.agent_id {
                     crate::services::external_agents::AgentCatalogId::ClaudeCode => {
                         fyagent_user_helper::grok_npm::OfficialNpmTool::Claude
@@ -231,15 +235,23 @@ async fn inspect_preflight(
                     .await
                     .map_err(|_| AgentReasonCode::SourceNotVerified)?;
                 let total_size = manifest.total_unpacked_size();
+                let checked = crate::services::tooling::bind_cli_npm_preflight(
+                    request.agent_id,
+                    request.action,
+                    &manifest,
+                )
+                .await?;
                 (
                     InstallRuntime::NodeNpm,
                     manifest.version().to_string(),
                     Some(total_size),
                     PreparedPlanPayload::CliNpm(manifest),
+                    checked,
                 )
             } else {
                 return Err(AgentReasonCode::OfficialPageOnly);
             };
+            npm_target = checked.npm_target.clone();
             (
                 checked.paths,
                 checked.location_label,
@@ -262,6 +274,7 @@ async fn inspect_preflight(
         download_url: download_url.clone(),
         storage_budget: budget,
         plan,
+        npm_target,
     };
     let available_bytes =
         tokio::task::spawn_blocking(move || check_storage(&paths, budget.required_bytes))
@@ -386,9 +399,22 @@ pub(crate) fn display_user_path(path: &Path) -> String {
         || path.starts_with("/usr/local")
     {
         path.to_string_lossy().into_owned()
+    } else if is_displayable_dos_destination(path) {
+        path.to_string_lossy().into_owned()
     } else {
         "当前安装工具管理的位置".to_string()
     }
+}
+
+fn is_displayable_dos_destination(path: &Path) -> bool {
+    let text = path.to_string_lossy();
+    let bytes = text.as_bytes();
+    bytes.len() >= 3
+        && bytes.len() <= 200
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+        && !text.chars().any(char::is_control)
 }
 
 pub(crate) fn existing_directory(path: &Path) -> Result<PathBuf, AgentReasonCode> {
@@ -485,6 +511,18 @@ mod tests {
         fn available_bytes(&self, _: &VolumeKey) -> Result<u64, DiskSpaceProbeError> {
             self.0.ok_or(DiskSpaceProbeError::Unavailable)
         }
+    }
+
+    #[test]
+    fn display_user_path_shows_ordinary_dos_destinations() {
+        assert_eq!(
+            display_user_path(Path::new(r"D:\npm-prefix")),
+            r"D:\npm-prefix"
+        );
+        assert_eq!(
+            display_user_path(Path::new("/tmp/not-a-known-location")),
+            "当前安装工具管理的位置"
+        );
     }
 
     #[test]

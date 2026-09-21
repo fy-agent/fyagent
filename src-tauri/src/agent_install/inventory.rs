@@ -1305,6 +1305,7 @@ mod tests {
             )
             .unwrap(),
             plan: super::super::preflight::PreparedPlanPayload::Desktop,
+            npm_target: None,
         };
         store
             .record_preflight(&dto.inventory_id, binding.clone())
@@ -1338,6 +1339,23 @@ mod tests {
                 Err(AgentReasonCode::TargetChanged)
             );
         }
+        let mut changed_dest = binding.clone();
+        changed_dest.npm_target = Some(
+            fyagent_user_helper::NpmTargetBinding::new(
+                r"D:\npm-prefix",
+                r"D:\npm\cache-a",
+                r"C:\Users\alice\AppData\Local\Temp",
+                r"C:\Program Files\nodejs\npm.cmd",
+            )
+            .unwrap(),
+        );
+        store
+            .record_preflight(&dto.inventory_id, binding.clone())
+            .unwrap();
+        assert_eq!(
+            store.consume_preflight(&dto.inventory_id, &changed_dest),
+            Err(AgentReasonCode::TargetChanged)
+        );
         store
             .record_preflight(&dto.inventory_id, binding.clone())
             .unwrap();

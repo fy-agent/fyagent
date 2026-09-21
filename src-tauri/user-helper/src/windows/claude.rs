@@ -174,6 +174,7 @@ fn execute_inner(
         return Err(HelperErrorCode::ToolOwnerMismatch);
     }
     if preflight {
+        let destination = inspect_npm_destination(&npm, plan.as_ref(), OfficialNpmTool::Claude)?;
         return Ok(ToolOperationResult::observed(
             before.is_some(),
             before.as_ref().map(|item| {
@@ -184,7 +185,8 @@ fn execute_inner(
                 }
             }),
             before.as_ref().and_then(|item| version(item).ok()),
-        ));
+        )
+        .with_npm_destination(destination));
     }
     let plan = plan.ok_or(HelperErrorCode::ToolExecutionFailed)?;
     if let Err(code) = execute_npm_plan(&npm, OfficialNpmTool::Claude, &plan) {

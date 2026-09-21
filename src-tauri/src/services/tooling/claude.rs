@@ -20,6 +20,7 @@ pub(crate) enum ClaudeLifecycleError {
     HostMissing,
     OwnerUnsupported,
     SourceUnverified,
+    TargetChanged,
     ExecutionFailed,
     VerificationFailed,
 }
@@ -36,6 +37,7 @@ impl ClaudeLifecycleError {
                 "当前 Claude Code 不是可确认的 npm 安装，请使用原安装方式更新；未更换安装来源。"
             }
             Self::SourceUnverified => "暂时无法从官方 npm 获取可用的 Claude Code 版本。",
+            Self::TargetChanged => "确认后的 npm 安装目标已变化，请重新检查安装位置。",
             Self::ExecutionFailed => "Claude Code 安装未完成，请检查网络及当前用户的安装权限。",
             Self::VerificationFailed => "无法确认 Claude Code 已安装到指定版本，请刷新安装状态。",
         }
@@ -163,6 +165,7 @@ fn observe() -> Result<Option<Installation>, ClaudeLifecycleError> {
 pub(super) async fn run(
     action: ToolLifecycleAction,
     confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
+    confirmed_npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
 ) -> Result<(), ClaudeLifecycleError> {
     if !matches!(
         action,
@@ -228,14 +231,23 @@ pub(super) async fn run(
             return Err(ClaudeLifecycleError::OwnerUnsupported);
         }
         for registry in matching {
-            let plan = grok_npm::plan_for_registry(
+            let mut plan = grok_npm::plan_for_registry(
                 &manifest,
                 registry,
                 fyagent_user_helper::grok_npm::npm_major_allows_scripts(npm_major),
             )
             .map_err(|_| ClaudeLifecycleError::SourceUnverified)?;
-            let output = npm_runtime::install(OfficialNpmTool::Claude, anchor, &plan)
-                .map_err(|_| ClaudeLifecycleError::ExecutionFailed)?;
+            if let Some(target) = confirmed_npm_target.clone() {
+                plan = plan.with_npm_target(target);
+            }
+            let output =
+                npm_runtime::install(OfficialNpmTool::Claude, anchor, &plan).map_err(|error| {
+                    if error.contains("确认后的 npm 安装目标") {
+                        ClaudeLifecycleError::TargetChanged
+                    } else {
+                        ClaudeLifecycleError::ExecutionFailed
+                    }
+                })?;
             if !output.status.success() {
                 continue;
             }
@@ -260,6 +272,7 @@ pub(super) async fn run(
 pub(super) async fn run(
     action: ToolLifecycleAction,
     confirmed_manifest: Option<&super::grok_npm::GrokNpmManifest>,
+    confirmed_npm_target: Option<fyagent_user_helper::NpmTargetBinding>,
 ) -> Result<(), ClaudeLifecycleError> {
     use fyagent_user_helper::{GrokOwner, GrokToolAction};
     let action = match action {
@@ -293,8 +306,11 @@ pub(super) async fn run(
         return Err(ClaudeLifecycleError::SourceUnverified);
     }
     for registry in matching {
-        let plan = grok_npm::plan_for_registry(&manifest, registry, false)
+        let mut plan = grok_npm::plan_for_registry(&manifest, registry, false)
             .map_err(|_| ClaudeLifecycleError::SourceUnverified)?;
+        if let Some(target) = confirmed_npm_target.clone() {
+            plan = plan.with_npm_target(target);
+        }
         match windows_operation(action, Some(plan)).await {
             Ok(after)
                 if after.detected
@@ -334,6 +350,7 @@ async fn windows_operation(
                 Some("grok_tool_owner_mismatch") => ClaudeLifecycleError::OwnerUnsupported,
                 Some("grok_tool_not_detected") => ClaudeLifecycleError::VerificationFailed,
                 Some("grok_tool_execution_failed") => ClaudeLifecycleError::ExecutionFailed,
+                Some("tool_target_changed") => ClaudeLifecycleError::TargetChanged,
                 // A lost/uncertain helper result must never trigger a second install.
                 _ => ClaudeLifecycleError::VerificationFailed,
             },

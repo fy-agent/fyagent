@@ -66,7 +66,20 @@ remain backend evidence and are projected only through lifecycle capabilities.
   install authority.
 - Root and current Darwin/Windows x64/arm64 optional-package SHA-512 values must
   match one allowed registry. Unsupported architecture produces no plan; Linux
-  package support is not inferred from host-compilation tests.
+  package support is not inferred from host-compilation tests. Published root
+  `optionalDependencies` may list only the closed vendor suffix set for that
+  product (`linux-x64`, `win32-x64`, `darwin-x64`, `linux-arm64`,
+  `win32-arm64`, `darwin-arm64`; Claude also `linux-x64-musl` /
+  `linux-arm64-musl`). Those Linux names are vendor metadata, not first-party
+  Linux install support. A shared `{package}-` prefix is not enough. Every
+  recognized sibling spec, including non-current vendor platforms, must pass
+  the same bounded exact-version validator used for execution; `npm:` aliases,
+  ranges, and tags are rejected. Distinct exact sibling versions may remain.
+  Non-empty or malformed root `peerDependencies` are rejected. Fetched platform and
+  `@iarna` child documents may omit `dependencies` / `optionalDependencies` /
+  `peerDependencies` or use empty objects; any other child graph is
+  `UnsupportedDependency`. Ordinary Grok root `dependencies` stay frozen to
+  `@iarna/toml@3.0.0`.
 - Version authority is npmjs `/latest` first, then the reviewed mainland
   metadata chain. Installation may use only a registry whose exact root and
   platform metadata match the resolved manifest.

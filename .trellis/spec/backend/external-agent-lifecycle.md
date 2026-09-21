@@ -207,7 +207,11 @@ Source and identity failure must remain evidence-strength preserving:
   runtime/identity-scope binding once. A changed target requires a new preflight;
   no confirmation-time target substitution or fallback is allowed.
 - Windows CLI permission/runtime checks run inside the authenticated ordinary-user
-  helper. Official EXE wizards choose their own final destination: the summary
+  helper. CLI preview binds the helper-resolved npm prefix/cache/temp and npm
+  identity rather than guessed Local/Roaming AppData volumes, transfers the native
+  reserve budget, stores that exact dest in prepared authority, and maps helper
+  space/conflict/dest-drift failures to the existing actionable reasons.
+  Official EXE wizards choose their own final destination: the summary
   must describe this handoff, not claim the elevated host checked Alice's access
   to a destination that the wizard has not chosen.
 - `insufficient_disk_space`, `disk_space_unavailable`, runtime, identity and

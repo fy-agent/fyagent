@@ -114,12 +114,22 @@ No generic command/path helper exists. Public invalid-EXE errors map to
 
 The closed Grok/Claude `preflight` action uses the same pinned helper, frozen
 Shell identity and authenticated action-bound controls as the existing lifecycle
-operations. It accepts no caller path, URL, package, argv or executable. Its
-native/npm version and fixed runtime probes plus directory access-right queries
-must return before any mutation path. Prefix access is checked with the ordinary
-helper token. Wire action IDs 18–20 are Grok preflight with the closed owner
-choices, and 21 is Claude preflight; `ToolPermissionDenied` is bounded error 27.
-A permission failure is not reported as a missing runtime. The parent preserves
+operations. It accepts no caller path, URL, package, argv or executable. Host
+npm preflight transfers the native resolved reserve budget through the existing
+compact plan control. The helper resolves the ordinary-user prefix, cache, temp
+and npm identity, checks writable existing-directory ancestors, and reports
+those destinations in the v4 ToolResult observation. The exact prefix/cache/temp
+and npm identity are stored in native prepared authority (excluding volatile
+available_bytes), sent back on plan-control v3, and pin the spawned npm
+program plus `--prefix`/`--cache` immediately before mutation.
+A sibling cache, npm identity, or other dest drift is `ToolTargetChanged` (30).
+Capacity is checked against the transferred budget before ready; insufficient
+space is `InsufficientDiskSpace` (28) and a conflicting `@iarna/toml` document
+is `ToolCandidateConflict` (29), not a generic tool failure. Claude preflight
+queries cache as well as prefix.
+Wire action IDs 18–20 are Grok preflight with the closed owner choices, and 21
+is Claude preflight; `ToolPermissionDenied` is bounded error 27. A permission
+failure is not reported as a missing runtime. The parent preserves
 identity/admission/quarantine behavior and returns actionable redacted errors.
 
 ### Inventory parent registry rights

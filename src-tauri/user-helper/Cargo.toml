@@ -22,6 +22,10 @@ required-features = ["helper-runtime"]
 default = []
 helper-runtime = ["dep:windows", "dep:windows-future"]
 
+[dependencies]
+serde = { version = "1.0", default-features = false, features = ["std"] }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "=0.61.3", features = [
   "Foundation",

@@ -131,25 +131,98 @@ pub(super) fn node_matches_host(bin_path: Option<&str>) -> bool {
     output.status.success() && super::decode_command_output(&output.stdout).trim() == expected
 }
 
+pub(super) fn observe_destination(
+    bin_path: Option<&str>,
+) -> Option<fyagent_user_helper::NpmDestinationObservation> {
+    let prefix = prefix(bin_path)?;
+    let cache = cache(bin_path)?;
+    let temp = std::env::temp_dir();
+    if !prefix.is_absolute() || !cache.is_absolute() || !temp.is_absolute() {
+        return None;
+    }
+    Some(fyagent_user_helper::NpmDestinationObservation {
+        prefix: prefix.to_string_lossy().into_owned(),
+        cache: cache.to_string_lossy().into_owned(),
+        temp: temp.to_string_lossy().into_owned(),
+        npm_identity: npm_identity(bin_path)?,
+        available_bytes: 0,
+    })
+}
+
+fn npm_identity(bin_path: Option<&str>) -> Option<String> {
+    if let Some(path) = bin_path {
+        return super::sibling_bin(path, "npm");
+    }
+    let output = run_command("command -v npm", Duration::from_secs(20)).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = super::decode_command_output(&output.stdout);
+    let text = text.trim();
+    if text.is_empty() || text.chars().any(char::is_control) {
+        return None;
+    }
+    let path = std::path::PathBuf::from(text);
+    path.is_absolute()
+        .then(|| path.to_string_lossy().into_owned())
+}
+
 pub(super) fn install(
     tool: OfficialNpmTool,
     bin_path: Option<&str>,
     plan: &GrokNpmInstallPlan,
 ) -> Result<Output, String> {
-    let args = plan.npm_argv_for(tool).join(" ");
-    let command = match bin_path {
-        Some(path) => super::anchored_npm_command(path, &args)
-            .ok_or_else(|| "无法找到此安装使用的 npm".to_string())?,
-        None => format!("npm {args}"),
-    };
-    let command = if tool == OfficialNpmTool::Grok {
-        format!(
-            "{}={} {command}",
+    let observed =
+        observe_destination(bin_path).ok_or_else(|| "无法确认 npm 安装目标".to_string())?;
+    fyagent_user_helper::admit_confirmed_npm_target(plan.npm_target(), &observed)
+        .map_err(|_| "确认后的 npm 安装目标已变化".to_string())?;
+    if tool == OfficialNpmTool::Grok {
+        fyagent_user_helper::closed_dep::admit_closed_iarna_toml_at_prefix(std::path::Path::new(
+            &observed.prefix,
+        ))
+        .map_err(|_| "全局已存在不兼容的 @iarna/toml".to_string())?;
+    }
+    let invocation = fyagent_user_helper::pinned_npm_install_invocation(Some(plan), tool)
+        .map_err(|_| "官方安装计划与当前工具不匹配".to_string())?;
+    run_pinned_install(&invocation, tool, plan)
+}
+
+fn run_pinned_install(
+    invocation: &fyagent_user_helper::PinnedNpmInvocation,
+    tool: OfficialNpmTool,
+    plan: &GrokNpmInstallPlan,
+) -> Result<Output, String> {
+    let program = std::path::Path::new(invocation.program());
+    if !program.is_absolute() {
+        return Err("无法确认 npm 安装目标".to_string());
+    }
+    let mut cmd = Command::new(program);
+    cmd.args(invocation.args())
+        .current_dir(crate::config::get_home_dir())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("TMPDIR", invocation.temp())
+        .env("npm_config_prefix", invocation.prefix())
+        .env("npm_config_cache", invocation.cache());
+    if let Some(directory) = program.parent() {
+        let inherited =
+            execution_path().unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
+        cmd.env(
+            "PATH",
+            format!("{}:{inherited}", directory.to_string_lossy()),
+        );
+    }
+    if tool == OfficialNpmTool::Grok {
+        cmd.env(
             fyagent_user_helper::GROK_NPM_REGISTRY_ENV,
-            super::shell_single_quote(plan.registry_url())
-        )
-    } else {
-        command
-    };
-    run_command(&command, Duration::from_secs(300))
+            plan.registry_url(),
+        );
+    }
+    isolate_child_process_group(&mut cmd);
+    let child = cmd.spawn().map_err(|_| "无法启动 npm 进程".to_string())?;
+    wait_child_output_with_limit(
+        child,
+        CommandDeadline::from_timeout(Some(Duration::from_secs(300))),
+        Some(OUTPUT_LIMIT),
+    )
 }

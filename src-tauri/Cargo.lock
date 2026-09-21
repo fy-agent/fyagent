@@ -1846,6 +1846,8 @@ name = "fyagent-user-helper"
 version = "0.4.6"
 dependencies = [
  "embed-resource",
+ "serde",
+ "serde_json",
  "windows",
  "windows-future",
 ]
