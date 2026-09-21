@@ -115,7 +115,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform.rs",
-      "5bce43115c46065f88fda03903593235aa2b51135a96dd12cd42dc32a154d81d"
+      "16e658a257e5c3ccbb44a437be62e0f525ad1c632f7da1a67a6a0f8acabc4585"
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
