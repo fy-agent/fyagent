@@ -1,0 +1,90 @@
+{
+  "scope": "Previously untracked historical command output, retained locally unchanged; published evidence is in the accepted result reports.",
+  "local_only": true,
+  "logs": [
+    {
+      "name": "bootstrap-integration-tests.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/bootstrap-integration-tests.log",
+      "bytes": 644,
+      "sha256": "169f915e74e228dacb651c65460815f1233df6805aa482dfa1f97cbe3f1941c0"
+    },
+    {
+      "name": "frontend-integration.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/frontend-integration.log",
+      "bytes": 93907,
+      "sha256": "086f4e78af4dd89afbdb0cb26ceabb77bff44d83af05457d3b8378a31ab4c887"
+    },
+    {
+      "name": "frontend-repairs.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/frontend-repairs.log",
+      "bytes": 5333,
+      "sha256": "dbe3a33a1488c3d1e10c0c70f71a05021fa0867cffdf096c1a69ae717b1cde44"
+    },
+    {
+      "name": "integration-build.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/integration-build.log",
+      "bytes": 11203,
+      "sha256": "4aa9bd257460bd35d8826420ba0e7ed86098e8ba831eed86f5167aa7e9bf75af"
+    },
+    {
+      "name": "integration-lint.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/integration-lint.log",
+      "bytes": 169,
+      "sha256": "2dfe104d704e99d9bd758ad0db0aeffb4acf73f3734163c3e3d942cff7b0c66c"
+    },
+    {
+      "name": "integration-renderer-build.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/integration-renderer-build.log",
+      "bytes": 7079,
+      "sha256": "0cd979d0b8316bce8ad6021e4729dfd4d66ef7ded7d36141562efb8a8465bfa2"
+    },
+    {
+      "name": "integration-typecheck.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/integration-typecheck.log",
+      "bytes": 139,
+      "sha256": "32101ad788f323a015eb7dd23e353383936ddaa23fea48d7f60566ecd3147e57"
+    },
+    {
+      "name": "platform-repairs.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/platform-repairs.log",
+      "bytes": 2684,
+      "sha256": "16df3347c09ecf8504b8565cb5c66cd6591d79ad264eaf4e4ea68dc0a0a5f5a2"
+    },
+    {
+      "name": "proxy-restore-preview-native.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/proxy-restore-preview-native.log",
+      "bytes": 8274,
+      "sha256": "e180499da5f973dca1145c737440e3467a8309af7ed17af41e14817aec4688ba"
+    },
+    {
+      "name": "renderer-integration-build.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/renderer-integration-build.log",
+      "bytes": 7079,
+      "sha256": "fdf50de210f706dfb2e1bd35404756559db53394a50e0760055196c2b4f564af"
+    },
+    {
+      "name": "rust-change-plan.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/rust-change-plan.log",
+      "bytes": 10627,
+      "sha256": "6ea2dbe38aa9044abf9b72c1850817d8f21d700d62d9c8e794b5ab01244632b4"
+    },
+    {
+      "name": "rust-integration-check.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/rust-integration-check.log",
+      "bytes": 11614,
+      "sha256": "931c7734bc31401345cfb4dfaa486b6746d3dae9f767091aa587a693e9769790"
+    },
+    {
+      "name": "rust-integration.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/rust-integration.log",
+      "bytes": 375105,
+      "sha256": "5b1b2aff999ba64047a13761d462ac90a835e9f65f0ea4c1ada3049da80d2894"
+    },
+    {
+      "name": "rust-upsert-debug.log",
+      "local_path": "artifacts/archived-evidence/09-20-next-iteration-engineering/rust-upsert-debug.log",
+      "bytes": 18726,
+      "sha256": "25bd8ceff2a158ad4c72afdae1f8a708e249b759e6a1a8bb29d2691d32515458"
+    }
+  ]
+}

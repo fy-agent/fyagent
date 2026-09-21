@@ -19,7 +19,7 @@ Closure-ready engineering Issues: #25, #27, #29, #34, #35, #40, #42, #43, #47, #
 
 ## Review and delivery boundary
 
-Antigravity desktop Gemini 3.8 Flash High supplied the frontend implementation and repairs. Its later insufficient-credit failure is preserved; Cursor supplied the bounded remaining backend repairs and tests, including Debug reproduction of a shared-home fixture race. Terminal Grok findings were individually verified and repaired; unsupported suggestions were rejected. Jev judgments are advisory and do not substitute for source or runtime evidence. All writers are stopped and their identifiers/artifacts remain in workstreams.json.
+Antigravity desktop Gemini 3.8 Flash High supplied the frontend implementation and repairs. Its later insufficient-credit failure is preserved; Cursor supplied the bounded remaining backend repairs and tests, including Debug reproduction of a shared-home fixture race. Terminal Grok findings were individually verified and repaired; unsupported suggestions were rejected. Jev judgments are advisory and do not substitute for source or runtime evidence. All writers are stopped and their identifiers/artifacts remain in research/workstreams.json.
 
 The final native IPC rejects the unconfirmed legacy install command. The supported installation path binds exact npm executable/prefix/cache/temp, user identity, closed package graph and storage checks to confirmation. The platform scanner admits only the exact reviewed vendor metadata tables and finite, identity-bound WebM assets; no supported-host expansion was made.
 
@@ -32,3 +32,7 @@ Evidence recorded at: 2026-09-21T01:31:55.967804+00:00
 Prearchive log SHA-256: `63598c7363420bc54c7ea223cdeaf915c9ca0af4ec6bb892345d5bd30f1ce2dd`.
 
 Tested code base: `f324079ad8b51b56975a698b8a1c0411e1942a2f` plus reviewed code delta SHA-256 `d1cc990dbc5a251bb99663875b7e09ea2a9214a8023131b26706bc7733ee2587`. Acceptance and archive metadata are checked separately after this record.
+
+## Archive layout correction
+
+The post-archive check required the two ledgers to live under research. Fourteen previously untracked historical UTF-8 logs are retained with exact bytes under the local ignored artifacts directory; research/local-log-inventory.json records their paths, sizes and hashes. Published evidence remains in the concise result reports. No scanner exception or application code changed. Post-archive contracts are rerun on this canonical layout before PR delivery. Paths in the ledgers are relative to this archived task root unless explicitly repository-relative.
