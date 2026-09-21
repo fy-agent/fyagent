@@ -208,8 +208,9 @@
         "tests/browser/support/features.ts",
         "tests/browser/agent-directory.spec.ts"
       ],
-      "lifecycle": "capture implementation complete; debug capture verified; formal capture awaits stable renderer",
-      "acceptance_status": "debug only: 7 PNG, 2 WebM, 2 VTT; 12 hashes and full media/caption playback passed; not native/UAT evidence"
+      "lifecycle": "formal fixture capture and adoption complete on clean commit fac051ea; GPT-6 checked 7 screenshots and 7 video cue frames",
+      "acceptance_status": "12 asset hashes, 2 full media decodes, full Chromium playback and every subtitle cue passed; in-app preview crashed and is not accepted; final source-scope readback and PR delivery pending",
+      "adopted_artifacts": "docs/fyagent/development/demos/0.4.6-fac051ea"
     },
     {
       "id": "live-config-summary-47",
@@ -486,6 +487,24 @@
       "artifacts": ["CURSOR_CLI_REPAIR_TASK.md", "CURSOR_CLI_REPAIR_RESULT.md"],
       "lifecycle": "running; isolated CLI directory/branch/HEAD confirmed in actual Cursor UI after initial sandbox workspace redirection; absolute-path commands used",
       "acceptance_status": "pending four concrete source fixes and focused checks"
+    },
+    {
+      "id": "cursor-auth-flake",
+      "executor": "Cursor backend task implementation desktop Debug conversation",
+      "model_observed": "existing Cursor Grok 4.6 / High / Fast",
+      "cwd": "~/.codex/worktrees/fyagent-next-night-20260920/fyagent",
+      "baseline": "fac051ea",
+      "allowed_paths": [
+        "exact managed-auth failing test/fixture and proven related target snapshot implementation",
+        "focused spec/result"
+      ],
+      "artifacts": [
+        "research/cursor-auth-flake-task.md",
+        "research/cursor-auth-flake-result.md",
+        "artifacts/integration-prearchive.log"
+      ],
+      "lifecycle": "running; aggregate-only OpenCode TargetChanged diagnosis",
+      "acceptance_status": "pending; do not weaken target guard"
     }
   ],
   "entry_observations": [

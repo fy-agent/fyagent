@@ -10,10 +10,7 @@
       "implementation_status": "integrated_pending_final_validation",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
-      "evidence": [
-        "a21a72ae",
-        "2de30c8b"
-      ],
+      "evidence": ["a21a72ae", "2de30c8b"],
       "residuals": [
         "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
       ]
@@ -26,10 +23,7 @@
       "implementation_status": "integrated_pending_final_validation",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
-      "evidence": [
-        "d311a7d8",
-        "268815ba"
-      ],
+      "evidence": ["d311a7d8", "268815ba"],
       "residuals": [
         "Desktop budget integrated; final native validation pending",
         "Antigravity implementing frozen CLI artifact/dependency metadata, volume checks and helper transfer; acceptance pending"
@@ -43,10 +37,7 @@
       "implementation_status": "integrated_pending_final_validation",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
-      "evidence": [
-        "d311a7d8",
-        "268815ba"
-      ],
+      "evidence": ["d311a7d8", "268815ba"],
       "residuals": [
         "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
       ]
@@ -59,9 +50,7 @@
       "implementation_status": "integrated_pending_final_validation",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
-      "evidence": [
-        "2de30c8b"
-      ],
+      "evidence": ["2de30c8b"],
       "residuals": [
         "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
       ]
@@ -74,10 +63,7 @@
       "implementation_status": "review_repaired_pending_final_validation",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
-      "evidence": [
-        "19a366ce",
-        "ee301f66"
-      ],
+      "evidence": ["19a366ce", "ee301f66"],
       "residuals": [
         "Final combined checks, latest-main integration, PR delivery and remote Issue readback pending"
       ]
@@ -90,9 +76,7 @@
       "implementation_status": "integrated_pending_final_validation",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
-      "evidence": [
-        "07519b37"
-      ],
+      "evidence": ["07519b37"],
       "residuals": [
         "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
       ]
@@ -105,9 +89,7 @@
       "implementation_status": "integrated_pending_final_validation",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
-      "evidence": [
-        "94ab3244"
-      ],
+      "evidence": ["94ab3244"],
       "residuals": [
         "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
       ]
@@ -120,9 +102,7 @@
       "implementation_status": "integrated_pending_final_validation",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
-      "evidence": [
-        "94ab3244"
-      ],
+      "evidence": ["94ab3244"],
       "residuals": [
         "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
       ]
@@ -135,9 +115,7 @@
       "implementation_status": "review_repaired_pending_final_validation",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
-      "evidence": [
-        "65 focused port/architecture tests passed"
-      ],
+      "evidence": ["65 focused port/architecture tests passed"],
       "residuals": [
         "Final combined checks, latest-main integration, PR delivery and remote Issue readback pending"
       ]
@@ -244,10 +222,7 @@
       "implementation_status": "integrated_pending_final_validation",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
-      "evidence": [
-        "9d705c0e",
-        "73460cf7"
-      ],
+      "evidence": ["9d705c0e", "73460cf7"],
       "residuals": [
         "Final integrated native, renderer and relevant browser validation; upstream final-main integration and PR delivery pending"
       ]
@@ -257,14 +232,16 @@
       "title": "制作当前主要流程的使用演示",
       "url": "https://github.com/fy-agent/fyagent/issues/92",
       "owner": "installer_27_29",
-      "implementation_status": "capture_code_complete_debug_verified",
+      "implementation_status": "formal_fixture_demo_adopted",
       "acceptance_status": "pending",
       "remote_status": "OPEN",
       "evidence": [
-        "debug capture sourceStable=true; 7 PNG, 2 WebM, 2 VTT; full playback, caption activeCue and 12 hashes verified"
+        "docs/fyagent/development/demos/0.4.6-fac051ea/manifest.json",
+        "docs/fyagent/development/demos/0.4.6-fac051ea/adoption.json",
+        "7 PNG, 2 WebM (25.8s and 4.56s), 2 VTT and raw originals; clean source fac051ea; stable digest; 12 hashes; full playback/cue/decode and visual frame checks"
       ],
       "residuals": [
-        "Candidate capture after final integrated renderer stability; debug fixtures do not prove native operation"
+        "Final integrated source-scope readback and PR delivery pending; fixture-only, in-app preview playback not accepted"
       ]
     }
   ]
