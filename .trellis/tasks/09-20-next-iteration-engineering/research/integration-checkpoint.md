@@ -1,5 +1,9 @@
 # Integration checkpoint after 0.4.6 main
 
+The earlier sections below are chronological checkpoints. The latest status is
+recorded at the end; later source findings and accepted fixes supersede earlier
+pending work or provisional acceptance.
+
 Coordinator: GPT-6 in the current task. Integration branch:
 `codex/next-iteration-engineering-20260920`. Checkpoint `9fd852cd` contains the
 reviewed work packages; merge `35848bef` includes verified main `da91427e`.
@@ -97,3 +101,36 @@ Cursor common-projection repair completed and stopped. Root source review accept
 ## Backend gate follow-up
 
 The complete backend gate passed formatting, Cargo check and warning-denying Clippy. Its first aggregate test run exposed three newly added common-projection tests that changed process-wide fixture homes without joining the existing `serial_test::serial` lock; one prompt test was affected as a consequence. Root added the same lock used by adjacent fixture-home tests, without changing assertions or production behavior. The full canonical `mise run rust:test` then exited 0; exact counts are in `artifacts/integration-native-serial.log`. The contract gate passed platform/source, task, lock, version and most release checks but detected concrete workstation paths in the imported UI report and new workstream entry. Root normalized those report paths to semantic `~/` references and moved the UI report into this task; no code/runtime path changed. Final combined gate remains pending the CLI package.
+
+## Accepted backend and demo checkpoint
+
+`fac051ea` contains the accepted common-projection repair, typed usage input,
+three fixture-home locks and the reviewed source-identity updates. The complete
+native run at this checkpoint passed 3883 tests, with 6 intentional ignored
+tests across 19 targets. This is local macOS evidence, not a signed release or
+Windows execution claim.
+
+`3bc8c2e8` adopts the current-flow demo captured from clean source `fac051ea`:
+7 screenshots, 2 captioned WebM clips and raw originals, with source and asset
+hashes under `docs/fyagent/development/demos/0.4.6-fac051ea/`. Automated Chromium
+full playback/cue checks and full media decode passed; root visually reviewed
+the screenshots and all seven cue midpoint frames. The separate in-app browser
+preview crashed on playback and is explicitly not accepted as playback evidence.
+
+The subsequent full prearchive run passed frontend type/lint/format checks,
+2068 frontend tests (1 skipped), desktop mock/visual preflight, Rust formatting,
+Cargo check and Clippy. One native OpenCode confirmation test exposed a separate
+process-wide fixture-home race. Cursor Debug reproduced it and changed only that
+test's home isolation and existing serial lock, preserving the production target
+guard. Root accepted this in `11a154b5`; both focused OpenCode filters passed.
+The final aggregate run will include this fix and the still-active CLI package.
+
+## CLI review feedback during implementation
+
+The active Cursor repair initially introduced a handwritten JSON reader that
+accepted trailing garbage and malformed nested/number values, and bounded the
+file only after a full allocation. Root returned exact counterexamples and the
+required bounded read/strict parser correction to the same writer. This
+intermediate code is not accepted. The writer also retains responsibility for
+actual npm destination binding and tool-specific execution admission; root will
+review the completed package before integration.

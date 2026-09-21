@@ -31,25 +31,25 @@ Security-alert triage and independent scan evidence are owned by
 [Security Review](./security-review.md), including dependency reachability,
 secret handling, native source checks, and residual-risk reporting.
 
-| Contract                                                                  | Owns                                                                                                                            |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| [Rust Host Modular Boundaries](./modular-boundaries.md)                   | Module responsibilities, dependency direction, command/service/platform separation, and top-level composition.                  |
-| [Backend Reuse](./reuse.md)                                               | Existing-owner, adopted-dependency, open-source, adapter, and bespoke implementation order.                                     |
-| [Development Environment](./development-environment.md)                   | Toolchain authority, bootstrap, host support, locks, optional macOS Windows-MSVC diagnostics, and environment verification.     |
-| [Optional Codex Development Hooks](./development-hooks.md)                | Optional Codex hook files, timeout/failure behavior, and Trellis-version ownership.                                             |
-| [Repository Task Runner](./task-runner-contract.md)                       | Public `mise run` API, effects, parameter transport, composition, mutation policy, generated docs, and canonical checks.         |
-| [Native Host Task Execution](./native-task-runner.md)                     | Foreground process trees, Windows executable/MSVC child environment, and macOS signed development runner.                        |
-| [Optional Windows-MSVC Cross Diagnostic](./windows-msvc-cross-diagnostic.md) | macOS advisory/strict preflight/default-no cross Clippy and its non-acceptance evidence boundary.                                |
-| [Trellis Direct-Session Prearchive Gate](./trellis-prearchive-gate.md)     | Exact active-task/session proof and private one-task exclusion before archive.                                                   |
-| [Supported-Platform Governance](./supported-platform-governance.md)        | Platform-sensitive source/raster identities, one-snapshot repository scans, and fail-closed review seals.                        |
-| [Repository Root and Tool Configuration](./repository-layout.md)          | Root discovery exceptions, explicit config locations, cwd/alias invariants and placement verification.                          |
-| [Database Persistence](./database-persistence.md)                         | SQLite path, schema version, startup lifecycle, migrations, import/backup/restore, DAO placement, and transactional boundaries. |
-| [Automatic Cloud Sync Scheduling](./auto-sync.md)                         | Injected database hints, independent S3/WebDAV workers, bounded debounce, suppression, and upload lifecycle.                    |
-| [Application Identity](./application-identity.md)                         | Product names, identifiers, license/provenance identity, and migration boundaries.                                              |
-| [Application Brand Assets](./application-brand-assets.md)                 | Canonical icons, asset derivation, platform packaging, and byte-level validation.                                               |
-| [Application Version and Installer Assets](./fyagent-version-contract.md) | Canonical version source, package versions, and installer filename contract.                                                    |
-| [Main Window Layout](./main-window-layout.md)                             | Native geometry, maximize/work-area behavior, and renderer chrome boundary.                                                     |
-| [Main Window Presentation](./window-presentation.md)                      | Hidden startup, content readiness, queued reveal, silent mode and failure recovery.                                             |
+| Contract                                                                     | Owns                                                                                                                            |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| [Rust Host Modular Boundaries](./modular-boundaries.md)                      | Module responsibilities, dependency direction, command/service/platform separation, and top-level composition.                  |
+| [Backend Reuse](./reuse.md)                                                  | Existing-owner, adopted-dependency, open-source, adapter, and bespoke implementation order.                                     |
+| [Development Environment](./development-environment.md)                      | Toolchain authority, bootstrap, host support, locks, optional macOS Windows-MSVC diagnostics, and environment verification.     |
+| [Optional Codex Development Hooks](./development-hooks.md)                   | Optional Codex hook files, timeout/failure behavior, and Trellis-version ownership.                                             |
+| [Repository Task Runner](./task-runner-contract.md)                          | Public `mise run` API, effects, parameter transport, composition, mutation policy, generated docs, and canonical checks.        |
+| [Native Host Task Execution](./native-task-runner.md)                        | Foreground process trees, Windows executable/MSVC child environment, and macOS signed development runner.                       |
+| [Optional Windows-MSVC Cross Diagnostic](./windows-msvc-cross-diagnostic.md) | macOS advisory/strict preflight/default-no cross Clippy and its non-acceptance evidence boundary.                               |
+| [Trellis Direct-Session Prearchive Gate](./trellis-prearchive-gate.md)       | Exact active-task/session proof and private one-task exclusion before archive.                                                  |
+| [Supported-Platform Governance](./supported-platform-governance.md)          | Platform-sensitive source/raster identities, one-snapshot repository scans, and fail-closed review seals.                       |
+| [Repository Root and Tool Configuration](./repository-layout.md)             | Root discovery exceptions, explicit config locations, cwd/alias invariants and placement verification.                          |
+| [Database Persistence](./database-persistence.md)                            | SQLite path, schema version, startup lifecycle, migrations, import/backup/restore, DAO placement, and transactional boundaries. |
+| [Automatic Cloud Sync Scheduling](./auto-sync.md)                            | Injected database hints, independent S3/WebDAV workers, bounded debounce, suppression, and upload lifecycle.                    |
+| [Application Identity](./application-identity.md)                            | Product names, identifiers, license/provenance identity, and migration boundaries.                                              |
+| [Application Brand Assets](./application-brand-assets.md)                    | Canonical icons, asset derivation, platform packaging, and byte-level validation.                                               |
+| [Application Version and Installer Assets](./fyagent-version-contract.md)    | Canonical version source, package versions, and installer filename contract.                                                    |
+| [Main Window Layout](./main-window-layout.md)                                | Native geometry, maximize/work-area behavior, and renderer chrome boundary.                                                     |
+| [Main Window Presentation](./window-presentation.md)                         | Hidden startup, content readiness, queued reveal, silent mode and failure recovery.                                             |
 
 ## Product, configuration, and runtime security
 
@@ -82,7 +82,7 @@ and reuse of Grok's npm mirrors and ordinary-user execution boundary.
 | [Managed Auth Core](./managed-auth.md)                                    | Account metadata, Credential Sessions, SecretRef vault admission, JSON migration, refresh ownership, and Proxy token resolution. |
 | [Managed Auth Login](./managed-auth-login.md)                             | Backend login sessions, OpenAI browser/Device Code, xAI Device Code, cancellation, reopen, and grant admission.                  |
 | [Managed Auth Consumers](./managed-auth-consumers.md)                     | Codex/Grok/OpenCode connection observation, native projection gates, readback, ownership transfer, and restart evidence.         |
-| [Managed Account Proxy](./managed-account-proxy.md)                       | Explicit OpenAI/xAI account binding to local Agent Providers, target handoff, and `fyagent_proxy` overview projection.            |
+| [Managed Account Proxy](./managed-account-proxy.md)                       | Explicit OpenAI/xAI account binding to local Agent Providers, target handoff, and `fyagent_proxy` overview projection.           |
 | [Deep-Link Import Security](./deeplink-import-security.md)                | Untrusted deep-link parsing, confirmation, import capabilities, and side-effect limits.                                          |
 | [Change Plan Typed Executor](./change-plan-executor.md)                   | Typed plans, idempotency, execution phases, compensation, and partial results.                                                   |
 | [Codex Provider Configuration](./codex-provider-configuration.md)         | Codex provider/auth projection, writer serialization, backup, rollback, and readback.                                            |
@@ -103,18 +103,18 @@ and reuse of Grok's npm mirrors and ordinary-user execution boundary.
 
 ## Native platforms and distribution
 
-| Contract                                                          | Owns                                                                                                                 |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| [Windows Shell-user Runtime](./windows-runtime-security.md)       | Explorer-user authority, per-user paths/HKU, hidden Tauri paths, single-instance input, and interactive HTTP COM launch. |
-| [Windows Agent Runtime Security](./windows-agent-runtime-security.md) | Trusted Agent EXE launch, closed Claude/Grok helper routes, LocalProcess parity, and inventory registry rights.       |
-| [Windows Installer](./windows-installer.md)                       | NSIS mechanics, bounded cleanup, signing evidence, uninstall ownership, and native diagnostics.                      |
-| [macOS Privileged System-Commit Helper](./macos-system-commit.md) | Blessed helper, C ABI, product/slot integers, `MacSystemCommitPort`, and production enablement gates.                |
-| [macOS Styled DMG Layout](./macos-dmg-layout.md)                  | DMG contents, Finder metadata, retries, byte preservation, and layout verification.                                  |
-| [GitHub CI Workflow](./github-ci-workflow.md)                     | PR/merge-group classification, domain jobs, required aggregation, runner/toolchain evidence, and failure semantics.   |
-| [GitHub Branch-Push Commit Policy](./github-push-commit-policy.md) | Lightweight push-range fallback, topology-aware commit subjects, and queue-ref exclusion.                             |
-| [GitHub Release Workflow](./github-release-workflow.md)           | Release identity, native builds, signing/notarization, assets, attestation, draft recovery, and publication.         |
-| [GitHub Merge Governance](./github-merge-governance.md)           | Merge Queue, merge method, task/spec lifecycle, and merge-readiness governance.                                      |
-| [CC Switch Upstream Synchronization](./upstream-sync.md)          | Immutable upstream identity, ancestry-preserving merge, conflict precedence, and provenance handoff.                 |
+| Contract                                                              | Owns                                                                                                                     |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| [Windows Shell-user Runtime](./windows-runtime-security.md)           | Explorer-user authority, per-user paths/HKU, hidden Tauri paths, single-instance input, and interactive HTTP COM launch. |
+| [Windows Agent Runtime Security](./windows-agent-runtime-security.md) | Trusted Agent EXE launch, closed Claude/Grok helper routes, LocalProcess parity, and inventory registry rights.          |
+| [Windows Installer](./windows-installer.md)                           | NSIS mechanics, bounded cleanup, signing evidence, uninstall ownership, and native diagnostics.                          |
+| [macOS Privileged System-Commit Helper](./macos-system-commit.md)     | Blessed helper, C ABI, product/slot integers, `MacSystemCommitPort`, and production enablement gates.                    |
+| [macOS Styled DMG Layout](./macos-dmg-layout.md)                      | DMG contents, Finder metadata, retries, byte preservation, and layout verification.                                      |
+| [GitHub CI Workflow](./github-ci-workflow.md)                         | PR/merge-group classification, domain jobs, required aggregation, runner/toolchain evidence, and failure semantics.      |
+| [GitHub Branch-Push Commit Policy](./github-push-commit-policy.md)    | Lightweight push-range fallback, topology-aware commit subjects, and queue-ref exclusion.                                |
+| [GitHub Release Workflow](./github-release-workflow.md)               | Release identity, native builds, signing/notarization, assets, attestation, draft recovery, and publication.             |
+| [GitHub Merge Governance](./github-merge-governance.md)               | Merge Queue, merge method, task/spec lifecycle, and merge-readiness governance.                                          |
+| [CC Switch Upstream Synchronization](./upstream-sync.md)              | Immutable upstream identity, ancestry-preserving merge, conflict precedence, and provenance handoff.                     |
 
 ## Compatibility entry points
 
@@ -146,3 +146,11 @@ implementation gate is `mise run check`; focused backend work may start with
 matching prearchive gate with its exact `--exclude-active-task` path. Portable
 checks never replace native runtime, installer, signing, notarization, or
 publication evidence required by the owning contract.
+
+Native tests that set or depend on process-wide fixture homes such as
+`FYAGENT_TEST_HOME` must use the existing `#[serial_test::serial]` lock and an
+RAII guard that restores the previous environment value. A separate temporary
+config directory is insufficient when preview/apply also observes a preserved
+file through the home resolver. Keep the production revision/target guard and
+test assertions intact; do not mask fixture races with retries or weakened
+admission. Test-local readers that use only explicit paths need no extra lock.

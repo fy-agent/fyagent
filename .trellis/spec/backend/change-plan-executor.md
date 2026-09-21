@@ -199,6 +199,12 @@ faultPoints        = before_managed_write,
   compensation is bound to its exact preimage/publication and preserves later
   external edits. Revision drift before admit is `stale`.
 - Plan/job/event/partial/error DTOs remain credential- and path-free.
+- Codex upsert verification reads the persisted Provider first, so successful
+  saves are judged from the authoritative row. Only `TargetNotFound` may fall
+  back to inspecting the frozen intended Provider to classify an unchanged
+  baseline after a failed create that never inserted. Database/readback errors
+  do not use that fallback and remain failures; the draft is not evidence that
+  a Provider was persisted.
 - SecretRef integration is separate. A secret-blocked target fails closed
   before admission/writer invocation.
 - WebDAV continues to skip and locally preserve all three Change Plan tables.
@@ -244,6 +250,10 @@ faultPoints        = before_managed_write,
   event sequence is already committed.
 - Fault-injection tests cover both descriptor fault points and assert recovery
   changes no writer call count.
+- `upsert_failed_create_without_insert_restores_unchanged_baseline` proves a
+  failed new-row writer is classified as baseline restored, retains original
+  native bytes and does not manufacture a saved Provider. Successful upsert
+  and stale credential-reference tests retain their persisted-row assertions.
 - DAO tests insert legacy v1 `apply/reconcile` JSON/events directly and prove
   public normalization without rewriting the raw row.
 - Shared `tests/fixtures/changePlanDtoContract.v2.json` must match Rust serde
