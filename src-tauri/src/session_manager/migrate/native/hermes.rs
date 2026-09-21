@@ -482,6 +482,7 @@ mod tests {
             ReadbackVerdict::Mismatch { .. }
         ));
     }
+    #[cfg(target_os = "macos")]
     fn expectation(messages: Vec<MigratableMessage>) -> MigratableSession {
         use crate::session_manager::migrate::model::{
             ExtractionReport, OmittedCounts, OriginIdentity, PathFamily,

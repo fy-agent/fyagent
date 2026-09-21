@@ -383,7 +383,7 @@
     ],
     [
       "src-tauri/src/session_manager/migrate/native/hermes.rs",
-      "008efd209d3d0ebddbfe532314567f3c1be308080cd71859b5446694ee308874"
+      "d0dccfc6a21c8d561bc0634ce391694b0367e2c076f78945b9fff8200ea24e8b"
     ],
     [
       "src-tauri/src/session_manager/migrate/native/mod.rs",

@@ -1,5 +1,7 @@
 #![cfg(feature = "test-hooks")]
 
+mod support;
+
 use fyagent_lib::migration_test_hooks::{extract, identity, model, package};
 
 use model::{
@@ -19,6 +21,10 @@ fn extract_fixture(
     name: &str,
     detected_version: Option<&str>,
 ) -> Result<MigratableSession, model::MigrationError> {
+    // Source identity checks resolve the configured Codex store. Keep those
+    // settings and paths inside the shared test-home fixture on every platform.
+    let _guard = support::test_mutex().lock().expect("test mutex poisoned");
+    support::reset_test_fs();
     let state = tempfile::tempdir().expect("create isolated migration identity state");
     identity::with_local_state_dir(state.path(), || {
         extract::extract_session("codex", &fixture_path(name), detected_version)
