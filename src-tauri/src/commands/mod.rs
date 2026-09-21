@@ -33,6 +33,8 @@ mod proxy;
 mod qoderwork;
 mod runtime_privilege;
 mod session_manager;
+mod session_migration;
+mod session_migration_dialogs;
 mod settings;
 pub mod skill;
 mod stream_check;
@@ -86,6 +88,10 @@ pub use proxy::*;
 pub use qoderwork::*;
 pub use runtime_privilege::*;
 pub use session_manager::*;
+pub use session_migration::*;
+// The pickers are `pub(crate)`: they are reachable from the invoke handler
+// and from nowhere else.
+pub(crate) use session_migration_dialogs::*;
 pub use settings::*;
 pub use skill::*;
 pub use stream_check::*;

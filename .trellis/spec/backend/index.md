@@ -88,6 +88,7 @@ and reuse of Grok's npm mirrors and ordinary-user execution boundary.
 | [Codex Provider Configuration](./codex-provider-configuration.md)         | Codex provider/auth projection, writer serialization, backup, rollback, and readback.                                            |
 | [Codex Request-Source Selection](./codex-source-selection.md)             | Shared selector edits, account-versus-source write boundaries, and targeted live TOML projection.                                |
 | [One-click Executable Software Installer](./codex-desktop-installer.md)   | Codex desktop discovery/install/update, PackageBridge/helper, signing, and transaction safety.                                   |
+| [Session Migration](./session-migration.md) | Final-only packages, semantic identity, native restore receipts and honest capability evidence. |
 | [Codex Session Usage Sync](./codex-session-usage.md)                      | Codex JSONL usage import, typed deferred reasons, retry/fingerprint separation, and bounded logging.                             |
 | [WorkBuddy Configuration](./workbuddy-configuration.md)                   | Revisioned WorkBuddy model/config writes, overwrite capabilities, backup, and reread.                                            |
 | [External Agent Catalog and Runtime](./external-agent-catalog-runtime.md) | Static Agent catalog, capability/evidence projection, runtime observation, trusted launch, and ACL.                              |

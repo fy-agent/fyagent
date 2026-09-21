@@ -96,7 +96,14 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "fde_project_kit_intents",
     "fde_project_context_versions",
     "fde_resource_generations",
+    "session_restore_attempts",
 ];
+
+/// Session migration receipts are bound to one installation and one target
+/// store. Copying them to another device would let a foreign row occupy a
+/// local idempotency slot, so they are excluded from ordinary SQL export and
+/// preserved on ordinary SQL import as well, not only on sync.
+const LOCAL_ONLY_RECEIPT_TABLES: &[&str] = &["session_restore_attempts"];
 
 /// Tables whose local data is preserved (restored from local snapshot) during WebDAV import.
 /// Excludes ephemeral tables like provider_health that can safely rebuild at runtime.
@@ -122,6 +129,7 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "fde_project_kit_intents",
     "fde_project_context_versions",
     "fde_resource_generations",
+    "session_restore_attempts",
 ];
 
 /// A database backup entry for the UI
@@ -138,7 +146,14 @@ impl Database {
     pub fn export_sql_string(&self) -> Result<String, AppError> {
         let snapshot = self.snapshot_to_memory()?;
         Self::sanitize_provider_export(&snapshot)?;
-        Self::dump_sql(&snapshot, &["provider_credentials", "proxy_live_backup"])
+        Self::dump_sql(
+            &snapshot,
+            &[
+                "provider_credentials",
+                "proxy_live_backup",
+                "session_restore_attempts",
+            ],
+        )
     }
 
     /// Export SQL for sync (WebDAV), skipping local-only tables' data
@@ -239,7 +254,7 @@ impl Database {
 
     /// 从 SQL 字符串导入，返回生成的备份 ID（若无备份则为空字符串）
     pub fn import_sql_string(&self, sql_raw: &str) -> Result<String, AppError> {
-        self.import_sql_string_inner(sql_raw, &[])
+        self.import_sql_string_inner(sql_raw, LOCAL_ONLY_RECEIPT_TABLES)
     }
 
     /// Import SQL generated for sync, then restore local-only tables from the

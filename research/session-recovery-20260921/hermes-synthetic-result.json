@@ -1,0 +1,18 @@
+{
+  "result": "passed",
+  "scope": "Synthetic Codex-format final-only transcript -> installed Hermes native SessionDB -> conversation replay -> offline user append",
+  "original_user_data_accessed": false,
+  "network_or_model_calls": false,
+  "source_unchanged": true,
+  "recovered_message_count": 4,
+  "after_offline_append_count": 5,
+  "native_importer_final_only": false,
+  "native_importer_retains_commentary_and_tool_name_marker": true,
+  "isolated_storage_removed_after_test": true,
+  "not_proven": [
+    "Model reply after resume",
+    "Mac to Windows transfer",
+    "Codex native resume",
+    "All software/version compatibility"
+  ]
+}

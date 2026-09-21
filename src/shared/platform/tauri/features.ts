@@ -46,6 +46,12 @@ export function createTauriFeaturePorts(): FeaturePorts {
     );
     return createVerificationPort();
   };
+  const sessionMigration = async () => {
+    const { createSessionMigrationPort } = await import(
+      "./feature-ports/sessionMigration"
+    );
+    return createSessionMigrationPort();
+  };
   return {
     configPack: {
       list: async (...args) => (await configPack()).list(...args),
@@ -199,6 +205,40 @@ export function createTauriFeaturePorts(): FeaturePorts {
     },
     ...createSimpleFeaturePorts(),
     ...createContentFeaturePorts(),
+    sessions: {
+      listSessions: async (...args) =>
+        (await sessionMigration()).listSessions(...args),
+      getSessionMessages: async (...args) =>
+        (await sessionMigration()).getSessionMessages(...args),
+      previewSessionMigration: async (...args) =>
+        (await sessionMigration()).previewSessionMigration(...args),
+      exportSessionPackage: async (...args) =>
+        (await sessionMigration()).exportSessionPackage(...args),
+      readSessionPackage: async (...args) =>
+        (await sessionMigration()).readSessionPackage(...args),
+      probeLocalProvider: async (...args) =>
+        (await sessionMigration()).probeLocalProvider(...args),
+      getReleaseCapabilityMatrix: async (...args) =>
+        (await sessionMigration()).getReleaseCapabilityMatrix(...args),
+      restoreSessionPackage: async (...args) =>
+        (await sessionMigration()).restoreSessionPackage(...args),
+      verifyNativeReadback: async (...args) =>
+        (await sessionMigration()).verifyNativeReadback(...args),
+      listRestoreAttempts: async (...args) =>
+        (await sessionMigration()).listRestoreAttempts(...args),
+      reconcileRestoreAttempts: async (...args) =>
+        (await sessionMigration()).reconcileRestoreAttempts(...args),
+      recordUserAttestation: async (...args) =>
+        (await sessionMigration()).recordUserAttestation(...args),
+      openRestoredSession: async (...args) =>
+        (await sessionMigration()).openRestoredSession(...args),
+      pickDirectory: async (...args) =>
+        (await sessionMigration()).pickDirectory(...args),
+      pickPackageFile: async (...args) =>
+        (await sessionMigration()).pickPackageFile(...args),
+      pickExportPath: async (...args) =>
+        (await sessionMigration()).pickExportPath(...args),
+    },
     tooling: createGrokToolingPort(),
   };
 }

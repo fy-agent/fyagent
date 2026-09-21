@@ -86,13 +86,19 @@ afterEach(async () => {
 });
 
 describe("verifyRouteChunks", () => {
-  it("accepts nine distinct routes and the reviewed deferred ports outside the bounded initial graph", async () => {
+  it("accepts ten distinct routes and the reviewed deferred ports outside the bounded initial graph", async () => {
     const distributionDirectory = await fixture();
     const result = await verifyRouteChunks({ distributionDirectory });
 
-    expect(result.routeChunks).toHaveLength(9);
+    expect(result.routeChunks).toHaveLength(10);
     expect(result.routeChunks.map(({ route }) => route)).toContain(
       "app/ProjectsWorkspace.tsx",
+    );
+    expect(result.routeChunks.map(({ route }) => route)).toContain(
+      "pages/sessions/Page.tsx",
+    );
+    expect(result.deferredPortChunks.map(({ key }) => key)).toContain(
+      "shared/platform/tauri/feature-ports/sessionMigration.ts",
     );
     expect(result.deferredPortChunks).toHaveLength(
       RENDERER_DEFERRED_PORT_ENTRIES.length,
@@ -128,7 +134,7 @@ describe("verifyRouteChunks", () => {
       ];
     });
     await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
-      `must dynamically import exactly 9 product pages, ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports and ${RENDERER_DEFERRED_SHELL_ENTRIES.length} shell dialogs`,
+      `must dynamically import exactly 10 product pages, ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports and ${RENDERER_DEFERRED_SHELL_ENTRIES.length} shell dialogs`,
     );
   });
 

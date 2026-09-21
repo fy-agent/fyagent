@@ -27,6 +27,7 @@
     "allow-projects",
     "allow-delivery-kits",
     "allow-config-pack",
-    "allow-project-verification"
+    "allow-project-verification",
+    "allow-session-migration"
   ]
 }

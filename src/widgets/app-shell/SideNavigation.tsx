@@ -6,6 +6,7 @@ import { usePrimaryNavigationOrigin } from "../../shared/ui/PrimaryBlocker";
 
 import {
   navigationGroups,
+  auxiliaryNavigationItems,
   type NavigationItem,
 } from "../../shared/config/navigation";
 import { classNames } from "../../shared/design-system/classNames";
@@ -311,6 +312,21 @@ export function SideNavigation() {
             </Collapsible>
           );
         })}
+        {auxiliaryNavigationItems.length > 0 && (
+          <section
+            className="fy-side-navigation-group fy-side-navigation-group-auxiliary"
+            data-navigation-group="auxiliary"
+            key="auxiliary"
+          >
+            {auxiliaryNavigationItems.map((item) => (
+              <NavigationLink
+                item={item}
+                destination={navigationDestination(item)}
+                key={item.id}
+              />
+            ))}
+          </section>
+        )}
       </SelectionLensGroup>
     </nav>
   );

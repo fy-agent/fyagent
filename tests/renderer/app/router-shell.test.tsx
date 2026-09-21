@@ -37,6 +37,7 @@ const navigationContract = [
   { path: "/skills", label: "Skills 管理" },
   { path: "/mcp", label: "MCP 管理" },
   { path: "/prompts", label: "提示词管理" },
+  { path: "/sessions", label: "会话中心" },
   { path: "/memory", label: "记忆模块" },
 ] as const;
 
@@ -131,7 +132,7 @@ describe("FyAgent routing", () => {
     },
   );
 
-  it("renders all nine product workspaces", async () => {
+  it("renders all product workspaces", async () => {
     const pageTestIds = new Map([
       ["/projects", "projects-page"],
       ["/agents", "agents-page"],
@@ -141,6 +142,7 @@ describe("FyAgent routing", () => {
       ["/skills", "skills-page"],
       ["/mcp", "mcp-page"],
       ["/prompts", "prompts-page"],
+      ["/sessions", "sessions-page"],
       ["/memory", "memory-page"],
     ]);
 
@@ -256,7 +258,7 @@ describe("FyAgent shell accessibility", () => {
       navigation.querySelectorAll(
         ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
       ),
-    ).toHaveLength(6);
+    ).toHaveLength(7);
     expect(
       within(navigation).queryByRole("link", { name: "Agent 目录" }),
     ).not.toBeInTheDocument();

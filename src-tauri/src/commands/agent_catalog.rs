@@ -1372,6 +1372,7 @@ mod tests {
             "allow-projects",
             "allow-delivery-kits",
             "allow-project-verification",
+            "allow-session-migration",
         ] {
             assert_eq!(
                 permissions
@@ -1426,6 +1427,7 @@ mod tests {
             include_str!("../../permissions/delivery-kits.toml"),
             include_str!("../../permissions/project-verification.toml"),
             include_str!("../../permissions/config-pack.toml"),
+            include_str!("../../permissions/session-migration.toml"),
         ] {
             let commands = allowed_commands(manifest);
             assert!(allowed.is_disjoint(&commands));
@@ -1451,7 +1453,7 @@ mod tests {
         assert!(registered.contains("get_agent_health"));
         assert!(registered.contains("get_first_use_guide_state"));
         assert!(registered.contains("dismiss_first_use_guide"));
-        assert_eq!(registered.len(), 417, "review intentional handler changes");
+        assert_eq!(registered.len(), 430, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }

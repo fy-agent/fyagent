@@ -48,6 +48,9 @@ const primaryPageLoaders = {
   memory: cachedLoader(async () => ({
     default: (await import("../pages/memory/Page")).MemoryPage,
   })),
+  sessions: cachedLoader(async () => ({
+    default: (await import("../pages/sessions/Page")).SessionsPage,
+  })),
 } satisfies Record<
   NavigationItem["id"],
   () => Promise<{ default: ComponentType }>
@@ -66,6 +69,7 @@ export const primaryPages: Record<
   mcp: lazy(primaryPageLoaders.mcp),
   prompts: lazy(primaryPageLoaders.prompts),
   memory: lazy(primaryPageLoaders.memory),
+  sessions: lazy(primaryPageLoaders.sessions),
 };
 
 export function prefetchPrimaryRoutes(): void {

@@ -114,6 +114,7 @@ type CheckerModule = {
     root?: string,
     runner?: (...args: unknown[]) => unknown,
   ): string;
+  resolveActiveTaskPython(root?: string, platform?: string): string;
   scanJavaScriptImplicitPredicates(
     entries: Array<{ path: string; source: string }>,
   ): Finding[];
@@ -392,7 +393,9 @@ describe("durable supported-platform surface contract", () => {
       },
     ];
     expect(checker.scanMacosPosixContract(entries)).toEqual([]);
-    const first = checker.MACOS_POSIX_CONTRACT[0];
+    const first = checker.MACOS_POSIX_CONTRACT.find(
+      (item) => item.id === "data-home-declaration",
+    )!;
     const drifted = entries.map((entry) =>
       entry.path === first.file
         ? { ...entry, source: entry.source.replace(first.snippet, "") }
@@ -405,6 +408,44 @@ describe("durable supported-platform surface contract", () => {
     );
 
     expect(checker.scanDirectoryConventionContract(entries)).toEqual([]);
+    for (const id of [
+      "session-synthetic-opencode-isolation",
+      "session-synthetic-opencode-import-environment",
+      "session-synthetic-opencode-export-environment",
+      "session-synthetic-opencode-native-test-module",
+      "session-synthetic-opencode-native-guard",
+    ]) {
+      const contract = checker.MACOS_POSIX_CONTRACT.find(
+        (item) => item.id === id,
+      )!;
+      const replacement = id.endsWith("native-test-module")
+        ? contract.snippet.replace("#[cfg(test)]\n", "")
+        : id.endsWith("native-guard")
+          ? contract.snippet.replace(".starts_with(&root)", ".is_absolute()")
+          : id.endsWith("isolation")
+            ? contract.snippet.replace(
+                "        env[key] = str(root/sub)",
+                "env[key] = str(root/sub)",
+              )
+            : contract.snippet.replace("env=env", "env=os.environ");
+      const drift = entries.map((entry) =>
+        entry.path === contract.file
+          ? {
+              ...entry,
+              source: entry.source.replace(contract.snippet, replacement),
+            }
+          : entry,
+      );
+      expect(checker.scanMacosPosixContract(drift)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: contract.file,
+            rule: "macos-posix:contract-drift",
+            excerpt: id,
+          }),
+        ]),
+      );
+    }
     for (const id of [
       "subscription-test-only-module",
       "subscription-test-home-guard",
@@ -786,10 +827,40 @@ describe("durable supported-platform surface contract", () => {
     ).toThrow(/not directly active/);
   });
 
+  it("uses the managed project Python and never falls back to PATH", () => {
+    for (const platform of ["darwin", checker.SURFACE_MARKERS.kernel]) {
+      expect(checker.resolveActiveTaskPython(ROOT, platform)).toBe(
+        path.join(ROOT, ".venv", "bin", "python"),
+      );
+    }
+    expect(checker.resolveActiveTaskPython(ROOT, "win32")).toBe(
+      path.join(ROOT, ".venv", "Scripts", "python.exe"),
+    );
+    expect(() => checker.resolveActiveTaskPython(ROOT, "freebsd")).toThrow(
+      /Unsupported prearchive task host/,
+    );
+    const calls: unknown[][] = [];
+    expect(() =>
+      checker.resolveAuthoritativeActiveTask(ROOT, (...args) => {
+        calls.push(args);
+        return {
+          error: Object.assign(new Error("missing"), { code: "ENOENT" }),
+        };
+      }),
+    ).toThrow(/project \.venv Python is missing; run mise run python:sync/);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual([
+      checker.resolveActiveTaskPython(ROOT),
+      [".trellis/scripts/task.py", "current", "--source", "--json"],
+      { cwd: ROOT, encoding: "utf8", windowsHide: true },
+    ]);
+  });
+
   it("rejects preflight fallbacks that stop rejecting unsupported hosts", () => {
     const entries = permittedRustEntries();
     const guarded = checker.RUST_ALLOWANCE_CONTRACT.filter(
-      (item): item is RustAllowance & { block: string } => Boolean(item.block),
+      (item): item is RustAllowance & { block: string } =>
+        Boolean(item.block) && !item.id.startsWith("session-migration-"),
     );
     expect(guarded).toHaveLength(4);
     for (const allowance of guarded) {
@@ -827,9 +898,62 @@ describe("durable supported-platform surface contract", () => {
     }
   });
 
+  it("rejects widened or moved migration unsupported-host fallbacks", () => {
+    const guarded = checker.RUST_ALLOWANCE_CONTRACT.filter(
+      (item): item is RustAllowance & { block: string } =>
+        Boolean(item.block) && item.id.startsWith("session-migration-"),
+    );
+    expect(guarded).toHaveLength(10);
+    const entries = [...new Set(guarded.map((item) => item.file))].map(
+      (file) => ({
+        path: file,
+        source: fs.readFileSync(path.join(ROOT, file), "utf8"),
+      }),
+    );
+    for (const allowance of guarded) {
+      const pattern = new RegExp(
+        allowance.block
+          .split(/\s+/u)
+          .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+          .join("\\s+"),
+        "u",
+      );
+      for (const mutate of [
+        (source: string) =>
+          source.replace(pattern, (block) =>
+            block
+              .replace("Err(", "Ok(")
+              .replace('"unsupported"', '"macos"')
+              .replace("Vec::new()", "vec![dir.join(binary)]")
+              .replace(
+                'Some("Session migration requires a supported desktop platform")',
+                "None",
+              )
+              .replace("child.kill()", "child.try_wait()"),
+          ),
+        (source: string) => source.replace(pattern, ""),
+      ]) {
+        const drift = entries.map((entry) =>
+          entry.path === allowance.file
+            ? { ...entry, source: mutate(entry.source) }
+            : entry,
+        );
+        expect(checker.scanRustImplicitPredicates(drift)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: allowance.file,
+              rule: "rust:allowance-drift",
+              excerpt: allowance.id,
+            }),
+          ]),
+        );
+      }
+    }
+  });
+
   it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", () => {
     const entries = permittedRustEntries();
-    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(37);
+    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(47);
     expect(checker.scanRustImplicitPredicates(entries)).toEqual([]);
 
     const first = checker.RUST_ALLOWANCE_CONTRACT[0];
