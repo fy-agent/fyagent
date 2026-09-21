@@ -1,4 +1,3 @@
-import type { ProjectsPort } from "./projects";
 import type { FirstUseGuideState } from "./first-use-guide";
 import type {
   CodexInstallPreflight,
@@ -273,9 +272,6 @@ export interface MemoryPort {
 
 export interface FeaturePorts {
   configPack: import("./config-pack").ConfigPackPort;
-  deliveryKits: import("./delivery-kits").DeliveryKitsPort;
-  projects: ProjectsPort;
-  verification: import("@/domain/verification").VerificationPort;
   health: HealthPort;
   configRecovery: import("./config-recovery").ConfigRecoveryPort;
   catalog: AgentCatalogPort;

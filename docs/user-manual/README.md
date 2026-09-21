@@ -1,6 +1,6 @@
 # FyAgent User Manual / 用户手册 / ユーザーマニュアル
 
-Choose the language you prefer. The three editions follow the same six-chapter structure and describe the current repository behavior.
+Choose your preferred language for installation, setup, and feature guides.
 
 | Language | Manual |
 |---|---|
@@ -10,11 +10,15 @@ Choose the language you prefer. The three editions follow the same six-chapter s
 
 ## What is covered
 
-1. Getting started: installation, interface, first provider, and personal settings.
-2. Agent tools: installing tools, checking versions, updating, and diagnosing conflicting installations.
-3. Providers: adding, switching, editing, ordering, usage queries, and Claude Desktop.
-4. Extensions: MCP, Prompts, Skills, sessions, workspaces, and WorkBuddy.
-5. Proxy and reliability: local routing, takeover, failover, usage, and model tests.
-6. Troubleshooting: configuration files, common questions, deep links, and environment conflicts.
+The guides cover:
+
+1. Getting started: installation and first setup (`installation.md`).
+2. AI software: scan, install, update, and configure local tools (`agents.md`).
+3. Runtime health: local checks and failures (`health.md`).
+4. Accounts: login, software connections, and source switching (`accounts.md`).
+5. Models: configuration, tests, and subscriptions (`models.md`).
+6. Skills, MCP, and prompts: install, import, assign, and edit.
+7. Memory: long-term and daily memory files for OpenClaw and Hermes (`memory.md`).
+8. Troubleshooting: configuration locations and common problems.
 
 For release-specific installers and trust information, use the matching [GitHub Release](https://github.com/fy-agent/fyagent/releases) and its published evidence. For source work, start from the [development guide](../fyagent/development/README.md).

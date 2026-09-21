@@ -1,4 +1,0 @@
-[[permission]]
-identifier = "allow-projects"
-description = "Manage device-local customer projects without changing global Agent configuration."
-commands.allow = ["projects_list_customers", "projects_create_customer", "projects_update_customer", "projects_list", "projects_get", "projects_create", "projects_update", "projects_resource_options", "projects_credential_options", "projects_bind_resource", "projects_remove_resource", "projects_bind_credential", "projects_remove_credential", "projects_get_context", "projects_write_context", "projects_prepare_codex", "projects_bind_delivery_kit", "projects_dependency_snapshot"]

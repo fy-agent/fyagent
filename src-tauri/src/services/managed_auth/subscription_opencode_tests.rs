@@ -138,14 +138,6 @@ fn subscription_opencode_both_sources_revision_isolation_secret_free_and_restore
         }
         // Startup imports native providers before resuming proxy state. The
         // loopback projection must not replace the saved upstream definition.
-        let generation = state
-            .db
-            .project_resource_version(
-                crate::services::projects::domain::ResourceKind::Provider,
-                "opencode",
-                &bound.provider_id,
-            )
-            .unwrap();
         crate::services::provider::import_opencode_providers_from_live(&state).unwrap();
         let after_import = state
             .db
@@ -156,17 +148,6 @@ fn subscription_opencode_both_sources_revision_isolation_secret_free_and_restore
         assert_eq!(
             serde_json::to_value(&after_import.meta).unwrap(),
             serde_json::to_value(&row.meta).unwrap()
-        );
-        assert_eq!(
-            state
-                .db
-                .project_resource_version(
-                    crate::services::projects::domain::ResourceKind::Provider,
-                    "opencode",
-                    &bound.provider_id,
-                )
-                .unwrap(),
-            generation
         );
         assert_eq!(std::fs::read(&auth_path).unwrap(), auth_bytes);
         let mut stale = bind_request(&selected.identity_id, "selected-model");

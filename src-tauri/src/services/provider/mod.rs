@@ -7008,6 +7008,7 @@ impl ProviderService {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn extract_credentials(
         provider: &Provider,
         app_type: &AppType,

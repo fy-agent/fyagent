@@ -8,6 +8,19 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased changes
+
+### Removed
+
+- Retired the customer-projects workspace, including customer/project records,
+  delivery kits, staged verification, Codex project preparation and handover
+  exports. Shared accounts, models, Skills, MCP, prompts and memory remain.
+- Old `#/projects` hashes and leftover navigation state return to AI software
+  configuration. Existing local project files stay on disk. Retired database
+  rows remain during upgrades and receive a verified, non-rotating local
+  archive before a database import or restore replaces them. New installs
+  do not create the retired tables or archive directory.
+
 ## [0.4.6] - 2026-09-20
 
 ### Added

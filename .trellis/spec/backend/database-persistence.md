@@ -97,14 +97,31 @@ bindings together with their full route. Private binary backups stay lossless.
 - Schema migration uses the migration savepoint/rollback path. An unknown
   predecessor version, failed DDL, failed data rewrite, or failed version bump
   leaves no partially accepted schema.
-- The combined FDE/subscription migration accepts both historical schema-22
-  shapes: FDE project/evidence tables with the four-target proxy constraint, and
-  OpenCode proxy support without those FDE tables. It completes both owners in a
-  forward migration, retaining proxy settings and takeover state, resource
-  generations, projects, evidence, and recovery records. Reopening does not
-  re-seed or increment existing generations. Fixtures cover both shapes,
-  schema 21, fresh initialization, late-failure rollback and binary restore;
-  never repair a real database by manually rewriting its version.
+- Schema 25 retires the former customer-project tables. Fresh databases do
+  not create `fde_*` or `verification_*` tables and do not create
+  `retired-customer-projects/`. Upgrades from schema 24 drop
+  `fde_resource_*` triggers so shared Provider/Skill/MCP/prompt writes no
+  longer update leftover generation counters; existing leftover rows stay in
+  place as unconsumed historical data until a later SQL import, sync import,
+  or binary restore would replace the live database. Before that replace, if
+  the live database still has retired tables, the host writes one durable
+  `retired-customer-projects/historical-fde-*.db` archive, verifies it, and
+  only then continues. Ordinary rotating `backups/` retention must not delete
+  that archive; archive failure aborts the replace and leaves the live
+  database unchanged. The product does not read leftover rows or revive the
+  retired module. The historical schema-22 merge still accepts both
+  predecessor shapes (OpenCode proxy with or without leftover FDE tables) and
+  retains proxy settings, takeover state and recovery records. SQL dumps omit
+  retired tables so an import cannot revive the removed module. Binary restore
+  accepts only the closed historical `fde_resource_*` trigger definitions;
+  unknown trigger SQL is rejected before DML, confirmed retired triggers are
+  dropped on the candidate before create/migrate, and restore finishes with
+  no remaining executable triggers. SQL import continues to deny
+  `CREATE TRIGGER` in the authorizer. Fixtures cover both schema-22 shapes,
+  schema 21, fresh initialization, late-failure rollback, binary restore,
+  keyword/forged-trigger rejection, genuine-trigger restore without migration
+  side effects, and archive-before-replace; never repair a real database by
+  manually rewriting its version.
 - A pre-migration binary backup is attempted for an existing older database.
   The current implementation logs and continues when that safety copy fails;
   do not strengthen or weaken that behavior accidentally inside an unrelated
@@ -138,11 +155,16 @@ bindings together with their full route. Private binary backups stay lossless.
   through the authorizer, temporary database, schema/trigger validation, and
   SQLite backup transaction path.
 - Import rejects cross-database attachment and unsupported persistent side
-  effects. It creates a safety backup before replacing the live database; a
-  failed validation or import leaves the main database unchanged.
-- Binary restore validates the candidate schema before creating the safety
-  backup or mutating the main database, restores through SQLite's backup API,
-  then applies supported forward migrations.
+  effects. SQL import authorizer denial of `CREATE TRIGGER` is not weakened
+  for retired customer-project triggers. It creates a safety backup before
+  replacing the live database; a failed validation, retired-data archive, or
+  import leaves the main database unchanged.
+- Binary restore validates executable schema with a closed allowlist of known
+  historical retired triggers, copies to a candidate, disables and drops those
+  triggers before create/migrate, archives leftover live retired tables when
+  present, then creates the safety backup and restores through SQLite's backup
+  API. Restore finishes with no remaining executable triggers. The selected
+  backup file stays immutable.
 - Backup filenames are leaf names owned by the backup directory. Path
   traversal, arbitrary paths, replacement collisions, and non-owned deletion
   are rejected.
@@ -169,6 +191,8 @@ bindings together with their full route. Private binary backups stay lossless.
 | JSON migration fails after some domain rows                                                            | Roll back the whole JSON migration transaction.                                                                       |
 | dry-run is requested                                                                                   | Validate against an in-memory current schema; write no application database or backup.                                |
 | imported SQL has the wrong header, unsafe authorization action, unsupported trigger, or invalid schema | Reject before replacing the main database.                                                                            |
+| binary backup trigger SQL is not an exact known historical retired definition                          | Reject before DML; leave the live database and the original backup file unchanged.                                    |
+| live database still has retired customer-project tables and a SQL/sync/binary replace would drop them  | Write and verify `retired-customer-projects/historical-fde-*.db` first; failure aborts the replace.                   |
 | SQL/binary restore fails after safety preparation                                                      | Keep or restore the prior main database as defined by the SQLite backup transaction; surface an error, never success. |
 | backup filename contains path components or resolves outside the backup directory                      | Reject the request.                                                                                                   |
 | sync payload contains rows for local-only tables                                                       | Omit them on export and preserve the local snapshot on import.                                                        |
@@ -185,6 +209,10 @@ bindings together with their full route. Private binary backups stay lossless.
 - Good: malicious SQL carries the FyAgent header but attempts a persistent
   trigger; the authorizer/schema validation rejects it and the live database
   remains unchanged.
+- Good: a live database still holding leftover `fde_*` rows is archived to
+  `retired-customer-projects/` before SQL, sync, or binary replace; shared
+  configuration imports succeed, the archive reopens with the leftover rows,
+  and a failed archive leaves the live database unchanged.
 - Base: a fresh install creates the current schema directly and seeds required
   built-in pricing without replaying historical migrations.
 - Bad: increment `SCHEMA_VERSION` without a predecessor fixture, execute import
@@ -206,10 +234,15 @@ bindings together with their full route. Private binary backups stay lossless.
 - SQL import/export tests cover genuine and legacy supported exports, wrong
   product header, ATTACH/cross-file statements, persistent triggers, malformed
   late statements, exact main-database preservation, and sync skip/preserve
-  symmetry.
+  symmetry. SQL import continues to deny `CREATE TRIGGER` in the authorizer,
+  including genuine retired `fde_resource_*` definitions.
 - Binary backup tests cover validation-before-mutation, safety backup, older
   schema forward migration, filename containment, collision, retention,
-  rename, and delete.
+  rename, and delete. They also cover exact-match retired-trigger allowlisting,
+  rejection of keyword-only and forged-prefix trigger SQL, genuine historical
+  trigger restore without migration side effects, leftover-data archive before
+  replace, archive-failure abort, and new installs not creating the archive
+  directory.
 - Run `mise run rust:test` and `mise run check:contracts`; a schema change also
   requires the affected domain and sync tests.
 
