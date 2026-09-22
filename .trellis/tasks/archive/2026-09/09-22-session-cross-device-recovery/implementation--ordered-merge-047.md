@@ -22,4 +22,8 @@ Windows real-device UAT was explicitly waived while unavailable; hosted Windows 
 
 Frontend integration:13 targeted files,123 tests passed; typecheck and scoped formatting passed. Exact AST command sets were compared against #196. Database integration:152 passed,2 existing ignored in the focused database suite; fresh/24/25 migrations, rollback, SQL/sync/binary receipt preservation, archive failures and final publication locking have explicit cases.
 
-Final canonical gates, Grok4.7 integration review and hosted checks are recorded by the coordinator after the combined source and archived task state are finalized. Raw logs stay outside the repository under the coordinator's `work/merge-047/`; GitHub PR checks and merge-group runs provide remote evidence.
+The final combined source passed canonical `mise run check` with exit0:213 frontend files /2,083 tests passed /1 existing skip; desktop mocks7/7; Rust20 suites /4,068 passed /0 failed /7 existing ignored; repository/release contracts664 passed /1 existing skip and native-fetch4/4. Production boot3/3 and the complete browser suite663/663 passed. Both archived task context manifests validate (Session5+5, retirement4+4).
+
+An earlier full check was run concurrently with the browser suite and failed14 tests with timeouts and resulting cleanup errors under elevated host load. Its raw log is retained as `final-check.log`. The successful canonical run was sequential after browsers exited (`final-check-serial.log`), with no source, assertion, timeout or retry changes. Browser evidence is `final-browser.log`.
+
+Grok4.7 High completed an independent read-only integration review with no actionable P0/P1/P2 findings or redundant design; see `implementation--grok-047-merge-review.md`. Hosted checks are separate from these local results. Raw logs stay outside the repository under the coordinator's `work/merge-047/`; GitHub PR checks and merge-group runs provide remote evidence.

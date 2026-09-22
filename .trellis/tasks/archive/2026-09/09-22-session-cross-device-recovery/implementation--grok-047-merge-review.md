@@ -1,0 +1,9 @@
+# Grok 4.7 integration review — 2026-09-22
+
+The approved Cursor fallback ran in read-only ask mode with requested model `grok-4.7-high`; its runtime init reported **Grok 4.7 256K High**, login authentication, session `1fcdeb66-0c9e-484f-bf2e-68b925e6d9cb`. The reviewer inspected the combined source integrated in `260b2836` and finalized with the retirement follow-up in `8f8e8286`. It did not edit or run test suites.
+
+Result: **no actionable P0/P1/P2 findings and no unjustified redundant design** within the bounded integration scope. The reviewer checked the25/26 migration order and rollback; durable retired-data archives; trigger admission and removal; final-lock preservation of current local receipts across SQL/sync/binary replacement; one body-free receipt table; retired module removal; Session/Memory navigation and ACL boundaries; elevated Windows refusal; and0.4.7 application/helper metadata.
+
+Review limits: native writer internals were not re-reviewed, real model continuation and Windows device acceptance were not inferred, and pending hosted checks were not called passed. Cursor's read-only mode rejected its shell diff against `origin/main`, so the conclusion is based on the actual source and contracts; the coordinator separately inspected the Git diffs and dependency graph. Future-version rejection occurs before opening the migration savepoint; the review's wording about being inside that savepoint is imprecise but does not change the verified fail-closed behavior.
+
+The original CLI stream, final text and process exit remain outside the repository under the coordinator's `work/merge-047/grok-047-review*`. Review is independent evidence, not a substitute for the canonical tests or Merge Queue. The coordinator found no additional changes necessary from this report.
