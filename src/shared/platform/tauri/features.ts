@@ -30,22 +30,6 @@ export function createTauriFeaturePorts(): FeaturePorts {
     const { createModelFeaturePorts } = await import("./feature-ports/models");
     return createModelFeaturePorts();
   };
-  const projects = async () => {
-    const { createProjectsPort } = await import("./feature-ports/projects");
-    return createProjectsPort();
-  };
-  const deliveryKits = async () => {
-    const { createDeliveryKitsPort } = await import(
-      "./feature-ports/delivery-kits"
-    );
-    return createDeliveryKitsPort();
-  };
-  const verification = async () => {
-    const { createVerificationPort } = await import(
-      "./feature-ports/verification"
-    );
-    return createVerificationPort();
-  };
   const sessionMigration = async () => {
     const { createSessionMigrationPort } = await import(
       "./feature-ports/sessionMigration"
@@ -63,59 +47,6 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await configPack()).previewExport(...args),
       saveExport: async (...args) => (await configPack()).saveExport(...args),
       cancel: async (...args) => (await configPack()).cancel(...args),
-    },
-    deliveryKits: {
-      list: async (...args) => (await deliveryKits()).list(...args),
-      previewBuiltin: async (...args) =>
-        (await deliveryKits()).previewBuiltin(...args),
-      pickImport: async (...args) => (await deliveryKits()).pickImport(...args),
-      apply: async (...args) => (await deliveryKits()).apply(...args),
-      cancel: async (...args) => (await deliveryKits()).cancel(...args),
-      previewExport: async (...args) =>
-        (await deliveryKits()).previewExport(...args),
-      saveExport: async (...args) => (await deliveryKits()).saveExport(...args),
-      runDemo: async (...args) => (await deliveryKits()).runDemo(...args),
-    },
-    projects: {
-      listCustomers: async (...args) =>
-        (await projects()).listCustomers(...args),
-      createCustomer: async (...args) =>
-        (await projects()).createCustomer(...args),
-      updateCustomer: async (...args) =>
-        (await projects()).updateCustomer(...args),
-      list: async (...args) => (await projects()).list(...args),
-      get: async (...args) => (await projects()).get(...args),
-      create: async (...args) => (await projects()).create(...args),
-      update: async (...args) => (await projects()).update(...args),
-      resourceOptions: async (...args) =>
-        (await projects()).resourceOptions(...args),
-      credentialOptions: async (...args) =>
-        (await projects()).credentialOptions(...args),
-      bindResource: async (...args) => (await projects()).bindResource(...args),
-      removeResource: async (...args) =>
-        (await projects()).removeResource(...args),
-      bindCredential: async (...args) =>
-        (await projects()).bindCredential(...args),
-      removeCredential: async (...args) =>
-        (await projects()).removeCredential(...args),
-      getContext: async (...args) => (await projects()).getContext(...args),
-      writeContext: async (...args) => (await projects()).writeContext(...args),
-      prepareCodex: async (...args) => (await projects()).prepareCodex(...args),
-      bindDeliveryKit: async (...args) =>
-        (await projects()).bindDeliveryKit(...args),
-      dependencySnapshot: async (...args) =>
-        (await projects()).dependencySnapshot(...args),
-    },
-    verification: {
-      cancel: async (...args) => (await verification()).cancel(...args),
-      get: async (...args) => (await verification()).get(...args),
-      run: async (...args) => (await verification()).run(...args),
-      record: async (...args) => (await verification()).record(...args),
-      revoke: async (...args) => (await verification()).revoke(...args),
-      saveHandoff: async (...args) =>
-        (await verification()).saveHandoff(...args),
-      preview: async (...args) => (await verification()).preview(...args),
-      export: async (...args) => (await verification()).export(...args),
     },
     health: {
       get: async (agentId) => {

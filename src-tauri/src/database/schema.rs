@@ -348,10 +348,8 @@ impl Database {
 
         Self::create_provider_credential_tables_on_conn(conn)?;
 
-        // 25. Session migration receipts. Device-bound and local-only.
+        // 26. Session migration receipts. Device-bound and local-only.
         Self::create_session_restore_tables_on_conn(conn)?;
-
-        Self::create_project_tables_on_conn(conn)?;
 
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
         // （随 v12 定稿为 current_profile_id_<scope>，不单独 bump 版本）
@@ -432,7 +430,6 @@ impl Database {
             [],
         );
 
-        Self::migrate_verification_v22(conn)?;
         Ok(())
     }
 
@@ -582,9 +579,13 @@ impl Database {
                         Self::set_user_version(conn, 24)?;
                     }
                     24 => {
-                        log::info!("迁移数据库从 v24 到 v25（添加会话迁移回执表）");
-                        Self::create_session_restore_tables_on_conn(conn)?;
+                        Self::migrate_v24_to_v25(conn)?;
                         Self::set_user_version(conn, 25)?;
+                    }
+                    25 => {
+                        log::info!("迁移数据库从 v25 到 v26（添加会话迁移回执表）");
+                        Self::create_session_restore_tables_on_conn(conn)?;
+                        Self::set_user_version(conn, 26)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1569,13 +1570,39 @@ impl Database {
         Ok(())
     }
 
-    /// Two independent v22 branches owned disjoint additions. The
-    /// forward merge accepts either (or both) without interpreting the numeric
-    /// version alone as proof that OpenCode and FDE structures already exist.
+    /// Historical schema-22 merge: complete OpenCode proxy support. Customer
+    /// project tables are no longer created on this step.
     fn migrate_v22_to_v23(conn: &Connection) -> Result<(), AppError> {
         Self::migrate_v21_to_v22(conn)?;
-        Self::create_project_tables_on_conn(conn)?;
-        Self::migrate_verification_v22(conn)?;
+        Ok(())
+    }
+
+    /// Stop writing retired customer-project generation counters. Historical
+    /// fde_* and verification_* tables stay in place as unconsumed leftover
+    /// rows; new installs never create them.
+    fn migrate_v24_to_v25(conn: &Connection) -> Result<(), AppError> {
+        Self::drop_retired_fde_triggers_on_conn(conn)
+    }
+
+    pub(crate) fn drop_retired_fde_triggers_on_conn(conn: &Connection) -> Result<(), AppError> {
+        let mut statement = conn
+            .prepare(
+                "SELECT name FROM sqlite_schema WHERE type='trigger' AND name LIKE 'fde_resource_%'",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let names = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        drop(statement);
+        for name in names {
+            conn.execute(
+                &format!("DROP TRIGGER IF EXISTS \"{}\"", name.replace('"', "\"\"")),
+                [],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
         Ok(())
     }
 
@@ -3583,9 +3610,8 @@ mod tests {
         conn.execute_batch("DROP TABLE provider_credentials; PRAGMA user_version = 23;")
             .unwrap();
         super::Database::apply_schema_migrations_on_conn(&conn).unwrap();
-        // Migrating from 23 now runs 24 and then 25, so the end state is the
-        // current schema version rather than the v24 step this test was
-        // originally written against.
+        // Forward migration reaches the current schema, including both the
+        // customer-project retirement and local Session restore receipts.
         assert_eq!(
             super::Database::get_user_version(&conn).unwrap(),
             super::SCHEMA_VERSION

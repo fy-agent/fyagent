@@ -29,7 +29,6 @@ vi.mock("@samasante/liquid-glass", () => ({
 }));
 
 const navigationContract = [
-  { path: "/projects", label: "客户项目" },
   { path: "/agents", label: "AI软件配置" },
   { path: "/health", label: "运行状态" },
   { path: "/auth", label: "账号与认证" },
@@ -86,7 +85,7 @@ function expectSystemOwnedChrome(): void {
 }
 
 describe("FyAgent routing", () => {
-  it.each(["/", "/route-that-does-not-exist"])(
+  it.each(["/", "/route-that-does-not-exist", "/projects"])(
     "redirects %s to the agents route",
     async (initialEntry) => {
       const router = renderRoute(initialEntry);
@@ -132,9 +131,23 @@ describe("FyAgent routing", () => {
     },
   );
 
-  it("renders all product workspaces", async () => {
+  it("does not keep a customer-projects workspace or navigation entry", async () => {
+    const router = renderRoute(
+      "/projects?project=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
+
+    await expectPath(router, "/agents");
+    expect(screen.queryByTestId("projects-page")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "客户项目" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "AI软件配置", current: "page" }),
+    ).toBeVisible();
+  });
+
+  it("renders all nine product workspaces", async () => {
     const pageTestIds = new Map([
-      ["/projects", "projects-page"],
       ["/agents", "agents-page"],
       ["/health", "health-page"],
       ["/auth", "auth-page"],
@@ -226,9 +239,8 @@ describe("FyAgent shell accessibility", () => {
       routeLinks[0],
       routeLinks[1],
       routeLinks[2],
-      routeLinks[3],
       configurationToggle,
-      ...routeLinks.slice(4),
+      ...routeLinks.slice(3),
     ];
     for (const control of expectedTabOrder) {
       await user.tab();
@@ -258,7 +270,7 @@ describe("FyAgent shell accessibility", () => {
       navigation.querySelectorAll(
         ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
       ),
-    ).toHaveLength(7);
+    ).toHaveLength(6);
     expect(
       within(navigation).queryByRole("link", { name: "Agent 目录" }),
     ).not.toBeInTheDocument();

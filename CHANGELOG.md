@@ -8,6 +8,50 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-09-22
+
+### Added
+
+- Session Center with final-text package export, cross-device import previews,
+  target compatibility checks, and device-local restore receipts.
+- Strict native history export for the reviewed Codex, OpenCode and Hermes
+  shapes, preserving user text and final answers while rejecting ambiguous
+  assistant output. Reasoning, tool output and credentials are excluded.
+- Version-gated native restore for Codex, OpenCode, Hermes and Gemini, with
+  readback evidence, duplicate prevention, crash reconciliation and explicit
+  creation of a separate copy when requested.
+
+
+### Removed
+
+- Retired the customer-projects workspace, including customer/project records,
+  delivery kits, staged verification, Codex project preparation and handover
+  exports. Shared accounts, models, Skills, MCP, prompts and memory remain.
+- Old `#/projects` hashes and leftover navigation state return to AI software
+  configuration. Existing local project files stay on disk. Retired database
+  rows remain during upgrades and receive a verified, non-rotating local
+  archive before a database import or restore replaces them. New installs
+  do not create the retired tables or archive directory.
+
+### Fixed
+
+- Apply customer-project retirement and Session receipt creation as consecutive
+  database migrations, preserving local receipts during SQL/sync imports and
+  binary restores while archiving historical project data before replacement.
+- Wait for committed page transitions and keyboard readiness in browser
+  regression checks before testing retained drafts and return animations.
+
+### Compatibility
+
+- Session support is gated by the locally observed CLI version and supported
+  history shape. Unsupported exporters and writers remain unavailable;
+  native readback is separate from a real continued model response.
+- Elevated Windows Session operations that require an ordinary-user CLI bridge
+  remain unavailable until that bridge is implemented. Hosted Windows checks
+  do not substitute for real-device acceptance.
+- Application and helper metadata move to 0.4.7; the helper minimum-client floor
+  remains unchanged. A main-branch merge does not itself publish release assets.
+
 ## [0.4.6] - 2026-09-20
 
 ### Added

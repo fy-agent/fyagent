@@ -1,6 +1,6 @@
 # FyAgent 用户手册
 
-FyAgent 在 Windows 和 macOS 上集中管理 AI 软件的安装、账号、模型、Skills、MCP、提示词和记忆，也可按客户整理项目配置与交付材料。桌面界面使用简体中文。
+FyAgent 在 Windows 和 macOS 上集中管理 AI 软件的安装、账号、模型、Skills、MCP、提示词和记忆。桌面界面使用简体中文。
 
 ## 快速开始
 
@@ -14,7 +14,6 @@ FyAgent 在 Windows 和 macOS 上集中管理 AI 软件的安装、账号、模�
 
 | 侧栏入口    | 指南                                     |
 | ----------- | ---------------------------------------- |
-| 客户项目    | [项目配置、交付包、检查与交接](4-extensions/4.7-fde-projects.md) |
 | AI软件配置  | [扫描、安装、更新和软件配置](agents.md)  |
 | 运行状态    | [本机检查与失败处理](health.md)          |
 | 账号与认证  | [登录、软件连接与来源切换](accounts.md)  |

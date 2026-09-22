@@ -18,7 +18,6 @@ test("keeps the selection frame on the current link after real navigation clicks
   const navigation = page.getByRole("navigation", { name: "主导航" });
   const track = navigation.locator(".fy-side-navigation-track");
   const destinations = [
-    ["/projects", "客户项目"],
     ["/agents", "AI软件配置"],
     ["/health", "运行状态"],
     ["/auth", "账号与认证"],
@@ -28,7 +27,6 @@ test("keeps the selection frame on the current link after real navigation clicks
     ["/prompts", "提示词管理"],
     ["/memory", "记忆模块"],
     ["/agents", "AI软件配置"],
-    ["/projects", "客户项目"],
   ] as const;
 
   for (const [path, label] of destinations) {

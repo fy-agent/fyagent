@@ -6,7 +6,6 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "..");
 
 export const RENDERER_ROUTE_ENTRIES = Object.freeze([
-  "app/ProjectsWorkspace.tsx",
   "pages/agents/Page.tsx",
   "pages/health/Page.tsx",
   "pages/auth/Page.tsx",
@@ -23,9 +22,6 @@ export const RENDERER_ROUTE_ENTRIES = Object.freeze([
 export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
   "shared/platform/tauri/feature-ports/application.ts",
   "shared/platform/tauri/feature-ports/health.ts",
-  "shared/platform/tauri/feature-ports/projects.ts",
-  "shared/platform/tauri/feature-ports/delivery-kits.ts",
-  "shared/platform/tauri/feature-ports/verification.ts",
   "shared/platform/tauri/feature-ports/models.ts",
   "shared/platform/tauri/feature-ports/configRecovery.ts",
   "shared/platform/tauri/feature-ports/configPack.ts",

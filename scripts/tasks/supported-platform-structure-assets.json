@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "f3856294217edf0d8f9a9fd466b0ea5c1f84030519baeafb37f9bf00d7a9c600"
+      "6aae7cff0e454448cba88c469f6a7e5c43f2364c1e54980b8ca46a01129df3f3"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -171,7 +171,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "58cf72220180d042e4c96d92acd79e1c26b408dd11220b38ea95cbc1e8bd848f"
+      "2d15ac7411f371c458a0c0bc3296388b6c44b2e403837d9573ce88fa9788a82a"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -230,24 +230,12 @@
       "a96a48a124fd83c2c58b4032af51309c12fa3aed46968474abd2fe330cf0b8d1"
     ],
     [
-      "src-tauri/src/services/delivery_kits/mod.rs",
-      "c4ee0a9e7924dc3e426ef1a6103e2ff19efa93c257c9c91e9b3302bb46a5f197"
-    ],
-    [
-      "src-tauri/src/services/delivery_kits/tests.rs",
-      "be2f80d1aed202aed8a8c9ea44e4bea2d7a8988c67b9bdb41514090e36216c7b"
-    ],
-    [
       "src-tauri/src/services/env_checker.rs",
       "e23b834ebd817e45afac47d1327902e66cb1fd651fd8eb25c0d3aaed8e5b02cf"
     ],
     [
       "src-tauri/src/services/env_manager.rs",
       "8d31450f0b157a78b7907eb4b45b54dba1b15da3541ce76bbd3225945b49ff1a"
-    ],
-    [
-      "src-tauri/src/services/fde_workspace/tests.rs",
-      "464ed1af5d9c95df53ad0c74497823466df6097aa74475bc51c20289957155a2"
     ],
     [
       "src-tauri/src/services/managed_auth/consumers/grok.rs",
@@ -267,23 +255,11 @@
     ],
     [
       "src-tauri/src/services/model_probe.rs",
-      "55f53a0612fd9fed0f912390b18466b77e1cf3ca74663a67ecc3bfb6cc2566bf"
-    ],
-    [
-      "src-tauri/src/services/projects/files.rs",
-      "d13672c8e4f669f7eab07ab95eb9c179f957ff74797cc976092b89ef8e6a8038"
-    ],
-    [
-      "src-tauri/src/services/projects/mod.rs",
-      "3e9d3b9acb74afad85883c794d7baa789041405c9ccf115ccf6d990c2b17003d"
-    ],
-    [
-      "src-tauri/src/services/projects/tests.rs",
-      "93414d39fd882dd21362d4dc16549e90c48ec28654f4148ffc754d76f991ebca"
+      "051290df679e17d13df3ca035f23d7b6f7931a412eae3570807dc235bb8a2714"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "54f5229fb3b14857acf6e52ef22dd6eaeb712f6bb92fd9c1adca39a95405475b"
+      "4ebb32ab31989cc75c8a4faf62a31b7b66ea0e2226f733ff422650b889df9946"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",

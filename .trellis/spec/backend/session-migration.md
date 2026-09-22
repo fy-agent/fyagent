@@ -86,6 +86,11 @@ bodies or authentication material. Native history stays in the provider store.
   content similarity. Continuing it changes the snapshot, not its origin.
 - Foreign-device receipts and replaced target stores cannot occupy a local
   slot or authorize opening a native session.
+- Restoring a FyAgent database backup does not roll back a provider's native
+  history. SQL/sync import and binary restore therefore retain the live
+  device's receipt ledger at the final replacement lock boundary; old or
+  foreign backup receipts cannot replace it. This preserves claims and state
+  updates completed while a replacement candidate was being validated.
 
 ### Capability and evidence
 

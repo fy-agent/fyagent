@@ -9,7 +9,6 @@ pub(crate) mod health;
 pub(crate) mod managed_auth;
 pub mod mcp;
 pub mod profiles;
-mod projects;
 pub mod prompts;
 pub mod providers;
 pub mod providers_seed;
@@ -27,4 +26,3 @@ pub use failover::FailoverQueueItem;
 pub use profiles::Profile;
 
 pub(super) mod provider_credentials;
-mod verification;

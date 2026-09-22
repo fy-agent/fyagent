@@ -124,11 +124,13 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(175);
+    expect(renderer.commands.size).toBe(141);
     expect(renderer.commands.has("run_tool_lifecycle_action")).toBe(false);
-    expect(renderer.commands.has("projects_prepare_codex")).toBe(true);
-    expect(renderer.commands.has("projects_bind_delivery_kit")).toBe(true);
-    expect(renderer.commands.has("projects_dependency_snapshot")).toBe(true);
+    expect(renderer.commands.has("projects_prepare_codex")).toBe(false);
+    expect(renderer.commands.has("projects_bind_delivery_kit")).toBe(false);
+    expect(renderer.commands.has("projects_dependency_snapshot")).toBe(false);
+    expect(renderer.commands.has("list_delivery_kits")).toBe(false);
+    expect(renderer.commands.has("get_project_verification")).toBe(false);
     expect(renderer.commands.has("bind_managed_proxy_provider")).toBe(true);
     expect(renderer.commands.has("bind_xai_managed_provider")).toBe(true);
     expect(renderer.commands.has("bind_opencode_managed_proxy")).toBe(true);

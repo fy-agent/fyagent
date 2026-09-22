@@ -127,7 +127,6 @@ describe("FyAgent user-facing copy contract", () => {
       "mcp",
       "memory",
       "models",
-      "projects",
       "prompts",
       "sessions",
       "skills",

@@ -35,7 +35,7 @@ function renderNavigation(initialEntry = "/agents") {
 }
 
 describe("SideNavigation", () => {
-  it("derives nine primary routes and the preserved memory route from typed groups", () => {
+  it("derives eight primary routes and the preserved memory route from typed groups", () => {
     expect(
       navigationGroups.map(({ id, label, collapsible, items }) => ({
         id,
@@ -49,7 +49,6 @@ describe("SideNavigation", () => {
         label: "AI软件配置",
         collapsible: false,
         items: [
-          { id: "projects", label: "客户项目" },
           { id: "agents", label: "AI软件配置" },
           { id: "health", label: "运行状态" },
           { id: "auth", label: "账号与认证" },
@@ -74,7 +73,6 @@ describe("SideNavigation", () => {
       },
     ]);
     expect(navigationItems.map(({ id, path }) => ({ id, path }))).toEqual([
-      { id: "projects", path: "/projects" },
       { id: "agents", path: "/agents" },
       { id: "health", path: "/health" },
       { id: "auth", path: "/auth" },
@@ -87,7 +85,7 @@ describe("SideNavigation", () => {
     ]);
   });
 
-  it("renders six primary controls with memory preserved as an auxiliary link", () => {
+  it("renders five primary controls with memory preserved as an auxiliary link", () => {
     renderNavigation();
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
@@ -97,17 +95,10 @@ describe("SideNavigation", () => {
 
     expect(
       Array.from(topLevelControls, (control) => control.textContent?.trim()),
-    ).toEqual([
-      "客户项目",
-      "AI软件配置",
-      "运行状态",
-      "账号与认证",
-      "配置管理",
-      "会话中心",
-    ]);
+    ).toEqual(["AI软件配置", "运行状态", "账号与认证", "配置管理", "会话中心"]);
     expect(
-      within(navigation).getByRole("link", { name: "客户项目" }),
-    ).toHaveAttribute("href", "/projects");
+      within(navigation).queryByRole("link", { name: "客户项目" }),
+    ).not.toBeInTheDocument();
     expect(
       within(navigation).getByRole("link", { name: "AI软件配置" }),
     ).toHaveAttribute("href", "/agents");
@@ -305,7 +296,7 @@ describe("SideNavigation", () => {
     const memory = within(navigation).getByRole("link", { name: "记忆模块" });
     const sessions = within(navigation).getByRole("link", { name: "会话中心" });
     const agents = within(navigation).getByRole("link", { name: "AI软件配置" });
-    const projects = within(navigation).getByRole("link", { name: "客户项目" });
+    const health = within(navigation).getByRole("link", { name: "运行状态" });
 
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -316,9 +307,9 @@ describe("SideNavigation", () => {
     await user.keyboard("{ArrowUp}");
     expect(toggle).toHaveFocus();
     await user.keyboard("{Home}");
-    expect(projects).toHaveFocus();
-    await user.keyboard("{ArrowDown}");
     expect(agents).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(health).toHaveFocus();
     await user.keyboard("{End}");
     expect(memory).toHaveFocus();
 
