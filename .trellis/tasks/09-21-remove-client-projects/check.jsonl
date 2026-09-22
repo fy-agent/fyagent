@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/backend/database-persistence.md", "reason": "核对退役存储、备份恢复和历史数据保留"}
-{"file": ".trellis/spec/frontend/navigation.md", "reason": "核对旧路由回退及现行导航"}
-{"file": ".trellis/tasks/09-21-remove-client-projects/design.md", "reason": "完整删除边界及数据保留验收"}

@@ -2,9 +2,9 @@
 
 ## 结论与版本定位
 
-当前工作树 `/Users/serendipity/fyagent` 位于 `codex/frontend-interaction-v3-1-20260826`，该分支远端跟踪已失效且存在大量既有 dirty changes；本研究未修改这些内容。当前根目录对 `src/` 的初步搜索无客户项目命中，是因为该模块实际位于另一条已注册 worktree：
+当前工作树 `/Users/<username>/fyagent` 位于 `codex/frontend-interaction-v3-1-20260826`，该分支远端跟踪已失效且存在大量既有 dirty changes；本研究未修改这些内容。当前根目录对 `src/` 的初步搜索无客户项目命中，是因为该模块实际位于另一条已注册 worktree：
 
-- `/Users/serendipity/.codex/worktrees/fyagent-fde-projects/fyagent`，`codex/fde-project-isolation`，`aa22316e`（实现合同及定向验证交接）。
+- `/Users/<username>/.codex/worktrees/fyagent-fde-projects/fyagent`，`codex/fde-project-isolation`，`aa22316e`（实现合同及定向验证交接）。
 - 模块实现起点为 `d43b0388`/`230f80eb`；前端接线为 `398dc192`；后续历史中还存在 `0fec6c75`、`cd8b4ced`、`c6cfbe94`，分别扩展恢复/工作区/验证与浏览器布局。`git worktree list` 还显示 `codex/fde-delivery-integration` 等相关 worktree，故删除规划应按完整提交族检查，而不能只按当前分支搜索。
 
 后续提交已将模块扩大到交付包与验证工作区；已直接读取 `cd8b4ced` 的文档和 `c6cfbe94` 的浏览器测试，但未把这些提交检出为工作树。未能证明它们是否已合并到用户指定的目标发布分支，规划阶段应把“是否在目标版本”列为验收前检查项。

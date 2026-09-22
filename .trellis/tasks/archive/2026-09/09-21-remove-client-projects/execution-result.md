@@ -6,7 +6,7 @@ Status: **executed, not accepted**. Task remains `in_progress`. This is the Grok
 
 | Item | Value |
 | --- | --- |
-| Worktree | `/Users/serendipity/.codex/worktrees/remove-client-projects/fyagent` |
+| Worktree | `/Users/<username>/.codex/worktrees/remove-client-projects/fyagent` |
 | Branch | `codex/remove-client-projects-20260921` |
 | HEAD at start of implementation | `c0b2ec21caccd33c082884270aa2e5dbfb7e9d9e` (`Merge pull request #195 from fy-agent/codex/next-iteration-engineering-20260920`) |
 | Requested origin/main baseline | `c0b2ec21caccd33c082884270aa2e5dbfb7e9d9e` |
@@ -185,4 +185,4 @@ GPT-only acceptance against this worktree. Do not merge, push, or install until 
 
 User explicitly requested GPT takeover after Grok rework 1 exited. GPT fixed the unreleased changelog heading, added UTF-8-safe trigger normalization with a regression, and finished manual wording. Final canonical `mise run check` exited 0: 2020 unit tests passed (1 skipped); Rust suites total 3862 passed (6 ignored); contract/release gates passed. Existing 651 browser regressions plus 3 production boot checks remain valid because no renderer source changed afterward. Both P1 findings are closed by final source review and regression results. Earlier missing-environment and failing-gate statements above are superseded by this run.
 
-Accepted for local code delivery; no commit, push, PR, release or installation. Windows native and packaged Tauri runtime remain unverified. Full evidence: `/Users/serendipity/fyagent/.trellis/tasks/09-21-remove-client-projects/acceptance.md`.
+Accepted for local code delivery; no commit, push, PR, release or installation. Windows native and packaged Tauri runtime remain unverified. Full evidence: `/Users/<username>/fyagent/.trellis/tasks/09-21-remove-client-projects/acceptance.md`.

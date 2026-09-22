@@ -78,6 +78,10 @@ assertions to compensate.
 flexible-detail growth, local card/metadata widths and real draft-node identity
 in Chromium/WebKit. Its failing baseline and final production runs belong in
 the task review; an empty overflow/error report alone is not layout evidence.
+After a kept-alive route returns and remounts a modal portal, assert its normal
+initial keyboard focus before sending a global Escape. A restored draft value
+alone is not keyboard readiness; do not force focus, add sleeps or relax the
+modal-cleanup assertion to stabilize that transition.
 
 Reusable motion/observer tests must also cover lifecycle isolation: dispose one
 control while another still updates, and re-register a selected host after its
