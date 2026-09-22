@@ -1,0 +1,30 @@
+{
+  "id": "remove-client-projects",
+  "name": "remove-client-projects",
+  "title": "完整移除客户项目模块及关联内容",
+  "description": "完整退役客户项目及专属交付/验证功能；Grok实施，GPT接手收尾并通过本机最终验收。",
+  "status": "completed",
+  "dev_type": "fullstack",
+  "scope": "client-projects-removal",
+  "package": null,
+  "priority": "P2",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-09-21",
+  "completedAt": "2026-09-22",
+  "branch": "codex/remove-client-projects-20260921",
+  "base_branch": "main",
+  "worktree_path": "/Users/<username>/.codex/worktrees/remove-client-projects/fyagent",
+  "commit": "281fad18",
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/196",
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "规划宿主是 codex/frontend-interaction-v3-1-20260826；实施前必须核对真正包含模块的基线。保护既有 dirty changes。旧数据保留但退出运行时，不新增替代模块。 用户已于本轮明确批准由终端 Grok 实施，GPT 最终验收。基线 origin/main c0b2ec21。 2026-09-22 用户授权GPT接手；完整mise check及既有浏览器回归通过。未提交、发布或安装；任务保留原目录未归档。 2026-09-22 合并前CI修复阶段重新开启本任务；隔离分支 codex/pr196-merge-readiness-20260922 基于 e321081f。原未提交/无PR描述为历史，现有PR为#196；待直接会话prearchive、归档及postarchive合同完成后交还根协调者。 归档前direct-session合同已通过；task.py archive正式完成，后续最终合同与exact-head推送由本报告和根协调者绑定。",
+  "meta": {
+    "acceptance_status": "accepted_local_checks",
+    "acceptance_report": ".trellis/tasks/archive/2026-09/09-21-remove-client-projects/acceptance.md",
+    "ci_readiness_report": ".trellis/tasks/archive/2026-09/09-21-remove-client-projects/ci-readiness.md"
+  }
+}

@@ -642,24 +642,17 @@ fn migration_from_v3_8_schema_v1_to_current_schema_v3() {
 
     // 按应用启动流程：先 create_tables（补齐新增表），再 apply_schema_migrations（按 user_version 迁移）
     Database::create_tables_on_conn(&conn).expect("create tables");
-    let skill_triggers = || {
-        conn.query_row(
-            "SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name LIKE 'fde_resource_skill_%'",
-            [],
-            |row| row.get::<_, i64>(0),
-        )
-        .expect("count skill generation triggers")
-    };
-    assert_eq!(
-        skill_triggers(),
-        0,
-        "legacy Skills have no current identity yet"
-    );
     Database::apply_schema_migrations_on_conn(&conn).expect("apply migrations");
+    let skill_triggers: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name LIKE 'fde_resource_%'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count retired generation triggers");
     assert_eq!(
-        skill_triggers(),
-        4,
-        "migrated Skills must track every mutation"
+        skill_triggers, 0,
+        "retired customer-project triggers must not be installed"
     );
 
     assert_eq!(
@@ -766,28 +759,10 @@ fn migration_from_v3_8_schema_v1_to_current_schema_v3() {
          UPDATE skills SET name='Updated Skill' WHERE id='rebuilt-skill';",
     )
     .expect("write migrated skill");
-    let skill_generation = || {
-        conn.query_row(
-            "SELECT generation FROM fde_resource_generations WHERE kind='skill' AND app_type='' AND resource_id='rebuilt-skill'",
-            [],
-            |row| row.get::<_, i64>(0),
-        )
-        .expect("read migrated skill generation")
-    };
-    assert_eq!(skill_generation(), 2);
     Database::create_tables_on_conn(&conn).expect("idempotent reopen");
-    assert_eq!(skill_generation(), 2, "reopen must not reset generations");
-}
-
-#[test]
-fn project_generations_reject_current_schema_with_legacy_skill_identity() {
-    let conn = Connection::open_in_memory().expect("open memory db");
-    conn.execute_batch(V3_8_SCHEMA_V1_SQL)
-        .expect("seed legacy schema");
-    Database::set_user_version(&conn, SCHEMA_VERSION).expect("claim current version");
     assert!(
-        Database::create_project_tables_on_conn(&conn).is_err(),
-        "only pre-v3 migration may defer an absent Skills id"
+        !Database::table_exists(&conn, "fde_resource_generations").expect("check retired table"),
+        "new schema must not create retired customer-project tables"
     );
 }
 

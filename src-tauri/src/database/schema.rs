@@ -348,8 +348,6 @@ impl Database {
 
         Self::create_provider_credential_tables_on_conn(conn)?;
 
-        Self::create_project_tables_on_conn(conn)?;
-
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
         // （随 v12 定稿为 current_profile_id_<scope>，不单独 bump 版本）
         if conn
@@ -429,7 +427,6 @@ impl Database {
             [],
         );
 
-        Self::migrate_verification_v22(conn)?;
         Ok(())
     }
 
@@ -577,6 +574,10 @@ impl Database {
                     23 => {
                         Self::create_provider_credential_tables_on_conn(conn)?;
                         Self::set_user_version(conn, 24)?;
+                    }
+                    24 => {
+                        Self::migrate_v24_to_v25(conn)?;
+                        Self::set_user_version(conn, 25)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1561,13 +1562,39 @@ impl Database {
         Ok(())
     }
 
-    /// Two independent v22 branches owned disjoint additions. The
-    /// forward merge accepts either (or both) without interpreting the numeric
-    /// version alone as proof that OpenCode and FDE structures already exist.
+    /// Historical schema-22 merge: complete OpenCode proxy support. Customer
+    /// project tables are no longer created on this step.
     fn migrate_v22_to_v23(conn: &Connection) -> Result<(), AppError> {
         Self::migrate_v21_to_v22(conn)?;
-        Self::create_project_tables_on_conn(conn)?;
-        Self::migrate_verification_v22(conn)?;
+        Ok(())
+    }
+
+    /// Stop writing retired customer-project generation counters. Historical
+    /// fde_* and verification_* tables stay in place as unconsumed leftover
+    /// rows; new installs never create them.
+    fn migrate_v24_to_v25(conn: &Connection) -> Result<(), AppError> {
+        Self::drop_retired_fde_triggers_on_conn(conn)
+    }
+
+    pub(crate) fn drop_retired_fde_triggers_on_conn(conn: &Connection) -> Result<(), AppError> {
+        let mut statement = conn
+            .prepare(
+                "SELECT name FROM sqlite_schema WHERE type='trigger' AND name LIKE 'fde_resource_%'",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let names = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        drop(statement);
+        for name in names {
+            conn.execute(
+                &format!("DROP TRIGGER IF EXISTS \"{}\"", name.replace('"', "\"\"")),
+                [],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
         Ok(())
     }
 
@@ -3508,7 +3535,10 @@ mod tests {
         conn.execute_batch("DROP TABLE provider_credentials; PRAGMA user_version = 23;")
             .unwrap();
         super::Database::apply_schema_migrations_on_conn(&conn).unwrap();
-        assert_eq!(super::Database::get_user_version(&conn).unwrap(), 24);
+        assert_eq!(
+            super::Database::get_user_version(&conn).unwrap(),
+            super::SCHEMA_VERSION
+        );
         assert!(super::Database::table_exists(&conn, "provider_credentials").unwrap());
         conn.execute_batch("DROP TABLE provider_credentials; CREATE VIEW provider_credentials AS SELECT 1; PRAGMA user_version = 23;").unwrap();
         assert!(super::Database::apply_schema_migrations_on_conn(&conn).is_err());

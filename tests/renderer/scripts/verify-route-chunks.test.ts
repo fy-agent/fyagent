@@ -86,13 +86,13 @@ afterEach(async () => {
 });
 
 describe("verifyRouteChunks", () => {
-  it("accepts nine distinct routes and the reviewed deferred ports outside the bounded initial graph", async () => {
+  it("accepts eight distinct routes and the reviewed deferred ports outside the bounded initial graph", async () => {
     const distributionDirectory = await fixture();
     const result = await verifyRouteChunks({ distributionDirectory });
 
-    expect(result.routeChunks).toHaveLength(9);
+    expect(result.routeChunks).toHaveLength(8);
     expect(result.routeChunks.map(({ route }) => route)).toContain(
-      "app/ProjectsWorkspace.tsx",
+      "pages/agents/Page.tsx",
     );
     expect(result.deferredPortChunks).toHaveLength(
       RENDERER_DEFERRED_PORT_ENTRIES.length,
@@ -117,25 +117,25 @@ describe("verifyRouteChunks", () => {
     );
   });
 
-  it("rejects a missing Projects composition entry", async () => {
+  it("rejects a missing Agents composition entry", async () => {
     const distributionDirectory = await fixture((manifest) => {
       manifest["_main.js"].dynamicImports = [
         ...RENDERER_ROUTE_ENTRIES.filter(
-          (entry) => entry !== "app/ProjectsWorkspace.tsx",
+          (entry) => entry !== "pages/agents/Page.tsx",
         ),
         ...RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES,
         ...RENDERER_DEFERRED_SHELL_ENTRIES,
       ];
     });
     await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
-      `must dynamically import exactly 9 product pages, ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports and ${RENDERER_DEFERRED_SHELL_ENTRIES.length} shell dialogs`,
+      `must dynamically import exactly 8 product pages, ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports and ${RENDERER_DEFERRED_SHELL_ENTRIES.length} shell dialogs`,
     );
   });
 
-  it("rejects Projects sharing another primary route entry chunk", async () => {
+  it("rejects Agents sharing another primary route entry chunk", async () => {
     const distributionDirectory = await fixture((manifest) => {
-      manifest["app/ProjectsWorkspace.tsx"].file =
-        manifest["pages/agents/Page.tsx"].file;
+      manifest["pages/agents/Page.tsx"].file =
+        manifest["pages/health/Page.tsx"].file;
     });
     await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
       "product pages share an entry chunk",

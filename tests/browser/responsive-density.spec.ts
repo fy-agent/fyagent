@@ -325,6 +325,11 @@ test("an MCP editor keeps its actual draft node across density breakpoints and r
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("link", { name: "MCP 管理", exact: true }).click();
   await expect(name).toHaveValue("Keep this unsaved density draft");
+  // Route return remounts the portal. Wait for its normal keyboard focus;
+  // a restored input value alone does not prove the modal is ready for Escape.
+  await expect(
+    dialog.getByRole("combobox", { name: "模板", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(
