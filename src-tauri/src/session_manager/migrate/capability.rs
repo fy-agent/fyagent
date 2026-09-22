@@ -156,7 +156,18 @@ pub fn probe_local_provider(provider_id: &str) -> MigrationResult<LocalProviderP
         return Ok(build_probe(provider_id, None));
     };
     let detected = detect_version(&executable)?;
-    Ok(build_probe(provider_id, detected))
+    let mut probe = build_probe(provider_id, detected);
+    if provider_id == "codex" {
+        apply_codex_store_gate(&mut probe, &crate::codex_config::get_codex_config_dir());
+    }
+    Ok(probe)
+}
+
+fn apply_codex_store_gate(probe: &mut LocalProviderProbe, home: &std::path::Path) {
+    if probe.write_supported && super::native::codex::read_installation_id_at(home).is_err() {
+        probe.write_supported = false;
+        probe.reason_code = Some("targetStoreUnidentified".into());
+    }
 }
 
 /// Run `<cli> --version` with a deadline. `Ok(None)` means the executable
@@ -270,6 +281,11 @@ pub fn require_write_gate(provider_id: &str) -> MigrationResult<LocalProviderPro
     let probe = probe_local_provider(provider_id)?;
     if !probe.installed {
         return Err(MigrationError::ProviderNotInstalled {
+            provider_id: provider_id.to_string(),
+        });
+    }
+    if probe.reason_code.as_deref() == Some("targetStoreUnidentified") {
+        return Err(MigrationError::TargetStoreUnidentified {
             provider_id: provider_id.to_string(),
         });
     }
@@ -434,6 +450,54 @@ mod tests {
         assert_eq!(
             claude.reason_code.as_deref(),
             Some("extractionRuleUnavailable")
+        );
+    }
+
+    #[test]
+    fn codex_probe_requires_native_initialization_without_mutating_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("not-initialized");
+        let mut probe = build_probe("codex", Some("0.154.0".into()));
+        apply_codex_store_gate(&mut probe, &missing);
+        assert!(probe.installed);
+        assert!(probe.extraction_supported);
+        assert!(!probe.write_supported);
+        assert_eq!(
+            probe.reason_code.as_deref(),
+            Some("targetStoreUnidentified")
+        );
+        assert!(
+            !missing.exists(),
+            "probe must not initialize the native store"
+        );
+
+        for invalid in ["invalid".to_string(), " ".repeat(257)] {
+            std::fs::write(temp.path().join("installation_id"), &invalid).unwrap();
+            let mut probe = build_probe("codex", Some("0.154.0".into()));
+            apply_codex_store_gate(&mut probe, temp.path());
+            assert!(!probe.write_supported);
+            assert_eq!(
+                std::fs::read_to_string(temp.path().join("installation_id")).unwrap(),
+                invalid
+            );
+        }
+        // Synthetic unit fixture only; production never generates this file.
+        std::fs::write(
+            temp.path().join("installation_id"),
+            "4036a238-95b5-4f70-9472-3b81df1f1183\n",
+        )
+        .unwrap();
+        let mut initialized = build_probe("codex", Some("0.154.0".into()));
+        apply_codex_store_gate(&mut initialized, temp.path());
+        assert!(initialized.write_supported);
+        assert_eq!(initialized.reason_code, None);
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
+
+        let mut unsupported = build_probe("codex", Some("0.155.0".into()));
+        apply_codex_store_gate(&mut unsupported, &missing);
+        assert_eq!(
+            unsupported.reason_code.as_deref(),
+            Some("extractionRuleVersionMismatch")
         );
     }
 

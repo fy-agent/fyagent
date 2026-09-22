@@ -548,6 +548,52 @@ const ERROR_CODE_MESSAGES: Record<string, string> = {
   unsupported_provider: "不支持的客户端软件",
   sessionNotFound: "未找到指定的本地会话",
   session_not_found: "未找到指定的本地会话",
+  packageMalformed:
+    "无法读取或解析会话包。请通过“选择文件”重新选择 FyAgent 导出的 JSON 会话包，确认文件存在且可读取；若仍失败，请从来源设备重新导出。",
+  packageSchemaUnsupported: "此会话包版本尚不支持，请更新 FyAgent 后重试。",
+  packageUnknownField:
+    "会话包格式与当前版本不兼容，请更新 FyAgent 或从来源设备重新导出。",
+  packageTooLarge: "会话包过大，请在来源设备减少所选会话后分批导出。",
+  jsonTooDeep: "会话包结构不符合要求，请从来源设备重新导出。",
+  messageTooLarge: "会话中有超出大小限制的消息，请取消选择该会话后分批导出。",
+  tooManyMessages: "会话消息数量超出限制，请取消选择该会话后重试。",
+  sessionTooLarge: "会话内容超出大小限制，请取消选择该会话后重试。",
+  tooManySessions: "会话数量超出限制，请减少所选会话后分批导出。",
+  identityFieldInvalid: "会话包信息不完整或校验失败，请从来源设备重新导出。",
+  packageWriteFailed: "无法保存会话包，请选择可写入的文件夹并检查剩余空间。",
+  targetStoreUnidentified:
+    "无法识别目标客户端的本地存储。首次安装 Codex 后，请在终端运行 codex 并完成首次启动，再返回会话中心重新打开“导入会话包”检查状态；若仍失败，请检查客户端能否正常打开本地会话。",
+  targetDirectoryNotFound:
+    "目标工作区不存在或不可访问，请重新选择当前机器上的文件夹。",
+  capabilityProbeFailed:
+    "无法检测客户端状态，请确认客户端可正常启动后刷新重试。",
+  extractionRuleUnavailable:
+    "当前客户端尚不支持导出会话包，可继续查看本地会话。",
+  extractionRuleVersionMismatch:
+    "当前客户端版本尚不支持导出会话包，请检查客户端版本。",
+  sourceUnreadable: "无法读取本地会话，请确认来源文件存在且可读取后刷新重试。",
+  sourceTooLarge: "来源会话超出读取限制，请选择其他会话。",
+  finalAnswerIndeterminate:
+    "无法确认此会话的最终回复，请先在来源客户端检查会话是否完成。",
+  runtimeInjectionUnclassified:
+    "此会话包含无法区分的上下文内容，暂时无法导出，请选择其他会话。",
+  providerMismatch: "会话来源与目标客户端不一致，请选择对应的客户端。",
+  nativeImportFailed:
+    "目标客户端未完成导入，请核对恢复记录和客户端状态后重试。",
+  nativeProtocolFailed:
+    "与目标客户端通信失败，请先核对恢复记录，避免重复导入。",
+  nativeReadbackMismatch:
+    "目标客户端读回的内容与会话包不同，请保留恢复记录并检查目标会话。",
+  sourceSnapshotConflict:
+    "本地已恢复过此会话的其他版本。如需保留两个版本，请选择“另存为新副本”。",
+  idempotencySlotTaken: "此会话已有恢复记录，请先查看恢复记录，避免重复导入。",
+  reconciliationRequired:
+    "写入结果尚未确认，请先核对恢复记录和目标会话，不要重复导入。",
+  ambiguousNativeMatch:
+    "目标客户端存在多个可能对应的会话，请先核对恢复记录和目标会话。",
+  receiptStoreFailed:
+    "无法保存恢复记录，请检查本地可用空间和文件权限，再核对目标会话。",
+  attemptNotFound: "未找到此恢复记录，请刷新会话中心后重试。",
   packageCorrupt: "迁移包数据损坏或格式不正确",
   invalidPackage: "迁移包校验失败，缺少必要字段",
   package_corrupted: "迁移包数据损坏",

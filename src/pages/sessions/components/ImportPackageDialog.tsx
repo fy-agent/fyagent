@@ -1,4 +1,4 @@
-import { useState, useRef, useId } from "react";
+import { useState, useRef, useId, useEffect } from "react";
 import { FolderOpenIcon } from "@phosphor-icons/react/dist/csr/FolderOpen";
 import { CheckCircleIcon } from "@phosphor-icons/react/dist/csr/CheckCircle";
 import { WarningIcon } from "@phosphor-icons/react/dist/csr/Warning";
@@ -76,6 +76,19 @@ export function ImportPackageDialog({
   const [restoreResult, setRestoreResult] = useState<RestoreAttempt[] | null>(
     null,
   );
+
+  const errorRef = useRef<HTMLDivElement>(null);
+  const activeError = restoreError ?? readError;
+  useEffect(() => {
+    if (!open || !activeError) return;
+    // Errors may be below the fold of the dialog's scrollable body. Announce
+    // the failure and place keyboard users at the recovery instruction.
+    errorRef.current?.focus({ preventScroll: true });
+    errorRef.current?.scrollIntoView?.({
+      block: "nearest",
+      behavior: "instant",
+    });
+  }, [open, activeError]);
 
   // Fixed requestId per confirmed binding parameters (for retry idempotency)
   const bindingKeyRef = useRef<string>("");
@@ -375,7 +388,12 @@ export function ImportPackageDialog({
             </div>
 
             {readError && (
-              <div className="fy-field-error" role="alert">
+              <div
+                ref={errorRef}
+                className="fy-field-error"
+                role="alert"
+                tabIndex={-1}
+              >
                 {readError}
               </div>
             )}
@@ -606,7 +624,12 @@ export function ImportPackageDialog({
             </div>
 
             {restoreError && (
-              <div className="fy-field-error" role="alert">
+              <div
+                ref={errorRef}
+                className="fy-field-error"
+                role="alert"
+                tabIndex={-1}
+              >
                 {restoreError}
               </div>
             )}
