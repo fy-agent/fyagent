@@ -1,3 +1,4 @@
-{"file": ".trellis/spec/frontend/navigation.md", "reason": "前端路由和侧栏移除边界"}
-{"file": ".trellis/spec/backend/database-persistence.md", "reason": "退役触发器和替换前持久存档契约"}
-{"file": ".trellis/tasks/09-21-remove-client-projects/research/module-scope.md", "reason": "真实模块依赖与版本证据；数据策略以 design.md 为准"}
+{"file":".trellis/spec/frontend/navigation.md","reason":"前端路由和侧栏移除边界"}
+{"file":".trellis/spec/backend/database-persistence.md","reason":"退役触发器和替换前持久存档契约"}
+{"file":".trellis/tasks/09-21-remove-client-projects/research/module-scope.md","reason":"真实模块依赖与版本证据；数据策略以 design.md 为准"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"PR #196 CI follow-up: keyboard-ready modal route return and workstation-path privacy evidence"}
