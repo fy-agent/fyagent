@@ -709,21 +709,16 @@ export function isProviderRestoreSupported(probe?: LocalProviderProbe): {
   if (!probe) {
     return { supported: false, reason: "尚未探测到该客户端的安装状态" };
   }
-  if (probe.reasonCode && probe.reasonCode !== "providerNotInstalled") {
-    const parsed = parseMigrationError({ code: probe.reasonCode });
-    if (parsed.message && parsed.message !== "未知错误") {
-      return { supported: false, reason: parsed.message };
-    }
-  }
-  if (!probe.installed) {
-    return { supported: false, reason: "本地未安装该客户端" };
-  }
-  if (!probe.writeSupported) {
+  // A reason can describe extraction alone (for example Gemini's missing
+  // final-answer rule). Only installation and write readiness gate restore.
+  if (!probe.installed || !probe.writeSupported) {
     return {
       supported: false,
       reason: probe.reasonCode
         ? parseMigrationError({ code: probe.reasonCode }).message
-        : "当前版本尚未支持会话写入恢复",
+        : !probe.installed
+          ? "本地未安装该客户端"
+          : "当前版本尚未支持会话写入恢复",
     };
   }
   return { supported: true };

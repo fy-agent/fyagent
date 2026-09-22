@@ -123,6 +123,9 @@ and native ID. Match receipts by exact origin/snapshot or exact target identity.
 Preview every selected export item and freeze the set used for the write.
 Multi-provider packages restore only snapshots belonging to the selected
 corresponding provider. Probe failure disables the mutation with a useful reason.
+Restore admission uses `installed` and `writeSupported`, independently of
+`extractionSupported`. An extraction-only `reasonCode` cannot disable a ready
+native writer; reason codes explain a gate that is actually closed.
 Show unresolved and failed results without a success banner. Import parse/restore
 errors are focusable alerts scrolled into view within the dialog and include a
 safe next step; closed error codes are not the primary user-facing explanation.
