@@ -373,7 +373,10 @@ export function SessionsPage() {
   const capabilityReason = activeProviderProbe
     ? activeProviderProbe.reasonCode &&
       activeProviderProbe.reasonCode !== "providerNotInstalled"
-      ? activeProviderProbe.reasonCode
+      ? parseMigrationError({
+          code: activeProviderProbe.reasonCode,
+          message: activeProviderProbe.reasonCode,
+        }).message
       : !activeProviderProbe.installed
         ? "本地未安装该 AI 软件"
         : !activeProviderProbe.writeSupported
@@ -468,6 +471,11 @@ export function SessionsPage() {
     setExportTargets(targets);
   }, [selectedKeys, sessions, selectedSession, notify, setExportTargets]);
 
+  const handleOpenImport = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["sessions-local-probes"] });
+    setImportOpen(true);
+  }, [queryClient, setImportOpen]);
+
   // ─── Keyboard Shortcuts ──────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -476,12 +484,12 @@ export function SessionsPage() {
         handleOpenExport();
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i") {
         e.preventDefault();
-        setImportOpen(true);
+        handleOpenImport();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleOpenExport, setImportOpen]);
+  }, [handleOpenExport, handleOpenImport]);
 
   // ─── Multi-Selection Helpers ─────────────────────────────────────
   const toggleSelectSession = (stableKey: string, e: React.MouseEvent) => {
@@ -723,10 +731,7 @@ export function SessionsPage() {
             </Button>
           )}
 
-          <Button
-            dialogOriginRef={importOriginRef}
-            onClick={() => setImportOpen(true)}
-          >
+          <Button dialogOriginRef={importOriginRef} onClick={handleOpenImport}>
             <UploadSimpleIcon size={16} />
             <span>导入会话包 (⌘I)</span>
           </Button>

@@ -97,6 +97,12 @@ bodies or authentication material. Native history stays in the provider store.
 - Keep all seven provider rows visible. Extraction support and write support
   are separate gates, each pinned to actual verified versions and the local
   executable/store. A missing implementation is a concrete capability gap.
+- Codex local write readiness also requires a readable, bounded, valid native
+  `installation_id`. Probe observes it without initializing Codex or creating a
+  FyAgent store identity. Missing/invalid identity disables only the write gate
+  with `targetStoreUnidentified`; restore repeats that gate before receipt/native
+  writes. UI explains first launch through `codex` and reopening import to
+  reprobe local status.
 - `nativeWritten` means publication succeeded. `nativeReadbackVerified`
   requires the provider's own read interface and an exact transcript digest;
   reading the file we wrote is insufficient. Opening a client does not prove
@@ -117,7 +123,16 @@ and native ID. Match receipts by exact origin/snapshot or exact target identity.
 Preview every selected export item and freeze the set used for the write.
 Multi-provider packages restore only snapshots belonging to the selected
 corresponding provider. Probe failure disables the mutation with a useful reason.
-Show unresolved and failed results without a success banner. Modal request IDs
+Restore admission uses `installed` and `writeSupported`, independently of
+`extractionSupported`. An extraction-only `reasonCode` cannot disable a ready
+native writer; reason codes explain a gate that is actually closed.
+Show unresolved and failed results without a success banner. Import parse/restore
+errors are focusable alerts scrolled into view within the dialog and include a
+safe next step; closed error codes are not the primary user-facing explanation.
+Local Codex title fallback ignores messages with structured provenance other
+than an entirely `user.text` message; legacy rollouts without provenance keep
+existing display compatibility. This display fallback never classifies export
+contents or changes strict migration rules. Modal request IDs
 and pending work follow the shared Dialog lifecycle contract.
 
 ## 4. Validation & Error Matrix

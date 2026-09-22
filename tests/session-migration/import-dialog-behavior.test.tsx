@@ -150,6 +150,43 @@ describe("session package import behavior", () => {
     );
   });
 
+  it("blocks an installed Codex whose native store has not initialized", async () => {
+    const user = userEvent.setup();
+    const { props } = renderDialog({
+      localProbes: {
+        codex: {
+          ...probe("codex", true),
+          writeSupported: false,
+          reasonCode: "targetStoreUnidentified",
+        },
+      },
+    });
+    await readPackage(user);
+    expect(
+      screen.getByRole("button", { name: "确认恢复至目标软件" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/首次安装 Codex 后.*运行 codex/u)).toBeVisible();
+    expect(props.onRestore).not.toHaveBeenCalled();
+  });
+
+  it("focuses package read errors and gives actionable file selection guidance", async () => {
+    const user = userEvent.setup();
+    renderDialog({
+      onReadPackage: vi.fn(async () => {
+        throw JSON.stringify({
+          code: "packageMalformed",
+          detail: { reason: "No such file" },
+        });
+      }),
+    });
+    await user.click(screen.getByRole("button", { name: "选择文件" }));
+    await user.click(screen.getByRole("button", { name: "解析会话包" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveFocus();
+    expect(alert).toHaveTextContent(/重新选择 FyAgent 导出的 JSON 会话包/u);
+    expect(alert).not.toHaveTextContent("packageMalformed");
+  });
+
   it("keeps restore disabled when no local probe result exists", async () => {
     const user = userEvent.setup();
     renderDialog({ localProbes: {} });
@@ -268,6 +305,7 @@ describe("session package import behavior", () => {
         exact: true,
       }),
     ).toBeVisible();
+    expect(alert).toHaveFocus();
     expect(alert).not.toHaveTextContent("database_locked");
     expect(alert).not.toHaveTextContent('{"code"');
   });
