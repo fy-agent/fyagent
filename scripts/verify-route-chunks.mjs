@@ -14,6 +14,7 @@ export const RENDERER_ROUTE_ENTRIES = Object.freeze([
   "pages/mcp/Page.tsx",
   "pages/prompts/Page.tsx",
   "pages/memory/Page.tsx",
+  "pages/sessions/Page.tsx",
 ]);
 
 // These capability adapters are loaded only when their port is first used.
@@ -25,6 +26,7 @@ export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
   "shared/platform/tauri/feature-ports/configRecovery.ts",
   "shared/platform/tauri/feature-ports/configPack.ts",
   "shared/platform/tauri/feature-ports/codexDesktop.ts",
+  "shared/platform/tauri/feature-ports/sessionMigration.ts",
 ]);
 
 export const RENDERER_DEFERRED_SHELL_ENTRIES = Object.freeze([

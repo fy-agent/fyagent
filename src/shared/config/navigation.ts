@@ -1,6 +1,7 @@
 export type NavigationItem = {
   id:
     | "agents"
+    | "sessions"
     | "health"
     | "auth"
     | "models"
@@ -10,6 +11,7 @@ export type NavigationItem = {
     | "memory";
   path:
     | "/agents"
+    | "/sessions"
     | "/health"
     | "/auth"
     | "/models"
@@ -21,7 +23,12 @@ export type NavigationItem = {
 };
 
 export type NavigationGroup = {
-  id: "agent-configuration" | "configuration-management" | "memory";
+  id:
+    | "agent-configuration"
+    | "configuration-management"
+    | "sessions"
+    | "auxiliary"
+    | "memory";
   label: string;
   collapsible: boolean;
   items: readonly NavigationItem[];
@@ -50,12 +57,18 @@ export const navigationGroups = [
     ],
   },
   {
-    id: "memory",
-    label: "记忆模块",
+    id: "sessions",
+    label: "会话中心",
     collapsible: false,
-    items: [{ id: "memory", path: "/memory", label: "记忆模块" }],
+    items: [{ id: "sessions", path: "/sessions", label: "会话中心" }],
   },
 ] as const satisfies readonly NavigationGroup[];
 
-export const navigationItems: readonly NavigationItem[] =
-  navigationGroups.flatMap<NavigationItem>((group) => group.items);
+export const auxiliaryNavigationItems = [
+  { id: "memory", path: "/memory", label: "记忆模块" },
+] as const satisfies readonly NavigationItem[];
+
+export const navigationItems: readonly NavigationItem[] = [
+  ...navigationGroups.flatMap<NavigationItem>((group) => group.items),
+  ...auxiliaryNavigationItems,
+];

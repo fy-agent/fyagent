@@ -38,7 +38,8 @@ type NavigationItem = {
     | "skills"
     | "mcp"
     | "prompts"
-    | "memory";
+    | "memory"
+    | "sessions";
   path:
     | "/agents"
     | "/health"
@@ -47,12 +48,13 @@ type NavigationItem = {
     | "/skills"
     | "/mcp"
     | "/prompts"
-    | "/memory";
+    | "/memory"
+    | "/sessions";
   label: string;
 };
 
 type NavigationGroup = {
-  id: "agent-configuration" | "configuration-management" | "memory";
+  id: "agent-configuration" | "configuration-management" | "sessions" | "auxiliary" | "memory";
   label: string;
   collapsible: boolean;
   items: readonly NavigationItem[];
@@ -103,12 +105,13 @@ arbitrary return URL, serialized history entry, or free-form navigation state.
 ### Registry and router
 
 - `navigationGroups` is the single production owner of primary IDs, paths,
-  labels, grouping, and collapsibility. `navigationItems` is derived from it;
+  labels, grouping, and collapsibility. Memory remains an auxiliary entry in
+  `auxiliaryNavigationItems`; `navigationItems` combines both registries;
   the router and sidebar do not maintain separate route arrays.
 - The root index and unknown production paths redirect with replacement to
-  `/agents`. The eight primary paths remain hash-router paths so browser and
-  Tauri startup share one routing model. Retired `/projects` hashes use the
-  same unknown-path redirect.
+  `/agents`. The nine registered paths (eight primary and auxiliary Memory)
+  remain hash-router paths so browser and Tauri startup share one routing model.
+  Retired `/projects` hashes use the same unknown-path redirect.
 - `__dev/ui-lab` exists only when `import.meta.env.DEV` is true. It must not
   enter production navigation, production bundles as an eager route, or
   release acceptance as an end-user surface.
@@ -220,7 +223,7 @@ without a matching intent use neutral presentation; see
   mounts and no feature query starts until the route is visited.
 - Base: an unknown hash route redirects to `/agents` with exactly one current
   sidebar link.
-- Bad: derive imports from arbitrary route strings, render all eight pages at
+- Bad: derive imports from arbitrary route strings, render all registered pages at
   startup, let a hidden page call the live `setSearchParams`, put a full return
   URL in query state, or leave collapsed child links focusable.
 

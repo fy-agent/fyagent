@@ -220,6 +220,10 @@ test("revisiting a page keeps its lens size while real tab changes still interpo
     .getByRole("navigation", { name: "主导航" })
     .getByRole("link", { name: "AI软件配置", exact: true })
     .click();
+  // A completed click can precede Router's commit. Establish a real departure
+  // before returning, so the original visible auth page cannot start sampling.
+  await expect(page.getByTestId("agents-page")).toBeVisible();
+  await expect(page.getByTestId("auth-page")).toBeHidden();
   await page
     .getByRole("navigation", { name: "主导航" })
     .getByRole("link", { name: "账号与认证", exact: true })
@@ -341,6 +345,11 @@ test("model ID disclosure reuses the shared collapse and closes from the populat
   await openRendererPage(page, "/models?target=workbuddy");
   const scope = page.getByTestId("workbuddy-model-ids");
   const panel = scope.locator(".fy-collapsible-panel").first();
+  // `height: auto` also describes the one-line loading/empty placeholder.
+  // Wait for the fixture's actual model before freezing the clock to close it.
+  await expect(scope.locator(".fy-models-chip code")).toHaveText([
+    "existing-model",
+  ]);
   await scope.getByRole("button", { name: /当前已有的第三方模型 ID/ }).click();
   await expect(panel).toBeVisible();
   await expect
@@ -351,6 +360,7 @@ test("model ID disclosure reuses the shared collapse and closes from the populat
   await expect
     .poll(() => panel.evaluate((node) => (node as HTMLElement).style.height))
     .toBe("auto");
+  const populatedHeight = await panel.evaluate((node) => node.scrollHeight);
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await scope.evaluate((scope) => {
     const panel = scope.querySelector<HTMLElement>(".fy-collapsible-panel")!;
@@ -375,10 +385,12 @@ test("model ID disclosure reuses the shared collapse and closes from the populat
         .testCollapseHeights!,
   );
   await page.clock.resume();
-  expect(heights[0]).toBeGreaterThan(25);
+  expect(populatedHeight).toBeGreaterThan(0);
+  expect(Math.abs(heights[0] - populatedHeight)).toBeLessThan(1);
   expect(
     heights.filter((height) => height > 2 && height < heights[0] - 2).length,
   ).toBeGreaterThan(2);
+  expect(heights.at(-1)).toBeLessThan(1);
   await expect(panel).toHaveAttribute("inert", "");
   await expect(
     scope.getByRole("button", { name: /当前已有的第三方模型 ID/ }),

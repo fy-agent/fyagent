@@ -31,13 +31,11 @@ export default defineConfig(({ command }) => {
             "vendor-react": ["react", "react-dom", "react-router-dom"],
             "vendor-query": ["@tanstack/react-query"],
             "vendor-motion": ["framer-motion"],
+            // Route-only dialog, popover, select and tabs follow their lazy
+            // consumers instead of joining the shell's tooltip/collapse group.
             "vendor-radix": [
-              "@radix-ui/react-dialog",
               "@radix-ui/react-checkbox",
-              "@radix-ui/react-popover",
-              "@radix-ui/react-select",
               "@radix-ui/react-switch",
-              "@radix-ui/react-tabs",
               "@radix-ui/react-tooltip",
               "@radix-ui/react-collapsible",
             ],

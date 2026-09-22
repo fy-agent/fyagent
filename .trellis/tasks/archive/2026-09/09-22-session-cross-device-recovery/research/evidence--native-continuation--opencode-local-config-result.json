@@ -1,0 +1,5 @@
+{
+  "exit_code": 0,
+  "resolved_model": "probe/local",
+  "note": "Full config parsed in memory only; no credentials copied into evidence"
+}

@@ -23,10 +23,11 @@ human consent. Any future UI must meet the linked native contract's explicit
 confirmation and stale-result requirements before introducing an import Port.
 
 Production asset paths remain confined to the Vite distribution. The route
-chunk verifier walks the actual static entry closure, requires exactly eight
+chunk verifier walks the actual static entry closure, requires exactly nine
 literal product route chunks plus the explicitly listed deferred Application,
-Health, Models, Configuration Recovery, Configuration Pack and Codex Desktop
-ports. Desktop installer observation, preflight, mutations and event
+Health, Models, Configuration Recovery, Configuration Pack, Codex Desktop and
+Session Migration ports. Session Migration parses strict package/receipt DTOs
+only when that port is used. Desktop installer observation, preflight, mutations and event
 subscription load the same typed port on first use; loading it starts no job.
 Managed Subscription is a reviewed second-level
 dynamic entry imported only by the deferred Models port; the verifier checks

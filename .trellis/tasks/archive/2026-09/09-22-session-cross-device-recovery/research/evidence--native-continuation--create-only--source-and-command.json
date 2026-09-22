@@ -1,0 +1,19 @@
+{
+  "source_sha256": "9f08c470f84514ef45414c79e2adb065395c375a58c9bac130a9f45281e4d777",
+  "source": "/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/fyagent-session/src-tauri/src/session_manager/migrate/native/opencode.rs",
+  "unit_command": "rtk proxy mise run rust:test -- session_manager::migrate::native::opencode::tests",
+  "unit_result": {
+    "exit_code": 0,
+    "passed": 8,
+    "failed": 0,
+    "ignored": 1
+  },
+  "unit_tool_session_id": 37327,
+  "native_command": "rtk proxy python3 work/native-writer-staging/verify_create_only.py",
+  "native_exit_code": 0,
+  "native_tool_session_id": 39332,
+  "native_run": "/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/create-only-720880cca1",
+  "recorded_at": "2026-09-22T04:22:20.468946+08:00",
+  "final_interface_only_source_sha256": "c25af3d1f4817c378a39b4b1a279960f291c02ff2da86aaac0418461ad8485af",
+  "post_probe_change": "Both official export paths use shared complete-output interface with 256 MiB bound; no create-only, model, or binding logic change. Root owns final compile."
+}

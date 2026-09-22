@@ -118,6 +118,38 @@ describe("repository change classifier", () => {
   });
 
   it.each([
+    "check_hermes_import.py",
+    "check_opencode_import.py",
+    "cli-formats.md",
+    "codex-claude.md",
+    "codex-protocol-excerpt.json",
+    "hermes-synthetic-result.json",
+    "local-cli-evidence.json",
+    "opencode-synthetic-result.json",
+    "恢复方案.md",
+  ])("verifies native migration source evidence independently: %s", (name) => {
+    expect(
+      classifyChangedPaths([`research/session-recovery-20260921/${name}`]),
+    ).toEqual({
+      domains: domains("contracts", "backend", "docsSpec"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it.each([
+    "research/other-project/check_opencode_import.py",
+    "research/session-recovery-20260921/new-probe.py",
+    "research/session-recovery-20260921/nested/cli-formats.md",
+  ])("requires an explicit owner for additional research: %s", (file) => {
+    expect(classifyChangedPaths([file])).toEqual({
+      domains: domains(),
+      unknownPaths: [file],
+      forceFull: false,
+    });
+  });
+
+  it.each([
     [
       "docs/spec",
       ["docs/fyagent/development/ci-release/ci.md"],

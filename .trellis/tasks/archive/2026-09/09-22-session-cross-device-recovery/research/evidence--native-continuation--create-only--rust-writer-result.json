@@ -1,0 +1,43 @@
+{
+  "native_id": "ses_00112233445566778899aabbccddeeff",
+  "project_id": "67ef81bcf651055bc4f66e322d571073d849b3ea",
+  "workspace": "/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/create-only-720880cca1/project",
+  "db": "/Users/<username>/Documents/Codex/2026-09-22/new-chat/work/native-writer-staging/create-only-720880cca1/data/opencode.db",
+  "messages": [
+    {
+      "seq": 0,
+      "kind": "userText",
+      "text": "  first\r\n",
+      "ts": 100
+    },
+    {
+      "seq": 1,
+      "kind": "userText",
+      "text": "KITE-73 中文",
+      "ts": 99
+    },
+    {
+      "seq": 2,
+      "kind": "assistantFinal",
+      "text": " answer\r\n  ",
+      "ts": 98
+    },
+    {
+      "seq": 3,
+      "kind": "assistantFinal",
+      "text": "C:\\foo",
+      "ts": 97
+    },
+    {
+      "seq": 4,
+      "kind": "userText",
+      "text": "unanswered",
+      "ts": 96
+    }
+  ],
+  "digest": "fyc1:7eb170beddb4ad488b3cb43cbd74220309bc1c4aeeb27ae954d0bcd16257fe9a",
+  "official_readback": "visible",
+  "missing_project_created": true,
+  "race_collision": "full rollback; concurrent native records byte-for-byte unchanged",
+  "receipt_before_target_publication": true
+}

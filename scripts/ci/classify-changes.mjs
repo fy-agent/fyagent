@@ -137,6 +137,23 @@ const TASK_PLATFORM_INVENTORY_FILES = new Set([
   "scripts/tasks/supported-platform-structure-assets.json",
 ]);
 
+// Reviewed historical inputs to the native session migration parsers. Keep
+// their executable probes and format evidence on the backend verification path;
+// another research project or a new file still needs its own explicit owner.
+const SESSION_RECOVERY_RESEARCH_FILES = new Set(
+  [
+    "check_hermes_import.py",
+    "check_opencode_import.py",
+    "cli-formats.md",
+    "codex-claude.md",
+    "codex-protocol-excerpt.json",
+    "hermes-synthetic-result.json",
+    "local-cli-evidence.json",
+    "opencode-synthetic-result.json",
+    "恢复方案.md",
+  ].map((name) => `research/session-recovery-20260921/${name}`),
+);
+
 const RELEASE_AND_CI_CONTRACT_TEST =
   /^tests\/(?:ci|classifyChanges|githubWorkflow|localBuildBoundary|miseTaskContract|requiredCiGate|release|systemCheck|taskDocs|verifyCommitMessages|version|windowsSigningAdapter|writePlatformMetadata|downloadManifest)/u;
 
@@ -313,6 +330,14 @@ function classifyPath(path, domains) {
 
   if (TASK_PLATFORM_INVENTORY_FILES.has(path)) {
     return matchDomains(domains, ["contracts"], "supported-platform-inventory");
+  }
+
+  if (SESSION_RECOVERY_RESEARCH_FILES.has(path)) {
+    return matchDomains(
+      domains,
+      ["contracts", "backend", "docsSpec"],
+      "session-recovery-source-evidence",
+    );
   }
 
   if (

@@ -2,6 +2,10 @@
   "schema": "fyagent-supported-platform-structure-baseline/v1",
   "assets": [
     [
+      "research/session-recovery-20260921/opencode-synthetic-result.json",
+      "600f14c64a74170c927d11f1e70481019939c103df63829ee19ed7a2680d502b"
+    ],
+    [
       "scripts/ci/verify-toolchain.mjs",
       "3bc61c60970c1d0ccd34d4dd089cb4dad16ca84ab73976b316d3d461708b246c"
     ],
@@ -27,7 +31,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "4c48a9c583571b33a1fa1ff54757153cf16ab405020eab40e5b90195bec6c189"
+      "086e8d3af807904bba68d15d9798b47ee589f94564e6e53ec5c101232465d268"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -51,7 +55,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "f3856294217edf0d8f9a9fd466b0ea5c1f84030519baeafb37f9bf00d7a9c600"
+      "6aae7cff0e454448cba88c469f6a7e5c43f2364c1e54980b8ca46a01129df3f3"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -167,7 +171,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "55feb3c26e25bcba88080ba052d52776f25e19cb45010ad7eae8354f8e4a06a4"
+      "2d15ac7411f371c458a0c0bc3296388b6c44b2e403837d9573ce88fa9788a82a"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -338,6 +342,38 @@
       "c185f51cc2d53519d4c8ecf31205ed284924900b7721580e25b1f8db4a8af811"
     ],
     [
+      "src-tauri/src/session_manager/migrate/identity_platform.rs",
+      "795b85f70bcc7cdb5e69af601f34975fc22fb26f08a9f70e9318bdd2b59ec9b4"
+    ],
+    [
+      "src-tauri/src/session_manager/migrate/identity.rs",
+      "d6a823a64be889e1dd475511cff1d5d0bb1852024101bb2e3966c1d313b4ceee"
+    ],
+    [
+      "src-tauri/src/session_manager/migrate/native/codex.rs",
+      "f3d941fd68e0e99c0f19eab0d981ce9f0784ee601071a7cdbef56522362b6599"
+    ],
+    [
+      "src-tauri/src/session_manager/migrate/native/gemini.rs",
+      "d003bda63e22f51bf101962371d09ccbb3f994e38c23132b4006f4db53cceb34"
+    ],
+    [
+      "src-tauri/src/session_manager/migrate/native/hermes.rs",
+      "d0dccfc6a21c8d561bc0634ce391694b0367e2c076f78945b9fff8200ea24e8b"
+    ],
+    [
+      "src-tauri/src/session_manager/migrate/native/mod.rs",
+      "5bd39587382b2a1bcb875a786ae7f6288bd871dd427ad6bfe15342a0d6ea4001"
+    ],
+    [
+      "src-tauri/src/session_manager/migrate/native/opencode.rs",
+      "c25af3d1f4817c378a39b4b1a279960f291c02ff2da86aaac0418461ad8485af"
+    ],
+    [
+      "src-tauri/src/session_manager/migrate/package.rs",
+      "c3b82f84bf879c3643d35ae9fd369c184724dc16e7ddebbe4589d921aa572f90"
+    ],
+    [
       "src-tauri/src/session_manager/providers/opencode.rs",
       "4cdb88bab5fdec1834db76f685302ebe96a8442a81a0453575d234ffc55b33fa"
     ],
@@ -439,7 +475,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "2b47a73437e4cab405f301cbcccee20fc8c76def95d56a256675896b349a6d81"
+      "71e2de3fb37459987893092996b55b8b9a79f0bea0e7e44a13212312c3d09ee4"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

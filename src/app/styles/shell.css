@@ -148,6 +148,25 @@
   border-top: 1px solid var(--fy-divider);
 }
 
+.fy-side-navigation-group-auxiliary {
+  margin-top: auto;
+}
+
+/* Keep the auxiliary entry visible when configuration links are expanded. */
+@media (max-height: 640px) {
+  .fy-side-navigation {
+    padding-block: 8px;
+  }
+
+  .fy-side-navigation-track {
+    gap: 6px;
+  }
+
+  .fy-side-navigation-group + .fy-side-navigation-group {
+    padding-top: 6px;
+  }
+}
+
 .fy-side-navigation-toggle,
 .fy-side-navigation-item {
   position: relative;

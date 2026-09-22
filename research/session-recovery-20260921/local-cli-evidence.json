@@ -1,0 +1,22 @@
+{
+  "checked_at": "2026-09-21",
+  "kind": "read-only installed CLI help/version; no user session read",
+  "versions": {
+    "codex": "0.154.0",
+    "claude-code": "2.1.220",
+    "opencode": "1.18.30",
+    "gemini-cli": "0.59.0",
+    "grok": "1.0.34 (3736acbc8658)",
+    "openclaw": "2026.7.1-2 (0790d9f)",
+    "hermes": "v0.20.5, upstream f293e720, local 987064ca (+1 carried commit)"
+  },
+  "capabilities": {
+    "codex": "resume --all/--cd; generated schema includes thread/inject_items; resume.history explicitly DO NOT USE and unstable",
+    "claude-code": "--resume/--continue/--fork-session; help checked, not runtime restoration",
+    "opencode": "top-level export/import JSON, --sanitize redaction, --pure no external plugins",
+    "gemini-cli": "--resume/--session-file JSON/--session-id",
+    "grok": "--resume/--fork-session/--restore-code/export Markdown; import absent from installed top-level help despite newer web documentation",
+    "openclaw": "sessions list/cleanup/compact/export-trajectory/tail, no general import in inspected command",
+    "hermes": "--resume/--in/--no-restore-cwd; sessions import only Claude/Codex; top-level import restores broad full backup and is outside final-only migration scope"
+  }
+}

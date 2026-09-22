@@ -1,0 +1,32 @@
+{
+  "id": "fyagent_7de007d5cf874f2faf60385377b59d90",
+  "captured_requests": [
+    {
+      "path": "/api/show",
+      "body": {
+        "model": null
+      }
+    },
+    {
+      "path": "/v1/responses",
+      "body": {
+        "model": "local-capture",
+        "input": [
+          {
+            "role": "user",
+            "content": "KITE-73 中文 C:\\temp\\x"
+          },
+          {
+            "role": "assistant",
+            "content": "answer\r\nsecond line"
+          },
+          {
+            "role": "user",
+            "content": "unanswered\n\nSynthetic next turn; keep KITE-73."
+          }
+        ]
+      }
+    }
+  ],
+  "note": "Superseded probe before append-next-user preflight; trailing user merged with next prompt."
+}

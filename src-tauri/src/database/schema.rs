@@ -348,6 +348,9 @@ impl Database {
 
         Self::create_provider_credential_tables_on_conn(conn)?;
 
+        // 26. Session migration receipts. Device-bound and local-only.
+        Self::create_session_restore_tables_on_conn(conn)?;
+
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
         // （随 v12 定稿为 current_profile_id_<scope>，不单独 bump 版本）
         if conn
@@ -578,6 +581,11 @@ impl Database {
                     24 => {
                         Self::migrate_v24_to_v25(conn)?;
                         Self::set_user_version(conn, 25)?;
+                    }
+                    25 => {
+                        log::info!("迁移数据库从 v25 到 v26（添加会话迁移回执表）");
+                        Self::create_session_restore_tables_on_conn(conn)?;
+                        Self::set_user_version(conn, 26)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1872,6 +1880,73 @@ impl Database {
             "#,
         )
         .map_err(|error| AppError::Database(format!("创建 Change Plan 表失败: {error}")))
+    }
+
+    /// Session migration receipts.
+    ///
+    /// One row per restore attempt, holding only identity, mapping and stage —
+    /// never a second copy of a transcript. The store of record for message
+    /// bodies stays the provider's own native store.
+    ///
+    /// Two uniqueness rules carry the idempotency contract:
+    ///
+    /// * `uq_sra_request` stops one user action from producing two rows, and
+    ///   applies to an explicit extra copy as well, so a double click or a
+    ///   retried call reuses the original row.
+    /// * `uq_sra_slot` admits at most one default receipt for a semantic
+    ///   snapshot, target store and device. Native publication is separately
+    ///   reconciled; this SQLite constraint does not make a CLI call atomic.
+    ///   Explicit extra copies carry no slot and retain separate mappings.
+    ///
+    /// `device_binding` is mixed into the slot and checked row by row on read.
+    /// Rows from another machine are inert: they take part in neither
+    /// idempotency nor reconciliation.
+    pub(crate) fn create_session_restore_tables_on_conn(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS session_restore_attempts (
+                attempt_id           TEXT PRIMARY KEY,
+                request_id           TEXT NOT NULL,
+                installation_id      TEXT NOT NULL,
+                request_fingerprint  TEXT NOT NULL,
+                snapshot_id          TEXT NOT NULL,
+                origin_id            TEXT NOT NULL,
+                request_kind         TEXT NOT NULL
+                    CHECK (request_kind IN ('defaultImport', 'saveAsNewCopy')),
+                idempotency_slot     TEXT,
+                content_digest       TEXT NOT NULL,
+                origin_provider_id   TEXT NOT NULL,
+                origin_session_id    TEXT,
+                origin_cli_version   TEXT,
+                origin_store_fp      TEXT,
+                target_provider_id   TEXT NOT NULL,
+                target_store_id      TEXT NOT NULL,
+                target_native_nonce  TEXT NOT NULL,
+                target_native_id     TEXT,
+                target_workspace     TEXT,
+                stage                TEXT NOT NULL,
+                attempt_count        INTEGER NOT NULL DEFAULT 1,
+                user_attested_at     INTEGER,
+                user_claimed_stage   TEXT,
+                user_note            TEXT,
+                last_error_code      TEXT,
+                last_error_detail    TEXT,
+                device_binding       TEXT NOT NULL,
+                created_at           INTEGER NOT NULL,
+                updated_at           INTEGER NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_sra_request
+                ON session_restore_attempts(device_binding, request_id, snapshot_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_sra_slot
+                ON session_restore_attempts(idempotency_slot)
+                WHERE idempotency_slot IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_sra_action
+                ON session_restore_attempts(installation_id, request_id);
+            CREATE INDEX IF NOT EXISTS idx_sra_native
+                ON session_restore_attempts(target_provider_id, target_native_id);
+            "#,
+        )
+        .map_err(|error| AppError::Database(format!("创建会话迁移回执表失败: {error}")))
     }
 
     /// v20 -> v21: add credential-free Managed Auth metadata and migration
@@ -3535,11 +3610,14 @@ mod tests {
         conn.execute_batch("DROP TABLE provider_credentials; PRAGMA user_version = 23;")
             .unwrap();
         super::Database::apply_schema_migrations_on_conn(&conn).unwrap();
+        // Forward migration reaches the current schema, including both the
+        // customer-project retirement and local Session restore receipts.
         assert_eq!(
             super::Database::get_user_version(&conn).unwrap(),
             super::SCHEMA_VERSION
         );
         assert!(super::Database::table_exists(&conn, "provider_credentials").unwrap());
+        assert!(super::Database::table_exists(&conn, "session_restore_attempts").unwrap());
         conn.execute_batch("DROP TABLE provider_credentials; CREATE VIEW provider_credentials AS SELECT 1; PRAGMA user_version = 23;").unwrap();
         assert!(super::Database::apply_schema_migrations_on_conn(&conn).is_err());
         assert_eq!(super::Database::get_user_version(&conn).unwrap(), 23);

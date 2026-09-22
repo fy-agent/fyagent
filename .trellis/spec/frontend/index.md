@@ -36,6 +36,7 @@ portable import previews, explicit save confirmation and typed-port readback.
 
 | Contract                                              | Owns                                                                            |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------- |
+| [Session Migration](../backend/session-migration.md) | Session route, strict package boundary, import/export identity and recovery status. |
 | [Navigation](./navigation.md)                         | Hash routes, literal loaders, keep-alive lifetime, blockers and return context. |
 | [Window Shell](./window-shell.md)                     | Chrome, native overlay boundary, selection and shared interaction.              |
 | [Change Plan Workspaces](./change-plan-workspaces.md) | Preview/apply, source switching, job observation and reconciliation.            |

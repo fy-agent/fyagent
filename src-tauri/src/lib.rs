@@ -78,6 +78,13 @@ pub use services::{
 };
 pub use settings::{update_settings, AppSettings};
 pub use store::AppState;
+
+/// Production parsers and identity helpers used by isolated integration tests.
+/// Native CLI writers are deliberately outside this test-only surface.
+#[cfg(feature = "test-hooks")]
+pub mod migration_test_hooks {
+    pub use crate::session_manager::migrate::{extract, identity, model, package};
+}
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 pub use windows_runtime::{initialize_windows_user_context, WindowsStartupErrorCode};
@@ -2309,6 +2316,20 @@ pub fn run() {
             commands::delete_session,
             commands::delete_sessions,
             commands::launch_session_terminal,
+            // Cross-device session migration
+            commands::preview_session_migration,
+            commands::export_session_package,
+            commands::read_session_package,
+            commands::probe_local_provider,
+            commands::get_release_capability_matrix,
+            commands::restore_session_package,
+            commands::verify_native_readback,
+            commands::list_restore_attempts,
+            commands::reconcile_restore_attempts,
+            commands::record_user_attestation,
+            commands::open_restored_session,
+            commands::pick_session_package_file,
+            commands::pick_session_package_export_path,
             commands::get_tool_versions,
             commands::run_tool_lifecycle_action,
             commands::probe_tool_installations,

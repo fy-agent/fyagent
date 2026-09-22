@@ -497,6 +497,78 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     block:
       '#[cfg(not(any(target_os = "macos", target_os = "windows")))] pub(super) async fn check( _agent: AgentCatalogId, _action: crate::agent_install::AgentActionId, _plan: Option<&GrokNpmInstallPlan>, ) -> Result<CliInstallPreflight, AgentReasonCode> { Err(AgentReasonCode::PlatformUnsupported) }',
   }),
+  Object.freeze({
+    id: "session-migration-exporter-unsupported-metadata",
+    file: "src-tauri/src/session_manager/migrate/package.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "{",
+    block:
+      '#[cfg(not(any(target_os = "macos", target_os = "windows")))] { "unsupported" }',
+  }),
+  ...[
+    [
+      "directory-open",
+      "pub(super) fn open(_: &Path) -> io::Result<Self> {",
+      "Err(identity_unavailable()) }",
+    ],
+    [
+      "atomic-write",
+      "{",
+      "let _ = (name, bytes); Err(identity_unavailable()) }",
+    ],
+    ["child-open", "return Err(identity_unavailable());", ""],
+    [
+      "file-lock",
+      "fn set_lock(_: &File, _: bool) -> io::Result<()> {",
+      "Err(identity_unavailable()) }",
+    ],
+    [
+      "file-instance",
+      "fn file_instance_from_handle(_: &File) -> io::Result<String> {",
+      "Err(identity_unavailable()) }",
+    ],
+  ].map(([id, next, body]) =>
+    Object.freeze({
+      id: `session-migration-identity-unsupported-${id}`,
+      file: "src-tauri/src/session_manager/migrate/identity_platform.rs",
+      condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+      next,
+      block: `#[cfg(not(any(target_os = "macos", target_os = "windows")))] ${next}${body ? ` ${body}` : ""}`,
+    }),
+  ),
+  Object.freeze({
+    id: "session-migration-identity-unsupported-machine-user",
+    file: "src-tauri/src/session_manager/migrate/identity_platform.rs",
+    condition:
+      '#[cfg(all( not(any(target_os = "macos", target_os = "windows")), not(any(test, feature = "test-hooks")) ))]',
+    next: 'not(any(target_os = "macos", target_os = "windows")),',
+    block:
+      '#[cfg(all( not(any(target_os = "macos", target_os = "windows")), not(any(test, feature = "test-hooks")) ))] fn machine_user_fingerprint_native() -> io::Result<String> { Err(identity_unavailable()) }',
+  }),
+  Object.freeze({
+    id: "session-migration-native-unsupported-cleanup",
+    file: "src-tauri/src/session_manager/migrate/native/mod.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "let _ = child_id;",
+    block:
+      '#[cfg(not(any(target_os = "macos", target_os = "windows")))] let _ = child_id; let _ = child.kill(); let _ = child.wait(); }',
+  }),
+  Object.freeze({
+    id: "session-migration-native-unsupported-launcher",
+    file: "src-tauri/src/session_manager/migrate/native/mod.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "{",
+    block:
+      '#[cfg(not(any(target_os = "macos", target_os = "windows")))] { let _ = (dir, binary); Vec::new() }',
+  }),
+  Object.freeze({
+    id: "session-migration-native-unsupported-execution",
+    file: "src-tauri/src/session_manager/migrate/native/mod.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "{",
+    block:
+      '#[cfg(not(any(target_os = "macos", target_os = "windows")))] { Some("Session migration requires a supported desktop platform") }',
+  }),
 ]);
 const RUST_CFG_MACRO_CONTRACT = Object.freeze(
   [
@@ -738,6 +810,52 @@ const BIN_DIRECTORY_VARIABLE = `${SURFACE_MARKERS.directoryConvention.toUpperCas
 const DATA_HOME_IDENTIFIER = combine("OPENCODE_DATA_", "HOME_ENV");
 const SUBSCRIPTION_TEST_HOME_PATH =
   "src-tauri/src/services/managed_auth/subscription_tests.rs";
+const SYNTHETIC_OPENCODE_PATH =
+  "research/session-recovery-20260921/check_opencode_import.py";
+const SYNTHETIC_OPENCODE_RESULT_PATH =
+  "research/session-recovery-20260921/opencode-synthetic-result.json";
+const SYNTHETIC_OPENCODE_NATIVE_PATH =
+  "src-tauri/src/session_manager/migrate/native/opencode.rs";
+const SYNTHETIC_OPENCODE_SCOPE = `synthetic final-only native JSON import/export, isolated ${SURFACE_MARKERS.directoryConvention.toUpperCase()} stores`;
+const SYNTHETIC_OPENCODE_ISOLATION = `with tempfile.TemporaryDirectory(prefix='fyagent-opencode-session-') as folder:
+    root = Path(folder)
+    workspace = root/'workspace'
+    workspace.mkdir()
+    env = {key: value for key, value in os.environ.items()
+           if key in {'PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'TMPDIR', 'TERM'}}
+    for key, sub in [('${DATA_HOME_VARIABLE}','data'), ('${SURFACE_MARKERS.directoryConvention.toUpperCase()}_CONFIG_HOME','config'),
+                     ('${SURFACE_MARKERS.directoryConvention.toUpperCase()}_CACHE_HOME','cache'), ('${SURFACE_MARKERS.directoryConvention.toUpperCase()}_STATE_HOME','state'),
+                     ('OPENCODE_TEST_HOME','testhome')]:
+        env[key] = str(root/sub)
+        (root/sub).mkdir()
+    env['OPENCODE_DISABLE_MODELS_FETCH'] = 'true'
+    env['OPENCODE_DISABLE_AUTOUPDATE'] = 'true'`;
+const SYNTHETIC_OPENCODE_NATIVE_GUARD = `    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires FYAGENT_OPENCODE_PROBE_ROOT and isolated native CLI harness"]
+    #[serial_test::serial]
+    fn isolated_actual_writer_create_only_probe() {
+        use std::cell::RefCell;
+        let root = PathBuf::from(
+            std::env::var_os("FYAGENT_OPENCODE_PROBE_ROOT").expect("explicit isolated probe root"),
+        );
+        assert!(root.is_absolute());
+        for key in [
+            "HOME",
+            "FYAGENT_TEST_HOME",
+            "OPENCODE_DB",
+            "OPENCODE_CONFIG_DIR",
+            "${SURFACE_MARKERS.directoryConvention.toUpperCase()}_CONFIG_HOME",
+            "${DATA_HOME_VARIABLE}",
+            "${SURFACE_MARKERS.directoryConvention.toUpperCase()}_CACHE_HOME",
+            "${SURFACE_MARKERS.directoryConvention.toUpperCase()}_STATE_HOME",
+            "TMPDIR",
+        ] {
+            assert!(
+                PathBuf::from(std::env::var_os(key).expect(key)).starts_with(&root),
+                "nonisolated {key}"
+            );
+        }`;
 const SUBSCRIPTION_TEST_HOME_GUARD = `struct TestHome(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
 impl TestHome {
     fn set(path: &std::path::Path) -> Self {
@@ -763,6 +881,38 @@ impl Drop for TestHome {
     }
 }`;
 export const MACOS_POSIX_CONTRACT = Object.freeze([
+  Object.freeze({
+    id: "session-synthetic-opencode-native-test-module",
+    file: SYNTHETIC_OPENCODE_NATIVE_PATH,
+    snippet: "#[cfg(test)]\nmod tests {\n    use super::*;",
+  }),
+  Object.freeze({
+    id: "session-synthetic-opencode-native-guard",
+    file: SYNTHETIC_OPENCODE_NATIVE_PATH,
+    snippet: SYNTHETIC_OPENCODE_NATIVE_GUARD,
+  }),
+  Object.freeze({
+    id: "session-synthetic-opencode-isolation",
+    file: SYNTHETIC_OPENCODE_PATH,
+    snippet: SYNTHETIC_OPENCODE_ISOLATION,
+  }),
+  Object.freeze({
+    id: "session-synthetic-opencode-import-environment",
+    file: SYNTHETIC_OPENCODE_PATH,
+    snippet: `    imported = subprocess.run([CLI,'import','--pure',str(fixture_path)],cwd=workspace,env=env,
+                              capture_output=True,text=True,timeout=90)`,
+  }),
+  Object.freeze({
+    id: "session-synthetic-opencode-export-environment",
+    file: SYNTHETIC_OPENCODE_PATH,
+    snippet: `        exported = subprocess.run([CLI,'export','--pure',sid],cwd=workspace,env=env,
+                                  capture_output=True,text=True,timeout=90)`,
+  }),
+  Object.freeze({
+    id: "session-synthetic-opencode-evidence-scope",
+    file: SYNTHETIC_OPENCODE_RESULT_PATH,
+    snippet: `  "scope": "${SYNTHETIC_OPENCODE_SCOPE}",`,
+  }),
   Object.freeze({
     id: "data-home-declaration",
     file: "src-tauri/src/opencode_config.rs",
@@ -826,6 +976,29 @@ const DIRECTORY_IDENTIFIER = SURFACE_MARKERS.directoryConvention;
 const DIRECTORY_MARKER_PATTERN = new RegExp(DIRECTORY_IDENTIFIER, "iu");
 const DIRECTORY_OCCURRENCE_CONTRACT = Object.freeze(
   [
+    ...SYNTHETIC_OPENCODE_NATIVE_GUARD.split("\n")
+      .filter((line) => DIRECTORY_MARKER_PATTERN.test(line))
+      .map((line) => [
+        SYNTHETIC_OPENCODE_NATIVE_PATH,
+        line.trim(),
+        SYNTHETIC_OPENCODE_NATIVE_GUARD,
+      ]),
+    [
+      SYNTHETIC_OPENCODE_NATIVE_PATH,
+      `/// Explicit opt-in only. The harness supplies an empty synthetic HOME/${SURFACE_MARKERS.directoryConvention.toUpperCase()},`,
+    ],
+    ...SYNTHETIC_OPENCODE_ISOLATION.split("\n")
+      .filter((line) => DIRECTORY_MARKER_PATTERN.test(line))
+      .map((line) => [
+        SYNTHETIC_OPENCODE_PATH,
+        line.trim(),
+        SYNTHETIC_OPENCODE_ISOLATION,
+      ]),
+    [
+      SYNTHETIC_OPENCODE_PATH,
+      `result = {'cli_version':'1.18.30','scope':'${SYNTHETIC_OPENCODE_SCOPE}',`,
+    ],
+    [SYNTHETIC_OPENCODE_RESULT_PATH, `"scope": "${SYNTHETIC_OPENCODE_SCOPE}",`],
     [
       "src-tauri/src/opencode_config.rs",
       `pub(crate) const ${DATA_HOME_IDENTIFIER}: &str = "${DATA_HOME_VARIABLE}";`,
@@ -1029,10 +1202,18 @@ export function resolveAuthoritativeActiveTask(
   runner = spawnSync,
 ) {
   const result = runner(
-    "python",
+    resolveActiveTaskPython(root),
     [".trellis/scripts/task.py", "current", "--source", "--json"],
     { cwd: root, encoding: "utf8", windowsHide: true },
   );
+  if (result.error?.code === "ENOENT") {
+    throw new Error(
+      "The project .venv Python is missing; run mise run python:sync",
+      {
+        cause: result.error,
+      },
+    );
+  }
   if (result.error) throw result.error;
   if (result.status !== 0 || typeof result.stdout !== "string") {
     throw new Error("The current session has no active-task pointer");
@@ -1060,6 +1241,21 @@ export function resolveAuthoritativeActiveTask(
     );
   }
   return payload.current_task.dir;
+}
+
+// Trellis uses the project's managed environment, never a PATH-selected Python.
+// This checker must remain runnable with Node built-ins before package install.
+export function resolveActiveTaskPython(
+  root = ROOT,
+  platform = process.platform,
+) {
+  if (platform === "win32") {
+    return path.join(root, ".venv", "Scripts", "python.exe");
+  }
+  if (platform === "darwin" || platform === SURFACE_MARKERS.kernel) {
+    return path.join(root, ".venv", "bin", "python");
+  }
+  throw new Error(`Unsupported prearchive task host: ${platform}`);
 }
 
 export function parseArguments(argv, environment = process.env) {
@@ -3500,7 +3696,7 @@ export function inspectRepository({
   }
   findings.push(...scanRustImplicitPredicates(rustEntries));
   findings.push(...scanCargoImplicitPredicates(cargoEntries));
-  findings.push(...scanMacosPosixContract(rustEntries));
+  findings.push(...scanMacosPosixContract(textEntries));
   findings.push(...scanDirectoryConventionContract(textEntries));
   findings.push(...scanJavaScriptImplicitPredicates(javascriptEntries));
   findings.sort(

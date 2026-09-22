@@ -243,3 +243,25 @@ Integrated 15 code-solvable Issues with Antigravity frontend work, Cursor backen
 ### Status
 
 [OK] **Completed**
+
+
+## Session 13: Session cross-device recovery implementation and verification
+<!-- trellis-session: v=2 fp=5542b89b84eae4d6 -->
+
+**Date**: 2026-09-22
+**Task**: Session cross-device recovery implementation and verification
+**Branch**: `codex/session-cross-device-recovery-20260922`
+
+### Summary
+
+Implemented final-only session packages, native version-gated recovery, device/store-bound receipts and Session UI; local frontend, Rust and contract gates passed; Grok 4.7 review findings fixed. Windows real-machine UAT waived; formal Windows ordinary-user CLI helper and unverified providers remain explicit capability gaps. PR submission and remote checks continue.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `345119d2` | feat(sessions): add verified cross-device session recovery |
+
+### Status
+
+[OK] **Completed**

@@ -1,0 +1,21 @@
+{
+  "cli_version": "1.18.30",
+  "scope": "synthetic final-only native JSON import/export, isolated XDG stores",
+  "import_exit_code": 0,
+  "import_stdout": "Imported session: ses_ea588fdb7d5b4ed99b24a838076fbf10\n",
+  "import_stderr": "",
+  "model_calls": false,
+  "original_user_sessions_accessed": false,
+  "export_exit_code": 0,
+  "export_stderr": "Exporting session: ses_ea588fdb7d5b4ed99b24a838076fbf10\n",
+  "result": "passed",
+  "recovered_message_count": 4,
+  "only_text_parts": true,
+  "directory_remapped_to_import_cwd": true,
+  "assistant_path_still_contains_source_cwd": true,
+  "not_proven": [
+    "Native interactive resume with a model response",
+    "Mac to Windows transfer",
+    "Other OpenCode versions"
+  ]
+}

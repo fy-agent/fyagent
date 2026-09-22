@@ -107,8 +107,12 @@ fn integration_predecessor(
     predecessor: IntegrationPredecessor,
 ) -> Result<(), AppError> {
     Database::create_tables_on_conn(conn)?;
+    // These predecessor releases did not yet have the Session receipt table.
+    conn.execute_batch("DROP TABLE session_restore_attempts")?;
     let triggers = conn
-        .prepare("SELECT name FROM sqlite_schema WHERE type='trigger' AND name LIKE 'fde_resource_%'")?
+        .prepare(
+            "SELECT name FROM sqlite_schema WHERE type='trigger' AND name LIKE 'fde_resource_%'",
+        )?
         .query_map([], |row| row.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     for trigger in triggers {
@@ -211,6 +215,7 @@ fn integration_assert_current(
         .execute("INSERT INTO proxy_config(app_type) VALUES ('unknown')", [])
         .is_err());
     assert_eq!(retired_trigger_count(conn)?, 0);
+    assert_receipt_schema(conn)?;
     match predecessor {
         IntegrationPredecessor::Fde22 => {
             for table in RETIRED_MODULE_TABLES {
@@ -235,12 +240,13 @@ fn fresh_install_does_not_create_retired_customer_project_storage() -> Result<()
     );
     assert_eq!(retired_table_count(&conn)?, 0);
     assert_eq!(retired_trigger_count(&conn)?, 0);
+    assert_receipt_schema(&conn)?;
     Ok(())
 }
 
 #[test]
-fn release_integration_migration_completes_both_v22_variants_legacy_and_fresh() -> Result<(), AppError>
-{
+fn release_integration_migration_completes_both_v22_variants_legacy_and_fresh(
+) -> Result<(), AppError> {
     for predecessor in [
         IntegrationPredecessor::Legacy21,
         IntegrationPredecessor::Fde22,
@@ -267,7 +273,11 @@ fn release_integration_migration_completes_both_v22_variants_legacy_and_fresh() 
             );
         }
         for (table, rows) in before {
-            assert_eq!(integration_rows(&conn, table)?, rows, "{predecessor:?}: {table}");
+            assert_eq!(
+                integration_rows(&conn, table)?,
+                rows,
+                "{predecessor:?}: {table}"
+            );
         }
         if matches!(predecessor, IntegrationPredecessor::Fde22) {
             let generation: i64 = conn.query_row(
@@ -275,7 +285,10 @@ fn release_integration_migration_completes_both_v22_variants_legacy_and_fresh() 
                 [],
                 |row| row.get(0),
             )?;
-            conn.execute("UPDATE providers SET name='changed' WHERE id='retained'", [])?;
+            conn.execute(
+                "UPDATE providers SET name='changed' WHERE id='retained'",
+                [],
+            )?;
             assert_eq!(
                 conn.query_row(
                     "SELECT generation FROM fde_resource_generations WHERE kind='provider' AND resource_id='retained'",
@@ -293,8 +306,8 @@ fn release_integration_migration_completes_both_v22_variants_legacy_and_fresh() 
 }
 
 #[test]
-fn release_integration_late_version_failure_rolls_back_both_predecessor_shapes() -> Result<(), AppError>
-{
+fn release_integration_late_version_failure_rolls_back_both_predecessor_shapes(
+) -> Result<(), AppError> {
     use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
     for predecessor in [
         IntegrationPredecessor::Fde22,
@@ -323,10 +336,7 @@ fn release_integration_late_version_failure_rolls_back_both_predecessor_shapes()
         assert_eq!(integration_rows(&conn, "sqlite_schema")?, before_schema);
         assert_eq!(integration_rows(&conn, "proxy_config")?, before_proxy);
         if let Some(before) = before_generations {
-            assert_eq!(
-                integration_rows(&conn, "fde_resource_generations")?,
-                before
-            );
+            assert_eq!(integration_rows(&conn, "fde_resource_generations")?, before);
         }
     }
     Ok(())
@@ -446,11 +456,9 @@ fn sql_import_of_old_customer_project_dump_restores_shared_config_without_revivi
     target.import_sql_string(&old_dump)?;
     let conn = crate::database::lock_conn!(target.conn);
     assert_eq!(
-        conn.query_row(
-            "SELECT name FROM providers WHERE id='shared'",
-            [],
-            |row| row.get::<_, String>(0)
-        )?,
+        conn.query_row("SELECT name FROM providers WHERE id='shared'", [], |row| {
+            row.get::<_, String>(0)
+        })?,
         "Shared"
     );
     assert_eq!(
@@ -466,18 +474,16 @@ fn sql_import_of_old_customer_project_dump_restores_shared_config_without_revivi
 }
 
 fn live_provider_sentinel(conn: &Connection) -> Result<(i64, String), AppError> {
-    conn.query_row(
-        "SELECT COUNT(*), MIN(id) FROM providers",
-        [],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )
+    conn.query_row("SELECT COUNT(*), MIN(id) FROM providers", [], |row| {
+        Ok((row.get(0)?, row.get(1)?))
+    })
     .map_err(|e| AppError::Database(e.to_string()))
 }
 
 #[test]
 #[serial]
-fn binary_restore_rejects_keyword_only_in_comment_or_literal_and_keeps_live_and_backup()
--> Result<(), AppError> {
+fn binary_restore_rejects_keyword_only_in_comment_or_literal_and_keeps_live_and_backup(
+) -> Result<(), AppError> {
     let _home = TestHomeGuard::new();
     let backup_dir = crate::config::get_app_config_dir().join("backups");
     std::fs::create_dir_all(&backup_dir).unwrap();
@@ -534,8 +540,8 @@ fn binary_restore_rejects_keyword_only_in_comment_or_literal_and_keeps_live_and_
 
 #[test]
 #[serial]
-fn binary_restore_rejects_forged_prefix_trigger_body_without_mutating_live_or_backup()
--> Result<(), AppError> {
+fn binary_restore_rejects_forged_prefix_trigger_body_without_mutating_live_or_backup(
+) -> Result<(), AppError> {
     let _home = TestHomeGuard::new();
     let backup_dir = crate::config::get_app_config_dir().join("backups");
     std::fs::create_dir_all(&backup_dir).unwrap();
@@ -579,8 +585,8 @@ fn binary_restore_rejects_forged_prefix_trigger_body_without_mutating_live_or_ba
 
 #[test]
 #[serial]
-fn binary_restore_accepts_genuine_retired_triggers_without_migration_side_effects()
--> Result<(), AppError> {
+fn binary_restore_accepts_genuine_retired_triggers_without_migration_side_effects(
+) -> Result<(), AppError> {
     let _home = TestHomeGuard::new();
     let backup_dir = crate::config::get_app_config_dir().join("backups");
     std::fs::create_dir_all(&backup_dir).unwrap();
@@ -614,18 +620,23 @@ fn binary_restore_accepts_genuine_retired_triggers_without_migration_side_effect
         [],
         |row| row.get(0),
     )?;
-    assert_eq!(all_triggers, 0, "restore must finish with no executable triggers");
+    assert_eq!(
+        all_triggers, 0,
+        "restore must finish with no executable triggers"
+    );
     let generation: i64 = conn.query_row(
         "SELECT generation FROM fde_resource_generations WHERE resource_id='copilot'",
         [],
         |row| row.get(0),
     )?;
-    assert_eq!(generation, 41, "retired triggers must not run during create/migrate");
-    let meta: String = conn.query_row(
-        "SELECT meta FROM providers WHERE id='copilot'",
-        [],
-        |row| row.get(0),
-    )?;
+    assert_eq!(
+        generation, 41,
+        "retired triggers must not run during create/migrate"
+    );
+    let meta: String =
+        conn.query_row("SELECT meta FROM providers WHERE id='copilot'", [], |row| {
+            row.get(0)
+        })?;
     assert!(
         meta.contains("github_copilot"),
         "v5 copilot rewrite must still run: {meta}"
@@ -638,10 +649,7 @@ fn binary_restore_accepts_genuine_retired_triggers_without_migration_side_effect
         )?,
         "kept"
     );
-    conn.execute(
-        "UPDATE providers SET name='changed' WHERE id='copilot'",
-        [],
-    )?;
+    conn.execute("UPDATE providers SET name='changed' WHERE id='copilot'", [])?;
     assert_eq!(
         conn.query_row(
             "SELECT generation FROM fde_resource_generations WHERE resource_id='copilot'",
@@ -738,7 +746,11 @@ fn sync_and_sql_import_archive_live_history_then_replace_shared_config() -> Resu
     }
 
     let archives = list_retired_archives();
-    assert_eq!(archives.len(), 1, "one durable archive per leftover replace");
+    assert_eq!(
+        archives.len(),
+        1,
+        "one durable archive per leftover replace"
+    );
     let archived = Connection::open(&archives[0])?;
     let customer: String = archived.query_row(
         "SELECT name FROM fde_customers WHERE customer_id='customer'",
@@ -829,9 +841,19 @@ fn replace_keeps_live_db_when_retired_archive_fails() -> Result<(), AppError> {
 
     let target = Database::memory()?;
     seed_live_historical_customer_project(&target)?;
+    let live_receipts = {
+        let conn = crate::database::lock_conn!(target.conn);
+        seed_restore_receipt(&conn, "unresolved-before-archive-failure", "ambiguous")?;
+        integration_rows(&conn, "session_restore_attempts")?
+    };
     assert!(target.import_sql_string(&dump).is_err());
+    assert!(target.import_sql_string_for_sync(&dump).is_err());
     {
         let conn = crate::database::lock_conn!(target.conn);
+        assert_eq!(
+            integration_rows(&conn, "session_restore_attempts")?,
+            live_receipts
+        );
         assert_eq!(
             conn.query_row(
                 "SELECT name FROM fde_customers WHERE customer_id='customer'",
@@ -861,6 +883,10 @@ fn replace_keeps_live_db_when_retired_archive_fails() -> Result<(), AppError> {
     {
         let conn = crate::database::lock_conn!(target.conn);
         assert_eq!(
+            integration_rows(&conn, "session_restore_attempts")?,
+            live_receipts
+        );
+        assert_eq!(
             conn.query_row(
                 "SELECT name FROM fde_customers WHERE customer_id='customer'",
                 [],
@@ -885,6 +911,351 @@ fn fresh_install_does_not_create_retired_archive_directory() -> Result<(), AppEr
     assert!(
         !retired_archive_dir().exists(),
         "new installs must not create the retired archive directory"
+    );
+    Ok(())
+}
+
+fn assert_receipt_schema(conn: &Connection) -> Result<(), AppError> {
+    assert!(Database::table_exists(conn, "session_restore_attempts")?);
+    let indexes: i64 = conn.query_row(
+        "SELECT count(*) FROM sqlite_schema WHERE type='index'
+         AND tbl_name='session_restore_attempts'
+         AND name IN ('uq_sra_request','uq_sra_slot','idx_sra_action','idx_sra_native')",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(
+        indexes, 4,
+        "receipt constraints and lookup indexes must migrate together"
+    );
+    Ok(())
+}
+
+fn seed_restore_receipt(conn: &Connection, id: &str, stage: &str) -> Result<(), AppError> {
+    conn.execute(
+        "INSERT INTO session_restore_attempts (
+            attempt_id, request_id, installation_id, request_fingerprint,
+            snapshot_id, origin_id, request_kind, idempotency_slot, content_digest,
+            origin_provider_id, target_provider_id, target_store_id, target_native_nonce,
+            target_native_id, stage, device_binding, created_at, updated_at
+         ) VALUES (?1, ?1, 'fixture-installation', ?1, ?1, ?1, 'defaultImport', ?1, ?1,
+                   'codex', 'codex', 'fixture-store', ?1, ?1, ?2, 'fixture-device', 100, 101)",
+        rusqlite::params![id, stage],
+    )?;
+    Ok(())
+}
+
+#[test]
+fn retirement_then_receipts_migrate_v24_and_v25_and_survive_reopen() -> Result<(), AppError> {
+    for predecessor in [24, 25] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("upgrade.db");
+        let history;
+        {
+            let conn = Connection::open(&path)?;
+            Database::create_tables_on_conn(&conn)?;
+            conn.execute_batch("DROP TABLE session_restore_attempts")?;
+            create_historical_fde_tables(&conn)?;
+            conn.execute_batch(
+                "INSERT INTO fde_customers VALUES('customer','Keep history',3,0);
+                 INSERT INTO fde_resource_generations VALUES('provider','codex','retained',41);
+                 INSERT INTO settings VALUES('upgrade-sentinel','keep-config');",
+            )?;
+            if predecessor == 24 {
+                install_genuine_retired_triggers(&conn)?;
+                assert_eq!(retired_trigger_count(&conn)?, 20);
+            }
+            Database::set_user_version(&conn, predecessor)?;
+            history = integration_rows(&conn, "fde_customers")?;
+            Database::apply_schema_migrations_on_conn(&conn)?;
+            assert_eq!(
+                Database::get_user_version(&conn)?,
+                crate::database::SCHEMA_VERSION
+            );
+            assert_eq!(retired_trigger_count(&conn)?, 0);
+            assert_receipt_schema(&conn)?;
+            assert_eq!(integration_rows(&conn, "fde_customers")?, history);
+            assert_eq!(
+                conn.query_row(
+                    "SELECT value FROM settings WHERE key='upgrade-sentinel'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )?,
+                "keep-config"
+            );
+            seed_restore_receipt(&conn, "after-upgrade", "ambiguous")?;
+        }
+        let reopened = Connection::open(&path)?;
+        let receipts = integration_rows(&reopened, "session_restore_attempts")?;
+        Database::create_tables_on_conn(&reopened)?;
+        Database::apply_schema_migrations_on_conn(&reopened)?;
+        assert_receipt_schema(&reopened)?;
+        assert_eq!(retired_trigger_count(&reopened)?, 0);
+        assert_eq!(integration_rows(&reopened, "fde_customers")?, history);
+        assert_eq!(
+            integration_rows(&reopened, "session_restore_attempts")?,
+            receipts
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn receipt_migration_failure_rolls_back_retirement_and_version() -> Result<(), AppError> {
+    for predecessor in [24, 25] {
+        let conn = Connection::open_in_memory()?;
+        Database::create_tables_on_conn(&conn)?;
+        conn.execute_batch("DROP TABLE session_restore_attempts")?;
+        create_historical_fde_tables(&conn)?;
+        conn.execute_batch("INSERT INTO fde_customers VALUES('customer','Keep on failure',3,0)")?;
+        if predecessor == 24 {
+            install_genuine_retired_triggers(&conn)?;
+        }
+        // A same-name view makes the v26 CREATE INDEX fail after v25 dropped triggers.
+        conn.execute_batch(
+            "CREATE VIEW session_restore_attempts AS SELECT 'blocked' AS attempt_id",
+        )?;
+        Database::set_user_version(&conn, predecessor)?;
+        let before_schema = integration_rows(&conn, "sqlite_schema")?;
+        let history = integration_rows(&conn, "fde_customers")?;
+        assert!(Database::apply_schema_migrations_on_conn(&conn).is_err());
+        assert_eq!(Database::get_user_version(&conn)?, predecessor);
+        assert_eq!(integration_rows(&conn, "sqlite_schema")?, before_schema);
+        assert_eq!(integration_rows(&conn, "fde_customers")?, history);
+        assert_eq!(
+            retired_trigger_count(&conn)?,
+            if predecessor == 24 { 20 } else { 0 }
+        );
+        conn.execute_batch("DROP VIEW session_restore_attempts")?;
+        Database::apply_schema_migrations_on_conn(&conn)?;
+        assert_receipt_schema(&conn)?;
+        assert_eq!(
+            Database::get_user_version(&conn)?,
+            crate::database::SCHEMA_VERSION
+        );
+        assert_eq!(retired_trigger_count(&conn)?, 0);
+    }
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn sql_and_sync_preserve_live_receipts_while_archiving_retired_history() -> Result<(), AppError> {
+    let _home = TestHomeGuard::new();
+    let remote = Database::memory()?;
+    {
+        let conn = crate::database::lock_conn!(remote.conn);
+        seed_restore_receipt(&conn, "foreign-receipt-sentinel", "nativeReadbackVerified")?;
+        conn.execute_batch(
+            "INSERT INTO settings VALUES('receipt-config-sentinel','remote');
+             INSERT INTO providers(id,app_type,name,settings_config,meta)
+             VALUES('remote-receipt-provider','codex','Remote fixture','{}','{}')",
+        )?;
+    }
+    for sql in [
+        remote.export_sql_string()?,
+        remote.export_sql_string_for_sync()?,
+    ] {
+        assert!(
+            !sql.contains("foreign-receipt-sentinel"),
+            "exports must omit receipt rows"
+        );
+    }
+    // Legacy/untrusted dumps may contain receipt rows despite the current export policy.
+    let foreign_dump = Database::dump_sql(&remote.snapshot_to_memory()?, &[])?;
+    assert!(foreign_dump.contains("foreign-receipt-sentinel"));
+    for sync in [false, true] {
+        let local = Database::memory()?;
+        seed_live_historical_customer_project(&local)?;
+        let receipts = {
+            let conn = crate::database::lock_conn!(local.conn);
+            seed_restore_receipt(&conn, "local-complete", "nativeReadbackVerified")?;
+            seed_restore_receipt(&conn, "local-unresolved", "ambiguous")?;
+            integration_rows(&conn, "session_restore_attempts")?
+        };
+        for sql in [
+            local.export_sql_string()?,
+            local.export_sql_string_for_sync()?,
+        ] {
+            assert!(!sql.contains("local-complete"));
+            for table in RETIRED_MODULE_TABLES {
+                assert!(
+                    !sql.contains(table),
+                    "retired schema must stay out of portable dumps"
+                );
+            }
+        }
+        if sync {
+            local.import_sql_string_for_sync(&foreign_dump)?;
+        } else {
+            local.import_sql_string(&foreign_dump)?;
+        }
+        let conn = crate::database::lock_conn!(local.conn);
+        assert_eq!(
+            integration_rows(&conn, "session_restore_attempts")?,
+            receipts
+        );
+        assert_eq!(retired_table_count(&conn)?, 0);
+        assert_eq!(
+            conn.query_row(
+                "SELECT value FROM settings WHERE key='receipt-config-sentinel'",
+                [],
+                |row| row.get::<_, String>(0)
+            )?,
+            "remote"
+        );
+    }
+    let archives = list_retired_archives();
+    assert_eq!(archives.len(), 2);
+    for path in archives {
+        let archived = Connection::open(path)?;
+        assert_eq!(retired_table_count(&archived)?, 8);
+        assert_eq!(
+            integration_rows(&archived, "session_restore_attempts")?.len(),
+            2
+        );
+        assert_eq!(
+            archived.query_row(
+                "SELECT name FROM fde_customers WHERE customer_id='customer'",
+                [],
+                |row| row.get::<_, String>(0)
+            )?,
+            "Live customer"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn binary_restore_keeps_current_receipts_for_v25_and_current_backups() -> Result<(), AppError> {
+    let _home = TestHomeGuard::new();
+    let backups = crate::config::get_app_config_dir().join("backups");
+    std::fs::create_dir_all(&backups).unwrap();
+    for old_schema in [true, false] {
+        let filename = if old_schema {
+            "before-receipts.db"
+        } else {
+            "older-receipts.db"
+        };
+        let path = backups.join(filename);
+        {
+            let backup = Connection::open(&path)?;
+            Database::create_tables_on_conn(&backup)?;
+            backup.execute_batch("INSERT INTO settings VALUES('binary-sentinel','from-backup')")?;
+            if old_schema {
+                backup.execute_batch("DROP TABLE session_restore_attempts")?;
+                Database::set_user_version(&backup, 25)?;
+            } else {
+                Database::apply_schema_migrations_on_conn(&backup)?;
+                seed_restore_receipt(&backup, "local-complete", "nativeWritePending")?;
+                seed_restore_receipt(&backup, "foreign-receipt", "nativeReadbackVerified")?;
+            }
+        }
+        let original_bytes = std::fs::read(&path).unwrap();
+        // Cover a device with receipts and a fresh device: foreign mappings never replay.
+        for populated in [true, false] {
+            let local = Database::memory()?;
+            seed_live_historical_customer_project(&local)?;
+            let receipts = {
+                let conn = crate::database::lock_conn!(local.conn);
+                if populated {
+                    seed_restore_receipt(&conn, "local-complete", "nativeReadbackVerified")?;
+                    seed_restore_receipt(&conn, "local-unresolved", "ambiguous")?;
+                }
+                integration_rows(&conn, "session_restore_attempts")?
+            };
+            local.restore_from_backup(filename)?;
+            let conn = crate::database::lock_conn!(local.conn);
+            assert_receipt_schema(&conn)?;
+            assert_eq!(
+                Database::get_user_version(&conn)?,
+                crate::database::SCHEMA_VERSION
+            );
+            assert_eq!(
+                integration_rows(&conn, "session_restore_attempts")?,
+                receipts
+            );
+            assert_eq!(retired_table_count(&conn)?, 0);
+            assert_eq!(
+                conn.query_row(
+                    "SELECT value FROM settings WHERE key='binary-sentinel'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )?,
+                "from-backup"
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), original_bytes);
+        }
+    }
+    assert_eq!(list_retired_archives().len(), 4);
+    Ok(())
+}
+
+#[test]
+fn final_publication_keeps_receipt_claims_and_updates_after_early_snapshot() -> Result<(), AppError>
+{
+    let local = Database::memory()?;
+    {
+        let conn = crate::database::lock_conn!(local.conn);
+        seed_restore_receipt(&conn, "in-flight", "nativeWritePending")?;
+    }
+    let candidate = local.snapshot_to_memory()?;
+    candidate.execute_batch("INSERT INTO settings VALUES('candidate-sentinel','ready')")?;
+    let latest = {
+        let conn = crate::database::lock_conn!(local.conn);
+        conn.execute(
+            "UPDATE session_restore_attempts SET stage='ambiguous', updated_at=102
+                      WHERE attempt_id='in-flight'",
+            [],
+        )?;
+        seed_restore_receipt(&conn, "late-claim", "nativeReadbackVerified")?;
+        integration_rows(&conn, "session_restore_attempts")?
+    };
+    local.replace_from_candidate_preserving_receipts(&candidate)?;
+    let conn = crate::database::lock_conn!(local.conn);
+    assert_eq!(integration_rows(&conn, "session_restore_attempts")?, latest);
+    assert_eq!(
+        conn.query_row(
+            "SELECT value FROM settings WHERE key='candidate-sentinel'",
+            [],
+            |row| row.get::<_, String>(0)
+        )?,
+        "ready"
+    );
+    Ok(())
+}
+
+#[test]
+fn receipt_preservation_failure_does_not_publish_candidate() -> Result<(), AppError> {
+    let local = Database::memory()?;
+    {
+        let conn = crate::database::lock_conn!(local.conn);
+        seed_restore_receipt(&conn, "local-unresolved", "ambiguous")?;
+        conn.execute_batch("INSERT INTO settings VALUES('live-sentinel','keep')")?;
+    }
+    let candidate = local.snapshot_to_memory()?;
+    candidate.execute_batch(
+        "DELETE FROM settings WHERE key='live-sentinel';
+         DROP TABLE session_restore_attempts;
+         CREATE TABLE session_restore_attempts(attempt_id TEXT PRIMARY KEY)",
+    )?;
+    let before = {
+        let conn = crate::database::lock_conn!(local.conn);
+        integration_rows(&conn, "session_restore_attempts")?
+    };
+    assert!(local
+        .replace_from_candidate_preserving_receipts(&candidate)
+        .is_err());
+    let conn = crate::database::lock_conn!(local.conn);
+    assert_eq!(integration_rows(&conn, "session_restore_attempts")?, before);
+    assert_eq!(
+        conn.query_row(
+            "SELECT value FROM settings WHERE key='live-sentinel'",
+            [],
+            |row| row.get::<_, String>(0)
+        )?,
+        "keep"
     );
     Ok(())
 }

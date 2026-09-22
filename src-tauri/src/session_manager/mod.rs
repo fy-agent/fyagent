@@ -1,3 +1,4 @@
+pub mod migrate;
 pub mod providers;
 pub mod terminal;
 

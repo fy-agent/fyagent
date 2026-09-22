@@ -19,7 +19,11 @@ vi.mock("@samasante/liquid-glass", () => ({
   ),
 }));
 
-import { navigationGroups, navigationItems } from "@/shared/config/navigation";
+import {
+  auxiliaryNavigationItems,
+  navigationGroups,
+  navigationItems,
+} from "@/shared/config/navigation";
 import { SideNavigation } from "@/widgets/app-shell/SideNavigation";
 
 function renderNavigation(initialEntry = "/agents") {
@@ -31,7 +35,7 @@ function renderNavigation(initialEntry = "/agents") {
 }
 
 describe("SideNavigation", () => {
-  it("derives the eight route leaves from three typed groups", () => {
+  it("derives eight primary routes and the preserved memory route from typed groups", () => {
     expect(
       navigationGroups.map(({ id, label, collapsible, items }) => ({
         id,
@@ -62,10 +66,10 @@ describe("SideNavigation", () => {
         ],
       },
       {
-        id: "memory",
-        label: "记忆模块",
+        id: "sessions",
+        label: "会话中心",
         collapsible: false,
-        items: [{ id: "memory", label: "记忆模块" }],
+        items: [{ id: "sessions", label: "会话中心" }],
       },
     ]);
     expect(navigationItems.map(({ id, path }) => ({ id, path }))).toEqual([
@@ -76,21 +80,22 @@ describe("SideNavigation", () => {
       { id: "skills", path: "/skills" },
       { id: "mcp", path: "/mcp" },
       { id: "prompts", path: "/prompts" },
+      { id: "sessions", path: "/sessions" },
       { id: "memory", path: "/memory" },
     ]);
   });
 
-  it("renders five top-level controls without duplicate copy", () => {
+  it("renders five primary controls with memory preserved as an auxiliary link", () => {
     renderNavigation();
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     const topLevelControls = navigation.querySelectorAll<HTMLElement>(
-      ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
+      ".fy-side-navigation-group:not([data-navigation-group=auxiliary]) > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
     );
 
     expect(
       Array.from(topLevelControls, (control) => control.textContent?.trim()),
-    ).toEqual(["AI软件配置", "运行状态", "账号与认证", "配置管理", "记忆模块"]);
+    ).toEqual(["AI软件配置", "运行状态", "账号与认证", "配置管理", "会话中心"]);
     expect(
       within(navigation).queryByRole("link", { name: "客户项目" }),
     ).not.toBeInTheDocument();
@@ -98,7 +103,17 @@ describe("SideNavigation", () => {
       within(navigation).getByRole("link", { name: "AI软件配置" }),
     ).toHaveAttribute("href", "/agents");
     expect(
-      within(navigation).getByRole("link", { name: "记忆模块" }),
+      within(navigation).getByRole("link", { name: "会话中心" }),
+    ).toHaveAttribute("href", "/sessions");
+    const auxiliary = navigation.querySelector<HTMLElement>(
+      '[data-navigation-group="auxiliary"]',
+    );
+    if (!auxiliary) throw new Error("The memory auxiliary group is missing");
+    expect(auxiliaryNavigationItems).toEqual([
+      { id: "memory", path: "/memory", label: "记忆模块" },
+    ]);
+    expect(
+      within(auxiliary).getByRole("link", { name: "记忆模块" }),
     ).toHaveAttribute("href", "/memory");
     expect(
       within(navigation).queryByRole("link", { name: "Agent 目录" }),
@@ -279,6 +294,7 @@ describe("SideNavigation", () => {
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     const toggle = within(navigation).getByRole("button", { name: "配置管理" });
     const memory = within(navigation).getByRole("link", { name: "记忆模块" });
+    const sessions = within(navigation).getByRole("link", { name: "会话中心" });
     const agents = within(navigation).getByRole("link", { name: "AI软件配置" });
     const health = within(navigation).getByRole("link", { name: "运行状态" });
 
@@ -287,7 +303,7 @@ describe("SideNavigation", () => {
 
     toggle.focus();
     await user.keyboard("{ArrowDown}");
-    expect(memory).toHaveFocus();
+    expect(sessions).toHaveFocus();
     await user.keyboard("{ArrowUp}");
     expect(toggle).toHaveFocus();
     await user.keyboard("{Home}");
@@ -298,6 +314,8 @@ describe("SideNavigation", () => {
     expect(memory).toHaveFocus();
 
     toggle.focus();
+    await user.tab();
+    expect(sessions).toHaveFocus();
     await user.tab();
     expect(memory).toHaveFocus();
   });

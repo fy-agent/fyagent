@@ -151,11 +151,12 @@ initial-chunk budget; do not raise Vite's warning threshold to hide a
 monolithic entry. Vendor budgets must name their source and remain separate
 from the app route budget.
 
-The browser gate also boots the production bundle and visits all nine routes
+The browser gate also boots the production bundle and visits all nine registered routes
 through `config/playwright.performance.config.ts` (the `production boots` case).
 Passing Vite dev-server tests or producing a manifest does not prove bundled
 module initialization. `config/vite.config.ts` uses Rollup's dependency-aware named
-entry groups, not a catch-all node_modules path partition that can split React
+entry groups; route-only Radix Dialog/Popover/Select/Tabs stay outside the eager
+vendor group. It does not use a catch-all node_modules path partition that can split React
 initialization from its helpers and produce cross-chunk cycles.
 
 For navigation profiling run `mise exec -- pnpm exec playwright test --config

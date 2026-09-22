@@ -1,0 +1,18 @@
+[[permission]]
+identifier = "allow-session-migration"
+description = "Preview a local session as a final-only transcript, export it to a package file, and restore a package into a verified target CLI's own store. No credential, provider configuration, or inference call is reachable; every restore writes through the target's own import path and records what it could actually prove."
+commands.allow = [
+  "preview_session_migration",
+  "export_session_package",
+  "read_session_package",
+  "probe_local_provider",
+  "get_release_capability_matrix",
+  "restore_session_package",
+  "verify_native_readback",
+  "list_restore_attempts",
+  "reconcile_restore_attempts",
+  "record_user_attestation",
+  "open_restored_session",
+  "pick_session_package_file",
+  "pick_session_package_export_path",
+]

@@ -1,0 +1,5 @@
+{
+  "exit_code": 1,
+  "stdout": "{\"type\":\"error\",\"timestamp\":1790022040986,\"sessionID\":\"ses_00112233445566778899aabbccddeeff\",\"error\":{\"name\":\"APIError\",\"data\":{\"message\":\"loopback capture only; no inference\",\"statusCode\":400,\"isRetryable\":false,\"responseHeaders\":{\"content-type\":\"application/json\",\"date\":\"Mon, 21 Sep 2026 20:20:40 GMT\",\"server\":\"BaseHTTP/0.6 Python/3.14.6\"},\"responseBody\":\"{\\\"error\\\":{\\\"type\\\":\\\"invalid_request_error\\\",\\\"message\\\":\\\"loopback capture only; no inference\\\"}}\",\"metadata\":{\"url\":\"http://127.0.0.1:62993/v1/chat/completions\"}}}}\n",
+  "stderr": ""
+}

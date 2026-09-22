@@ -178,6 +178,13 @@ bindings together with their full route. Private binary backups stay lossless.
   device; they must be skipped on sync export and preserved on sync import
   together. Token material never has a SQLite column. Domain meaning of the
   rows is owned by [Managed Auth Core](./managed-auth.md).
+- Session restore receipts (`session_restore_attempts`) are device-local and
+  contain no conversation bodies. The forward migration after customer-project
+  retirement creates their table. SQL exports omit receipts; SQL/sync imports
+  and binary restores preserve the live device's receipts instead of replaying
+  imported or backed-up target mappings. Historical project archiving must
+  complete before live replacement even when a receipt snapshot is preserved.
+  Domain meaning is owned by [Session Migration](./session-migration.md).
 - Periodic pruning, rollup, backup retention, and incremental vacuum are
   maintenance. Disabling automatic backup must not disable unrelated pruning
   or rollup work.

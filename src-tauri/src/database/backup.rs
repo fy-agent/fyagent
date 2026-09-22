@@ -91,7 +91,14 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "managed_auth_connections",
     "managed_auth_migrations",
     "provider_credentials",
+    "session_restore_attempts",
 ];
+
+/// Session migration receipts are bound to one installation and one target
+/// store. Copying them to another device would let a foreign row occupy a
+/// local idempotency slot, so they are excluded from ordinary SQL export and
+/// preserved on ordinary SQL import as well, not only on sync.
+const LOCAL_ONLY_RECEIPT_TABLES: &[&str] = &["session_restore_attempts"];
 
 /// Tables whose local data is preserved (restored from local snapshot) during WebDAV import.
 /// Excludes ephemeral tables like provider_health that can safely rebuild at runtime.
@@ -109,6 +116,7 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "managed_auth_connections",
     "managed_auth_migrations",
     "provider_credentials",
+    "session_restore_attempts",
 ];
 
 /// A database backup entry for the UI
@@ -125,7 +133,14 @@ impl Database {
     pub fn export_sql_string(&self) -> Result<String, AppError> {
         let snapshot = self.snapshot_to_memory()?;
         Self::sanitize_provider_export(&snapshot)?;
-        Self::dump_sql(&snapshot, &["provider_credentials", "proxy_live_backup"])
+        Self::dump_sql(
+            &snapshot,
+            &[
+                "provider_credentials",
+                "proxy_live_backup",
+                "session_restore_attempts",
+            ],
+        )
     }
 
     /// Export SQL for sync (WebDAV), skipping local-only tables' data
@@ -226,7 +241,7 @@ impl Database {
 
     /// 从 SQL 字符串导入，返回生成的备份 ID（若无备份则为空字符串）
     pub fn import_sql_string(&self, sql_raw: &str) -> Result<String, AppError> {
-        self.import_sql_string_inner(sql_raw, &[])
+        self.import_sql_string_inner(sql_raw, LOCAL_ONLY_RECEIPT_TABLES)
     }
 
     /// Import SQL generated for sync, then restore local-only tables from the
@@ -291,15 +306,7 @@ impl Database {
         Self::assert_no_persistent_triggers(&temp_conn)?;
         self.archive_retired_customer_project_data_before_replace()?;
 
-        // 使用 Backup 将临时库原子写回主库
-        {
-            let mut main_conn = lock_conn!(self.conn);
-            let backup = Backup::new(&temp_conn, &mut main_conn)
-                .map_err(|e| AppError::Database(e.to_string()))?;
-            backup
-                .step(-1)
-                .map_err(|e| AppError::Database(e.to_string()))?;
-        }
+        self.replace_from_candidate_preserving_receipts(&temp_conn)?;
 
         let backup_id = backup_path
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
@@ -569,6 +576,30 @@ impl Database {
             }
         }
         archived
+    }
+
+    /// Publish a validated candidate without losing receipt claims or updates
+    /// made during import preparation. Hold the live connection lock across
+    /// both the final receipt copy and the atomic SQLite backup replacement.
+    fn replace_from_candidate_preserving_receipts(
+        &self,
+        candidate: &Connection,
+    ) -> Result<(), AppError> {
+        let mut main_conn = lock_conn!(self.conn);
+        for table in LOCAL_ONLY_RECEIPT_TABLES {
+            if !Self::table_exists(&main_conn, table)? || !Self::table_exists(candidate, table)? {
+                return Err(AppError::Database(
+                    "session_restore_receipts_missing".into(),
+                ));
+            }
+        }
+        Self::restore_tables(&main_conn, candidate, LOCAL_ONLY_RECEIPT_TABLES)?;
+        let backup = Backup::new(candidate, &mut main_conn)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        backup
+            .step(-1)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
     }
 
     fn restore_tables(
@@ -1069,15 +1100,9 @@ impl Database {
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
             .unwrap_or_default();
 
-        // Step 2: Open the backup file and restore it to the main database
-        {
-            let mut main_conn = lock_conn!(self.conn);
-            let backup = Backup::new(&candidate, &mut main_conn)
-                .map_err(|e| AppError::Database(e.to_string()))?;
-            backup
-                .step(-1)
-                .map_err(|e| AppError::Database(e.to_string()))?;
-        }
+        // A private backup remains lossless, but its native restore journal
+        // cannot roll back external provider stores. Keep the live journal.
+        self.replace_from_candidate_preserving_receipts(&candidate)?;
 
         self.ensure_model_pricing_seeded()?;
 

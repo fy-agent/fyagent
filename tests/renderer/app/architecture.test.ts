@@ -483,7 +483,7 @@ describe("FyAgent single renderer architecture boundary", () => {
     ).toEqual([]);
   });
 
-  it("loads all eight primary route entries through literal dynamic imports", () => {
+  it("loads all nine registered route entries through literal dynamic imports", () => {
     const pages = fs.readFileSync(
       path.join(sourceRoot, "app/primaryPages.tsx"),
       "utf8",
@@ -496,6 +496,7 @@ describe("FyAgent single renderer architecture boundary", () => {
       "../pages/skills/Page",
       "../pages/mcp/Page",
       "../pages/prompts/Page",
+      "../pages/sessions/Page",
       "../pages/memory/Page",
     ];
 

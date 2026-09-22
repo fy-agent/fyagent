@@ -1,0 +1,8 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\n  \"tool\": \"jev_decide\",\n  \"model\": \"typesafe-ai/jev\",\n  \"provider\": \"vercel\",\n  \"recommendation\": {\n    \"selected\": \"existing_sqlite\",\n    \"escaped\": false,\n    \"confidence\": 0.87,\n    \"probabilities\": {\n      \"investigate\": 0.03,\n      \"existing_sqlite\": 0.9,\n      \"ask_user\": 0,\n      \"sidecar\": 0.07,\n      \"none\": 0\n    }\n  },\n  \"requirements_checked\": 3,\n  \"checks\": [\n    {\n      \"candidate\": \"sidecar\",\n      \"requirement\": 0,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"sidecar\",\n      \"requirement\": 1,\n      \"answer\": \"contradicted\"\n    },\n    {\n      \"candidate\": \"sidecar\",\n      \"requirement\": 2,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"existing_sqlite\",\n      \"requirement\": 0,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"existing_sqlite\",\n      \"requirement\": 1,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"existing_sqlite\",\n      \"requirement\": 2,\n      \"answer\": \"supported\"\n    }\n  ],\n  \"warnings\": [],\n  \"usage\": {\n    \"input_tokens\": 1817,\n    \"output_tokens\": 320\n  }\n}"
+    }
+  ]
+}

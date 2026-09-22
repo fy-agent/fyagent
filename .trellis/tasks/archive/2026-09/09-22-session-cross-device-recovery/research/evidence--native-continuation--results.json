@@ -1,0 +1,352 @@
+{
+  "verified_at": "2026-09-22",
+  "environment": "macOS; synthetic isolated stores; credentials excluded; loopback HTTP only; no paid inference; no Windows UAT",
+  "opencode": [
+    {
+      "variant": "default",
+      "version": "1.18.30",
+      "input": [
+        [
+          "user",
+          "  Unanswered one\r\n"
+        ],
+        [
+          "user",
+          "Keep KITE-73 中文"
+        ],
+        [
+          "assistant",
+          "One final\r\n  "
+        ],
+        [
+          "assistant",
+          "Second final C:\\foo"
+        ],
+        [
+          "user",
+          "Trailing unanswered"
+        ]
+      ],
+      "import_exit": 0,
+      "export_exit": 0,
+      "export_exact": true,
+      "continue_exit": 1,
+      "continue_stdout": "{\"type\":\"error\",\"timestamp\":1790016209597,\"sessionID\":\"ses_d59f50ddd4c34c0bad6123daf5062318\",\"error\":{\"name\":\"UnknownError\",\"data\":{\"message\":\"Unexpected server error. Check server logs for details.\",\"ref\":\"err_c8197d9f\"}}}\n",
+      "captured_requests": [],
+      "no_source_model_or_account": true,
+      "local_endpoint_expected_400": false
+    },
+    {
+      "variant": "explicit-local",
+      "version": "1.18.30",
+      "input": [
+        [
+          "user",
+          "  Unanswered one\r\n"
+        ],
+        [
+          "user",
+          "Keep KITE-73 中文"
+        ],
+        [
+          "assistant",
+          "One final\r\n  "
+        ],
+        [
+          "assistant",
+          "Second final C:\\foo"
+        ],
+        [
+          "user",
+          "Trailing unanswered"
+        ]
+      ],
+      "import_exit": 0,
+      "export_exit": 0,
+      "export_exact": true,
+      "continue_exit": 1,
+      "continue_stdout": "{\"type\":\"error\",\"timestamp\":1790016212949,\"sessionID\":\"ses_112a3fc9ecb840e8ab66bbc9152ac8ca\",\"error\":{\"name\":\"APIError\",\"data\":{\"message\":\"synthetic capture complete; no inference\",\"statusCode\":400,\"isRetryable\":false,\"responseHeaders\":{\"content-type\":\"application/json\",\"date\":\"Mon, 21 Sep 2026 18:43:32 GMT\",\"server\":\"BaseHTTP/0.6 Python/3.9.6\"},\"responseBody\":\"{\\\"error\\\":{\\\"message\\\":\\\"synthetic capture complete; no inference\\\",\\\"type\\\":\\\"invalid_request_error\\\"}}\",\"metadata\":{\"url\":\"http://127.0.0.1:61955/v1/chat/completions\"}}}}\n",
+      "captured_requests": [
+        {
+          "path": "/v1/chat/completions",
+          "model": "local",
+          "history_projection": [
+            [
+              "user",
+              "  Unanswered one\r\n"
+            ],
+            [
+              "user",
+              "Keep KITE-73 中文"
+            ],
+            [
+              "assistant",
+              "One final\r\n  "
+            ],
+            [
+              "assistant",
+              "Second final C:\\foo"
+            ],
+            [
+              "user",
+              "Trailing unanswered"
+            ]
+          ],
+          "history_exact": true,
+          "total_user_assistant_messages": 6
+        }
+      ],
+      "no_source_model_or_account": true,
+      "local_endpoint_expected_400": true
+    },
+    {
+      "variant": "target-local-header",
+      "version": "1.18.30",
+      "input": [
+        [
+          "user",
+          "  Unanswered one\r\n"
+        ],
+        [
+          "user",
+          "Keep KITE-73 中文"
+        ],
+        [
+          "assistant",
+          "One final\r\n  "
+        ],
+        [
+          "assistant",
+          "Second final C:\\foo"
+        ],
+        [
+          "user",
+          "Trailing unanswered"
+        ]
+      ],
+      "import_exit": 0,
+      "export_exit": 0,
+      "export_exact": true,
+      "continue_exit": 1,
+      "continue_stdout": "{\"type\":\"error\",\"timestamp\":1790016340823,\"sessionID\":\"ses_f8dcad09b7ed4878a2970cc59a571a8d\",\"error\":{\"name\":\"APIError\",\"data\":{\"message\":\"synthetic capture complete; no inference\",\"statusCode\":400,\"isRetryable\":false,\"responseHeaders\":{\"content-type\":\"application/json\",\"date\":\"Mon, 21 Sep 2026 18:45:40 GMT\",\"server\":\"BaseHTTP/0.6 Python/3.9.6\"},\"responseBody\":\"{\\\"error\\\":{\\\"message\\\":\\\"synthetic capture complete; no inference\\\",\\\"type\\\":\\\"invalid_request_error\\\"}}\",\"metadata\":{\"url\":\"http://127.0.0.1:62396/v1/chat/completions\"}}}}\n",
+      "captured_requests": [
+        {
+          "path": "/v1/chat/completions",
+          "model": "local",
+          "history_projection": [
+            [
+              "user",
+              "  Unanswered one\r\n"
+            ],
+            [
+              "user",
+              "Keep KITE-73 中文"
+            ],
+            [
+              "assistant",
+              "One final\r\n  "
+            ],
+            [
+              "assistant",
+              "Second final C:\\foo"
+            ],
+            [
+              "user",
+              "Trailing unanswered"
+            ]
+          ],
+          "history_exact": true,
+          "total_user_assistant_messages": 6
+        }
+      ],
+      "no_source_model_or_account": true,
+      "local_endpoint_expected_400": true
+    }
+  ],
+  "hermes": [
+    {
+      "scope": "synthetic isolated HERMES_HOME, official import/export; no inference",
+      "input": [
+        [
+          "user",
+          "KITE-73"
+        ],
+        [
+          "assistant",
+          "答复 C:\\temp\\x"
+        ],
+        [
+          "user",
+          "Second?"
+        ],
+        [
+          "assistant",
+          "second final"
+        ]
+      ],
+      "import_exit": 0,
+      "native_id": "20260922_024204_c46f3f",
+      "export_exit": 0,
+      "projection": [
+        [
+          "user",
+          "KITE-73"
+        ],
+        [
+          "assistant",
+          "答复 C:\\temp\\x"
+        ],
+        [
+          "user",
+          "Second?"
+        ],
+        [
+          "assistant",
+          "second final"
+        ]
+      ],
+      "exact": true,
+      "variant": "alternating",
+      "model": null,
+      "model_config": null,
+      "nonce_location": "origin_json.imported_from.foreign_session_id"
+    },
+    {
+      "scope": "synthetic isolated HERMES_HOME, official import/export; no inference",
+      "input": [
+        [
+          "user",
+          " First\r\n\n"
+        ],
+        [
+          "user",
+          "Second"
+        ],
+        [
+          "assistant",
+          " Third  "
+        ],
+        [
+          "assistant",
+          "Fourth"
+        ],
+        [
+          "user",
+          "Unanswered"
+        ]
+      ],
+      "import_exit": 0,
+      "native_id": "20260922_024205_70eba2",
+      "export_exit": 0,
+      "projection": [
+        [
+          "user",
+          "First\n\nSecond"
+        ],
+        [
+          "assistant",
+          "Third\n\nFourth"
+        ],
+        [
+          "user",
+          "Unanswered"
+        ]
+      ],
+      "exact": false,
+      "variant": "consecutive",
+      "model": null,
+      "model_config": null,
+      "nonce_location": "origin_json.imported_from.foreign_session_id"
+    },
+    {
+      "scope": "official installed Python SessionDB create/append and resume projection + separate official CLI export; no inference",
+      "session_id": "fyagent_018abb0709634ed0b050f58651aca0ef",
+      "input": [
+        [
+          "user",
+          " First\r\n\n"
+        ],
+        [
+          "user",
+          "Second"
+        ],
+        [
+          "assistant",
+          " Third  "
+        ],
+        [
+          "assistant",
+          "Fourth"
+        ],
+        [
+          "user",
+          "Unanswered"
+        ]
+      ],
+      "export_exit": 0,
+      "export_projection": [
+        [
+          "user",
+          " First\r\n\n"
+        ],
+        [
+          "user",
+          "Second"
+        ],
+        [
+          "assistant",
+          " Third  "
+        ],
+        [
+          "assistant",
+          "Fourth"
+        ],
+        [
+          "user",
+          "Unanswered"
+        ]
+      ],
+      "resume_model_projection": [
+        [
+          "user",
+          "First\n\nSecond"
+        ],
+        [
+          "assistant",
+          "Third\nFourth"
+        ],
+        [
+          "user",
+          "Unanswered"
+        ]
+      ],
+      "resume_display_projection": [
+        [
+          "user",
+          "First"
+        ],
+        [
+          "user",
+          "Second"
+        ],
+        [
+          "assistant",
+          "Third"
+        ],
+        [
+          "assistant",
+          "Fourth"
+        ],
+        [
+          "user",
+          "Unanswered"
+        ]
+      ],
+      "model": null,
+      "model_config": null,
+      "export_exact": true,
+      "resume_display_exact": false,
+      "resume_model_exact": false
+    }
+  ]
+}

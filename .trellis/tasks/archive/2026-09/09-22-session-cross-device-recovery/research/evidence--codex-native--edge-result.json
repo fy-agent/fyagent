@@ -1,0 +1,62 @@
+{
+  "synthetic_only": true,
+  "model_called": false,
+  "cli_version": "0.154.0",
+  "visible_items": [
+    [
+      {
+        "type": "userMessage",
+        "id": "item-1",
+        "clientId": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "  raw\r\nD:\\work\\ 🪁  ",
+            "text_elements": []
+          }
+        ]
+      },
+      {
+        "type": "agentMessage",
+        "id": "item-2",
+        "text": "first final",
+        "phase": "final_answer",
+        "memoryCitation": null,
+        "delivery": null,
+        "questions": null
+      },
+      {
+        "type": "agentMessage",
+        "id": "item-3",
+        "text": "second final",
+        "phase": "final_answer",
+        "memoryCitation": null,
+        "delivery": null,
+        "questions": null
+      }
+    ],
+    [
+      {
+        "type": "userMessage",
+        "id": "item-4",
+        "clientId": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "empty final question",
+            "text_elements": []
+          }
+        ]
+      }
+    ],
+    [
+      {
+        "type": "userMessage",
+        "id": "item-5",
+        "clientId": null,
+        "content": []
+      }
+    ]
+  ],
+  "finding": "CRLF/path/emoji/spaces and multiple finals exact; empty assistant omitted; whitespace-only user has empty content. Adapter rejects the latter before write."
+}

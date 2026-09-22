@@ -17,6 +17,7 @@ const navigationContract = [
   { path: "/skills", label: "Skills 管理" },
   { path: "/mcp", label: "MCP 管理" },
   { path: "/prompts", label: "提示词管理" },
+  { path: "/sessions", label: "会话中心" },
   { path: "/memory", label: "记忆模块" },
 ] as const;
 
@@ -36,6 +37,7 @@ const primaryControlTestIds = [
   "#/skills",
   "#/mcp",
   "#/prompts",
+  "#/sessions",
   "#/memory",
 ] as const;
 
@@ -129,7 +131,7 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
     navigation.locator(
       ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
     ),
-  ).toHaveCount(5);
+  ).toHaveCount(6);
   await expect(
     navigation.getByRole("link", { name: "Agent 目录" }),
   ).toHaveCount(0);

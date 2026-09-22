@@ -1,0 +1,8 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\n  \"tool\": \"jev_decide\",\n  \"model\": \"typesafe-ai/jev\",\n  \"provider\": \"vercel\",\n  \"recommendation\": {\n    \"selected\": \"evidence_gated\",\n    \"escaped\": false,\n    \"confidence\": 1,\n    \"probabilities\": {\n      \"ask_user\": 0,\n      \"investigate\": 0,\n      \"evidence_gated\": 1,\n      \"none\": 0,\n      \"protocol_success\": 0,\n      \"all_or_nothing\": 0\n    }\n  },\n  \"requirements_checked\": 3,\n  \"checks\": [\n    {\n      \"candidate\": \"protocol_success\",\n      \"requirement\": 0,\n      \"answer\": \"contradicted\"\n    },\n    {\n      \"candidate\": \"protocol_success\",\n      \"requirement\": 1,\n      \"answer\": \"contradicted\"\n    },\n    {\n      \"candidate\": \"protocol_success\",\n      \"requirement\": 2,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"evidence_gated\",\n      \"requirement\": 0,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"evidence_gated\",\n      \"requirement\": 1,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"evidence_gated\",\n      \"requirement\": 2,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"all_or_nothing\",\n      \"requirement\": 0,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"all_or_nothing\",\n      \"requirement\": 1,\n      \"answer\": \"contradicted\"\n    },\n    {\n      \"candidate\": \"all_or_nothing\",\n      \"requirement\": 2,\n      \"answer\": \"supported\"\n    }\n  ],\n  \"warnings\": [],\n  \"usage\": {\n    \"input_tokens\": 2125,\n    \"output_tokens\": 461\n  }\n}"
+    }
+  ]
+}

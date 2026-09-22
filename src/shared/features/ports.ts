@@ -291,6 +291,7 @@ export interface FeaturePorts {
   mcp: McpPort;
   prompts: PromptsPort;
   memory: MemoryPort;
+  sessions: import("./session-migration").SessionMigrationPort;
   settings: SettingsPort;
   tooling: GrokToolingPort;
 }

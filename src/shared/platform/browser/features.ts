@@ -209,5 +209,23 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       installOfficialNpm: rejectNativeOnly,
       installNative: rejectNativeOnly,
     },
+    sessions: {
+      listSessions: rejectNativeOnly,
+      getSessionMessages: rejectNativeOnly,
+      previewSessionMigration: rejectNativeOnly,
+      exportSessionPackage: rejectNativeOnly,
+      readSessionPackage: rejectNativeOnly,
+      probeLocalProvider: rejectNativeOnly,
+      getReleaseCapabilityMatrix: rejectNativeOnly,
+      restoreSessionPackage: rejectNativeOnly,
+      verifyNativeReadback: rejectNativeOnly,
+      listRestoreAttempts: rejectNativeOnly,
+      reconcileRestoreAttempts: rejectNativeOnly,
+      recordUserAttestation: rejectNativeOnly,
+      openRestoredSession: rejectNativeOnly,
+      pickDirectory: rejectNativeOnly,
+      pickPackageFile: rejectNativeOnly,
+      pickExportPath: rejectNativeOnly,
+    },
   };
 }
