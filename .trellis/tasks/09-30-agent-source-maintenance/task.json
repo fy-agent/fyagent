@@ -15,8 +15,8 @@
   "branch": "maintenance/agent-sources-20260929",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
-  "pr_url": null,
+  "commit": "8566e62cd221a2b628fa9d7cef5abd0ba8125e43",
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/199",
   "subtasks": [],
   "children": [],
   "parent": null,
@@ -34,13 +34,13 @@
   "meta": {
     "baseline_sha": "1a4a1cfa2790528a989995fac50469061a4d78ae",
     "verified_source_blob": "173e7836410ebeadd55f710c6e3ead57b38e37b0",
-    "delivery_state": "in_progress_pr_pending",
+    "delivery_state": "merged_release_0.4.9_pending",
     "remote_issue_number": null,
-    "remote_branch_created": false,
-    "remote_pr_created": false,
+    "remote_branch_created": true,
+    "remote_pr_created": true,
     "release_published": false,
     "baseline_workspace_version": "0.4.7",
-    "proposed_patch_version": "0.4.8",
+    "proposed_patch_version": "0.4.9",
     "version_bump_applied": true,
     "version_policy": "Re-read main, tags and releases before choosing the next unused stable patch; use the canonical version tool. Never move an existing published release.",
     "blockers": [
@@ -49,6 +49,12 @@
     ],
     "draft_scope": "Hermes 官方 release 版本、npm 官方/镜像回退状态、OpenCode CLI 双版本线、OpenCode Desktop 去 GitHub 版本与 v2 Windows 路径、#198 Claude Homebrew prefix、user-helper Linux 可编译",
     "imported_from_bundle": "09-29-agent-source-maintenance",
-    "source_matrix": "research/source-matrix-20260930.md"
+    "source_matrix": "research/source-matrix-20260930.md",
+    "release_history": [
+      "PR #199 merged via merge queue as 8566e62c (2026-09-30 04:04 UTC+8)",
+      "preflight run 36624351650 on 8566e62c succeeded",
+      "v0.4.8 annotated tag -> 8566e62c; formal run 36629904293 stopped at 'Fail closed before the one-time publish': docs/release-notes/v0.4.8-en.md missing; no Release created; tag left unchanged",
+      "0.4.9 prepared with required release notes"
+    ]
   }
 }

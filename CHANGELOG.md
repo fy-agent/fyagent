@@ -8,6 +8,15 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9] - 2026-09-30
+
+### Fixed
+
+- Add the required English and Chinese release notes for the formal release.
+  The `v0.4.8` tag exists, but its formal release run stopped before
+  publication because `docs/release-notes/v0.4.8-en.md` was missing; the tag is
+  left unchanged and 0.4.9 publishes the same product changes as 0.4.8.
+
 ## [0.4.8] - 2026-09-30
 
 Versions 0.4.6 and 0.4.7 were prepared on `main` but never published as GitHub
