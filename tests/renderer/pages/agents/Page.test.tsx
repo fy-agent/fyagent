@@ -254,6 +254,7 @@ function configuredPorts(): FeaturePorts {
     latestVersion: "1.0.6",
     distributionOwner: "native_internal" as const,
     latestSource: "native_internal" as const,
+    latestAuthority: null,
     installedButBroken: false,
     error: null,
   }));

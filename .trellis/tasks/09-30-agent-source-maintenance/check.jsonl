@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "保持服务层、模块与可见性边界"}
+{"file": ".trellis/spec/backend/reuse.md", "reason": "优先复用已有 owner、依赖和 adapter"}
+{"file": ".trellis/spec/backend/external-agent-sources.md", "reason": "产品来源、版本和完整性准入的语义 owner"}
+{"file": ".trellis/spec/backend/claude-code-cli.md", "reason": "Claude 安装归属与验证边界"}
+{"file": ".trellis/spec/backend/github-release-workflow.md", "reason": "正式发布身份和资产门禁"}
+{"file": ".trellis/spec/backend/github-merge-governance.md", "reason": "受保护主线和合并门禁"}
+{"file": ".trellis/tasks/09-30-agent-source-maintenance/research.md", "reason": "本轮已核实证据及明确缺口"}

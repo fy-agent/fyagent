@@ -423,7 +423,9 @@ function GrokOwnerPanel({ port }: { port: GrokToolingPort }) {
           <dd>{snapshot.localVersion ?? "未安装"}</dd>
         </div>
         <div>
-          <dt>{grokLatestLabel(snapshot.latestSource)}</dt>
+          <dt>
+            {grokLatestLabel(snapshot.latestSource, snapshot.latestAuthority)}
+          </dt>
           <dd>{snapshot.latestVersion ?? "未确认"}</dd>
         </div>
       </dl>

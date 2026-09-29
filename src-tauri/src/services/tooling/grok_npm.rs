@@ -32,6 +32,35 @@ pub struct NpmDependency {
     pub unpacked_size: u64,
 }
 
+/// Which registry supplied the concrete npm `latest` version.
+///
+/// Only registry.npmjs.org is the official authority. A reviewed mirror is a
+/// fallback for reachability: it may lag or carry a stale dist-tag, so a
+/// mirror-selected version never claims to be the official latest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NpmVersionAuthority {
+    Official,
+    MirrorFallback,
+}
+
+impl NpmVersionAuthority {
+    pub(crate) fn for_registry(registry: GrokNpmRegistry) -> Self {
+        if registry == GrokNpmRegistry::Npmjs {
+            Self::Official
+        } else {
+            Self::MirrorFallback
+        }
+    }
+
+    /// Stable wire value shared with the renderer's closed parser.
+    pub(crate) const fn wire(self) -> &'static str {
+        match self {
+            Self::Official => "official",
+            Self::MirrorFallback => "mirror_fallback",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GrokNpmManifest {
     pub(super) version: String,
@@ -42,9 +71,24 @@ pub(crate) struct GrokNpmManifest {
     pub(super) platform_size: u64,
     pub(super) dependencies: Vec<NpmDependency>,
     pub(super) total_unpacked_size: u64,
+    pub(super) authority: NpmVersionAuthority,
 }
 
+pub(crate) const MIRROR_FALLBACK_VERSION_SUFFIX: &str = "（镜像版本，官方最新未确认）";
+
 impl GrokNpmManifest {
+    /// Install-confirmation label for the exact version. A mirror-selected
+    /// version stays installable (exact argv and integrity are unchanged) but
+    /// is never presented as the confirmed official latest.
+    pub(crate) fn confirmation_version_label(&self) -> String {
+        match self.authority {
+            NpmVersionAuthority::Official => self.version.clone(),
+            NpmVersionAuthority::MirrorFallback => {
+                format!("{}{MIRROR_FALLBACK_VERSION_SUFFIX}", self.version)
+            }
+        }
+    }
+
     pub(crate) fn version(&self) -> &str {
         &self.version
     }
@@ -104,7 +148,11 @@ pub(crate) async fn resolve_published_manifest(
     Err(last_error)
 }
 
-pub(super) async fn fetch_published_version(package: &str) -> Option<String> {
+/// Concrete `latest` version from the first usable registry in authority order,
+/// together with whether it came from npmjs or a mirror fallback.
+pub(super) async fn fetch_published_version(
+    package: &str,
+) -> Option<(String, NpmVersionAuthority)> {
     let client = metadata_client()?;
     for registry in VERSION_AUTHORITY {
         let Some(json) = fetch_json(&client, registry, package, "latest").await else {
@@ -114,7 +162,10 @@ pub(super) async fn fetch_published_version(package: &str) -> Option<String> {
             continue;
         };
         if GrokNpmInstallPlan::for_execution(version, GrokNpmRegistry::Npmjs, false).is_ok() {
-            return Some(version.to_string());
+            return Some((
+                version.to_string(),
+                NpmVersionAuthority::for_registry(registry),
+            ));
         }
     }
     None
@@ -131,6 +182,7 @@ pub(super) fn install_command_for_version(version: &str) -> Option<String> {
             platform_size: 30_000_000,
             dependencies: Vec::new(),
             total_unpacked_size: 30_020_000,
+            authority: NpmVersionAuthority::Official,
         },
         GrokNpmRegistry::Tencent,
         false,
@@ -286,6 +338,7 @@ fn parse_manifest_for(
         platform_size,
         dependencies: resolved_dependencies,
         total_unpacked_size,
+        authority: NpmVersionAuthority::Official,
     })
 }
 
@@ -333,15 +386,20 @@ pub(super) fn plan_for_registry(
     Ok(plan)
 }
 
-fn metadata_client() -> Option<reqwest::Client> {
-    let builder = reqwest::Client::builder()
-        .https_only(true)
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(METADATA_TIMEOUT);
-    crate::proxy::http_client::apply_installer_proxy(builder)
+/// HTTPS-only, no-redirect, bounded-timeout metadata client routed through the
+/// installer proxy adapter. Shared by npm and Hermes release metadata reads.
+pub(super) fn metadata_client() -> Option<reqwest::Client> {
+    crate::proxy::http_client::apply_installer_proxy(metadata_client_builder())
         .ok()?
         .build()
         .ok()
+}
+
+pub(super) fn metadata_client_builder() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(METADATA_TIMEOUT)
 }
 
 #[cfg(test)]
@@ -484,6 +542,7 @@ async fn load_manifest_from_registry(
         platform_size,
         dependencies: resolved_dependencies,
         total_unpacked_size,
+        authority: NpmVersionAuthority::for_registry(registry),
     })
 }
 
@@ -1279,6 +1338,52 @@ mod tests {
     }
 
     #[test]
+    fn version_authority_is_official_only_for_npmjs() {
+        assert_eq!(
+            NpmVersionAuthority::for_registry(GrokNpmRegistry::Npmjs),
+            NpmVersionAuthority::Official
+        );
+        for mirror in [
+            GrokNpmRegistry::Tencent,
+            GrokNpmRegistry::Huawei,
+            GrokNpmRegistry::Npmmirror,
+        ] {
+            assert_eq!(
+                NpmVersionAuthority::for_registry(mirror),
+                NpmVersionAuthority::MirrorFallback
+            );
+        }
+        assert_eq!(NpmVersionAuthority::Official.wire(), "official");
+        assert_eq!(
+            NpmVersionAuthority::MirrorFallback.wire(),
+            "mirror_fallback"
+        );
+        assert_eq!(VERSION_AUTHORITY[0], GrokNpmRegistry::Npmjs);
+    }
+
+    #[test]
+    fn mirror_fallback_manifest_keeps_exact_version_argv_and_integrity_checks() {
+        let json = format!(
+            r#"{{"channel":"stable","package":"@xai-official/grok","version":"1.0.43","integrity":{{"@xai-official/grok":"{sha}","{platform}":"{sha}"}}}}"#,
+            sha = fixture_sha512(),
+            platform = current_platform_package().expect("platform")
+        );
+        let mut manifest = parse_manifest(&json).expect("manifest");
+        manifest.authority = NpmVersionAuthority::MirrorFallback;
+        let plan = plan_for_registry(&manifest, GrokNpmRegistry::Tencent, false).expect("plan");
+        let argv = plan.npm_argv_for(OfficialNpmTool::Grok);
+        assert!(argv.contains(&"@xai-official/grok@1.0.43".to_string()));
+        assert!(!argv.iter().any(|arg| arg.contains("@latest")));
+        assert!(manifest.package_integrity().is_some());
+        assert_eq!(
+            manifest.confirmation_version_label(),
+            "1.0.43（镜像版本，官方最新未确认）"
+        );
+        manifest.authority = NpmVersionAuthority::Official;
+        assert_eq!(manifest.confirmation_version_label(), "1.0.43");
+    }
+
+    #[test]
     fn manifest_calculates_total_unpacked_size_and_3x_reserve() {
         let hash = fixture_sha512();
         let platform = current_platform_package().expect("platform");
@@ -1337,6 +1442,7 @@ mod tests {
             platform_size: 2000,
             dependencies: Vec::new(),
             total_unpacked_size: 3000,
+            authority: NpmVersionAuthority::MirrorFallback,
         };
         let claude_plan = plan_for_registry(&claude_manifest, GrokNpmRegistry::Tencent, false)
             .expect("claude plan");

@@ -57,7 +57,7 @@ remain backend evidence and are projected only through lifecycle capabilities.
 | QoderWork CN | Reviewed first-party `/qoder-work-cn/releases/latest/` aliases plus same-host Electron-builder feed. Install/launch only; FyAgent update disabled. |
 | TRAE Work CN | `data.solo` with `region=cn`; never TRAE Code or `data.manifest`. Comparable local version is bounded `tronBuildVersion`. |
 | WorkBuddy | Closed `/v2/update` platform IDs and official download host. macOS rewrites only the validated terminal `.zip` suffix to `.dmg`. |
-| OpenCode Desktop | Reviewed locale-neutral stable Desktop aliases and closed installed identity. Windows x64 uses `windows-x64-nsis`; GitHub latest is display-only. No public OpenCode CLI installer. |
+| OpenCode Desktop | Reviewed locale-neutral stable Desktop aliases and closed installed identity. Windows x64 uses `windows-x64-nsis`. The aliases are versionless and may serve a different product line than GitHub Releases (since 2026-09 they serve v2 `2.0.19` while GitHub latest is `v1.18.33`), so GitHub latest is neither the display version nor the macOS expected release version. No public OpenCode CLI installer. |
 
 ### Official npm source boundary
 
@@ -83,6 +83,17 @@ remain backend evidence and are projected only through lifecycle capabilities.
 - Version authority is npmjs `/latest` first, then the reviewed mainland
   metadata chain. Installation may use only a registry whose exact root and
   platform metadata match the resolved manifest.
+- Only npmjs is the official version authority. A version selected by a mirror
+  (`tencent` / `huawei` / `npmmirror`) is `mirror_fallback`: mirrors can lag or
+  keep a stale `latest` dist-tag (observed 2026-09-30: npmmirror
+  `@xai-official/grok` `latest` pointed at unpublished `0.1.4` while npmjs was
+  `1.0.44`). The manifest and `ToolVersion.latest_authority`
+  (`official` / `mirror_fallback`, omitted for non-npm sources) carry that
+  state. The Grok panel titles a mirror fallback “镜像版本（官方最新未确认）” and the
+  npm install confirmation shows `{version}（镜像版本，官方最新未确认）` instead of
+  presenting it as official latest. The generic CLI readiness card does not yet
+  carry `latest_authority` (follow-up). Exact-version argv and integrity
+  checks are unchanged.
 - Formal Windows receives only the compact exact-version, registry and
   allow-scripts control through the ordinary-user helper. Development Windows
   composes the same live plan in-process; npm 12+ receives only
@@ -92,9 +103,26 @@ remain backend evidence and are projected only through lifecycle capabilities.
   env. It does not walk mise/nvm/fnm/Volta internals. When several copies are
   visible, the PATH-default installation is the selected owner.
 - CLI `ToolVersion.latest_version` remains live. Claude/Grok/Codex/Gemini/
-  OpenClaw use npm metadata, Hermes uses PyPI, and OpenCode may use GitHub as a
-  display fallback. Desktop products keep their vendor feeds. No reviewed CLI
-  version/hash JSON is compiled into the product.
+  OpenClaw use npm metadata. Desktop products keep their vendor feeds. No
+  reviewed CLI version/hash JSON is compiled into the product.
+- Hermes latest is the official release's product version: fixed
+  `NousResearch/hermes-agent` GitHub latest release (non-draft, non-prerelease,
+  dotted three-component numeric tag, `html_url` bound to that repository) ->
+  exact tag ->
+  that tag's `pyproject.toml` `[project]` `name = "hermes-agent"` stable
+  `version` (for example calendar tag `v2026.9.24` -> `0.21.5`, the value
+  `hermes --version` reports). `latest_source = "official_release"`. PyPI is
+  not an official install channel and lags (0.19.0 on 2026-09-30), the tag or
+  release title is not the product version, and mutable `main` is never read;
+  any failure is an unknown latest, never a PyPI fallback. Reads use the
+  installer-proxy HTTPS-only, no-redirect, 20 s metadata client and are bounded
+  to 1 MiB by declared length and streamed size.
+- OpenCode publishes two official CLI lines from `anomalyco/opencode`:
+  legacy `opencode-ai` (1.x, also the GitHub Releases line) and v2
+  `@opencode/cli` (2.x). The observed local major selects the line for display
+  only: major >= 2 reads `@opencode/cli` with no GitHub fallback; unknown,
+  absent or 1.x reads `opencode-ai` with the GitHub latest fallback. No
+  installation is migrated between lines.
 
 ### Desktop feeds and release capabilities
 
@@ -107,8 +135,8 @@ remain backend evidence and are projected only through lifecycle capabilities.
   runtime version.
 - A shorter WorkBuddy dotted marketing version may equal a longer remote
   product-version prefix. Same-length differing segments remain an update.
-- OpenCode GitHub latest failure must not hide a stable admitted source.
-  Windows ARM64 remains unsupported.
+- OpenCode Desktop resolution does not call GitHub at all; the stable alias
+  stays installable and versionless. Windows ARM64 remains unsupported.
 - Every request is HTTPS, without userinfo or explicit non-default port. Each
   redirect hop must match the product allowlist and bounded hop count; scheme
   downgrade or an unknown host fails closed.
@@ -130,14 +158,18 @@ Folder names and vendor configuration directories are not identity.
 | WorkBuddy | `com.tencent.workbuddy.mac` | Closed relative `WorkBuddy.exe`, ProductName and reviewed signer. |
 | QoderWork CN | `com.qoder.work.cn` | Closed QoderWork CN relative EXE names, ProductName and signer. |
 | TRAE Work CN | `cn.trae.solo.app` | Closed TRAE SOLO/Work CN relative EXE names, ProductName and signer. |
-| OpenCode | `ai.opencode.desktop` | `@opencode-aidesktop/OpenCode.exe` and installer-stub `OpenCode/OpenCode.exe`, ProductName `OpenCode`, reviewed signer `Anomaly Innovations, Inc https://anoma.ly/`, and exact/bounded-version Uninstall DisplayName. |
+| OpenCode | `ai.opencode.desktop` | v2 `@opencodedesktop/OpenCode.exe`, 1.x `@opencode-aidesktop/OpenCode.exe` and installer-stub `OpenCode/OpenCode.exe`, ProductName `OpenCode`, reviewed signer `Anomaly Innovations, Inc https://anoma.ly/`, and exact/bounded-version Uninstall DisplayName. |
 | Claude legacy identity | `com.anthropic.claudefordesktop` | Observation only; not an admitted Agent lifecycle target. Current Claude support is CLI-only. |
 
 - Windows installed-target identity is distinct from the downloaded installer
   leaf. A trusted current-user OpenCode install may be AMD64 at
   `%LOCALAPPDATA%\\Programs\\@opencode-aidesktop\\OpenCode.exe` while the
   official NSIS stub is i386 at `OpenCode/OpenCode.exe`; preserve both closed
-  relatives.
+  relatives. The v2 installer (Electron package `@opencode/desktop`,
+  `2.0.19`, same signer and ProductName, inspected offline on 2026-09-30 and not
+  yet verified on a Windows host) derives the per-user directory
+  `%LOCALAPPDATA%\\Programs\\@opencodedesktop\\OpenCode.exe`; it is admitted as a
+  third closed relative.
 - KnownPath `Missing` is dropped. Uninstall/App Paths entries remain hints and
   are inspected to the same closed PE identity before becoming candidates.
 - Uninstall `DisplayName` accepts a closed name exactly or `{name}
@@ -246,6 +278,12 @@ windows_relative_exes: &["OpenCode/OpenCode.exe"];
 if display_name != "OpenCode" { continue; }
 ```
 
+```text
+Hermes latest = PyPI hermes-agent            # lagging, not an official channel
+OpenCode Desktop display = GitHub latest     # alias serves another line
+npmmirror latest 0.1.4 -> "official latest"  # mirror dist-tag is not authority
+```
+
 ### Correct
 
 ```text
@@ -257,6 +295,7 @@ resolve live exact manifest
 
 ```rust
 windows_relative_exes: &[
+    "@opencodedesktop/OpenCode.exe",
     "@opencode-aidesktop/OpenCode.exe",
     "OpenCode/OpenCode.exe",
 ];

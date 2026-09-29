@@ -61,6 +61,12 @@ generic command execution capability is added.
   installation and its actual global prefix. Native, Homebrew and other
   package-manager ownership is not silently converted to npm. A same/newer
   installed version is not downgraded to an older published version.
+- A Homebrew directory label alone is not Homebrew package ownership. A
+  `prefix/bin/claude` resolving inside the same prefix's
+  `lib/node_modules/@anthropic-ai/claude-code/` is npm-owned, including its
+  native `bin/claude.exe` entry. Cellar/Caskroom targets, different prefixes
+  and other package-manager owners remain unsupported; the existing actual
+  npm-prefix and exact-version verification still apply.
 
 ### CLI discovery
 

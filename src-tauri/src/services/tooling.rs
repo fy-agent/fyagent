@@ -74,9 +74,10 @@ use versions::fetch_grok_latest_with_owner;
 use versions::{
     elevated_windows_tool_version_unavailable, extract_version, get_single_tool_version_impl,
 };
-pub(crate) use versions::{fetch_github_latest_version, FIXED_GITHUB_OPENCODE_REPO};
 #[cfg(test)]
-pub(crate) use versions::{github_latest_release_url, parse_github_latest_release_tag};
+pub(crate) use versions::{
+    github_latest_release_url, parse_github_latest_release_tag, FIXED_GITHUB_OPENCODE_REPO,
+};
 
 #[cfg(all(test, target_os = "macos"))]
 use discovery::is_conflicting;
@@ -114,6 +115,10 @@ pub struct ToolVersion {
     distribution_owner: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     latest_source: Option<String>,
+    /// `official` when npmjs confirmed the latest version, `mirror_fallback`
+    /// when only a reviewed mirror answered. Absent for non-npm sources.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_authority: Option<String>,
 }
 
 impl ToolVersion {
@@ -482,7 +487,7 @@ async fn formal_windows_grok_version() -> ToolVersion {
         Ok(result) => {
             let owner = result.owner.map(|owner| owner.as_str().to_string());
             let client = crate::proxy::http_client::get();
-            let (latest_version, _) =
+            let (latest_version, _, latest_authority) =
                 fetch_grok_latest_with_owner(&client, result.normalized_version.as_deref()).await;
             ToolVersion {
                 name: "grok".to_string(),
@@ -492,6 +497,7 @@ async fn formal_windows_grok_version() -> ToolVersion {
                 installed_but_broken: false,
                 distribution_owner: owner.clone(),
                 latest_source: owner,
+                latest_authority: latest_authority.map(|authority| authority.wire().to_string()),
             }
         }
         Err(error) => ToolVersion {
@@ -502,6 +508,7 @@ async fn formal_windows_grok_version() -> ToolVersion {
             installed_but_broken: false,
             distribution_owner: None,
             latest_source: None,
+            latest_authority: None,
         },
     }
 }

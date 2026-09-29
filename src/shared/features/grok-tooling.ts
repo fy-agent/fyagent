@@ -4,11 +4,16 @@ export const GROK_DISTRIBUTION_OWNERS = [
 ] as const;
 export type GrokDistributionOwner = (typeof GROK_DISTRIBUTION_OWNERS)[number];
 
+/** npmjs 确认的最新版本为 official；只有审核过的镜像能回答时为 mirror_fallback。 */
+export const GROK_LATEST_AUTHORITIES = ["official", "mirror_fallback"] as const;
+export type GrokLatestAuthority = (typeof GROK_LATEST_AUTHORITIES)[number];
+
 export interface GrokToolSnapshot {
   localVersion: string | null;
   latestVersion: string | null;
   distributionOwner: GrokDistributionOwner | null;
   latestSource: GrokDistributionOwner | null;
+  latestAuthority: GrokLatestAuthority | null;
   installedButBroken: boolean;
   error: string | null;
 }
@@ -49,6 +54,14 @@ function optionalOwner(value: unknown): GrokDistributionOwner | null {
   return value;
 }
 
+function optionalAuthority(value: unknown): GrokLatestAuthority | null {
+  if (value === undefined || value === null) return null;
+  if (!isOneOf(value, GROK_LATEST_AUTHORITIES)) {
+    throw new Error("Grok 安装状态不可用");
+  }
+  return value;
+}
+
 function optionalString(value: unknown): string | null {
   if (value === null) return null;
   if (typeof value !== "string") {
@@ -70,6 +83,7 @@ export function parseGrokToolSnapshot(value: unknown): GrokToolSnapshot {
       latestVersion: null,
       distributionOwner: null,
       latestSource: null,
+      latestAuthority: null,
       installedButBroken: false,
       error: null,
     };
@@ -85,7 +99,12 @@ export function parseGrokToolSnapshot(value: unknown): GrokToolSnapshot {
     "error",
     "installed_but_broken",
   ];
-  const allowed = new Set([...required, "distribution_owner", "latest_source"]);
+  const allowed = new Set([
+    ...required,
+    "distribution_owner",
+    "latest_source",
+    "latest_authority",
+  ]);
   if (
     !required.every((key) => Object.prototype.hasOwnProperty.call(grok, key)) ||
     Object.keys(grok).some((key) => !allowed.has(key)) ||
@@ -99,6 +118,7 @@ export function parseGrokToolSnapshot(value: unknown): GrokToolSnapshot {
     latestVersion: optionalString(grok.latest_version),
     distributionOwner: optionalOwner(grok.distribution_owner),
     latestSource: optionalOwner(grok.latest_source),
+    latestAuthority: optionalAuthority(grok.latest_authority),
     installedButBroken: grok.installed_but_broken,
     error: optionalString(grok.error),
   };
@@ -115,7 +135,13 @@ export function grokOwnerCopy(owner: GrokDistributionOwner | null): string {
   }
 }
 
-export function grokLatestLabel(source: GrokDistributionOwner | null): string {
+export function grokLatestLabel(
+  source: GrokDistributionOwner | null,
+  authority: GrokLatestAuthority | null = null,
+): string {
+  if (authority === "mirror_fallback") {
+    return "镜像版本（官方最新未确认）";
+  }
   switch (source) {
     case "native_internal":
       return "官方命令行最新";
