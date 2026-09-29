@@ -18,12 +18,14 @@ describe("Tauri Grok tooling port", () => {
         installed_but_broken: false,
         distribution_owner: "native_internal",
         latest_source: "native_internal",
+        latest_authority: "official",
       },
     ]);
     const port = createGrokToolingPort();
     await expect(port.getSnapshot()).resolves.toMatchObject({
       distributionOwner: "native_internal",
       latestSource: "native_internal",
+      latestAuthority: "official",
     });
     await expect(port.installOfficialNpm()).rejects.toThrow(
       "Direct tool installation without preflight is forbidden",

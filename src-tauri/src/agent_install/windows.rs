@@ -1352,7 +1352,11 @@ mod tests {
         assert_eq!(product.windows_product_names, &["OpenCode"]);
         assert_eq!(
             product.windows_relative_exes,
-            &["@opencode-aidesktop/OpenCode.exe", "OpenCode/OpenCode.exe",]
+            &[
+                "@opencodedesktop/OpenCode.exe",
+                "@opencode-aidesktop/OpenCode.exe",
+                "OpenCode/OpenCode.exe",
+            ]
         );
         assert_eq!(
             policy.signer_subjects,

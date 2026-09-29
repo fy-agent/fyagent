@@ -243,7 +243,7 @@ async fn inspect_preflight(
                 .await?;
                 (
                     InstallRuntime::NodeNpm,
-                    manifest.version().to_string(),
+                    manifest.confirmation_version_label(),
                     Some(total_size),
                     PreparedPlanPayload::CliNpm(manifest),
                     checked,

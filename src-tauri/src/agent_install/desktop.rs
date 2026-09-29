@@ -78,9 +78,17 @@ const DESKTOP_PRODUCTS: &[DesktopProduct] = &[
         agent_id: AgentCatalogId::OpenCode,
         macos_bundle_id: "ai.opencode.desktop",
         // Frozen from the official windows-x64-nsis installer and the
-        // installed current-user target after WinVerifyTrust Valid.
+        // installed current-user target after WinVerifyTrust Valid. The v2
+        // installer (package `@opencode/desktop`, 2.0.19 inspected offline on
+        // 2026-09-30, not yet verified on a Windows host) derives its
+        // per-user directory `@opencodedesktop`; the 1.x directory stays for
+        // existing installs.
         windows_product_names: &["OpenCode"],
-        windows_relative_exes: &["@opencode-aidesktop/OpenCode.exe", "OpenCode/OpenCode.exe"],
+        windows_relative_exes: &[
+            "@opencodedesktop/OpenCode.exe",
+            "@opencode-aidesktop/OpenCode.exe",
+            "OpenCode/OpenCode.exe",
+        ],
     },
     DesktopProduct {
         agent_id: AgentCatalogId::ClaudeCode,
@@ -1146,7 +1154,11 @@ mod tests {
         assert_eq!(item.windows_product_names, &["OpenCode"]);
         assert_eq!(
             item.windows_relative_exes,
-            &["@opencode-aidesktop/OpenCode.exe", "OpenCode/OpenCode.exe",]
+            &[
+                "@opencodedesktop/OpenCode.exe",
+                "@opencode-aidesktop/OpenCode.exe",
+                "OpenCode/OpenCode.exe",
+            ]
         );
         assert!(windows_exe_install_admitted(AgentCatalogId::OpenCode));
         assert!(windows_exe_install_admitted(AgentCatalogId::WorkBuddy));

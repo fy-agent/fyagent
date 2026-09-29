@@ -75,7 +75,7 @@ pub(super) async fn version() -> ToolVersion {
             None,
         ),
     };
-    let latest_version = super::versions::fetch_npm_latest_for_tool(
+    let (latest_version, latest_authority) = super::versions::fetch_npm_latest_with_authority(
         &crate::proxy::http_client::get(),
         fyagent_user_helper::claude::CLAUDE_NPM_PACKAGE,
         "claude",
@@ -90,6 +90,7 @@ pub(super) async fn version() -> ToolVersion {
         installed_but_broken: broken,
         distribution_owner: owner,
         latest_source: Some("npm".to_string()),
+        latest_authority: latest_authority.map(|authority| authority.wire().to_string()),
     }
 }
 
@@ -98,13 +99,14 @@ pub(super) async fn version() -> ToolVersion {
     let observed = windows_operation(fyagent_user_helper::GrokToolAction::Observe, None).await;
     match observed {
         Ok(observed) => {
-            let latest_version = super::versions::fetch_npm_latest_for_tool(
-                &crate::proxy::http_client::get(),
-                fyagent_user_helper::claude::CLAUDE_NPM_PACKAGE,
-                "claude",
-                observed.normalized_version.as_deref(),
-            )
-            .await;
+            let (latest_version, latest_authority) =
+                super::versions::fetch_npm_latest_with_authority(
+                    &crate::proxy::http_client::get(),
+                    fyagent_user_helper::claude::CLAUDE_NPM_PACKAGE,
+                    "claude",
+                    observed.normalized_version.as_deref(),
+                )
+                .await;
             ToolVersion {
                 name: "claude".to_string(),
                 installed_but_broken: observed.detected && observed.normalized_version.is_none(),
@@ -113,23 +115,29 @@ pub(super) async fn version() -> ToolVersion {
                 latest_version,
                 distribution_owner: observed.owner.map(|owner| owner.as_str().to_string()),
                 latest_source: Some("npm".to_string()),
+                latest_authority: latest_authority.map(|authority| authority.wire().to_string()),
             }
         }
-        Err(error) => ToolVersion {
-            name: "claude".to_string(),
-            version: None,
-            latest_version: super::versions::fetch_npm_latest_for_tool(
-                &crate::proxy::http_client::get(),
-                fyagent_user_helper::claude::CLAUDE_NPM_PACKAGE,
-                "claude",
-                None,
-            )
-            .await,
-            error: Some(error.message().to_string()),
-            installed_but_broken: false,
-            distribution_owner: None,
-            latest_source: None,
-        },
+        Err(error) => {
+            let (latest_version, latest_authority) =
+                super::versions::fetch_npm_latest_with_authority(
+                    &crate::proxy::http_client::get(),
+                    fyagent_user_helper::claude::CLAUDE_NPM_PACKAGE,
+                    "claude",
+                    None,
+                )
+                .await;
+            ToolVersion {
+                name: "claude".to_string(),
+                version: None,
+                latest_version,
+                error: Some(error.message().to_string()),
+                installed_but_broken: false,
+                distribution_owner: None,
+                latest_source: None,
+                latest_authority: latest_authority.map(|authority| authority.wire().to_string()),
+            }
+        }
     }
 }
 

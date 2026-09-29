@@ -1,15 +1,22 @@
 //! Official OpenCode Desktop source. Artifact URLs stay on the locale-neutral
-//! stable aliases; GitHub latest is display-only enrichment and must not gate
-//! installability. FyAgent does not invoke OpenCode's Electron updater.
+//! stable aliases, which are versionless: the alias target can move to a new
+//! product line (it now serves the v2 desktop) independently of the GitHub
+//! Releases line (still 1.x). GitHub latest therefore is not a truthful
+//! display or expected version for the downloaded artifact and is not used;
+//! the installed bundle reports its own version after install. FyAgent does
+//! not invoke OpenCode's Electron updater.
 
 use url::Url;
 
+#[cfg(test)]
+use super::bounded_version;
 use super::{
-    bounded_version, https_url_on_allowlist, opaque_release_id, AgentArch, AgentPlatform,
-    PackageFormat, ResolvedDesktopSource, SourceResolveError,
+    https_url_on_allowlist, opaque_release_id, AgentArch, AgentPlatform, PackageFormat,
+    ResolvedDesktopSource, SourceResolveError,
 };
 use crate::services::external_agents::AgentCatalogId;
-use crate::services::tooling::{self, FIXED_GITHUB_OPENCODE_REPO};
+#[cfg(test)]
+use crate::services::tooling;
 
 pub const OPENCODE_DOWNLOAD_HOSTS: &[&str] = &[
     "opencode.ai",
@@ -47,18 +54,10 @@ pub async fn resolve_opencode_desktop_latest(
     platform: AgentPlatform,
     architecture: AgentArch,
 ) -> Result<ResolvedDesktopSource, SourceResolveError> {
-    // Construct the stable alias first so GitHub reachability cannot change
-    // installability or the opaque release capability.
-    let mut source = resolve_opencode_desktop_inner(platform, architecture, None)?;
-    let client = crate::proxy::http_client::get();
-    if let Some(tag) =
-        tooling::fetch_github_latest_version(&client, FIXED_GITHUB_OPENCODE_REPO).await
-    {
-        if let Some(version) = bounded_version(&tag) {
-            source.display_version = Some(version.to_string());
-        }
-    }
-    Ok(source)
+    // The stable alias is versionless. A display version taken from GitHub
+    // latest would also become the macOS DMG expected release version and
+    // reject the real alias artifact whenever the two lines diverge.
+    resolve_opencode_desktop_inner(platform, architecture, None)
 }
 
 fn resolve_opencode_desktop_inner(
@@ -264,6 +263,27 @@ mod tests {
             assert!(source.versionless_latest);
             assert!(source.display_version.is_none());
             assert!(source.release_id.starts_with("v1:"));
+        }
+    }
+
+    #[tokio::test]
+    async fn latest_resolution_is_versionless_and_never_consults_github() {
+        for (platform, architecture) in [
+            (AgentPlatform::Macos, AgentArch::Aarch64),
+            (AgentPlatform::Macos, AgentArch::X86_64),
+            (AgentPlatform::Windows, AgentArch::X86_64),
+        ] {
+            let latest = resolve_opencode_desktop_latest(platform, architecture)
+                .await
+                .unwrap();
+            assert!(latest.versionless_latest);
+            // No display version means no macOS expected-release gate can
+            // reject the alias artifact on a GitHub/alias line mismatch.
+            assert!(latest.display_version.is_none());
+            assert_eq!(
+                latest,
+                resolve_opencode_desktop(platform, architecture).unwrap()
+            );
         }
     }
 
