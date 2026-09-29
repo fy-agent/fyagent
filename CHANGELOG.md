@@ -8,6 +8,30 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-09-30
+
+Versions 0.4.6 and 0.4.7 were prepared on `main` but never published as GitHub
+Releases; v0.4.5 is the previous published release. This release therefore also
+ships the 0.4.6 and 0.4.7 changes listed below.
+
+### Fixed
+
+- Hermes latest version now comes from the official stable release's project
+  version (for example release `v2026.9.24` reports `0.21.5`) instead of the
+  lagging PyPI package. Any lookup failure shows an unknown latest version.
+- OpenCode Desktop no longer shows the GitHub 1.x release as its version. The
+  official stable download now serves OpenCode 2.x, and the mismatched version
+  made macOS installs fail verification. Windows detection also recognizes the
+  2.x per-user install folder (not yet verified on a Windows device).
+- OpenCode CLI 2.x installations compare against the official `@opencode/cli`
+  package; 1.x installations keep comparing against `opencode-ai`.
+- A Claude Code, Grok Build or other npm CLI version picked from a mirror when
+  the official npm registry is unreachable is labelled as a mirror version
+  ("官方最新未确认") instead of the official latest. Installation still uses the
+  exact version and integrity checks.
+- Claude Code installed with npm under a Homebrew prefix is recognized as an npm
+  installation (from #198).
+
 ## [0.4.7] - 2026-09-22
 
 ### Added

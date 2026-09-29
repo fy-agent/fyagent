@@ -55,11 +55,11 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "6aae7cff0e454448cba88c469f6a7e5c43f2364c1e54980b8ca46a01129df3f3"
+      "a903cdfb52aa4ae937a0602980c27ef2a230ffc894ab28022085a91fc4bfcde5"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "b916b40cdc5449461a25f9d018ac7dc6818f00bb9ad4017c944e3143511ce2a7"
+      "b719285f3bab08e101a7277456240ab9ac6572db19d5636bfe4927fe8c1a2e3c"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
@@ -75,7 +75,7 @@
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
-      "5933e324224749d58056e8b16e080eb10b3515407e1753909381ac5ff28ee698"
+      "87674380415e5fa7314d76c7d95a169f19eb1386dd8d0330955518efb034c282"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -83,7 +83,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "6dd173d8bb7e91de223be4eb2c41b2e9616248fb2567ab52c7ab937cedf865fa"
+      "2f16d59b4f7c196c8b1f597d268ee8b17bd8261652a15716e3cfe52137ce31d3"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -291,11 +291,11 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "07dc9f6f7e50d1969941205278df9f0ae9f63552fbcc2503d328b6c17f641016"
+      "3815e120eb31b624a01fb2f5065af0e3d68efc65015aa272a3fe4d65acad7c3c"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",
-      "f910ca38badda0d2ebcf1f7de1ddce6fda26f778697ddee7328108806457a43d"
+      "95343c31e0729b69a0768865734e60ad3a90078057ae60a066a90aa030983382"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
@@ -303,7 +303,7 @@
     ],
     [
       "src-tauri/src/services/tooling/grok_npm.rs",
-      "9e33ad02d117e569ae3e40de1d6c3522839c6cf7b821cf61e505aa50094f2a0b"
+      "cb0ace76d7c440fdf7319ca4473fd8c8114d1712447465c50444a6f398a6ba1d"
     ],
     [
       "src-tauri/src/services/tooling/grok.rs",
@@ -327,7 +327,7 @@
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
-      "a8ed5bc583906bb24df881e4e399d91f42401d32401f6dc9ba8a546a9c6c14e1"
+      "4c26a83d54b32578418ef557cf4f871fe8d87d21eb420f7937e240df6e8733d1"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
