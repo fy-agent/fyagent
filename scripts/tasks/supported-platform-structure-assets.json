@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "a903cdfb52aa4ae937a0602980c27ef2a230ffc894ab28022085a91fc4bfcde5"
+      "d25589277a32c97ff17ddfa715ea564bb1aeb9fd3de9245d7ced9b99060e21fc"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
