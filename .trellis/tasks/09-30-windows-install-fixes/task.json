@@ -55,7 +55,16 @@
       ],
       "x64": "helper queue verified (concurrent readiness 4x not_installed in 3 runs); Codex Desktop 3/3 succeeded",
       "arm64": "bridge identity passes after ProgramData 4096->8192; Codex/OpenCode installs and Claude/Grok reads stop at Explorer desktop launch (shell_desktop_unavailable / interactive_user_unavailable) on the GitHub ARM runner; environment-limited, retest on real ARM or Wuying",
-      "release_gate": "held before merge: ARM Codex install and ARM OpenCode install could not complete on the VM"
+      "release_gate": "accepted by maintainer 23:01 UTC+8 with ARM64 Codex/OpenCode recorded as environment-limited"
+    },
+    "release": {
+      "version": "0.4.10",
+      "fix_pr": "https://github.com/fy-agent/fyagent/pull/202",
+      "release_notes": [
+        "docs/release-notes/v0.4.10-en.md",
+        "docs/release-notes/v0.4.10-zh.md"
+      ],
+      "arm64_decision": "2026-09-30 23:01 UTC+8 maintainer recorded ARM64 Codex Desktop and OpenCode Desktop installs as environment-limited on the GitHub ARM runner; retest on a real ARM PC or Wuying cloud desktop"
     }
   }
 }
