@@ -12,7 +12,10 @@ use url::Url;
 
 use crate::services::external_agents::AgentCatalogId;
 
-pub use opencode::{resolve_opencode_desktop_latest, OPENCODE_DOWNLOAD_HOSTS};
+pub use opencode::{
+    resolve_opencode_desktop_latest, resolve_opencode_windows_arm64_from_x64_redirect,
+    OPENCODE_DOWNLOAD_HOSTS, OPENCODE_WINDOWS_X64_NSIS,
+};
 pub use qoderwork::{
     parse_qoderwork_latest, qoderwork_latest_yml_url, QODERWORK_METADATA_HOSTS,
     QODERWORK_REDIRECT_HOSTS,

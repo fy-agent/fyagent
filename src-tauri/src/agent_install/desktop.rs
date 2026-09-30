@@ -7,18 +7,19 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::fetch::fetch_metadata_bytes;
 #[cfg(target_os = "windows")]
 use super::fetch::{artifact_download_hosts, fetch_artifact_to_job};
+use super::fetch::{fetch_metadata_bytes, fetch_redirect_location};
 use super::lifecycle_policy::{lifecycle_policy, ManagedDesktopSourceId};
 #[cfg(target_os = "windows")]
 use super::sources::PackageFormat;
 use super::sources::{
     bounded_version, current_host_target, parse_qoderwork_latest, parse_traework_latest,
     parse_workbuddy_update, qoderwork_latest_yml_url, resolve_opencode_desktop_latest,
-    workbuddy_update_url, AgentArch, AgentPlatform, ResolvedDesktopSource, SourceResolveError,
-    QODERWORK_METADATA_HOSTS, TRAEWORK_METADATA_ENDPOINTS, TRAEWORK_METADATA_HOSTS,
-    WORKBUDDY_METADATA_HOSTS,
+    resolve_opencode_windows_arm64_from_x64_redirect, workbuddy_update_url, AgentArch,
+    AgentPlatform, ResolvedDesktopSource, SourceResolveError, OPENCODE_DOWNLOAD_HOSTS,
+    OPENCODE_WINDOWS_X64_NSIS, QODERWORK_METADATA_HOSTS, TRAEWORK_METADATA_ENDPOINTS,
+    TRAEWORK_METADATA_HOSTS, WORKBUDDY_METADATA_HOSTS,
 };
 use super::types::{
     AgentReasonCode, AgentSurface, InstallationEvidenceCode, InstallationOwner,
@@ -188,9 +189,7 @@ pub async fn resolve_desktop_source(
         Some(ManagedDesktopSourceId::QoderWork) => resolve_qoderwork(platform, arch).await,
         Some(ManagedDesktopSourceId::TraeWork) => resolve_traework(platform, arch).await,
         Some(ManagedDesktopSourceId::WorkBuddy) => resolve_workbuddy(platform, arch).await,
-        Some(ManagedDesktopSourceId::OpenCodeDesktop) => {
-            resolve_opencode_desktop_latest(platform, arch).await
-        }
+        Some(ManagedDesktopSourceId::OpenCodeDesktop) => resolve_opencode(platform, arch).await,
         Some(ManagedDesktopSourceId::CodexDesktopDedicated)
         | Some(ManagedDesktopSourceId::GrokCliTooling)
         | Some(ManagedDesktopSourceId::ClaudeCliTooling)
@@ -220,6 +219,19 @@ async fn resolve_traework(
         }
     }
     Err(last)
+}
+
+async fn resolve_opencode(
+    platform: AgentPlatform,
+    arch: AgentArch,
+) -> Result<ResolvedDesktopSource, SourceResolveError> {
+    if (platform, arch) != (AgentPlatform::Windows, AgentArch::Aarch64) {
+        return resolve_opencode_desktop_latest(platform, arch).await;
+    }
+    let alias = url::Url::parse(OPENCODE_WINDOWS_X64_NSIS)
+        .map_err(|_| SourceResolveError::SchemaInvalid)?;
+    let location = fetch_redirect_location(alias, OPENCODE_DOWNLOAD_HOSTS).await?;
+    resolve_opencode_windows_arm64_from_x64_redirect(&location)
 }
 
 async fn resolve_workbuddy(

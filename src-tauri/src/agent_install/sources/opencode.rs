@@ -5,6 +5,10 @@
 //! display or expected version for the downloaded artifact and is not used;
 //! the installed bundle reports its own version after install. FyAgent does
 //! not invoke OpenCode's Electron updater.
+//!
+//! Windows ARM64 has no stable alias. Its versioned official file is derived
+//! from the x64 alias redirect (`/files/bin/<x.y.z>/opencode-desktop-win-x64.exe`)
+//! and bound to that exact version.
 
 use url::Url;
 
@@ -31,6 +35,11 @@ pub const OPENCODE_DARWIN_AARCH64_DMG: &str =
     "https://opencode.ai/download/stable/darwin-aarch64-dmg";
 pub const OPENCODE_DARWIN_X64_DMG: &str = "https://opencode.ai/download/stable/darwin-x64-dmg";
 pub const OPENCODE_WINDOWS_X64_NSIS: &str = "https://opencode.ai/download/stable/windows-x64-nsis";
+const OPENCODE_FILES_ORIGIN: &str = "https://opencode.ai";
+const OPENCODE_FILES_PREFIX: &str = "/files/bin/";
+const OPENCODE_WINDOWS_X64_FILE: &str = "opencode-desktop-win-x64.exe";
+const OPENCODE_WINDOWS_ARM64_FILE: &str = "opencode-desktop-win-arm64.exe";
+const MAX_OPENCODE_VERSION_SEGMENT_DIGITS: usize = 6;
 
 #[cfg(test)]
 pub fn resolve_opencode_desktop(
@@ -60,6 +69,78 @@ pub async fn resolve_opencode_desktop_latest(
     resolve_opencode_desktop_inner(platform, architecture, None)
 }
 
+/// Reads the exact release version from the x64 stable alias redirect target.
+/// Only `https://opencode.ai/files/bin/<x.y.z>/opencode-desktop-win-x64.exe`
+/// without query or fragment is accepted.
+fn opencode_version_from_x64_redirect(location: &Url) -> Option<&str> {
+    if location.scheme() != "https"
+        || !matches!(location.host_str(), Some("opencode.ai" | "www.opencode.ai"))
+        || location.port().is_some()
+        || !location.username().is_empty()
+        || location.password().is_some()
+        || location.query().is_some()
+        || location.fragment().is_some()
+    {
+        return None;
+    }
+    let (version, file) = location
+        .path()
+        .strip_prefix(OPENCODE_FILES_PREFIX)?
+        .split_once('/')?;
+    if file != OPENCODE_WINDOWS_X64_FILE {
+        return None;
+    }
+    let segments: Vec<&str> = version.split('.').collect();
+    let numeric = segments.len() == 3
+        && segments.iter().all(|segment| {
+            !segment.is_empty()
+                && segment.len() <= MAX_OPENCODE_VERSION_SEGMENT_DIGITS
+                && segment.bytes().all(|byte| byte.is_ascii_digit())
+        });
+    numeric.then_some(version)
+}
+
+/// Builds the versioned official Windows ARM64 installer source from the
+/// x64 alias redirect. The version is part of the release ID, so a later
+/// alias move requires a fresh confirmation.
+pub fn resolve_opencode_windows_arm64_from_x64_redirect(
+    location: &Url,
+) -> Result<ResolvedDesktopSource, SourceResolveError> {
+    let version =
+        opencode_version_from_x64_redirect(location).ok_or(SourceResolveError::SchemaInvalid)?;
+    let download_url = Url::parse(&format!(
+        "{OPENCODE_FILES_ORIGIN}{OPENCODE_FILES_PREFIX}{version}/{OPENCODE_WINDOWS_ARM64_FILE}"
+    ))
+    .map_err(|_| SourceResolveError::SchemaInvalid)?;
+    https_url_on_allowlist(&download_url, OPENCODE_DOWNLOAD_HOSTS)?;
+    let (platform, architecture) = (AgentPlatform::Windows, AgentArch::Aarch64);
+    if ambiguous_or_missing_arch_token(download_url.path(), platform, architecture) {
+        return Err(SourceResolveError::ArtifactRejected);
+    }
+    let format = PackageFormat::Exe;
+    let fields = [
+        ("product", "opencode"),
+        ("surface", "desktop"),
+        ("platform", platform.as_str()),
+        ("architecture", architecture.as_str()),
+        ("format", format.as_str()),
+        ("version", version),
+        ("endpoint", "opencode-windows-arm64-nsis"),
+    ];
+    Ok(ResolvedDesktopSource {
+        product: AgentCatalogId::OpenCode,
+        platform,
+        architecture,
+        format,
+        release_id: opaque_release_id(&fields),
+        display_version: Some(version.to_string()),
+        artifact_size_bytes: None,
+        download_url,
+        versionless_latest: false,
+        official_page: OPENCODE_OFFICIAL_PAGE,
+    })
+}
+
 fn resolve_opencode_desktop_inner(
     platform: AgentPlatform,
     architecture: AgentArch,
@@ -81,6 +162,8 @@ fn resolve_opencode_desktop_inner(
             OPENCODE_WINDOWS_X64_NSIS,
             PackageFormat::Exe,
         ),
+        // No versionless ARM64 alias exists; see
+        // `resolve_opencode_windows_arm64_from_x64_redirect`.
         (AgentPlatform::Windows, AgentArch::Aarch64) => {
             return Err(SourceResolveError::PlatformUnsupported)
         }
@@ -140,7 +223,12 @@ fn ambiguous_or_missing_arch_token(
                 || path.contains("arm64")
                 || path.contains("/zh/")
         }
-        (AgentPlatform::Windows, AgentArch::Aarch64) => true,
+        (AgentPlatform::Windows, AgentArch::Aarch64) => {
+            !path.ends_with("-win-arm64.exe")
+                || path.contains("x64")
+                || path.contains("darwin")
+                || path.contains("/zh/")
+        }
     }
 }
 
@@ -363,6 +451,79 @@ mod tests {
             AgentPlatform::Windows,
             AgentArch::Aarch64
         ));
+        assert!(!ambiguous_or_missing_arch_token(
+            "/files/bin/2.0.20/opencode-desktop-win-arm64.exe",
+            AgentPlatform::Windows,
+            AgentArch::Aarch64
+        ));
+        for rejected in [
+            "/files/bin/2.0.20/opencode-desktop-win-x64.exe",
+            "/files/bin/2.0.20/opencode-desktop-win-x64-win-arm64.exe",
+            "/files/bin/2.0.20/opencode-desktop-darwin-win-arm64.exe",
+            "/zh/files/bin/2.0.20/opencode-desktop-win-arm64.exe",
+        ] {
+            assert!(ambiguous_or_missing_arch_token(
+                rejected,
+                AgentPlatform::Windows,
+                AgentArch::Aarch64
+            ));
+        }
+    }
+
+    #[test]
+    fn windows_arm64_source_is_versioned_from_the_exact_x64_redirect() {
+        let location =
+            Url::parse("https://opencode.ai/files/bin/2.0.20/opencode-desktop-win-x64.exe")
+                .unwrap();
+        let arm = resolve_opencode_windows_arm64_from_x64_redirect(&location).unwrap();
+        assert_eq!(
+            arm.download_url.as_str(),
+            "https://opencode.ai/files/bin/2.0.20/opencode-desktop-win-arm64.exe"
+        );
+        assert_eq!(arm.platform, AgentPlatform::Windows);
+        assert_eq!(arm.architecture, AgentArch::Aarch64);
+        assert_eq!(arm.format, PackageFormat::Exe);
+        assert_eq!(arm.display_version.as_deref(), Some("2.0.20"));
+        assert!(!arm.versionless_latest);
+        assert!(arm.release_id.starts_with("v1:"));
+
+        let next = resolve_opencode_windows_arm64_from_x64_redirect(
+            &Url::parse("https://opencode.ai/files/bin/2.0.21/opencode-desktop-win-x64.exe")
+                .unwrap(),
+        )
+        .unwrap();
+        assert_ne!(arm.release_id, next.release_id);
+        let x64 = resolve_opencode_desktop(AgentPlatform::Windows, AgentArch::X86_64).unwrap();
+        assert_ne!(arm.release_id, x64.release_id);
+    }
+
+    #[test]
+    fn windows_arm64_rejects_any_other_x64_redirect_shape() {
+        for rejected in [
+            "http://opencode.ai/files/bin/2.0.20/opencode-desktop-win-x64.exe",
+            "https://evil.example/files/bin/2.0.20/opencode-desktop-win-x64.exe",
+            "https://github.com/files/bin/2.0.20/opencode-desktop-win-x64.exe",
+            "https://opencode.ai:8443/files/bin/2.0.20/opencode-desktop-win-x64.exe",
+            "https://user@opencode.ai/files/bin/2.0.20/opencode-desktop-win-x64.exe",
+            "https://opencode.ai/files/bin/2.0.20/opencode-desktop-win-x64.exe?x=1",
+            "https://opencode.ai/files/bin/2.0.20/opencode-desktop-win-x64.exe#a",
+            "https://opencode.ai/files/bin/2.0/opencode-desktop-win-x64.exe",
+            "https://opencode.ai/files/bin/2.0.20.1/opencode-desktop-win-x64.exe",
+            "https://opencode.ai/files/bin/2.0.20-beta/opencode-desktop-win-x64.exe",
+            "https://opencode.ai/files/bin/v2.0.20/opencode-desktop-win-x64.exe",
+            "https://opencode.ai/files/bin/1234567.0.0/opencode-desktop-win-x64.exe",
+            "https://opencode.ai/files/bin/2.0.20/opencode-desktop-win-arm64.exe",
+            "https://opencode.ai/files/bin/2.0.20/sub/opencode-desktop-win-x64.exe",
+            "https://opencode.ai/files/bin/2.0.20/opencode-desktop-darwin-x64.dmg",
+            "https://opencode.ai/download/stable/windows-x64-nsis",
+        ] {
+            let location = Url::parse(rejected).unwrap();
+            assert_eq!(
+                resolve_opencode_windows_arm64_from_x64_redirect(&location),
+                Err(SourceResolveError::SchemaInvalid),
+                "{rejected}"
+            );
+        }
     }
 
     #[test]
