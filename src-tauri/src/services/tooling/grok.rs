@@ -1430,6 +1430,9 @@ fn map_grok_helper_error(error: crate::codex_desktop::error::InstallerError) -> 
             HelperErrorCode::ToolCandidateConflict.redacted_message()
         }
         Some("tool_target_changed") => HelperErrorCode::ToolTargetChanged.redacted_message(),
+        code if super::windows_helper_left_state_unconfirmed(code) => {
+            super::WINDOWS_HELPER_UNCONFIRMED_MESSAGE
+        }
         _ => "Grok Build is unavailable for the current Windows user.",
     }
     .to_owned()

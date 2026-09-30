@@ -35,6 +35,37 @@ pub async fn fetch_metadata_bytes(url: Url, hosts: &[&str]) -> Result<Vec<u8>, S
     collect_body(response, MAX_SOURCE_METADATA_BYTES, &NeverCancelled).await
 }
 
+/// Performs one GET without following it and returns the allowlisted
+/// absolute redirect target. Used only to read a vendor alias's version.
+pub async fn fetch_redirect_location(url: Url, hosts: &[&str]) -> Result<Url, SourceResolveError> {
+    let transport = RuntimeInstallerTransport::new(InstallerTransportPurpose::Metadata, USER_AGENT);
+    fetch_redirect_location_with(&transport, url, hosts).await
+}
+
+async fn fetch_redirect_location_with(
+    transport: &dyn HttpTransport,
+    url: Url,
+    hosts: &[&str],
+) -> Result<Url, SourceResolveError> {
+    https_url_on_allowlist(&url, hosts)?;
+    let response = transport
+        .get(url.clone())
+        .await
+        .map_err(|_| SourceResolveError::SchemaInvalid)?;
+    if !(300..=399).contains(&response.status) {
+        return Err(SourceResolveError::SchemaInvalid);
+    }
+    let location = response
+        .location
+        .clone()
+        .ok_or(SourceResolveError::HostRejected)?;
+    drop(response);
+    let target =
+        resolve_redirect(&url, &location, 0).map_err(|_| SourceResolveError::HostRejected)?;
+    https_url_on_allowlist(&target, hosts)?;
+    Ok(target)
+}
+
 pub(super) fn artifact_download_hosts(
     product: AgentCatalogId,
 ) -> Result<&'static [&'static str], AgentReasonCode> {
@@ -217,7 +248,7 @@ async fn collect_body(
 
 #[cfg(test)]
 mod tests {
-    use super::super::sources::QODERWORK_REDIRECT_HOSTS;
+    use super::super::sources::{OPENCODE_WINDOWS_X64_NSIS, QODERWORK_REDIRECT_HOSTS};
     use super::*;
     use crate::codex_desktop::download::{DownloadProgressUpdate, TransportError};
     use bytes::Bytes;
@@ -262,6 +293,64 @@ mod tests {
             retry_after: None,
             body: Box::pin(stream::iter(chunks)),
         }
+    }
+
+    fn redirect_response(status: u16, location: Option<&str>) -> TransportResponse {
+        TransportResponse {
+            location: location.map(str::to_string),
+            ..body_response(status, None, Vec::<Result<Bytes, TransportError>>::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn redirect_location_is_single_hop_absolute_and_allowlisted() {
+        let alias = Url::parse(OPENCODE_WINDOWS_X64_NSIS).unwrap();
+        let relative = FakeTransport::new([redirect_response(
+            302,
+            Some("/files/bin/2.0.20/opencode-desktop-win-x64.exe"),
+        )]);
+        assert_eq!(
+            fetch_redirect_location_with(&relative, alias.clone(), OPENCODE_DOWNLOAD_HOSTS)
+                .await
+                .unwrap()
+                .as_str(),
+            "https://opencode.ai/files/bin/2.0.20/opencode-desktop-win-x64.exe"
+        );
+        for (response, expected) in [
+            (
+                redirect_response(302, Some("https://evil.example/x.exe")),
+                SourceResolveError::HostRejected,
+            ),
+            (
+                redirect_response(302, None),
+                SourceResolveError::HostRejected,
+            ),
+            (
+                redirect_response(200, Some("/files/bin/2.0.20/x.exe")),
+                SourceResolveError::SchemaInvalid,
+            ),
+            (
+                redirect_response(404, None),
+                SourceResolveError::SchemaInvalid,
+            ),
+        ] {
+            let transport = FakeTransport::new([response]);
+            assert_eq!(
+                fetch_redirect_location_with(&transport, alias.clone(), OPENCODE_DOWNLOAD_HOSTS)
+                    .await,
+                Err(expected)
+            );
+        }
+        let foreign = FakeTransport::new([]);
+        assert_eq!(
+            fetch_redirect_location_with(
+                &foreign,
+                Url::parse("https://evil.example/download").unwrap(),
+                OPENCODE_DOWNLOAD_HOSTS
+            )
+            .await,
+            Err(SourceResolveError::HostRejected)
+        );
     }
 
     fn test_job_directory(root: &tempfile::TempDir) -> JobTempDir {

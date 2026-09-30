@@ -44,4 +44,31 @@ describe("Codex install confirmation", () => {
       }),
     ).toContain("清理");
   });
+
+  it("maps helper and bridge recovery codes to retry copy", () => {
+    const base = {
+      code: "WINDOWS_DEPLOYMENT_FAILED",
+      details: {
+        platformErrorCode: "helper_busy",
+        redactedMessage: "C:\\ProgramData\\private",
+      },
+    } as InstallerErrorDto;
+    expect(codexInstallerErrorCopy(base)).toContain("稍后重试");
+    expect(
+      codexInstallerErrorCopy({
+        ...base,
+        details: {
+          ...base.details,
+          platformErrorCode: "shell_desktop_unavailable",
+        },
+      }),
+    ).toContain("资源管理器");
+    const identity = codexInstallerErrorCopy({
+      ...base,
+      code: "PACKAGE_IDENTITY_MISMATCH",
+      details: { ...base.details, platformErrorCode: null },
+    });
+    expect(identity).toContain("请重试");
+    expect(identity).not.toContain("private");
+  });
 });

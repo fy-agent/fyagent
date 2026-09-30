@@ -179,6 +179,20 @@ const GROK_CLI_LIFECYCLE_ONLY_MESSAGE: &str =
 const ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE: &str =
     "CLI inspection and lifecycle actions are unavailable in the elevated Windows release.";
 
+/// Reported when the Windows current-user helper did not run (busy gate,
+/// no Explorer desktop view, or launch not invoked). The CLI state is then
+/// unknown: it must not be shown as unavailable or as not installed.
+pub(crate) const WINDOWS_HELPER_UNCONFIRMED_MESSAGE: &str =
+    "暂时无法读取当前 Windows 用户的 CLI 状态，请稍后刷新。";
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_helper_left_state_unconfirmed(platform_error_code: Option<&str>) -> bool {
+    matches!(
+        platform_error_code,
+        Some("helper_busy" | "shell_desktop_unavailable" | "helper_launch_not_invoked")
+    )
+}
+
 #[cfg(any(target_os = "windows", test))]
 const fn elevated_windows_cli_boundary_active_for(formal_windows_build: bool) -> bool {
     formal_windows_build
@@ -2955,6 +2969,27 @@ fn escape_windows_batch_value(value: &str) -> String {
 mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn only_helper_outcomes_where_nothing_ran_leave_cli_state_unconfirmed() {
+        for code in [
+            "helper_busy",
+            "shell_desktop_unavailable",
+            "helper_launch_not_invoked",
+        ] {
+            assert!(windows_helper_left_state_unconfirmed(Some(code)));
+        }
+        for code in [
+            None,
+            Some("grok_tool_not_detected"),
+            Some("grok_tool_execution_failed"),
+            Some("tool_target_changed"),
+        ] {
+            assert!(!windows_helper_left_state_unconfirmed(code));
+        }
+        assert!(!WINDOWS_HELPER_UNCONFIRMED_MESSAGE.contains("not installed"));
+        assert!(!WINDOWS_HELPER_UNCONFIRMED_MESSAGE.contains("unavailable"));
+    }
 
     #[cfg(target_os = "macos")]
     fn set_test_executable(path: &Path, executable: bool) {

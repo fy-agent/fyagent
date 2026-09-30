@@ -7,7 +7,15 @@ export function codexInstallerErrorCopy(error: InstallerErrorDto): string {
   if (error.details.platformErrorCode === "disk_space_unavailable") {
     return "无法读取安装目录的可用空间。请检查磁盘是否已连接、目录是否可访问，然后重试。";
   }
+  if (error.details.platformErrorCode === "helper_busy") {
+    return "另一项检测或安装仍在进行，请稍后重试。";
+  }
+  if (error.details.platformErrorCode === "shell_desktop_unavailable") {
+    return "无法通过 Windows 资源管理器启动安装。请确认已登录桌面且资源管理器正在运行，然后重试。";
+  }
   switch (error.code) {
+    case "PACKAGE_IDENTITY_MISMATCH":
+      return "安装期间系统目录发生变化，请重试。";
     case "METADATA_CHANGED":
       return "版本或安装位置已变化，请刷新后重新确认安装。";
     case "INSUFFICIENT_DISK_SPACE":

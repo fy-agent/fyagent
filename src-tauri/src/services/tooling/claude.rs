@@ -23,6 +23,10 @@ pub(crate) enum ClaudeLifecycleError {
     TargetChanged,
     ExecutionFailed,
     VerificationFailed,
+    /// The Windows current-user helper did not run; nothing was executed.
+    /// Only the Windows helper path constructs this variant.
+    #[allow(dead_code)]
+    HelperUnconfirmed,
 }
 
 impl ClaudeLifecycleError {
@@ -40,6 +44,7 @@ impl ClaudeLifecycleError {
             Self::TargetChanged => "确认后的 npm 安装目标已变化，请重新检查安装位置。",
             Self::ExecutionFailed => "Claude Code 安装未完成，请检查网络及当前用户的安装权限。",
             Self::VerificationFailed => "无法确认 Claude Code 已安装到指定版本，请刷新安装状态。",
+            Self::HelperUnconfirmed => super::WINDOWS_HELPER_UNCONFIRMED_MESSAGE,
         }
     }
 }
@@ -359,6 +364,10 @@ async fn windows_operation(
                 Some("grok_tool_not_detected") => ClaudeLifecycleError::VerificationFailed,
                 Some("grok_tool_execution_failed") => ClaudeLifecycleError::ExecutionFailed,
                 Some("tool_target_changed") => ClaudeLifecycleError::TargetChanged,
+                // The helper never ran, so no install side effect can exist.
+                code if super::windows_helper_left_state_unconfirmed(code) => {
+                    ClaudeLifecycleError::HelperUnconfirmed
+                }
                 // A lost/uncertain helper result must never trigger a second install.
                 _ => ClaudeLifecycleError::VerificationFailed,
             },

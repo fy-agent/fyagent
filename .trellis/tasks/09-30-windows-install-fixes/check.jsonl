@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "保持服务层、模块与可见性边界"}
+{"file": ".trellis/spec/backend/windows-agent-runtime-security.md", "reason": "无提权回退、公共错误码不变"}
+{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "目录身份放宽只作用于持有目录"}
+{"file": ".trellis/spec/backend/external-agent-sources.md", "reason": "ARM64 URL 严格解析与 allowlist"}
+{"file": ".trellis/spec/backend/github-ci-workflow.md", "reason": "CI 必需任务"}
+{"file": ".trellis/spec/backend/github-merge-governance.md", "reason": "合并规则与 merge queue"}
+{"file": ".trellis/spec/backend/github-release-workflow.md", "reason": "0.4.10 发布门禁与资产校验"}
+{"file": ".trellis/spec/frontend/user-facing-copy.md", "reason": "文案检查"}

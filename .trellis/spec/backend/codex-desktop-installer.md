@@ -246,6 +246,20 @@ second full-file SHA pass after copy. ProgramData-parent effective-access
 fail-closed applies to a non-administrator Shell token; an Administrators-enabled
 Explorer token is not rejected for OS-owned ancestor rights it already holds.
 
+A held ancestor or bridge directory is rebound only when its volume serial or
+file ID changes. NTFS reports a directory's index allocation as its size, which
+grows in 4 KiB steps whenever a sibling entry is created (including FyAgent's
+own bridge root under `C:\ProgramData`), so directory size and link count are
+not identity. Regular files (source pin, `.part`, final leaf) keep the full
+volume/file-ID/size/link comparison. A held-ancestor mismatch is
+`PACKAGE_IDENTITY_MISMATCH` with `retryable=true`; the renderer asks the user to
+retry.
+
+Only one current-user helper lifetime runs at a time. A second request waits
+for an active lifetime up to 30 s and then fails with platform code
+`helper_busy`; a quarantined lifetime still fails at once and is never
+released by a waiter.
+
 After a successful helper terminal result, the adapter captures the exact
 SID/Main inventory again. The current job result is selected as follows:
 

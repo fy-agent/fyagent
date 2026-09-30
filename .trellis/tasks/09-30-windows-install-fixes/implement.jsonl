@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "保持服务层、模块与可见性边界"}
+{"file": ".trellis/spec/backend/reuse.md", "reason": "优先复用已有 owner、transport 与错误类型"}
+{"file": ".trellis/spec/backend/windows-agent-runtime-security.md", "reason": "Explorer 启动边界、helper 与 INTERACTIVE_USER_UNAVAILABLE 语义"}
+{"file": ".trellis/spec/backend/windows-runtime-security.md", "reason": "交互用户上下文与禁止提权回退"}
+{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "PackageBridge 身份与 PACKAGE_IDENTITY_MISMATCH 边界"}
+{"file": ".trellis/spec/backend/external-agent-lifecycle.md", "reason": "readiness unknown/unavailable 语义"}
+{"file": ".trellis/spec/backend/external-agent-sources.md", "reason": "OpenCode Desktop 来源、重定向与版本规则"}
+{"file": ".trellis/spec/backend/claude-code-cli.md", "reason": "Claude 观测失败不得触发二次安装"}
+{"file": ".trellis/spec/frontend/agent-directory.md", "reason": "目录卡片状态与 OpenCode ARM64 文案"}
+{"file": ".trellis/spec/frontend/user-facing-copy.md", "reason": "失败与不确定结果的文案规则"}

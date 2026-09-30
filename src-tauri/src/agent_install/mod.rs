@@ -190,6 +190,14 @@ fn cli_readiness_from_observation(
     auth_state: AgentAuthState,
 ) -> AgentInstallReadinessDto {
     let (install_state, local_version, remote_version, unavailable) = match &observation {
+        // The observation did not run: keep the product visible and installable
+        // as unknown instead of hiding it behind `unavailable`.
+        Some(value) if value.unconfirmed => (
+            AgentInstallState::Unknown,
+            None,
+            value.latest_version.clone(),
+            false,
+        ),
         Some(value) if value.unavailable => (AgentInstallState::Unavailable, None, None, true),
         Some(value) if value.runnable => (
             AgentInstallState::Installed,
@@ -1245,6 +1253,7 @@ mod tests {
                         local_version: runnable.then(|| "1.0.0".to_string()),
                         latest_version: None,
                         unavailable: false,
+                        unconfirmed: false,
                         update_supported: false,
                     };
                     let mut readiness = cli_readiness_from_observation(
@@ -1293,6 +1302,7 @@ mod tests {
             local_version: None,
             latest_version: None,
             unavailable: false,
+            unconfirmed: false,
             update_supported: false,
         };
         let unavailable = cli::CliObservation {
@@ -1326,6 +1336,36 @@ mod tests {
                     }
                 );
             }
+        }
+    }
+
+    #[test]
+    fn unconfirmed_cli_observation_is_unknown_and_stays_installable() {
+        for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::GrokBuild] {
+            let observation = cli::CliObservation {
+                detected: false,
+                runnable: false,
+                local_version: None,
+                latest_version: Some("2.0.0".to_string()),
+                unavailable: false,
+                unconfirmed: true,
+                update_supported: true,
+            };
+            let readiness = cli_readiness_from_observation(
+                agent_id,
+                Some(&observation),
+                AgentAuthState::Unknown,
+            );
+            assert_eq!(readiness.install_state, AgentInstallState::Unknown);
+            assert_ne!(readiness.install_state, AgentInstallState::NotInstalled);
+            assert_eq!(
+                readiness.configuration_eligibility.state,
+                AgentConfigurationState::Unknown
+            );
+            assert!(!readiness
+                .reason_codes
+                .contains(&AgentReasonCode::InteractiveUserUnavailable));
+            assert!(readiness.allowed_actions.contains(&AgentActionId::Install));
         }
     }
 

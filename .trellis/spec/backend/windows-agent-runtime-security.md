@@ -159,6 +159,8 @@ identity/admission/quarantine behavior and returns actionable redacted errors.
 | Trusted EXE path is relative, contains `..`/NUL, has arguments or non-EXE suffix | `external_launch_invalid_windows_exe`; no Explorer call. |
 | Shape-valid observer-proven absolute EXE | Explorer ShellExecute as Alice. |
 | Explorer COM unavailable | `INTERACTIVE_USER_UNAVAILABLE`; no elevated fallback. |
+| Explorer has no desktop view (`FindWindowSW` without dispatch) | Retry only the lookup (3 attempts, 500 ms apart) before any `ShellExecute`; then the same public launcher code, helper platform code `shell_desktop_unavailable`, one redacted `warn` log line. No second launch route. |
+| Grok/Claude helper busy past the bounded wait, or never launched (`helper_busy`, `shell_desktop_unavailable`, `helper_launch_not_invoked`) | Nothing ran: tooling reports the fixed unconfirmed message, readiness is `unknown` with Install kept; never `unavailable` or `not_installed`. `MayHaveLaunched` and post-launch pipe/protocol failures keep their existing mapping. |
 | Downloaded installer is submitted to trusted launch | Reject; use closed install helper. |
 | Formal elevated parent attempts direct CLI or CLI-backed Auth | Fail before user process. |
 | Formal Grok/Claude lifecycle | Matching closed helper; no generic/elevated fallback. |

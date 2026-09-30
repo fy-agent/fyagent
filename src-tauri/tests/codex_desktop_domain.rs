@@ -12,10 +12,17 @@ mod platform {
 
         #[allow(dead_code)]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub(crate) enum ProcessLaunchError {
+            InteractiveUserUnavailable,
+            ShellDesktopUnavailable,
+        }
+
+        #[allow(dead_code)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub(crate) enum UserHelperLaunchOutcome {
             Confirmed,
             MayHaveLaunched,
-            NotInvoked(&'static str),
+            NotInvoked(ProcessLaunchError),
         }
 
         /// The path-included Windows deployment module names the production
@@ -35,9 +42,8 @@ mod platform {
             _job_id: &CanonicalJobId,
             _pipe_nonce: &PipeNonce,
         ) -> UserHelperLaunchOutcome {
-            UserHelperLaunchOutcome::NotInvoked(
-                "isolated Codex desktop domain tests cannot launch the user helper",
-            )
+            // Isolated Codex desktop domain tests cannot launch the user helper.
+            UserHelperLaunchOutcome::NotInvoked(ProcessLaunchError::InteractiveUserUnavailable)
         }
     }
 }

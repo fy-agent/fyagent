@@ -42,6 +42,10 @@ use crate::platform::process_launch::{
 use fyagent_user_helper::{CanonicalJobId, PipeNonce, UserHelperAction};
 
 const USER_HELPER_LAUNCH_TIMEOUT: Duration = Duration::from_secs(30);
+/// Explorer may briefly expose no desktop view while the shell starts or
+/// restarts. Only the lookup is retried; no launch has happened yet.
+const SHELL_DESKTOP_LOOKUP_ATTEMPTS: u32 = 3;
+const SHELL_DESKTOP_LOOKUP_RETRY_DELAY: Duration = Duration::from_millis(500);
 static USER_HELPER_LAUNCH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 pub(crate) struct ExplorerInteractiveUserLauncher;
@@ -193,7 +197,7 @@ fn launch_user_helper_from_explorer_sta_bstr(
         return UserHelperStaOutcome::NotInvoked(ProcessLaunchError::InteractiveUserUnavailable);
     }
 
-    let dispatch = explorer_shell_dispatch();
+    let dispatch = explorer_shell_dispatch_with_retry();
 
     let outcome = match dispatch {
         Err(error) => UserHelperStaOutcome::NotInvoked(error),
@@ -224,7 +228,7 @@ fn launch_from_explorer_sta_bstr(
     }
 
     let result = (|| {
-        let shell_dispatch = explorer_shell_dispatch()?;
+        let shell_dispatch = explorer_shell_dispatch_with_retry()?;
         let empty = VARIANT::default();
         let arguments = arguments.map(VARIANT::from).unwrap_or_default();
         let show = VARIANT::from(SW_SHOWNORMAL.0);
@@ -234,6 +238,33 @@ fn launch_from_explorer_sta_bstr(
 
     unsafe { CoUninitialize() };
     result
+}
+
+fn explorer_shell_dispatch_with_retry() -> Result<IShellDispatch2, ProcessLaunchError> {
+    retry_shell_desktop_lookup(
+        SHELL_DESKTOP_LOOKUP_ATTEMPTS,
+        SHELL_DESKTOP_LOOKUP_RETRY_DELAY,
+        explorer_shell_dispatch,
+    )
+}
+
+/// Retries only a missing desktop view. Every other lookup failure returns
+/// at once, and the lookup has no launch side effect.
+fn retry_shell_desktop_lookup<T>(
+    attempts: u32,
+    delay: Duration,
+    mut lookup: impl FnMut() -> Result<T, ProcessLaunchError>,
+) -> Result<T, ProcessLaunchError> {
+    let mut attempt = 1;
+    loop {
+        match lookup() {
+            Err(ProcessLaunchError::ShellDesktopUnavailable) if attempt < attempts => {
+                attempt += 1;
+                std::thread::sleep(delay);
+            }
+            result => return result,
+        }
+    }
 }
 
 /// Obtains Explorer's `IShellDispatch2` through the desktop shell view.
@@ -257,7 +288,8 @@ fn explorer_shell_dispatch() -> Result<IShellDispatch2, ProcessLaunchError> {
             SWFO_NEEDDISPATCH,
         )
     }
-    .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+    // S_FALSE with no dispatch means Explorer has no registered desktop view.
+    .map_err(|_| ProcessLaunchError::ShellDesktopUnavailable)?;
     let shell_browser: IShellBrowser =
         unsafe { IUnknown_QueryService(&desktop_dispatch, &SID_STopLevelBrowser) }
             .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
@@ -273,4 +305,45 @@ fn explorer_shell_dispatch() -> Result<IShellDispatch2, ProcessLaunchError> {
     application
         .cast()
         .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shell_desktop_lookup_retries_only_a_missing_desktop_view() {
+        let mut calls = 0;
+        let result = retry_shell_desktop_lookup(3, Duration::ZERO, || {
+            calls += 1;
+            if calls < 3 {
+                Err(ProcessLaunchError::ShellDesktopUnavailable)
+            } else {
+                Ok(calls)
+            }
+        });
+        assert_eq!(result.ok(), Some(3));
+
+        let mut calls = 0;
+        let result: Result<(), _> = retry_shell_desktop_lookup(3, Duration::ZERO, || {
+            calls += 1;
+            Err(ProcessLaunchError::ShellDesktopUnavailable)
+        });
+        assert!(matches!(
+            result,
+            Err(ProcessLaunchError::ShellDesktopUnavailable)
+        ));
+        assert_eq!(calls, 3);
+
+        let mut calls = 0;
+        let result: Result<(), _> = retry_shell_desktop_lookup(3, Duration::ZERO, || {
+            calls += 1;
+            Err(ProcessLaunchError::InteractiveUserUnavailable)
+        });
+        assert!(matches!(
+            result,
+            Err(ProcessLaunchError::InteractiveUserUnavailable)
+        ));
+        assert_eq!(calls, 1);
+    }
 }

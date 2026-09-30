@@ -15,7 +15,7 @@ use std::{
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
     },
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Condvar, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 
@@ -78,12 +78,16 @@ use crate::{
         types::{JobProgress, ProgressPhase},
     },
     platform::process_launch::{
-        fixed_user_helper_path, launch_fyagent_user_helper_as_user, UserHelperLaunchOutcome,
+        fixed_user_helper_path, launch_fyagent_user_helper_as_user, ProcessLaunchError,
+        UserHelperLaunchOutcome,
     },
     windows_runtime::InteractiveUserContext,
 };
 
 const PIPE_DEFAULT_TIMEOUT_MS: u32 = 30_000;
+/// Longest time a helper request waits for an active helper lifetime to
+/// finish. Parallel readiness reads queue here instead of failing at once.
+const HELPER_GATE_WAIT: Duration = Duration::from_secs(30);
 
 pub(super) struct SystemWindowsContextRevalidator;
 
@@ -254,8 +258,8 @@ fn run_unpinned_tool_helper(
             return fail_before_admission(gate, lifetime, helper_launch_pending_error())
                 .map(|_| unreachable!());
         }
-        UserHelperLaunchOutcome::NotInvoked(_) => {
-            return fail_before_admission(gate, lifetime, helper_launch_error())
+        UserHelperLaunchOutcome::NotInvoked(reason) => {
+            return fail_before_admission(gate, lifetime, helper_not_invoked_error(reason))
                 .map(|_| unreachable!());
         }
     }
@@ -509,8 +513,8 @@ fn run_pinned_user_helper(
         UserHelperLaunchOutcome::MayHaveLaunched => {
             return fail_before_admission(gate, lifetime, helper_launch_pending_error());
         }
-        UserHelperLaunchOutcome::NotInvoked(_) => {
-            return fail_before_admission(gate, lifetime, helper_launch_error());
+        UserHelperLaunchOutcome::NotInvoked(reason) => {
+            return fail_before_admission(gate, lifetime, helper_not_invoked_error(reason));
         }
     }
     if lifetime.server().connect(deadlines.connect).is_err() {
@@ -900,11 +904,52 @@ impl Drop for HelperLifetime {
 }
 
 static HELPER_GATE: OnceLock<Mutex<HelperGateState>> = OnceLock::new();
+static HELPER_GATE_RELEASED: Condvar = Condvar::new();
 
-enum HelperGateState {
+enum HelperGateState<R = HelperLifetime> {
     Idle,
     Active,
-    Quarantined { _lifetime: Box<HelperLifetime> },
+    Quarantined { _lifetime: Box<R> },
+}
+
+/// Enters the single helper gate. An active lifetime is waited for up to
+/// `wait`; a quarantined lifetime still fails at once because it has no
+/// terminal proof and must never be released by a later request.
+fn enter_helper_gate<R>(
+    gate: &Mutex<HelperGateState<R>>,
+    released: &Condvar,
+    wait: Duration,
+) -> Result<(), InstallerError> {
+    let deadline = Instant::now() + wait;
+    let mut state = gate.lock().map_err(|_| helper_quarantine_error())?;
+    loop {
+        match &*state {
+            HelperGateState::Idle => {
+                *state = HelperGateState::Active;
+                return Ok(());
+            }
+            HelperGateState::Quarantined { .. } => return Err(helper_quarantine_error()),
+            HelperGateState::Active => {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err(helper_busy_error());
+                }
+                state = released
+                    .wait_timeout(state, remaining)
+                    .map_err(|_| helper_quarantine_error())?
+                    .0;
+            }
+        }
+    }
+}
+
+fn leave_helper_gate<R>(gate: &Mutex<HelperGateState<R>>, released: &Condvar) {
+    if let Ok(mut state) = gate.lock() {
+        if matches!(*state, HelperGateState::Active) {
+            *state = HelperGateState::Idle;
+        }
+    }
+    released.notify_all();
 }
 
 fn retain_quarantined_lifetime(lifetime: HelperLifetime) {
@@ -924,6 +969,8 @@ fn retain_quarantined_lifetime(lifetime: HelperLifetime) {
             Box::leak(Box::new(lifetime));
         }
     }
+    // Waiters must observe the quarantine now instead of timing out later.
+    HELPER_GATE_RELEASED.notify_all();
 }
 
 struct HelperGateLease {
@@ -932,30 +979,20 @@ struct HelperGateLease {
 
 impl HelperGateLease {
     fn acquire() -> Result<Self, InstallerError> {
-        let mut state = HELPER_GATE
-            .get_or_init(|| Mutex::new(HelperGateState::Idle))
-            .lock()
-            .map_err(|_| helper_quarantine_error())?;
-        match &*state {
-            HelperGateState::Idle => {
-                *state = HelperGateState::Active;
-                Ok(Self { active: true })
-            }
-            HelperGateState::Active | HelperGateState::Quarantined { .. } => {
-                Err(helper_quarantine_error())
-            }
-        }
+        enter_helper_gate(
+            HELPER_GATE.get_or_init(|| Mutex::new(HelperGateState::Idle)),
+            &HELPER_GATE_RELEASED,
+            HELPER_GATE_WAIT,
+        )
+        .inspect_err(log_helper_failure)?;
+        Ok(Self { active: true })
     }
 
     fn finish(mut self) {
-        if let Ok(mut state) = HELPER_GATE
-            .get_or_init(|| Mutex::new(HelperGateState::Idle))
-            .lock()
-        {
-            if matches!(*state, HelperGateState::Active) {
-                *state = HelperGateState::Idle;
-            }
-        }
+        leave_helper_gate(
+            HELPER_GATE.get_or_init(|| Mutex::new(HelperGateState::Idle)),
+            &HELPER_GATE_RELEASED,
+        );
         self.active = false;
     }
 
@@ -976,14 +1013,10 @@ impl Drop for HelperGateLease {
         if !self.active {
             return;
         }
-        if let Ok(mut state) = HELPER_GATE
-            .get_or_init(|| Mutex::new(HelperGateState::Idle))
-            .lock()
-        {
-            if matches!(*state, HelperGateState::Active) {
-                *state = HelperGateState::Idle;
-            }
-        }
+        leave_helper_gate(
+            HELPER_GATE.get_or_init(|| Mutex::new(HelperGateState::Idle)),
+            &HELPER_GATE_RELEASED,
+        );
     }
 }
 
@@ -1333,10 +1366,23 @@ fn fail_before_admission(
     // called. Cancel and close the helper capabilities first, then attempt an
     // exact bridge cleanup. A sharing violation or validation failure leaves
     // the protected operation as an immutable orphan.
+    log_helper_failure(&error);
     let _ = lifetime.controls().cancel();
     lifetime.cleanup_bridge();
     gate.finish();
     Err(error)
+}
+
+/// Writes one redacted line for a helper request that ended before
+/// admission. The DTO details are already redacted diagnostic fields.
+fn log_helper_failure(error: &InstallerError) {
+    let dto = error.to_dto();
+    log::warn!(
+        "current-user helper request failed before admission: code={:?} platform_error_code={} message={}",
+        dto.code,
+        dto.details.platform_error_code.as_deref().unwrap_or("none"),
+        dto.details.redacted_message.as_deref().unwrap_or("none"),
+    );
 }
 
 fn cancel_and_quarantine(
@@ -1866,6 +1912,33 @@ fn helper_launch_error() -> InstallerError {
         .with_diagnostic_message("the fixed current-user package helper could not be launched")
 }
 
+/// Platform codes callers use to report an unconfirmed observation instead of
+/// an unavailable product. The helper was not started, so nothing ran.
+const HELPER_BUSY_PLATFORM_CODE: &str = "helper_busy";
+const SHELL_DESKTOP_UNAVAILABLE_PLATFORM_CODE: &str = "shell_desktop_unavailable";
+const HELPER_LAUNCH_NOT_INVOKED_PLATFORM_CODE: &str = "helper_launch_not_invoked";
+
+fn helper_not_invoked_error(reason: ProcessLaunchError) -> InstallerError {
+    match reason {
+        ProcessLaunchError::ShellDesktopUnavailable => helper_launch_error()
+            .with_platform_error_code(SHELL_DESKTOP_UNAVAILABLE_PLATFORM_CODE)
+            .with_diagnostic_message(
+                "Explorer did not expose a desktop shell view to launch the current-user helper",
+            ),
+        _ => {
+            helper_launch_error().with_platform_error_code(HELPER_LAUNCH_NOT_INVOKED_PLATFORM_CODE)
+        }
+    }
+}
+
+fn helper_busy_error() -> InstallerError {
+    InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+        .with_platform_error_code(HELPER_BUSY_PLATFORM_CODE)
+        .with_diagnostic_message(
+            "another current-user helper operation did not finish within the bounded wait",
+        )
+}
+
 fn helper_launch_pending_error() -> InstallerError {
     InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed).with_diagnostic_message(
         "the current-user helper launch remains pending without a safe release proof",
@@ -2029,6 +2102,91 @@ mod tests {
         ] {
             assert!(!source.contains(&forbidden));
         }
+    }
+
+    fn platform_code(error: &InstallerError) -> Option<String> {
+        error.to_dto().details.platform_error_code
+    }
+
+    #[test]
+    fn helper_gate_waits_for_an_active_lifetime_to_finish() {
+        let gate = Mutex::new(HelperGateState::<()>::Idle);
+        let released = Condvar::new();
+        enter_helper_gate(&gate, &released, Duration::ZERO).unwrap();
+        std::thread::scope(|scope| {
+            let waiter =
+                scope.spawn(|| enter_helper_gate(&gate, &released, Duration::from_secs(10)));
+            std::thread::sleep(Duration::from_millis(100));
+            leave_helper_gate(&gate, &released);
+            waiter
+                .join()
+                .unwrap()
+                .expect("the queued request must enter after finish");
+        });
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Active));
+        leave_helper_gate(&gate, &released);
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Idle));
+    }
+
+    #[test]
+    fn helper_gate_wait_is_bounded_and_reports_busy() {
+        let gate = Mutex::new(HelperGateState::<()>::Idle);
+        let released = Condvar::new();
+        enter_helper_gate(&gate, &released, Duration::ZERO).unwrap();
+        let started = Instant::now();
+        let error = enter_helper_gate(&gate, &released, Duration::from_millis(50)).unwrap_err();
+        assert!(started.elapsed() >= Duration::from_millis(50));
+        assert_eq!(
+            platform_code(&error).as_deref(),
+            Some(HELPER_BUSY_PLATFORM_CODE)
+        );
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Active));
+    }
+
+    #[test]
+    fn quarantined_helper_gate_still_fails_immediately() {
+        let gate = Mutex::new(HelperGateState::Quarantined {
+            _lifetime: Box::new(()),
+        });
+        let released = Condvar::new();
+        let started = Instant::now();
+        let error = enter_helper_gate(&gate, &released, Duration::from_secs(10)).unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_ne!(
+            platform_code(&error).as_deref(),
+            Some(HELPER_BUSY_PLATFORM_CODE)
+        );
+        assert_eq!(
+            error.to_dto().code,
+            InstallerErrorCode::WindowsDeploymentFailed
+        );
+        leave_helper_gate(&gate, &released);
+        assert!(matches!(
+            *gate.lock().unwrap(),
+            HelperGateState::Quarantined { .. }
+        ));
+    }
+
+    #[test]
+    fn helper_launch_failures_carry_distinct_platform_codes() {
+        assert_eq!(
+            platform_code(&helper_not_invoked_error(
+                ProcessLaunchError::ShellDesktopUnavailable
+            ))
+            .as_deref(),
+            Some(SHELL_DESKTOP_UNAVAILABLE_PLATFORM_CODE)
+        );
+        assert_eq!(
+            platform_code(&helper_not_invoked_error(
+                ProcessLaunchError::InteractiveUserUnavailable
+            ))
+            .as_deref(),
+            Some(HELPER_LAUNCH_NOT_INVOKED_PLATFORM_CODE)
+        );
+        assert_eq!(platform_code(&helper_launch_pending_error()), None);
+        let source = production_source();
+        assert!(source.contains("log_helper_failure(&error);"));
+        assert!(source.contains(".inspect_err(log_helper_failure)"));
     }
 
     #[test]

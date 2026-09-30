@@ -1,0 +1,61 @@
+{
+  "id": "windows-install-fixes",
+  "name": "windows-install-fixes",
+  "title": "Windows helper 队列、Codex PackageBridge 目录身份与 OpenCode ARM64 修复",
+  "description": "Fix three VM-evidenced install defects found after v0.4.9: parallel Windows readiness reads failing on the busy helper gate, Codex PackageBridge rejecting ProgramData directory index growth as ancestor drift, and OpenCode Desktop Windows ARM64 lacking a source; add helper launch diagnostics; verify with fork-built installers on VMs.",
+  "status": "in_progress",
+  "dev_type": "fullstack",
+  "scope": "windows-install",
+  "package": null,
+  "priority": "P1",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-09-30",
+  "completedAt": null,
+  "branch": "maintenance/windows-install-fixes-20260930",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/202",
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/codex_desktop/platform/windows/helper.rs",
+    "src-tauri/src/platform/windows/interactive_user.rs",
+    "src-tauri/src/platform/process_launch.rs",
+    "src-tauri/src/services/tooling.rs",
+    "src-tauri/src/services/tooling/grok.rs",
+    "src-tauri/src/services/tooling/claude.rs",
+    "src-tauri/src/agent_install/cli.rs",
+    "src-tauri/src/agent_install/mod.rs",
+    "src-tauri/src/codex_desktop/platform/windows/package_bridge.rs",
+    "src-tauri/src/agent_install/fetch.rs",
+    "src-tauri/src/agent_install/sources/opencode.rs",
+    "src-tauri/src/agent_install/desktop.rs",
+    "src/shared/codex-desktop/installerErrorCopy.ts"
+  ],
+  "notes": "2026-09-30 19:20（UTC+8）用户授权按 vm-smoke/FIX-PROPOSALS.md 实施并开一个 PR；19:29 批准在 CI 全绿且虚拟机复测通过后合并并发布 0.4.10；19:35 团队评审：ARM64 helper 未拉起按环境受限处理，只补诊断。Refs fy-agent/fyagent#29 (missed coverage)。",
+  "meta": {
+    "baseline_sha": "59009fa7f26f48fc1935af48c91f8f96537c5b5c",
+    "vm_evidence": "vm-smoke/SUMMARY.md, vm-smoke/FIX-PROPOSALS.md (box-local, junshi-fy fork runs)",
+    "proposed_patch_version": "0.4.10",
+    "version_bump_applied": false,
+    "release_gate": "x64 Grok/Claude detection, Codex Desktop install x64+ARM, ARM OpenCode arm64 must pass; ARM Grok/Claude environment-limited, not gating",
+    "follow_ups": [],
+    "vm_retest": {
+      "fork_build_run": "https://github.com/junshi-fy/fyagent/actions/runs/36710010625",
+      "fork_build_source": "3965fa9d",
+      "smoke_runs": [
+        "36713051016",
+        "36713063259",
+        "36713075816",
+        "36713086945",
+        "36713098018"
+      ],
+      "x64": "helper queue verified (concurrent readiness 4x not_installed in 3 runs); Codex Desktop 3/3 succeeded",
+      "arm64": "bridge identity passes after ProgramData 4096->8192; Codex/OpenCode installs and Claude/Grok reads stop at Explorer desktop launch (shell_desktop_unavailable / interactive_user_unavailable) on the GitHub ARM runner; environment-limited, retest on real ARM or Wuying",
+      "release_gate": "held before merge: ARM Codex install and ARM OpenCode install could not complete on the VM"
+    }
+  }
+}
