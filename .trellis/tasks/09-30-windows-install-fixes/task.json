@@ -16,7 +16,7 @@
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
-  "pr_url": null,
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/202",
   "subtasks": [],
   "children": [],
   "parent": null,
@@ -42,6 +42,20 @@
     "proposed_patch_version": "0.4.10",
     "version_bump_applied": false,
     "release_gate": "x64 Grok/Claude detection, Codex Desktop install x64+ARM, ARM OpenCode arm64 must pass; ARM Grok/Claude environment-limited, not gating",
-    "follow_ups": []
+    "follow_ups": [],
+    "vm_retest": {
+      "fork_build_run": "https://github.com/junshi-fy/fyagent/actions/runs/36710010625",
+      "fork_build_source": "3965fa9d",
+      "smoke_runs": [
+        "36713051016",
+        "36713063259",
+        "36713075816",
+        "36713086945",
+        "36713098018"
+      ],
+      "x64": "helper queue verified (concurrent readiness 4x not_installed in 3 runs); Codex Desktop 3/3 succeeded",
+      "arm64": "bridge identity passes after ProgramData 4096->8192; Codex/OpenCode installs and Claude/Grok reads stop at Explorer desktop launch (shell_desktop_unavailable / interactive_user_unavailable) on the GitHub ARM runner; environment-limited, retest on real ARM or Wuying",
+      "release_gate": "held before merge: ARM Codex install and ARM OpenCode install could not complete on the VM"
+    }
   }
 }
