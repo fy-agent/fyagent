@@ -403,7 +403,7 @@
     ],
     [
       "src-tauri/tests/codex_desktop_domain.rs",
-      "29b2c561c81458fee465afe326994c09b9193b9d2f93749b3a1897c966b26a26"
+      "678f9b5d8c8e30c106dcd32ec29c054d3a898816edfd10dd443048b1e9abdd1b"
     ],
     [
       "src-tauri/tests/profile_roundtrip.rs",
