@@ -525,6 +525,25 @@ struct NativeFileIdentity {
     number_of_links: u32,
 }
 
+impl NativeFileIdentity {
+    /// Whether `current` still names the object captured as `self`.
+    ///
+    /// A held directory is bound by volume serial and file ID only. NTFS
+    /// reports a directory's index allocation as its size, which grows in
+    /// 4 KiB steps when any sibling entry is created, including FyAgent's own
+    /// bridge root under ProgramData. Replacing a held directory changes its
+    /// file ID, so size and link count add no rebinding protection there.
+    /// Regular files keep the full comparison.
+    fn same_object(&self, current: &Self, kind: NativeObjectKind) -> bool {
+        match kind {
+            NativeObjectKind::Directory => {
+                self.volume_serial == current.volume_serial && self.file_index == current.file_index
+            }
+            NativeObjectKind::RegularFile => self == current,
+        }
+    }
+}
+
 struct HeldObject {
     file: File,
     identity: NativeFileIdentity,
@@ -542,10 +561,12 @@ impl HeldObject {
     }
 
     fn recheck(&self) -> Result<(), InstallerError> {
-        if native_file_identity(&self.file, self.kind)? != self.identity {
-            return Err(bridge_integrity_error(
-                "a held package bridge ancestor identity changed",
-            ));
+        let current = native_file_identity(&self.file, self.kind)?;
+        if !self.identity.same_object(&current, self.kind) {
+            return Err(
+                bridge_integrity_error("a held package bridge ancestor identity changed")
+                    .with_retryable(true),
+            );
         }
         Ok(())
     }
@@ -1806,6 +1827,77 @@ fn bridge_checksum_error(message: &'static str) -> InstallerError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directory_identity_ignores_index_size_and_links_but_files_do_not() {
+        let captured = NativeFileIdentity {
+            volume_serial: 7,
+            file_index: 11,
+            size: 4096,
+            number_of_links: 1,
+        };
+        let grown = NativeFileIdentity {
+            size: 8192,
+            number_of_links: 2,
+            ..captured
+        };
+        assert!(captured.same_object(&grown, NativeObjectKind::Directory));
+        assert!(!captured.same_object(&grown, NativeObjectKind::RegularFile));
+        assert!(captured.same_object(&captured, NativeObjectKind::RegularFile));
+
+        let replaced = NativeFileIdentity {
+            file_index: 12,
+            ..captured
+        };
+        let other_volume = NativeFileIdentity {
+            volume_serial: 8,
+            ..captured
+        };
+        for kind in [NativeObjectKind::Directory, NativeObjectKind::RegularFile] {
+            assert!(!captured.same_object(&replaced, kind));
+            assert!(!captured.same_object(&other_volume, kind));
+        }
+    }
+
+    #[test]
+    fn held_directory_survives_index_growth_but_not_replacement() {
+        let root = tempfile::tempdir().unwrap();
+        let parent = root.path().join("parent");
+        std::fs::create_dir(&parent).unwrap();
+        let held = HeldObject::capture(
+            open_absolute_directory_no_follow(&parent).unwrap(),
+            NativeObjectKind::Directory,
+        )
+        .unwrap();
+        let before = held.identity;
+        for index in 0..400 {
+            std::fs::create_dir(parent.join(format!("sibling-entry-with-a-long-name-{index:04}")))
+                .unwrap();
+        }
+        let after = native_file_identity(&held.file, NativeObjectKind::Directory).unwrap();
+        // Keep the regression meaningful: the directory index really grew.
+        assert_ne!(before.size, after.size);
+        held.recheck()
+            .expect("sibling entries must not rebind a held directory");
+
+        let replacement_root = root.path().join("replacement");
+        std::fs::create_dir(&replacement_root).unwrap();
+        let replacement = native_file_identity(
+            &open_absolute_directory_no_follow(&replacement_root).unwrap(),
+            NativeObjectKind::Directory,
+        )
+        .unwrap();
+        assert!(!before.same_object(&replacement, NativeObjectKind::Directory));
+
+        let changed = HeldObject {
+            file: open_absolute_directory_no_follow(&replacement_root).unwrap(),
+            identity: before,
+            kind: NativeObjectKind::Directory,
+        };
+        let error = changed.recheck().unwrap_err().to_dto();
+        assert_eq!(error.code, InstallerErrorCode::PackageIdentityMismatch);
+        assert!(error.retryable);
+    }
 
     #[test]
     fn rename_buffer_includes_the_complete_inline_structure() {
