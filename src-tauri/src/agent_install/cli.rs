@@ -26,22 +26,28 @@ pub struct CliObservation {
     pub local_version: Option<String>,
     pub latest_version: Option<String>,
     pub unavailable: bool,
+    /// The observation did not run (Windows helper busy or not launched).
+    /// Readiness stays `unknown`; the CLI is neither unavailable nor absent.
+    pub unconfirmed: bool,
     pub update_supported: bool,
 }
 
 impl CliObservation {
     pub fn from_tool_version(version: &ToolVersion) -> Self {
-        let unavailable = cli_unavailable(
-            version.error(),
-            version.local_version().is_some(),
-            version.installed_but_broken(),
-        );
+        let unconfirmed = cli_error_is_unconfirmed(version.error());
+        let unavailable = !unconfirmed
+            && cli_unavailable(
+                version.error(),
+                version.local_version().is_some(),
+                version.installed_but_broken(),
+            );
         Self {
             detected: version.is_detected(),
             runnable: version.local_version().is_some() && !version.installed_but_broken(),
             local_version: version.local_version().map(str::to_string),
             latest_version: version.latest_version().map(str::to_string),
             unavailable,
+            unconfirmed,
             update_supported: version.name() != CLAUDE_TOOL_ID
                 || version.distribution_owner() == Some("official_npm"),
         }
@@ -57,6 +63,10 @@ fn cli_unavailable(error: Option<&str>, has_local: bool, installed_but_broken: b
         Some(_) => true,
         None => false,
     }
+}
+
+fn cli_error_is_unconfirmed(error: Option<&str>) -> bool {
+    error == Some(tooling::WINDOWS_HELPER_UNCONFIRMED_MESSAGE)
 }
 
 fn cli_error_is_absence(message: &str) -> bool {
@@ -108,6 +118,9 @@ pub async fn run_cli_lifecycle(
                 ClaudeLifecycleError::VerificationFailed => {
                     AgentReasonCode::InstallationVerificationFailed
                 }
+                ClaudeLifecycleError::HelperUnconfirmed => {
+                    AgentReasonCode::InteractiveUserUnavailable
+                }
             }
         });
     }
@@ -121,6 +134,7 @@ pub async fn run_cli_lifecycle(
     .map_err(|error| {
         if error.contains("elevated Windows")
             || error.contains("unavailable for the current Windows user")
+            || error == tooling::WINDOWS_HELPER_UNCONFIRMED_MESSAGE
         {
             super::types::AgentReasonCode::InteractiveUserUnavailable
         } else if error.contains("confirmed npm install destination")
@@ -186,6 +200,22 @@ mod tests {
         assert!(!cli_unavailable(None, false, false));
         assert!(!cli_unavailable(Some("host missing"), true, false));
         assert!(!cli_unavailable(Some("host missing"), false, true));
+    }
+
+    #[test]
+    fn helper_unconfirmed_error_is_unknown_not_unavailable() {
+        let message = Some(tooling::WINDOWS_HELPER_UNCONFIRMED_MESSAGE);
+        assert!(cli_error_is_unconfirmed(message));
+        assert!(!cli_error_is_absence(
+            tooling::WINDOWS_HELPER_UNCONFIRMED_MESSAGE
+        ));
+        assert!(!cli_error_is_unconfirmed(Some(
+            "Grok Build is unavailable for the current Windows user."
+        )));
+        assert!(!cli_error_is_unconfirmed(Some(
+            "Claude Code is not installed"
+        )));
+        assert!(!cli_error_is_unconfirmed(None));
     }
 
     #[test]

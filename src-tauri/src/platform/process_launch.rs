@@ -37,6 +37,9 @@ pub(crate) enum ProcessLaunchError {
     #[cfg(target_os = "windows")]
     InvalidUserHelper,
     InteractiveUserUnavailable,
+    /// Explorer is reachable but exposes no desktop shell view to launch from.
+    #[cfg(target_os = "windows")]
+    ShellDesktopUnavailable,
     #[cfg(target_os = "macos")]
     PlatformLaunchFailed,
     #[cfg(target_os = "windows")]
@@ -67,6 +70,10 @@ impl ProcessLaunchError {
             #[cfg(target_os = "windows")]
             Self::InvalidUserHelper => "fyagent_user_helper_invalid",
             Self::InteractiveUserUnavailable => "interactive_user_launcher_unavailable",
+            // IPC keeps one public launcher code; the helper boundary records
+            // the missing desktop view as its own platform error code.
+            #[cfg(target_os = "windows")]
+            Self::ShellDesktopUnavailable => "interactive_user_launcher_unavailable",
             #[cfg(target_os = "macos")]
             Self::PlatformLaunchFailed => "external_launch_failed",
             #[cfg(target_os = "windows")]
