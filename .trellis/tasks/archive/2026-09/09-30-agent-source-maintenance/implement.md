@@ -41,14 +41,18 @@
 
 ## E. 提交与发布
 
-- [ ] 在授权环境先运行 `mise run check:backend`，随后 `mise run check:contracts` 和 `mise run check`。
-- [ ] 新增 Rust 测试筛选命令可用 `cargo test --manifest-path src-tauri/Cargo.toml --lib services::tooling::versions::tests::hermes_`，仅在仓库支持且已授权的宿主/VM中执行。
+- [x] 在授权环境先运行 `mise run check:backend`，随后 `mise run check:contracts` 和 `mise run check`。（由 PR #199/#200 的必需 CI 在 Windows/macOS runner 上执行并通过；Linux 开发主机只能跑前端与契约部分。）
+- [x] 新增 Rust 测试筛选命令可用 `cargo test --manifest-path src-tauri/Cargo.toml --lib services::tooling::versions::tests::hermes_`，仅在仓库支持且已授权的宿主/VM中执行。（新增 14 个 Rust 单测在 PR #199 CI 的 Windows 与 macOS backend job 中全部通过。）
 - [x] 确定未占用的补丁版本，调用现有版本工具；更新变更记录和安装支持差异。
-- [ ] 提交 PR、实际等待并读取必需 CI 结果；遵循 merge governance 合并。
-- [ ] 记录最终 source SHA，走 release contract 所定义的稳定 tag 发布路径。
-- [ ] 校验正式发布资产、摘要、signing-status 和 provenance；重新下载并抽验。
-- [ ] 写入真实 commit、PR URL、CI run、release URL 和逐项验收结果，再归档任务。
+- [x] 提交 PR、实际等待并读取必需 CI 结果；遵循 merge governance 合并。（#199 → `8566e62c`，#200 → `9519d288`，均经 merge queue、未使用 admin 绕过。）
+- [x] 记录最终 source SHA，走 release contract 所定义的稳定 tag 发布路径。（v0.4.8 未能发布，见 `execution-result.md`；最终 source SHA `9519d288`，稳定 tag `v0.4.9`。）
+- [x] 校验正式发布资产、摘要、signing-status 和 provenance；重新下载并抽验。（3 个安装包重新下载，SHA-256 与 download-manifest、signing-status 和 provenance subject 一致。）
+- [x] 写入真实 commit、PR URL、CI run、release URL 和逐项验收结果，再归档任务。（见 `execution-result.md`。）
 
 状态说明（2026-09-30）：
 - “运行新增 Rust 回归测试”：测试已写入，但主 crate 在 Linux 开发主机本就编译不过，只能由 CI 的 Windows/macOS runner 执行，结果以 PR 的 CI 为准。
 - “逐项完成矩阵”：元数据与下载别名已逐项实测（research/source-matrix-20260930.md）；D 组的真机安装/升级/启动验收因没有 Windows/macOS 真机未做，保持未完成。
+
+归档说明（2026-09-30）：
+- E 组已全部完成，最终结果见 `execution-result.md`。
+- D 组两项真机验收（新安装/升级/多 owner/取消与失败恢复/重扫/启动；Windows x64、Windows ARM64、macOS 分平台验收）没有执行，保持未勾选，归档时转为后续跟进项，不算已验收。
