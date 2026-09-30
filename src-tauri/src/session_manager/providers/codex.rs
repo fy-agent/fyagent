@@ -343,6 +343,7 @@ fn parse_session_with_titles(
             if let Some(payload) = value.get("payload") {
                 if payload.get("type").and_then(Value::as_str) == Some("message")
                     && payload.get("role").and_then(Value::as_str) == Some("user")
+                    && is_user_title_candidate(payload)
                 {
                     let text = payload.get("content").map(extract_text).unwrap_or_default();
                     if let Some(title) = title_candidate_from_user_message(&text) {
@@ -422,6 +423,21 @@ fn is_subagent_source(source: Option<&Value>) -> bool {
         .and_then(|value| value.as_object())
         .map(|source| source.contains_key("subagent"))
         .unwrap_or(false)
+}
+
+// Display-only compatibility: older rollouts have no provenance metadata.
+// When present, accept only an entirely user-authored message. Mixed or unknown
+// content is not a title candidate; do not guess which part is the attachment.
+fn is_user_title_candidate(payload: &Value) -> bool {
+    let Some(metadata) = payload.get("internal_chat_message_metadata_passthrough") else {
+        return true;
+    };
+    metadata
+        .get("content_item_kinds")
+        .and_then(Value::as_array)
+        .is_some_and(|kinds| {
+            !kinds.is_empty() && kinds.iter().all(|kind| kind.as_str() == Some("user.text"))
+        })
 }
 
 fn title_candidate_from_user_message(text: &str) -> Option<String> {
@@ -606,6 +622,42 @@ mod tests {
         let meta = parse_session(&path).unwrap();
         assert_eq!(meta.title.as_deref(), Some("How do I deploy?"));
         assert_eq!(meta.resume_command.as_deref(), Some("codex resume test-id"));
+    }
+
+    #[test]
+    fn parse_session_uses_real_prompt_after_structured_context() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("session.jsonl");
+        std::fs::write(
+            &path,
+            include_str!("../../../../tests/session-migration/fixtures/codex-golden.jsonl"),
+        )
+        .unwrap();
+        let meta = parse_session(&path).unwrap();
+        assert_eq!(
+            meta.title.as_deref(),
+            Some("合成档案：纸鹤的编号是 KITE-728。\n保持大小写。")
+        );
+    }
+
+    #[test]
+    fn display_title_skips_mixed_unknown_and_malformed_provenance() {
+        for kinds in [
+            serde_json::json!(["user.text", "attachment"]),
+            serde_json::json!(["unknown.kind"]),
+            serde_json::json!([]),
+            serde_json::json!("user.text"),
+            serde_json::Value::Null,
+        ] {
+            let payload = serde_json::json!({"internal_chat_message_metadata_passthrough": {"content_item_kinds": kinds}});
+            assert!(!is_user_title_candidate(&payload));
+        }
+        assert!(is_user_title_candidate(
+            &serde_json::json!({"content": "legacy prompt"})
+        ));
+        assert!(is_user_title_candidate(
+            &serde_json::json!({"internal_chat_message_metadata_passthrough": {"content_item_kinds": ["user.text"]}})
+        ));
     }
 
     #[test]

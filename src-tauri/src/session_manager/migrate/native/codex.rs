@@ -38,14 +38,26 @@ fn protocol_error(method: &str, reason: impl Into<String>) -> MigrationError {
 /// Used by export as well as restore: matching a native ID in an unrelated
 /// copied store never inherits this installation's source mapping.
 pub(crate) fn store_identity_at(home: &Path) -> MigrationResult<String> {
-    let installation = std::fs::read_to_string(home.join("installation_id"))
-        .ok()
-        .and_then(|id| uuid::Uuid::parse_str(id.trim()).ok())
-        .ok_or_else(|| MigrationError::TargetStoreUnidentified {
-            provider_id: "codex".into(),
-        })?;
+    let installation = read_installation_id_at(home)?;
     let instance = super::super::identity::store_instance_id("codex", home)?;
     Ok(format!("codex:{installation}:{instance}"))
+}
+
+/// Observe the native identity without creating a FyAgent store identity or
+/// initializing Codex. Only Codex itself may initialize installation_id.
+pub(crate) fn read_installation_id_at(home: &Path) -> MigrationResult<uuid::Uuid> {
+    let read_id = || -> Option<uuid::Uuid> {
+        let file = std::fs::File::open(home.join("installation_id")).ok()?;
+        let mut raw = String::new();
+        file.take(257).read_to_string(&mut raw).ok()?;
+        if raw.len() > 256 {
+            return None;
+        }
+        uuid::Uuid::parse_str(raw.trim()).ok()
+    };
+    read_id().ok_or_else(|| MigrationError::TargetStoreUnidentified {
+        provider_id: "codex".into(),
+    })
 }
 
 impl NativeSessionWriter for CodexWriter {

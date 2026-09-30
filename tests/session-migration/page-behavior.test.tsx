@@ -284,6 +284,47 @@ describe("session migration page batch export behavior", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("reprobes local readiness when import is opened after native first launch", async () => {
+    const user = userEvent.setup();
+    const ports = pagePorts({
+      preview: async () => migrationPreview("codex", "session-a", 1),
+    });
+    let initialized = false;
+    ports.sessions.probeLocalProvider = vi.fn(async (providerId) => ({
+      providerId,
+      installed: true,
+      detectedVersion: "0.154.0",
+      extractionSupported: true,
+      writeSupported: initialized,
+      reasonCode: initialized ? undefined : "targetStoreUnidentified",
+    }));
+    ports.sessions.pickPackageFile = vi.fn(async () => "/tmp/package.json");
+    ports.sessions.readSessionPackage = vi.fn(async () => ({
+      package: sessionPackageSchema.parse(sessionPackageSample()),
+      attempts: [],
+    }));
+    renderPage(ports);
+    await screen.findByText("来源 A", { exact: true });
+    await waitFor(() =>
+      expect(ports.sessions.probeLocalProvider).toHaveBeenCalledWith("codex"),
+    );
+    vi.mocked(ports.sessions.probeLocalProvider).mockClear();
+    initialized = true;
+    await user.click(screen.getByRole("button", { name: /导入会话包/u }));
+    await waitFor(() =>
+      expect(ports.sessions.probeLocalProvider).toHaveBeenCalledWith("codex"),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "选择文件" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "解析会话包" }),
+    );
+    await within(dialog).findByText("会话包解析成功", { exact: true });
+    expect(
+      within(dialog).getByRole("button", { name: "确认恢复至目标软件" }),
+    ).toBeEnabled();
+  });
+
   it("shows a probe failure as unknown instead of claiming not installed", async () => {
     const user = userEvent.setup();
     const ports = pagePorts({
