@@ -8,6 +8,26 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.10] - 2026-09-30
+
+### Fixed
+
+- Windows: parallel Claude Code / Grok Build readiness reads queue for the
+  shared current-user helper (up to 30 s) instead of failing as unavailable;
+  when the helper did not run, the card reports an unknown state and the log
+  records a redacted reason (#202).
+- Codex Desktop on Windows: held package-bridge ancestor folders are compared
+  by volume serial number and file ID, so folder index-size changes no longer
+  fail the install with `PACKAGE_IDENTITY_MISMATCH` (#202).
+- OpenCode Desktop on Windows ARM64: one-click install uses the versioned
+  official `opencode-desktop-win-arm64.exe` (#202).
+
+### Known limitations
+
+- The Windows ARM64 Codex Desktop and OpenCode Desktop installs could not be
+  verified end to end on GitHub's ARM runner (no Explorer desktop view) and
+  still need a retest on a real ARM PC or a Wuying cloud desktop.
+
 ## [0.4.9] - 2026-09-30
 
 ### Fixed
