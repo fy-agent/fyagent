@@ -57,7 +57,7 @@ remain backend evidence and are projected only through lifecycle capabilities.
 | QoderWork CN | Reviewed first-party `/qoder-work-cn/releases/latest/` aliases plus same-host Electron-builder feed. Install/launch only; FyAgent update disabled. |
 | TRAE Work CN | `data.solo` with `region=cn`; never TRAE Code or `data.manifest`. Comparable local version is bounded `tronBuildVersion`. |
 | WorkBuddy | Closed `/v2/update` platform IDs and official download host. macOS rewrites only the validated terminal `.zip` suffix to `.dmg`. |
-| OpenCode Desktop | Reviewed locale-neutral stable Desktop aliases and closed installed identity. Windows x64 uses `windows-x64-nsis`. The aliases are versionless and may serve a different product line than GitHub Releases (since 2026-09 they serve v2 `2.0.19` while GitHub latest is `v1.18.33`), so GitHub latest is neither the display version nor the macOS expected release version. No public OpenCode CLI installer. |
+| OpenCode Desktop | Reviewed locale-neutral stable Desktop aliases and closed installed identity. Windows x64 uses `windows-x64-nsis`. Windows ARM64 has no stable alias: it reads the x64 alias redirect once without following it, accepts only `https://opencode.ai/files/bin/<x.y.z>/opencode-desktop-win-x64.exe` (no query, fragment, port or userinfo) and installs the same-version `opencode-desktop-win-arm64.exe`; that source is versioned (`versionless_latest=false`, version in the release ID). The aliases are versionless and may serve a different product line than GitHub Releases (since 2026-09 they serve v2 `2.0.19` while GitHub latest is `v1.18.33`), so GitHub latest is neither the display version nor the macOS expected release version. No public OpenCode CLI installer. |
 
 ### Official npm source boundary
 
@@ -136,7 +136,9 @@ remain backend evidence and are projected only through lifecycle capabilities.
 - A shorter WorkBuddy dotted marketing version may equal a longer remote
   product-version prefix. Same-length differing segments remain an update.
 - OpenCode Desktop resolution does not call GitHub at all; the stable alias
-  stays installable and versionless. Windows ARM64 remains unsupported.
+  stays installable and versionless. Windows ARM64 uses the versioned official
+  file derived from the x64 alias redirect; an unparseable redirect fails closed
+  with a source error, never a guessed URL.
 - Every request is HTTPS, without userinfo or explicit non-default port. Each
   redirect hop must match the product allowlist and bounded hop count; scheme
   downgrade or an unknown host fails closed.
@@ -201,8 +203,9 @@ manually. Helper product admission authorizes download/handoff only; it does
 not prove scan relatives or installation completion.
 
 `installState=installed` and `launch` require a trusted PE at a closed relative
-or a matching Uninstall/App Paths hint that resolves to that identity. ARM64
-stays `platform_unsupported`. Successful `ShellExecute` is only vendor-wizard
+or a matching Uninstall/App Paths hint that resolves to that identity. On an
+ARM64 host the installer and installed EXE must be ARM64 PE (the i386 NSIS stub
+remains installer-only). Successful `ShellExecute` is only vendor-wizard
 handoff; status changes after a later complete scan.
 
 ## 4. Validation & Error Matrix

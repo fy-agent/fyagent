@@ -232,7 +232,8 @@ Do not send the user to the Models section to pick a filesystem destination.
   `allowedActions`. The renderer never embeds a reviewed npm version.
 - Windows vendor-wizard success uses
   `官方安装窗口已打开。完成安装后请刷新安装状态。` It must not say the product
-  is installed. OpenCode Windows ARM64 remains unavailable.
+  is installed. OpenCode Windows ARM64 installs the versioned official ARM64
+  file; the confirmation shows its version instead of the stable channel.
 - OpenCode catalog description must not say 「本机识别和启动暂无法确认」
   once Windows identity is admitted. After a complete native scan with a
   trusted candidate, including a user-run official NSIS, show Launch from
