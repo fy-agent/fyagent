@@ -24,7 +24,8 @@ pub(crate) enum ClaudeLifecycleError {
     ExecutionFailed,
     VerificationFailed,
     /// The Windows current-user helper did not run; nothing was executed.
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    /// Only the Windows helper path constructs this variant.
+    #[allow(dead_code)]
     HelperUnconfirmed,
 }
 

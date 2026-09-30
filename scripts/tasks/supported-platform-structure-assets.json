@@ -59,7 +59,7 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "b719285f3bab08e101a7277456240ab9ac6572db19d5636bfe4927fe8c1a2e3c"
+      "84f38a19e97c95d93dd1379cf996a2fb40f104d3f1ec9508bb56c78ba8210756"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "c5086e69c1447324a3fda70c6fd79f631881a62b26dcf21874e993fad14337c5"
+      "2a4bc778e2c2d4998d156159b5cb3f30b1c6a9aa6293b77489ae6e44d25be88b"
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
@@ -79,7 +79,7 @@
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
-      "b310dffce5970e869fce8151367fad963297dee848f4e0febee7706c41556082"
+      "00d5e7da1829d7d575ae44a24eeda3133fed90f8ec423d115394d45265ff7cc6"
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
@@ -207,7 +207,7 @@
     ],
     [
       "src-tauri/src/platform/process_launch.rs",
-      "b2caea203ee4eb1fcd73d69659d7f7aa9e0a3fd94a7cf145bc1ffd9a7c67a93a"
+      "758ebc925549f97ebdd1584cacf55994e0dcc8bb4002839411c0c5339b8f9276"
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
@@ -291,11 +291,11 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "3815e120eb31b624a01fb2f5065af0e3d68efc65015aa272a3fe4d65acad7c3c"
+      "e218b9fd92e204cc1d627bea2d3dcd4c9b3ffc72136652cbd515aa3283d472bd"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",
-      "95343c31e0729b69a0768865734e60ad3a90078057ae60a066a90aa030983382"
+      "f58d96dc3b955b053c1a791c5f87b4b1b13a3a26612e2a1ad454bc863fece544"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
@@ -307,7 +307,7 @@
     ],
     [
       "src-tauri/src/services/tooling/grok.rs",
-      "bf48c0850dc792b21cea05f79d5a9c7bc5c17e9120cc8b9956dab8cdc2d082d3"
+      "28d3063637276be6514a7384b103d5d36a57342cfdb55c3103f5ffdc337d6939"
     ],
     [
       "src-tauri/src/services/tooling/health.rs",
