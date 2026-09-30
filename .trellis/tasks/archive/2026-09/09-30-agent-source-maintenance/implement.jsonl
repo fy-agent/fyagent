@@ -4,4 +4,4 @@
 {"file": ".trellis/spec/backend/claude-code-cli.md", "reason": "Claude 安装归属与验证边界"}
 {"file": ".trellis/spec/backend/github-release-workflow.md", "reason": "正式发布身份和资产门禁"}
 {"file": ".trellis/spec/backend/github-merge-governance.md", "reason": "受保护主线和合并门禁"}
-{"file": ".trellis/tasks/09-30-agent-source-maintenance/research.md", "reason": "本轮已核实证据及明确缺口"}
+{"file": ".trellis/tasks/archive/2026-09/09-30-agent-source-maintenance/research.md", "reason": "本轮已核实证据及明确缺口"}
