@@ -1,0 +1,141 @@
+{
+  "testedAt": "2026-10-04T14:57:53.895Z",
+  "level": "static_and_non_browser_state_logic",
+  "method": "Node vm runs page JavaScript with minimal document stubs. This does not verify a real browser, keyboard behavior, layout or application UI.",
+  "checks": [
+    {
+      "name": "Unresolved conflict blocks preview",
+      "result": "PASS"
+    },
+    {
+      "name": "Conflict decision enables preview",
+      "result": "PASS"
+    },
+    {
+      "name": "Complete preview includes rule and preference",
+      "result": "PASS"
+    },
+    {
+      "name": "No application before confirmation",
+      "result": "PASS"
+    },
+    {
+      "name": "Success is reported per target",
+      "result": "PASS"
+    },
+    {
+      "name": "Restore displays the original preference",
+      "result": "PASS"
+    },
+    {
+      "name": "Restore affects only confirmed target",
+      "result": "PASS"
+    },
+    {
+      "name": "Stale preview disables apply",
+      "result": "PASS"
+    },
+    {
+      "name": "Stale apply is blocked by state guard",
+      "result": "PASS"
+    },
+    {
+      "name": "Refresh requires renewed conflict decision",
+      "result": "PASS"
+    },
+    {
+      "name": "New preview ID preserves external preference",
+      "result": "PASS"
+    },
+    {
+      "name": "Reconfirmed fresh preview applies",
+      "result": "PASS"
+    },
+    {
+      "name": "Backup failure prevents all selected writes",
+      "result": "PASS"
+    },
+    {
+      "name": "Partial failure has distinct target results",
+      "result": "PASS"
+    },
+    {
+      "name": "Partial recovery preserves failed target",
+      "result": "PASS"
+    },
+    {
+      "name": "Skipping Claude excludes it from writing",
+      "result": "PASS"
+    },
+    {
+      "name": "Codex view shares task state",
+      "result": "PASS"
+    },
+    {
+      "name": "Panel is clearly optional comparison",
+      "result": "PASS"
+    },
+    {
+      "name": "Mode browsing does not enable config",
+      "result": "PASS"
+    },
+    {
+      "name": "Model preview names include sources",
+      "result": "PASS"
+    },
+    {
+      "name": "Virtual model path preserves backslashes",
+      "result": "PASS"
+    },
+    {
+      "name": "Model enable requires explicit confirmation",
+      "result": "PASS"
+    },
+    {
+      "name": "Confirmed enable changes simulated mode",
+      "result": "PASS"
+    },
+    {
+      "name": "Aggregate excludes failover",
+      "result": "PASS"
+    },
+    {
+      "name": "No external resources",
+      "result": "PASS"
+    },
+    {
+      "name": "No network calls",
+      "result": "PASS"
+    },
+    {
+      "name": "No persistent storage or file APIs",
+      "result": "PASS"
+    },
+    {
+      "name": "Static focus, dialog and labels present; runtime unverified",
+      "result": "PASS"
+    },
+    {
+      "name": "Stale preview back action also refreshes observed preference and resets conflict",
+      "result": "PASS"
+    },
+    {
+      "name": "Preview after returning from stale state includes new preference and new ID",
+      "result": "PASS"
+    }
+  ],
+  "browser": {
+    "result": "NOT_RUN",
+    "reason": "Subagent IAB visibility is unavailable. A hidden IAB file URL was rejected by browser policy; no workaround attempted."
+  },
+  "notVerified": [
+    "actual buttons and keyboard events in a browser",
+    "rendered desktop and mobile layout",
+    "real application integration",
+    "host reload",
+    "runtime_screenshot",
+    "pixel_diff"
+  ],
+  "followupTestedAt": "2026-10-04T14:59:26.401Z",
+  "auditedHtmlSha256": "bf26968dcf414f446f72095b44654097f35b86ce12323f1ee4f10886ab29b5a1"
+}
