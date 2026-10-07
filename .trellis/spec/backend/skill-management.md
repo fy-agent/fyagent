@@ -105,6 +105,13 @@ filesystem/database result into success.
   read path does not silently write a new database row.
 - The same directory observed in several targets is one logical Skill with
   merged assignment flags, not several independent installations.
+- Skills state uses the shared read/write lock in `services/skill.rs`. Lock
+  order is global sync operation lock, Skills state lock, then database mutex.
+  Install duplicate checks, assignment, restore, import and both migrations
+  hold the write lock; bulk target sync holds the read lock. Storage migration
+  calls the already-locked bulk sync implementation to avoid lock re-entry.
+  Async install/update releases the guard during download and resolves the
+  current SSOT root again after acquiring the guard.
 
 ### Discovery and installation
 
@@ -117,6 +124,13 @@ filesystem/database result into success.
 - Remote and local ZIP extraction is bounded by entry/size budgets, rejects
   traversal, and owns temporary directories until the extracted tree is no
   longer needed. A failed extraction must not leave a partial managed Skill.
+- Both archive paths allow up to 30,000 entries and charge every materialized
+  file/directory at least 4 KiB against the 512 MiB extraction budget. Vendor
+  tree validation shares the entry cap and includes its root directory.
+- Source resolution prefers an explicit path, then the directory name, then a
+  unique metadata name. Update lookup prefers the persisted source URL path;
+  a relocated source refreshes that URL without changing installation identity
+  or assignment flags. Missing SSOT files invalidate a cached update hash.
 - Symlink entries are never followed outside the extracted tree. Local ZIP
   installation accepts the path selected by the trusted desktop picker; the
   product must not expose an arbitrary web/path text box as equivalent trust.
@@ -142,6 +156,11 @@ filesystem/database result into success.
   row is logged and skipped rather than preventing every other Skill from
   reconciling. The aggregate operation still must not report a skipped row as
   successfully synchronized.
+- Before projection, removal or bulk cleanup, resolve the `SkillTargetId`
+  root and reject equality or canonical path aliases with SSOT. Bulk sync
+  rejects a root conflict before any per-row best-effort handling, even for
+  an empty database. Storage migration validates its destination against all
+  nine target roots before moving any Skill or changing the storage setting.
 - A successful FyAgent projection proves only that FyAgent wrote/read its
   managed/native target state. It does not prove that the vendor application
   reloaded or executed the Skill.
@@ -212,6 +231,11 @@ assertion owners include:
   merging, every renderer target toggle, direct-copy targets, uninstall/restore path
   confinement, invalid-stored-directory database-only uninstall, discovery
   filtering, and migration result semantics;
+- Skill regressions also cover the 13,248-entry local ZIP to WorkBuddy copy
+  path, exact/overflow vendor entry counts, missing-SSOT update hashes (four
+  cases), relocated/renamed source URLs in both storage modes, duplicate
+  install reuse/conflict, actual public-operation blocking during cloud
+  restore, bulk root equality, and canonical symlink aliases on macOS;
 - `src-tauri/src/services/skill/assignment.rs`: live effect before SQLite flag
   update and best-effort per-row target reconciliation;
 - `src-tauri/src/database/dao/skills.rs`: all nine flags round-trip and metadata

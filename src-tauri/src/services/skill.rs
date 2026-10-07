@@ -819,47 +819,14 @@ impl SkillService {
                 ))
             })?;
 
-        // 检查数据库中是否已有同名 directory 的 skill（来自其他仓库）
-        let existing_skills = db.get_all_installed_skills()?;
-        for existing in existing_skills.values() {
-            if existing.directory.eq_ignore_ascii_case(&install_name) {
-                // 检查是否来自同一仓库
-                let same_repo = existing.repo_owner.as_deref() == Some(&skill.repo_owner)
-                    && existing.repo_name.as_deref() == Some(&skill.repo_name);
-                if same_repo {
-                    // 同一仓库的同名 skill，返回现有记录（可能需要更新启用状态）
-                    let mut updated = existing.clone();
-                    updated.apps.set_enabled_for_target(current_app, true);
-                    db.save_skill(&updated)?;
-                    Self::sync_to_app_dir(&updated.directory, current_app)?;
-                    log::info!(
-                        "Skill {} 已存在，更新 {:?} 启用状态",
-                        updated.name,
-                        current_app
-                    );
-                    return Ok(updated);
-                } else {
-                    // 不同仓库的同名 skill，报错
-                    return Err(anyhow!(format_skill_error(
-                        "SKILL_DIRECTORY_CONFLICT",
-                        &[
-                            ("directory", &install_name),
-                            (
-                                "existing_repo",
-                                &format!(
-                                    "{}/{}",
-                                    existing.repo_owner.as_deref().unwrap_or("unknown"),
-                                    existing.repo_name.as_deref().unwrap_or("unknown")
-                                )
-                            ),
-                            (
-                                "new_repo",
-                                &format!("{}/{}", skill.repo_owner, skill.repo_name)
-                            ),
-                        ],
-                        Some("uninstallFirst"),
-                    )));
-                }
+        // Protect the fast path as well as the post-download duplicate check.
+        // The guard must leave scope before any network await.
+        {
+            let _state_guard = skill_state_write_guard();
+            if let Some(existing) =
+                Self::reuse_existing_install(db, skill, &install_name, current_app)?
+            {
+                return Ok(existing);
             }
         }
 
@@ -958,6 +925,7 @@ impl SkillService {
         // Re-check after the network download: another install/uninstall may have
         // completed while the lock was intentionally released around `.await`.
         let _state_guard = skill_state_write_guard();
+        let dest = Self::get_ssot_dir()?.join(&install_name);
         if let Some(existing) = Self::reuse_existing_install(db, skill, &install_name, current_app)?
         {
             return Ok(existing);
@@ -1195,8 +1163,6 @@ impl SkillService {
                 .push(skill);
         }
 
-        let ssot_dir = Self::get_ssot_dir()?;
-
         for ((owner, name, branch), group_skills) in &repo_groups {
             let repo = SkillRepo {
                 owner: owner.clone(),
@@ -1231,6 +1197,7 @@ impl SkillService {
             // Remote I/O is complete. Stabilize the local DB + SSOT while hashes
             // are read and any missing hash metadata is backfilled.
             let _state_guard = skill_state_read_guard();
+            let ssot_dir = Self::get_ssot_dir()?;
 
             for skill in group_skills {
                 let remote_match = Self::find_remote_skill_for_install(
@@ -1329,8 +1296,6 @@ impl SkillService {
             enabled: true,
         };
 
-        let ssot_dir = Self::get_ssot_dir()?;
-
         // 下载仓库
         let (temp_guard, used_branch) = timeout(
             std::time::Duration::from_secs(60),
@@ -1384,6 +1349,7 @@ impl SkillService {
         // Downloads do not mutate local state, so acquire only now and hold the
         // guard through the SSOT replacement, DB metadata update, and app sync.
         let _state_guard = skill_state_write_guard();
+        let ssot_dir = Self::get_ssot_dir()?;
 
         // 下载和扫描期间用户可能已经卸载了该 Skill。必须在任何备份、删除或
         // 复制之前重新确认记录仍存在；否则即使最终的 metadata UPDATE 能发现
@@ -1572,7 +1538,7 @@ impl SkillService {
 
         // 4. 刷新所有应用目录的 symlink（指向新 SSOT）
         for app in SkillTargetId::all() {
-            let _ = Self::sync_to_target(db, &app);
+            let _ = assignment::sync_to_target_unlocked(db, &app);
         }
 
         log::info!(
@@ -1652,6 +1618,7 @@ impl SkillService {
         backup_id: &str,
         current_app: &SkillTargetId,
     ) -> Result<InstalledSkill> {
+        let _state_guard = skill_state_write_guard();
         let backup_path = Self::backup_path_for_id(backup_id)?;
         let metadata = Self::read_backup_metadata(&backup_path)?;
         let backup_skill_dir = backup_path.join("skill");
@@ -4383,6 +4350,161 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    #[serial_test::serial]
+    fn skill_state_lock_allows_snapshots_but_excludes_writers() {
+        let first_reader = skill_state_read_guard();
+        let second_reader = skill_state_read_guard();
+        assert!(skill_state_lock().try_write().is_err());
+        drop(second_reader);
+        drop(first_reader);
+        assert!(skill_state_lock().try_write().is_ok());
+    }
+
+    // Exercise the public operation while a cloud restore owns the write lock.
+    // Always release the guard and join before asserting, including on failure.
+    fn assert_skill_operation_waits_for_restore(operation: impl FnOnce() + Send + 'static) {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let guard = skill_state_write_guard();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            operation();
+            done_tx.send(()).unwrap();
+        });
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let blocked = matches!(
+            done_rx.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        );
+        drop(guard);
+        if blocked {
+            done_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        }
+        worker.join().unwrap();
+        assert!(blocked, "Skills operation bypassed the state lock");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn skill_public_operations_wait_for_cloud_restore() {
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _storage = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let db = Arc::new(Database::memory().expect("db"));
+
+        let toggle_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            assert!(SkillService::toggle_target(
+                &toggle_db,
+                "missing",
+                &SkillTargetId::WorkBuddy,
+                true
+            )
+            .is_err());
+        });
+        let sync_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            SkillService::sync_to_target(&sync_db, &SkillTargetId::WorkBuddy).unwrap();
+        });
+        let compatibility_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            SkillService::sync_to_app(&compatibility_db, &AppType::Claude).unwrap();
+        });
+        let restore_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            assert!(SkillService::restore_from_backup_for_target(
+                &restore_db,
+                "missing",
+                &SkillTargetId::WorkBuddy
+            )
+            .is_err());
+        });
+        let storage_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            SkillService::migrate_storage(&storage_db, SkillStorageLocation::FyAgent).unwrap();
+        });
+        assert_skill_operation_waits_for_restore(move || {
+            migrate_skills_to_ssot(&db).unwrap();
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn install_fast_path_waits_for_cloud_restore_and_reuses_the_record() {
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _storage = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let db = Arc::new(Database::memory().expect("db"));
+        let mut installed = sample_installed("existing-skill", Some("owner"), Some("repo"));
+        installed.id = "original-id".to_string();
+        db.save_skill(&installed).unwrap();
+        write_skill(
+            &SkillService::get_ssot_dir()
+                .unwrap()
+                .join(&installed.directory),
+            "existing",
+        );
+        let source = sample_discoverable("existing", "Existing-Skill", "owner", "repo", "");
+        let install_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let reused = runtime
+                .block_on(SkillService::new().install(
+                    &install_db,
+                    &source,
+                    &SkillTargetId::WorkBuddy,
+                ))
+                .unwrap();
+            assert_eq!(reused.id, "original-id");
+            assert!(reused.apps.workbuddy);
+        });
+        assert_eq!(db.get_all_installed_skills().unwrap().len(), 1);
+        assert!(
+            SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+                .unwrap()
+                .join(&installed.directory)
+                .join("SKILL.md")
+                .is_file()
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn install_rejects_a_directory_owned_by_another_repository() {
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _storage = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let db = Arc::new(Database::memory().expect("db"));
+        let installed = sample_installed("existing-skill", Some("owner"), Some("original"));
+        db.save_skill(&installed).unwrap();
+        let source_dir = SkillService::get_ssot_dir()
+            .unwrap()
+            .join(&installed.directory);
+        write_skill(&source_dir, "original");
+        let before = fs::read(source_dir.join("SKILL.md")).unwrap();
+        let source = sample_discoverable("existing", "Existing-Skill", "owner", "other", "");
+        let error = SkillService::new()
+            .install(&db, &source, &SkillTargetId::WorkBuddy)
+            .await
+            .expect_err("another repo must not replace this directory");
+        assert!(error.to_string().contains("SKILL_DIRECTORY_CONFLICT"));
+        assert_eq!(db.get_all_installed_skills().unwrap().len(), 1);
+        assert_eq!(fs::read(source_dir.join("SKILL.md")).unwrap(), before);
+        assert!(
+            !SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+                .unwrap()
+                .join(&installed.directory)
+                .exists()
+        );
+    }
+
+    #[test]
     fn skill_storage_location_uses_only_the_fyagent_serialized_identity() {
         assert_eq!(
             serde_json::to_string(&SkillStorageLocation::FyAgent).unwrap(),
@@ -5107,6 +5229,61 @@ mod tests {
         );
     }
 
+    #[test]
+    #[serial_test::serial]
+    fn local_zip_installs_a_large_skill_to_a_vendor_copy_target() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _storage = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let db = Arc::new(Database::memory().expect("db"));
+        let zip_path = home.path().join("large-skill.zip");
+        const ENTRIES: usize = 13_248;
+        let mut archive = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
+        let options = SimpleFileOptions::default();
+        archive.start_file("large-skill/SKILL.md", options).unwrap();
+        archive.write_all(b"---\nname: large-skill\n---\n").unwrap();
+        for i in 1..ENTRIES {
+            archive
+                .start_file(format!("large-skill/file-{i}.txt"), options)
+                .unwrap();
+            // Empty files still incur the minimum archive block charge.
+        }
+        archive.finish().unwrap();
+
+        let installed = SkillService::install_from_zip(&db, &zip_path, &SkillTargetId::WorkBuddy)
+            .expect("13k-entry local ZIP must pass extraction and vendor tree validation");
+        assert_eq!(installed.len(), 1);
+        assert_eq!(db.get_all_installed_skills().unwrap().len(), 1);
+        let ssot = SkillService::get_ssot_dir().unwrap().join("large-skill");
+        let dest = SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+            .unwrap()
+            .join("large-skill");
+        let tree = SkillService::scan_vendor_tree(&dest).unwrap();
+        assert_eq!(tree.entries.len(), ENTRIES + 1); // files plus the root directory
+        assert!(!SkillService::is_symlink(&dest));
+        assert_eq!(
+            SkillService::compute_dir_hash(&ssot).unwrap(),
+            SkillService::compute_dir_hash(&dest).unwrap()
+        );
+        assert!(dest.join(format!("file-{}.txt", ENTRIES - 1)).is_file());
+    }
+
+    #[test]
+    fn vendor_tree_entry_limit_counts_the_root_and_rejects_overflow() {
+        let temp = tempdir().expect("source");
+        for i in 0..MAX_ARCHIVE_ENTRIES - 1 {
+            fs::File::create(temp.path().join(format!("entry-{i}"))).unwrap();
+        }
+        let accepted = SkillService::scan_vendor_tree(temp.path()).expect("exact entry limit");
+        assert_eq!(accepted.entries.len(), MAX_ARCHIVE_ENTRIES);
+        fs::File::create(temp.path().join("overflow")).unwrap();
+        let error = SkillService::scan_vendor_tree(temp.path()).expect_err("root also counts");
+        assert!(error.to_string().contains("条目或深度上限"));
+    }
+
     fn write_skill(dir: &Path, name: &str) {
         fs::create_dir_all(dir).expect("create skill dir");
         fs::write(
@@ -5803,6 +5980,69 @@ mod tests {
             source.join("SKILL.md").exists(),
             "rejecting the operation must leave the SSOT untouched"
         );
+
+        let db = Arc::new(Database::memory().expect("db"));
+        assert!(SkillService::sync_to_target(&db, &SkillTargetId::Claude).is_err());
+        let mut skill = poisoned_skill("local:test-skill", "test-skill");
+        for enabled in [false, true] {
+            skill.apps.claude = enabled;
+            db.save_skill(&skill).unwrap();
+            assert!(SkillService::sync_to_target(&db, &SkillTargetId::Claude).is_err());
+            assert!(SkillService::sync_to_app(&db, &AppType::Claude).is_err());
+            assert!(
+                source.join("SKILL.md").is_file(),
+                "bulk cleanup must not delete SSOT"
+            );
+        }
+        assert!(
+            SkillService::toggle_target(&db, &skill.id, &SkillTargetId::Claude, false).is_err()
+        );
+        assert!(
+            db.get_installed_skill(&skill.id)
+                .unwrap()
+                .unwrap()
+                .apps
+                .claude
+        );
+        assert!(source.join("SKILL.md").is_file());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[serial_test::serial]
+    fn canonical_skill_root_aliases_reject_bulk_sync_and_storage_migration() {
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _storage = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let db = Arc::new(Database::memory().expect("db"));
+        let ssot = SkillService::get_ssot_dir().unwrap();
+        let source = ssot.join("test-skill");
+        write_skill(&source, "managed");
+        let skill = poisoned_skill("local:test-skill", "test-skill");
+        db.save_skill(&skill).unwrap();
+        let vendor_root = SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy).unwrap();
+        fs::create_dir_all(vendor_root.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&ssot, &vendor_root).unwrap();
+        assert_ne!(ssot, vendor_root);
+        assert!(SkillService::paths_alias(&ssot, &vendor_root));
+        assert!(SkillService::sync_to_app_dir("test-skill", &SkillTargetId::WorkBuddy).is_err());
+        assert!(SkillService::remove_from_target("test-skill", &SkillTargetId::WorkBuddy).is_err());
+        assert!(SkillService::sync_to_target(&db, &SkillTargetId::WorkBuddy).is_err());
+        assert!(source.join("SKILL.md").is_file());
+
+        // A different spelled destination resolves to the vendor Skills root.
+        fs::remove_file(&vendor_root).unwrap();
+        fs::create_dir_all(&vendor_root).unwrap();
+        fs::create_dir_all(home.path().join(".agents")).unwrap();
+        std::os::unix::fs::symlink(&vendor_root, home.path().join(".agents/skills")).unwrap();
+        assert!(SkillService::migrate_storage(&db, SkillStorageLocation::Unified).is_err());
+        assert_eq!(
+            crate::settings::get_skill_storage_location(),
+            SkillStorageLocation::FyAgent
+        );
+        assert!(source.join("SKILL.md").is_file());
+        assert!(!vendor_root.join("test-skill").exists());
+        assert!(db.get_installed_skill(&skill.id).unwrap().is_some());
     }
 
     #[test]
@@ -6166,10 +6406,10 @@ mod tests {
                 ("weread-skills", "skills", "."),
             ] {
                 let home = tempdir().expect("home");
-                let config_dir = home.path().join(".cc-switch");
+                let config_dir = home.path().join(".fyagent");
                 fs::create_dir_all(&config_dir).expect("isolated config directory");
                 // Keep Windows' legacy-HOME fallback out of this destructive test.
-                fs::File::create(config_dir.join("cc-switch.db"))
+                fs::File::create(config_dir.join("fyagent.db"))
                     .expect("isolated database sentinel");
                 let _home = TestHomeGuard::set(home.path());
                 assert_eq!(crate::config::get_app_config_dir(), config_dir);
@@ -6182,6 +6422,7 @@ mod tests {
                 };
                 let mut installed = poisoned_skill("owner/repo:skill", directory);
                 installed.name = directory.to_string();
+                installed.apps = SkillApps::only_target(&SkillTargetId::WorkBuddy);
                 installed.repo_owner = Some("owner".to_string());
                 installed.repo_name = Some("repo".to_string());
                 installed.repo_branch = Some("main".to_string());
@@ -6224,6 +6465,13 @@ mod tests {
                     saved.content_hash,
                     Some(SkillService::compute_dir_hash(&local).unwrap())
                 );
+                let deployed = SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+                    .unwrap()
+                    .join(directory);
+                assert_eq!(
+                    SkillService::compute_dir_hash(&deployed).unwrap(),
+                    SkillService::compute_dir_hash(&local).unwrap()
+                );
                 assert!(service.check_updates(&db).await.unwrap().is_empty());
 
                 write_skill(&remote.path().join(new_path), "renamed-skill");
@@ -6248,6 +6496,10 @@ mod tests {
                 assert_eq!(updated.apps, installed.apps);
                 assert_eq!(
                     SkillService::read_skill_name_desc(&local.join("SKILL.md"), directory).0,
+                    "renamed-skill"
+                );
+                assert_eq!(
+                    SkillService::read_skill_name_desc(&deployed.join("SKILL.md"), directory).0,
                     "renamed-skill"
                 );
                 assert!(service.check_updates(&db).await.unwrap().is_empty());
