@@ -150,6 +150,20 @@ paths above.
   reports the current native file content and is not an editable second
   source of truth. Do not keep it as a third always-open column that steals
   width from the prompt body.
+- Prompt descriptions use a multiline textarea. Body, description and expanded
+  read-only live content are bounded independent scroll owners; wheeling one
+  must not shift surrounding panes. Long editor titles retain their full `title`
+  and occupy at most two lines. Compact windows keep name, description, live
+  disclosure and actions reachable by wheel and Tab.
+- In the prompt workspace's stacked layout, non-editor split wrappers and the
+  editor/library panes allow vertical wheel propagation at their boundaries so
+  the outer stacked viewport can reveal clipped controls. Body, description and
+  live textareas keep `overscroll-behavior: contain`; do not weaken the shared
+  split contract or replace physical wheel evidence with programmatic scrolling.
+- `tests/browser/prompts-layout.spec.ts` covers 900x600, 1234x732 and 1440x900,
+  independent wheel receivers, title bounds, Tab hit testing, live collapse,
+  redacted read/write errors and failed-save draft preservation. These controlled
+  browser fixtures are not native file-consumption or pixel-diff acceptance.
 - Claude Desktop is intentionally absent because the native prompt backend does
   not support it.
 

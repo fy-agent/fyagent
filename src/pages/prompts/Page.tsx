@@ -820,8 +820,10 @@ function PromptIdentityFields({
       </label>
       <label className="fy-control-field">
         描述
-        <Input
+        <textarea
+          className="fy-control-textarea fy-prompts-editor-description"
           aria-label="描述"
+          rows={2}
           value={description}
           disabled={busy}
           onChange={onDraftChange("description")}
@@ -880,7 +882,7 @@ function PromptEditorPane({
         <header className="fy-prompts-editor-head">
           <div className="fy-prompts-editor-header-info">
             <div className="fy-prompts-editor-title-row">
-              <h2>{title}</h2>
+              <h2 title={title}>{title}</h2>
               {editor.mode === "edit" && enabled && (
                 <Badge tone="accent">已启用</Badge>
               )}

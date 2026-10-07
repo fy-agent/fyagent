@@ -175,7 +175,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "a6a0619f32a76dfe39eb6929eda7ed475d6303ea76cc4c8f0ce845ebcfe28bc8"
+      "665146061ea2797e73541719f67a5a11774fb64ff8934036504b90c41d648487"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -195,7 +195,7 @@
     ],
     [
       "src-tauri/src/mcp/traework.rs",
-      "2a452af2697f2f6bc0281fc5ce7722c572548cea417ae0e84becf8756b25e4e3"
+      "e8326bf6be447bed82292e207011a5729f96bd49516c8ab287412468cfe8e7a4"
     ],
     [
       "src-tauri/src/opencode_config.rs",

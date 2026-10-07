@@ -10,6 +10,7 @@ use std::str::FromStr;
 
 use crate::app_config::{AppType, McpTargetId};
 use crate::claude_mcp;
+use crate::mcp::{McpImportReport, McpServerView};
 use crate::services::McpService;
 use crate::store::AppState;
 
@@ -160,8 +161,8 @@ use crate::app_config::McpServer;
 #[tauri::command]
 pub async fn get_mcp_servers(
     state: State<'_, AppState>,
-) -> Result<IndexMap<String, McpServer>, String> {
-    McpService::get_all_servers(&state).map_err(|e| e.to_string())
+) -> Result<IndexMap<String, McpServerView>, String> {
+    McpService::get_server_views(&state).map_err(|e| e.to_string())
 }
 
 /// 添加或更新 MCP 服务器
@@ -193,6 +194,13 @@ pub async fn toggle_mcp_app(
 
 /// 从所有应用导入 MCP 服务器（复用已有的导入逻辑）
 #[tauri::command]
-pub async fn import_mcp_from_apps(state: State<'_, AppState>) -> Result<usize, String> {
-    McpService::import_from_all_apps(&state).map_err(|e| e.to_string())
+pub async fn import_mcp_from_apps(
+    state: State<'_, AppState>,
+    sources: Option<Vec<McpTargetId>>,
+) -> Result<McpImportReport, String> {
+    McpService::import_from_sources(
+        &state,
+        sources.unwrap_or_else(|| McpTargetId::all().collect()),
+    )
+    .map_err(|e| e.to_string())
 }

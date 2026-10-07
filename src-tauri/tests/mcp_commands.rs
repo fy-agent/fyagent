@@ -1,3 +1,4 @@
+use fyagent_lib::{McpImportCounts, McpTargetId};
 use std::collections::HashMap;
 use std::fs;
 
@@ -15,6 +16,210 @@ mod support;
 use support::{
     create_test_state, create_test_state_with_config, ensure_test_home, reset_test_fs, test_mutex,
 };
+
+#[test]
+fn i05_qoder_import_reports_disablements_and_provenance_survives_database_reopen() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let home = ensure_test_home();
+    let path = home.join(".qoderworkcn/mcp.json");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let source = json!({"mcpServers": {
+        "existing": {"command":"echo", "args":["same"], "enabled":false},
+        "new-disabled": {"command":"echo", "enabled":false},
+        "new-enabled": {"command":"echo", "enabled":true},
+        "new-default": {"command":"echo"}
+    }});
+    let original = serde_json::to_vec(&source).unwrap();
+    fs::write(&path, &original).unwrap();
+    let state = create_test_state().unwrap();
+    let existing = McpServer {
+        id: "existing".into(),
+        name: "Preserved Name".into(),
+        server: json!({"command":"echo", "args":["same"]}),
+        apps: McpApps {
+            claude: true,
+            qoderwork: true,
+            ..McpApps::default()
+        },
+        description: Some("preserved".into()),
+        homepage: None,
+        docs: None,
+        tags: vec!["preserved".into()],
+    };
+    state.db.save_mcp_server(&existing).unwrap();
+    let report = McpService::import_from_sources(&state, vec![McpTargetId::QoderWork]).unwrap();
+    assert_eq!(report.sources[0].counts.added, 2);
+    assert_eq!(report.sources[0].counts.assignment_changed, 1);
+    assert_eq!(report.sources[0].counts.disabled_skipped, 1);
+    assert!(report.sources[0].failure_code.is_none());
+    let mut expected = existing.clone();
+    expected.apps.qoderwork = false;
+    let actual = state.db.get_all_mcp_servers().unwrap();
+    assert_eq!(
+        serde_json::to_value(&actual["existing"]).unwrap(),
+        serde_json::to_value(&expected).unwrap()
+    );
+    assert!(!actual.contains_key("new-disabled"));
+    assert!(actual["new-enabled"].apps.qoderwork && actual["new-default"].apps.qoderwork);
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        original,
+        "import does not project live files"
+    );
+    let repeated = McpService::import_from_sources(&state, vec![McpTargetId::QoderWork]).unwrap();
+    assert_eq!(repeated.sources[0].counts.added, 0);
+    assert_eq!(repeated.sources[0].counts.assignment_changed, 0);
+    assert_eq!(repeated.sources[0].counts.unchanged, 3);
+    assert_eq!(repeated.sources[0].counts.disabled_skipped, 1);
+    let before_reopen =
+        serde_json::to_value(McpService::get_server_views(&state).unwrap()).unwrap();
+    drop(state);
+    let reopened = create_test_state().unwrap();
+    let views = McpService::get_server_views(&reopened).unwrap();
+    assert_eq!(serde_json::to_value(&views).unwrap(), before_reopen);
+    assert_eq!(views["existing"].sources, vec![McpTargetId::QoderWork]);
+
+    // Boolean control changes are allowed; all other row fields stay owned by
+    // the existing catalogue record, and only Qoder's flag changes.
+    let mut enabled_source = source.clone();
+    enabled_source["mcpServers"]["existing"]["enabled"] = json!(true);
+    fs::write(&path, serde_json::to_vec(&enabled_source).unwrap()).unwrap();
+    let enabled = McpService::import_from_sources(&reopened, vec![McpTargetId::QoderWork]).unwrap();
+    assert_eq!(enabled.sources[0].counts.added, 0);
+    assert_eq!(enabled.sources[0].counts.assignment_changed, 1);
+    let saved = reopened.db.get_all_mcp_servers().unwrap();
+    assert_eq!(
+        serde_json::to_value(&saved["existing"]).unwrap(),
+        serde_json::to_value(&existing).unwrap()
+    );
+}
+
+#[test]
+fn i05_disabled_and_enabled_spec_conflicts_reject_the_complete_source_without_writes() {
+    let _guard = test_mutex().lock().unwrap();
+    for enabled in [false, true] {
+        reset_test_fs();
+        let home = ensure_test_home();
+        let state = create_test_state().unwrap();
+        let existing = McpServer {
+            id: "z-conflict".into(),
+            name: "Original".into(),
+            server: json!({"command":"echo", "custom":"original"}),
+            apps: McpApps {
+                qoderwork: true,
+                codex: true,
+                ..McpApps::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: vec![],
+        };
+        state.db.save_mcp_server(&existing).unwrap();
+        let before = serde_json::to_value(McpService::get_server_views(&state).unwrap()).unwrap();
+        let path = home.join(".qoderworkcn/mcp.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let bytes = serde_json::to_vec(&json!({"mcpServers": {
+            "a-valid-new": {"command":"echo"},
+            "z-conflict": {"command":"echo", "custom":"changed", "enabled":enabled}
+        }}))
+        .unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let report = McpService::import_from_sources(&state, vec![McpTargetId::QoderWork]).unwrap();
+        assert_eq!(report.sources[0].failure_code, Some("source_failed"));
+        assert_eq!(report.sources[0].counts, McpImportCounts::default());
+        assert_eq!(
+            serde_json::to_value(McpService::get_server_views(&state).unwrap()).unwrap(),
+            before
+        );
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert!(!path.with_file_name("mcp.json.backup").exists());
+    }
+}
+
+#[test]
+fn i05_projection_preserves_unmanaged_disabled_sibling_and_explicit_enable_remains_available() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let home = ensure_test_home();
+    let state = create_test_state().unwrap();
+    let path = home.join(".qoderworkcn/mcp.json");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let sibling = json!({"command":"echo", "enabled":false, "source":"external-owner",
+        "env":{"TOKEN":"private-sentinel"}, "custom":{"nested":true}});
+    fs::write(
+        &path,
+        serde_json::to_vec(&json!({"root":"keep", "mcpServers":{"external":sibling}})).unwrap(),
+    )
+    .unwrap();
+    let managed = McpServer {
+        id: "managed".into(),
+        name: "Managed".into(),
+        server: json!({"command":"echo", "enabled":false}),
+        apps: McpApps::default(),
+        description: None,
+        homepage: None,
+        docs: None,
+        tags: vec![],
+    };
+    state.db.save_mcp_server(&managed).unwrap();
+    for action in ["enable", "sync", "disable", "delete"] {
+        match action {
+            "enable" => {
+                McpService::toggle_target(&state, "managed", McpTargetId::QoderWork, true).unwrap()
+            }
+            "sync" => McpService::sync_all_enabled(&state).unwrap(),
+            "disable" => {
+                McpService::toggle_target(&state, "managed", McpTargetId::QoderWork, false).unwrap()
+            }
+            _ => {
+                McpService::delete_server(&state, "managed").unwrap();
+            }
+        }
+        let live: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(live["mcpServers"]["external"], sibling);
+        assert_eq!(live["root"], "keep");
+        if action == "enable" || action == "sync" {
+            assert_eq!(live["mcpServers"]["managed"], json!({"command":"echo"}));
+        } else {
+            assert!(live["mcpServers"].get("managed").is_none());
+        }
+    }
+}
+
+#[test]
+fn i05_selected_source_reports_partial_failure_and_rejects_empty_or_duplicate_selection() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let home = ensure_test_home();
+    let state = create_test_state().unwrap();
+    let qoder = home.join(".qoderworkcn/mcp.json");
+    fs::create_dir_all(qoder.parent().unwrap()).unwrap();
+    let bytes = br#"{"mcpServers":{"valid":{"command":"echo","env":{"TOKEN":"source-secret"}}}}"#;
+    fs::write(&qoder, bytes).unwrap();
+    let codex = get_codex_config_path();
+    fs::create_dir_all(codex.parent().unwrap()).unwrap();
+    fs::write(&codex, "private-key = = invalid").unwrap();
+    assert!(McpService::import_from_sources(&state, vec![]).is_err());
+    assert!(McpService::import_from_sources(
+        &state,
+        vec![McpTargetId::QoderWork, McpTargetId::QoderWork]
+    )
+    .is_err());
+    assert!(state.db.get_all_mcp_servers().unwrap().is_empty());
+    let report =
+        McpService::import_from_sources(&state, vec![McpTargetId::Codex, McpTargetId::QoderWork])
+            .unwrap();
+    assert_eq!(report.sources[0].failure_code, Some("source_failed"));
+    assert_eq!(report.sources[1].counts.added, 1);
+    let public = serde_json::to_string(&report).unwrap();
+    let home_display = home.to_string_lossy();
+    for private in ["source-secret", "private-key", home_display.as_ref()] {
+        assert!(!public.contains(private));
+    }
+    assert_eq!(fs::read(&qoder).unwrap(), bytes);
+}
 
 #[test]
 fn import_default_config_claude_persists_provider() {

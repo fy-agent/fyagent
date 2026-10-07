@@ -4,6 +4,7 @@ import type {
   ClaudeQuickSetupOutcome,
 } from "./claude-quick-setup";
 import type { FirstUseGuideState } from "./first-use-guide";
+import type { McpImportReport, McpImportSourceId } from "./mcp";
 import type {
   CodexInstallPreflight,
   JobSnapshot,
@@ -247,7 +248,7 @@ export interface McpPort {
     app: McpTargetId,
     enabled: boolean,
   ): Promise<void>;
-  importFromApps(): Promise<number>;
+  importFromApps(sources?: McpImportSourceId[]): Promise<McpImportReport>;
 }
 
 export interface SettingsPort {

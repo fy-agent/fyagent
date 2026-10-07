@@ -5,6 +5,7 @@ import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { Dialog } from "../../../shared/ui/Dialog";
 import { Button } from "../../../shared/ui/Button";
 import type { DialogOriginRef } from "../../../shared/ui/dialogOrigin";
+import { parseMigrationError } from "../../../shared/features/session-migration";
 import type {
   RestoreAttempt,
   RestoreStage,
@@ -46,7 +47,7 @@ export function AttestationDialog({
       );
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(parseMigrationError(err).message);
     } finally {
       setSubmitting(false);
     }

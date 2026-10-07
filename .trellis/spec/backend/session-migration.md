@@ -120,20 +120,39 @@ corresponding provider. Probe failure disables the mutation with a useful reason
 Show unresolved and failed results without a success banner. Modal request IDs
 and pending work follow the shared Dialog lifecycle contract.
 
+Renderer feedback derives the current operation from its actual RPC boundary,
+and write facts from the validated, current-device `RestoreAttempt.stage`.
+`failed` already means proven absence of side effects; do not invent a second
+evidence-version protocol or infer publication from exception text. A historical
+receipt without a recorded failure boundary must say that the failure stage was
+not recorded. A readback error preserves an already-written system stage.
+
+After a missing restore response, keep the request binding and draft across
+closing/reopening the dialog. Reconcile/list existing receipts before another
+write. Retry is available only when every selected snapshot has an authoritative
+`failed` receipt for that exact request/provider/workspace/kind binding; reuse
+the same request ID. Missing, partial, ambiguous or still-pending results cannot
+authorize a new binding or a blind retry. Source-read/package-validation errors
+before the restore call remain editable and can be retried without claiming a
+target write happened.
+
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Unknown package version/field, duplicate key, digest mismatch or resource limit | Reject before receipt/native mutation. |
-| Genuine missing final answer | Preserve user text; mark incomplete. |
-| Unknown assistant phase or mixed/unclassified provenance | Block export; never silently discard real input. |
-| Re-export with changed timestamps but same source/content | Same semantic snapshot/default slot. |
-| Same request delivered twice | Reuse its receipt; at most one native write. |
-| Same origin with changed content | Explicit snapshot conflict/copy decision; no auto-append. |
-| Native output unknown or readback differs | Keep unresolved, preserve mappings, prohibit blind retry. |
-| Native format cannot represent some message exactly | Fail before writing that shape; no placeholder or trimming. |
-| Target model/account unavailable | Actionable local setup error; no source credentials or invented model. |
-| User attests successful continuation | Update only the separate attestation. |
+| Condition                                                                       | Required result                                                                           |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Unknown package version/field, duplicate key, digest mismatch or resource limit | Reject before receipt/native mutation.                                                    |
+| Genuine missing final answer                                                    | Preserve user text; mark incomplete.                                                      |
+| Unknown assistant phase or mixed/unclassified provenance                        | Block export; never silently discard real input.                                          |
+| Re-export with changed timestamps but same source/content                       | Same semantic snapshot/default slot.                                                      |
+| Same request delivered twice                                                    | Reuse its receipt; at most one native write.                                              |
+| Same origin with changed content                                                | Explicit snapshot conflict/copy decision; no auto-append.                                 |
+| Native output unknown or readback differs                                       | Keep unresolved, preserve mappings, prohibit blind retry.                                 |
+| Restore RPC rejects, returns no receipt, or returns only part of the selection  | Preserve request/draft across modal lifecycle; reconcile and reread before another write. |
+| Readback RPC fails after nativeWritten                                          | Keep the written stage; show readback failure and its next action.                        |
+| Historical failed receipt has no failure-boundary field                         | Keep its proven no-side-effect fact; do not guess the historical failure operation.       |
+| Native format cannot represent some message exactly                             | Fail before writing that shape; no placeholder or trimming.                               |
+| Target model/account unavailable                                                | Actionable local setup error; no source credentials or invented model.                    |
+| User attests successful continuation                                            | Update only the separate attestation.                                                     |
 
 ## 5. Good / Base / Bad Cases
 
@@ -154,6 +173,9 @@ slots, source conflicts and crash windows. Confirm exact request binding and
 disabled capabilities in component/browser tests, plus the reachable legacy
 Memory route. Native probes use isolated provider stores and synthetic content;
 record their version, platform, commands and actual achieved evidence stage.
+Cover closing/reopening an unresolved import, incomplete or mismatched receipts,
+same-binding retries after all selected rows are proven failed, source correction
+before restore, partial outcomes, and readback errors that retain written facts.
 
 Run the canonical relevant Rust, frontend, architecture, production build and
 browser gates after the final related changes. Current-host tests do not prove

@@ -53,6 +53,25 @@ describe("Agent install space confirmation", () => {
     );
   });
 
+  it("discloses the selected update and authorization while cancellation starts no action", () => {
+    const actions = show({
+      ...installPreflightFixture({ agentId: "qoderwork", action: "update" }),
+      versionOrChannel: "1.2.4",
+      targetLabel: "系统应用程序文件夹",
+      execution: "system_authorization",
+    });
+    expect(
+      screen.getByRole("dialog", { name: "更新 QoderWork" }),
+    ).toBeVisible();
+    expect(screen.getByText(/QoderWork · 1.2.4/)).toBeVisible();
+    expect(screen.getByText("系统应用程序文件夹")).toBeVisible();
+    expect(screen.getByText(/更新所选位置的软件，保留现有配置/)).toBeVisible();
+    expect(screen.getByText(/拒绝授权会停止本次安装/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(actions.dismissPreflight).toHaveBeenCalledOnce();
+    expect(actions.confirm).not.toHaveBeenCalled();
+  });
+
   it("does not claim an unknown CLI budget is sufficient", () => {
     show({
       ...installPreflightFixture({

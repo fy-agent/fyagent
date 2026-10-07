@@ -615,7 +615,11 @@ describe("PromptsPage native business management", () => {
     expect(screen.getByRole("textbox", { name: "描述" })).toHaveValue(
       "Updated description",
     );
-    expect(await screen.findByText(/Updated description/)).toBeVisible();
+    expect(
+      await screen.findByRole("button", {
+        name: /New rule.*Updated description/,
+      }),
+    ).toBeVisible();
     expect(
       stores.claude.find((candidate) => candidate.id === created?.id)
         ?.description,

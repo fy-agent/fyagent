@@ -109,12 +109,24 @@
   gap: 12px;
   min-height: 0;
   height: 100%;
-  overflow: hidden;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  container: fy-prompt-editor / inline-size;
+}
+
+/* In a stacked prompt workspace, the split viewport must receive wheel input
+   after its inner pane reaches a boundary (including an empty wrapper).
+   Editable body/description and read-only live keep their own containment. */
+.fy-prompts-split[data-stacked="true"] .fy-split-pane,
+.fy-prompts-split[data-stacked="true"] .fy-prompts-library-pane,
+.fy-prompts-split[data-stacked="true"] .fy-prompts-editor-pane {
+  overscroll-behavior-y: auto;
 }
 
 .fy-prompts-editor-form {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 0 auto;
   flex-direction: column;
   gap: 12px;
   min-height: 0;
@@ -135,12 +147,14 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  flex: 1 1 220px;
 }
 
 .fy-prompts-editor-title-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .fy-prompts-editor-title-row h2 {
@@ -148,6 +162,16 @@
   font-size: 18px;
   font-weight: 700;
   line-height: 1.3;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.fy-prompts-editor-title-row .fy-control-badge {
+  flex: 0 0 auto;
 }
 
 .fy-prompts-editor-toggle-row {
@@ -179,10 +203,10 @@
 
 .fy-prompts-editor-content-field {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 0 160px;
   flex-direction: column;
   gap: 6px;
-  min-height: 0;
+  min-height: 160px;
   color: var(--fy-text-secondary);
   font-size: 13px;
   font-weight: 550;
@@ -195,6 +219,7 @@
   min-height: 0;
   padding: 12px;
   overflow: auto;
+  overscroll-behavior: contain;
   resize: none;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-control);
@@ -225,12 +250,22 @@
   font-size: 13px;
   font-weight: 550;
   color: var(--fy-text-secondary);
+  min-width: 0;
+}
+
+.fy-prompts-editor-description {
+  min-height: 64px;
+  max-height: 120px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  resize: none;
 }
 
 .fy-prompts-live {
   flex: 0 0 auto;
   padding-top: 8px;
   border-top: 1px solid var(--fy-border);
+  min-width: 0;
 }
 
 .fy-prompts-live summary {
@@ -243,8 +278,17 @@
 
 .fy-prompts-live[open] .fy-prompts-live-content {
   margin-top: 10px;
+  display: block;
+  width: 100%;
+  height: clamp(96px, 20vh, 180px);
   min-height: 96px;
-  max-height: 24vh;
+  max-height: 180px;
+}
+
+@container fy-prompt-editor (max-width: 420px) {
+  .fy-prompts-editor-identity {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 1100px) {
@@ -289,8 +333,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .fy-prompts-editor-content,
-  .fy-prompts-live[open] .fy-prompts-live-content {
+  .fy-prompts-editor-content {
     min-height: 160px;
   }
 }

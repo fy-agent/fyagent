@@ -219,7 +219,10 @@ describe("session migration page batch export behavior", () => {
     const ports = pagePorts({
       preview: async (_providerId, sourcePath) => {
         if (sourcePath === sourceB) {
-          throw new Error("无法确认最终答复是否完整");
+          throw {
+            code: "finalAnswerIndeterminate",
+            detail: { seq: 4, reason: "private source" },
+          };
         }
         return migrationPreview("codex", "session-a", 1);
       },
@@ -233,7 +236,9 @@ describe("session migration page batch export behavior", () => {
 
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByText(/来源 B/u)).toBeVisible();
-    expect(within(alert).getByText(/无法确认最终答复是否完整/u)).toBeVisible();
+    expect(
+      within(alert).getByText(/无法确定最终答复，已阻止整包导出/u),
+    ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "确认导出迁移包" }),
     ).not.toBeInTheDocument();
@@ -301,7 +306,10 @@ describe("session migration page batch export behavior", () => {
 
     await screen.findByText("来源 A", { exact: true });
     await user.click(screen.getByText("来源 A", { exact: true }));
-    expect(await screen.findByText(/探测服务暂时不可用/u)).toBeVisible();
+    expect(
+      await screen.findByText(/探测本地客户端状态异常，请检查客户端配置/u),
+    ).toBeVisible();
+    expect(screen.queryByText(/探测服务暂时不可用/u)).toBeNull();
     expect(screen.queryByText(/本地未安装/u)).toBeNull();
     expect(
       screen.getByRole("button", { name: "在目标软件中恢复" }),

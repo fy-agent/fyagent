@@ -542,6 +542,37 @@ export interface ParsedMigrationError {
 }
 
 const ERROR_CODE_MESSAGES: Record<string, string> = {
+  sourceUnreadable:
+    "无法读取源会话或迁移包，请检查文件是否存在、可读且使用有效 UTF-8 编码",
+  sourceTooLarge: "源会话文件超过读取上限",
+  extractionRuleUnavailable: "当前客户端没有可用的会话提取规则",
+  extractionRuleVersionMismatch: "当前客户端版本未通过会话提取验证",
+  finalAnswerIndeterminate: "无法确定最终答复，已阻止整包导出",
+  runtimeInjectionUnclassified: "会话包含未能分类的运行内容，已阻止提取",
+  packageSchemaUnsupported: "迁移包版本不受支持，请使用当前支持的会话包",
+  packageUnknownField: "迁移包包含未知字段，已拒绝解析",
+  packageMalformed: "迁移包格式、编码或内容校验未通过",
+  packageTooLarge: "迁移包超过读取上限",
+  jsonTooDeep: "迁移包嵌套层级超过上限",
+  messageTooLarge: "会话消息超过大小上限",
+  tooManyMessages: "会话消息数量超过上限",
+  sessionTooLarge: "会话内容超过大小上限",
+  tooManySessions: "迁移包会话数量超过上限",
+  identityFieldInvalid: "迁移包的会话身份字段无效",
+  packageWriteFailed: "无法保存迁移包，请检查保存位置与权限",
+  capabilityProbeFailed: "无法核验目标客户端的恢复能力，请重新探测",
+  targetStoreUnidentified: "目标存储身份尚未确认，已拒绝恢复",
+  providerMismatch: "会话来源与目标客户端不一致，已拒绝恢复",
+  targetDirectoryNotFound: "目标工作区目录不存在，请重新选择",
+  nativeImportFailed: "目标客户端导入调用失败，请核对恢复记录",
+  nativeProtocolFailed: "目标客户端协议调用失败，请核对恢复记录",
+  nativeReadbackMismatch: "目标存储读回内容与会话快照不一致",
+  sourceSnapshotConflict: "来源已有不同快照的恢复记录，请先核对已有记录",
+  idempotencySlotTaken: "该会话已有恢复记录，请先核对已有记录",
+  reconciliationRequired: "恢复结果尚未确认，请核对恢复记录",
+  ambiguousNativeMatch: "目标会话映射存在歧义，请核对恢复记录",
+  receiptStoreFailed: "无法读写恢复回执，当前操作结果需进一步核对",
+  attemptNotFound: "未找到指定的恢复记录",
   providerVersionUnsupported: "当前客户端版本尚未支持恢复迁移",
   provider_version_unsupported: "当前客户端版本尚未支持恢复迁移",
   unsupportedProvider: "不支持的客户端软件",
@@ -624,32 +655,23 @@ export function parseMigrationError(err: unknown): ParsedMigrationError {
       detailStr = JSON.stringify(rec.detail);
     }
 
-    let message =
-      typeof rec.message === "string"
-        ? rec.message
-        : typeof rec.msg === "string"
-          ? rec.msg
-          : typeof rec.reason === "string"
-            ? rec.reason
-            : "";
-
-    if (ERROR_CODE_MESSAGES[code]) {
-      message = ERROR_CODE_MESSAGES[code];
-    } else if (!message || message === code) {
-      message = `操作遇到问题 (${code})`;
-    }
-
-    return {
+    const knownMessage = Object.prototype.hasOwnProperty.call(
+      ERROR_CODE_MESSAGES,
       code,
-      message,
+    )
+      ? ERROR_CODE_MESSAGES[code]
+      : undefined;
+    return {
+      code: knownMessage ? code : "unknown",
+      message:
+        knownMessage || "会话操作未完成，请检查当前状态后重试或核对恢复记录",
       detail: detailStr,
     };
   }
 
-  const str = String(err);
   return {
     code: "unknown",
-    message: str.length > 200 ? str.slice(0, 200) + "…" : str,
+    message: "会话操作未完成，请检查当前状态后重试或核对恢复记录",
   };
 }
 
@@ -807,7 +829,7 @@ export function classifyRestoreResults(
       bannerTone: "error",
       summaryTitle: "恢复未完全成功",
       summaryDescription:
-        "部分会话写入目标客户端失败，请检查工作区目录权限或客户端日志。",
+        "有会话未完成恢复。请逐项核对阶段与写入范围，保留已完成的记录，不要重新提交整个批次。",
     };
   }
 

@@ -16,6 +16,11 @@ import {
 } from "../../shared/features/helpers";
 import { redactMcpArgs, redactMcpUrl } from "../../shared/features/mcpSecurity";
 import { mcpPresets } from "../../shared/features/presets";
+import {
+  MCP_IMPORT_SOURCES,
+  type McpImportReport,
+  type McpImportSourceId,
+} from "../../shared/features/mcp";
 import { useFeatures } from "../../shared/features/provider";
 import { featureKeys, useMcpServers } from "../../shared/features/queries";
 import { useWideFeatureLayout } from "../../shared/features/responsive";
@@ -42,6 +47,7 @@ import { useDialogState } from "../../shared/ui/useDialogState";
 import { ConfirmDialog, Dialog } from "../../shared/ui/Dialog";
 import {
   Badge,
+  Checkbox,
   EmptyState,
   InlineNotice,
   Input,
@@ -92,7 +98,16 @@ function ServerDetail({
   const spec = server.server;
   const transport = transportOf(server);
   const catalogItem = findCatalogItem(server.id);
-  const sourceLabel = catalogItem ? "精选目录" : "手动添加";
+  const sourceLabel = server.sources?.length
+    ? server.sources
+        .map(
+          (id) => MCP_IMPORT_SOURCES.find((source) => source.id === id)?.label,
+        )
+        .join("、")
+    : "未记录导入来源";
+  const assignedCount = MCP_IMPORT_SOURCES.filter(
+    (source) => server.apps[source.id],
+  ).length;
   const installDirectory = mcpInstallDirectory(spec);
   const description = server.description?.trim() || catalogItem?.description;
   const homepage = server.homepage || catalogItem?.homepage;
@@ -107,9 +122,17 @@ function ServerDetail({
         <div className="fy-feature-detail-title">
           <h2>{server.name}</h2>
           <Badge tone="accent">{transport}</Badge>
-          <Badge tone={catalogItem ? "accent" : "neutral"}>{sourceLabel}</Badge>
+          <Badge tone="neutral">
+            {server.sources && server.sources.length > 1
+              ? `${server.sources.length} 个导入来源`
+              : sourceLabel}
+          </Badge>
         </div>
         {description && <p className="fy-feature-intro">{description}</p>}
+        <p className="fy-feature-description">
+          {assignedCount ? `已分配 ${assignedCount} 个目标` : "尚未分配"} ·
+          连接尚未测试
+        </p>
         <div className="fy-feature-actions">
           <Button dialogOriginRef={originRef} onClick={onEdit} disabled={busy}>
             编辑
@@ -143,11 +166,13 @@ function ServerDetail({
             </h3>
             <CollapsibleContent open={installationOpen}>
               <dl className="fy-feature-definition">
+                <dt>导入来源</dt>
+                <dd>{sourceLabel}</dd>
                 {catalogItem && (
                   <>
                     <dt>发布方</dt>
                     <dd>{catalogItem.publisher}</dd>
-                    <dt>来源标识</dt>
+                    <dt>目录收录依据</dt>
                     <dd>{MCP_PROVENANCE_LABEL[catalogItem.provenance]}</dd>
                   </>
                 )}
@@ -267,6 +292,11 @@ export function McpPage({
   const [editing, setEditing, editingKey] = useDialogState<McpServer | "new">();
   const [deleteTarget, setDeleteTarget] = useState<McpServer | null>(null);
   const [busy, setBusy] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSources, setImportSources] = useState<McpImportSourceId[]>([]);
+  const [importReport, setImportReport] = useState<McpImportReport | null>(
+    null,
+  );
   const [workbuddyTrustOpen, setWorkbuddyTrustOpen] = useState(false);
   const [trustOrigin, setTrustOrigin] = useState<DialogOriginRef>({
     current: null,
@@ -279,7 +309,19 @@ export function McpPage({
   const filtered = useMemo(() => {
     const value = search.trim().toLocaleLowerCase();
     return value
-      ? servers.filter((server) => buildMcpSearchText(server).includes(value))
+      ? servers.filter((server) =>
+          [
+            buildMcpSearchText(server),
+            ...(server.sources ?? []).map(
+              (id) =>
+                MCP_IMPORT_SOURCES.find((source) => source.id === id)?.label ??
+                id,
+            ),
+          ]
+            .join(" ")
+            .toLocaleLowerCase()
+            .includes(value),
+        )
       : servers;
   }, [search, servers]);
   const convergedId = convergeSelection(filtered, selectedId);
@@ -290,13 +332,14 @@ export function McpPage({
     title: string,
     operation: () => Promise<void>,
     onSuccess?: () => void,
+    notifySuccess = true,
   ) => {
     if (writeLock.current) return false;
     writeLock.current = true;
     setBusy(true);
     try {
       await operation();
-      notify({ tone: "success", title });
+      if (notifySuccess) notify({ tone: "success", title });
       onSuccess?.();
       return true;
     } catch (error) {
@@ -354,14 +397,28 @@ export function McpPage({
       },
     );
   };
-  const importExisting = () =>
-    write("MCP 导入", async () => {
-      const count = await ports.mcp.importFromApps();
-      notify({
-        tone: "info",
-        title: count === 0 ? "没有发现可导入的 MCP" : `已导入 ${count} 个 MCP`,
-      });
-    });
+  const importExisting = () => {
+    const sources = [...importSources];
+    setImportOpen(false);
+    return write(
+      "MCP 导入",
+      async () => {
+        const report = await ports.mcp.importFromApps(sources);
+        setImportReport(report);
+        const failures = report.sources.filter(
+          (source) => source.failureCode !== null,
+        ).length;
+        notify({
+          tone: failures ? "error" : "info",
+          title: failures
+            ? `MCP 导入完成，${failures} 个来源失败`
+            : "MCP 导入结果已更新",
+        });
+      },
+      undefined,
+      false,
+    );
+  };
   return (
     <div
       className="fy-feature-page fy-split-page fy-mcp-page"
@@ -381,7 +438,14 @@ export function McpPage({
           ]}
         />
         <div className="fy-feature-actions">
-          <Button disabled={busy} onClick={() => void importExisting()}>
+          <Button
+            disabled={busy}
+            dialogOriginRef={dialogOriginRef}
+            onClick={() => {
+              setImportSources([]);
+              setImportOpen(true);
+            }}
+          >
             导入现有
           </Button>
           <Button
@@ -394,6 +458,32 @@ export function McpPage({
           </Button>
         </div>
       </header>
+      {importReport && (
+        <section
+          className="fy-mcp-import-results"
+          aria-label="MCP 导入结果"
+          aria-live="polite"
+          tabIndex={0}
+        >
+          {importReport.sources.map((source) => (
+            <p key={source.source}>
+              <strong>
+                {
+                  MCP_IMPORT_SOURCES.find((item) => item.id === source.source)
+                    ?.label
+                }
+              </strong>
+              ：
+              {source.failureCode
+                ? "来源读取或配置冲突校验失败，本来源未写入；检查配置后重新导入。"
+                : `新增 ${source.added} · 分配状态变化 ${source.assignmentChanged} · 未变化 ${source.unchanged} · 来源停用，未收录 ${source.disabledSkipped}`}
+            </p>
+          ))}
+          <p className="fy-feature-description">
+            导入只收录来源配置；分配状态不代表连接或实际运行已经验证。
+          </p>
+        </section>
+      )}
       {progress && (
         <>
           <div className="fy-feature-progress">
@@ -513,7 +603,7 @@ export function McpPage({
                           {[
                             server.description || server.tags?.join(" · "),
                             transportOf(server),
-                            `${MCP_TARGETS.filter((app) => server.apps[app.id]).length} Agent`,
+                            `${MCP_IMPORT_SOURCES.filter((source) => server.apps[source.id]).length} 个分配`,
                           ]
                             .filter(Boolean)
                             .join(" · ")}
@@ -560,6 +650,44 @@ export function McpPage({
           </div>
         )}
       </FeatureTabPanel>
+      <Dialog
+        open={importOpen}
+        originRef={dialogOriginRef}
+        onOpenChange={setImportOpen}
+        title="选择 MCP 导入来源"
+        description="只读取所选来源并收录到 FyAgent；保留来源停用状态。此步骤不会写入 Agent 配置或测试连接。"
+        actions={
+          <>
+            <Button onClick={() => setImportOpen(false)}>取消</Button>
+            <Button
+              className="fy-control-button-primary"
+              disabled={busy || importSources.length === 0}
+              onClick={() => void importExisting()}
+            >
+              开始导入
+            </Button>
+          </>
+        }
+      >
+        <div className="fy-mcp-import-source-list">
+          {MCP_IMPORT_SOURCES.map((source) => (
+            <label className="fy-mcp-import-source" key={source.id}>
+              <Checkbox
+                label={source.label}
+                checked={importSources.includes(source.id)}
+                onCheckedChange={(checked) => {
+                  setImportSources((current) =>
+                    checked
+                      ? [...current, source.id]
+                      : current.filter((id) => id !== source.id),
+                  );
+                }}
+              />
+              <span>{source.label}</span>
+            </label>
+          ))}
+        </div>
+      </Dialog>
       <AnimatePresence>
         {editing !== null && (
           <McpEditor

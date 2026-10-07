@@ -5,6 +5,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CODEX_DESKTOP_PAYLOAD_ERROR } from "@/domain/codex-desktop";
+import { MCP_IMPORT_SOURCES } from "@/shared/features/mcp";
 import type {
   InstallerErrorDto,
   JobSnapshot,
@@ -1453,7 +1454,22 @@ describe("Renderer feature ports", () => {
     const { createTauriFeaturePorts } = await import(
       "@/shared/platform/tauri/features"
     );
-    invoke.mockResolvedValue(undefined);
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "get_mcp_servers") return {};
+      if (command === "import_mcp_from_apps")
+        return {
+          contractVersion: 1,
+          sources: MCP_IMPORT_SOURCES.map((source) => ({
+            source: source.id,
+            added: 0,
+            assignmentChanged: 0,
+            unchanged: 0,
+            disabledSkipped: 0,
+            failureCode: null,
+          })),
+        };
+      return undefined;
+    });
     const ports = createTauriFeaturePorts();
     const skill = {
       key: "owner/repo:skill-a",
@@ -1581,6 +1597,58 @@ describe("Renderer feature ports", () => {
       ["get_settings"],
       ["save_settings", { settings: { skillSyncMethod: "copy" } }],
     ]);
+  });
+
+  it("validates selected MCP import sources before invoking and parses closed credential-free results", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/shared/platform/tauri/features"
+    );
+    const ports = createTauriFeaturePorts();
+    const report = {
+      contractVersion: 1,
+      sources: [
+        {
+          source: "qoderwork",
+          added: 0,
+          assignmentChanged: 1,
+          unchanged: 0,
+          disabledSkipped: 2,
+          failureCode: null,
+        },
+      ],
+    };
+    for (const selection of [[], ["qoderwork", "qoderwork"], ["unknown"]]) {
+      await expect(
+        ports.mcp.importFromApps(selection as never),
+      ).rejects.toThrow("请选择有效且不重复的 MCP 导入来源");
+    }
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValue(report);
+    await expect(ports.mcp.importFromApps(["qoderwork"])).resolves.toEqual(
+      report,
+    );
+    expect(invoke).toHaveBeenCalledWith("import_mcp_from_apps", {
+      sources: ["qoderwork"],
+    });
+    for (const bad of [
+      0,
+      { ...report, contractVersion: 2 },
+      { ...report, path: "private-path" },
+      { ...report, sources: [] },
+      { ...report, sources: [{ ...report.sources[0], added: -1 }] },
+      {
+        ...report,
+        sources: [{ ...report.sources[0], failureCode: "source_failed" }],
+      },
+      { ...report, sources: [{ ...report.sources[0], source: "codex" }] },
+    ]) {
+      invoke.mockResolvedValue(bad);
+      await expect(ports.mcp.importFromApps(["qoderwork"])).rejects.toThrow(
+        "MCP 导入结果无效",
+      );
+    }
+    invoke.mockResolvedValue({ demo: { sources: ["private-path"] } });
+    await expect(ports.mcp.getAll()).rejects.toThrow("MCP 来源记录无效");
   });
 
   it("uses exact Prompt commands for every supported application and parses authoritative data", async () => {

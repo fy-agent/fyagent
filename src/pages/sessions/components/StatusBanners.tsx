@@ -8,10 +8,14 @@ import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowsClockwise";
 
 import {
-  parseMigrationError,
   type RestoreAttempt,
   type RestoreStage,
 } from "../../../shared/features/session-migration";
+import {
+  restoreAttemptFeedback,
+  type SessionFailureFeedback,
+} from "../failure-feedback";
+import { FailureFeedback } from "./FailureFeedback";
 
 export interface StatusBannerProps {
   stage?: RestoreStage;
@@ -21,7 +25,11 @@ export interface StatusBannerProps {
   capabilityReason?: string;
   isCodexProbeWarning?: boolean;
   activeAttempt?: RestoreAttempt | null;
-  structuredError?: { code: string; message: string } | null;
+  structuredError?: SessionFailureFeedback | null;
+  failureFeedback?: SessionFailureFeedback;
+  onRetrySource?: () => void;
+  onReviewRestore?: () => void;
+  reviewingAttempts?: boolean;
   onOpenAttestationModal?: () => void;
   onVerifyReadback?: () => void;
   verifyingReadback?: boolean;
@@ -36,6 +44,10 @@ export function StatusBanners({
   isCodexProbeWarning,
   activeAttempt,
   structuredError,
+  failureFeedback,
+  onRetrySource,
+  onReviewRestore,
+  reviewingAttempts,
   onOpenAttestationModal,
   onVerifyReadback,
   verifyingReadback,
@@ -48,19 +60,21 @@ export function StatusBanners({
     >
       {/* 0. 结构化错误提示 */}
       {structuredError && (
-        <div className="fy-status-banner banner-danger" role="alert">
-          <div className="fy-status-banner-icon">
-            <XCircleIcon size={20} weight="fill" />
-          </div>
-          <div className="fy-status-banner-content">
-            <div className="fy-status-banner-title">
-              会话处理错误 · {structuredError.code}
-            </div>
-            <div className="fy-status-banner-desc">
-              {structuredError.message}
-            </div>
-          </div>
+        <div>
+          <FailureFeedback feedback={structuredError} />
+          {onRetrySource && (
+            <Button type="button" onClick={onRetrySource}>
+              重新读取与提取
+            </Button>
+          )}
         </div>
+      )}
+      {failureFeedback && (
+        <FailureFeedback
+          feedback={failureFeedback}
+          onReview={onReviewRestore}
+          reviewing={reviewingAttempts}
+        />
       )}
 
       {/* 1. 最终答复待判定：最高优先级阻断提示 */}
@@ -209,69 +223,45 @@ export function StatusBanners({
         </div>
       )}
 
-      {/* 7. 写入失败提示 */}
-      {stage === "failed" && (
-        <div className="fy-status-banner banner-danger" role="alert">
-          <div className="fy-status-banner-icon">
-            <XCircleIcon size={20} weight="fill" />
-          </div>
-          <div className="fy-status-banner-content">
-            <div className="fy-status-banner-title">会话恢复写入失败</div>
-            <div className="fy-status-banner-desc">
-              写入目标软件本地存储时发生错误
-              {activeAttempt?.lastError
-                ? `（原因: ${parseMigrationError(activeAttempt.lastError).message}）`
-                : ""}
-              。请检查本地客户端状态与目录权限。
+      {activeAttempt &&
+        [
+          "failed",
+          "needsReconciliation",
+          "ambiguous",
+          "nativeWritePending",
+          "packageVerified",
+        ].includes(activeAttempt.stage) && (
+          <div className="fy-status-banner banner-danger" role="alert">
+            <div className="fy-status-banner-content">
+              <div className="fy-status-banner-title">
+                {stage === "needsReconciliation"
+                  ? "写入结果尚未确认"
+                  : stage === "ambiguous"
+                    ? "恢复状态待确认"
+                    : stage === "failed"
+                      ? "会话恢复未完成"
+                      : "恢复处理中"}
+              </div>
+              <div className="fy-status-banner-desc">
+                <div>阶段：{restoreAttemptFeedback(activeAttempt).phase}</div>
+                <div>{restoreAttemptFeedback(activeAttempt).message}</div>
+                <div>{restoreAttemptFeedback(activeAttempt).writeSummary}</div>
+                <div>{restoreAttemptFeedback(activeAttempt).nextStep}</div>
+              </div>
+              {onReviewRestore && (
+                <div className="fy-banner-action-row">
+                  <Button
+                    type="button"
+                    disabled={reviewingAttempts}
+                    onClick={onReviewRestore}
+                  >
+                    {reviewingAttempts ? "正在核对…" : "核对恢复回执"}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* 8. 对账警告 */}
-      {stage === "needsReconciliation" && (
-        <div className="fy-status-banner banner-danger" role="alert">
-          <div className="fy-status-banner-icon">
-            <WarningIcon size={20} weight="fill" />
-          </div>
-          <div className="fy-status-banner-content">
-            <div className="fy-status-banner-title">写入结果尚未确认</div>
-            <div className="fy-status-banner-desc">
-              目前无法确认目标软件是否完整保存了会话，禁止盲目重试。请先核对恢复记录与目标软件的会话列表。
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 9. 状态待确认 */}
-      {stage === "ambiguous" && (
-        <div className="fy-status-banner banner-warning" role="status">
-          <div className="fy-status-banner-icon">
-            <WarningIcon size={20} weight="bold" />
-          </div>
-          <div className="fy-status-banner-content">
-            <div className="fy-status-banner-title">恢复状态待确认</div>
-            <div className="fy-status-banner-desc">
-              恢复状态未完全确认，请勿重复提交，建议前往目标客户端核对或查看历史记录。
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 10. 恢复处理中 */}
-      {stage === "nativeWritePending" && (
-        <div className="fy-status-banner banner-info" role="status">
-          <div className="fy-status-banner-icon">
-            <ClockIcon size={20} weight="bold" />
-          </div>
-          <div className="fy-status-banner-content">
-            <div className="fy-status-banner-title">恢复处理中</div>
-            <div className="fy-status-banner-desc">
-              恢复操作尚未完成，请查看恢复记录，不要重复创建副本。
-            </div>
-          </div>
-        </div>
-      )}
+        )}
     </div>
   );
 }

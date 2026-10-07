@@ -49,7 +49,9 @@ use crate::codex_desktop::{
     jobs::{ProcessLifecycleClaim, ProcessLifecycleCoordinator, ProcessLifecycleTransition},
     types::JobStage,
 };
-pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
+pub use app_config::{
+    AppType, InstalledSkill, McpApps, McpServer, McpTargetId, MultiAppConfig, SkillApps,
+};
 pub use codex_config::{
     get_codex_auth_path, get_codex_config_path, read_codex_live_settings, write_codex_live_atomic,
 };
@@ -65,7 +67,8 @@ pub use mcp::{
     remove_server_from_claude, remove_server_from_codex, remove_server_from_gemini,
     remove_server_from_grokbuild, sync_enabled_to_claude, sync_enabled_to_codex,
     sync_enabled_to_gemini, sync_single_server_to_claude, sync_single_server_to_codex,
-    sync_single_server_to_gemini, sync_single_server_to_grokbuild,
+    sync_single_server_to_gemini, sync_single_server_to_grokbuild, McpImportCounts,
+    McpImportReport, McpImportSourceResult, McpServerView,
 };
 pub use prompt::Prompt;
 pub use provider::{Provider, ProviderMeta};

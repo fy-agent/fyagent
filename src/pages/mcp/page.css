@@ -42,6 +42,30 @@
   line-height: 1.5;
 }
 
+.fy-mcp-import-source-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.fy-mcp-import-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-mcp-import-results {
+  flex: 0 0 auto;
+  max-height: 24vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.fy-mcp-import-results p {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
 @media (max-width: 760px) {
   .fy-mcp-page > .fy-feature-header {
     grid-template-columns: minmax(0, 1fr);

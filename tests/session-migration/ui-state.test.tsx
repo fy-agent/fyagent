@@ -7,12 +7,69 @@ import {
   type RestoreAttempt,
 } from "@/shared/features/session-migration";
 import { restoreAttemptSample } from "./samples";
+import {
+  restoreAttemptFeedback,
+  canRetryRestoreRequest,
+} from "@/pages/sessions/failure-feedback";
 
 function attempt(overrides: Record<string, unknown> = {}): RestoreAttempt {
   return restoreAttemptSample(overrides) as unknown as RestoreAttempt;
 }
 
 describe("session migration verification presentation", () => {
+  it("uses persisted stage for write truth while leaving an unrecorded failure phase explicit", () => {
+    const error = {
+      code: "nativeProtocolFailed",
+      detail: { reason: "timeout SECRET" },
+    };
+    const failed = attempt({ stage: "failed", lastError: error });
+    expect(restoreAttemptFeedback(failed).phase).toContain("失败阶段未记录");
+    expect(restoreAttemptFeedback(failed).writeSummary).toContain(
+      "没有写入副作用",
+    );
+    expect(
+      restoreAttemptFeedback(
+        attempt({ stage: "needsReconciliation", lastError: error }),
+      ).writeSummary,
+    ).toContain("尚未确认");
+    expect(
+      restoreAttemptFeedback(
+        attempt({ stage: "nativeWritten", lastError: error }),
+      ).writeSummary,
+    ).toContain("已写入目标会话");
+    expect(restoreAttemptFeedback(failed).message).not.toContain("SECRET");
+  });
+
+  it("requires the complete selected request for a safe retry, excluding foreign, missing and mixed receipts", () => {
+    const first = attempt({
+      stage: "failed",
+      requestId: "same",
+      snapshotId: "first",
+    });
+    const second = attempt({
+      stage: "failed",
+      requestId: "same",
+      snapshotId: "second",
+    });
+    const request = {
+      requestId: "same",
+      snapshotIds: ["first", "second"],
+      targetProviderId: "codex",
+      requestKind: "defaultImport" as const,
+      packagePath: "/tmp/package.json",
+      targetWorkspace: "/tmp/original-workspace",
+    };
+    expect(canRetryRestoreRequest([first, second], request)).toBe(true);
+    for (const receipts of [
+      [first],
+      [first, { ...second, requestId: "other" }],
+      [first, { ...second, requestKind: "saveAsNewCopy" as const }],
+      [first, { ...second, stage: "nativeWritten" as const }],
+      [first, { ...second, stage: "needsReconciliation" as const }],
+    ]) {
+      expect(canRetryRestoreRequest(receipts, request)).toBe(false);
+    }
+  });
   it("keeps a user claim orthogonal to the native-written system stage", () => {
     render(
       <StatusBanners

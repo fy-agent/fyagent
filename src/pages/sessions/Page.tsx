@@ -39,10 +39,16 @@ import {
   RESTORE_STAGE_LABELS,
   SUPPORTED_PROVIDER_IDS,
   getSessionStableKey,
+  isProviderRestoreSupported,
   parseMigrationError,
 } from "../../shared/features/session-migration";
 
 import { StatusBanners } from "./components/StatusBanners";
+import {
+  readFailureFeedback,
+  restoreAttemptFeedback,
+  type SessionFailureFeedback,
+} from "./failure-feedback";
 import {
   ConversationStream,
   type ConversationTurn,
@@ -129,11 +135,7 @@ export function SessionsPage() {
               extractionSupported: false,
               writeSupported: false,
               reasonCode:
-                parsed.message && parsed.message !== "未知错误"
-                  ? parsed.message
-                  : parsed.code !== "unknown"
-                    ? parsed.code
-                    : "probe_error",
+                parsed.code !== "unknown" ? parsed.code : "probe_error",
             };
           }
         }),
@@ -185,11 +187,7 @@ export function SessionsPage() {
       const sourcePath = selectedSession.sourcePath || "";
       let rawMsgs: SessionMessage[];
       let migratable: MigratableSession | null = null;
-      let errPayload: {
-        code: string;
-        message: string;
-        detail?: string;
-      } | null = null;
+      let errPayload: SessionFailureFeedback | null = null;
 
       try {
         rawMsgs = await ports.sessions.getSessionMessages(
@@ -198,7 +196,7 @@ export function SessionsPage() {
         );
       } catch (err) {
         rawMsgs = EMPTY_MESSAGES;
-        errPayload = parseMigrationError(err);
+        errPayload = readFailureFeedback(err, "source");
       }
 
       try {
@@ -208,7 +206,7 @@ export function SessionsPage() {
         );
       } catch (err) {
         if (!errPayload) {
-          errPayload = parseMigrationError(err);
+          errPayload = readFailureFeedback(err, "extraction");
         }
       }
 
@@ -236,8 +234,7 @@ export function SessionsPage() {
   // ─── Modals & Dialogs (useDialogState for lifecycle isolation) ────
   const [exportTargets, setExportTargets, exportSessionKey] =
     useDialogState<ExportTargetItem[]>();
-  const [importOpen, setImportOpen, importSessionKey] =
-    useDialogState<boolean>();
+  const [importOpen, setImportOpen] = useDialogState<boolean>();
   const [remapOpen, setRemapOpen, remapSessionKey] = useDialogState<boolean>();
   const [guideOpen, setGuideOpen, guideSessionKey] = useDialogState<boolean>();
   const [attestationOpen, setAttestationOpen, attestationSessionKey] =
@@ -250,6 +247,11 @@ export function SessionsPage() {
   const [attestationOriginRef] = useState<DialogOriginRef>({ current: null });
 
   const [verifyingReadback, setVerifyingReadback] = useState(false);
+  const [readbackError, setReadbackError] = useState<{
+    attemptId: string;
+    feedback: SessionFailureFeedback;
+  } | null>(null);
+  const [reviewingAttempts, setReviewingAttempts] = useState(false);
 
   const refreshSessions = useCallback(async () => {
     await Promise.all([
@@ -373,16 +375,8 @@ export function SessionsPage() {
         "nextTurnReplyVerified",
       ].includes(activeAttempt.stage));
 
-  const capabilityReason = activeProviderProbe
-    ? activeProviderProbe.reasonCode &&
-      activeProviderProbe.reasonCode !== "providerNotInstalled"
-      ? activeProviderProbe.reasonCode
-      : !activeProviderProbe.installed
-        ? "本地未安装该 AI 软件"
-        : !activeProviderProbe.writeSupported
-          ? "软件当前版本暂未通过恢复验证"
-          : undefined
-    : "软件运行环境待探测";
+  const capabilityReason =
+    isProviderRestoreSupported(activeProviderProbe).reason;
 
   // ─── Turns Projection (No Dropped Messages & Real Roles) ─────────
   const conversationTurns = useMemo<ConversationTurn[]>(() => {
@@ -605,7 +599,14 @@ export function SessionsPage() {
   );
 
   const handleRestore = async (request: RestoreRequest) => {
-    const res = await ports.sessions.restoreSessionPackage(request);
+    let res: RestoreAttempt[];
+    try {
+      res = await ports.sessions.restoreSessionPackage(request);
+    } finally {
+      // A missing response may follow publication. Reread persisted receipts
+      // even when the transport rejects; never fabricate a write-free result.
+      void refreshSessions();
+    }
     const classification = classifyRestoreResults(res);
 
     if (
@@ -641,6 +642,8 @@ export function SessionsPage() {
 
   const handleVerifyReadback = async () => {
     if (!activeAttempt) return;
+    const attempt = activeAttempt;
+    setReadbackError(null);
     setVerifyingReadback(true);
     try {
       const updated = await ports.sessions.verifyNativeReadback(
@@ -662,7 +665,7 @@ export function SessionsPage() {
         notify({
           tone: "error",
           title: "读回核验失败",
-          description: "本地存储未检测到该会话。",
+          description: restoreAttemptFeedback(updated).writeSummary,
         });
       } else {
         notify({
@@ -673,13 +676,32 @@ export function SessionsPage() {
       }
       void refreshSessions();
     } catch (err) {
+      const feedback = {
+        ...restoreAttemptFeedback(attempt),
+        phase: "目标读回调用失败",
+        message: parseMigrationError(err).message,
+        nextStep: "重新执行系统读回核验或核对恢复回执，不再次写入。",
+      };
+      setReadbackError({ attemptId: attempt.attemptId, feedback });
       notify({
         tone: "error",
         title: "读回核验发生错误",
-        description: err instanceof Error ? err.message : String(err),
+        description: feedback.message,
       });
     } finally {
       setVerifyingReadback(false);
+    }
+  };
+
+  const handleReviewRestore = async () => {
+    setReviewingAttempts(true);
+    try {
+      await ports.sessions.reconcileRestoreAttempts();
+      const receipts = await ports.sessions.listRestoreAttempts();
+      queryClient.setQueryData(["sessions-attempts"], receipts);
+      return receipts;
+    } finally {
+      setReviewingAttempts(false);
     }
   };
 
@@ -724,7 +746,7 @@ export function SessionsPage() {
       notify({
         tone: "error",
         title: "拉起目标客户端失败",
-        description: err instanceof Error ? err.message : String(err),
+        description: parseMigrationError(err).message,
       });
       setGuideOpen(true);
     }
@@ -1257,6 +1279,24 @@ export function SessionsPage() {
                 <StatusBanners
                   stage={activeAttempt.stage}
                   activeAttempt={activeAttempt}
+                  failureFeedback={
+                    readbackError?.attemptId === activeAttempt.attemptId
+                      ? readbackError.feedback
+                      : undefined
+                  }
+                  onReviewRestore={() =>
+                    void handleReviewRestore().catch((error) =>
+                      setReadbackError({
+                        attemptId: activeAttempt.attemptId,
+                        feedback: {
+                          ...restoreAttemptFeedback(activeAttempt),
+                          phase: "恢复回执核对失败",
+                          message: parseMigrationError(error).message,
+                        },
+                      }),
+                    )
+                  }
+                  reviewingAttempts={reviewingAttempts}
                   isCapabilityVerified={isCapabilityVerified}
                   capabilityReason={capabilityReason}
                   onVerifyReadback={() => void handleVerifyReadback()}
@@ -1402,6 +1442,35 @@ export function SessionsPage() {
                   isCodexProbeWarning={selectedSession.providerId === "codex"}
                   activeAttempt={activeAttempt}
                   structuredError={structuredError}
+                  onRetrySource={() =>
+                    void queryClient.invalidateQueries({
+                      queryKey: [
+                        "session-detail",
+                        selectedSession.providerId,
+                        selectedSession.sourcePath,
+                        selectedSession.sessionId,
+                      ],
+                    })
+                  }
+                  failureFeedback={
+                    readbackError?.attemptId === activeAttempt?.attemptId
+                      ? readbackError?.feedback
+                      : undefined
+                  }
+                  onReviewRestore={() =>
+                    void handleReviewRestore().catch((error) => {
+                      if (activeAttempt)
+                        setReadbackError({
+                          attemptId: activeAttempt.attemptId,
+                          feedback: {
+                            ...restoreAttemptFeedback(activeAttempt),
+                            phase: "恢复回执核对失败",
+                            message: parseMigrationError(error).message,
+                          },
+                        });
+                    })
+                  }
+                  reviewingAttempts={reviewingAttempts}
                   onVerifyReadback={() => void handleVerifyReadback()}
                   verifyingReadback={verifyingReadback}
                   onOpenAttestationModal={() => setAttestationOpen(true)}
@@ -1486,23 +1555,28 @@ export function SessionsPage() {
       )}
 
       {/* 2. 导入包与冲突处理弹窗 (重试幂等与本地探针门控) */}
-      {importOpen && (
-        <ImportPackageDialog
-          key={importSessionKey}
-          open={Boolean(importOpen)}
-          onOpenChange={(open) => {
-            if (!open) setImportOpen(null);
-          }}
-          onReadPackage={(path) => ports.sessions.readSessionPackage(path)}
-          onRestore={handleRestore}
-          onPickPackageFile={() => ports.sessions.pickPackageFile()}
-          onPickDirectory={() => ports.sessions.pickDirectory()}
-          localProbes={localProbes}
-          initialTargetWorkspace={targetWorkspace}
-          originRef={importOriginRef}
-          onImportSuccess={() => void refreshSessions()}
-        />
-      )}
+      <ImportPackageDialog
+        open={Boolean(importOpen)}
+        onOpenChange={(open) => {
+          if (!open) setImportOpen(null);
+        }}
+        onReadPackage={(path) => ports.sessions.readSessionPackage(path)}
+        onRestore={handleRestore}
+        onReviewRestore={handleReviewRestore}
+        onVerifyReadback={async (attemptId) => {
+          try {
+            return await ports.sessions.verifyNativeReadback(attemptId);
+          } finally {
+            void refreshSessions();
+          }
+        }}
+        onPickPackageFile={() => ports.sessions.pickPackageFile()}
+        onPickDirectory={() => ports.sessions.pickDirectory()}
+        localProbes={localProbes}
+        initialTargetWorkspace={targetWorkspace}
+        originRef={importOriginRef}
+        onImportSuccess={() => void refreshSessions()}
+      />
 
       {/* 3. 本地工作区重映射弹窗 */}
       {remapOpen && (

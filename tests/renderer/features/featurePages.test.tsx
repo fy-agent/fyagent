@@ -24,6 +24,7 @@ import {
   type UnmanagedSkill,
 } from "@/shared/features/types";
 import { createBrowserFeaturePorts } from "@/shared/platform/browser/features";
+import type { McpImportReport } from "@/shared/features/mcp";
 
 function appearsBefore(first: HTMLElement, second: HTMLElement) {
   expect(
@@ -33,6 +34,15 @@ function appearsBefore(first: HTMLElement, second: HTMLElement) {
 
 function renderFeature(page: React.ReactNode, ports: FeaturePorts) {
   return render(<FeatureProvider ports={ports}>{page}</FeatureProvider>);
+}
+
+async function confirmMcpImport(user: UserEvent) {
+  await user.click(screen.getByRole("button", { name: "导入现有" }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "选择 MCP 导入来源",
+  });
+  await user.click(within(dialog).getByRole("checkbox", { name: "QoderWork" }));
+  await user.click(within(dialog).getByRole("button", { name: "开始导入" }));
 }
 
 async function confirmInstallPath(
@@ -194,11 +204,11 @@ describe("MCP management", () => {
         .getAllByRole("switch")
         .map((node) => node.getAttribute("aria-label")),
     ).toEqual(MCP_TARGETS.map((app) => `${app.label} MCP 分配`));
-    expect(screen.getByText(/stdio · 1 Agent/)).toBeVisible();
+    expect(screen.getByText(/stdio · 3 个分配/)).toBeVisible();
     const detail = screen.getByRole("region", { name: "MCP 详情" });
     expect(
-      within(detail).getAllByText("手动添加", { exact: true }),
-    ).toHaveLength(1);
+      within(detail).getAllByText("未记录导入来源", { exact: true }).length,
+    ).toBeGreaterThan(0);
     expect(within(detail).getAllByText("stdio", { exact: true })).toHaveLength(
       1,
     );
@@ -275,13 +285,30 @@ describe("MCP management", () => {
       if (reads === 1) return {};
       throw new Error("MCP refresh unavailable");
     });
-    ports.mcp.importFromApps = vi.fn(async () => 0);
+    ports.mcp.importFromApps = vi.fn(
+      async (): Promise<McpImportReport> => ({
+        contractVersion: 1,
+        sources: [
+          {
+            source: "qoderwork",
+            added: 0,
+            assignmentChanged: 0,
+            unchanged: 0,
+            disabledSkipped: 0,
+            failureCode: null,
+          },
+        ],
+      }),
+    );
 
     renderFeature(<McpPage />, ports);
     await screen.findByText("还没有 MCP 服务");
-    await user.click(screen.getByRole("button", { name: "导入现有" }));
+    await confirmMcpImport(user);
 
-    expect(await screen.findByText("没有发现可导入的 MCP")).toBeVisible();
+    expect(
+      await screen.findByRole("region", { name: "MCP 导入结果" }),
+    ).toHaveTextContent("新增 0 · 分配状态变化 0");
+    expect(screen.queryByText("没有发现可导入的 MCP")).not.toBeInTheDocument();
     expect(
       await screen.findByText(/刷新失败，正在显示上一次成功数据/, undefined, {
         timeout: 4_000,
@@ -290,6 +317,112 @@ describe("MCP management", () => {
     expect(document.body).not.toHaveTextContent("MCP refresh unavailable");
     expect(screen.getByText("还没有 MCP 服务")).toBeVisible();
     expect(screen.queryByText("无法加载 MCP")).not.toBeInTheDocument();
+  });
+
+  it("selects import sources without writes and reports flag-only changes separately from skipped or failed sources", async () => {
+    const user = userEvent.setup();
+    let server: McpServer = {
+      id: "time",
+      name: "Imported Time",
+      apps: createMcpAssignments(),
+      server: { command: "echo", env: { TOKEN: "source-secret" } },
+    };
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = vi.fn(async () => ({ time: server }));
+    ports.mcp.upsert = vi.fn(async () => undefined);
+    ports.mcp.toggleApp = vi.fn(async () => undefined);
+    ports.mcp.importFromApps = vi.fn(async (): Promise<McpImportReport> => {
+      server = {
+        ...server,
+        sources: ["qoderwork"],
+        apps: createMcpAssignments(["qoderwork"]),
+      };
+      return {
+        contractVersion: 1,
+        sources: [
+          {
+            source: "qoderwork",
+            added: 0,
+            assignmentChanged: 1,
+            unchanged: 2,
+            disabledSkipped: 1,
+            failureCode: null,
+          },
+          {
+            source: "codex",
+            added: 0,
+            assignmentChanged: 0,
+            unchanged: 0,
+            disabledSkipped: 0,
+            failureCode: "source_failed",
+          },
+        ],
+      };
+    });
+    const rendered = renderFeature(<McpPage />, ports);
+    await screen.findByRole("heading", { name: "Imported Time" });
+    expect(screen.getByRole("region", { name: "MCP 详情" })).toHaveTextContent(
+      "尚未分配 · 连接尚未测试",
+    );
+    await user.click(screen.getByRole("button", { name: "导入现有" }));
+    let dialog = await screen.findByRole("dialog", {
+      name: "选择 MCP 导入来源",
+    });
+    expect(
+      within(dialog).getByRole("button", { name: "开始导入" }),
+    ).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "QoderWork" }),
+    );
+    expect(ports.mcp.importFromApps).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(ports.mcp.importFromApps).not.toHaveBeenCalled();
+    expect(ports.mcp.upsert).not.toHaveBeenCalled();
+    expect(ports.mcp.toggleApp).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "导入现有" }));
+    dialog = await screen.findByRole("dialog", { name: "选择 MCP 导入来源" });
+    expect(
+      within(dialog).getByRole("checkbox", { name: "QoderWork" }),
+    ).not.toBeChecked();
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "QoderWork" }),
+    );
+    await user.click(within(dialog).getByRole("checkbox", { name: "Codex" }));
+    await user.click(within(dialog).getByRole("button", { name: "开始导入" }));
+    const result = await screen.findByRole("region", { name: "MCP 导入结果" });
+    expect(result).toHaveTextContent(
+      "新增 0 · 分配状态变化 1 · 未变化 2 · 来源停用，未收录 1",
+    );
+    expect(result).toHaveTextContent(
+      "Codex：来源读取或配置冲突校验失败，本来源未写入",
+    );
+    expect(ports.mcp.importFromApps).toHaveBeenCalledWith([
+      "qoderwork",
+      "codex",
+    ]);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: "MCP 详情" }),
+      ).toHaveTextContent("已分配 1 个目标 · 连接尚未测试");
+    });
+    expect(server.apps).toEqual(createMcpAssignments(["qoderwork"]));
+    expect(
+      screen
+        .getAllByRole("switch")
+        .map((node) => node.getAttribute("aria-label")),
+    ).toEqual(MCP_TARGETS.map((target) => `${target.label} MCP 分配`));
+    expect(document.body).not.toHaveTextContent("source-secret");
+    expect(screen.queryByText("没有发现可导入的 MCP")).not.toBeInTheDocument();
+    rendered.unmount();
+    renderFeature(<McpPage />, ports);
+    const reopened = await screen.findByRole("region", { name: "MCP 详情" });
+    expect(reopened).toHaveTextContent("QoderWork");
+    expect(reopened).toHaveTextContent("连接尚未测试");
+    expect(document.body).not.toHaveTextContent("source-secret");
   });
 
   it("keeps cached MCP data visible when a write-triggered refresh fails", async () => {
@@ -351,7 +484,7 @@ describe("MCP management", () => {
 
     renderFeature(<McpPage />, ports);
     await screen.findByRole("heading", { name: "Docs server" });
-    await user.click(screen.getByRole("button", { name: "导入现有" }));
+    await confirmMcpImport(user);
     expect(
       await screen.findByText(
         "MCP 配置中的敏感字段未通过校验，请检查对应字段格式",
@@ -463,7 +596,7 @@ describe("MCP management", () => {
 
     renderFeature(<McpPage />, ports);
     await screen.findByText("还没有 MCP 服务");
-    await user.click(screen.getByRole("button", { name: "导入现有" }));
+    await confirmMcpImport(user);
 
     expect(
       await screen.findByText(
@@ -501,10 +634,10 @@ describe("MCP management", () => {
     );
     expect(
       within(screen.getByRole("region", { name: "MCP 详情" })).getAllByText(
-        "精选目录",
+        "未记录导入来源",
         { exact: true },
       ),
-    ).toHaveLength(1);
+    ).not.toHaveLength(0);
     expect(screen.queryByText("无本地安装目录")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: "当前分配" }),
