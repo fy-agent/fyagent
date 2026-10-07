@@ -2071,6 +2071,8 @@ pub fn run() {
             commands::bind_managed_proxy_provider,
             commands::bind_opencode_managed_proxy,
             commands::apply_provider_quick_setup_with_result,
+            commands::preview_claude_quick_setup,
+            commands::apply_claude_quick_setup_preview,
             commands::update_provider,
             commands::update_provider_with_result,
             commands::delete_provider,

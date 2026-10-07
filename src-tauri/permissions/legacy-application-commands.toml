@@ -13,6 +13,8 @@ commands.allow = [
   "apply_claude_plugin_config",
   "apply_profile",
   "apply_provider_quick_setup_with_result",
+  "preview_claude_quick_setup",
+  "apply_claude_quick_setup_preview",
   "auth_get_status",
   "auth_list_accounts",
   "auth_logout",

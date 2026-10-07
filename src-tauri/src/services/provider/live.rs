@@ -801,11 +801,22 @@ fn write_quick_setup_live_snapshot(
 
 fn write_quick_setup_claude_live(provider: &Provider) -> Result<(), AppError> {
     let path = get_claude_settings_path();
-    let mut current = if path.exists() {
+    let current = if path.exists() {
         read_json_file::<Value>(&path)?
     } else {
         json!({})
     };
+    write_json_file(
+        &path,
+        &build_claude_quick_setup_live_projection(&current, provider)?,
+    )
+}
+
+pub(super) fn build_claude_quick_setup_live_projection(
+    current: &Value,
+    provider: &Provider,
+) -> Result<Value, AppError> {
+    let mut current = current.clone();
     let current_obj = current.as_object_mut().ok_or_else(|| {
         AppError::Config("Claude settings.json root must be an object".to_string())
     })?;
@@ -837,7 +848,7 @@ fn write_quick_setup_claude_live(provider: &Provider) -> Result<(), AppError> {
         current_env.insert(key.to_string(), value.clone());
     }
 
-    write_json_file(&path, &current)
+    Ok(current)
 }
 
 fn write_quick_setup_codex_live(provider: &Provider) -> Result<(), AppError> {

@@ -123,6 +123,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       getProxyRestorePreview: rejectNativeOnly,
       restoreManagedProxy: rejectNativeOnly,
       applyQuickSetupWithResult: rejectNativeOnly,
+      previewClaudeQuickSetup: rejectNativeOnly,
+      applyClaudeQuickSetupPreview: rejectNativeOnly,
       fetchModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
       checkModel: rejectNativeOnly,

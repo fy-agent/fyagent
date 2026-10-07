@@ -124,7 +124,11 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(144);
+    expect(renderer.commands.size).toBe(146);
+    expect(renderer.commands.has("preview_claude_quick_setup")).toBe(true);
+    expect(renderer.commands.has("apply_claude_quick_setup_preview")).toBe(
+      true,
+    );
     expect(renderer.commands.has("list_db_backups")).toBe(true);
     expect(renderer.commands.has("restore_db_backup_outcome")).toBe(true);
     expect(renderer.commands.has("check_db_recovery_readability")).toBe(true);

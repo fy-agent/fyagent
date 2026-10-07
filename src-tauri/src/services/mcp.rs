@@ -290,6 +290,9 @@ impl McpService {
         servers: &IndexMap<String, McpServer>,
         target: &McpTargetId,
     ) -> Result<(), AppError> {
+        if *target == McpTargetId::Claude {
+            return crate::claude_mcp::sync_collection(servers);
+        }
         for server in servers.values() {
             if server.apps.is_enabled_for_target(target) {
                 Self::sync_server_to_target(server, target)?;

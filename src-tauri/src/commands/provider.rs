@@ -738,6 +738,42 @@ fn parse_provider_draft_app(app: &str) -> Result<AppType, String> {
     Ok(app_type)
 }
 
+/// Claude-specific read-only consent; secrets and file authority stay native.
+#[tauri::command]
+pub async fn preview_claude_quick_setup(
+    app_handle: tauri::AppHandle,
+    request: ProviderQuickSetupRequest,
+) -> Result<crate::services::provider::ClaudeQuickSetupPreview, ProviderQuickSetupCommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle.try_state::<AppState>().ok_or_else(|| {
+            ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
+        })?;
+        let provider = request.into_provider(&AppType::Claude)?;
+        ProviderService::preview_claude_quick_setup(state.inner(), provider).map_err(|_| {
+            ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
+        })
+    })
+    .await
+    .map_err(|_| {
+        ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
+    })?
+}
+
+#[tauri::command]
+pub async fn apply_claude_quick_setup_preview(
+    app_handle: tauri::AppHandle,
+    request: crate::services::provider::ClaudeQuickSetupApplyRequest,
+) -> crate::services::provider::ClaudeQuickSetupOutcome {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(state) = app_handle.try_state::<AppState>() else {
+            return crate::services::provider::ClaudeQuickSetupOutcome::unknown();
+        };
+        ProviderService::apply_claude_quick_setup_preview(state.inner(), request)
+    })
+    .await
+    .unwrap_or_else(|_| crate::services::provider::ClaudeQuickSetupOutcome::unknown())
+}
+
 /// Atomically store and activate a bounded Claude/Codex quick-setup Provider.
 #[tauri::command]
 pub async fn apply_provider_quick_setup_with_result(

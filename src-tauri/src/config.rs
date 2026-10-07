@@ -38,6 +38,13 @@ pub(crate) fn file_write_target(path: &Path) -> Result<FileWriteTarget, AppError
     })
 }
 
+/// Display-only sidecar resolution; never accepted as renderer write authority.
+pub(crate) fn file_recovery_display_path(path: &Path) -> Result<String, AppError> {
+    let record = recovery::record_path(path);
+    recovery::validate_file_leaf(&record)?;
+    Ok(display_user_path(&record))
+}
+
 /// 获取用户主目录。
 ///
 /// ## Windows 注意事项

@@ -1,4 +1,9 @@
 import {
+  parseClaudeQuickSetupApplyRequest,
+  parseClaudeQuickSetupPreview,
+  parseClaudeQuickSetupOutcome,
+} from "../../../features/claude-quick-setup";
+import {
   apiProtocolsForTarget,
   isApiProtocol,
   type ApiConnection,
@@ -489,6 +494,18 @@ export function createModelFeaturePorts(): Pick<
 > {
   return {
     providers: {
+      previewClaudeQuickSetup: async (request) =>
+        parseClaudeQuickSetupPreview(
+          await invoke<unknown>("preview_claude_quick_setup", {
+            request: assertQuickSetupRequest(request, "claude"),
+          }),
+        ),
+      applyClaudeQuickSetupPreview: async (request) =>
+        parseClaudeQuickSetupOutcome(
+          await invoke<unknown>("apply_claude_quick_setup_preview", {
+            request: parseClaudeQuickSetupApplyRequest(request),
+          }),
+        ),
       getSummary: async (app) =>
         parseProviderSummary(
           await invoke("get_provider_summary", { app }),

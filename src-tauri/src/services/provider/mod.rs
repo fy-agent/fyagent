@@ -2,6 +2,7 @@
 //!
 //! Handles provider CRUD operations, switching, and configuration management.
 
+mod claude_write_projection;
 mod common_config;
 mod credentials;
 mod endpoints;
@@ -11,6 +12,9 @@ mod managed_proxy;
 mod universal;
 mod usage;
 
+pub use claude_write_projection::{
+    ClaudeQuickSetupApplyRequest, ClaudeQuickSetupOutcome, ClaudeQuickSetupPreview,
+};
 pub(crate) use credentials::ProviderCredentials;
 
 pub use managed_proxy::{
@@ -4963,7 +4967,18 @@ impl ProviderService {
     fn apply_provider_activation_transaction_locked(
         state: &AppState,
         app_type: AppType,
+        provider: Provider,
+    ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        Self::apply_provider_activation_with_claude_projection_locked(
+            state, app_type, provider, None,
+        )
+    }
+
+    fn apply_provider_activation_with_claude_projection_locked(
+        state: &AppState,
+        app_type: AppType,
         mut provider: Provider,
+        claude_projection: Option<&claude_write_projection::ClaudeWriteProjection>,
     ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
         provider = ProviderCredentials::merge_edit(&state.db, app_type.as_str(), &provider)
             .map_err(QuickSetupApplyError::rolled_back)?;
@@ -4977,8 +4992,12 @@ impl ProviderService {
             .db
             .get_current_provider(app_type.as_str())
             .map_err(QuickSetupApplyError::rolled_back)?;
-        let live_snapshots =
-            snapshot_quick_setup_live(&app_type).map_err(QuickSetupApplyError::rolled_back)?;
+        let mut live_snapshots = match claude_projection {
+            Some(projection) => projection.snapshots(),
+            None => {
+                snapshot_quick_setup_live(&app_type).map_err(QuickSetupApplyError::rolled_back)?
+            }
+        };
         let live_before = matches!(app_type, AppType::Codex)
             .then(read_codex_live_config_bytes)
             .transpose()
@@ -5033,6 +5052,20 @@ impl ProviderService {
             .detect_takeover_in_live_config_for_app(&app_type);
         let should_prepare_takeover = has_live_backup || live_taken_over;
 
+        if app_type == AppType::Claude
+            && claude_projection.is_none()
+            && !managed_subscription
+            && !should_prepare_takeover
+            && !McpService::get_all_servers(state)
+                .map_err(QuickSetupApplyError::rolled_back)?
+                .is_empty()
+        {
+            live_snapshots.push(
+                QuickSetupFileSnapshot::capture(crate::config::get_claude_mcp_path())
+                    .map_err(QuickSetupApplyError::rolled_back)?,
+            );
+        }
+
         let mutation = (|| -> Result<(SwitchResult, Option<Vec<u8>>), AppError> {
             if managed_subscription {
                 futures::executor::block_on(
@@ -5050,14 +5083,18 @@ impl ProviderService {
                 .map_err(|error| AppError::Message(format!("更新 Live 备份失败: {error}")))?;
 
                 if matches!(app_type, AppType::Claude) {
-                    futures::executor::block_on(
-                        state
-                            .proxy_service
-                            .sync_claude_live_from_provider_while_proxy_active(&provider),
-                    )
-                    .map_err(|error| {
-                        AppError::Message(format!("同步 Claude Live 配置失败: {error}"))
-                    })?;
+                    if let Some(projection) = claude_projection {
+                        projection.write_settings()?;
+                    } else {
+                        futures::executor::block_on(
+                            state
+                                .proxy_service
+                                .sync_claude_live_from_provider_while_proxy_active(&provider),
+                        )
+                        .map_err(|error| {
+                            AppError::Message(format!("同步 Claude Live 配置失败: {error}"))
+                        })?;
+                    }
                 } else if live_taken_over {
                     futures::executor::block_on(
                         state
@@ -5070,6 +5107,8 @@ impl ProviderService {
                 } else {
                     write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
                 }
+            } else if let Some(projection) = claude_projection {
+                projection.write_settings()?;
             } else {
                 write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
             }
@@ -5089,7 +5128,11 @@ impl ProviderService {
 
             let mut result = SwitchResult::default();
             if !should_prepare_takeover && !managed_subscription {
-                if let Err(error) = McpService::sync_enabled_for_app_inner(state, &app_type) {
+                let mcp_result = match claude_projection {
+                    Some(projection) => projection.write_root(),
+                    None => McpService::sync_enabled_for_app_inner(state, &app_type),
+                };
+                if let Err(error) = mcp_result {
                     log::warn!(
                         "quick setup 后重投影 {app_type:?} MCP 失败（将在下次同步时自愈）: {error}"
                     );
@@ -5138,6 +5181,7 @@ impl ProviderService {
             Err(primary) => {
                 let mut rollback_errors = Vec::new();
                 let owns_live = !managed_subscription
+                    || app_type == AppType::Claude
                     || live_snapshots.iter().all(|snapshot| {
                         (app_type == AppType::Codex
                             && snapshot.path == crate::codex_config::get_codex_auth_path())
@@ -5174,7 +5218,7 @@ impl ProviderService {
                             && app_type == AppType::Codex
                             && snapshot.path == crate::codex_config::get_codex_auth_path())
                     }) {
-                        let restored = if managed_subscription {
+                        let restored = if managed_subscription || app_type == AppType::Claude {
                             snapshot.restore_owned()
                         } else {
                             snapshot.restore()

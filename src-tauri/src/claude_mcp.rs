@@ -335,21 +335,79 @@ pub fn read_mcp_servers_map() -> Result<std::collections::HashMap<String, Value>
     Ok(servers)
 }
 
+/// Fold the complete managed collection over the existing root. Unmanaged
+/// servers and unrelated root fields survive; a nonempty all-disabled collection
+/// still removes its managed IDs. Callers preserve the empty-collection no-op.
+pub(crate) fn build_collection_projection(
+    root: &Value,
+    servers: &indexmap::IndexMap<String, crate::app_config::McpServer>,
+) -> Result<Value, AppError> {
+    let mut projected = root
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for server in servers.values() {
+        if server.apps.claude {
+            crate::mcp::validate_server_spec(&server.server)?;
+            let managed =
+                std::collections::HashMap::from([(server.id.clone(), server.server.clone())]);
+            let sanitized = build_mcp_servers_projection(&serde_json::json!({}), &managed)?;
+            projected.insert(
+                server.id.clone(),
+                sanitized["mcpServers"][&server.id].clone(),
+            );
+        } else {
+            projected.remove(&server.id);
+        }
+    }
+    let mut result = root.clone();
+    result
+        .as_object_mut()
+        .ok_or_else(|| AppError::Config("~/.claude.json 根必须是对象".into()))?
+        .insert("mcpServers".into(), Value::Object(projected));
+    Ok(result)
+}
+
+pub(crate) fn sync_collection(
+    servers: &indexmap::IndexMap<String, crate::app_config::McpServer>,
+) -> Result<(), AppError> {
+    if servers.is_empty()
+        || !(crate::config::get_claude_config_dir().exists()
+            || crate::config::get_claude_mcp_path().exists())
+    {
+        return Ok(());
+    }
+    let path = crate::config::get_claude_mcp_path();
+    let root = if path.exists() {
+        crate::config::read_json_file(&path)?
+    } else {
+        serde_json::json!({})
+    };
+    let projected = build_collection_projection(&root, servers)?;
+    crate::config::write_json_file(&path, &projected)
+}
+
 /// 将给定的启用 MCP 服务器映射写入到用户级 ~/.claude.json 的 mcpServers 字段
 /// 仅覆盖 mcpServers，其他字段保持不变
 pub fn set_mcp_servers_map(
     servers: &std::collections::HashMap<String, Value>,
 ) -> Result<(), AppError> {
     let path = user_config_path();
-    let mut root = if path.exists() {
-        read_json_value(&path)?
-    } else {
-        serde_json::json!({})
-    };
+    let root = read_json_value(&path)?;
+    write_json_value(&path, &build_mcp_servers_projection(&root, servers)?)
+}
 
+pub(crate) fn build_mcp_servers_projection(
+    root: &Value,
+    servers: &std::collections::HashMap<String, Value>,
+) -> Result<Value, AppError> {
+    let mut root = root.clone();
     // 构建 mcpServers 对象：移除 UI 辅助字段（enabled/source），仅保留实际 MCP 规范
     let mut out: Map<String, Value> = Map::new();
-    for (id, spec) in servers.iter() {
+    let mut entries: Vec<_> = servers.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    for (id, spec) in entries {
         let mut obj = if let Some(map) = spec.as_object() {
             map.clone()
         } else {
@@ -387,8 +445,7 @@ pub fn set_mcp_servers_map(
         obj.insert("mcpServers".into(), Value::Object(out));
     }
 
-    write_json_value(&path, &root)?;
-    Ok(())
+    Ok(root)
 }
 
 #[cfg(test)]

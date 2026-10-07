@@ -1,3 +1,8 @@
+import type {
+  ClaudeQuickSetupPreview,
+  ClaudeQuickSetupApplyRequest,
+  ClaudeQuickSetupOutcome,
+} from "./claude-quick-setup";
 import type { FirstUseGuideState } from "./first-use-guide";
 import type {
   CodexInstallPreflight,
@@ -137,6 +142,12 @@ export interface CodexDesktopPort {
 }
 
 export interface ProvidersPort {
+  previewClaudeQuickSetup(
+    request: ProviderQuickSetupRequest,
+  ): Promise<ClaudeQuickSetupPreview>;
+  applyClaudeQuickSetupPreview(
+    request: ClaudeQuickSetupApplyRequest,
+  ): Promise<ClaudeQuickSetupOutcome>;
   getSummary(app: ProviderAppId): Promise<ProviderSummaryQueryData>;
   getProxyRestorePreview(
     app: ProviderAppId,

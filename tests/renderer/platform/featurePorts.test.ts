@@ -292,6 +292,70 @@ function catalogFixture(): AgentCatalogResult {
 }
 
 describe("Renderer feature ports", () => {
+  it("uses closed Claude preview/apply commands and refuses new apply authority", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/shared/platform/tauri/features"
+    );
+    const ports = createTauriFeaturePorts();
+    const previewId = "11111111-1111-4111-8111-111111111111";
+    const request = {
+      name: "Claude",
+      baseUrl: "https://claude.example.test",
+      apiKey: "private",
+      modelId: "fixture",
+    };
+    const preview = {
+      contractVersion: 1,
+      previewId,
+      writeTargets: [],
+      preservedPaths: ["~/.claude/settings.json", "~/.claude.json"],
+      sidecars: [],
+    };
+    invoke.mockResolvedValueOnce(preview);
+    expect(await ports.providers.previewClaudeQuickSetup(request)).toEqual(
+      preview,
+    );
+    expect(invoke).toHaveBeenLastCalledWith("preview_claude_quick_setup", {
+      request,
+    });
+    const outcome = {
+      contractVersion: 1,
+      overall: "stale",
+      providerState: "unchanged",
+      files: [
+        { target: "claude_settings", state: "notAttempted" },
+        { target: "claude_mcp", state: "notAttempted" },
+      ],
+    };
+    invoke.mockResolvedValueOnce(outcome);
+    expect(
+      await ports.providers.applyClaudeQuickSetupPreview({ previewId }),
+    ).toEqual(outcome);
+    expect(invoke).toHaveBeenLastCalledWith(
+      "apply_claude_quick_setup_preview",
+      { request: { previewId } },
+    );
+    invoke.mockClear();
+    await expect(
+      ports.providers.applyClaudeQuickSetupPreview({
+        previewId,
+        apiKey: "private",
+      } as never),
+    ).rejects.toThrow();
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce({ ...outcome, overall: "applied" });
+    await expect(
+      ports.providers.applyClaudeQuickSetupPreview({ previewId }),
+    ).rejects.toThrow();
+    const browser = createBrowserFeaturePorts();
+    await expect(
+      browser.providers.previewClaudeQuickSetup(request),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      browser.providers.applyClaudeQuickSetupPreview({ previewId }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+  });
+
   beforeEach(() => {
     invoke.mockReset();
     listen.mockReset();

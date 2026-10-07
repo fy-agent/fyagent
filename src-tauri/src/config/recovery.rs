@@ -109,7 +109,7 @@ fn failure(code: &'static str) -> AppError {
     AppError::Config(code.to_string())
 }
 
-fn record_path(path: &Path) -> PathBuf {
+pub(super) fn record_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(".fyagent.undo.json");
     path.with_file_name(name)
