@@ -145,7 +145,12 @@ export function deriveAgentLifecyclePrimaryAction(
 ): AgentLifecyclePrimaryAction | null {
   if (!readiness) return null;
   const allowed = new Set(readiness.allowedActions);
-  if (readiness.installState === "not_installed" && allowed.has("install")) {
+  if (
+    allowed.has("install") &&
+    (readiness.installState === "not_installed" ||
+      (readiness.installState === "unknown" &&
+        readiness.sourceKind === "cli_tooling"))
+  ) {
     return "install";
   }
   if (canOfferDirectoryUpdate(agentId, readiness)) {

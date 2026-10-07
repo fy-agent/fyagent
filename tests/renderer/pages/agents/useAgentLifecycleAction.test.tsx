@@ -194,6 +194,45 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBeNull();
   });
 
+  it.each(["grokbuild", "claude-code"] as const)(
+    "offers install for cli_tooling %s when install state is unknown and backend allows install",
+    (agentId) => {
+      expect(
+        deriveAgentLifecyclePrimaryAction(
+          agentId,
+          readiness({
+            agentId,
+            sourceKind: "cli_tooling",
+            installState: "unknown",
+            allowedActions: ["install"],
+          }),
+        ),
+      ).toBe("install");
+      expect(
+        deriveAgentLifecyclePrimaryAction(
+          agentId,
+          readiness({
+            agentId,
+            sourceKind: "cli_tooling",
+            installState: "unknown",
+            allowedActions: [],
+          }),
+        ),
+      ).toBeNull();
+      expect(
+        deriveAgentLifecyclePrimaryAction(
+          agentId,
+          readiness({
+            agentId,
+            sourceKind: "cli_tooling",
+            installState: "unavailable",
+            allowedActions: ["install"],
+          }),
+        ),
+      ).toBeNull();
+    },
+  );
+
   it("offers update only when the product allows it, installed, update_available, and backend allows it", () => {
     expect(
       deriveAgentLifecyclePrimaryAction(
