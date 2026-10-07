@@ -578,6 +578,65 @@ describe("durable supported-platform surface contract", () => {
         );
       }
     }
+    const subscriptionGuard = checker.MACOS_POSIX_CONTRACT.find(
+      (item) => item.id === "subscription-test-home-guard",
+    )!;
+    const dataOverride = `        std::env::set_var("${terminology}", path.join(".local/share"));`;
+    const weakenedGuards = [
+      subscriptionGuard.snippet.replace(
+        '        crate::initialize_windows_user_context().expect("Windows test user context");\n',
+        "",
+      ),
+      subscriptionGuard.snippet.replace(
+        "        let guard = Self(previous, data_home);\n",
+        "",
+      ),
+      subscriptionGuard.snippet.replace(
+        "        assert_eq!(crate::config::get_home_dir(), path);\n",
+        "",
+      ),
+      subscriptionGuard.snippet.replace(
+        `            Some(value) => std::env::set_var("${terminology}", value),`,
+        "",
+      ),
+      subscriptionGuard.snippet.replace(
+        `            None => std::env::remove_var("${terminology}"),`,
+        "",
+      ),
+      subscriptionGuard.snippet.replace(
+        '            Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),',
+        "",
+      ),
+      `${subscriptionGuard.snippet.replace(dataOverride, "")}\nfn moved_override(path: &std::path::Path) {\n${dataOverride}\n}`,
+    ];
+    for (const weakenedGuard of weakenedGuards) {
+      expect(weakenedGuard).not.toBe(subscriptionGuard.snippet);
+      const drift = entries.map((entry) =>
+        entry.path === subscriptionGuard.file
+          ? {
+              ...entry,
+              source: entry.source.replace(
+                subscriptionGuard.snippet,
+                weakenedGuard,
+              ),
+            }
+          : entry,
+      );
+      expect(checker.scanMacosPosixContract(drift)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: subscriptionGuard.file,
+            rule: "macos-posix:contract-drift",
+            excerpt: "subscription-test-home-guard",
+          }),
+        ]),
+      );
+      expect(checker.scanDirectoryConventionContract(drift)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ rule: "macos-posix:contract-drift" }),
+        ]),
+      );
+    }
     const unexpectedVariable = [
       checker.SURFACE_MARKERS.directoryConvention.toUpperCase(),
       "_CACHE_HOME",

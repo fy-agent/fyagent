@@ -47,7 +47,9 @@ pub use dao::Profile;
 
 use crate::config::get_app_config_dir;
 use crate::error::AppError;
-use rusqlite::{hooks::Action, Connection};
+#[cfg(test)]
+use rusqlite::hooks::Action;
+use rusqlite::Connection;
 use serde::Serialize;
 use std::sync::Mutex;
 
@@ -89,8 +91,9 @@ pub struct Database {
 }
 
 impl Database {
-    /// Install the composition root's nonblocking change listener.
+    /// Install a connection-local test listener after production cloud retirement.
     /// This is a dirty hint, not a commit notification; never reenter this DB in the callback.
+    #[cfg(test)]
     pub(crate) fn set_change_listener(
         &self,
         listener: impl Fn(&str) + Send + 'static,

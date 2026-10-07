@@ -349,7 +349,6 @@ fn slot_summary(
         provider: Some(provider),
         account_id: account.map(|row| row.identity.identity_id.clone()),
         auth_status,
-        unmanaged_native_session: false,
         credential_manager: if connected {
             ManagedAuthCredentialManager::Opencode
         } else {
@@ -719,7 +718,10 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn default_path_is_auth_json_under_opencode_data_dir() {
+        #[cfg(target_os = "windows")]
+        crate::initialize_windows_user_context().expect("Windows test user context");
         assert_eq!(
             default_auth_json_path(),
             crate::opencode_config::get_opencode_data_dir().join(AUTH_JSON_NAME)

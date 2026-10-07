@@ -6,7 +6,6 @@ import {
 } from "./support/features";
 
 const routes = [
-  "health",
   "auth",
   "models",
   "skills",
@@ -17,7 +16,22 @@ const routes = [
   "agents",
 ];
 
-test("production boots all nine primary routes without initialization errors", async ({
+test("production redirects retired Health bookmarks to Agents", async ({
+  page,
+}) => {
+  await installRichTauriFeatureFixture(page);
+  await page.goto("/#/health?agent=codex");
+  await expect(page).toHaveURL(/#\/agents$/u);
+  await expect(page.getByTestId("agents-page")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "运行状态", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByTestId("health-page")).toHaveCount(0);
+  const calls = await featureFixtureCalls(page);
+  expect(calls.some((call) => call.command === "get_agent_health")).toBe(false);
+});
+
+test("production boots all eight primary routes without initialization errors", async ({
   page,
 }) => {
   const errors: string[] = [];

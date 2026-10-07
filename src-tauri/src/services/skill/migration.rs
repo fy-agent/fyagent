@@ -8,6 +8,7 @@ struct LegacySkillMigrationRow {
 
 pub(super) fn migrate_skills_to_ssot(db: &Arc<Database>) -> Result<usize> {
     let ssot_dir = SkillService::get_ssot_dir()?;
+    SkillService::require_writable_skill_path(&ssot_dir)?;
     let agents_lock = parse_agents_lock();
     let snapshot: Vec<LegacySkillMigrationRow> =
         match db.get_setting("skills_ssot_migration_snapshot")? {

@@ -1,5 +1,6 @@
+import { SessionStages } from "@/pages/sessions/components/SessionStages";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { StatusBanners } from "@/pages/sessions/components/StatusBanners";
 import {
@@ -107,7 +108,6 @@ describe("session migration verification presentation", () => {
             claimedStage: "nextTurnReplyVerified",
           },
         })}
-        onOpenAttestationModal={vi.fn()}
       />,
     );
 
@@ -117,6 +117,124 @@ describe("session migration verification presentation", () => {
     expect(
       screen.queryByText("真实模型续聊回复验证通过", { exact: true }),
     ).not.toBeInTheDocument();
+  });
+
+  it("presents source extraction separately from the target writer and system receipt", () => {
+    render(
+      <SessionStages
+        sourceRead="available"
+        extraction="unavailable"
+        probe={{
+          providerId: "codex",
+          installed: true,
+          detectedVersion: "0.154.0",
+          extractionSupported: false,
+          writeSupported: true,
+          reasonCode: "extractionRuleUnavailable",
+        }}
+        attempt={attempt({
+          stage: "nativeWritten",
+          userAttestation: {
+            attestedAt: 1_795_478_402_000,
+            claimedStage: "nextTurnReplyVerified",
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("原文已读取", { exact: true })).toBeVisible();
+    expect(
+      screen.getByText("提取不可用；可用原文仍可查看", { exact: true }),
+    ).toBeVisible();
+    expect(screen.getByText(/本机版本支持写入恢复/u)).toBeVisible();
+    expect(
+      screen.getByText("已写入目标存储 · 待读回验证", { exact: true }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("会话包已核验并建立恢复回执", { exact: true }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("系统已确认写入目标存储", { exact: true }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("目标读回尚未核验通过", { exact: true }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("软件实际打开、重启和真实续聊闭环尚未核验", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(
+      screen.queryByText("真实模型续聊回复验证通过", { exact: true }),
+    ).toBeNull();
+  });
+
+  it("keeps user attestation visible after readback without a second self-report action", () => {
+    render(
+      <StatusBanners
+        stage="nativeReadbackVerified"
+        activeAttempt={attempt({
+          stage: "nativeReadbackVerified",
+          userAttestation: {
+            attestedAt: 1_795_478_402_000,
+            claimedStage: "nextTurnReplyVerified",
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("目标历史核验通过", { exact: true })).toBeVisible();
+    expect(screen.getByText(/用户自报标记：已手动确认续聊/u)).toBeVisible();
+    expect(
+      screen.queryByText("真实模型续聊回复验证通过", { exact: true }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "标记：我已手动续聊" }),
+    ).toBeNull();
+  });
+
+  it.each(["nativeReadbackVerified", "nextTurnRequestVerified"] as const)(
+    "does not promote %s to a real model reply from user attestation",
+    (stage) => {
+      render(
+        <SessionStages
+          attempt={attempt({
+            stage,
+            userAttestation: {
+              attestedAt: 1_795_478_402_000,
+              claimedStage: "nextTurnReplyVerified",
+            },
+          })}
+        />,
+      );
+      expect(
+        screen.getByText("系统已核验目标本地历史", { exact: true }),
+      ).toBeVisible();
+      expect(
+        screen.queryByText("系统已验证真实模型回复", { exact: true }),
+      ).toBeNull();
+      expect(
+        screen.queryByText("真实模型续聊回复验证通过", { exact: true }),
+      ).toBeNull();
+    },
+  );
+
+  it("keeps user-provided notes out of the default attestation summary", () => {
+    render(
+      <StatusBanners
+        stage="nativeReadbackVerified"
+        activeAttempt={attempt({
+          stage: "nativeReadbackVerified",
+          userAttestation: {
+            attestedAt: 1_795_478_402_000,
+            claimedStage: "nextTurnReplyVerified",
+            note: "private user note",
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText(/用户自报标记：已手动确认续聊/u)).toBeVisible();
+    expect(
+      screen.getByText("private user note", { exact: true }),
+    ).not.toBeVisible();
   });
 
   it("presents unresolved side effects as reconciliation, not safe failure", () => {

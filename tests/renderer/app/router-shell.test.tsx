@@ -30,7 +30,6 @@ vi.mock("@samasante/liquid-glass", () => ({
 
 const navigationContract = [
   { path: "/agents", label: "AI软件配置" },
-  { path: "/health", label: "运行状态" },
   { path: "/auth", label: "账号与认证" },
   { path: "/models", label: "模型管理" },
   { path: "/skills", label: "Skills 管理" },
@@ -146,10 +145,21 @@ describe("FyAgent routing", () => {
     ).toBeVisible();
   });
 
-  it("renders all nine product workspaces", async () => {
+  it("redirects retired Health bookmarks to Agents without exposing a status page", async () => {
+    const router = renderRoute("/health?agent=codex");
+    await expectPath(router, "/agents");
+    expect(screen.queryByTestId("health-page")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "运行状态" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "AI软件配置", current: "page" }),
+    ).toBeVisible();
+  });
+
+  it("renders all eight product workspaces", async () => {
     const pageTestIds = new Map([
       ["/agents", "agents-page"],
-      ["/health", "health-page"],
       ["/auth", "auth-page"],
       ["/models", "models-page"],
       ["/skills", "skills-page"],
@@ -238,9 +248,8 @@ describe("FyAgent shell accessibility", () => {
       screen.getByRole("button", { name: "关于 FyAgent" }),
       routeLinks[0],
       routeLinks[1],
-      routeLinks[2],
       configurationToggle,
-      ...routeLinks.slice(3),
+      ...routeLinks.slice(2),
     ];
     for (const control of expectedTabOrder) {
       await user.tab();
@@ -270,7 +279,7 @@ describe("FyAgent shell accessibility", () => {
       navigation.querySelectorAll(
         ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
       ),
-    ).toHaveLength(6);
+    ).toHaveLength(5);
     expect(
       within(navigation).queryByRole("link", { name: "Agent 目录" }),
     ).not.toBeInTheDocument();

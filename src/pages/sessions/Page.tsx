@@ -44,6 +44,8 @@ import {
 } from "../../shared/features/session-migration";
 
 import { StatusBanners } from "./components/StatusBanners";
+import { SessionStages } from "./components/SessionStages";
+import { SessionEvidenceDetails } from "./components/SessionEvidenceDetails";
 import {
   readFailureFeedback,
   restoreAttemptFeedback,
@@ -180,12 +182,14 @@ export function SessionsPage() {
       if (!selectedSession) {
         return {
           rawMessages: EMPTY_MESSAGES,
+          sourceRead: "pending" as const,
           migratable: null,
           error: null,
         };
       }
       const sourcePath = selectedSession.sourcePath || "";
       let rawMsgs: SessionMessage[];
+      let sourceRead: "available" | "failed" = "available";
       let migratable: MigratableSession | null = null;
       let errPayload: SessionFailureFeedback | null = null;
 
@@ -196,6 +200,7 @@ export function SessionsPage() {
         );
       } catch (err) {
         rawMsgs = EMPTY_MESSAGES;
+        sourceRead = "failed";
         errPayload = readFailureFeedback(err, "source");
       }
 
@@ -210,7 +215,12 @@ export function SessionsPage() {
         }
       }
 
-      return { rawMessages: rawMsgs, migratable, error: errPayload };
+      return {
+        rawMessages: rawMsgs,
+        sourceRead,
+        migratable,
+        error: errPayload,
+      };
     },
     enabled: isNative && visible && Boolean(selectedSession),
   });
@@ -376,9 +386,8 @@ export function SessionsPage() {
     ? localProbes[activeProviderId]
     : undefined;
 
-  const isCapabilityVerified = Boolean(
-    activeProviderProbe?.installed && activeProviderProbe?.writeSupported,
-  );
+  const restoreSupport = isProviderRestoreSupported(activeProviderProbe);
+  const isCapabilityVerified = restoreSupport.supported;
 
   const canOpenTarget =
     isCapabilityVerified &&
@@ -391,8 +400,7 @@ export function SessionsPage() {
         "nextTurnReplyVerified",
       ].includes(activeAttempt.stage));
 
-  const capabilityReason =
-    isProviderRestoreSupported(activeProviderProbe).reason;
+  const capabilityReason = restoreSupport.reason;
 
   // ─── Turns Projection (No Dropped Messages & Real Roles) ─────────
   const conversationTurns = useMemo<ConversationTurn[]>(() => {
@@ -1077,18 +1085,9 @@ export function SessionsPage() {
                           className="fy-session-item-title"
                           title={s.title || s.sessionId}
                         >
-                          {s.title || s.summary || s.sessionId}
+                          {s.title || s.summary || "未命名会话"}
                         </div>
                         <div className="fy-session-item-meta">
-                          <span
-                            className="fy-session-item-id-snippet"
-                            title={s.sessionId}
-                          >
-                            ID:{" "}
-                            {s.sessionId.length > 14
-                              ? `${s.sessionId.slice(0, 12)}…`
-                              : s.sessionId}
-                          </span>
                           {s.projectDir && (
                             <span
                               title={s.projectDir}
@@ -1184,9 +1183,6 @@ export function SessionsPage() {
                             a.stage}
                         </span>
                       </div>
-                      <div className="fy-attempt-item-native-id">
-                        本地会话 ID: {a.targetNativeId || "待分配"}
-                      </div>
                       <div className="fy-attempt-item-workspace">
                         工作区: {a.targetWorkspace}
                       </div>
@@ -1249,9 +1245,6 @@ export function SessionsPage() {
                       恢复记录：
                       {PROVIDER_LABELS[activeAttempt.targetProviderId] ??
                         activeAttempt.targetProviderId}{" "}
-                      -{" "}
-                      {activeAttempt.targetNativeId ||
-                        activeAttempt.attemptId.slice(0, 8)}
                     </h1>
                     <div className="fy-detail-meta-tags">
                       <span className="fy-session-item-provider-tag">
@@ -1279,7 +1272,9 @@ export function SessionsPage() {
                       onClick={() => void handleResumeInTarget()}
                     >
                       <PlayIcon size={14} weight="fill" />
-                      <span>在目标软件中恢复</span>
+                      <span>
+                        {activeAttempt ? "打开目标会话" : "查看目标启动说明"}
+                      </span>
                     </Button>
                   </div>
                 </div>
@@ -1301,6 +1296,10 @@ export function SessionsPage() {
               </div>
 
               <div className="fy-sessions-stream-container">
+                <SessionStages
+                  probe={activeProviderProbe}
+                  attempt={activeAttempt}
+                />
                 <StatusBanners
                   stage={activeAttempt.stage}
                   activeAttempt={activeAttempt}
@@ -1326,16 +1325,12 @@ export function SessionsPage() {
                   capabilityReason={capabilityReason}
                   onVerifyReadback={() => void handleVerifyReadback()}
                   verifyingReadback={verifyingReadback}
-                  onOpenAttestationModal={() => setAttestationOpen(true)}
                 />
               </div>
 
               <footer className="fy-sessions-bottom-bar">
                 <div className="fy-bottom-info">
-                  <span>
-                    尝试 ID: {activeAttempt.attemptId} • 快照 ID:{" "}
-                    {activeAttempt.snapshotId.slice(0, 16)}…
-                  </span>
+                  <SessionEvidenceDetails attempt={activeAttempt} />
                 </div>
                 <div className="fy-bottom-actions">
                   <Button
@@ -1359,7 +1354,7 @@ export function SessionsPage() {
                     <h1 className="fy-detail-title">
                       {selectedSession.title ||
                         selectedSession.summary ||
-                        selectedSession.sessionId}
+                        "未命名会话"}
                     </h1>
                     <div className="fy-detail-meta-tags">
                       <span className="fy-session-item-provider-tag">
@@ -1382,15 +1377,6 @@ export function SessionsPage() {
                           </span>
                         </>
                       )}
-                      <span>•</span>
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "11px",
-                        }}
-                      >
-                        源ID: {selectedSession.sessionId}
-                      </span>
                     </div>
                   </div>
 
@@ -1408,7 +1394,9 @@ export function SessionsPage() {
                       onClick={() => void handleResumeInTarget()}
                     >
                       <PlayIcon size={14} weight="fill" />
-                      <span>在目标软件中恢复</span>
+                      <span>
+                        {activeAttempt ? "打开目标会话" : "查看目标启动说明"}
+                      </span>
                     </Button>
                   </div>
                 </div>
@@ -1457,14 +1445,25 @@ export function SessionsPage() {
 
               {/* 消息滚动区 */}
               <div className="fy-sessions-stream-container">
-                {/* 动态状态横幅 */}
+                {/* 读取、导出、目标写入与系统确认各有自己的权威状态。 */}
+                <SessionStages
+                  sourceRead={sessionDetailData?.sourceRead ?? "pending"}
+                  extraction={
+                    loadingDetail
+                      ? "pending"
+                      : migratableSession
+                        ? "available"
+                        : "unavailable"
+                  }
+                  probe={activeProviderProbe}
+                  attempt={activeAttempt}
+                />
                 <StatusBanners
                   stage={activeAttempt?.stage}
                   isIndeterminate={hasIndeterminate}
                   hasIncompleteTurn={hasIncomplete}
                   isCapabilityVerified={isCapabilityVerified}
                   capabilityReason={capabilityReason}
-                  isCodexProbeWarning={selectedSession.providerId === "codex"}
                   activeAttempt={activeAttempt}
                   structuredError={structuredError}
                   onRetrySource={() =>
@@ -1498,7 +1497,6 @@ export function SessionsPage() {
                   reviewingAttempts={reviewingAttempts}
                   onVerifyReadback={() => void handleVerifyReadback()}
                   verifyingReadback={verifyingReadback}
-                  onOpenAttestationModal={() => setAttestationOpen(true)}
                 />
 
                 {/* 问答流 */}
@@ -1524,9 +1522,16 @@ export function SessionsPage() {
               {/* 底部操作底栏 */}
               <footer className="fy-sessions-bottom-bar">
                 <div className="fy-bottom-info">
-                  <span>
-                    包含用户原始提问与最终答复；不包含工具日志、思考过程及工作区文件。
-                  </span>
+                  <div>
+                    <span>
+                      导出保留用户提问与最终答复原文，不包含工具日志、思考过程及工作区文件。
+                    </span>
+                    <SessionEvidenceDetails
+                      session={selectedSession}
+                      preview={migratableSession}
+                      attempt={activeAttempt}
+                    />
+                  </div>
                 </div>
                 <div className="fy-bottom-actions">
                   <Button

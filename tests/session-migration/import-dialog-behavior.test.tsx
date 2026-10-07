@@ -152,6 +152,49 @@ describe("session package import behavior", () => {
     );
   });
 
+  it.each(["extractionRuleUnavailable", "extractionRuleVersionMismatch"])(
+    "restores a validated package with a verified writer despite %s",
+    async (reasonCode) => {
+      const user = userEvent.setup();
+      const { props } = renderDialog({
+        localProbes: {
+          codex: {
+            ...probe("codex", true),
+            extractionSupported: false,
+            reasonCode,
+          },
+        },
+      });
+      await readPackage(user);
+      const restore = screen.getByRole("button", {
+        name: "确认恢复至目标软件",
+      });
+      expect(restore).toBeEnabled();
+      await user.click(restore);
+      await waitFor(() => expect(props.onRestore).toHaveBeenCalledTimes(1));
+      expect(props.onRestore).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetProviderId: "codex",
+          snapshotIds: [`fys1:${"b".repeat(64)}`],
+        }),
+      );
+    },
+  );
+
+  it("keeps an unverified writer disabled even when extraction is supported", async () => {
+    const user = userEvent.setup();
+    const { props } = renderDialog({
+      localProbes: {
+        codex: { ...probe("codex", false), detectedVersion: "unknown" },
+      },
+    });
+    await readPackage(user);
+    expect(
+      screen.getByRole("button", { name: "确认恢复至目标软件" }),
+    ).toBeDisabled();
+    expect(props.onRestore).not.toHaveBeenCalled();
+  });
+
   it("keeps restore disabled when no local probe result exists", async () => {
     const user = userEvent.setup();
     renderDialog({ localProbes: {} });

@@ -11,6 +11,7 @@ type SwitchAssignmentPanelProps<T extends SkillTargetId> = {
   mode?: "switch";
   apps: Record<string, boolean | undefined>;
   disabled?: boolean;
+  disabledTargets?: readonly T[];
   labelSuffix: string;
   onToggle: (app: T, enabled: boolean) => void;
   targets: ReadonlyArray<TargetOption<T>>;
@@ -85,7 +86,7 @@ export function AssignmentPanel<T extends SkillTargetId>(
             checked={Boolean(props.apps[app.id])}
             onCheckedChange={(checked) => props.onToggle(app.id, checked)}
             label={`${app.label} ${props.labelSuffix}`}
-            disabled={props.disabled}
+            disabled={props.disabled || props.disabledTargets?.includes(app.id)}
           />
         </label>
       ))}

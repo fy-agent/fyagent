@@ -266,7 +266,7 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
 describe("macOS lifecycle state copy", () => {
   it("distinguishes staging, authorization, restored rollback, and unknown recovery", () => {
     expect(jobStageCopy("staging")).toBe("正在准备安装包");
-    expect(reasonCopy("authorization_required")).toContain("不可用于一键安装");
+    expect(reasonCopy("authorization_required")).toContain("不支持此安装操作");
     expect(reasonCopy("authorization_required")).toContain(
       "不会改装到其他目录",
     );

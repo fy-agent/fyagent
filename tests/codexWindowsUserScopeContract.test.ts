@@ -46,7 +46,6 @@ const commandHost = read("src-tauri/src/services/tooling.rs");
 const commandDiscovery = read("src-tauri/src/services/tooling/discovery.rs");
 const claudeMcp = read("src-tauri/src/claude_mcp.rs");
 const databaseBackup = read("src-tauri/src/database/backup.rs");
-const syncProtocol = read("src-tauri/src/services/sync_protocol.rs");
 const skillService = read("src-tauri/src/services/skill.rs");
 const domainTest = read("src-tauri/tests/codex_desktop_domain.rs");
 const ci = read(".github/workflows/ci.yml");
@@ -472,7 +471,6 @@ describe("Codex Windows interactive-user contract", () => {
     expect(hostConfig).toContain("fn get_user_temp_dir() -> PathBuf");
     expect(commandHost).toContain("crate::config::get_user_temp_dir()");
     expect(databaseBackup).toContain("NamedTempFile::new_in(&temp_root)");
-    expect(syncProtocol).toContain("tempdir_in(&temp_root)");
     expect(skillService).toContain("tempfile::tempdir_in(&temp_root)");
   });
 

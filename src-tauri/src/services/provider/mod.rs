@@ -52,10 +52,9 @@ pub use live::{
 pub(crate) use live::sanitize_claude_settings_for_live;
 pub(crate) use live::{
     build_codex_quick_setup_live_projection, build_effective_settings_with_common_config,
-    build_health_settings_projection, normalize_provider_common_config_for_storage,
-    patch_grok_quick_setup_config, provider_exists_in_live_config,
-    strip_common_config_from_live_settings, sync_current_provider_for_app_to_live,
-    write_live_with_common_config,
+    normalize_provider_common_config_for_storage, patch_grok_quick_setup_config,
+    provider_exists_in_live_config, strip_common_config_from_live_settings,
+    sync_current_provider_for_app_to_live, write_live_with_common_config,
 };
 
 // Internal re-exports
@@ -6656,9 +6655,8 @@ impl ProviderService {
         //
         //    「按值相等定向删除」在一种合法场景下也会命中：用户有意在多个供应商里
         //    复用同一把 key。所以必须留下"删了什么、从哪删的"，否则用户只能靠翻
-        //    日志。但不能留值——`settings` 表不在 `SYNC_SKIP_TABLES` 里，会随
-        //    WebDAV/S3 同步上传，而这里处理的恰恰是必须销毁的泄漏凭据：留值等于
-        //    把一次清除换成一份没有界面入口、永不过期、还会跨设备扩散的明文副本。
+        //    日志。但不能留值：这里处理的是必须销毁的泄漏凭据，留值会把一次清除
+        //    换成一份没有界面入口、永不过期的明文副本。
         //    密钥本来就该轮换，可恢复性不值这个代价。
         let removed_env_keys = |before: &Value, after: &Value| -> Vec<String> {
             let before_env = before.get("env").and_then(Value::as_object);

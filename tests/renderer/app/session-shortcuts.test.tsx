@@ -160,11 +160,22 @@ async function renderSessions({
       </PersistentSurface>
     </FeatureProvider>,
   );
-  await waitFor(() =>
-    expect(ports.sessions.listSessions).toHaveBeenCalledOnce(),
-  );
-  // Waiting for fixture content also flushes the page's initial data renders.
-  await screen.findByText("Alpha 会话");
+  if (ancestorActive) {
+    await waitFor(() =>
+      expect(ports.sessions.listSessions).toHaveBeenCalledOnce(),
+    );
+    // Waiting for fixture content also flushes the page's initial data renders.
+    await screen.findByText("Alpha 会话");
+  } else {
+    // Hidden ancestors suppress automatic observation, even on /sessions.
+    await screen.findByTestId("sessions-page");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(ports.sessions.listSessions).not.toHaveBeenCalled();
+    expect(ports.sessions.listRestoreAttempts).not.toHaveBeenCalled();
+    expect(ports.sessions.probeLocalProvider).not.toHaveBeenCalled();
+  }
   return { ...view, ports, router };
 }
 
@@ -404,6 +415,12 @@ describe("session shortcuts on the production keep-alive page", () => {
   it("honors an inactive persistent ancestor even when sessions is the current route", async () => {
     const { ports } = await renderSessions({ ancestorActive: false });
     expect(screen.getByTestId("sessions-page")).not.toBeVisible();
+    expect(ports.sessions.listSessions).not.toHaveBeenCalled();
+    expect(ports.sessions.listRestoreAttempts).not.toHaveBeenCalled();
+    expect(ports.sessions.probeLocalProvider).not.toHaveBeenCalled();
+    expect(ports.sessions.getSessionMessages).not.toHaveBeenCalled();
+    expect(ports.sessions.previewSessionMigration).not.toHaveBeenCalled();
+    expect(ports.sessions.readSessionPackage).not.toHaveBeenCalled();
     expect(shortcut(document.body, "i").defaultPrevented).toBe(false);
     expect(shortcut(document.body, "e").defaultPrevented).toBe(false);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

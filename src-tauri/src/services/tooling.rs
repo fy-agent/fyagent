@@ -7,7 +7,6 @@ mod claude;
 mod discovery;
 mod grok;
 pub(crate) mod grok_npm;
-mod health;
 mod install_preflight;
 pub(crate) use install_preflight::CliInstallPreflight;
 mod lifecycle;
@@ -17,7 +16,6 @@ mod terminal;
 mod versions;
 
 pub(crate) use claude::ClaudeLifecycleError;
-pub(crate) use health::observe_local_tool_health;
 static CLI_LIFECYCLE_WRITER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub(crate) async fn preflight_cli_lifecycle(

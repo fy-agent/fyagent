@@ -1480,6 +1480,11 @@ describe("Renderer feature ports", () => {
     );
     invoke.mockImplementation(async (command: string) => {
       if (command === "get_mcp_servers") return {};
+      if (
+        command === "get_installed_skills" ||
+        command === "scan_unmanaged_skills"
+      )
+        return [];
       if (command === "import_mcp_from_apps")
         return {
           contractVersion: 1,

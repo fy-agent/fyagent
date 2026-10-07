@@ -20,25 +20,25 @@ impl Drop for TestHome {
 }
 
 fn fixture() -> (TestHome, ManagedAuthService<MemorySecretBackend>, AppState) {
+    #[cfg(target_os = "windows")]
+    crate::initialize_windows_user_context().expect("Windows test user context");
     let directory = tempfile::tempdir().unwrap();
     let previous = std::env::var_os("FYAGENT_TEST_HOME");
-    std::env::set_var("FYAGENT_TEST_HOME", directory.path());
+    let guard = TestHome {
+        _directory: directory,
+        previous,
+    };
+    std::env::set_var("FYAGENT_TEST_HOME", guard._directory.path());
+    assert_eq!(crate::config::get_home_dir(), guard._directory.path());
     crate::settings::reload_settings().unwrap();
     let db = Arc::new(Database::memory().unwrap());
     let auth = ManagedAuthService::new(
         db.clone(),
         SecretService::new(MemorySecretBackend::new()),
-        directory.path().join("vault-meta"),
+        guard._directory.path().join("vault-meta"),
     );
     let state = AppState::new(db);
-    (
-        TestHome {
-            _directory: directory,
-            previous,
-        },
-        auth,
-        state,
-    )
+    (guard, auth, state)
 }
 
 fn seed(

@@ -103,7 +103,11 @@ bodies or authentication material. Native history stays in the provider store.
   a next request or model reply.
 - Release evidence and per-attempt state are independent. A local HTTP mock
   can prove request history, never a real model response. A user's manual
-  confirmation is `userAttestation`, not a system-stage update.
+  confirmation is `userAttestation`, not a system-stage update. In particular,
+  `nextTurnRequestVerified` records a verified next-turn request, not a verified
+  reply; only `nextTurnReplyVerified` records the system's reply verification.
+  Existing stage definitions do not themselves prove that a real-machine run
+  achieved them.
 - Keep formal Windows ordinary-user execution boundaries. An unavailable
   authenticated helper must fail before executing a user CLI elevated.
 - Source inspection, portable tests, native API readback, UI inspection,
@@ -119,6 +123,23 @@ Multi-provider packages restore only snapshots belonging to the selected
 corresponding provider. Probe failure disables the mutation with a useful reason.
 Show unresolved and failed results without a success banner. Modal request IDs
 and pending work follow the shared Dialog lifecycle contract.
+
+The stage panel projects four separate system facts from the matching persisted
+`RestoreAttempt`; it does not add a DTO, backend stage or acceptance protocol:
+
+| System fact       | Existing receipt evidence and display boundary                                                                                                                                                                                                |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package import    | A matching receipt establishes that the package was verified and a restore receipt created. It does not establish target publication.                                                                                                         |
+| Target write      | `nativeWritten` and the existing later verified stages establish publication. Other states retain the existing failure/unknown-write summary; a receipt alone does not mean zero write or success.                                            |
+| Target readback   | `nativeReadbackVerified` and the existing later stages establish target native-history readback. This is separate from actual client opening, restart and continuation.                                                                       |
+| Real-machine loop | Present the existing `targetOpened`, `restartReadbackVerified`, `nextTurnRequestVerified` and `nextTurnReplyVerified` facts separately. Earlier stages leave the remaining actions unverified; a next-turn request is not a real model reply. |
+
+`userAttestation` remains a separate user claim and never promotes any of these
+facts, capability gates or the persisted system stage. Native readback success
+copy must not claim that the actual client has opened/restarted or produced a
+real reply. Code/renderer fixtures of these states do not close
+pending real Windows/macOS, cross-FyAgent-process receipt, actual client
+open/restart or real continuation acceptance.
 
 Renderer feedback derives the current operation from its actual RPC boundary,
 and write facts from the validated, current-device `RestoreAttempt.stage`.
@@ -152,7 +173,7 @@ it does not turn failure into success or authorize another writer.
 hidden observation, late results, forced-read failures and old-read isolation
 using production DTO parsers. Existing failure-lifecycle tests retain real dialog
 coverage. Browser startup proves prefetch without mounting and DOM/search
-retention; nine-route production navigation keeps the established budgets.
+retention; production navigation keeps the established budgets.
 These fixtures do not prove native process lifetime or another platform.
 
 ## 4. Validation & Error Matrix
@@ -192,6 +213,10 @@ slots, source conflicts and crash windows. Confirm exact request binding and
 disabled capabilities in component/browser tests, plus the reachable legacy
 Memory route. Native probes use isolated provider stores and synthetic content;
 record their version, platform, commands and actual achieved evidence stage.
+The existing `tests/session-migration/ui-state.test.tsx` covers the four fact
+projections, request-versus-reply distinction and user-attestation separation;
+these are renderer assertions, not native-loop evidence. Preserve the existing
+import-dialog binding/retry and hidden-page writer/receipt lifecycle coverage.
 Cover closing/reopening an unresolved import, incomplete or mismatched receipts,
 same-binding retries after all selected rows are proven failed, source correction
 before restore, partial outcomes, and readback errors that retain written facts.

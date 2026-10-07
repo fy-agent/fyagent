@@ -97,7 +97,6 @@ fn auxiliary_credentials_share_native_lifecycle_and_never_enter_dto_or_export() 
         serde_json::to_string(&projected).unwrap(),
         format!("{native:?}"),
         db.export_sql_string().unwrap(),
-        db.export_sql_string_for_sync().unwrap(),
     ] {
         for secret in [CANARY, USAGE_KEY, USAGE_TOKEN, ACCESS_ID, ACCESS_SECRET] {
             assert!(!output.contains(secret));
@@ -938,13 +937,11 @@ fn deletion_revokes_locally_even_when_backend_cleanup_must_retry() {
 }
 
 #[test]
-fn ordinary_and_sync_exports_scrub_legacy_and_current_provider_secrets() {
+fn ordinary_exports_scrub_legacy_and_current_provider_secrets() {
     let (db, _) = database();
     db.save_provider_record("codex", &fixture()).unwrap();
-    for exported in [
-        db.export_sql_string().unwrap(),
-        db.export_sql_string_for_sync().unwrap(),
-    ] {
+    {
+        let exported = db.export_sql_string().unwrap();
         assert!(!exported.contains(CANARY));
         assert!(db
             .get_provider_by_id("fixture-codex", "codex")
@@ -956,10 +953,8 @@ fn ordinary_and_sync_exports_scrub_legacy_and_current_provider_secrets() {
     }
     ProviderCredentials::migrate_legacy(&db).unwrap();
     let record = db.provider_credential_records().unwrap().remove(0);
-    for exported in [
-        db.export_sql_string().unwrap(),
-        db.export_sql_string_for_sync().unwrap(),
-    ] {
+    {
+        let exported = db.export_sql_string().unwrap();
         assert!(!exported.contains(CANARY));
         assert!(!exported.contains(record.handle.secret_ref().as_str()));
         assert!(!exported.contains(&record.id));
@@ -1168,10 +1163,8 @@ fn all_provider_export_shapes_and_snapshot_copies_are_secret_free() {
         .unwrap();
         conn.execute_batch("CREATE TABLE credential_spy(value TEXT); CREATE TRIGGER credential_spy_copy BEFORE UPDATE ON providers BEGIN INSERT INTO credential_spy(value) VALUES(OLD.settings_config); END;").unwrap();
     }
-    for export in [
-        db.export_sql_string().unwrap(),
-        db.export_sql_string_for_sync().unwrap(),
-    ] {
+    {
+        let export = db.export_sql_string().unwrap();
         assert!(!export.contains(CANARY));
         assert!(!export.contains("unknownExtension"));
     }
@@ -1187,7 +1180,7 @@ fn all_provider_export_shapes_and_snapshot_copies_are_secret_free() {
 
 #[test]
 #[serial_test::serial]
-fn sync_import_preserves_local_credential_route_without_grafting_to_remote_endpoint() {
+fn sql_import_preserves_local_credential_route_without_grafting_to_imported_endpoint() {
     super::super::tests::with_test_home(|state, _home| {
         state.db.save_provider("codex", &fixture()).unwrap();
         let before = state
@@ -1202,7 +1195,7 @@ fn sync_import_preserves_local_credential_route_without_grafting_to_remote_endpo
         remote.save_provider("codex", &remote_provider).unwrap();
         state
             .db
-            .import_sql_string_for_sync(&remote.export_sql_string_for_sync().unwrap())
+            .import_sql_string(&remote.export_sql_string().unwrap())
             .unwrap();
         let after = state
             .db

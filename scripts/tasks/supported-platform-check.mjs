@@ -859,12 +859,16 @@ const SYNTHETIC_OPENCODE_NATIVE_GUARD = `    #[cfg(target_os = "macos")]
 const SUBSCRIPTION_TEST_HOME_GUARD = `struct TestHome(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
 impl TestHome {
     fn set(path: &std::path::Path) -> Self {
+        #[cfg(target_os = "windows")]
+        crate::initialize_windows_user_context().expect("Windows test user context");
         let previous = std::env::var_os("FYAGENT_TEST_HOME");
         let data_home = std::env::var_os("${DATA_HOME_VARIABLE}");
+        let guard = Self(previous, data_home);
         std::env::set_var("FYAGENT_TEST_HOME", path);
+        assert_eq!(crate::config::get_home_dir(), path);
         std::env::set_var("${DATA_HOME_VARIABLE}", path.join(".local/share"));
         crate::settings::reload_settings().unwrap();
-        Self(previous, data_home)
+        guard
     }
 }
 impl Drop for TestHome {

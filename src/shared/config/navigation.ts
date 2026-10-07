@@ -2,7 +2,6 @@ export type NavigationItem = {
   id:
     | "agents"
     | "sessions"
-    | "health"
     | "auth"
     | "models"
     | "skills"
@@ -12,7 +11,6 @@ export type NavigationItem = {
   path:
     | "/agents"
     | "/sessions"
-    | "/health"
     | "/auth"
     | "/models"
     | "/skills"
@@ -41,7 +39,6 @@ export const navigationGroups = [
     collapsible: false,
     items: [
       { id: "agents", path: "/agents", label: "AI软件配置" },
-      { id: "health", path: "/health", label: "运行状态" },
       { id: "auth", path: "/auth", label: "账号与认证" },
     ],
   },

@@ -54,12 +54,6 @@ export function createTauriFeaturePorts(): FeaturePorts {
       saveExport: async (...args) => (await configPack()).saveExport(...args),
       cancel: async (...args) => (await configPack()).cancel(...args),
     },
-    health: {
-      get: async (agentId) => {
-        const { createHealthPort } = await import("./feature-ports/health");
-        return createHealthPort().get(agentId);
-      },
-    },
     configRecovery: {
       list: async (...args) => (await configRecovery()).list(...args),
       restore: async (...args) => (await configRecovery()).restore(...args),

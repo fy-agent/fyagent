@@ -60,7 +60,13 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
-import { BulkAssignmentPanel } from "../../shared/ui/BulkAssignmentPanel";
+import { BulkAssignmentDialog } from "../../shared/features/controls/BulkAssignmentDialog";
+import {
+  executeBulkAssignment,
+  type BulkAssignmentItem,
+  type BulkAssignmentPlan,
+  type BulkAssignmentResult,
+} from "../../shared/features/bulk-assignment";
 import { InstallTargetDialog } from "../../shared/features/controls/InstallTargetDialog";
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import { ExternalLinkButton } from "../../shared/features/controls/ExternalLinkButton";
@@ -219,11 +225,22 @@ function Detail({
           <Badge tone={repo ? "accent" : "neutral"}>{sourceLabel}</Badge>
         </div>
         {description && <p className="fy-feature-intro">{description}</p>}
+        {skill.readOnly || skill.readOnlyTargets?.length ? (
+          <InlineNotice tone="warning">
+            检测到链接目录：{skill.readOnly ? "此 Skill 来源只读。" : ""}
+            {skill.readOnlyTargets?.length
+              ? `只读目标：${skill.readOnlyTargets.map((id) => SKILL_TARGETS.find((target) => target.id === id)?.label ?? id).join("、")}。`
+              : ""}
+            链接及其目标不会写入或删除；请在外部调整链接后刷新。
+          </InlineNotice>
+        ) : null}
         <div className="fy-feature-actions">
           {update && (
             <Button
               className="fy-control-button-primary"
-              disabled={busy}
+              disabled={
+                busy || skill.readOnly || Boolean(skill.readOnlyTargets?.length)
+              }
               onClick={onUpdate}
             >
               更新
@@ -231,7 +248,9 @@ function Detail({
           )}
           <Button
             className="fy-control-button-danger"
-            disabled={busy}
+            disabled={
+              busy || skill.readOnly || Boolean(skill.readOnlyTargets?.length)
+            }
             onClick={onUninstall}
             dialogOriginRef={originRef}
           >
@@ -309,6 +328,9 @@ function Detail({
           <AssignmentPanel
             apps={skill.apps}
             disabled={busy}
+            disabledTargets={SKILL_TARGETS.filter((target) =>
+              skill.readOnlyTargets?.includes(target.id),
+            ).map((target) => target.id)}
             labelSuffix="Skill 分配"
             onToggle={onToggle}
             targets={SKILL_TARGETS}
@@ -336,6 +358,7 @@ export function SkillsPage() {
     | null
   >(null);
   const [busy, setBusy] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [pendingZipPath, setPendingZipPath, zipKey] = useDialogState<string>();
   const [progress, setProgress] = useState<{
     done: number;
@@ -376,15 +399,20 @@ export function SkillsPage() {
     setBusy(true);
     try {
       await operation();
+      await refreshAll();
       notify({ tone: "success", title });
     } catch (error) {
+      try {
+        await refreshAll();
+      } catch {
+        /* Keep the original failure visible. */
+      }
       notify({
         tone: "error",
         title: `${title}失败`,
         description: skillUpdateErrorMessage(error) ?? errorMessage(error),
       });
     } finally {
-      await refreshAll();
       setProgress(null);
       setBusy(false);
       writeLock.current = false;
@@ -396,7 +424,14 @@ export function SkillsPage() {
     enabled: boolean,
   ) =>
     write("分配已更新", async () => {
-      await ports.skills.toggleApp(skill.id, app, enabled);
+      const accepted = await ports.skills.toggleApp(skill.id, app, enabled);
+      const observed = (await ports.skills.getInstalled()).find(
+        (entry) => entry.id === skill.id,
+      );
+      if (accepted === false || observed?.apps[app] !== enabled)
+        throw new UserFacingError(
+          "分配未确认，可能存在部分写入。请刷新后重试。",
+        );
     });
   const checkUpdates = async () => {
     try {
@@ -440,21 +475,57 @@ export function SkillsPage() {
         );
       }
     });
-  const bulkAssign = (app: SkillTargetId, enabled: boolean) =>
-    write("批量分配完成", async () => {
-      const ids = installed
-        .filter((skill) => Boolean(skill.apps[app]) !== enabled)
-        .map((skill) => skill.id);
-      const result = await runSequentialBulk(
-        ids,
-        (id) => ports.skills.toggleApp(id, app, enabled),
-        (done, total) => setProgress({ done, total }),
+  const bulkItem = (skill: InstalledSkill): BulkAssignmentItem => ({
+    id: skill.id,
+    name: skill.name,
+    apps: skill.apps,
+    identity: JSON.stringify({
+      ...skill,
+      apps: undefined,
+      readOnly: undefined,
+      readOnlyTargets: undefined,
+    }),
+    // Native first assignment adopts observed entries: path/hash/times become SSOT metadata.
+    allowAdoption: skill.contentHash == null,
+    readbackIdentity: JSON.stringify({
+      ...skill,
+      apps: undefined,
+      readOnly: undefined,
+      readOnlyTargets: undefined,
+      path: undefined,
+      contentHash: undefined,
+      installedAt: undefined,
+      updatedAt: undefined,
+    }),
+    // These observation-only fields are supplied by the I17 command wrapper.
+    readOnly: (skill as InstalledSkill & { readOnly?: boolean }).readOnly,
+    readOnlyTargets: (skill as InstalledSkill & { readOnlyTargets?: string[] })
+      .readOnlyTargets,
+  });
+  const executeAssignment = async (
+    plan: BulkAssignmentPlan,
+    onResult: (result: BulkAssignmentResult) => void,
+  ) => {
+    if (writeLock.current)
+      throw new UserFacingError("另一项操作仍在执行，请稍后重新预览。");
+    writeLock.current = true;
+    setBusy(true);
+    try {
+      await executeBulkAssignment(
+        plan,
+        async () => (await ports.skills.getInstalled()).map(bulkItem),
+        (id, target, enabled) => ports.skills.toggleApp(id, target, enabled),
+        onResult,
       );
-      if (result.failures.length)
-        throw new UserFacingError(
-          `${result.failures.length} 项失败，${result.successes.length} 项成功`,
-        );
-    });
+    } finally {
+      try {
+        await refreshAll();
+      } finally {
+        setBusy(false);
+        writeLock.current = false;
+      }
+    }
+  };
   const pickAndInstallZip = async () => {
     if (writeLock.current) return;
     writeLock.current = true;
@@ -496,6 +567,13 @@ export function SkillsPage() {
           ]}
         />
         <div className="fy-feature-actions">
+          <Button
+            disabled={busy || !installed.length}
+            dialogOriginRef={dialogOriginRef}
+            onClick={() => setBulkOpen(true)}
+          >
+            批量分配
+          </Button>
           <Button
             onClick={checkUpdates}
             disabled={busy || updatesQuery.isFetching}
@@ -563,6 +641,10 @@ export function SkillsPage() {
           </PopoverPrimitive.Root>
         </div>
       </header>
+      <p className="fy-feature-note" role="note">
+        链接目录中的 Skills 可以读取；链接目录及其目标只读，不会写入或删除。
+        如需安装、更新或调整分配，请使用普通目录。
+      </p>
       {progress && (
         <>
           <div
@@ -580,6 +662,19 @@ export function SkillsPage() {
           </p>
         </>
       )}
+      <AnimatePresence>
+        {bulkOpen && (
+          <BulkAssignmentDialog
+            key="skills-bulk"
+            kind="Skills"
+            originRef={dialogOriginRef}
+            busy={busy}
+            items={installed.map(bulkItem)}
+            onClose={() => setBulkOpen(false)}
+            onExecute={executeAssignment}
+          />
+        )}
+      </AnimatePresence>
       <FeatureTabPanel
         tabsId="skills-view-tabs"
         value="installed"
@@ -687,6 +782,9 @@ export function SkillsPage() {
                       <AssignmentPanel
                         apps={selected.apps}
                         disabled={busy}
+                        disabledTargets={SKILL_TARGETS.filter((target) =>
+                          selected.readOnlyTargets?.includes(target.id),
+                        ).map((target) => target.id)}
                         labelSuffix="Skill 分配"
                         onToggle={(app, enabled) =>
                           toggle(selected, app, enabled)
@@ -694,11 +792,6 @@ export function SkillsPage() {
                         targets={SKILL_TARGETS}
                       />
                       <hr />
-                      <BulkAssignmentPanel
-                        targets={SKILL_TARGETS}
-                        disabled={busy}
-                        onToggle={bulkAssign}
-                      />
                     </section>
                   )}
                 </SplitPanes>
@@ -758,6 +851,12 @@ export function SkillsPage() {
             installTarget={installTarget}
             busy={busy}
             write={write}
+            onViewInstalled={(id) => {
+              setDialog(null);
+              setTab("installed");
+              setSearch("");
+              setSelectedId(id ?? null);
+            }}
             setConfirm={setConfirm}
           />
         )}
@@ -1030,6 +1129,7 @@ function AuxiliaryDialogs({
   installTarget,
   busy,
   write,
+  onViewInstalled,
   setConfirm,
 }: {
   originRef?: DialogOriginRef;
@@ -1038,6 +1138,7 @@ function AuxiliaryDialogs({
   installTarget: SkillTargetId;
   busy: boolean;
   write: (title: string, operation: () => Promise<void>) => Promise<void>;
+  onViewInstalled(id?: string): void;
   setConfirm: (
     value: { kind: "backup"; backup: SkillBackupEntry } | null,
   ) => void;
@@ -1048,7 +1149,26 @@ function AuxiliaryDialogs({
   const unmanaged = useUnmanagedSkills(name === "unmanaged");
   const backups = useSkillBackups(name === "backups");
   const settings = useFeatureSettings(name === "settings");
-  const [selected, setSelected] = useState<Set<string> | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [importSearch, setImportSearch] = useState("");
+  const [importPreview, setImportPreview] = useState<Array<{
+    directory: string;
+    name: string;
+    identity: string;
+    apps: ReturnType<typeof createSkillAssignments>;
+  }> | null>(null);
+  const [importBlocked, setImportBlocked] = useState<Set<string>>(new Set());
+  const importPending = useRef(false);
+  const [importRunning, setImportRunning] = useState(false);
+  const [importResults, setImportResults] = useState<
+    Array<{
+      directory: string;
+      name: string;
+      complete: boolean;
+      installedId?: string;
+      unconfirmed?: boolean;
+    }>
+  >([]);
   const [syncMethod, setSyncMethod] = useState<
     "auto" | "symlink" | "copy" | null
   >(null);
@@ -1066,110 +1186,413 @@ function AuxiliaryDialogs({
   const [restoreTarget, setRestoreTarget] =
     useState<SkillTargetId>(installTarget);
   const installed = useInstalledSkills();
-  const selectedDirectories =
-    selected ?? new Set((unmanaged.data ?? []).map((skill) => skill.directory));
+  const selectedDirectories = selected;
+  const selectedAvailable = (unmanaged.data ?? []).filter(
+    (skill) =>
+      selected.has(skill.directory) && !importBlocked.has(skill.directory),
+  );
+  const visibleUnmanaged = (unmanaged.data ?? []).filter((skill) =>
+    `${skill.name} ${skill.directory}`
+      .toLocaleLowerCase()
+      .includes(importSearch.trim().toLocaleLowerCase()),
+  );
   const selectedSyncMethod =
     syncMethod ?? settings.data?.skillSyncMethod ?? "auto";
   if (!name || name === "more") return null;
+  const importLocked = busy || importRunning;
   if (name === "unmanaged")
     return (
       <Dialog
         originRef={originRef}
         open
         title="导入本地 Skills"
-        description="选择 Skills 和要启用的软件。"
-        onOpenChange={(open) => !open && !busy && close()}
+        description="选择 Skills 和要启用的软件。链接来源可复制到普通受管目录，原链接及其目标保持只读。"
+        onOpenChange={(open) =>
+          !open && !importLocked && !importPending.current && close()
+        }
         actions={
           <>
-            <Button onClick={close} disabled={busy}>
+            <Button
+              onClick={() => {
+                if (!importPending.current) close();
+              }}
+              disabled={importLocked}
+            >
               取消
             </Button>
-            <Button
-              className="fy-control-button-primary"
-              disabled={busy || selectedDirectories.size === 0}
-              onClick={() =>
-                void write("导入完成", async () => {
-                  await ports.skills.importFromApps(
-                    (unmanaged.data ?? [])
-                      .filter((skill) =>
-                        selectedDirectories.has(skill.directory),
-                      )
-                      .map((skill) => ({
-                        directory: skill.directory,
-                        apps:
-                          importApps[skill.directory] ??
-                          createSkillAssignments(
-                            supportedFoundIn(skill.foundIn),
-                          ),
-                      })),
-                  );
-                  close();
-                })
-              }
-            >
-              导入所选 · {selectedDirectories.size}
-            </Button>
-          </>
-        }
-      >
-        <div className="fy-feature-list">
-          {unmanaged.error && unmanaged.data !== undefined && (
-            <InlineNotice tone="error">
-              扫描刷新失败，正在显示上一次成功数据：
-              {errorMessage(unmanaged.error)}
-            </InlineNotice>
-          )}
-          {unmanaged.data === undefined && unmanaged.isLoading ? (
-            <Spinner />
-          ) : unmanaged.error && unmanaged.data === undefined ? (
-            <InlineNotice tone="error">
-              扫描失败：{errorMessage(unmanaged.error)}
-            </InlineNotice>
-          ) : (unmanaged.data ?? []).length === 0 ? (
-            <p>没有发现未管理的 Skills。</p>
-          ) : (
-            unmanaged.data?.map((skill) => (
-              <article key={skill.directory} className="fy-feature-card">
-                <label className="fy-feature-assignment">
-                  <Checkbox
-                    label={`选择 ${skill.name}`}
-                    checked={selectedDirectories.has(skill.directory)}
-                    onCheckedChange={(checked) =>
-                      setSelected((current) => {
-                        const next = new Set(current ?? selectedDirectories);
-                        if (checked) next.add(skill.directory);
-                        else next.delete(skill.directory);
-                        return next;
-                      })
-                    }
-                  />
-                  <strong>{skill.name}</strong>
-                </label>
-                <AssignmentPanel
-                  apps={
-                    importApps[skill.directory] ??
-                    createSkillAssignments(supportedFoundIn(skill.foundIn))
+            {importPreview ? (
+              <>
+                <Button
+                  disabled={importLocked}
+                  onClick={() => {
+                    setImportPreview(null);
+                    setImportResults([]);
+                  }}
+                >
+                  重新选择
+                </Button>
+                {importResults.some(
+                  (item) =>
+                    !item.complete && !item.installedId && !item.unconfirmed,
+                ) && (
+                  <Button
+                    disabled={importLocked}
+                    onClick={() => {
+                      setSelected(
+                        new Set(
+                          importResults
+                            .filter(
+                              (item) =>
+                                !item.complete &&
+                                !item.installedId &&
+                                !item.unconfirmed,
+                            )
+                            .map((item) => item.directory),
+                        ),
+                      );
+                      setImportPreview(null);
+                      setImportResults([]);
+                    }}
+                  >
+                    选择未完成项重新预览
+                  </Button>
+                )}
+                <Button
+                  className="fy-control-button-primary"
+                  disabled={
+                    importLocked ||
+                    !importPreview.length ||
+                    importResults.length > 0
                   }
-                  disabled={busy || !selectedDirectories.has(skill.directory)}
-                  labelSuffix="Skill 分配"
-                  onToggle={(app, enabled) =>
-                    setImportApps((current) => ({
-                      ...current,
-                      [skill.directory]: {
-                        ...(current[skill.directory] ??
+                  onClick={async () => {
+                    if (importPending.current || importLocked) return;
+                    importPending.current = true;
+                    setImportRunning(true);
+                    try {
+                      await write("导入完成", async () => {
+                        try {
+                          const fresh = await ports.skills.scanUnmanaged();
+                          if (
+                            importPreview.some(
+                              (item) =>
+                                JSON.stringify(
+                                  fresh.find(
+                                    (entry) =>
+                                      entry.directory === item.directory,
+                                  ),
+                                ) !== item.identity,
+                            )
+                          )
+                            throw new UserFacingError(
+                              "来源已变化，导入未执行。请重新选择并预览。",
+                            );
+                          const results: Array<{
+                            directory: string;
+                            name: string;
+                            complete: boolean;
+                            installedId?: string;
+                            unconfirmed?: boolean;
+                          }> = [];
+                          for (const item of importPreview) {
+                            let complete = false;
+                            let installedId: string | undefined;
+                            let unconfirmed = false;
+                            try {
+                              const currentSource = (
+                                await ports.skills.scanUnmanaged()
+                              ).find(
+                                (entry) => entry.directory === item.directory,
+                              );
+                              if (
+                                JSON.stringify(currentSource) !== item.identity
+                              )
+                                throw new UserFacingError(
+                                  "此来源已变化，请重新预览。",
+                                );
+                              const imported =
+                                await ports.skills.importFromApps([
+                                  {
+                                    directory: item.directory,
+                                    apps: item.apps,
+                                  },
+                                ]);
+                              const observed = (
+                                await ports.skills.getInstalled()
+                              ).find(
+                                (entry) => entry.directory === item.directory,
+                              );
+                              installedId = observed?.id;
+                              complete =
+                                imported.some(
+                                  (entry) => entry.directory === item.directory,
+                                ) &&
+                                Boolean(observed) &&
+                                SKILL_TARGETS.every(
+                                  (target) =>
+                                    observed?.apps[target.id] ===
+                                    item.apps[target.id],
+                                );
+                            } catch {
+                              try {
+                                installedId = (
+                                  await ports.skills.getInstalled()
+                                ).find(
+                                  (entry) => entry.directory === item.directory,
+                                )?.id;
+                              } catch {
+                                unconfirmed = true;
+                              }
+                            }
+                            if (complete || installedId || unconfirmed)
+                              setImportBlocked(
+                                (current) =>
+                                  new Set([...current, item.directory]),
+                              );
+                            results.push({
+                              directory: item.directory,
+                              name: item.name,
+                              complete,
+                              installedId,
+                              unconfirmed,
+                            });
+                            setImportResults([...results]);
+                          }
+                          if (results.some((item) => !item.complete))
+                            throw new UserFacingError(
+                              "部分导入未完成。请查看逐项结果：已入库项到已安装页重新预览分配；无法确认的项先刷新查看，勿重复导入。",
+                            );
+                        } catch (error) {
+                          setImportResults((current) =>
+                            current.length
+                              ? current
+                              : importPreview.map((item) => ({
+                                  directory: item.directory,
+                                  name: item.name,
+                                  complete: false,
+                                })),
+                          );
+                          throw error;
+                        }
+                      });
+                    } finally {
+                      importPending.current = false;
+                      setImportRunning(false);
+                    }
+                  }}
+                >
+                  确认导入 · {importPreview.length}
+                </Button>
+              </>
+            ) : (
+              <Button
+                className="fy-control-button-primary"
+                disabled={
+                  importLocked ||
+                  unmanaged.isFetching ||
+                  !selectedAvailable.length ||
+                  Boolean(unmanaged.error)
+                }
+                onClick={() =>
+                  setImportPreview(
+                    selectedAvailable.map((skill) => ({
+                      directory: skill.directory,
+                      name: skill.name,
+                      identity: JSON.stringify(skill),
+                      apps: {
+                        ...(importApps[skill.directory] ??
                           createSkillAssignments(
                             supportedFoundIn(skill.foundIn),
                           )),
-                        [app]: enabled,
                       },
-                    }))
-                  }
-                  targets={SKILL_TARGETS}
-                />
+                    })),
+                  )
+                }
+              >
+                预览导入 · {selectedAvailable.length}
+              </Button>
+            )}
+          </>
+        }
+      >
+        {importPreview ? (
+          <div
+            className="fy-feature-list"
+            aria-label="导入预览与结果"
+            aria-live="polite"
+          >
+            <p>
+              将导入 {importPreview.length} 项到 Skills
+              库；原目录保持不变，分配到以下所选软件。
+            </p>
+            {importPreview.map((item) => (
+              <article key={item.directory} className="fy-feature-card">
+                <strong>{item.name}</strong>
+                <p>{item.directory}</p>
+                <p>
+                  {SKILL_TARGETS.filter((target) => item.apps[target.id])
+                    .map((target) => target.label)
+                    .join("、") || "不分配到软件"}
+                </p>
+                {(() => {
+                  const result = importResults.find(
+                    (entry) => entry.directory === item.directory,
+                  );
+                  return (
+                    <>
+                      <p>
+                        {!result
+                          ? "等待确认"
+                          : result.complete
+                            ? "导入完成"
+                            : result.installedId
+                              ? "已入库，目标分配待确认或未完成；请在已安装页重新预览分配。"
+                              : result.unconfirmed
+                                ? "无法确认是否已入库；请刷新并查看已安装列表，避免重复导入。"
+                                : "导入未完成；可重新选择仍未管理的项目并预览重试。"}
+                      </p>
+                      {result && !result.complete && (
+                        <Button
+                          disabled={importLocked}
+                          onClick={async () => {
+                            if (importPending.current) return;
+                            importPending.current = true;
+                            setImportRunning(true);
+                            try {
+                              await queryClient.invalidateQueries({
+                                queryKey: featureKeys.skills,
+                              });
+                            } catch {
+                              /* The installed page exposes its query error. */
+                            } finally {
+                              importPending.current = false;
+                              setImportRunning(false);
+                              onViewInstalled(result.installedId);
+                            }
+                          }}
+                        >
+                          {result.installedId
+                            ? `查看已安装 ${item.name}`
+                            : "刷新并查看已安装"}
+                        </Button>
+                      )}
+                    </>
+                  );
+                })()}
               </article>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            <FeatureSearch
+              value={importSearch}
+              onValueChange={setImportSearch}
+              disabled={importLocked}
+              ariaLabel="筛选本地 Skills"
+              placeholder="按名称或目录筛选"
+            />
+            <p>
+              已选 {selected.size} 项 · 当前可用 {selectedAvailable.length} 项 ·
+              筛选结果 {visibleUnmanaged.length} 项
+            </p>
+            <Button
+              disabled={importLocked}
+              onClick={() => setSelected(new Set())}
+            >
+              清空选择
+            </Button>
+            <Button
+              disabled={importLocked || !visibleUnmanaged.length}
+              onClick={() =>
+                setSelected(
+                  (current) =>
+                    new Set([
+                      ...current,
+                      ...visibleUnmanaged.map((skill) => skill.directory),
+                    ]),
+                )
+              }
+            >
+              选择筛选结果
+            </Button>
+            <div className="fy-feature-list">
+              {unmanaged.error && unmanaged.data !== undefined && (
+                <InlineNotice tone="error">
+                  扫描刷新失败，正在显示上一次成功数据：
+                  {errorMessage(unmanaged.error)}
+                </InlineNotice>
+              )}
+              {unmanaged.data === undefined && unmanaged.isLoading ? (
+                <Spinner />
+              ) : unmanaged.error && unmanaged.data === undefined ? (
+                <InlineNotice tone="error">
+                  扫描失败：{errorMessage(unmanaged.error)}
+                </InlineNotice>
+              ) : (unmanaged.data ?? []).length === 0 ? (
+                <p>没有发现未管理的 Skills。</p>
+              ) : visibleUnmanaged.length === 0 ? (
+                <p>没有筛选结果，已选项目仍保留。</p>
+              ) : (
+                visibleUnmanaged.map((skill) => (
+                  <article key={skill.directory} className="fy-feature-card">
+                    <label className="fy-feature-assignment">
+                      <Checkbox
+                        label={`选择 ${skill.name}`}
+                        disabled={
+                          importLocked || importBlocked.has(skill.directory)
+                        }
+                        checked={selectedDirectories.has(skill.directory)}
+                        onCheckedChange={(checked) =>
+                          setSelected((current) => {
+                            const next = new Set(current);
+                            if (checked) next.add(skill.directory);
+                            else next.delete(skill.directory);
+                            return next;
+                          })
+                        }
+                      />
+                      <strong>{skill.name}</strong>
+                    </label>
+                    {importBlocked.has(skill.directory) && (
+                      <InlineNotice tone="warning">
+                        此项已导入或结果未确认；请查看已安装列表后处理分配，勿重复导入。
+                      </InlineNotice>
+                    )}
+                    {skill.readOnly && (
+                      <InlineNotice tone="warning">
+                        检测到链接来源，只读取并复制到普通受管目录；原目录不会修改或删除。
+                      </InlineNotice>
+                    )}
+                    <AssignmentPanel
+                      apps={
+                        importApps[skill.directory] ??
+                        createSkillAssignments(supportedFoundIn(skill.foundIn))
+                      }
+                      disabled={
+                        importLocked ||
+                        importBlocked.has(skill.directory) ||
+                        !selectedDirectories.has(skill.directory)
+                      }
+                      labelSuffix="Skill 分配"
+                      onToggle={(app, enabled) =>
+                        setImportApps((current) => ({
+                          ...current,
+                          [skill.directory]: {
+                            ...(current[skill.directory] ??
+                              createSkillAssignments(
+                                supportedFoundIn(skill.foundIn),
+                              )),
+                            [app]: enabled,
+                          },
+                        }))
+                      }
+                      targets={SKILL_TARGETS}
+                    />
+                  </article>
+                ))
+              )}
+            </div>
+          </>
+        )}
       </Dialog>
     );
   if (name === "backups")

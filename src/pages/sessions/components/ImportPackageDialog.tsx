@@ -1,3 +1,4 @@
+import { SessionEvidenceDetails } from "./SessionEvidenceDetails";
 import { useState, useRef, useId, useEffect } from "react";
 import { FolderOpenIcon } from "@phosphor-icons/react/dist/csr/FolderOpen";
 import { CheckCircleIcon } from "@phosphor-icons/react/dist/csr/CheckCircle";
@@ -707,7 +708,7 @@ export function ImportPackageDialog({
                   客户端探测就绪：
                   {PROVIDER_LABELS[selectedTargetProviderId] ??
                     selectedTargetProviderId}{" "}
-                  已安装且支持写入恢复。
+                  已安装且支持写入恢复。源提取能力不影响已核验会话包的目标写入。
                 </span>
               </div>
             )}
@@ -896,7 +897,7 @@ export function ImportPackageDialog({
                       </span>
                     </div>
                     <div className="fy-attempt-meta">
-                      <div>本地 ID: {attempt.targetNativeId || "待分配"}</div>
+                      <SessionEvidenceDetails attempt={attempt} />
                       <div>工作区: {attempt.targetWorkspace || "默认"}</div>
                       <div>阶段：{feedback.phase}</div>
                       <div>{feedback.writeSummary}</div>

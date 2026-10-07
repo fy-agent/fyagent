@@ -4,7 +4,7 @@
 
 Read this contract before changing SQLite initialization, `SCHEMA_VERSION`,
 schema creation or migration, a DAO write transaction, JSON-to-SQLite import,
-SQL export/import, binary backup/restore, local-only sync tables, or database
+SQL export/import, binary backup/restore, local-only receipts, or database
 maintenance. The implementation owners are `src-tauri/src/database/` and its
 `dao/` modules.
 
@@ -29,7 +29,7 @@ Important entry points are:
 ```text
 Database::init() -> Result<Database, AppError>
 Database::memory() -> Result<Database, AppError>
-Database::set_change_listener(listener: impl Fn(&str) + Send + 'static)
+#[cfg(test)] Database::set_change_listener(listener: impl Fn(&str) + Send + 'static)
   -> Result<(), AppError> // crate-private; composition-root wiring
 Database::stored_user_version_exceeds_supported(path)
   -> Result<Option<i32>, AppError>
@@ -38,9 +38,7 @@ Database::migrate_from_json(config) -> Result<(), AppError>
 Database::migrate_from_json_dry_run(config) -> Result<(), AppError>
 
 Database::export_sql_string() -> Result<String, AppError>
-Database::export_sql_string_for_sync() -> Result<String, AppError>
 Database::import_sql_string(sql) -> Result<String, AppError>
-Database::import_sql_string_for_sync(sql) -> Result<String, AppError>
 
 Database::backup_database_file() -> Result<Option<PathBuf>, AppError>
 Database::list_backups() -> Result<Vec<BackupEntry>, AppError>
@@ -61,8 +59,9 @@ constraints, hooks, or error mapping.
 - `Database::init` creates the application directory, opens only
   `fyagent.db`, enables `PRAGMA foreign_keys = ON`, creates the current table
   set, then applies ordered migrations. It does not install a global service
-  listener. The production composition root injects its change listener before
-  starting automatic sync workers; registration failure aborts before spawning.
+  listener. The connection-local listener remains an injection boundary for
+  explicit consumers and tests; production registers no retired cloud listener
+  or automatic cloud sync worker.
 - A brand-new file selects incremental auto-vacuum before tables are created.
   An existing non-incremental database may be backed up and rebuilt with
   `VACUUM`; failure to establish the requested mode is logged as maintenance
@@ -103,7 +102,7 @@ bindings together with their full route. Private binary backups stay lossless.
   `retired-customer-projects/`. Upgrades from schema 24 drop
   `fde_resource_*` triggers so shared Provider/Skill/MCP/prompt writes no
   longer update leftover generation counters; existing leftover rows stay in
-  place as unconsumed historical data until a later SQL import, sync import,
+  place as unconsumed historical data until a later SQL import
   or binary restore would replace the live database. Before that replace, if
   the live database still has retired tables, the host writes one durable
   `retired-customer-projects/historical-fde-*.db` archive, verifies it, and
@@ -138,20 +137,23 @@ bindings together with their full route. Private binary backups stay lossless.
 - Multi-row or cross-table invariants are committed in one transaction. A
   caller must not reproduce DAO SQL in a command/service to gain a second
   mutation path.
-- Insert, update, and delete hooks invoke the connection-local listener injected
-  by `set_change_listener`. The callback runs under the connection lock and must
-  not block or reenter the database. The composition root alone fans hints out
-  to WebDAV/S3; database modules must not import these service consumers.
-- Notifications are SQLite change hints, not commit or remote-sync guarantees.
+- After cloud retirement, `set_change_listener` is a `cfg(test)` injection
+  helper with no production consumer. Its SQLite insert/update/delete hook
+  remains connection-local for the retained isolation/dirty-hint tests. The
+  callback runs under the connection lock and must not block or reenter the
+  database. Ordinary production connection/transaction/import/export behavior
+  is unchanged; do not register a placeholder listener or recreate a dependency
+  on removed transports.
+- Notifications are SQLite change hints, not commit acknowledgements.
   A write later rolled back can still notify. Replacing a listener replaces the
-  prior connection callback. Batching, allowlisted tables, and import suppression
-  are owned by [Automatic Cloud Sync Scheduling](./auto-sync.md).
+  prior connection callback. The retired cloud scheduling boundary is recorded
+  in [Retired Legacy Cloud Sync](./auto-sync.md).
 - Tables, indexes, foreign keys, uniqueness constraints, and CHECK clauses are
   part of the public persistence contract. A Rust enum/DTO change is incomplete
   until stored legacy values and schema constraints have a deliberate decode or
   migration rule.
 
-### Export, import, backup, and sync
+### Export, import, and backup
 
 - The FyAgent SQL header identifies the supported wire format but is not a
   trust boundary. SQL import remains untrusted input and is executed only
@@ -171,19 +173,16 @@ bindings together with their full route. Private binary backups stay lossless.
 - Backup filenames are leaf names owned by the backup directory. Path
   traversal, arbitrary paths, replacement collisions, and non-owned deletion
   are rejected.
-- Sync export omits local-only operational tables, and sync import restores
-  the corresponding local snapshot. The exact skip/preserve sets in
-  `backup.rs` are one contract and must be updated and tested together.
-- Managed Auth metadata (`managed_auth_identities`,
-  `managed_auth_credentials`, `managed_auth_defaults`,
-  `managed_auth_connections`, `managed_auth_migrations`) is local-only.
-  Those rows hold opaque SecretRef handles that are meaningless on another
-  device; they must be skipped on sync export and preserved on sync import
-  together. Token material never has a SQLite column. Domain meaning of the
-  rows is owned by [Managed Auth Core](./managed-auth.md).
+- Cloud-specific SQL export/import entry points and their skip/preserve sets
+  are retired with WebDAV/S3. Ordinary SQL projection, local credential-route
+  preservation and private binary backup semantics remain unchanged.
+- Managed Auth metadata retains its existing database and secret-store owners;
+  token material never has a SQLite column. Domain meaning of these rows is
+  owned by [Managed Auth Core](./managed-auth.md). Retirement does not introduce
+  a new portable authentication or cross-device credential contract.
 - Session restore receipts (`session_restore_attempts`) are device-local and
   contain no conversation bodies. The forward migration after customer-project
-  retirement creates their table. SQL exports omit receipts; SQL/sync imports
+  retirement creates their table. SQL exports omit receipts; SQL imports
   and binary restores preserve the live device's receipts instead of replaying
   imported or backed-up target mappings. Historical project archiving must
   complete before live replacement even when a receipt snapshot is preserved.
@@ -214,10 +213,9 @@ protected through publication and cleanup.
 | dry-run is requested                                                                                   | Validate against an in-memory current schema; write no application database or backup.                                |
 | imported SQL has the wrong header, unsafe authorization action, unsupported trigger, or invalid schema | Reject before replacing the main database.                                                                            |
 | binary backup trigger SQL is not an exact known historical retired definition                          | Reject before DML; leave the live database and the original backup file unchanged.                                    |
-| live database still has retired customer-project tables and a SQL/sync/binary replace would drop them  | Write and verify `retired-customer-projects/historical-fde-*.db` first; failure aborts the replace.                   |
+| live database still has retired customer-project tables and a SQL/binary replace would drop them       | Write and verify `retired-customer-projects/historical-fde-*.db` first; failure aborts the replace.                   |
 | SQL/binary restore fails after safety preparation                                                      | Keep or restore the prior main database as defined by the SQLite backup transaction; surface an error, never success. |
 | backup filename contains path components or resolves outside the backup directory                      | Reject the request.                                                                                                   |
-| sync payload contains rows for local-only tables                                                       | Omit them on export and preserve the local snapshot on import.                                                        |
 | a DAO write succeeds                                                                                   | Emit database-change hints for the changed table; do not claim remote sync has completed.                             |
 | a transaction changes rows then rolls back                                                             | A listener may already have received dirty hints; do not treat those as commit events.                                |
 | a memory database has no injected listener                                                             | No global cloud notification is emitted.                                                                              |
@@ -232,7 +230,7 @@ protected through publication and cleanup.
   trigger; the authorizer/schema validation rejects it and the live database
   remains unchanged.
 - Good: a live database still holding leftover `fde_*` rows is archived to
-  `retired-customer-projects/` before SQL, sync, or binary replace; shared
+  `retired-customer-projects/` before SQL or binary replace; shared
   configuration imports succeed, the archive reopens with the leftover rows,
   and a failed archive leaves the live database unchanged.
 - Base: a fresh install creates the current schema directly and seeds required
@@ -255,8 +253,8 @@ protected through publication and cleanup.
   INSERT/UPDATE/DELETE, and hints for rolled-back writes.
 - SQL import/export tests cover genuine and legacy supported exports, wrong
   product header, ATTACH/cross-file statements, persistent triggers, malformed
-  late statements, exact main-database preservation, and sync skip/preserve
-  symmetry. SQL import continues to deny `CREATE TRIGGER` in the authorizer,
+  late statements, exact main-database preservation, local receipt retention,
+  credential-route retention, and ordinary SQL roundtrips. SQL import continues to deny `CREATE TRIGGER` in the authorizer,
   including genuine retired `fde_resource_*` definitions.
 - Binary backup tests cover validation-before-mutation, safety backup, older
   schema forward migration, filename containment, collision, retention,
@@ -273,7 +271,7 @@ protected through publication and cleanup.
   Also cover busy publication, committed readback failure, retained worker-loss
   evidence, lifecycle serialization and old-schema snapshot failure before DDL.
 - Run `mise run rust:test` and `mise run check:contracts`; a schema change also
-  requires the affected domain and sync tests.
+  requires the affected domain and restore tests.
 
 ## 7. Wrong vs Correct
 

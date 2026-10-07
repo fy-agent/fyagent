@@ -16,7 +16,6 @@ import {
   agentReturnDescriptorFromSearch,
   agentReturnPath,
 } from "../../shared/features/agent-navigation";
-import { agentHealthPath } from "../../shared/features/health";
 import {
   Collapsible,
   CollapsibleCaret,
@@ -121,11 +120,6 @@ export function SideNavigation() {
       ? agentReturnPath(agentReturnDescriptor)
       : "/agents";
   const navigationDestination = (item: NavigationItem) => {
-    if (item.path === "/health") {
-      return agentReturnDescriptor
-        ? agentHealthPath(agentReturnDescriptor.agentId)
-        : item.path;
-    }
     if (item.path === "/agents") {
       return agentDestination;
     }

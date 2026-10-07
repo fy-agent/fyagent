@@ -312,7 +312,7 @@ describe("session migration page batch export behavior", () => {
     expect(screen.queryByText(/探测服务暂时不可用/u)).toBeNull();
     expect(screen.queryByText(/本地未安装/u)).toBeNull();
     expect(
-      screen.getByRole("button", { name: "在目标软件中恢复" }),
+      screen.getByRole("button", { name: "查看目标启动说明" }),
     ).toBeDisabled();
   });
 
@@ -347,7 +347,10 @@ describe("session migration page batch export behavior", () => {
     await screen.findByText("来源 A", { exact: true });
     await user.click(screen.getByText("来源 A", { exact: true }));
     expect(
-      await screen.findByText("写入结果尚未确认", { exact: true }),
+      await screen.findByText("写入结果尚未确认", {
+        exact: true,
+        selector: ".fy-status-banner-title",
+      }),
     ).toBeVisible();
     expect(
       screen.queryByText("已写入目标存储 · 待读回验证", { exact: true }),

@@ -444,15 +444,12 @@ export function canExportSession(session: MigratableSession): CanExportResult {
  */
 export function buildPureTextPreview(session: MigratableSession): string {
   const lines: string[] = [];
-  lines.push(`会话快照: ${session.snapshotId}`);
   lines.push(
     `来源软件: ${PROVIDER_LABELS[session.origin.providerId] ?? session.origin.providerId}`,
   );
-  lines.push(`内容摘要: ${session.contentDigest}`);
   if (session.workspaceLabel) {
     lines.push(`工作区标签: ${session.workspaceLabel}`);
   }
-  lines.push(`提取规则: ${session.extraction.ruleId}`);
   lines.push(
     `已剔除工具事件: ${session.extraction.omitted.toolEvents} 条, 思考块: ${session.extraction.omitted.reasoningBlocks} 个`,
   );
@@ -685,21 +682,28 @@ export function isProviderRestoreSupported(probe?: LocalProviderProbe): {
   if (!probe) {
     return { supported: false, reason: "尚未探测到该客户端的安装状态" };
   }
-  if (probe.reasonCode && probe.reasonCode !== "providerNotInstalled") {
-    const parsed = parseMigrationError({ code: probe.reasonCode });
-    if (parsed.message && parsed.message !== "未知错误") {
-      return { supported: false, reason: parsed.message };
-    }
+  if (
+    !probe.installed &&
+    probe.reasonCode &&
+    probe.reasonCode !== "providerNotInstalled"
+  ) {
+    return {
+      supported: false,
+      reason: parseMigrationError({ code: probe.reasonCode }).message,
+    };
   }
   if (!probe.installed) {
     return { supported: false, reason: "本地未安装该客户端" };
   }
+  // Native writeSupported already includes the writer's verified-version gate.
+  // Extraction diagnostics must not veto importing an already validated package.
   if (!probe.writeSupported) {
     return {
       supported: false,
-      reason: probe.reasonCode
-        ? parseMigrationError({ code: probe.reasonCode }).message
-        : "当前版本尚未支持会话写入恢复",
+      reason:
+        probe.reasonCode && !probe.reasonCode.startsWith("extractionRule")
+          ? parseMigrationError({ code: probe.reasonCode }).message
+          : "当前版本尚未支持会话写入恢复",
     };
   }
   return { supported: true };

@@ -3,6 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import type { FeaturePorts } from "../../../features/ports";
 import { parseFirstUseGuideState } from "../../../features/first-use-guide";
 import {
+  parseObservedInstalledSkills,
+  parseObservedUnmanagedSkills,
+} from "../../../features/skills";
+import {
   MCP_IMPORT_SOURCES,
   type McpImportReport,
   type McpImportSourceId,
@@ -91,7 +95,10 @@ export function createSimpleFeaturePorts(): Pick<
 > {
   return {
     skills: {
-      getInstalled: () => invoke("get_installed_skills"),
+      getInstalled: async () =>
+        parseObservedInstalledSkills(
+          await invoke<unknown>("get_installed_skills"),
+        ),
       getBackups: () => invoke("get_skill_backups"),
       deleteBackup: (backupId) => invoke("delete_skill_backup", { backupId }),
       install: (skill, currentApp) =>
@@ -101,7 +108,10 @@ export function createSimpleFeaturePorts(): Pick<
         invoke("restore_skill_backup", { backupId, currentApp }),
       toggleApp: (id, app, enabled) =>
         invoke("toggle_skill_app", { id, app, enabled }),
-      scanUnmanaged: () => invoke("scan_unmanaged_skills"),
+      scanUnmanaged: async () =>
+        parseObservedUnmanagedSkills(
+          await invoke<unknown>("scan_unmanaged_skills"),
+        ),
       importFromApps: (imports) =>
         invoke("import_skills_from_apps", { imports }),
       discoverPage: (request) =>

@@ -27,10 +27,45 @@ fn parse_skill_target(app: &str) -> Result<SkillTargetId, String> {
 
 // ========== 统一管理命令 ==========
 
+/// Fresh filesystem observations, not persisted installation flags.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservedInstalledSkill {
+    #[serde(flatten)]
+    skill: InstalledSkill,
+    read_only: bool,
+    read_only_targets: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservedUnmanagedSkill {
+    #[serde(flatten)]
+    skill: UnmanagedSkill,
+    read_only: bool,
+}
+
 /// 获取所有已安装的 Skills
 #[tauri::command]
-pub fn get_installed_skills(app_state: State<'_, AppState>) -> Result<Vec<InstalledSkill>, String> {
-    SkillService::get_all_installed(&app_state.db).map_err(|e| e.to_string())
+pub fn get_installed_skills(
+    app_state: State<'_, AppState>,
+) -> Result<Vec<ObservedInstalledSkill>, String> {
+    let skills = SkillService::get_all_installed(&app_state.db).map_err(|e| e.to_string())?;
+    Ok(skills
+        .into_iter()
+        .map(|skill| {
+            let read_only = skill
+                .path
+                .as_deref()
+                .is_some_and(|path| SkillService::observed_read_only(std::path::Path::new(path)));
+            let read_only_targets = SkillService::observed_read_only_targets(&skill.directory);
+            ObservedInstalledSkill {
+                skill,
+                read_only,
+                read_only_targets,
+            }
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -103,8 +138,15 @@ pub fn toggle_skill_app(
 #[tauri::command]
 pub fn scan_unmanaged_skills(
     app_state: State<'_, AppState>,
-) -> Result<Vec<UnmanagedSkill>, String> {
-    SkillService::scan_unmanaged(&app_state.db).map_err(|e| e.to_string())
+) -> Result<Vec<ObservedUnmanagedSkill>, String> {
+    let skills = SkillService::scan_unmanaged(&app_state.db).map_err(|e| e.to_string())?;
+    Ok(skills
+        .into_iter()
+        .map(|skill| {
+            let read_only = SkillService::observed_read_only(std::path::Path::new(&skill.path));
+            ObservedUnmanagedSkill { skill, read_only }
+        })
+        .collect())
 }
 
 /// 从应用目录导入 Skills

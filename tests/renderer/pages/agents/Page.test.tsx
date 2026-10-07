@@ -958,10 +958,10 @@ describe("V3 Agent directory and configuration shell", () => {
       within(directoryArticle("TRAE Work CN")).getByText("状态未知"),
     ).toBeVisible();
     expect(
-      screen.queryByRole("button", { name: "一键安装" }),
+      screen.queryByRole("button", { name: "安装前检查" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "一键更新" }),
+      screen.queryByRole("button", { name: "更新前检查" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText(/“未确认”不等于“未安装”/),
@@ -1021,7 +1021,7 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(within(card).getByText("读取失败")).toBeVisible();
     expect(configureButton("QoderWork CN")).toBeDisabled();
     expect(
-      within(card).queryByRole("button", { name: /一键安装|一键更新/ }),
+      within(card).queryByRole("button", { name: /安装前检查|更新前检查/ }),
     ).not.toBeInTheDocument();
     expect(ports.agentInstallReadiness.preflight).not.toHaveBeenCalled();
     expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
@@ -1118,7 +1118,7 @@ describe("V3 Agent directory and configuration shell", () => {
         within(card).queryByRole("button", { name: "登录" }),
       ).not.toBeInTheDocument();
       await user.click(
-        await within(card).findByRole("button", { name: "一键安装" }),
+        await within(card).findByRole("button", { name: "安装前检查" }),
       );
       const dialog = await screen.findByRole("dialog", {
         name: `安装 ${name}`,
@@ -1143,7 +1143,9 @@ describe("V3 Agent directory and configuration shell", () => {
         ).not.toBeInTheDocument();
       }
       await user.click(
-        within(dialog).getByRole("button", { name: "确认安装" }),
+        within(dialog).getByRole("button", {
+          name: sourceKind === "cli_tooling" ? "开始命令行安装" : "开始安装",
+        }),
       );
       await waitFor(() => expect(configureButton(name)).toBeEnabled());
       expect(
@@ -1224,7 +1226,7 @@ describe("V3 Agent directory and configuration shell", () => {
     ).toBeEnabled();
     await user.click(
       await within(directoryArticle("QoderWork CN")).findByRole("button", {
-        name: "一键安装",
+        name: "安装前检查",
       }),
     );
     expect(
@@ -1266,7 +1268,7 @@ describe("V3 Agent directory and configuration shell", () => {
     ).toBeEnabled();
     const card = directoryArticle("Grok Build");
     await user.click(
-      await within(card).findByRole("button", { name: "一键更新" }),
+      await within(card).findByRole("button", { name: "更新前检查" }),
     );
     expect(
       await within(card).findByText(/当前安装来源或位置无法确认/),
@@ -1283,7 +1285,7 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(ports.tooling.installOfficialNpm).not.toHaveBeenCalled();
   });
 
-  it("offers 一键安装 only when not_installed and backend allows it, then waits for readback", async () => {
+  it("offers 安装前检查 only when not_installed and backend allows it, then waits for readback", async () => {
     const user = userEvent.setup();
     const ports = configuredPorts();
     const downloadJob = deferred<AgentActionJobSnapshot>();
@@ -1323,23 +1325,23 @@ describe("V3 Agent directory and configuration shell", () => {
     scanComplete = true;
     expect(
       await within(directoryArticle("QoderWork CN")).findByRole("button", {
-        name: "一键安装",
+        name: "安装前检查",
       }),
     ).toBeVisible();
     expect(
       within(directoryArticle("WorkBuddy")).queryByRole("button", {
-        name: "一键安装",
+        name: "安装前检查",
       }),
     ).not.toBeInTheDocument();
     expect(configureButton("QoderWork CN")).toBeDisabled();
 
     await user.click(
       within(directoryArticle("QoderWork CN")).getByRole("button", {
-        name: "一键安装",
+        name: "安装前检查",
       }),
     );
     expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
-    await user.click(await screen.findByRole("button", { name: "确认安装" }));
+    await user.click(await screen.findByRole("button", { name: "开始安装" }));
     expect(
       await within(directoryArticle("QoderWork CN")).findByText("正在检查来源"),
     ).toBeVisible();
@@ -1403,7 +1405,7 @@ describe("V3 Agent directory and configuration shell", () => {
     await waitFor(() => expect(configureButton("QoderWork CN")).toBeEnabled());
     expect(
       within(directoryArticle("QoderWork CN")).queryByRole("button", {
-        name: "一键安装",
+        name: "安装前检查",
       }),
     ).not.toBeInTheDocument();
   });
@@ -1495,7 +1497,7 @@ describe("V3 Agent directory and configuration shell", () => {
       within(dialog).getByRole("button", { name: "检查并继续" }),
     );
     expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
-    await user.click(await screen.findByRole("button", { name: "确认安装" }));
+    await user.click(await screen.findByRole("button", { name: "开始安装" }));
     await waitFor(() =>
       expect(
         screen.queryByRole("dialog", {
@@ -1582,11 +1584,11 @@ describe("V3 Agent directory and configuration shell", () => {
 
     await user.click(
       await within(directoryArticle("QoderWork CN")).findByRole("button", {
-        name: "一键安装",
+        name: "安装前检查",
       }),
     );
     expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
-    await user.click(await screen.findByRole("button", { name: "确认安装" }));
+    await user.click(await screen.findByRole("button", { name: "开始安装" }));
     expect(
       await within(directoryArticle("QoderWork CN")).findByText(
         "正在更新安装状态",
@@ -1600,7 +1602,7 @@ describe("V3 Agent directory and configuration shell", () => {
     await waitFor(() =>
       expect(
         within(directoryArticle("QoderWork CN")).getByRole("button", {
-          name: "一键安装",
+          name: "安装前检查",
         }),
       ).toBeVisible(),
     );
@@ -1653,11 +1655,11 @@ describe("V3 Agent directory and configuration shell", () => {
 
     await user.click(
       await within(directoryArticle("QoderWork CN")).findByRole("button", {
-        name: "一键安装",
+        name: "安装前检查",
       }),
     );
     expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
-    await user.click(await screen.findByRole("button", { name: "确认安装" }));
+    await user.click(await screen.findByRole("button", { name: "开始安装" }));
     expect(
       await within(directoryArticle("QoderWork CN")).findByText(
         "正在更新安装状态",
@@ -1674,12 +1676,12 @@ describe("V3 Agent directory and configuration shell", () => {
     ).toBeVisible();
     expect(
       within(directoryArticle("QoderWork CN")).getByRole("button", {
-        name: "一键安装",
+        name: "安装前检查",
       }),
     ).toBeVisible();
   });
 
-  it("offers 一键更新 only when the product allows it, installed, update_available, and backend allows it", async () => {
+  it("offers 更新前检查 only when the product allows it, installed, update_available, and backend allows it", async () => {
     const ports = configuredPorts();
     ports.agentInstallReadiness.get = vi.fn(async (agentId: AgentCatalogId) => {
       if (agentId === "opencode") {
@@ -1715,23 +1717,23 @@ describe("V3 Agent directory and configuration shell", () => {
     ).toBeEnabled();
     expect(
       await within(directoryArticle("OpenCode")).findByRole("button", {
-        name: "一键更新",
+        name: "更新前检查",
       }),
     ).toBeVisible();
     expect(configureButton("OpenCode")).toBeEnabled();
     expect(
       within(directoryArticle("WorkBuddy")).queryByRole("button", {
-        name: "一键更新",
+        name: "更新前检查",
       }),
     ).not.toBeInTheDocument();
     expect(
       within(directoryArticle("TRAE Work CN")).queryByRole("button", {
-        name: "一键更新",
+        name: "更新前检查",
       }),
     ).not.toBeInTheDocument();
     expect(
       within(directoryArticle("QoderWork CN")).queryByRole("button", {
-        name: "一键更新",
+        name: "更新前检查",
       }),
     ).not.toBeInTheDocument();
     expect(configureButton("WorkBuddy")).toBeEnabled();
@@ -1788,12 +1790,12 @@ describe("V3 Agent directory and configuration shell", () => {
     ).toBeEnabled();
     const install = await within(directoryArticle("Codex")).findByRole(
       "button",
-      { name: "一键安装" },
+      { name: "安装前检查" },
     );
     expect(configureButton("Codex")).toBeDisabled();
     await user.click(install);
     expect(ports.codexDesktop.startInstall).not.toHaveBeenCalled();
-    await user.click(await screen.findByRole("button", { name: "确认安装" }));
+    await user.click(await screen.findByRole("button", { name: "开始安装" }));
     await waitFor(() =>
       expect(ports.codexDesktop.startInstall).toHaveBeenCalledTimes(1),
     );

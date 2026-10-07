@@ -21,9 +21,6 @@ function cachedLoader(
 }
 
 const primaryPageLoaders = {
-  health: cachedLoader(async () => ({
-    default: (await import("../pages/health/Page")).HealthPage,
-  })),
   agents: cachedLoader(async () => ({
     default: (await import("../pages/agents/Page")).AgentsPage,
   })),
@@ -57,7 +54,6 @@ export const primaryPages: Record<
   NavigationItem["id"],
   LazyExoticComponent<ComponentType>
 > = {
-  health: lazy(primaryPageLoaders.health),
   agents: lazy(primaryPageLoaders.agents),
   auth: lazy(primaryPageLoaders.auth),
   models: lazy(primaryPageLoaders.models),

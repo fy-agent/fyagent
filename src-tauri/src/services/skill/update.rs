@@ -82,6 +82,7 @@ fn revision(path: &Path) -> Result<Option<String>> {
 }
 
 fn save(path: &Path, pending: &PendingUpdate) -> Result<()> {
+    SkillService::require_writable_skill_path(path)?;
     let parent = path
         .parent()
         .ok_or_else(|| anyhow!("Invalid update state path"))?;
@@ -123,7 +124,12 @@ pub(super) fn is_pending(id: &str) -> Result<bool> {
     }
 }
 
+pub(super) fn require_writable_state(id: &str) -> Result<()> {
+    SkillService::require_writable_skill_path(&state_path(id))
+}
+
 pub(super) fn clear_after_uninstall(id: &str) -> Result<()> {
+    require_writable_state(id)?;
     match fs::remove_file(state_path(id)) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -208,6 +214,7 @@ pub(super) fn backup_is_pending(backup: &Path) -> Result<bool> {
 }
 
 fn replace_source(source: &Path, dest: &Path, before: &str, after: &str) -> Result<()> {
+    SkillService::require_writable_skill_path(dest)?;
     let parent = dest
         .parent()
         .ok_or_else(|| anyhow!("Invalid Skill source path"))?;
@@ -228,6 +235,7 @@ fn replace_source(source: &Path, dest: &Path, before: &str, after: &str) -> Resu
     {
         bail!("Skill 在暂存期间发生变化，更新未执行");
     }
+    SkillService::require_writable_skill_path(dest)?;
     fs::rename(dest, &old)?;
     if let Err(error) = fs::rename(&copied, dest) {
         if let Err(restore) = fs::rename(&old, dest) {
@@ -258,7 +266,13 @@ pub(super) fn commit(
     source: &Path,
     dest: &Path,
 ) -> Result<InstalledSkill> {
+    SkillService::require_writable_skill_resources(&current.directory)?;
+    // Unlike uninstall, update will create missing enabled projections.
+    for target in current.apps.enabled_targets() {
+        SkillService::require_writable_skill_target(&current.directory, &target)?;
+    }
     let state_path = state_path(&current.id);
+    SkillService::require_writable_skill_path(&state_path)?;
     let after = revision(source)?.ok_or_else(|| anyhow!("Skill 下载源缺失"))?;
     let mut pending = match fs::read(&state_path) {
         Ok(bytes) => {
@@ -459,6 +473,7 @@ pub(super) fn commit(
             Some("retryFailedTargets"),
         ));
     }
+    SkillService::require_writable_skill_path(&state_path)?;
     fs::remove_file(&state_path).context("Skill 内容已更新，但更新进度清理未完成")?;
     Ok(updated)
 }

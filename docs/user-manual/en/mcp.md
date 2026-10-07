@@ -23,4 +23,8 @@ Select a service and enable or disable target software in the assignment area. R
 
 「重新配置」 overwrites existing configuration; review manual edits before confirming. 「删除」 removes the service from management and enabled software. Environment variables and headers can contain secrets; redact them before sharing diagnostic material.
 
+## Bulk preview and partial failures
+
+Use the header 「批量分配」, filter/select services, choose one target and enable/disable intent, then preview and confirm. Completion requires authoritative readback, not acknowledgement alone. Preview again after drift. A failure may have partial writes: refresh current state before selecting unfinished rows for a new preview. Assignment success does not prove a remote service or target-app call succeeded.
+
 [Back to manual](README.md)

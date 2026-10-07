@@ -73,9 +73,16 @@ interface SkillsPort {
 
 `createSimpleFeaturePorts().skills` maps these methods to the unified Tauri
 commands named by [Skill Management](../backend/skill-management.md). It is a
-thin compile-time-typed adapter and currently does not runtime-parse/version
-the returned Skill DTOs. Do not claim a strict renderer parser already exists;
-a future versioned/untrusted response must add one at this boundary.
+typed adapter. `getInstalled` and `scanUnmanaged` invoke `unknown` and pass
+through `parseObservedInstalledSkills` / `parseObservedUnmanagedSkills` in
+`shared/features/skills.ts`. These validate arrays and existing DTO field types
+and require boolean `readOnly`; installed rows also require unique
+`readOnlyTargets` drawn from all nine native Skill IDs. Missing, malformed,
+duplicate or unknown read-only metadata rejects the response, never defaults to
+writable. The parser preserves original rows/extension fields and does not
+introduce a versioned schema. Base TypeScript observation fields remain optional
+for mutation results/fixtures; current native observation responses require them.
+Other Skill mutation responses retain their existing typed mapping.
 
 The current route actively uses SkillHub search/install, installed Skills,
 updates, unmanaged import, backups, ZIP, migration, settings, and assignment.
@@ -112,20 +119,32 @@ Port/query layer but are not the current Skill discovery UI path.
 - Every terminal write invalidates installed, backup, discovery, and unmanaged
   query keys. It refetches updates only when update data has already been
   loaded. The page does not optimistically edit installed query data.
-- The management page calls `toggleApp` and then invalidates/refetches; it does
-  not use `useAuthoritativeAssignmentMutation`. The current native command
-  resolves `true` after success and throws on failure, while this page only
-  awaits the Promise and does not inspect the returned boolean. Consequently,
-  any resolved value—including a forced/test-double `false`—currently follows
-  the success-toast and invalidation path. Agent-bound Skill assignment uses
-  the stricter shared helper documented in
-  [Renderer Shared Assignment](./assignments.md).
-- `runSequentialBulk` executes update/assignment items in order, records all
-  thrown failures, and continues. A resolved `false` is currently counted as a
-  success. If native/Port semantics ever make `false` meaningful, update the
-  single and bulk page paths plus their tests in the same change. If any item
-  throws, the final notification reports partial success counts; earlier
-  successful native writes remain applied.
+- Single management-page assignment awaits `toggleApp`, then freshly calls
+  `getInstalled`. Explicit `false`, missing row/flag, or a flag different from
+  the requested boolean fails the write. It retains `write` cleanup/refetch
+  behavior rather than using `useAuthoritativeAssignmentMutation`.
+- Update-all still uses `runSequentialBulk`: execute in order, continue after
+  thrown failures and report partial counts. Its existing resolved-value
+  semantics remain unchanged; it does not use the assignment preview executor.
+- Header bulk assignment uses `BulkAssignmentDialog` and `executeBulkAssignment`,
+  with initially empty resource selection, one closed target and enable/disable
+  intent. Preview freezes identity, assignment flags and read-only observations.
+  Confirm synchronously claims the dialog pending ref and page write lock;
+  close/reselect/retry are guarded before React busy state renders. Results or
+  execution/readback failure require a new preview, not another blind confirm.
+- A fresh full-list check before any bulk write rejects the whole preview if any
+  chosen row disappeared or drifted. Each row is checked again before mutation;
+  only the selected target in `readOnlyTargets` blocks it. A linked source alone
+  does not disable copying to an ordinary target. No-op matching flags are
+  confirmed from fresh authority. A mutation is confirmed only if it did not
+  return `false` and fresh readback preserves resource identity and all flags
+  except the requested target change. First adoption may change path/hash/times
+  only for an initially unhashed observation with matching semantic identity.
+- Per-row throw/readback failure remains failed even if a best-effort reread
+  reveals partial writes. Missing result callbacks remain unconfirmed and retry
+  selects all nonconfirmed/unreported rows for a fresh preview. Final refresh
+  releases the page lock even when refresh fails; no optimistic flags or rollback
+  claims replace authority.
 - Non-`UserFacingError` messages are collapsed by `errorMessage` to a generic
   retry message. The page does not render raw native errors.
 
@@ -148,6 +167,21 @@ Port/query layer but are not the current Skill discovery UI path.
   derives default seven-target flags from `foundIn`, allows local adjustment,
   and submits only `{directory, apps}`. The observed absolute `path` is not sent
   back as import authority.
+- Local import starts with no selected resources; filtering/clear/select-filtered
+  preserve explicit selection. Preview freezes each full source observation and
+  adjusted target flags. Confirmation uses a synchronous pending ref plus the
+  page lock, scans all chosen sources before the first write, and rescans each
+  row before its one-item `importFromApps` request. Source drift prevents writes
+  for the affected preview/row. A linked source remains readable for safe copy.
+- Each imported row is complete only when the returned array includes its
+  directory and fresh installed authority matches every displayed target flag.
+  Failures reread installed authority and distinguish known installed (repair
+  assignment on the installed page), confirmed absent (select unfinished items
+  and preview again), and readback unavailable (refresh/view installed first).
+  Completed, known installed, and unknown rows are blocked from reimport for
+  this dialog lifetime. Partial writes are not rollback; an unresolved result
+  never authorizes blind reimport. Full-preflight errors populate per-row failure
+  feedback without issuing import requests.
 
 ### Updates, uninstall, backups, settings, and migration
 
@@ -172,6 +206,14 @@ Port/query layer but are not the current Skill discovery UI path.
 
 ### Paths, links, copy, and evidence
 
+- `readOnly` and `readOnlyTargets` are fresh observation-only fields. Detail
+  warns dynamically when source or target is linked; update/uninstall are
+  disabled when source or any existing target is read-only. `AssignmentPanel`
+  disables only listed target switches (plus global busy), leaving ordinary
+  target switches available even for a linked source. An absent unrelated
+  projection does not disable the entire resource. Native guards remain the
+  write authority if links change after observation.
+
 - Installed detail shows source in a header badge and a description when
   supplied. Repository, directory, dates and links share one installation
   section, collapsed by default and expandable by keyboard. Main actions and
@@ -184,29 +226,34 @@ Port/query layer but are not the current Skill discovery UI path.
 - GitHub links are built only when owner/name match `^[\w.-]+$`; SkillHub
   entries use their supplied reviewed homepage/readme metadata. All external
   opening goes through `ExternalLinkButton`/the HTTP(S)-only settings Port.
-- A successful install/update/assignment means the FyAgent operation returned
-  and its queries were invalidated. It does not prove a vendor process reloaded
+- Install/update completion means the FyAgent operation returned and its
+  queries were invalidated; assignment/import confirmation additionally requires
+  the authority checks above. None proves a vendor process reloaded
   or executed the Skill.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                | Required UI result                                                                                                                           |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Installed query fails before data                        | Render load failure and retry; do not fabricate an empty list.                                                                               |
-| Installed/SkillHub refresh fails with cached data        | Preserve the last successful data and show a warning.                                                                                        |
-| Search/category changes                                  | Reset page to 1; key the new request independently.                                                                                          |
-| Requested SkillHub page exceeds new total                | Fetch the last valid page; do not display an impossible page.                                                                                |
-| Skill already matches installed identity                 | Disable install and label installed.                                                                                                         |
-| Native picker returns `null`                             | Close the attempt with no install command.                                                                                                   |
-| ZIP/SkillHub install fails                               | Show generic/safe failure, invalidate relevant queries, and retain no optimistic install.                                                    |
-| A second page mutation starts while busy                 | Do not issue a second native write.                                                                                                          |
-| One bulk item fails                                      | Continue remaining items, report partial counts, and refresh all affected queries.                                                           |
-| Current native `toggleApp` throws                        | Treat the management-page write as failed, refresh, and do not force the requested flag.                                                     |
-| A Port/test double resolves `toggleApp` as `false`       | Current management page treats it as resolved success and refreshes; do not document false-rejection until page code and tests implement it. |
-| Uninstall returns no `backupPath`                        | Do not claim a recoverable backup exists.                                                                                                    |
-| Migration `errors` is non-empty                          | Show partial warning with exact counts, not full success.                                                                                    |
-| Unmanaged observation has a path outside managed storage | Submit only the validated directory/target selection; native import remains authority.                                                       |
-| Vendor reload/execution is unobserved                    | Use FyAgent install/assignment wording only.                                                                                                 |
+| Condition                                                | Required UI result                                                                            |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Installed query fails before data                        | Render load failure and retry; do not fabricate an empty list.                                |
+| Installed/SkillHub refresh fails with cached data        | Preserve the last successful data and show a warning.                                         |
+| Search/category changes                                  | Reset page to 1; key the new request independently.                                           |
+| Requested SkillHub page exceeds new total                | Fetch the last valid page; do not display an impossible page.                                 |
+| Skill already matches installed identity                 | Disable install and label installed.                                                          |
+| Native picker returns `null`                             | Close the attempt with no install command.                                                    |
+| ZIP/SkillHub install fails                               | Show generic/safe failure, invalidate relevant queries, and retain no optimistic install.     |
+| A second page mutation starts while busy                 | Do not issue a second native write.                                                           |
+| One bulk item fails                                      | Continue remaining items, report partial counts, and refresh all affected queries.            |
+| Current native `toggleApp` throws                        | Treat the management-page write as failed, refresh, and do not force the requested flag.      |
+| `toggleApp` returns `false` or fresh readback mismatches | Fail assignment, refresh authority, and do not force the requested flag.                      |
+| Bulk preview observation drifted                         | No initial writes; require new preview and show drift.                                        |
+| Selected target is read-only                             | Show read-only result; preserve linked projection, allow other ordinary targets.              |
+| Import failed after possible durable insertion           | Reread and distinguish installed/absent/unknown; no blind retry of installed or unknown rows. |
+| Native observation omits required read-only fields       | Reject query response; never present a writable fallback row.                                 |
+| Uninstall returns no `backupPath`                        | Do not claim a recoverable backup exists.                                                     |
+| Migration `errors` is non-empty                          | Show partial warning with exact counts, not full success.                                     |
+| Unmanaged observation has a path outside managed storage | Submit only the validated directory/target selection; native import remains authority.        |
+| Vendor reload/execution is unobserved                    | Use FyAgent install/assignment wording only.                                                  |
 
 ## 5. Good / Base / Bad Cases
 
@@ -217,13 +264,16 @@ Port/query layer but are not the current Skill discovery UI path.
 - **Base:** a ZIP picker is cancelled; no target dialog or install call occurs.
 - **Base:** update-all succeeds for two Skills and fails for one; report both
   counts and keep successful updates.
-- **Base:** a forced Port returns `false` without throwing. The current page
-  still reports the operation as resolved and relies on invalidated query data;
-  this is a characterized limitation, not an authoritative-rejection path.
-- **Bad:** call a nonexistent `SkillPorts`, claim runtime DTO parsing in
-  `simple.ts`, unzip in React, send the display destination string to native
-  code, guarantee a backup from `backupPath?`, claim the management page checks
-  `false`, or optimistically keep a target switch after an error.
+- **Base:** a Port returns `false`, or readback differs: assignment fails and
+  the page refreshes actual authority; it does not claim rollback.
+- **Good:** a linked source has a normal Codex destination; that target remains
+  selectable while a linked Claude destination stays disabled.
+- **Base:** import inserted a row but projection failed; view its installed row
+  and re-preview assignment instead of reimporting the source.
+- **Bad:** call a nonexistent `SkillPorts`, default missing observation metadata
+  to writable, unzip in React, send the display destination string to native
+  code, guarantee a backup from `backupPath?`, blindly reimport an unknown
+  result, or optimistically keep a target switch after an error.
 
 ## 6. Tests Required
 
@@ -235,12 +285,20 @@ owners include:
 - `tests/renderer/features/featurePages.test.tsx`: installed/discovery states,
   debounced SkillHub pagination, install target, ZIP cancellation/install,
   unmanaged import, update/bulk partial outcomes, assignment invalidation,
-  current resolved-value/throw assignment behavior, backups, restore target,
+  explicit-false/mismatched-reread assignment rejection, backups, restore target,
   settings, and migration;
 - `tests/renderer/features/helpers.test.ts`: canonical installed matching, search,
   display path/destination helpers, selection convergence, and sequential bulk;
 - `tests/renderer/shared/AssignmentPanel.test.tsx`: switch/radio semantics, disabled
   controls, labels, and closed seven-target order;
+- `tests/renderer/features/bulkAssignment.test.ts` and
+  `bulkAssignmentDialog.test.tsx`: frozen preview, whole/per-row drift, exact
+  readback, first-adoption identity, same-tick lock, partial/unreported recovery;
+- `tests/renderer/pages/skills/bulkImport.test.tsx`: source drift, same-tick
+  confirm/close protection, installed/absent/unknown partial-import recovery;
+- `tests/renderer/platform/skillObservationPort.test.ts` and
+  `tests/renderer/pages/skills/linkedPaths.test.tsx`: required metadata/nine
+  native IDs, source versus per-target read-only UI and ordinary-target access;
 - `tests/renderer/app/architecture.test.ts`: shared component ownership and no
   page-level Tauri/archive/vendor-path implementation.
 
@@ -271,17 +329,20 @@ await queryClient.invalidateQueries({ queryKey: featureKeys.skills });
 Wrong:
 
 ```ts
-const accepted = await ports.skills.toggleApp(skillId, target, enabled);
-if (!accepted) showRejected();
-// The current management page does not implement this false-result branch.
+await ports.skills.toggleApp(skillId, target, enabled);
+showSuccess(); // acknowledgement alone is not authoritative readback
 ```
 
 Correct:
 
 ```ts
 await write("分配已更新", async () => {
-  await ports.skills.toggleApp(skillId, target, enabled);
+  const accepted = await ports.skills.toggleApp(skillId, target, enabled);
+  const observed = (await ports.skills.getInstalled()).find(
+    (s) => s.id === skillId,
+  );
+  if (accepted === false || observed?.apps[target] !== enabled)
+    throw new UserFacingError("分配未确认，请刷新后重试。");
 });
-// `write` invalidates/refetches in finally. Today native success is true and
-// failure throws; any future meaningful false result requires a page change.
+// Batch assignment uses its frozen preview and all-flag identity check above.
 ```

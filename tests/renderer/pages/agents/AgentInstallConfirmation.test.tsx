@@ -36,7 +36,7 @@ describe("Agent install space confirmation", () => {
       "不是厂商精确安装需求",
     );
     expect(actions.confirm).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "确认安装" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始安装" }));
     expect(actions.confirm).toHaveBeenCalledOnce();
   });
 
@@ -67,7 +67,7 @@ describe("Agent install space confirmation", () => {
     expect(screen.getByText("系统应用程序文件夹")).toBeVisible();
     expect(screen.getByText(/更新所选位置的软件，保留现有配置/)).toBeVisible();
     expect(screen.getByText(/拒绝授权会停止本次安装/)).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂不开始" }));
     expect(actions.dismissPreflight).toHaveBeenCalledOnce();
     expect(actions.confirm).not.toHaveBeenCalled();
   });

@@ -10,7 +10,6 @@ import {
   overlayKnownMcpFields,
   parseAdvancedServerJson,
   parseKeyValueLines,
-  runSequentialBulk,
   sanitizeMcpConfigurationError,
   UserFacingError,
 } from "../../shared/features/helpers";
@@ -54,7 +53,13 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
-import { BulkAssignmentPanel } from "../../shared/ui/BulkAssignmentPanel";
+import { BulkAssignmentDialog } from "../../shared/features/controls/BulkAssignmentDialog";
+import {
+  executeBulkAssignment,
+  type BulkAssignmentItem,
+  type BulkAssignmentPlan,
+  type BulkAssignmentResult,
+} from "../../shared/features/bulk-assignment";
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import { ExternalLinkButton } from "../../shared/features/controls/ExternalLinkButton";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
@@ -292,6 +297,8 @@ export function McpPage({
   const [editing, setEditing, editingKey] = useDialogState<McpServer | "new">();
   const [deleteTarget, setDeleteTarget] = useState<McpServer | null>(null);
   const [busy, setBusy] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkTrustNeeded, setBulkTrustNeeded] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importSources, setImportSources] = useState<McpImportSourceId[]>([]);
   const [importReport, setImportReport] = useState<McpImportReport | null>(
@@ -339,10 +346,16 @@ export function McpPage({
     setBusy(true);
     try {
       await operation();
+      await refresh();
       if (notifySuccess) notify({ tone: "success", title });
       onSuccess?.();
       return true;
     } catch (error) {
+      try {
+        await refresh();
+      } catch {
+        /* Keep the original failure visible. */
+      }
       notify({
         tone: "error",
         title: `${title}失败`,
@@ -350,7 +363,6 @@ export function McpPage({
       });
       return false;
     } finally {
-      await refresh();
       setProgress(null);
       setBusy(false);
       writeLock.current = false;
@@ -369,33 +381,58 @@ export function McpPage({
       "分配已更新",
       async () => {
         await ports.mcp.toggleApp(server.id, app, enabled);
+        const observed = (await ports.mcp.getAll())[server.id];
+        if (observed?.apps[app] !== enabled)
+          throw new UserFacingError(
+            "分配未确认，可能存在部分写入。请刷新后重试。",
+          );
       },
       () => {
         if (app === "workbuddy" && enabled) noteWorkBuddyTrust();
       },
     );
-  const bulkAssign = (app: McpTargetId, enabled: boolean) => {
-    const ids = servers
-      .filter((server) => Boolean(server.apps[app]) !== enabled)
-      .map((server) => server.id);
-    return write(
-      "批量分配完成",
-      async () => {
-        const result = await runSequentialBulk(
-          ids,
-          (id) => ports.mcp.toggleApp(id, app, enabled),
-          (done, total) => setProgress({ done, total }),
-        );
-        if (result.failures.length)
-          throw new UserFacingError(
-            `${result.failures.length} 项失败，${result.successes.length} 项成功`,
-          );
-      },
-      () => {
-        if (app === "workbuddy" && enabled && ids.length > 0)
-          noteWorkBuddyTrust();
-      },
-    );
+  const bulkItem = (server: McpServer): BulkAssignmentItem => ({
+    id: server.id,
+    name: server.name,
+    apps: server.apps,
+    // Kept in memory for drift comparison; never rendered, logged or exported.
+    identity: JSON.stringify({ ...server, apps: undefined }),
+  });
+  const executeAssignment = async (
+    plan: BulkAssignmentPlan,
+    onResult: (result: BulkAssignmentResult) => void,
+  ) => {
+    if (writeLock.current)
+      throw new UserFacingError("另一项操作仍在执行，请稍后重新预览。");
+    writeLock.current = true;
+    setBusy(true);
+    try {
+      const results = await executeBulkAssignment(
+        plan,
+        async () => Object.values(await ports.mcp.getAll()).map(bulkItem),
+        (id, target, enabled) => ports.mcp.toggleApp(id, target, enabled),
+        onResult,
+      );
+      if (
+        plan.target === "workbuddy" &&
+        plan.enabled &&
+        results.some(
+          (result) =>
+            result.status === "confirmed" &&
+            plan.items.find((item) => item.id === result.id)?.apps[
+              plan.target
+            ] !== plan.enabled,
+        )
+      )
+        setBulkTrustNeeded(true);
+    } finally {
+      try {
+        await refresh();
+      } finally {
+        setBusy(false);
+        writeLock.current = false;
+      }
+    }
   };
   const importExisting = () => {
     const sources = [...importSources];
@@ -438,6 +475,13 @@ export function McpPage({
           ]}
         />
         <div className="fy-feature-actions">
+          <Button
+            disabled={busy || !servers.length}
+            dialogOriginRef={dialogOriginRef}
+            onClick={() => setBulkOpen(true)}
+          >
+            批量分配
+          </Button>
           <Button
             disabled={busy}
             dialogOriginRef={dialogOriginRef}
@@ -503,6 +547,25 @@ export function McpPage({
           刷新失败，正在显示上一次成功数据：{errorMessage(query.error)}
         </InlineNotice>
       )}
+      <AnimatePresence>
+        {bulkOpen && (
+          <BulkAssignmentDialog
+            key="mcp-bulk"
+            kind="MCP"
+            originRef={dialogOriginRef}
+            busy={busy}
+            items={servers.map(bulkItem)}
+            onClose={() => {
+              setBulkOpen(false);
+              if (bulkTrustNeeded) {
+                setBulkTrustNeeded(false);
+                noteWorkBuddyTrust();
+              }
+            }}
+            onExecute={executeAssignment}
+          />
+        )}
+      </AnimatePresence>
       <FeatureTabPanel
         tabsId="mcp-view-tabs"
         value="discovery"
@@ -637,12 +700,6 @@ export function McpPage({
                       targets={MCP_TARGETS}
                     />
                     <hr />
-                    <BulkAssignmentPanel
-                      targets={MCP_TARGETS}
-                      disabled={busy}
-                      onToggle={bulkAssign}
-                      dialogOriginRef={dialogOriginRef}
-                    />
                   </section>
                 )}
               </SplitPanes>

@@ -1,3 +1,4 @@
+import { SessionEvidenceDetails } from "./SessionEvidenceDetails";
 import { useState, useEffect, useRef } from "react";
 import { WarningIcon } from "@phosphor-icons/react/dist/csr/Warning";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
@@ -438,6 +439,12 @@ export function ExportPreviewDialog({
                 问答纯文本预览 (首个会话样例)：
               </label>
               <div className="fy-pure-text-box">{samplePreview}</div>
+              {previewedSessions.map((session) => (
+                <SessionEvidenceDetails
+                  key={session.snapshotId}
+                  preview={session}
+                />
+              ))}
             </div>
           </>
         )}

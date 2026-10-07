@@ -8,35 +8,11 @@ fn merge_settings_for_save(
     mut incoming: crate::settings::AppSettings,
     existing: &crate::settings::AppSettings,
 ) -> crate::settings::AppSettings {
-    match (&mut incoming.webdav_sync, &existing.webdav_sync) {
-        // incoming 没有 webdav → 保留现有
-        (None, _) => {
-            incoming.webdav_sync = existing.webdav_sync.clone();
-        }
-        // incoming 有 webdav 但密码为空，且现有有密码 → 填回现有密码
-        // （get_settings_for_frontend 总是清空密码，所以通过 save_settings
-        //   传入的空密码意味着"保持现有"而非"用户主动清空"）
-        (Some(incoming_sync), Some(existing_sync))
-            if incoming_sync.password.is_empty() && !existing_sync.password.is_empty() =>
-        {
-            incoming_sync.password = existing_sync.password.clone();
-        }
-        _ => {}
-    }
-    match (&mut incoming.s3_sync, &existing.s3_sync) {
-        // incoming 没有 s3 → 保留现有
-        (None, _) => {
-            incoming.s3_sync = existing.s3_sync.clone();
-        }
-        // incoming 有 s3 但密钥为空，且现有有密钥 → 填回现有密钥
-        (Some(incoming_sync), Some(existing_sync))
-            if incoming_sync.secret_access_key.is_empty()
-                && !existing_sync.secret_access_key.is_empty() =>
-        {
-            incoming_sync.secret_access_key = existing_sync.secret_access_key.clone();
-        }
-        _ => {}
-    }
+    // Cloud sync is retired. Ignore any renderer payload and preserve the
+    // entire legacy JSON value, including credentials and unknown fields.
+    incoming.webdav_sync = existing.webdav_sync.clone();
+    incoming.s3_sync = existing.s3_sync.clone();
+    incoming.webdav_backup = existing.webdav_backup.clone();
     // local_migrations 是纯后端状态（迁移完成标记），前端没有合法的修改场景，
     // 无条件取现有值。若按 incoming 透传：后端清掉 marker（如关闭统一会话
     // 开关）后、前端 query 缓存刷新前的一次全量保存会把旧 marker 重放回来，
@@ -292,186 +268,35 @@ mod tests {
     use super::merge_settings_for_save;
     use crate::settings::{
         AppSettings, CodexOfficialHistoryUnifyMigration, CodexProviderTemplateMigration,
-        CodexThirdPartyHistoryProviderBucketMigration, LocalMigrations, S3SyncSettings,
-        WebDavSyncSettings,
+        CodexThirdPartyHistoryProviderBucketMigration, LocalMigrations,
     };
 
     #[test]
-    fn save_settings_should_preserve_existing_webdav_when_payload_omits_it() {
+    fn save_settings_preserves_retired_cloud_values_even_when_payload_replaces_them() {
         let existing = AppSettings {
-            webdav_sync: Some(WebDavSyncSettings {
-                base_url: "https://dav.example.com".to_string(),
-                username: "alice".to_string(),
-                password: "secret".to_string(),
-                ..WebDavSyncSettings::default()
-            }),
+            webdav_sync: Some(
+                serde_json::json!({"enabled": true, "autoSync": true, "password": "synthetic", "extra": [1, 2]}),
+            ),
+            s3_sync: Some(
+                serde_json::json!({"enabled": true, "autoSync": true, "secretAccessKey": "synthetic", "extra": {"x": 1}}),
+            ),
+            webdav_backup: Some(serde_json::json!({"legacy": true})),
             ..AppSettings::default()
         };
-
-        let incoming = AppSettings::default();
-        let merged = merge_settings_for_save(incoming, &existing);
-
-        assert!(merged.webdav_sync.is_some());
-        assert_eq!(
-            merged.webdav_sync.as_ref().map(|v| v.base_url.as_str()),
-            Some("https://dav.example.com")
-        );
-    }
-
-    #[test]
-    fn save_settings_should_keep_incoming_webdav_when_present() {
-        let existing = AppSettings {
-            webdav_sync: Some(WebDavSyncSettings {
-                base_url: "https://dav.old.example.com".to_string(),
-                username: "old".to_string(),
-                password: "old-pass".to_string(),
-                ..WebDavSyncSettings::default()
-            }),
-            ..AppSettings::default()
-        };
-
-        let incoming = AppSettings {
-            webdav_sync: Some(WebDavSyncSettings {
-                base_url: "https://dav.new.example.com".to_string(),
-                username: "new".to_string(),
-                password: "new-pass".to_string(),
-                ..WebDavSyncSettings::default()
-            }),
-            ..AppSettings::default()
-        };
-
-        let merged = merge_settings_for_save(incoming, &existing);
-
-        assert_eq!(
-            merged.webdav_sync.as_ref().map(|v| v.base_url.as_str()),
-            Some("https://dav.new.example.com")
-        );
-    }
-
-    /// Regression test: frontend always receives empty password from
-    /// get_settings_for_frontend(). If a component accidentally spreads
-    /// the full settings object into save_settings, the empty password
-    /// must NOT overwrite the existing one.
-    #[test]
-    fn save_settings_should_preserve_password_when_incoming_has_empty_password() {
-        let existing = AppSettings {
-            webdav_sync: Some(WebDavSyncSettings {
-                base_url: "https://dav.example.com".to_string(),
-                username: "alice".to_string(),
-                password: "secret".to_string(),
-                ..WebDavSyncSettings::default()
-            }),
-            ..AppSettings::default()
-        };
-
-        // Simulate frontend sending settings with cleared password
-        let incoming = AppSettings {
-            webdav_sync: Some(WebDavSyncSettings {
-                base_url: "https://dav.example.com".to_string(),
-                username: "alice".to_string(),
-                password: "".to_string(),
-                ..WebDavSyncSettings::default()
-            }),
-            ..AppSettings::default()
-        };
-
-        let merged = merge_settings_for_save(incoming, &existing);
-
-        assert_eq!(
-            merged.webdav_sync.as_ref().map(|v| v.password.as_str()),
-            Some("secret"),
-            "empty password from frontend must not overwrite existing password"
-        );
-    }
-
-    /// When both incoming and existing have no password, merge should
-    /// work without panicking and keep the empty state.
-    #[test]
-    fn save_settings_should_handle_both_empty_passwords() {
-        let existing = AppSettings {
-            webdav_sync: Some(WebDavSyncSettings {
-                base_url: "https://dav.example.com".to_string(),
-                username: "alice".to_string(),
-                password: "".to_string(),
-                ..WebDavSyncSettings::default()
-            }),
-            ..AppSettings::default()
-        };
-
-        let incoming = AppSettings {
-            webdav_sync: Some(WebDavSyncSettings {
-                base_url: "https://dav.example.com".to_string(),
-                username: "alice".to_string(),
-                password: "".to_string(),
-                ..WebDavSyncSettings::default()
-            }),
-            ..AppSettings::default()
-        };
-
-        let merged = merge_settings_for_save(incoming, &existing);
-
-        assert_eq!(
-            merged.webdav_sync.as_ref().map(|v| v.password.as_str()),
-            Some("")
-        );
-    }
-
-    #[test]
-    fn save_settings_should_preserve_existing_s3_when_payload_omits_it() {
-        let existing = AppSettings {
-            s3_sync: Some(S3SyncSettings {
-                bucket: "bucket".to_string(),
-                access_key_id: "ak".to_string(),
-                secret_access_key: "secret".to_string(),
-                ..S3SyncSettings::default()
-            }),
-            ..AppSettings::default()
-        };
-
-        let incoming = AppSettings::default();
-        let merged = merge_settings_for_save(incoming, &existing);
-
-        assert!(merged.s3_sync.is_some());
-        assert_eq!(
-            merged
-                .s3_sync
-                .as_ref()
-                .map(|v| v.secret_access_key.as_str()),
-            Some("secret")
-        );
-    }
-
-    #[test]
-    fn save_settings_should_preserve_s3_secret_when_incoming_has_empty_secret() {
-        let existing = AppSettings {
-            s3_sync: Some(S3SyncSettings {
-                bucket: "bucket".to_string(),
-                access_key_id: "ak".to_string(),
-                secret_access_key: "secret".to_string(),
-                ..S3SyncSettings::default()
-            }),
-            ..AppSettings::default()
-        };
-
-        let incoming = AppSettings {
-            s3_sync: Some(S3SyncSettings {
-                bucket: "bucket".to_string(),
-                access_key_id: "ak".to_string(),
-                secret_access_key: "".to_string(),
-                ..S3SyncSettings::default()
-            }),
-            ..AppSettings::default()
-        };
-
-        let merged = merge_settings_for_save(incoming, &existing);
-
-        assert_eq!(
-            merged
-                .s3_sync
-                .as_ref()
-                .map(|v| v.secret_access_key.as_str()),
-            Some("secret")
-        );
+        for incoming in [
+            AppSettings::default(),
+            AppSettings {
+                webdav_sync: Some(serde_json::json!({"enabled": false})),
+                s3_sync: Some(serde_json::json!({"enabled": false})),
+                webdav_backup: Some(serde_json::json!({"legacy": false})),
+                ..AppSettings::default()
+            },
+        ] {
+            let merged = merge_settings_for_save(incoming, &existing);
+            assert_eq!(merged.webdav_sync, existing.webdav_sync);
+            assert_eq!(merged.s3_sync, existing.s3_sync);
+            assert_eq!(merged.webdav_backup, existing.webdav_backup);
+        }
     }
 
     #[test]

@@ -23,14 +23,12 @@ export interface StatusBannerProps {
   hasIncompleteTurn?: boolean;
   isCapabilityVerified?: boolean;
   capabilityReason?: string;
-  isCodexProbeWarning?: boolean;
   activeAttempt?: RestoreAttempt | null;
   structuredError?: SessionFailureFeedback | null;
   failureFeedback?: SessionFailureFeedback;
   onRetrySource?: () => void;
   onReviewRestore?: () => void;
   reviewingAttempts?: boolean;
-  onOpenAttestationModal?: () => void;
   onVerifyReadback?: () => void;
   verifyingReadback?: boolean;
 }
@@ -41,14 +39,12 @@ export function StatusBanners({
   hasIncompleteTurn,
   isCapabilityVerified = true,
   capabilityReason,
-  isCodexProbeWarning,
   activeAttempt,
   structuredError,
   failureFeedback,
   onRetrySource,
   onReviewRestore,
   reviewingAttempts,
-  onOpenAttestationModal,
   onVerifyReadback,
   verifyingReadback,
 }: StatusBannerProps) {
@@ -85,7 +81,7 @@ export function StatusBanners({
           </div>
           <div className="fy-status-banner-content">
             <div className="fy-status-banner-title">
-              最终答复待判定 · 强行阻断导出与恢复写入
+              最终答复待判定 · 此来源暂不可导出
             </div>
             <div className="fy-status-banner-desc">
               这段会话中有答复尚未完成或状态不明确，无法可靠确定最终答复原文。请等待答复完成后重新预览。
@@ -130,22 +126,6 @@ export function StatusBanners({
         </div>
       )}
 
-      {/* 4. Codex 0.154.0 探针警告 */}
-      {isCodexProbeWarning && (
-        <div className="fy-status-banner banner-info" role="status">
-          <div className="fy-status-banner-icon">
-            <InfoIcon size={20} weight="bold" />
-          </div>
-          <div className="fy-status-banner-content">
-            <div className="fy-status-banner-title">Codex 版本支持</div>
-            <div className="fy-status-banner-desc">
-              当前已验证 Codex 0.154.0
-              的历史恢复。请核对完整历史后再发送新消息。
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 5. 写入目标存储完成待验证 */}
       {stage === "nativeWritten" && (
         <div className="fy-status-banner banner-warning" role="status">
@@ -177,34 +157,26 @@ export function StatusBanners({
                 </Button>
               </div>
             )}
-            {/* 用户主观自报提示与按钮 */}
-            {activeAttempt?.userAttestation ? (
-              <div className="fy-user-attestation-notice">
-                <InfoIcon size={14} />
-                <span>
-                  用户自报标记：已手动确认续聊（
-                  {activeAttempt.userAttestation.note || "无备注"}
-                  ，记录于{" "}
-                  {new Date(
-                    activeAttempt.userAttestation.attestedAt,
-                  ).toLocaleTimeString()}
-                  ）。注：此为主观标记，不替代系统读回客观证据。
-                </span>
-              </div>
-            ) : (
-              onOpenAttestationModal && (
-                <div className="fy-banner-action-row" style={{ marginTop: 6 }}>
-                  <Button
-                    type="button"
-                    className="fy-control-button-subtle"
-                    onClick={onOpenAttestationModal}
-                  >
-                    <span>标记：我已手动续聊</span>
-                  </Button>
-                </div>
-              )
-            )}
           </div>
+        </div>
+      )}
+
+      {activeAttempt?.userAttestation && (
+        <div className="fy-user-attestation-notice" role="note">
+          <InfoIcon size={14} />
+          <span>
+            用户自报标记：已手动确认续聊， 记录于{" "}
+            {new Date(
+              activeAttempt.userAttestation.attestedAt,
+            ).toLocaleString()}
+            。 系统阶段保持回执记录；此标记不替代系统读回或真实回复证据。
+          </span>
+          {activeAttempt.userAttestation.note && (
+            <details>
+              <summary>用户备注</summary>
+              <div>{activeAttempt.userAttestation.note}</div>
+            </details>
+          )}
         </div>
       )}
 
@@ -217,7 +189,7 @@ export function StatusBanners({
           <div className="fy-status-banner-content">
             <div className="fy-status-banner-title">目标历史核验通过</div>
             <div className="fy-status-banner-desc">
-              目标软件已完整读取这段会话的原文。你可以打开会话并发送新消息，继续对话。
+              系统已通过目标原生读回核验这段会话的原文。打开软件、重启和真实续聊分别核验。
             </div>
           </div>
         </div>

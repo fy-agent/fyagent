@@ -11,7 +11,6 @@ import {
 
 const navigationContract = [
   { path: "/agents", label: "AI软件配置" },
-  { path: "/health", label: "运行状态" },
   { path: "/auth", label: "账号与认证" },
   { path: "/models", label: "模型管理" },
   { path: "/skills", label: "Skills 管理" },
@@ -30,7 +29,6 @@ const windowControlNames = ["最小化", "最大化/还原", "关闭"] as const;
 const primaryControlTestIds = [
   ...visibleControlTestIds,
   "#/agents",
-  "#/health",
   "#/auth",
   "configuration-management-toggle",
   "#/models",

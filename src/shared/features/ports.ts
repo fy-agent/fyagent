@@ -86,7 +86,6 @@ import type { AgentAuthPort } from "./agent-auth";
 import type { ManagedAuthPort } from "./managed-auth";
 import type { ChangePlansPort } from "./change-plans";
 import type { GrokToolingPort } from "./grok-tooling";
-import type { HealthPort } from "./health";
 
 export interface AgentCatalogPort {
   get(): Promise<AgentCatalogResult>;
@@ -292,7 +291,6 @@ export interface MemoryPort {
 export interface FeaturePorts {
   configPack: import("./config-pack").ConfigPackPort;
   databaseRecovery: import("./database-recovery").DatabaseRecoveryPort;
-  health: HealthPort;
   configRecovery: import("./config-recovery").ConfigRecoveryPort;
   catalog: AgentCatalogPort;
   agentAuth: AgentAuthPort;

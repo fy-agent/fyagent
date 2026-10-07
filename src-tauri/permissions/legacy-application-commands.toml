@@ -2,7 +2,6 @@
 identifier = "allow-legacy-application-commands"
 description = "Preserves the complete pre-ACL local application command surface while feature-specific commands migrate to narrow permissions."
 commands.allow = [
-  "get_agent_health",
   "add_custom_endpoint",
   "add_provider",
   "add_provider_with_result",
@@ -254,11 +253,6 @@ commands.allow = [
   "restore_env_backup",
   "restore_skill_backup",
   "run_tool_lifecycle_action",
-  "s3_sync_download",
-  "s3_sync_fetch_remote_info",
-  "s3_sync_save_settings",
-  "s3_sync_upload",
-  "s3_test_connection",
   "save_file_dialog",
   "save_models_dev_sync_config",
   "save_opencode_models",
@@ -336,11 +330,6 @@ commands.allow = [
   "upsert_prompt",
   "upsert_universal_provider",
   "validate_mcp_command",
-  "webdav_sync_download",
-  "webdav_sync_fetch_remote_info",
-  "webdav_sync_save_settings",
-  "webdav_sync_upload",
-  "webdav_test_connection",
   "write_daily_memory_file",
   "write_workspace_file",
 ]

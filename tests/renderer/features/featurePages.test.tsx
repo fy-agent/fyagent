@@ -509,7 +509,9 @@ describe("MCP management", () => {
     };
     const ports = createBrowserFeaturePorts();
     ports.mcp.getAll = async () => ({ docs: server });
-    ports.mcp.toggleApp = vi.fn(async () => undefined);
+    ports.mcp.toggleApp = vi.fn(async (_id, target, enabled) => {
+      server.apps[target] = enabled;
+    });
 
     renderFeature(<McpPage />, ports);
     await screen.findByRole("heading", { name: "Docs server" });
@@ -561,19 +563,27 @@ describe("MCP management", () => {
     try {
       renderFeature(<McpPage />, ports);
       await screen.findByRole("heading", { name: "Docs server" });
-      const workBuddyBulkRow = screen
-        .getByText("WorkBuddy", {
-          selector: ".fy-feature-assignment > span:first-child",
-        })
-        .closest(".fy-feature-assignment");
-      expect(workBuddyBulkRow).not.toBeNull();
-      await user.click(
-        within(workBuddyBulkRow as HTMLElement).getByRole("button", {
-          name: "全开",
-        }),
+      await user.click(screen.getByRole("button", { name: "批量分配" }));
+      const bulkDialog = screen.getByRole("dialog", { name: "MCP 批量分配" });
+      await user.selectOptions(
+        within(bulkDialog).getByRole("combobox", { name: "目标软件" }),
+        "workbuddy",
       );
-
-      expect(await screen.findByText("批量分配完成")).toBeVisible();
+      await user.click(
+        within(bulkDialog).getByRole("button", { name: "选择筛选结果" }),
+      );
+      await user.click(
+        within(bulkDialog).getByRole("button", { name: "预览所选 · 1" }),
+      );
+      await user.click(
+        within(bulkDialog).getByRole("button", { name: "确认执行 · 1" }),
+      );
+      expect(
+        await within(bulkDialog).findByText("完成：分配状态已读回"),
+      ).toBeVisible();
+      await user.click(
+        within(bulkDialog).getByRole("button", { name: "关闭" }),
+      );
       expect(ports.mcp.toggleApp).not.toHaveBeenCalled();
       expect(
         screen.queryByRole("dialog", {
@@ -1023,7 +1033,14 @@ describe("Skills management", () => {
     ).toEqual(SKILL_TARGETS.map((app) => `${app.label} Skill 分配`));
 
     await user.click(
-      within(dialog).getByRole("button", { name: "导入所选 · 1" }),
+      within(dialog).getByRole("checkbox", { name: "选择 Review Skill" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "预览导入 · 1" }),
+    );
+    expect(importFromApps).not.toHaveBeenCalled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "确认导入 · 1" }),
     );
     await waitFor(() => expect(importFromApps).toHaveBeenCalledTimes(1));
     expect(importFromApps).toHaveBeenCalledWith([
@@ -1039,6 +1056,15 @@ describe("Skills management", () => {
         }),
       },
     ]);
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole("button", { name: "取消" }),
+      ).toBeEnabled(),
+    );
+    expect(dialog).toHaveTextContent(
+      "导入未完成；可重新选择仍未管理的项目并预览重试。",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
     await user.click(screen.getByRole("tab", { name: "发现" }));
     expect(screen.queryByText("尚未配置仓库")).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "仓库" })).not.toBeInTheDocument();

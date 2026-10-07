@@ -43,7 +43,7 @@ portable import previews, explicit save confirmation and typed-port readback.
 | [Change Plan Workspaces](./change-plan-workspaces.md)               | Preview/apply, source switching, job observation and reconciliation.                |
 | [Agent Directory](./agent-directory.md)                             | Catalog, scan/readiness, cards, installation and capabilities.                      |
 | [First-use Guide](./first-use-guide.md)                             | Skippable purpose recommendations, native eligibility and completion.               |
-| [Agent Health](./health.md)                                         | Local check snapshots, stale facts, serial refresh and existing repair routes.      |
+| [Agent Health](./health.md)                                         | Retired standalone page; retained domain owners and bookmark fallback.              |
 | [External Agent Auth](./agent-auth.md)                              | Native auth observations, session ownership and safe handoff.                       |
 | [Managed Auth](./managed-auth.md)                                   | Accounts/connections/request sources, login and impact confirmation.                |
 | [Managed Auth Login](./managed-auth-login.md)                       | Stage-aware session parsing, startup errors, polling and dialog cancellation.       |

@@ -122,9 +122,9 @@ const IMPORT_ALLOWED_PRAGMAS: &[&str] = &["foreign_keys", "user_version"];
 ///
 /// 头部校验（`validate_fyagent_sql_export`）只比较一个注释前缀，任何人都能在
 /// 合法前缀后面接着写别的语句。`ATTACH DATABASE '/path/x.db'` 的副作用发生在
-/// `validate_basic_state` 之前，导入即使最终失败，文件也已经被创建；而 `settings`
-/// 表不在 `SYNC_SKIP_TABLES` / `SYNC_PRESERVE_TABLES` 之列，WebDAV/S3 同步会走
-/// 同一条 `import_sql_string_inner`，所以这条路径的输入不可信。
+/// `validate_basic_state` 之前，导入即使最终失败，文件也已经被创建。
+/// Ordinary SQL import executes untrusted statements before candidate validation;
+/// the authorizer must reject all actions that escape the temporary database.
 ///
 /// 为什么是 authorizer 而不是「扫描 ATTACH 关键字」：字符串扫描会被 `/*x*/ATTACH`、
 /// 大小写、换行绕过，还漏掉 `VACUUM INTO`。authorizer 在 prepare 阶段按**解析结果**
@@ -167,49 +167,12 @@ fn import_authorizer(context: rusqlite::hooks::AuthContext<'_>) -> rusqlite::hoo
 
 pub(crate) use super::retired_customer_projects::RETIRED_MODULE_TABLES;
 
-/// Tables whose data rows are skipped when exporting for WebDAV sync.
-const SYNC_SKIP_TABLES: &[&str] = &[
-    "proxy_request_logs",
-    "stream_check_logs",
-    "provider_health",
-    "proxy_live_backup",
-    "usage_daily_rollups",
-    "change_plans",
-    "change_jobs",
-    "change_job_events",
-    "managed_auth_identities",
-    "managed_auth_credentials",
-    "managed_auth_defaults",
-    "managed_auth_connections",
-    "managed_auth_migrations",
-    "provider_credentials",
-    "session_restore_attempts",
-];
-
 /// Session migration receipts are bound to one installation and one target
 /// store. Copying them to another device would let a foreign row occupy a
 /// local idempotency slot, so they are excluded from ordinary SQL export and
-/// preserved on ordinary SQL import as well, not only on sync.
+/// preserved on ordinary SQL import as well. Cloud transport retirement does
+/// not change this device-local receipt contract.
 const LOCAL_ONLY_RECEIPT_TABLES: &[&str] = &["session_restore_attempts"];
-
-/// Tables whose local data is preserved (restored from local snapshot) during WebDAV import.
-/// Excludes ephemeral tables like provider_health that can safely rebuild at runtime.
-const SYNC_PRESERVE_TABLES: &[&str] = &[
-    "proxy_request_logs",
-    "stream_check_logs",
-    "proxy_live_backup",
-    "usage_daily_rollups",
-    "change_plans",
-    "change_jobs",
-    "change_job_events",
-    "managed_auth_identities",
-    "managed_auth_credentials",
-    "managed_auth_defaults",
-    "managed_auth_connections",
-    "managed_auth_migrations",
-    "provider_credentials",
-    "session_restore_attempts",
-];
 
 /// A database backup entry for the UI
 #[derive(Debug, serde::Serialize)]
@@ -233,13 +196,6 @@ impl Database {
                 "session_restore_attempts",
             ],
         )
-    }
-
-    /// Export SQL for sync (WebDAV), skipping local-only tables' data
-    pub fn export_sql_string_for_sync(&self) -> Result<String, AppError> {
-        let snapshot = self.snapshot_to_memory()?;
-        Self::sanitize_provider_export(&snapshot)?;
-        Self::dump_sql(&snapshot, SYNC_SKIP_TABLES)
     }
 
     // Ordinary SQL exports are portable configuration, unlike private binary
@@ -334,12 +290,6 @@ impl Database {
     /// 从 SQL 字符串导入，返回生成的备份 ID（若无备份则为空字符串）
     pub fn import_sql_string(&self, sql_raw: &str) -> Result<String, AppError> {
         self.import_sql_string_inner(sql_raw, LOCAL_ONLY_RECEIPT_TABLES)
-    }
-
-    /// Import SQL generated for sync, then restore local-only tables from the
-    /// current device snapshot before replacing the main database.
-    pub(crate) fn import_sql_string_for_sync(&self, sql_raw: &str) -> Result<String, AppError> {
-        self.import_sql_string_inner(sql_raw, SYNC_PRESERVE_TABLES)
     }
 
     fn import_sql_string_inner(
@@ -1554,6 +1504,8 @@ mod tests {
 
     impl TestHomeGuard {
         fn new() -> Self {
+            #[cfg(target_os = "windows")]
+            crate::initialize_windows_user_context().expect("initialize Windows test user context");
             let temp_dir = tempfile::tempdir().expect("create isolated test home");
             let previous_test_home = std::env::var_os("FYAGENT_TEST_HOME");
             std::env::set_var("FYAGENT_TEST_HOME", temp_dir.path());
@@ -1589,10 +1541,9 @@ mod tests {
     }
 
     #[test]
-    fn retired_customer_project_tables_are_not_sync_skip_or_preserve() {
+    fn retired_customer_project_tables_are_not_local_receipt_preserve() {
         for table in super::RETIRED_MODULE_TABLES {
-            assert!(!super::SYNC_SKIP_TABLES.contains(table), "{table}");
-            assert!(!super::SYNC_PRESERVE_TABLES.contains(table), "{table}");
+            assert!(!super::LOCAL_ONLY_RECEIPT_TABLES.contains(table), "{table}");
         }
     }
 
@@ -2306,10 +2257,8 @@ mod tests {
     fn provider_export_rejects_non_json_storage_without_mutating_source() -> Result<(), AppError> {
         let source = Database::memory()?;
         source.conn.lock().unwrap().execute_batch("INSERT INTO providers (id, app_type, name, settings_config, meta) VALUES ('corrupt-provider', 'codex', 'Fixture', X'00FF10', '{}');")?;
-        for result in [
-            source.export_sql_string(),
-            source.export_sql_string_for_sync(),
-        ] {
+        {
+            let result = source.export_sql_string();
             assert_eq!(
                 result.unwrap_err().to_string(),
                 AppError::Database("provider_export_failed".into()).to_string()
@@ -2326,7 +2275,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn sync_import_preserves_local_only_tables() -> Result<(), AppError> {
+    fn sql_import_roundtrips_logs_without_exporting_live_backup() -> Result<(), AppError> {
         let _test_home = TestHomeGuard::new();
         let remote_db = Database::memory()?;
         {
@@ -2355,7 +2304,7 @@ mod tests {
                  ) VALUES ('remote-provider', 'claude', 0, 9, '2099-01-01');",
             )?;
         }
-        let remote_sql = remote_db.export_sql_string_for_sync()?;
+        let remote_sql = remote_db.export_sql_string()?;
         let exported = Connection::open_in_memory()?;
         exported.execute_batch(&remote_sql)?;
         let skipped_counts: (i64, i64, i64, i64, i64) = exported.query_row(
@@ -2376,7 +2325,7 @@ mod tests {
                 ))
             },
         )?;
-        assert_eq!(skipped_counts, (0, 0, 0, 0, 0));
+        assert_eq!(skipped_counts, (1, 1, 1, 0, 1));
 
         let local_db = Database::memory()?;
         {
@@ -2406,7 +2355,7 @@ mod tests {
             )?;
         }
 
-        local_db.import_sql_string_for_sync(&remote_sql)?;
+        local_db.import_sql_string(&remote_sql)?;
 
         let conn = crate::database::lock_conn!(local_db.conn);
         let providers = conn
@@ -2426,8 +2375,8 @@ mod tests {
         )?;
         assert_eq!(
             preserved_counts,
-            (1, 1, 1, 1),
-            "同步导入必须替换配置，同时保留本机日志与 Live 备份"
+            (1, 1, 0, 1),
+            "ordinary SQL import replaces logs and excludes private live backups"
         );
 
         let preserved_values: (String, String, i64, String, i64, String, i64) = conn.query_row(
@@ -2455,30 +2404,21 @@ mod tests {
         assert_eq!(
             preserved_values,
             (
-                "req-1".into(),
-                "claude-3".into(),
-                100,
-                "2026-03-01".into(),
-                7,
-                "local-ok".into(),
-                42,
+                "remote-request".into(),
+                "remote-model".into(),
+                1,
+                "2099-01-01".into(),
+                1,
+                "remote".into(),
+                1,
             )
         );
 
-        let live_backup: (String, String) = conn.query_row(
-            "SELECT original_config, backed_up_at FROM proxy_live_backup WHERE app_type = 'claude'",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        assert_eq!(
-            live_backup,
-            ("{\"local\":true}".into(), "2026-03-01".into())
-        );
         let provider_health_count: i64 =
             conn.query_row("SELECT COUNT(*) FROM provider_health", [], |row| row.get(0))?;
         assert_eq!(
-            provider_health_count, 0,
-            "同步导入应清除可重建的本地 provider_health 状态"
+            provider_health_count, 1,
+            "ordinary SQL import roundtrips exported provider health"
         );
         Ok(())
     }
@@ -2552,12 +2492,13 @@ mod tests {
 
     #[test]
     #[serial]
-    fn sync_skips_and_preserves_all_change_plan_ledger_rows() -> Result<(), AppError> {
+    fn sql_roundtrips_all_change_plan_ledger_rows() -> Result<(), AppError> {
+        let _test_home = TestHomeGuard::new();
         fn insert_ledger(db: &Database, suffix: &str) -> Result<(), AppError> {
             let conn = crate::database::lock_conn!(db.conn);
             conn.execute(
                 "INSERT INTO providers (id, app_type, name, settings_config, meta)
-                 VALUES (?1, 'codex', 'Sync Fixture', '{}', '{}')",
+                 VALUES (?1, 'codex', 'SQL Fixture', '{}', '{}')",
                 [format!("provider-{suffix}")],
             )?;
             conn.execute(
@@ -2592,9 +2533,9 @@ mod tests {
 
         let remote = Database::memory()?;
         insert_ledger(&remote, "remote")?;
-        let sync_sql = remote.export_sql_string_for_sync()?;
+        let sql = remote.export_sql_string()?;
         let exported = Connection::open_in_memory()?;
-        exported.execute_batch(&sync_sql)?;
+        exported.execute_batch(&sql)?;
         let exported_counts: (i64, i64, i64) = exported.query_row(
             "SELECT
                 (SELECT COUNT(*) FROM change_plans),
@@ -2603,11 +2544,11 @@ mod tests {
             [],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
-        assert_eq!(exported_counts, (0, 0, 0));
+        assert_eq!(exported_counts, (1, 1, 1));
 
         let local = Database::memory()?;
         insert_ledger(&local, "local")?;
-        local.import_sql_string_for_sync(&sync_sql)?;
+        local.import_sql_string(&sql)?;
         let conn = crate::database::lock_conn!(local.conn);
         let preserved: (String, String, String) = conn.query_row(
             "SELECT
@@ -2619,7 +2560,11 @@ mod tests {
         )?;
         assert_eq!(
             preserved,
-            ("plan-local".into(), "job-local".into(), "job-local".into())
+            (
+                "plan-remote".into(),
+                "job-remote".into(),
+                "job-remote".into()
+            )
         );
         Ok(())
     }
@@ -2640,12 +2585,13 @@ mod tests {
 
     #[test]
     #[serial]
-    fn sync_skips_and_preserves_managed_auth_metadata_rows() -> Result<(), AppError> {
+    fn sql_roundtrips_managed_auth_metadata_without_token_columns() -> Result<(), AppError> {
+        let _test_home = TestHomeGuard::new();
         fn insert_managed_auth(db: &Database, suffix: &str) -> Result<(), AppError> {
             let conn = crate::database::lock_conn!(db.conn);
             conn.execute(
                 "INSERT INTO providers (id, app_type, name, settings_config, meta)
-                 VALUES (?1, 'codex', 'Sync Fixture', '{}', '{}')",
+                 VALUES (?1, 'codex', 'SQL Fixture', '{}', '{}')",
                 [format!("provider-{suffix}")],
             )?;
             let identity_id = format!("ma1:{suffix:0<32}");
@@ -2687,13 +2633,13 @@ mod tests {
 
         let remote = Database::memory()?;
         insert_managed_auth(&remote, "remote")?;
-        let sync_sql = remote.export_sql_string_for_sync()?;
+        let sql = remote.export_sql_string()?;
         assert!(
-            !sync_sql.to_ascii_lowercase().contains("access_token"),
-            "sync export must not invent token columns"
+            !sql.to_ascii_lowercase().contains("access_token"),
+            "SQL export must not invent token columns"
         );
         let exported = Connection::open_in_memory()?;
-        exported.execute_batch(&sync_sql)?;
+        exported.execute_batch(&sql)?;
         let exported_counts: (i64, i64, i64) = exported.query_row(
             "SELECT
                 (SELECT COUNT(*) FROM managed_auth_identities),
@@ -2702,11 +2648,11 @@ mod tests {
             [],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
-        assert_eq!(exported_counts, (0, 0, 0));
+        assert_eq!(exported_counts, (1, 1, 1));
 
         let local = Database::memory()?;
         insert_managed_auth(&local, "local")?;
-        local.import_sql_string_for_sync(&sync_sql)?;
+        local.import_sql_string(&sql)?;
         let conn = crate::database::lock_conn!(local.conn);
         let preserved: (String, String) = conn.query_row(
             "SELECT
@@ -2717,13 +2663,13 @@ mod tests {
         )?;
         assert_eq!(
             preserved,
-            ("person@example.com".into(), "legacy-local".into())
+            ("person@example.com".into(), "legacy-remote".into())
         );
         Ok(())
     }
 
     /// 性能基准（不是回归测试）：用接近重度代理用户的行数测量
-    /// 导出 / 本地文件导入 / 同步导入三条路径的耗时与产物大小。
+    /// Measure ordinary SQL export and import on a populated local database.
     ///
     /// 手动运行：`cargo test --lib perf_backup -- --ignored --nocapture`
     #[test]
@@ -2826,16 +2772,16 @@ mod tests {
             );
         }
 
-        let sync_sql = source.export_sql_string_for_sync()?;
-        println!("sync payload: {} bytes", sync_sql.len());
+        let portable_sql = source.export_sql_string()?;
+        println!("portable SQL payload: {} bytes", portable_sql.len());
 
-        // 同步导入的耗时大头在“保留本机日志表”——本机库必须带同样规模的日志行。
+        // Exercise ordinary SQL replacement with an already populated target.
         let local = Database::memory()?;
         populate(&local, LOG_ROWS, STREAM_ROWS, ROLLUP_ROWS)?;
         let t = Instant::now();
-        local.import_sql_string_for_sync(&sync_sql)?;
+        local.import_sql_string(&portable_sql)?;
         println!(
-            "import_sql_string_for_sync ({} preserved log rows): {:?}",
+            "import_sql_string ({} imported log rows): {:?}",
             LOG_ROWS + STREAM_ROWS + ROLLUP_ROWS,
             t.elapsed()
         );
