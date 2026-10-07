@@ -383,7 +383,7 @@
     ],
     [
       "src-tauri/src/settings.rs",
-      "721d224a40efc77ad649745472e8b6c6158e16bf5fc5ea73571c0ee7988f9ffe"
+      "49e288cf4d34778d1d75ef0beb147ef31bbf26278adcc8423a73483682acb521"
     ],
     [
       "src-tauri/src/tray.rs",
