@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "b797a871d74fd764cc39e644d0a30039b057b540f7e89d2f4be3dfc0e0c60ea4"
+      "060191875590307fccade6ca389b994b9e11f49caacf7a953726fe74c795bf61"
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
@@ -291,11 +291,11 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "ef9cf33accd1d2fa64d88a4f60b41f6ada7e827fe159507ee9417290d26e2a79"
+      "5c9fe5a0d13245a326ad9c3204ef5c115613a314fbb4ee6c31270eb83562f194"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",
-      "b546fbf6c753f40e5bf8c0b9565edc0072e413ce579040e801aaefac31e32fd1"
+      "ab7f925f87a244702ff3d1631f9925243f50f266b39ea92236ea5476b650e109"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",

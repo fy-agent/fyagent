@@ -1369,11 +1369,13 @@ mod tests {
         }
     }
 
+    /// Characterization of the current directory mapping. The input is already
+    /// `unavailable: true, unconfirmed: false`, which is what a helper error
+    /// with no platform code becomes today. This does not require quarantine
+    /// itself to render as unavailable. Update this test together with the
+    /// helper mapping when that classification is fixed.
     #[test]
-    fn quarantined_helper_observation_is_unavailable_without_install() {
-        // Current mapping: no platform code → not unconfirmed → CliObservation
-        // { unavailable: true, unconfirmed: false }. The directory card is
-        // therefore「当前不可用」and Install is withheld.
+    fn unavailable_unconfirmed_false_observation_has_no_install() {
         for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::GrokBuild] {
             let observation = cli::CliObservation {
                 detected: false,

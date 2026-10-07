@@ -2991,22 +2991,11 @@ mod tests {
         assert!(!WINDOWS_HELPER_UNCONFIRMED_MESSAGE.contains("unavailable"));
     }
 
-    #[test]
-    fn helper_quarantine_and_pre_handshake_close_are_not_unconfirmed_outcomes() {
-        // helper_quarantine_error() and helper_pipe_error() publish
-        // WindowsDeploymentFailed with no platform code. Grok then reports
-        // the unavailable sentence below; Claude reports VerificationFailed.
-        // Neither string is the unconfirmed observation.
-        assert!(!windows_helper_left_state_unconfirmed(None));
-        assert_ne!(
-            "Grok Build is unavailable for the current Windows user.",
-            WINDOWS_HELPER_UNCONFIRMED_MESSAGE
-        );
-        assert_ne!(
-            "无法确认 Claude Code 已安装到指定版本，请刷新安装状态。",
-            WINDOWS_HELPER_UNCONFIRMED_MESSAGE
-        );
-    }
+    // Quarantine and a pre-handshake pipe close publish WindowsDeploymentFailed
+    // with no platform code. `windows_helper_left_state_unconfirmed(None)` is
+    // already false above, so repeating it here and comparing the Grok/Claude
+    // fallback sentences would not show that a helper failure produced them.
+    // Those mappings are asserted in `tooling/grok.rs` and `tooling/claude.rs`.
 
     /// Quarantine and a pipe close before admission currently carry no platform
     /// code, so the classifier above returns false and the card becomes
