@@ -784,15 +784,22 @@ pub async fn apply_provider_quick_setup_with_result(
     let app_type = parse_provider_draft_app(&app).map_err(|_| {
         ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
     })?;
+    if app_type == AppType::Claude {
+        return Err(ProviderQuickSetupCommandError::new(
+            QuickSetupApplyFailureCode::ApplyFailedRolledBack,
+        ));
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app_handle.try_state::<AppState>().ok_or_else(|| {
             ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
         })?;
         let provider = request.into_provider(&app_type)?;
-        ProviderService::apply_quick_setup(state.inner(), app_type, provider).map_err(|error| {
-            log::error!("Provider quick setup failed: {error}");
-            ProviderQuickSetupCommandError::new(error.code)
-        })
+        ProviderService::apply_legacy_quick_setup(state.inner(), app_type, provider).map_err(
+            |error| {
+                log::error!("Provider quick setup failed: {error}");
+                ProviderQuickSetupCommandError::new(error.code)
+            },
+        )
     })
     .await
     .map_err(|error| {

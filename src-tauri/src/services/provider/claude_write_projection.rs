@@ -851,4 +851,38 @@ mod tests {
             .unwrap()
             .is_some());
     }
+    #[test]
+    #[serial]
+    fn claude_legacy_request_entry_rejects_without_business_writes() {
+        let home = Home::new();
+        let state = home.state();
+        let settings = config::get_claude_settings_path();
+        let root = config::get_claude_mcp_path();
+        let before_settings = ProjectedFile::read(&settings).unwrap();
+        let before_root = ProjectedFile::read(&root).unwrap();
+        let local = crate::settings::get_current_provider(&AppType::Claude);
+        assert!(
+            ProviderService::apply_legacy_quick_setup(&state, AppType::Claude, provider()).is_err()
+        );
+        assert_eq!(ProjectedFile::read(&settings).unwrap(), before_settings);
+        assert_eq!(ProjectedFile::read(&root).unwrap(), before_root);
+        assert!(!config::get_claude_config_dir().exists());
+        assert!(state
+            .db
+            .get_provider_by_id(QUICK_SETUP_CLAUDE_PROVIDER_ID, "claude")
+            .unwrap()
+            .is_none());
+        assert!(state.db.get_current_provider("claude").unwrap().is_none());
+        assert_eq!(
+            crate::settings::get_current_provider(&AppType::Claude),
+            local
+        );
+        assert!(
+            futures::executor::block_on(state.db.get_live_backup("claude"))
+                .unwrap()
+                .is_none()
+        );
+        assert!(!config::rolling_backup_path(&settings).exists());
+        assert!(!config::rolling_backup_path(&root).exists());
+    }
 }

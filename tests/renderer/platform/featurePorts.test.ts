@@ -347,6 +347,11 @@ describe("Renderer feature ports", () => {
     await expect(
       ports.providers.applyClaudeQuickSetupPreview({ previewId }),
     ).rejects.toThrow();
+    invoke.mockClear();
+    await expect(
+      ports.providers.applyQuickSetupWithResult(request, "claude"),
+    ).rejects.toThrow("Claude 保存需要先预览");
+    expect(invoke).not.toHaveBeenCalled();
     const browser = createBrowserFeaturePorts();
     await expect(
       browser.providers.previewClaudeQuickSetup(request),

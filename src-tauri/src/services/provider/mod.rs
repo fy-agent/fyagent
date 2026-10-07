@@ -4935,6 +4935,21 @@ impl ProviderService {
         Self::apply_quick_setup_locked(state, app_type, provider)
     }
 
+    /// Legacy request-bearing IPC may no longer authorize a Claude file write.
+    /// Internal activation callers keep their existing domain transaction.
+    pub fn apply_legacy_quick_setup(
+        state: &AppState,
+        app_type: AppType,
+        provider: Provider,
+    ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        if app_type == AppType::Claude {
+            return Err(QuickSetupApplyError::rolled_back(
+                "Claude requires native preview consent",
+            ));
+        }
+        Self::apply_quick_setup(state, app_type, provider)
+    }
+
     /// Quick Setup writer for callers that already hold the per-app mutation
     /// guard. Change Plan upsert reuses this so admission and the single write
     /// stay under one lock without re-entering `lock_switch_for_app`.

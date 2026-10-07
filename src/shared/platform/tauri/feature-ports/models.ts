@@ -519,11 +519,14 @@ export function createModelFeaturePorts(): Pick<
         (
           await import("./managedSubscriptions")
         ).managedProviderPorts.restoreManagedProxy(app),
-      applyQuickSetupWithResult: (request, app) =>
-        invoke("apply_provider_quick_setup_with_result", {
+      applyQuickSetupWithResult: async (request, app) => {
+        if (app === "claude")
+          throw new Error("Claude 保存需要先预览并确认保存范围");
+        return invoke("apply_provider_quick_setup_with_result", {
           request: assertQuickSetupRequest(request, app),
           app,
-        }),
+        });
+      },
       fetchModels: async (baseUrl, apiKey) =>
         parseFetchedModelRefs(
           await invoke<unknown>("fetch_models_for_config", {
