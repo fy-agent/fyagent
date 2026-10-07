@@ -1973,6 +1973,10 @@ fn helper_quarantine_error() -> InstallerError {
 
 #[cfg(test)]
 mod tests {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle};
+
+    use windows::Win32::Foundation::GENERIC_WRITE;
+
     use super::*;
 
     const BRIDGE_IDENTITY: PinnedPackageIdentity = PinnedPackageIdentity::new(7, 11, 13);
@@ -2204,5 +2208,707 @@ mod tests {
         assert!(source.contains("OpenThreadToken"));
         assert!(!source.contains("OpenProcessToken"));
         assert!(source.contains("QueryFullProcessImageNameW"));
+    }
+
+    fn between<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+        source
+            .split_once(start)
+            .unwrap_or_else(|| panic!("missing start marker {start}"))
+            .1
+            .split_once(end)
+            .unwrap_or_else(|| panic!("missing end marker {end}"))
+            .0
+    }
+
+    fn unpinned_runner_source() -> &'static str {
+        between(
+            production_source(),
+            "fn run_unpinned_tool_helper(",
+            "\nimpl WindowsVerifiedFilePin",
+        )
+    }
+
+    /// Protocol-state classification only. These inputs are illegal frames, not
+    /// a closed pipe and not an exited helper process. The gate release for a
+    /// real pre-admission close is
+    /// `peer_half_close_before_admission_releases_the_next_request`.
+    #[test]
+    fn protocol_sequence_rejects_frames_before_hello_or_control() {
+        let action = UserHelperAction::CodexMsixInstall;
+        for message in [
+            started(BRIDGE_IDENTITY),
+            HelperMessage::Progress { completed: 1 },
+            HelperMessage::Success,
+            HelperMessage::error(HelperErrorCode::ParentCancelled),
+        ] {
+            let mut sequence = HelperProtocolSequence::default();
+            assert!(sequence.accept(message).is_err());
+            assert!(sequence.mark_control_sent().is_err());
+            assert!(sequence.mark_admitted().is_err());
+            assert!(sequence.terminal().is_none());
+        }
+
+        let mut after_hello = HelperProtocolSequence::default();
+        assert!(matches!(
+            after_hello
+                .accept(HelperMessage::Hello { action })
+                .unwrap(),
+            HelperProtocolAction::Hello(received) if received == action
+        ));
+        assert!(after_hello.accept(started(BRIDGE_IDENTITY)).is_err());
+        // A rejected frame must not skip the control step.
+        after_hello.mark_control_sent().unwrap();
+        assert!(after_hello.mark_admitted().is_err());
+        assert!(after_hello.terminal().is_none());
+
+        let mut control_without_hello = HelperProtocolSequence::default();
+        assert!(control_without_hello.mark_control_sent().is_err());
+        assert!(control_without_hello.terminal().is_none());
+    }
+
+    #[test]
+    fn broken_pipe_and_no_data_are_clean_disconnects() {
+        let broken = windows::core::Error::from_hresult(hresult_from_win32(ERROR_BROKEN_PIPE.0));
+        let no_data = windows::core::Error::from_hresult(hresult_from_win32(ERROR_NO_DATA.0));
+        let pending = windows::core::Error::from_hresult(hresult_from_win32(ERROR_IO_PENDING.0));
+        let already_exists =
+            windows::core::Error::from_hresult(hresult_from_win32(ERROR_ALREADY_EXISTS.0));
+        let pipe_connected =
+            windows::core::Error::from_hresult(hresult_from_win32(ERROR_PIPE_CONNECTED.0));
+        assert!(is_clean_pipe_disconnect(&broken));
+        assert!(is_clean_pipe_disconnect(&no_data));
+        assert!(!is_clean_pipe_disconnect(&pending));
+        assert!(!is_clean_pipe_disconnect(&already_exists));
+        assert!(!is_clean_pipe_disconnect(&pipe_connected));
+    }
+
+    #[test]
+    fn pipe_and_quarantine_errors_are_deployment_failures_without_platform_code() {
+        for message in [
+            "the user-helper operation timed out or disconnected",
+            "the user-helper pipe closed before a terminal message",
+            "the user-helper pipe closed before its identity was admitted",
+            "the user-helper pipe closed before tool admission",
+            "the user-helper pipe closed before bridge admission",
+        ] {
+            let error = helper_pipe_error(message);
+            let dto = error.to_dto();
+            assert_eq!(dto.code, InstallerErrorCode::WindowsDeploymentFailed);
+            assert_eq!(dto.details.platform_error_code, None);
+            assert_eq!(dto.details.redacted_message.as_deref(), Some(message));
+            assert_ne!(
+                platform_code(&error).as_deref(),
+                Some(HELPER_BUSY_PLATFORM_CODE)
+            );
+        }
+
+        let quarantine = helper_quarantine_error();
+        let dto = quarantine.to_dto();
+        assert_eq!(dto.code, InstallerErrorCode::WindowsDeploymentFailed);
+        assert_eq!(platform_code(&quarantine), None);
+        assert_eq!(
+            dto.details.redacted_message.as_deref(),
+            Some("a prior current-user helper lifetime remains retained without terminal proof")
+        );
+        assert_ne!(
+            dto.details.redacted_message.as_deref(),
+            Some("the user-helper operation timed out or disconnected")
+        );
+    }
+
+    /// Re-entry after `leave_helper_gate` on a local mutex. This is a normal
+    /// release, not a disconnected peer and not the process-global helper gate.
+    #[test]
+    fn helper_gate_accepts_the_next_request_after_normal_finish() {
+        let gate = Mutex::new(HelperGateState::<()>::Idle);
+        let released = Condvar::new();
+        enter_helper_gate(&gate, &released, Duration::ZERO).unwrap();
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Active));
+        leave_helper_gate(&gate, &released);
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Idle));
+
+        enter_helper_gate(&gate, &released, Duration::ZERO).unwrap();
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Active));
+        leave_helper_gate(&gate, &released);
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Idle));
+    }
+
+    /// The gate is constructed already `Quarantined`. This checks that state,
+    /// not a crash or a closed pipe moving the gate there. The transition is
+    /// `peer_half_close_after_admission_quarantines_the_next_request`.
+    #[test]
+    fn constructed_quarantine_rejects_the_next_request_immediately() {
+        let gate = Mutex::new(HelperGateState::Quarantined {
+            _lifetime: Box::new(()),
+        });
+        let released = Condvar::new();
+        let expected = helper_quarantine_error().to_dto();
+        for _ in 0..2 {
+            let started = Instant::now();
+            let error = enter_helper_gate(&gate, &released, Duration::from_secs(30)).unwrap_err();
+            assert!(started.elapsed() < Duration::from_secs(1));
+            assert_eq!(error.to_dto(), expected);
+            assert_eq!(platform_code(&error), None);
+            assert_ne!(
+                platform_code(&error).as_deref(),
+                Some(HELPER_BUSY_PLATFORM_CODE)
+            );
+        }
+        leave_helper_gate(&gate, &released);
+        assert!(matches!(
+            *gate.lock().unwrap(),
+            HelperGateState::Quarantined { .. }
+        ));
+        let error = enter_helper_gate(&gate, &released, Duration::from_secs(30)).unwrap_err();
+        assert_eq!(error.to_dto(), expected);
+    }
+
+    /// Source-contract evidence, not an executed disconnect. `production_source`
+    /// drops everything after `#[cfg(test)]`, then each assertion is limited to
+    /// one function body. Whitespace, newlines, and function order are part of
+    /// the contract. A real half-frame close is covered by the Windows pipe
+    /// fixtures below. `cancel_and_quarantine` parks forever, so the
+    /// post-admission fixture runs it in a child process.
+    #[test]
+    fn source_contract_pre_admission_close_releases_and_post_admission_close_quarantines() {
+        let source = production_source();
+        let read_frame = between(source, "fn read_frame(", "fn read_message(");
+        assert!(read_frame
+            .contains("is_clean_pipe_disconnect(&error) => return Ok(PipeFrameRead::Closed)"));
+        assert!(read_frame.contains("the user-helper pipe closed before a terminal message"));
+
+        let wait_read = between(
+            source,
+            "fn wait_for_pipe_read(",
+            "fn is_clean_pipe_disconnect(",
+        );
+        assert!(wait_read
+            .contains("is_clean_pipe_disconnect(&error) => Ok(PipeReadCompletion::Closed)"));
+        assert!(wait_read.contains("the user-helper operation timed out or disconnected"));
+
+        // Writes do not treat BROKEN_PIPE / NO_DATA as a clean close. Any
+        // overlapped write failure becomes the same timeout/disconnect error.
+        let wait_write = between(source, "fn wait_for_overlapped(", "enum PipeReadCompletion");
+        assert!(!wait_write.contains("is_clean_pipe_disconnect"));
+        assert!(wait_write.contains("the user-helper operation timed out or disconnected"));
+
+        let consume = between(
+            source,
+            "fn consume_protocol(",
+            "fn wait_for_clean_terminal_close(",
+        );
+        assert!(consume.contains("PipeMessageRead::Closed"));
+        assert!(consume.contains("the user-helper pipe closed before a terminal message"));
+
+        let release = between(
+            source,
+            "fn fail_before_admission(",
+            "fn log_helper_failure(",
+        );
+        assert!(release.contains("gate.finish()"));
+        assert!(!release.contains("quarantine"));
+        assert!(!release.contains("retain_quarantined_lifetime"));
+
+        let cancel = between(source, "fn cancel_and_quarantine(", "fn remaining_until(");
+        assert!(cancel.contains("debug_assert!(lifetime.admitted)"));
+        assert!(cancel.contains("gate.quarantine(lifetime, original_error)"));
+        assert!(!cancel.contains("gate.finish()"));
+        assert!(!cancel.contains("mark_settled"));
+
+        let retain = between(
+            source,
+            "fn retain_quarantined_lifetime(",
+            "struct HelperGateLease",
+        );
+        assert!(retain.contains("matches!(*state, HelperGateState::Active)"));
+        assert!(retain.contains("HelperGateState::Quarantined"));
+        assert!(retain.contains("Box::leak(Box::new(lifetime))"));
+        assert!(retain.contains("HELPER_GATE_RELEASED.notify_all()"));
+
+        let quarantine = between(source, "fn quarantine(", "impl Drop for HelperGateLease");
+        assert!(quarantine.contains("retain_quarantined_lifetime(lifetime)"));
+        assert!(quarantine.contains("self.active = false"));
+        assert!(quarantine.contains("std::thread::park()"));
+        assert!(!quarantine.contains("leave_helper_gate"));
+
+        let lease_drop = between(
+            source,
+            "impl Drop for HelperGateLease",
+            "struct OneShotPipeServer",
+        );
+        assert!(lease_drop.contains("if !self.active"));
+        assert!(lease_drop.contains("leave_helper_gate"));
+
+        let lifetime_drop = between(source, "impl Drop for HelperLifetime", "static HELPER_GATE");
+        assert!(lifetime_drop.contains("if self.admitted && !self.settled"));
+        assert!(lifetime_drop.contains("retain_quarantined_lifetime("));
+        assert!(lifetime_drop.contains("std::thread::park()"));
+
+        for runner in [unpinned_runner_source(), pinned_runner_source()] {
+            let admitted = runner
+                .find("lifetime.mark_admitted()")
+                .expect("admission marker");
+            let before_admission = &runner[..admitted];
+            let after_admission = &runner[admitted..];
+            let hello = before_admission
+                .find("sequence.accept(first_message)")
+                .expect("hello marker");
+            let first_close = before_admission
+                .find("Ok(PipeFrameRead::Closed)")
+                .expect("pre-hello close");
+            assert!(first_close < hello);
+            assert!(before_admission
+                .contains("the user-helper pipe closed before its identity was admitted"));
+            assert!(before_admission.contains("fail_before_admission"));
+            assert!(!before_admission.contains("cancel_and_quarantine"));
+            assert!(!before_admission.contains("retain_quarantined_lifetime"));
+            assert!(after_admission
+                .contains("Err(error) => cancel_and_quarantine(gate, lifetime, error)"));
+            assert!(!after_admission.contains("fail_before_admission"));
+        }
+        assert!(
+            unpinned_runner_source().contains("the user-helper pipe closed before tool admission")
+        );
+        assert!(
+            pinned_runner_source().contains("the user-helper pipe closed before bridge admission")
+        );
+    }
+
+    fn post_admission_pipe_test_name() -> String {
+        // Libtest filters omit the crate name. Same split as
+        // `identity_process_worker` in session_manager::migrate::identity.
+        let test_module = module_path!()
+            .split_once("::")
+            .expect("crate-qualified module path")
+            .1;
+        format!("{test_module}::peer_half_close_after_admission_quarantines_the_next_request")
+    }
+    const PIPE_CLOSED_MARK: &str = "HELPER_PIPE_CLOSED_ERROR";
+    const QUARANTINE_OBSERVED_MARK: &str = "HELPER_QUARANTINE_OBSERVED";
+    const QUARANTINE_TIMEOUT_MARK: &str = "HELPER_QUARANTINE_TIMEOUT";
+
+    fn gate_mutex() -> &'static std::sync::Mutex<HelperGateState> {
+        HELPER_GATE.get_or_init(|| std::sync::Mutex::new(HelperGateState::Idle))
+    }
+
+    struct FinishGateOnDrop(Option<HelperGateLease>);
+
+    impl Drop for FinishGateOnDrop {
+        fn drop(&mut self) {
+            if let Some(gate) = self.0.take() {
+                gate.finish();
+            }
+        }
+    }
+
+    struct ReleaseGlobalGate;
+
+    impl Drop for ReleaseGlobalGate {
+        fn drop(&mut self) {
+            leave_helper_gate(gate_mutex(), &HELPER_GATE_RELEASED);
+        }
+    }
+
+    fn half_progress_frame() -> Vec<u8> {
+        let full = fyagent_user_helper::encode_frame(&HelperMessage::Progress { completed: 40 })
+            .expect("progress frame");
+        let split_at = full.len() / 2;
+        assert!(split_at > 0 && split_at < full.len());
+        full[..split_at].to_vec()
+    }
+
+    fn next_pipe_name() -> String {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static PIPE_SEQ: AtomicU64 = AtomicU64::new(0);
+        let seq = PIPE_SEQ.fetch_add(1, Ordering::Relaxed);
+        format!(
+            r"\\.\pipe\fyagent-helper-crash-{}-{seq}",
+            std::process::id()
+        )
+    }
+
+    /// Default-DACL overlapped message pipe. `OneShotPipeServer::create` pins
+    /// owner BA and grants the pipe only to a shell SID, so a test client in
+    /// this process cannot connect through that constructor without changing
+    /// product code. The read and protocol methods below are the production ones.
+    fn open_connected_message_pipe() -> (OneShotPipeServer, OwnedHandle) {
+        let name = next_pipe_name();
+        let wide = wide_null(&name);
+        let server_handle = unsafe {
+            CreateNamedPipeW(
+                PCWSTR(wide.as_ptr()),
+                PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
+                PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                1,
+                4_096,
+                4_096,
+                1_000,
+                None,
+            )
+        };
+        if server_handle.is_invalid() {
+            panic!("CreateNamedPipeW failed: {:?}", unsafe { GetLastError() });
+        }
+        let server = OneShotPipeServer {
+            handle: unsafe { OwnedHandle::from_raw_handle(server_handle.0) },
+        };
+        let client_handle = unsafe {
+            CreateFileW(
+                PCWSTR(wide.as_ptr()),
+                GENERIC_READ.0 | GENERIC_WRITE.0,
+                FILE_SHARE_READ,
+                None,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                None,
+            )
+        }
+        .unwrap_or_else(|error| panic!("CreateFileW client failed: {error}"));
+        if client_handle.is_invalid() {
+            panic!("CreateFileW returned an invalid handle");
+        }
+        // Own the client before connect so a connect failure cannot leak the raw handle.
+        let client = unsafe { OwnedHandle::from_raw_handle(client_handle.0) };
+        server
+            .connect(Duration::from_secs(2))
+            .expect("ConnectNamedPipe");
+        (server, client)
+    }
+
+    fn write_all_and_close(client: OwnedHandle, bytes: &[u8]) {
+        let mut transferred = 0_u32;
+        unsafe {
+            WriteFile(
+                HANDLE(client.as_raw_handle()),
+                Some(bytes),
+                Some(&mut transferred),
+                None,
+            )
+        }
+        .unwrap_or_else(|error| panic!("WriteFile failed: {error}"));
+        assert_eq!(transferred as usize, bytes.len());
+        drop(client);
+    }
+
+    fn manual_event() -> ParentControlEvent {
+        let handle =
+            unsafe { CreateEventW(None, true, false, PCWSTR::null()) }.expect("test control event");
+        ParentControlEvent(OwnedWin32Handle::new(handle).expect("owned control event"))
+    }
+
+    fn lifetime_holding(server: OneShotPipeServer) -> HelperLifetime {
+        HelperLifetime {
+            pin: None,
+            bridge: None,
+            helper_image: None,
+            controls: Some(ParentControlEvents {
+                admission: manual_event(),
+                cancel: manual_event(),
+            }),
+            server: Some(server),
+            process: None,
+            admitted: false,
+            settled: false,
+        }
+    }
+
+    fn emit_mark(line: &str) {
+        let path = std::env::var_os("FYAGENT_HELPER_PIPE_RESULT").expect("result path");
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .expect("open result file");
+        std::io::Write::write_all(&mut file, line.as_bytes()).expect("write result");
+        std::io::Write::write_all(&mut file, b"\n").expect("write result newline");
+        file.sync_all().expect("sync result file");
+    }
+
+    /// Windows CI only. This module is already compiled only for Windows.
+    ///
+    /// The helper runners launch the real helper and require its image, session,
+    /// and token, so a test peer cannot drive `run_unpinned_tool_helper` or
+    /// `run_pinned_user_helper` without a product seam. Message mode makes the
+    /// short write one whole message: production `read_frame` returns those
+    /// bytes, and the next `read_frame` is the peer close. The runner's
+    /// pre-admission `Closed` arm then calls `fail_before_admission`; this test
+    /// does that and checks the next request can enter.
+    #[test]
+    fn peer_half_close_before_admission_releases_the_next_request() {
+        let half = half_progress_frame();
+        let (server, client) = open_connected_message_pipe();
+        write_all_and_close(client, &half);
+        let mut held = FinishGateOnDrop(Some(
+            HelperGateLease::acquire().expect("acquire helper gate"),
+        ));
+        let first = server
+            .read_frame(Duration::from_secs(2))
+            .expect("read partial frame");
+        let PipeFrameRead::Frame(frame) = first else {
+            panic!("partial write must arrive as its own message before the close");
+        };
+        assert_eq!(frame, half);
+        let second = server
+            .read_frame(Duration::from_secs(2))
+            .expect("read close");
+        assert!(matches!(second, PipeFrameRead::Closed));
+        let gate = held.0.take().expect("gate still held");
+        let error = fail_before_admission(
+            gate,
+            lifetime_holding(server),
+            helper_pipe_error("the user-helper pipe closed before its identity was admitted"),
+        )
+        .expect_err("pre-admission close returns the pipe error");
+        let dto = error.to_dto();
+        assert_eq!(dto.code, InstallerErrorCode::WindowsDeploymentFailed);
+        assert_eq!(dto.details.platform_error_code, None);
+        assert_eq!(
+            dto.details.redacted_message.as_deref(),
+            Some("the user-helper pipe closed before its identity was admitted")
+        );
+
+        // `enter_helper_gate` sets Active. Drop releases it if an assertion fails.
+        let _release = ReleaseGlobalGate;
+        let started = Instant::now();
+        enter_helper_gate(
+            gate_mutex(),
+            &HELPER_GATE_RELEASED,
+            Duration::from_millis(500),
+        )
+        .expect("next request enters after pre-admission close");
+        assert!(started.elapsed() < Duration::from_millis(500));
+        assert!(matches!(
+            *gate_mutex().lock().expect("gate lock"),
+            HelperGateState::Active
+        ));
+        leave_helper_gate(gate_mutex(), &HELPER_GATE_RELEASED);
+        assert!(matches!(
+            *gate_mutex().lock().expect("gate lock"),
+            HelperGateState::Idle
+        ));
+    }
+
+    struct DeleteFile(std::path::PathBuf);
+
+    impl Drop for DeleteFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    struct KillOnDrop(Option<std::process::Child>);
+
+    impl KillOnDrop {
+        fn spawn(mut command: std::process::Command) -> Self {
+            Self(Some(
+                command.spawn().expect("spawn quarantine child process"),
+            ))
+        }
+
+        /// `TerminateProcess` skips destructors. Poll instead of `wait`: a
+        /// child that does not die must not park this test, and dropping
+        /// `Child` does not wait either.
+        fn finish(&mut self) -> bool {
+            let Some(mut child) = self.0.take() else {
+                return true;
+            };
+            let _ = child.kill();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => return true,
+                    Err(_) => return false,
+                    Ok(None) if Instant::now() >= deadline => return false,
+                    Ok(None) => std::thread::sleep(Duration::from_millis(20)),
+                }
+            }
+        }
+    }
+
+    impl Drop for KillOnDrop {
+        fn drop(&mut self) {
+            self.finish();
+        }
+    }
+
+    fn complete_mark<'a>(text: &'a str, mark: &str) -> Option<&'a str> {
+        text.split_inclusive('\n').find_map(|chunk| {
+            let line = chunk.strip_suffix('\n')?;
+            line.contains(mark).then_some(line)
+        })
+    }
+
+    /// `cancel_and_quarantine` and `HelperLifetime`'s admitted drop both park
+    /// forever. Run that path in a child and kill it. `TerminateProcess` does
+    /// not run destructors, so the child's parked thread and admitted drop do
+    /// not hang this process. The parent waits at most 20 seconds. Windows CI
+    /// only: a test peer still cannot pass `validate_client`, so this starts at
+    /// the production read and `consume_protocol` the runner calls after admission.
+    #[test]
+    fn peer_half_close_after_admission_quarantines_the_next_request() {
+        if std::env::var("FYAGENT_HELPER_PIPE_CHILD").ok().as_deref() == Some("quarantine") {
+            post_admission_close_quarantines_until_killed();
+        }
+
+        let result_path = std::env::temp_dir().join(format!(
+            "fyagent-helper-quarantine-{}-{}.txt",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let _delete_result = DeleteFile(result_path.clone());
+        let exe = std::env::current_exe().expect("test executable");
+        let mut command = std::process::Command::new(exe);
+        command
+            .arg("--exact")
+            .arg(post_admission_pipe_test_name())
+            .arg("--nocapture")
+            .arg("--test-threads=1")
+            .env("FYAGENT_HELPER_PIPE_CHILD", "quarantine")
+            .env("FYAGENT_HELPER_PIPE_RESULT", &result_path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped());
+        let mut child = KillOnDrop::spawn(command);
+        let stderr = {
+            let process = child.0.as_mut().expect("child");
+            process.stderr.take().expect("child stderr")
+        };
+        let mut stderr_reader = Some(std::thread::spawn(move || {
+            let mut stderr = stderr;
+            let mut buf = String::new();
+            let _ = std::io::Read::read_to_string(&mut stderr, &mut buf);
+            buf
+        }));
+        let join_stderr = |reader: Option<std::thread::JoinHandle<String>>, exited: bool| {
+            if exited {
+                reader
+                    .map(|handle| handle.join().unwrap_or_default())
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            }
+        };
+
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let report = loop {
+            let text = std::fs::read_to_string(&result_path).unwrap_or_default();
+            let observed = complete_mark(&text, QUARANTINE_OBSERVED_MARK).is_some();
+            let timed_out = complete_mark(&text, QUARANTINE_TIMEOUT_MARK).is_some();
+            if observed || timed_out {
+                break text;
+            }
+            if Instant::now() >= deadline {
+                let exited = child.finish();
+                let stderr = join_stderr(stderr_reader.take(), exited);
+                panic!("quarantine child timed out\nresult:\n{text}\nstderr:\n{stderr}");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let exited = child.finish();
+        let stderr = join_stderr(stderr_reader.take(), exited);
+        let report = format!("{report}\n{stderr}");
+        let observed = report
+            .lines()
+            .find(|line| line.contains(QUARANTINE_OBSERVED_MARK))
+            .unwrap_or_else(|| panic!("child did not observe quarantine\n{report}"));
+        let closed = report
+            .lines()
+            .find(|line| line.contains(PIPE_CLOSED_MARK))
+            .unwrap_or_else(|| panic!("child did not see the pipe close\n{report}"));
+        assert!(
+            closed.contains("the user-helper pipe closed before a terminal message"),
+            "{closed}"
+        );
+        let elapsed_ms: u128 = observed
+            .split('\t')
+            .find_map(|part| part.strip_prefix("elapsed_ms="))
+            .unwrap_or_else(|| panic!("missing elapsed_ms in {observed}"))
+            .parse()
+            .expect("elapsed_ms");
+        assert!(elapsed_ms < 1_000, "next request waited {elapsed_ms}ms");
+        assert!(
+            observed.contains("code=WindowsDeploymentFailed"),
+            "{observed}"
+        );
+        assert!(observed.contains("platform=none"), "{observed}");
+        assert!(
+            observed.contains(concat!(
+                "message=a prior current-user helper lifetime ",
+                "remains retained without terminal proof"
+            )),
+            "{observed}"
+        );
+    }
+
+    fn post_admission_close_quarantines_until_killed() -> ! {
+        let half = half_progress_frame();
+        let (server, client) = open_connected_message_pipe();
+        write_all_and_close(client, &half);
+        // The short write is one message-mode message, not a torn byte-stream
+        // read. Take it with production `read_frame`, then let production
+        // `consume_protocol` observe the close that follows. Feeding the short
+        // message to `consume_protocol` instead would fail decode with
+        // "the user-helper message was invalid" and still quarantine.
+        let first = server
+            .read_frame(Duration::from_secs(2))
+            .expect("read partial frame");
+        let PipeFrameRead::Frame(frame) = first else {
+            panic!("partial write must arrive as its own message before the close");
+        };
+        assert_eq!(frame, half);
+        let closed = consume_protocol(
+            &server,
+            &mut HelperProtocolSequence::default(),
+            std::sync::Arc::new(|_: crate::codex_desktop::types::JobProgress| {}),
+            Instant::now() + Duration::from_secs(2),
+            Duration::from_secs(1),
+        )
+        .expect_err("close before a terminal message");
+        let closed_message = closed.to_dto().details.redacted_message.unwrap_or_default();
+        assert_eq!(
+            closed_message,
+            "the user-helper pipe closed before a terminal message"
+        );
+        emit_mark(&format!("{PIPE_CLOSED_MARK}\t{closed_message}"));
+
+        let _observer = std::thread::spawn(|| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                if Instant::now() > deadline {
+                    emit_mark(QUARANTINE_TIMEOUT_MARK);
+                    return;
+                }
+                let quarantined = gate_mutex()
+                    .lock()
+                    .map(|state| matches!(*state, HelperGateState::Quarantined { .. }))
+                    .unwrap_or(false);
+                if !quarantined {
+                    std::thread::sleep(Duration::from_millis(20));
+                    continue;
+                }
+                let started = Instant::now();
+                let error =
+                    enter_helper_gate(gate_mutex(), &HELPER_GATE_RELEASED, Duration::from_secs(5))
+                        .expect_err("quarantine rejects the next request");
+                let dto = error.to_dto();
+                emit_mark(&format!(
+                    "{QUARANTINE_OBSERVED_MARK}\telapsed_ms={}\tcode={:?}\tplatform={}\tmessage={}",
+                    started.elapsed().as_millis(),
+                    dto.code,
+                    dto.details.platform_error_code.as_deref().unwrap_or("none"),
+                    dto.details.redacted_message.as_deref().unwrap_or("none"),
+                ));
+                return;
+            }
+        });
+
+        let gate = HelperGateLease::acquire().expect("acquire helper gate");
+        let mut lifetime = lifetime_holding(server);
+        lifetime.mark_admitted();
+        cancel_and_quarantine(gate, lifetime, closed);
     }
 }

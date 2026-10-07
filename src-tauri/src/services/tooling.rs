@@ -2991,6 +2991,28 @@ mod tests {
         assert!(!WINDOWS_HELPER_UNCONFIRMED_MESSAGE.contains("unavailable"));
     }
 
+    // Quarantine and a pre-handshake pipe close publish WindowsDeploymentFailed
+    // with no platform code. `windows_helper_left_state_unconfirmed(None)` is
+    // already false above, so repeating it here and comparing the Grok/Claude
+    // fallback sentences would not show that a helper failure produced them.
+    // Those mappings are asserted in `tooling/grok.rs` and `tooling/claude.rs`.
+
+    /// Quarantine and a pipe close before admission currently carry no platform
+    /// code, so the classifier above returns false and the card becomes
+    /// unavailable. Launch-pending and a helper-reported deployment failure
+    /// also have no code; the expected fix is a dedicated code, not "every
+    /// missing code is unconfirmed".
+    #[test]
+    #[ignore = "期望行为：helper 被 Quarantined 或握手前断管时本次观察没有运行，应判为 unconfirmed，卡片显示状态未知并保留一键安装，待产品修复"]
+    fn helper_that_did_not_run_should_leave_cli_state_unconfirmed() {
+        assert!(windows_helper_left_state_unconfirmed(Some(
+            "helper_quarantined"
+        )));
+        assert!(windows_helper_left_state_unconfirmed(Some(
+            "helper_closed_before_admission"
+        )));
+    }
+
     #[cfg(target_os = "macos")]
     fn set_test_executable(path: &Path, executable: bool) {
         use std::os::unix::fs::PermissionsExt;

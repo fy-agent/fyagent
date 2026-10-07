@@ -381,6 +381,56 @@ async fn windows_operation(
 mod tests {
     use super::*;
 
+    fn production_source() -> &'static str {
+        include_str!("claude.rs")
+            .split_once("#[cfg(test)]\nmod tests {")
+            .expect("claude production source must precede the test module")
+            .0
+    }
+
+    /// The fallback arm is taken from `windows_operation` after the test module
+    /// is cut off. A search of the whole `include_str!` also matches this
+    /// test's own string literal.
+    #[test]
+    fn windows_helper_without_platform_code_is_verification_failed_not_unconfirmed() {
+        let operation = production_source()
+            .split_once("async fn windows_operation(")
+            .expect("windows_operation")
+            .1;
+        let fallback = operation
+            .split_once("code if super::windows_helper_left_state_unconfirmed(code)")
+            .expect("claude helper classification")
+            .1
+            .split_once("ClaudeLifecycleError::HelperUnconfirmed")
+            .expect("unconfirmed arm")
+            .1
+            .split_once("},")
+            .expect("end of platform-code match")
+            .0;
+        assert!(
+            fallback.contains("_ => ClaudeLifecycleError::VerificationFailed"),
+            "fallback slice was: {}",
+            fallback
+        );
+        assert!(
+            !fallback.contains("ExecutionFailed"),
+            "fallback slice was: {}",
+            fallback
+        );
+        assert_eq!(
+            ClaudeLifecycleError::HelperUnconfirmed.message(),
+            super::super::WINDOWS_HELPER_UNCONFIRMED_MESSAGE
+        );
+        assert_eq!(
+            ClaudeLifecycleError::VerificationFailed.message(),
+            "无法确认 Claude Code 已安装到指定版本，请刷新安装状态。"
+        );
+        assert_ne!(
+            ClaudeLifecycleError::VerificationFailed.message(),
+            super::super::WINDOWS_HELPER_UNCONFIRMED_MESSAGE
+        );
+    }
+
     #[test]
     fn installation_owners_are_not_silently_converted_to_npm() {
         assert_eq!(

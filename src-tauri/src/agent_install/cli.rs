@@ -219,6 +219,23 @@ mod tests {
     }
 
     #[test]
+    fn quarantine_and_disconnected_helper_text_is_unavailable_not_unconfirmed() {
+        // Strings produced when the helper error has no platform code:
+        // Grok's fallback, and Claude's VerificationFailed message.
+        for message in [
+            "Grok Build is unavailable for the current Windows user.",
+            "无法确认 Claude Code 已安装到指定版本，请刷新安装状态。",
+        ] {
+            assert_ne!(message, tooling::WINDOWS_HELPER_UNCONFIRMED_MESSAGE);
+            assert!(!cli_error_is_unconfirmed(Some(message)));
+            assert!(!cli_error_is_absence(message));
+            assert!(cli_unavailable(Some(message), false, false));
+            assert!(!cli_unavailable(Some(message), true, false));
+            assert!(!cli_unavailable(Some(message), false, true));
+        }
+    }
+
+    #[test]
     fn inspection_boundary_errors_stay_unavailable() {
         assert!(cli_unavailable(
             Some(
