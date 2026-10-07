@@ -276,10 +276,14 @@ fn sqlite_publish_error_is_unknown_and_keeps_recovery_leaf() -> Result<(), AppEr
     let home = IsolatedDatabaseHome::new();
     let db = live_database()?;
     selected_backup(&home)?;
-    db.conn
+    *db.conn.lock().unwrap() =
+        Connection::open_with_flags(home.db_path(), OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    assert!(db
+        .conn
         .lock()
         .unwrap()
-        .execute_batch("PRAGMA query_only=ON")?;
+        .is_readonly(rusqlite::DatabaseName::Main)?);
+
     let outcome = restore(&db);
     assert_eq!(outcome.phase, RestorePhase::Publish);
     assert_eq!(outcome.result_code, RestoreResultCode::PublishFailed);
