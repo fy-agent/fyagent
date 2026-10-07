@@ -716,6 +716,7 @@ export function parseManagedAuthLoginSession(
       (userCode !== null || verificationUri !== null || expiresAt !== null)) ||
     (value.method === "device_code" &&
       !terminal &&
+      value.stage !== "preparing" &&
       (userCode === null || verificationUri === null || expiresAt === null)) ||
     (value.purpose === "save_only" && value.consumer !== null) ||
     (value.purpose === "connect_consumer" && value.consumer === null) ||
