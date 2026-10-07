@@ -521,6 +521,84 @@ describe("useAgentLifecycleAction", () => {
     expect(result.current.busy).toBe(false);
   });
 
+  it("drops vendor-window copy once a later refresh reports the agent installed", async () => {
+    const stages: AgentActionJobStage[] = ["launching_installer", "succeeded"];
+    const port = createPort({
+      get: vi.fn(async () => readiness()),
+      startAction: vi.fn(async () =>
+        actionResult({ stage: "launching_installer" }),
+      ),
+      getActionJob: vi.fn(async () =>
+        jobSnapshot(stages.shift() ?? "succeeded"),
+      ),
+    });
+    const { result, rerender } = renderHook(
+      ({ current }: { current: AgentInstallReadiness }) =>
+        useAgentLifecycleAction({
+          agentId: "qoderwork",
+          port,
+          readiness: current,
+          target: lifecycleTarget(),
+          pollIntervalMs: 5,
+        }),
+      { initialProps: { current: readiness() } },
+    );
+
+    await act(async () => {
+      await result.current.run("install");
+    });
+    expect(result.current.success).toBe(AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY);
+
+    rerender({
+      current: readiness({
+        installState: "installed",
+        allowedActions: ["launch"],
+      }),
+    });
+    expect(result.current.success).not.toBe(
+      AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY,
+    );
+    expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
+
+    rerender({
+      current: readiness({
+        installState: "installed_not_runnable",
+        allowedActions: [],
+      }),
+    });
+    expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
+  });
+
+  it("skips vendor-window copy when the same readback already reports installed", async () => {
+    const stages: AgentActionJobStage[] = ["awaiting_user", "succeeded"];
+    const port = createPort({
+      get: vi.fn(async () =>
+        readiness({ installState: "installed", allowedActions: ["launch"] }),
+      ),
+      startAction: vi.fn(async () =>
+        actionResult({ stage: "launching_installer" }),
+      ),
+      getActionJob: vi.fn(async () =>
+        jobSnapshot(stages.shift() ?? "succeeded"),
+      ),
+    });
+    const { result } = renderHook(() =>
+      useAgentLifecycleAction({
+        agentId: "qoderwork",
+        port,
+        readiness: readiness(),
+        target: lifecycleTarget(),
+        pollIntervalMs: 5,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.run("install");
+    });
+
+    expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
+  });
+
   it("does not set an optimistic installed flag before authoritative get", async () => {
     const stillMissing = readiness({ installState: "not_installed" });
     const observed: AgentInstallState[] = [];
