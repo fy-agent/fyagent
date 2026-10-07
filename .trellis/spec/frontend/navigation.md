@@ -7,6 +7,9 @@ groups, hash-router redirects, lazy loading/prefetch, keep-alive page behavior,
 hidden-page query isolation, route-leave blocking, keyboard navigation, or the
 closed Agent return descriptor.
 
+Localized Sessions shortcut context and its production-page regressions are
+owned by [Session Keyboard](./session-keyboard.md).
+
 Primary owners are:
 
 - `src/shared/config/navigation.ts` for the route/group registry;

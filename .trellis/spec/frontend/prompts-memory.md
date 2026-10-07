@@ -17,6 +17,9 @@ New chrome that the other page will need goes in `src/shared/ui` on the
 first commit. See [Frontend Reuse](./reuse.md). Static FDE catalogue and
 draft-only selection are owned by [Prompt Presets](./prompt-presets.md).
 
+Daily-file selection, missing-date feedback and external-deletion draft
+preservation are owned by [Daily Memory Selection](./daily-memory-selection.md).
+
 The selected-Agent `提示词` section may present the existing prompt library,
 enable one entry, and link to `/prompts`, but it remains a consumer of this
 same `PromptsPort`. It calls `enable`, rereads the selected app, and accepts

@@ -38,6 +38,7 @@ portable import previews, explicit save confirmation and typed-port readback.
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | [Session Migration](../backend/session-migration.md)                | Session route, strict package boundary, import/export identity and recovery status. |
 | [Navigation](./navigation.md)                                       | Hash routes, literal loaders, keep-alive lifetime, blockers and return context.     |
+| [Session Keyboard](./session-keyboard.md)                           | Visible-page shortcut ownership, input/dialog context and retained drafts.          |
 | [Window Shell](./window-shell.md)                                   | Chrome, native overlay boundary, selection and shared interaction.                  |
 | [Change Plan Workspaces](./change-plan-workspaces.md)               | Preview/apply, source switching, job observation and reconciliation.                |
 | [Agent Directory](./agent-directory.md)                             | Catalog, scan/readiness, cards, installation and capabilities.                      |
@@ -53,6 +54,7 @@ portable import previews, explicit save confirmation and typed-port readback.
 | [MCP](./mcp.md)                                                     | Catalog/launch validation, CRUD, installation and assignment.                       |
 | [FDE MCP Catalogue](./mcp-fde-catalog.md)                           | China-oriented recipes, restricted tools, env credentials and discovery.            |
 | [Prompts and Memory](./prompts-memory.md)                           | Native content CRUD, editor/dirty state and directory operations.                   |
+| [Daily Memory Selection](./daily-memory-selection.md)               | Selected-date missing feedback, external deletion and explicit Save.                |
 | [Prompt Presets](./prompt-presets.md)                               | Static FDE catalogue, preview, draft copying and disabled library saves.            |
 
 ## Historical discovery routers
