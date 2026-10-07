@@ -6,12 +6,101 @@ use super::{lock_conn, Database};
 use crate::config::get_app_config_dir;
 use crate::error::AppError;
 use chrono::{Local, Utc};
-use rusqlite::backup::Backup;
+use rusqlite::backup::{Backup, StepResult};
 use rusqlite::types::ValueRef;
 use rusqlite::Connection;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 use tempfile::NamedTempFile;
+
+pub(crate) mod recovery_outcome;
+use recovery_outcome::{DatabaseRestoreOutcome, RestorePhase, RestoreTracker};
+
+// Directory operations precede the live connection lock. Never acquire this
+// lease while holding Database::conn; it is not a gate for ordinary DAO writes.
+static BACKUP_DIRECTORY_LIFECYCLE: Mutex<()> = Mutex::new(());
+
+struct BackupDirectoryLease {
+    _guard: MutexGuard<'static, ()>,
+}
+
+impl BackupDirectoryLease {
+    fn acquire() -> Self {
+        #[cfg(test)]
+        let probe = BACKUP_LIFECYCLE_TEST_PROBE.with(|probe| probe.borrow().clone());
+        #[cfg(test)]
+        if let Some(probe) = probe.as_ref() {
+            match BACKUP_DIRECTORY_LIFECYCLE.try_lock() {
+                Ok(guard) => {
+                    let _ = probe.send(BackupLifecycleTestEvent::Acquired);
+                    return Self { _guard: guard };
+                }
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    let _ = probe.send(BackupLifecycleTestEvent::Blocked);
+                }
+                Err(std::sync::TryLockError::Poisoned(error)) => {
+                    let _ = probe.send(BackupLifecycleTestEvent::Acquired);
+                    return Self {
+                        _guard: error.into_inner(),
+                    };
+                }
+            }
+        }
+        // The mutex contains no state to repair. A lost worker must not make
+        // all later directory operations permanently unavailable.
+        let guard = BACKUP_DIRECTORY_LIFECYCLE.lock().unwrap_or_else(|error| {
+            log::warn!("Recovering database backup directory lease after a lost worker");
+            error.into_inner()
+        });
+        #[cfg(test)]
+        if let Some(probe) = probe {
+            let _ = probe.send(BackupLifecycleTestEvent::Acquired);
+        }
+        Self { _guard: guard }
+    }
+}
+
+#[cfg(test)]
+#[derive(Debug, PartialEq, Eq)]
+enum BackupLifecycleTestEvent {
+    Blocked,
+    Acquired,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RecoveryTestFault {
+    SafetyCreation,
+    SafetyVerification,
+    Readback,
+    Retention,
+}
+
+#[cfg(test)]
+thread_local! {
+    static RECOVERY_TEST_FAULT: std::cell::Cell<Option<RecoveryTestFault>> = const { std::cell::Cell::new(None) };
+    static BACKUP_LIFECYCLE_TEST_PROBE: std::cell::RefCell<Option<std::sync::mpsc::Sender<BackupLifecycleTestEvent>>> = const { std::cell::RefCell::new(None) };
+    static RECOVERY_TEST_CHECKPOINT: std::cell::RefCell<Option<Box<dyn Fn(RestorePhase)>>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn recovery_test_checkpoint(phase: RestorePhase) {
+    RECOVERY_TEST_CHECKPOINT.with(|checkpoint| {
+        if let Some(checkpoint) = checkpoint.borrow().as_ref() {
+            checkpoint(phase);
+        }
+    });
+}
+
+#[cfg(test)]
+fn recovery_test_fault(point: RecoveryTestFault) -> Result<(), AppError> {
+    if RECOVERY_TEST_FAULT.with(|fault| fault.get() == Some(point)) {
+        Err(AppError::Database("isolated_recovery_test_fault".into()))
+    } else {
+        Ok(())
+    }
+}
 
 // Persisted import/export marker owned by FyAgent.
 const FYAGENT_SQL_EXPORT_HEADER: &str = "-- FyAgent SQLite 导出";
@@ -554,9 +643,7 @@ impl Database {
                     .map_err(|e| AppError::Database(e.to_string()))?;
                 let backup = Backup::new(&conn, &mut dest_conn)
                     .map_err(|e| AppError::Database(e.to_string()))?;
-                backup
-                    .step(-1)
-                    .map_err(|e| AppError::Database(e.to_string()))?;
+                Self::complete_recovery_copy(&backup)?;
             }
             let verify_conn =
                 Connection::open(&archive_path).map_err(|e| AppError::Database(e.to_string()))?;
@@ -596,10 +683,7 @@ impl Database {
         Self::restore_tables(&main_conn, candidate, LOCAL_ONLY_RECEIPT_TABLES)?;
         let backup = Backup::new(candidate, &mut main_conn)
             .map_err(|e| AppError::Database(e.to_string()))?;
-        backup
-            .step(-1)
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(())
+        Self::complete_recovery_copy(&backup)
     }
 
     fn restore_tables(
@@ -738,6 +822,32 @@ impl Database {
 
     /// 生成一致性快照备份，返回备份文件路径（不存在主库时返回 None）
     pub(crate) fn backup_database_file(&self) -> Result<Option<PathBuf>, AppError> {
+        let lifecycle = BackupDirectoryLease::acquire();
+        let snapshot = self.create_validated_binary_backup_unlocked(&lifecycle)?;
+        if let Some(path) = snapshot.as_ref() {
+            if let Err(error) = Self::cleanup_db_backups_preserving_unlocked(
+                path.parent()
+                    .ok_or_else(|| AppError::Config("无效的备份路径".into()))?,
+                &[path.as_path()],
+                &lifecycle,
+            ) {
+                // A valid recovery point must remain addressable after maintenance fails.
+                log::warn!("Database backup retention failed: {error}");
+            }
+        }
+        Ok(snapshot)
+    }
+
+    /// Copy and validate under the live connection lock; retention is separate.
+    pub(crate) fn create_validated_binary_backup(&self) -> Result<Option<PathBuf>, AppError> {
+        let lifecycle = BackupDirectoryLease::acquire();
+        self.create_validated_binary_backup_unlocked(&lifecycle)
+    }
+
+    fn create_validated_binary_backup_unlocked(
+        &self,
+        _lifecycle: &BackupDirectoryLease,
+    ) -> Result<Option<PathBuf>, AppError> {
         let db_path = get_app_config_dir().join("fyagent.db");
         if !db_path.exists() {
             return Ok(None);
@@ -749,6 +859,31 @@ impl Database {
             .join("backups");
 
         fs::create_dir_all(&backup_dir).map_err(|e| AppError::io(&backup_dir, e))?;
+        Self::validate_backup_directory(&backup_dir)?;
+
+        #[cfg(test)]
+        recovery_test_fault(RecoveryTestFault::SafetyCreation)?;
+
+        let temporary =
+            NamedTempFile::new_in(&backup_dir).map_err(|error| AppError::io(&backup_dir, error))?;
+
+        {
+            let conn = lock_conn!(self.conn);
+            let expected_version = Self::get_user_version(&conn)?;
+            let mut dest_conn = Connection::open(temporary.path())
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            {
+                let backup = Backup::new(&conn, &mut dest_conn)
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                Self::complete_recovery_copy(&backup)?;
+            }
+            drop(dest_conn);
+            Self::verify_binary_snapshot(temporary.path(), expected_version)?;
+        }
+        temporary
+            .as_file()
+            .sync_all()
+            .map_err(|error| AppError::io(temporary.path(), error))?;
 
         let base_id = format!("db_backup_{}", Local::now().format("%Y%m%d_%H%M%S"));
         let mut backup_id = base_id.clone();
@@ -760,50 +895,112 @@ impl Database {
             counter += 1;
         }
 
-        {
-            let conn = lock_conn!(self.conn);
-            let mut dest_conn =
-                Connection::open(&backup_path).map_err(|e| AppError::Database(e.to_string()))?;
-            let backup = Backup::new(&conn, &mut dest_conn)
-                .map_err(|e| AppError::Database(e.to_string()))?;
-            backup
-                .step(-1)
-                .map_err(|e| AppError::Database(e.to_string()))?;
-        }
-
-        Self::cleanup_db_backups(&backup_dir)?;
+        // Never replace a selected/user-created backup in a filename collision.
+        temporary
+            .persist_noclobber(&backup_path)
+            .map_err(|error| AppError::io(&backup_path, error.error))?;
         Ok(Some(backup_path))
     }
 
+    fn complete_recovery_copy(copy: &Backup<'_, '_>) -> Result<(), AppError> {
+        match copy
+            .step(-1)
+            .map_err(|error| AppError::Database(error.to_string()))?
+        {
+            StepResult::Done => Ok(()),
+            _ => Err(AppError::Database("database_backup_not_completed".into())),
+        }
+    }
+
+    fn validate_backup_directory(dir: &Path) -> Result<(), AppError> {
+        let metadata = fs::symlink_metadata(dir).map_err(|error| AppError::io(dir, error))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(AppError::InvalidInput("Invalid backup directory".into()));
+        }
+        let app_dir = get_app_config_dir();
+        let canonical_app =
+            fs::canonicalize(&app_dir).map_err(|error| AppError::io(&app_dir, error))?;
+        let canonical_dir = fs::canonicalize(dir).map_err(|error| AppError::io(dir, error))?;
+        if canonical_dir.parent() != Some(canonical_app.as_path()) {
+            return Err(AppError::InvalidInput("Invalid backup directory".into()));
+        }
+        Ok(())
+    }
+
+    fn verify_binary_snapshot(path: &Path, expected_version: i32) -> Result<(), AppError> {
+        #[cfg(test)]
+        recovery_test_fault(RecoveryTestFault::SafetyVerification)?;
+        let verify = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| AppError::Database(error.to_string()))?;
+        let integrity: String = verify
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .map_err(|error| AppError::Database(error.to_string()))?;
+        if integrity != "ok" || Self::get_user_version(&verify)? != expected_version {
+            return Err(AppError::Database(
+                "database_backup_validation_failed".into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// 清理旧的数据库备份，保留最新的 N 个
-    fn cleanup_db_backups(dir: &Path) -> Result<(), AppError> {
+    #[cfg(test)]
+    fn cleanup_db_backups_preserving(dir: &Path, protected: &[&Path]) -> Result<(), AppError> {
+        let lifecycle = BackupDirectoryLease::acquire();
+        Self::cleanup_db_backups_preserving_unlocked(dir, protected, &lifecycle)
+    }
+
+    fn cleanup_db_backups_preserving_unlocked(
+        dir: &Path,
+        protected: &[&Path],
+        _lifecycle: &BackupDirectoryLease,
+    ) -> Result<(), AppError> {
+        #[cfg(test)]
+        recovery_test_fault(RecoveryTestFault::Retention)?;
         let retain = crate::settings::effective_backup_retain_count();
-        let entries = match fs::read_dir(dir) {
-            Ok(iter) => iter
-                .filter_map(|entry| entry.ok())
-                .filter(|entry| {
-                    entry
-                        .path()
-                        .extension()
-                        .map(|ext| ext == "db")
-                        .unwrap_or(false)
-                })
-                .collect::<Vec<_>>(),
-            Err(_) => return Ok(()),
-        };
+        let entries = fs::read_dir(dir)
+            .map_err(|error| AppError::io(dir, error))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| AppError::io(dir, error))?
+            .into_iter()
+            .filter(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .map(|ext| ext == "db")
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
 
         if entries.len() <= retain {
             return Ok(());
         }
 
+        // Resolve every identity before deleting anything. Windows may open
+        // the same backup through a differently cased leaf; lexical paths
+        // cannot establish that it is safe to remove a selected recovery point.
+        let protected_identities = protected
+            .iter()
+            .map(|path| fs::canonicalize(path).map_err(|error| AppError::io(path, error)))
+            .collect::<Result<Vec<_>, _>>()?;
         let remove_count = entries.len().saturating_sub(retain);
-        let mut sorted = entries;
-        sorted.sort_by_key(|entry| entry.metadata().and_then(|m| m.modified()).ok());
+        let mut sorted = entries
+            .into_iter()
+            .map(|entry| {
+                let path = entry.path();
+                let identity =
+                    fs::canonicalize(&path).map_err(|error| AppError::io(&path, error))?;
+                Ok((entry, identity))
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+        sorted.sort_by_key(|(entry, _)| entry.metadata().and_then(|m| m.modified()).ok());
 
-        for entry in sorted.into_iter().take(remove_count) {
-            if let Err(err) = fs::remove_file(entry.path()) {
-                log::warn!("删除旧数据库备份失败 {}: {}", entry.path().display(), err);
-            }
+        for (entry, _) in sorted
+            .into_iter()
+            .filter(|(_, identity)| !protected_identities.contains(identity))
+            .take(remove_count)
+        {
+            fs::remove_file(entry.path()).map_err(|error| AppError::io(entry.path(), error))?;
         }
         Ok(())
     }
@@ -1021,14 +1218,20 @@ impl Database {
         if !backup_dir.exists() {
             return Ok(vec![]);
         }
+        Self::validate_backup_directory(&backup_dir)?;
 
         let mut entries: Vec<BackupEntry> = fs::read_dir(&backup_dir)
             .map_err(|e| AppError::io(&backup_dir, e))?
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map(|ext| ext == "db").unwrap_or(false))
             .filter_map(|e| {
-                let metadata = e.metadata().ok()?;
-                let filename = e.file_name().to_string_lossy().to_string();
+                let metadata = fs::symlink_metadata(e.path()).ok()?;
+                if !metadata.is_file() || metadata.file_type().is_symlink() {
+                    return None;
+                }
+                let filename = e.file_name().to_str()?.to_string();
+                if !Self::is_restore_backup_leaf(&filename) {
+                    return None;
+                }
                 let size_bytes = metadata.len();
                 let created_at = metadata
                     .modified()
@@ -1051,67 +1254,191 @@ impl Database {
         Ok(entries)
     }
 
+    fn is_restore_backup_leaf(filename: &str) -> bool {
+        if filename != filename.trim()
+            || filename.len() < 4
+            || filename.chars().count() > 255
+            || !filename.ends_with(".db")
+            || filename.contains("..")
+            || filename
+                .chars()
+                .any(|character| character.is_control() || "/\\:<>\"|?*".contains(character))
+        {
+            return false;
+        }
+        let stem = filename
+            .split('.')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_uppercase();
+        !matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+            && !(stem.len() == 4
+                && (stem.starts_with("COM") || stem.starts_with("LPT"))
+                && stem.as_bytes()[3].is_ascii_digit()
+                && stem.as_bytes()[3] != b'0')
+    }
+
     /// Restore database from a backup file. Returns the safety backup ID.
     pub fn restore_from_backup(&self, filename: &str) -> Result<String, AppError> {
+        let tracker = RestoreTracker::new();
+        self.restore_from_backup_tracked(filename, &tracker)?;
+        tracker
+            .finish(true)
+            .safety_backup_filename
+            .and_then(|name| {
+                Path::new(&name)
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().into_owned())
+            })
+            .ok_or_else(|| AppError::Database("database_safety_backup_missing".into()))
+    }
+
+    pub(crate) fn restore_from_backup_outcome(
+        &self,
+        filename: &str,
+        tracker: &RestoreTracker,
+    ) -> DatabaseRestoreOutcome {
+        let restored = self.restore_from_backup_tracked(filename, tracker);
+        if let Err(error) = restored.as_ref() {
+            log::warn!(
+                "Database restore failed in {:?}: {error}",
+                tracker.snapshot().phase
+            );
+        }
+        tracker.finish(restored.is_ok())
+    }
+
+    /// This proves current readability only; it cannot resolve restore identity.
+    pub(crate) fn check_recovery_readability(&self) -> bool {
+        let checked = (|| -> Result<bool, AppError> {
+            let conn = lock_conn!(self.conn);
+            let integrity: String =
+                conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+            Ok(integrity == "ok" && Self::get_user_version(&conn)? == super::SCHEMA_VERSION)
+        })();
+        match checked {
+            Ok(readable) => readable,
+            Err(error) => {
+                log::warn!("Database recovery readability unavailable: {error}");
+                false
+            }
+        }
+    }
+
+    fn restore_from_backup_tracked(
+        &self,
+        filename: &str,
+        tracker: &RestoreTracker,
+    ) -> Result<(), AppError> {
         // Security: validate filename to prevent path traversal
-        if filename.contains("..")
-            || filename.contains('/')
-            || filename.contains('\\')
-            || !filename.ends_with(".db")
-        {
+        if !Self::is_restore_backup_leaf(filename) {
             return Err(AppError::InvalidInput(
                 "Invalid backup filename".to_string(),
             ));
         }
 
+        let lifecycle = BackupDirectoryLease::acquire();
+
         let backup_dir = get_app_config_dir().join("backups");
         let backup_path = backup_dir.join(filename);
+        Self::validate_backup_directory(&backup_dir)?;
 
-        if !backup_path.exists() {
-            return Err(AppError::InvalidInput(format!(
-                "Backup file not found: {filename}"
-            )));
+        let metadata = fs::symlink_metadata(&backup_path)
+            .map_err(|error| AppError::io(&backup_path, error))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(AppError::InvalidInput("Invalid backup file".into()));
         }
 
         // Validate executable schema before creating a safety backup or touching the main DB.
         let source_conn =
-            Connection::open(&backup_path).map_err(|e| AppError::Database(e.to_string()))?;
+            Connection::open_with_flags(&backup_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .map_err(|e| AppError::Database(e.to_string()))?;
         Self::reject_persistent_triggers(&source_conn)?;
         // Validate every new fallible migration before replacing the live database.
         // Keep the selected backup immutable as well.
+        tracker.phase(RestorePhase::Candidate);
+        #[cfg(test)]
+        recovery_test_checkpoint(RestorePhase::Candidate);
         let mut candidate =
             Connection::open_in_memory().map_err(|e| AppError::Database(e.to_string()))?;
         {
             let copy = Backup::new(&source_conn, &mut candidate)
                 .map_err(|e| AppError::Database(e.to_string()))?;
-            copy.step(-1)
-                .map_err(|e| AppError::Database(e.to_string()))?;
+            Self::complete_recovery_copy(&copy)?;
         }
         Self::disarm_imported_triggers(&candidate)?;
+        if Self::get_user_version(&candidate)? > super::SCHEMA_VERSION {
+            return Err(AppError::Database(
+                "database_backup_version_unsupported".into(),
+            ));
+        }
         Self::create_tables_on_conn(&candidate)?;
         Self::apply_schema_migrations_on_conn(&candidate)?;
         Self::drop_retired_fde_triggers_on_conn(&candidate)?;
         Self::assert_no_persistent_triggers(&candidate)?;
+        Self::ensure_model_pricing_seeded_on_conn(&candidate)?;
+        tracker.phase(RestorePhase::Archive);
         self.archive_retired_customer_project_data_before_replace()?;
 
         // Step 1: Create safety backup of current database
-        let safety_backup = self.backup_database_file()?;
-        let safety_id = safety_backup
-            .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-            .unwrap_or_default();
+        tracker.phase(RestorePhase::SafetyBackup);
+        let safety_backup = self
+            .create_validated_binary_backup_unlocked(&lifecycle)?
+            .ok_or_else(|| AppError::Database("database_safety_backup_missing".into()))?;
+        let safety_filename = safety_backup
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| AppError::Database("database_safety_backup_invalid".into()))?
+            .to_string();
+        tracker.safety_backup(safety_filename);
 
         // A private backup remains lossless, but its native restore journal
         // cannot roll back external provider stores. Keep the live journal.
+        tracker.begin_publish();
+        #[cfg(test)]
+        recovery_test_checkpoint(RestorePhase::Publish);
         self.replace_from_candidate_preserving_receipts(&candidate)?;
+        tracker.committed();
 
-        self.ensure_model_pricing_seeded()?;
+        tracker.phase(RestorePhase::Readback);
+        let readback = (|| -> Result<(), AppError> {
+            #[cfg(test)]
+            recovery_test_fault(RecoveryTestFault::Readback)?;
+            let main_conn = lock_conn!(self.conn);
+            let integrity: String =
+                main_conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+            let expected_pricing: i64 =
+                candidate.query_row("SELECT COUNT(*) FROM model_pricing", [], |row| row.get(0))?;
+            let actual_pricing: i64 =
+                main_conn.query_row("SELECT COUNT(*) FROM model_pricing", [], |row| row.get(0))?;
+            if integrity != "ok"
+                || Self::get_user_version(&main_conn)? != super::SCHEMA_VERSION
+                || expected_pricing != actual_pricing
+            {
+                return Err(AppError::Database(
+                    "database_restore_readback_failed".into(),
+                ));
+            }
+            Self::assert_no_persistent_triggers(&main_conn)
+        })();
 
-        log::info!("Database restored from backup: {filename}, safety backup: {safety_id}");
-        Ok(safety_id)
+        // Preserve both the selected immutable file and the new recovery point.
+        if let Err(error) = Self::cleanup_db_backups_preserving_unlocked(
+            &backup_dir,
+            &[&backup_path, &safety_backup],
+            &lifecycle,
+        ) {
+            log::warn!("Database restore retention failed: {error}");
+            tracker.retention_warning();
+        }
+        readback?;
+        log::info!("Database restored from backup: {filename}");
+        Ok(())
     }
 
     /// Rename a backup file. Returns the new filename.
     pub fn rename_backup(old_filename: &str, new_name: &str) -> Result<String, AppError> {
+        let _lifecycle = BackupDirectoryLease::acquire();
         // Validate old filename (path traversal + .db suffix)
         if old_filename.contains("..")
             || old_filename.contains('/')
@@ -1175,6 +1502,7 @@ impl Database {
 
     /// Delete a backup file permanently.
     pub fn delete_backup(filename: &str) -> Result<(), AppError> {
+        let _lifecycle = BackupDirectoryLease::acquire();
         // Validate filename (path traversal + .db suffix)
         if filename.contains("..")
             || filename.contains('/')
@@ -1201,6 +1529,12 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    mod recovery_outcome_tests {
+        include!("backup/recovery_tests.rs");
+    }
+    mod upgrade_backup_tests {
+        include!("backup/upgrade_backup_tests.rs");
+    }
     mod fde_restore_tests {
         include!("fde_restore_tests.rs");
     }

@@ -139,23 +139,28 @@ impl Database {
             )),
             provider_secret_guard: Mutex::new(()),
         };
-        db.create_tables()?;
-
-        // Pre-migration backup: only when upgrading from an existing database
+        // Recognize the existing version before any schema write. A failed
+        // safety snapshot authorizes no create_tables or migration work.
         {
             let conn = lock_conn!(db.conn);
             let version = Self::get_user_version(&conn)?;
             drop(conn);
-            if version > 0 && version < SCHEMA_VERSION {
+            if version > SCHEMA_VERSION {
+                return Err(AppError::Database(format!(
+                    "数据库版本过新（{version}），当前应用仅支持 {SCHEMA_VERSION}，请升级应用后再尝试。"
+                )));
+            }
+            if db_exists && version < SCHEMA_VERSION {
                 log::info!(
                     "Creating pre-migration database backup (v{version} → v{SCHEMA_VERSION})"
                 );
-                if let Err(e) = db.backup_database_file() {
-                    log::warn!("Pre-migration backup failed, continuing migration: {e}");
-                }
+                db.create_validated_binary_backup()?.ok_or_else(|| {
+                    AppError::Database("database_upgrade_safety_backup_missing".into())
+                })?;
             }
         }
 
+        db.create_tables()?;
         db.apply_schema_migrations()?;
         if let Err(e) = db.ensure_incremental_auto_vacuum() {
             log::warn!("Failed to ensure incremental auto-vacuum: {e}");

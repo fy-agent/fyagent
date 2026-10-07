@@ -2,7 +2,7 @@
 
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::commands::sync_support::{
@@ -13,6 +13,10 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::services::provider::ProviderService;
 use crate::store::AppState;
+
+use crate::database::backup::recovery_outcome::{
+    DatabaseRecoveryReadability, DatabaseRestoreOutcome, RestoreTracker,
+};
 
 // ─── File import/export ──────────────────────────────────────
 
@@ -143,7 +147,13 @@ pub async fn create_db_backup(state: State<'_, AppState>) -> Result<String, Stri
 
 /// List all database backup files
 #[tauri::command]
-pub fn list_db_backups() -> Result<Vec<BackupEntry>, String> {
+pub fn list_db_backups(app_handle: AppHandle) -> Result<Vec<BackupEntry>, String> {
+    // A backup leaf is not restore authority while initialization has failed.
+    // Reject before resolving the directory so the existing list-error path
+    // prevents confirmation without inventing an unknown write outcome.
+    let _state = app_handle
+        .try_state::<AppState>()
+        .ok_or_else(|| "数据库尚未就绪，请先完成启动检查，再刷新本机备份列表。".to_string())?;
     Database::list_backups().map_err(|e| e.to_string())
 }
 
@@ -158,6 +168,40 @@ pub async fn restore_db_backup(
         .await
         .map_err(|e| format!("Restore failed: {e}"))?
         .map_err(|e: AppError| e.to_string())
+}
+
+/// Restore with a closed outcome that survives readback and worker failures.
+#[tauri::command]
+pub async fn restore_db_backup_outcome(
+    state: State<'_, AppState>,
+    filename: String,
+) -> DatabaseRestoreOutcome {
+    let db = state.db.clone();
+    let tracker = RestoreTracker::new();
+    let worker_tracker = tracker.clone();
+    match tauri::async_runtime::spawn_blocking(move || {
+        db.restore_from_backup_outcome(&filename, &worker_tracker)
+    })
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            log::warn!("Database restore worker lost: {error}");
+            tracker.worker_lost()
+        }
+    }
+}
+
+/// Inspect the current database without another write or maintenance attempt.
+#[tauri::command]
+pub async fn check_db_recovery_readability(
+    state: State<'_, AppState>,
+) -> DatabaseRecoveryReadability {
+    let db = state.db.clone();
+    let readable = tauri::async_runtime::spawn_blocking(move || db.check_recovery_readability())
+        .await
+        .unwrap_or(false);
+    DatabaseRecoveryReadability::from_readable(readable)
 }
 
 /// Rename a database backup file
