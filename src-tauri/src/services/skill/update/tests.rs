@@ -3,7 +3,7 @@ use crate::{
     app_config::{AppType, SkillApps, SkillTargetId},
     services::skill::{update, SkillService, SkillStorageLocation},
 };
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use base64::Engine as _;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use sha2::{Digest, Sha256};
@@ -240,7 +240,7 @@ fn parse_key(pem: &str) -> PrivateKeyDer<'static> {
     ))
 }
 
-async fn serve_one() -> Result<(SocketAddr, tokio::task::JoinHandle<()>)> {
+async fn serve_one() -> Result<(SocketAddr, tokio::task::JoinHandle<Result<()>>)> {
     let zip = fixture_zip();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
@@ -252,16 +252,33 @@ async fn serve_one() -> Result<(SocketAddr, tokio::task::JoinHandle<()>)> {
     .with_single_cert(vec![parse_cert(CERT)], parse_key(KEY))?;
     let acceptor = TlsAcceptor::from(Arc::new(config));
     let task = tokio::spawn(async move {
-        let Ok((stream, _)) = listener.accept().await else {
-            return;
-        };
-        let Ok(mut stream) = acceptor.accept(stream).await else {
-            return;
-        };
+        let (stream, peer) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), listener.accept())
+                .await
+                .context("loopback fixture TCP accept timed out")?
+                .context("loopback fixture TCP accept failed")?;
+        assert!(
+            peer.ip().is_loopback(),
+            "fixture received non-loopback peer"
+        );
+        let mut stream =
+            tokio::time::timeout(std::time::Duration::from_secs(5), acceptor.accept(stream))
+                .await
+                .context("loopback fixture TLS handshake timed out")?
+                .map_err(|error| {
+                    // The production branch fallback returns the final connect error.
+                    // Keep the first server handshake cause visible even if that error
+                    // would otherwise be replaced by a later branch attempt.
+                    eprintln!("loopback fixture first TLS handshake failed: {error:?}");
+                    anyhow!(error).context("loopback fixture first TLS handshake failed")
+                })?;
         let mut request = Vec::new();
         let mut chunk = [0u8; 1024];
         while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
-            let read = stream.read(&mut chunk).await.expect("read fixture request");
+            let read = stream
+                .read(&mut chunk)
+                .await
+                .context("read fixture request")?;
             assert!(
                 read > 0 && request.len() + read <= 8192,
                 "invalid fixture request"
@@ -278,11 +295,34 @@ async fn serve_one() -> Result<(SocketAddr, tokio::task::JoinHandle<()>)> {
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             zip.len()
         );
-        let _ = stream.write_all(head.as_bytes()).await;
-        let _ = stream.write_all(zip).await;
-        let _ = stream.shutdown().await;
+        stream
+            .write_all(head.as_bytes())
+            .await
+            .context("write fixture response header")?;
+        stream
+            .write_all(zip)
+            .await
+            .context("write exact fixture ZIP")?;
+        stream
+            .shutdown()
+            .await
+            .context("close fixture TLS response")?;
+        Ok(())
     });
     Ok((addr, task))
+}
+
+// Validate the controlled download fixture before interpreting an application
+// failure as backup refusal or partial projection. A failed TLS precondition
+// must not masquerade as a missing pending receipt or an empty update list.
+async fn finish_fixture_request<T>(
+    result: Result<T>,
+    server: tokio::task::JoinHandle<Result<()>>,
+) -> Result<Result<T>> {
+    server
+        .await
+        .context("loopback fixture server task failed")??;
+    Ok(result)
 }
 
 fn archive_root() -> PathBuf {
@@ -320,8 +360,7 @@ async fn iteration_resources_skill_update_downloads_backs_up_and_projects_both_t
         .await
         .expect_err("non-GitHub DNS must be denied");
     assert!(denied.to_string().contains("blocked.invalid"));
-    let updated = isolated.update().await?;
-    server.await?;
+    let updated = finish_fixture_request(isolated.update().await, server).await??;
 
     assert_updated(&isolated);
     assert!(updated.updated_at > 0);
@@ -361,11 +400,9 @@ async fn iteration_resources_skill_update_backup_root_file_refusal_has_zero_writ
     fs::write(&backup_root, "obstruction").context("block backup root with regular file")?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
-    let error = isolated
-        .update()
-        .await
+    let error = finish_fixture_request(isolated.update().await, server)
+        .await?
         .expect_err("backup refusal must stop update");
-    server.await?;
 
     assert!(
         error.to_string().contains("UPDATE_BACKUP_FAILED"),
@@ -393,11 +430,9 @@ async fn iteration_resources_skill_update_retry_resumes_only_blocked_target_in_n
     fs::write(&isolated.codex, "blocked target root")?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
-    let error = isolated
-        .update()
-        .await
+    let error = finish_fixture_request(isolated.update().await, server)
+        .await?
         .expect_err("second target should be blocked");
-    server.await?;
     assert!(error.to_string().contains("UPDATE_INCOMPLETE"), "{error:#}");
     assert!(update::is_pending(SKILL_ID)?);
     let progress = read_pending(SKILL_ID)?.expect("durable progress");
@@ -477,15 +512,12 @@ async fn iteration_resources_skill_update_retry_resumes_only_blocked_target_in_n
     let (addr, server) = serve_one().await?;
     let mut checker = SkillService::new();
     checker.update_test_client = Some(test_client(addr)?);
+    let checked =
+        finish_fixture_request(checker.check_updates(&isolated.db).await, server).await??;
     assert!(
-        !checker
-            .check_updates(&isolated.db)
-            .await?
-            .iter()
-            .any(|item| item.id == SKILL_ID),
+        !checked.iter().any(|item| item.id == SKILL_ID),
         "completed item with matching content must disappear from updates"
     );
-    server.await?;
     Ok(())
 }
 
@@ -498,11 +530,9 @@ async fn iteration_resources_skill_update_retry_preserves_external_first_target_
     fs::write(&isolated.codex, "blocked target root")?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
-    let error = isolated
-        .update()
-        .await
+    let error = finish_fixture_request(isolated.update().await, server)
+        .await?
         .expect_err("Codex root obstruction must be partial failure");
-    server.await?;
     assert!(error.to_string().contains("UPDATE_INCOMPLETE"), "{error:#}");
 
     fs::write(
@@ -556,11 +586,9 @@ async fn iteration_resources_skill_retry_respects_changed_assignments_and_finish
     fs::write(&isolated.codex, "blocked target root")?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
-    let error = isolated
-        .update()
-        .await
+    let error = finish_fixture_request(isolated.update().await, server)
+        .await?
         .expect_err("Codex update is partial");
-    server.await?;
     assert!(error.to_string().contains("UPDATE_INCOMPLETE"), "{error:#}");
 
     fs::remove_file(&isolated.codex)?;
@@ -609,11 +637,9 @@ async fn iteration_resources_skill_changed_assignments_preserve_old_and_new_targ
     fs::write(&isolated.codex, "blocked target root")?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
-    let error = isolated
-        .update()
-        .await
+    let error = finish_fixture_request(isolated.update().await, server)
+        .await?
         .expect_err("Codex update is partial");
-    server.await?;
     assert!(error.to_string().contains("UPDATE_INCOMPLETE"), "{error:#}");
 
     fs::remove_file(&isolated.codex)?;
@@ -669,11 +695,9 @@ async fn iteration_resources_skill_assignment_retry_still_rejects_changed_instal
     fs::write(&isolated.codex, "blocked target root")?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
-    isolated
-        .update()
-        .await
+    finish_fixture_request(isolated.update().await, server)
+        .await?
         .expect_err("Codex update is partial");
-    server.await?;
     let source = isolated.ssot.join(DIRECTORY);
     let source_revision = revision(&source)?;
     let claude_revision = revision(&isolated.claude)?;
@@ -712,8 +736,9 @@ async fn iteration_resources_skill_uninstall_clears_progress_before_restoring_sa
     fs::write(&isolated.codex, "blocked target root")?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
-    isolated.update().await.expect_err("update remains partial");
-    server.await?;
+    finish_fixture_request(isolated.update().await, server)
+        .await?
+        .expect_err("update remains partial");
     let preimage = read_pending(SKILL_ID)?.expect("pending preimage").backup_id;
     fs::remove_file(&isolated.codex)?;
 
@@ -735,8 +760,7 @@ async fn iteration_resources_skill_uninstall_clears_progress_before_restoring_sa
     // than replay the previous installation's recorded target operations.
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
-    let updated = isolated.update().await?;
-    server.await?;
+    let updated = finish_fixture_request(isolated.update().await, server).await??;
     assert_eq!(updated.installed_at, restored.installed_at);
     assert_eq!(
         fs::read(isolated.claude.join("payload.txt"))?,
