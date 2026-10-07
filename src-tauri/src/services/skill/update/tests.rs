@@ -6,6 +6,7 @@ use crate::{
 use anyhow::{Context, Result};
 use base64::Engine as _;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+use sha2::{Digest, Sha256};
 use std::{
     error::Error,
     fs, io,
@@ -18,7 +19,8 @@ use tempfile::{tempdir, TempDir};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_rustls::TlsAcceptor;
 
-const ZIP: &[u8] = include_bytes!("fixtures/synthetic-skill.zip");
+const ZIP_BASE64: &str = include_str!("fixtures/synthetic-skill.zip.b64");
+const ZIP_SHA256: &str = "8066be9f3c182d912d61870ef0efec6ee932750c6bb06fc56a3d120a234a6668";
 const CA: &str = include_str!("fixtures/ca-cert.pem");
 const CERT: &str = include_str!("fixtures/server-cert.pem");
 const KEY: &str = include_str!("fixtures/server-key.pem");
@@ -26,6 +28,18 @@ const SKILL_ID: &str = "iteration-resources/audit-skills:audit-skill";
 const DIRECTORY: &str = "audit-skill";
 const OLD_SKILL: &str =
     "---\nname: Old Audit Skill\ndescription: previous fixture\n---\nold body\n";
+
+fn fixture_zip() -> &'static [u8] {
+    static DECODED: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    DECODED.get_or_init(|| {
+        let encoded: String = ZIP_BASE64.split_ascii_whitespace().collect();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .expect("valid synthetic ZIP base64");
+        assert_eq!(format!("{:x}", Sha256::digest(&bytes)), ZIP_SHA256);
+        bytes
+    })
+}
 
 struct HomeGuard(Option<std::ffi::OsString>);
 
@@ -170,7 +184,8 @@ fn offline_client() -> Result<reqwest::Client> {
 }
 
 fn expected_payload() -> Vec<u8> {
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(ZIP)).expect("valid fixture zip");
+    let mut archive =
+        zip::ZipArchive::new(std::io::Cursor::new(fixture_zip())).expect("valid fixture zip");
     let mut file = archive
         .by_name("audit-skills-main/audit-skill/payload.txt")
         .expect("fixture payload entry");
@@ -217,6 +232,7 @@ fn parse_key(pem: &str) -> PrivateKeyDer<'static> {
 }
 
 async fn serve_one() -> Result<(SocketAddr, tokio::task::JoinHandle<()>)> {
+    let zip = fixture_zip();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
     let config = rustls::ServerConfig::builder_with_provider(Arc::new(
@@ -251,10 +267,10 @@ async fn serve_one() -> Result<(SocketAddr, tokio::task::JoinHandle<()>)> {
         );
         let head = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            ZIP.len()
+            zip.len()
         );
         let _ = stream.write_all(head.as_bytes()).await;
-        let _ = stream.write_all(ZIP).await;
+        let _ = stream.write_all(zip).await;
         let _ = stream.shutdown().await;
     });
     Ok((addr, task))
