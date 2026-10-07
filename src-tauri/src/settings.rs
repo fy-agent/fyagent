@@ -1027,6 +1027,16 @@ pub fn clear_codex_unify_migrate_existing() -> Result<(), AppError> {
     })
 }
 
+/// Test guards restore their cached snapshot without resolving a real user
+/// profile or writing that snapshot (which may contain secrets) to disk.
+#[cfg(test)]
+pub(crate) fn replace_settings_in_memory_for_test(settings: AppSettings) {
+    let mut guard = settings_store()
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = settings;
+}
+
 /// 从文件重新加载设置到内存缓存
 /// 用于导入配置等场景，确保内存缓存与文件同步
 pub fn reload_settings() -> Result<(), AppError> {
