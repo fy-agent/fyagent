@@ -247,6 +247,11 @@ fn sync_single_pi_file(
 }
 
 /// 从批量预取的游标解码 Pi 同步状态（revision 编码在 `last_synced_at`）。
+///
+/// 当前 `services/mod.rs` 未声明本模块，`session_manager::providers` 也未声明 `pi`，
+/// 因此本文件不在编译图里。共享 `SyncCursor` 已无 `last_synced_at` 字段，预取 SELECT
+/// 也不读取该列。接回 `services/mod.rs` 前，必须先让 Pi 自己查询 `last_synced_at` 列
+/// （或使用 Pi 单独的游标结构），并接入 `providers::pi`，否则无法编译。
 fn decode_pi_sync_state(
     cursor: Option<&crate::services::session_usage::SyncCursor>,
 ) -> Option<PiSyncState> {

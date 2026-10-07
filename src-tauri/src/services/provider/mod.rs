@@ -7843,9 +7843,7 @@ impl ProviderService {
             backfill_completed = true;
         }
 
-        if matches!(app_type, AppType::Codex) {
-            live::preflight_codex_live_write_for_state(state, provider)?;
-        }
+        // Codex 已在前面提前返回，走 switch_codex_direct；校验在 codex_direct::write_direct。
 
         // Additive mode apps skip setting is_current (no such concept)
         if !app_type.is_additive_mode() {
@@ -7978,8 +7976,8 @@ impl ProviderService {
         Ok(SwitchResult::default())
     }
 
-    /// Codex 直连切换：`config.toml` 只替换关键字段和独有字段；`auth.json`、模型目录、
-    /// 托管账号标记和指针在同一个操作里提交。
+    /// Codex 直连切换：`config.toml` 只替换关键字段和独有字段；同一操作提交配置和
+    /// 可选的模型目录，再落定指针。不写 `auth.json`，不准备或切换原生账号，不写托管账号标记。
     ///
     /// 不回填、不同步通用配置片段、不补回 MCP：用户在 live 里的改动（含 `[mcp_servers]`）
     /// 本来就留在原处。行有问题（会把官方登录发给第三方、带 Key 却没地方放）时在写任何
