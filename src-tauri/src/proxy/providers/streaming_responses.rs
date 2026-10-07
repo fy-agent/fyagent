@@ -4583,6 +4583,64 @@ mod tests {
             .collect()
     }
 
+    async fn convert_stream_text_with_web_search_name(
+        input: impl Into<Bytes>,
+        hosted_web_search_name: &str,
+    ) -> String {
+        let upstream = stream::iter(vec![Ok::<_, std::io::Error>(input.into())]);
+        create_anthropic_sse_stream_from_responses_with_web_search_options(
+            upstream,
+            Some(hosted_web_search_name.to_string()),
+            None,
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .map(|chunk| String::from_utf8_lossy(chunk.unwrap().as_ref()).to_string())
+        .collect()
+    }
+
+    async fn convert_stream_text_with_web_search_limit(
+        input: impl Into<Bytes>,
+        hosted_web_search_name: &str,
+        max_web_search_uses: u64,
+    ) -> String {
+        let upstream = stream::iter(vec![Ok::<_, std::io::Error>(input.into())]);
+        create_anthropic_sse_stream_from_responses_with_web_search_options(
+            upstream,
+            Some(hosted_web_search_name.to_string()),
+            Some(max_web_search_uses),
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .map(|chunk| String::from_utf8_lossy(chunk.unwrap().as_ref()).to_string())
+        .collect()
+    }
+
+    fn sse_data_values(output: &str) -> Vec<Value> {
+        output
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .filter_map(|data| serde_json::from_str(data).ok())
+            .collect()
+    }
+
+    async fn convert_raw_stream_text_with_web_search(input: impl Into<Bytes>) -> String {
+        let upstream = stream::iter(vec![Ok::<_, std::io::Error>(input.into())]);
+        create_anthropic_sse_stream_from_responses_raw(
+            upstream,
+            "web_search".to_string(),
+            None,
+            true,
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .map(|chunk| String::from_utf8_lossy(chunk.unwrap().as_ref()).to_string())
+        .collect()
+    }
+
     #[tokio::test]
     async fn text_and_refusal_deltas_emit_the_same_complete_text_block() {
         let text_input = concat!(

@@ -342,6 +342,43 @@ pub fn is_codex_official_provider(provider: &Provider) -> bool {
 /// (not `meta.api_format`) would otherwise get a `ProxyChat` catalog and emit the
 /// freeform `apply_patch` tool that the Anthropic transform then silently drops.
 /// Non-Anthropic providers keep the existing `meta.api_format` classification.
+const CODEX_NATIVE_RESPONSES_HOSTS: &[&str] = &[
+    "bigmodel.cn",
+    "z.ai",
+    "xiaomimimo.com",
+    "minimaxi.com",
+    "minimax.cn",
+    "minimax.io",
+    "longcat.chat",
+];
+
+/// Path markers of a listed vendor's OpenAI *Chat Completions* endpoint, which is
+/// NOT its Responses endpoint. Zhipu documents three separate base URLs per site
+/// (Anthropic `/api/anthropic`, Chat `/api/coding/paas/v4` + pay-as-you-go
+/// `/api/paas/v4`, Responses `/api/v1`) and warns that the wrong one cannot use
+/// Coding Plan quota. A stored provider still pointing at a Chat path is a
+/// pre-2026-09 Chat-route record: it keeps its `ProxyChat` catalog (the proxy
+/// route converts it correctly; direct connect fails loudly with the #6944 400
+/// until the preset is re-imported) instead of being silently steered onto the
+/// wrong endpoint with a native catalog.
+const CODEX_NATIVE_RESPONSES_CHAT_PATH_MARKERS: &[&str] = &["/paas/v4"];
+
+/// Whether `base_url` points at a listed vendor's native Responses gateway, so a
+/// provider whose stored `apiFormat` predates the preset's switch to
+/// `openai_responses` still gets the `NativeResponses` catalog without a re-save.
+pub fn is_codex_native_responses_url(base_url: &str) -> bool {
+    if !crate::codex_config::codex_url_host_matches_any(base_url, CODEX_NATIVE_RESPONSES_HOSTS) {
+        return false;
+    }
+    if is_chat_completions_url(base_url) {
+        return false;
+    }
+    let lower = base_url.to_ascii_lowercase();
+    !CODEX_NATIVE_RESPONSES_CHAT_PATH_MARKERS
+        .iter()
+        .any(|marker| lower.contains(marker))
+}
+
 pub fn resolve_codex_catalog_tool_profile(
     provider: &Provider,
 ) -> crate::codex_config::CodexCatalogToolProfile {

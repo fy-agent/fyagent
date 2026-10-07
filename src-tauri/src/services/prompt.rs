@@ -5,8 +5,7 @@ use crate::app_config::AppType;
 use crate::config::write_text_file;
 use crate::error::AppError;
 use crate::prompt::Prompt;
-use crate::prompt_files::{prompt_file_path, validate_prompt_content};
-use crate::services::pi_prompt_files::PiAgentsFileGuard;
+use crate::prompt_files::prompt_file_path;
 use crate::store::AppState;
 
 /// 安全地获取当前 Unix 时间戳
@@ -56,9 +55,6 @@ impl PromptService {
         state: &AppState,
         app: AppType,
     ) -> Result<IndexMap<String, Prompt>, AppError> {
-        if matches!(app, AppType::Pi) {
-            return get_pi_prompts(state);
-        }
         // A restore replaces the DB before projecting it to live files. Keep
         // backfill outside that window, including calls outside the UI command.
         let Ok(_sync_guard) = super::sync_protocol::sync_mutex().try_lock() else {
@@ -87,18 +83,9 @@ impl PromptService {
     pub fn upsert_prompt(
         state: &AppState,
         app: AppType,
-        id: &str,
+        _id: &str,
         prompt: Prompt,
     ) -> Result<(), AppError> {
-        if matches!(app, AppType::Pi) {
-            return upsert_pi_prompt(state, id, prompt);
-        }
-
-        if app == AppType::Mcode {
-            return upsert_mcode_prompt(state, id, prompt, &prompt_file_path(&app)?);
-        }
-
-        // 检查是否为已启用的提示词
         let is_enabled = prompt.enabled;
         // Only an actual enabled -> disabled transition may clear the live file.
         // New or already-disabled entries are library-only changes.
@@ -109,7 +96,6 @@ impl PromptService {
                 .get(&prompt.id)
                 .is_some_and(|previous| previous.enabled);
 
-        validate_prompt_content(&app, &prompt.content)?;
         state.db.save_prompt(app.as_str(), &prompt)?;
 
         if is_enabled {
@@ -134,18 +120,6 @@ impl PromptService {
     }
 
     pub fn delete_prompt(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
-        if matches!(app, AppType::Pi) {
-            return delete_pi_prompt(state, id);
-        }
-        let _guard = if app == AppType::Mcode {
-            Some(
-                MCODE_PROMPT_LOCK
-                    .lock()
-                    .map_err(|error| AppError::Message(error.to_string()))?,
-            )
-        } else {
-            None
-        };
         let prompts = Self::get_prompts(state, app.clone())?;
 
         if let Some(prompt) = prompts.get(id) {
@@ -159,13 +133,6 @@ impl PromptService {
     }
 
     pub fn enable_prompt(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
-        if matches!(app, AppType::Pi) {
-            return enable_pi_prompt(state, id);
-        }
-        if app == AppType::Mcode {
-            return enable_mcode_prompt(state, id, &prompt_file_path(&app)?);
-        }
-
         // 回填当前 live 文件内容到已启用的提示词，或创建备份
         let target_path = prompt_file_path(&app)?;
         if target_path.exists() {
@@ -223,7 +190,6 @@ impl PromptService {
         }
 
         if let Some(prompt) = prompts.get_mut(id) {
-            validate_prompt_content(&app, &prompt.content)?;
             prompt.enabled = true;
             write_text_file(&target_path, &prompt.content)?; // 原子写入
             state.db.save_prompt(app.as_str(), prompt)?;
@@ -277,9 +243,6 @@ impl PromptService {
     }
 
     pub fn get_current_file_content(app: AppType) -> Result<Option<String>, AppError> {
-        if matches!(app, AppType::Pi) {
-            return Ok(PiAgentsFileGuard::acquire()?.read()?.content);
-        }
         let file_path = prompt_file_path(&app)?;
         if !file_path.exists() {
             return Ok(None);
@@ -289,31 +252,14 @@ impl PromptService {
         Ok(Some(content))
     }
 
-    /// Project the database SSOT to one application's managed prompt file.
-    ///
-    /// This deliberately does not call `enable_prompt`: restore paths must not
-    /// read stale live content and write it back into the freshly imported DB.
+    /// Project the database SSOT without backfilling stale live files during restore.
     pub fn sync_to_live(state: &AppState, app: AppType) -> Result<(), AppError> {
-        // Pi derives activation from its native AGENTS.md; its persisted prompt
-        // rows are intentionally disabled and must not drive generic projection.
-        if matches!(app, AppType::ClaudeDesktop | AppType::Pi) {
+        if matches!(app, AppType::ClaudeDesktop) {
             return Ok(());
         }
 
-        let _guard = if app == AppType::Mcode {
-            Some(
-                MCODE_PROMPT_LOCK
-                    .lock()
-                    .map_err(|error| AppError::Message(error.to_string()))?,
-            )
-        } else {
-            None
-        };
         let prompts = state.db.get_prompts(app.as_str())?;
         let target_path = prompt_file_path(&app)?;
-        if let Some(prompt) = prompts.values().find(|prompt| prompt.enabled) {
-            validate_prompt_content(&app, &prompt.content)?;
-        }
         if let Some(warning) = project_prompt_set_to_path(&prompts, &target_path)? {
             return Err(AppError::Message(warning));
         }
@@ -357,32 +303,20 @@ impl PromptService {
 
         let file_path = prompt_file_path(&app)?;
 
-        // 读取文件内容。Pi 与交互式管理路径共用限长读取和协调锁。
-        let content = if matches!(app, AppType::Pi) {
-            match PiAgentsFileGuard::acquire().and_then(|guard| guard.read()) {
-                Ok(snapshot) => match snapshot.content {
-                    Some(content) => content,
-                    None => return Ok(0),
-                },
-                Err(error) => {
-                    log::warn!("读取提示词文件失败: {file_path:?}, 错误: {error}");
-                    return Ok(0);
-                }
-            }
-        } else {
-            if !file_path.exists() {
+        // 检查文件是否存在
+        if !file_path.exists() {
+            return Ok(0);
+        }
+
+        // 读取文件内容
+        let content = match std::fs::read_to_string(&file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("读取提示词文件失败: {file_path:?}, 错误: {e}");
                 return Ok(0);
-            }
-            match std::fs::read_to_string(&file_path) {
-                Ok(content) => content,
-                Err(error) => {
-                    log::warn!("读取提示词文件失败: {file_path:?}, 错误: {error}");
-                    return Ok(0);
-                }
             }
         };
 
-        validate_prompt_content(&app, &content)?;
         // 检查内容是否为空
         if content.trim().is_empty() {
             return Ok(0);
@@ -401,9 +335,7 @@ impl PromptService {
             ),
             content,
             description: Some("Automatically imported on first launch".to_string()),
-            // Pi derives active state from AGENTS.md. Other apps retain their
-            // established persisted prompt selection.
-            enabled: !matches!(app, AppType::Pi),
+            enabled: true, // 首次导入时自动启用
             created_at: Some(timestamp),
             updated_at: Some(timestamp),
         };

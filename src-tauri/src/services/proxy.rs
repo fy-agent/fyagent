@@ -11,7 +11,10 @@ use crate::proxy::providers::codex_oauth_auth::{CodexLiveAuthSwitchGuard, CodexO
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::types::*;
-use crate::services::provider::build_effective_settings_with_common_config;
+use crate::services::provider::{
+    build_effective_provider_for_live_with_codex_oauth_manager,
+    build_effective_settings_with_common_config,
+};
 use serde_json::{json, Map, Value};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -1106,6 +1109,11 @@ impl ProxyService {
             .build_codex_live_from_provider_while_proxy_active(provider, existing_live.as_ref())
             .await?;
 
+        if let (Some(account_id), Some(guard)) = (outgoing_managed_account_id, outgoing_guard) {
+            guard
+                .ensure_unchanged(account_id)
+                .map_err(|error| error.to_string())?;
+        }
         self.write_codex_takeover_live_for_provider(&effective_settings, Some(provider))?;
         Ok(())
     }
@@ -1122,7 +1130,6 @@ impl ProxyService {
             self.db.as_ref(),
             &AppType::Codex,
             provider,
-            &self.codex_oauth_manager,
         )
         .map_err(|e| format!("构建 codex 有效配置失败: {e}"))?;
         if let Some(existing_live) = existing_live {
@@ -4049,7 +4056,15 @@ impl ProxyService {
     }
 
     fn write_codex_live_verbatim(&self, config: &Value) -> Result<(), String> {
-        use crate::codex_config::get_codex_auth_path;
+        self.write_codex_live_verbatim_with_auth_guard(config, None)
+    }
+
+    fn write_codex_live_verbatim_with_auth_guard(
+        &self,
+        config: &Value,
+        expected_auth: Option<&CodexAuthFileSnapshot>,
+    ) -> Result<(), String> {
+        use crate::codex_config::{get_codex_auth_path, get_codex_config_path};
 
         let auth = config.get("auth");
         let config_str = config.get("config").and_then(|v| v.as_str());
@@ -4094,34 +4109,93 @@ impl ProxyService {
                 )
             })
             .transpose()
-            .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
+            .map_err(|e| format!("写入 Codex 配置失败: {e}"));
+        let prepared_cfg = match prepared_cfg_result {
+            Ok(prepared_cfg) => prepared_cfg,
+            Err(error) => {
+                if let Some(snapshot) = catalog_snapshot.as_ref() {
+                    snapshot.restore().map_err(|rollback_error| {
+                        format!("{error}; 回滚 Codex 模型目录失败: {rollback_error}")
+                    })?;
+                }
+                return Err(error);
+            }
+        };
 
-        match (auth, prepared_cfg.as_deref()) {
-            (Some(auth), Some(cfg))
-                if crate::codex_config::codex_auth_has_oauth_login_material(auth) =>
-            {
-                crate::codex_config::write_codex_live_atomic(auth, Some(cfg))
-                    .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
+        let write_result = if let (Some(expected_auth), Some(auth)) = (expected_auth, auth) {
+            (|| -> Result<(), String> {
+                let replacement = if auth.as_object().is_some_and(Map::is_empty) {
+                    None
+                } else {
+                    Some(
+                        serde_json::to_vec_pretty(auth)
+                            .map_err(|error| format!("序列化 Codex auth 失败: {error}"))?,
+                    )
+                };
+                let mut transaction = CodexAuthFileTransaction::begin(expected_auth)?;
+                if let Err(error) = transaction.install(replacement) {
+                    return match transaction.rollback() {
+                        Ok(()) => Err(error),
+                        Err(rollback_error) => {
+                            Err(format!("{error}; 回滚 Codex auth 失败: {rollback_error}"))
+                        }
+                    };
+                }
+
+                let config_result = prepared_cfg.as_deref().map_or(Ok(()), |cfg| {
+                    crate::config::write_text_file(&get_codex_config_path(), cfg)
+                        .map_err(|error| format!("写入 Codex config 失败: {error}"))
+                });
+                match config_result {
+                    Ok(()) => transaction.commit(),
+                    Err(error) => match transaction.rollback() {
+                        Ok(()) => Err(error),
+                        Err(rollback_error) => {
+                            Err(format!("{error}; 回滚 Codex auth 失败: {rollback_error}"))
+                        }
+                    },
+                }
+            })()
+        } else {
+            (|| -> Result<(), String> {
+                match (auth, prepared_cfg.as_deref()) {
+                    (Some(auth), Some(cfg))
+                        if crate::codex_config::codex_auth_has_oauth_login_material(auth) =>
+                    {
+                        crate::codex_config::write_codex_live_atomic(auth, Some(cfg))
+                            .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
+                    }
+                    (Some(auth), None)
+                        if crate::codex_config::codex_auth_has_oauth_login_material(auth) =>
+                    {
+                        let auth_path = get_codex_auth_path();
+                        write_json_file(&auth_path, auth)
+                            .map_err(|e| format!("写入 Codex auth 失败: {e}"))?;
+                    }
+                    (Some(auth), Some(cfg)) => {
+                        let live_config =
+                            crate::codex_config::prepare_codex_provider_live_config(auth, cfg)
+                                .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
+                        crate::codex_config::write_codex_live_config_atomic(Some(&live_config))
+                            .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
+                    }
+                    (_, Some(cfg)) => {
+                        crate::codex_config::write_codex_live_config_atomic(Some(cfg))
+                            .map_err(|e| format!("写入 Codex config 失败: {e}"))?;
+                    }
+                    (_, None) => {}
+                }
+                Ok(())
+            })()
+        };
+
+        if let Err(error) = write_result {
+            if let Some(snapshot) = catalog_snapshot.as_ref() {
+                snapshot.restore().map_err(|rollback_error| {
+                    format!("{error}; 回滚 Codex 模型目录失败: {rollback_error}")
+                })?;
             }
-            (Some(auth), None)
-                if crate::codex_config::codex_auth_has_oauth_login_material(auth) =>
-            {
-                let auth_path = get_codex_auth_path();
-                write_json_file(&auth_path, auth)
-                    .map_err(|e| format!("写入 Codex auth 失败: {e}"))?;
-            }
-            (Some(auth), Some(cfg)) => {
-                let live_config =
-                    crate::codex_config::prepare_codex_provider_live_config(auth, cfg)
-                        .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-                crate::codex_config::write_codex_live_config_atomic(Some(&live_config))
-                    .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-            }
-            (_, Some(cfg)) => {
-                crate::codex_config::write_codex_live_config_atomic(Some(cfg))
-                    .map_err(|e| format!("写入 Codex config 失败: {e}"))?;
-            }
-            (_, None) => {}
+            return Err(error);
         }
 
         Ok(())

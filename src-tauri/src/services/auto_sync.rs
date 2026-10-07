@@ -31,9 +31,13 @@ impl AutoSyncController {
         SuppressionGuard(self)
     }
 
+    pub fn is_suppressed(&self) -> bool {
+        self.suppression_depth.load(Ordering::SeqCst) > 0
+    }
+
     /// Called inside SQLite's update hook. Never block or reenter the database.
     pub fn notify(&self, table: &str) {
-        if self.suppression_depth.load(Ordering::SeqCst) > 0 || !should_trigger(table) {
+        if self.is_suppressed() || !should_trigger(table) {
             return;
         }
         if let Some(sender) = self.sender.get() {

@@ -13,7 +13,10 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
     let client = crate::proxy::http_client::get();
 
     #[cfg(target_os = "windows")]
-    let probe = scan_cli_version(tool);
+    let probe = match probe_path_default_version(tool) {
+        ShellProbe::NotFound(_) => scan_cli_version(tool),
+        found => found,
+    };
 
     #[cfg(target_os = "macos")]
     let probe = match try_get_version(tool) {
@@ -47,7 +50,7 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
         "opencode" => fetch_opencode_cli_latest(&client, local).await,
         "openclaw" => fetch_npm_latest_with_authority(&client, "openclaw", tool, local).await,
         "hermes" => {
-            let latest = fetch_hermes_latest_version().await;
+            let latest = drop_latest_behind_local(fetch_hermes_latest_version().await, local);
             if latest.is_some() {
                 latest_source = Some(HERMES_LATEST_SOURCE.to_string());
             }
@@ -155,14 +158,58 @@ pub(super) fn pick_latest_version(
     Some(best)
 }
 
+pub(super) fn npm_dist_tags_url(package: &str) -> String {
+    format!(
+        "https://registry.npmjs.org/-/package/{}/dist-tags",
+        package.replace('/', "%2f")
+    )
+}
+
+pub(super) fn github_release_version_from_json(json: &serde_json::Value) -> Option<String> {
+    let from_name = json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .and_then(|name| release_display_version(&extract_version(name)));
+    from_name.or_else(|| {
+        json.get("tag_name")
+            .and_then(|v| v.as_str())
+            .and_then(|tag| release_display_version(tag.strip_prefix('v').unwrap_or(tag)))
+    })
+}
+
+pub(super) fn drop_latest_behind_local(
+    latest: Option<String>,
+    local_version: Option<&str>,
+) -> Option<String> {
+    let latest = latest?;
+    let local_leads = local_version
+        .and_then(|local| compare_semver(local, &latest))
+        .is_some_and(|ord| ord == std::cmp::Ordering::Greater);
+    (!local_leads).then_some(latest)
+}
+
+fn release_display_version(candidate: &str) -> Option<String> {
+    semver::Version::parse(candidate)
+        .ok()
+        .filter(|version| version.major < 1000)
+        .map(|_| candidate.to_string())
+}
+
+const LATEST_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 async fn fetch_npm_dist_tags(
     client: &reqwest::Client,
     package: &str,
 ) -> Option<serde_json::Map<String, serde_json::Value>> {
-    let url = format!("https://registry.npmjs.org/{package}");
-    let resp = client.get(&url).send().await.ok()?;
-    let json = resp.json::<serde_json::Value>().await.ok()?;
-    json.get("dist-tags")?.as_object().cloned()
+    let resp = client
+        .get(npm_dist_tags_url(package))
+        .timeout(LATEST_PROBE_TIMEOUT)
+        .send()
+        .await
+        .ok()?;
+    resp.json::<serde_json::Map<String, serde_json::Value>>()
+        .await
+        .ok()
 }
 
 #[allow(dead_code)]
@@ -287,7 +334,7 @@ pub(crate) fn parse_github_latest_release_tag(body: &[u8]) -> Option<String> {
     if tag.is_empty() || tag.len() > 64 {
         return None;
     }
-    Some(tag.strip_prefix('v').unwrap_or(tag).to_string())
+    github_release_version_from_json(&json)
 }
 
 pub(crate) async fn fetch_github_latest_version(

@@ -7,6 +7,8 @@ product version from `0.4.10` to the upstream version.
 **标签祖先关系已集成；行为移植按组列状态；Rust 验证待完成。**
 2026-10-07 fix1 仅解除数据库/备份的已知源码阻断并明确数据库增量，
 不是 S02/S03/S04/S23 的功能验收，也不表示整个 Rust 工程已可编译。
+2026-10-07 fix2 清理剩余调用/定义、类型及测试接线阻断；Pi/Mcode 推迟到 #208，
+检查证据仍为 `code_audit`，不宣称 Rust 类型检查或原生运行已通过。
 
 ## Verified source and graph
 
@@ -74,9 +76,10 @@ sponsorship, affiliate, or tracking metadata became a FyAgent product claim.
   module graph were not restored;
 - capabilities stay on the FyAgent list. `process:allow-exit`,
   `process:allow-restart`, and `dialog:default` were not added;
-- Pi command handlers are present as source but are not registered on the
-  invoke surface. Pi/Mcode skill and MCP integration is incomplete; the retained Mcode
-  storage column alone does not provide a usable target;
+- fix2 restores the pre-merge client list and removes reachable Pi/Mcode
+  Provider, Prompt, Skills, MCP and session wiring. Dormant upstream client
+  source files remain unregistered for #208; the retained Mcode storage column
+  alone does not provide a usable target;
 - native Fetch stays. `cross-fetch` was not reintroduced;
 - new implicit broad-family cfg sites were rewritten to explicit macOS or
   Windows. The supported-platform structure manifest was refreshed after that
@@ -126,7 +129,8 @@ After the mechanical pass, these contract repairs were applied:
   was removed. `services/tooling/discovery.rs` remains the owner. The copied
   planner called a subsystem shell helper that does not exist here.
 - Diagnostic strings no longer interpolate `{account_id}`.
-- `session_usage_mcode` is `pub(crate)`.
+- At the original merge, `session_usage_mcode` was made `pub(crate)`; fix2
+  removes its module declaration and startup scan entry for #208.
 - The newly added nightly workflow under `.github/workflows/` was not kept.
   The change classifier has no class for that path, and CI modernization is
   outside this merge.
@@ -154,11 +158,11 @@ reachable source; Rust/native validation remains pending. Other groups are
 unverified, not implicitly completed by tag ancestry. Re-merging this same
 tag cannot restore the discarded behavior.
 
-Fix1 also found source blockers outside the database boundary: undeclared
-Pi/Mcode config modules referenced by active code, missing Skills helpers/fields,
-and missing Provider OAuth/preflight helpers. These must not be hidden by the
-phrase “Rust verification pending”; a whole-project compilation pass is not
-claimed.
+Fix1 found source blockers outside the database boundary: undeclared Pi/Mcode
+config modules, missing Skills helpers/fields, and missing Provider OAuth/preflight
+helpers. Fix2 addresses those examples and the additional concrete defects below.
+This supersedes the earlier open source-blocker list, but does not establish a
+whole-project compilation pass.
 
 ## Fix1 validation (2026-10-07)
 
@@ -180,6 +184,85 @@ claimed.
 - Local `rustc` is 1.85.1; repository toolchain is 1.97.1; `rustfmt` is absent.
   No cargo build/check/test was attempted. Native validation and the additional
   source blockers listed above remain open. No stable-baseline acceptance.
+
+## Fix2：底座编译接线修复（2026-10-07）
+
+基线 `86ea5c74`；客户端接线参照父提交 `5b1a334b`，补函数来源为本地
+`v3.20.4`（`43e1d990`）。不增加客户端模块、不补空桩、不改数据库 v27，
+不执行 cargo、不更新 Cargo.lock、不修改 remote、不推送或创建 PR。
+
+### 按能力记录回退
+
+| 上游能力 | 本轮处置 | 后续归属 |
+| --- | --- | --- |
+| Pi 客户端枚举、可见性、目录设置、deeplink 与代理选择 | 恢复 FyAgent 父提交支持列表，移除可达的 Pi 模块引用 | **推迟到客户端适配包 #208** |
+| Pi Provider 导入、启动扫描、live 读写及统一配置接线 | 移除依赖 `pi` / `pi_config` 的调用 | **推迟到客户端适配包 #208** |
+| Pi Prompt/AGENTS 管理、激活状态推导和文件协调锁 | 移除命令、服务与启动入口；既有客户端 Prompt live 回填保留 | **推迟到客户端适配包 #208** |
+| Pi Skills 部署哈希、归属判断、更新迁移、卸载保留路径与响应字段 | 回到已有目标的安装/卸载/备份流程；通用锁及路径校验保留 | **推迟到客户端适配包 #208** |
+| Pi 会话发现、删除和用量同步 | 取消 provider 模块声明、scan/delete 与同步任务 | **推迟到客户端适配包 #208** |
+| Mcode 枚举、可见性、Provider/config/deeplink 接线 | 恢复父提交支持列表，移除 `mcode_config` 调用 | **推迟到客户端适配包 #208** |
+| Mcode MCP 导入、事务写入和启停 | 取消模块声明和服务分支；移除 3 个专属集成测试 | **推迟到客户端适配包 #208** |
+| Mcode Prompt 写入协调 | 回退服务分支，撤回专属 `mcode_commands.rs` 测试入口 | **推迟到客户端适配包 #208** |
+| Mcode Skills 分配、更新事务及数据库参数 | 删除未声明字段访问和无 SQL 占位符的参数；v27 `enabled_mcode` 列保留 | **推迟到客户端适配包 #208** |
+| Mcode 会话读取与用量扫描 | 取消模块声明和调度入口 | **推迟到客户端适配包 #208** |
+
+未注册的客户端源文件保留在仓库及上游历史中，不能据此认定功能可用；#208
+接入时需一并恢复/适配上述测试。没有 ignore 已有客户端的测试。
+
+### 已有能力补齐及必要适配
+
+- Skills：补 `skill_state_lock/read_guard/write_guard`、`paths_alias`、
+  `paths_overlap`、`ensure_distinct_skill_roots`、`get_distinct_app_skills_dir`、
+  `validate_skill_storage_destination`；目录目标使用 FyAgent `SkillTargetId`。
+  `resolve_uninstall_backup_source` / `create_uninstall_backup` 恢复父提交单参数
+  调用链；Pi 专用 excluding/preserving 路径随客户端推迟，不伪造函数。
+  补真实下载测试夹具字段，保留归档限制、网络后再检查、临时目录生命周期和路径回归。
+- Codex：补上游 `CodexLiveWritePlan`、`plan_codex_live_write`、
+  `preflight_codex_live_write`、managed token bundle 和 live-auth 构建辅助函数；
+  补齐丢失的刷新重试、generation/持久化锁、登录提交参数及账号 workspace 查询。
+  上游 `account_id`/可选 workspace 适配 FyAgent `credential_id`/String 模型，
+  旧存储与测试初始化补 `id_token`、时间戳字段。并消除 facade 与 auth/storage 的重复定义。
+- Provider：合并损坏的 update/switch 主接线恢复 FyAgent config-only/Managed Auth
+  写入归属，保留上游纯预检、陈旧备份判断、统一 Provider 当前子项重投影及错误聚合。
+  **上游 Provider 保存/切换直接管理 OAuth 登录文件的整套事务没有作为新入口启用**；
+  这是既有认证架构的适配限制，不归为 Pi/Mcode 的 #208 客户端能力。
+  实际代理/兼容调用需要的 OAuth helper 使用真实实现；回滚、CAS guard 保留。
+- Proxy：补 `CodexStandaloneEndpoint` 及 full-URL 改写、原生 Responses URL 判断；
+  补 5 个 SSE 测试辅助函数。修复 backup writer 参数数量、auth-guard writer 缺参数/局部变量。
+- Tooling：补版本哨兵、npm dist-tags URL、GitHub 版本解析和旧 latest 过滤；
+  保留 FyAgent semver、Hermes metadata owner、Windows shell-user 环境边界，
+  修复 Windows command builder/runner 签名和测试调用。
+- 自动同步：删除误粘回 facade 的另一套调度状态/Drop/计时函数，复用既有
+  `AutoSyncController`；补 suppression 查询供上游回归测试读取真实状态。
+- 测试与重复声明：删除重复 `auth_cancel_login` 及 invoke 注册、UniversalProvider
+  facade 副本；修复残留 `cc_switch_lib` 引用及不匹配的结构体初始化。
+  `database/backup.rs` **仅**将旧测试的 `CC_SWITCH_SQL_EXPORT_HEADER` 引用改成
+  现有 `FYAGENT_SQL_EXPORT_HEADER`（blame 为上游 `dfb2e5235`，非 fix1 改动）；
+  所有 fix1 实现、v27 schema/分派/夹具均未变。
+
+### 检查与剩余边界
+
+本轮最终 `pnpm typecheck`、`pnpm lint` 均以 exit 0 通过；相关 `pnpm test:unit`
+通过 **30 个文件、248 个测试**。静态脚本覆盖 **455 个文件**，所有断言及
+rustfmt 语法解析通过；`git diff --check` 通过。证据级别：`code_audit`。
+
+最终检查结果见本地 `report-205-fix2.md`；可重复静态脚本为同目录的
+`verify-205-fix2.py`。该脚本覆盖模块声明可达源文件与集成测试，检查客户端边界、
+35 个补齐 helper 的唯一性、上游调用名、受保护文件一致性，并逐文件做 rustfmt
+语法解析。名称扫描经过人工排除外部方法/闭包误报，不等于 Rust 名称解析或类型检查。
+系统 PATH 的 `rustc` 为 1.85.1；额外发现的 1.97.1 工具链目录仅调用了独立
+`rustfmt` 做无写入语法解析，没有运行 cargo。
+
+本轮本地 `git add` 被实际只读挂载阻断（`index.lock: Read-only file system`），
+因此未形成 fix2 提交；修改保留于工作树，补丁及恢复命令见本地报告。
+
+仍需目标平台 Rust check/test、Cargo.lock/依赖一致性验证，以及上表 S02/S03/S04/S23
+剩余行为闭环。保留测试可能继续暴露架构行为差异；本轮不作“整个 Rust 已编译通过”
+或“#205 已验收”声明。
+
+根因与防线：机械合并同时保留调用端和 FyAgent 拆分后的模块结构，漏掉定义、字段、
+初始化及集成测试入口。以后按生产入口、字段/参数、测试入口三层一起核对；不得只
+扫描 `src`、只证明标签 ancestry，或通过增加空桩和禁用测试掩盖冲突。
 
 ## Original merge validation (historical, not a fresh fix1 run)
 

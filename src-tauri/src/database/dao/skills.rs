@@ -148,7 +148,6 @@ impl Database {
                 skill.installed_at,
                 skill.content_hash,
                 skill.updated_at,
-                skill.apps.mcode,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;

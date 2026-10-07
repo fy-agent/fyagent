@@ -48,9 +48,6 @@ pub(crate) mod webdav;
 pub(crate) mod webdav_auto_sync;
 pub(crate) mod webdav_sync;
 pub(crate) mod workbuddy;
-pub(crate) mod pi_prompt_files;
-pub(crate) mod pi_state;
-pub(crate) mod session_usage_pi;
 
 pub use codex_desktop::CodexDesktopService;
 pub use config::ConfigService;
@@ -68,5 +65,3 @@ pub use usage_stats::{
     DailyStats, LogFilters, ModelStats, PaginatedLogs, ProviderLimitStatus, ProviderStats,
     RequestLogDetail, UsageSummary, UsageSummaryByApp,
 };
-
-pub(crate) mod session_usage_mcode;

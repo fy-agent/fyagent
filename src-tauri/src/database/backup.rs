@@ -1797,7 +1797,7 @@ mod tests {
 
         let header_only = format!(
             "{}\nPRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\nCOMMIT;\n",
-            super::CC_SWITCH_SQL_EXPORT_HEADER
+            super::FYAGENT_SQL_EXPORT_HEADER
         );
         let error = target
             .import_sql_string(&header_only)

@@ -808,12 +808,12 @@ requires_openai_auth = true
         .expect("switch to third-party provider should succeed");
 
     assert!(
-        !cc_switch_lib::get_codex_auth_path().exists(),
+        !fyagent_lib::get_codex_auth_path().exists(),
         "default (preservation off) must delete auth.json on a third-party switch — \
          the official login goes away and the key rides in config.toml instead"
     );
     let live_config =
-        std::fs::read_to_string(cc_switch_lib::get_codex_config_path()).expect("read config.toml");
+        std::fs::read_to_string(fyagent_lib::get_codex_config_path()).expect("read config.toml");
     assert!(
         live_config.contains("experimental_bearer_token = \"third-party-key\""),
         "the third-party key must be injected as the provider-scoped bearer token; got:\n{live_config}"
@@ -865,12 +865,12 @@ requires_openai_auth = false
         .expect("switch to third-party provider should succeed");
 
     assert!(
-        !cc_switch_lib::get_codex_auth_path().exists(),
+        !fyagent_lib::get_codex_auth_path().exists(),
         "third-party switches are config-only: no auth.json is written"
     );
 
     let live_config =
-        std::fs::read_to_string(cc_switch_lib::get_codex_config_path()).expect("read config.toml");
+        std::fs::read_to_string(fyagent_lib::get_codex_config_path()).expect("read config.toml");
     assert!(
         live_config.contains("experimental_bearer_token = \"third-party-key\""),
         "default switch must inject the API key into config.toml so Codex >= 0.149 \
@@ -975,7 +975,7 @@ openai_base_url = "https://relay.example/v1"
         .expect("legacy reroute shape must be normalized, not rejected");
 
     let live_config =
-        std::fs::read_to_string(cc_switch_lib::get_codex_config_path()).expect("read config.toml");
+        std::fs::read_to_string(fyagent_lib::get_codex_config_path()).expect("read config.toml");
     assert!(
         !live_config.contains("openai_base_url"),
         "the top-level reroute must be rewritten away; got:\n{live_config}"

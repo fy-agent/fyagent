@@ -3677,6 +3677,137 @@ async fn refresh_managed_proxy_token(
         })
 }
 
+#[derive(Clone, Copy)]
+enum CodexStandaloneEndpoint {
+    AlphaSearch,
+    ImagesGenerations,
+    ImagesEdits,
+}
+
+impl CodexStandaloneEndpoint {
+    fn from_effective_endpoint(endpoint: &str) -> Option<Self> {
+        match split_endpoint_and_query(endpoint).0 {
+            "/alpha/search" => Some(Self::AlphaSearch),
+            "/images/generations" => Some(Self::ImagesGenerations),
+            "/images/edits" => Some(Self::ImagesEdits),
+            _ => None,
+        }
+    }
+
+    fn path(self) -> &'static str {
+        match self {
+            Self::AlphaSearch => "/alpha/search",
+            Self::ImagesGenerations => "/images/generations",
+            Self::ImagesEdits => "/images/edits",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::AlphaSearch => "Codex Alpha Search",
+            Self::ImagesGenerations => "Codex Images generations",
+            Self::ImagesEdits => "Codex Images edits",
+        }
+    }
+
+    fn full_url_hint(self) -> &'static str {
+        match self {
+            Self::AlphaSearch => "/responses",
+            Self::ImagesGenerations | Self::ImagesEdits => {
+                "/responses, /chat/completions, /images/generations, or /images/edits"
+            }
+        }
+    }
+
+    /// Full-URL suffixes that unambiguously locate this endpoint's sibling.
+    ///
+    /// Order matters: a longer suffix must precede any suffix it ends with
+    /// (`/responses/compact` before `/responses`), otherwise the shorter one
+    /// wins and the rewrite keeps a stray `/compact` segment.
+    fn source_suffixes(self) -> &'static [&'static str] {
+        match self {
+            Self::AlphaSearch => &["/responses/compact", "/responses"],
+            // Both Images routes live next to each other, so a full URL pasted
+            // for either one is a valid source for the other.
+            Self::ImagesGenerations | Self::ImagesEdits => &[
+                "/images/generations",
+                "/images/edits",
+                "/chat/completions",
+                "/responses/compact",
+                "/responses",
+            ],
+        }
+    }
+
+    fn source_suffix(self, parsed_path: &str) -> Option<&'static str> {
+        // Match the case-insensitive pasted-endpoint check. Only normalize for
+        // matching; the rewrite keeps the original URL prefix and query intact.
+        let parsed_path = parsed_path.to_ascii_lowercase();
+        self.source_suffixes()
+            .iter()
+            .copied()
+            .find(|suffix| parsed_path.ends_with(suffix))
+    }
+
+    /// Whether a base URL (full-URL switch off) already ends in one of this
+    /// endpoint's source suffixes, i.e. was pasted as a complete endpoint URL.
+    fn base_url_is_source_endpoint(self, base_url: &str) -> bool {
+        self.source_suffixes()
+            .iter()
+            .any(|suffix| base_url_is_full_endpoint(base_url, suffix))
+    }
+}
+
+fn rewrite_codex_standalone_full_url(
+    base_url: &str,
+    request_query: Option<&str>,
+    endpoint: CodexStandaloneEndpoint,
+) -> Result<String, ProxyError> {
+    let trimmed = base_url.trim();
+    let parsed = url::Url::parse(trimmed).map_err(|_| {
+        ProxyError::ConfigError(format!("{} requires a valid full URL", endpoint.label()))
+    })?;
+
+    // Fragments are never sent in HTTP requests. Drop one before splitting the
+    // query so an accidental fragment cannot move the incoming query behind `#`.
+    let without_fragment = trimmed
+        .split_once('#')
+        .map_or(trimmed, |(head, _fragment)| head);
+    let (url_without_query, base_query) = without_fragment
+        .split_once('?')
+        .map_or((without_fragment, None), |(head, query)| {
+            (head, Some(query))
+        });
+    let url_without_query = url_without_query.trim_end_matches('/');
+
+    let parsed_path = parsed.path().trim_end_matches('/').to_string();
+    let suffix = endpoint.source_suffix(&parsed_path).ok_or_else(|| {
+        ProxyError::ConfigError(format!(
+            "{} cannot derive {} from an opaque full URL; use a base URL or a full URL ending in {}",
+            endpoint.label(),
+            endpoint.path(),
+            endpoint.full_url_hint()
+        ))
+    })?;
+
+    let prefix_len = url_without_query
+        .len()
+        .checked_sub(suffix.len())
+        .ok_or_else(|| ProxyError::ConfigError("Invalid Codex full URL".to_string()))?;
+    let mut rewritten = format!("{}{}", &url_without_query[..prefix_len], endpoint.path());
+
+    let request_query = request_query.filter(|query| !query.is_empty());
+    let base_query = base_query.filter(|query| !query.is_empty());
+    match (base_query, request_query) {
+        (Some(base), Some(request)) => rewritten.push_str(&format!("?{base}&{request}")),
+        (Some(base), None) => rewritten.push_str(&format!("?{base}")),
+        (None, Some(request)) => rewritten.push_str(&format!("?{request}")),
+        (None, None) => {}
+    }
+
+    Ok(rewritten)
+}
+
 fn build_codex_oauth_session_headers(
     session_id: &str,
 ) -> Vec<(http::HeaderName, http::HeaderValue)> {

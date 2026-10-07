@@ -750,6 +750,23 @@ mod tests {
         event.get("type").and_then(|v| v.as_str())
     }
 
+    fn collect_delta_text(events: &[Value], delta_type: &str, field: &str) -> String {
+        events
+            .iter()
+            .filter(|event| {
+                event_type(event) == Some("content_block_delta")
+                    && event.pointer("/delta/type").and_then(|v| v.as_str()) == Some(delta_type)
+            })
+            .map(|event| {
+                event
+                    .pointer(field)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect()
+    }
+
     fn compat_stream_input(deltas: Vec<Value>) -> String {
         let mut input = String::new();
         for delta in deltas {

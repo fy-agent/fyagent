@@ -62,12 +62,6 @@ impl McpService {
         let server = state.db.get_mcp_server(id)?;
 
         if let Some(server) = server {
-            if server.apps.mcode {
-                mcp::mcode::sync_and_commit(id, None, || state.db.delete_mcp_server(id))?;
-            } else {
-                state.db.delete_mcp_server(id)?;
-            }
-
             // 从所有应用的 live 配置中移除
             Self::remove_server_from_all_apps(state, id, &server)?;
             // 只有所有 live 清理都成功，才删除可重试的权威记录。
@@ -159,8 +153,6 @@ impl McpService {
             McpTargetId::TraeWork => {
                 mcp::sync_single_server_to_traework(&server.id, &server.server)?;
             }
-            AppType::Mcode => mcp::mcode::sync(&server.id, Some(&server.server))?,
-            AppType::Pi => {}
         }
         Ok(())
     }
@@ -304,8 +296,6 @@ impl McpService {
             } else {
                 Self::remove_server_from_target(&server.id, target)?;
             }
-            // MCode's false flag also covers pre-existing, unmanaged servers.
-            // Only explicit disable/delete operations may remove those entries.
         }
 
         Ok(())

@@ -1533,13 +1533,6 @@ pub fn run() {
                 Ok(_) => log::debug!("○ No Hermes provider changes from live config"),
                 Err(e) => log::warn!("✗ Failed to import Hermes providers: {e}"),
             }
-            match crate::services::provider::import_pi_providers_from_live(&app_state) {
-                Ok(count) if count > 0 => {
-                    log::info!("✓ Synced {count} Pi provider(s) from native config");
-                }
-                Ok(_) => log::debug!("○ No Pi provider changes from native config"),
-                Err(e) => log::warn!("✗ Failed to import Pi providers: {e}"),
-            }
 
             // 2. OMO 配置导入（当数据库中无 OMO provider 时，从本地文件导入）
             {
@@ -1681,8 +1674,6 @@ pub fn run() {
                     crate::app_config::AppType::OpenCode,
                     crate::app_config::AppType::OpenClaw,
                     crate::app_config::AppType::Hermes,
-                    crate::app_config::AppType::Pi,
-                    crate::app_config::AppType::Mcode,
                 ] {
                     match crate::services::prompt::PromptService::import_from_file_on_first_launch(
                         &app_state,
@@ -2434,7 +2425,6 @@ pub fn run() {
             // Generic managed auth commands
             commands::auth_start_login,
             commands::auth_poll_for_account,
-            commands::auth_cancel_login,
             commands::auth_list_accounts,
             commands::auth_get_status,
             commands::auth_remove_account,

@@ -78,8 +78,7 @@ fn map_account(
 ) -> ManagedAuthAccount {
     ManagedAuthAccount {
         is_default: default_account_id == Some(account.id.as_str()),
-        reauth_required: account.reauth_required,
-        requires_reauth: false,
+        reauth_required: false,
         id: account.id,
         provider: provider.to_string(),
         login: account.login,
@@ -135,6 +134,7 @@ fn map_compatibility_account(provider: &str, account: CompatibilityAccount) -> M
         authenticated_at: account.authenticated_at,
         is_default: account.is_default,
         github_domain: account.github_domain,
+        reauth_required: account.requires_reauth,
         requires_reauth: account.requires_reauth,
         chatgpt_account_id: account.chatgpt_account_id,
     }
@@ -179,19 +179,6 @@ pub async fn auth_poll_for_account(
     _github_domain: Option<String>,
 ) -> Result<Option<ManagedAuthAccount>, String> {
     deny_legacy_auth_mutation()
-}
-
-#[tauri::command(rename_all = "camelCase")]
-pub async fn auth_cancel_login(
-    auth_provider: String,
-    device_code: String,
-    codex_state: State<'_, CodexOAuthState>,
-) -> Result<bool, String> {
-    let auth_provider = ensure_auth_provider(&auth_provider)?;
-    if auth_provider != AUTH_PROVIDER_CODEX_OAUTH {
-        return Err("Login cancellation is only supported for Codex OAuth".to_string());
-    }
-    Ok(codex_state.0.cancel_device_flow(&device_code).await)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -408,12 +395,6 @@ mod tests {
             assert!(!lower.contains("device_code"));
             assert!(!lower.contains("refresh"));
         }
-        AUTH_PROVIDER_CODEX_OAUTH => logout_codex_oauth_with_switch_lock(app_state.inner()).await,
-        AUTH_PROVIDER_XAI_OAUTH => {
-            let auth_manager = xai_state.0.write().await;
-            auth_manager.clear_auth().await.map_err(|e| e.to_string())
-        }
-        _ => unreachable!(),
     }
 }
 

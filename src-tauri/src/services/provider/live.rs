@@ -16,7 +16,7 @@ use crate::config::{
 use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
-use crate::proxy::providers::codex_oauth_auth::{CodexLiveAuthSwitchGuard, CodexOAuthManager};
+use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::services::mcp::McpService;
 use crate::store::AppState;
 
@@ -189,9 +189,6 @@ pub(crate) fn provider_exists_in_live_config(
         AppType::OpenClaw => crate::openclaw_config::get_providers()
             .map(|providers| providers.contains_key(provider_id)),
         AppType::Hermes => crate::hermes_config::get_providers()
-            .map(|providers| providers.contains_key(provider_id)),
-        AppType::Pi => crate::pi_config::pi_provider_exists(provider_id),
-        AppType::Mcode => crate::mcode_config::get_providers()
             .map(|providers| providers.contains_key(provider_id)),
         _ => Ok(false),
     }
@@ -534,8 +531,6 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
         | AppType::OpenCode
         | AppType::OpenClaw
         | AppType::Hermes
-        | AppType::Pi
-        | AppType::Mcode
         | AppType::ClaudeDesktop => false,
     }
 }
@@ -608,8 +603,6 @@ pub(crate) fn remove_common_config_from_settings(
         | AppType::OpenCode
         | AppType::OpenClaw
         | AppType::Hermes
-        | AppType::Pi
-        | AppType::Mcode
         | AppType::ClaudeDesktop => Ok(settings.clone()),
     }
 }
@@ -667,8 +660,6 @@ fn apply_common_config_to_settings(
         | AppType::OpenCode
         | AppType::OpenClaw
         | AppType::Hermes
-        | AppType::Pi
-        | AppType::Mcode
         | AppType::ClaudeDesktop => Ok(settings.clone()),
     }
 }
@@ -767,12 +758,33 @@ pub(crate) fn write_live_with_common_config(
     app_type: &AppType,
     provider: &Provider,
 ) -> Result<(), AppError> {
-    write_live_with_common_config_for_codex_oauth_manager(
-        state.db.as_ref(),
-        app_type,
-        provider,
-        &state.codex_oauth_manager,
-    )
+    let mut effective_provider = provider.clone();
+    effective_provider.settings_config =
+        build_effective_settings_with_common_config(db, app_type, provider)?;
+
+    if matches!(app_type, AppType::ClaudeDesktop) {
+        crate::claude_desktop_config::apply_provider(db, &effective_provider)?;
+        log::info!(
+            "Claude Desktop 3P profile '{}' written for provider '{}'",
+            crate::claude_desktop_config::PROFILE_ID,
+            effective_provider.id
+        );
+        return Ok(());
+    }
+
+    if super::is_quick_setup_provider_id(app_type, &effective_provider.id) {
+        return write_quick_setup_live_snapshot(app_type, &effective_provider);
+    }
+
+    if matches!(app_type, AppType::Codex) {
+        let snippet = db.get_config_snippet(app_type.as_str())?;
+        let common_snippet = provider_uses_common_config(app_type, provider, snippet.as_deref())
+            .then_some(snippet)
+            .flatten();
+        return write_codex_live_snapshot(&effective_provider, common_snippet.as_deref());
+    }
+
+    write_live_snapshot(app_type, &effective_provider)
 }
 
 /// Validate the target provider's Codex live projection without writing:
@@ -781,25 +793,139 @@ pub(crate) fn write_live_with_common_config(
 /// injection, TOML parsing). Called before `current` is committed — a
 /// write-layer refusal after `current` moved would let the next switch
 /// backfill the old live config into the new provider's DB row.
-pub(crate) fn preflight_codex_live_write_for_state(
-    state: &AppState,
+pub(crate) fn build_effective_provider_for_live_with_codex_oauth_manager(
+    db: &Database,
+    app_type: &AppType,
     provider: &Provider,
+    codex_oauth_manager: &Arc<CodexOAuthManager>,
+) -> Result<Provider, AppError> {
+    let mut effective_provider = provider.clone();
+    effective_provider.settings_config =
+        build_effective_settings_with_common_config(db, app_type, provider)?;
+    apply_codex_official_auth(app_type, &mut effective_provider, Some(codex_oauth_manager))?;
+    neutralize_codex_proxy_oauth_fallback(app_type, &mut effective_provider);
+    Ok(effective_provider)
+}
+
+fn neutralize_codex_proxy_oauth_fallback(app_type: &AppType, provider: &mut Provider) {
+    if !matches!(app_type, AppType::Codex) || !provider.uses_proxy_injected_oauth() {
+        return;
+    }
+    let Some(settings) = provider.settings_config.as_object_mut() else {
+        return;
+    };
+    let Some(config_text) = settings.get("config").and_then(Value::as_str) else {
+        return;
+    };
+    if let Some(updated) =
+        crate::codex_config::neutralize_codex_official_auth_fallback_for_proxy_oauth(config_text)
+    {
+        settings.insert("config".to_string(), Value::String(updated));
+    }
+}
+
+fn apply_codex_official_auth(
+    app_type: &AppType,
+    provider: &mut Provider,
+    codex_oauth_manager: Option<&Arc<CodexOAuthManager>>,
 ) -> Result<(), AppError> {
-    let effective = build_effective_provider_for_live_with_codex_oauth_manager(
-        state.db.as_ref(),
-        &AppType::Codex,
-        provider,
-        &state.codex_oauth_manager,
-    )?;
-    let obj = effective
-        .settings_config
-        .as_object()
-        .ok_or_else(|| AppError::Config("Codex 供应商配置必须是 JSON 对象".to_string()))?;
-    let auth = obj
-        .get("auth")
-        .ok_or_else(|| AppError::Config("Codex 供应商配置缺少 'auth' 字段".to_string()))?;
-    let config_str = obj.get("config").and_then(|v| v.as_str());
-    crate::codex_config::preflight_codex_live_write(effective.category.as_deref(), auth, config_str)
+    if !matches!(app_type, AppType::Codex)
+        || !crate::proxy::providers::is_codex_official_provider(provider)
+    {
+        return Ok(());
+    }
+
+    // Early OAuth builds could bind the fixed card before its category was
+    // persisted. Normalize only the in-memory live snapshot; the DB row and ID
+    // remain untouched.
+    provider.category = Some("official".to_string());
+
+    let Some(account_id) = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.managed_account_id_for("codex_oauth"))
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+    else {
+        // Preserve the historical unbound Official behavior: an empty stored
+        // auth follows Codex's current login, while a backfilled login snapshot
+        // is restored when switching back to this card.
+        return Ok(());
+    };
+
+    let Some(manager) = codex_oauth_manager else {
+        return Err(AppError::Message(
+            "Codex OAuth 托管账号不可用，请重启应用后重试".to_string(),
+        ));
+    };
+
+    let auth = get_codex_managed_oauth_live_auth_value(manager.clone(), account_id.clone())?;
+
+    let Some(settings_obj) = provider.settings_config.as_object_mut() else {
+        return Err(AppError::Config(
+            "Codex 供应商配置必须是 JSON 对象".to_string(),
+        ));
+    };
+
+    settings_obj.insert("auth".to_string(), auth);
+    Ok(())
+}
+
+fn get_codex_managed_oauth_live_auth_value(
+    manager: Arc<CodexOAuthManager>,
+    account_id: String,
+) -> Result<Value, AppError> {
+    std::thread::spawn(move || {
+        tauri::async_runtime::block_on(async move {
+            manager
+                .ensure_account_exists(&account_id)
+                .await
+                .map_err(|error| error.to_string())?;
+            let bundle = manager
+                .get_valid_token_bundle_for_account(&account_id)
+                .await
+                .map_err(|err| {
+                    format!("Codex OAuth 账号 认证失败，请重新登录 ChatGPT 账号: {err}")
+                })?;
+            let id_token = bundle
+                .id_token
+                .as_deref()
+                .filter(|token| !token.trim().is_empty())
+                .ok_or_else(|| {
+                    format!("Codex OAuth 账号 缺少 id_token，请在认证中心重新登录后再保存")
+                })?;
+
+            Ok::<Value, String>(codex_managed_oauth_live_auth(
+                &bundle.chatgpt_account_id,
+                &bundle.access_token,
+                Some(id_token),
+                &bundle.refresh_token,
+                &bundle.last_refresh,
+            ))
+        })
+    })
+    .join()
+    .map_err(|_| AppError::Message("Codex OAuth token 获取线程异常退出".to_string()))?
+    .map_err(AppError::Message)
+}
+
+pub(crate) fn codex_managed_oauth_live_auth(
+    chatgpt_account_id: &str,
+    access_token: &str,
+    id_token: Option<&str>,
+    refresh_token: &str,
+    last_refresh: &str,
+) -> Value {
+    // 与原生 Codex 浏览器登录的形状对齐：tokens 字段顺序 id_token、access_token、
+    // refresh_token、account_id，并带顶层 last_refresh。**必须**包含 refresh_token，
+    // 否则 Codex CLI 在 access_token 过期后无法自刷新（“裸跑 codex” 会静默失效）。
+    crate::codex_config::codex_managed_oauth_auth_value(
+        chatgpt_account_id,
+        access_token,
+        id_token,
+        refresh_token,
+        last_refresh,
+    )
 }
 
 pub(crate) fn write_live_with_common_config_for_codex_oauth_manager(
@@ -838,6 +964,24 @@ pub(crate) fn write_live_with_common_config_for_codex_oauth_manager(
     }
 
     write_live_snapshot(app_type, &effective_provider)
+}
+
+pub(crate) fn preflight_codex_live_write_for_state(
+    state: &AppState,
+    provider: &Provider,
+) -> Result<(), AppError> {
+    let mut effective = provider.clone();
+    effective.settings_config =
+        build_effective_settings_with_common_config(state.db.as_ref(), &AppType::Codex, provider)?;
+    let obj = effective
+        .settings_config
+        .as_object()
+        .ok_or_else(|| AppError::Config("Codex 供应商配置必须是 JSON 对象".to_string()))?;
+    let auth = obj
+        .get("auth")
+        .ok_or_else(|| AppError::Config("Codex 供应商配置缺少 'auth' 字段".to_string()))?;
+    let config_str = obj.get("config").and_then(|v| v.as_str());
+    crate::codex_config::preflight_codex_live_write(effective.category.as_deref(), auth, config_str)
 }
 
 fn write_quick_setup_live_snapshot(
@@ -1486,14 +1630,6 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             crate::hermes_config::set_provider(&provider.id, provider.settings_config.clone())?;
             log::debug!("Hermes provider '{}' written to live config", provider.id);
         }
-        AppType::Mcode => {
-            crate::mcode_config::set_provider(&provider.id, provider.settings_config.clone())?
-        }
-        AppType::Pi => {
-            return Err(AppError::InvalidInput(
-                "Pi providers use the Pi provider service".to_string(),
-            ));
-        }
     }
     Ok(())
 }
@@ -1516,7 +1652,7 @@ fn sync_all_providers_to_live(state: &AppState, app_type: &AppType) -> Result<()
             continue;
         }
 
-        if let Err(e) = write_live_with_common_config_for_state(state, app_type, provider) {
+        if let Err(e) = write_live_with_common_config(state.db.as_ref(), app_type, provider) {
             log::warn!(
                 "Failed to sync {:?} provider '{}' to live: {e}",
                 app_type,
@@ -1546,7 +1682,7 @@ pub(crate) fn sync_current_provider_for_app_to_live(
 
         let providers = state.db.get_all_providers(app_type.as_str())?;
         if let Some(provider) = providers.get(&current_id) {
-            write_live_with_common_config_for_state(state, app_type, provider)?;
+            write_live_with_common_config(state.db.as_ref(), app_type, provider)?;
         }
     }
 
@@ -1592,24 +1728,11 @@ fn proxy_owns_live_config(
             }
         };
 
-    // The enabled flag is only trusted when the proxy is actually running and
-    // the app still has a backup. This avoids treating an interrupted teardown
-    // (enabled=true, ordinary live file, no backup) as proxy ownership. The
-    // per-app lock covers the short activation window before the flag/placeholder
-    // is committed and avoids using a global proxy-running bit for another app.
-    if takeover_enabled
+    // Provider updates may already hold this app's switch lock. Occupancy is not
+    // evidence of takeover here: a stale backup must still allow a live write.
+    takeover_enabled
         && has_live_backup
         && futures::executor::block_on(state.proxy_service.is_running())
-    {
-        return true;
-    }
-
-    has_live_backup
-        && futures::executor::block_on(
-            state
-                .proxy_service
-                .is_switch_in_progress_for_app(app_type.as_str()),
-        )
 }
 
 /// Sync a provider to live while respecting proxy takeover ownership.
@@ -1638,9 +1761,11 @@ pub(crate) fn sync_live_for_provider_respecting_takeover(
         // can resurrect the old URL and undo the live write we are making now.
         if has_live_backup {
             if let Err(err) = futures::executor::block_on(
-                state
-                    .proxy_service
-                    .update_live_backup_from_provider(app_type.as_str(), provider),
+                state.proxy_service.update_live_backup_from_provider_inner(
+                    app_type.as_str(),
+                    provider,
+                    None,
+                ),
             ) {
                 log::warn!(
                     "刷新 {} 残留 Live 备份失败（不影响本次 live 写入）: {err}",
@@ -1648,17 +1773,17 @@ pub(crate) fn sync_live_for_provider_respecting_takeover(
                 );
             }
         }
-        write_live_with_common_config_for_state(state, app_type, provider)?;
+        write_live_with_common_config(state.db.as_ref(), app_type, provider)?;
         return Ok(LiveSyncOutcome::WroteLive);
     }
 
     // Takeover owns live: update the restore source, and refresh proxy-safe
     // projections while the proxy is running.
-    futures::executor::block_on(
-        state
-            .proxy_service
-            .update_live_backup_from_provider(app_type.as_str(), provider),
-    )
+    futures::executor::block_on(state.proxy_service.update_live_backup_from_provider_inner(
+        app_type.as_str(),
+        provider,
+        None,
+    ))
     .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
 
     if !futures::executor::block_on(state.proxy_service.is_running()) {
@@ -1704,32 +1829,7 @@ fn sync_current_provider_for_app_respecting_takeover(
         return Ok(());
     };
 
-    let has_live_backup = futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
-        .ok()
-        .flatten()
-        .is_some();
-    let live_taken_over = state
-        .proxy_service
-        .detect_takeover_in_live_config_for_app(app_type);
-
-    // `enabled` is set only after takeover writes complete. During that
-    // activation window, backup/live placeholders are the authoritative signal
-    // that normal provider sync must not rewrite the managed live file.
-    if has_live_backup || live_taken_over {
-        if matches!(app_type, AppType::ClaudeDesktop) {
-            write_live_with_common_config(state.db.as_ref(), app_type, provider)?;
-        } else {
-            futures::executor::block_on(
-                state
-                    .proxy_service
-                    .update_live_backup_from_provider_inner(app_type.as_str(), provider),
-            )
-            .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
-        }
-        return Ok(());
-    }
-
-    write_live_with_common_config(state.db.as_ref(), app_type, provider)
+    sync_live_for_provider_respecting_takeover(state, app_type, provider).map(|_| ())
 }
 
 /// Sync current provider to live configuration
@@ -1744,9 +1844,6 @@ pub fn sync_current_to_live(state: &AppState) -> Result<(), AppError> {
 
     // Sync providers based on mode
     for app_type in AppType::all() {
-        if matches!(app_type, AppType::Pi | AppType::Mcode) {
-            continue;
-        }
         let result = if app_type.is_additive_mode() {
             // Additive mode: sync ALL providers
             sync_all_providers_to_live(state, &app_type)
@@ -1766,7 +1863,9 @@ pub fn sync_current_to_live(state: &AppState) -> Result<(), AppError> {
     // MCP sync（best-effort 逐应用投影，内部已聚合失败）。错误暂存到
     // Skill 同步之后再返回：MCP 的失败不该跳过 Skill 同步，但调用方
     //（配置导入 / 云同步恢复）需要知道结果不完整。
-    let mcp_result = McpService::sync_all_enabled_inner(state);
+    if let Err(error) = McpService::sync_all_enabled_inner(state) {
+        failures.push(format!("mcp: {error}"));
+    }
 
     // Skill sync
     for app_type in AppType::all() {
@@ -1898,10 +1997,6 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
             let config = crate::hermes_config::yaml_to_json(&yaml_config)?;
             Ok(config)
         }
-        AppType::Mcode => Ok(json!(crate::mcode_config::get_providers()?)),
-        AppType::Pi => Err(AppError::InvalidInput(
-            "Pi providers are read from Pi's native models file".to_string(),
-        )),
     }
 }
 
@@ -2011,7 +2106,7 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
             })
         }
         // OpenCode, OpenClaw and Hermes use additive mode and are handled by early return above
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::Pi | AppType::Mcode => {
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
             unreachable!("additive mode apps are handled by early return")
         }
     };

@@ -94,7 +94,10 @@ pub(crate) use terminal::launch_terminal_running;
 use terminal::resolve_launch_cwd;
 
 #[cfg(test)]
-use versions::{compare_semver, pick_latest_version};
+use versions::{
+    compare_semver, drop_latest_behind_local, github_release_version_from_json, npm_dist_tags_url,
+    pick_latest_version,
+};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -703,6 +706,19 @@ enum ShellProbe {
     NotFound(String),
 }
 
+const VERSION_PROBE_SENTINEL: &str = "__CCSWITCH_VERSION__";
+
+fn version_probe_payload(tool: &str) -> String {
+    format!("echo {VERSION_PROBE_SENTINEL}; {tool} --version")
+}
+
+fn after_version_sentinel(output: &str) -> &str {
+    match output.rfind(VERSION_PROBE_SENTINEL) {
+        Some(i) => output[i + VERSION_PROBE_SENTINEL.len()..].trim(),
+        None => output,
+    }
+}
+
 /// 在非 Windows 平台用用户 shell 执行 `{tool} --version` 探测版本。
 ///
 /// Windows 不走此路径：`cmd /C {tool}` 可能误触发 App Execution Alias /
@@ -720,13 +736,15 @@ fn try_get_version(tool: &str) -> ShellProbe {
         let flag = default_flag_for_shell(&shell);
         Command::new(shell)
             .arg(flag)
-            .arg(format!("{tool} --version"))
+            .arg(version_probe_payload(tool))
             .output()
     };
 
     match output {
         Ok(out) => {
-            let stdout = decode_command_output(&out.stdout).trim().to_string();
+            let stdout = after_version_sentinel(&decode_command_output(&out.stdout))
+                .trim()
+                .to_string();
             let stderr = decode_command_output(&out.stderr).trim().to_string();
             if out.status.success() {
                 let raw = if stdout.is_empty() { &stderr } else { &stdout };
@@ -1268,7 +1286,7 @@ fn windows_runnable_sibling_for_extensionless_tool(path: &Path) -> Option<std::p
 fn build_windows_tool_command(
     tool_path: &Path,
     args: &[&str],
-) -> std::io::Result<std::process::Output> {
+) -> std::io::Result<std::process::Command> {
     use std::process::Command;
 
     if elevated_windows_cli_boundary_active() {
@@ -1309,17 +1327,25 @@ fn build_windows_tool_command(
         let mut cmd = Command::new(command_processor);
         crate::windows_runtime::configure_shell_user_command(&mut cmd, tool_path.parent())
             .map_err(|error| std::io::Error::other(error.to_string()))?;
-        return cmd
-            .args(["/D", "/S", "/C"])
+        cmd.args(["/D", "/S", "/C"])
             .raw_arg(&command_line)
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
+            .creation_flags(CREATE_NO_WINDOW);
+        return Ok(cmd);
     }
 
     let mut command = Command::new(tool_path);
     crate::windows_runtime::configure_shell_user_command(&mut command, tool_path.parent())
         .map_err(|error| std::io::Error::other(error.to_string()))?;
-    command.args(args).creation_flags(CREATE_NO_WINDOW).output()
+    command.args(args).creation_flags(CREATE_NO_WINDOW);
+    Ok(command)
+}
+
+#[cfg(target_os = "windows")]
+fn run_windows_tool_command(
+    tool_path: &Path,
+    args: &[&str],
+) -> std::io::Result<std::process::Output> {
+    build_windows_tool_command(tool_path, args)?.output()
 }
 
 #[cfg(target_os = "windows")]
@@ -1345,8 +1371,7 @@ fn probe_path_default_version(tool: &str) -> ShellProbe {
         Ok(Some(p)) => p,
         _ => return ShellProbe::NotFound(NOT_INSTALLED.to_string()),
     };
-    let current_path = effective_path_string();
-    match run_windows_tool_version_command(&path_default, &current_path) {
+    match run_windows_tool_version_command(&path_default) {
         Ok(out) => {
             let stdout = decode_command_output(&out.stdout).trim().to_string();
             let stderr = decode_command_output(&out.stderr).trim().to_string();
@@ -1695,11 +1720,12 @@ fn run_probe_version_command(
 #[cfg(target_os = "windows")]
 fn run_probe_version_command(
     tool_path: &Path,
-    new_path: &str,
+    _new_path: &str,
 ) -> Result<std::process::Output, String> {
     use std::process::Stdio;
 
-    let mut cmd = build_windows_tool_command(tool_path, &["--version"], new_path);
+    let mut cmd =
+        build_windows_tool_command(tool_path, &["--version"]).map_err(|e| e.to_string())?;
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -4954,8 +4980,7 @@ mod tests {
             canonical.display()
         );
 
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let output = run_windows_tool_version_command(&canonical, &current_path)
+        let output = run_windows_tool_version_command(&canonical)
             .expect("canonicalized cmd shim should execute");
         let stderr = decode_command_output(&output.stderr);
 
