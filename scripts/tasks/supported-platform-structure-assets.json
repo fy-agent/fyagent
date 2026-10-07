@@ -471,15 +471,15 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "fe2eda262460b5bce13c112e68c1c57f3130a26c3a5dae9cda1a87bc7383e604"
+      "8b4cae35be0221010676ba506b405528627a6a389bb9478f1a2aea8a70464233"
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "5be9f15c23450fb67aaacefd2ad0589b7f8b4267c3247cc0998e92f0730b643f"
+      "4c0b6fba3fc892ca43770c4fd196d89fa4463a16c156c291b336ad98e3279dde"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "9007f388ce45517ead3ca9c59543178df1f2b82210a7322dc48ee455642e78ec"
+      "6ef0e6c0cfe6419f9857234bccef885ed786791728e8f6f868ecfedd5a267d29"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
