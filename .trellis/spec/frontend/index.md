@@ -34,25 +34,26 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 [Configuration Pack Dialog](./config-pack.md) owns Models connection selection,
 portable import previews, explicit save confirmation and typed-port readback.
 
-| Contract                                              | Owns                                                                            |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------- |
-| [Session Migration](../backend/session-migration.md) | Session route, strict package boundary, import/export identity and recovery status. |
-| [Navigation](./navigation.md)                         | Hash routes, literal loaders, keep-alive lifetime, blockers and return context. |
-| [Window Shell](./window-shell.md)                     | Chrome, native overlay boundary, selection and shared interaction.              |
-| [Change Plan Workspaces](./change-plan-workspaces.md) | Preview/apply, source switching, job observation and reconciliation.            |
-| [Agent Directory](./agent-directory.md)               | Catalog, scan/readiness, cards, installation and capabilities.                  |
-| [First-use Guide](./first-use-guide.md)               | Skippable purpose recommendations, native eligibility and completion.          |
-| [Agent Health](./health.md)                           | Local check snapshots, stale facts, serial refresh and existing repair routes.  |
-| [External Agent Auth](./agent-auth.md)                | Native auth observations, session ownership and safe handoff.                   |
-| [Managed Auth](./managed-auth.md)                     | Accounts/connections/request sources, login and impact confirmation.            |
-| [Models](./models.md)                                 | Drafts, connectivity, native save and existing model workflows.                 |
-| [Managed Account Subscriptions](./managed-account-subscriptions.md) | OpenAI/xAI proxy binding, target readback and subscription scope.                |
-| [Assignments](./assignments.md)                       | Shared seven-target selection and serialized mutations.                         |
-| [Skills](./skills.md)                                 | Discovery, installed items, backups and assignment.                             |
-| [MCP](./mcp.md)                                       | Catalog/launch validation, CRUD, installation and assignment.                   |
-| [FDE MCP Catalogue](./mcp-fde-catalog.md)               | China-oriented recipes, restricted tools, env credentials and discovery.      |
-| [Prompts and Memory](./prompts-memory.md)             | Native content CRUD, editor/dirty state and directory operations.               |
-| [Prompt Presets](./prompt-presets.md)                  | Static FDE catalogue, preview, draft copying and disabled library saves.       |
+| Contract                                                            | Owns                                                                                |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| [Session Migration](../backend/session-migration.md)                | Session route, strict package boundary, import/export identity and recovery status. |
+| [Navigation](./navigation.md)                                       | Hash routes, literal loaders, keep-alive lifetime, blockers and return context.     |
+| [Window Shell](./window-shell.md)                                   | Chrome, native overlay boundary, selection and shared interaction.                  |
+| [Change Plan Workspaces](./change-plan-workspaces.md)               | Preview/apply, source switching, job observation and reconciliation.                |
+| [Agent Directory](./agent-directory.md)                             | Catalog, scan/readiness, cards, installation and capabilities.                      |
+| [First-use Guide](./first-use-guide.md)                             | Skippable purpose recommendations, native eligibility and completion.               |
+| [Agent Health](./health.md)                                         | Local check snapshots, stale facts, serial refresh and existing repair routes.      |
+| [External Agent Auth](./agent-auth.md)                              | Native auth observations, session ownership and safe handoff.                       |
+| [Managed Auth](./managed-auth.md)                                   | Accounts/connections/request sources, login and impact confirmation.                |
+| [Managed Auth Login](./managed-auth-login.md)                       | Stage-aware session parsing, startup errors, polling and dialog cancellation.       |
+| [Models](./models.md)                                               | Drafts, connectivity, native save and existing model workflows.                     |
+| [Managed Account Subscriptions](./managed-account-subscriptions.md) | OpenAI/xAI proxy binding, target readback and subscription scope.                   |
+| [Assignments](./assignments.md)                                     | Shared seven-target selection and serialized mutations.                             |
+| [Skills](./skills.md)                                               | Discovery, installed items, backups and assignment.                                 |
+| [MCP](./mcp.md)                                                     | Catalog/launch validation, CRUD, installation and assignment.                       |
+| [FDE MCP Catalogue](./mcp-fde-catalog.md)                           | China-oriented recipes, restricted tools, env credentials and discovery.            |
+| [Prompts and Memory](./prompts-memory.md)                           | Native content CRUD, editor/dirty state and directory operations.                   |
+| [Prompt Presets](./prompt-presets.md)                               | Static FDE catalogue, preview, draft copying and disabled library saves.            |
 
 ## Historical discovery routers
 

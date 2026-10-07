@@ -180,6 +180,10 @@ listed in
 
 ### Strict wire boundary
 
+Login-stage parsing, startup feedback and login-dialog observation are owned by
+[Managed Auth Login](./managed-auth-login.md). Its nullable Preparing contract
+also applies when recovering active sessions from the account overview.
+
 - `managed-auth.ts` parses every native response from `unknown`, requires the
   exact contract version and exact key set, and accepts only closed enums,
   bounded labels, canonical opaque IDs/revisions and valid timestamps.
