@@ -1,0 +1,563 @@
+use super::*;
+use crate::{
+    app_config::{SkillApps, SkillTargetId},
+    services::skill::{SkillService, SkillStorageLocation},
+};
+use anyhow::{Context, Result};
+use base64::Engine as _;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+use std::{
+    error::Error,
+    fs, io,
+    io::Read,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+use tempfile::{tempdir, TempDir};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_rustls::TlsAcceptor;
+
+const ZIP: &[u8] = include_bytes!("fixtures/synthetic-skill.zip");
+const CA: &str = include_str!("fixtures/ca-cert.pem");
+const CERT: &str = include_str!("fixtures/server-cert.pem");
+const KEY: &str = include_str!("fixtures/server-key.pem");
+const SKILL_ID: &str = "iteration-resources/audit-skills:audit-skill";
+const DIRECTORY: &str = "audit-skill";
+const OLD_SKILL: &str =
+    "---\nname: Old Audit Skill\ndescription: previous fixture\n---\nold body\n";
+
+struct HomeGuard(Option<std::ffi::OsString>);
+
+impl HomeGuard {
+    fn set(home: &Path) -> Self {
+        let prior = std::env::var_os("FYAGENT_TEST_HOME");
+        std::env::set_var("FYAGENT_TEST_HOME", home);
+        Self(prior)
+    }
+}
+
+impl Drop for HomeGuard {
+    fn drop(&mut self) {
+        match self.0.take() {
+            Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+            None => std::env::remove_var("FYAGENT_TEST_HOME"),
+        }
+    }
+}
+
+struct Isolated {
+    _home: HomeGuard,
+    _temp: TempDir,
+    db: Arc<Database>,
+    service: SkillService,
+    before: InstalledSkill,
+    ssot: PathBuf,
+    claude: PathBuf,
+    codex: PathBuf,
+}
+
+impl Isolated {
+    fn new() -> Self {
+        let temp = tempdir().expect("isolated home");
+        let home = HomeGuard::set(temp.path());
+        assert!(crate::app_store::get_app_config_dir_override().is_none());
+        let home_path = crate::config::get_home_dir();
+        let config = crate::config::get_app_config_dir();
+        let user_temp = crate::config::get_user_temp_dir();
+        assert!(home_path.starts_with(temp.path()));
+        assert!(config.starts_with(temp.path()));
+        assert!(user_temp.starts_with(temp.path()));
+        let test_settings = crate::settings::AppSettings {
+            skill_sync_method: crate::services::skill::SyncMethod::Copy,
+            skill_storage_location: SkillStorageLocation::FyAgent,
+            ..crate::settings::AppSettings::default()
+        };
+        crate::settings::update_settings(test_settings).expect("write isolated settings");
+
+        let db = Arc::new(Database::memory().expect("memory DB"));
+        let ssot = SkillService::get_ssot_dir().expect("SSOT");
+        let source = ssot.join(DIRECTORY);
+        fs::create_dir_all(&source).expect("old SSOT");
+        fs::write(source.join("SKILL.md"), OLD_SKILL).expect("old manifest");
+        fs::write(source.join("payload.txt"), "old payload").expect("old payload");
+        let mut before = InstalledSkill {
+            id: SKILL_ID.to_string(),
+            name: "Old Audit Skill".to_string(),
+            description: Some("previous fixture".to_string()),
+            directory: DIRECTORY.to_string(),
+            repo_owner: Some("iteration-resources".to_string()),
+            repo_name: Some("audit-skills".to_string()),
+            repo_branch: Some("main".to_string()),
+            readme_url: Some("https://github.com/iteration-resources/audit-skills/blob/main/audit-skill/SKILL.md".to_string()),
+            apps: SkillApps { claude: true, codex: true, ..SkillApps::default() },
+            installed_at: 1_700_000_000,
+            content_hash: None,
+            updated_at: 0,
+            path: None,
+        };
+        before.content_hash = Some(SkillService::compute_dir_hash(&source).expect("old hash"));
+        db.save_skill(&before).expect("seed DB");
+        let claude = SkillService::get_target_skills_dir(&SkillTargetId::Claude)
+            .expect("Claude dir")
+            .join(DIRECTORY);
+        let codex = SkillService::get_target_skills_dir(&SkillTargetId::Codex)
+            .expect("Codex dir")
+            .join(DIRECTORY);
+        copy_tree(&source, &claude);
+        copy_tree(&source, &codex);
+        Self {
+            _home: home,
+            _temp: temp,
+            db,
+            service: SkillService::new(),
+            before,
+            ssot,
+            claude,
+            codex,
+        }
+    }
+
+    fn install_client(&mut self, addr: SocketAddr) {
+        self.service.update_test_client = Some(test_client(addr).expect("isolated TLS client"));
+    }
+
+    async fn update(&self) -> Result<InstalledSkill> {
+        self.service.update_skill(&self.db, SKILL_ID).await
+    }
+}
+
+struct DenyDns;
+
+impl reqwest::dns::Resolve for DenyDns {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let result: std::result::Result<reqwest::dns::Addrs, Box<dyn Error + Send + Sync>> =
+            Err(Box::new(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("test DNS denied host {}", name.as_str()),
+            )));
+        Box::pin(async move { result })
+    }
+}
+
+fn test_client(addr: SocketAddr) -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .use_rustls_tls()
+        .tls_built_in_root_certs(false)
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .https_only(true)
+        .add_root_certificate(reqwest::Certificate::from_pem(CA.as_bytes())?)
+        .dns_resolver(Arc::new(DenyDns))
+        .resolve("github.com", addr)
+        .build()?)
+}
+
+fn offline_client() -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .use_rustls_tls()
+        .tls_built_in_root_certs(false)
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .https_only(true)
+        .dns_resolver(Arc::new(DenyDns))
+        .connect_timeout(std::time::Duration::from_secs(1))
+        .timeout(std::time::Duration::from_secs(2))
+        .build()?)
+}
+
+fn expected_payload() -> Vec<u8> {
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(ZIP)).expect("valid fixture zip");
+    let mut file = archive
+        .by_name("audit-skills-main/audit-skill/payload.txt")
+        .expect("fixture payload entry");
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).expect("read fixture payload");
+    bytes
+}
+
+fn copy_tree(source: &Path, dest: &Path) {
+    fs::create_dir_all(dest).expect("copy target");
+    for entry in fs::read_dir(source).expect("read source") {
+        let entry = entry.expect("source entry");
+        let target = dest.join(entry.file_name());
+        if entry.file_type().expect("entry type").is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), target).expect("copy file");
+        }
+    }
+}
+
+fn parse_cert(pem: &str) -> CertificateDer<'static> {
+    let encoded = pem
+        .lines()
+        .filter(|line| !line.starts_with("---"))
+        .collect::<String>();
+    CertificateDer::from(
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .expect("fixture certificate base64"),
+    )
+}
+
+fn parse_key(pem: &str) -> PrivateKeyDer<'static> {
+    let encoded = pem
+        .lines()
+        .filter(|line| !line.starts_with("---"))
+        .collect::<String>();
+    PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .expect("fixture private key base64"),
+    ))
+}
+
+async fn serve_one() -> Result<(SocketAddr, tokio::task::JoinHandle<()>)> {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()?
+    .with_no_client_auth()
+    .with_single_cert(vec![parse_cert(CERT)], parse_key(KEY))?;
+    let acceptor = TlsAcceptor::from(Arc::new(config));
+    let task = tokio::spawn(async move {
+        let Ok((stream, _)) = listener.accept().await else {
+            return;
+        };
+        let Ok(mut stream) = acceptor.accept(stream).await else {
+            return;
+        };
+        let mut request = Vec::new();
+        let mut chunk = [0u8; 1024];
+        while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+            let read = stream.read(&mut chunk).await.expect("read fixture request");
+            assert!(
+                read > 0 && request.len() + read <= 8192,
+                "invalid fixture request"
+            );
+            request.extend_from_slice(&chunk[..read]);
+        }
+        let request = String::from_utf8_lossy(&request);
+        assert!(
+            request
+                .starts_with("GET /iteration-resources/audit-skills/archive/refs/heads/main.zip "),
+            "unexpected archive request: {request}"
+        );
+        let head = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            ZIP.len()
+        );
+        let _ = stream.write_all(head.as_bytes()).await;
+        let _ = stream.write_all(ZIP).await;
+        let _ = stream.shutdown().await;
+    });
+    Ok((addr, task))
+}
+
+fn archive_root() -> PathBuf {
+    crate::config::get_app_config_dir().join("skill-backups")
+}
+
+fn assert_updated(isolated: &Isolated) {
+    let current =
+        fs::read(isolated.ssot.join(DIRECTORY).join("payload.txt")).expect("SSOT payload");
+    assert_eq!(current, expected_payload());
+    assert_eq!(
+        fs::read(isolated.claude.join("payload.txt")).expect("Claude payload"),
+        current
+    );
+    assert_eq!(
+        fs::read(isolated.codex.join("payload.txt")).expect("Codex payload"),
+        current
+    );
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn iteration_resources_skill_update_downloads_backs_up_and_projects_both_targets(
+) -> Result<()> {
+    let mut isolated = Isolated::new();
+    let (addr, server) = serve_one().await?;
+    isolated.install_client(addr);
+    let denied = isolated
+        .service
+        .update_test_client
+        .as_ref()
+        .expect("injected test client")
+        .get("https://blocked.invalid/test")
+        .send()
+        .await
+        .expect_err("non-GitHub DNS must be denied");
+    assert!(denied.to_string().contains("blocked.invalid"));
+    let updated = isolated.update().await?;
+    server.await?;
+
+    assert_updated(&isolated);
+    assert!(updated.updated_at > 0);
+    assert_eq!(
+        isolated
+            .db
+            .get_installed_skill(SKILL_ID)?
+            .unwrap()
+            .content_hash,
+        updated.content_hash
+    );
+    assert!(!update::is_pending(SKILL_ID)?);
+    let backups = archive_root();
+    let backup = fs::read_dir(backups)?
+        .filter_map(|entry| entry.ok().map(|item| item.path()))
+        .find(|path| path.join("skill").join("payload.txt").is_file())
+        .expect("old preimage backup");
+    assert_eq!(
+        fs::read(backup.join("skill").join("payload.txt"))?,
+        b"old payload"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn iteration_resources_skill_update_backup_root_file_refusal_has_zero_writes() -> Result<()> {
+    let mut isolated = Isolated::new();
+    let ssot = isolated.ssot.join(DIRECTORY);
+    let ssot_before = revision(&ssot)?;
+    let claude_before = revision(&isolated.claude)?;
+    let codex_before = revision(&isolated.codex)?;
+    let backup_root = archive_root();
+    if backup_root.is_dir() {
+        fs::remove_dir_all(&backup_root)?;
+    }
+    fs::write(&backup_root, "obstruction").context("block backup root with regular file")?;
+    let (addr, server) = serve_one().await?;
+    isolated.install_client(addr);
+    let error = isolated
+        .update()
+        .await
+        .expect_err("backup refusal must stop update");
+    server.await?;
+
+    assert!(
+        error.to_string().contains("UPDATE_BACKUP_FAILED"),
+        "{error:#}"
+    );
+    assert_eq!(fs::read(&backup_root)?, b"obstruction");
+    assert_eq!(revision(&ssot)?, ssot_before);
+    assert_eq!(revision(&isolated.claude)?, claude_before);
+    assert_eq!(revision(&isolated.codex)?, codex_before);
+    assert_eq!(
+        serde_json::to_value(isolated.db.get_installed_skill(SKILL_ID)?.unwrap())?,
+        serde_json::to_value(isolated.before)?
+    );
+    assert!(!update::is_pending(SKILL_ID)?);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn iteration_resources_skill_update_retry_resumes_only_blocked_target_in_new_service(
+) -> Result<()> {
+    let mut isolated = Isolated::new();
+    let codex_parent = isolated.codex.parent().expect("Codex root").to_path_buf();
+    fs::remove_dir_all(&isolated.codex)?;
+    fs::write(&isolated.codex, "blocked target root")?;
+    let (addr, server) = serve_one().await?;
+    isolated.install_client(addr);
+    let error = isolated
+        .update()
+        .await
+        .expect_err("second target should be blocked");
+    server.await?;
+    assert!(error.to_string().contains("UPDATE_INCOMPLETE"), "{error:#}");
+    assert!(update::is_pending(SKILL_ID)?);
+    let progress = read_pending(SKILL_ID)?.expect("durable progress");
+    assert!(
+        progress
+            .targets
+            .iter()
+            .find(|target| target.target == SkillTargetId::Claude)
+            .expect("Claude progress")
+            .applied
+    );
+    assert!(
+        !progress
+            .targets
+            .iter()
+            .find(|target| target.target == SkillTargetId::Codex)
+            .expect("Codex progress")
+            .applied
+    );
+    assert_eq!(
+        fs::read(isolated.ssot.join(DIRECTORY).join("payload.txt"))?,
+        expected_payload()
+    );
+    assert_eq!(
+        fs::read(isolated.claude.join("payload.txt"))?,
+        expected_payload()
+    );
+    assert_eq!(
+        isolated
+            .db
+            .get_installed_skill(SKILL_ID)?
+            .unwrap()
+            .content_hash,
+        SkillService::compute_dir_hash(&isolated.ssot.join(DIRECTORY)).ok()
+    );
+
+    // Force retention past its limit with newer unrelated backups. The pending preimage must survive.
+    let pending_backup = fs::read_dir(&archive_root())?
+        .filter_map(|entry| entry.ok().map(|item| item.path()))
+        .find(|path| path.is_dir() && path.join("meta.json").is_file())
+        .expect("preimage backup");
+    for index in 0..(super::super::SKILL_BACKUP_RETAIN_COUNT + 2) {
+        fs::create_dir_all(archive_root().join(format!("retention-fixture-{index}")))?;
+        std::thread::sleep(std::time::Duration::from_millis(3));
+    }
+    SkillService::cleanup_old_skill_backups(&archive_root())?;
+    assert!(
+        pending_backup.exists(),
+        "retention deleted pending recovery preimage"
+    );
+
+    let mut checker = SkillService::new();
+    checker.update_test_client = Some(offline_client()?);
+    assert!(
+        checker
+            .check_updates(&isolated.db)
+            .await?
+            .iter()
+            .any(|item| item.id == SKILL_ID),
+        "pending item must remain retryable after DB metadata advances"
+    );
+    let first_payload = isolated.claude.join("payload.txt");
+    let before_retry = fs::metadata(&first_payload)?.modified()?;
+    fs::remove_file(&isolated.codex)?;
+    fs::create_dir_all(&codex_parent)?;
+    let mut fresh_service = SkillService::new();
+    fresh_service.update_test_client = Some(offline_client()?);
+    let result = fresh_service.update_skill(&isolated.db, SKILL_ID).await?;
+    assert_updated(&isolated);
+    assert_eq!(
+        fs::metadata(first_payload)?.modified()?,
+        before_retry,
+        "successful first target was rewritten on retry"
+    );
+    assert!(!update::is_pending(SKILL_ID)?);
+    assert!(result.updated_at > 0);
+    let (addr, server) = serve_one().await?;
+    let mut checker = SkillService::new();
+    checker.update_test_client = Some(test_client(addr)?);
+    assert!(
+        !checker
+            .check_updates(&isolated.db)
+            .await?
+            .iter()
+            .any(|item| item.id == SKILL_ID),
+        "completed item with matching content must disappear from updates"
+    );
+    server.await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn iteration_resources_skill_update_retry_preserves_external_first_target_edits() -> Result<()>
+{
+    let mut isolated = Isolated::new();
+    fs::remove_dir_all(&isolated.codex)?;
+    fs::write(&isolated.codex, "blocked target root")?;
+    let (addr, server) = serve_one().await?;
+    isolated.install_client(addr);
+    let error = isolated
+        .update()
+        .await
+        .expect_err("Codex root obstruction must be partial failure");
+    server.await?;
+    assert!(error.to_string().contains("UPDATE_INCOMPLETE"), "{error:#}");
+
+    fs::write(
+        isolated.claude.join("payload.txt"),
+        "external payload, keep me\n",
+    )?;
+    fs::write(
+        isolated.claude.join(".user-hidden"),
+        "external hidden data\n",
+    )?;
+    fs::remove_file(&isolated.codex)?;
+    fs::create_dir_all(isolated.codex.parent().expect("Codex root"))?;
+    let mut fresh_service = SkillService::new();
+    fresh_service.update_test_client = Some(offline_client()?);
+    let error = fresh_service
+        .update_skill(&isolated.db, SKILL_ID)
+        .await
+        .expect_err("external content conflict must remain visible");
+    let details: serde_json::Value = serde_json::from_str(&error.to_string())?;
+    assert_eq!(details["context"]["conflicted"], "claude", "{details}");
+    assert_eq!(
+        fs::read(isolated.claude.join("payload.txt"))?,
+        b"external payload, keep me\n"
+    );
+    assert_eq!(
+        fs::read(isolated.claude.join(".user-hidden"))?,
+        b"external hidden data\n"
+    );
+    assert_eq!(
+        fs::read(isolated.codex.join("payload.txt"))?,
+        expected_payload()
+    );
+    assert!(update::is_pending(SKILL_ID)?);
+    let backup = fs::read_dir(archive_root())?
+        .filter_map(|entry| entry.ok().map(|item| item.path()))
+        .find(|path| path.join("skill").join("payload.txt").is_file())
+        .expect("recovery preimage backup was lost");
+    assert_eq!(
+        fs::read(backup.join("skill").join("payload.txt"))?,
+        b"old payload"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn iteration_resources_skill_uninstall_clears_progress_before_restoring_same_id() -> Result<()>
+{
+    let mut isolated = Isolated::new();
+    fs::remove_dir_all(&isolated.codex)?;
+    fs::write(&isolated.codex, "blocked target root")?;
+    let (addr, server) = serve_one().await?;
+    isolated.install_client(addr);
+    isolated.update().await.expect_err("update remains partial");
+    server.await?;
+    let preimage = read_pending(SKILL_ID)?.expect("pending preimage").backup_id;
+    fs::remove_file(&isolated.codex)?;
+
+    SkillService::uninstall(&isolated.db, SKILL_ID)?;
+    assert!(isolated.db.get_installed_skill(SKILL_ID)?.is_none());
+    assert!(!is_pending(SKILL_ID)?);
+    let restored = SkillService::restore_from_backup_for_target(
+        &isolated.db,
+        &preimage,
+        &SkillTargetId::Claude,
+    )?;
+    assert_ne!(restored.installed_at, isolated.before.installed_at);
+    assert_eq!(
+        fs::read(isolated.claude.join("payload.txt"))?,
+        b"old payload"
+    );
+
+    // A new installation generation must start an ordinary update rather
+    // than replay the previous installation's recorded target operations.
+    let (addr, server) = serve_one().await?;
+    isolated.install_client(addr);
+    let updated = isolated.update().await?;
+    server.await?;
+    assert_eq!(updated.installed_at, restored.installed_at);
+    assert_eq!(
+        fs::read(isolated.claude.join("payload.txt"))?,
+        expected_payload()
+    );
+    assert!(!is_pending(SKILL_ID)?);
+    Ok(())
+}

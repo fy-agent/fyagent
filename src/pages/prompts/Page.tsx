@@ -164,7 +164,13 @@ function resolveEditor(
   const dirty =
     editor !== null &&
     (editor.baseline === null || !isSameDraft(editor.draft, editor.baseline));
-  if (dirty) return editor;
+  if (dirty) {
+    // Keep the user's text, but refresh lifecycle metadata from the selected
+    // query row so a stale editor snapshot cannot undo a recent toggle.
+    return selected && editor?.prompt?.id === selected.id
+      ? { ...editor, prompt: selected }
+      : editor;
+  }
   if (!selected) return null;
   if (
     editor?.prompt?.id === selected.id &&
@@ -477,7 +483,12 @@ function PromptsWorkspace({
       name: activeEditor.draft.name.trim(),
       description: activeEditor.draft.description.trim() || undefined,
       content: activeEditor.draft.content.trim(),
-      enabled: activeEditor.prompt?.enabled ?? false,
+      enabled:
+        selected &&
+        activeEditor.prompt &&
+        selected.id === activeEditor.prompt.id
+          ? selected.enabled
+          : (activeEditor.prompt?.enabled ?? false),
       createdAt: activeEditor.prompt?.createdAt ?? now,
       updatedAt: now,
     };

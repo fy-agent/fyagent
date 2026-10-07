@@ -32,36 +32,111 @@ impl PromptService {
         prompt: Prompt,
     ) -> Result<(), AppError> {
         let is_enabled = prompt.enabled;
-        // Only an actual enabled -> disabled transition may clear the live file.
-        // New or already-disabled entries are library-only changes.
-        let was_enabled = !is_enabled
-            && state
-                .db
-                .get_prompts(app.as_str())?
-                .get(&prompt.id)
-                .is_some_and(|previous| previous.enabled);
+        let was_enabled = state
+            .db
+            .get_prompts(app.as_str())?
+            .get(&prompt.id)
+            .is_some_and(|previous| previous.enabled);
 
-        state.db.save_prompt(app.as_str(), &prompt)?;
+        if is_enabled && !was_enabled {
+            // Enabling is a switch, not a library upsert. Persist the content
+            // as disabled first so enable_prompt owns the live/DAO transition.
+            let mut draft = prompt;
+            draft.enabled = false;
+            let id = draft.id.clone();
+            state.db.save_prompt(app.as_str(), &draft)?;
+            return Self::enable_prompt(state, app, &id);
+        }
 
         if is_enabled {
-            // 启用提示词：写入内容到文件
             let target_path = prompt_file_path(&app)?;
+            let recovery_before = Self::prompt_file_recovery_id(&target_path)?;
             write_text_file(&target_path, &prompt.content)?;
-        } else if was_enabled {
-            // 禁用提示词：检查是否还有其他已启用的提示词
-            let prompts = state.db.get_prompts(app.as_str())?;
-            let any_enabled = prompts.values().any(|p| p.enabled);
+            let recovery_after = Self::prompt_file_recovery_id(&target_path).map_err(|error| {
+                AppError::Message(format!("live 文件已写入，但读取本次恢复回执失败：{error}"))
+            })?;
+            if let Err(database_error) = state.db.save_prompt(app.as_str(), &prompt) {
+                return match Self::compensate_prompt_file_write(
+                    &target_path,
+                    recovery_before,
+                    recovery_after,
+                ) {
+                    Ok(()) => Err(database_error),
+                    Err(compensation_error) => Err(AppError::Message(format!(
+                        "提示词库提交失败；live 文件补偿也未完成，请检查文件恢复记录。数据库错误：{database_error}；补偿错误：{compensation_error}"
+                    ))),
+                };
+            }
+            return Ok(());
+        }
 
-            if !any_enabled {
-                // 所有提示词都已禁用，清空文件
+        if was_enabled {
+            let any_other_enabled = state
+                .db
+                .get_prompts(app.as_str())?
+                .iter()
+                .any(|(id, other)| id != &prompt.id && other.enabled);
+            if !any_other_enabled {
                 let target_path = prompt_file_path(&app)?;
                 if target_path.exists() {
+                    let recovery_before = Self::prompt_file_recovery_id(&target_path)?;
                     write_text_file(&target_path, "")?;
+                    let recovery_after =
+                        Self::prompt_file_recovery_id(&target_path).map_err(|error| {
+                            AppError::Message(format!(
+                                "live 文件已清空，但读取本次恢复回执失败：{error}"
+                            ))
+                        })?;
+                    if let Err(database_error) = state.db.save_prompt(app.as_str(), &prompt) {
+                        return match Self::compensate_prompt_file_write(
+                            &target_path,
+                            recovery_before,
+                            recovery_after,
+                        ) {
+                            Ok(()) => Err(database_error),
+                            Err(compensation_error) => Err(AppError::Message(format!(
+                                "提示词停用未提交；live 文件补偿也未完成，请检查文件恢复记录。数据库错误：{database_error}；补偿错误：{compensation_error}"
+                            ))),
+                        };
+                    }
+                    return Ok(());
                 }
             }
         }
 
+        // Library-only updates and transitions with another enabled prompt do
+        // not mutate the shared live file.
+        state.db.save_prompt(app.as_str(), &prompt)?;
         Ok(())
+    }
+
+    fn prompt_file_recovery_id(target_path: &std::path::Path) -> Result<Option<String>, AppError> {
+        Ok(crate::config::file_recovery(target_path)?.map(|recovery| recovery.receipt_id))
+    }
+
+    fn compensate_prompt_file_write(
+        target_path: &std::path::Path,
+        recovery_before: Option<String>,
+        recovery_after: Option<String>,
+    ) -> Result<(), AppError> {
+        if recovery_before == recovery_after {
+            return Ok(());
+        }
+        let recovery = crate::config::file_recovery(target_path)?;
+        if recovery.as_ref().map(|receipt| receipt.receipt_id.as_str()) != recovery_after.as_deref()
+        {
+            return Err(AppError::Message(
+                "提示词文件恢复回执已变化，保留当前文件并停止补偿".to_string(),
+            ));
+        }
+        match recovery.filter(|recovery| recovery.can_restore) {
+            Some(recovery) => {
+                crate::config::restore_file_recovery(target_path, &recovery.receipt_id)
+            }
+            None => Err(AppError::Message(
+                "找不到可验证的提示词文件恢复记录".to_string(),
+            )),
+        }
     }
 
     pub fn delete_prompt(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
@@ -78,75 +153,76 @@ impl PromptService {
     }
 
     pub fn enable_prompt(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
-        // 回填当前 live 文件内容到已启用的提示词，或创建备份
         let target_path = prompt_file_path(&app)?;
-        if target_path.exists() {
-            if let Ok(live_content) = std::fs::read_to_string(&target_path) {
-                if !live_content.trim().is_empty() {
-                    let mut prompts = state.db.get_prompts(app.as_str())?;
-
-                    // 尝试回填到当前已启用的提示词
-                    if let Some((enabled_id, enabled_prompt)) = prompts
-                        .iter_mut()
-                        .find(|(_, p)| p.enabled)
-                        .map(|(id, p)| (id.clone(), p))
-                    {
-                        let timestamp = get_unix_timestamp()?;
-                        enabled_prompt.content = live_content.clone();
-                        enabled_prompt.updated_at = Some(timestamp);
-                        log::info!("回填 live 提示词内容到已启用项: {enabled_id}");
-                        state.db.save_prompt(app.as_str(), enabled_prompt)?;
-                    } else {
-                        // 没有已启用的提示词，则创建一次备份（避免重复备份）
-                        let content_exists = prompts
-                            .values()
-                            .any(|p| p.content.trim() == live_content.trim());
-                        if !content_exists {
-                            let timestamp = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs() as i64;
-                            let backup_id = format!("backup-{timestamp}");
-                            let backup_prompt = Prompt {
-                                id: backup_id.clone(),
-                                name: format!(
-                                    "原始提示词 {}",
-                                    chrono::Local::now().format("%Y-%m-%d %H:%M")
-                                ),
-                                content: live_content,
-                                description: Some("自动备份的原始提示词".to_string()),
-                                enabled: false,
-                                created_at: Some(timestamp),
-                                updated_at: Some(timestamp),
-                            };
-                            log::info!("回填 live 提示词内容，创建备份: {backup_id}");
-                            state.db.save_prompt(app.as_str(), &backup_prompt)?;
-                        }
-                    }
-                }
-            }
-        }
-
-        // 启用目标提示词并写入文件
         let mut prompts = state.db.get_prompts(app.as_str())?;
-
-        for prompt in prompts.values_mut() {
-            prompt.enabled = false;
-        }
-
-        if let Some(prompt) = prompts.get_mut(id) {
-            prompt.enabled = true;
-            write_text_file(&target_path, &prompt.content)?; // 原子写入
-            state.db.save_prompt(app.as_str(), prompt)?;
-        } else {
+        if !prompts.contains_key(id) {
             return Err(AppError::InvalidInput(format!("提示词 {id} 不存在")));
         }
 
-        // Save all prompts to disable others
-        for (_, prompt) in prompts.iter() {
-            state.db.save_prompt(app.as_str(), prompt)?;
+        // A live file that differs from the enabled library row may be an
+        // external edit or the remainder of an earlier failed switch. Preserve
+        // it as its own disabled entry; never assign it to the old row by ID.
+        let live_before = if target_path.exists() {
+            Some(std::fs::read(&target_path).map_err(|e| AppError::io(&target_path, e))?)
+        } else {
+            None
+        };
+        if let Some(bytes) = live_before.as_deref().filter(|bytes| !bytes.is_empty()) {
+            let live_content = String::from_utf8(bytes.to_vec()).map_err(|error| {
+                AppError::Message(format!("当前提示词文件不是有效 UTF-8，未执行切换：{error}"))
+            })?;
+            let differs_from_enabled = prompts
+                .values()
+                .find(|prompt| prompt.enabled)
+                .is_some_and(|prompt| prompt.content.as_bytes() != bytes);
+            let already_preserved = prompts
+                .values()
+                .any(|prompt| prompt.content == live_content);
+            if (differs_from_enabled || !prompts.values().any(|prompt| prompt.enabled))
+                && !already_preserved
+            {
+                let timestamp = get_unix_timestamp()?;
+                let backup_id = format!("backup-{}", uuid::Uuid::new_v4());
+                let backup = Prompt {
+                    id: backup_id,
+                    name: format!(
+                        "外部提示词 {}",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M")
+                    ),
+                    content: live_content,
+                    description: Some("切换前保留的当前文件内容".to_string()),
+                    enabled: false,
+                    created_at: Some(timestamp),
+                    updated_at: Some(timestamp),
+                };
+                state.db.save_prompt(app.as_str(), &backup)?;
+                prompts.insert(backup.id.clone(), backup);
+            }
         }
 
+        for prompt in prompts.values_mut() {
+            prompt.enabled = prompt.id == id;
+        }
+        let target = prompts.get(id).expect("target checked above");
+        let recovery_before = Self::prompt_file_recovery_id(&target_path)?;
+        write_text_file(&target_path, &target.content)?;
+        let recovery_after = Self::prompt_file_recovery_id(&target_path).map_err(|error| {
+            AppError::Message(format!("live 文件已写入，但读取本次恢复回执失败：{error}"))
+        })?;
+
+        if let Err(database_error) = state
+            .db
+            .save_prompts(app.as_str(), &prompts.values().cloned().collect::<Vec<_>>())
+        {
+            let compensation =
+                Self::compensate_prompt_file_write(&target_path, recovery_before, recovery_after);
+            return match compensation {
+                Ok(()) => Err(database_error),
+                Err(compensation_error) => Err(AppError::Message(format!(
+                    "提示词库提交失败；live 文件补偿也未完成，请检查文件恢复记录。数据库错误：{database_error}；补偿错误：{compensation_error}"
+                ))),
+            };
+        }
         Ok(())
     }
 
@@ -396,6 +472,194 @@ mod tests {
         assert!(!saved[&id].enabled);
         assert_eq!(saved[&id].content, content);
         assert_eq!(snapshot(live.parent().unwrap()), before);
+    }
+
+    #[test]
+    #[serial]
+    fn iteration_resources_enable_db_rejection_keeps_old_prompt_and_retry_switches_cleanly() {
+        let (_home, _guard, state, live) = setup();
+        let mut original = prompt("switch-a", true);
+        original.content = "Original A library body\n".to_string();
+        PromptService::upsert_prompt(&state, AppType::Claude, "switch-a", original.clone())
+            .unwrap();
+        let mut target = prompt("switch-b", false);
+        target.content = "Target B library body\n".to_string();
+        PromptService::upsert_prompt(&state, AppType::Claude, "switch-b", target.clone()).unwrap();
+        state
+            .db
+            .reject_prompt_state_for_test("switch-b", true, true);
+        assert!(PromptService::enable_prompt(&state, AppType::Claude, "switch-b").is_err());
+        let after_failure = state.db.get_prompts("claude").unwrap();
+        assert!(after_failure["switch-a"].enabled);
+        assert_eq!(after_failure["switch-a"].content, original.content);
+        assert!(!after_failure["switch-b"].enabled);
+        assert_eq!(fs::read_to_string(&live).unwrap(), original.content);
+        assert_eq!(
+            fs::read(live.with_extension("md.fyagent.backup")).unwrap(),
+            original.content.as_bytes()
+        );
+
+        // Recreate the stale live/old-DB state that a crash or failed
+        // compensation can leave; retry must not attribute B's bytes to A.
+        write_text_file(&live, &target.content).unwrap();
+        state
+            .db
+            .reject_prompt_state_for_test("switch-b", true, false);
+        PromptService::enable_prompt(&state, AppType::Claude, "switch-b").unwrap();
+        let after_retry = state.db.get_prompts("claude").unwrap();
+        assert!(after_retry["switch-b"].enabled);
+        assert!(!after_retry["switch-a"].enabled);
+        assert_eq!(after_retry["switch-a"].content, original.content);
+        assert_eq!(after_retry.values().filter(|item| item.enabled).count(), 1);
+        assert_eq!(fs::read_to_string(&live).unwrap(), target.content);
+    }
+
+    #[test]
+    #[serial]
+    fn iteration_resources_enabled_edit_db_rejection_restores_library_and_live() {
+        let (_home, _guard, state, live) = setup();
+        let original = prompt("edit-enabled", true);
+        PromptService::upsert_prompt(&state, AppType::Claude, "edit-enabled", original.clone())
+            .unwrap();
+        state
+            .db
+            .reject_prompt_state_for_test("edit-enabled", true, true);
+        let mut edited = original.clone();
+        edited.content = "Rejected edit body\n".to_string();
+
+        assert!(
+            PromptService::upsert_prompt(&state, AppType::Claude, "edit-enabled", edited,).is_err()
+        );
+
+        let saved = state.db.get_prompts("claude").unwrap();
+        assert!(saved["edit-enabled"].enabled);
+        assert_eq!(saved["edit-enabled"].content, original.content);
+        assert_eq!(fs::read_to_string(&live).unwrap(), original.content);
+        assert_eq!(
+            fs::read(live.with_extension("md.fyagent.backup")).unwrap(),
+            original.content.as_bytes()
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn iteration_resources_enable_file_refusal_leaves_prompt_library_unchanged() {
+        let (_home, _guard, state, live) = setup();
+        let original = prompt("file-a", true);
+        let target = prompt("file-b", false);
+        state.db.save_prompt("claude", &original).unwrap();
+        state.db.save_prompt("claude", &target).unwrap();
+        fs::create_dir(&live).unwrap();
+
+        assert!(PromptService::enable_prompt(&state, AppType::Claude, "file-b").is_err());
+
+        let saved = state.db.get_prompts("claude").unwrap();
+        assert!(saved["file-a"].enabled);
+        assert_eq!(saved["file-a"].content, original.content);
+        assert!(!saved["file-b"].enabled);
+        assert_eq!(fs::read_dir(&live).unwrap().count(), 0);
+        assert!(!live.with_extension("md.fyagent.backup").exists());
+    }
+
+    #[test]
+    #[serial]
+    fn iteration_resources_disable_file_refusal_leaves_enabled_row_and_obstacle_unchanged() {
+        let (_home, _guard, state, live) = setup();
+        let active = prompt("disable-file", true);
+        state.db.save_prompt("claude", &active).unwrap();
+        fs::create_dir(&live).unwrap();
+        fs::write(live.join("preserve.txt"), b"blocked live path").unwrap();
+        let mut disabled = active.clone();
+        disabled.enabled = false;
+
+        assert!(
+            PromptService::upsert_prompt(&state, AppType::Claude, "disable-file", disabled,)
+                .is_err()
+        );
+
+        let saved = state.db.get_prompts("claude").unwrap();
+        assert!(saved["disable-file"].enabled);
+        assert_eq!(saved["disable-file"].content, active.content);
+        assert_eq!(
+            fs::read(live.join("preserve.txt")).unwrap(),
+            b"blocked live path"
+        );
+        assert!(!live.with_extension("md.fyagent.backup").exists());
+    }
+
+    #[test]
+    #[serial]
+    fn iteration_resources_disable_db_refusal_restores_live_and_retry_commits_both() {
+        let (_home, _guard, state, live) = setup();
+        let active = prompt("disable-dao", true);
+        state.db.save_prompt("claude", &active).unwrap();
+        write_text_file(&live, &active.content).unwrap();
+        state
+            .db
+            .reject_prompt_state_for_test("disable-dao", false, true);
+        let mut disabled = active.clone();
+        disabled.enabled = false;
+
+        assert!(PromptService::upsert_prompt(
+            &state,
+            AppType::Claude,
+            "disable-dao",
+            disabled.clone(),
+        )
+        .is_err());
+        let after_failure = state.db.get_prompts("claude").unwrap();
+        assert!(after_failure["disable-dao"].enabled);
+        assert_eq!(fs::read_to_string(&live).unwrap(), active.content);
+        assert_eq!(
+            fs::read(live.with_extension("md.fyagent.backup")).unwrap(),
+            active.content.as_bytes()
+        );
+
+        state
+            .db
+            .reject_prompt_state_for_test("disable-dao", false, false);
+        PromptService::upsert_prompt(&state, AppType::Claude, "disable-dao", disabled).unwrap();
+        let after_retry = state.db.get_prompts("claude").unwrap();
+        assert!(!after_retry["disable-dao"].enabled);
+        assert_eq!(fs::read(&live).unwrap(), b"");
+        assert!(
+            crate::config::file_recovery(&live)
+                .unwrap()
+                .unwrap()
+                .can_restore
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn iteration_resources_compensation_refuses_external_drift_and_noop_keeps_old_receipt() {
+        let (_home, _guard, _state, live) = setup();
+        write_text_file(&live, "Initial live\n").unwrap();
+        let initial_receipt = PromptService::prompt_file_recovery_id(&live).unwrap();
+
+        write_text_file(&live, "Operation live\n").unwrap();
+        let operation_receipt = PromptService::prompt_file_recovery_id(&live).unwrap();
+        write_text_file(&live, "External live edit\n").unwrap();
+        let external_receipt = PromptService::prompt_file_recovery_id(&live).unwrap();
+
+        assert!(PromptService::compensate_prompt_file_write(
+            &live,
+            initial_receipt,
+            operation_receipt.clone(),
+        )
+        .is_err());
+        assert_eq!(fs::read_to_string(&live).unwrap(), "External live edit\n");
+        assert_eq!(
+            PromptService::prompt_file_recovery_id(&live).unwrap(),
+            external_receipt
+        );
+
+        let before_noop = external_receipt;
+        write_text_file(&live, "External live edit\n").unwrap();
+        let after_noop = PromptService::prompt_file_recovery_id(&live).unwrap();
+        assert_eq!(before_noop, after_noop);
+        PromptService::compensate_prompt_file_write(&live, before_noop, after_noop).unwrap();
+        assert_eq!(fs::read_to_string(&live).unwrap(), "External live edit\n");
     }
 
     #[test]

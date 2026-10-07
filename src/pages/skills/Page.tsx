@@ -14,6 +14,7 @@ import {
   UserFacingError,
 } from "../../shared/features/helpers";
 import { useFeatures } from "../../shared/features/provider";
+import { skillUpdateErrorMessage } from "../../shared/features/skills";
 import { useWideFeatureLayout } from "../../shared/features/responsive";
 import {
   featureKeys,
@@ -380,7 +381,7 @@ export function SkillsPage() {
       notify({
         tone: "error",
         title: `${title}失败`,
-        description: errorMessage(error),
+        description: skillUpdateErrorMessage(error) ?? errorMessage(error),
       });
     } finally {
       await refreshAll();
@@ -418,13 +419,26 @@ export function SkillsPage() {
     write("批量更新完成", async () => {
       const result = await runSequentialBulk(
         updates.map((item) => item.id),
-        ports.skills.update,
+        async (id) => {
+          try {
+            return await ports.skills.update(id);
+          } catch (error) {
+            const message = skillUpdateErrorMessage(error);
+            if (message) throw new UserFacingError(message);
+            throw error;
+          }
+        },
         (done, total) => setProgress({ done, total }),
       );
-      if (result.failures.length)
+      if (result.failures.length) {
+        const details = result.failures
+          .map((failure) => failure.error)
+          .filter((message) => message !== "请稍后重试。")
+          .join(" ");
         throw new UserFacingError(
-          `${result.failures.length} 项失败，${result.successes.length} 项成功`,
+          `${result.failures.length} 项失败，${result.successes.length} 项成功${details ? `。${details}` : ""}`,
         );
+      }
     });
   const bulkAssign = (app: SkillTargetId, enabled: boolean) =>
     write("批量分配完成", async () => {

@@ -9,6 +9,24 @@ use indexmap::IndexMap;
 use rusqlite::params;
 
 impl Database {
+    #[cfg(test)]
+    pub(crate) fn reject_prompt_state_for_test(&self, id: &str, enabled: bool, reject: bool) {
+        let conn = self.conn.lock().expect("database lock");
+        if reject {
+            conn.execute_batch(&format!(
+                "CREATE TEMP TRIGGER reject_prompt_enable BEFORE INSERT ON prompts
+                 WHEN NEW.id = '{}' AND NEW.enabled = {}
+                 BEGIN SELECT RAISE(ABORT, 'injected prompt DAO refusal'); END;",
+                id.replace('\'', "''"),
+                if enabled { 1 } else { 0 }
+            ))
+            .unwrap();
+        } else {
+            conn.execute_batch("DROP TRIGGER IF EXISTS reject_prompt_enable")
+                .unwrap();
+        }
+    }
+
     /// 获取指定应用类型的所有提示词
     pub fn get_prompts(&self, app_type: &str) -> Result<IndexMap<String, Prompt>, AppError> {
         let conn = lock_conn!(self.conn);
@@ -73,6 +91,34 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
+    }
+
+    /// Save a prompt state transition atomically so a rejected row cannot leave
+    /// the library with multiple enabled entries or a partially switched set.
+    pub fn save_prompts(&self, app_type: &str, prompts: &[Prompt]) -> Result<(), AppError> {
+        let mut conn = lock_conn!(self.conn);
+        let tx = conn
+            .transaction()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        for prompt in prompts {
+            tx.execute(
+                "INSERT OR REPLACE INTO prompts (
+                    id, app_type, name, content, description, enabled, created_at, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    prompt.id,
+                    app_type,
+                    prompt.name,
+                    prompt.content,
+                    prompt.description,
+                    prompt.enabled,
+                    prompt.created_at,
+                    prompt.updated_at,
+                ],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        tx.commit().map_err(|e| AppError::Database(e.to_string()))
     }
 
     /// 删除提示词

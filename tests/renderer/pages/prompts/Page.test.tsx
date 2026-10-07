@@ -256,8 +256,12 @@ describe("PromptsPage native business management", () => {
       "true",
     );
     await user.click(screen.getByRole("tab", { name: "我的提示词" }));
-    expect(await screen.findByRole("heading", { name: "Claude rule" })).toBeVisible();
-    expect(screen.getByRole("searchbox", { name: "搜索提示词" })).toHaveValue("");
+    expect(
+      await screen.findByRole("heading", { name: "Claude rule" }),
+    ).toBeVisible();
+    expect(screen.getByRole("searchbox", { name: "搜索提示词" })).toHaveValue(
+      "",
+    );
     expect(ports.prompts.upsert).not.toHaveBeenCalled();
   });
 
@@ -619,7 +623,7 @@ describe("PromptsPage native business management", () => {
   });
 
   it("imports, enables mutually, rereads the live file, disables, and deletes", async () => {
-    const { ports, stores } = statefulPorts({
+    const { ports, stores, liveFiles } = statefulPorts({
       claude: [
         prompt("first", "First", true, "first live"),
         prompt("second", "Second"),
@@ -646,10 +650,49 @@ describe("PromptsPage native business management", () => {
       "Second content",
     );
 
+    await user.clear(screen.getByRole("textbox", { name: "内容" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "内容" }),
+      "Edited after enable",
+    );
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(
+        stores.claude.find((candidate) => candidate.id === "second")?.content,
+      ).toBe("Edited after enable"),
+    );
+    expect(
+      stores.claude.find((candidate) => candidate.id === "second")?.enabled,
+    ).toBe(true);
+    expect(ports.prompts.upsert).toHaveBeenLastCalledWith(
+      "claude",
+      expect.objectContaining({ id: "second", enabled: true }),
+    );
+
     await user.click(screen.getByRole("switch", { name: "停用Second" }));
     expect(
       await screen.findByRole("switch", { name: "启用Second" }),
     ).not.toBeChecked();
+    await user.clear(screen.getByRole("textbox", { name: "内容" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "内容" }),
+      "Edited after disable",
+    );
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(
+        stores.claude.find((candidate) => candidate.id === "second")?.content,
+      ).toBe("Edited after disable"),
+    );
+    expect(
+      stores.claude.find((candidate) => candidate.id === "second")?.enabled,
+    ).toBe(false);
+    expect(ports.prompts.upsert).toHaveBeenLastCalledWith(
+      "claude",
+      expect.objectContaining({ id: "second", enabled: false }),
+    );
+    expect(liveFiles.claude).toBeNull();
+
     await user.click(screen.getByRole("button", { name: "删除" }));
     const confirm = screen.getByRole("dialog", { name: "删除 Second" });
     await user.click(within(confirm).getByRole("button", { name: "确认" }));

@@ -1,4 +1,67 @@
 import type { SkillAssignments } from "./assignments";
+import { SKILL_TARGETS } from "./directory";
+
+/** Interpret the existing native structured-error contract without displaying
+ * raw native text, local paths or unvalidated target identifiers. */
+export function skillUpdateErrorMessage(error: unknown): string | undefined {
+  const raw = error instanceof Error ? error.message : error;
+  if (typeof raw !== "string" || raw.length > 4096) return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.code === "UPDATE_BACKUP_FAILED") {
+    return "旧版本备份失败，更新未执行。请处理备份目录问题后重试。";
+  }
+  if (
+    record.code !== "UPDATE_INCOMPLETE" ||
+    !record.context ||
+    typeof record.context !== "object" ||
+    Array.isArray(record.context)
+  )
+    return undefined;
+  const context = record.context as Record<string, unknown>;
+  const targets = (key: string): string[] | undefined => {
+    const ids = context[key];
+    if (typeof ids !== "string") return undefined;
+    const parsed = ids === "" ? [] : ids.split(",").map((id) => id.trim());
+    if (
+      parsed.length > SKILL_TARGETS.length ||
+      new Set(parsed).size !== parsed.length ||
+      parsed.some((id) => !SKILL_TARGETS.some((target) => target.id === id))
+    )
+      return undefined;
+    return parsed;
+  };
+  const applied = targets("applied");
+  const failed = targets("failed");
+  const conflicted = targets("conflicted");
+  if (
+    !applied ||
+    !failed?.length ||
+    !conflicted ||
+    conflicted.some((id) => !failed.includes(id) || !applied.includes(id))
+  )
+    return undefined;
+  const labels = (ids: string[]) =>
+    ids
+      .map((id) => SKILL_TARGETS.find((target) => target.id === id)!.label)
+      .join("、");
+  const complete = applied.filter((id) => !conflicted.includes(id));
+  return [
+    "部分目标更新未完成。",
+    complete.length ? `已完成：${labels(complete)}。` : "",
+    `未完成：${labels(failed)}。`,
+    conflicted.length
+      ? `${labels(conflicted)} 的后续修改已保留，请确认后再处理。`
+      : "旧版本备份已保留，再次更新只处理未完成目标。",
+  ].join("");
+}
 
 export interface InstalledSkill {
   id: string;

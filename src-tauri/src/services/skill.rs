@@ -26,6 +26,7 @@ mod discovery;
 mod marketplace;
 mod migration;
 mod repository;
+mod update;
 
 use discovery::{
     clamp_discovery_limit, discovery_fingerprint, filter_discoverable_skills,
@@ -348,6 +349,8 @@ pub struct ImportSkillSelection {
 
 pub struct SkillService {
     discovery_cache: DiscoveryCache,
+    #[cfg(test)]
+    update_test_client: Option<reqwest::Client>,
 }
 
 impl Default for SkillService {
@@ -360,6 +363,8 @@ impl SkillService {
     pub fn new() -> Self {
         Self {
             discovery_cache: DiscoveryCache::new(),
+            #[cfg(test)]
+            update_test_client: None,
         }
     }
 
@@ -896,6 +901,7 @@ impl SkillService {
 
         // 从数据库删除
         db.delete_skill(id)?;
+        update::clear_after_uninstall(id)?;
 
         log::info!(
             "Skill {} 卸载成功{}",
@@ -971,6 +977,10 @@ impl SkillService {
             HashMap::new();
 
         for skill in skills.into_values() {
+            if let Some(pending) = update::pending_info(&skill)? {
+                updates.push(pending);
+                continue;
+            }
             let (owner, name, branch) =
                 match (&skill.repo_owner, &skill.repo_name, &skill.repo_branch) {
                     (Some(o), Some(n), Some(b)) => (o.clone(), n.clone(), b.clone()),
@@ -1068,7 +1078,7 @@ impl SkillService {
                     },
                 };
 
-                if local_hash.as_deref() != Some(&remote_hash) {
+                if local_hash.as_deref() != Some(&remote_hash) || update::is_pending(&skill.id)? {
                     updates.push(SkillUpdateInfo {
                         id: skill.id.clone(),
                         name: skill.name.clone(),
@@ -1101,6 +1111,7 @@ impl SkillService {
 
     /// 更新单个 Skill（重新下载并替换本地文件）
     pub async fn update_skill(&self, db: &Arc<Database>, skill_id: &str) -> Result<InstalledSkill> {
+        let _update_guard = update::lock().await;
         let skill = db
             .get_installed_skill(skill_id)?
             .ok_or_else(|| anyhow!("Skill not found: {skill_id}"))?;
@@ -1109,6 +1120,10 @@ impl SkillService {
         // 备份区并在界面列出）、remove_dir_all（删任意目录）、copy_dir_recursive
         // （把远端仓库内容写到任意路径）。校验必须在这三者之前。
         Self::require_valid_directory(&skill.directory)?;
+
+        if let Some(updated) = update::resume(db, &skill)? {
+            return Ok(updated);
+        }
 
         let (owner, name, branch) = match (&skill.repo_owner, &skill.repo_name) {
             (Some(o), Some(n)) => (
@@ -1191,19 +1206,11 @@ impl SkillService {
         Self::require_valid_directory(&current_skill.directory)?;
         let skill = current_skill;
 
-        // 备份旧文件
-        let _ = Self::create_uninstall_backup(&skill);
-
-        // 删除旧 SSOT 目录并复制新文件
         let dest = ssot_dir.join(&skill.directory);
-        if dest.exists() {
-            fs::remove_dir_all(&dest)?;
-        }
-        Self::copy_dir_recursive(&source, &dest)?;
-
-        // 计算新哈希 + 解析新元数据
-        let new_hash = Self::compute_dir_hash(&dest).ok();
-        let skill_md = dest.join("SKILL.md");
+        // Derive the desired state from the admitted download before touching
+        // the installed tree. The update owner preserves its exact preimage.
+        let new_hash = Some(Self::compute_dir_hash(&source)?);
+        let skill_md = source.join("SKILL.md");
         let (new_name, new_description) = Self::read_skill_name_desc(&skill_md, &skill.directory);
 
         // 更新 readme_url
@@ -1230,17 +1237,7 @@ impl SkillService {
             path: None,
         };
 
-        let updated_skill = Self::persist_updated_skill_metadata(db, &updated_metadata)?;
-
-        // 同步到所有已启用的应用目录
-        for app in updated_skill.apps.enabled_targets() {
-            if let Err(e) = Self::sync_to_app_dir(&updated_skill.directory, &app) {
-                log::warn!("同步更新后的 skill 到 {:?} 失败: {e}", app);
-            }
-        }
-
-        log::info!("Skill {} 更新成功", updated_skill.name);
-        Ok(updated_skill)
+        update::commit(db, &skill, &updated_metadata, &source, &dest)
     }
 
     /// 为缺少 content_hash 的已安装 Skill 补算哈希
@@ -2933,15 +2930,23 @@ impl SkillService {
     /// 下载并解压 ZIP
     async fn download_and_extract(&self, url: &str, dest: &Path) -> Result<()> {
         let parsed = url::Url::parse(url).map_err(|e| anyhow!("Invalid archive URL: {e}"))?;
-        let body = Self::download_bounded_bytes(parsed, Duration::from_secs(60)).await?;
+        let body = self
+            .download_bounded_bytes(parsed, Duration::from_secs(60))
+            .await?;
         let cursor = std::io::Cursor::new(body);
         let archive = zip::ZipArchive::new(cursor)?;
         Self::extract_repo_archive(archive, dest)
     }
 
     /// 按实际上传字节卡住压缩体大小，不信 Content-Length。
-    async fn download_bounded_bytes(url: url::Url, timeout: Duration) -> Result<Vec<u8>> {
+    async fn download_bounded_bytes(&self, url: url::Url, timeout: Duration) -> Result<Vec<u8>> {
+        #[cfg(not(test))]
         let client = crate::proxy::http_client::get();
+        #[cfg(test)]
+        let client = self
+            .update_test_client
+            .clone()
+            .unwrap_or_else(crate::proxy::http_client::get);
         let response = client.get(url).timeout(timeout).send().await?;
         if !response.status().is_success() {
             let status = response.status().as_u16().to_string();
@@ -3257,6 +3262,9 @@ impl SkillService {
         let remove_count = entries.len().saturating_sub(SKILL_BACKUP_RETAIN_COUNT);
 
         for (path, _) in entries.into_iter().take(remove_count) {
+            if update::backup_is_pending(&path)? {
+                continue;
+            }
             fs::remove_dir_all(&path)?;
         }
 
