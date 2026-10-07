@@ -1270,14 +1270,16 @@ function ProviderPanel({
       const outcome = await ports.providers.applyClaudeQuickSetupPreview({
         previewId: pending.preview.previewId,
       });
+      // The keyed panel may unmount on target switch while ModelsPage lives.
+      // Preserve uncertain write authority in that parent before UI admission.
+      if (outcome.overall === "unknown" || outcome.overall === "partial")
+        onBlockWrites(app);
       if (!mountedRef.current) return;
       setClaudeOutcome(outcome);
       if (outcome.providerState === "applied") {
         draftCommit.commitRevision(pending.revision);
         if (draftCommit.isCurrentRevision(pending.revision)) clearApiKey();
       }
-      if (outcome.overall === "unknown" || outcome.overall === "partial")
-        onBlockWrites(app);
       if (
         outcome.overall === "unknown" &&
         draftCommit.isCurrentRevision(pending.revision)
@@ -1315,8 +1317,8 @@ function ProviderPanel({
       };
       setNotice(notices[outcome.overall]);
     } catch {
+      onBlockWrites(app);
       if (mountedRef.current) {
-        onBlockWrites(app);
         if (draftCommit.isCurrentRevision(pending.revision)) clearApiKey();
         setClaudeOutcome({
           contractVersion: 1,
@@ -2040,18 +2042,25 @@ function ProviderPanel({
   );
 }
 
-function renderTargetPanel(
-  target: ModelTarget,
-  active: boolean,
-  blockedProviderWrites: Partial<Record<ProviderAppId | "opencode", boolean>>,
-  onBlockProviderWrites: (app: ProviderAppId | "opencode") => void,
-  onRecoverProviderWrites: (app: ProviderAppId) => void,
+function ModelsTargetPanel({
+  target,
+  active,
+  blockedProviderWrites,
+  onBlockProviderWrites,
+  onRecoverProviderWrites,
+  importedForm,
+}: {
+  target: ModelTarget;
+  active: boolean;
+  blockedProviderWrites: Partial<Record<ProviderAppId | "opencode", boolean>>;
+  onBlockProviderWrites: (app: ProviderAppId | "opencode") => void;
+  onRecoverProviderWrites: (app: ProviderAppId) => void;
   importedForm: {
     app: "claude" | "codex";
     sequence: number;
     form: ProviderApiFormFill;
-  } | null,
-) {
+  } | null;
+}) {
   switch (target) {
     case "workbuddy":
       return <WorkBuddyPanel active={active} />;
@@ -2087,6 +2096,13 @@ function renderTargetPanel(
 }
 
 export function ModelsPage() {
+  const pageMountedRef = useRef(true);
+  useEffect(() => {
+    pageMountedRef.current = true;
+    return () => {
+      pageMountedRef.current = false;
+    };
+  }, []);
   const { visible, searchParams, setSearchParams } =
     usePersistentSearchParams();
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
@@ -2120,12 +2136,13 @@ export function ModelsPage() {
   );
   const targets = useMemo(() => MODEL_TARGETS, []);
 
-  const blockProviderWrites = (app: ProviderAppId | "opencode") => {
+  const blockProviderWrites = useCallback((app: ProviderAppId | "opencode") => {
+    if (!pageMountedRef.current) return;
     setBlockedProviderWrites((current) => ({
       ...current,
       [app]: true,
     }));
-  };
+  }, []);
   const recoverProviderWrites = (app: ProviderAppId) => {
     setBlockedProviderWrites((current) => ({ ...current, [app]: false }));
   };
@@ -2165,14 +2182,14 @@ export function ModelsPage() {
           </CatalogList>
         </CatalogRail>
         <div className="fy-models-target-stack">
-          {renderTargetPanel(
-            target,
-            visible,
-            blockedProviderWrites,
-            blockProviderWrites,
-            recoverProviderWrites,
-            importedForm,
-          )}
+          <ModelsTargetPanel
+            target={target}
+            active={visible}
+            blockedProviderWrites={blockedProviderWrites}
+            onBlockProviderWrites={blockProviderWrites}
+            onRecoverProviderWrites={recoverProviderWrites}
+            importedForm={importedForm}
+          />
         </div>
       </CatalogMasterDetail>
     </div>

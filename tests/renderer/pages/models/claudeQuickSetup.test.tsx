@@ -367,4 +367,95 @@ describe("Claude Models native consent", () => {
     expect(screen.queryByText("未能保存设置，已还原之前的状态")).toBeNull();
     expect(screen.queryByText(/\.claude.json：未写入/)).toBeNull();
   });
+  it.each(["unknown", "partial", "reject"] as const)(
+    "keeps Claude writes blocked when %s arrives after switching away from the applying panel",
+    async (result) => {
+      const { ports, user } = setup();
+      let resolve!: (outcome: ClaudeQuickSetupOutcome) => void;
+      let reject!: (reason: Error) => void;
+      ports.providers.applyClaudeQuickSetupPreview = vi.fn(
+        () =>
+          new Promise<ClaudeQuickSetupOutcome>((done, fail) => {
+            resolve = done;
+            reject = fail;
+          }),
+      );
+      await draft(user);
+      await save(user);
+      await confirm(user);
+      await waitFor(() =>
+        expect(
+          ports.providers.applyClaudeQuickSetupPreview,
+        ).toHaveBeenCalledTimes(1),
+      );
+      await user.click(screen.getByTestId("model-target-codex"));
+      await screen.findByRole("heading", { name: "Codex" });
+      await act(async () => {
+        if (result === "reject") reject(new Error("private late failure"));
+        else
+          resolve({
+            ...applied,
+            overall: result,
+            providerState: result === "unknown" ? "unknown" : "applied",
+            files: [
+              {
+                target: "claude_settings",
+                state: result === "unknown" ? "unknown" : "applied",
+              },
+              { target: "claude_mcp", state: "conflict" },
+            ],
+          });
+      });
+      await user.click(screen.getByTestId("model-target-claude"));
+      await screen.findByRole("heading", { name: "Claude Code" });
+      expect(
+        screen.getByRole("button", { name: "暂时无法确认当前设置" }),
+      ).toBeDisabled();
+      expect(screen.getByLabelText("API Key")).toBeDisabled();
+      await user.click(
+        screen.getByRole("button", { name: "暂时无法确认当前设置" }),
+      );
+      expect(
+        ports.providers.applyClaudeQuickSetupPreview,
+      ).toHaveBeenCalledTimes(1);
+      expect(ports.providers.previewClaudeQuickSetup).toHaveBeenCalledTimes(1);
+      expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
+    },
+  );
+
+  it("settles an uncertain apply after the entire ModelsPage unmounts without restoring its UI", async () => {
+    const { ports, user, view } = setup();
+    let resolve!: (outcome: ClaudeQuickSetupOutcome) => void;
+    ports.providers.applyClaudeQuickSetupPreview = vi.fn(
+      () =>
+        new Promise<ClaudeQuickSetupOutcome>((done) => {
+          resolve = done;
+        }),
+    );
+    await draft(user);
+    await save(user);
+    await confirm(user);
+    await waitFor(() =>
+      expect(
+        ports.providers.applyClaudeQuickSetupPreview,
+      ).toHaveBeenCalledTimes(1),
+    );
+    view.unmount();
+    await act(async () => {
+      resolve({
+        ...applied,
+        overall: "unknown",
+        providerState: "unknown",
+        files: [
+          { target: "claude_settings", state: "unknown" },
+          { target: "claude_mcp", state: "unknown" },
+        ],
+      });
+    });
+    expect(screen.queryByTestId("models-page")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "保存前确认" })).toBeNull();
+    expect(ports.providers.applyClaudeQuickSetupPreview).toHaveBeenCalledTimes(
+      1,
+    );
+  });
 });
