@@ -41,25 +41,34 @@ fn fixture_zip() -> &'static [u8] {
     })
 }
 
-struct HomeGuard(Option<std::ffi::OsString>);
+struct HomeGuard {
+    previous_home: Option<std::ffi::OsString>,
+    previous_settings: Option<crate::settings::AppSettings>,
+}
 
 impl HomeGuard {
     fn set(home: &Path) -> Self {
         let prior = std::env::var_os("FYAGENT_TEST_HOME");
         std::env::set_var("FYAGENT_TEST_HOME", home);
-        Self(prior)
+        // Lazy settings initialization must happen under the fixture override.
+        // Keep any existing cache snapshot in memory; never persist it to disk.
+        let previous_settings = crate::settings::get_settings();
+        Self {
+            previous_home: prior,
+            previous_settings: Some(previous_settings),
+        }
     }
 }
 
 impl Drop for HomeGuard {
     fn drop(&mut self) {
-        match self.0.take() {
+        if let Some(settings) = self.previous_settings.take() {
+            crate::settings::replace_settings_in_memory_for_test(settings);
+        }
+        match self.previous_home.take() {
             Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
             None => std::env::remove_var("FYAGENT_TEST_HOME"),
         }
-        // Restore the process cache from the restored home's file using the
-        // read-only loader. Never write test settings into that home's config.
-        let _ = crate::settings::reload_settings();
     }
 }
 

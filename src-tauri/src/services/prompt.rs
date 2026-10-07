@@ -443,24 +443,38 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
-    struct TestHome(Option<std::ffi::OsString>);
+    struct TestHome {
+        previous_home: Option<std::ffi::OsString>,
+        previous_settings: Option<crate::settings::AppSettings>,
+    }
 
     impl TestHome {
         fn set(path: &Path) -> Self {
-            let previous = std::env::var_os("FYAGENT_TEST_HOME");
+            let previous_home = std::env::var_os("FYAGENT_TEST_HOME");
             std::env::set_var("FYAGENT_TEST_HOME", path);
+            // Snapshot after the override is active: lazy settings initialization
+            // must resolve only inside this fixture, never the real user profile.
+            let previous_settings = crate::settings::get_settings();
             crate::settings::reload_settings().unwrap();
-            Self(previous)
+            Self {
+                previous_home,
+                previous_settings: Some(previous_settings),
+            }
         }
     }
 
     impl Drop for TestHome {
         fn drop(&mut self) {
-            match self.0.take() {
+            // Restore the in-memory snapshot without persisting it. In
+            // particular, do not reload after restoring FYAGENT_TEST_HOME:
+            // on Windows that would consult the frozen Shell-user context.
+            if let Some(settings) = self.previous_settings.take() {
+                crate::settings::replace_settings_in_memory_for_test(settings);
+            }
+            match self.previous_home.take() {
                 Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
                 None => std::env::remove_var("FYAGENT_TEST_HOME"),
             }
-            crate::settings::reload_settings().unwrap();
         }
     }
 
