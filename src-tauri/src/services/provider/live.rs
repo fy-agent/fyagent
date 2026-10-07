@@ -1851,16 +1851,24 @@ pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
     // - config is object: use it (merge with existing to preserve mcpServers etc.)
     // - config is null or absent: preserve existing file content
     let settings_path = get_gemini_settings_path();
-    let mut config_to_write: Option<Value> = None;
+    // Parse existing settings before any writes, including .env and recovery files.
+    let mut config_to_write: Option<Value> = if settings_path.exists() {
+        Some(read_json_file::<Value>(&settings_path).map_err(|error| match error {
+            AppError::Json { .. } => AppError::localized(
+                "gemini.validation.settings_parse_failed",
+                "Gemini 配置文件 ~/.gemini/settings.json 无法解析，为避免覆盖您的现有设置（如 MCP），本次未写入。请先修正该文件的 JSON 格式后重试。",
+                "Unable to parse Gemini config file ~/.gemini/settings.json. To avoid overwriting your existing settings (such as MCP), no files were written. Please fix the file's JSON format and try again.",
+            ),
+            error => error,
+        })?)
+    } else {
+        None
+    };
 
     if let Some(config_value) = provider.settings_config.get("config") {
         if config_value.is_object() {
             // Merge with existing settings to preserve mcpServers and other fields
-            let mut merged = if settings_path.exists() {
-                read_json_file::<Value>(&settings_path).unwrap_or_else(|_| json!({}))
-            } else {
-                json!({})
-            };
+            let mut merged = config_to_write.take().unwrap_or_else(|| json!({}));
 
             // Merge provider config into existing settings
             if let (Some(merged_obj), Some(config_obj)) =
@@ -1879,11 +1887,6 @@ pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
             ));
         }
         // config is null: don't modify existing settings.json (preserve mcpServers etc.)
-    }
-
-    // If no config specified or config is null, preserve existing file
-    if config_to_write.is_none() && settings_path.exists() {
-        config_to_write = Some(read_json_file(&settings_path)?);
     }
 
     match auth_type {
@@ -2217,6 +2220,151 @@ pub fn remove_openclaw_provider_from_live(provider_id: &str) -> Result<(), AppEr
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::fs;
+
+    #[test]
+    #[serial_test::serial]
+    fn gemini_live_rejects_unparseable_settings_without_writing_any_files() {
+        for existing_env in [false, true] {
+            for name in ["Google", "Packycode", "Custom Gemini"] {
+                for config in [Some(json!({"theme": "new"})), Some(Value::Null), None] {
+                    super::super::tests::with_test_home(|_, home| {
+                        crate::settings::reload_settings().expect("reload settings");
+                        let dir = crate::gemini_config::get_gemini_dir();
+                        assert_eq!(dir, home.join(".gemini"));
+                        fs::create_dir_all(&dir).expect("create Gemini dir");
+                        let settings_path = dir.join("settings.json");
+                        let env_path = dir.join(".env");
+                        let other_paths = [
+                            env_path.clone(),
+                            crate::config::rolling_backup_path(&settings_path),
+                            settings_path.with_file_name("settings.json.fyagent.undo.json"),
+                            crate::config::rolling_backup_path(&env_path),
+                            env_path.with_file_name(".env.fyagent.undo.json"),
+                        ];
+                        if existing_env {
+                            fs::write(&env_path, "# keep my env\nGEMINI_API_KEY=original\n")
+                                .unwrap();
+                            for path in &other_paths[1..] {
+                                fs::write(path, "existing recovery data\n").unwrap();
+                            }
+                        }
+                        let before: Vec<_> =
+                            other_paths.iter().map(|path| fs::read(path).ok()).collect();
+                        let mut settings = json!({"env": {"GEMINI_API_KEY": "replacement"}});
+                        if let Some(config) = &config {
+                            settings["config"] = config.clone();
+                        }
+                        let provider = Provider::with_id(
+                            "gemini-test".to_string(),
+                            name.to_string(),
+                            settings,
+                            None,
+                        );
+
+                        for original in [
+                            "{\n// keep my MCP\n\"mcpServers\": {\"custom\": {\"command\": \"custom-mcp\"}}\n}\n",
+                            "{\"mcpServers\":",
+                            " \t\r\n",
+                            "",
+                        ] {
+                            fs::write(&settings_path, original).expect("seed invalid settings");
+                            let error = write_gemini_live(&provider).expect_err("reject invalid JSON");
+                            assert!(matches!(
+                                error,
+                                AppError::Localized {
+                                    key: "gemini.validation.settings_parse_failed",
+                                    ..
+                                }
+                            ));
+                            assert_eq!(fs::read(&settings_path).unwrap(), original.as_bytes());
+                            for (path, original_bytes) in other_paths.iter().zip(&before) {
+                                if let Some(bytes) = original_bytes {
+                                    assert_eq!(&fs::read(path).unwrap(), bytes, "{}", path.display());
+                                } else {
+                                    assert!(!path.exists(), "{} must not be created", path.display());
+                                }
+                            }
+                            assert_eq!(fs::read_dir(&dir).unwrap().count(), if existing_env { 6 } else { 1 });
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn gemini_live_preserves_mcp_and_other_settings() {
+        for (name, selected_type) in [
+            ("Google", "oauth-personal"),
+            ("Packycode", "gemini-api-key"),
+            ("Custom Gemini", "gemini-api-key"),
+        ] {
+            super::super::tests::with_test_home(|_, home| {
+                crate::settings::reload_settings().expect("reload settings");
+                let settings_path = crate::gemini_config::get_gemini_settings_path();
+                assert_eq!(settings_path, home.join(".gemini").join("settings.json"));
+                fs::create_dir_all(settings_path.parent().unwrap()).expect("create Gemini dir");
+                let original = json!({
+                    "mcpServers": {"custom": {"command": "custom-mcp", "args": ["--keep"]}},
+                    "otherField": {"keep": true},
+                    "theme": "old",
+                    "security": {"auth": {"selectedType": "old", "otherAuth": "preserved"}}
+                });
+                fs::write(&settings_path, serde_json::to_vec(&original).unwrap()).unwrap();
+                let provider = Provider::with_id(
+                    "gemini-test".to_string(),
+                    name.to_string(),
+                    json!({"env": {"GEMINI_API_KEY": "replacement"}, "config": {"theme": "new"}}),
+                    None,
+                );
+
+                write_gemini_live(&provider).expect("write Gemini live settings");
+
+                let updated: Value = read_json_file(&settings_path).unwrap();
+                let mut expected = original;
+                expected["theme"] = json!("new");
+                expected["security"]["auth"]["selectedType"] = json!(selected_type);
+                assert_eq!(updated, expected);
+                assert_eq!(
+                    crate::gemini_config::read_gemini_env()
+                        .unwrap()
+                        .get("GEMINI_API_KEY")
+                        .map(String::as_str),
+                    Some("replacement")
+                );
+            });
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn gemini_live_creates_missing_settings() {
+        super::super::tests::with_test_home(|_, home| {
+            crate::settings::reload_settings().expect("reload settings");
+            let settings_path = crate::gemini_config::get_gemini_settings_path();
+            assert_eq!(settings_path, home.join(".gemini").join("settings.json"));
+            assert!(!settings_path.exists());
+            let provider = Provider::with_id(
+                "gemini-test".to_string(),
+                "Custom Gemini".to_string(),
+                json!({"env": {"GEMINI_API_KEY": "replacement"}, "config": {"theme": "new"}}),
+                None,
+            );
+
+            write_gemini_live(&provider).expect("create Gemini live settings");
+
+            let updated: Value = read_json_file(&settings_path).unwrap();
+            assert_eq!(
+                updated,
+                json!({
+                    "theme": "new", "security": {"auth": {"selectedType": "gemini-api-key"}}
+                })
+            );
+            assert!(crate::gemini_config::get_gemini_env_path().exists());
+        });
+    }
 
     #[test]
     fn kimi_for_coding_effective_settings_backfill_256k_context() {
