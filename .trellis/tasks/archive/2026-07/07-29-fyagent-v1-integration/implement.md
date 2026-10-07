@@ -20,7 +20,7 @@
 ## Required Static Audit
 
 ```powershell
-rg -n "CC Switch|ccswitch.io|farion1231/cc-switch" src src-tauri README.md --glob '!**/LICENSE*' --glob '!**/*.lock'
+rg -n "CC Switch|[retired upstream website]|farion1231/cc-switch" src src-tauri README.md --glob '!**/LICENSE*' --glob '!**/*.lock'
 rg -n "@openai/codex@latest|npm i -g @openai/codex|volta install @openai/codex" src src-tauri
 rg -n "UpdateProvider|useUpdate|tauri_plugin_updater|plugins.*updater|latest.json" src src-tauri .github
 rg -n "agentsmirror|github.com|oaistatic|apps.microsoft.com" src-tauri/src/codex_desktop src/components/codex src/lib/api/codex-desktop.ts

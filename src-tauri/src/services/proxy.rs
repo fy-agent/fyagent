@@ -1264,6 +1264,17 @@ impl ProxyService {
         &self,
         provider: &Provider,
     ) -> Result<(), String> {
+        let effective_settings = self
+            .build_claude_live_from_provider_while_proxy_active(provider)
+            .await?;
+        self.write_claude_live(&effective_settings)
+    }
+
+    /// The Claude preview and writer share this read-only takeover builder.
+    pub(crate) async fn build_claude_live_from_provider_while_proxy_active(
+        &self,
+        provider: &Provider,
+    ) -> Result<Value, String> {
         let effective_provider = self.claude_provider_with_effective_settings(provider)?;
         let mut effective_settings = effective_provider.settings_config.clone();
         let (proxy_url, _) = self.build_proxy_urls().await?;
@@ -1273,8 +1284,7 @@ impl ProxyService {
             &proxy_url,
             &effective_provider,
         );
-        self.write_claude_live(&effective_settings)?;
-        Ok(())
+        Ok(effective_settings)
     }
 
     pub async fn sync_codex_live_from_provider_while_proxy_active(

@@ -5,6 +5,7 @@ import { InfoIcon } from "@phosphor-icons/react/dist/csr/Info";
 import { Dialog } from "../../../shared/ui/Dialog";
 import { Button } from "../../../shared/ui/Button";
 import type { DialogOriginRef } from "../../../shared/ui/dialogOrigin";
+import { parseMigrationError } from "../../../shared/features/session-migration";
 
 export interface RemapWorkspaceDialogProps {
   open: boolean;
@@ -34,7 +35,7 @@ export function RemapWorkspaceDialog({
         setPath(dir);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(parseMigrationError(err).message);
     }
   };
 
@@ -49,7 +50,7 @@ export function RemapWorkspaceDialog({
       await onSave(path.trim());
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(parseMigrationError(err).message);
     } finally {
       setSaving(false);
     }

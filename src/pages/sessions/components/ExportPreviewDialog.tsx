@@ -1,3 +1,4 @@
+import { SessionEvidenceDetails } from "./SessionEvidenceDetails";
 import { useState, useEffect, useRef } from "react";
 import { WarningIcon } from "@phosphor-icons/react/dist/csr/Warning";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
@@ -7,6 +8,11 @@ import { Spinner } from "../../../shared/ui/primitives";
 import { Dialog } from "../../../shared/ui/Dialog";
 import { Button } from "../../../shared/ui/Button";
 import type { DialogOriginRef } from "../../../shared/ui/dialogOrigin";
+import { FailureFeedback } from "./FailureFeedback";
+import {
+  readFailureFeedback,
+  type SessionFailureFeedback,
+} from "../failure-feedback";
 import {
   buildPureTextPreview,
   canExportSession,
@@ -59,12 +65,16 @@ export function ExportPreviewDialog({
     Array<{ target: ExportTargetItem; reason: string }>
   >([]);
   const [loadErrors, setLoadErrors] = useState<
-    Array<{ target: ExportTargetItem; error: string }>
+    Array<{ target: ExportTargetItem; error: SessionFailureFeedback }>
   >([]);
 
   const [targetPath, setTargetPath] = useState("");
   const [isExporting, setIsExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<SessionFailureFeedback | null>(
+    null,
+  );
+  const targetInputRef = useRef<HTMLInputElement>(null);
+  const [validationRetry, setValidationRetry] = useState(0);
 
   const [validatedFn, setValidatedFn] = useState<
     typeof onPreviewSession | null
@@ -77,13 +87,11 @@ export function ExportPreviewDialog({
     validatedFn !== onPreviewSession || validatedTargets !== targets;
   const effectiveLoadingState = isRevalidating ? "loading" : loadingState;
 
-  const activeTokenRef = useRef(0);
-
   // Load and strictly validate all frozen targets upon mount/targets change
   useEffect(() => {
     if (!open || targets.length === 0) return;
 
-    const token = ++activeTokenRef.current;
+    let cancelled = false;
 
     const runValidation = async () => {
       setProgressText(`正在读取与审核 (1/${targets.length})…`);
@@ -94,10 +102,13 @@ export function ExportPreviewDialog({
 
       const loaded: MigratableSession[] = [];
       const blocked: Array<{ target: ExportTargetItem; reason: string }> = [];
-      const errors: Array<{ target: ExportTargetItem; error: string }> = [];
+      const errors: Array<{
+        target: ExportTargetItem;
+        error: SessionFailureFeedback;
+      }> = [];
 
       for (let i = 0; i < targets.length; i++) {
-        if (token !== activeTokenRef.current) return;
+        if (cancelled) return;
         const target = targets[i];
         setProgressText(`正在读取与审核 (${i + 1}/${targets.length})…`);
 
@@ -116,15 +127,14 @@ export function ExportPreviewDialog({
             loaded.push(migratable);
           }
         } catch (err) {
-          const parsed = parseMigrationError(err);
           errors.push({
             target,
-            error: parsed.message,
+            error: readFailureFeedback(err, "extraction"),
           });
         }
       }
 
-      if (token !== activeTokenRef.current) return;
+      if (cancelled) return;
 
       setValidatedFn(() => onPreviewSession);
       setValidatedTargets(targets);
@@ -140,7 +150,10 @@ export function ExportPreviewDialog({
     };
 
     void runValidation();
-  }, [open, targets, onPreviewSession]);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, targets, onPreviewSession, validationRetry]);
 
   if (targets.length === 0) return null;
 
@@ -159,8 +172,7 @@ export function ExportPreviewDialog({
         setExportError(null);
       }
     } catch (err) {
-      const parsed = parseMigrationError(err);
-      setExportError(parsed.message);
+      setExportError(readFailureFeedback(err, "selection"));
     }
   };
 
@@ -178,7 +190,13 @@ export function ExportPreviewDialog({
       onOpenChange(false);
     } catch (err) {
       const parsed = parseMigrationError(err);
-      setExportError(parsed.message);
+      setExportError({
+        phase: "迁移包文件保存",
+        message: parsed.message,
+        writeSummary: "保存结果未确认；未调用目标恢复，未写入目标会话。",
+        nextStep:
+          "保存路径与选择已保留。核对该位置的迁移包，修正保存位置后继续。",
+      });
     } finally {
       setIsExporting(false);
     }
@@ -224,7 +242,14 @@ export function ExportPreviewDialog({
       }
       actions={
         effectiveLoadingState === "error" ? (
-          <Button onClick={() => onOpenChange(false)}>关闭</Button>
+          <>
+            <Button onClick={() => onOpenChange(false)}>关闭</Button>
+            <Button
+              onClick={() => setValidationRetry((current) => current + 1)}
+            >
+              重新读取与提取
+            </Button>
+          </>
         ) : (
           <>
             <Button disabled={isExporting} onClick={() => onOpenChange(false)}>
@@ -247,6 +272,12 @@ export function ExportPreviewDialog({
       }
     >
       <div className="fy-export-preview-body">
+        {exportError && (
+          <FailureFeedback
+            feedback={exportError}
+            onEdit={() => targetInputRef.current?.focus()}
+          />
+        )}
         {/* 状态 1：加载全量预览 */}
         {effectiveLoadingState === "loading" && (
           <div
@@ -322,7 +353,7 @@ export function ExportPreviewDialog({
                   marginTop: "8px",
                 }}
               >
-                <strong>读取失败会话：</strong>
+                <strong>未通过读取或提取的会话：</strong>
                 {loadErrors.map((e) => (
                   <div
                     key={e.target.sessionId}
@@ -336,11 +367,15 @@ export function ExportPreviewDialog({
                     • [
                     {PROVIDER_LABELS[e.target.providerId] ??
                       e.target.providerId}
-                    ] {e.target.title || e.target.sessionId} — 错误: {e.error}
+                    ] {e.target.title || e.target.sessionId} — {e.error.phase}:{" "}
+                    {e.error.message}
                   </div>
                 ))}
               </div>
             )}
+            <div>
+              未调用目标恢复，未写入目标会话。选择与保存路径已保留；检查来源后可重新读取与提取同一批会话。
+            </div>
           </div>
         )}
 
@@ -377,6 +412,7 @@ export function ExportPreviewDialog({
               <div className="fy-input-with-button">
                 <input
                   id="export-path-input"
+                  ref={targetInputRef}
                   type="text"
                   className="fy-input-text"
                   placeholder="/path/to/exported-package.json"
@@ -403,13 +439,13 @@ export function ExportPreviewDialog({
                 问答纯文本预览 (首个会话样例)：
               </label>
               <div className="fy-pure-text-box">{samplePreview}</div>
+              {previewedSessions.map((session) => (
+                <SessionEvidenceDetails
+                  key={session.snapshotId}
+                  preview={session}
+                />
+              ))}
             </div>
-
-            {exportError && (
-              <div className="fy-field-error" role="alert">
-                {exportError}
-              </div>
-            )}
           </>
         )}
       </div>

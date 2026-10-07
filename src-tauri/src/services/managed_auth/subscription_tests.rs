@@ -21,12 +21,16 @@ use std::sync::Arc;
 struct TestHome(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
 impl TestHome {
     fn set(path: &std::path::Path) -> Self {
+        #[cfg(target_os = "windows")]
+        crate::initialize_windows_user_context().expect("Windows test user context");
         let previous = std::env::var_os("FYAGENT_TEST_HOME");
         let data_home = std::env::var_os("XDG_DATA_HOME");
+        let guard = Self(previous, data_home);
         std::env::set_var("FYAGENT_TEST_HOME", path);
+        assert_eq!(crate::config::get_home_dir(), path);
         std::env::set_var("XDG_DATA_HOME", path.join(".local/share"));
         crate::settings::reload_settings().unwrap();
-        Self(previous, data_home)
+        guard
     }
 }
 impl Drop for TestHome {

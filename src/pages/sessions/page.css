@@ -758,6 +758,14 @@
   font-size: 12px;
 }
 
+.fy-session-failure-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-wrap: anywhere;
+  scroll-margin-block: 12px;
+}
+
 .fy-input-text {
   height: 36px;
   padding: 0 12px;

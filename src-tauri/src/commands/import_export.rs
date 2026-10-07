@@ -2,26 +2,30 @@
 
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::commands::sync_support::{
-    post_sync_warning_from_result, run_post_import_sync, success_payload_with_warning,
-};
 use crate::database::backup::BackupEntry;
 use crate::database::Database;
 use crate::error::AppError;
+use crate::services::database_restore::restore_mutex;
+use crate::services::database_restore::{
+    post_sync_warning_from_result, project_restored_database, success_payload_with_warning,
+};
 use crate::services::provider::ProviderService;
 use crate::services::skill::skill_state_write_guard;
-use crate::services::sync_protocol::sync_mutex;
 use crate::store::AppState;
+
+use crate::database::backup::recovery_outcome::{
+    DatabaseRecoveryReadability, DatabaseRestoreOutcome, RestoreTracker,
+};
 
 async fn run_with_database_restore_lock<T, Start, Fut>(start_operation: Start) -> T
 where
     Start: FnOnce() -> Fut,
     Fut: std::future::Future<Output = T>,
 {
-    let _sync_guard = sync_mutex().lock().await;
+    let _sync_guard = restore_mutex().lock().await;
     start_operation().await
 }
 
@@ -66,7 +70,7 @@ pub async fn import_config_from_file(
                 db.import_sql(&path_buf)?
             };
             let warning =
-                post_sync_warning_from_result(Ok(run_post_import_sync(&app_state_for_sync)));
+                post_sync_warning_from_result(Ok(project_restored_database(&app_state_for_sync)));
             if let Some(msg) = warning.as_ref() {
                 log::warn!("[Import] post-import sync warning: {msg}");
             }
@@ -162,7 +166,13 @@ pub async fn create_db_backup(state: State<'_, AppState>) -> Result<String, Stri
 
 /// List all database backup files
 #[tauri::command]
-pub fn list_db_backups() -> Result<Vec<BackupEntry>, String> {
+pub fn list_db_backups(app_handle: AppHandle) -> Result<Vec<BackupEntry>, String> {
+    // A backup leaf is not restore authority while initialization has failed.
+    // Reject before resolving the directory so the existing list-error path
+    // prevents confirmation without inventing an unknown write outcome.
+    let _state = app_handle
+        .try_state::<AppState>()
+        .ok_or_else(|| "数据库尚未就绪，请先完成启动检查，再刷新本机备份列表。".to_string())?;
     Database::list_backups().map_err(|e| e.to_string())
 }
 
@@ -181,7 +191,7 @@ pub async fn restore_db_backup(
                 db.restore_from_backup(&filename)?
             };
             let warning =
-                post_sync_warning_from_result(Ok(run_post_import_sync(&app_state_for_sync)));
+                post_sync_warning_from_result(Ok(project_restored_database(&app_state_for_sync)));
             if let Some(message) = warning {
                 // This legacy command returns only the restored filename, so keep
                 // restore success and surface incomplete projection in the log.
@@ -193,6 +203,56 @@ pub async fn restore_db_backup(
     .await
     .map_err(|e| format!("Restore failed: {e}"))?
     .map_err(|e: AppError| e.to_string())
+}
+
+/// Restore with a closed outcome that survives readback and worker failures.
+#[tauri::command]
+pub async fn restore_db_backup_outcome(
+    state: State<'_, AppState>,
+    filename: String,
+) -> Result<DatabaseRestoreOutcome, String> {
+    let app_state = state.inner().clone();
+    let db = app_state.db.clone();
+    let tracker = RestoreTracker::new();
+    let worker_tracker = tracker.clone();
+    let outcome = match run_with_database_restore_lock(move || {
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut outcome = {
+                let _skill_state_guard = skill_state_write_guard();
+                db.restore_from_backup_outcome(&filename, &worker_tracker)
+            };
+            if outcome.publication
+                == crate::database::backup::recovery_outcome::RestorePublication::Committed
+            {
+                if let Err(error) = project_restored_database(&app_state) {
+                    log::warn!("恢复后的本地投影未完成: {error}");
+                    outcome.warnings.push("projectionFailed".into());
+                }
+            }
+            outcome
+        })
+    })
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            log::warn!("Database restore worker lost: {error}");
+            tracker.worker_lost()
+        }
+    };
+    Ok(outcome)
+}
+
+/// Inspect the current database without another write or maintenance attempt.
+#[tauri::command]
+pub async fn check_db_recovery_readability(
+    state: State<'_, AppState>,
+) -> Result<DatabaseRecoveryReadability, String> {
+    let db = state.db.clone();
+    let readable = tauri::async_runtime::spawn_blocking(move || db.check_recovery_readability())
+        .await
+        .unwrap_or(false);
+    Ok(DatabaseRecoveryReadability::from_readable(readable))
 }
 
 /// Rename a database backup file
@@ -243,14 +303,14 @@ pub async fn reveal_backup_location(id: String) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::run_with_database_restore_lock;
-    use crate::services::sync_protocol::sync_mutex;
+    use crate::services::database_restore::restore_mutex;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
 
     #[tokio::test]
     async fn manual_restore_starts_blocking_work_after_global_lock_acquisition() {
-        let guard = sync_mutex().lock().await;
+        let guard = restore_mutex().lock().await;
         let entered = Arc::new(AtomicBool::new(false));
         let entered_in_task = Arc::clone(&entered);
         let restore = run_with_database_restore_lock(move || {

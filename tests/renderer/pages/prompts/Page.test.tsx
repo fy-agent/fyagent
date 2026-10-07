@@ -256,8 +256,12 @@ describe("PromptsPage native business management", () => {
       "true",
     );
     await user.click(screen.getByRole("tab", { name: "我的提示词" }));
-    expect(await screen.findByRole("heading", { name: "Claude rule" })).toBeVisible();
-    expect(screen.getByRole("searchbox", { name: "搜索提示词" })).toHaveValue("");
+    expect(
+      await screen.findByRole("heading", { name: "Claude rule" }),
+    ).toBeVisible();
+    expect(screen.getByRole("searchbox", { name: "搜索提示词" })).toHaveValue(
+      "",
+    );
     expect(ports.prompts.upsert).not.toHaveBeenCalled();
   });
 
@@ -611,7 +615,11 @@ describe("PromptsPage native business management", () => {
     expect(screen.getByRole("textbox", { name: "描述" })).toHaveValue(
       "Updated description",
     );
-    expect(await screen.findByText(/Updated description/)).toBeVisible();
+    expect(
+      await screen.findByRole("button", {
+        name: /New rule.*Updated description/,
+      }),
+    ).toBeVisible();
     expect(
       stores.claude.find((candidate) => candidate.id === created?.id)
         ?.description,
@@ -619,7 +627,7 @@ describe("PromptsPage native business management", () => {
   });
 
   it("imports, enables mutually, rereads the live file, disables, and deletes", async () => {
-    const { ports, stores } = statefulPorts({
+    const { ports, stores, liveFiles } = statefulPorts({
       claude: [
         prompt("first", "First", true, "first live"),
         prompt("second", "Second"),
@@ -646,10 +654,49 @@ describe("PromptsPage native business management", () => {
       "Second content",
     );
 
+    await user.clear(screen.getByRole("textbox", { name: "内容" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "内容" }),
+      "Edited after enable",
+    );
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(
+        stores.claude.find((candidate) => candidate.id === "second")?.content,
+      ).toBe("Edited after enable"),
+    );
+    expect(
+      stores.claude.find((candidate) => candidate.id === "second")?.enabled,
+    ).toBe(true);
+    expect(ports.prompts.upsert).toHaveBeenLastCalledWith(
+      "claude",
+      expect.objectContaining({ id: "second", enabled: true }),
+    );
+
     await user.click(screen.getByRole("switch", { name: "停用Second" }));
     expect(
       await screen.findByRole("switch", { name: "启用Second" }),
     ).not.toBeChecked();
+    await user.clear(screen.getByRole("textbox", { name: "内容" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "内容" }),
+      "Edited after disable",
+    );
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(
+        stores.claude.find((candidate) => candidate.id === "second")?.content,
+      ).toBe("Edited after disable"),
+    );
+    expect(
+      stores.claude.find((candidate) => candidate.id === "second")?.enabled,
+    ).toBe(false);
+    expect(ports.prompts.upsert).toHaveBeenLastCalledWith(
+      "claude",
+      expect.objectContaining({ id: "second", enabled: false }),
+    );
+    expect(liveFiles.claude).toBeNull();
+
     await user.click(screen.getByRole("button", { name: "删除" }));
     const confirm = screen.getByRole("dialog", { name: "删除 Second" });
     await user.click(within(confirm).getByRole("button", { name: "确认" }));
@@ -679,10 +726,55 @@ describe("PromptsPage native business management", () => {
     expect(ports.prompts.delete).not.toHaveBeenCalled();
   });
 
+  it.each([
+    "提示词文件不是有效 UTF-8，未导入。请保留原文件，将副本转换为 UTF-8 后重试。",
+    "无法读取提示词文件，未导入。请检查文件类型和读取权限后重试。",
+    "提示词导入未确认完成。请先刷新管理列表核对结果，再决定是否重试。",
+  ])(
+    "shows the safe public import reason without replacing the draft: %s",
+    async (message) => {
+      const { ports } = statefulPorts({
+        claude: [prompt("existing", "Existing")],
+      });
+      ports.prompts.importFromFile = vi.fn(async () => {
+        throw message;
+      });
+      const user = userEvent.setup();
+      renderPrompts(ports);
+      await screen.findByRole("heading", { name: "Existing" });
+      const name = screen.getByRole("textbox", { name: "名称" });
+      await user.clear(name);
+      await user.type(name, "Retained draft");
+      await user.click(screen.getByRole("button", { name: "从文件导入" }));
+      expect(
+        await screen.findByText(`提示词导入遇到问题：${message}`),
+      ).toBeVisible();
+      expect(name).toHaveValue("Retained draft");
+      expect(
+        screen.queryByText("提示词已从文件导入", { exact: true }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not expose or blindly recommend retrying an unknown import failure", async () => {
+    const { ports } = statefulPorts();
+    ports.prompts.importFromFile = vi.fn(async () => {
+      throw new Error("private-path private-token");
+    });
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByText("Claude Code 还没有提示词");
+    await user.click(screen.getByRole("button", { name: "从文件导入" }));
+    expect(
+      await screen.findByText(/提示词导入遇到问题：提示词导入未确认完成/),
+    ).toHaveTextContent("先刷新管理列表核对结果");
+    expect(document.body).not.toHaveTextContent("private-");
+  });
+
   it("keeps a missing import-file failure visible without inventing a record", async () => {
     const { ports } = statefulPorts();
     ports.prompts.importFromFile = vi.fn(async () => {
-      throw new Error("提示词文件不存在");
+      throw "提示词文件不存在，未导入。请先确认目标应用已创建提示词文件。";
     });
     const user = userEvent.setup();
     renderPrompts(ports);
@@ -691,7 +783,9 @@ describe("PromptsPage native business management", () => {
     await user.click(screen.getByRole("button", { name: "从文件导入" }));
 
     expect(
-      await screen.findByText("提示词已从文件导入失败：请稍后重试。"),
+      await screen.findByText(
+        "提示词导入遇到问题：提示词文件不存在，未导入。请先确认目标应用已创建提示词文件。",
+      ),
     ).toBeVisible();
     expect(screen.queryByText("提示词文件不存在")).not.toBeInTheDocument();
     expect(screen.getByText("Claude Code 还没有提示词")).toBeVisible();

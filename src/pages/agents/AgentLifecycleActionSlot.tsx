@@ -5,7 +5,7 @@ import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import { Spinner } from "../../shared/ui/primitives";
 
 function directoryPrimaryActionLabel(action: "install" | "update"): string {
-  return action === "install" ? "一键安装" : "一键更新";
+  return action === "install" ? "安装前检查" : "更新前检查";
 }
 
 function StatusSlot({ label }: { label: string }) {

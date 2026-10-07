@@ -52,7 +52,9 @@ use crate::codex_desktop::{
     jobs::{ProcessLifecycleClaim, ProcessLifecycleCoordinator, ProcessLifecycleTransition},
     types::JobStage,
 };
-pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
+pub use app_config::{
+    AppType, InstalledSkill, McpApps, McpServer, McpTargetId, MultiAppConfig, SkillApps,
+};
 pub use codex_config::{
     extract_codex_experimental_bearer_token, get_codex_auth_path, get_codex_config_path,
     read_codex_live_settings, write_codex_live_atomic,
@@ -69,7 +71,8 @@ pub use mcp::{
     remove_server_from_claude, remove_server_from_codex, remove_server_from_gemini,
     remove_server_from_grokbuild, sync_enabled_to_claude, sync_enabled_to_codex,
     sync_enabled_to_gemini, sync_single_server_to_claude, sync_single_server_to_codex,
-    sync_single_server_to_gemini, sync_single_server_to_grokbuild,
+    sync_single_server_to_gemini, sync_single_server_to_grokbuild, McpImportCounts,
+    McpImportReport, McpImportSourceResult, McpServerView,
 };
 pub use prompt::Prompt;
 pub use provider::{Provider, ProviderMeta};
@@ -1260,14 +1263,22 @@ pub fn run() {
                 log::warn!("Unable to initialize first-use guide: {error}");
             }
 
+            let mut db_init_attempts = 0;
             let db = loop {
+                db_init_attempts += 1;
                 match crate::database::Database::init() {
                     Ok(db) => break Arc::new(db),
                     Err(e) => {
                         log::error!("Failed to init database: {e}");
 
-                        if !show_database_init_error_dialog(app.handle(), &db_path, &e.to_string())
-                        {
+                        let retry_allowed = db_init_attempts < 2;
+                        let retry_requested = show_database_init_error_dialog(
+                            app.handle(),
+                            &db_path,
+                            &e.to_string(),
+                            retry_allowed,
+                        );
+                        if !retry_allowed || !retry_requested {
                             log::info!("用户选择退出程序");
                             std::process::exit(1);
                         }
@@ -1808,18 +1819,6 @@ pub fn run() {
             }
 
             let _tray = tray_builder.build(app)?;
-            app_state.db.set_change_listener(|table| {
-                crate::services::webdav_auto_sync::notify_db_changed(table);
-                crate::services::s3_auto_sync::notify_db_changed(table);
-            })?;
-            crate::services::webdav_auto_sync::start_worker(
-                app_state.db.clone(),
-                app.handle().clone(),
-            );
-            crate::services::s3_auto_sync::start_worker(
-                app_state.db.clone(),
-                app.handle().clone(),
-            );
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
             app.manage(commands::ConfigPackState::default());
             app.manage(app_state);
@@ -2087,7 +2086,6 @@ pub fn run() {
             commands::get_active_agent_auth_session,
             commands::stop_waiting_for_agent_auth,
             commands::managed_auth_get_overview,
-            commands::get_agent_health,
 
             commands::managed_auth_start_login,
             commands::managed_auth_get_login_session,
@@ -2132,6 +2130,8 @@ pub fn run() {
             commands::bind_managed_proxy_provider,
             commands::bind_opencode_managed_proxy,
             commands::apply_provider_quick_setup_with_result,
+            commands::preview_claude_quick_setup,
+            commands::apply_claude_quick_setup_preview,
             commands::update_provider,
             commands::update_provider_with_result,
             commands::delete_provider,
@@ -2221,6 +2221,7 @@ pub fn run() {
             commands::delete_mcp_server,
             commands::toggle_mcp_app,
             commands::import_mcp_from_apps,
+            commands::resync_mcp_to_apps,
             // Prompt management
             commands::get_prompts,
             commands::upsert_prompt,
@@ -2256,22 +2257,14 @@ pub fn run() {
             // theirs: config import/export and dialogs
             commands::export_config_to_file,
             commands::import_config_from_file,
-            commands::webdav_test_connection,
-            commands::webdav_sync_upload,
-            commands::webdav_sync_download,
-            commands::webdav_sync_save_settings,
-            commands::webdav_sync_fetch_remote_info,
-            commands::s3_test_connection,
-            commands::s3_sync_upload,
-            commands::s3_sync_download,
-            commands::s3_sync_save_settings,
-            commands::s3_sync_fetch_remote_info,
             commands::save_file_dialog,
             commands::open_file_dialog,
             commands::open_zip_file_dialog,
             commands::create_db_backup,
             commands::list_db_backups,
             commands::restore_db_backup,
+            commands::restore_db_backup_outcome,
+            commands::check_db_recovery_readability,
             commands::rename_db_backup,
             commands::delete_db_backup,
             commands::sync_current_providers_live,
@@ -2376,6 +2369,8 @@ pub fn run() {
             commands::stream_check_all_providers,
             commands::stream_check_url,
             commands::stream_check_model,
+            commands::stream_check_model_status,
+            commands::stream_check_model_cancel,
             commands::get_stream_check_config,
             commands::save_stream_check_config,
             // Session manager
@@ -3235,11 +3230,12 @@ fn show_migration_error_dialog(app: &tauri::AppHandle, error: &str) -> bool {
 }
 
 /// 显示数据库初始化/Schema 迁移失败对话框
-/// 返回 true 表示用户选择重试，false 表示用户选择退出
+/// 仅首次失败可返回 true；重试用完后展示退出提示并返回 false。
 fn show_database_init_error_dialog(
     app: &tauri::AppHandle,
     db_path: &std::path::Path,
     error: &str,
+    retry_allowed: bool,
 ) -> bool {
     let title = if is_chinese_locale() {
         "数据库初始化失败"
@@ -3247,32 +3243,36 @@ fn show_database_init_error_dialog(
         "Database Initialization Failed"
     };
 
+    let next_step = match (is_chinese_locale(), retry_allowed) {
+        (true, true) => {
+            "处理问题后，可点击「重试」再尝试一次；或点击「退出」关闭程序。"
+        }
+        (true, false) => {
+            "本次启动的初始化尝试已用完。请退出并保留数据库与备份，处理问题后重新启动 FyAgent。"
+        }
+        (false, true) => {
+            "After addressing the problem, click 'Retry' to try once more, or 'Exit' to close the program."
+        }
+        (false, false) => {
+            "Initialization attempts for this launch are exhausted. Exit and preserve the database and backups, then restart FyAgent after addressing the problem."
+        }
+    };
     let message = if is_chinese_locale() {
         format!(
             "初始化数据库或迁移数据库结构时发生错误：\n\n{error}\n\n\
             数据库文件路径：\n{db}\n\n\
-            您的数据尚未丢失，应用不会自动删除数据库文件。\n\
-            常见原因包括：数据库版本过新、文件损坏、权限不足、磁盘空间不足等。\n\n\
-            建议：\n\
-            1) 先备份整个配置目录（包含 fyagent.db）\n\
-            2) 如果提示“数据库版本过新”，请升级到更新版本\n\
-            3) 如果刚升级出现异常，可回退旧版本导出/备份后再升级\n\n\
-            点击「重试」重新尝试初始化\n\
-            点击「退出」关闭程序",
+            应用不会自动删除原数据库文件。请保留数据库和备份，先检查磁盘空间和目录权限。\n\
+            数据库版本过新时请升级 FyAgent；不要删除文件或修改版本号。\n\n\
+            {next_step}",
             db = db_path.display()
         )
     } else {
         format!(
             "An error occurred while initializing or migrating the database:\n\n{error}\n\n\
             Database file path:\n{db}\n\n\
-            Your data is NOT lost - the app will not delete the database automatically.\n\
-            Common causes include: newer database version, corrupted file, permission issues, or low disk space.\n\n\
-            Suggestions:\n\
-            1) Back up the entire config directory (including fyagent.db)\n\
-            2) If you see “database version is newer”, please upgrade FyAgent\n\
-            3) If this happened right after upgrading, consider rolling back to export/backup then upgrade again\n\n\
-            Click 'Retry' to attempt initialization again\n\
-            Click 'Exit' to close the program",
+            The app will not automatically delete the original database file. Preserve the database and backups, and check disk space and directory permissions.\n\
+            If the database version is newer, upgrade FyAgent; do not delete the file or change its version number.\n\n\
+            {next_step}",
             db = db_path.display()
         )
     };
@@ -3288,15 +3288,19 @@ fn show_database_init_error_dialog(
         "Exit"
     };
 
-    app.dialog()
+    let buttons = if retry_allowed {
+        MessageDialogButtons::OkCancelCustom(retry_text.to_string(), exit_text.to_string())
+    } else {
+        MessageDialogButtons::OkCustom(exit_text.to_string())
+    };
+    let retry_requested = app
+        .dialog()
         .message(&message)
         .title(title)
         .kind(MessageDialogKind::Error)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            retry_text.to_string(),
-            exit_text.to_string(),
-        ))
-        .blocking_show()
+        .buttons(buttons)
+        .blocking_show();
+    retry_allowed && retry_requested
 }
 
 fn confirm_codex_desktop_installation_cancellation(app: &tauri::AppHandle) -> bool {

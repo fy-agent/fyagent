@@ -123,7 +123,6 @@ describe("FyAgent user-facing copy contract", () => {
     ).toEqual([
       "agents",
       "auth",
-      "health",
       "mcp",
       "memory",
       "models",

@@ -66,3 +66,5 @@ boot/route chunks. Domain deepClone, providerConfigStructural, Codex TOML and
 deepLinkConfigPreview tests preserve parsing, encoding and secret handling.
 The current renderer architecture and independent dependency graph tests must
 both pass; no deleted-UI test may be cited as current behavior evidence.
+
+The retained database recovery capability has two reviewed deferred bootstrap entries: the native `databaseRecovery.ts` adapter and `DatabaseRecoveryDialog.tsx` UI. They stay outside the initial static closure and retain the existing deferred chunk size budget; omission of either entry fails the production graph contract.

@@ -20,12 +20,12 @@ export function CodexInstallConfirmation({
       actions={
         checked ? (
           <>
-            <Button onClick={installer.dismissPreflight}>取消</Button>
+            <Button onClick={installer.dismissPreflight}>暂不开始</Button>
             <Button
               className="fy-control-button-primary"
               onClick={() => void installer.confirmInstall()}
             >
-              {checked.updating ? "确认更新" : "确认安装"}
+              {checked.updating ? "开始更新" : "开始安装"}
             </Button>
           </>
         ) : undefined
@@ -58,6 +58,14 @@ export function CodexInstallConfirmation({
             {checked.downloadSizeHint
               ? `下载约 ${(checked.downloadSizeHint / 1024 ** 2).toFixed(0)} MB；已检查安装所需的预留空间。`
               : "来源未提供安装大小，实际空间需求由安装过程确认。"}
+          </p>
+          <p>
+            尚未开始本次操作。关闭此说明不会启动任务；开始后关闭页面不会取消后台任务，请使用进度区可用的取消按钮。
+          </p>
+          <p>
+            <strong>下载来源域名：</strong>
+            {new URL(checked.downloadUrl).hostname}
+            。这是安装器返回的来源信息；开始后仍会检查安装包。
           </p>
           <details>
             <summary>查看本次安装包来源</summary>

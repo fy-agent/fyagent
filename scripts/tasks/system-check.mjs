@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import process from "node:process";
-import { run, usageBoolean } from "./lib.mjs";
+import { isMain, run, usageBoolean } from "./lib.mjs";
 import {
   SUPPORTED_VISUAL_STUDIO_VERSION_RANGE,
   findVsInstallation,
@@ -66,7 +66,7 @@ export const REQUIREMENTS = Object.freeze({
   },
 });
 
-function inspect(platform) {
+export function inspect(platform, probeCommand = probe) {
   const requirements = REQUIREMENTS[platform];
   if (!requirements) {
     return {
@@ -83,7 +83,7 @@ function inspect(platform) {
   }
   const checks = [];
   for (const [command, args, hint] of requirements.commands) {
-    const result = probe(command, args);
+    const result = probeCommand(command, args);
     checks.push({
       name: `${command} ${args.join(" ")}`,
       ok: result.status === 0,
@@ -118,7 +118,7 @@ function probe(command, args) {
 }
 
 const describeIndex = process.argv.indexOf("--describe-platform");
-if (describeIndex >= 0) {
+if (isMain(import.meta.url) && describeIndex >= 0) {
   const platform = process.argv[describeIndex + 1];
   const requirements = REQUIREMENTS[platform];
   if (!requirements) {
@@ -126,7 +126,7 @@ if (describeIndex >= 0) {
     process.exit(2);
   }
   console.log(JSON.stringify({ platform, requirements }, null, 2));
-} else {
+} else if (isMain(import.meta.url)) {
   const report = inspect(process.platform);
   if (usageBoolean("json") || process.argv.includes("--json")) {
     console.log(JSON.stringify(report, null, 2));

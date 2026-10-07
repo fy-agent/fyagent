@@ -194,7 +194,7 @@ export function reasonCopy(code: AgentReasonCode): string | null {
     case "candidate_conflict":
       return "检测到互相冲突的安装信息。请检查安装位置后再试。";
     case "authorization_required":
-      return "系统应用程序文件夹目前不可用于一键安装。请使用当前用户的应用程序目录，不会改装到其他目录。";
+      return "系统应用程序文件夹目前不支持此安装操作。请使用当前用户的应用程序目录，不会改装到其他目录。";
     case "permission_denied":
       return "没有权限写入所选位置。请调整该目录的写入权限，或重新选择可写的安装位置。";
     case "application_running":
@@ -227,7 +227,7 @@ export function reasonCopy(code: AgentReasonCode): string | null {
       return "当前产品不支持此操作。";
     case "helper_not_packaged":
     case "helper_signature_invalid":
-      return "系统文件夹一键安装当前不可用，不会改到其他目录。";
+      return "系统文件夹的此安装操作当前不可用，不会改到其他目录。";
     case "helper_install_authorization_cancelled":
     case "operation_authorization_cancelled":
       return "你取消了管理员授权，未更改现有应用。";

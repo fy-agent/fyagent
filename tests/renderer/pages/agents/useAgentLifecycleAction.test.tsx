@@ -266,7 +266,7 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
 describe("macOS lifecycle state copy", () => {
   it("distinguishes staging, authorization, restored rollback, and unknown recovery", () => {
     expect(jobStageCopy("staging")).toBe("正在准备安装包");
-    expect(reasonCopy("authorization_required")).toContain("不可用于一键安装");
+    expect(reasonCopy("authorization_required")).toContain("不支持此安装操作");
     expect(reasonCopy("authorization_required")).toContain(
       "不会改装到其他目录",
     );
@@ -429,6 +429,46 @@ describe("useAgentLifecycleAction", () => {
     expect(result.current.canRetry).toBe(false);
     expect(result.current.primaryAction).toBeNull();
     expect(result.current.error).toContain("停止重试");
+  });
+
+  it("rejects an ineligible system target before preflight without choosing another destination", async () => {
+    const live = installationInventory();
+    live.freshDestinations.push({
+      ...live.freshDestinations[0],
+      destinationId: `d1:${"e".repeat(32)}`,
+      scope: "all_users",
+      requiresElevation: true,
+      writable: false,
+      eligible: false,
+      reasonCodes: ["authorization_required"],
+      locationLabel: "系统应用程序文件夹",
+    });
+    const selected: AgentInstallationTarget = {
+      ...lifecycleTarget(),
+      targetId: `d1:${"e".repeat(32)}`,
+      scope: "all_users",
+      label: "系统应用程序文件夹",
+    };
+    const port = createPort({
+      getInventory: vi.fn(async () => live),
+      preflight: vi.fn(async (request) => installPreflightFixture(request)),
+    });
+    const { result } = renderHook(() =>
+      useAgentLifecycleAction({
+        agentId: "qoderwork",
+        port,
+        readiness: readiness(),
+        target: selected,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.runPrimary();
+    });
+    expect(result.current.reasonCode).toBe("target_changed");
+    expect(result.current.preflight).toBeNull();
+    expect(port.preflight).not.toHaveBeenCalled();
+    expect(port.startAction).not.toHaveBeenCalled();
   });
 
   it("shows real job stages and only applies the reread readiness", async () => {

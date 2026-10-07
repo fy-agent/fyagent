@@ -58,6 +58,12 @@ keeps the last valid visible target; absent/invalid input defaults to
 
 ```ts
 interface ProvidersPort {
+  previewClaudeQuickSetup(
+    request: ProviderQuickSetupRequest,
+  ): Promise<ClaudeQuickSetupPreview>;
+  applyClaudeQuickSetupPreview(
+    request: ClaudeQuickSetupApplyRequest,
+  ): Promise<ClaudeQuickSetupOutcome>;
   getSummary(
     app: "claude" | "codex" | "grokbuild",
   ): Promise<ProviderSummaryQueryData>;
@@ -72,6 +78,8 @@ interface ProvidersPort {
   fetchModels(baseUrl: string, apiKey: string): Promise<FetchedModelRef[]>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
   bindXaiManaged(request: BindXaiManagedRequest): Promise<BindXaiManagedResult>;
   bindManagedProxy(
     request: BindManagedProxyRequest,
@@ -90,6 +98,8 @@ interface WorkBuddyPort {
   ): Promise<WorkBuddySaveModelsResult>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
 }
 
 interface OpenCodeModelsPort {
@@ -106,6 +116,8 @@ interface OpenCodeModelsPort {
   ): Promise<OpenCodeSaveModelsResult>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
 }
 
 interface TraeWorkPort {
@@ -142,6 +154,32 @@ The current `/models` page uses only `traeWork.getModelIds()`. TRAE validation,
 probe, and cancellation are real shared/native capabilities, but this route
 does not currently expose them as model-management controls.
 
+### Model probe lifecycle DTOs
+
+`ModelProbeRequest` adds a required lowercase canonical RFC4122 UUID v4
+`requestId` to the existing app, URL, credential, model and protocol request.
+The three focused model Ports share the following public read-only lifecycle:
+
+```ts
+interface ModelProbeSnapshot {
+  requestId: string;
+  phase: "running" | "retrying" | "cancelling" | "completed" | "cancelled";
+  requestCount: number;
+  retryCount: number;
+}
+```
+
+`ModelProbeResult` retains its prior status/message/latency/model fields and
+requires `requestId: string | null`, `terminal: "completed" | "cancelled"`,
+`requestCount`, `retryCount` and `inputMode: "compatibility"`. Registered desktop
+commands always return the matching non-null ID; null is only an internal
+unregistered service result. The native adapter rejects missing/mismatched IDs,
+unknown members, invalid count combinations and success with a cancelled terminal.
+Request counts are integers 0–2, retry count is `max(0, requestCount - 1)`;
+`running` cannot report 2, and `retrying` reports 2. Identity-only native commands
+are `stream_check_model_status` and `stream_check_model_cancel`; snapshots carry
+no credential, URL or model body.
+
 ### Core write DTOs
 
 Provider quick setup is:
@@ -156,6 +194,20 @@ interface ProviderQuickSetupRequest {
   codexFeatures?: { imageExtension?: boolean; websockets?: boolean };
 }
 ```
+
+Claude uses the private `claude-quick-setup.ts` v1 contract. Preview returns a
+canonical UUID v4, up to two actual write targets, preserved paths and native
+backup/undo display paths. Apply accepts only `{previewId}`. The old
+request-bearing `applyQuickSetupWithResult` keeps its compatible signature but
+rejects Claude before invoke; the native legacy command also rejects it before
+business writes. Codex and Grok Build retain their existing protocols.
+
+The parsed Claude outcome separates `providerState` from the two file results
+(`claude_settings`, `claude_mcp`). Its closed overall state is `applied`,
+`partial`, `stale`, `rolledBack` or `unknown`. A file's `rolledBack` means its
+attempted write failed with the exact preimage retained or restored;
+`notAttempted` means the atomic writer was never called. Neither state means
+the Provider row or the entire save was undone.
 
 WorkBuddy/OpenCode writes include the current authoritative revision and may
 return one of:
@@ -206,14 +258,27 @@ an apply instruction.
 - Fetching models calls `providers.fetchModels(baseUrl, apiKey)` and keeps the
   API key in the current draft so the same credential can be used for probe or
   save. Fetch success is not a persisted configuration.
-- The save confirmation shows the native `writeTargets` returned by
-  `getSummary`; React never constructs target or backup paths. Codex and
+- Claude obtains its actual confirmation scope from
+  `previewClaudeQuickSetup`, including preserved paths and sidecar display
+  metadata. Grok Build uses the native summary targets. React never constructs
+  target or backup paths. Codex and
   WorkBuddy disclose those targets in the single Change Plan preview, without
   an earlier write-confirmation dialog. Closing that preview preserves the form
   draft and does not apply or save it.
-- Claude and Grok Build call `applyQuickSetupWithResult`, then reread
-  `getSummary`. They claim the new provider is current only when the reread
-  `currentId` equals the closed quick-setup provider ID.
+- Claude confirms only the retained preview identity through
+  `applyClaudeQuickSetupPreview`. Editing, changing target, hiding or unmounting
+  the panel invalidates a late preview. Stale preserves the draft/key and
+  requires a fresh preview; one confirmation cannot apply twice.
+- Claude renders each file's parsed outcome independently. A Provider/current
+  readback cannot upgrade partial/unknown into success. Unknown/partial or an
+  unclassified apply failure blocks further Claude writes in the parent page,
+  including results arriving after the child panel was unmounted by a target
+  switch. Independent file undo preserves the Provider row and does not clear
+  that block or prove the whole save recovered. Release the temporary write
+  lock in `finally`, including a failed readback.
+- Grok Build calls `applyQuickSetupWithResult`, then rereads `getSummary`. It
+  claims the new provider is current only when the reread `currentId` equals
+  the closed quick-setup provider ID.
 - `APPLY_FAILED_ROLLED_BACK` is the only direct-provider error currently treated
   as confirmed baseline restoration. An unclassified failure or
   `ROLLBACK_PARTIAL_STATE_UNKNOWN` blocks further writes for that target until
@@ -368,6 +433,9 @@ shared lifecycle here.
   request IDs, closed reason/state combinations, and the model-ID snapshot.
 - `models.ts` strictly parses provider summaries, fetched provider refs,
   reachability/model-probe results, and OpenCode snapshot/fetch/save results.
+- `claude-quick-setup.ts` strictly parses the private preview, identity-only
+  request and outcome before UI use. Reject extra authority, invalid identity,
+  duplicate paths/targets, mismatched sidecars and inconsistent result states.
 - `parseModelProbeResult` validates the result shape and closed status, but it
   does not currently bind `modelUsed` back to `request.modelId`. Do not claim
   cross-request identity protection at this Port boundary; adding it requires
@@ -407,6 +475,28 @@ shared lifecycle here.
 - Reachability and model probes are separate operations. Model probe is offered
   only after candidate IDs exist and uses the selected ID plus the current
   draft revision; changing the owning draft invalidates a stale result.
+- A logical model probe sends one fixed-protocol URL request, with one additional
+  attempt only after an actual transport timeout. HTTP response text containing
+  `timeout` or `abort` is not a retry trigger. Public counts record dispatched
+  attempts: cancellation before dispatch is zero; the maximum is two.
+- Before testing, the dialog explains estimated compatibility input of about
+  1024 tokens, the possible second request and possible usage for each request.
+  This estimate is not billed-token or cost measurement. Anthropic keeps its
+  output cap; Chat/Responses keep their protocol compatibility without a universal
+  output cap. Local short-input accept/reject fixtures must pass before changing
+  that default; they do not prove a real upstream's minimum input or billing.
+- Cancel acknowledgement displays `cancelling` and leaves the operation busy.
+  Only the original matching probe result can display `cancelled`, after native
+  transport disposal and terminal arbitration. A completed terminal cannot flip
+  to cancelled; a failed cancellation can be retried. Previously dispatched
+  upstream work may still incur usage after local cancellation.
+- Operation identity admits one probe/cancel in a tick. Hidden persistent surfaces
+  pause status polling without dropping the original result Promise; unmount
+  requests best-effort native cancellation. Results and progress from an old draft
+  revision stay out of the current draft. Native status phases/counts merge
+  monotonically, and obsolete read/cancel acknowledgements cannot replace newer
+  terminal or cancelling evidence. The registry is bounded to 128 identities with
+  five-minute completed retention and is not persisted across native restart.
 - A successful fetch/probe proves only the native request result. It does not
   prove the configuration was saved or that a vendor process reloaded it.
 - `ModelsWriteConfirmDialog` is a target/path confirmation, while a Change Plan
@@ -450,9 +540,9 @@ shared lifecycle here.
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** fetch Claude model refs, select one, confirm native write targets,
-  apply quick setup, then claim current only after the provider summary reread
-  returns the expected provider ID.
+- **Good:** fetch Claude model refs, select one, confirm the actual native
+  preview, apply only its identity, and display independent file results before
+  the authoritative Provider reread. Partial remains partial.
 - **Good:** create a Codex or WorkBuddy Change Plan, render its neutral preview,
   apply only `{planId, planDigest}`, poll the parsed job, and reread authority
   before committing the draft.
@@ -481,7 +571,16 @@ assertion owners include:
   model ID parsing;
 - `tests/renderer/pages/models/ModelConnectivityTest.test.tsx` and
   `workBuddyModels.test.ts`: draft-revision probe invalidation, search/grouping,
-  ordered uniqueness, and fetched/manual split;
+  ordered uniqueness, fetched/manual split, same-tick probe/cancel admission,
+  cancel acknowledgement versus matching terminal, failed cancel retry, hidden
+  polling, unmount, mismatched identity and late old-draft results;
+- `tests/renderer/platform/modelProbePort.test.ts`: exact identity-only lifecycle
+  payloads, mandatory returned counts, mismatch/impossible/expanded DTO rejection,
+  cancelled-before-dispatch, all three focused Ports and native-only browser calls;
+- `services::model_probe::tests`: three fixed protocol request projections,
+  short-input accept/reject loopbacks, timeout-only two-attempt behavior, zero-
+  dispatch cancellation, in-flight disposal, irreversible terminals, canonical RFC
+  identity and credential redaction before bounded diagnostic truncation;
 - `tests/renderer/platform/featurePorts.test.ts`: exact Provider, WorkBuddy, OpenCode,
   and TRAE command/payload mappings plus every runtime parser currently owned by
   the adapter. Reachability payload tests pass URL only; a future model-probe
@@ -522,7 +621,14 @@ Correct:
 if (target === "codex") {
   const plan = await ports.changePlans.createCodexProviderUpsertPlan(request);
   // Show parsed preview; apply later with plan.planId + plan.planDigest only.
-} else if (target === "claude" || target === "grokbuild") {
+} else if (target === "claude") {
+  const preview = await ports.providers.previewClaudeQuickSetup(request);
+  // Show the parsed scope; confirmation consumes this identity only.
+  const result = await ports.providers.applyClaudeQuickSetupPreview({
+    previewId: preview.previewId,
+  });
+  // Handle each file and block uncertain writes before any Provider reread.
+} else if (target === "grokbuild") {
   await ports.providers.applyQuickSetupWithResult(request, target);
   const reread = await summaryQuery.refetch();
   // Claim current only when reread.data.currentId is the expected closed ID.

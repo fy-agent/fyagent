@@ -124,7 +124,14 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(141);
+    expect(renderer.commands.size).toBe(147);
+    expect(renderer.commands.has("preview_claude_quick_setup")).toBe(true);
+    expect(renderer.commands.has("apply_claude_quick_setup_preview")).toBe(
+      true,
+    );
+    expect(renderer.commands.has("list_db_backups")).toBe(true);
+    expect(renderer.commands.has("restore_db_backup_outcome")).toBe(true);
+    expect(renderer.commands.has("check_db_recovery_readability")).toBe(true);
     expect(renderer.commands.has("run_tool_lifecycle_action")).toBe(false);
     expect(renderer.commands.has("projects_prepare_codex")).toBe(false);
     expect(renderer.commands.has("projects_bind_delivery_kit")).toBe(false);
@@ -137,7 +144,7 @@ describe("Native ACL contract", () => {
     expect(renderer.commands.has("set_proxy_takeover_for_app")).toBe(true);
     expect(renderer.commands.has("get_first_use_guide_state")).toBe(true);
     expect(renderer.commands.has("dismiss_first_use_guide")).toBe(true);
-    expect(renderer.commands.has("get_agent_health")).toBe(true);
+    expect(renderer.commands.has("get_agent_health")).toBe(false);
     expect(renderer.commands.has("set_window_theme")).toBe(true);
     expect(
       [...renderer.commands].filter((command) => !registered.has(command)),
@@ -156,7 +163,8 @@ describe("Native ACL contract", () => {
   it("registers Change Plan, Agent action, and Agent auth commands", () => {
     const registered = registeredCommands();
     const expected = [
-      "get_agent_health",
+      "restore_db_backup_outcome",
+      "check_db_recovery_readability",
       "create_codex_provider_switch_plan",
       "create_codex_provider_upsert_plan",
       "create_workbuddy_save_plan",

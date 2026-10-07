@@ -146,13 +146,6 @@ pub(crate) fn connection_summary(
         provider: Some(ManagedAuthProvider::Openai),
         account_id: display_account.map(|row| row.identity.identity_id.clone()),
         auth_status,
-        unmanaged_native_session: connection.is_none()
-            && store_ready
-            && observation.provider_route.is_official()
-            && matches!(
-                &observation.auth_state,
-                CodexNativeAuthState::ChatGptKnown { .. }
-            ),
         credential_manager: if store_ready {
             ManagedAuthCredentialManager::Codex
         } else {
@@ -251,24 +244,57 @@ mod tests {
     }
 
     #[test]
-    fn unmanaged_native_session_requires_official_file_route() {
+    fn native_auth_observation_keeps_route_store_and_managed_binding_separate() {
+        use crate::services::managed_auth::ManagedAuthRequestMode;
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
         let dir = tempdir().unwrap();
-        for (config, expected) in [
-            ("model = 'fixture'\n", true),
-            ("model_provider = 'openai'\ncli_auth_credentials_store = 'file'\n", true),
-            ("model_provider = 'custom'\n", false),
-            ("model_provider = 'openai'\n[model_providers.openai]\nbase_url = 'https://example.test/v1'\n", false),
-            ("cli_auth_credentials_store = 'keyring'\n", false),
+        let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);
+        let payload = URL_SAFE_NO_PAD
+            .encode(br#"{"chatgpt_account_id":"fixture-account","email":"fixture@example.test"}"#);
+        let token = format!("{header}.{payload}.sig");
+        let auth = CodexChatGptAuthDocument::from_tokens(
+            &token,
+            &token,
+            "synthetic-refresh",
+            Some("fixture-account"),
+            Some(1_700_000_000),
+        )
+        .unwrap()
+        .serialize_bytes()
+        .unwrap();
+        let auth_path = dir.path().join("auth.json");
+        std::fs::write(&auth_path, &auth).unwrap();
+        for (config, official_route, file_store) in [
+            ("model = 'fixture'\n", true, true),
+            ("model_provider = 'openai'\ncli_auth_credentials_store = 'file'\n", true, true),
+            ("model_provider = 'custom'\n", false, true),
+            ("model_provider = 'openai'\n[model_providers.openai]\nbase_url = 'https://example.test/v1'\n", false, true),
+            ("cli_auth_credentials_store = 'keyring'\n", true, false),
         ] {
             std::fs::write(dir.path().join("config.toml"), config).unwrap();
-            let mut observed = observe_codex_home(dir.path());
-            observed.auth_state = CodexNativeAuthState::ChatGptKnown {
-                account_id: "fixture-account".into(),
-                revision: "fixture".into(),
-            };
+            // Observe real temporary auth/config bytes rather than injecting auth_state.
+            let observed = observe_codex_home(dir.path());
+            assert_eq!(live_chatgpt_account_id(&observed.auth_state), Some("fixture-account"));
+            assert_eq!(observed.provider_route.is_official(), official_route);
+            assert_eq!(observed.effective_store.allows_native_file_projection(), file_store);
             let summary = connection_summary(&observed, None, None, &[], now_timestamp());
-            assert_eq!(summary.unmanaged_native_session, expected);
+            // Native OAuth presence and an official route do not create a managed binding.
             assert_eq!(summary.auth_status, ManagedAuthConnectionState::Disconnected);
+            assert!(summary.account_id.is_none());
+            assert_eq!(summary.request_mode, if official_route {
+                ManagedAuthRequestMode::OfficialSubscription
+            } else {
+                ManagedAuthRequestMode::ThirdPartyApi
+            });
+            assert_eq!(summary.credential_manager, if file_store {
+                ManagedAuthCredentialManager::Codex
+            } else {
+                ManagedAuthCredentialManager::Unavailable
+            });
+            assert_eq!(summary.official_session_preserved, Some(!official_route));
+            assert_eq!(summary.reason_codes.contains(&ManagedAuthReasonCode::NativeProjectionUnavailable), !file_store);
+            assert_eq!(std::fs::read(&auth_path).unwrap(), auth);
         }
     }
 

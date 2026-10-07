@@ -1,3 +1,7 @@
+import type {
+  ClaudeQuickSetupPreview,
+  ClaudeQuickSetupOutcome,
+} from "../../shared/features/claude-quick-setup";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -779,8 +783,15 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
               onBusyChange={(probing) =>
                 setBusy(probing ? "reachability" : null)
               }
-              onProbe={(modelId) =>
+              onStatus={(requestId) =>
+                ports.workbuddy.getModelProbeStatus(requestId)
+              }
+              onCancel={(requestId) =>
+                ports.workbuddy.cancelModelProbe(requestId)
+              }
+              onProbe={(modelId, requestId) =>
                 ports.workbuddy.checkModel({
+                  requestId,
                   app: "workbuddy",
                   baseUrl: baseUrl.trim(),
                   apiKey: apiKeyRef.current.trim(),
@@ -968,11 +979,19 @@ function ProviderPanel({
     message?: string;
   } | null>(null);
   const writeLock = useRef(false);
-  const writeConfirm = useModelsWriteConfirm<{
-    request: ProviderQuickSetupRequest;
-    revision: number;
-    targets: readonly ModelWriteTarget[];
-  }>();
+  const writeConfirm = useModelsWriteConfirm<
+    | { kind: "claude"; preview: ClaudeQuickSetupPreview; revision: number }
+    | {
+        kind: "grokbuild";
+        request: ProviderQuickSetupRequest;
+        revision: number;
+        targets: readonly ModelWriteTarget[];
+      }
+  >();
+  const [claudeOutcome, setClaudeOutcome] =
+    useState<ClaudeQuickSetupOutcome | null>(null);
+  const previewGeneration = useRef(0);
+  const activeRef = useRef(active);
   const submittedRevisionRef = useRef(0);
   const mountedRef = useRef(true);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -998,6 +1017,29 @@ function ProviderPanel({
       apiKeyRef.current = "";
     };
   }, []);
+
+  const { pending: pendingWrite, takePending: discardPendingWrite } =
+    writeConfirm;
+  const { resetVersion: draftVersion, isCurrentRevision } = draftCommit;
+  useEffect(() => {
+    activeRef.current = active;
+    previewGeneration.current += 1;
+  }, [active, draftVersion]);
+  useEffect(() => {
+    if (
+      !active ||
+      (pendingWrite?.kind === "claude" &&
+        !isCurrentRevision(pendingWrite.revision))
+    ) {
+      discardPendingWrite();
+    }
+  }, [
+    active,
+    pendingWrite,
+    discardPendingWrite,
+    isCurrentRevision,
+    draftVersion,
+  ]);
 
   const providerId = QUICK_SETUP_PROVIDER_IDS[app];
   const providerExists = Boolean(summaryQuery.data?.providers[providerId]);
@@ -1154,7 +1196,7 @@ function ProviderPanel({
       return;
     }
     const targets = summaryQuery.data?.writeTargets ?? [];
-    if (targets.length === 0) return;
+    if (app !== "claude" && targets.length === 0) return;
     const request = buildQuickSetupRequest(
       app,
       validated.value,
@@ -1166,8 +1208,149 @@ function ProviderPanel({
       // confirmation, including the native-owned file impact disclosure.
       setCodexWriteTargets(targets);
       void submit(request, revision);
+    } else if (app === "claude") {
+      void previewClaude(request, revision);
     } else {
-      writeConfirm.requestConfirm({ request, revision, targets });
+      writeConfirm.requestConfirm({
+        kind: "grokbuild",
+        request,
+        revision,
+        targets,
+      });
+    }
+  };
+
+  const previewClaude = async (
+    request: ProviderQuickSetupRequest,
+    revision: number,
+  ) => {
+    if (writeLock.current) return;
+    writeLock.current = true;
+    setBusy(true);
+    setNotice(null);
+    setClaudeOutcome(null);
+    const generation = previewGeneration.current;
+    try {
+      const preview = await ports.providers.previewClaudeQuickSetup(request);
+      if (
+        !mountedRef.current ||
+        !activeRef.current ||
+        generation !== previewGeneration.current ||
+        !draftCommit.isCurrentRevision(revision)
+      )
+        return;
+      writeConfirm.requestConfirm({ kind: "claude", preview, revision });
+    } catch {
+      if (
+        mountedRef.current &&
+        activeRef.current &&
+        generation === previewGeneration.current &&
+        draftCommit.isCurrentRevision(revision)
+      ) {
+        setNotice({
+          tone: "error",
+          title: "无法读取保存范围",
+          description: "草稿和凭据已保留，请重新预览。",
+        });
+      }
+    } finally {
+      writeLock.current = false;
+      if (mountedRef.current) setBusy(false);
+    }
+  };
+
+  const applyClaude = async (pending: {
+    preview: ClaudeQuickSetupPreview;
+    revision: number;
+  }) => {
+    if (
+      writeLock.current ||
+      writesBlocked ||
+      !activeRef.current ||
+      !draftCommit.isCurrentRevision(pending.revision)
+    )
+      return;
+    writeLock.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const outcome = await ports.providers.applyClaudeQuickSetupPreview({
+        previewId: pending.preview.previewId,
+      });
+      // The keyed panel may unmount on target switch while ModelsPage lives.
+      // Preserve uncertain write authority in that parent before UI admission.
+      if (outcome.overall === "unknown" || outcome.overall === "partial")
+        onBlockWrites(app);
+      if (!mountedRef.current) return;
+      setClaudeOutcome(outcome);
+      if (outcome.providerState === "applied") {
+        draftCommit.commitRevision(pending.revision);
+        if (draftCommit.isCurrentRevision(pending.revision)) clearApiKey();
+      }
+      if (
+        outcome.overall === "unknown" &&
+        draftCommit.isCurrentRevision(pending.revision)
+      )
+        clearApiKey();
+      const notices: Record<ClaudeQuickSetupOutcome["overall"], Notice> = {
+        applied: {
+          tone: "info",
+          title: "模型设置已保存并设为当前配置",
+          description:
+            "两个文件的结果已分别确认。请在 Claude 中刷新或新建会话后查看更改。",
+        },
+        partial: {
+          tone: "warning",
+          title: "模型条目已保存，部分文件未完成",
+          description:
+            "请分别检查文件结果；可独立撤回文件修改，模型条目会保留。",
+        },
+        stale: {
+          tone: "warning",
+          title: "保存范围已变化，未写入",
+          description: "草稿和凭据已保留，请重新预览后确认。",
+        },
+        rolledBack: {
+          tone: "error",
+          title: "未能保存设置，已还原之前的状态",
+          description: "草稿和凭据已保留，请重新预览后重试。",
+        },
+        unknown: {
+          tone: "error",
+          title: "无法确认当前设置",
+          description:
+            "已暂停继续保存。请分别检查文件结果，必要时独立撤回文件修改。",
+        },
+      };
+      setNotice(notices[outcome.overall]);
+    } catch {
+      onBlockWrites(app);
+      if (mountedRef.current) {
+        if (draftCommit.isCurrentRevision(pending.revision)) clearApiKey();
+        setClaudeOutcome({
+          contractVersion: 1,
+          overall: "unknown",
+          providerState: "unknown",
+          files: [
+            { target: "claude_settings", state: "unknown" },
+            { target: "claude_mcp", state: "unknown" },
+          ],
+        });
+        setNotice({
+          tone: "error",
+          title: "无法确认当前设置",
+          description: "已暂停继续保存。请分别检查或撤回文件修改。",
+        });
+      }
+    } finally {
+      try {
+        await summaryQuery.refetch();
+      } catch {
+        /* The native outcome remains authoritative. */
+      } finally {
+        writeLock.current = false;
+        if (mountedRef.current) setBusy(false);
+      }
     }
   };
 
@@ -1175,7 +1358,8 @@ function ProviderPanel({
     if (writeLock.current) return;
     const pending = writeConfirm.takePending();
     if (!pending) return;
-    void submit(pending.request, pending.revision);
+    if (pending.kind === "claude") void applyClaude(pending);
+    else void submit(pending.request, pending.revision);
   };
 
   const submit = async (
@@ -1385,19 +1569,24 @@ function ProviderPanel({
             app === "codex"
               ? ["codex_config", "codex_catalog", "codex_auth"]
               : app === "claude"
-                ? ["claude_settings"]
+                ? ["claude_settings", "claude_mcp"]
                 : ["grok_config"]
           }
           disabled={
             busy ||
             subscriptionBusy ||
             probeBusy ||
-            writesBlocked ||
-            draftCommit.pending ||
+            (app !== "claude" && (writesBlocked || draftCommit.pending)) ||
+            writeConfirm.open ||
             Boolean(codexSaveRequest || codexSavePlan)
           }
           onRestored={async () => {
-            await summaryQuery.refetch();
+            try {
+              await summaryQuery.refetch();
+            } catch {
+              /* File recovery is independent of Provider reads. */
+            }
+            setClaudeOutcome(null);
             setNotice({
               tone: "warning",
               title: "文件已恢复",
@@ -1416,7 +1605,8 @@ function ProviderPanel({
             queryPending ||
             queryUnavailable ||
             Boolean(codexSaveRequest || codexSavePlan) ||
-            (summaryQuery.data?.writeTargets.length ?? 0) === 0
+            (app !== "claude" &&
+              (summaryQuery.data?.writeTargets.length ?? 0) === 0)
           }
           onClick={requestSave}
           dialogOriginRef={writeConfirm.originRef}
@@ -1564,6 +1754,7 @@ function ProviderPanel({
           <label htmlFor={`${app}-quick-setup-name`}>配置名称</label>
           <Input
             ref={nameInputRef}
+            disabled={writesBlocked}
             id={`${app}-quick-setup-name`}
             name={`${app}-quick-setup-name`}
             value={name}
@@ -1590,6 +1781,7 @@ function ProviderPanel({
           <label htmlFor={`${app}-quick-setup-base-url`}>服务地址</label>
           <Input
             ref={baseUrlInputRef}
+            disabled={writesBlocked}
             id={`${app}-quick-setup-base-url`}
             name={`${app}-quick-setup-base-url`}
             type="url"
@@ -1645,6 +1837,7 @@ function ProviderPanel({
           )}
           <SecretInput
             ref={apiKeyInputRef}
+            disabled={writesBlocked}
             id={`${app}-quick-setup-api-key`}
             name={`${app}-quick-setup-api-key`}
             value={apiKey}
@@ -1674,6 +1867,7 @@ function ProviderPanel({
             <ModelVendorIcon modelId={modelId} />
             <Input
               ref={modelIdInputRef}
+              disabled={writesBlocked}
               id={`${app}-quick-setup-model-id`}
               name={`${app}-quick-setup-model-id`}
               value={modelId}
@@ -1709,8 +1903,15 @@ function ProviderPanel({
               resetVersion={draftCommit.resetVersion}
               onPrepare={prepareModelProbe}
               onBusyChange={setProbeBusy}
-              onProbe={(selectedModelId) =>
+              onStatus={(requestId) =>
+                ports.providers.getModelProbeStatus(requestId)
+              }
+              onCancel={(requestId) =>
+                ports.providers.cancelModelProbe(requestId)
+              }
+              onProbe={(selectedModelId, requestId) =>
                 ports.providers.checkModel({
+                  requestId,
                   app,
                   baseUrl: baseUrl.trim(),
                   apiKey: apiKeyRef.current.trim(),
@@ -1800,6 +2001,28 @@ function ProviderPanel({
       </div>
 
       <NoticeView notice={notice} />
+      {claudeOutcome && (
+        <ul aria-label="Claude 文件保存结果">
+          {claudeOutcome.files.map((file) => (
+            <li key={file.target}>
+              {file.target === "claude_settings"
+                ? "settings.json"
+                : ".claude.json"}
+              ：
+              {
+                {
+                  applied: "已写入",
+                  unchanged: "保持不变",
+                  rolledBack: "未完成，已保留或还原此前内容",
+                  conflict: "存在外部改动，未覆盖",
+                  notAttempted: "未写入",
+                  unknown: "待确认",
+                }[file.state]
+              }
+            </li>
+          ))}
+        </ul>
+      )}
       {warningCodes.length > 0 && (
         <InlineNotice tone="warning">
           <strong>Codex 使用提示</strong>
@@ -1813,7 +2036,21 @@ function ProviderPanel({
       <ModelsWriteConfirmDialog
         originRef={writeConfirm.originRef}
         open={writeConfirm.open}
-        targets={writeConfirm.pending?.targets ?? []}
+        targets={
+          writeConfirm.pending?.kind === "claude"
+            ? writeConfirm.pending.preview.writeTargets
+            : (writeConfirm.pending?.targets ?? [])
+        }
+        preservedPaths={
+          writeConfirm.pending?.kind === "claude"
+            ? writeConfirm.pending.preview.preservedPaths
+            : undefined
+        }
+        sidecars={
+          writeConfirm.pending?.kind === "claude"
+            ? writeConfirm.pending.preview.sidecars
+            : undefined
+        }
         onConfirm={confirmWrite}
         onCancel={() => {
           writeConfirm.takePending();
@@ -1823,18 +2060,25 @@ function ProviderPanel({
   );
 }
 
-function renderTargetPanel(
-  target: ModelTarget,
-  active: boolean,
-  blockedProviderWrites: Partial<Record<ProviderAppId | "opencode", boolean>>,
-  onBlockProviderWrites: (app: ProviderAppId | "opencode") => void,
-  onRecoverProviderWrites: (app: ProviderAppId) => void,
+function ModelsTargetPanel({
+  target,
+  active,
+  blockedProviderWrites,
+  onBlockProviderWrites,
+  onRecoverProviderWrites,
+  importedForm,
+}: {
+  target: ModelTarget;
+  active: boolean;
+  blockedProviderWrites: Partial<Record<ProviderAppId | "opencode", boolean>>;
+  onBlockProviderWrites: (app: ProviderAppId | "opencode") => void;
+  onRecoverProviderWrites: (app: ProviderAppId) => void;
   importedForm: {
     app: "claude" | "codex";
     sequence: number;
     form: ProviderApiFormFill;
-  } | null,
-) {
+  } | null;
+}) {
   switch (target) {
     case "workbuddy":
       return <WorkBuddyPanel active={active} />;
@@ -1870,6 +2114,13 @@ function renderTargetPanel(
 }
 
 export function ModelsPage() {
+  const pageMountedRef = useRef(true);
+  useEffect(() => {
+    pageMountedRef.current = true;
+    return () => {
+      pageMountedRef.current = false;
+    };
+  }, []);
   const { visible, searchParams, setSearchParams } =
     usePersistentSearchParams();
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
@@ -1903,12 +2154,13 @@ export function ModelsPage() {
   );
   const targets = useMemo(() => MODEL_TARGETS, []);
 
-  const blockProviderWrites = (app: ProviderAppId | "opencode") => {
+  const blockProviderWrites = useCallback((app: ProviderAppId | "opencode") => {
+    if (!pageMountedRef.current) return;
     setBlockedProviderWrites((current) => ({
       ...current,
       [app]: true,
     }));
-  };
+  }, []);
   const recoverProviderWrites = (app: ProviderAppId) => {
     setBlockedProviderWrites((current) => ({ ...current, [app]: false }));
   };
@@ -1948,14 +2200,14 @@ export function ModelsPage() {
           </CatalogList>
         </CatalogRail>
         <div className="fy-models-target-stack">
-          {renderTargetPanel(
-            target,
-            visible,
-            blockedProviderWrites,
-            blockProviderWrites,
-            recoverProviderWrites,
-            importedForm,
-          )}
+          <ModelsTargetPanel
+            target={target}
+            active={visible}
+            blockedProviderWrites={blockedProviderWrites}
+            onBlockProviderWrites={blockProviderWrites}
+            onRecoverProviderWrites={recoverProviderWrites}
+            importedForm={importedForm}
+          />
         </div>
       </CatalogMasterDetail>
     </div>

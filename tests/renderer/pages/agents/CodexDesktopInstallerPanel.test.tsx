@@ -117,9 +117,9 @@ describe("Codex Desktop installer panel", () => {
       await screen.findByRole("button", { name: "安装 Codex Desktop" }),
     );
     expect(
-      await screen.findByRole("button", { name: "确认安装" }),
+      await screen.findByRole("button", { name: "开始安装" }),
     ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂不开始" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
@@ -150,7 +150,7 @@ describe("Codex Desktop installer panel", () => {
     fireEvent.click(install);
 
     expect(port.startInstall).not.toHaveBeenCalled();
-    const confirm = await screen.findByRole("button", { name: "确认安装" });
+    const confirm = await screen.findByRole("button", { name: "开始安装" });
     expect(port.prepareInstall).toHaveBeenCalledTimes(1);
     fireEvent.click(confirm);
     fireEvent.click(confirm);
@@ -408,7 +408,7 @@ describe("Codex Desktop installer panel", () => {
 
     fireEvent.click(install);
     expect(port.startInstall).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole("button", { name: "确认安装" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始安装" }));
     await waitFor(() => expect(port.startInstall).toHaveBeenCalledTimes(1));
   });
 

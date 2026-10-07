@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use crate::app_config::{AppType, McpServer, McpTargetId};
 use crate::error::AppError;
 use crate::mcp;
+use crate::mcp::{McpImportCounts, McpImportReport, McpImportSourceResult, McpServerView};
 use crate::store::AppState;
 
 /// MCP 相关业务逻辑（v3.7.0 统一结构）
@@ -73,6 +74,20 @@ impl McpService {
     /// 获取所有 MCP 服务器（统一结构）
     pub fn get_all_servers(state: &AppState) -> Result<IndexMap<String, McpServer>, AppError> {
         state.db.get_all_mcp_servers()
+    }
+
+    pub fn get_server_views(state: &AppState) -> Result<IndexMap<String, McpServerView>, AppError> {
+        let sources = state.db.get_mcp_import_sources()?;
+        Ok(Self::get_all_servers(state)?
+            .into_iter()
+            .map(|(id, server)| {
+                let view = McpServerView {
+                    sources: sources.get(&id).cloned().unwrap_or_default(),
+                    server,
+                };
+                (id, view)
+            })
+            .collect())
     }
 
     /// 添加或更新 MCP 服务器
@@ -256,31 +271,69 @@ impl McpService {
         Ok(())
     }
 
-    /// Persist one application's imported servers without treating a shared ID
-    /// as proof that executable specs are equivalent. A conflicting command,
-    /// argument, environment, header, or URL must remain scoped to its source
-    /// application until the user resolves it explicitly.
-    fn persist_imported_servers(
-        state: &AppState,
-        config: &crate::app_config::MultiAppConfig,
-        app: &AppType,
-    ) -> Result<usize, AppError> {
-        let target = McpTargetId::try_from(app)?;
-        Self::persist_imported_servers_for_target(state, config, target)
+    fn import_source(state: &AppState, target: McpTargetId) -> Result<McpImportCounts, AppError> {
+        let _guard =
+            futures::executor::block_on(state.proxy_service.lock_switch_for_app(target.as_str()));
+        let mut config = crate::app_config::MultiAppConfig::default();
+        match target {
+            McpTargetId::Claude => mcp::import_from_claude(&mut config)?,
+            McpTargetId::Codex => mcp::import_from_codex(&mut config)?,
+            McpTargetId::Gemini => mcp::import_from_gemini(&mut config)?,
+            McpTargetId::GrokBuild => mcp::import_from_grokbuild(&mut config)?,
+            McpTargetId::OpenCode => mcp::import_from_opencode(&mut config)?,
+            McpTargetId::Hermes => mcp::import_from_hermes(&mut config)?,
+            McpTargetId::WorkBuddy => mcp::import_from_workbuddy(&mut config)?,
+            McpTargetId::QoderWork => mcp::import_from_qoderwork(&mut config)?,
+            McpTargetId::TraeWork => mcp::import_from_traework(&mut config)?,
+        };
+        let imported = config
+            .mcp
+            .servers
+            .unwrap_or_default()
+            .into_values()
+            .collect::<Vec<_>>();
+        state.db.import_mcp_servers_with_report(&imported, &target)
     }
 
-    fn persist_imported_servers_for_target(
+    /// Each selected source keeps its own atomic DAO transaction. Failures do
+    /// not suppress successful independent sources or expose raw diagnostics.
+    pub fn import_from_sources(
         state: &AppState,
-        config: &crate::app_config::MultiAppConfig,
-        target: McpTargetId,
-    ) -> Result<usize, AppError> {
-        let Some(servers) = &config.mcp.servers else {
-            return Ok(0);
-        };
-        let imported = servers.values().cloned().collect::<Vec<_>>();
-        state
-            .db
-            .import_mcp_servers_atomically_for_target(&imported, &target)
+        sources: Vec<McpTargetId>,
+    ) -> Result<McpImportReport, AppError> {
+        if sources.is_empty()
+            || sources.len() > McpTargetId::all().count()
+            || sources
+                .iter()
+                .enumerate()
+                .any(|(index, source)| sources[..index].contains(source))
+        {
+            return Err(AppError::McpValidation(
+                "请选择不重复的 MCP 导入来源".into(),
+            ));
+        }
+        let mut results = Vec::new();
+        for source in sources {
+            let (counts, failure_code) = match Self::import_source(state, source) {
+                Ok(counts) => (counts, None),
+                Err(_) => {
+                    log::warn!(
+                        "MCP import from {} failed; source transaction not accepted",
+                        source.as_str()
+                    );
+                    (McpImportCounts::default(), Some("source_failed"))
+                }
+            };
+            results.push(McpImportSourceResult {
+                source,
+                counts,
+                failure_code,
+            });
+        }
+        Ok(McpImportReport {
+            contract_version: 1,
+            sources: results,
+        })
     }
 
     /// 手动同步所有启用的 MCP 服务器到对应的应用。
@@ -350,6 +403,9 @@ impl McpService {
         servers: &IndexMap<String, McpServer>,
         target: &McpTargetId,
     ) -> Result<(), AppError> {
+        if *target == McpTargetId::Claude {
+            return crate::claude_mcp::sync_collection(servers);
+        }
         let mut failures: IndexMap<String, Vec<&str>> = IndexMap::new();
         for server in servers.values() {
             let result = if server.apps.is_enabled_for_target(target) {
@@ -367,13 +423,15 @@ impl McpService {
         if failures.is_empty() {
             return Ok(());
         }
-        Err(AppError::Message(
+        let failed_count: usize = failures.values().map(Vec::len).sum();
+        Err(AppError::Message(format!(
+            "{failed_count} 个 MCP 条目写入失败: {}",
             failures
                 .into_iter()
                 .map(|(error, ids)| format!("{}: {} ({error})", target.as_str(), ids.join(", ")))
                 .collect::<Vec<_>>()
                 .join("; "),
-        ))
+        )))
     }
 
     // ========================================================================
@@ -424,119 +482,62 @@ impl McpService {
         Ok(())
     }
 
-    /// 从 Claude 导入 MCP（v3.7.0 已更新为统一结构）
-    pub fn import_from_claude(state: &AppState) -> Result<usize, AppError> {
-        // 创建临时 MultiAppConfig 用于导入
-        let mut temp_config = crate::app_config::MultiAppConfig::default();
-
-        // 调用原有的导入逻辑（从 mcp.rs）
-        crate::mcp::import_from_claude(&mut temp_config)?;
-        Self::persist_imported_servers(state, &temp_config, &AppType::Claude)
+    pub fn import_from_traework(state: &AppState) -> Result<usize, AppError> {
+        Self::import_source(state, McpTargetId::TraeWork).map(|counts| counts.added)
     }
 
-    /// 从 Codex 导入 MCP（v3.7.0 已更新为统一结构）
-    pub fn import_from_codex(state: &AppState) -> Result<usize, AppError> {
-        // 创建临时 MultiAppConfig 用于导入
-        let mut temp_config = crate::app_config::MultiAppConfig::default();
-
-        // 调用原有的导入逻辑（从 mcp.rs）
-        crate::mcp::import_from_codex(&mut temp_config)?;
-        Self::persist_imported_servers(state, &temp_config, &AppType::Codex)
-    }
-
-    /// 从 Gemini 导入 MCP（v3.7.0 已更新为统一结构）
     pub fn import_from_gemini(state: &AppState) -> Result<usize, AppError> {
-        // 创建临时 MultiAppConfig 用于导入
-        let mut temp_config = crate::app_config::MultiAppConfig::default();
-
-        // 调用原有的导入逻辑（从 mcp.rs）
-        crate::mcp::import_from_gemini(&mut temp_config)?;
-        Self::persist_imported_servers(state, &temp_config, &AppType::Gemini)
+        Self::import_source(state, McpTargetId::Gemini).map(|counts| counts.added)
     }
 
-    /// 从 Grok Build 的 `[mcp_servers]` 导入 MCP。
-    pub fn import_from_grokbuild(state: &AppState) -> Result<usize, AppError> {
-        let mut temp_config = crate::app_config::MultiAppConfig::default();
-        crate::mcp::import_from_grokbuild(&mut temp_config)?;
-        Self::persist_imported_servers(state, &temp_config, &AppType::GrokBuild)
+    pub fn import_from_codex(state: &AppState) -> Result<usize, AppError> {
+        Self::import_source(state, McpTargetId::Codex).map(|counts| counts.added)
     }
 
-    /// 从 OpenCode 导入 MCP（v3.9.2+ 新增）
-    pub fn import_from_opencode(state: &AppState) -> Result<usize, AppError> {
-        // 创建临时 MultiAppConfig 用于导入
-        let mut temp_config = crate::app_config::MultiAppConfig::default();
-
-        // 调用原有的导入逻辑（从 mcp/opencode.rs）
-        crate::mcp::import_from_opencode(&mut temp_config)?;
-        Self::persist_imported_servers(state, &temp_config, &AppType::OpenCode)
-    }
-
-    /// 从 Hermes 导入 MCP
-    pub fn import_from_hermes(state: &AppState) -> Result<usize, AppError> {
-        // 创建临时 MultiAppConfig 用于导入
-        let mut temp_config = crate::app_config::MultiAppConfig::default();
-
-        // 调用导入逻辑（从 mcp/hermes.rs）
-        crate::mcp::import_from_hermes(&mut temp_config)?;
-        Self::persist_imported_servers(state, &temp_config, &AppType::Hermes)
-    }
-
-    /// 从 WorkBuddy 导入 MCP。WorkBuddy 不是 AppType。
     pub fn import_from_workbuddy(state: &AppState) -> Result<usize, AppError> {
-        let mut temp_config = crate::app_config::MultiAppConfig::default();
-        crate::mcp::import_from_workbuddy(&mut temp_config)?;
-        Self::persist_imported_servers_for_target(state, &temp_config, McpTargetId::WorkBuddy)
+        Self::import_source(state, McpTargetId::WorkBuddy).map(|counts| counts.added)
+    }
+
+    pub fn import_from_opencode(state: &AppState) -> Result<usize, AppError> {
+        Self::import_source(state, McpTargetId::OpenCode).map(|counts| counts.added)
+    }
+
+    pub fn import_from_hermes(state: &AppState) -> Result<usize, AppError> {
+        Self::import_source(state, McpTargetId::Hermes).map(|counts| counts.added)
+    }
+
+    pub fn import_from_claude(state: &AppState) -> Result<usize, AppError> {
+        Self::import_source(state, McpTargetId::Claude).map(|counts| counts.added)
+    }
+
+    pub fn import_from_grokbuild(state: &AppState) -> Result<usize, AppError> {
+        Self::import_source(state, McpTargetId::GrokBuild).map(|counts| counts.added)
     }
 
     pub fn import_from_qoderwork(state: &AppState) -> Result<usize, AppError> {
-        let mut temp_config = crate::app_config::MultiAppConfig::default();
-        crate::mcp::import_from_qoderwork(&mut temp_config)?;
-        Self::persist_imported_servers_for_target(state, &temp_config, McpTargetId::QoderWork)
+        Self::import_source(state, McpTargetId::QoderWork).map(|counts| counts.added)
     }
 
-    pub fn import_from_traework(state: &AppState) -> Result<usize, AppError> {
-        let mut temp_config = crate::app_config::MultiAppConfig::default();
-        crate::mcp::import_from_traework(&mut temp_config)?;
-        Self::persist_imported_servers_for_target(state, &temp_config, McpTargetId::TraeWork)
-    }
-
-    /// 从所有支持 MCP 的应用导入服务器，返回新导入的数量。
-    ///
-    /// Best-effort：单个应用导入失败（如坏 config.toml）不阻断其余应用；
-    /// 全部跑完后若有失败，聚合成一个错误上报——历史实现逐应用
-    /// `unwrap_or(0)` 吞错，坏文件只会表现为"导入成功 0 个"，用户
-    /// 无从得知哪个应用出了问题。
+    /// Compatibility return value remains the number of newly added rows.
     pub fn import_from_all_apps(state: &AppState) -> Result<usize, AppError> {
-        let mut total = 0;
-        let mut failures: Vec<String> = Vec::new();
-
-        let results: [(&str, Result<usize, AppError>); 9] = [
-            ("claude", Self::import_from_claude(state)),
-            ("codex", Self::import_from_codex(state)),
-            ("gemini", Self::import_from_gemini(state)),
-            ("grokbuild", Self::import_from_grokbuild(state)),
-            ("opencode", Self::import_from_opencode(state)),
-            ("hermes", Self::import_from_hermes(state)),
-            ("workbuddy", Self::import_from_workbuddy(state)),
-            ("qoderwork", Self::import_from_qoderwork(state)),
-            ("trae-work", Self::import_from_traework(state)),
-        ];
-        for (app, result) in results {
-            match result {
-                Ok(count) => total += count,
-                Err(err) => {
-                    log::warn!("从 {app} 导入 MCP 失败: {err}");
-                    failures.push(format!("{app}: {err}"));
-                }
-            }
-        }
-
-        if failures.is_empty() {
+        let report = Self::import_from_sources(state, McpTargetId::all().collect())?;
+        let total = report
+            .sources
+            .iter()
+            .map(|source| source.counts.added)
+            .sum();
+        let failed = report
+            .sources
+            .iter()
+            .filter(|source| source.failure_code.is_some())
+            .map(|source| source.source.as_str())
+            .collect::<Vec<_>>();
+        if failed.is_empty() {
             Ok(total)
         } else {
             Err(AppError::Message(format!(
                 "已导入 {total} 个，部分应用导入失败: {}",
-                failures.join("; ")
+                failed.join(", ")
             )))
         }
     }

@@ -161,12 +161,14 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 - Connected status requires live ChatGPT identity to match the connection-
   bound credential. A ready SecretRef alone is saved-not-projected /
   disconnected, never connected.
-- With no persisted Codex connection, an official file route containing
-  recognizable complete ChatGPT OAuth material remains disconnected. The
-  summary carries `unmanaged_native_session` only inside Rust (`serde(skip)`)
-  so Health can preserve unknown auth/credential status; no account, token or
-  new field crosses IPC. A persisted disconnect, missing material, or a
-  non-official route does not set this observation bit.
+- With no persisted Codex connection, recognizable complete ChatGPT OAuth
+  material remains disconnected even on an official file route. Native auth
+  presence, the current provider route and file-projection capability are
+  separate facts from a managed identity binding. Retain their existing auth
+  observation and request-mode/credential-manager projections; the retired
+  Health-only `unmanaged_native_session` summary bit is removed. This removal
+  does not delete auth material, change official/custom routing, authorize a
+  projection, create an account or add an IPC field.
 - Auth delta and selector delta are independent: a matching account leaves
   auth bytes unchanged but can still require a selector write. Official
   connect/switch and disconnect use the bounded edits in

@@ -7,8 +7,6 @@ import {
 } from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { agentHealthPath } from "../../shared/features/health";
 
 import { getAgentBrand } from "../../shared/assets/agents";
 import { codexInstallerErrorCopy } from "../../shared/codex-desktop/installerErrorCopy";
@@ -172,7 +170,6 @@ function DirectoryCardShell({
   onConfigure: (agentId: AgentCatalogId) => void;
 }) {
   const kindCopy = rowKindCopy(observation);
-  const navigate = useNavigate();
   const configurable = observation.configurable && !lifecycleBusy;
   return (
     <article
@@ -217,12 +214,6 @@ function DirectoryCardShell({
         {lifecycleSlot}
         <Button disabled={!configurable} onClick={() => onConfigure(entry.id)}>
           进行配置
-        </Button>
-        <Button
-          onClick={() => void navigate(agentHealthPath(entry.id))}
-          aria-label={`查看 ${entry.displayName} 运行状态`}
-        >
-          查看状态
         </Button>
       </div>
     </article>

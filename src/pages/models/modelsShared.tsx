@@ -1,3 +1,4 @@
+import type { ClaudeQuickSetupPreview } from "../../shared/features/claude-quick-setup";
 /* eslint-disable react-refresh/only-export-components */
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
@@ -84,12 +85,16 @@ export function ModelsWriteConfirmDialog({
   originRef,
   open,
   targets,
+  preservedPaths,
+  sidecars,
   onConfirm,
   onCancel,
 }: {
   open: boolean;
   originRef?: DialogOriginRef;
   targets: readonly ModelWriteTarget[];
+  preservedPaths?: readonly string[];
+  sidecars?: ClaudeQuickSetupPreview["sidecars"];
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -103,7 +108,11 @@ export function ModelsWriteConfirmDialog({
         if (!next) onCancel();
       }}
       title="保存前确认"
-      description="本次只修改下列配置文件中的相关模型字段，并在写入前保留一份滚动备份。"
+      description={
+        sidecars
+          ? "下列文件范围来自当前配置。确认后只写入这次预览的内容；已有文件会保留滚动备份。"
+          : "本次只修改下列配置文件中的相关模型字段，并在写入前保留一份滚动备份。"
+      }
       actions={
         <>
           <Button ref={cancelRef} onClick={onCancel}>
@@ -128,7 +137,10 @@ export function ModelsWriteConfirmDialog({
         </>
       }
     >
-      <ModelsWriteDisclosure targets={targets} />
+      <ModelsWriteDisclosure
+        targets={targets}
+        preservedPaths={preservedPaths}
+      />
     </Dialog>
   );
 }
@@ -160,25 +172,37 @@ export function noticeFromReachability(result: ReachabilityResult): Notice {
 }
 
 export function noticeFromModelProbe(result: ModelProbeResult): Notice {
+  const usage =
+    typeof result.requestCount === "number"
+      ? ` 已发起 ${result.requestCount} 次请求${result.retryCount ? `，其中自动重试 ${result.retryCount} 次` : ""}；此前发出的请求可能产生用量。`
+      : "";
+  if (result.terminal === "cancelled" && result.requestId) {
+    return {
+      tone: "info",
+      title: "模型测试已取消",
+      description: `后台已停止本次测试。${usage}`,
+    };
+  }
   if (!result.success) {
     return {
       tone: "error",
       title: "连通测试失败",
       description:
-        result.message.trim() || "请检查地址、凭据、模型和服务状态后重试。",
+        (result.message.trim() || "请检查地址、凭据、模型和服务状态后重试。") +
+        usage,
     };
   }
   if (result.status === "degraded") {
     return {
       tone: "warning",
       title: "连通测试成功，但响应较慢",
-      description: result.message,
+      description: result.message + usage,
     };
   }
   return {
     tone: "info",
     title: "连通测试成功",
-    description: result.message,
+    description: result.message + usage,
   };
 }
 

@@ -12,6 +12,16 @@ export function AgentInstallConfirmation({
 }) {
   const checked = lifecycle.preflight;
   const updating = checked?.request.action === "update";
+  const startLabel =
+    checked?.execution === "vendor_wizard"
+      ? "下载并打开安装窗口"
+      : checked?.runtime === "node_npm" || checked?.runtime === "existing_cli"
+        ? updating
+          ? "开始命令行更新"
+          : "开始命令行安装"
+        : updating
+          ? "开始更新"
+          : "开始安装";
   return (
     <Dialog
       open={checked !== null}
@@ -24,12 +34,12 @@ export function AgentInstallConfirmation({
       actions={
         checked ? (
           <>
-            <Button onClick={lifecycle.dismissPreflight}>取消</Button>
+            <Button onClick={lifecycle.dismissPreflight}>暂不开始</Button>
             <Button
               className="fy-control-button-primary"
               onClick={() => void lifecycle.confirm()}
             >
-              {updating ? "确认更新" : "确认安装"}
+              {startLabel}
             </Button>
           </>
         ) : undefined
@@ -81,12 +91,24 @@ export function AgentInstallConfirmation({
                   : "CLI 安装和依赖大小尚未核定；可用空间数值不能证明容量足够，安装工具仍可能报告空间不足。"}
             确认时会重新检查可用空间。
           </p>
+          <p>
+            尚未开始本次操作。关闭此说明不会启动任务；开始后关闭页面不会取消后台任务，请使用进度区可用的取消按钮。
+          </p>
           {checked.downloadUrl ? (
-            <details>
-              <summary>查看本次安装包来源</summary>
-              <p className="fy-install-source-url">{checked.downloadUrl}</p>
-              <p>这是本次所选系统和架构的下载入口；安装时仍会检查下载内容。</p>
-            </details>
+            <>
+              <p>
+                <strong>下载来源域名：</strong>
+                {new URL(checked.downloadUrl).hostname}
+                。这是安装器返回的来源信息；开始后仍会检查安装包。
+              </p>
+              <details>
+                <summary>查看本次安装包来源</summary>
+                <p className="fy-install-source-url">{checked.downloadUrl}</p>
+                <p>
+                  这是本次所选系统和架构的下载入口；安装时仍会检查下载内容。
+                </p>
+              </details>
+            </>
           ) : null}
           {checked.execution === "system_authorization" ? (
             <InlineNotice tone="warning">

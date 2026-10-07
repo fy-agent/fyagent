@@ -93,6 +93,13 @@ malformed or zero-version UUID.
 
 ### Backend-owned session lifecycle
 
+- `start_login` may return Device Code `preparing` before the provider worker
+  obtains its grant; `userCode`, `verificationUri` and `expiresAt` are then null.
+  That snapshot is valid and retains its opaque ID for polling/cancel. Later
+  nonterminal device stages require all three fields. Renderer acceptance and
+  no-session startup feedback are owned by
+  [Managed Auth Login Presentation](../frontend/managed-auth-login.md).
+
 - `LoginSessionStore` is process-private, holds at most eight retained
   snapshots, and admits at most one non-terminal session per provider. OpenAI
   and xAI sessions may coexist; a second session for the same provider returns

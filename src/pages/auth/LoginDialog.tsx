@@ -351,9 +351,6 @@ function LoginDialogContent({
               {managedAuthReasonCopy(session.reasonCode)}
             </InlineNotice>
           ) : null}
-          {controller.error ? (
-            <InlineNotice tone="warning">{controller.error}</InlineNotice>
-          ) : null}
         </div>
       ) : step === 1 ? (
         <div
@@ -476,6 +473,9 @@ function LoginDialogContent({
             </p>
           </div>
         </div>
+      ) : null}
+      {controller.error ? (
+        <InlineNotice tone="warning">{controller.error}</InlineNotice>
       ) : null}
     </Dialog>
   );

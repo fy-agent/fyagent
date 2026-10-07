@@ -14,7 +14,6 @@ const conciseViews = [
     ready: ".fy-agent-resource-full-list",
   },
   { id: "auth", route: "/auth", ready: ".fy-auth-detail-header" },
-  { id: "health", route: "/health", ready: ".fy-health-group" },
   {
     id: "models",
     route: "/models?target=codex",
@@ -116,12 +115,6 @@ for (const theme of ["light", "dark"] as const) {
         await expect(
           scope.getByRole("textbox", { name: "记忆内容", exact: true }),
         ).toHaveValue(/Long memory fixture line/);
-      }
-      if (view.id === "health") {
-        await expect(scope.locator(".fy-health-summary")).toHaveCount(0);
-        await expect(scope.locator(".fy-health-scope")).toContainText(
-          "不会测试远端服务或额度",
-        );
       }
       if (view.id === "prompts") {
         await expect(

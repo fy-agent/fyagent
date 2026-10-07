@@ -7,7 +7,6 @@ const repositoryRoot = path.resolve(scriptDirectory, "..");
 
 export const RENDERER_ROUTE_ENTRIES = Object.freeze([
   "pages/agents/Page.tsx",
-  "pages/health/Page.tsx",
   "pages/auth/Page.tsx",
   "pages/models/Page.tsx",
   "pages/skills/Page.tsx",
@@ -21,9 +20,9 @@ export const RENDERER_ROUTE_ENTRIES = Object.freeze([
 // Keep the list explicit: additional lazy entries still require review.
 export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
   "shared/platform/tauri/feature-ports/application.ts",
-  "shared/platform/tauri/feature-ports/health.ts",
   "shared/platform/tauri/feature-ports/models.ts",
   "shared/platform/tauri/feature-ports/configRecovery.ts",
+  "shared/platform/tauri/feature-ports/databaseRecovery.ts",
   "shared/platform/tauri/feature-ports/configPack.ts",
   "shared/platform/tauri/feature-ports/codexDesktop.ts",
   "shared/platform/tauri/feature-ports/sessionMigration.ts",
@@ -31,6 +30,7 @@ export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
 
 export const RENDERER_DEFERRED_SHELL_ENTRIES = Object.freeze([
   "widgets/app-shell/AboutDialog.tsx",
+  "shared/features/database-recovery-ui/DatabaseRecoveryDialog.tsx",
 ]);
 
 export const RENDERER_NESTED_SUBSCRIPTION_PORT = Object.freeze({

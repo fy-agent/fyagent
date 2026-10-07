@@ -28,6 +28,28 @@ import {
 } from "../../fixtures/changePlans";
 import { managedAuthOverviewFixture } from "../../fixtures/managedAuth";
 
+const CLAUDE_PREVIEW_ID = "11111111-1111-4111-8111-111111111111";
+function stubClaudePreview(ports: FeaturePorts) {
+  ports.providers.previewClaudeQuickSetup = vi.fn(async () => ({
+    contractVersion: 1 as const,
+    previewId: CLAUDE_PREVIEW_ID,
+    writeTargets: [
+      {
+        path: "~/.claude/settings.json",
+        backupPath: "~/.claude/settings.json.fyagent.backup",
+        exists: true,
+      },
+    ],
+    preservedPaths: ["~/.claude.json"],
+    sidecars: [
+      {
+        target: "claude_settings" as const,
+        backupPath: "~/.claude/settings.json.fyagent.backup",
+      },
+    ],
+  }));
+}
+
 function renderPage(ports: FeaturePorts, target?: string) {
   const initialEntry = target ? `/models?target=${target}` : "/models";
   return render(
@@ -847,10 +869,16 @@ describe("Models page", () => {
     ports.providers.fetchModels = vi.fn(async () => [
       { id: "claude-sonnet-4", ownedBy: "anthropic" },
     ]);
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
-      value: { warnings: [] },
-      liveConfigChanged: true,
-      app: "claude" as const,
+    stubClaudePreview(ports);
+    ports.providers.applyQuickSetupWithResult = vi.fn();
+    ports.providers.applyClaudeQuickSetupPreview = vi.fn(async () => ({
+      contractVersion: 1 as const,
+      overall: "applied" as const,
+      providerState: "applied" as const,
+      files: [
+        { target: "claude_settings" as const, state: "applied" as const },
+        { target: "claude_mcp" as const, state: "unchanged" as const },
+      ],
     }));
     renderPage(ports, "claude");
 
@@ -879,17 +907,22 @@ describe("Models page", () => {
     );
     await confirmWriteDisclosure(user);
     await waitFor(() =>
-      expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
+      expect(ports.providers.previewClaudeQuickSetup).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Claude Gateway",
           baseUrl: "https://claude.example.test/v1",
           apiKey: secret,
           modelId: "claude-sonnet-4",
         }),
-        "claude",
       ),
     );
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(ports.providers.applyClaudeQuickSetupPreview).toHaveBeenCalledWith({
+      previewId: CLAUDE_PREVIEW_ID,
+    });
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByLabelText("API Key")).toHaveValue(""),
+    );
     expect(document.body.innerHTML).not.toContain(secret);
   });
 
@@ -1721,7 +1754,8 @@ describe("Models page", () => {
       currentId: "another-provider",
       writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => {
+    stubClaudePreview(ports);
+    ports.providers.applyClaudeQuickSetupPreview = vi.fn(async () => {
       throw new Error("atomic response contains claude-secret");
     });
     renderPage(ports, "claude");
@@ -1739,16 +1773,12 @@ describe("Models page", () => {
     await confirmWriteDisclosure(user);
 
     await screen.findByText("无法确认当前设置");
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: expect.any(String),
-        baseUrl: "https://claude.example/v1",
-        apiKey: "claude-secret",
-        modelId: "claude-model",
-      }),
-      "claude",
+    expect(ports.providers.applyClaudeQuickSetupPreview).toHaveBeenCalledTimes(
+      1,
     );
+    expect(ports.providers.applyClaudeQuickSetupPreview).toHaveBeenCalledWith({
+      previewId: CLAUDE_PREVIEW_ID,
+    });
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(document.body).not.toHaveTextContent("claude-secret");
     expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
@@ -2065,6 +2095,11 @@ describe("Models page", () => {
   it("probes a selected model after IDs exist on WorkBuddy, Provider, and OpenCode", async () => {
     const user = userEvent.setup();
     const probed = {
+      requestId: null,
+      terminal: "completed" as const,
+      requestCount: 1,
+      retryCount: 0,
+      inputMode: "compatibility" as const,
       success: false,
       status: "failed" as const,
       message: 'HTTP 401: {"error":{"message":"invalid api key"}}',
@@ -2089,19 +2124,28 @@ describe("Models page", () => {
       ids: [],
       revision: "revision-1",
     }));
-    ports.workbuddy.checkModel = vi.fn(async () => probed);
+    ports.workbuddy.checkModel = vi.fn(async (request) => ({
+      ...probed,
+      requestId: request.requestId,
+    }));
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "",
       writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
-    ports.providers.checkModel = vi.fn(async () => probed);
+    ports.providers.checkModel = vi.fn(async (request) => ({
+      ...probed,
+      requestId: request.requestId,
+    }));
     ports.opencodeModels.getSnapshot = vi.fn(async () => ({
       providers: [],
       revision: "revision-1",
       ...TEST_OPENCODE_SNAPSHOT_META,
     }));
-    ports.opencodeModels.checkModel = vi.fn(async () => probed);
+    ports.opencodeModels.checkModel = vi.fn(async (request) => ({
+      ...probed,
+      requestId: request.requestId,
+    }));
 
     const workbuddyView = renderPage(ports, "workbuddy");
     await screen.findByText("已有第三方模型数量");
@@ -2124,6 +2168,9 @@ describe("Models page", () => {
       within(workbuddyDialog).getByRole("button", { name: "开始测试" }),
     );
     expect(ports.workbuddy.checkModel).toHaveBeenCalledWith({
+      requestId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      ),
       app: "workbuddy",
       baseUrl: "https://draft.example/anthropic",
       apiKey: "wb-key",
@@ -2154,6 +2201,9 @@ describe("Models page", () => {
       within(codexDialog).getByRole("button", { name: "开始测试" }),
     );
     expect(ports.providers.checkModel).toHaveBeenCalledWith({
+      requestId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      ),
       app: "codex",
       baseUrl: "https://codex.example/v1",
       apiKey: "codex-key",
@@ -2185,6 +2235,9 @@ describe("Models page", () => {
       within(opencodeDialog).getByRole("button", { name: "开始测试" }),
     );
     expect(ports.opencodeModels.checkModel).toHaveBeenCalledWith({
+      requestId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      ),
       app: "opencode",
       baseUrl: "https://opencode.example/v1",
       apiKey: "oc-key",

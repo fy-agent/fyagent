@@ -4,6 +4,7 @@
 
 pub(crate) mod claude_direct;
 mod claude_editor;
+mod claude_write_projection;
 mod common_config;
 mod credentials;
 pub use claude_editor::{EditorSave, EditorView};
@@ -23,6 +24,9 @@ mod managed_proxy;
 mod universal;
 mod usage;
 
+pub use claude_write_projection::{
+    ClaudeQuickSetupApplyRequest, ClaudeQuickSetupOutcome, ClaudeQuickSetupPreview,
+};
 pub(crate) use credentials::ProviderCredentials;
 
 pub use managed_proxy::{
@@ -58,10 +62,9 @@ pub use live::{
 pub(crate) use live::sanitize_claude_settings_for_live;
 pub(crate) use live::{
     build_codex_quick_setup_live_projection, build_effective_settings_with_common_config,
-    build_health_settings_projection, normalize_provider_common_config_for_storage,
-    patch_grok_quick_setup_config, provider_exists_in_live_config,
-    strip_common_config_from_live_settings, sync_current_provider_for_app_to_live,
-    write_live_for_state, write_live_with_common_config,
+    normalize_provider_common_config_for_storage, patch_grok_quick_setup_config,
+    provider_exists_in_live_config, strip_common_config_from_live_settings,
+    sync_current_provider_for_app_to_live, write_live_for_state, write_live_with_common_config,
 };
 
 // Internal re-exports
@@ -6244,6 +6247,21 @@ impl ProviderService {
         Self::apply_quick_setup_locked(state, app_type, provider)
     }
 
+    /// Legacy request-bearing IPC may no longer authorize a Claude file write.
+    /// Internal activation callers keep their existing domain transaction.
+    pub fn apply_legacy_quick_setup(
+        state: &AppState,
+        app_type: AppType,
+        provider: Provider,
+    ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        if app_type == AppType::Claude {
+            return Err(QuickSetupApplyError::rolled_back(
+                "Claude requires native preview consent",
+            ));
+        }
+        Self::apply_quick_setup(state, app_type, provider)
+    }
+
     /// Quick Setup writer for callers that already hold the per-app mutation
     /// guard. Change Plan upsert reuses this so admission and the single write
     /// stay under one lock without re-entering `lock_switch_for_app`.
@@ -6276,7 +6294,18 @@ impl ProviderService {
     fn apply_provider_activation_transaction_locked(
         state: &AppState,
         app_type: AppType,
+        provider: Provider,
+    ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        Self::apply_provider_activation_with_claude_projection_locked(
+            state, app_type, provider, None,
+        )
+    }
+
+    fn apply_provider_activation_with_claude_projection_locked(
+        state: &AppState,
+        app_type: AppType,
         mut provider: Provider,
+        claude_projection: Option<&claude_write_projection::ClaudeWriteProjection>,
     ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
         provider = ProviderCredentials::merge_edit(&state.db, app_type.as_str(), &provider)
             .map_err(QuickSetupApplyError::rolled_back)?;
@@ -6290,8 +6319,12 @@ impl ProviderService {
             .db
             .get_current_provider(app_type.as_str())
             .map_err(QuickSetupApplyError::rolled_back)?;
-        let live_snapshots =
-            snapshot_quick_setup_live(&app_type).map_err(QuickSetupApplyError::rolled_back)?;
+        let mut live_snapshots = match claude_projection {
+            Some(projection) => projection.snapshots(),
+            None => {
+                snapshot_quick_setup_live(&app_type).map_err(QuickSetupApplyError::rolled_back)?
+            }
+        };
         let live_before = matches!(app_type, AppType::Codex)
             .then(read_codex_live_config_bytes)
             .transpose()
@@ -6346,6 +6379,20 @@ impl ProviderService {
             .detect_takeover_in_live_config_for_app(&app_type);
         let should_prepare_takeover = has_live_backup || live_taken_over;
 
+        if app_type == AppType::Claude
+            && claude_projection.is_none()
+            && !managed_subscription
+            && !should_prepare_takeover
+            && !McpService::get_all_servers(state)
+                .map_err(QuickSetupApplyError::rolled_back)?
+                .is_empty()
+        {
+            live_snapshots.push(
+                QuickSetupFileSnapshot::capture(crate::config::get_claude_mcp_path())
+                    .map_err(QuickSetupApplyError::rolled_back)?,
+            );
+        }
+
         let mutation = (|| -> Result<(SwitchResult, Option<Vec<u8>>), AppError> {
             if managed_subscription {
                 futures::executor::block_on(
@@ -6365,14 +6412,18 @@ impl ProviderService {
                 .map_err(|error| AppError::Message(format!("更新 Live 备份失败: {error}")))?;
 
                 if matches!(app_type, AppType::Claude) {
-                    futures::executor::block_on(
-                        state
-                            .proxy_service
-                            .sync_claude_live_from_provider_while_proxy_active(&provider),
-                    )
-                    .map_err(|error| {
-                        AppError::Message(format!("同步 Claude Live 配置失败: {error}"))
-                    })?;
+                    if let Some(projection) = claude_projection {
+                        projection.write_settings()?;
+                    } else {
+                        futures::executor::block_on(
+                            state
+                                .proxy_service
+                                .sync_claude_live_from_provider_while_proxy_active(&provider),
+                        )
+                        .map_err(|error| {
+                            AppError::Message(format!("同步 Claude Live 配置失败: {error}"))
+                        })?;
+                    }
                 } else if live_taken_over {
                     futures::executor::block_on(
                         state
@@ -6385,6 +6436,8 @@ impl ProviderService {
                 } else {
                     write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
                 }
+            } else if let Some(projection) = claude_projection {
+                projection.write_settings()?;
             } else {
                 write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
             }
@@ -6404,7 +6457,11 @@ impl ProviderService {
 
             let mut result = SwitchResult::default();
             if !should_prepare_takeover && !managed_subscription {
-                if let Err(error) = McpService::sync_enabled_for_app_inner(state, &app_type) {
+                let mcp_result = match claude_projection {
+                    Some(projection) => projection.write_root(),
+                    None => McpService::sync_enabled_for_app_inner(state, &app_type),
+                };
+                if let Err(error) = mcp_result {
                     log::warn!(
                         "quick setup 后重投影 {app_type:?} MCP 失败（将在下次同步时自愈）: {error}"
                     );
@@ -6453,6 +6510,7 @@ impl ProviderService {
             Err(primary) => {
                 let mut rollback_errors = Vec::new();
                 let owns_live = !managed_subscription
+                    || app_type == AppType::Claude
                     || live_snapshots.iter().all(|snapshot| {
                         (app_type == AppType::Codex
                             && snapshot.path == crate::codex_config::get_codex_auth_path())
@@ -6489,7 +6547,7 @@ impl ProviderService {
                             && app_type == AppType::Codex
                             && snapshot.path == crate::codex_config::get_codex_auth_path())
                     }) {
-                        let restored = if managed_subscription {
+                        let restored = if managed_subscription || app_type == AppType::Claude {
                             snapshot.restore_owned()
                         } else {
                             snapshot.restore()
@@ -8331,9 +8389,8 @@ impl ProviderService {
         //
         //    「按值相等定向删除」在一种合法场景下也会命中：用户有意在多个供应商里
         //    复用同一把 key。所以必须留下"删了什么、从哪删的"，否则用户只能靠翻
-        //    日志。但不能留值——`settings` 表不在 `SYNC_SKIP_TABLES` 里，会随
-        //    WebDAV/S3 同步上传，而这里处理的恰恰是必须销毁的泄漏凭据：留值等于
-        //    把一次清除换成一份没有界面入口、永不过期、还会跨设备扩散的明文副本。
+        //    日志。但不能留值：这里处理的是必须销毁的泄漏凭据，留值会把一次清除
+        //    换成一份没有界面入口、永不过期的明文副本。
         //    密钥本来就该轮换，可恢复性不值这个代价。
         let removed_env_keys = |before: &Value, after: &Value| -> Vec<String> {
             let before_env = before.get("env").and_then(Value::as_object);

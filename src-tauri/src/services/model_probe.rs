@@ -1,13 +1,16 @@
 //! Draft-model connectivity probe.
 //!
-//! Projects one request per app onto the same wire contract the target client
-//! will use after Quick Setup (`ProbeRequestSpec`), then sends that single
-//! streaming request. This is not URL reachability: the first SSE chunk is
+//! Projects the selected app onto the same wire contract the target client
+//! will use after Quick Setup (`ProbeRequestSpec`), then sends a streaming
+//! request with at most one retry on a transport timeout. This is not URL reachability: the first SSE chunk is
 //! success. It never looks up a saved Provider, never guesses a second URL,
 //! and never touches the failover circuit breaker.
 
-use std::sync::OnceLock;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+
 use std::time::{Duration, Instant};
+use tokio::sync::watch;
 
 use futures::StreamExt;
 use reqwest::Client;
@@ -62,11 +65,193 @@ pub struct ModelProbeResult {
     pub model_used: String,
     pub tested_at: i64,
     pub retry_count: u32,
+    pub request_count: u32,
+    pub request_id: Option<String>,
+    pub terminal: ProbeTerminal,
+    pub input_mode: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_category: Option<String>,
 }
 
-pub async fn probe(
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ProbeTerminal {
+    Completed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ProbePhase {
+    Running,
+    Retrying,
+    Cancelling,
+    Completed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelProbeSnapshot {
+    pub request_id: String,
+    pub phase: ProbePhase,
+    pub request_count: u32,
+    pub retry_count: u32,
+}
+
+struct ProbeEntry {
+    snapshot: ModelProbeSnapshot,
+    cancel: watch::Sender<bool>,
+    finished_at: Option<Instant>,
+}
+
+// The owner is declared before the transport future, so unwind/abort drops
+// transport before publishing its cancelled terminal snapshot.
+struct ProbeOwner(Arc<Mutex<ProbeEntry>>);
+impl Drop for ProbeOwner {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.0.lock() {
+            if guard.finished_at.is_none() {
+                guard.snapshot.phase = ProbePhase::Cancelled;
+                guard.finished_at = Some(Instant::now());
+            }
+        }
+    }
+}
+
+type ProbeRegistry = HashMap<String, Arc<Mutex<ProbeEntry>>>;
+fn registry() -> &'static Mutex<ProbeRegistry> {
+    static REGISTRY: OnceLock<Mutex<ProbeRegistry>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn validate_request_id(request_id: &str) -> Result<(), AppError> {
+    let valid = uuid::Uuid::parse_str(request_id)
+        .map(|id| {
+            id.get_version_num() == 4
+                && id.get_variant() == uuid::Variant::RFC4122
+                && id.to_string() == request_id
+        })
+        .unwrap_or(false);
+    if !valid {
+        return Err(AppError::Message("模型测试请求标识无效".into()));
+    }
+    Ok(())
+}
+
+fn find_probe(request_id: &str) -> Result<Arc<Mutex<ProbeEntry>>, AppError> {
+    validate_request_id(request_id)?;
+    registry()
+        .lock()
+        .map_err(|_| AppError::Message("模型测试状态不可用".into()))?
+        .get(request_id)
+        .cloned()
+        .ok_or_else(|| AppError::Message("模型测试请求不存在或已过期".into()))
+}
+
+pub fn probe_status(request_id: &str) -> Result<ModelProbeSnapshot, AppError> {
+    let entry = find_probe(request_id)?;
+    let guard = entry
+        .lock()
+        .map_err(|_| AppError::Message("模型测试状态不可用".into()))?;
+    Ok(guard.snapshot.clone())
+}
+
+pub fn cancel_probe(request_id: &str) -> Result<ModelProbeSnapshot, AppError> {
+    let entry = find_probe(request_id)?;
+    let mut guard = entry
+        .lock()
+        .map_err(|_| AppError::Message("模型测试状态不可用".into()))?;
+    if matches!(
+        guard.snapshot.phase,
+        ProbePhase::Running | ProbePhase::Retrying | ProbePhase::Cancelling
+    ) {
+        guard.snapshot.phase = ProbePhase::Cancelling;
+        // This acknowledges intent only. The probe owner publishes Cancelled
+        // after dropping the transport future (including its response stream).
+        guard.cancel.send_replace(true);
+    }
+    Ok(guard.snapshot.clone())
+}
+
+fn register_probe(
+    request_id: &str,
+) -> Result<(Arc<Mutex<ProbeEntry>>, watch::Receiver<bool>), AppError> {
+    validate_request_id(request_id)?;
+    let mut entries = registry()
+        .lock()
+        .map_err(|_| AppError::Message("模型测试状态不可用".into()))?;
+    entries.retain(|_, entry| {
+        entry
+            .lock()
+            .map(|guard| {
+                guard
+                    .finished_at
+                    .map(|time| time.elapsed() < Duration::from_secs(300))
+                    .unwrap_or(true)
+            })
+            .unwrap_or(true)
+    });
+    if entries.contains_key(request_id) || entries.len() >= 128 {
+        return Err(AppError::Message(
+            "模型测试请求重复或任务过多，请稍后重试".into(),
+        ));
+    }
+    let (cancel, receiver) = watch::channel(false);
+    let entry = Arc::new(Mutex::new(ProbeEntry {
+        snapshot: ModelProbeSnapshot {
+            request_id: request_id.into(),
+            phase: ProbePhase::Running,
+            request_count: 0,
+            retry_count: 0,
+        },
+        cancel,
+        finished_at: None,
+    }));
+    entries.insert(request_id.into(), Arc::clone(&entry));
+    Ok((entry, receiver))
+}
+
+fn finish_probe(
+    entry: &Arc<Mutex<ProbeEntry>>,
+    result: Result<ModelProbeResult, AppError>,
+    model_id: &str,
+) -> Result<ModelProbeResult, AppError> {
+    let mut guard = entry
+        .lock()
+        .map_err(|_| AppError::Message("模型测试状态不可用".into()))?;
+    let cancelled = matches!(
+        guard.snapshot.phase,
+        ProbePhase::Cancelling | ProbePhase::Cancelled
+    );
+    guard.snapshot.phase = if cancelled {
+        ProbePhase::Cancelled
+    } else {
+        ProbePhase::Completed
+    };
+    guard.finished_at = Some(Instant::now());
+    let mut result = if cancelled {
+        failed_result(
+            model_id,
+            guard.snapshot.retry_count,
+            "已取消模型测试；此前发送的请求仍可能产生用量。",
+        )
+    } else {
+        result?
+    };
+    result.request_id = Some(guard.snapshot.request_id.clone());
+    result.request_count = guard.snapshot.request_count;
+    result.retry_count = guard.snapshot.retry_count;
+    result.terminal = if cancelled {
+        ProbeTerminal::Cancelled
+    } else {
+        ProbeTerminal::Completed
+    };
+    Ok(result)
+}
+
+pub async fn probe_registered(
+    request_id: &str,
     app: ModelProbeApp,
     base_url: &str,
     api_key: &str,
@@ -74,8 +259,10 @@ pub async fn probe(
     codex_image_extension: bool,
     protocol: Option<ApiProtocol>,
 ) -> Result<ModelProbeResult, AppError> {
-    probe_with_client_for_protocol(
-        &crate::proxy::http_client::get(),
+    let client = crate::proxy::http_client::get();
+    probe_registered_with_client(
+        &client,
+        request_id,
         app,
         base_url,
         api_key,
@@ -84,6 +271,29 @@ pub async fn probe(
         protocol,
     )
     .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn probe_registered_with_client(
+    client: &Client,
+    request_id: &str,
+    app: ModelProbeApp,
+    base_url: &str,
+    api_key: &str,
+    model_id: &str,
+    codex_image_extension: bool,
+    protocol: Option<ApiProtocol>,
+) -> Result<ModelProbeResult, AppError> {
+    let (entry, mut cancel) = register_probe(request_id)?;
+    let _owner = ProbeOwner(Arc::clone(&entry));
+    let result = tokio::select! {
+        biased;
+        _ = cancel.changed() => Err(AppError::Message("模型测试取消中".into())),
+        result = probe_with_lifecycle(client, app, base_url, api_key, model_id, codex_image_extension, protocol, Some(&entry), TIMEOUT) => result,
+    };
+    let mut result = finish_probe(&entry, result, model_id)?;
+    result.model_used = redact(&result.model_used, api_key);
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -107,6 +317,7 @@ pub async fn probe_with_client(
     .await
 }
 
+#[cfg(test)]
 async fn probe_with_client_for_protocol(
     client: &Client,
     app: ModelProbeApp,
@@ -116,17 +327,70 @@ async fn probe_with_client_for_protocol(
     codex_image_extension: bool,
     protocol: Option<ApiProtocol>,
 ) -> Result<ModelProbeResult, AppError> {
+    probe_with_lifecycle(
+        client,
+        app,
+        base_url,
+        api_key,
+        model_id,
+        codex_image_extension,
+        protocol,
+        None,
+        TIMEOUT,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn probe_with_lifecycle(
+    client: &Client,
+    app: ModelProbeApp,
+    base_url: &str,
+    api_key: &str,
+    model_id: &str,
+    codex_image_extension: bool,
+    protocol: Option<ApiProtocol>,
+    entry: Option<&Arc<Mutex<ProbeEntry>>>,
+    timeout: Duration,
+) -> Result<ModelProbeResult, AppError> {
     StreamCheckService::validate_probe_url(base_url)?;
     let model_id = model_id.trim();
     if model_id.is_empty() {
         return Err(AppError::Message("模型 ID 为空".to_string()));
     }
+    if !api_key.is_empty() && model_id.contains(api_key) {
+        return Err(AppError::Message("模型 ID 无效".to_string()));
+    }
     if !api_key.is_empty() && base_url.contains(api_key) {
         return Err(AppError::Message("服务地址无效".to_string()));
     }
 
+    // Validate the fixed protocol before counting any dispatch attempt.
+    build_probe_spec_for_protocol(
+        app,
+        base_url.trim(),
+        api_key,
+        model_id,
+        codex_image_extension,
+        protocol,
+    )?;
     let mut last_result: Option<ModelProbeResult> = None;
     for attempt in 0..=MAX_RETRIES {
+        if let Some(entry) = entry {
+            let mut guard = entry
+                .lock()
+                .map_err(|_| AppError::Message("模型测试状态不可用".into()))?;
+            if guard.snapshot.phase == ProbePhase::Cancelling {
+                return Err(AppError::Message("模型测试取消中".into()));
+            }
+            guard.snapshot.phase = if attempt == 0 {
+                ProbePhase::Running
+            } else {
+                ProbePhase::Retrying
+            };
+            guard.snapshot.request_count = attempt + 1;
+            guard.snapshot.retry_count = attempt;
+        }
         let start = Instant::now();
         let result = probe_once(
             client,
@@ -136,8 +400,10 @@ async fn probe_with_client_for_protocol(
             model_id,
             codex_image_extension,
             protocol,
+            timeout,
         )
         .await;
+        let retryable = matches!(&result, Err(AppError::Message(message)) if message == "请求超时");
         let wrapped = build_result(
             result,
             start.elapsed().as_millis() as u64,
@@ -146,12 +412,13 @@ async fn probe_with_client_for_protocol(
         );
         let wrapped = ModelProbeResult {
             retry_count: attempt,
+            request_count: attempt + 1,
             ..wrapped
         };
         if wrapped.success {
             return Ok(wrapped);
         }
-        if should_retry(&wrapped.message) && attempt < MAX_RETRIES {
+        if retryable && attempt < MAX_RETRIES {
             last_result = Some(wrapped);
             continue;
         }
@@ -160,6 +427,7 @@ async fn probe_with_client_for_protocol(
     Ok(last_result.unwrap_or_else(|| failed_result(model_id, 0, "Check failed")))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn probe_once(
     client: &Client,
     app: ModelProbeApp,
@@ -168,6 +436,7 @@ async fn probe_once(
     model_id: &str,
     codex_image_extension: bool,
     protocol: Option<ApiProtocol>,
+    timeout: Duration,
 ) -> Result<(u16, String), AppError> {
     let (spec, actual_model) = build_probe_spec_for_protocol(
         app,
@@ -177,7 +446,7 @@ async fn probe_once(
         codex_image_extension,
         protocol,
     )?;
-    let status = send_stream_request(client, &spec).await?;
+    let status = send_stream_request_with_timeout(client, &spec, timeout).await?;
     Ok((status, actual_model))
 }
 
@@ -379,7 +648,15 @@ fn probe_user_content() -> &'static str {
 }
 
 fn request_body(protocol: ProbeProtocol, model: &str, reasoning_effort: Option<&str>) -> Value {
-    let content = probe_user_content();
+    request_body_with_content(protocol, model, reasoning_effort, probe_user_content())
+}
+
+fn request_body_with_content(
+    protocol: ProbeProtocol,
+    model: &str,
+    reasoning_effort: Option<&str>,
+    content: &str,
+) -> Value {
     match protocol {
         ProbeProtocol::AnthropicMessages => json!({
             "model": model,
@@ -414,7 +691,16 @@ fn request_body(protocol: ProbeProtocol, model: &str, reasoning_effort: Option<&
     }
 }
 
+#[cfg(test)]
 async fn send_stream_request(client: &Client, spec: &ProbeRequestSpec) -> Result<u16, AppError> {
+    send_stream_request_with_timeout(client, spec, TIMEOUT).await
+}
+
+async fn send_stream_request_with_timeout(
+    client: &Client,
+    spec: &ProbeRequestSpec,
+    timeout: Duration,
+) -> Result<u16, AppError> {
     let body = serde_json::to_vec(&spec.body)
         .map_err(|error| AppError::Message(format!("序列化探测请求失败: {error}")))?;
     // Use `.body()` rather than `.json()`: reqwest's `.json()` already inserts
@@ -422,7 +708,7 @@ async fn send_stream_request(client: &Client, spec: &ProbeRequestSpec) -> Result
     // `Content-Type: application/json` lines. Node-style gateways join those
     // into `application/json, application/json` and return 400
     // `Unsupported content type`.
-    let mut request = client.post(&spec.url).timeout(TIMEOUT).body(body);
+    let mut request = client.post(&spec.url).timeout(timeout).body(body);
     for (name, value) in &spec.headers {
         request = request.header(name.as_str(), value);
     }
@@ -439,7 +725,13 @@ async fn send_stream_request(client: &Client, spec: &ProbeRequestSpec) -> Result
         .next()
         .await
         .ok_or_else(|| AppError::Message("没有收到模型响应".to_string()))?
-        .map_err(|error| AppError::Message(format!("读取流失败: {error}")))?;
+        .map_err(|error| {
+            if error.is_timeout() {
+                map_request_error(error)
+            } else {
+                AppError::Message(format!("读取流失败: {error}"))
+            }
+        })?;
     let text = String::from_utf8_lossy(&chunk);
     if first_chunk_is_error(&text) {
         return Err(http_status_error(status, text.into_owned()));
@@ -484,7 +776,9 @@ fn map_request_error(error: reqwest::Error) -> AppError {
 fn http_status_error(status: u16, body: String) -> AppError {
     AppError::HttpStatus {
         status,
-        body: truncate_body(&body),
+        // Keep the internal body intact until credentials are redacted; truncating
+        // first could expose a secret prefix at the public diagnostic boundary.
+        body,
     }
 }
 
@@ -538,14 +832,6 @@ fn detect_error_category(status: u16, body: &str) -> Option<&'static str> {
         .then_some("modelNotFound")
 }
 
-fn should_retry(message: &str) -> bool {
-    let lower = message.to_lowercase();
-    lower.contains("timeout")
-        || lower.contains("超时")
-        || lower.contains("abort")
-        || lower.contains("timed out")
-}
-
 fn build_result(
     result: Result<(u16, String), AppError>,
     response_time_ms: u64,
@@ -568,9 +854,13 @@ fn build_result(
             },
             response_time_ms: Some(response_time_ms),
             http_status: Some(status),
-            model_used: model,
+            model_used: redact(&model, api_key),
             tested_at,
             retry_count: 0,
+            request_count: 1,
+            request_id: None,
+            terminal: ProbeTerminal::Completed,
+            input_mode: "compatibility".into(),
             error_category: None,
         },
         Err(error) => {
@@ -585,12 +875,16 @@ fn build_result(
             ModelProbeResult {
                 status: HealthStatus::Failed,
                 success: false,
-                message: redact(&raw_message, api_key),
+                message: truncate_body(&redact(&raw_message, api_key)),
                 response_time_ms: Some(response_time_ms),
                 http_status,
-                model_used: model_tested.to_string(),
+                model_used: redact(model_tested, api_key),
                 tested_at,
                 retry_count: 0,
+                request_count: 1,
+                request_id: None,
+                terminal: ProbeTerminal::Completed,
+                input_mode: "compatibility".into(),
                 error_category,
             }
         }
@@ -607,6 +901,10 @@ fn failed_result(model: &str, retry_count: u32, message: &str) -> ModelProbeResu
         model_used: model.to_string(),
         tested_at: chrono::Utc::now().timestamp(),
         retry_count,
+        request_count: 0,
+        request_id: None,
+        terminal: ProbeTerminal::Completed,
+        input_mode: "compatibility".into(),
         error_category: None,
     }
 }
@@ -679,6 +977,23 @@ mod tests {
             })
             .unwrap_or(0);
         Some((header_end, body_len))
+    }
+
+    async fn read_fixture_request(stream: &mut tokio::net::TcpStream) -> Vec<u8> {
+        use tokio::io::AsyncReadExt;
+        let mut data = Vec::new();
+        let mut chunk = [0_u8; 2048];
+        loop {
+            let size = stream.read(&mut chunk).await.expect("fixture request");
+            assert!(size > 0, "fixture request ended early");
+            data.extend_from_slice(&chunk[..size]);
+            if let Some((header_end, body_len)) = http_body_target(&data) {
+                if data.len() >= header_end + body_len {
+                    return data;
+                }
+            }
+            assert!(data.len() <= 65536, "fixture request must be bounded");
+        }
     }
 
     fn spawn_server(responses: Vec<Vec<u8>>) -> (String, Arc<Mutex<Vec<String>>>) {
@@ -947,6 +1262,22 @@ mod tests {
         assert!(result.message.contains("***"));
     }
 
+    #[test]
+    fn redacts_key_before_diagnostic_truncation() {
+        let secret = "sk-secret-crossing-diagnostic-boundary";
+        let body = format!("{}{}", "x".repeat(ERROR_BODY_MAX_CHARS - 20), secret);
+        let result = build_result(Err(http_status_error(401, body)), 1, "gpt-test", secret);
+        assert!(!result.message.contains("sk-s"));
+        assert!(result.message.chars().count() <= ERROR_BODY_MAX_CHARS + 1);
+        let result = build_result(
+            Err(http_status_error(401, format!("invalid {secret}"))),
+            1,
+            "gpt-test",
+            secret,
+        );
+        assert!(result.message.contains("***"));
+    }
+
     #[tokio::test]
     async fn openai_chat_probe_succeeds_on_first_chunk() {
         let body = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n";
@@ -1141,5 +1472,246 @@ mod tests {
             ["content-type: application/json"],
             "wire Content-Type must be a single bare application/json, got:\n{captured}"
         );
+    }
+    // These loopback fixtures are protocol evidence only, not upstream compatibility or billing evidence.
+    #[tokio::test]
+    async fn short_input_protocol_fixtures_accept_and_reject_without_fallback() {
+        for protocol in [
+            ProbeProtocol::AnthropicMessages,
+            ProbeProtocol::OpenAiChat,
+            ProbeProtocol::OpenAiResponses,
+        ] {
+            for accepted in [true, false] {
+                let response = if accepted {
+                    http_response("200 OK", "data: {}\n\n")
+                } else {
+                    http_response("400 Bad Request", "short input rejected")
+                };
+                let (base, requests) = spawn_server(vec![response]);
+                let app = match protocol {
+                    ProbeProtocol::AnthropicMessages => ModelProbeApp::Claude,
+                    ProbeProtocol::OpenAiChat => ModelProbeApp::OpenCode,
+                    ProbeProtocol::OpenAiResponses => ModelProbeApp::Codex,
+                };
+                let model = if app == ModelProbeApp::Claude {
+                    "claude-test"
+                } else {
+                    "o3"
+                };
+                let (mut spec, _) =
+                    build_probe_spec_for_protocol(app, &base, "fixture-key", model, false, None)
+                        .expect("spec");
+                spec.body =
+                    request_body_with_content(protocol, model, None, "Reply with one letter.");
+                let result = send_stream_request(&loopback_client(), &spec).await;
+                assert_eq!(result.is_ok(), accepted);
+                let captured = requests.lock().expect("requests");
+                assert_eq!(captured.len(), 1);
+                assert!(captured[0].contains("Reply with one letter."));
+                assert!(!captured[0].contains("Numbered lines"));
+                if protocol == ProbeProtocol::AnthropicMessages {
+                    assert_eq!(spec.body["max_tokens"], 1);
+                } else {
+                    assert!(spec.body.get("max_tokens").is_none());
+                    assert!(spec.body.get("max_output_tokens").is_none());
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn http_error_timeout_text_is_not_a_retry_trigger() {
+        let (base, requests) = spawn_server(vec![http_response(
+            "400 Bad Request",
+            "timeout abort timed out",
+        )]);
+        let result = probe_with_client(
+            &loopback_client(),
+            ModelProbeApp::OpenCode,
+            &base,
+            "fixture-key",
+            "o3",
+            false,
+        )
+        .await
+        .expect("result");
+        assert_eq!(result.request_count, 1);
+        assert_eq!(result.retry_count, 0);
+        assert_eq!(requests.lock().expect("requests").len(), 1);
+    }
+
+    #[test]
+    fn request_ids_require_canonical_rfc4122_v4() {
+        assert!(validate_request_id("00000000-0000-4000-8000-000000000000").is_ok());
+        for id in [
+            "00000000-0000-4000-0000-000000000000",
+            "00000000-0000-4000-c000-000000000000",
+            "00000000-0000-4000-e000-000000000000",
+            "00000000-0000-1000-8000-000000000000",
+            "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+            "00000000000040008000000000000000",
+        ] {
+            assert!(validate_request_id(id).is_err(), "must reject {id}");
+        }
+    }
+
+    #[test]
+    fn cancellation_before_dispatch_is_zero_and_terminal_is_irreversible() {
+        let id = uuid::Uuid::new_v4().to_string();
+        let (entry, _) = register_probe(&id).expect("register");
+        assert_eq!(
+            cancel_probe(&id).expect("cancel").phase,
+            ProbePhase::Cancelling
+        );
+        let result = finish_probe(
+            &entry,
+            Ok(build_result(Ok((200, "test".into())), 1, "test", "")),
+            "test",
+        )
+        .expect("finish");
+        assert_eq!(result.terminal, ProbeTerminal::Cancelled);
+        assert!(!result.success);
+        assert_eq!(result.request_count, 0);
+        assert_eq!(
+            cancel_probe(&id).expect("again").phase,
+            ProbePhase::Cancelled
+        );
+    }
+
+    #[test]
+    fn completed_probe_cannot_be_cancelled_and_ids_cannot_be_reused() {
+        let id = uuid::Uuid::new_v4().to_string();
+        let (entry, _) = register_probe(&id).expect("register");
+        entry.lock().expect("entry").snapshot.request_count = 1;
+        finish_probe(
+            &entry,
+            Ok(build_result(Ok((200, "test".into())), 1, "test", "")),
+            "test",
+        )
+        .expect("finish");
+        assert_eq!(
+            cancel_probe(&id).expect("late cancel").phase,
+            ProbePhase::Completed
+        );
+        assert!(register_probe(&id).is_err());
+        assert!(probe_status("../../arbitrary").is_err());
+    }
+
+    #[tokio::test]
+    async fn cancel_in_flight_drops_transport_and_suppresses_retry() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let base = format!("http://{}", listener.local_addr().expect("addr"));
+        let id = uuid::Uuid::new_v4().to_string();
+        let probe_id = id.clone();
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let request = read_fixture_request(&mut stream).await;
+            assert!(!request.is_empty());
+            seen_tx.send(()).expect("seen");
+            // Server has no response yet; transport cancellation must release the probe promptly.
+            let mut byte = [0_u8; 1];
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(2), stream.read(&mut byte))
+                    .await
+                    .expect("socket release deadline")
+                    .expect("socket EOF"),
+                0
+            );
+        });
+        let task = tokio::spawn(async move {
+            probe_registered_with_client(
+                &loopback_client(),
+                &probe_id,
+                ModelProbeApp::OpenCode,
+                &base,
+                "fixture-key",
+                "o3",
+                false,
+                None,
+            )
+            .await
+        });
+        tokio::time::timeout(Duration::from_secs(2), seen_rx)
+            .await
+            .expect("dispatch deadline")
+            .expect("dispatched");
+        assert_eq!(
+            cancel_probe(&id).expect("cancel").phase,
+            ProbePhase::Cancelling
+        );
+        let result = tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("cancel deadline")
+            .expect("join")
+            .expect("result");
+        assert_eq!(result.terminal, ProbeTerminal::Cancelled);
+        assert_eq!(result.request_count, 1);
+        assert_eq!(result.retry_count, 0);
+        assert_eq!(
+            probe_status(&id).expect("terminal").phase,
+            ProbePhase::Cancelled
+        );
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn timeout_retries_once_with_exact_dispatch_counts() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let base = format!("http://{}", listener.local_addr().expect("addr"));
+        let server = tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            let (mut first, _) = listener.accept().await.expect("first");
+            assert!(!read_fixture_request(&mut first).await.is_empty());
+            // Keep first transport open without a response until the real request timer fires.
+            let (mut second, _) = listener.accept().await.expect("second");
+            assert!(!read_fixture_request(&mut second).await.is_empty());
+            second
+                .write_all(&http_response("200 OK", "data: {}\n\n"))
+                .await
+                .expect("response");
+            2_u32
+        });
+        let result = tokio::time::timeout(
+            Duration::from_secs(3),
+            probe_with_lifecycle(
+                &loopback_client(),
+                ModelProbeApp::OpenCode,
+                &base,
+                "fixture-key",
+                "o3",
+                false,
+                None,
+                None,
+                Duration::from_millis(500),
+            ),
+        )
+        .await
+        .expect("deadline")
+        .expect("result");
+        assert!(result.success);
+        assert_eq!(result.request_count, 2);
+        assert_eq!(result.retry_count, 1);
+        assert_eq!(server.await.expect("server"), 2);
+    }
+
+    #[tokio::test]
+    async fn rejects_key_bearing_model_before_network() {
+        let error = probe_with_client(
+            &loopback_client(),
+            ModelProbeApp::Codex,
+            "https://gateway.example/v1",
+            "fixture-secret",
+            "model-fixture-secret",
+            false,
+        )
+        .await
+        .expect_err("reject secret model");
+        assert!(!error.to_string().contains("fixture-secret"));
     }
 }
