@@ -95,6 +95,10 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await codexDesktop()).subscribeJobUpdates(...args),
     },
     providers: {
+      previewClaudeQuickSetup: async (...args) =>
+        (await models()).providers.previewClaudeQuickSetup(...args),
+      applyClaudeQuickSetupPreview: async (...args) =>
+        (await models()).providers.applyClaudeQuickSetupPreview(...args),
       getSummary: async (...args) =>
         (await models()).providers.getSummary(...args),
       getProxyRestorePreview: async (...args) =>
