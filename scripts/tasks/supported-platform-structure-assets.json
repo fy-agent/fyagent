@@ -19,11 +19,11 @@
     ],
     [
       "scripts/tasks/host-native.mjs",
-      "d580175558e8fd277646da8505c66409a4c7b37b0041bb7d99110979a5d81181"
+      "fb9a917cd1f6290c1b418607f2fe876fb74afd166be2688ece695261a288d75f"
     ],
     [
       "scripts/tasks/lib.mjs",
-      "f3e693710f56de54e991c31a1a9ee93c5f654e38831c6fd3fbb8cf7f7a392e94"
+      "7b8008311c83593136052c8e519d583903d66b1f706eaacd965c6e1e0f38c15d"
     ],
     [
       "scripts/tasks/macos-signed-dev-cargo.mjs",
@@ -35,7 +35,7 @@
     ],
     [
       "scripts/tasks/system-check.mjs",
-      "266ede8818e0a5cd735b59ba184ed85a94e653912c15fe12b08c7c7ab057ccc0"
+      "43748b2d02f8a298d0bdf3f1cc33f047fc7d78b37f17717494d6d3a450e37998"
     ],
     [
       "scripts/tasks/toolchain-check.mjs",
@@ -467,15 +467,15 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "e3b4d0d818956ae8e727236700eb539852f2961dd211e10ee967027eab05cb1c"
+      "fe2eda262460b5bce13c112e68c1c57f3130a26c3a5dae9cda1a87bc7383e604"
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "6fc87fe3f0281d5ac23d9e96b5db1368a61288b9d16f3b97a383eddf86e7aacc"
+      "5be9f15c23450fb67aaacefd2ad0589b7f8b4267c3247cc0998e92f0730b643f"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "71e2de3fb37459987893092996b55b8b9a79f0bea0e7e44a13212312c3d09ee4"
+      "9007f388ce45517ead3ca9c59543178df1f2b82210a7322dc48ee455642e78ec"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
@@ -483,7 +483,7 @@
     ],
     [
       "tests/systemCheck.test.ts",
-      "d70d2475a9b6e7a74615c24050c469b243babe37c389609145557374cb3c9e48"
+      "97de7a8a6eb264bdfdf01778542cf89ecc8e9664175ce8291e57da5240ad020b"
     ],
     [
       "tests/taskAtomicWriter.test.ts",
