@@ -50,12 +50,12 @@
       "bfa22b5d5e5370b49bc82488d28c8d183f6df0129e415aff0b48e61c371f08e1"
     ],
     [
-      "src-tauri/build.rs",
-      "d40118fd0a4de5e3b2001f9d0c9b764099c6f12cc6060b855969d6a8bc8eddfb"
-    ],
-    [
       "src-tauri/Cargo.toml",
       "df3db7c1b7f6a45c0f6b91085119a92683af334a8bf7b0f8ca5b2574d9a8191b"
+    ],
+    [
+      "src-tauri/build.rs",
+      "d40118fd0a4de5e3b2001f9d0c9b764099c6f12cc6060b855969d6a8bc8eddfb"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -110,10 +110,6 @@
       "8f1e64351390e9e43632c7e54c248fc8fabeda917401d1369c3eb33e4f6cbb4b"
     ],
     [
-      "src-tauri/src/codex_desktop_runtime.rs",
-      "d5254b0d7f72e595c2a0bc5b24290b4b193dd1cbfcb0b7d12d9e44e9c6672aa4"
-    ],
-    [
       "src-tauri/src/codex_desktop/download.rs",
       "84730bc1a83a839ceec9885ab55df6e73da1f3a642cf91bf24cba5178b960476"
     ],
@@ -146,6 +142,10 @@
       "75f589adb66728784cab498ecd7aa3e177383171b249808e39002ad20d6ab662"
     ],
     [
+      "src-tauri/src/codex_desktop_runtime.rs",
+      "d5254b0d7f72e595c2a0bc5b24290b4b193dd1cbfcb0b7d12d9e44e9c6672aa4"
+    ],
+    [
       "src-tauri/src/codex_history_migration.rs",
       "24cca2a8c78f68c98d2b8a2d1453b1efc4f288695c23a3d56875093f33aaa02a"
     ],
@@ -162,6 +162,10 @@
       "82f62d1e18d8c8503f96f00c27e85e6093bc634895969752f45af385c760fd9a"
     ],
     [
+      "src-tauri/src/database/backup/recovery_tests.rs",
+      "68178c8cebf11cfd0e4a793e8d9c63b755f050c028f859af1d75c0694b9da1a3"
+    ],
+    [
       "src-tauri/src/gemini_config.rs",
       "6959b65c10cffe1783c08c0ebb43915f7073a4c0c73b57eae1fd9d0e2a141435"
     ],
@@ -171,7 +175,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "2d15ac7411f371c458a0c0bc3296388b6c44b2e403837d9573ce88fa9788a82a"
+      "7aa2d2a7eee3edf55d8d88e4e417a52fc7e4896a4f1c4cdfd6a59b95a3e6ac97"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -302,12 +306,12 @@
       "5a21aa858566373dddfaf5972391ea0b93746e140d5c557793c5ab277e0250fa"
     ],
     [
-      "src-tauri/src/services/tooling/grok_npm.rs",
-      "cb0ace76d7c440fdf7319ca4473fd8c8114d1712447465c50444a6f398a6ba1d"
-    ],
-    [
       "src-tauri/src/services/tooling/grok.rs",
       "28d3063637276be6514a7384b103d5d36a57342cfdb55c3103f5ffdc337d6939"
+    ],
+    [
+      "src-tauri/src/services/tooling/grok_npm.rs",
+      "cb0ace76d7c440fdf7319ca4473fd8c8114d1712447465c50444a6f398a6ba1d"
     ],
     [
       "src-tauri/src/services/tooling/health.rs",
@@ -342,12 +346,12 @@
       "c185f51cc2d53519d4c8ecf31205ed284924900b7721580e25b1f8db4a8af811"
     ],
     [
-      "src-tauri/src/session_manager/migrate/identity_platform.rs",
-      "795b85f70bcc7cdb5e69af601f34975fc22fb26f08a9f70e9318bdd2b59ec9b4"
-    ],
-    [
       "src-tauri/src/session_manager/migrate/identity.rs",
       "d6a823a64be889e1dd475511cff1d5d0bb1852024101bb2e3966c1d313b4ceee"
+    ],
+    [
+      "src-tauri/src/session_manager/migrate/identity_platform.rs",
+      "795b85f70bcc7cdb5e69af601f34975fc22fb26f08a9f70e9318bdd2b59ec9b4"
     ],
     [
       "src-tauri/src/session_manager/migrate/native/codex.rs",
@@ -422,12 +426,12 @@
       "0f1471540badbb5f6485fcc58515e4c32967bd2b129aca1fde3d3e66bcd41cc8"
     ],
     [
-      "src-tauri/user-helper/build.rs",
-      "12ef1ca65bdbba563ad5d2a168549bcaad3e88ebc22a1ecfa594b062c87b4f01"
-    ],
-    [
       "src-tauri/user-helper/Cargo.toml",
       "b35f02ecde55b82598a22677ceb70e59f5e9b856a037f0904d2d6c591b22627e"
+    ],
+    [
+      "src-tauri/user-helper/build.rs",
+      "12ef1ca65bdbba563ad5d2a168549bcaad3e88ebc22a1ecfa594b062c87b4f01"
     ],
     [
       "src-tauri/user-helper/src/cli.rs",
