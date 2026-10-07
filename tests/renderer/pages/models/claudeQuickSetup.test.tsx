@@ -411,7 +411,11 @@ describe("Claude Models native consent", () => {
       expect(
         screen.getByRole("button", { name: "暂时无法确认当前设置" }),
       ).toBeDisabled();
-      expect(screen.getByLabelText("API Key")).toBeDisabled();
+      for (const label of ["配置名称", "服务地址", "API Key", "模型 ID"]) {
+        expect(screen.getByLabelText(label)).toBeDisabled();
+      }
+      await user.type(screen.getByLabelText("API Key"), "blocked-fixture-key");
+      expect(screen.getByLabelText("API Key")).toHaveValue("");
       await user.click(
         screen.getByRole("button", { name: "暂时无法确认当前设置" }),
       );

@@ -1747,6 +1747,7 @@ function ProviderPanel({
           <label htmlFor={`${app}-quick-setup-name`}>配置名称</label>
           <Input
             ref={nameInputRef}
+            disabled={writesBlocked}
             id={`${app}-quick-setup-name`}
             name={`${app}-quick-setup-name`}
             value={name}
@@ -1773,6 +1774,7 @@ function ProviderPanel({
           <label htmlFor={`${app}-quick-setup-base-url`}>服务地址</label>
           <Input
             ref={baseUrlInputRef}
+            disabled={writesBlocked}
             id={`${app}-quick-setup-base-url`}
             name={`${app}-quick-setup-base-url`}
             type="url"
@@ -1828,6 +1830,7 @@ function ProviderPanel({
           )}
           <SecretInput
             ref={apiKeyInputRef}
+            disabled={writesBlocked}
             id={`${app}-quick-setup-api-key`}
             name={`${app}-quick-setup-api-key`}
             value={apiKey}
@@ -1857,6 +1860,7 @@ function ProviderPanel({
             <ModelVendorIcon modelId={modelId} />
             <Input
               ref={modelIdInputRef}
+              disabled={writesBlocked}
               id={`${app}-quick-setup-model-id`}
               name={`${app}-quick-setup-model-id`}
               value={modelId}

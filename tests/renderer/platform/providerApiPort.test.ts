@@ -68,6 +68,19 @@ describe("API protocol native boundary", () => {
     },
   );
 
+  it("rejects legacy Claude synchronously before invoking native writes", () => {
+    expect(() =>
+      createModelFeaturePorts().providers.applyQuickSetupWithResult(
+        {
+          ...request,
+          protocol: "anthropic",
+        },
+        "claude",
+      ),
+    ).toThrow("Claude 保存需要先预览");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("reads exactly public connection fields and rejects unknown credential members", async () => {
     invoke.mockResolvedValue(summary(connection));
     expect(
