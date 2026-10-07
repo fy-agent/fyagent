@@ -301,6 +301,7 @@ mod tests {
         let backups: Vec<_> = fs::read_dir(store.first_write_backup_dir())
             .unwrap()
             .map(|entry| entry.unwrap().path())
+            .filter(|path| !path.to_string_lossy().ends_with(".fyagent.undo.json"))
             .collect();
         assert_eq!(backups.len(), 2, "{backups:?}");
         let backup = backups

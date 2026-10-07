@@ -52,13 +52,13 @@ fn extract_claude_common_config(settings: &Value) -> Result<String, AppError> {
             .cloned()
             .collect();
         for key in ENV_PROVIDER_SPECIFIC_EXCLUDES {
-            env.remove(*key);
+            env.shift_remove(*key);
         }
         for key in &sensitive {
-            env.remove(key);
+            env.shift_remove(key);
         }
         if env.is_empty() {
-            config.as_object_mut().map(|obj| obj.remove("env"));
+            config.as_object_mut().map(|obj| obj.shift_remove("env"));
         }
     }
 
@@ -72,10 +72,10 @@ fn extract_claude_common_config(settings: &Value) -> Result<String, AppError> {
             .cloned()
             .collect();
         for key in TOP_LEVEL_EXCLUDES {
-            obj.remove(*key);
+            obj.shift_remove(*key);
         }
         for key in &sensitive {
-            obj.remove(key);
+            obj.shift_remove(key);
         }
     }
 

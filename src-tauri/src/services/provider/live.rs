@@ -1198,10 +1198,11 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
                     "OpenCode provider must be an object".into(),
                 ));
             }
-            let format = opencode_config::provider_format(
-                &config_to_write,
+            let (_, format) = opencode_config::provider_fragment(
+                &provider.id,
+                &provider.settings_config,
                 provider.opencode_config_format(),
-            );
+            )?;
             opencode_config::set_provider_with_format(&provider.id, config_to_write, format)?;
         }
         AppType::OpenClaw => {

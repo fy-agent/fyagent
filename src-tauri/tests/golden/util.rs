@@ -91,6 +91,14 @@ pub fn official(id: &str, settings: Value) -> Provider {
 /// 存入供应商并把 `current` 设为当前（DB 的 is_current；设备级设置在测试里为空）。
 pub fn seed_providers(state: &AppState, app: &AppType, providers: &[Provider], current: &str) {
     for provider in providers {
+        // These are legacy-row projection fixtures, including malformed TOML
+        // and conflicting inline credentials that current save admission rejects.
+        #[cfg(feature = "test-hooks")]
+        state
+            .db
+            .seed_legacy_provider_for_test(app.as_str(), provider)
+            .expect("seed legacy provider");
+        #[cfg(not(feature = "test-hooks"))]
         state
             .db
             .save_provider(app.as_str(), provider)
@@ -163,9 +171,18 @@ pub fn dump_provider_rows(
         for (column, value) in row {
             let value = match column {
                 "id" => id_filter(&value),
-                "settings_config" if !settings_sort.is_empty() => {
+                "settings_config" => {
                     let mut parsed: Value =
                         serde_json::from_str(&value).expect("settings_config is JSON");
+                    if let Some(reference) = parsed.get_mut("credentialRef") {
+                        let value = reference.as_str().expect("opaque credential reference");
+                        let suffix = value
+                            .strip_prefix("pc_")
+                            .expect("provider credential prefix");
+                        assert_eq!(suffix.len(), 32);
+                        assert!(suffix.bytes().all(|byte| byte.is_ascii_hexdigit()));
+                        *reference = Value::String("pc_<local-reference>".into());
+                    }
                     sort_objects(&mut parsed, settings_sort);
                     serde_json::to_string(&parsed).expect("serialize settings_config")
                 }

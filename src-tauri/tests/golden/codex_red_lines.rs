@@ -54,7 +54,7 @@ use fyagent_lib::{
     AppType, Provider, ProviderMeta, ProviderService,
 };
 
-use crate::support::{create_test_state, reset_test_fs, test_mutex};
+use crate::support::{create_golden_test_state as create_test_state, reset_test_fs, test_mutex};
 use crate::util::{official, provider, seed_providers, write_home_file};
 
 const RESERVED_IDS: &[&str] = &["openai", "ollama", "lmstudio"];
@@ -442,9 +442,9 @@ fn normalization_never_overwrites_a_user_table() {
 
     let doc = live_config();
     assert_key_in_route(&doc, "https://relay.example/v1", "sk-legacy");
-    let mine = table(&doc["model_providers"]["cc-switch"], "cc-switch");
+    let mine = table(&doc["model_providers"]["fyagent"], "fyagent");
     let expected: Table = toml::from_str::<Table>(user_table).expect("parse user table")
-        ["model_providers"]["cc-switch"]
+        ["model_providers"]["fyagent"]
         .as_table()
         .expect("user table")
         .clone();

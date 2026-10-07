@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use fyagent_lib::live::floor::{claude_floor_env, claude_floor_top};
 use fyagent_lib::{AppState, AppType, Provider, ProviderService};
 
-use crate::support::{create_test_state, reset_test_fs, test_mutex};
+use crate::support::{create_golden_test_state as create_test_state, reset_test_fs, test_mutex};
 use crate::util::{official, provider, read_home_json, seed_providers, write_home_file};
 
 /// 取出关键字段：`env.<KEY>` 与顶层键，按名字排序。

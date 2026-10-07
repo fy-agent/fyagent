@@ -193,6 +193,9 @@ command = "say"
 
     let state = create_test_state_with_config(&initial_config).expect("create test state");
 
+    fyagent_lib::McpService::sync_enabled_for_app(&state, &AppType::Codex)
+        .expect("seed MCP independently of source switching");
+
     ProviderService::switch(&state, AppType::Codex, "new-provider")
         .expect("switch provider should succeed");
 
@@ -333,8 +336,8 @@ requires_openai_auth = true
 
     assert_eq!(
         parsed.get("model_provider").and_then(|v| v.as_str()),
-        Some("aihubmix"),
-        "provider switching should preserve user-editable model_provider after the one-time migration"
+        Some("custom"),
+        "4.0.4 projects third-party routes into the custom table"
     );
 
     let model_providers = parsed
@@ -342,12 +345,12 @@ requires_openai_auth = true
         .and_then(|v| v.as_table())
         .expect("model_providers table exists");
     assert!(
-        model_providers.get("custom").is_none(),
-        "provider switching should not force user-edited provider ids back to custom"
+        model_providers.get("aihubmix").is_none(),
+        "the retired source table must not survive normalization"
     );
     assert_eq!(
         model_providers
-            .get("aihubmix")
+            .get("custom")
             .and_then(|v| v.get("base_url"))
             .and_then(|v| v.as_str()),
         Some("https://aihubmix.example/v1"),
@@ -460,6 +463,15 @@ requires_openai_auth = true
     }
 
     let state = create_test_state_with_config(&initial_config).expect("create test state");
+    let saved = state
+        .db
+        .get_provider_by_id("bridge-provider", "codex")
+        .unwrap()
+        .unwrap();
+    state
+        .db
+        .save_provider("codex", &saved)
+        .expect("admit fixture credential before selecting a source");
 
     ProviderService::switch(&state, AppType::Codex, "bridge-provider")
         .expect("switch to bridge provider should succeed");
@@ -490,7 +502,7 @@ requires_openai_auth = true
     assert_eq!(
         parsed_live
             .get("model_providers")
-            .and_then(|v| v.get("aihubmix"))
+            .and_then(|v| v.get("custom"))
             .and_then(|v| v.get("experimental_bearer_token"))
             .and_then(|v| v.as_str()),
         Some("bridge-key"),
@@ -499,7 +511,7 @@ requires_openai_auth = true
     assert_eq!(
         parsed_live
             .get("model_providers")
-            .and_then(|v| v.get("aihubmix"))
+            .and_then(|v| v.get("custom"))
             .and_then(|v| v.get("requires_openai_auth"))
             .and_then(|v| v.as_bool()),
         Some(true)
@@ -521,7 +533,7 @@ requires_openai_auth = true
             .pointer("/auth/OPENAI_API_KEY")
             .and_then(|v| v.as_str()),
         None,
-        "backfill must retain only the native credential reference"
+        "source selection retains the native credential reference"
     );
     assert!(
         stored_bridge
@@ -989,10 +1001,10 @@ openai_base_url = "https://relay.example/v1"
         "the top-level reroute must be rewritten away; got:\n{live_config}"
     );
     assert!(
-        live_config.contains("[model_providers.cc-switch]")
+        live_config.contains("[model_providers.custom]")
             && live_config.contains("base_url = \"https://relay.example/v1\"")
             && live_config.contains("experimental_bearer_token = \"third-party-key\""),
-        "routing and key must move into the cc-switch provider table; got:\n{live_config}"
+        "routing and key must move into the custom provider table; got:\n{live_config}"
     );
 
     let auth_value: serde_json::Value =
@@ -1218,14 +1230,22 @@ requires_openai_auth = true
     }
 
     let state = create_test_state_with_config(&initial_config).expect("create test state");
+    let saved = state
+        .db
+        .get_provider_by_id("third-party", "codex")
+        .unwrap()
+        .unwrap();
+    state
+        .db
+        .save_provider("codex", &saved)
+        .expect("admit fixture credential before selecting a source");
 
     ProviderService::switch(&state, AppType::Codex, "official-provider")
         .expect("switch to official provider should succeed");
 
     assert!(
-        !fyagent_lib::get_codex_auth_path().exists(),
-        "switching to a material-less official provider must delete the stale \
-         third-party auth.json so Codex shows its login screen"
+        fyagent_lib::get_codex_auth_path().exists(),
+        "source selection preserves native auth.json; explicit account management owns login changes"
     );
 
     let providers = state
@@ -1253,7 +1273,7 @@ requires_openai_auth = true
     ProviderService::switch(&state, AppType::Codex, "third-party")
         .expect("restore outgoing source from native credentials");
     let restored = std::fs::read_to_string(fyagent_lib::get_codex_config_path()).unwrap();
-    assert!(restored.contains("stale-live-key"));
+    assert!(restored.contains("old-db-key"));
 }
 
 #[test]
@@ -1395,13 +1415,16 @@ fn reapply_codex_official_live_resyncs_mcp_servers() {
 
     let state = create_test_state_with_config(&initial_config).expect("create test state");
 
+    fyagent_lib::McpService::sync_enabled_for_app(&state, &AppType::Codex)
+        .expect("seed MCP independently of source switching");
+
     ProviderService::switch(&state, AppType::Codex, "codex-official")
         .expect("switch to official provider");
     let live = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
         .expect("read config.toml after switch");
     assert!(
         live.contains("mcp_servers.echo-server"),
-        "switch should sync enabled MCP servers into live"
+        "switch should preserve existing MCP servers"
     );
 
     // 统一会话开关变更触发的 reapply 会整体重写 live config.toml（有意设计），
@@ -1599,6 +1622,9 @@ fn switch_codex_projects_mcp_despite_broken_claude_json() {
     let claude_json = fyagent_lib::get_claude_mcp_path();
     std::fs::write(&claude_json, "{ not valid json").expect("seed broken claude json");
 
+    fyagent_lib::McpService::sync_enabled_for_app(&state, &AppType::Codex)
+        .expect("seed MCP independently of source switching");
+
     ProviderService::switch(&state, AppType::Codex, "p")
         .expect("broken ~/.claude.json must not fail an unrelated codex switch");
 
@@ -1606,7 +1632,7 @@ fn switch_codex_projects_mcp_despite_broken_claude_json() {
         .expect("read config.toml after switch");
     assert!(
         live.contains("mcp_servers.echo-server"),
-        "switch must re-project codex MCP after the full live rewrite, got: {live}"
+        "switch must preserve Codex MCP, got: {live}"
     );
 
     let claude_after = std::fs::read_to_string(&claude_json).expect("read claude json");
@@ -1899,8 +1925,8 @@ requires_openai_auth = true
             .and_then(|v| v.get("work"))
             .and_then(|v| v.get("model_provider"))
             .and_then(|v| v.as_str()),
-        None,
-        "a source switch must not install a snapshot's unrelated profile overrides"
+        Some("aihubmix"),
+        "source selection leaves the stored snapshot unchanged; it does not backfill"
     );
 }
 
@@ -2435,8 +2461,9 @@ fn provider_service_switch_claude_updates_live_and_state() {
         .get("old-provider")
         .expect("legacy provider still exists");
     assert_eq!(
-        legacy_provider.settings_config, legacy_live,
-        "previous provider should receive backfilled live config"
+        legacy_provider.settings_config,
+        json!({"env": {"ANTHROPIC_API_KEY": "stale-key"}}),
+        "source switching leaves the saved row unchanged"
     );
 }
 
@@ -2516,8 +2543,8 @@ fn switch_claude_syncs_new_shared_keys_from_live_into_common_config() {
         serde_json::from_str(&snippet).expect("snippet is valid JSON");
     assert_eq!(
         snippet_value.get("enableAllProjectMcpServers"),
-        Some(&json!(true)),
-        "newly added shared key should be captured into common config"
+        None,
+        "live edits stay in live and are not captured into the saved common snippet"
     );
     assert_eq!(
         snippet_value.get("theme").and_then(|v| v.as_str()),
@@ -2637,8 +2664,8 @@ fn switch_claude_syncs_deletions_from_live_into_common_config() {
     let snippet_value: serde_json::Value =
         serde_json::from_str(&snippet).expect("snippet is valid JSON");
     assert!(
-        snippet_value.get("enableAllProjectMcpServers").is_none(),
-        "deleted key should be removed from common config"
+        snippet_value.get("enableAllProjectMcpServers") == Some(&json!(true)),
+        "source selection leaves the saved snippet unchanged"
     );
     assert_eq!(
         snippet_value.get("theme").and_then(|v| v.as_str()),
@@ -2719,7 +2746,7 @@ command = "ghost-cmd"
             "B".to_string(),
             json!({
                 "auth": { "OPENAI_API_KEY": "sk-b" },
-                "config": "model = \"gpt-5.5\"\nmodel_provider = \"bprov\"\n\n[model_providers.bprov]\nname = \"B Prov\"\nbase_url = \"https://b.example/v1\"\nwire_api = \"responses\"\n"
+                "config": "model = \"gpt-5.5\"\nmodel_provider = \"custom\"\n\n[model_providers.bprov]\nname = \"B Prov\"\nbase_url = \"https://b.example/v1\"\nwire_api = \"responses\"\n"
             }),
             None,
         );
@@ -2748,8 +2775,8 @@ command = "ghost-cmd"
         .expect("read snippet")
         .expect("snippet present");
     assert!(
-        snippet.contains("disable_response_storage = true"),
-        "newly added shared key should be captured, got: {snippet}"
+        !snippet.contains("disable_response_storage = true"),
+        "live edits must not be captured into the saved snippet, got: {snippet}"
     );
     assert!(
         snippet.contains("notifications = true"),
@@ -2780,7 +2807,7 @@ command = "ghost-cmd"
         "shared key should propagate to the next provider's live, got: {live_after}"
     );
     assert!(
-        live_after.contains("model_provider = \"bprov\""),
+        live_after.contains("model_provider = \"custom\""),
         "live should be provider B's own config, got: {live_after}"
     );
     assert!(
@@ -2897,8 +2924,8 @@ wire_api = "responses"
         .expect("read snippet")
         .expect("snippet present");
     assert!(
-        !snippet.contains("disable_response_storage"),
-        "deleted shared key must be removed from the snippet, got: {snippet}"
+        snippet.contains("disable_response_storage"),
+        "source selection must not rewrite the saved snippet, got: {snippet}"
     );
     assert!(
         snippet.contains("notifications = true"),
@@ -3558,6 +3585,15 @@ requires_openai_auth = true
     }
 
     let state = create_test_state_with_config(&initial_config).expect("create test state");
+    let saved = state
+        .db
+        .get_provider_by_id("bridge-provider", "codex")
+        .unwrap()
+        .unwrap();
+    state
+        .db
+        .save_provider("codex", &saved)
+        .expect("admit fixture credential before selecting a source");
     let bridge_before = state
         .db
         .get_provider_by_id("bridge-provider", AppType::Codex.as_str())
@@ -3633,7 +3669,7 @@ requires_openai_auth = true
             .pointer("/auth/OPENAI_API_KEY")
             .and_then(|v| v.as_str()),
         None,
-        "backfill must retain only the native credential reference"
+        "source selection retains the native credential reference"
     );
     assert!(
         parsed_live
@@ -3733,13 +3769,16 @@ fn reapply_codex_official_live_rewrites_only_the_session_routing() {
 
     let state = create_test_state_with_config(&initial_config).expect("create test state");
 
+    fyagent_lib::McpService::sync_enabled_for_app(&state, &AppType::Codex)
+        .expect("seed MCP independently of source switching");
+
     ProviderService::switch(&state, AppType::Codex, "codex-official")
         .expect("switch to official provider");
     let live = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
         .expect("read config.toml after switch");
     assert!(
         live.contains("mcp_servers.echo-server"),
-        "switch should sync enabled MCP servers into live"
+        "switch should preserve existing MCP servers"
     );
 
     // 统一会话开关变更触发的 reapply 会整体重写 live config.toml（有意设计），
@@ -4055,7 +4094,7 @@ fn seed_claude_switch_state(
             manager.providers.insert(id.to_string(), provider);
         }
     }
-    create_test_state_with_config(&config).expect("create test state")
+    support::create_test_state_with_config(&config).expect("create test state")
 }
 
 fn claude_row(state: &fyagent_lib::AppState, id: &str) -> serde_json::Value {
@@ -4370,7 +4409,10 @@ fn switch_writes_credential_files_owner_only() {
     };
 
     ProviderService::switch(&state, AppType::Codex, "codex-official").expect("codex official");
-    assert_eq!(mode(&fyagent_lib::get_codex_auth_path()), 0o600);
+    assert!(
+        !fyagent_lib::get_codex_auth_path().exists(),
+        "source switching must not create auth.json"
+    );
     ProviderService::switch(&state, AppType::Codex, "codex-relay").expect("codex relay");
     assert_eq!(mode(&fyagent_lib::get_codex_config_path()), 0o600);
     ProviderService::switch(&state, AppType::Claude, "claude-b").expect("claude b");
@@ -4850,7 +4892,7 @@ fn claude_editor_never_leaves_the_row_and_live_apart() {
     let (row, base) = open_claude_editor(&state, "a");
     let mut edited = base.clone();
     edited["env"]["ANTHROPIC_AUTH_TOKEN"] = json!("sk-new");
-    let db = rusqlite::Connection::open(home.join(".cc-switch/cc-switch.db")).expect("open db");
+    let db = rusqlite::Connection::open(home.join(".fyagent/fyagent.db")).expect("open db");
     db.execute_batch(
         "CREATE TRIGGER fail_edit BEFORE UPDATE OF settings_config ON providers \
          BEGIN SELECT RAISE(ABORT, 'injected save failure'); END;",

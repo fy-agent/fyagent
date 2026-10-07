@@ -1188,6 +1188,7 @@ mod tests {
         let backups: Vec<Vec<u8>> = fs::read_dir(fx.store.first_write_backup_dir())
             .unwrap()
             .map(|entry| entry.unwrap().path())
+            .filter(|path| !path.to_string_lossy().ends_with(".fyagent.undo.json"))
             .filter(|path| !path.to_string_lossy().ends_with(".source"))
             .map(|path| fs::read(path).unwrap())
             .collect();

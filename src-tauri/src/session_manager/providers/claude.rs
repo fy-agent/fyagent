@@ -2799,7 +2799,9 @@ mod transcript_tests {
                 assert!(call_ids.contains(call_id.as_str()), "{call_id} 未配对");
             }
         }
-        // 有 blocks 的消息不下发 content（前端从 blocks 推导）
-        assert!(messages.iter().all(|m| m.content.is_empty()));
+        // FyAgent retains the compatibility text projection alongside typed blocks.
+        assert!(messages
+            .iter()
+            .all(|m| m.content == crate::session_manager::model::project_content(&m.blocks)));
     }
 }
