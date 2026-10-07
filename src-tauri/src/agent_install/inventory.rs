@@ -1166,9 +1166,9 @@ fn refresh_destination_revision(destination: &mut ProbeDestination) {
     ]);
 }
 
-/// Per-user directories of the official OpenCode NSIS installers (v2 first,
-/// then 1.x); mirrors `windows_relative_exes` in `desktop.rs`.
-const OPENCODE_WINDOWS_USER_DIRS: [&str; 2] = ["@opencodedesktop", "@opencode-aidesktop"];
+/// Default fresh-install label uses the measured 1.18.35 directory
+/// `@opencode-aidesktop`; `@opencodedesktop` remains for existing installs.
+const OPENCODE_WINDOWS_USER_DIRS: [&str; 2] = ["@opencode-aidesktop", "@opencodedesktop"];
 
 #[cfg(any(target_os = "windows", test))]
 fn windows_current_user_destination_label(agent_id: AgentCatalogId) -> String {
@@ -1532,7 +1532,7 @@ mod tests {
     fn windows_current_user_destination_labels() {
         assert_eq!(
             windows_current_user_destination_label(AgentCatalogId::OpenCode),
-            "当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\@opencodedesktop）"
+            "当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\@opencode-aidesktop）"
         );
         assert_eq!(
             windows_current_user_destination_label(AgentCatalogId::QoderWork),
@@ -1551,7 +1551,7 @@ mod tests {
         };
         assert_eq!(
             label(AgentCatalogId::OpenCode),
-            vec!["当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\@opencodedesktop）"]
+            vec!["当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\@opencode-aidesktop）"]
         );
         assert_eq!(
             label(AgentCatalogId::QoderWork),

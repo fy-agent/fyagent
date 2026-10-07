@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "64db9978e82f669f726e612b51813ab817576b75b78176a80bce0c5e5bf7b946"
+      "dd1b5a5bece8b878d01ccc9c5cbb4dd220df7ae3246cfaae5b5b13e92c18c54f"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
