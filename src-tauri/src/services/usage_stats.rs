@@ -1662,10 +1662,10 @@ impl Database {
         let detail_sql = format!(
             "SELECT l.request_id, l.provider_id, {detail_pname} as provider_name, l.app_type, l.model,
                     l.request_model, l.cost_multiplier,
-                    input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-                    input_cost_usd, output_cost_usd, cache_read_cost_usd, cache_creation_cost_usd, total_cost_usd,
-                    is_streaming, latency_ms, first_token_ms, duration_ms,
-                    status_code, error_message, created_at, l.data_source, l.pricing_model,
+                    l.input_tokens, l.output_tokens, l.cache_read_tokens, l.cache_creation_tokens,
+                    l.input_cost_usd, l.output_cost_usd, l.cache_read_cost_usd, l.cache_creation_cost_usd, l.total_cost_usd,
+                    l.is_streaming, l.latency_ms, l.first_token_ms, l.duration_ms,
+                    l.status_code, l.error_message, l.created_at, l.data_source, l.pricing_model,
                     l.input_token_semantics
              FROM proxy_request_logs l
              LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
@@ -2432,6 +2432,363 @@ mod tests {
             )",
             [],
         )?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_request_detail_maps_log_fields_with_matching_provider() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        {
+            let conn = lock_conn!(db.conn);
+            conn.execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, created_at)
+                 VALUES ('detail-provider', 'codex', 'Detail Provider', '{}', 700),
+                        ('detail-provider', 'claude', 'Wrong App Provider', '{}', 800)",
+                [],
+            )?;
+            insert_usage_log(
+                &conn,
+                "detail-with-provider",
+                "codex",
+                "detail-provider",
+                "detail-model",
+                "proxy",
+                1_700_000_111,
+                101,
+                202,
+                303,
+                404,
+                503,
+                "1.500000",
+            )?;
+            conn.execute(
+                "UPDATE proxy_request_logs
+                 SET request_model = 'detail-request-model', pricing_model = 'detail-pricing-model',
+                     cost_multiplier = '1.5', input_token_semantics = ?1,
+                     input_cost_usd = '0.100000', output_cost_usd = '0.200000',
+                     cache_read_cost_usd = '0.300000', cache_creation_cost_usd = '0.400000',
+                     is_streaming = 1, latency_ms = 555, first_token_ms = 66, duration_ms = 777,
+                     error_message = 'synthetic_detail_error'
+                 WHERE request_id = 'detail-with-provider'",
+                [INPUT_TOKEN_SEMANTICS_TOTAL],
+            )?;
+        }
+
+        let detail = db
+            .get_request_detail("detail-with-provider")?
+            .expect("existing request detail");
+        let expected = RequestLogDetail {
+            request_id: "detail-with-provider".into(),
+            provider_id: "detail-provider".into(),
+            provider_name: Some("Detail Provider".into()),
+            app_type: "codex".into(),
+            model: "detail-model".into(),
+            request_model: Some("detail-request-model".into()),
+            cost_multiplier: "1.5".into(),
+            input_tokens: 101,
+            output_tokens: 202,
+            cache_read_tokens: 303,
+            cache_creation_tokens: 404,
+            input_token_semantics: INPUT_TOKEN_SEMANTICS_TOTAL,
+            input_cost_usd: "0.100000".into(),
+            output_cost_usd: "0.200000".into(),
+            cache_read_cost_usd: "0.300000".into(),
+            cache_creation_cost_usd: "0.400000".into(),
+            total_cost_usd: "1.500000".into(),
+            is_streaming: true,
+            latency_ms: 555,
+            first_token_ms: Some(66),
+            duration_ms: Some(777),
+            status_code: 503,
+            error_message: Some("synthetic_detail_error".into()),
+            created_at: 1_700_000_111,
+            data_source: Some("proxy".into()),
+            pricing_model: Some("detail-pricing-model".into()),
+        };
+        assert_eq!(
+            serde_json::to_value(&detail).expect("serialize actual detail"),
+            serde_json::to_value(&expected).expect("serialize expected detail")
+        );
+        assert_eq!(detail.input_token_semantics, expected.input_token_semantics);
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_request_detail_keeps_session_provider_fallback() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        {
+            let conn = lock_conn!(db.conn);
+            // A Provider with the same ID in another app must not shadow the fallback.
+            conn.execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, created_at)
+                 VALUES ('_codex_session', 'claude', 'Wrong Session Provider', '{}', 700)",
+                [],
+            )?;
+            insert_usage_log(
+                &conn,
+                "detail-session",
+                "codex",
+                "_codex_session",
+                "detail-session-model",
+                "codex_session",
+                1_700_000_112,
+                123,
+                45,
+                6,
+                7,
+                200,
+                "0.500000",
+            )?;
+        }
+
+        let detail = db
+            .get_request_detail("detail-session")?
+            .expect("session detail without a matching Provider");
+        assert_eq!(detail.provider_name.as_deref(), Some("Codex (Session)"));
+        assert_eq!(detail.created_at, 1_700_000_112);
+        assert_eq!(detail.data_source.as_deref(), Some("codex_session"));
+        assert_eq!(detail.input_tokens, 123);
+        assert_eq!(detail.output_tokens, 45);
+        assert_eq!(detail.first_token_ms, None);
+        assert_eq!(detail.duration_ms, None);
+        assert_eq!(detail.error_message, None);
+        assert_eq!(detail.pricing_model, None);
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_request_detail_missing_id_returns_none() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        // This also requires the joined SQL to prepare successfully on the full schema.
+        assert!(db.get_request_detail("missing-detail")?.is_none());
+        Ok(())
+    }
+
+    type DetailTestSnapshot = Vec<Vec<(String, rusqlite::types::Value)>>;
+
+    fn detail_test_snapshot(conn: &Connection, sql: &str) -> Result<DetailTestSnapshot, AppError> {
+        let mut stmt = conn.prepare(sql)?;
+        let names: Vec<String> = stmt
+            .column_names()
+            .iter()
+            .map(|name| name.to_string())
+            .collect();
+        let rows = stmt.query_map([], |row| {
+            names
+                .iter()
+                .enumerate()
+                .map(|(index, name)| Ok((name.clone(), row.get(index)?)))
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    #[test]
+    fn test_get_request_detail_backfills_idempotently_and_survives_file_reopen(
+    ) -> Result<(), AppError> {
+        let fixture_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target/iteration-usage-query-fixtures");
+        std::fs::create_dir_all(&fixture_root)
+            .map_err(|error| AppError::io(&fixture_root, error))?;
+        let temp_dir = tempfile::Builder::new()
+            .prefix("request-detail-")
+            .tempdir_in(&fixture_root)
+            .expect("create detail database directory within the owned workspace");
+        let db_path = temp_dir.path().join("detail-regression.db");
+        let db = Database::memory()?;
+        // Copy the full production test schema to our own file; never call HOME-based init.
+        {
+            let conn = lock_conn!(db.conn);
+            let mut file_conn = Connection::open(&db_path)?;
+            assert_eq!(
+                rusqlite::backup::Backup::new(&conn, &mut file_conn)?.step(-1)?,
+                rusqlite::backup::StepResult::Done
+            );
+        }
+        {
+            let mut conn = lock_conn!(db.conn);
+            *conn = Connection::open(&db_path)?;
+            conn.execute_batch("PRAGMA foreign_keys = ON")?;
+            conn.execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, created_at)
+                 VALUES ('detail-provider', 'codex', 'Detail Provider', '{}', 700)",
+                [],
+            )?;
+            insert_usage_log(
+                &conn,
+                "detail-pricing-target",
+                "codex",
+                "detail-provider",
+                "detail-response-alias",
+                "proxy",
+                1_700_000_222,
+                1_200,
+                300,
+                200,
+                100,
+                200,
+                "0",
+            )?;
+            conn.execute(
+                "UPDATE proxy_request_logs
+                 SET pricing_model = 'iteration-detail-unpriced-model', cost_multiplier = '1.5',
+                     input_token_semantics = ?1, session_id = 'detail-synthetic-session'
+                 WHERE request_id = 'detail-pricing-target'",
+                [INPUT_TOKEN_SEMANTICS_TOTAL],
+            )?;
+            insert_usage_log(
+                &conn,
+                "detail-untouched-row",
+                "codex",
+                "_codex_session",
+                "iteration-detail-unpriced-model",
+                "codex_session",
+                1_700_000_223,
+                800,
+                400,
+                0,
+                0,
+                200,
+                "0",
+            )?;
+            conn.execute(
+                "INSERT INTO session_log_sync
+                 (file_path, last_modified, last_line_offset, last_synced_at)
+                 VALUES ('synthetic/detail-source.jsonl', 123456789, 17, 1700000000)",
+                [],
+            )?;
+        }
+
+        let logs_sql = "SELECT * FROM proxy_request_logs ORDER BY request_id";
+        let cursors_sql = "SELECT * FROM session_log_sync ORDER BY file_path";
+        let (logs_before, cursors_before) = {
+            let conn = lock_conn!(db.conn);
+            (
+                detail_test_snapshot(&conn, logs_sql)?,
+                detail_test_snapshot(&conn, cursors_sql)?,
+            )
+        };
+        let unpriced = db
+            .get_request_detail("detail-pricing-target")?
+            .expect("unpriced detail");
+        assert_eq!(unpriced.total_cost_usd, "0");
+        {
+            let conn = lock_conn!(db.conn);
+            assert_eq!(detail_test_snapshot(&conn, logs_sql)?, logs_before);
+            assert_eq!(detail_test_snapshot(&conn, cursors_sql)?, cursors_before);
+            conn.execute(
+                "INSERT INTO model_pricing
+                 (model_id, display_name, input_cost_per_million, output_cost_per_million,
+                  cache_read_cost_per_million, cache_creation_cost_per_million)
+                 VALUES ('iteration-detail-unpriced-model', 'Synthetic Detail Price',
+                         '2', '3', '0.5', '1')",
+                [],
+            )?;
+            // Adding a price alone must not silently update the log; detail owns this backfill.
+            assert_eq!(detail_test_snapshot(&conn, logs_sql)?, logs_before);
+        }
+
+        let priced = db
+            .get_request_detail("detail-pricing-target")?
+            .expect("priced detail");
+        // Independent arithmetic: 900 fresh input + 300 output + 200 read + 100 write.
+        // At 2/3/0.5/1 USD per million these are 1800/900/100/100 micro-USD;
+        // (1800 + 900 + 100 + 100) * 1.5 = 4350 micro-USD. Components stay unscaled.
+        assert_eq!(priced.input_cost_usd, "0.001800");
+        assert_eq!(priced.output_cost_usd, "0.000900");
+        assert_eq!(priced.cache_read_cost_usd, "0.000100");
+        assert_eq!(priced.cache_creation_cost_usd, "0.000100");
+        assert_eq!(priced.total_cost_usd, "0.004350");
+        assert_eq!(priced.created_at, 1_700_000_222);
+        assert_eq!(priced.provider_name.as_deref(), Some("Detail Provider"));
+        let (logs_priced, prices_priced) = {
+            let conn = lock_conn!(db.conn);
+            let logs = detail_test_snapshot(&conn, logs_sql)?;
+            let cost_columns = [
+                "input_cost_usd",
+                "output_cost_usd",
+                "cache_read_cost_usd",
+                "cache_creation_cost_usd",
+                "total_cost_usd",
+            ];
+            let mut expected_logs = logs_before.clone();
+            let target = expected_logs
+                .iter_mut()
+                .find(|row| {
+                    row.iter().any(|(name, value)| {
+                        name == "request_id"
+                            && value
+                                == &rusqlite::types::Value::Text("detail-pricing-target".into())
+                    })
+                })
+                .expect("target snapshot");
+            for (name, value) in target {
+                if let Some(index) = cost_columns
+                    .iter()
+                    .position(|column| *column == name.as_str())
+                {
+                    *value = rusqlite::types::Value::Text(
+                        ["0.001800", "0.000900", "0.000100", "0.000100", "0.004350"][index].into(),
+                    );
+                }
+            }
+            // Every non-cost target field, every other row and all cursor fields are unchanged.
+            assert_eq!(logs, expected_logs);
+            assert_eq!(detail_test_snapshot(&conn, cursors_sql)?, cursors_before);
+            (
+                logs,
+                detail_test_snapshot(&conn, "SELECT * FROM model_pricing ORDER BY model_id")?,
+            )
+        };
+
+        let repeated = db
+            .get_request_detail("detail-pricing-target")?
+            .expect("repeat detail");
+        assert_eq!(
+            serde_json::to_value(&repeated).unwrap(),
+            serde_json::to_value(&priced).unwrap()
+        );
+        {
+            let conn = lock_conn!(db.conn);
+            assert_eq!(detail_test_snapshot(&conn, logs_sql)?, logs_priced);
+        }
+        drop(db);
+
+        let reopened = Database::memory()?;
+        {
+            let mut conn = lock_conn!(reopened.conn);
+            *conn = Connection::open(&db_path)?;
+            conn.execute_batch("PRAGMA foreign_keys = ON")?;
+            assert_eq!(detail_test_snapshot(&conn, logs_sql)?, logs_priced);
+            assert_eq!(detail_test_snapshot(&conn, cursors_sql)?, cursors_before);
+            assert_eq!(
+                detail_test_snapshot(&conn, "SELECT * FROM model_pricing ORDER BY model_id")?,
+                prices_priced
+            );
+        }
+        let detail = reopened
+            .get_request_detail("detail-pricing-target")?
+            .expect("reopened detail");
+        assert_eq!(
+            serde_json::to_value(&detail).unwrap(),
+            serde_json::to_value(&priced).unwrap()
+        );
+        {
+            let conn = lock_conn!(reopened.conn);
+            assert_eq!(detail_test_snapshot(&conn, logs_sql)?, logs_priced);
+            assert_eq!(detail_test_snapshot(&conn, cursors_sql)?, cursors_before);
+        }
+        drop(reopened);
+        println!("owned detail database closed: {}", db_path.display());
+        let owned_dir = temp_dir
+            .path()
+            .canonicalize()
+            .expect("resolve owned fixture");
+        assert!(owned_dir.starts_with(fixture_root.canonicalize().expect("resolve fixture root")));
+        temp_dir
+            .close()
+            .expect("remove only the owned closed fixture");
+        assert!(!owned_dir.exists());
         Ok(())
     }
 
