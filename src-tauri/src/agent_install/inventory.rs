@@ -1166,9 +1166,9 @@ fn refresh_destination_revision(destination: &mut ProbeDestination) {
     ]);
 }
 
-/// Default fresh-install label uses the measured 1.18.35 directory
-/// `@opencode-aidesktop`; `@opencodedesktop` remains for existing installs.
-const OPENCODE_WINDOWS_USER_DIRS: [&str; 2] = ["@opencode-aidesktop", "@opencodedesktop"];
+/// 默认位置用 FyAgent 一键安装的 OpenCode 2.x 目录 `@opencodedesktop`，
+/// `@opencode-aidesktop`（1.x）仍用于识别已有安装；与 desktop.rs 的 `windows_relative_exes` 对应。
+const OPENCODE_WINDOWS_USER_DIRS: [&str; 2] = ["@opencodedesktop", "@opencode-aidesktop"];
 
 #[cfg(any(target_os = "windows", test))]
 fn windows_current_user_destination_label(agent_id: AgentCatalogId) -> String {
@@ -1532,7 +1532,7 @@ mod tests {
     fn windows_current_user_destination_labels() {
         assert_eq!(
             windows_current_user_destination_label(AgentCatalogId::OpenCode),
-            "当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\@opencode-aidesktop）"
+            "当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\@opencodedesktop）"
         );
         assert_eq!(
             windows_current_user_destination_label(AgentCatalogId::QoderWork),
@@ -1551,7 +1551,7 @@ mod tests {
         };
         assert_eq!(
             label(AgentCatalogId::OpenCode),
-            vec!["当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\@opencode-aidesktop）"]
+            vec!["当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\@opencodedesktop）"]
         );
         assert_eq!(
             label(AgentCatalogId::QoderWork),
