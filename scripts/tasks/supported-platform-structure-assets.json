@@ -175,7 +175,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "665146061ea2797e73541719f67a5a11774fb64ff8934036504b90c41d648487"
+      "357fc2a1a3478ee5fa1db0d43732af674007ffa919f04a2fc825fe6d14406798"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -259,7 +259,7 @@
     ],
     [
       "src-tauri/src/services/model_probe.rs",
-      "051290df679e17d13df3ca035f23d7b6f7931a412eae3570807dc235bb8a2714"
+      "2cdaa1e8761a5c5618d0b5861dceef95c5c45df9b2f1407c9682184f0b3aa88f"
     ],
     [
       "src-tauri/src/services/provider/claude_write_projection.rs",

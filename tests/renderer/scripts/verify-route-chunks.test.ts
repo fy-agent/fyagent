@@ -123,6 +123,20 @@ describe("verifyRouteChunks", () => {
     );
   });
 
+  it.each([
+    "shared/platform/tauri/feature-ports/databaseRecovery.ts",
+    "shared/features/database-recovery-ui/DatabaseRecoveryDialog.tsx",
+  ])("rejects a missing retained database recovery entry %s", async (entry) => {
+    const distributionDirectory = await fixture((manifest) => {
+      manifest["_main.js"].dynamicImports = (
+        manifest["_main.js"].dynamicImports as string[]
+      ).filter((key) => key !== entry);
+    });
+    await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
+      "must dynamically import exactly",
+    );
+  });
+
   it("rejects a missing Agents composition entry", async () => {
     const distributionDirectory = await fixture((manifest) => {
       manifest["_main.js"].dynamicImports = [

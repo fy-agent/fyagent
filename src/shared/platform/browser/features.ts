@@ -128,6 +128,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       fetchModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
       checkModel: rejectNativeOnly,
+      getModelProbeStatus: rejectNativeOnly,
+      cancelModelProbe: rejectNativeOnly,
       bindXaiManaged: rejectNativeOnly,
       bindManagedProxy: rejectNativeOnly,
       fetchXaiManagedModels: rejectNativeOnly,
@@ -139,6 +141,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       saveModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
       checkModel: rejectNativeOnly,
+      getModelProbeStatus: rejectNativeOnly,
+      cancelModelProbe: rejectNativeOnly,
     },
     opencodeModels: {
       restoreManagedProxy: rejectNativeOnly,
@@ -148,6 +152,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       saveModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
       checkModel: rejectNativeOnly,
+      getModelProbeStatus: rejectNativeOnly,
+      cancelModelProbe: rejectNativeOnly,
     },
     skills: {
       getInstalled: async () => [],

@@ -40,6 +40,7 @@ import {
   sessionSummary,
 } from "./presentation";
 import { useManagedAuthLoginSession } from "./useManagedAuthLoginSession";
+import { summarizeAuthOverview } from "./summary";
 import "./page.css";
 
 type AuthView = "accounts" | "connections";
@@ -428,13 +429,7 @@ export function AuthPage() {
     null;
   const selectedConsumer =
     requestedConsumer ?? MANAGED_AUTH_CONSUMERS[0] ?? null;
-  const needsAttention =
-    overview.accounts.some((account) => account.health !== "ready") ||
-    overview.connections.some(
-      (connection) =>
-        connection.authStatus !== "connected" &&
-        connection.authStatus !== "disconnected",
-    );
+  const summary = summarizeAuthOverview(overview);
   const mobileDetailSelected =
     view === "accounts"
       ? requestedAccountId !== null && selectedAccountId !== null
@@ -501,7 +496,7 @@ export function AuthPage() {
             label:
               option.id === "accounts"
                 ? `账号 ${overview.accounts.length}`
-                : `软件连接 ${overview.connections.length}`,
+                : `软件连接 ${summary.connections.connected}/${summary.connections.total}`,
           }))}
           onChange={(next) =>
             updateRoute({
@@ -512,8 +507,11 @@ export function AuthPage() {
             })
           }
         />
-        <span data-attention={needsAttention ? "true" : undefined}>
-          {needsAttention ? "有状态需要处理" : "账号状态正常"}
+        <span
+          data-testid="managed-auth-overview-summary"
+          data-attention={summary.needsAttention ? "true" : undefined}
+        >
+          {summary.label}
         </span>
       </div>
 

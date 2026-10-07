@@ -113,6 +113,10 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).providers.checkReachability(...args),
       checkModel: async (...args) =>
         (await models()).providers.checkModel(...args),
+      getModelProbeStatus: async (...args) =>
+        (await models()).providers.getModelProbeStatus(...args),
+      cancelModelProbe: async (...args) =>
+        (await models()).providers.cancelModelProbe(...args),
       bindXaiManaged: async (...args) =>
         (await models()).providers.bindXaiManaged(...args),
       bindManagedProxy: async (...args) =>
@@ -133,6 +137,10 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).workbuddy.checkReachability(...args),
       checkModel: async (...args) =>
         (await models()).workbuddy.checkModel(...args),
+      getModelProbeStatus: async (...args) =>
+        (await models()).workbuddy.getModelProbeStatus(...args),
+      cancelModelProbe: async (...args) =>
+        (await models()).workbuddy.cancelModelProbe(...args),
     },
     opencodeModels: {
       restoreManagedProxy: async (...args) =>
@@ -149,6 +157,10 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).opencodeModels.checkReachability(...args),
       checkModel: async (...args) =>
         (await models()).opencodeModels.checkModel(...args),
+      getModelProbeStatus: async (...args) =>
+        (await models()).opencodeModels.getModelProbeStatus(...args),
+      cancelModelProbe: async (...args) =>
+        (await models()).opencodeModels.cancelModelProbe(...args),
     },
     ...createSimpleFeaturePorts(),
     ...createContentFeaturePorts(),

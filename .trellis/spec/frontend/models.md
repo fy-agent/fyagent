@@ -78,6 +78,8 @@ interface ProvidersPort {
   fetchModels(baseUrl: string, apiKey: string): Promise<FetchedModelRef[]>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
   bindXaiManaged(request: BindXaiManagedRequest): Promise<BindXaiManagedResult>;
   bindManagedProxy(
     request: BindManagedProxyRequest,
@@ -96,6 +98,8 @@ interface WorkBuddyPort {
   ): Promise<WorkBuddySaveModelsResult>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
 }
 
 interface OpenCodeModelsPort {
@@ -112,6 +116,8 @@ interface OpenCodeModelsPort {
   ): Promise<OpenCodeSaveModelsResult>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
 }
 
 interface TraeWorkPort {
@@ -147,6 +153,32 @@ interface ChangePlansPort {
 The current `/models` page uses only `traeWork.getModelIds()`. TRAE validation,
 probe, and cancellation are real shared/native capabilities, but this route
 does not currently expose them as model-management controls.
+
+### Model probe lifecycle DTOs
+
+`ModelProbeRequest` adds a required lowercase canonical RFC4122 UUID v4
+`requestId` to the existing app, URL, credential, model and protocol request.
+The three focused model Ports share the following public read-only lifecycle:
+
+```ts
+interface ModelProbeSnapshot {
+  requestId: string;
+  phase: "running" | "retrying" | "cancelling" | "completed" | "cancelled";
+  requestCount: number;
+  retryCount: number;
+}
+```
+
+`ModelProbeResult` retains its prior status/message/latency/model fields and
+requires `requestId: string | null`, `terminal: "completed" | "cancelled"`,
+`requestCount`, `retryCount` and `inputMode: "compatibility"`. Registered desktop
+commands always return the matching non-null ID; null is only an internal
+unregistered service result. The native adapter rejects missing/mismatched IDs,
+unknown members, invalid count combinations and success with a cancelled terminal.
+Request counts are integers 0–2, retry count is `max(0, requestCount - 1)`;
+`running` cannot report 2, and `retrying` reports 2. Identity-only native commands
+are `stream_check_model_status` and `stream_check_model_cancel`; snapshots carry
+no credential, URL or model body.
 
 ### Core write DTOs
 
@@ -443,6 +475,28 @@ shared lifecycle here.
 - Reachability and model probes are separate operations. Model probe is offered
   only after candidate IDs exist and uses the selected ID plus the current
   draft revision; changing the owning draft invalidates a stale result.
+- A logical model probe sends one fixed-protocol URL request, with one additional
+  attempt only after an actual transport timeout. HTTP response text containing
+  `timeout` or `abort` is not a retry trigger. Public counts record dispatched
+  attempts: cancellation before dispatch is zero; the maximum is two.
+- Before testing, the dialog explains estimated compatibility input of about
+  1024 tokens, the possible second request and possible usage for each request.
+  This estimate is not billed-token or cost measurement. Anthropic keeps its
+  output cap; Chat/Responses keep their protocol compatibility without a universal
+  output cap. Local short-input accept/reject fixtures must pass before changing
+  that default; they do not prove a real upstream's minimum input or billing.
+- Cancel acknowledgement displays `cancelling` and leaves the operation busy.
+  Only the original matching probe result can display `cancelled`, after native
+  transport disposal and terminal arbitration. A completed terminal cannot flip
+  to cancelled; a failed cancellation can be retried. Previously dispatched
+  upstream work may still incur usage after local cancellation.
+- Operation identity admits one probe/cancel in a tick. Hidden persistent surfaces
+  pause status polling without dropping the original result Promise; unmount
+  requests best-effort native cancellation. Results and progress from an old draft
+  revision stay out of the current draft. Native status phases/counts merge
+  monotonically, and obsolete read/cancel acknowledgements cannot replace newer
+  terminal or cancelling evidence. The registry is bounded to 128 identities with
+  five-minute completed retention and is not persisted across native restart.
 - A successful fetch/probe proves only the native request result. It does not
   prove the configuration was saved or that a vendor process reloaded it.
 - `ModelsWriteConfirmDialog` is a target/path confirmation, while a Change Plan
@@ -517,7 +571,16 @@ assertion owners include:
   model ID parsing;
 - `tests/renderer/pages/models/ModelConnectivityTest.test.tsx` and
   `workBuddyModels.test.ts`: draft-revision probe invalidation, search/grouping,
-  ordered uniqueness, and fetched/manual split;
+  ordered uniqueness, fetched/manual split, same-tick probe/cancel admission,
+  cancel acknowledgement versus matching terminal, failed cancel retry, hidden
+  polling, unmount, mismatched identity and late old-draft results;
+- `tests/renderer/platform/modelProbePort.test.ts`: exact identity-only lifecycle
+  payloads, mandatory returned counts, mismatch/impossible/expanded DTO rejection,
+  cancelled-before-dispatch, all three focused Ports and native-only browser calls;
+- `services::model_probe::tests`: three fixed protocol request projections,
+  short-input accept/reject loopbacks, timeout-only two-attempt behavior, zero-
+  dispatch cancellation, in-flight disposal, irreversible terminals, canonical RFC
+  identity and credential redaction before bounded diagnostic truncation;
 - `tests/renderer/platform/featurePorts.test.ts`: exact Provider, WorkBuddy, OpenCode,
   and TRAE command/payload mappings plus every runtime parser currently owned by
   the adapter. Reachability payload tests pass URL only; a future model-probe

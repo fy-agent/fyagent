@@ -11,8 +11,14 @@ import {
   installRichTauriFeatureFixture,
 } from "./support/features";
 
-test.beforeEach(async ({ page }) => {
-  await installRichTauriFeatureFixture(page);
+test.beforeEach(async ({ page }, testInfo) => {
+  await installRichTauriFeatureFixture(page, {
+    authSummaryScenario:
+      testInfo.title ===
+      "summarizes mixed connection states at compact desktop width"
+        ? "mixed"
+        : undefined,
+  });
 });
 
 test("renders account identity, software connection and current request source as separate fields", async ({
@@ -128,5 +134,32 @@ test("restores focus to add account after Escape closes the login dialog", async
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(addAccount).toBeFocused();
+  await expectHealthyPage(page, health);
+});
+
+test("summarizes mixed connection states at compact desktop width", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 900, height: 600 });
+  const health = monitorPageHealth(page);
+  await openRendererPage(page, "/auth?view=connections");
+  await expect(page.getByRole("tab", { name: "软件连接 1/6" })).toBeVisible();
+  const summary = page.getByTestId("managed-auth-overview-summary");
+  await expect(summary).toContainText("部分连接 1/6");
+  await expect(summary).toContainText("账号已保存");
+  await expect(summary).toContainText("正在确认");
+  await expect(summary).toContainText("需要重新登录");
+  await expect(summary).toContainText("等待重启");
+  await expect(summary).toContainText("状态不可用");
+  await expect(summary).toContainText("1 个位置的请求来源暂时无法确认");
+  await expect(summary).toHaveAttribute("data-attention", "true");
+  await expectNoHorizontalOverflow(page);
+  const box = await summary.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(900);
+  await page.screenshot({
+    path: testInfo.outputPath("i18-mixed-summary-900x600.png"),
+  });
   await expectHealthyPage(page, health);
 });

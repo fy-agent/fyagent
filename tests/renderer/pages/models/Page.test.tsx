@@ -2096,6 +2096,11 @@ describe("Models page", () => {
   it("probes a selected model after IDs exist on WorkBuddy, Provider, and OpenCode", async () => {
     const user = userEvent.setup();
     const probed = {
+      requestId: null,
+      terminal: "completed" as const,
+      requestCount: 1,
+      retryCount: 0,
+      inputMode: "compatibility" as const,
       success: false,
       status: "failed" as const,
       message: 'HTTP 401: {"error":{"message":"invalid api key"}}',
@@ -2120,19 +2125,28 @@ describe("Models page", () => {
       ids: [],
       revision: "revision-1",
     }));
-    ports.workbuddy.checkModel = vi.fn(async () => probed);
+    ports.workbuddy.checkModel = vi.fn(async (request) => ({
+      ...probed,
+      requestId: request.requestId,
+    }));
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "",
       writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
-    ports.providers.checkModel = vi.fn(async () => probed);
+    ports.providers.checkModel = vi.fn(async (request) => ({
+      ...probed,
+      requestId: request.requestId,
+    }));
     ports.opencodeModels.getSnapshot = vi.fn(async () => ({
       providers: [],
       revision: "revision-1",
       ...TEST_OPENCODE_SNAPSHOT_META,
     }));
-    ports.opencodeModels.checkModel = vi.fn(async () => probed);
+    ports.opencodeModels.checkModel = vi.fn(async (request) => ({
+      ...probed,
+      requestId: request.requestId,
+    }));
 
     const workbuddyView = renderPage(ports, "workbuddy");
     await screen.findByText("已有第三方模型数量");
@@ -2155,6 +2169,9 @@ describe("Models page", () => {
       within(workbuddyDialog).getByRole("button", { name: "开始测试" }),
     );
     expect(ports.workbuddy.checkModel).toHaveBeenCalledWith({
+      requestId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      ),
       app: "workbuddy",
       baseUrl: "https://draft.example/anthropic",
       apiKey: "wb-key",
@@ -2185,6 +2202,9 @@ describe("Models page", () => {
       within(codexDialog).getByRole("button", { name: "开始测试" }),
     );
     expect(ports.providers.checkModel).toHaveBeenCalledWith({
+      requestId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      ),
       app: "codex",
       baseUrl: "https://codex.example/v1",
       apiKey: "codex-key",
@@ -2216,6 +2236,9 @@ describe("Models page", () => {
       within(opencodeDialog).getByRole("button", { name: "开始测试" }),
     );
     expect(ports.opencodeModels.checkModel).toHaveBeenCalledWith({
+      requestId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      ),
       app: "opencode",
       baseUrl: "https://opencode.example/v1",
       apiKey: "oc-key",

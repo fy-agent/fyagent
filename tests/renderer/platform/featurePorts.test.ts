@@ -1,3 +1,4 @@
+const probeRequestId = "00000000-0000-4000-8000-000000000001";
 import {
   codexInstallPreflightFixture,
   confirmationId,
@@ -591,6 +592,7 @@ describe("Renderer feature ports", () => {
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(
       ports.providers.checkModel({
+        requestId: probeRequestId,
         app: "claude",
         baseUrl: "https://example.test",
         apiKey: "key",
@@ -671,6 +673,10 @@ describe("Renderer feature ports", () => {
       }
       if (command === "stream_check_model") {
         return {
+          requestId: probeRequestId,
+          terminal: "completed",
+          requestCount: 1,
+          inputMode: "compatibility",
           status: "failed",
           success: false,
           message: "HTTP 401: invalid api key",
@@ -727,6 +733,7 @@ describe("Renderer feature ports", () => {
     });
     await expect(
       ports.providers.checkModel({
+        requestId: probeRequestId,
         app: "codex",
         baseUrl: "https://example.test/v1",
         apiKey: "mutation-only-key",
@@ -739,6 +746,11 @@ describe("Renderer feature ports", () => {
       responseTimeMs: 18,
       httpStatus: 401,
       modelUsed: "model-a",
+      requestId: probeRequestId,
+      terminal: "completed",
+      requestCount: 1,
+      inputMode: "compatibility",
+      retryCount: 0,
       errorCategory: null,
     });
 
@@ -771,6 +783,7 @@ describe("Renderer feature ports", () => {
       [
         "stream_check_model",
         {
+          requestId: probeRequestId,
           app: "codex",
           baseUrl: "https://example.test/v1",
           apiKey: "mutation-only-key",
@@ -853,6 +866,10 @@ describe("Renderer feature ports", () => {
       }
       if (command === "stream_check_model") {
         return {
+          requestId: probeRequestId,
+          terminal: "completed",
+          requestCount: 1,
+          inputMode: "compatibility",
           status: "failed",
           success: false,
           message: "HTTP 401: invalid api key",
@@ -912,6 +929,7 @@ describe("Renderer feature ports", () => {
     });
     await expect(
       ports.opencodeModels.checkModel({
+        requestId: probeRequestId,
         app: "opencode",
         baseUrl: "https://example.test/v1",
         apiKey: "oc-key",
@@ -924,6 +942,11 @@ describe("Renderer feature ports", () => {
       responseTimeMs: 18,
       httpStatus: 401,
       modelUsed: "model-a",
+      requestId: probeRequestId,
+      terminal: "completed",
+      requestCount: 1,
+      inputMode: "compatibility",
+      retryCount: 0,
       errorCategory: null,
     });
 
@@ -948,6 +971,7 @@ describe("Renderer feature ports", () => {
       [
         "stream_check_model",
         {
+          requestId: probeRequestId,
           app: "opencode",
           baseUrl: "https://example.test/v1",
           apiKey: "oc-key",

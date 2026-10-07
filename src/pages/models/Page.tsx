@@ -783,8 +783,15 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
               onBusyChange={(probing) =>
                 setBusy(probing ? "reachability" : null)
               }
-              onProbe={(modelId) =>
+              onStatus={(requestId) =>
+                ports.workbuddy.getModelProbeStatus(requestId)
+              }
+              onCancel={(requestId) =>
+                ports.workbuddy.cancelModelProbe(requestId)
+              }
+              onProbe={(modelId, requestId) =>
                 ports.workbuddy.checkModel({
+                  requestId,
                   app: "workbuddy",
                   baseUrl: baseUrl.trim(),
                   apiKey: apiKeyRef.current.trim(),
@@ -1896,8 +1903,15 @@ function ProviderPanel({
               resetVersion={draftCommit.resetVersion}
               onPrepare={prepareModelProbe}
               onBusyChange={setProbeBusy}
-              onProbe={(selectedModelId) =>
+              onStatus={(requestId) =>
+                ports.providers.getModelProbeStatus(requestId)
+              }
+              onCancel={(requestId) =>
+                ports.providers.cancelModelProbe(requestId)
+              }
+              onProbe={(selectedModelId, requestId) =>
                 ports.providers.checkModel({
+                  requestId,
                   app,
                   baseUrl: baseUrl.trim(),
                   apiKey: apiKeyRef.current.trim(),

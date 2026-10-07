@@ -299,6 +299,8 @@ commands.allow = [
   "stream_check_all_providers",
   "stream_check_provider",
   "stream_check_model",
+  "stream_check_model_status",
+  "stream_check_model_cancel",
   "stream_check_url",
   "switch_provider",
   "switch_provider_with_result",

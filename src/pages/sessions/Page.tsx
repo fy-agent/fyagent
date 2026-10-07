@@ -102,7 +102,7 @@ export function SessionsPage() {
   } = useQuery<SessionMeta[]>({
     queryKey: ["sessions-list"],
     queryFn: async () => ports.sessions.listSessions(),
-    enabled: isNative,
+    enabled: isNative && visible,
   });
 
   const {
@@ -113,7 +113,7 @@ export function SessionsPage() {
   } = useQuery<RestoreAttempt[]>({
     queryKey: ["sessions-attempts"],
     queryFn: async () => ports.sessions.listRestoreAttempts(),
-    enabled: isNative,
+    enabled: isNative && visible,
   });
 
   // Probe all 7 providers to get real runtime capability
@@ -142,7 +142,7 @@ export function SessionsPage() {
       );
       return result;
     },
-    enabled: isNative,
+    enabled: isNative && visible,
   });
 
   // ─── Selected Session Resolution ──────────────────────────────────
@@ -212,7 +212,7 @@ export function SessionsPage() {
 
       return { rawMessages: rawMsgs, migratable, error: errPayload };
     },
-    enabled: isNative && Boolean(selectedSession),
+    enabled: isNative && visible && Boolean(selectedSession),
   });
 
   const rawMessages = sessionDetailData?.rawMessages ?? EMPTY_MESSAGES;
@@ -256,10 +256,26 @@ export function SessionsPage() {
   const refreshSessions = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["sessions-list"] }),
-      queryClient.invalidateQueries({ queryKey: ["sessions-attempts"] }),
       queryClient.invalidateQueries({ queryKey: ["session-detail"] }),
     ]);
   }, [queryClient]);
+
+  // Explicit operation readback must finish even when its page is hidden.
+  // Disabled query observers do not fetch in response to invalidation alone.
+  const refreshRestoreAttempts = useCallback(async () => {
+    // fetchQuery reuses an in-flight read even with staleTime: 0. Retire
+    // only the old receipt read, keeping its cached preimage, before reading
+    // this operation's terminal state. Native operation Promises are untouched.
+    await queryClient.cancelQueries(
+      { queryKey: ["sessions-attempts"], exact: true },
+      { revert: true },
+    );
+    return queryClient.fetchQuery<RestoreAttempt[]>({
+      queryKey: ["sessions-attempts"],
+      queryFn: () => ports.sessions.listRestoreAttempts(),
+      staleTime: 0,
+    });
+  }, [ports.sessions, queryClient]);
 
   // ─── Filtered Sessions ───────────────────────────────────────────
   const filteredSessions = useMemo(() => {
@@ -605,6 +621,8 @@ export function SessionsPage() {
     } finally {
       // A missing response may follow publication. Reread persisted receipts
       // even when the transport rejects; never fabricate a write-free result.
+      // Query error state retains readback failure without replacing the restore result.
+      await refreshRestoreAttempts().catch(() => undefined);
       void refreshSessions();
     }
     const classification = classifyRestoreResults(res);
@@ -636,7 +654,6 @@ export function SessionsPage() {
       });
     }
 
-    void refreshSessions();
     return res;
   };
 
@@ -689,6 +706,7 @@ export function SessionsPage() {
         description: feedback.message,
       });
     } finally {
+      await refreshRestoreAttempts().catch(() => undefined);
       setVerifyingReadback(false);
     }
   };
@@ -696,9 +714,13 @@ export function SessionsPage() {
   const handleReviewRestore = async () => {
     setReviewingAttempts(true);
     try {
-      await ports.sessions.reconcileRestoreAttempts();
-      const receipts = await ports.sessions.listRestoreAttempts();
-      queryClient.setQueryData(["sessions-attempts"], receipts);
+      try {
+        await ports.sessions.reconcileRestoreAttempts();
+      } catch (error) {
+        await refreshRestoreAttempts().catch(() => undefined);
+        throw error;
+      }
+      const receipts = await refreshRestoreAttempts();
       return receipts;
     } finally {
       setReviewingAttempts(false);
@@ -710,13 +732,16 @@ export function SessionsPage() {
     claimedStage: RestoreStage,
     note?: string,
   ) => {
-    await ports.sessions.recordUserAttestation(attemptId, claimedStage, note);
+    try {
+      await ports.sessions.recordUserAttestation(attemptId, claimedStage, note);
+    } finally {
+      await refreshRestoreAttempts().catch(() => undefined);
+    }
     notify({
       tone: "success",
       title: "已记录手动续聊标记",
       description: "已添加您的手动确认标记。系统状态保持客观记录不变。",
     });
-    await queryClient.invalidateQueries({ queryKey: ["sessions-attempts"] });
   };
 
   const handleResumeInTarget = async () => {
@@ -1567,6 +1592,7 @@ export function SessionsPage() {
           try {
             return await ports.sessions.verifyNativeReadback(attemptId);
           } finally {
+            await refreshRestoreAttempts().catch(() => undefined);
             void refreshSessions();
           }
         }}

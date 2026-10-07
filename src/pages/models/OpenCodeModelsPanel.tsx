@@ -850,8 +850,15 @@ export function OpenCodeModelsPanel({
                   onBusyChange={(probing) =>
                     setBusy(probing ? "reachability" : null)
                   }
-                  onProbe={(modelId) =>
+                  onStatus={(requestId) =>
+                    ports.opencodeModels.getModelProbeStatus(requestId)
+                  }
+                  onCancel={(requestId) =>
+                    ports.opencodeModels.cancelModelProbe(requestId)
+                  }
+                  onProbe={(modelId, requestId) =>
                     ports.opencodeModels.checkModel({
+                      requestId,
                       app: "opencode",
                       baseUrl: baseUrl.trim(),
                       apiKey: apiKeyRef.current.trim(),

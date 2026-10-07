@@ -7,6 +7,8 @@ import { changePlanUpsertWire } from "../fixtures/changePlans";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
+const probeRequestId = "00000000-0000-4000-8000-000000000001";
+
 const request: ProviderQuickSetupRequest = {
   name: "Chat API",
   baseUrl: "https://example.test/v1",
@@ -110,8 +112,13 @@ describe("API protocol native boundary", () => {
       modelUsed: "model-a",
       testedAt: 1,
       retryCount: 0,
+      requestId: probeRequestId,
+      terminal: "completed",
+      requestCount: 1,
+      inputMode: "compatibility",
     });
     await createModelFeaturePorts().providers.checkModel({
+      requestId: probeRequestId,
       app: "codex",
       baseUrl: request.baseUrl,
       apiKey: request.apiKey,
@@ -119,6 +126,7 @@ describe("API protocol native boundary", () => {
       protocol: "chat",
     });
     expect(invoke).toHaveBeenCalledWith("stream_check_model", {
+      requestId: probeRequestId,
       app: "codex",
       baseUrl: request.baseUrl,
       apiKey: request.apiKey,

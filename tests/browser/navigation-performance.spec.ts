@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
-import { installRichTauriFeatureFixture } from "./support/features";
+import {
+  featureFixtureCalls,
+  installRichTauriFeatureFixture,
+} from "./support/features";
 
 const routes = [
   "health",
@@ -10,10 +13,11 @@ const routes = [
   "mcp",
   "prompts",
   "memory",
+  "sessions",
   "agents",
 ];
 
-test("production boots all eight primary routes without initialization errors", async ({
+test("production boots all nine primary routes without initialization errors", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -25,6 +29,23 @@ test("production boots all eight primary routes without initialization errors", 
     await page.locator(`.fy-side-navigation a[href="#/${route}"]`).click();
     await expect(page.getByTestId(`${route}-page`)).toBeVisible();
   }
+  await expect(
+    page
+      .getByTestId("sessions-page")
+      .getByText("浏览器会话 Alpha", { exact: true }),
+  ).toHaveCount(1);
+  const calls = await featureFixtureCalls(page);
+  expect(calls.some((call) => call.command === "list_sessions")).toBe(true);
+  expect(calls.some((call) => call.command === "list_restore_attempts")).toBe(
+    true,
+  );
+  expect(
+    new Set(
+      calls
+        .filter((call) => call.command === "probe_local_provider")
+        .map((call) => call.payload.providerId),
+    ).size,
+  ).toBe(7);
   expect(errors).toEqual([]);
 });
 

@@ -136,6 +136,25 @@ authorize a new binding or a blind retry. Source-read/package-validation errors
 before the restore call remain editable and can be retried without claiming a
 target write happened.
 
+The persistent Sessions surface gates automatic list, local-probe, detail and
+receipt observation by visibility. Hiding a page does not cancel its native
+restore, verify, attestation or reconciliation Promise or discard the known
+written stage. Each explicit operation rereads persisted attempts even while
+hidden and after rejection. Terminal readback first cancels acceptance of the
+exact previous `sessions-attempts` query while reverting to its cached preimage,
+then starts a fresh `fetchQuery(staleTime: 0)`. Stale time alone is insufficient:
+TanStack Query shares an existing in-flight read. A late pre-operation response
+cannot overwrite the new receipt. Readback failure remains a Query error and
+preserves the operation's original result/rejection and any known write facts;
+it does not turn failure into success or authorize another writer.
+
+`tests/renderer/pages/sessions/visibility.test.tsx` exercises page delegates,
+hidden observation, late results, forced-read failures and old-read isolation
+using production DTO parsers. Existing failure-lifecycle tests retain real dialog
+coverage. Browser startup proves prefetch without mounting and DOM/search
+retention; nine-route production navigation keeps the established budgets.
+These fixtures do not prove native process lifetime or another platform.
+
 ## 4. Validation & Error Matrix
 
 | Condition                                                                       | Required result                                                                           |

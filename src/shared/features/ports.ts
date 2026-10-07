@@ -70,6 +70,7 @@ import type {
   OpenCodeSaveModelsResult,
   ModelProbeRequest,
   ModelProbeResult,
+  ModelProbeSnapshot,
   ReachabilityResult,
   DailyMemoryFileInfo,
   DailyMemorySearchResult,
@@ -161,6 +162,8 @@ export interface ProvidersPort {
   fetchModels(baseUrl: string, apiKey: string): Promise<FetchedModelRef[]>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
   bindXaiManaged(request: BindXaiManagedRequest): Promise<BindXaiManagedResult>;
   bindManagedProxy(
     request: BindManagedProxyRequest,
@@ -179,6 +182,8 @@ export interface WorkBuddyPort {
   ): Promise<WorkBuddySaveModelsResult>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
 }
 
 export interface OpenCodeModelsPort {
@@ -195,6 +200,8 @@ export interface OpenCodeModelsPort {
   ): Promise<OpenCodeSaveModelsResult>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
 }
 
 export interface SkillsPort {

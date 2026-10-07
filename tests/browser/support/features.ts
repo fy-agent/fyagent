@@ -16,6 +16,7 @@ export interface FeatureFixtureCall {
 }
 
 export interface RichFeatureFixtureOptions {
+  authSummaryScenario?: "mixed";
   firstUseGuideState?: "pending" | "dismissed";
   healthFailure?: AgentCatalogId;
   healthStale?: boolean;
@@ -1025,6 +1026,33 @@ export async function installRichTauriFeatureFixture(
       activeSessions: [] as Array<Record<string, unknown>>,
       reasonCodes: [],
     };
+    if (fixtureOptions.authSummaryScenario === "mixed") {
+      const original = managedAuthOverview.connections[0];
+      managedAuthOverview.connections = [
+        ...managedAuthOverview.connections,
+        {
+          ...original,
+          connectionId: `mc1:${"7".repeat(32)}`,
+          revision: managedRevision("7"),
+          targetId: "target:codex:saved",
+          targetLabel: "已保存位置",
+          authStatus: "disconnected",
+        },
+        {
+          ...original,
+          connectionId: `mc1:${"8".repeat(32)}`,
+          revision: managedRevision("8"),
+          targetId: "target:codex:checking",
+          targetLabel: "检查中位置",
+          authStatus: "checking",
+        },
+      ];
+      managedAuthOverview.connections[1].pendingRestart = true;
+      managedAuthOverview.connections[1].authStatus = "pending_restart";
+      managedAuthOverview.connections[2].authStatus = "requires_reauth";
+      managedAuthOverview.connections[3].authStatus = "unavailable";
+      managedAuthOverview.connections[3].requestMode = "unknown";
+    }
     const managedAuthSessions = new Map<
       string,
       { snapshot: Record<string, unknown>; polls: number }
@@ -1948,6 +1976,51 @@ export async function installRichTauriFeatureFixture(
             firstUseGuideState = "dismissed";
             localStorage.setItem(guideStorageKey, firstUseGuideState);
             return firstUseGuideState;
+          // Read-only synthetic sessions exercise the real route/DTO path.
+          // No restore or filesystem mutation is admitted by this fixture.
+          case "list_sessions":
+            return [
+              {
+                providerId: "codex",
+                sessionId: "browser-session-alpha",
+                title: "浏览器会话 Alpha",
+                summary: "受控导航与草稿保活样本",
+                projectDir: "/browser-fixture/workspace",
+                sourcePath: "/browser-fixture/session-alpha.jsonl",
+                createdAt: 1791324000000,
+                lastActiveAt: 1791324000000,
+              },
+              {
+                providerId: "claude",
+                sessionId: "browser-session-beta",
+                title: "浏览器会话 Beta",
+                sourcePath: "/browser-fixture/session-beta.jsonl",
+              },
+            ];
+          case "list_restore_attempts":
+            return [];
+          case "probe_local_provider": {
+            const providerId = String(payload.providerId);
+            if (
+              ![
+                "codex",
+                "opencode",
+                "hermes",
+                "gemini",
+                "claude",
+                "grokbuild",
+                "openclaw",
+              ].includes(providerId)
+            )
+              throw new Error("Unsupported fixture session provider");
+            return {
+              providerId,
+              installed: false,
+              extractionSupported: false,
+              writeSupported: false,
+              reasonCode: "browser_fixture_no_native_runtime",
+            };
+          }
           case "get_settings":
             return {
               skillSyncMethod: "auto",
