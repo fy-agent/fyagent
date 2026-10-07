@@ -2637,7 +2637,7 @@ fn create_anthropic_sse_stream_from_responses_raw<E: std::error::Error + Send + 
                             // ================================================
                             // Text and refusal deltas share one text content block.
                             // ================================================
-                            "response.output_text.delta" | "response.refusal.delta" => {
+                            "response.output_text.delta" => {
                                 if let Some(delta) = data.get("delta").and_then(|d| d.as_str()) {
                                     if preserve_web_search_citations {
                                         buffered_citation_text.record_delta(&data, delta);

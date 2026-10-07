@@ -1,6 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use crate::config::{atomic_write, delete_file, read_json_file, write_json_file, write_text_file};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+use crate::config::{
+    atomic_write, delete_file, read_json_file, sanitize_provider_name, write_json_file,
+    write_text_file,
+};
 use crate::error::AppError;
 use crate::provider::{Provider, ProviderMeta};
 use serde::{Deserialize, Serialize};
@@ -2433,6 +2438,39 @@ pub fn preflight_codex_live_write(
         crate::settings::preserve_codex_official_auth_on_switch(),
     )
     .map(|_| ())
+}
+
+pub fn write_codex_live_for_provider(
+    category: Option<&str>,
+    auth: &Value,
+    config_text: Option<&str>,
+) -> Result<(), AppError> {
+    let plan = plan_codex_live_write(
+        category,
+        auth,
+        config_text,
+        crate::settings::preserve_codex_official_auth_on_switch(),
+    )?;
+    if plan.write_full_auth {
+        return write_codex_live_atomic(auth, plan.config_text.as_deref());
+    }
+    write_codex_live_config_atomic(plan.config_text.as_deref())?;
+    // Config is already committed at this point, so a cleanup failure
+    // degrades to a warning instead of reporting an unswitched state.
+    if plan.remove_auth_file {
+        remove_codex_live_auth_after_third_party_switch();
+    }
+    Ok(())
+}
+
+fn remove_codex_live_auth_after_third_party_switch() {
+    let auth_path = get_codex_auth_path();
+    if !auth_path.exists() {
+        return;
+    }
+    if let Err(e) = delete_file(&auth_path) {
+        log::warn!("Failed to remove auth.json after a third-party Codex switch: {e}");
+    }
 }
 
 /// A request-source switch owns routing/model fields, not account credentials

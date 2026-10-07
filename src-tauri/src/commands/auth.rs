@@ -1,5 +1,7 @@
 use tauri::State;
 
+use crate::store::AppState;
+
 use crate::app_config::AppType;
 use crate::commands::codex_oauth::CodexOAuthState;
 use crate::commands::copilot::CopilotAuthState;

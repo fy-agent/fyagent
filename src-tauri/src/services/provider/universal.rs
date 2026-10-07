@@ -165,7 +165,7 @@ fn sync_projection(
     Ok(())
 }
 
-fn merge_json(base: &mut Value, patch: &Value) {
+pub(super) fn merge_json(base: &mut Value, patch: &Value) {
     match (base, patch) {
         (Value::Object(base_map), Value::Object(patch_map)) => {
             for (key, patch_value) in patch_map {

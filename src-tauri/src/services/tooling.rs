@@ -79,7 +79,7 @@ pub(crate) use versions::{
     github_latest_release_url, parse_github_latest_release_tag, FIXED_GITHUB_OPENCODE_REPO,
 };
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 use discovery::is_conflicting;
 #[cfg(test)]
 use discovery::plan_command_for;
@@ -160,8 +160,8 @@ impl ToolVersion {
     }
 }
 
-const VALID_TOOLS: [&str; 8] = [
-    "claude", "codex", "gemini", "grok", "opencode", "openclaw", "hermes", "pi",
+const VALID_TOOLS: [&str; 7] = [
+    "claude", "codex", "gemini", "grok", "opencode", "openclaw", "hermes",
 ];
 
 const CODEX_CLI_LIFECYCLE_DISABLED_MESSAGE: &str =
@@ -1683,6 +1683,16 @@ fn resolve_path_default(
     Ok(None)
 }
 
+#[cfg(target_os = "macos")]
+fn prepend_search_dir_to_path(dir: &Path, current_path: &std::ffi::OsStr) -> std::ffi::OsString {
+    let mut path = dir.as_os_str().to_os_string();
+    if !current_path.is_empty() {
+        path.push(":");
+        path.push(current_path);
+    }
+    path
+}
+
 /// 升级预检/冲突诊断的单条子进程探测预算。枚举会对每个工具开一次登录 shell、对每处
 /// 安装跑一次 `--version`，任何一条挂死（.zshrc 阻塞、nvm shim 指向已删除的 node 等）
 /// 都会卡住整个"全部升级"预检——到点整组击杀，该条按探测失败降级，预检继续。
@@ -1740,26 +1750,26 @@ fn run_probe_version_command(
 /// `build_tool_search_paths`，但不在首个命中处停止——而是对每个去重后的真实
 /// 可执行文件都跑一次 `--version`，从而能发现"升级写入 A 处、PATH 实际用 B 处"。
 fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
-    #[cfg(target_os = "macos")]
-    use std::process::Command;
-
     if elevated_windows_cli_boundary_active() {
         return Vec::new();
     }
 
     let search_paths = build_tool_search_paths(tool);
     #[cfg(target_os = "macos")]
-    let current_path = std::env::var_os("PATH")
-        .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let path_default = resolve_path_default(tool, None).ok().flatten();
+    let current_path = std::env::var_os("PATH").unwrap_or_default();
+    let path_default = resolve_path_default(
+        tool,
+        CommandDeadline::from_timeout(Some(INSTALL_PROBE_TIMEOUT)),
+    )
+    .ok()
+    .flatten();
 
     let mut seen: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
     let mut installs: Vec<ToolInstallation> = Vec::new();
 
     for dir in &search_paths {
         #[cfg(target_os = "macos")]
-        let new_path = format!("{}:{}", dir.display(), current_path);
+        let new_path = prepend_search_dir_to_path(dir, &current_path);
 
         for tool_path in tool_executable_candidates(tool, dir) {
             if !tool_path.exists() {
@@ -1773,12 +1783,9 @@ fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
             }
 
             #[cfg(target_os = "windows")]
-            let output = run_windows_tool_version_command(&tool_path);
+            let output = run_probe_version_command(&tool_path, "");
             #[cfg(target_os = "macos")]
-            let output = Command::new(&tool_path)
-                .arg("--version")
-                .env("PATH", &new_path)
-                .output();
+            let output = run_probe_version_command(&tool_path, &new_path);
 
             let (version, runnable, error) = match output {
                 Ok(out) if out.status.success() => {
@@ -1834,7 +1841,6 @@ fn npm_package_for(tool: &str) -> Option<&'static str> {
         "grok" => Some("@xai-official/grok"),
         "opencode" => Some("opencode-ai"),
         "openclaw" => Some("openclaw"),
-        "pi" => Some("@earendil-works/pi-coding-agent"),
         _ => None,
     }
 }
@@ -2440,7 +2446,6 @@ fn capture_child_pipe(mut pipe: impl std::io::Read, limit: Option<usize>) -> Cap
     CapturedPipe { bytes, overflowed }
 }
 
-#[cfg(target_os = "macos")]
 fn wait_child_output(
     child: std::process::Child,
     deadline: Option<CommandDeadline>,
@@ -2722,7 +2727,6 @@ fn install_command_for(tool: &str) -> String {
 /// 根据提供商配置的环境变量启动一个带有该提供商特定设置的终端
 /// 无需检查是否为当前激活的提供商，任何提供商都可以打开终端
 #[allow(non_snake_case)]
-#[tauri::command]
 pub async fn open_provider_terminal(
     state: &crate::store::AppState,
     app: String,
@@ -3693,20 +3697,13 @@ mod tests {
     }
 
     #[test]
-    fn pi_lifecycle_metadata_matches_pinned_distribution() {
+    fn pi_lifecycle_is_deferred_to_client_adaptation() {
         let requested = vec!["unsupported".to_string(), "pi".to_string()];
-        assert_eq!(normalize_requested_tools(&requested), vec!["pi"]);
-        assert_eq!(tool_display_name("pi"), "Pi");
-        assert_eq!(
-            npm_package_for("pi"),
-            Some("@earendil-works/pi-coding-agent")
-        );
-        assert_eq!(
-            npm_install_command_for("pi"),
-            Some("npm i -g @earendil-works/pi-coding-agent@latest")
-        );
-        // The verified distribution exposes `pi --version`, but no updater
-        // contract is assumed; upgrades stay on the package-manager path.
+        assert!(normalize_requested_tools(&requested).is_empty());
+        assert_eq!(tool_display_name("pi"), "Unknown");
+        assert_eq!(npm_package_for("pi"), None);
+        assert_eq!(npm_install_command_for("pi"), None);
+        // Pi lifecycle wiring is deferred to client adaptation package #208.
         assert_eq!(official_update_args("pi"), None);
     }
 

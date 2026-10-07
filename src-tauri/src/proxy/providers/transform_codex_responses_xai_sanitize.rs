@@ -393,7 +393,11 @@ fn flatten_union_branches_to_object(branches: &[Value]) -> Value {
 
     if !object_branches.is_empty() {
         let mut merged_properties = Map::new();
-        let mut merged_required = Vec::new();
+        // Intersect `required` across branches: the union means "one of these
+        // shapes", so a field only stays mandatory if every branch demands it.
+        // A union of the lists would turn the "or" into an "and" and force the
+        // model to emit fields the chosen branch does not have.
+        let mut merged_required: Option<Vec<Value>> = None;
         for branch in object_branches {
             if let Some(properties) = branch.get("properties").and_then(Value::as_object) {
                 for (key, value) in properties {
@@ -402,13 +406,18 @@ fn flatten_union_branches_to_object(branches: &[Value]) -> Value {
                         .or_insert_with(|| value.clone());
                 }
             }
-            if let Some(required) = branch.get("required").and_then(Value::as_array) {
-                for item in required {
-                    if !merged_required.iter().any(|existing| existing == item) {
-                        merged_required.push(item.clone());
-                    }
-                }
-            }
+            let branch_required = branch
+                .get("required")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            merged_required = Some(match merged_required {
+                None => branch_required,
+                Some(existing) => existing
+                    .into_iter()
+                    .filter(|item| branch_required.contains(item))
+                    .collect(),
+            });
         }
 
         let mut result = json!({

@@ -3357,11 +3357,8 @@ impl ProxyService {
         let previous_codex_live_state =
             if should_sync_backup && matches!(app_type_enum, AppType::Codex) {
                 Some(
-                    codex_environment
-                        .as_ref()
-                        .expect("Codex environment exists")
-                        .live_settings
-                        .clone(),
+                    crate::codex_config::CodexLiveStateSnapshot::capture()
+                        .map_err(|error| format!("捕获 Codex 热切换前状态失败: {error}"))?,
                 )
             } else {
                 None

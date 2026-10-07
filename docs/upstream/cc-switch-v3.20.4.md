@@ -9,6 +9,8 @@ product version from `0.4.10` to the upstream version.
 不是 S02/S03/S04/S23 的功能验收，也不表示整个 Rust 工程已可编译。
 2026-10-07 fix2 清理剩余调用/定义、类型及测试接线阻断；Pi/Mcode 推迟到 #208，
 检查证据仍为 `code_audit`，不宣称 Rust 类型检查或原生运行已通过。
+2026-10-08 fix3 修复分叉 CI 清单的源码接线及结构指纹；实际 cargo check/Clippy
+在未改动的 user-helper 非支持宿主分支阻断，主库及原生 CI 验收仍未通过。
 
 ## Verified source and graph
 
@@ -151,7 +153,7 @@ no Rust build, test execution, native runtime, or installer acceptance.
 | S02 | REAL/NUL/non-UTF8 SQL formatting, sequence dump, staging auto-vacuum and incomplete-transaction rejection are present. Restored the missing FyAgent `validate_basic_state` definition. | Wire core-table validation **before** create/migrate; finish import protection and validate header-only/truncated/missing-core-table cases, including valid empty backups. |
 | S03 | Restored `complete_backup`, locked backup wrappers, connection/protected-path/publish-hook parameters, test imports and import/restore hooks. Restore reuses its held lock. Existing temporary publish code now has its required inputs. | Validate restore candidate integrity/core tables; protect the selected source together with the safety snapshot; complete atomic backup/restore and validation-before-mutation behavior. Exercise corrupt/future DBs, publish failures/collisions, concurrency and retention=1 in Rust. |
 | S04 | Shared sync mutex, Skills write locks and post-restore live/config/cache sync remain present. | Add `session_log_sync` and `session_usage_dedup` to both skip/preserve sets; recapture all local state under the final connection lock. Existing late-write tests remain pending and can expose these gaps. |
-| S23 (with S22 / #210) | Byte observation is wired; fix1 supplies the missing schema-26 upgrade path. | Wire leading/trailing UUID acceptance into real validation; verify Windows same-mtime growth, unchanged partial-line skip and append retry. SQL migration evidence is not Rust/session behavior evidence. |
+| S23 (with S22 / #210) | Byte observation is wired; fix1 supplies the missing schema-26 upgrade path. | Fix3 wires upstream leading/trailing UUID acceptance into real validation while preserving FyAgent typed deferred reasons. Native verification of that path, Windows same-mtime growth, unchanged partial-line skip and append retry remains pending. SQL migration evidence is not Rust/session behavior evidence. |
 
 S20's four reviewed proxy fixes and S01's error-50 fallback are present in
 reachable source; Rust/native validation remains pending. Other groups are
@@ -276,3 +278,80 @@ load timeout did not fail on this run. Rust was not compiled on this machine.
 
 The long-term engineering contract is
 [CC Switch Upstream Synchronization](../../.trellis/spec/backend/upstream-sync.md).
+
+
+## Fix3：分叉 CI 编译清单与结构指纹（2026-10-08）
+
+起点 `76811aed`，输入为 run `37644695207` 的 macOS/Windows 后端日志。
+按原始文件/行号去重为 **51 个源码诊断位置**（macOS 48、Windows 44，
+交集只计一次；含 lib、lib test、unused/unreachable）。以下为源码处置，
+**不等于原生编译通过**。
+
+本地 `cc-switch` 工作目录 HEAD 为 `01ee685d`，已经不是目标标签；本轮
+补齐代码从本地 Git 对象 `43e1d990` 提取，未访问网络或修改 remote。
+数据库 v27、fix1/fix2 的数据库/Skills/版本探测实现和 Cargo 清单/锁均未修改。
+
+### 推迟到客户端适配包 #208
+
+| 上游能力 | fix3 处置 | 后续归属 |
+| --- | --- | --- |
+| Pi Tooling 版本枚举白名单与 npm 生命周期包映射 | 恢复 `5b1a334b` 的 7 工具名单和 npm 映射；原测试保留全部 5 个断言，改为验证 Pi 不开放 | **推迟到客户端适配包 #208** |
+
+未重新注册 Pi/Mcode；fix2 的其余 10 项延期继续有效。Pi 正向安装/版本元数据
+契约随 #208 接入时恢复，本轮不会通过把 `Option<&str>` 改为 String 来放开它。
+
+### 已有功能补齐与重复 owner 处理
+
+- Codex config：补 `URL_SAFE_NO_PAD`、`Engine`、`sanitize_provider_name` 导入；
+  按 v3.20.4 原样补 `write_codex_live_for_provider` 和认证文件清理 helper。
+  它供既有 managed official takeover 写入使用，FyAgent 普通请求源切换仍走
+  `write_codex_live_projection`，不扩大普通切换的账号写入边界。
+- Codex OAuth：调用已存在的上游 `extract_account_metadata_from_tokens`，不另造
+  `extract_identity_from_tokens`；补原版 `AccountUnavailable`；状态初始化和
+  forwarder 对齐 `Arc<CodexOAuthManager>`，保留 manager 内部锁及 credential_id。
+- 命令：补 Auth `AppState` 导入；`update_provider` 恢复父提交的同步
+  `State<AppState>` 签名，继续复用 FyAgent ProviderService owner。
+- Windows 初始化使用 `std::sync::atomic::AtomicBool`；OMO 的通用文件 helper
+  导入移除误加的 Windows cfg，修复 macOS 缺函数。
+- Proxy 热切换使用原版 `CodexLiveStateSnapshot::capture()`，修复 JSON Value 与
+  rollback 快照类型不符，保留回滚中的较新同账号 token 保护。
+- 模型列表旧 wrapper 补齐既有七参数 API 的两个 `None`；xAI schema 恢复上游
+  `Option<Vec<Value>>` 的 required **交集**，不采用删 unwrap 的错误并集方案。
+- Responses 文本分支只处理 output_text.delta，保留独立 refusal.delta 分支，
+  消除 unreachable 并保留拒绝流内容。
+- UniversalProvider 测试复用 FyAgent 已拆出的 `universal::merge_json`，仅扩大到
+  `pub(super)`；不在 facade 再造一个 merge 实现。
+- Codex 会话：恢复上游 meta UUID 标准化、引用借用及前/后双 UUID 接受逻辑；
+  保留 FyAgent `MalformedTimeline`/`InvariantViolation` 类型化延后原因。旧测试
+  的 `Deferred(_)` 改为具体状态断言，接受场景强化为 `None`，未删除断言或测试。
+- Tooling：`open_provider_terminal` 仅保留 `commands/tooling.rs` 的 Tauri command，
+  service 函数及 terminal owner 保留，去掉误带的第二个宏。两平台版本枚举接回
+  真实带超时探测；共享 wait wrapper 在 Windows 可见；macOS PATH 保留 OsString
+  非 UTF-8 字节；保留 FyAgent Windows shell-user command builder。
+- settings 补默认 true helper，接回已有 join_home 的双斜杠拆分能力；不通过删掉
+  闭包消除警告。清理未用导入：Claude OAuth 常量、uuid；两个测试专用重导入
+  按其真实 test/macOS 使用范围设 cfg，无新增 warning allow/ignore。
+
+### 结构身份与验证边界
+
+- 审查并更新 **12 个**清单条目：9 个本轮源码文件，另 3 个为 fix1/fix2 遗留的
+  `database/backup.rs`、`services/skill.rs`、`services/tooling/versions.rs`。
+  后三者源码不变，复核自清单初建提交以来的修复及客户端回退；不改 scanner、
+  候选集规则、文件模式或排除项。
+- 宿主编译依赖安装成功；Rust 1.97.1 实际执行 `cargo check --all-targets -j 4`
+  两次及 `cargo clippy --all-targets -j 4 -- -D warnings` 一次，均 exit 101：
+  未改动的 `user-helper/src/grok_npm.rs:58–59` 在本机非支持宿主下没有平台实现，
+  报 E0425/E0308，未进入 FyAgent 主库。未加平台空桩，未执行完整 cargo test。
+- `pnpm typecheck`、`pnpm lint` 通过；相关 JS/架构回归 4 文件、17 用例通过。
+  `remainingPlatformSurface` 25 用例通过，4 个真实 Git 枚举用例因
+  `spawnSync git EPERM` 阻断，未改测试规避。
+- 直接结构检查 CLI 同样遇到上述 EPERM。通过生产脚本已有 `runner` 接口，使用
+  实际异步 Git 枚举输出运行全部生产扫描器：**3,130 文件，0 findings**，包含
+  双向候选集、mode、SHA-256、光栅和文本/cfg 检查；不把它记作直接 CLI 通过。
+- 32 项 CI 源码审计通过；同脚本对 `76811aed` 有 31 项失败作为前后对照。
+  原 fix2 审计再次通过（455 个 Rust 文件语法解析、35 helper 唯一性和 v27 保护）。
+  这些都为 `code_audit`，不能替代 macOS/Windows lib/lib test/Clippy 编译。
+
+本轮仅留工作树。机器本地交付：`../report-205-fix3.md` 与
+`../fix3-evidence/`（相对工作树根目录；仓库外证据不作为跨机器永久链接）。
+原生分叉 CI 尚须重跑；本轮没有提交、推送、PR、remote 变更或 GitHub 操作。

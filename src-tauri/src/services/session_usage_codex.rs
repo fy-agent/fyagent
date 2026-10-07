@@ -1169,9 +1169,19 @@ fn parse_codex_file(
                         .get("id")
                         .or_else(|| payload.get("thread_id"))
                         .or_else(|| payload.get("threadId")),
-                );
-                if let (Some(filename_id), Some(meta_id)) = (&root_thread_id, meta_thread_id) {
-                    if filename_id != &meta_id {
+                )
+                .map(|id| {
+                    uuid::Uuid::parse_str(&id)
+                        .map(|value| value.hyphenated().to_string())
+                        .unwrap_or(id)
+                });
+                if let (Some(filename_id), Some(meta_id)) =
+                    (&root_thread_id, meta_thread_id.as_ref())
+                {
+                    let leading_id = leading_thread_id_from_filename(file_path);
+                    let matches =
+                        filename_id == meta_id || leading_id.as_deref() == Some(meta_id.as_str());
+                    if !matches {
                         parent = ParentResolution::InvariantViolation;
                     }
                 }
@@ -2350,7 +2360,7 @@ mod tests {
 
         // 恢复会话没有显式 parent，不应因 ID 不一致被拒
         assert!(
-            !matches!(parsed.parent, ParentResolution::Deferred(_)),
+            matches!(parsed.parent, ParentResolution::None),
             "恢复会话不应被 deferred，实际: {:?}",
             parsed.parent
         );
@@ -2413,7 +2423,10 @@ mod tests {
         );
 
         let parsed = parse_codex_file(&file, thread_id_from_filename(&file))?;
-        assert!(matches!(parsed.parent, ParentResolution::Deferred(_)));
+        assert!(matches!(
+            parsed.parent,
+            ParentResolution::InvariantViolation
+        ));
         Ok(())
     }
 

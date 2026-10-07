@@ -337,7 +337,7 @@ pub async fn fetch_models_optional_auth(
         return Err("API Key is required to fetch models".to_string());
     }
     if !api_key.is_empty() {
-        return fetch_models(base_url, api_key, is_full_url, None, None).await;
+        return fetch_models(base_url, api_key, is_full_url, None, None, None, None).await;
     }
 
     let candidates = build_models_url_candidates(base_url, is_full_url, None)?;

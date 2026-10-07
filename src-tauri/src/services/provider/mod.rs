@@ -46,6 +46,8 @@ pub use live::{
 
 // Internal re-exports (pub(crate))
 pub(crate) use live::sanitize_claude_settings_for_live;
+#[cfg(test)]
+pub(crate) use live::write_live_with_common_config_for_codex_oauth_manager;
 pub(crate) use live::{
     build_codex_quick_setup_live_projection,
     build_effective_provider_for_live_with_codex_oauth_manager,
@@ -53,7 +55,6 @@ pub(crate) use live::{
     normalize_provider_common_config_for_storage, patch_grok_quick_setup_config,
     provider_exists_in_live_config, strip_common_config_from_live_settings,
     sync_current_provider_for_app_to_live, write_live_with_common_config,
-    write_live_with_common_config_for_codex_oauth_manager,
 };
 
 // Internal re-exports
@@ -605,7 +606,6 @@ mod tests {
                 Some(value) => env::set_var("FYAGENT_TEST_HOME", value),
                 None => env::remove_var("FYAGENT_TEST_HOME"),
             }
-
         }
     }
 
@@ -4844,7 +4844,7 @@ requires_openai_auth = true
                     }
                     .unwrap();
                     let mut expected_settings = before.settings_config.clone();
-                    ProviderService::merge_json(&mut expected_settings, &generated.settings_config);
+                    universal::merge_json(&mut expected_settings, &generated.settings_config);
                     assert_eq!(after.settings_config, expected_settings);
                     assert_eq!(
                         state.db.get_all_providers(app).unwrap()[&before.id]

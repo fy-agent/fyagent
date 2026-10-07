@@ -1882,8 +1882,7 @@ impl RequestForwarder {
                             ));
                         }
                         let codex_state = app_handle.state::<CodexOAuthState>();
-                        let codex_auth: tokio::sync::RwLockReadGuard<'_, CodexOAuthManager> =
-                            codex_state.0.read().await;
+                        let codex_auth: &CodexOAuthManager = &codex_state.0;
                         let token_result = match &account_id {
                             Some(id) => codex_auth.get_valid_token_for_account(id).await,
                             None => codex_auth.get_valid_token().await,

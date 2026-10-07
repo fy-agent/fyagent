@@ -526,6 +526,10 @@ fn default_preserve_codex_official_auth_on_switch() -> bool {
     true
 }
 
+fn default_session_auto_sync_enabled() -> bool {
+    true
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -818,9 +822,9 @@ pub(crate) fn resolve_override_path(raw: &str) -> PathBuf {
     if raw == "~" {
         return crate::config::get_home_dir();
     } else if let Some(stripped) = raw.strip_prefix("~/") {
-        return crate::config::get_home_dir().join(stripped);
+        return join_home(crate::config::get_home_dir(), stripped);
     } else if let Some(stripped) = raw.strip_prefix("~\\") {
-        return crate::config::get_home_dir().join(stripped);
+        return join_home(crate::config::get_home_dir(), stripped);
     }
 
     PathBuf::from(raw)

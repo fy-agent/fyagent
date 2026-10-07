@@ -1,4 +1,3 @@
-#[cfg(windows)]
 use crate::config::{atomic_write, get_home_dir, write_json_file_with_contents};
 use crate::error::AppError;
 use crate::opencode_config::get_opencode_dir;

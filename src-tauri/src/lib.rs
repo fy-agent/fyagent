@@ -997,7 +997,7 @@ pub fn run() {
 
     #[cfg(target_os = "windows")]
     {
-        let startup_page_handled = AtomicBool::new(false);
+        let startup_page_handled = std::sync::atomic::AtomicBool::new(false);
         builder = builder.on_page_load(move |webview, payload| {
             if webview.label() == "main"
                 && payload.event() == tauri::webview::PageLoadEvent::Finished
@@ -1854,7 +1854,7 @@ pub fn run() {
                     codex_oauth_manager.seal_json_store();
                 }
                 codex_oauth_manager.remap_provider_bindings();
-                app.manage(CodexOAuthState(Arc::new(RwLock::new(codex_oauth_manager))));
+                app.manage(CodexOAuthState(Arc::new(codex_oauth_manager)));
                 log::info!("✓ CodexOAuthManager initialized");
             }
 

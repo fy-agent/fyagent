@@ -766,8 +766,8 @@ pub async fn apply_provider_quick_setup_with_result(
 }
 
 #[tauri::command]
-pub async fn update_provider(
-    app_handle: tauri::AppHandle,
+pub fn update_provider(
+    state: State<'_, AppState>,
     app: String,
     provider: Provider,
     #[allow(non_snake_case)] originalId: Option<String>,

@@ -25,7 +25,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-use uuid::Uuid;
 
 use super::copilot_auth::{GitHubAccount, GitHubDeviceCodeResponse};
 use crate::services::managed_auth::providers::openai::{
@@ -109,6 +108,9 @@ pub enum CodexOAuthError {
 
     #[error("账号不存在: {0}")]
     AccountNotFound(String),
+
+    #[error("绑定的 ChatGPT 账号不可用，请在供应商卡片中点击“选择账号”并重新绑定: {0}")]
+    AccountUnavailable(String),
 
     #[error("登录已取消")]
     Cancelled,
@@ -323,7 +325,7 @@ struct CodexAccountData {
 
 impl CodexAccountData {
     fn apply_refreshed_tokens(&mut self, tokens: &OAuthTokenResponse) -> bool {
-        let refreshed_account_id = extract_identity_from_tokens(tokens).0;
+        let refreshed_account_id = extract_account_metadata_from_tokens(tokens).0;
         let mut changed = false;
         if let Some(account_id) = refreshed_account_id {
             // A missing workspace marks a quarantined pre-v2 record. Ordinary
@@ -636,7 +638,7 @@ impl CodexOAuthManager {
             CodexOAuthError::TokenFetchFailed("响应缺少 refresh_token".to_string())
         })?;
 
-        let (chatgpt_account_id, email) = extract_identity_from_tokens(&tokens);
+        let (chatgpt_account_id, email) = extract_account_metadata_from_tokens(&tokens);
         let chatgpt_account_id = chatgpt_account_id.ok_or_else(|| {
             CodexOAuthError::ParseError("无法从 token 中提取 chatgpt_account_id".to_string())
         })?;
