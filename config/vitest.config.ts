@@ -1,3 +1,4 @@
+import { availableParallelism } from "node:os";
 import { fileURLToPath } from "node:url";
 import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
@@ -26,6 +27,7 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("../src", import.meta.url)) },
   },
   test: {
+    maxWorkers: Math.max(1, Math.min(2, availableParallelism())),
     projects: [
       {
         extends: true,

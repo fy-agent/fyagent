@@ -45,6 +45,7 @@ Database::import_sql_string_for_sync(sql) -> Result<String, AppError>
 Database::backup_database_file() -> Result<Option<PathBuf>, AppError>
 Database::list_backups() -> Result<Vec<BackupEntry>, AppError>
 Database::restore_from_backup(filename) -> Result<String, AppError>
+restore_db_backup_outcome(state, filename) -> Result<DatabaseRestoreOutcome, String>
 Database::rename_backup(oldFilename, newName) -> Result<String, AppError>
 Database::delete_backup(filename) -> Result<(), AppError>
 ```
@@ -122,10 +123,12 @@ bindings together with their full route. Private binary backups stay lossless.
   keyword/forged-trigger rejection, genuine-trigger restore without migration
   side effects, and archive-before-replace; never repair a real database by
   manually rewriting its version.
-- A pre-migration binary backup is attempted for an existing older database.
-  The current implementation logs and continues when that safety copy fails;
-  do not strengthen or weaken that behavior accidentally inside an unrelated
-  migration.
+- An existing older database requires a validated binary safety snapshot before
+  `create_tables` or ordered migration writes. Snapshot failure aborts startup
+  with the old schema, version and data intact. A newer schema fails closed
+  before backup or table creation; a brand-new database needs no fabricated old
+  snapshot. The native host permits one explicit initialization retry after a
+  recoverable backup obstacle is removed; a second failure exits without reset.
 - JSON migration is one transaction across Providers, MCP, Prompts, Skills,
   and common configuration. Dry-run uses an in-memory database with current
   schema compatibility checks and performs no application-file write.
@@ -191,6 +194,18 @@ bindings together with their full route. Private binary backups stay lossless.
 
 ## 4. Validation & Error Matrix
 
+The feature-local restore outcome has `contractVersion: 1`, `phase`,
+`publication`, `safetyBackupFilename`, `warnings` and `resultCode`. Candidate
+validation/migration/pricing precede archiving, safety backup and publication.
+Publication truth is `notCommitted`, `committed` or `unknown`: a later readback
+failure preserves a recorded commit, and worker loss preserves existing commit
+evidence or reports unknown. An error alone is not evidence that nothing was
+published. Keep recovery filenames despite retention warnings; unknown or
+committed outcomes require read-only inspection rather than automatic rewrite.
+Backup, restore and retention share the process-wide lifecycle lease, acquired
+before the live connection lock. The selected and new safety copies remain
+protected through publication and cleanup.
+
 | Condition                                                                                              | Required result                                                                                                       |
 | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
 | stored `user_version` is newer than `SCHEMA_VERSION`                                                   | Fail closed and report the stored version; no downgrade or destructive reset.                                         |
@@ -250,6 +265,13 @@ bindings together with their full route. Private binary backups stay lossless.
   trigger restore without migration side effects, leftover-data archive before
   replace, archive-failure abort, and new installs not creating the archive
   directory.
+- A publication-failure fixture must induce a real destination failure:
+  `Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)` plus
+  `is_readonly(DatabaseName::Main)` before the production restore. Keep the
+  Publish/PublishFailed/Unknown, unchanged live data and retained safety-leaf
+  assertions. `PRAGMA query_only` is not a substitute for a read-only connection.
+  Also cover busy publication, committed readback failure, retained worker-loss
+  evidence, lifecycle serialization and old-schema snapshot failure before DDL.
 - Run `mise run rust:test` and `mise run check:contracts`; a schema change also
   requires the affected domain and sync tests.
 
