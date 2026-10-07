@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     app_config::{AppType, SkillApps, SkillTargetId},
-    services::skill::{SkillService, SkillStorageLocation},
+    services::skill::{update, SkillService, SkillStorageLocation},
 };
 use anyhow::{Context, Result};
 use base64::Engine as _;

@@ -6,10 +6,40 @@ use crate::error::AppError;
 use crate::prompt::Prompt;
 use crate::prompt_files::prompt_file_path;
 use crate::store::AppState;
+use std::sync::{Mutex, MutexGuard};
 
 #[cfg(test)]
 thread_local! {
     static AFTER_PROMPT_WRITE_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+    static AFTER_PROMPT_RECEIPT_VALIDATION_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+    static BEFORE_PROMPT_LOCK_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+
+static PROMPT_MUTATION_LOCK: Mutex<()> = Mutex::new(());
+
+// Prompt DB rows and the shared live file form one lifecycle state. Serialize
+// each synchronous mutation from its first DB read through file/DAO commit and
+// any compensation. Public wrappers own the lock; nested paths call `_unlocked`
+// helpers so upsert/import can route into enable without recursively locking.
+fn prompt_mutation_lock() -> MutexGuard<'static, ()> {
+    #[cfg(test)]
+    BEFORE_PROMPT_LOCK_HOOK.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().take() {
+            hook();
+        }
+    });
+    PROMPT_MUTATION_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn after_prompt_receipt_validation() {
+    #[cfg(test)]
+    AFTER_PROMPT_RECEIPT_VALIDATION_HOOK.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().take() {
+            hook();
+        }
+    });
 }
 
 fn after_prompt_file_write() {
@@ -36,10 +66,21 @@ impl PromptService {
         state: &AppState,
         app: AppType,
     ) -> Result<IndexMap<String, Prompt>, AppError> {
+        let _mutation = prompt_mutation_lock();
         state.db.get_prompts(app.as_str())
     }
 
     pub fn upsert_prompt(
+        state: &AppState,
+        app: AppType,
+        _id: &str,
+        prompt: Prompt,
+    ) -> Result<(), AppError> {
+        let _mutation = prompt_mutation_lock();
+        Self::upsert_prompt_unlocked(state, app, _id, prompt)
+    }
+
+    fn upsert_prompt_unlocked(
         state: &AppState,
         app: AppType,
         _id: &str,
@@ -59,7 +100,7 @@ impl PromptService {
             draft.enabled = false;
             let id = draft.id.clone();
             state.db.save_prompt(app.as_str(), &draft)?;
-            return Self::enable_prompt(state, app, &id);
+            return Self::enable_prompt_unlocked(state, app, &id);
         }
 
         if is_enabled {
@@ -121,11 +162,9 @@ impl PromptService {
     ) -> Result<(Option<String>, Option<Option<String>>), AppError> {
         let _scope = crate::config::file_mutation_scope();
         write_text_file(target_path, content)?;
-        // This test hook exposes the exact race window: a separate managed
-        // writer may replace the marker after our write and before ownership
-        // validation. Read the latest ID first, then verify the scope captured
-        // that operation; reversing the order would reopen the race window.
         after_prompt_file_write();
+        // Read the latest ID first, then verify the scope captured that
+        // operation; reversing the order would reopen the receipt race window.
         let recovery_after = Self::prompt_file_recovery_id(target_path).map_err(|error| {
             AppError::Message(format!("live 文件已写入，但读取恢复回执失败：{error}"))
         })?;
@@ -135,6 +174,9 @@ impl PromptService {
                     "live 文件已写入，但本次写入归属已变化；保留并发写入：{error}"
                 ))
             })?;
+        // The service lifecycle lock must remain held across this point and
+        // the DAO commit; tests pause here to prove a second switch waits.
+        after_prompt_receipt_validation();
         Ok((recovery_after, expected_postimage))
     }
 
@@ -172,6 +214,11 @@ impl PromptService {
     }
 
     pub fn delete_prompt(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
+        let _mutation = prompt_mutation_lock();
+        Self::delete_prompt_unlocked(state, app, id)
+    }
+
+    fn delete_prompt_unlocked(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
         let prompts = state.db.get_prompts(app.as_str())?;
 
         if let Some(prompt) = prompts.get(id) {
@@ -185,6 +232,11 @@ impl PromptService {
     }
 
     pub fn enable_prompt(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
+        let _mutation = prompt_mutation_lock();
+        Self::enable_prompt_unlocked(state, app, id)
+    }
+
+    fn enable_prompt_unlocked(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
         let target_path = prompt_file_path(&app)?;
         let mut prompts = state.db.get_prompts(app.as_str())?;
         if !prompts.contains_key(id) {
@@ -267,6 +319,15 @@ impl PromptService {
         app: AppType,
         timestamp: i64,
     ) -> Result<String, AppError> {
+        let _mutation = prompt_mutation_lock();
+        Self::import_from_file_at_unlocked(state, app, timestamp)
+    }
+
+    fn import_from_file_at_unlocked(
+        state: &AppState,
+        app: AppType,
+        timestamp: i64,
+    ) -> Result<String, AppError> {
         let file_path = prompt_file_path(&app)?;
 
         if !file_path.exists() {
@@ -291,11 +352,12 @@ impl PromptService {
             updated_at: Some(timestamp),
         };
 
-        Self::upsert_prompt(state, app, &id, prompt)?;
+        Self::upsert_prompt_unlocked(state, app, &id, prompt)?;
         Ok(id)
     }
 
     pub fn get_current_file_content(app: AppType) -> Result<Option<String>, AppError> {
+        let _mutation = prompt_mutation_lock();
         let file_path = prompt_file_path(&app)?;
         if !file_path.exists() {
             return Ok(None);
@@ -308,6 +370,14 @@ impl PromptService {
     /// 首次启动时从现有提示词文件自动导入（如果存在）
     /// 返回导入的数量
     pub fn import_from_file_on_first_launch(
+        state: &AppState,
+        app: AppType,
+    ) -> Result<usize, AppError> {
+        let _mutation = prompt_mutation_lock();
+        Self::import_from_file_on_first_launch_unlocked(state, app)
+    }
+
+    fn import_from_file_on_first_launch_unlocked(
         state: &AppState,
         app: AppType,
     ) -> Result<usize, AppError> {
@@ -698,7 +768,58 @@ mod tests {
 
     #[test]
     #[serial]
-    fn iteration_resources_concurrent_enable_rejects_stale_scope_without_compensating_c() {
+    fn iteration_resources_prompt_scope_rejects_other_managed_writer_before_receipt_capture() {
+        let (_home, _guard, state, live) = setup();
+        let original = prompt("writer-a", true);
+        let target_b = prompt("writer-b", false);
+        state.db.save_prompt("claude", &original).unwrap();
+        state.db.save_prompt("claude", &target_b).unwrap();
+        write_text_file(&live, &original.content).unwrap();
+
+        let (written_tx, written_rx) = std::sync::mpsc::channel();
+        let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+        let b_state = state.clone();
+        let b = std::thread::spawn(move || {
+            AFTER_PROMPT_WRITE_HOOK.with(|hook| {
+                *hook.borrow_mut() = Some(Box::new(move || {
+                    written_tx.send(()).unwrap();
+                    resume_rx.recv().unwrap();
+                }));
+            });
+            PromptService::enable_prompt(&b_state, AppType::Claude, "writer-b")
+        });
+        written_rx.recv().unwrap();
+        // A different managed file writer does not share PromptService's
+        // lifecycle mutex or thread-local operation. The scope identity guard
+        // must still reject its fresh receipt instead of compensating it.
+        let external_path = live.clone();
+        std::thread::spawn(move || {
+            write_text_file(&external_path, "Other managed writer content\n")
+        })
+        .join()
+        .unwrap()
+        .unwrap();
+        let other_receipt = PromptService::prompt_file_recovery_id(&live).unwrap();
+        resume_tx.send(()).unwrap();
+        let error = b.join().unwrap().expect_err("B lost its receipt ownership");
+        assert!(error.to_string().contains("归属已变化"), "{error}");
+        let saved = state.db.get_prompts("claude").unwrap();
+        assert!(saved["writer-a"].enabled);
+        assert!(!saved["writer-b"].enabled);
+        assert_eq!(saved["writer-a"].content, original.content);
+        assert_eq!(
+            fs::read_to_string(&live).unwrap(),
+            "Other managed writer content\n"
+        );
+        assert_eq!(
+            PromptService::prompt_file_recovery_id(&live).unwrap(),
+            other_receipt
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn iteration_resources_prompt_enable_lifecycle_lock_serializes_two_successful_switches() {
         let (_home, _guard, state, live) = setup();
         let original = prompt("race-a", true);
         let target_b = prompt("race-b", false);
@@ -708,43 +829,52 @@ mod tests {
         state.db.save_prompt("claude", &target_c).unwrap();
         write_text_file(&live, &original.content).unwrap();
 
-        // If the stale B operation were allowed to reach its DAO write, fail it
-        // there. Correct ownership validation detects C's newer scoped receipt
-        // first and returns without touching C's successful commit or file.
-        state.db.reject_prompt_state_for_test("race-b", true, true);
-        let (write_tx, write_rx) = std::sync::mpsc::channel();
+        let (validated_tx, validated_rx) = std::sync::mpsc::channel();
         let (resume_tx, resume_rx) = std::sync::mpsc::channel();
         let b_state = state.clone();
         let b = std::thread::spawn(move || {
-            AFTER_PROMPT_WRITE_HOOK.with(|hook| {
+            AFTER_PROMPT_RECEIPT_VALIDATION_HOOK.with(|hook| {
                 *hook.borrow_mut() = Some(Box::new(move || {
-                    write_tx.send(()).unwrap();
+                    validated_tx.send(()).unwrap();
                     resume_rx.recv().unwrap();
                 }));
             });
             PromptService::enable_prompt(&b_state, AppType::Claude, "race-b")
         });
 
-        write_rx.recv().unwrap();
+        validated_rx.recv().unwrap();
+        let (attempting_tx, attempting_rx) = std::sync::mpsc::channel();
+        let (c_result_tx, c_result_rx) = std::sync::mpsc::channel();
         let c_state = state.clone();
-        let c_result = std::thread::spawn(move || {
-            PromptService::enable_prompt(&c_state, AppType::Claude, "race-c")
-        })
-        .join()
-        .unwrap();
+        let c = std::thread::spawn(move || {
+            BEFORE_PROMPT_LOCK_HOOK.with(|hook| {
+                *hook.borrow_mut() = Some(Box::new(move || {
+                    assert!(matches!(
+                        PROMPT_MUTATION_LOCK.try_lock(),
+                        Err(std::sync::TryLockError::WouldBlock)
+                    ));
+                    attempting_tx.send(()).unwrap();
+                }));
+            });
+            let result = PromptService::enable_prompt(&c_state, AppType::Claude, "race-c");
+            c_result_tx.send(result).unwrap();
+        });
+        attempting_rx.recv().unwrap();
+        assert!(matches!(
+            c_result_rx.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        ));
         resume_tx.send(()).unwrap();
 
-        let b_error = b
-            .join()
-            .unwrap()
-            .expect_err("B must stop after losing receipt ownership");
-        assert!(b_error.to_string().contains("归属已变化"), "{b_error}");
+        b.join().unwrap().unwrap();
+        c.join().unwrap();
+        c_result_rx.recv().unwrap().unwrap();
         let saved = state.db.get_prompts("claude").unwrap();
         assert!(!saved["race-a"].enabled);
         assert!(!saved["race-b"].enabled);
         assert!(saved["race-c"].enabled);
+        assert_eq!(saved.values().filter(|prompt| prompt.enabled).count(), 1);
         assert_eq!(fs::read_to_string(&live).unwrap(), target_c.content);
-        c_result.unwrap();
     }
 
     #[test]
