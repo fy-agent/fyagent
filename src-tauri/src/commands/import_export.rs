@@ -175,11 +175,11 @@ pub async fn restore_db_backup(
 pub async fn restore_db_backup_outcome(
     state: State<'_, AppState>,
     filename: String,
-) -> DatabaseRestoreOutcome {
+) -> Result<DatabaseRestoreOutcome, String> {
     let db = state.db.clone();
     let tracker = RestoreTracker::new();
     let worker_tracker = tracker.clone();
-    match tauri::async_runtime::spawn_blocking(move || {
+    let outcome = match tauri::async_runtime::spawn_blocking(move || {
         db.restore_from_backup_outcome(&filename, &worker_tracker)
     })
     .await
@@ -189,19 +189,20 @@ pub async fn restore_db_backup_outcome(
             log::warn!("Database restore worker lost: {error}");
             tracker.worker_lost()
         }
-    }
+    };
+    Ok(outcome)
 }
 
 /// Inspect the current database without another write or maintenance attempt.
 #[tauri::command]
 pub async fn check_db_recovery_readability(
     state: State<'_, AppState>,
-) -> DatabaseRecoveryReadability {
+) -> Result<DatabaseRecoveryReadability, String> {
     let db = state.db.clone();
     let readable = tauri::async_runtime::spawn_blocking(move || db.check_recovery_readability())
         .await
         .unwrap_or(false);
-    DatabaseRecoveryReadability::from_readable(readable)
+    Ok(DatabaseRecoveryReadability::from_readable(readable))
 }
 
 /// Rename a database backup file
