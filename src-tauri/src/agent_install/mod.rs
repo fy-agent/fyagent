@@ -1370,6 +1370,51 @@ mod tests {
     }
 
     #[test]
+    fn quarantined_helper_observation_is_unavailable_without_install() {
+        // Current mapping: no platform code → not unconfirmed → CliObservation
+        // { unavailable: true, unconfirmed: false }. The directory card is
+        // therefore「当前不可用」and Install is withheld.
+        for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::GrokBuild] {
+            let observation = cli::CliObservation {
+                detected: false,
+                runnable: false,
+                local_version: None,
+                latest_version: Some("2.0.0".to_string()),
+                unavailable: true,
+                unconfirmed: false,
+                update_supported: true,
+            };
+            let readiness = cli_readiness_from_observation(
+                agent_id,
+                Some(&observation),
+                AgentAuthState::Unknown,
+            );
+            assert_eq!(readiness.install_state, AgentInstallState::Unavailable);
+            assert_ne!(readiness.install_state, AgentInstallState::Unknown);
+            assert_eq!(readiness.source_kind, AgentSourceKind::CliTooling);
+            assert_eq!(readiness.update_state, AgentUpdateState::Unavailable);
+            assert_eq!(readiness.local_version, None);
+            assert_eq!(readiness.remote_version, None);
+            assert!(readiness.allowed_actions.is_empty());
+            assert!(!readiness.allowed_actions.contains(&AgentActionId::Install));
+            assert_eq!(
+                readiness.reason_codes,
+                vec![
+                    AgentReasonCode::InteractiveUserUnavailable,
+                    AgentReasonCode::AuthStateUnknown,
+                ]
+            );
+            assert_eq!(
+                readiness.configuration_eligibility,
+                AgentConfigurationEligibility {
+                    state: AgentConfigurationState::Unavailable,
+                    evidence: AgentConfigurationEvidence::None,
+                }
+            );
+        }
+    }
+
+    #[test]
     fn workbuddy_marketing_version_matches_longer_product_version() {
         assert!(desktop_versions_equivalent("5.3.14", "5.3.14.36279234"));
         assert!(desktop_versions_equivalent("5.3.14.36279234", "5.3.14"));

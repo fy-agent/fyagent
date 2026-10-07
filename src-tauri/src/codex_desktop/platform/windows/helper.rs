@@ -2205,4 +2205,257 @@ mod tests {
         assert!(!source.contains("OpenProcessToken"));
         assert!(source.contains("QueryFullProcessImageNameW"));
     }
+
+    fn between<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+        source
+            .split_once(start)
+            .unwrap_or_else(|| panic!("missing start marker {start}"))
+            .1
+            .split_once(end)
+            .unwrap_or_else(|| panic!("missing end marker {end}"))
+            .0
+    }
+
+    fn unpinned_runner_source() -> &'static str {
+        between(
+            production_source(),
+            "fn run_unpinned_tool_helper(",
+            "\nimpl WindowsVerifiedFilePin",
+        )
+    }
+
+    /// A frame that arrives before Hello, or after Hello but before the parent
+    /// marks control, must not admit the helper or invent a terminal result.
+    /// The parent treats that exit as `fail_before_admission`, which releases
+    /// the gate instead of quarantining it.
+    #[test]
+    fn helper_exit_before_hello_or_control_is_rejected_and_not_admitted() {
+        let action = UserHelperAction::CodexMsixInstall;
+        for message in [
+            started(BRIDGE_IDENTITY),
+            HelperMessage::Progress { completed: 1 },
+            HelperMessage::Success,
+            HelperMessage::error(HelperErrorCode::ParentCancelled),
+        ] {
+            let mut sequence = HelperProtocolSequence::default();
+            assert!(sequence.accept(message).is_err());
+            assert!(sequence.mark_control_sent().is_err());
+            assert!(sequence.mark_admitted().is_err());
+            assert!(sequence.terminal().is_none());
+        }
+
+        let mut after_hello = HelperProtocolSequence::default();
+        assert!(matches!(
+            after_hello
+                .accept(HelperMessage::Hello { action })
+                .unwrap(),
+            HelperProtocolAction::Hello(received) if received == action
+        ));
+        assert!(after_hello.accept(started(BRIDGE_IDENTITY)).is_err());
+        // A rejected frame must not skip the control step.
+        after_hello.mark_control_sent().unwrap();
+        assert!(after_hello.mark_admitted().is_err());
+        assert!(after_hello.terminal().is_none());
+
+        let mut control_without_hello = HelperProtocolSequence::default();
+        assert!(control_without_hello.mark_control_sent().is_err());
+        assert!(control_without_hello.terminal().is_none());
+    }
+
+    #[test]
+    fn broken_pipe_and_no_data_are_clean_disconnects() {
+        let broken = windows::core::Error::from_hresult(hresult_from_win32(ERROR_BROKEN_PIPE.0));
+        let no_data = windows::core::Error::from_hresult(hresult_from_win32(ERROR_NO_DATA.0));
+        let pending = windows::core::Error::from_hresult(hresult_from_win32(ERROR_IO_PENDING.0));
+        let already_exists =
+            windows::core::Error::from_hresult(hresult_from_win32(ERROR_ALREADY_EXISTS.0));
+        let pipe_connected =
+            windows::core::Error::from_hresult(hresult_from_win32(ERROR_PIPE_CONNECTED.0));
+        assert!(is_clean_pipe_disconnect(&broken));
+        assert!(is_clean_pipe_disconnect(&no_data));
+        assert!(!is_clean_pipe_disconnect(&pending));
+        assert!(!is_clean_pipe_disconnect(&already_exists));
+        assert!(!is_clean_pipe_disconnect(&pipe_connected));
+    }
+
+    #[test]
+    fn pipe_and_quarantine_errors_are_deployment_failures_without_platform_code() {
+        for message in [
+            "the user-helper operation timed out or disconnected",
+            "the user-helper pipe closed before a terminal message",
+            "the user-helper pipe closed before its identity was admitted",
+            "the user-helper pipe closed before tool admission",
+            "the user-helper pipe closed before bridge admission",
+        ] {
+            let error = helper_pipe_error(message);
+            let dto = error.to_dto();
+            assert_eq!(dto.code, InstallerErrorCode::WindowsDeploymentFailed);
+            assert_eq!(dto.details.platform_error_code, None);
+            assert_eq!(dto.details.redacted_message.as_deref(), Some(message));
+            assert_ne!(
+                platform_code(&error).as_deref(),
+                Some(HELPER_BUSY_PLATFORM_CODE)
+            );
+        }
+
+        let quarantine = helper_quarantine_error();
+        let dto = quarantine.to_dto();
+        assert_eq!(dto.code, InstallerErrorCode::WindowsDeploymentFailed);
+        assert_eq!(platform_code(&quarantine), None);
+        assert_eq!(
+            dto.details.redacted_message.as_deref(),
+            Some("a prior current-user helper lifetime remains retained without terminal proof")
+        );
+        assert_ne!(
+            dto.details.redacted_message.as_deref(),
+            Some("the user-helper operation timed out or disconnected")
+        );
+    }
+
+    #[test]
+    fn helper_gate_accepts_the_next_request_after_normal_finish() {
+        let gate = Mutex::new(HelperGateState::<()>::Idle);
+        let released = Condvar::new();
+        enter_helper_gate(&gate, &released, Duration::ZERO).unwrap();
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Active));
+        leave_helper_gate(&gate, &released);
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Idle));
+
+        enter_helper_gate(&gate, &released, Duration::ZERO).unwrap();
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Active));
+        leave_helper_gate(&gate, &released);
+        assert!(matches!(*gate.lock().unwrap(), HelperGateState::Idle));
+    }
+
+    #[test]
+    fn next_request_after_quarantine_fails_immediately_with_helper_quarantine_error() {
+        let gate = Mutex::new(HelperGateState::Quarantined {
+            _lifetime: Box::new(()),
+        });
+        let released = Condvar::new();
+        let expected = helper_quarantine_error().to_dto();
+        for _ in 0..2 {
+            let started = Instant::now();
+            let error = enter_helper_gate(&gate, &released, Duration::from_secs(30)).unwrap_err();
+            assert!(started.elapsed() < Duration::from_secs(1));
+            assert_eq!(error.to_dto(), expected);
+            assert_eq!(platform_code(&error), None);
+            assert_ne!(
+                platform_code(&error).as_deref(),
+                Some(HELPER_BUSY_PLATFORM_CODE)
+            );
+        }
+        leave_helper_gate(&gate, &released);
+        assert!(matches!(
+            *gate.lock().unwrap(),
+            HelperGateState::Quarantined { .. }
+        ));
+        let error = enter_helper_gate(&gate, &released, Duration::from_secs(30)).unwrap_err();
+        assert_eq!(error.to_dto(), expected);
+    }
+
+    #[test]
+    fn clean_disconnect_before_admission_releases_the_gate_and_after_admission_quarantines_it() {
+        let source = production_source();
+        let read_frame = between(source, "fn read_frame(", "fn read_message(");
+        assert!(read_frame
+            .contains("is_clean_pipe_disconnect(&error) => return Ok(PipeFrameRead::Closed)"));
+        assert!(read_frame.contains("the user-helper pipe closed before a terminal message"));
+
+        let wait_read = between(
+            source,
+            "fn wait_for_pipe_read(",
+            "fn is_clean_pipe_disconnect(",
+        );
+        assert!(wait_read
+            .contains("is_clean_pipe_disconnect(&error) => Ok(PipeReadCompletion::Closed)"));
+        assert!(wait_read.contains("the user-helper operation timed out or disconnected"));
+
+        // Writes do not treat BROKEN_PIPE / NO_DATA as a clean close. Any
+        // overlapped write failure becomes the same timeout/disconnect error.
+        let wait_write = between(source, "fn wait_for_overlapped(", "enum PipeReadCompletion");
+        assert!(!wait_write.contains("is_clean_pipe_disconnect"));
+        assert!(wait_write.contains("the user-helper operation timed out or disconnected"));
+
+        let consume = between(
+            source,
+            "fn consume_protocol(",
+            "fn wait_for_clean_terminal_close(",
+        );
+        assert!(consume.contains("PipeMessageRead::Closed"));
+        assert!(consume.contains("the user-helper pipe closed before a terminal message"));
+
+        let release = between(
+            source,
+            "fn fail_before_admission(",
+            "fn log_helper_failure(",
+        );
+        assert!(release.contains("gate.finish()"));
+        assert!(!release.contains("quarantine"));
+        assert!(!release.contains("retain_quarantined_lifetime"));
+
+        let cancel = between(source, "fn cancel_and_quarantine(", "fn remaining_until(");
+        assert!(cancel.contains("debug_assert!(lifetime.admitted)"));
+        assert!(cancel.contains("gate.quarantine(lifetime, original_error)"));
+        assert!(!cancel.contains("gate.finish()"));
+        assert!(!cancel.contains("mark_settled"));
+
+        let retain = between(
+            source,
+            "fn retain_quarantined_lifetime(",
+            "struct HelperGateLease",
+        );
+        assert!(retain.contains("matches!(*state, HelperGateState::Active)"));
+        assert!(retain.contains("HelperGateState::Quarantined"));
+        assert!(retain.contains("Box::leak(Box::new(lifetime))"));
+        assert!(retain.contains("HELPER_GATE_RELEASED.notify_all()"));
+
+        let quarantine = between(source, "fn quarantine(", "impl Drop for HelperGateLease");
+        assert!(quarantine.contains("retain_quarantined_lifetime(lifetime)"));
+        assert!(quarantine.contains("self.active = false"));
+        assert!(quarantine.contains("std::thread::park()"));
+        assert!(!quarantine.contains("leave_helper_gate"));
+
+        let lease_drop = between(
+            source,
+            "impl Drop for HelperGateLease",
+            "struct OneShotPipeServer",
+        );
+        assert!(lease_drop.contains("if !self.active"));
+        assert!(lease_drop.contains("leave_helper_gate"));
+
+        let lifetime_drop = between(source, "impl Drop for HelperLifetime", "static HELPER_GATE");
+        assert!(lifetime_drop.contains("if self.admitted && !self.settled"));
+        assert!(lifetime_drop.contains("retain_quarantined_lifetime("));
+        assert!(lifetime_drop.contains("std::thread::park()"));
+
+        for runner in [unpinned_runner_source(), pinned_runner_source()] {
+            let admitted = runner
+                .find("lifetime.mark_admitted()")
+                .expect("admission marker");
+            let before_admission = &runner[..admitted];
+            let after_admission = &runner[admitted..];
+            let hello = before_admission
+                .find("sequence.accept(first_message)")
+                .expect("hello marker");
+            let first_close = before_admission
+                .find("Ok(PipeFrameRead::Closed)")
+                .expect("pre-hello close");
+            assert!(first_close < hello);
+            assert!(before_admission
+                .contains("the user-helper pipe closed before its identity was admitted"));
+            assert!(before_admission.contains("fail_before_admission"));
+            assert!(!before_admission.contains("cancel_and_quarantine"));
+            assert!(!before_admission.contains("retain_quarantined_lifetime"));
+            assert!(after_admission
+                .contains("Err(error) => cancel_and_quarantine(gate, lifetime, error)"));
+            assert!(!after_admission.contains("fail_before_admission"));
+        }
+        assert!(
+            unpinned_runner_source().contains("the user-helper pipe closed before tool admission")
+        );
+        assert!(
+            pinned_runner_source().contains("the user-helper pipe closed before bridge admission")
+        );
+    }
 }

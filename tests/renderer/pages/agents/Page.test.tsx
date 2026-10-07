@@ -806,6 +806,19 @@ function directoryArticle(name: (typeof CATALOG_NAMES)[number]) {
   return article;
 }
 
+function helperUnconfirmedCliPorts(): FeaturePorts {
+  const ports = configuredPorts();
+  ports.agentInstallReadiness.get = vi.fn(async (agentId) =>
+    agentId === "grokbuild" || agentId === "claude-code"
+      ? readiness(agentId, "unknown", {
+          sourceKind: "cli_tooling",
+          allowedActions: ["install"],
+        })
+      : readiness(agentId, "installed"),
+  );
+  return ports;
+}
+
 function configureButton(name: (typeof CATALOG_NAMES)[number]) {
   return within(directoryArticle(name)).getByRole("button", {
     name: "进行配置",
@@ -871,6 +884,37 @@ describe("V3 Agent directory and configuration shell", () => {
       expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
     },
   );
+
+  it("shows 状态未知, not 当前不可用, when the cli helper left readiness unknown", async () => {
+    renderPage(helperUnconfirmedCliPorts());
+    expect(
+      await screen.findByRole("button", { name: "重新扫描" }),
+    ).toBeEnabled();
+    for (const name of ["Grok Build", "Claude Code"] as const) {
+      const card = directoryArticle(name);
+      expect(card).toHaveAttribute("data-row-kind", "unknown");
+      expect(within(card).getByText("状态未知", { exact: true })).toBeVisible();
+      expect(
+        within(card).queryByText("当前不可用", { exact: true }),
+      ).not.toBeInTheDocument();
+    }
+  });
+
+  // 依赖 fix/arm-unknown-install-button 合入后取消 skip。
+  // deriveAgentLifecyclePrimaryAction 目前只在 not_installed 时给出安装按钮。
+  it.skip("shows 一键安装 when unknown cli_tooling readiness allows install", async () => {
+    renderPage(helperUnconfirmedCliPorts());
+    expect(
+      await screen.findByRole("button", { name: "重新扫描" }),
+    ).toBeEnabled();
+    for (const name of ["Grok Build", "Claude Code"] as const) {
+      expect(
+        within(directoryArticle(name)).getByRole("button", {
+          name: "一键安装",
+        }),
+      ).toBeVisible();
+    }
+  });
 
   it("shows all catalog rows immediately and settles readiness progressively", async () => {
     const ports = configuredPorts();

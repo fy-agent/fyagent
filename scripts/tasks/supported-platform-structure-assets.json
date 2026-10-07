@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "2a4bc778e2c2d4998d156159b5cb3f30b1c6a9aa6293b77489ae6e44d25be88b"
+      "b797a871d74fd764cc39e644d0a30039b057b540f7e89d2f4be3dfc0e0c60ea4"
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
@@ -291,11 +291,11 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "e218b9fd92e204cc1d627bea2d3dcd4c9b3ffc72136652cbd515aa3283d472bd"
+      "ef9cf33accd1d2fa64d88a4f60b41f6ada7e827fe159507ee9417290d26e2a79"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",
-      "f58d96dc3b955b053c1a791c5f87b4b1b13a3a26612e2a1ad454bc863fece544"
+      "b546fbf6c753f40e5bf8c0b9565edc0072e413ce579040e801aaefac31e32fd1"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
@@ -307,7 +307,7 @@
     ],
     [
       "src-tauri/src/services/tooling/grok.rs",
-      "28d3063637276be6514a7384b103d5d36a57342cfdb55c3103f5ffdc337d6939"
+      "b16802485da28d47492417b47d351dc98038b717aa418b905a2ddab5b86bfec9"
     ],
     [
       "src-tauri/src/services/tooling/health.rs",

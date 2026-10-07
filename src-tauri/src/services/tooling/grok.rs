@@ -1442,6 +1442,39 @@ fn map_grok_helper_error(error: crate::codex_desktop::error::InstallerError) -> 
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn grok_helper_without_platform_code_maps_to_unavailable_not_unconfirmed() {
+        use crate::codex_desktop::error::{InstallerError, InstallerErrorCode};
+
+        for message in [
+            "a prior current-user helper lifetime remains retained without terminal proof",
+            "the user-helper operation timed out or disconnected",
+            "the user-helper pipe closed before its identity was admitted",
+        ] {
+            let error = InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_diagnostic_message(message);
+            let mapped = map_grok_helper_error(error);
+            assert_eq!(
+                mapped,
+                "Grok Build is unavailable for the current Windows user."
+            );
+            assert_ne!(mapped, super::WINDOWS_HELPER_UNCONFIRMED_MESSAGE);
+        }
+        for code in [
+            "helper_busy",
+            "shell_desktop_unavailable",
+            "helper_launch_not_invoked",
+        ] {
+            let error = InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code(code);
+            assert_eq!(
+                map_grok_helper_error(error),
+                super::WINDOWS_HELPER_UNCONFIRMED_MESSAGE
+            );
+        }
+    }
+
     fn install(path: &str, real: &str, source: &str, is_default: bool) -> ToolInstallation {
         ToolInstallation {
             path: path.to_string(),
