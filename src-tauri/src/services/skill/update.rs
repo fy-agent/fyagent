@@ -97,6 +97,18 @@ fn same_record(left: &InstalledSkill, right: &InstalledSkill) -> Result<bool> {
     Ok(serde_json::to_value(left)? == serde_json::to_value(right)?)
 }
 
+// Assignment is mutable while a failed projection is pending. All other
+// installation and source metadata still bind the retry to its admitted update.
+fn same_version(left: &InstalledSkill, right: &InstalledSkill) -> Result<bool> {
+    let mut left = left.clone();
+    left.apps = right.apps.clone();
+    same_record(&left, right)
+}
+
+fn matches_pending_version(pending: &PendingUpdate, current: &InstalledSkill) -> Result<bool> {
+    Ok(same_version(current, &pending.before)? || same_version(current, &pending.desired)?)
+}
+
 fn state_path(id: &str) -> std::path::PathBuf {
     get_app_config_dir()
         .join("skill-updates")
@@ -134,10 +146,7 @@ pub(super) fn pending_info(current: &InstalledSkill) -> Result<Option<SkillUpdat
     let Some(pending) = read_pending(&current.id)? else {
         return Ok(None);
     };
-    if pending.before.id != current.id
-        || pending.desired.id != current.id
-        || pending.desired.directory != current.directory
-    {
+    if !matches_pending_version(&pending, current)? {
         bail!("未完成的 Skill 更新记录与当前条目不一致");
     }
     Ok(Some(SkillUpdateInfo {
@@ -257,8 +266,7 @@ pub(super) fn commit(
                 .context("未完成的 Skill 更新记录不可读；原文件已保留")?;
             if pending.source_path != dest.to_string_lossy()
                 || pending.source_after != after
-                || (!same_record(current, &pending.before)?
-                    && !same_record(current, &pending.desired)?)
+                || !matches_pending_version(&pending, current)?
                 || pending.desired.id != desired.id
                 || pending.desired.directory != desired.directory
                 || pending.desired.content_hash != desired.content_hash
@@ -347,15 +355,46 @@ pub(super) fn commit(
     if revision(dest)?.as_deref() != Some(&pending.source_after) {
         bail!("Skill 更新源读回不一致，旧版本备份已保留");
     }
-    let updated = if same_record(current, &pending.desired)? {
-        current.clone()
+    let updated = if same_version(current, &pending.desired)? {
+        db.get_installed_skill(&current.id)?
+            .ok_or_else(|| anyhow!("Skill no longer installed: {}", current.id))?
     } else {
         SkillService::persist_updated_skill_metadata(db, &pending.desired)?
     };
+    if !same_version(&updated, &pending.desired)? {
+        bail!("Skill 安装记录在更新期间发生变化，已拒绝旧操作重试");
+    }
+
+    // A newly enabled target is projected by the ordinary assignment service
+    // before its DB flag is committed. Enroll it as already applied: verify the
+    // new source below, but never adopt later external bytes as an overwriteable
+    // preimage. Retain disabled entries until completion so re-enabling an old
+    // target while another target is blocked keeps its original drift guard.
+    let mut assignments_changed = false;
+    for target in updated.apps.enabled_targets() {
+        if !pending.targets.iter().any(|item| item.target == target) {
+            let path = SkillService::get_target_skills_dir(&target)?.join(&updated.directory);
+            pending.targets.push(TargetProgress {
+                target,
+                path: path.to_string_lossy().into_owned(),
+                before: TargetBefore::Unavailable,
+                applied: true,
+            });
+            assignments_changed = true;
+        }
+    }
+    if assignments_changed {
+        save(&state_path, &pending)?;
+    }
     let mut failures = Vec::new();
     let mut conflicts = Vec::new();
     for index in 0..pending.targets.len() {
         let target = &pending.targets[index];
+        // Disabling a target deliberately removes its projection. A retry must
+        // not recreate it, inspect a new user's replacement, or report it failed.
+        if !updated.apps.is_enabled_for_target(&target.target) {
+            continue;
+        }
         let result = (|| -> Result<()> {
             let path =
                 SkillService::get_target_skills_dir(&target.target)?.join(&current.directory);
@@ -406,7 +445,7 @@ pub(super) fn commit(
         let applied = pending
             .targets
             .iter()
-            .filter(|target| target.applied)
+            .filter(|target| target.applied && updated.apps.is_enabled_for_target(&target.target))
             .map(|target| target.target.as_str())
             .collect::<Vec<_>>()
             .join(", ");

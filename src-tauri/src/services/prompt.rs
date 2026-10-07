@@ -7,6 +7,20 @@ use crate::prompt::Prompt;
 use crate::prompt_files::prompt_file_path;
 use crate::store::AppState;
 
+#[cfg(test)]
+thread_local! {
+    static AFTER_PROMPT_WRITE_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+
+fn after_prompt_file_write() {
+    #[cfg(test)]
+    AFTER_PROMPT_WRITE_HOOK.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().take() {
+            hook();
+        }
+    });
+}
+
 /// 安全地获取当前 Unix 时间戳
 fn get_unix_timestamp() -> Result<i64, AppError> {
     std::time::SystemTime::now()
@@ -50,16 +64,13 @@ impl PromptService {
 
         if is_enabled {
             let target_path = prompt_file_path(&app)?;
-            let recovery_before = Self::prompt_file_recovery_id(&target_path)?;
-            write_text_file(&target_path, &prompt.content)?;
-            let recovery_after = Self::prompt_file_recovery_id(&target_path).map_err(|error| {
-                AppError::Message(format!("live 文件已写入，但读取本次恢复回执失败：{error}"))
-            })?;
+            let (recovery_after, expected_postimage) =
+                Self::write_prompt_file(&target_path, &prompt.content)?;
             if let Err(database_error) = state.db.save_prompt(app.as_str(), &prompt) {
                 return match Self::compensate_prompt_file_write(
                     &target_path,
-                    recovery_before,
                     recovery_after,
+                    expected_postimage,
                 ) {
                     Ok(()) => Err(database_error),
                     Err(compensation_error) => Err(AppError::Message(format!(
@@ -79,19 +90,13 @@ impl PromptService {
             if !any_other_enabled {
                 let target_path = prompt_file_path(&app)?;
                 if target_path.exists() {
-                    let recovery_before = Self::prompt_file_recovery_id(&target_path)?;
-                    write_text_file(&target_path, "")?;
-                    let recovery_after =
-                        Self::prompt_file_recovery_id(&target_path).map_err(|error| {
-                            AppError::Message(format!(
-                                "live 文件已清空，但读取本次恢复回执失败：{error}"
-                            ))
-                        })?;
+                    let (recovery_after, expected_postimage) =
+                        Self::write_prompt_file(&target_path, "")?;
                     if let Err(database_error) = state.db.save_prompt(app.as_str(), &prompt) {
                         return match Self::compensate_prompt_file_write(
                             &target_path,
-                            recovery_before,
                             recovery_after,
+                            expected_postimage,
                         ) {
                             Ok(()) => Err(database_error),
                             Err(compensation_error) => Err(AppError::Message(format!(
@@ -110,29 +115,56 @@ impl PromptService {
         Ok(())
     }
 
+    fn write_prompt_file(
+        target_path: &std::path::Path,
+        content: &str,
+    ) -> Result<(Option<String>, Option<Option<String>>), AppError> {
+        let _scope = crate::config::file_mutation_scope();
+        write_text_file(target_path, content)?;
+        // This test hook exposes the exact race window: a separate managed
+        // writer may replace the marker after our write and before ownership
+        // validation. Read the latest ID first, then verify the scope captured
+        // that operation; reversing the order would reopen the race window.
+        after_prompt_file_write();
+        let recovery_after = Self::prompt_file_recovery_id(target_path).map_err(|error| {
+            AppError::Message(format!("live 文件已写入，但读取恢复回执失败：{error}"))
+        })?;
+        let expected_postimage =
+            crate::config::file_mutation_expected_hash(target_path).map_err(|error| {
+                AppError::Message(format!(
+                    "live 文件已写入，但本次写入归属已变化；保留并发写入：{error}"
+                ))
+            })?;
+        Ok((recovery_after, expected_postimage))
+    }
+
     fn prompt_file_recovery_id(target_path: &std::path::Path) -> Result<Option<String>, AppError> {
         Ok(crate::config::file_recovery(target_path)?.map(|recovery| recovery.receipt_id))
     }
 
     fn compensate_prompt_file_write(
         target_path: &std::path::Path,
-        recovery_before: Option<String>,
         recovery_after: Option<String>,
+        expected_postimage: Option<Option<String>>,
     ) -> Result<(), AppError> {
-        if recovery_before == recovery_after {
+        if expected_postimage.is_none() {
+            // The scoped writer did not touch the file. In particular, never
+            // treat an older undo marker as a receipt for this no-op.
             return Ok(());
         }
+        let Some(receipt_id) = recovery_after else {
+            return Err(AppError::Message(
+                "找不到本次提示词文件写入的恢复回执".to_string(),
+            ));
+        };
         let recovery = crate::config::file_recovery(target_path)?;
-        if recovery.as_ref().map(|receipt| receipt.receipt_id.as_str()) != recovery_after.as_deref()
-        {
+        if recovery.as_ref().map(|entry| entry.receipt_id.as_str()) != Some(receipt_id.as_str()) {
             return Err(AppError::Message(
                 "提示词文件恢复回执已变化，保留当前文件并停止补偿".to_string(),
             ));
         }
-        match recovery.filter(|recovery| recovery.can_restore) {
-            Some(recovery) => {
-                crate::config::restore_file_recovery(target_path, &recovery.receipt_id)
-            }
+        match recovery.filter(|entry| entry.can_restore) {
+            Some(_) => crate::config::restore_file_recovery(target_path, &receipt_id),
             None => Err(AppError::Message(
                 "找不到可验证的提示词文件恢复记录".to_string(),
             )),
@@ -204,18 +236,18 @@ impl PromptService {
             prompt.enabled = prompt.id == id;
         }
         let target = prompts.get(id).expect("target checked above");
-        let recovery_before = Self::prompt_file_recovery_id(&target_path)?;
-        write_text_file(&target_path, &target.content)?;
-        let recovery_after = Self::prompt_file_recovery_id(&target_path).map_err(|error| {
-            AppError::Message(format!("live 文件已写入，但读取本次恢复回执失败：{error}"))
-        })?;
+        let (recovery_after, expected_postimage) =
+            Self::write_prompt_file(&target_path, &target.content)?;
 
         if let Err(database_error) = state
             .db
             .save_prompts(app.as_str(), &prompts.values().cloned().collect::<Vec<_>>())
         {
-            let compensation =
-                Self::compensate_prompt_file_write(&target_path, recovery_before, recovery_after);
+            let compensation = Self::compensate_prompt_file_write(
+                &target_path,
+                recovery_after,
+                expected_postimage,
+            );
             return match compensation {
                 Ok(()) => Err(database_error),
                 Err(compensation_error) => Err(AppError::Message(format!(
@@ -635,17 +667,15 @@ mod tests {
     fn iteration_resources_compensation_refuses_external_drift_and_noop_keeps_old_receipt() {
         let (_home, _guard, _state, live) = setup();
         write_text_file(&live, "Initial live\n").unwrap();
-        let initial_receipt = PromptService::prompt_file_recovery_id(&live).unwrap();
-
-        write_text_file(&live, "Operation live\n").unwrap();
-        let operation_receipt = PromptService::prompt_file_recovery_id(&live).unwrap();
+        let (operation_receipt, operation_postimage) =
+            PromptService::write_prompt_file(&live, "Operation live\n").unwrap();
         write_text_file(&live, "External live edit\n").unwrap();
         let external_receipt = PromptService::prompt_file_recovery_id(&live).unwrap();
 
         assert!(PromptService::compensate_prompt_file_write(
             &live,
-            initial_receipt,
-            operation_receipt.clone(),
+            operation_receipt,
+            operation_postimage,
         )
         .is_err());
         assert_eq!(fs::read_to_string(&live).unwrap(), "External live edit\n");
@@ -654,12 +684,67 @@ mod tests {
             external_receipt
         );
 
-        let before_noop = external_receipt;
-        write_text_file(&live, "External live edit\n").unwrap();
-        let after_noop = PromptService::prompt_file_recovery_id(&live).unwrap();
-        assert_eq!(before_noop, after_noop);
-        PromptService::compensate_prompt_file_write(&live, before_noop, after_noop).unwrap();
+        let (noop_receipt, noop_postimage) =
+            PromptService::write_prompt_file(&live, "External live edit\n").unwrap();
+        assert_eq!(noop_receipt, external_receipt);
+        assert!(noop_postimage.is_none());
+        PromptService::compensate_prompt_file_write(&live, noop_receipt, noop_postimage).unwrap();
         assert_eq!(fs::read_to_string(&live).unwrap(), "External live edit\n");
+        assert_eq!(
+            PromptService::prompt_file_recovery_id(&live).unwrap(),
+            external_receipt
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn iteration_resources_concurrent_enable_rejects_stale_scope_without_compensating_c() {
+        let (_home, _guard, state, live) = setup();
+        let original = prompt("race-a", true);
+        let target_b = prompt("race-b", false);
+        let target_c = prompt("race-c", false);
+        state.db.save_prompt("claude", &original).unwrap();
+        state.db.save_prompt("claude", &target_b).unwrap();
+        state.db.save_prompt("claude", &target_c).unwrap();
+        write_text_file(&live, &original.content).unwrap();
+
+        // If the stale B operation were allowed to reach its DAO write, fail it
+        // there. Correct ownership validation detects C's newer scoped receipt
+        // first and returns without touching C's successful commit or file.
+        state.db.reject_prompt_state_for_test("race-b", true, true);
+        let (write_tx, write_rx) = std::sync::mpsc::channel();
+        let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+        let b_state = state.clone();
+        let b = std::thread::spawn(move || {
+            AFTER_PROMPT_WRITE_HOOK.with(|hook| {
+                *hook.borrow_mut() = Some(Box::new(move || {
+                    write_tx.send(()).unwrap();
+                    resume_rx.recv().unwrap();
+                }));
+            });
+            PromptService::enable_prompt(&b_state, AppType::Claude, "race-b")
+        });
+
+        write_rx.recv().unwrap();
+        let c_state = state.clone();
+        let c_result = std::thread::spawn(move || {
+            PromptService::enable_prompt(&c_state, AppType::Claude, "race-c")
+        })
+        .join()
+        .unwrap();
+        resume_tx.send(()).unwrap();
+
+        let b_error = b
+            .join()
+            .unwrap()
+            .expect_err("B must stop after losing receipt ownership");
+        assert!(b_error.to_string().contains("归属已变化"), "{b_error}");
+        let saved = state.db.get_prompts("claude").unwrap();
+        assert!(!saved["race-a"].enabled);
+        assert!(!saved["race-b"].enabled);
+        assert!(saved["race-c"].enabled);
+        assert_eq!(fs::read_to_string(&live).unwrap(), target_c.content);
+        c_result.unwrap();
     }
 
     #[test]

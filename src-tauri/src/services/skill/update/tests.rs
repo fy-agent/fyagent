@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    app_config::{SkillApps, SkillTargetId},
+    app_config::{AppType, SkillApps, SkillTargetId},
     services::skill::{SkillService, SkillStorageLocation},
 };
 use anyhow::{Context, Result};
@@ -43,6 +43,9 @@ impl Drop for HomeGuard {
             Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
             None => std::env::remove_var("FYAGENT_TEST_HOME"),
         }
+        // Restore the process cache from the restored home's file using the
+        // read-only loader. Never write test settings into that home's config.
+        let _ = crate::settings::reload_settings();
     }
 }
 
@@ -516,6 +519,162 @@ async fn iteration_resources_skill_update_retry_preserves_external_first_target_
         fs::read(backup.join("skill").join("payload.txt"))?,
         b"old payload"
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn iteration_resources_skill_retry_respects_changed_assignments_and_finishes_offline(
+) -> Result<()> {
+    let mut isolated = Isolated::new();
+    fs::remove_dir_all(&isolated.codex)?;
+    fs::write(&isolated.codex, "blocked target root")?;
+    let (addr, server) = serve_one().await?;
+    isolated.install_client(addr);
+    let error = isolated
+        .update()
+        .await
+        .expect_err("Codex update is partial");
+    server.await?;
+    assert!(error.to_string().contains("UPDATE_INCOMPLETE"), "{error:#}");
+
+    fs::remove_file(&isolated.codex)?;
+    // Exercise ordinary assignment APIs rather than directly changing the DB.
+    SkillService::toggle_app(&isolated.db, SKILL_ID, &AppType::Codex, false)?;
+    SkillService::toggle_app(&isolated.db, SKILL_ID, &AppType::Gemini, true)?;
+    let gemini = SkillService::get_target_skills_dir(&SkillTargetId::Gemini)?.join(DIRECTORY);
+    let first_payload = isolated.claude.join("payload.txt");
+    let added_payload = gemini.join("payload.txt");
+    let first_mtime = fs::metadata(&first_payload)?.modified()?;
+    let added_mtime = fs::metadata(&added_payload)?.modified()?;
+    let changed_apps = isolated.db.get_installed_skill(SKILL_ID)?.unwrap().apps;
+    assert!(changed_apps.claude && changed_apps.gemini && !changed_apps.codex);
+
+    let mut service = SkillService::new();
+    service.update_test_client = Some(offline_client()?);
+    assert!(service
+        .check_updates(&isolated.db)
+        .await?
+        .iter()
+        .any(|item| item.id == SKILL_ID));
+    let result = service.update_skill(&isolated.db, SKILL_ID).await?;
+    assert_eq!(result.apps, changed_apps);
+    assert_eq!(
+        isolated.db.get_installed_skill(SKILL_ID)?.unwrap().apps,
+        changed_apps
+    );
+    assert!(!isolated.codex.exists(), "disabled target was recreated");
+    assert_eq!(fs::read(&first_payload)?, expected_payload());
+    assert_eq!(fs::read(&added_payload)?, expected_payload());
+    assert_eq!(fs::metadata(&first_payload)?.modified()?, first_mtime);
+    assert_eq!(fs::metadata(&added_payload)?.modified()?, added_mtime);
+    assert!(
+        !is_pending(SKILL_ID)?,
+        "changed assignments prevented completion"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn iteration_resources_skill_changed_assignments_preserve_old_and_new_target_edits(
+) -> Result<()> {
+    let mut isolated = Isolated::new();
+    fs::remove_dir_all(&isolated.codex)?;
+    fs::write(&isolated.codex, "blocked target root")?;
+    let (addr, server) = serve_one().await?;
+    isolated.install_client(addr);
+    let error = isolated
+        .update()
+        .await
+        .expect_err("Codex update is partial");
+    server.await?;
+    assert!(error.to_string().contains("UPDATE_INCOMPLETE"), "{error:#}");
+
+    fs::remove_file(&isolated.codex)?;
+    SkillService::toggle_app(&isolated.db, SKILL_ID, &AppType::Codex, false)?;
+    SkillService::toggle_app(&isolated.db, SKILL_ID, &AppType::Gemini, true)?;
+    let gemini = SkillService::get_target_skills_dir(&SkillTargetId::Gemini)?.join(DIRECTORY);
+    fs::write(
+        isolated.claude.join("payload.txt"),
+        "external Claude edits\n",
+    )?;
+    fs::write(gemini.join(".user-hidden"), "external Gemini data\n")?;
+    let claude_revision = revision(&isolated.claude)?;
+    let gemini_revision = revision(&gemini)?;
+    let changed_apps = isolated.db.get_installed_skill(SKILL_ID)?.unwrap().apps;
+
+    let mut service = SkillService::new();
+    service.update_test_client = Some(offline_client()?);
+    let error = service
+        .update_skill(&isolated.db, SKILL_ID)
+        .await
+        .expect_err("external edits must remain visible after assignment changes");
+    let details: serde_json::Value = serde_json::from_str(&error.to_string())?;
+    assert_eq!(details["code"], "UPDATE_INCOMPLETE");
+    assert_eq!(
+        details["context"]["conflicted"], "claude,gemini",
+        "{details}"
+    );
+    assert_eq!(
+        isolated.db.get_installed_skill(SKILL_ID)?.unwrap().apps,
+        changed_apps
+    );
+    assert!(!isolated.codex.exists(), "disabled target was recreated");
+    assert_eq!(revision(&isolated.claude)?, claude_revision);
+    assert_eq!(revision(&gemini)?, gemini_revision);
+    assert!(is_pending(SKILL_ID)?, "conflict preimage was discarded");
+    // A second offline retry must not adopt the newly observed external tree
+    // as a preimage and overwrite it on a later attempt.
+    service
+        .update_skill(&isolated.db, SKILL_ID)
+        .await
+        .expect_err("conflict remains");
+    assert_eq!(revision(&isolated.claude)?, claude_revision);
+    assert_eq!(revision(&gemini)?, gemini_revision);
+    Ok(())
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn iteration_resources_skill_assignment_retry_still_rejects_changed_installation(
+) -> Result<()> {
+    let mut isolated = Isolated::new();
+    fs::remove_dir_all(&isolated.codex)?;
+    fs::write(&isolated.codex, "blocked target root")?;
+    let (addr, server) = serve_one().await?;
+    isolated.install_client(addr);
+    isolated
+        .update()
+        .await
+        .expect_err("Codex update is partial");
+    server.await?;
+    let source = isolated.ssot.join(DIRECTORY);
+    let source_revision = revision(&source)?;
+    let claude_revision = revision(&isolated.claude)?;
+    let mut changed = isolated.db.get_installed_skill(SKILL_ID)?.unwrap();
+    changed.installed_at += 1;
+    changed.apps.codex = false;
+    isolated.db.save_skill(&changed)?;
+
+    let mut service = SkillService::new();
+    service.update_test_client = Some(offline_client()?);
+    service
+        .check_updates(&isolated.db)
+        .await
+        .expect_err("new installation must not be advertised as a retry");
+    service
+        .update_skill(&isolated.db, SKILL_ID)
+        .await
+        .expect_err("assignment reconciliation must not accept a new generation");
+    assert_eq!(revision(&source)?, source_revision);
+    assert_eq!(revision(&isolated.claude)?, claude_revision);
+    assert_eq!(fs::read(&isolated.codex)?, b"blocked target root");
+    assert_eq!(
+        serde_json::to_value(isolated.db.get_installed_skill(SKILL_ID)?.unwrap())?,
+        serde_json::to_value(changed)?
+    );
+    assert!(is_pending(SKILL_ID)?);
     Ok(())
 }
 
