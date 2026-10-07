@@ -267,6 +267,18 @@ impl Database {
         sql_raw: &str,
         preserve_tables: &[&str],
     ) -> Result<String, AppError> {
+        self.import_sql_string_inner_with_hook(sql_raw, preserve_tables, || Ok(()))
+    }
+
+    fn import_sql_string_inner_with_hook<F>(
+        &self,
+        sql_raw: &str,
+        preserve_tables: &[&str],
+        before_replace: F,
+    ) -> Result<String, AppError>
+    where
+        F: FnOnce() -> Result<(), AppError>,
+    {
         let _credential_guard = self
             .provider_secret_guard
             .lock()
@@ -332,6 +344,7 @@ impl Database {
         Self::assert_no_persistent_triggers(&temp_conn)?;
         self.archive_retired_customer_project_data_before_replace()?;
 
+        before_replace()?;
         self.replace_from_candidate_preserving_receipts(&temp_conn)?;
 
         let backup_id = backup_path
@@ -432,6 +445,21 @@ impl Database {
         }
 
         Ok(snapshot)
+    }
+
+    fn complete_backup(backup: &Backup<'_, '_>, context: &str) -> Result<(), AppError> {
+        let result = backup
+            .step(-1)
+            .map_err(|e| AppError::Database(format!("{context}失败: {e}")))?;
+        match result {
+            StepResult::Done => Ok(()),
+            StepResult::More | StepResult::Busy | StepResult::Locked => Err(AppError::Database(
+                format!("{context}未完成: SQLite Backup 返回 {result:?}"),
+            )),
+            _ => Err(AppError::Database(format!(
+                "{context}未完成: SQLite Backup 返回未知状态"
+            ))),
+        }
     }
 
     fn validate_fyagent_sql_export(sql: &str) -> Result<(), AppError> {
@@ -809,6 +837,42 @@ impl Database {
 
     /// 生成一致性快照备份，返回备份文件路径（不存在主库时返回 None）
     pub(crate) fn backup_database_file(&self) -> Result<Option<PathBuf>, AppError> {
+        let backup_file_guard = lock_backup_file_operations()?;
+        self.backup_database_file_locked(&backup_file_guard)
+    }
+
+    fn backup_database_file_locked(
+        &self,
+        backup_file_guard: &BackupFileOperationGuard,
+    ) -> Result<Option<PathBuf>, AppError> {
+        let conn = lock_conn!(self.conn);
+        Self::backup_database_file_from_conn(backup_file_guard, &conn, &[])
+    }
+
+    /// Create a safety backup from a connection whose caller already owns both
+    /// the backup-file operation guard and the appropriate database guard.
+    fn backup_database_file_from_conn(
+        backup_file_guard: &BackupFileOperationGuard,
+        source_conn: &Connection,
+        protected_paths: &[&Path],
+    ) -> Result<Option<PathBuf>, AppError> {
+        Self::backup_database_file_from_conn_with_hook(
+            backup_file_guard,
+            source_conn,
+            protected_paths,
+            |_, _| Ok(()),
+        )
+    }
+
+    fn backup_database_file_from_conn_with_hook<F>(
+        _backup_file_guard: &BackupFileOperationGuard,
+        source_conn: &Connection,
+        protected_paths: &[&Path],
+        before_publish: F,
+    ) -> Result<Option<PathBuf>, AppError>
+    where
+        F: FnOnce(&Path, &Path) -> Result<(), AppError>,
+    {
         let db_path = get_app_config_dir().join("fyagent.db");
         if !db_path.exists() {
             return Ok(None);
@@ -997,6 +1061,22 @@ impl Database {
                 "backup.sql.invalid_schema",
                 format!("导入的 SQL 缺少 CC Switch 必需表：{names}"),
                 format!("The imported SQL is missing required CC Switch tables: {names}"),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_basic_state(conn: &Connection) -> Result<(), AppError> {
+        let provider_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM providers", [], |row| row.get(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let mcp_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM mcp_servers", [], |row| row.get(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        if provider_count == 0 && mcp_count == 0 {
+            return Err(AppError::Config(
+                "导入的 SQL 未包含有效的供应商或 MCP 数据".to_string(),
             ));
         }
         Ok(())
@@ -1363,7 +1443,8 @@ impl Database {
         self.archive_retired_customer_project_data_before_replace()?;
 
         // Step 1: Create safety backup of current database
-        let safety_backup = self.backup_database_file()?;
+        let safety_backup = self.backup_database_file_locked(&backup_file_guard)?;
+        before_replace(safety_backup.as_deref())?;
         let safety_id = safety_backup
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
             .unwrap_or_default();
@@ -1474,7 +1555,7 @@ mod tests {
     mod fde_restore_tests {
         include!("fde_restore_tests.rs");
     }
-    use super::{Database, FYAGENT_SQL_EXPORT_HEADER};
+    use super::{lock_backup_file_operations, Database, FYAGENT_SQL_EXPORT_HEADER};
     use crate::error::AppError;
     use crate::settings::{get_settings, update_settings, AppSettings};
     use rusqlite::Connection;

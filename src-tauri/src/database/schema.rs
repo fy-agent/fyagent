@@ -616,6 +616,11 @@ impl Database {
                         Self::create_session_restore_tables_on_conn(conn)?;
                         Self::set_user_version(conn, 26)?;
                     }
+                    26 => {
+                        log::info!("迁移数据库从 v26 到 v27（上游会话游标、去重账本和 Skills Mcode 列）");
+                        Self::migrate_v26_to_v27(conn)?;
+                        Self::set_user_version(conn, 27)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -2074,8 +2079,27 @@ impl Database {
         .map_err(|error| AppError::Database(format!("创建 Managed Auth 表失败: {error}")))
     }
 
-    /// v16 -> v17: preserve session request identities after detail rollup.
-    fn migrate_v16_to_v17(conn: &Connection) -> Result<(), AppError> {
+    /// FyAgent v26 -> v27: retain upstream storage additions without reusing
+    /// FyAgent's historical migration numbers. New cursor fields remain NULL
+    /// until the session readers record byte state on the next scan.
+    fn migrate_v26_to_v27(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "skills")? {
+            Self::add_column_if_missing(
+                conn,
+                "skills",
+                "enabled_mcode",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+        }
+        if Self::table_exists(conn, "session_log_sync")? {
+            Self::add_column_if_missing(conn, "session_log_sync", "last_byte_offset", "INTEGER")?;
+            Self::add_column_if_missing(
+                conn,
+                "session_log_sync",
+                "last_tail_fingerprint",
+                "INTEGER",
+            )?;
+        }
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS session_usage_dedup (
                 data_source TEXT NOT NULL,
@@ -2087,28 +2111,7 @@ impl Database {
              CREATE INDEX IF NOT EXISTS idx_session_usage_dedup_semantic
              ON session_usage_dedup(data_source, semantic_id, has_entry_id);",
         )
-        .map_err(|error| AppError::Database(format!("创建会话用量去重账本失败: {error}")))
-    }
-
-    /// v17 -> v18: Claude 会话日志的字节游标列与尾部指纹列。
-    ///
-    /// 独立成版而非搭 v17 车：v17 已在开发库上执行过（迁移不会重跑，
-    /// `CREATE TABLE IF NOT EXISTS` 也不补列），追加进 v17 会让这些库
-    /// 永远缺列。存量行保持 NULL，首轮扫描按旧行号游标转换为字节位置
-    /// 后继续增量；之后写入字节偏移走 seek 增量，并记录游标边界前的
-    /// 尾部指纹用于识别外部重写（截断由 size 检测，同尺寸/更大的替换
-    /// 只有指纹能发现）。
-    fn migrate_v17_to_v18(conn: &Connection) -> Result<(), AppError> {
-        // 缺表的库（异常/测试夹具）跳过：create_tables 会以含列的新 DDL 建表。
-        if Self::table_exists(conn, "session_log_sync")? {
-            Self::add_column_if_missing(conn, "session_log_sync", "last_byte_offset", "INTEGER")?;
-            Self::add_column_if_missing(
-                conn,
-                "session_log_sync",
-                "last_tail_fingerprint",
-                "INTEGER",
-            )?;
-        }
+        .map_err(|error| AppError::Database(format!("创建会话用量去重账本失败: {error}")))?;
         Ok(())
     }
 
@@ -4606,8 +4609,7 @@ mod tests {
         )?;
         Database::set_user_version(&conn, 16)?;
 
-        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
-        assert!(Database::table_exists(&conn, "session_usage_dedup")?);
+        assert_eq!(Database::get_user_version(&conn)?, 16);
         let counts: (i64, i64, i64, i64) = conn.query_row(
             "SELECT
                 (SELECT COUNT(*) FROM proxy_request_logs WHERE data_source = 'codex_session'),
@@ -4622,9 +4624,114 @@ mod tests {
     }
 
     #[test]
-    fn migrate_v16_to_v17_creates_session_usage_dedup_ledger() -> Result<(), AppError> {
+    fn migrate_v26_to_v27_preserves_old_rows_and_reopens() -> Result<(), AppError> {
         let conn = Connection::open_in_memory()?;
-        Database::set_user_version(&conn, 16)?;
+        conn.execute_batch(include_str!("fixtures/schema_v26_upstream_delta.sql"))?;
+        // Startup creates missing tables before migration, which cannot add
+        // columns to these existing v26 tables on its own.
+        Database::create_tables_on_conn(&conn)?;
+        assert!(!Database::has_column(&conn, "skills", "enabled_mcode")?);
+        assert!(!Database::has_column(&conn, "session_log_sync", "last_byte_offset")?);
+        Database::apply_schema_migrations_on_conn(&conn)?;
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        let flags: (i64, i64, i64) = conn.query_row(
+            "SELECT enabled_codex, enabled_workbuddy, enabled_mcode FROM skills WHERE id = 'kept-skill'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(flags, (1, 1, 0));
+        let cursor: (i64, i64, i64, Option<i64>, Option<i64>) = conn.query_row(
+            "SELECT last_modified, last_line_offset, last_synced_at, last_byte_offset, last_tail_fingerprint
+             FROM session_log_sync WHERE file_path = '/tmp/a.jsonl'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        )?;
+        assert_eq!(cursor, (5, 3, 1, None, None));
+        conn.execute_batch(
+            "UPDATE session_log_sync SET last_byte_offset = 123, last_tail_fingerprint = 456;
+             UPDATE skills SET enabled_mcode = 1;",
+        )?;
+        Database::create_tables_on_conn(&conn)?;
+        Database::apply_schema_migrations_on_conn(&conn)?;
+        let cursor: (i64, i64) = conn.query_row(
+            "SELECT last_byte_offset, last_tail_fingerprint FROM session_log_sync",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(cursor, (123, 456));
+        let enabled: i64 = conn.query_row("SELECT enabled_mcode FROM skills", [], |row| row.get(0))?;
+        assert_eq!(enabled, 1);
+
+        let fresh = Connection::open_in_memory()?;
+        Database::create_tables_on_conn(&fresh)?;
+        Database::apply_schema_migrations_on_conn(&fresh)?;
+        assert_eq!(Database::get_user_version(&fresh)?, SCHEMA_VERSION);
+        for table in ["skills", "session_log_sync", "session_usage_dedup"] {
+            let columns = |db: &Connection| -> rusqlite::Result<Vec<String>> {
+                let mut stmt = db.prepare("SELECT name FROM pragma_table_info(?1) ORDER BY name")?;
+                let rows = stmt.query_map([table], |row| row.get(0))?;
+                rows.collect()
+            };
+            let migrated = columns(&conn)?;
+            let created = columns(&fresh)?;
+            assert_eq!(migrated, created, "fresh/upgraded columns differ: {table}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v26_to_v27_accepts_already_present_upstream_columns() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        Database::create_tables_on_conn(&conn)?;
+        Database::set_user_version(&conn, 26)?;
+        conn.execute_batch(
+            "INSERT INTO skills (id, name, directory, enabled_mcode) VALUES ('m', 'm', 'm', 1);
+             INSERT INTO session_log_sync VALUES ('/tmp/merged.jsonl', 5, 3, 1, 123, 456);
+             INSERT INTO session_usage_dedup VALUES ('codex_session', 'request', 'semantic', 1);",
+        )?;
+        Database::apply_schema_migrations_on_conn(&conn)?;
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        let enabled: i64 = conn.query_row("SELECT enabled_mcode FROM skills", [], |row| row.get(0))?;
+        assert_eq!(enabled, 1);
+        let byte_offset: i64 = conn.query_row(
+            "SELECT last_byte_offset FROM session_log_sync",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(byte_offset, 123);
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM session_usage_dedup",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(count, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v26_to_v27_rolls_back_columns_on_late_failure() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(include_str!("fixtures/schema_v26_upstream_delta.sql"))?;
+        // The ledger DDL runs after the added columns. Force a late failure.
+        conn.execute_batch("CREATE VIEW session_usage_dedup AS SELECT 1 AS incompatible;")?;
+        assert!(Database::apply_schema_migrations_on_conn(&conn).is_err());
+        assert_eq!(Database::get_user_version(&conn)?, 26);
+        assert!(!Database::has_column(&conn, "skills", "enabled_mcode")?);
+        assert!(!Database::has_column(&conn, "session_log_sync", "last_byte_offset")?);
+        assert!(!Database::has_column(&conn, "session_log_sync", "last_tail_fingerprint")?);
+        let line_offset: i64 = conn.query_row(
+            "SELECT last_line_offset FROM session_log_sync",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(line_offset, 3);
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v26_to_v27_creates_session_usage_dedup_ledger() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        Database::set_user_version(&conn, 26)?;
 
         Database::apply_schema_migrations_on_conn(&conn)?;
 
@@ -4640,10 +4747,8 @@ mod tests {
     }
 
     #[test]
-    fn migrate_v17_to_v18_adds_byte_cursor_to_existing_sync_table() -> Result<(), AppError> {
-        // 真实升级路径：v17 库带旧 DDL 的 session_log_sync（无字节游标列，
-        // 字节游标曾短暂搭 v17 车、已执行过 v17 的开发库正是这个形状）
-        // 与存量游标行，迁移后列补上、存量行保持 NULL（首轮按行号转换）
+    fn migrate_v26_to_v27_adds_byte_cursor_to_existing_sync_table() -> Result<(), AppError> {
+        // FyAgent v26 的真实旧表没有字节游标列。保留行号，新增列为 NULL。
         let conn = Connection::open_in_memory()?;
         conn.execute_batch(
             "CREATE TABLE session_log_sync (
@@ -4654,7 +4759,7 @@ mod tests {
              );
              INSERT INTO session_log_sync VALUES ('/tmp/a.jsonl', 5, 3, 1);",
         )?;
-        Database::set_user_version(&conn, 17)?;
+        Database::set_user_version(&conn, 26)?;
 
         Database::apply_schema_migrations_on_conn(&conn)?;
 
