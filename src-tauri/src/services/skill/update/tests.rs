@@ -486,7 +486,7 @@ async fn iteration_resources_skill_update_retry_resumes_only_blocked_target_in_n
     );
 
     // Force retention past its limit with newer unrelated backups. The pending preimage must survive.
-    let pending_backup = fs::read_dir(&archive_root())?
+    let pending_backup = fs::read_dir(archive_root())?
         .filter_map(|entry| entry.ok().map(|item| item.path()))
         .find(|path| path.is_dir() && path.join("meta.json").is_file())
         .expect("preimage backup");

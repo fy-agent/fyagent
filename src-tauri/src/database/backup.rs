@@ -78,10 +78,13 @@ enum RecoveryTestFault {
 }
 
 #[cfg(test)]
+type RecoveryTestCheckpoint = Box<dyn Fn(RestorePhase)>;
+
+#[cfg(test)]
 thread_local! {
     static RECOVERY_TEST_FAULT: std::cell::Cell<Option<RecoveryTestFault>> = const { std::cell::Cell::new(None) };
     static BACKUP_LIFECYCLE_TEST_PROBE: std::cell::RefCell<Option<std::sync::mpsc::Sender<BackupLifecycleTestEvent>>> = const { std::cell::RefCell::new(None) };
-    static RECOVERY_TEST_CHECKPOINT: std::cell::RefCell<Option<Box<dyn Fn(RestorePhase)>>> = const { std::cell::RefCell::new(None) };
+    static RECOVERY_TEST_CHECKPOINT: std::cell::RefCell<Option<RecoveryTestCheckpoint>> = const { std::cell::RefCell::new(None) };
 }
 
 #[cfg(test)]
