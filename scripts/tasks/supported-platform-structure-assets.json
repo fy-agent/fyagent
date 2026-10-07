@@ -307,7 +307,7 @@
     ],
     [
       "src-tauri/src/services/proxy.rs",
-      "52fb5de1904d5db447436c1b1573fdc1d111c855c9167f9a6341932d13ac0686"
+      "35c79a255eae839d6e82d55c05d0281b03ef88ac70f76849b144a5da86004828"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -331,7 +331,7 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "0bf28ea3db8b60c3564b11e918d2b6a22d6c5be015018e34ca3ac6b2c5e284e1"
+      "f0bfdaa87f33ce27de64e7d959044c1d34e12321b4e0128f263677c6449984bb"
     ],
     [
       "src-tauri/src/services/subscription.rs",
@@ -339,7 +339,7 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "53e4dc6e7d2eb481f57fd9a0f419285f79e7524845b12b7b7e4539c3a9f96a8a"
+      "f1a822a9ef00307ebc9009c5d979a5df16e65fc4870ffba1a79714d7306b2d38"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",

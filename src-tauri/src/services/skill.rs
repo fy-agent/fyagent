@@ -644,17 +644,18 @@ impl SkillService {
     }
 
     /// 列表观察项在首次写操作时才收养进 SSOT。读取路径不得静默接管用户原目录。
+    /// 调用方必须持有 Skills 状态写锁。
     fn adopt_observed_if_needed(db: &Arc<Database>, id: &str) -> Result<InstalledSkill> {
         if let Some(skill) = db.get_installed_skill(id)? {
             return Ok(skill);
         }
-        let Some(observed) = Self::scan_unmanaged(db)?
+        let Some(observed) = Self::scan_unmanaged_unlocked(db)?
             .into_iter()
             .find(|item| Self::observed_skill_id(&item.directory) == id)
         else {
             return Err(anyhow!("Skill not found: {id}"));
         };
-        let imported = Self::import_from_apps(
+        let imported = Self::import_from_apps_unlocked(
             db,
             vec![ImportSkillSelection {
                 directory: observed.directory.clone(),
@@ -1686,6 +1687,11 @@ impl SkillService {
     /// 扫描各应用目录，找出未被 FyAgent 管理的 Skills
     pub fn scan_unmanaged(db: &Arc<Database>) -> Result<Vec<UnmanagedSkill>> {
         let _state_guard = skill_state_read_guard();
+        Self::scan_unmanaged_unlocked(db)
+    }
+
+    /// 调用方必须持有 Skills 状态读锁或写锁。
+    fn scan_unmanaged_unlocked(db: &Arc<Database>) -> Result<Vec<UnmanagedSkill>> {
         let managed_skills = db.get_all_installed_skills()?;
         let managed_dirs: HashSet<String> = managed_skills
             .values()
@@ -1756,7 +1762,14 @@ impl SkillService {
         imports: Vec<ImportSkillSelection>,
     ) -> Result<Vec<InstalledSkill>> {
         let _state_guard = skill_state_write_guard();
+        Self::import_from_apps_unlocked(db, imports)
+    }
 
+    /// 调用方必须持有 Skills 状态写锁。
+    fn import_from_apps_unlocked(
+        db: &Arc<Database>,
+        imports: Vec<ImportSkillSelection>,
+    ) -> Result<Vec<InstalledSkill>> {
         let ssot_dir = Self::get_ssot_dir()?;
         let agents_lock = parse_agents_lock();
         let mut imported = Vec::new();
@@ -4315,8 +4328,8 @@ mod tests {
         assert!(skill_state_lock().try_write().is_ok());
     }
 
-    // Exercise the public operation while a cloud restore owns the write lock.
-    // Always release the guard and join before asserting, including on failure.
+    // 在恢复持写锁期间调用公共操作；先释放父线程锁，再处理 worker 的结果。
+    // 自锁线程无法安全终止，超时必须中止测试二进制，避免污染后续测试。
     fn assert_skill_operation_waits_for_restore(operation: impl FnOnce() + Send + 'static) {
         use std::sync::mpsc;
         use std::time::Duration;
@@ -4325,21 +4338,52 @@ mod tests {
         let (started_tx, started_rx) = mpsc::channel();
         let (done_tx, done_rx) = mpsc::channel();
         let worker = std::thread::spawn(move || {
-            started_tx.send(()).unwrap();
-            operation();
-            done_tx.send(()).unwrap();
+            let _ = started_tx.send(());
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation));
+            let _ = done_tx.send(result);
         });
-        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        let blocked = matches!(
-            done_rx.recv_timeout(Duration::from_millis(100)),
-            Err(mpsc::RecvTimeoutError::Timeout)
-        );
+        let started = started_rx.recv_timeout(Duration::from_secs(5));
+        let early_result = done_rx.recv_timeout(Duration::from_millis(100));
+        let blocked = matches!(early_result, Err(mpsc::RecvTimeoutError::Timeout));
         drop(guard);
-        if blocked {
-            done_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let result = match early_result {
+            Err(mpsc::RecvTimeoutError::Timeout) => done_rx.recv_timeout(Duration::from_secs(5)),
+            result => result,
+        };
+        if matches!(result, Err(mpsc::RecvTimeoutError::Timeout)) {
+            eprintln!("Skills 操作在恢复锁释放后仍未完成；可能存在锁重入，中止测试进程");
+            std::process::abort();
         }
         worker.join().unwrap();
+        started.unwrap();
         assert!(blocked, "Skills operation bypassed the state lock");
+        if let Err(panic) = result.unwrap() {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn skill_restore_wait_helper_propagates_worker_panic_after_unlocking() {
+        let result = std::panic::catch_unwind(|| {
+            assert_skill_operation_waits_for_restore(|| {
+                drop(skill_state_write_guard());
+                panic!("被测操作失败");
+            });
+        });
+        let panic = result.expect_err("必须传播 worker 的原始 panic");
+        assert_eq!(panic.downcast_ref::<&str>(), Some(&"被测操作失败"));
+        assert!(skill_state_lock().try_write().is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn skill_restore_wait_helper_rejects_operations_that_bypass_the_lock() {
+        let result = std::panic::catch_unwind(|| {
+            assert_skill_operation_waits_for_restore(|| {});
+        });
+        assert!(result.is_err());
+        assert!(skill_state_lock().try_write().is_ok());
     }
 
     #[test]

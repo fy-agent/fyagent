@@ -188,7 +188,7 @@ const ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE: &str =
 pub(crate) const WINDOWS_HELPER_UNCONFIRMED_MESSAGE: &str =
     "暂时无法读取当前 Windows 用户的 CLI 状态，请稍后刷新。";
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(windows, test))]
 fn windows_helper_left_state_unconfirmed(platform_error_code: Option<&str>) -> bool {
     matches!(
         platform_error_code,
@@ -3325,7 +3325,6 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "windows")]
     #[test]
     fn only_helper_outcomes_where_nothing_ran_leave_cli_state_unconfirmed() {
         for code in [

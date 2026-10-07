@@ -317,13 +317,12 @@ impl ProviderRouter {
 mod tests {
     use super::*;
     use crate::database::Database;
-    use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
     use serde_json::json;
     use serial_test::serial;
     use std::env;
     use tempfile::TempDir;
 
-    fn managed_codex_official(id: &str, account_id: &str) -> Provider {
+    fn native_codex_official(id: &str) -> Provider {
         let mut provider = Provider::with_id(
             id.to_string(),
             "OpenAI Official".to_string(),
@@ -331,15 +330,6 @@ mod tests {
             None,
         );
         provider.category = Some("official".to_string());
-        provider.meta = Some(ProviderMeta {
-            provider_type: Some("codex_oauth".to_string()),
-            auth_binding: Some(AuthBinding {
-                source: AuthBindingSource::ManagedAccount,
-                auth_provider: Some("codex_oauth".to_string()),
-                account_id: Some(account_id.to_string()),
-            }),
-            ..Default::default()
-        });
         provider
     }
 
@@ -527,7 +517,7 @@ mod tests {
     async fn codex_official_current_stays_single_route_when_failover_is_stale() {
         let _home = TempHome::new();
         let db = Arc::new(Database::memory().unwrap());
-        let official = managed_codex_official("official-a", "account-a");
+        let official = native_codex_official("official-a");
         let fallback = Provider::with_id(
             "fallback".to_string(),
             "Fallback".to_string(),
@@ -562,7 +552,7 @@ mod tests {
             json!({}),
             None,
         );
-        let official = managed_codex_official("official-a", "account-a");
+        let official = native_codex_official("official-a");
         let fallback = Provider::with_id(
             "fallback".to_string(),
             "Fallback".to_string(),

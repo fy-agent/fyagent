@@ -441,17 +441,19 @@ fn sql_import_of_old_customer_project_dump_restores_shared_config_without_revivi
         "new dumps must omit retired generation triggers"
     );
 
-    let old_dump = format!(
-        "{}\nPRAGMA foreign_keys=OFF;\nPRAGMA user_version=24;\nBEGIN TRANSACTION;\n\
-         CREATE TABLE providers (id TEXT NOT NULL, app_type TEXT NOT NULL, name TEXT NOT NULL, settings_config TEXT NOT NULL, meta TEXT NOT NULL DEFAULT '{{}}', is_current BOOLEAN NOT NULL DEFAULT 0, PRIMARY KEY (id, app_type));\n\
-         CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);\n\
-         CREATE TABLE fde_customers (customer_id TEXT PRIMARY KEY, name TEXT NOT NULL, revision INTEGER NOT NULL, archived INTEGER NOT NULL);\n\
-         INSERT INTO providers (id, app_type, name, settings_config, meta) VALUES ('shared','codex','Shared','{{}}','{{}}');\n\
-         INSERT INTO settings VALUES ('shared-sentinel','kept');\n\
-         INSERT INTO fde_customers VALUES ('customer','Imported customer',1,0);\n\
-         COMMIT;\n",
-        super::FYAGENT_SQL_EXPORT_HEADER
-    );
+    // SQL admission requires a complete shared schema. Add retired data to a
+    // valid portable dump rather than weakening admission for a partial fixture.
+    let old_dump = dump
+        .replace(
+            &format!("PRAGMA user_version={};", crate::database::SCHEMA_VERSION),
+            "PRAGMA user_version=24;",
+        )
+        .replace(
+            "COMMIT;",
+            "CREATE TABLE fde_customers (customer_id TEXT PRIMARY KEY, name TEXT NOT NULL, revision INTEGER NOT NULL, archived INTEGER NOT NULL);\n\
+             INSERT INTO fde_customers VALUES ('customer','Imported customer',1,0);\n\
+             COMMIT;",
+        );
     let target = Database::memory()?;
     target.import_sql_string(&old_dump)?;
     let conn = crate::database::lock_conn!(target.conn);

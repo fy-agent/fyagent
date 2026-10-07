@@ -10219,7 +10219,11 @@ base_url = "https://third.example/v1"
                     "last_refresh": "2026-08-01T00:00:00Z",
                     "tokens": { "account_id": "acc" }
                 },
-                "config": "model_provider = \"any\"\n"
+                "config": r#"model_provider = "any"
+
+[model_providers.any]
+base_url = "https://third.example/v1"
+"#
             }))
             .expect("serialize backup"),
         )
