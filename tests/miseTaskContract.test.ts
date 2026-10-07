@@ -541,10 +541,18 @@ describe("canonical mise task API", () => {
     let exitCalledWith: number | null = null;
     // Windows console interrupts have a dedicated NTSTATUS. Its process.kill
     // SIGINT emulation uses exit 1 and cannot prove console-interrupt handling.
-    const interrupt =
-      process.platform === "win32"
-        ? "process.exit(0xC000013A)"
-        : "process.kill(process.pid, 'SIGINT')";
+    let interrupt: string;
+    switch (process.platform) {
+      case "win32":
+        interrupt = "process.exit(0xC000013A)";
+        break;
+      case "darwin":
+      case "linux":
+        interrupt = "process.kill(process.pid, 'SIGINT')";
+        break;
+      default:
+        throw new Error(`Unsupported test host: ${process.platform}`);
+    }
     for (const allowSignal of [true, false]) {
       exitCalledWith = null;
       const result = run(process.execPath, ["-e", interrupt], {

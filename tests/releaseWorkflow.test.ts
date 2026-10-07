@@ -1150,36 +1150,123 @@ function runMacNotarization(scenario: string) {
   const app = path.join(root, "FyAgent.app");
   const dmg = path.join(root, "FyAgent.dmg");
   const log = path.join(root, "calls.log");
+  const pythonLog = path.join(root, "python-calls.jsonl");
+  const pythonBridge = path.join(root, "python-bridge.py");
   for (const directory of [state, app]) fs.mkdirSync(directory);
   fs.writeFileSync(path.join(state, "signing.keychain-db"), "fixture");
   fs.writeFileSync(
     path.join(state, "state.env"),
     'KEYCHAIN_PATH="$STATE_DIR/signing.keychain-db"\nKEYCHAIN_PASSWORD=fixture-only\n',
   );
+  if (process.platform === "win32") {
+    fs.writeFileSync(
+      pythonBridge,
+      `import hashlib
+import io
+import json
+import os
+import pathlib
+import sys
+import time
+import traceback
+
+request = sys.stdin.buffer
+response = sys.stdout.buffer
+audit = open(os.environ["FYAGENT_FIXTURE_PYTHON_LOG"], "a", encoding="utf-8")
+
+def read_frame():
+    chunks = bytearray()
+    while True:
+        byte = request.read(1)
+        if not byte:
+            if chunks:
+                raise EOFError("incomplete Python fixture request")
+            return None
+        if byte == b"\\0":
+            return chunks.decode("utf-8")
+        chunks.extend(byte)
+
+while (count := read_frame()) is not None:
+    arguments = [read_frame() for _ in range(int(count))]
+    source = read_frame()
+    if source is None or any(argument is None for argument in arguments):
+        raise EOFError("incomplete Python fixture request")
+    if not arguments or arguments[0] != "-":
+        raise ValueError("Python fixture only accepts real stdin snippets")
+    stdout, stderr = io.StringIO(), io.StringIO()
+    original_streams = sys.stdin, sys.stdout, sys.stderr
+    original_argv = sys.argv
+    exit_code = 0
+    input_path = pathlib.Path(arguments[1])
+    input_bytes = input_path.read_bytes() if input_path.is_file() else None
+    started = time.perf_counter_ns()
+    try:
+        sys.argv = arguments
+        # python - has consumed its source before executing the snippet.
+        sys.stdin, sys.stdout, sys.stderr = io.StringIO(""), stdout, stderr
+        namespace = {"__name__": "__main__", "__file__": "<stdin>", "__package__": None}
+        exec(compile(source, "<stdin>", "exec"), namespace)
+    except SystemExit as error:
+        if error.code is None:
+            exit_code = 0
+        elif isinstance(error.code, int):
+            exit_code = error.code
+        else:
+            print(error.code, file=stderr)
+            exit_code = 1
+    except BaseException as error:
+        traceback.print_exc(file=stderr)
+        exit_code = 130 if isinstance(error, KeyboardInterrupt) else 1
+    finally:
+        sys.stdin, sys.stdout, sys.stderr = original_streams
+        sys.argv = original_argv
+    record = {
+        "processId": os.getpid(),
+        "argv": arguments,
+        "sourceSha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+        "inputSha256": hashlib.sha256(input_bytes).hexdigest() if input_bytes is not None else None,
+        "exitCode": exit_code,
+        "elapsedNs": time.perf_counter_ns() - started,
+    }
+    audit.write(json.dumps(record) + "\\n")
+    if "FYAGENT_TRACE_LOG" in os.environ:
+        with open(os.environ["FYAGENT_TRACE_LOG"], "a", encoding="utf-8") as trace:
+            trace.write("python-fixture " + json.dumps(record) + "\\n")
+    for frame in (str(exit_code), stdout.getvalue(), stderr.getvalue()):
+        response.write(frame.encode("utf-8") + b"\\0")
+    response.flush()
+audit.close()
+`,
+    );
+  } else if (isPosixTaskHost(process.platform)) {
+    resolveNotaryFixturePython();
+  } else {
+    throw new Error(`Unsupported test host: ${process.platform}`);
+  }
   // Execute the real Python snippets with the repository's locked interpreter,
   // rather than repeatedly invoking a WindowsApps python3 launcher.
-  // Subshell functions preserve each fake tool's process-local exit behavior.
+  // Explicit returns and local variables retain each fake tool's process-local
+  // exit behavior without forking a Bash subshell for every tool invocation.
   const fakeTools = `
 security() { return 0; }
 python3() { "$FYAGENT_FIXTURE_PYTHON" "$@"; }
-ditto() (
-set -euo pipefail
-[ "$#" -eq 5 ] && [ "$1" = -c ] && [ "$2" = -k ] && [ "$3" = --keepParent ]
-[ -d "$4" ]
-printf 'archive-app\\n' >> "$FYAGENT_FAKE_NOTARY_LOG"
-printf 'signed-app-archive' > "$5"
-)
-xcrun() (
-set -euo pipefail
+ditto() {
+[ "$#" -eq 5 ] && [ "$1" = -c ] && [ "$2" = -k ] && [ "$3" = --keepParent ] || return 1
+[ -d "$4" ] || return 1
+printf 'archive-app\\n' >> "$FYAGENT_FAKE_NOTARY_LOG" || return
+printf 'signed-app-archive' > "$5" || return
+}
+xcrun() {
+local kind status
 case "$1 $2" in
   'notarytool submit')
-    [ -f "$3" ]
-    case "$3" in *.zip) kind=app ;; *.dmg) kind=dmg ;; *) exit 2 ;; esac
-    printf 'submit-%s\\n' "$kind" >> "$FYAGENT_FAKE_NOTARY_LOG"
-    if [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = missing-id ]; then printf '{}\\n'; else printf '{"id":"%s-id"}\\n' "$kind"; fi
+    [ -f "$3" ] || return 1
+    case "$3" in *.zip) kind=app ;; *.dmg) kind=dmg ;; *) return 2 ;; esac
+    printf 'submit-%s\\n' "$kind" >> "$FYAGENT_FAKE_NOTARY_LOG" || return
+    if [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = missing-id ]; then printf '{}\\n' || return; else printf '{"id":"%s-id"}\\n' "$kind" || return; fi
     ;;
   'notarytool info')
-    case "$3" in app-id) kind=app ;; dmg-id) kind=dmg ;; *) exit 2 ;; esac
+    case "$3" in app-id) kind=app ;; dmg-id) kind=dmg ;; *) return 2 ;; esac
     status=Accepted
     if [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = invalid ] || { [ "$kind" = dmg ] && [ "$FYAGENT_FAKE_NOTARY_SCENARIO" = dmg-invalid ]; }; then
       status=Invalid
@@ -1187,24 +1274,61 @@ case "$1 $2" in
       status='In Progress'
     elif [ ! -f "$FYAGENT_FAKE_NOTARY_ROOT/polled-$kind" ]; then
       status='In Progress'
-      : > "$FYAGENT_FAKE_NOTARY_ROOT/polled-$kind"
+      : > "$FYAGENT_FAKE_NOTARY_ROOT/polled-$kind" || return
     fi
-    printf 'info-%s-%s\\n' "$kind" "$status" >> "$FYAGENT_FAKE_NOTARY_LOG"
-    if [ "$status" = Accepted ]; then : > "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind"; fi
-    printf '{"status":"%s"}\\n' "$status"
+    printf 'info-%s-%s\\n' "$kind" "$status" >> "$FYAGENT_FAKE_NOTARY_LOG" || return
+    if [ "$status" = Accepted ]; then : > "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind" || return; fi
+    printf '{"status":"%s"}\\n' "$status" || return
     ;;
-  'notarytool log') printf 'denial-log\\n' >> "$FYAGENT_FAKE_NOTARY_LOG" ;;
+  'notarytool log') printf 'denial-log\\n' >> "$FYAGENT_FAKE_NOTARY_LOG" || return ;;
   'stapler staple')
-    case "$3" in *.app) kind=app ;; *.dmg) kind=dmg ;; *) exit 2 ;; esac
-    [ -f "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind" ] || exit 91
-    printf 'staple-%s\\n' "$kind" >> "$FYAGENT_FAKE_NOTARY_LOG"
-    if [ "$kind" = app ]; then : > "$3/.ticket"; fi
+    case "$3" in *.app) kind=app ;; *.dmg) kind=dmg ;; *) return 2 ;; esac
+    [ -f "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind" ] || return 91
+    printf 'staple-%s\\n' "$kind" >> "$FYAGENT_FAKE_NOTARY_LOG" || return
+    if [ "$kind" = app ]; then : > "$3/.ticket" || return; fi
     ;;
-  *) exit 2 ;;
+  *) return 2 ;;
 esac
-)
+}
 export -f security python3 ditto xcrun
 `;
+  let windowsPythonBridge: string;
+  if (process.platform === "win32") {
+    windowsPythonBridge = `
+# One real locked interpreter per fixture; each request executes the unchanged
+# stdin source with fresh globals, argv and streams. No parsing result is cached.
+export LC_ALL=C
+coproc NOTARY_PYTHON { "$FYAGENT_FIXTURE_PYTHON" -u "$FYAGENT_FIXTURE_PYTHON_BRIDGE"; }
+notary_python_pid="$NOTARY_PYTHON_PID"
+python_reply_fd="\${NOTARY_PYTHON[0]}"
+python_request_fd="\${NOTARY_PYTHON[1]}"
+exec 7<&"$python_reply_fd" 8>&"$python_request_fd"
+exec {python_reply_fd}<&- {python_request_fd}>&-
+trap 'exec 8>&-; wait "$notary_python_pid"; exec 7<&-' EXIT
+python3() {
+  local source exit_code stdout stderr
+  IFS= read -r -d '' source || true
+  printf '%s\\0' "$#" "$@" "$source" >&8
+  IFS= read -r -d '' exit_code <&7 || return 96
+  IFS= read -r -d '' stdout <&7 || return 96
+  IFS= read -r -d '' stderr <&7 || return 96
+  printf '%s' "$stdout"
+  printf '%s' "$stderr" >&2
+  return "$exit_code"
+}
+# These adapters retain the real wall clock and the exact requested zero wait.
+date() {
+  if [ "$#" -eq 1 ] && [ "$1" = '+%s' ]; then printf '%(%s)T\\n' -1; else command date "$@"; fi
+}
+sleep() {
+  if [ "$#" -eq 1 ] && [ "$1" = 0 ]; then return 0; else command sleep "$@"; fi
+}
+`;
+  } else if (isPosixTaskHost(process.platform)) {
+    windowsPythonBridge = "";
+  } else {
+    throw new Error(`Unsupported test host: ${process.platform}`);
+  }
   const result = spawnSync(
     resolveBashExecutable(),
     [
@@ -1215,6 +1339,26 @@ ${fakeTools}
 notary_script="$1"
 app_path="$2"
 dmg_path="$3"
+${windowsPythonBridge}
+# Reuse only real command results for the same immutable path arguments.
+archive_path="$RUNNER_TEMP/fyagent-macos-signing/app-notarization.zip"
+fixture_script_dir="$(command dirname "$notary_script")"
+fixture_app_name="$(command basename "$app_path")"
+fixture_dmg_name="$(command basename "$dmg_path")"
+fixture_archive_name="$(command basename "$archive_path")"
+dirname() {
+  if [ "$#" -eq 1 ] && [ "$1" = "$notary_script" ]; then printf '%s\\n' "$fixture_script_dir"; else command dirname "$@"; fi
+}
+basename() {
+  if [ "$#" -eq 1 ]; then
+    case "$1" in
+      "$app_path") printf '%s\\n' "$fixture_app_name"; return ;;
+      "$dmg_path") printf '%s\\n' "$fixture_dmg_name"; return ;;
+      "$archive_path") printf '%s\\n' "$fixture_archive_name"; return ;;
+    esac
+  fi
+  command basename "$@"
+}
 # Source the unchanged entry in isolated subshells, preserving its dispatch,
 # errexit, and exit behavior without three fresh Bash executable launches.
 invoke_notary() ( source "$notary_script" "$@"; )
@@ -1242,6 +1386,8 @@ invoke_notary notarize-dmg "$dmg_path"
         FYAGENT_FAKE_NOTARY_LOG: log,
         FYAGENT_FAKE_NOTARY_SCENARIO: scenario,
         FYAGENT_FIXTURE_PYTHON: resolveNotaryFixturePython(),
+        FYAGENT_FIXTURE_PYTHON_BRIDGE: pythonBridge,
+        FYAGENT_FIXTURE_PYTHON_LOG: pythonLog,
       },
     },
   );
@@ -1252,6 +1398,22 @@ invoke_notary notarize-dmg "$dmg_path"
     privateArchiveExists: fs.existsSync(
       path.join(state, "app-notarization.zip"),
     ),
+    pythonCalls: fs.existsSync(pythonLog)
+      ? read(pythonLog)
+          .trim()
+          .split("\n")
+          .map(
+            (line) =>
+              JSON.parse(line) as {
+                processId: number;
+                argv: string[];
+                sourceSha256: string;
+                inputSha256: string | null;
+                exitCode: number;
+                elapsedNs: number;
+              },
+          )
+      : [],
   };
 }
 
@@ -1284,6 +1446,20 @@ describe("FyAgent release workflow", () => {
       "staple-dmg",
     ]);
     expect(result.privateArchiveExists).toBe(false);
+    if (process.platform === "win32") {
+      expect(result.pythonCalls.map((call) => call.argv.length)).toEqual([
+        2, 2, 2, 3, 2, 2, 2, 3,
+      ]);
+      expect(result.pythonCalls.every((call) => call.exitCode === 0)).toBe(
+        true,
+      );
+      expect(
+        new Set(result.pythonCalls.map((call) => call.sourceSha256)).size,
+      ).toBe(3);
+      expect(
+        new Set(result.pythonCalls.map((call) => call.processId)).size,
+      ).toBe(1);
+    }
   });
 
   it.each(["invalid", "missing-id", "timeout"])(
@@ -1297,6 +1473,14 @@ describe("FyAgent release workflow", () => {
       expect(result.calls).not.toContain("staple-app");
       expect(result.calls).not.toContain("package-ticketed-app");
       expect(result.calls).not.toContain("staple-dmg");
+      if (process.platform === "win32") {
+        expect(result.pythonCalls).toHaveLength(
+          scenario === "missing-id" ? 1 : 2,
+        );
+        expect(result.pythonCalls.at(-1)?.exitCode).toBe(
+          scenario === "missing-id" ? 1 : 0,
+        );
+      }
     },
   );
 
@@ -1307,6 +1491,14 @@ describe("FyAgent release workflow", () => {
     expect(result.calls).toContain("submit-dmg");
     expect(result.calls).toContain("info-dmg-Invalid");
     expect(result.calls).not.toContain("staple-dmg");
+    if (process.platform === "win32") {
+      expect(result.pythonCalls.map((call) => call.argv.length)).toEqual([
+        2, 2, 2, 3, 2, 2,
+      ]);
+      expect(result.pythonCalls.every((call) => call.exitCode === 0)).toBe(
+        true,
+      );
+    }
   });
 
   it("pins every pre-signer build input by exact file identity", async () => {

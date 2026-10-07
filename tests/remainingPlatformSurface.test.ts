@@ -74,6 +74,10 @@ type CheckerModule = {
     inspectedFiles: number;
   };
   inspectKnownImage(relativePath: string, buffer: Buffer): string | undefined;
+  collectStructureAssetCandidates(
+    currentPaths: string[],
+    options?: Record<string, unknown>,
+  ): unknown;
   loadRasterAssetManifest(
     manifestPath?: string,
     io?: unknown,
@@ -175,6 +179,70 @@ function activeTaskFixture(taskDirectoryName = "08-14-example-active-task") {
 }
 
 let permittedRustSnapshot: Promise<readonly RustSourceEntry[]> | undefined;
+
+async function structureSnapshotIo(currentPaths: string[]) {
+  const requested = new Set<string>();
+  // Use the production collector only to discover its complete I/O scope.
+  // Its synthetic probe result is discarded; validation uses real metadata
+  // and bytes captured below, freshly for this one mutation test.
+  checker.collectStructureAssetCandidates(currentPaths, {
+    root: ROOT,
+    io: {
+      lstatSync() {
+        return { isFile: () => true, isSymbolicLink: () => false };
+      },
+      readFileSync(absolutePath: string) {
+        requested.add(absolutePath);
+        return Buffer.alloc(0);
+      },
+    },
+  });
+  type SnapshotEntry = {
+    stat?: fs.Stats;
+    buffer?: Buffer;
+    error?: NodeJS.ErrnoException;
+  };
+  const captured = new Map<string, SnapshotEntry>();
+  const paths = [...requested];
+  for (let index = 0; index < paths.length; index += 32) {
+    await Promise.all(
+      paths.slice(index, index + 32).map(async (absolutePath) => {
+        let stat: fs.Stats;
+        try {
+          stat = await fs.promises.lstat(absolutePath);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          captured.set(absolutePath, {
+            error: error as NodeJS.ErrnoException,
+          });
+          return;
+        }
+        const buffer =
+          stat.isFile() && !stat.isSymbolicLink()
+            ? await fs.promises.readFile(absolutePath)
+            : undefined;
+        captured.set(absolutePath, { stat, buffer });
+      }),
+    );
+  }
+  const entryFor = (absolutePath: fs.PathLike) => {
+    const entry = captured.get(String(absolutePath));
+    if (!entry) throw new Error("Structure source was not captured");
+    if (entry.error) throw entry.error;
+    return entry;
+  };
+  return Object.freeze({
+    lstatSync(absolutePath: fs.PathLike) {
+      return entryFor(absolutePath).stat!;
+    },
+    readFileSync(absolutePath: fs.PathOrFileDescriptor) {
+      const buffer = entryFor(String(absolutePath)).buffer;
+      if (!buffer) throw new Error("Structure source is not a regular file");
+      // A mutation must not change the shared baseline for a later case.
+      return Buffer.from(buffer);
+    },
+  });
+}
 
 function permittedRustEntries(): Promise<readonly RustSourceEntry[]> {
   permittedRustSnapshot ??= loadPermittedRustSnapshot();
@@ -1588,9 +1656,10 @@ describe("durable supported-platform surface contract", () => {
     );
   });
 
-  it("seals every platform-sensitive source by path, mode, and digest", () => {
+  it("seals every platform-sensitive source by path, mode, and digest", async () => {
     const currentPaths = checker.listCurrentFiles(ROOT);
     const indexModes = checker.listCurrentIndexModes(ROOT);
+    const snapshotIo = await structureSnapshotIo(currentPaths);
     for (const manifestPath of [
       "scripts/tasks/supported-platform-raster-assets.json",
       "scripts/tasks/supported-platform-structure-assets.json",
@@ -1602,9 +1671,9 @@ describe("durable supported-platform surface contract", () => {
       mutate?: (source: string) => string,
     ) => {
       const io = {
-        lstatSync: fs.lstatSync,
+        lstatSync: snapshotIo.lstatSync,
         readFileSync(absolutePath: fs.PathOrFileDescriptor, options?: unknown) {
-          const buffer = fs.readFileSync(absolutePath);
+          const buffer = snapshotIo.readFileSync(absolutePath);
           const relative = path
             .relative(ROOT, String(absolutePath))
             .split(path.sep)
@@ -1688,6 +1757,7 @@ describe("durable supported-platform surface contract", () => {
     expect(() =>
       checker.validateStructureAssetInventory(currentPaths, wrongModes, {
         root: ROOT,
+        io: snapshotIo,
       }),
     ).toThrow(/mode 100644/iu);
 
@@ -1696,6 +1766,7 @@ describe("durable supported-platform surface contract", () => {
     expect(() =>
       checker.validateStructureAssetInventory(currentPaths, runnerModes, {
         root: ROOT,
+        io: snapshotIo,
       }),
     ).toThrow(/mode 100755/iu);
 
@@ -1714,12 +1785,12 @@ describe("durable supported-platform surface contract", () => {
             lstatSync(absolutePath: fs.PathLike) {
               return absolutePath === addedAbsolute
                 ? { isFile: () => true, isSymbolicLink: () => false }
-                : fs.lstatSync(absolutePath);
+                : snapshotIo.lstatSync(absolutePath);
             },
             readFileSync(absolutePath: fs.PathOrFileDescriptor) {
               return absolutePath === addedAbsolute
                 ? Buffer.from('process.platform === "win32"', "utf8")
-                : fs.readFileSync(absolutePath);
+                : snapshotIo.readFileSync(absolutePath);
             },
           },
         },

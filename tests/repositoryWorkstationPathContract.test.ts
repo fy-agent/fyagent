@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = path.resolve(__dirname, "..");
+const syntheticPosixHome = ["", "home", "local-developer", "project"].join("/");
 
 const concretePosixHome = /\/(?:Users|home)\/(?!<)[^/\s`"'\\]+(?:\/|$)/u;
 const concreteWindowsHome =
@@ -61,21 +62,24 @@ async function trackedDocumentationViolations(
   root = ROOT,
   readSource = readTrackedDocumentationFile,
 ): Promise<string[]> {
-  const violations: string[] = [];
-  // Bounded asynchronous reads avoid serial cold filesystem I/O, while still
-  // scanning the current worktree bytes and using the index only for ENOENT.
-  for (let index = 0; index < files.length; index += 32) {
-    const sources = await Promise.all(
-      files.slice(index, index + 32).map(async (file) => ({
-        file,
-        source: await readSource(file, root),
-      })),
-    );
-    for (const { file, source } of sources) {
-      violations.push(...concreteWorkstationHomeLocations(file, source));
-    }
-  }
-  return violations;
+  const violationsByFile: string[][] = new Array(files.length);
+  let nextIndex = 0;
+  // Keep the same bounded I/O limit without waiting for the slowest read in
+  // every batch. Each available reader scans fresh bytes from the next file.
+  await Promise.all(
+    Array.from({ length: Math.min(32, files.length) }, async () => {
+      while (nextIndex < files.length) {
+        const index = nextIndex++;
+        const file = files[index];
+        const source = await readSource(file, root);
+        violationsByFile[index] = concreteWorkstationHomeLocations(
+          file,
+          source,
+        );
+      }
+    }),
+  );
+  return violationsByFile.flat();
 }
 
 function concreteWorkstationHomeLocations(
@@ -142,10 +146,7 @@ describe("repository workstation path privacy contract", () => {
         path.join(root, "changed.md"),
         "Use /Users/<username>/project",
       );
-      fs.writeFileSync(
-        path.join(root, "missing.md"),
-        "/home/local-developer/project",
-      );
+      fs.writeFileSync(path.join(root, "missing.md"), syntheticPosixHome);
       expect(
         spawnSync("git", ["add", "--all"], { cwd: root, windowsHide: true })
           .status,
@@ -183,6 +184,10 @@ describe("repository workstation path privacy contract", () => {
     const read: string[] = [];
     let active = 0;
     let peak = 0;
+    let releaseFirstRead: () => void = () => {};
+    const slowFirstRead = new Promise<void>((resolve) => {
+      releaseFirstRead = resolve;
+    });
     const violations = await trackedDocumentationViolations(
       files,
       ROOT,
@@ -190,9 +195,13 @@ describe("repository workstation path privacy contract", () => {
         read.push(file);
         active += 1;
         peak = Math.max(peak, active);
+        // A fixed 32-file barrier cannot start this later file until the
+        // blocked first read finishes. Available readers must keep progressing.
+        if (file === files[39]) releaseFirstRead();
+        if (file === files[0]) await slowFirstRead;
         await new Promise<void>((resolve) => setTimeout(resolve, 4));
         active -= 1;
-        return "/home/local-developer/project";
+        return syntheticPosixHome;
       },
     );
     expect(read).toEqual(files);
