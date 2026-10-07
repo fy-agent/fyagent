@@ -432,10 +432,17 @@ fn store_into_row(
             if token.is_some() && token == key {
                 table.remove("experimental_bearer_token");
             }
-            doc["model_provider"] = toml_edit::value(ROUTE_ID);
+            // The editor displays a normalized route, but a saved SecretRef is
+            // bound to the original source. Keep that source identity on save.
+            let route_id = if stored_row.is_some_and(|row| row.get("credentialRef").is_some()) {
+                stored_route.as_deref().unwrap_or(ROUTE_ID)
+            } else {
+                ROUTE_ID
+            };
+            doc["model_provider"] = toml_edit::value(route_id);
             insert_at(
                 &mut doc,
-                &["model_providers".to_string(), ROUTE_ID.to_string()],
+                &["model_providers".to_string(), route_id.to_string()],
                 Item::Table(table),
             );
         }
@@ -481,7 +488,8 @@ pub(crate) fn write_live(
             set_pointer,
         } => {
             let owner = prev.map_or(Owner::None, Owner::Provider);
-            let spec = Target::Direct(Some(target));
+            let resolved = super::ProviderCredentials::resolve(db, "codex", target)?;
+            let spec = Target::Direct(Some(&resolved));
             let prepared = codex_direct::Prepared::default();
             let planned = codex_direct::plan(db, &owner, &spec, &prepared)?;
             codex_direct::run_with_edits(

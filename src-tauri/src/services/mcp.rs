@@ -200,6 +200,7 @@ impl McpService {
     }
 
     fn sync_server_to_target(server: &McpServer, target: &McpTargetId) -> Result<(), AppError> {
+        mcp::validate_server_spec(&server.server)?;
         match target {
             McpTargetId::Claude => {
                 mcp::sync_single_server_to_claude(&server.id, &server.server)?;

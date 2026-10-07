@@ -278,7 +278,7 @@ impl ProxyService {
             let mut original = original.clone();
             if original
                 .get("auth")
-                .is_some_and(crate::codex_config::codex_auth_has_oauth_login_material)
+                .is_some_and(crate::codex_config::codex_auth_has_credential_login_material)
             {
                 original.as_object_mut().ok_or(CONFLICT)?.remove("auth");
             }
@@ -331,28 +331,48 @@ impl ProxyService {
                 Ok(original_matches(app, &projected, current))
             }
             AppType::Codex => {
-                Self::apply_codex_takeover_auth_placeholder(&mut projected, provider.as_ref());
-                let config = projected
-                    .get("config")
-                    .and_then(Value::as_str)
-                    .ok_or(CONFLICT)?;
-                let config = Self::apply_codex_proxy_toml_config_for_provider(
-                    config,
-                    url,
-                    provider.as_ref(),
-                )?;
-                Self::attach_codex_model_catalog_from_provider(&mut projected, provider.as_ref());
-                let profile = provider
-                    .as_ref()
-                    .map(crate::proxy::providers::resolve_codex_catalog_tool_profile)
-                    .unwrap_or(crate::codex_config::CodexCatalogToolProfile::ProxyChat);
-                let config = codex_catalog_fields(&projected, &config, profile)?;
-                let config = crate::codex_config::prepare_codex_provider_live_config(
-                    projected.get("auth").unwrap_or(&Value::Null),
-                    &config,
-                )
-                .map_err(|_| CONFLICT)?;
-                self.codex_legacy_projection_equal(&config, text(current)?, url)
+                let matches = |mut projected: Value| -> Result<bool, String> {
+                    Self::apply_codex_takeover_auth_placeholder(&mut projected, provider.as_ref());
+                    let config = projected
+                        .get("config")
+                        .and_then(Value::as_str)
+                        .ok_or(CONFLICT)?;
+                    let config = Self::apply_codex_proxy_toml_config_for_provider(
+                        config,
+                        url,
+                        provider.as_ref(),
+                    )?;
+                    Self::attach_codex_model_catalog_from_provider(
+                        &mut projected,
+                        provider.as_ref(),
+                    );
+                    let profile = provider
+                        .as_ref()
+                        .map(crate::proxy::providers::resolve_codex_catalog_tool_profile)
+                        .unwrap_or(crate::codex_config::CodexCatalogToolProfile::ProxyChat);
+                    let config = codex_catalog_fields(&projected, &config, profile)?;
+                    let config = crate::codex_config::prepare_codex_provider_live_config(
+                        projected.get("auth").unwrap_or(&Value::Null),
+                        &config,
+                    )
+                    .map_err(|_| CONFLICT)?;
+                    self.codex_legacy_projection_equal(&config, text(current)?, url)
+                };
+                if matches(projected)? {
+                    return Ok(true);
+                }
+                // Direct mode normalizes the live route to `custom`; legacy
+                // takeover projects the saved source table instead. Verify the
+                // exact same saved-provider projection as that writer, still
+                // under the receipt/preimage checks above.
+                let Some(provider) = provider.as_ref() else {
+                    return Ok(false);
+                };
+                let mut saved =
+                    build_effective_settings_with_common_config(&self.db, app, provider)
+                        .map_err(|_| CONFLICT)?;
+                Self::preserve_toml_mcp_servers_from_existing_config(&mut saved, original)?;
+                matches(saved)
             }
             _ => Err(CONFLICT.into()),
         }

@@ -13,7 +13,7 @@ use serde_json::json;
 
 use fyagent_lib::{AppType, ProviderService};
 
-use crate::support::{create_test_state, reset_test_fs, test_mutex};
+use crate::support::{create_golden_test_state as create_test_state, reset_test_fs, test_mutex};
 use crate::util::{assert_golden, home, official, provider, seed_providers, write_home_file};
 
 const CLIENT_ROOTS: &[&str] = &[".claude", ".claude.json", ".codex", ".gemini", ".grok"];
@@ -36,6 +36,16 @@ fn collect(home: &Path, path: &Path, lines: &mut Vec<String>) {
         for entry in std::fs::read_dir(path).expect("read dir") {
             collect(home, &entry.expect("dir entry").path(), lines);
         }
+        return;
+    }
+    let name = path.file_name().unwrap().to_string_lossy();
+    if name.ends_with(".fyagent.undo.json") || name.ends_with(".fyagent.backup") {
+        assert_eq!(
+            meta.permissions().mode() & 0o777,
+            0o600,
+            "recovery files must remain private: {}",
+            path.display()
+        );
         return;
     }
     let rel = path

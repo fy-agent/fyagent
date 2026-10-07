@@ -2235,7 +2235,19 @@ mod mode_tests {
     async fn state_with(app: AppType, rows: &[Provider], current: &str) -> AppState {
         let db = Arc::new(Database::memory().expect("memory db"));
         for row in rows {
-            db.save_provider(app.as_str(), row).expect("save provider");
+            if app == AppType::Codex
+                && row
+                    .settings_config
+                    .get("config")
+                    .and_then(Value::as_str)
+                    .is_some_and(|text| text.parse::<toml::Value>().is_err())
+            {
+                // Simulate an already-corrupt legacy/imported record, bypassing save admission.
+                db.save_provider_record(app.as_str(), row)
+                    .expect("seed corrupt legacy row");
+            } else {
+                db.save_provider(app.as_str(), row).expect("save provider");
+            }
         }
         db.set_current_provider(app.as_str(), current)
             .expect("set current");
@@ -2745,7 +2757,15 @@ mod mode_tests {
             );
             let drained = home.dir.path().join(".fyagent/backups/proxy-live-backup");
             assert_eq!(
-                fs::read_dir(&drained).unwrap().count(),
+                fs::read_dir(&drained)
+                    .unwrap()
+                    .filter(|entry| !entry
+                        .as_ref()
+                        .unwrap()
+                        .path()
+                        .to_string_lossy()
+                        .ends_with(".fyagent.undo.json"))
+                    .count(),
                 1,
                 "kept aside as a file"
             );
@@ -3470,8 +3490,8 @@ model_provider = "c"
         )
         .expect("official");
 
-        // 官方 → b：删 auth.json（暂存登录）、改 config.toml、写模型目录，一起提交。
-        for point in ["published:0", "published:1", "published:2", "target"] {
+        // 官方 → b：config.toml 和模型目录一起提交，原生登录不参与事务。
+        for point in ["published:0", "published:1", "target"] {
             ProviderService::switch(
                 &state,
                 AppType::Codex,
@@ -3485,7 +3505,11 @@ model_provider = "c"
             assert!(crashed.is_err(), "{point}");
 
             crate::mode::operation::recover_on_startup(&state.db);
-            assert!(!codex_auth_path().exists(), "{point}: auth.json deleted");
+            assert_eq!(
+                codex_login_on_disk(),
+                chatgpt_login("acct"),
+                "{point}: native login preserved"
+            );
             assert_eq!(codex_doc()["model"].as_str(), Some("gpt-b"), "{point}");
             assert!(
                 crate::codex_config::get_codex_model_catalog_path().exists(),
@@ -3515,7 +3539,11 @@ model_provider = "c"
         };
 
         ProviderService::switch(&state, AppType::Codex, "a").expect("to a");
-        assert_eq!(login(), None, "no login next to a third-party route");
+        assert_eq!(
+            login(),
+            Some(chatgpt_login("acct")),
+            "source selection preserves the native login"
+        );
         ProviderService::switch(&state, AppType::Codex, "b").expect("to b");
         ProviderService::switch(&state, AppType::Codex, &official.id).expect("to official");
         assert_eq!(
@@ -3545,7 +3573,7 @@ model_provider = "c"
         crate::config::read_json_file(&codex_auth_path()).unwrap()
     }
 
-    /// 官方 → a：删掉 auth.json 之后失败。登录只在暂存的临时文件里，指针没动。
+    /// 官方 → a：发布 config.toml 后失败；原生登录不变，指针尚未落定。
     async fn codex_switch_interrupted_after_auth_json() -> (AppState, Provider) {
         set_preservation(false);
         seed_codex(CODEX_USER_LIVE, Some(&chatgpt_login("acct")));
@@ -3557,7 +3585,10 @@ model_provider = "c"
         let failed = ProviderService::switch(&state, AppType::Codex, "a");
         failpoint::crash_at(None);
         assert!(failed.is_err());
-        assert!(!codex_auth_path().exists());
+        assert!(
+            codex_auth_path().exists(),
+            "source selection preserves auth.json"
+        );
         assert_eq!(
             direct(&state, &AppType::Codex).as_deref(),
             Some(official.id.as_str())
@@ -3571,7 +3602,7 @@ model_provider = "c"
         let _home = Home::new();
         let (state, official) = codex_switch_interrupted_after_auth_json().await;
 
-        // 重试切到 b：先补完到 a，再按补完后的 auth.json 和暂存从 a 切到 b。
+        // 重试切到 b：先补完到 a，再依据已落定的配置和指针切换。
         ProviderService::switch(&state, AppType::Codex, "b").expect("retry");
         assert_eq!(direct(&state, &AppType::Codex).as_deref(), Some("b"));
         assert_eq!(codex_doc()["model"].as_str(), Some("gpt-b"));
@@ -3593,20 +3624,19 @@ model_provider = "c"
         assert_eq!(
             direct(&state, &AppType::Codex).as_deref(),
             Some("a"),
-            "the pointer follows the auth.json already deleted"
+            "the pointer follows the config already published"
         );
         assert_eq!(codex_text(), text, "Codex's own change is left alone");
         ProviderService::switch(&state, AppType::Codex, &official.id).expect("to official");
         assert_eq!(
             codex_login_on_disk(),
             chatgpt_login("acct"),
-            "the login made it into the stash"
+            "the native login was never moved"
         );
     }
 
-    /// 发布过的文件在补完之前又被客户端改掉（这里是用户在 Codex 里重新登录、写了新的
-    /// auth.json）：单看文件分不出发布开始过没有，按 pending 里的「已开始发布」照样前滚，
-    /// 还没写出去的登录暂存不能丢，客户端写的 auth.json 不动。
+    /// 配置发布后、补完指针前，Codex 写入了新的原生登录：pending 只前滚配置状态，
+    /// 不创建登录暂存，也不覆盖新登录。
     #[tokio::test]
     #[serial]
     async fn codex_an_interrupted_switch_keeps_the_stash_when_the_published_file_changed_again() {
@@ -3617,9 +3647,12 @@ model_provider = "c"
         crate::mode::operation::recover_on_startup(&state.db);
         assert_eq!(direct(&state, &AppType::Codex).as_deref(), Some("a"));
         assert_eq!(codex_doc()["model"].as_str(), Some("gpt-a"));
-        let stash = fs::read_to_string(DeviceStore::for_device().file("codex-login-stash.json"))
-            .expect("the stash was published");
-        assert!(stash.contains("refresh-acct"), "{stash}");
+        assert!(
+            !DeviceStore::for_device()
+                .file("codex-login-stash.json")
+                .exists(),
+            "source switching does not create an account stash"
+        );
         assert_eq!(
             serde_json::from_slice::<Value>(&fs::read(codex_auth_path()).unwrap()).unwrap(),
             chatgpt_login("other")
@@ -3640,12 +3673,12 @@ model_provider = "c"
         let official = codex_official();
         let state = state_with(AppType::Codex, &[a, b, official.clone()], &official.id).await;
 
-        // 切到第三方要把 auth.json 里的登录存进暂存：停下，什么都不写。
-        let err = ProviderService::switch(&state, AppType::Codex, "a").expect_err("refused");
-        assert!(err.to_string().contains("codex-login-stash.json"), "{err}");
+        // 来源切换不读写登录暂存；损坏的旧暂存保持原样。
+        ProviderService::switch(&state, AppType::Codex, "a")
+            .expect("source switch does not own the stash");
         assert_eq!(fs::read(&stash).unwrap(), broken);
         assert_eq!(codex_login_on_disk(), chatgpt_login("acct"));
-        assert_eq!(codex_text(), CODEX_USER_LIVE);
+        assert_eq!(codex_doc()["model"].as_str(), Some("gpt-a"));
 
         // 用不着暂存的切换照常。
         fs::remove_file(codex_auth_path()).unwrap();
@@ -3659,8 +3692,7 @@ model_provider = "c"
         let _home = Home::new();
         set_preservation(true);
         seed_codex("", Some(&chatgpt_login("acct-a")));
-        // 两张没绑托管账号的官方卡，行里各存着一个账号（旧版回填的，暂存第一次建立时
-        // 收进去）。
+        // 两张官方卡仍带着旧版回填的账号快照；选择来源不能回放这些历史凭据。
         let official = |id: &str| {
             let mut row = Provider::with_id(
                 id.to_string(),
@@ -3683,8 +3715,8 @@ model_provider = "c"
         ProviderService::switch(&state, AppType::Codex, "acct-b").expect("direct b");
         assert_eq!(
             account(),
-            json!("acct-b"),
-            "the direct switch swaps accounts"
+            json!("acct-a"),
+            "selecting an official source does not switch native accounts"
         );
         ProviderService::switch(&state, AppType::Codex, "acct-a").expect("direct a again");
 
@@ -3694,8 +3726,8 @@ model_provider = "c"
             .expect("route to b");
         assert_eq!(
             account(),
-            json!("acct-b"),
-            "Codex signs in as the route's account"
+            json!("acct-a"),
+            "proxy routing does not switch native accounts"
         );
         switch_route(&state, &AppType::Codex, "acct-a")
             .await
@@ -3746,7 +3778,7 @@ model_provider = "c"
             let doc = codex_doc();
             assert_eq!(
                 doc["model_providers"]["custom"]["requires_openai_auth"].as_bool(),
-                Some(preserve),
+                Some(true),
                 "the login lives in the keyring, auth.json says nothing (preserve={preserve})"
             );
             assert_eq!(doc["cli_auth_credentials_store"].as_str(), Some("keyring"));
@@ -3873,6 +3905,15 @@ model_provider = "c"
             "b is not current: {live}"
         );
         let b_row = state.db.get_provider_by_id("b", "codex").unwrap().unwrap();
+        assert_eq!(
+            b_row.settings_config["credentialRef"], view.settings["credentialRef"],
+            "editing a model must retain the same credential binding"
+        );
+        assert!(b_row
+            .settings_config
+            .pointer("/auth/OPENAI_API_KEY")
+            .is_none());
+        assert!(!b_row.settings_config.to_string().contains("sk-b"));
         let b_config = b_row.settings_config["config"].as_str().unwrap();
         assert!(
             b_config.contains("gpt-b2") && !b_config.contains("approval_policy"),
@@ -3891,6 +3932,11 @@ model_provider = "c"
             .replace("\"gpt-a\"", "\"gpt-a2\""));
         save("a", edited, view.settings.clone()).expect("save a");
         assert_eq!(codex_doc()["model"].as_str(), Some("gpt-a2"));
+        assert_eq!(
+            codex_doc()["model_providers"]["custom"]["experimental_bearer_token"].as_str(),
+            Some("sk-a"),
+            "the live writer must resolve the retained credential"
+        );
         assert!(codex_text().contains("[mcp_servers.git]"));
 
         // 打开编辑器之后别的程序改了同一个键：保存时报冲突，什么都不写。
@@ -4223,33 +4269,29 @@ model_provider = "c"
         let [a, _] = codex_a_b();
         let official = codex_official();
         let state = state_with(AppType::Codex, &[a, official.clone()], &official.id).await;
-        let config_before = codex_text();
 
-        // 计划删掉 auth.json 之后、发布之前，Codex CLI 刷新了登录。
+        // 发布 config.toml 时 Codex CLI 刷新登录，不应阻断配置切换。
         let mut refreshed = chatgpt_login("acct");
         refreshed["tokens"]["refresh_token"] = json!("refresh-acct-2");
         let fresh = refreshed.to_string();
         failpoint::on_before_publish(Some(Box::new(move |_, path: &std::path::Path| {
-            if path == codex_auth_path() {
-                fs::write(path, &fresh).unwrap();
+            if path == codex_config_path() {
+                fs::write(codex_auth_path(), &fresh).unwrap();
             }
         })));
         let result = ProviderService::switch(&state, AppType::Codex, "a");
         failpoint::on_before_publish(None);
 
         assert!(
-            result.is_err(),
-            "the switch stops instead of deleting a newer login"
+            result.is_ok(),
+            "a native login refresh does not block a config-only switch"
         );
         assert_eq!(
             serde_json::from_slice::<Value>(&fs::read(codex_auth_path()).unwrap()).unwrap(),
             refreshed
         );
-        assert_eq!(codex_text(), config_before, "nothing else was published");
-        assert_eq!(
-            direct(&state, &AppType::Codex).as_deref(),
-            Some(official.id.as_str())
-        );
+        assert_eq!(codex_doc()["model"].as_str(), Some("gpt-a"));
+        assert_eq!(direct(&state, &AppType::Codex).as_deref(), Some("a"));
         assert!(
             state::pending(&DeviceStore::for_device(), "codex")
                 .unwrap()
@@ -5943,7 +5985,7 @@ model_provider = "c"
         assert_eq!(stacked["priority"], 2);
         assert_eq!(stacked["display_name"], "DeepSeek V4 Pro（DEEPSEEK）");
         // DeepSeek 官方目录的 "3000" 不带过来，窗口按它自己的行算。
-        assert_eq!(stacked["comp_hash"], "cc-switch");
+        assert_eq!(stacked["comp_hash"], "fyagent");
         let window = stacked["context_window"].as_u64().unwrap();
         assert_eq!(
             stacked["auto_compact_token_limit"].as_u64(),
@@ -6771,14 +6813,17 @@ model_provider = "c"
         seed_codex("", Some(&chatgpt("ws", "alice")));
         let fake = fake_models(vec![official_list(&[])], CodexKeychainLogin::Missing, None);
         let state = state_with(AppType::Codex, &codex_official_stack_rows(), "a").await;
-        // 直连切到第三方：登录存进暂存，auth.json 删掉。
+        // 直连切到第三方：原生登录仍留在 auth.json。
         ProviderService::switch(&state, AppType::Codex, "a").expect("direct a");
-        assert!(!codex_auth_path().exists());
+        assert!(
+            codex_auth_path().exists(),
+            "source selection preserves auth.json"
+        );
         set_codex_member(&state, "deepseek", true).await;
         enter(&state, &AppType::Codex, true).await.expect("enter");
         assert!(fake.calls.lock().unwrap().is_empty(), "third-party route");
 
-        // 换路由到官方卡：auth.json 会从暂存还回 alice，列表按 alice 取。
+        // 换路由到官方卡：列表按现有 alice 登录获取，不恢复历史登录。
         let official = crate::database::CODEX_OFFICIAL_PROVIDER_ID;
         ProviderService::switch(&state, AppType::Codex, official).expect("route to official");
         assert_eq!(fake.calls.lock().unwrap()[0].0, "ws|sub:alice");
@@ -6909,7 +6954,11 @@ model_provider = "c"
             }),
         )
         .expect_err("the current provider cannot lose its key");
-        assert!(err.to_string().contains("requires_openai_auth"), "{err}");
+        assert_eq!(
+            err.to_string(),
+            "provider_secret_invalid",
+            "retaining a key cannot change its auth role"
+        );
         assert_eq!(codex_text(), before_live);
         assert_eq!(
             state

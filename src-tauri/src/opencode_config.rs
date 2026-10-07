@@ -28,6 +28,13 @@ pub(crate) fn read_opencode_config_bytes() -> Result<Option<Vec<u8>>, AppError> 
     read_config_contents(&try_get_opencode_config_path()?)
 }
 
+pub(crate) fn project_opencode_config_bytes(config: &Value) -> Result<Vec<u8>, AppError> {
+    let path = try_get_opencode_config_path()?;
+    let mut document = OpenCodeDocument::load(&path)?;
+    document.document.apply(config)?;
+    Ok(document.document.validated_source()?.as_bytes().to_vec())
+}
+
 pub(crate) fn write_opencode_config_value(config: &Value) -> Result<Vec<u8>, AppError> {
     let path = try_get_opencode_config_path()?;
     let mut document = OpenCodeDocument::load(&path)?;

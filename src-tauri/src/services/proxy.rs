@@ -4547,7 +4547,7 @@ mod tests {
         let mut original: Value = serde_json::from_str(&backup.original_config).unwrap();
         if original
             .get("auth")
-            .is_some_and(crate::codex_config::codex_auth_has_oauth_login_material)
+            .is_some_and(crate::codex_config::codex_auth_has_credential_login_material)
         {
             original.as_object_mut().unwrap().remove("auth");
         }

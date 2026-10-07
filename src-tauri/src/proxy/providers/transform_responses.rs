@@ -4593,7 +4593,7 @@ mod tests {
             "status": "completed"
         });
         let signature = format!(
-            "ccswitch-openai-reasoning-v1:{}",
+            "fyagent-openai-reasoning-v1:{}",
             URL_SAFE_NO_PAD.encode(serde_json::to_vec(&legacy).unwrap())
         );
         let replay = anthropic_to_responses(

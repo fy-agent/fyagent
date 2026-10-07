@@ -114,6 +114,30 @@ impl Database {
     ///
     /// 数据库文件位于 `~/.fyagent/fyagent.db`
     pub fn init() -> Result<Self, AppError> {
+        Self::init_with_provider_secrets(Box::new(
+            crate::services::secret::NativeSecretBackend::new(),
+        ))
+    }
+
+    #[cfg(feature = "test-hooks")]
+    pub fn init_with_memory_secrets_for_test() -> Result<Self, AppError> {
+        Self::init_with_provider_secrets(Box::new(
+            crate::services::secret::MemorySecretBackend::new(),
+        ))
+    }
+
+    #[cfg(feature = "test-hooks")]
+    pub fn seed_legacy_provider_for_test(
+        &self,
+        app: &str,
+        provider: &crate::provider::Provider,
+    ) -> Result<(), AppError> {
+        self.save_provider_record(app, provider)
+    }
+
+    fn init_with_provider_secrets(
+        backend: Box<dyn crate::services::secret::SecretBackend>,
+    ) -> Result<Self, AppError> {
         let db_path = get_app_config_dir().join("fyagent.db");
         let db_exists = db_path.exists();
 
@@ -135,9 +159,7 @@ impl Database {
         }
         let db = Self {
             conn: Mutex::new(conn),
-            provider_secrets: crate::services::secret::SecretService::new(Box::new(
-                crate::services::secret::NativeSecretBackend::new(),
-            )),
+            provider_secrets: crate::services::secret::SecretService::new(backend),
             provider_secret_guard: Mutex::new(()),
             log_count_cache: Mutex::new(None),
         };

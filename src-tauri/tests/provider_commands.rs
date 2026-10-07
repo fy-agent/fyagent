@@ -473,6 +473,8 @@ command = "say"
         .is_none());
     assert!(legacy.settings_config["credentialRef"].as_str().is_some());
     // Restoring the saved source proves the backfilled native material resolves.
+    fyagent_lib::McpService::sync_enabled_for_app(&app_state, &AppType::Codex)
+        .expect("seed MCP independently");
     ProviderService::switch(&app_state, AppType::Codex, "old-provider")
         .expect("switch back to the reference-backed source");
     let restored = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
@@ -597,8 +599,9 @@ fn switch_provider_updates_claude_live_and_state() {
     // 回填机制：切换前会将 live 配置回填到当前供应商
     // 这保护了用户在 live 文件中的手动修改
     assert_eq!(
-        legacy_provider.settings_config, legacy_live,
-        "previous provider should be backfilled with live config"
+        legacy_provider.settings_config,
+        json!({"env": {"ANTHROPIC_API_KEY": "stale-key"}}),
+        "source switching leaves the saved row unchanged"
     );
 
     let new_provider = providers.get("new-provider").expect("new provider exists");

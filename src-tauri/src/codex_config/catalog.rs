@@ -817,10 +817,10 @@ pub(super) fn codex_official_vendor_catalog_models(
     if profile != CodexCatalogToolProfile::NativeResponses {
         return None;
     }
-    let base_url = extract_codex_base_url(config_text)?.to_ascii_lowercase();
-    if CODEX_DEEPSEEK_OFFICIAL_CATALOG_HOSTS
-        .iter()
-        .any(|host| base_url.contains(host))
+    let base_url = extract_codex_base_url(config_text)?;
+    let url = url::Url::parse(&base_url).ok()?;
+    if url.scheme() == "https"
+        && codex_url_host_matches_any(&base_url, CODEX_DEEPSEEK_OFFICIAL_CATALOG_HOSTS)
     {
         let models = load_codex_deepseek_official_catalog_models();
         if !models.is_empty() {

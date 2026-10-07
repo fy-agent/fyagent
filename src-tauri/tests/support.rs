@@ -141,3 +141,13 @@ pub fn create_credential_test_state_with_config(
     state.db.migrate_from_json(config)?;
     Ok(state)
 }
+
+/// Golden row snapshots need SQLite on disk, but never access the OS keychain.
+#[allow(dead_code)]
+pub fn create_golden_test_state() -> Result<AppState, Box<dyn std::error::Error>> {
+    #[cfg(feature = "test-hooks")]
+    let db = Database::init_with_memory_secrets_for_test()?;
+    #[cfg(not(feature = "test-hooks"))]
+    let db = Database::init()?;
+    Ok(AppState::new(Arc::new(db)))
+}

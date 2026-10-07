@@ -8,7 +8,7 @@ use serde_json::json;
 
 use fyagent_lib::{AppType, McpService, ProviderService};
 
-use crate::support::{create_test_state, reset_test_fs, test_mutex};
+use crate::support::{create_golden_test_state as create_test_state, reset_test_fs, test_mutex};
 use crate::util::{
     assert_golden, mcp_server, provider, read_home_file, read_home_json, seed_providers,
     sort_objects, stable_json_file, toml_section, write_home_file,
