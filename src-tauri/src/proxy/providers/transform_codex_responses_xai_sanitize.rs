@@ -415,6 +415,7 @@ fn flatten_union_branches_to_object(branches: &[Value]) -> Value {
             "type": "object",
             "properties": Value::Object(merged_properties),
         });
+        let merged_required = merged_required.unwrap_or_default();
         if !merged_required.is_empty() {
             result["required"] = Value::Array(merged_required);
         }
@@ -568,6 +569,19 @@ fn normalize_xai_function_tool_parameters(tool: &mut Value) -> bool {
         _ => false,
     };
 
+    if changed && is_automation_update_tool(function_tool_name(tool)) {
+        if let Some(obj) = tool.as_object_mut() {
+            if obj.get("strict") == Some(&json!(true)) {
+                obj.insert("strict".to_string(), json!(false));
+            }
+            if let Some(function) = obj.get_mut("function").and_then(Value::as_object_mut) {
+                if function.get("strict") == Some(&json!(true)) {
+                    function.insert("strict".to_string(), json!(false));
+                }
+            }
+        }
+    }
+
     changed
 }
 
@@ -706,9 +720,26 @@ fn request_model_is_allowed(
     allowed_models: &HashSet<String>,
 ) -> bool {
     request.eq_ignore_ascii_case(upstream)
+        || request_is_grok_model(request)
         || allowed_models
             .iter()
             .any(|id| id.eq_ignore_ascii_case(request))
+}
+
+/// Whether the request names a Grok-family model, optionally provider-prefixed
+/// (`xai/grok-4.6-fast`). Real Grok SKUs the catalog has not caught up with —
+/// a brand-new model, or one hand-picked via Codex `/model` on a card without
+/// a catalog — must pass through; only alien subagent SKUs are remapped.
+fn request_is_grok_model(request: &str) -> bool {
+    let mut bare = request.trim();
+    if let Some(idx) = bare.rfind('/') {
+        bare = bare[idx + 1..].trim();
+    }
+    // Byte-wise prefix check: a `bare[..4]` str slice would panic when byte 4
+    // splits a multi-byte code point (e.g. a CJK model name).
+    bare.as_bytes()
+        .get(..4)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"grok"))
 }
 
 fn json_type(value: &Value) -> Option<&str> {
@@ -1300,6 +1331,68 @@ mod tests {
     }
 
     #[test]
+    fn union_flatten_intersects_required_across_object_branches() {
+        let mut body = json!({
+            "model": "grok-4.6",
+            "tools": [{
+                "type": "function",
+                "name": "mcp__custom__multi_shape",
+                "parameters": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {"a": {"type": "string"}, "shared": {"type": "string"}},
+                            "required": ["a", "shared"]
+                        },
+                        {
+                            "type": "object",
+                            "properties": {"b": {"type": "string"}, "shared": {"type": "string"}},
+                            "required": ["b", "shared"]
+                        },
+                        {"type": "null"}
+                    ]
+                }
+            }]
+        });
+
+        assert!(sanitize_xai_responses_request(&mut body));
+        let params = &body["tools"][0]["parameters"];
+        assert_eq!(params["type"], "object");
+        // Properties keep the union of both branches…
+        assert!(params["properties"].get("a").is_some());
+        assert!(params["properties"].get("b").is_some());
+        // …but only a field required by every branch stays required.
+        assert_eq!(params["required"], json!(["shared"]));
+    }
+
+    #[test]
+    fn union_flatten_drops_required_when_a_branch_has_none() {
+        let mut body = json!({
+            "model": "grok-4.6",
+            "tools": [{
+                "type": "function",
+                "name": "mcp__custom__optional_shape",
+                "parameters": {
+                    "anyOf": [
+                        {
+                            "type": "object",
+                            "properties": {"a": {"type": "string"}},
+                            "required": ["a"]
+                        },
+                        {"type": "object", "properties": {"b": {"type": "string"}}},
+                        {"type": "null"}
+                    ]
+                }
+            }]
+        });
+
+        assert!(sanitize_xai_responses_request(&mut body));
+        let params = &body["tools"][0]["parameters"];
+        assert_eq!(params["type"], "object");
+        assert!(params.get("required").is_none());
+    }
+
+    #[test]
     fn automation_update_schema_normalization_is_idempotent() {
         let mut body = json!({
             "model": "grok-4.6",
@@ -1850,6 +1943,25 @@ mod tests {
     }
 
     #[test]
+    fn request_compat_strips_grok_45_fields_after_model_remap() {
+        // The subagent SKU only resolves to grok-4.5 after the remap, so the
+        // remap must run before the sanitizer's grok-4.5 field stripping.
+        let mut body = json!({
+            "model": "gpt-5.6-sol",
+            "presence_penalty": 0.5,
+            "stop": ["\n"],
+            "input": []
+        });
+        let settings = json!({
+            "modelCatalog": {"models": [{"slug": "grok-4.5"}]}
+        });
+        apply_xai_native_responses_request_compat(&mut body, "grok", Some("grok-4.5"), &settings);
+        assert_eq!(body["model"], "grok-4.5");
+        assert!(body.get("presence_penalty").is_none());
+        assert!(body.get("stop").is_none());
+    }
+
+    #[test]
     fn remaps_unknown_openai_role_model_to_upstream() {
         let allowed = collect_xai_catalog_model_ids(&json!({
             "modelCatalog": {
@@ -1883,6 +1995,43 @@ mod tests {
             None
         );
         assert_eq!(body["model"], "grok-4.5");
+    }
+
+    #[test]
+    fn preserves_grok_prefixed_model_missing_from_catalog() {
+        let allowed = collect_xai_catalog_model_ids(&json!({
+            "modelCatalog": {"models": [{"slug": "grok-4.6"}]}
+        }));
+
+        // A real Grok SKU the catalog has not caught up with passes through.
+        let mut body = json!({"model": "grok-4.7-fast"});
+        assert_eq!(
+            rewrite_xai_unknown_request_model(&mut body, "grok-4.6", &allowed),
+            None
+        );
+        assert_eq!(body["model"], "grok-4.7-fast");
+
+        // Provider-prefixed spelling passes too.
+        let mut body = json!({"model": "xai/Grok-4.7-Fast"});
+        assert_eq!(
+            rewrite_xai_unknown_request_model(&mut body, "grok-4.6", &allowed),
+            None
+        );
+
+        // Alien subagent SKUs are still remapped.
+        let mut body = json!({"model": "luna"});
+        assert_eq!(
+            rewrite_xai_unknown_request_model(&mut body, "grok-4.6", &allowed),
+            Some(("luna".to_string(), "grok-4.6".to_string()))
+        );
+
+        // Non-ASCII names must not panic on the prefix check (byte 4 splits a
+        // CJK code point) and fall through to the remap.
+        let mut body = json!({"model": "模型"});
+        assert_eq!(
+            rewrite_xai_unknown_request_model(&mut body, "grok-4.6", &allowed),
+            Some(("模型".to_string(), "grok-4.6".to_string()))
+        );
     }
 
     #[test]

@@ -120,7 +120,7 @@ impl TryFrom<&AppType> for McpTargetId {
             AppType::GrokBuild => Ok(Self::GrokBuild),
             AppType::OpenCode => Ok(Self::OpenCode),
             AppType::Hermes => Ok(Self::Hermes),
-            AppType::ClaudeDesktop | AppType::OpenClaw => Err(AppError::localized(
+            AppType::ClaudeDesktop | AppType::OpenClaw | AppType::Pi | AppType::Mcode => Err(AppError::localized(
                 "unsupported_mcp_target",
                 format!("{} 不支持 MCP 直接分配。", app.as_str()),
                 format!("{} is not a direct MCP assignment target.", app.as_str()),
@@ -289,7 +289,7 @@ impl TryFrom<&AppType> for SkillTargetId {
             AppType::GrokBuild => Ok(Self::GrokBuild),
             AppType::OpenCode => Ok(Self::OpenCode),
             AppType::Hermes => Ok(Self::Hermes),
-            AppType::ClaudeDesktop | AppType::OpenClaw => Err(AppError::localized(
+            AppType::ClaudeDesktop | AppType::OpenClaw | AppType::Pi | AppType::Mcode => Err(AppError::localized(
                 "unsupported_skill_target",
                 format!("{} 不是受支持的 Skill 目标。", app.as_str()),
                 format!("{} is not a supported Skill target.", app.as_str()),
@@ -638,6 +638,8 @@ pub enum AppType {
     OpenCode,
     OpenClaw,
     Hermes,
+    Pi,
+    Mcode,
 }
 
 impl AppType {
@@ -651,17 +653,27 @@ impl AppType {
             AppType::OpenCode => "opencode",
             AppType::OpenClaw => "openclaw",
             AppType::Hermes => "hermes",
+            AppType::Pi => "pi",
+            AppType::Mcode => "mcode",
         }
     }
 
     /// Check if this app uses additive mode
     ///
     /// - Switch mode (false): Only the current provider is written to live config (Claude, Codex, Gemini)
-    /// - Additive mode (true): All providers are written to live config (OpenCode, OpenClaw, Hermes)
+    /// - Additive mode (true): Providers coexist in native config and can be enabled independently
+    ///   (OpenCode, OpenClaw, Hermes, Pi)
     pub fn is_additive_mode(&self) -> bool {
         matches!(
             self,
-            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes
+            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::Pi | AppType::Mcode
+        )
+    }
+
+    pub fn supports_local_proxy(&self) -> bool {
+        matches!(
+            self,
+            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild
         )
     }
 
@@ -676,6 +688,8 @@ impl AppType {
             AppType::OpenCode,
             AppType::OpenClaw,
             AppType::Hermes,
+            AppType::Pi,
+            AppType::Mcode,
         ]
         .into_iter()
     }
@@ -695,10 +709,12 @@ impl FromStr for AppType {
             "opencode" => Ok(AppType::OpenCode),
             "openclaw" => Ok(AppType::OpenClaw),
             "hermes" => Ok(AppType::Hermes),
+            "pi" => Ok(AppType::Pi),
+            "mcode" => Ok(AppType::Mcode),
             other => Err(AppError::localized(
                 "unsupported_app",
-                format!("不支持的应用标识: '{other}'。可选值: claude, claude-desktop, codex, gemini, grokbuild, opencode, openclaw, hermes。"),
-                format!("Unsupported app id: '{other}'. Allowed: claude, claude-desktop, codex, gemini, grokbuild, opencode, openclaw, hermes."),
+                format!("不支持的应用标识: '{other}'。可选值: claude, claude-desktop, codex, gemini, grokbuild, opencode, openclaw, hermes, pi。"),
+                format!("Unsupported app id: '{other}'. Allowed: claude, claude-desktop, codex, gemini, grokbuild, opencode, openclaw, hermes, pi."),
             )),
         }
     }
@@ -738,6 +754,7 @@ impl CommonConfigSnippets {
             AppType::OpenCode => self.opencode.as_ref(),
             AppType::OpenClaw => self.openclaw.as_ref(),
             AppType::Hermes => self.hermes.as_ref(),
+            AppType::Pi | AppType::Mcode => None,
         }
     }
 
@@ -752,6 +769,7 @@ impl CommonConfigSnippets {
             AppType::OpenCode => self.opencode = snippet,
             AppType::OpenClaw => self.openclaw = snippet,
             AppType::Hermes => self.hermes = snippet,
+            AppType::Pi | AppType::Mcode => {}
         }
     }
 }
@@ -948,34 +966,6 @@ impl MultiAppConfig {
         }
     }
 
-    /// 获取指定客户端的 MCP 配置（不可变引用）
-    pub fn mcp_for(&self, app: &AppType) -> &McpConfig {
-        match app {
-            AppType::Claude => &self.mcp.claude,
-            AppType::ClaudeDesktop => &self.mcp.claude_desktop,
-            AppType::Codex => &self.mcp.codex,
-            AppType::Gemini => &self.mcp.gemini,
-            AppType::GrokBuild => &self.mcp.grokbuild,
-            AppType::OpenCode => &self.mcp.opencode,
-            AppType::OpenClaw => &self.mcp.openclaw,
-            AppType::Hermes => &self.mcp.hermes,
-        }
-    }
-
-    /// 获取指定客户端的 MCP 配置（可变引用）
-    pub fn mcp_for_mut(&mut self, app: &AppType) -> &mut McpConfig {
-        match app {
-            AppType::Claude => &mut self.mcp.claude,
-            AppType::ClaudeDesktop => &mut self.mcp.claude_desktop,
-            AppType::Codex => &mut self.mcp.codex,
-            AppType::Gemini => &mut self.mcp.gemini,
-            AppType::GrokBuild => &mut self.mcp.grokbuild,
-            AppType::OpenCode => &mut self.mcp.opencode,
-            AppType::OpenClaw => &mut self.mcp.openclaw,
-            AppType::Hermes => &mut self.mcp.hermes,
-        }
-    }
-
     /// 创建默认配置并自动导入已存在的提示词文件
     fn default_with_auto_import() -> Result<Self, AppError> {
         log::info!("首次启动，创建默认配置并检测提示词文件");
@@ -1103,6 +1093,9 @@ impl MultiAppConfig {
             AppType::OpenCode => &mut config.prompts.opencode.prompts,
             AppType::OpenClaw => &mut config.prompts.openclaw.prompts,
             AppType::Hermes => &mut config.prompts.hermes.prompts,
+            // Pi was added after prompts moved to SQLite. Keeping it out of
+            // this legacy config avoids a second, unused prompt state.
+            AppType::Pi | AppType::Mcode => return Ok(false),
         };
 
         prompts.insert(id, prompt);
@@ -1146,6 +1139,7 @@ impl MultiAppConfig {
                 AppType::OpenCode => &self.mcp.opencode.servers,
                 AppType::OpenClaw => continue, // OpenClaw MCP is still in development, skip
                 AppType::Hermes => continue,   // Hermes didn't exist in v3.6.x, skip
+                AppType::Pi | AppType::Mcode => continue, // Pi didn't exist in v3.6.x, skip
             };
 
             for (id, entry) in old_servers {

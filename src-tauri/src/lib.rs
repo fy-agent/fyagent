@@ -51,7 +51,8 @@ use crate::codex_desktop::{
 };
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
 pub use codex_config::{
-    get_codex_auth_path, get_codex_config_path, read_codex_live_settings, write_codex_live_atomic,
+    extract_codex_experimental_bearer_token, get_codex_auth_path, get_codex_config_path,
+    read_codex_live_settings, write_codex_live_atomic,
 };
 pub use commands::open_provider_terminal;
 pub use commands::*;
@@ -150,10 +151,25 @@ const MIN_KNOWN_SECRET_LEN: usize = 8;
 
 /// 唯一的密钥脱敏原语：把字符串里出现的、我们确切握有的密钥值替换为 [REDACTED]。
 /// 不做任何“看起来像密钥”的形状猜测——只隐藏已知值，天然收敛、不误伤正常路径。
-fn redact_known_secrets(text: &str, known_secrets: &[String]) -> String {
+pub(crate) fn redact_known_secrets(text: &str, known_secrets: &[String]) -> String {
+    redact_known_secrets_with_min_length(text, known_secrets, MIN_KNOWN_SECRET_LEN)
+}
+
+/// Exact-value redaction for user-visible error text. Unlike URL logging, a
+/// short known credential must still be hidden because the result reaches the
+/// UI rather than a diagnostic-only path.
+pub(crate) fn redact_known_secrets_strict(text: &str, known_secrets: &[String]) -> String {
+    redact_known_secrets_with_min_length(text, known_secrets, 1)
+}
+
+fn redact_known_secrets_with_min_length(
+    text: &str,
+    known_secrets: &[String],
+    minimum_chars: usize,
+) -> String {
     let mut output = text.to_string();
     for secret in known_secrets {
-        if secret.chars().count() >= MIN_KNOWN_SECRET_LEN {
+        if secret.chars().count() >= minimum_chars {
             output = output.replace(secret.as_str(), "[REDACTED]");
         }
     }
@@ -979,6 +995,22 @@ pub fn run() {
             }
         }));
 
+    #[cfg(target_os = "windows")]
+    {
+        let startup_page_handled = AtomicBool::new(false);
+        builder = builder.on_page_load(move |webview, payload| {
+            if webview.label() == "main"
+                && payload.event() == tauri::webview::PageLoadEvent::Finished
+                && payload.url().scheme() != "about"
+                && !startup_page_handled.swap(true, Ordering::Relaxed)
+                && !crate::settings::get_settings().silent_startup
+            {
+                let _ = webview.window().show();
+                log::info!("主页面加载完成，主窗口已显示");
+            }
+        });
+    }
+
     let builder = builder
         .on_page_load(|webview, payload| {
             if webview.label() == "main"
@@ -1185,6 +1217,10 @@ pub fn run() {
                     });
                     // 主窗口默认 visible:false，恢复界面必须强制显示
                     if let Some(window) = app.get_webview_window("main") {
+                        #[cfg(target_os = "windows")]
+                        {
+                            let _ = window.set_skip_taskbar(false);
+                        }
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
@@ -1468,7 +1504,7 @@ pub fn run() {
 
             // 1.6. 自动同步 OpenCode / OpenClaw 的 live providers 到数据库
             //
-            // additive 模式（OpenCode / OpenClaw）的 import 函数按 id 幂等——
+            // additive 模式的 import 函数按 id 幂等——
             // 新 id 执行导入，已有 id 则更新 settings 和 display name，所以每次
             // 启动都跑是安全的：既保证新装用户开箱可见 live 中的供应商，也让外部
             // 修改的 live 文件能在重启后同步到数据库（与之前依赖前端"导入当前配置"
@@ -1496,6 +1532,13 @@ pub fn run() {
                 }
                 Ok(_) => log::debug!("○ No Hermes provider changes from live config"),
                 Err(e) => log::warn!("✗ Failed to import Hermes providers: {e}"),
+            }
+            match crate::services::provider::import_pi_providers_from_live(&app_state) {
+                Ok(count) if count > 0 => {
+                    log::info!("✓ Synced {count} Pi provider(s) from native config");
+                }
+                Ok(_) => log::debug!("○ No Pi provider changes from native config"),
+                Err(e) => log::warn!("✗ Failed to import Pi providers: {e}"),
             }
 
             // 2. OMO 配置导入（当数据库中无 OMO provider 时，从本地文件导入）
@@ -1638,6 +1681,8 @@ pub fn run() {
                     crate::app_config::AppType::OpenCode,
                     crate::app_config::AppType::OpenClaw,
                     crate::app_config::AppType::Hermes,
+                    crate::app_config::AppType::Pi,
+                    crate::app_config::AppType::Mcode,
                 ] {
                     match crate::services::prompt::PromptService::import_from_file_on_first_launch(
                         &app_state,
@@ -1812,7 +1857,6 @@ pub fn run() {
                 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
                 use crate::services::managed_auth::CODEX_MIGRATION_ID;
                 use commands::CodexOAuthState;
-                use tokio::sync::RwLock;
 
                 let codex_oauth_manager = CodexOAuthManager::new(app_config_dir.clone());
                 if managed_auth.legacy_store_sealed(CODEX_MIGRATION_ID) {
@@ -1937,6 +1981,11 @@ pub fn run() {
                     const SESSION_SYNC_INTERVAL_SECS: u64 = 60;
 
                     async fn run_session_sync(db: std::sync::Arc<crate::database::Database>, backfill: bool) {
+                        // 手动扫描模式下跳过定时扫描；backfill 轮（启动首轮）仍进入，
+                        // 费用回填只修补数据库既有行（含代理记账行），不读会话文件
+                        if !backfill && !crate::settings::get_settings().session_auto_sync_enabled {
+                            return;
+                        }
                         let _guard = crate::services::session_usage::session_sync_mutex()
                             .lock()
                             .await;
@@ -1945,6 +1994,9 @@ pub fn run() {
                                 if let Err(error) = db.backfill_missing_usage_costs() {
                                     log::warn!("Usage cost startup backfill failed: {error}");
                                 }
+                            }
+                            if !crate::settings::get_settings().session_auto_sync_enabled {
+                                return crate::services::session_usage::SessionSyncResult::default();
                             }
                             crate::services::session_usage::sync_all_unlocked(&db)
                         });
@@ -2167,7 +2219,8 @@ pub fn run() {
             commands::delete_profile,
             commands::clear_current_profile,
             commands::apply_profile,
-            // model list fetch (OpenAI-compatible /v1/models)
+            // Fetch OpenAI-compatible and Anthropic model lists. Response data structure:
+            // data[].id, data[]?.owned_by. Special: supports Zhipu OpenAI Responses models[].slug.
             commands::fetch_models_for_config,
             commands::get_opencode_models,
             commands::get_opencode_model_snapshot,
@@ -2381,6 +2434,7 @@ pub fn run() {
             // Generic managed auth commands
             commands::auth_start_login,
             commands::auth_poll_for_account,
+            commands::auth_cancel_login,
             commands::auth_list_accounts,
             commands::auth_get_status,
             commands::auth_remove_account,

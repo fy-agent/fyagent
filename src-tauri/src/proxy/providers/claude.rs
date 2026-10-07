@@ -14,6 +14,7 @@
 //! - **OpenRouter**: 已支持 Claude Code 兼容接口，默认透传
 //! - **GitHubCopilot**: GitHub Copilot (OAuth + Copilot Token)
 
+use super::codex_oauth_auth::{CODEX_OAUTH_CLIENT_VERSION, CODEX_OAUTH_ORIGINATOR};
 use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
@@ -342,11 +343,7 @@ pub fn transform_claude_request_for_api_format(
     // Copilot 场景：优先从 metadata.user_id 提取 session ID 作为 cache key
     // 格式: "uuid_sessionId" → 提取 "_" 后面的部分作为 session 标识
     // 同一会话的请求共享 cache key，提升 Copilot 缓存命中率
-    let is_copilot = provider
-        .meta
-        .as_ref()
-        .and_then(|m| m.provider_type.as_deref())
-        == Some("github_copilot")
+    let is_copilot = provider.is_github_copilot()
         || provider
             .settings_config
             .get("baseUrl")
@@ -423,6 +420,16 @@ pub fn transform_claude_request_for_api_format(
             // 不在 SSE 末尾吐 usage → 转换出的 Anthropic message_delta 全 0 →
             // 整笔 input/output/cache 漏记（与 Codex Responses→Chat 路径同源）。
             super::transform::inject_openai_stream_include_usage(&mut result);
+            // GitHub Copilot 的 OpenAI Chat 端点不支持 `stop` 参数，携带该字段会
+            // 直接返回 400。Claude Code auto mode 的 classifier 请求会带
+            // stop_sequences（转换后即为 stop），导致 classifier 在 Copilot 下
+            // 始终不可用（Issue #5175）。仅在 Copilot 路径移除该字段，其它
+            // OpenAI 兼容上游（如 OpenRouter）继续保留 stop 语义。
+            if is_copilot {
+                if let Some(obj) = result.as_object_mut() {
+                    obj.remove("stop");
+                }
+            }
             Ok(result)
         }
         "gemini_native" => super::transform_gemini::anthropic_to_gemini_with_shadow(
@@ -1107,6 +1114,31 @@ mod tests {
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-direct");
         assert_eq!(auth.strategy, AuthStrategy::Anthropic);
+    }
+
+    #[test]
+    fn codex_oauth_generation_uses_gpt6_compatible_identity() {
+        let headers: http::HeaderMap = ClaudeAdapter::new()
+            .get_auth_headers(&AuthInfo::new(
+                "test-token".into(),
+                AuthStrategy::CodexOAuth,
+            ))
+            .unwrap()
+            .into_iter()
+            .collect();
+        assert_eq!(headers["authorization"], "Bearer test-token");
+        assert_eq!(headers["originator"], "codex_cli_rs");
+        let version: Vec<u32> = headers["version"]
+            .to_str()
+            .unwrap()
+            .split('.')
+            .map(|part| part.parse().unwrap())
+            .collect();
+        // Official rust-v0.153.4 catalog: gpt-6-astra requires 0.153.0.
+        assert!(
+            version.as_slice() >= [0, 153, 0].as_slice(),
+            "gpt-6-astra requires Codex >= 0.153.0; sent {version:?}"
+        );
     }
 
     #[test]
@@ -1993,6 +2025,82 @@ mod tests {
     }
 
     #[test]
+    fn test_transform_claude_request_openai_chat_strips_stop_for_copilot() {
+        // Issue #5175: GitHub Copilot 的 OpenAI Chat 端点不支持 `stop` 参数，
+        // 携带该字段会返回 400，导致 Claude Code auto mode 的 classifier
+        // 请求（携带 stop_sequences）始终失败。修复后 Copilot 路径应移除转换出的 stop。
+        let provider = create_provider_with_meta(
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.githubcopilot.com",
+                    "ANTHROPIC_API_KEY": "test-key"
+                }
+            }),
+            ProviderMeta {
+                provider_type: Some("github_copilot".to_string()),
+                ..Default::default()
+            },
+        );
+        let body = json!({
+            "model": "claude-sonnet-4-6",
+            "messages": [{ "role": "user", "content": "hello" }],
+            "max_tokens": 64,
+            "stop_sequences": ["\n\nHuman:"]
+        });
+
+        let transformed =
+            transform_claude_request_for_api_format(body, &provider, "openai_chat", None, None)
+                .unwrap();
+
+        assert!(transformed.get("stop").is_none());
+    }
+
+    #[test]
+    fn test_transform_claude_request_openai_chat_strips_stop_for_copilot_env_url() {
+        // 兼容旧/手动 Copilot provider：即使没有 meta.provider_type，
+        // 只要 ANTHROPIC_BASE_URL 指向 Copilot，也应移除 stop。
+        let provider = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.githubcopilot.com",
+                "ANTHROPIC_API_KEY": "test-key"
+            }
+        }));
+        let body = json!({
+            "model": "claude-sonnet-4-6",
+            "messages": [{ "role": "user", "content": "hello" }],
+            "max_tokens": 64,
+            "stop_sequences": ["\n\nHuman:"]
+        });
+
+        let transformed =
+            transform_claude_request_for_api_format(body, &provider, "openai_chat", None, None)
+                .unwrap();
+
+        assert!(transformed.get("stop").is_none());
+    }
+
+    #[test]
+    fn test_transform_claude_request_openai_chat_keeps_stop_for_generic_provider() {
+        // 非 Copilot 的 OpenAI 兼容上游（如 OpenRouter）应继续保留 stop 语义，
+        // 确认修复未影响其它 provider。
+        let provider = create_provider(json!({
+            "env": { "ANTHROPIC_BASE_URL": "https://openrouter.ai/api/v1" }
+        }));
+        let body = json!({
+            "model": "moonshotai/kimi-k2",
+            "messages": [{ "role": "user", "content": "hello" }],
+            "max_tokens": 64,
+            "stop_sequences": ["\n\nHuman:"]
+        });
+
+        let transformed =
+            transform_claude_request_for_api_format(body, &provider, "openai_chat", None, None)
+                .unwrap();
+
+        assert_eq!(transformed["stop"], json!(["\n\nHuman:"]));
+    }
+
+    #[test]
     fn test_transform_claude_request_for_api_format_openai_chat_skips_prompt_cache_key_by_default()
     {
         let provider = create_provider_with_meta(
@@ -2084,7 +2192,9 @@ mod tests {
     }
 
     #[test]
-    fn test_transform_openai_chat_preserves_reasoning_content_for_kimi_provider() {
+    fn test_transform_openai_chat_skips_reasoning_content_for_kimi_provider() {
+        // Kimi 2026-08 反馈：不再需要 reasoning_content 回放，注入反而扰乱思维链。
+        // Kimi/Moonshot 已从 REASONING_VENDOR_HINTS 撤出，应与通用 provider 同行为。
         let provider = create_provider_with_meta(
             json!({
                 "env": {
@@ -2114,8 +2224,8 @@ mod tests {
                 .unwrap();
 
         let msg = &transformed["messages"][0];
-        assert_eq!(msg["reasoning_content"], "I should call the tool.");
         assert!(msg.get("tool_calls").is_some());
+        assert!(msg.get("reasoning_content").is_none());
     }
 
     #[test]
@@ -2281,7 +2391,9 @@ mod tests {
     }
 
     #[test]
-    fn test_kimi_anthropic_tool_history_injects_missing_thinking() {
+    fn test_kimi_anthropic_tool_history_not_modified() {
+        // Kimi 2026-08 反馈：Anthropic 兼容端点不再要求 tool_use 轮回放 thinking，
+        // 注入占位符反而扰乱思维链。Kimi 应走通用透传，请求体一字不动。
         let provider = create_provider(json!({
             "env": {
                 "ANTHROPIC_BASE_URL": "https://api.kimi.com/coding",
@@ -2297,6 +2409,7 @@ mod tests {
                 ]
             }]
         });
+        let original = body.clone();
 
         let changed = normalize_anthropic_tool_thinking_history_for_provider(
             &mut body,
@@ -2304,11 +2417,8 @@ mod tests {
             "anthropic",
         );
 
-        assert!(changed);
-        let content = body["messages"][0]["content"].as_array().unwrap();
-        assert_eq!(content[0]["type"], "thinking");
-        assert_eq!(content[0]["thinking"], ANTHROPIC_THINKING_PLACEHOLDER);
-        assert_eq!(content[1]["type"], "tool_use");
+        assert!(!changed);
+        assert_eq!(body, original);
     }
 
     #[test]

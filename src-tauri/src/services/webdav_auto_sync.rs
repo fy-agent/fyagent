@@ -22,6 +22,40 @@ impl AutoSyncSuppressionGuard {
     }
 }
 
+impl Drop for AutoSyncSuppressionGuard {
+    fn drop(&mut self) {
+        let _ =
+            AUTO_SYNC_SUPPRESS_DEPTH.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+                Some(value.saturating_sub(1))
+            });
+    }
+}
+
+pub(crate) fn is_auto_sync_suppressed() -> bool {
+    AUTO_SYNC_SUPPRESS_DEPTH.load(Ordering::SeqCst) > 0
+}
+
+pub fn should_trigger_for_table(table: &str) -> bool {
+    should_trigger_auto_sync_for_table(table)
+}
+
+pub(crate) fn enqueue_change_signal(tx: &Sender<String>, table: &str) -> bool {
+    match tx.try_send(table.to_string()) {
+        Ok(()) => true,
+        Err(TrySendError::Full(_)) | Err(TrySendError::Closed(_)) => false,
+    }
+}
+
+pub(crate) fn auto_sync_wait_duration(started_at: Instant, now: Instant) -> Option<Duration> {
+    let max_wait = Duration::from_millis(MAX_AUTO_SYNC_WAIT_MS);
+    let debounce = Duration::from_millis(AUTO_SYNC_DEBOUNCE_MS);
+    let elapsed = now.saturating_duration_since(started_at);
+    if elapsed >= max_wait {
+        return None;
+    }
+    Some(debounce.min(max_wait - elapsed))
+}
+
 fn should_run_auto_sync(settings: Option<&WebDavSyncSettings>) -> bool {
     settings.is_some_and(|sync| sync.enabled && sync.auto_sync)
 }

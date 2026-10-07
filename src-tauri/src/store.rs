@@ -1,5 +1,6 @@
 use crate::codex_desktop_runtime::production_service;
 use crate::database::Database;
+use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::services::{CodexDesktopService, ProxyService, UsageCache};
 use std::sync::Arc;
 
@@ -15,12 +16,17 @@ pub struct AppState {
     pub agent_action_jobs: Arc<crate::agent_install::AgentActionJobStore>,
     pub agent_auth_sessions: Arc<crate::agent_install::AgentAuthSessionStore>,
     pub agent_installation_inventory: Arc<crate::agent_install::AgentInstallationInventoryStore>,
+    // Codex OAuth manager uses fine-grained internal locks. Methods take `&self`.
+    pub codex_oauth_manager: Arc<CodexOAuthManager>,
 }
 
 impl AppState {
     /// 创建新的应用状态
     pub fn new(db: Arc<Database>) -> Self {
-        let proxy_service = ProxyService::new(db.clone());
+        let codex_oauth_manager =
+            Arc::new(CodexOAuthManager::new(crate::config::get_app_config_dir()));
+        let proxy_service =
+            ProxyService::new_with_codex_oauth_manager(db.clone(), codex_oauth_manager.clone());
 
         Self {
             db,
@@ -32,6 +38,7 @@ impl AppState {
             agent_installation_inventory: Arc::new(
                 crate::agent_install::AgentInstallationInventoryStore::new(),
             ),
+            codex_oauth_manager,
         }
     }
 }

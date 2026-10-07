@@ -247,7 +247,7 @@ pub(crate) fn build_codex_tool_context_from_request(body: &Value) -> CodexToolCo
     }
 
     if let Some(input) = body.get("input") {
-        collect_tool_search_output_tools(input, &mut context);
+        collect_input_declared_tools(input, &mut context);
     }
 
     context
@@ -424,7 +424,11 @@ fn apply_reasoning_options(
     let Some(effort) = body.pointer("/reasoning/effort").and_then(|v| v.as_str()) else {
         return;
     };
-    let Some(mapped) = map_reasoning_effort(effort, config.effort_value_mode.as_deref()) else {
+    let Some(mapped) = map_reasoning_effort(
+        effort,
+        config.effort_value_mode.as_deref(),
+        config.effort_levels.as_deref(),
+    ) else {
         return;
     };
 
@@ -455,15 +459,23 @@ fn reasoning_requested(body: &Value) -> Option<bool> {
     body.get("reasoning").map(|value| !value.is_null())
 }
 
-fn map_reasoning_effort(effort: &str, mode: Option<&str>) -> Option<&'static str> {
+fn map_reasoning_effort<'a>(
+    effort: &str,
+    mode: Option<&str>,
+    effort_levels: Option<&'a [String]>,
+) -> Option<&'a str> {
     let effort = effort.trim().to_ascii_lowercase();
     if matches!(effort.as_str(), "none" | "off" | "disabled") {
         return None;
     }
 
+    // ultra 是 Codex 扩展档位：已知枚举的专用模式（deepseek/openrouter/low_high）
+    // 钳到自身最高合法档而非丢弃——丢弃会让"选最深思考"静默退化成"不带 effort"；
+    // passthrough 面向枚举未知的通用上游，档位由用户/预设的 reasoningLevels 声明
+    // 背书，与 max/xhigh 一样原值透传。
     match mode.unwrap_or("passthrough") {
         "deepseek" => match effort.as_str() {
-            "max" | "xhigh" => Some("max"),
+            "max" | "xhigh" | "ultra" => Some("max"),
             _ => Some("high"),
         },
         "low_high" => match effort.as_str() {
@@ -475,13 +487,38 @@ fn map_reasoning_effort(effort: &str, mode: Option<&str>) -> Option<&'static str
         // `400 reasoning_effort: Invalid option`（见 openclaw#77350）；钳到最高合法档
         // xhigh，其余合法值透传，未知值丢弃以免被上游拒绝。
         "openrouter" => match effort.as_str() {
-            "max" | "xhigh" => Some("xhigh"),
+            "max" | "xhigh" | "ultra" => Some("xhigh"),
             "high" => Some("high"),
             "medium" => Some("medium"),
             "low" => Some("low"),
             "minimal" => Some("minimal"),
             _ => None,
         },
+        // OpenCode Zen：合法档位逐模型（表数据 = 供应商 modelCatalog 各条目的
+        // reasoningLevels，镜像 models.dev——glm-5.2 仅 high|max、deepseek-v4-flash
+        // 为 low|high|max、kimi-k3 仅 max），opencode 客户端也严格按模型声明发值，
+        // 故不能用统一并集映射。无表（模型未收录目录、或为 toggle/budget 型未声明
+        // effort）→ None，完全不发 reasoning_effort；有表 → 钳到「不小于请求的
+        // 最近合法档」，请求超出最高档则取最高合法档；请求值本身无法识别 → None
+        // （同其他模式的未知值丢弃策略）。
+        "zen" => {
+            let levels = effort_levels?;
+            let requested = zen_effort_rank(&effort)?;
+            levels
+                .iter()
+                .filter_map(|level| zen_effort_rank(level).map(|rank| (rank, level.as_str())))
+                .filter(|(rank, _)| *rank >= requested)
+                .min_by_key(|(rank, _)| *rank)
+                .or_else(|| {
+                    levels
+                        .iter()
+                        .filter_map(|level| {
+                            zen_effort_rank(level).map(|rank| (rank, level.as_str()))
+                        })
+                        .max_by_key(|(rank, _)| *rank)
+                })
+                .map(|(_, level)| level)
+        }
         _ => match effort.as_str() {
             "minimal" => Some("minimal"),
             "low" => Some("low"),
@@ -489,8 +526,24 @@ fn map_reasoning_effort(effort: &str, mode: Option<&str>) -> Option<&'static str
             "high" => Some("high"),
             "xhigh" => Some("xhigh"),
             "max" => Some("max"),
+            "ultra" => Some("ultra"),
             _ => None,
         },
+    }
+}
+
+/// Codex 规范档位序（minimal < low < medium < high < xhigh < max < ultra），供 zen
+/// 逐模型钳制做大小比较；目录里的非法/扩展值（如 "none"）返回 None，查表时被滤掉。
+fn zen_effort_rank(effort: &str) -> Option<u8> {
+    match effort.trim().to_ascii_lowercase().as_str() {
+        "minimal" => Some(0),
+        "low" => Some(1),
+        "medium" => Some(2),
+        "high" => Some(3),
+        "xhigh" => Some(4),
+        "max" => Some(5),
+        "ultra" => Some(6),
+        _ => None,
     }
 }
 
@@ -718,6 +771,13 @@ fn append_responses_item_as_chat_message(
             // 到达时回溯附挂，见 attach_pending_reasoning_to_previous_assistant。
             append_pending_reasoning(pending_reasoning, responses_reasoning_item_text(item));
         }
+        // An `additional_tools` carrier declares tools for this request; its
+        // nested tools are lifted via `build_codex_tool_context_from_request`
+        // and the carrier itself is not a message. It carries a `role` but no
+        // `content`, so letting it fall through the generic message arm used
+        // to fabricate a `content: null` system message that strict chat
+        // gateways reject with `messages[N]: missing field "content"`.
+        Some("additional_tools") => {}
         Some("input_text" | "input_image" | "input_file" | "input_audio") => {
             flush_pending_tool_calls(
                 messages,
@@ -835,6 +895,20 @@ fn flush_pending_tool_calls(
         return;
     }
 
+    // One Responses model turn can contain an assistant commentary message
+    // directly followed by function-call items. Keep them on the same Chat
+    // assistant message: a standalone text-only assistant turn teaches Chat
+    // models to stop after a progress update instead of emitting the expected
+    // tool call.
+    if merge_pending_tool_calls_into_adjacent_assistant(
+        messages,
+        pending_tool_calls,
+        pending_reasoning,
+    ) {
+        *last_assistant_index = Some(messages.len() - 1);
+        return;
+    }
+
     // Media from the preceding tool-result batch must be presented before a
     // new assistant tool-call turn. Consecutive outputs do not enter here
     // because `pending_tool_calls` is empty after the first output.
@@ -860,6 +934,11 @@ fn flush_pending_tool_calls(
     messages.push(message);
 }
 
+/// Merge pending Chat tool calls into a directly adjacent assistant message
+/// that does not carry tool calls yet. The Responses input preserves both the
+/// commentary text and the calls as separate items of the same model turn;
+/// serializing them as two consecutive assistant messages lets Chat models
+/// imitate the first text-only message as a complete turn.
 fn merge_pending_tool_calls_into_adjacent_assistant(
     messages: &mut [Value],
     pending_tool_calls: &mut Vec<Value>,
@@ -1205,15 +1284,25 @@ fn responses_input_file_to_chat_file(part: &Value) -> Option<Value> {
     chat_file_from_input_file(part)
 }
 
-fn collect_tool_search_output_tools(value: &Value, context: &mut CodexToolContext) {
+/// Collect tools declared inline in the request `input` instead of top-level
+/// `tools`: `tool_search_output` items (dynamically loaded tool groups) and
+/// `additional_tools` carriers (Codex 0.154+ ships extra tools — the
+/// `functions`/`collaboration` exec sandbox, plugins — in this Responses
+/// private-extension carrier). The xAI Responses passthrough already promotes
+/// the same carriers (`promote_additional_tools`); the Chat and Anthropic
+/// converters go through this registry so they keep the carried tools too.
+fn collect_input_declared_tools(value: &Value, context: &mut CodexToolContext) {
     match value {
         Value::Array(items) => {
             for item in items {
-                collect_tool_search_output_tools(item, context);
+                collect_input_declared_tools(item, context);
             }
         }
         Value::Object(obj) => {
-            if obj.get("type").and_then(|v| v.as_str()) == Some("tool_search_output") {
+            if matches!(
+                obj.get("type").and_then(|v| v.as_str()),
+                Some("tool_search_output" | "additional_tools")
+            ) {
                 if let Some(tools) = obj.get("tools").and_then(|v| v.as_array()) {
                     for tool in tools {
                         context.add_response_tool(tool);
@@ -1221,7 +1310,7 @@ fn collect_tool_search_output_tools(value: &Value, context: &mut CodexToolContex
                 }
             }
             for value in obj.values() {
-                collect_tool_search_output_tools(value, context);
+                collect_input_declared_tools(value, context);
             }
         }
         _ => {}
@@ -1321,9 +1410,18 @@ fn responses_function_tool_to_chat_tool(tool: &Value, chat_name: &str) -> Option
 
     let mut function = json!({
         "name": chat_name,
-        "description": tool.get("description").cloned().unwrap_or(Value::Null),
-        "parameters": normalize_function_parameters(tool.get("parameters"))
     });
+    // Omit a missing description instead of serializing null — hosted tools
+    // and undescribed custom tools reach this branch without the field, and
+    // strict OpenAI-compatible upstreams reject the whole request on a null
+    // value (400 "expected string, received null"). Same treatment as the
+    // anthropic→chat/responses converters; insertion keeps the original
+    // name→description→parameters key order for byte-identical output when
+    // the description is present.
+    if let Some(description) = tool.get("description").filter(|d| !d.is_null()) {
+        function["description"] = description.clone();
+    }
+    function["parameters"] = normalize_function_parameters(tool.get("parameters"));
     if let Some(strict) = tool.get("strict") {
         function["strict"] = strict.clone();
     }
@@ -1855,6 +1953,7 @@ pub(crate) fn chat_usage_to_responses_usage(usage: Option<&Value>) -> Value {
     let Some(usage) = usage.filter(|value| value.is_object() && !value.is_null()) else {
         return json!({
             "input_tokens": 0,
+            "input_tokens_details": { "cached_tokens": 0 },
             "output_tokens": 0,
             "total_tokens": 0,
             "output_tokens_details": { "reasoning_tokens": 0 }
@@ -1882,10 +1981,23 @@ pub(crate) fn chat_usage_to_responses_usage(usage: Option<&Value>) -> Value {
         "total_tokens": total_tokens
     });
 
-    let cached = usage
-        .pointer("/prompt_tokens_details/cached_tokens")
-        .or_else(|| usage.pointer("/input_tokens_details/cached_tokens"))
-        .and_then(|v| v.as_u64())
+    let direct_cache_read = usage.get("cache_read_input_tokens").and_then(Value::as_u64);
+    let cached = direct_cache_read
+        .or_else(|| {
+            usage
+                .pointer("/prompt_tokens_details/cached_tokens")
+                .and_then(Value::as_u64)
+        })
+        .or_else(|| {
+            usage
+                .pointer("/input_tokens_details/cached_tokens")
+                .and_then(Value::as_u64)
+        })
+        // DeepSeek Chat 的文档化缓存命中字段（与 usage/parser.rs 的处理对应），末位兜底。
+        // 官方端点目前把同值镜像进未文档化的 prompt_tokens_details.cached_tokens（上面的
+        // 标准字段已命中），故仅当上游只发文档字段、不发镜像时此兜底生效（如部分中转），
+        // 并防御未文档化镜像将来消失；上游发任一标准字段时行为零变化。
+        .or_else(|| usage.get("prompt_cache_hit_tokens").and_then(Value::as_u64))
         .unwrap_or(0);
     let cache_write = usage
         .pointer("/prompt_tokens_details/cache_write_tokens")
@@ -1902,6 +2014,8 @@ pub(crate) fn chat_usage_to_responses_usage(usage: Option<&Value>) -> Value {
             "cached_tokens": cached,
             "cache_write_tokens": cache_write
         });
+    } else {
+        result["input_tokens_details"] = json!({ "cached_tokens": 0 });
     }
 
     if let Some(details) = usage
@@ -1917,8 +2031,8 @@ pub(crate) fn chat_usage_to_responses_usage(usage: Option<&Value>) -> Value {
         result["output_tokens_details"] = json!({ "reasoning_tokens": 0 });
     }
 
-    if let Some(cache_read) = usage.get("cache_read_input_tokens") {
-        result["cache_read_input_tokens"] = cache_read.clone();
+    if let Some(cache_read) = direct_cache_read {
+        result["cache_read_input_tokens"] = json!(cache_read);
     }
     if cache_write > 0 {
         result["cache_creation_input_tokens"] = json!(cache_write);
@@ -2063,6 +2177,28 @@ mod tests {
 
     fn result_messages(result: &Value) -> &[Value] {
         result["messages"].as_array().unwrap()
+    }
+
+    #[test]
+    fn map_reasoning_effort_handles_ultra_per_mode() {
+        // passthrough 面向枚举未知的通用上游：ultra 与 max/xhigh 一样原值透传，
+        // 让声明了该档位的上游能收到用户选择。
+        assert_eq!(map_reasoning_effort("ultra", None, None), Some("ultra"));
+        // 已知枚举的专用模式钳到自身最高合法档，而不是走 None 被静默丢弃。
+        assert_eq!(
+            map_reasoning_effort("ultra", Some("deepseek"), None),
+            Some("max")
+        );
+        assert_eq!(
+            map_reasoning_effort("ultra", Some("low_high"), None),
+            Some("high")
+        );
+        assert_eq!(
+            map_reasoning_effort("ultra", Some("openrouter"), None),
+            Some("xhigh")
+        );
+        // 真正的未知值仍然丢弃，防上游 400。
+        assert_eq!(map_reasoning_effort("turbo", None, None), None);
     }
 
     #[test]
@@ -2278,6 +2414,29 @@ mod tests {
         assert_eq!(result["tool_choice"]["function"]["name"], "get_weather");
         assert_eq!(result["max_tokens"], 100);
         assert_eq!(result["reasoning_effort"], "high");
+    }
+
+    #[test]
+    fn responses_request_to_chat_omits_missing_tool_description() {
+        // A missing description must be omitted, not serialized as null —
+        // strict OpenAI-compatible upstreams reject the whole request on a
+        // null value (400 "expected string, received null").
+        let input = json!({
+            "model": "gpt-5.4",
+            "input": [
+                {"role": "user", "content": [{"type": "input_text", "text": "hi"}]}
+            ],
+            "tools": [
+                {"type": "function", "name": "no_desc", "parameters": {"type": "object"}},
+                {"type": "function", "name": "with_desc", "description": "Has one", "parameters": {"type": "object"}}
+            ]
+        });
+
+        let result = responses_to_chat_completions(input).unwrap();
+        let tools = result["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0]["function"].get("description").is_none());
+        assert_eq!(tools[1]["function"]["description"], "Has one");
     }
 
     #[test]
@@ -2556,12 +2715,35 @@ mod tests {
             effort_param: Some("reasoning_effort".to_string()),
             effort_value_mode: Some("deepseek".to_string()),
             output_format: Some("reasoning_content".to_string()),
+            effort_levels: None,
         };
 
         let result = responses_to_chat_completions_with_reasoning(input, Some(&config)).unwrap();
 
         assert_eq!(result["thinking"]["type"], "enabled");
         assert_eq!(result["reasoning_effort"], "max");
+    }
+
+    #[test]
+    fn chat_usage_to_responses_usage_maps_deepseek_cache_hit_tokens() {
+        // DeepSeek Chat 的文档化缓存命中字段也要进 Responses 的
+        // input_tokens_details（issue #6073 关联）：当上游只发该字段、不镜像
+        // prompt_tokens_details.cached_tokens 时（如部分中转），少了这个兜底，
+        // 路由模式下合成的 response.completed 里 cached_tokens 为 0，
+        // Codex 侧会话记录与本地日志都拿不到缓存命中。
+        let usage = json!({
+            "prompt_tokens": 1000,
+            "completion_tokens": 100,
+            "total_tokens": 1100,
+            "prompt_cache_hit_tokens": 600,
+            "prompt_cache_miss_tokens": 400
+        });
+
+        let result = chat_usage_to_responses_usage(Some(&usage));
+        assert_eq!(result["input_tokens"], 1000);
+        assert_eq!(result["output_tokens"], 100);
+        assert_eq!(result["input_tokens_details"]["cached_tokens"], 600);
+        assert_eq!(result["input_tokens_details"]["cache_write_tokens"], 0);
     }
 
     #[test]
@@ -2575,6 +2757,7 @@ mod tests {
             effort_param: Some("reasoning.effort".to_string()),
             effort_value_mode: Some("openrouter".to_string()),
             output_format: Some("auto".to_string()),
+            effort_levels: None,
         };
 
         // max 不在 OpenRouter 枚举内（见 openclaw#77350），必须钳成 xhigh，
@@ -2616,6 +2799,7 @@ mod tests {
             effort_param: Some("reasoning.effort".to_string()),
             effort_value_mode: Some("openrouter".to_string()),
             output_format: Some("auto".to_string()),
+            effort_levels: None,
         };
 
         let input = json!({
@@ -2643,6 +2827,7 @@ mod tests {
             effort_param: Some("reasoning_effort".to_string()),
             effort_value_mode: Some("deepseek".to_string()),
             output_format: Some("reasoning_content".to_string()),
+            effort_levels: None,
         };
 
         let input = json!({
@@ -2659,6 +2844,138 @@ mod tests {
     }
 
     #[test]
+    fn responses_request_to_chat_clamps_zen_effort_to_model_declared_levels() {
+        // OpenCode Zen 平台形态 + 逐模型档位钳制（表数据镜像 models.dev：glm-5.2
+        // 仅声明 high|max）。锁定：统一并集映射会把 Codex 默认的 medium 发给只声明
+        // high|max 的 glm-5.2（恰好是预设默认模型），严格校验的网关会报错；
+        // 低档一律上钳到最近合法档，超出最高档（含 Codex 扩展档 ultra）取最高合法档。
+        let config = CodexChatReasoningConfig {
+            supports_thinking: Some(true),
+            supports_effort: Some(true),
+            thinking_param: Some("none".to_string()),
+            effort_param: Some("reasoning_effort".to_string()),
+            effort_value_mode: Some("zen".to_string()),
+            output_format: Some("reasoning_content".to_string()),
+            effort_levels: Some(vec!["high".to_string(), "max".to_string()]),
+        };
+
+        for (input_effort, expected) in [
+            ("minimal", "high"),
+            ("low", "high"),
+            ("medium", "high"),
+            ("high", "high"),
+            ("xhigh", "max"),
+            ("max", "max"),
+            ("ultra", "max"),
+        ] {
+            let input = json!({
+                "model": "glm-5.2",
+                "input": "hello",
+                "reasoning": {"effort": input_effort}
+            });
+            let result =
+                responses_to_chat_completions_with_reasoning(input, Some(&config)).unwrap();
+            assert_eq!(
+                result["reasoning_effort"], expected,
+                "effort={input_effort}"
+            );
+            // 写成顶层 reasoning_effort；不发任何 thinking 字段
+            // （网关只认平台归一参数，不认厂商 thinking 形状）。
+            assert!(result.get("thinking").is_none());
+        }
+    }
+
+    #[test]
+    fn responses_request_to_chat_zen_preserves_low_when_model_declares_it() {
+        // deepseek-v4-flash 声明 low|high|max：low 合法原样透传，medium 上钳 high，
+        // xhigh 上钳 max——回归锁：旧 deepseek 厂商分支把非 max 一律归 high，
+        // 逐模型钳制不得比那更差，也不得发出声明外的值。
+        let config = CodexChatReasoningConfig {
+            supports_thinking: Some(true),
+            supports_effort: Some(true),
+            thinking_param: Some("none".to_string()),
+            effort_param: Some("reasoning_effort".to_string()),
+            effort_value_mode: Some("zen".to_string()),
+            output_format: Some("reasoning_content".to_string()),
+            effort_levels: Some(vec![
+                "low".to_string(),
+                "high".to_string(),
+                "max".to_string(),
+            ]),
+        };
+
+        for (input_effort, expected) in [
+            ("minimal", "low"),
+            ("low", "low"),
+            ("medium", "high"),
+            ("xhigh", "max"),
+        ] {
+            let input = json!({
+                "model": "deepseek-v4-flash",
+                "input": "hello",
+                "reasoning": {"effort": input_effort}
+            });
+            let result =
+                responses_to_chat_completions_with_reasoning(input, Some(&config)).unwrap();
+            assert_eq!(
+                result["reasoning_effort"], expected,
+                "effort={input_effort}"
+            );
+        }
+    }
+
+    #[test]
+    fn responses_request_to_chat_zen_single_level_model_clamps_everything_to_max() {
+        // kimi-k3 仅声明 max（全模型交集不存在，统一映射覆盖不了它——必须逐模型）：
+        // 任何请求档都钳到 max。
+        let config = CodexChatReasoningConfig {
+            supports_thinking: Some(true),
+            supports_effort: Some(true),
+            thinking_param: Some("none".to_string()),
+            effort_param: Some("reasoning_effort".to_string()),
+            effort_value_mode: Some("zen".to_string()),
+            output_format: Some("reasoning_content".to_string()),
+            effort_levels: Some(vec!["max".to_string()]),
+        };
+
+        for input_effort in ["minimal", "medium", "high", "max"] {
+            let input = json!({
+                "model": "kimi-k3",
+                "input": "hello",
+                "reasoning": {"effort": input_effort}
+            });
+            let result =
+                responses_to_chat_completions_with_reasoning(input, Some(&config)).unwrap();
+            assert_eq!(result["reasoning_effort"], "max", "effort={input_effort}");
+        }
+    }
+
+    #[test]
+    fn responses_request_to_chat_omits_zen_effort_without_model_levels() {
+        // 模型未在目录声明 effort（toggle/budget 型如 glm-5.1、qwen 系，或目录未收录）
+        // → 完全不发 reasoning_effort，避免给严格校验的网关送无法核实的值。
+        let config = CodexChatReasoningConfig {
+            supports_thinking: Some(true),
+            supports_effort: Some(true),
+            thinking_param: Some("none".to_string()),
+            effort_param: Some("reasoning_effort".to_string()),
+            effort_value_mode: Some("zen".to_string()),
+            output_format: Some("reasoning_content".to_string()),
+            effort_levels: None,
+        };
+
+        let input = json!({
+            "model": "glm-5.1",
+            "input": "hello",
+            "reasoning": {"effort": "medium"}
+        });
+        let result = responses_to_chat_completions_with_reasoning(input, Some(&config)).unwrap();
+
+        assert!(result.get("reasoning_effort").is_none());
+        assert!(result.get("thinking").is_none());
+    }
+
+    #[test]
     fn responses_request_to_chat_maps_thinking_only_provider_without_effort() {
         let input = json!({
             "model": "kimi-k2.6",
@@ -2672,6 +2989,7 @@ mod tests {
             effort_param: Some("none".to_string()),
             effort_value_mode: None,
             output_format: Some("reasoning_content".to_string()),
+            effort_levels: None,
         };
 
         let result = responses_to_chat_completions_with_reasoning(input, Some(&config)).unwrap();
@@ -2694,6 +3012,7 @@ mod tests {
             effort_param: Some("none".to_string()),
             effort_value_mode: None,
             output_format: Some("reasoning_content".to_string()),
+            effort_levels: None,
         };
 
         let result = responses_to_chat_completions_with_reasoning(input, Some(&config)).unwrap();
@@ -2801,6 +3120,127 @@ mod tests {
         assert!(head_content.contains("You are Codex."));
         assert!(head_content.contains("Permissions block"));
         assert!(head_content.contains("Collaboration Mode: Default"));
+    }
+
+    #[test]
+    fn additional_tools_carrier_is_lifted_not_converted_to_a_message() {
+        // Shape from #7451: Codex 0.154+ ships extra tools in an
+        // `additional_tools` input carrier (role `developer`, no `content`).
+        let input = json!({
+            "model": "agnes-3.0-flash",
+            "input": [
+                {
+                    "type": "additional_tools",
+                    "id": "at_a8d5b9f5",
+                    "role": "developer",
+                    "tools": [
+                        {
+                            "type": "namespace",
+                            "name": "functions",
+                            "description": "",
+                            "tools": [
+                                {
+                                    "type": "function",
+                                    "name": "exec_command",
+                                    "description": "Run a shell command.",
+                                    "strict": false,
+                                    "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}
+                                }
+                            ]
+                        },
+                        {
+                            "type": "function",
+                            "name": "wait",
+                            "description": "Waits on a yielded exec cell.",
+                            "strict": false,
+                            "parameters": {"type": "object", "properties": {"cell_id": {"type": "string"}}, "required": ["cell_id"]}
+                        }
+                    ]
+                },
+                {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "You are Codex, a coding agent."}]},
+                {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "你好"}]}
+            ]
+        });
+
+        let result = responses_to_chat_completions(input).unwrap();
+        let messages = result["messages"].as_array().unwrap();
+
+        // The carrier is not a message: every emitted message must carry
+        // real content, and the developer instruction must remain the only
+        // system head.
+        for (idx, message) in messages.iter().enumerate() {
+            assert!(
+                !matches!(message.get("content"), None | Some(Value::Null)),
+                "messages[{idx}] lost its content: {message}"
+            );
+        }
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[0]["content"], "You are Codex, a coding agent.");
+        assert_eq!(messages[1]["role"], "user");
+        assert_eq!(messages[1]["content"], "你好");
+
+        // The carried tools survive as flattened chat tools.
+        let tool_names: Vec<&str> = result["tools"]
+            .as_array()
+            .expect("carried tools must be lifted into top-level tools")
+            .iter()
+            .map(|tool| tool["function"]["name"].as_str().unwrap())
+            .collect();
+        assert!(
+            tool_names.contains(&"functions__exec_command"),
+            "{tool_names:?}"
+        );
+        assert!(tool_names.contains(&"wait"), "{tool_names:?}");
+    }
+
+    #[test]
+    fn additional_tools_carrier_tools_dedup_against_top_level_tools() {
+        let input = json!({
+            "model": "m",
+            "tools": [
+                {"type": "function", "name": "wait", "description": "Top-level wait.", "parameters": {"type": "object", "properties": {}}}
+            ],
+            "input": [
+                {
+                    "type": "additional_tools",
+                    "role": "developer",
+                    "tools": [
+                        {"type": "function", "name": "wait", "description": "Carried wait.", "parameters": {"type": "object", "properties": {}}}
+                    ]
+                },
+                {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]}
+            ]
+        });
+
+        let result = responses_to_chat_completions(input).unwrap();
+
+        let tools = result["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 1, "duplicate carried tool must be dropped");
+        assert_eq!(tools[0]["function"]["name"], "wait");
+        assert_eq!(tools[0]["function"]["description"], "Top-level wait.");
+    }
+
+    #[test]
+    fn plain_developer_messages_convert_without_additional_tools_carrier() {
+        // No carrier present: developer messages keep mapping to system and
+        // no tools array is fabricated.
+        let input = json!({
+            "model": "m",
+            "input": [
+                {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "Instructions."}]},
+                {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]}
+            ]
+        });
+
+        let result = responses_to_chat_completions(input).unwrap();
+        let messages = result["messages"].as_array().unwrap();
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[0]["content"], "Instructions.");
+        assert_eq!(messages[1]["role"], "user");
+        assert!(result.get("tools").is_none());
     }
 
     #[test]
@@ -4015,6 +4455,64 @@ mod tests {
         let second = responses_to_chat_completions(input).unwrap();
 
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn chat_usage_to_responses_includes_required_input_token_details() {
+        let usage = json!({
+            "prompt_tokens": 13,
+            "completion_tokens": 245,
+            "total_tokens": 258,
+            "prompt_tokens_details": { "cached_tokens": 0 }
+        });
+
+        let converted = chat_usage_to_responses_usage(Some(&usage));
+        assert_eq!(
+            converted["input_tokens_details"],
+            json!({ "cached_tokens": 0 })
+        );
+
+        let fallback = chat_usage_to_responses_usage(None);
+        assert_eq!(
+            fallback["input_tokens_details"],
+            json!({ "cached_tokens": 0 })
+        );
+    }
+
+    #[test]
+    fn chat_usage_to_responses_resolves_cache_read_precedence() {
+        let direct_cache_usage = json!({
+            "prompt_tokens": 100,
+            "completion_tokens": 5,
+            "prompt_tokens_details": { "cached_tokens": 0 },
+            "cache_read_input_tokens": 40
+        });
+        let converted = chat_usage_to_responses_usage(Some(&direct_cache_usage));
+        assert_eq!(converted["input_tokens_details"]["cached_tokens"], 40);
+        assert_eq!(converted["cache_read_input_tokens"], 40);
+
+        let direct_zero = json!({
+            "prompt_tokens_details": { "cached_tokens": 12 },
+            "cache_read_input_tokens": 0
+        });
+        let converted = chat_usage_to_responses_usage(Some(&direct_zero));
+        assert_eq!(converted["input_tokens_details"]["cached_tokens"], 0);
+        assert_eq!(converted["cache_read_input_tokens"], 0);
+
+        let invalid_direct = json!({
+            "prompt_tokens_details": { "cached_tokens": 12 },
+            "cache_read_input_tokens": "invalid"
+        });
+        let converted = chat_usage_to_responses_usage(Some(&invalid_direct));
+        assert_eq!(converted["input_tokens_details"]["cached_tokens"], 12);
+        assert!(converted.get("cache_read_input_tokens").is_none());
+
+        let invalid_prompt_details = json!({
+            "prompt_tokens_details": { "cached_tokens": "invalid" },
+            "input_tokens_details": { "cached_tokens": 7 }
+        });
+        let converted = chat_usage_to_responses_usage(Some(&invalid_prompt_details));
+        assert_eq!(converted["input_tokens_details"]["cached_tokens"], 7);
     }
 
     #[test]

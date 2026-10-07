@@ -41,7 +41,27 @@ use tokio::sync::RwLock;
 
 const PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
 
-fn validate_codex_official_authorization(headers: &http::HeaderMap) -> Result<(), ProxyError> {
+fn codex_bearer_access_token(headers: &http::HeaderMap) -> Option<&str> {
+    let authorization = headers
+        .get(http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .trim();
+    let mut parts = authorization.split_whitespace();
+    let scheme = parts.next()?;
+    let token = parts.next()?;
+    if !scheme.eq_ignore_ascii_case("bearer") || token.is_empty() || parts.next().is_some() {
+        return None;
+    }
+    Some(token)
+}
+
+fn validate_codex_official_authorization(
+    headers: &http::HeaderMap,
+    provider: &Provider,
+    expected_chatgpt_account_id: Option<&str>,
+    managed_session_matches: Option<bool>,
+) -> Result<(), ProxyError> {
     let authorization = headers
         .get(http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
@@ -53,7 +73,30 @@ fn validate_codex_official_authorization(headers: &http::HeaderMap) -> Result<()
         Some(value) if value.contains(PROXY_AUTH_PLACEHOLDER) => Err(ProxyError::AuthError(
             "已切换到 OpenAI 官方供应商，请重启 Codex 或新建会话以加载官方登录配置".to_string(),
         )),
-        Some(_) => Ok(()),
+        Some(_) => {
+            let managed_account_id = provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.managed_account_id_for("codex_oauth"))
+                .map(|account_id| account_id.trim().to_string())
+                .filter(|account_id| !account_id.is_empty());
+            if managed_account_id.is_some() {
+                let request_account_id = headers
+                    .get("chatgpt-account-id")
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::trim)
+                    .filter(|account_id| !account_id.is_empty());
+                if request_account_id != expected_chatgpt_account_id
+                    || managed_session_matches != Some(true)
+                {
+                    return Err(ProxyError::AuthError(
+                        "当前 Codex 会话未加载所选 ChatGPT 账号，请重启 Codex 或新建会话后重试"
+                            .to_string(),
+                    ));
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -396,7 +439,13 @@ impl RequestForwarder {
         providers: Vec<Provider>,
     ) -> Result<ForwardResult, ForwardError> {
         // 获取适配器
-        let adapter = get_adapter(app_type);
+        let adapter = get_adapter(app_type).ok_or_else(|| ForwardError {
+            error: ProxyError::ConfigError(format!(
+                "{} does not support proxy routing",
+                app_type.as_str()
+            )),
+            provider: None,
+        })?;
         let app_type_str = app_type.as_str();
 
         if providers.is_empty() {
@@ -548,7 +597,7 @@ impl RequestForwarder {
                     let provider_type = ProviderType::from_app_type_and_config(app_type, provider);
                     let is_anthropic_provider = matches!(
                         provider_type,
-                        ProviderType::Claude | ProviderType::ClaudeAuth
+                        Some(ProviderType::Claude | ProviderType::ClaudeAuth)
                     );
                     let mut signature_rectifier_non_retryable_client_error = false;
 
@@ -1154,7 +1203,45 @@ impl RequestForwarder {
             && super::providers::is_codex_official_provider(provider);
 
         if codex_official_auth_passthrough {
-            validate_codex_official_authorization(headers)?;
+            let (expected_chatgpt_account_id, managed_session_matches) = match provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.managed_account_id_for("codex_oauth"))
+            {
+                Some(local_account_id) => {
+                    let app_handle = self.app_handle.as_ref().ok_or_else(|| {
+                        ProxyError::AuthError("Codex OAuth 认证不可用（无 AppHandle）".to_string())
+                    })?;
+                    let codex_state = app_handle.state::<CodexOAuthState>();
+                    let chatgpt_account_id = codex_state
+                        .0
+                        .chatgpt_account_id_for_account(&local_account_id)
+                        .await
+                        .map_err(|error| {
+                            ProxyError::AuthError(format!("Codex OAuth 账号解析失败: {error}"))
+                        })?;
+                    let session_matches = match codex_bearer_access_token(headers) {
+                        Some(access_token) => {
+                            crate::codex_config::codex_live_auth_matches_managed_request(
+                                &local_account_id,
+                                access_token,
+                            )
+                            .map_err(|error| {
+                                ProxyError::AuthError(format!("Codex OAuth 会话校验失败: {error}"))
+                            })?
+                        }
+                        None => false,
+                    };
+                    (Some(chatgpt_account_id), Some(session_matches))
+                }
+                None => (None, None),
+            };
+            validate_codex_official_authorization(
+                headers,
+                provider,
+                expected_chatgpt_account_id.as_deref(),
+                managed_session_matches,
+            )?;
         }
 
         // 应用模型映射（独立于格式转换）
@@ -1398,16 +1485,34 @@ impl RequestForwarder {
         let codex_anthropic_base_is_full_endpoint =
             codex_responses_to_anthropic && base_url_is_full_endpoint(&base_url, "/v1/messages");
 
+        let codex_standalone_endpoint = matches!(app_type, AppType::Codex)
+            .then(|| CodexStandaloneEndpoint::from_effective_endpoint(&effective_endpoint))
+            .flatten();
+
         let url = if matches!(resolved_claude_api_format.as_deref(), Some("gemini_native")) {
             super::gemini_url::resolve_gemini_native_url(
                 &base_url,
                 &effective_endpoint,
                 is_full_url,
             )
-        } else if is_full_url
-            || codex_chat_base_is_full_endpoint
-            || codex_anthropic_base_is_full_endpoint
+        } else if is_full_url {
+            if let Some(endpoint) = codex_standalone_endpoint {
+                rewrite_codex_standalone_full_url(
+                    &base_url,
+                    passthrough_query.as_deref(),
+                    endpoint,
+                )?
+            } else {
+                append_query_to_full_url(&base_url, passthrough_query.as_deref())
+            }
+        } else if let Some(endpoint) = codex_standalone_endpoint
+            .filter(|endpoint| endpoint.base_url_is_source_endpoint(&base_url))
         {
+            // Same tolerance as `codex_chat_base_is_full_endpoint` below: a base URL
+            // pasted as a complete endpoint with the full-URL switch off would
+            // otherwise become `.../chat/completions/images/generations`.
+            rewrite_codex_standalone_full_url(&base_url, passthrough_query.as_deref(), endpoint)?
+        } else if codex_chat_base_is_full_endpoint || codex_anthropic_base_is_full_endpoint {
             append_query_to_full_url(&base_url, passthrough_query.as_deref())
         } else {
             adapter.build_url(&base_url, &effective_endpoint)
@@ -1549,6 +1654,52 @@ impl RequestForwarder {
         } else {
             mapped_body
         };
+
+        // Native Responses passthrough to a strict third-party gateway (xAI).
+        // One gate so rebase conflicts stay here plus the isolate file, not
+        // scattered across sanitizers. Flatten namespaces first; then apply
+        // xAI request rewrites (schema, agent_message, unknown models).
+        if matches!(app_type, AppType::Codex | AppType::GrokBuild)
+            && !codex_responses_to_chat
+            && !codex_responses_to_anthropic
+            && super::providers::provider_needs_responses_namespace_flatten(provider)
+        {
+            if super::providers::transform_codex_responses_namespace::flatten_request_namespaces(
+                &mut request_body,
+            )? {
+                log::debug!(
+                    "[Codex] Flattened namespace tools for native Responses upstream (provider={})",
+                    provider.id
+                );
+            }
+            super::providers::transform_codex_responses_xai_sanitize::apply_xai_native_responses_request_compat(
+                &mut request_body,
+                &provider.id,
+                super::providers::codex_provider_upstream_model(provider).as_deref(),
+                &provider.settings_config,
+            );
+        }
+
+        // Moonshot / Kimi Chat Completions reject `$ref` nodes that carry sibling
+        // keywords, which Codex Desktop's built-in tool schemas do (#6867). Move
+        // each such `$ref` into `allOf` for that upstream only; every other
+        // provider keeps byte-identical tool schemas (prompt-cache prefix intact).
+        if codex_responses_to_chat
+            && super::providers::transform_codex_chat_moonshot_schema::upstream_requires_ref_sibling_all_of(
+                &base_url,
+            )
+        {
+            let rewritten =
+                super::providers::transform_codex_chat_moonshot_schema::wrap_ref_siblings_in_chat_tools(
+                    &mut request_body,
+                );
+            if rewritten > 0 {
+                log::debug!(
+                    "[Codex] Moved `$ref` siblings into allOf for {rewritten} tool schema(s) (Moonshot upstream, provider={})",
+                    provider.id
+                );
+            }
+        }
 
         if matches!(app_type, AppType::Codex | AppType::GrokBuild) {
             self.apply_media_prevention(&mut request_body, provider);
@@ -1859,13 +2010,6 @@ impl RequestForwarder {
         } else {
             Vec::new()
         };
-
-        // 注入 Codex OAuth 的 ChatGPT-Account-Id header（如果有 account_id）
-        if let Some(ref account_id) = codex_oauth_account_id {
-            if let Ok(hv) = http::HeaderValue::from_str(account_id) {
-                auth_headers.push((http::HeaderName::from_static("chatgpt-account-id"), hv));
-            }
-        }
 
         let codex_oauth_session_headers =
             if should_send_codex_oauth_session_headers && self.session_client_provided {
@@ -2843,19 +2987,10 @@ impl RequestForwarder {
     }
 
     fn categorize_proxy_error(&self, error: &ProxyError, provider: &Provider) -> ErrorCategory {
-        // Authentication belongs to the Codex client for the built-in official
-        // route. Retrying another provider would silently move the conversation
-        // away from the selected official account and poison its health state.
-        if super::providers::is_codex_official_provider(provider)
-            && (matches!(error, ProxyError::AuthError(_))
-                || matches!(
-                    error,
-                    ProxyError::UpstreamError {
-                        status: 401 | 403,
-                        ..
-                    }
-                ))
-        {
+        // Authentication belongs to the Codex client for an official route.
+        // Every retry would reuse the selected account's inbound Authorization
+        // header against another card, so no official-route error may fail over.
+        if super::providers::is_codex_official_provider(provider) {
             return ErrorCategory::NonRetryable;
         }
 
@@ -4776,7 +4911,7 @@ mod tests {
     }
 
     #[test]
-    fn official_codex_auth_failures_are_not_retryable() {
+    fn official_codex_failures_are_not_retryable() {
         let forwarder = test_forwarder(Duration::ZERO, Duration::ZERO);
         let mut provider = test_provider_with_type(None);
         provider.id = "codex-official".to_string();
@@ -4792,6 +4927,11 @@ mod tests {
                 status: 403,
                 body: None,
             },
+            ProxyError::UpstreamError {
+                status: 429,
+                body: None,
+            },
+            ProxyError::Timeout("timeout".to_string()),
         ] {
             assert_eq!(
                 forwarder.categorize_proxy_error(&error, &provider),
@@ -4836,9 +4976,50 @@ mod tests {
             http::header::AUTHORIZATION,
             HeaderValue::from_static("Bearer PROXY_MANAGED"),
         );
-        let error = validate_codex_official_authorization(&headers)
+        let mut provider = test_provider_with_type(None);
+        provider.id = "codex-official".to_string();
+        provider.category = Some("official".to_string());
+        let error = validate_codex_official_authorization(&headers, &provider, None, None)
             .expect_err("stale placeholder must be rejected");
         assert!(matches!(error, ProxyError::AuthError(message) if message.contains("重启 Codex")));
+    }
+
+    #[test]
+    fn managed_codex_official_rejects_a_different_session_account() {
+        let mut provider = test_provider_with_type(Some("codex_oauth"));
+        provider.category = Some("official".to_string());
+        provider.meta.as_mut().expect("provider meta").auth_binding =
+            Some(crate::provider::AuthBinding {
+                source: crate::provider::AuthBindingSource::ManagedAccount,
+                auth_provider: Some("codex_oauth".to_string()),
+                account_id: Some("local-account-b".to_string()),
+            });
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer account-a-token"),
+        );
+        headers.insert(
+            "chatgpt-account-id",
+            HeaderValue::from_static("workspace-shared"),
+        );
+        let error = validate_codex_official_authorization(
+            &headers,
+            &provider,
+            Some("workspace-shared"),
+            Some(false),
+        )
+        .expect_err("another user's bearer in the same workspace must be rejected");
+        assert!(matches!(error, ProxyError::AuthError(message) if message.contains("重启 Codex")));
+
+        validate_codex_official_authorization(
+            &headers,
+            &provider,
+            Some("workspace-shared"),
+            Some(true),
+        )
+        .expect("the selected account may pass through");
     }
 
     #[test]
@@ -4928,6 +5109,210 @@ mod tests {
         let url = append_query_to_full_url("https://relay.example/api?foo=bar", Some("x-id=1"));
 
         assert_eq!(url, "https://relay.example/api?foo=bar&x-id=1");
+    }
+
+    #[test]
+    fn alpha_search_rewrites_known_full_responses_urls() {
+        let cases = [
+            (
+                "https://relay.example/Gateway/%2F/v1/Responses/Compact/?api-version=CaseValue#fragment",
+                "https://relay.example/Gateway/%2F/v1/alpha/search?api-version=CaseValue&client_version=0.144.6",
+            ),
+            (
+                "https://relay.example/v1/responses",
+                "https://relay.example/v1/alpha/search?client_version=0.144.6",
+            ),
+            (
+                "https://relay.example/backend-api/codex/responses/compact/",
+                "https://relay.example/backend-api/codex/alpha/search?client_version=0.144.6",
+            ),
+            (
+                "https://relay.example/custom/%2F/v1/responses?api-version=2026-07",
+                "https://relay.example/custom/%2F/v1/alpha/search?api-version=2026-07&client_version=0.144.6",
+            ),
+        ];
+
+        for (base_url, expected) in cases {
+            assert_eq!(
+                rewrite_codex_standalone_full_url(
+                    base_url,
+                    Some("client_version=0.144.6"),
+                    CodexStandaloneEndpoint::AlphaSearch,
+                )
+                .expect("known Responses full URL should be rewritable"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn images_generations_rewrites_known_full_codex_urls() {
+        let cases = [
+            (
+                "https://relay.example/Gateway/v1/Images/Edits/?api-version=CaseValue#fragment",
+                "https://relay.example/Gateway/v1/images/generations?api-version=CaseValue&client_version=0.145.0",
+            ),
+            (
+                "https://relay.example/v1/responses",
+                "https://relay.example/v1/images/generations?client_version=0.145.0",
+            ),
+            (
+                "https://relay.example/backend-api/codex/responses/compact/",
+                "https://relay.example/backend-api/codex/images/generations?client_version=0.145.0",
+            ),
+            (
+                "https://relay.example/custom/%2F/v1/responses?api-version=2026-07",
+                "https://relay.example/custom/%2F/v1/images/generations?api-version=2026-07&client_version=0.145.0",
+            ),
+            (
+                "https://relay.example/v1/chat/completions?api-version=2026-07",
+                "https://relay.example/v1/images/generations?api-version=2026-07&client_version=0.145.0",
+            ),
+            (
+                "https://relay.example/v1/images/edits",
+                "https://relay.example/v1/images/generations?client_version=0.145.0",
+            ),
+        ];
+
+        for (base_url, expected) in cases {
+            assert_eq!(
+                rewrite_codex_standalone_full_url(
+                    base_url,
+                    Some("client_version=0.145.0"),
+                    CodexStandaloneEndpoint::ImagesGenerations,
+                )
+                .expect("known Codex full URL should be rewritable"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn images_generations_preserves_existing_full_images_url() {
+        let url = rewrite_codex_standalone_full_url(
+            "https://relay.example/v1/images/generations?api-version=2026-07",
+            Some("client_version=0.145.0"),
+            CodexStandaloneEndpoint::ImagesGenerations,
+        )
+        .expect("full Images URL should be preserved");
+
+        assert_eq!(
+            url,
+            "https://relay.example/v1/images/generations?api-version=2026-07&client_version=0.145.0"
+        );
+    }
+
+    #[test]
+    fn images_generations_rejects_opaque_full_url_instead_of_misrouting_payload() {
+        let error = rewrite_codex_standalone_full_url(
+            "https://relay.example/custom/rpc-endpoint",
+            Some("client_version=0.145.0"),
+            CodexStandaloneEndpoint::ImagesGenerations,
+        )
+        .expect_err("opaque endpoint must fail closed");
+
+        assert!(matches!(
+            error,
+            ProxyError::ConfigError(message)
+                if message.contains("cannot derive /images/generations")
+        ));
+    }
+
+    #[test]
+    fn codex_standalone_endpoint_recognizes_images_edits() {
+        assert!(matches!(
+            CodexStandaloneEndpoint::from_effective_endpoint(
+                "/images/edits?client_version=0.145.0"
+            ),
+            Some(CodexStandaloneEndpoint::ImagesEdits)
+        ));
+        // Codex ImageGen never calls the variations route; keep it unrouted.
+        assert!(CodexStandaloneEndpoint::from_effective_endpoint("/images/variations").is_none());
+    }
+
+    #[test]
+    fn images_edits_rewrites_known_full_codex_urls() {
+        let cases = [
+            (
+                "https://relay.example/Gateway/v1/Chat/Completions/?api-version=CaseValue#fragment",
+                "https://relay.example/Gateway/v1/images/edits?api-version=CaseValue&client_version=0.145.0",
+            ),
+            (
+                "https://relay.example/v1/responses",
+                "https://relay.example/v1/images/edits?client_version=0.145.0",
+            ),
+            (
+                "https://relay.example/backend-api/codex/responses/compact/",
+                "https://relay.example/backend-api/codex/images/edits?client_version=0.145.0",
+            ),
+            (
+                "https://relay.example/v1/chat/completions?api-version=2026-07",
+                "https://relay.example/v1/images/edits?api-version=2026-07&client_version=0.145.0",
+            ),
+            (
+                "https://relay.example/v1/images/generations?api-version=2026-07",
+                "https://relay.example/v1/images/edits?api-version=2026-07&client_version=0.145.0",
+            ),
+        ];
+
+        for (base_url, expected) in cases {
+            assert_eq!(
+                rewrite_codex_standalone_full_url(
+                    base_url,
+                    Some("client_version=0.145.0"),
+                    CodexStandaloneEndpoint::ImagesEdits,
+                )
+                .expect("known Codex full URL should be rewritable"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn images_edits_preserves_existing_full_edits_url() {
+        let url = rewrite_codex_standalone_full_url(
+            "https://relay.example/v1/images/edits?api-version=2026-07",
+            Some("client_version=0.145.0"),
+            CodexStandaloneEndpoint::ImagesEdits,
+        )
+        .expect("full Images edits URL should be preserved");
+
+        assert_eq!(
+            url,
+            "https://relay.example/v1/images/edits?api-version=2026-07&client_version=0.145.0"
+        );
+    }
+
+    #[test]
+    fn images_edits_rejects_opaque_full_url_instead_of_misrouting_payload() {
+        let error = rewrite_codex_standalone_full_url(
+            "https://relay.example/custom/rpc-endpoint",
+            Some("client_version=0.145.0"),
+            CodexStandaloneEndpoint::ImagesEdits,
+        )
+        .expect_err("opaque endpoint must fail closed");
+
+        assert!(matches!(
+            error,
+            ProxyError::ConfigError(message)
+                if message.contains("cannot derive /images/edits")
+        ));
+    }
+
+    #[test]
+    fn alpha_search_rejects_opaque_full_url_instead_of_misrouting_payload() {
+        let error = rewrite_codex_standalone_full_url(
+            "https://relay.example/custom/rpc-endpoint",
+            Some("client_version=0.144.6"),
+            CodexStandaloneEndpoint::AlphaSearch,
+        )
+        .expect_err("opaque endpoint must fail closed");
+
+        assert!(matches!(
+            error,
+            ProxyError::ConfigError(message)
+                if message.contains("cannot derive /alpha/search")
+        ));
     }
 
     #[test]
@@ -5231,7 +5616,7 @@ mod tests {
     fn prevention_replaces_when_all_switches_on_and_model_in_heuristic_list() {
         let fwd = forwarder_with_rectifier(RectifierConfig::default());
         let provider = provider_with_settings(json!({}));
-        let mut body = body_with_image("deepseek-v4-pro");
+        let mut body = body_with_image("qwen3-coder-plus");
 
         let replaced = fwd.apply_media_prevention(&mut body, &provider);
 
@@ -5247,7 +5632,7 @@ mod tests {
             ..RectifierConfig::default()
         });
         let provider = provider_with_settings(json!({}));
-        let mut body = body_with_image("deepseek-v4-pro");
+        let mut body = body_with_image("qwen3-coder-plus");
 
         let replaced = fwd.apply_media_prevention(&mut body, &provider);
 
@@ -5262,7 +5647,7 @@ mod tests {
             ..RectifierConfig::default()
         });
         let provider = provider_with_settings(json!({}));
-        let mut body = body_with_image("deepseek-v4-pro");
+        let mut body = body_with_image("qwen3-coder-plus");
 
         assert_eq!(fwd.apply_media_prevention(&mut body, &provider), 0);
         assert_eq!(body["messages"][0]["content"][0]["type"], "image");
@@ -5278,7 +5663,7 @@ mod tests {
 
         // (a) 名单内模型、无显式声明 → 不再预替换
         let bare_provider = provider_with_settings(json!({}));
-        let mut list_body = body_with_image("deepseek-v4-pro");
+        let mut list_body = body_with_image("qwen3-coder-plus");
         assert_eq!(
             fwd.apply_media_prevention(&mut list_body, &bare_provider),
             0,

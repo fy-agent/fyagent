@@ -10,8 +10,10 @@
  *   独立的 "Grok Official" 条目（对应 providers_seed.rs 的 seed，
  *   空 config = 不写自定义模型表）。
  * - 不含国产模型官方直连（cn_official）与纯开源模型托管站
- *   （SiliconFlow / ModelScope / Novita / Nvidia / AtlasCloud / OpenCode Go）：
+ *   （SiliconFlow / ModelScope / Novita / Nvidia / AtlasCloud）：
  *   这些上游没有 Grok 模型，无法在 Grok CLI 中使用。
+ * - OpenCode Go 上游自 2026-08 起已提供 grok-4.5，但暂仍不收录：
+ *   订阅制网关是否纳入 Grok 预设属产品决策，收录前需单独评估。
  * - 只收聚合站与第三方中转站，默认模型统一为 grok-4.5；
  *   OpenRouter 系命名空间的路由站用 "x-ai/grok-4.5"。
  *
@@ -151,7 +153,8 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
     websiteUrl: "https://runapi.co",
     apiKeyUrl: "https://runapi.co/register",
     auth: grokAuth(),
-    config: grokPresetConfig("RunAPI", "https://runapi.co/v1"),
+    config: grokPresetConfig("RunAPI", "https://runapi.host/v1"),
+    endpointCandidates: ["https://runapi.host/v1", "https://runapi.co/v1"],
     category: "aggregator",
     icon: "runapi",
   },
@@ -222,14 +225,29 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
     websiteUrl: "https://apikey.fun",
     apiKeyUrl: "https://apikey.fun/register",
     auth: grokAuth(),
-    config: grokPresetConfig("APIKEY.FUN", "https://api.apikey.fun/v1"),
+    config: grokPresetConfig("APIKEY.FUN", "https://api.apikey.fan/v1"),
     endpointCandidates: [
+      "https://api.apikey.fan/v1",
       "https://api.apikey.fun/v1",
       "https://slb.apikey.fun/v1",
     ],
     apiFormat: "openai_responses",
     category: "third_party",
     icon: "apikeyfun",
+  },
+  {
+    name: "9527CODE",
+    websiteUrl: "https://9527.codes",
+    apiKeyUrl: "https://9527.codes/register",
+    auth: grokAuth(),
+    config: grokPresetConfig("9527CODE", "https://9527.codes/v1"),
+    endpointCandidates: [
+      "https://9527.codes/v1",
+      "https://api.9527.codes/v1",
+      "https://cdn.9527.codes/v1",
+    ],
+    category: "aggregator",
+    icon: "9527code",
   },
   {
     name: "Code0",
@@ -246,8 +264,11 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
     websiteUrl: "https://teamorouter.com",
     apiKeyUrl: "https://teamorouter.com/",
     auth: grokAuth(),
-    config: grokPresetConfig("TeamoRouter", "https://api.teamorouter.com/v1"),
-    endpointCandidates: ["https://api.teamorouter.com/v1"],
+    config: grokPresetConfig("TeamoRouter", "https://api.teamorouter.cn/v1"),
+    endpointCandidates: [
+      "https://api.teamorouter.cn/v1",
+      "https://api.teamorouter.com/v1",
+    ],
     category: "aggregator",
     icon: "teamorouter",
   },
@@ -336,6 +357,16 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
     iconColor: "#000000",
   },
   {
+    name: "SoleAPI",
+    websiteUrl: "https://soleapi.com",
+    apiKeyUrl: "https://soleapi.com/r/ccswitch",
+    auth: grokAuth(),
+    config: grokPresetConfig("SoleAPI", "https://soleapi.com/v1"),
+    endpointCandidates: ["https://soleapi.com/v1"],
+    category: "aggregator",
+    icon: "soleapi",
+  },
+  {
     name: "Micu",
     websiteUrl: "https://www.micuapi.ai",
     apiKeyUrl: "https://www.micuapi.ai/register",
@@ -407,7 +438,10 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
     apiKeyUrl: "https://sudocode.chat/sign-up",
     auth: grokAuth(),
     config: grokPresetConfig("SudoCode.chat", "https://api.sudocode.chat/v1"),
-    endpointCandidates: ["https://api.sudocode.chat/v1"],
+    endpointCandidates: [
+      "https://api.sudocode.chat/v1",
+      "https://api.sudorelay.com/v1",
+    ],
     apiFormat: "openai_responses",
     category: "third_party",
     icon: "sudocode",

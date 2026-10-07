@@ -21,6 +21,7 @@ export {
   extractCodexTopLevelInt,
   extractCodexWireApi,
   getCodexBaseUrl,
+  hasExplicitNonOpenAiCodexModelProvider,
   hasTomlCommonConfigSnippet,
   isCodexAnthropicWireApi,
   isCodexChatWireApi,
