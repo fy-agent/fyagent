@@ -1,6 +1,6 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import {
   buildMcpSearchText,
@@ -296,6 +296,7 @@ export function McpPage({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing, editingKey] = useDialogState<McpServer | "new">();
   const [deleteTarget, setDeleteTarget] = useState<McpServer | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkTrustNeeded, setBulkTrustNeeded] = useState(false);
@@ -340,6 +341,7 @@ export function McpPage({
     operation: () => Promise<void>,
     onSuccess?: () => void,
     notifySuccess = true,
+    onFailure?: (message: string) => void,
   ) => {
     if (writeLock.current) return false;
     writeLock.current = true;
@@ -356,11 +358,12 @@ export function McpPage({
       } catch {
         /* Keep the original failure visible. */
       }
-      notify({
-        tone: "error",
-        title: `${title}失败`,
-        description: sanitizeMcpConfigurationError(error),
-      });
+      const message = sanitizeMcpConfigurationError(error);
+      onFailure?.(message);
+      // The editor callback owns visible inline feedback; a duplicate toast
+      // would cover its footer actions on compact windows.
+      if (!onFailure)
+        notify({ tone: "error", title: `${title}失败`, description: message });
       return false;
     } finally {
       setProgress(null);
@@ -683,7 +686,10 @@ export function McpPage({
                     busy={busy}
                     onToggle={(app, enabled) => toggle(selected, app, enabled)}
                     onEdit={() => setEditing(selected)}
-                    onDelete={() => setDeleteTarget(selected)}
+                    onDelete={() => {
+                      setDeleteError(null);
+                      setDeleteTarget(selected);
+                    }}
                     showAssignment={!wideLayout}
                   />
                 )}
@@ -755,7 +761,7 @@ export function McpPage({
             existingIds={new Set(servers.map((server) => server.id))}
             busy={busy}
             onClose={() => setEditing(null)}
-            onSave={(server, event) => {
+            onSave={async (server, event) => {
               const wasAssigned =
                 editing !== "new" && Boolean(editing.apps.workbuddy);
               if (server.apps.workbuddy && !wasAssigned) {
@@ -766,17 +772,26 @@ export function McpPage({
                   source.returnTarget ?? source.current,
                 );
               }
-              void write(
+              let failure =
+                "MCP 操作未确认完成，请核对管理列表和目标配置后再继续。";
+              const saved = await write(
                 editing === "new" ? "MCP 已添加" : "MCP 已更新",
                 async () => {
                   await ports.mcp.upsert(server);
-                  setEditing(null);
                 },
                 () => {
+                  setEditing(null);
                   if (server.apps.workbuddy && !wasAssigned)
                     noteWorkBuddyTrust();
                 },
+                true,
+                (message) => {
+                  failure = message;
+                },
               );
+              return saved
+                ? null
+                : `${failure}。管理库或部分目标可能已更改；草稿已保留，请先核对管理列表和目标配置，再决定是否重试。`;
             }}
           />
         )}
@@ -792,16 +807,20 @@ export function McpPage({
         originRef={dialogOriginRef}
         open={deleteTarget !== null}
         title={`删除 ${deleteTarget?.name ?? "MCP"}`}
-        description="将从管理列表及已启用的应用中删除。"
+        description={deleteError ?? "将从管理列表及已启用的应用中删除。"}
         pending={busy}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={async () => {
           const target = deleteTarget;
-          if (target)
-            await write("MCP 已删除", async () => {
-              await ports.mcp.delete(target.id);
-            });
-          setDeleteTarget(null);
+          if (!target) return;
+          const removed = await write("MCP 已删除", async () => {
+            await ports.mcp.delete(target.id);
+          });
+          if (removed) setDeleteTarget(null);
+          else
+            setDeleteError(
+              "删除未确认完成，部分目标可能已更改。请先核对管理列表和目标配置，再决定是否重试或取消。",
+            );
         }}
       />
     </div>
@@ -825,7 +844,10 @@ function McpEditor({
   existingIds: Set<string>;
   busy: boolean;
   onClose: () => void;
-  onSave: (server: McpServer, event: MouseEvent<HTMLButtonElement>) => void;
+  onSave: (
+    server: McpServer,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => Promise<string | null>;
 }) {
   const spec = initial?.server ?? {};
   const [id, setId] = useState(initial?.id ?? "");
@@ -861,6 +883,16 @@ function McpEditor({
   const [mode, setMode] = useState<Mode>("quick");
   const [advanced, setAdvanced] = useState(JSON.stringify(spec, null, 2));
   const [errors, setErrors] = useState<string[]>([]);
+  const formRef = useRef<HTMLDivElement>(null);
+  const errorField = useRef("name");
+  useEffect(() => {
+    if (!errors.length) return;
+    const field = formRef.current?.querySelector<HTMLElement>(
+      `[data-mcp-field="${errorField.current}"]`,
+    );
+    field?.focus();
+    field?.scrollIntoView?.({ block: "nearest" });
+  }, [errors]);
   const [preset, setPreset] = useState("custom");
   const original = useRef<McpServer | null>(
     initial ? structuredClone(initial) : null,
@@ -957,6 +989,12 @@ function McpEditor({
       setMode(next);
       setErrors([]);
     } catch (error) {
+      errorField.current =
+        mode === "advanced"
+          ? "advanced"
+          : transport === "stdio"
+            ? "command"
+            : "url";
       setErrors([errorMessage(error)]);
     }
   };
@@ -976,11 +1014,22 @@ function McpEditor({
       nextErrors.push(errorMessage(error));
     }
     if (nextErrors.length || !spec) {
+      errorField.current =
+        !trimmedId || (!initial && existingIds.has(trimmedId))
+          ? "id"
+          : !name.trim()
+            ? "name"
+            : mode === "advanced"
+              ? "advanced"
+              : transport === "stdio"
+                ? "command"
+                : "url";
       setErrors(nextErrors);
       return;
     }
     const base = original.current ?? {};
-    onSave(
+    setErrors([]);
+    void onSave(
       {
         ...base,
         id: initial?.id ?? trimmedId,
@@ -996,7 +1045,11 @@ function McpEditor({
         docs: docs.trim() || undefined,
       } as McpServer,
       event,
-    );
+    ).then((failure) => {
+      if (!failure) return;
+      errorField.current = "name";
+      setErrors([failure]);
+    });
   };
   return (
     <Dialog
@@ -1006,30 +1059,28 @@ function McpEditor({
       title={initial ? `编辑 ${initial.name}` : "添加 MCP"}
       size="wide"
       actions={
-        <>
-          <Button onClick={onClose} disabled={busy}>
-            取消
-          </Button>
-          <Button
-            className="fy-control-button-primary"
-            onClick={submit}
-            disabled={busy}
-          >
-            {busy ? "保存中…" : "保存"}
-          </Button>
-        </>
+        <div className="fy-mcp-editor-actions">
+          {errors.length > 0 && (
+            <div className="fy-mcp-editor-error" tabIndex={0}>
+              <InlineNotice tone="error">{errors.join("；")}</InlineNotice>
+            </div>
+          )}
+          <div className="fy-mcp-editor-buttons">
+            <Button onClick={onClose} disabled={busy}>
+              取消
+            </Button>
+            <Button
+              className="fy-control-button-primary"
+              onClick={submit}
+              disabled={busy}
+            >
+              {busy ? "保存中…" : "保存"}
+            </Button>
+          </div>
+        </div>
       }
     >
-      {errors.length > 0 && (
-        <InlineNotice tone="error">
-          <ul>
-            {errors.map((error) => (
-              <li key={error}>{error}</li>
-            ))}
-          </ul>
-        </InlineNotice>
-      )}
-      <div className="fy-feature-form-grid">
+      <div ref={formRef} className="fy-feature-form-grid">
         {!initial && (
           <label className="fy-control-field">
             模板
@@ -1050,6 +1101,7 @@ function McpEditor({
         <label className="fy-control-field">
           ID
           <Input
+            data-mcp-field="id"
             value={id}
             onChange={(event) => setId(event.target.value)}
             disabled={Boolean(initial)}
@@ -1058,6 +1110,7 @@ function McpEditor({
         <label className="fy-control-field">
           名称
           <Input
+            data-mcp-field="name"
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
@@ -1129,6 +1182,7 @@ function McpEditor({
                 <label className="fy-control-field">
                   命令
                   <Input
+                    data-mcp-field="command"
                     value={command}
                     onChange={(event) => setCommand(event.target.value)}
                   />
@@ -1164,6 +1218,7 @@ function McpEditor({
                 <label className="fy-control-field fy-feature-form-span">
                   URL
                   <Input
+                    data-mcp-field="url"
                     value={url}
                     onChange={(event) => setUrl(event.target.value)}
                   />
@@ -1194,6 +1249,7 @@ function McpEditor({
             <textarea
               className="fy-control-textarea"
               rows={14}
+              data-mcp-field="advanced"
               value={advanced}
               onChange={(event) => setAdvanced(event.target.value)}
               spellCheck={false}

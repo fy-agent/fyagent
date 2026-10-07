@@ -359,3 +359,23 @@ reread, with a distinct warning if refresh fails.
 await ports.prompts.enable(app, id);
 await Promise.all([refetchPrompts(), refetchLiveFile()]);
 ```
+
+### Public Prompt import error contract
+
+The native public import reads the resolved source before constructing a fresh
+UUID disabled library entry. Only its source-read NotFound, InvalidData and
+PermissionDenied/I/O outcomes use fixed missing-file, UTF-8 or file-type/read
+permission guidance and say that this import was not performed. Do not infer
+this phase from arbitrary writer I/O or raw error text. Other service/DAO
+failures remain unconfirmed and ask the user to refresh the library before
+retrying. The Renderer forwards only the closed safe messages; arbitrary errors
+become the fixed unconfirmed message without paths or contents. Failed import
+preserves the existing editor draft and never displays an import-success notice.
+Import uses an independent error title and visible page inline feedback without
+a duplicate error toast over the editor. Other actions retain their existing
+notification defaults. Expanded current-use evidence scrolls the real content
+into view and captures its retained value with the source-error header visible.
+
+These UI contracts are defined in the existing Prompt Page renderer tests;
+source-read versus DAO-phase behavior is covered by services/prompt.rs tests.
+Neither mock failures nor these definitions prove real permission/native runs.

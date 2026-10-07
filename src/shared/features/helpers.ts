@@ -56,17 +56,26 @@ export function sanitizeMcpConfigurationError(error: unknown): string {
     return "检测到同名 MCP 服务器的配置冲突；请统一两端配置或更改服务器 ID";
   }
   if (
+    /^(JSON|TOML) 解析错误:/.test(message) ||
+    /^MCP 校验失败:.*(?:无法解析|解析.*失败)/.test(message)
+  ) {
+    return "MCP 目标配置格式无法读取，请保留原文件并检查 JSON 或 TOML 语法，再核对管理列表和目标配置";
+  }
+  if (/^IO 错误:/.test(message)) {
+    return "MCP 配置文件读写失败，请检查文件类型、权限和 UTF-8 编码，再核对管理列表和目标配置";
+  }
+  if (
     /env|header|authorization|token|secret|password|api[-_ ]?key/i.test(message)
   ) {
-    return "MCP 配置中的敏感字段未通过校验，请检查对应字段格式";
+    return "MCP 操作未确认完成，请检查敏感字段格式并核对目标配置";
   }
   if (/\burl\b/i.test(message)) {
-    return "MCP 配置中的 URL 未通过校验，请检查连接地址";
+    return "MCP 操作未确认完成，请检查连接地址并核对目标配置";
   }
   if (/\b(command|args?|cwd|type|transport)\b/i.test(message)) {
-    return "MCP 配置中的启动字段未通过校验，请检查传输类型与命令";
+    return "MCP 操作未确认完成，请检查传输类型与命令并核对目标配置";
   }
-  return "MCP 配置保存失败，请检查服务器字段";
+  return "MCP 操作未确认完成，请核对管理列表和目标配置后再继续";
 }
 
 export function convergeSelection<T extends { id: string }>(

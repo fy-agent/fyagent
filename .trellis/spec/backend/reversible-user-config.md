@@ -183,3 +183,22 @@ wrong: reset live file from any existing *.backup without revision checks
 correct: validate -> exact preimage backup + receipt -> atomic replacement
          -> readback -> guarded restore using the matching receipt
 ```
+
+### Prompt public import source-read boundary
+
+`PromptService::import_from_file` reads the natively resolved source directly
+with `read_to_string`; an `exists()` precheck must not collapse metadata failure
+into a missing-file result. Preserve the read error kind before library mutation.
+The current explicit import constructs a fresh UUID disabled row and follows the
+library-only DAO path, so it does not invoke the live writer or produce new
+backup/undo files. Source-read failure precedes this row; DAO failure is a
+separate stage and the public error remains unconfirmed. This narrow contract
+is not a promise that arbitrary I/O implies no writes, nor that enabled Prompt
+upsert, compensation or other domain writers share the same behavior.
+
+Existing Prompt tests retain library/source/recovery preimages on missing,
+directory and invalid-UTF-8 source reads, and on a connection-local injected DAO
+refusal. Windows fixtures initialize the real frozen user context before the
+temporary HOME override; restore the prior environment and in-memory settings
+without persisting real configuration. These test definitions require actual
+main-thread execution evidence before reporting PASS.

@@ -97,6 +97,68 @@ function deferred<T>() {
 }
 
 describe("MCP management", () => {
+  it("keeps editor errors beside actions, focuses a correction field, and preserves the draft", async () => {
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = async () => ({});
+    ports.mcp.upsert = vi.fn(async () => {
+      throw new Error("IO 错误: private-path: private-secret");
+    });
+    const user = userEvent.setup();
+    renderFeature(<McpPage />, ports);
+    await screen.findByText("还没有 MCP 服务");
+    await user.click(screen.getAllByRole("button", { name: "添加 MCP" })[0]);
+    const dialog = screen.getByRole("dialog", { name: "添加 MCP" });
+    const fields = within(dialog);
+    await user.click(fields.getByRole("button", { name: "保存" }));
+    expect(fields.getByLabelText("ID", { exact: true })).toHaveFocus();
+    expect(ports.mcp.upsert).not.toHaveBeenCalled();
+    expect(fields.getByRole("alert").closest("footer")).not.toBeNull();
+    await user.type(fields.getByLabelText("ID", { exact: true }), "draft");
+    await user.type(
+      fields.getByLabelText("名称", { exact: true }),
+      "Draft name",
+    );
+    await user.type(
+      fields.getByLabelText("命令", { exact: true }),
+      "draft-command",
+    );
+    await user.click(fields.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(fields.getByRole("alert")).toHaveTextContent("部分目标可能已更改"),
+    );
+    expect(fields.getByLabelText("名称", { exact: true })).toHaveFocus();
+    expect(fields.getByLabelText("命令", { exact: true })).toHaveValue(
+      "draft-command",
+    );
+    expect(document.body).not.toHaveTextContent("private-path");
+    expect(document.body).not.toHaveTextContent("private-secret");
+    expect(fields.getByRole("button", { name: "保存" })).toBeEnabled();
+    expect(screen.queryByText("MCP 已添加失败")).not.toBeInTheDocument();
+  });
+
+  it("keeps failed single deletion open without declaring all targets removed", async () => {
+    const server: McpServer = {
+      id: "docs",
+      name: "Docs server",
+      apps: createMcpAssignments(["claude"]),
+      server: { type: "stdio", command: "npx" },
+    };
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = async () => ({ docs: server });
+    ports.mcp.delete = vi.fn(async () => {
+      throw new Error("private-delete-detail");
+    });
+    const user = userEvent.setup();
+    renderFeature(<McpPage />, ports);
+    await screen.findByRole("heading", { name: "Docs server" });
+    await user.click(screen.getByRole("button", { name: "删除" }));
+    const dialog = screen.getByRole("dialog", { name: "删除 Docs server" });
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(dialog).toHaveTextContent("部分目标可能已更改"));
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
+    expect(document.body).not.toHaveTextContent("private-delete-detail");
+  });
+
   it.each([undefined, "codex"] as const)(
     "creates with only the explicit target %s",
     async (creationTarget) => {
@@ -487,7 +549,7 @@ describe("MCP management", () => {
     await confirmMcpImport(user);
     expect(
       await screen.findByText(
-        "MCP 配置中的敏感字段未通过校验，请检查对应字段格式",
+        "MCP 操作未确认完成，请检查敏感字段格式并核对目标配置",
       ),
     ).toBeVisible();
     expect(document.body).not.toHaveTextContent(secret);

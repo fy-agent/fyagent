@@ -274,6 +274,10 @@
       "2cdaa1e8761a5c5618d0b5861dceef95c5c45df9b2f1407c9682184f0b3aa88f"
     ],
     [
+      "src-tauri/src/services/prompt.rs",
+      "35368c5ee0bd9b24d9d45af7992f8233153c9026859da04b26f27687b66713db"
+    ],
+    [
       "src-tauri/src/services/provider/claude_write_projection.rs",
       "600333dba9b136b556d8cd57bfb75ffcf501cd3c4ef49982f2254c706dafcb04"
     ],

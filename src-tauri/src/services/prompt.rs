@@ -330,10 +330,8 @@ impl PromptService {
     ) -> Result<String, AppError> {
         let file_path = prompt_file_path(&app)?;
 
-        if !file_path.exists() {
-            return Err(AppError::Message("提示词文件不存在".to_string()));
-        }
-
+        // Read directly: exists() would collapse metadata errors into absence.
+        // Preserve the source read kind before creating a disabled library row.
         let content =
             std::fs::read_to_string(&file_path).map_err(|e| AppError::io(&file_path, e))?;
 
@@ -450,16 +448,20 @@ mod tests {
 
     impl TestHome {
         fn set(path: &Path) -> Self {
+            #[cfg(target_os = "windows")]
+            crate::initialize_windows_user_context().expect("Windows test user context");
             let previous_home = std::env::var_os("FYAGENT_TEST_HOME");
+            let mut guard = Self {
+                previous_home,
+                previous_settings: None,
+            };
             std::env::set_var("FYAGENT_TEST_HOME", path);
+            assert_eq!(crate::config::get_home_dir(), path);
             // Snapshot after the override is active: lazy settings initialization
             // must resolve only inside this fixture, never the real user profile.
-            let previous_settings = crate::settings::get_settings();
+            guard.previous_settings = Some(crate::settings::get_settings());
             crate::settings::reload_settings().unwrap();
-            Self {
-                previous_home,
-                previous_settings: Some(previous_settings),
-            }
+            guard
         }
     }
 
@@ -571,6 +573,132 @@ mod tests {
         let saved = state.db.get_prompts("claude").unwrap();
         assert_eq!(saved["draft"].content, "Edited library text\n");
         assert_eq!(saved["draft"].updated_at, Some(2_000));
+        assert_eq!(snapshot(live.parent().unwrap()), before);
+    }
+
+    #[test]
+    #[serial]
+    fn public_import_missing_source_preserves_library_and_recovery() {
+        let (_home, _guard, state, live) = setup();
+        seed_live_with_recovery(&live);
+        state
+            .db
+            .save_prompt("claude", &prompt("existing", false))
+            .unwrap();
+        fs::remove_file(&live).unwrap();
+        let before = snapshot(live.parent().unwrap());
+        let error = PromptService::import_from_file(&state, AppType::Claude).unwrap_err();
+        assert!(matches!(error, AppError::Io { ref source, .. }
+            if source.kind() == std::io::ErrorKind::NotFound));
+        let library = state.db.get_prompts("claude").unwrap();
+        assert_eq!(library.len(), 1);
+        assert_eq!(
+            library["existing"].content,
+            prompt("existing", false).content
+        );
+        assert!(!live.exists());
+        assert_eq!(snapshot(live.parent().unwrap()), before);
+    }
+
+    #[test]
+    #[serial]
+    fn public_import_directory_source_preserves_read_failure_kind_and_recovery() {
+        let (_home, _guard, state, live) = setup();
+        seed_live_with_recovery(&live);
+        state
+            .db
+            .save_prompt("claude", &prompt("existing", false))
+            .unwrap();
+        fs::remove_file(&live).unwrap();
+        fs::create_dir(&live).unwrap();
+        fs::write(live.join("retained.txt"), "source directory preimage").unwrap();
+        let source_before = snapshot(&live);
+        let recovery_paths = [
+            live.with_extension("md.fyagent.backup"),
+            live.with_extension("md.fyagent.undo.json"),
+        ];
+        let recovery_snapshot = || {
+            recovery_paths
+                .iter()
+                .map(|path| {
+                    let metadata = fs::metadata(path).unwrap();
+                    FileSnapshot {
+                        name: path.file_name().unwrap().to_os_string(),
+                        bytes: fs::read(path).unwrap(),
+                        modified: metadata.modified().unwrap(),
+                        permissions: metadata.permissions(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let recovery_before = recovery_snapshot();
+        let expected_kind = fs::read_to_string(&live).unwrap_err().kind();
+        let error = PromptService::import_from_file(&state, AppType::Claude).unwrap_err();
+        assert!(matches!(error, AppError::Io { ref source, .. }
+            if source.kind() == expected_kind));
+        let library = state.db.get_prompts("claude").unwrap();
+        assert_eq!(library.len(), 1);
+        assert_eq!(
+            library["existing"].content,
+            prompt("existing", false).content
+        );
+        assert!(live.is_dir());
+        assert_eq!(snapshot(&live), source_before);
+        assert_eq!(recovery_snapshot(), recovery_before);
+    }
+
+    #[test]
+    #[serial]
+    fn public_import_dao_refusal_is_not_source_io_and_preserves_preimages() {
+        let (_home, _guard, state, live) = setup();
+        seed_live_with_recovery(&live);
+        state
+            .db
+            .save_prompt("claude", &prompt("existing", false))
+            .unwrap();
+        let before = snapshot(live.parent().unwrap());
+        state
+            .db
+            .conn
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "CREATE TEMP TRIGGER reject_public_import BEFORE INSERT ON prompts
+             WHEN NEW.app_type = 'claude' AND NEW.id LIKE 'imported-%'
+             BEGIN SELECT RAISE(ABORT, 'injected public import refusal'); END;",
+            )
+            .unwrap();
+        let error = PromptService::import_from_file(&state, AppType::Claude).unwrap_err();
+        assert!(matches!(error, AppError::Database(_)));
+        let library = state.db.get_prompts("claude").unwrap();
+        assert_eq!(library.len(), 1);
+        assert_eq!(
+            library["existing"].content,
+            prompt("existing", false).content
+        );
+        assert_eq!(snapshot(live.parent().unwrap()), before);
+    }
+
+    #[test]
+    #[serial]
+    fn public_import_invalid_utf8_preserves_library_source_and_recovery() {
+        let (_home, _guard, state, live) = setup();
+        seed_live_with_recovery(&live);
+        state
+            .db
+            .save_prompt("claude", &prompt("existing", false))
+            .unwrap();
+        fs::write(&live, [0xff, 0xfe, 0x80]).unwrap();
+        let before = snapshot(live.parent().unwrap());
+        let error = PromptService::import_from_file(&state, AppType::Claude).unwrap_err();
+        assert!(matches!(error, AppError::Io { ref source, .. }
+            if source.kind() == std::io::ErrorKind::InvalidData));
+        let library = state.db.get_prompts("claude").unwrap();
+        assert_eq!(library.len(), 1);
+        assert_eq!(
+            library["existing"].content,
+            prompt("existing", false).content
+        );
         assert_eq!(snapshot(live.parent().unwrap()), before);
     }
 

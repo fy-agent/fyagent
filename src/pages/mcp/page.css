@@ -79,3 +79,22 @@
     margin-left: 0;
   }
 }
+
+.fy-mcp-editor-actions {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 12px;
+}
+
+.fy-mcp-editor-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fy-mcp-editor-error {
+  max-height: 24vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
