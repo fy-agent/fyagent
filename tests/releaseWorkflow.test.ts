@@ -225,6 +225,35 @@ function trackedMode(file: string): string {
   return result.stdout.trim().split(/\s+/u)[0];
 }
 
+let notaryFixturePython: string | undefined;
+
+function resolveNotaryFixturePython(): string {
+  if (notaryFixturePython) return notaryFixturePython;
+  let executable: string;
+  if (process.platform === "win32") {
+    executable = path.join(ROOT, ".venv", "Scripts", "python.exe");
+  } else if (isPosixTaskHost(process.platform)) {
+    executable = path.join(ROOT, ".venv", "bin", "python");
+  } else {
+    throw new Error(`Unsupported test host: ${process.platform}`);
+  }
+  if (!fs.existsSync(executable)) {
+    throw new Error(".venv is missing; run mise run python:sync");
+  }
+  const result = spawnSync(executable, ["--version"], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  const expected = `Python ${read(path.join(ROOT, ".python-version")).trim()}`;
+  if (result.status !== 0 || result.stdout.trim() !== expected) {
+    throw new Error(
+      `Notary fixture requires ${expected}: ${result.stderr || result.stdout}`,
+    );
+  }
+  notaryFixturePython = executable;
+  return executable;
+}
+
 function workflowJobBlock(source: string, job: string, nextJob: string) {
   const start = source.indexOf(`\n  ${job}:\n`);
   const end = source.indexOf(`\n  ${nextJob}:\n`);
@@ -1127,10 +1156,12 @@ function runMacNotarization(scenario: string) {
     path.join(state, "state.env"),
     'KEYCHAIN_PATH="$STATE_DIR/signing.keychain-db"\nKEYCHAIN_PASSWORD=fixture-only\n',
   );
-  // Avoid launching fresh executable files for each fake command.
+  // Execute the real Python snippets with the repository's locked interpreter,
+  // rather than repeatedly invoking a WindowsApps python3 launcher.
   // Subshell functions preserve each fake tool's process-local exit behavior.
   const fakeTools = `
 security() { return 0; }
+python3() { "$FYAGENT_FIXTURE_PYTHON" "$@"; }
 ditto() (
 set -euo pipefail
 [ "$#" -eq 5 ] && [ "$1" = -c ] && [ "$2" = -k ] && [ "$3" = --keepParent ]
@@ -1156,10 +1187,10 @@ case "$1 $2" in
       status='In Progress'
     elif [ ! -f "$FYAGENT_FAKE_NOTARY_ROOT/polled-$kind" ]; then
       status='In Progress'
-      touch "$FYAGENT_FAKE_NOTARY_ROOT/polled-$kind"
+      : > "$FYAGENT_FAKE_NOTARY_ROOT/polled-$kind"
     fi
     printf 'info-%s-%s\\n' "$kind" "$status" >> "$FYAGENT_FAKE_NOTARY_LOG"
-    if [ "$status" = Accepted ]; then touch "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind"; fi
+    if [ "$status" = Accepted ]; then : > "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind"; fi
     printf '{"status":"%s"}\\n' "$status"
     ;;
   'notarytool log') printf 'denial-log\\n' >> "$FYAGENT_FAKE_NOTARY_LOG" ;;
@@ -1167,12 +1198,12 @@ case "$1 $2" in
     case "$3" in *.app) kind=app ;; *.dmg) kind=dmg ;; *) exit 2 ;; esac
     [ -f "$FYAGENT_FAKE_NOTARY_ROOT/accepted-$kind" ] || exit 91
     printf 'staple-%s\\n' "$kind" >> "$FYAGENT_FAKE_NOTARY_LOG"
-    if [ "$kind" = app ]; then touch "$3/.ticket"; fi
+    if [ "$kind" = app ]; then : > "$3/.ticket"; fi
     ;;
   *) exit 2 ;;
 esac
 )
-export -f security ditto xcrun
+export -f security python3 ditto xcrun
 `;
   const result = spawnSync(
     resolveBashExecutable(),
@@ -1181,12 +1212,18 @@ export -f security ditto xcrun
       `
 set -euo pipefail
 ${fakeTools}
-bash "$1" notarize-app "$2"
-bash "$1" staple-app "$2"
-test -f "$2/.ticket"
+notary_script="$1"
+app_path="$2"
+dmg_path="$3"
+# Source the unchanged entry in isolated subshells, preserving its dispatch,
+# errexit, and exit behavior without three fresh Bash executable launches.
+invoke_notary() ( source "$notary_script" "$@"; )
+invoke_notary notarize-app "$app_path"
+invoke_notary staple-app "$app_path"
+test -f "$app_path/.ticket"
 printf 'package-ticketed-app\\n' >> "$FYAGENT_FAKE_NOTARY_LOG"
-printf 'container-with-app-ticket' > "$3"
-bash "$1" notarize-dmg "$3"
+printf 'container-with-app-ticket' > "$dmg_path"
+invoke_notary notarize-dmg "$dmg_path"
 `,
       "notary-fixture",
       MACOS_DEVELOPER_ID,
@@ -1204,6 +1241,7 @@ bash "$1" notarize-dmg "$3"
         FYAGENT_FAKE_NOTARY_ROOT: root,
         FYAGENT_FAKE_NOTARY_LOG: log,
         FYAGENT_FAKE_NOTARY_SCENARIO: scenario,
+        FYAGENT_FIXTURE_PYTHON: resolveNotaryFixturePython(),
       },
     },
   );
@@ -2448,15 +2486,16 @@ jobs:
     expect(trackedMode(MACOS_SIGNED_APP_VERIFIER)).toBe("100755");
     expect(trackedMode(MACOS_SIGNED_DMG_VERIFIER)).toBe("100755");
     expect(trackedMode(MACOS_DEVELOPER_ID)).toBe("100755");
-    expect(
-      (fs.statSync(MACOS_PRIVILEGED_HELPER_VERIFIER).mode & 0o111) !== 0,
-    ).toBe(true);
-    expect(
-      (fs.statSync(MACOS_PRIVILEGED_HELPER_EMBED).mode & 0o111) !== 0,
-    ).toBe(true);
-    expect(
-      (fs.statSync(MACOS_PRIVILEGED_HELPER_BUILD).mode & 0o111) !== 0,
-    ).toBe(true);
+    for (const helper of [
+      MACOS_PRIVILEGED_HELPER_VERIFIER,
+      MACOS_PRIVILEGED_HELPER_EMBED,
+      MACOS_PRIVILEGED_HELPER_BUILD,
+    ]) {
+      expect(trackedMode(helper)).toBe("100755");
+      if (isPosixTaskHost(process.platform)) {
+        expect((fs.statSync(helper).mode & 0o111) !== 0).toBe(true);
+      }
+    }
     const tauriConfig = JSON.parse(read(TAURI_CONFIG)) as {
       bundle?: {
         macOS?: {

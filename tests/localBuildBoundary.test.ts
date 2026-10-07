@@ -42,6 +42,9 @@ type HostNativeModule = {
     rustdocVerboseVersion: string;
     rustcExecutable: string;
     rustdocExecutable: string;
+    nodeExecutable?: string;
+    signedDevCargoRunner?: string;
+    signedDevAppRunner?: string;
   }): CommandPlan;
   planCargoTask(input: {
     operation: string;
@@ -365,16 +368,13 @@ describe("local build boundary", () => {
         "rustdoc 1.97.1\ncommit-hash: verified-toolchain\nhost: x86_64-apple-darwin\nrelease: 1.97.1",
       rustcExecutable: "/toolchain/bin/rustc",
       rustdocExecutable: "/toolchain/bin/rustdoc",
+      nodeExecutable: "/usr/bin/node",
+      signedDevCargoRunner: "/repo/scripts/tasks/macos-signed-dev-cargo.mjs",
+      signedDevAppRunner: "/repo/scripts/tasks/macos-signed-dev.mjs",
       nativeRunnerConfig:
         'target.x86_64-apple-darwin.runner=["/usr/bin/node","/repo/scripts/tasks/host-native.mjs","native-runner","x86_64-apple-darwin"]',
     };
     const dev = hostNative.planTauriTask({ ...base, operation: "dev" });
-    const signedDevCargoRunner = path.join(
-      ROOT,
-      "scripts",
-      "tasks",
-      "macos-signed-dev-cargo.mjs",
-    );
     expect(dev).toMatchObject({
       command: "pnpm",
       args: [
@@ -383,7 +383,7 @@ describe("local build boundary", () => {
         "--target",
         "x86_64-apple-darwin",
         "--runner",
-        signedDevCargoRunner,
+        base.signedDevCargoRunner,
         "--features",
         "macos-privileged-client",
         "--config",
@@ -405,6 +405,9 @@ describe("local build boundary", () => {
       CARGO_ENCODED_RUSTFLAGS: "",
       RUSTDOCFLAGS: "",
       CARGO_ENCODED_RUSTDOCFLAGS: "",
+      FYAGENT_SIGNED_DEV_NODE: base.nodeExecutable,
+      FYAGENT_SIGNED_DEV_CARGO: "/toolchain/bin/cargo",
+      FYAGENT_SIGNED_DEV_APP_RUNNER: base.signedDevAppRunner,
     });
     expect(
       hostNative.planTauriTask({ ...base, operation: "build:binary" }).args,
@@ -470,6 +473,16 @@ describe("local build boundary", () => {
         forwardedArguments: ["--target", "aarch64-pc-windows-msvc"],
       }),
     ).toThrow("does not accept forwarded arguments");
+    for (const override of [
+      { nodeExecutable: "node" },
+      { nodeExecutable: "C:\\Program Files\\Node JS\\node.exe" },
+      { signedDevCargoRunner: "scripts/tasks/macos-signed-dev-cargo.mjs" },
+      { signedDevAppRunner: "scripts/tasks/macos-signed-dev.mjs" },
+    ]) {
+      expect(() =>
+        hostNative.planTauriTask({ ...base, ...override, operation: "dev" }),
+      ).toThrow("must be an absolute path");
+    }
   });
 
   it("encodes the no-shell native runner as fixed argv even when Windows paths contain spaces", () => {

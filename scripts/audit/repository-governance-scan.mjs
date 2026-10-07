@@ -175,69 +175,39 @@ function parseCurrentTree(treeOid, oidFormat) {
   return objects;
 }
 
-function parseHistory(oidFormat) {
-  const oidOutput = runGit(
-    ["rev-list", "--objects", "--all", "--no-object-names", "-z"],
-    undefined,
-    "history-enumeration-failed",
-  );
-  const orderedOids = splitNul(oidOutput, "history-enumeration-invalid").map(
-    (record) =>
-      parseAscii(record, oidFormat.pattern, "history-enumeration-invalid"),
+export function parseHistoryObjectIds(oidOutput, oidFormat) {
+  // OIDs cannot contain LF. This authority works with Git versions that do
+  // not implement rev-list's newer NUL/name-metadata protocol.
+  if (oidOutput.length > 0 && oidOutput[oidOutput.length - 1] !== 0x0a) {
+    fail("history-enumeration-invalid");
+  }
+  const records = [];
+  let start = 0;
+  for (let cursor = 0; cursor < oidOutput.length; cursor += 1) {
+    if (oidOutput[cursor] !== 0x0a) continue;
+    records.push(oidOutput.subarray(start, cursor));
+    start = cursor + 1;
+  }
+  const orderedOids = records.map((record) =>
+    parseAscii(record, oidFormat.pattern, "history-enumeration-invalid"),
   );
   if (new Set(orderedOids).size !== orderedOids.length) {
     fail("history-enumeration-invalid");
   }
+  return orderedOids;
+}
 
-  // In -z mode Git emits one OID token followed by optional metadata tokens,
-  // including `path=<path>`. The no-object-names pass above is the enumeration
-  // authority; this second pass can only attach a validated path hint.
-  const namedOutput = runGit(
-    ["rev-list", "--objects", "--all", "-z"],
+function parseHistory(oidFormat) {
+  const oidOutput = runGit(
+    ["rev-list", "--objects", "--all", "--no-object-names"],
     undefined,
-    "history-path-enumeration-failed",
+    "history-enumeration-failed",
   );
-  const namedRecords = splitNul(
-    namedOutput,
-    "history-path-enumeration-invalid",
-  );
-  const objects = new Map();
-  let namedIndex = 0;
-  for (let oidIndex = 0; oidIndex < orderedOids.length; oidIndex += 1) {
-    const oid = orderedOids[oidIndex];
-    const oidRecord = namedRecords[namedIndex];
-    if (
-      oidRecord === undefined ||
-      oidRecord.length !== oidFormat.length ||
-      oidRecord.toString("ascii") !== oid
-    ) {
-      fail("history-path-enumeration-invalid");
-    }
-    namedIndex += 1;
+  const orderedOids = parseHistoryObjectIds(oidOutput, oidFormat);
 
-    let rawPath = null;
-    const nextOid = orderedOids[oidIndex + 1];
-    const possiblePath = namedRecords[namedIndex];
-    if (
-      possiblePath !== undefined &&
-      (nextOid === undefined || possiblePath.toString("ascii") !== nextOid)
-    ) {
-      const pathPrefix = Buffer.from("path=", "ascii");
-      if (
-        possiblePath.length <= pathPrefix.length ||
-        !possiblePath.subarray(0, pathPrefix.length).equals(pathPrefix)
-      ) {
-        fail("history-path-enumeration-invalid");
-      }
-      rawPath = possiblePath.subarray(pathPrefix.length);
-      namedIndex += 1;
-    }
-    objects.set(oid, { oid, rawPath, pathCount: rawPath === null ? 0 : 1 });
-  }
-  if (namedIndex !== namedRecords.length) {
-    fail("history-path-enumeration-invalid");
-  }
-  return objects;
+  return new Map(
+    orderedOids.map((oid) => [oid, { oid, rawPath: null, pathCount: 0 }]),
+  );
 }
 
 function batchCheck(objects, oidFormat) {
@@ -259,7 +229,7 @@ function batchCheck(objects, oidFormat) {
     fail("object-metadata-invalid");
   }
 
-  const blobs = [];
+  const metadata = [];
   for (let index = 0; index < ordered.length; index += 1) {
     const match = lines[index].match(
       /^([0-9a-f]{40,64}) (blob|tree|commit|tag) ([0-9]+)$/u,
@@ -273,12 +243,12 @@ function batchCheck(objects, oidFormat) {
     if (!Number.isSafeInteger(size) || size < 0) {
       fail("object-metadata-invalid");
     }
-    if (type === "blob") {
-      if (size > MAX_BLOB_BYTES) fail("object-size-unsupported");
-      blobs.push({ ...ordered[index], size });
+    if ((type === "blob" || type === "tree") && size > MAX_BLOB_BYTES) {
+      fail("object-size-unsupported");
     }
+    metadata.push({ ...ordered[index], type, size });
   }
-  return blobs;
+  return metadata;
 }
 
 function blobBatches(blobs) {
@@ -298,7 +268,7 @@ function blobBatches(blobs) {
   return batches;
 }
 
-function readBlobBatch(batch, oidFormat, visit) {
+function readObjectBatch(batch, oidFormat, visit) {
   const input = Buffer.from(
     `${batch.map(({ oid }) => oid).join("\n")}\n`,
     "ascii",
@@ -311,7 +281,7 @@ function readBlobBatch(batch, oidFormat, visit) {
     if (lineEnd < 0) fail("object-read-invalid");
     const header = parseAscii(
       output.subarray(cursor, lineEnd),
-      /^[0-9a-f]{40,64} blob [0-9]+$/u,
+      /^[0-9a-f]{40,64} (?:blob|tree) [0-9]+$/u,
       "object-read-invalid",
     );
     const [oid, type, rawSize] = header.split(" ");
@@ -319,7 +289,7 @@ function readBlobBatch(batch, oidFormat, visit) {
     if (
       !oidFormat.pattern.test(oid) ||
       oid !== expected.oid ||
-      type !== "blob" ||
+      type !== expected.type ||
       size !== expected.size
     ) {
       fail("object-read-invalid");
@@ -333,6 +303,87 @@ function readBlobBatch(batch, oidFormat, visit) {
     cursor = bodyEnd + 1;
   }
   if (cursor !== output.length) fail("object-read-invalid");
+}
+
+function attachHistoryPaths(metadata, oidFormat, orderedOids) {
+  const objects = new Map(metadata.map((object) => [object.oid, object]));
+  const trees = new Map();
+  const childTrees = new Set();
+  const oidBytes = oidFormat.length / 2;
+
+  // Tree bodies are binary: mode SP name NUL raw-OID. Unlike rev-list names,
+  // they preserve filenames containing LF or OID-shaped lines unambiguously.
+  for (const batch of blobBatches(
+    metadata.filter(({ type }) => type === "tree"),
+  )) {
+    readObjectBatch(batch, oidFormat, (tree, bytes) => {
+      const entries = [];
+      let cursor = 0;
+      while (cursor < bytes.length) {
+        const space = bytes.indexOf(0x20, cursor);
+        const nul = bytes.indexOf(0, space + 1);
+        if (
+          space < cursor ||
+          nul <= space + 1 ||
+          nul + 1 + oidBytes > bytes.length
+        ) {
+          fail("history-path-enumeration-invalid");
+        }
+        const mode = parseAscii(
+          bytes.subarray(cursor, space),
+          /^(?:40000|100644|100755|120000|160000)$/u,
+          "history-path-enumeration-invalid",
+        );
+        const name = bytes.subarray(space + 1, nul);
+        if (
+          name.includes(0x2f) ||
+          name.equals(Buffer.from(".")) ||
+          name.equals(Buffer.from(".."))
+        ) {
+          fail("history-path-enumeration-invalid");
+        }
+        const oid = bytes.subarray(nul + 1, nul + 1 + oidBytes).toString("hex");
+        cursor = nul + 1 + oidBytes;
+        // A Gitlink is an external commit, not an object reachable in this repo.
+        if (mode === "160000") continue;
+        const object = objects.get(oid);
+        if (
+          object === undefined ||
+          object.type !== (mode === "40000" ? "tree" : "blob")
+        ) {
+          fail("history-path-enumeration-invalid");
+        }
+        if (object.type === "tree") childTrees.add(oid);
+        entries.push({ oid, name });
+      }
+      trees.set(tree.oid, entries);
+    });
+  }
+
+  const pending = orderedOids
+    .filter((oid) => trees.has(oid) && !childTrees.has(oid))
+    .reverse()
+    .map((oid) => ({ oid, prefix: Buffer.alloc(0) }));
+  const visited = new Set();
+  while (pending.length > 0) {
+    const { oid, prefix } = pending.pop();
+    if (visited.has(oid)) continue;
+    visited.add(oid);
+    for (const entry of trees.get(oid)) {
+      const rawPath = Buffer.concat([prefix, entry.name]);
+      const object = objects.get(entry.oid);
+      if (object.type === "tree") {
+        pending.push({
+          oid: entry.oid,
+          prefix: Buffer.concat([rawPath, Buffer.from("/")]),
+        });
+      } else if (object.rawPath === null) {
+        object.rawPath = rawPath;
+        object.pathCount = 1;
+      }
+    }
+  }
+  if (visited.size !== trees.size) fail("history-path-enumeration-invalid");
 }
 
 function resolveTreeish(treeish, oidFormat) {
@@ -393,13 +444,17 @@ export function scanRepository(args) {
     objects = parseHistory(oidFormat);
   }
 
-  const blobs = batchCheck(objects, oidFormat);
+  const metadata = batchCheck(objects, oidFormat);
+  if (parsed.mode === "history") {
+    attachHistoryPaths(metadata, oidFormat, [...objects.keys()]);
+  }
+  const blobs = metadata.filter(({ type }) => type === "blob");
   report.counts.objects = objects.size;
   report.counts.blobs = blobs.length;
   report.counts.paths = blobs.reduce((sum, blob) => sum + blob.pathCount, 0);
 
   for (const batch of blobBatches(blobs)) {
-    readBlobBatch(batch, oidFormat, (blob, bytes) => {
+    readObjectBatch(batch, oidFormat, (blob, bytes) => {
       const safePath = sanitizePath(blob.rawPath);
       report.sizes.push({
         category: "blob-size",

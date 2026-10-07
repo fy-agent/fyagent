@@ -200,7 +200,10 @@ function macosPosixEntries() {
   return [...new Set(checker.MACOS_POSIX_CONTRACT.map(({ file }) => file))].map(
     (relativePath) => ({
       path: relativePath,
-      source: fs.readFileSync(path.join(ROOT, relativePath), "utf8"),
+      // Model the macOS LF checkout; production still checks actual bytes.
+      source: fs
+        .readFileSync(path.join(ROOT, relativePath), "utf8")
+        .replace(/\r\n/gu, "\n"),
     }),
   );
 }
