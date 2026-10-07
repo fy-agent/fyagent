@@ -466,3 +466,32 @@ describe("repository governance scanner", () => {
     }
   });
 });
+
+describe("repository governance private-key allowlist without Git writes", () => {
+  it("requires the exact fixture path and pinned digest", async () => {
+    const scanner = await import(/* @vite-ignore */ SCANNER);
+    const fixturePath =
+      "src-tauri/src/services/skill/update/fixtures/server-key.pem";
+    const bytes = fs.readFileSync(path.join(ROOT, fixturePath));
+    const rawPath = Buffer.from(fixturePath);
+    expect(scanner.classifications(bytes, rawPath)).toEqual([]);
+    const finding = [{ category: "private-key", count: 1 }];
+    expect(
+      scanner.classifications(
+        Buffer.concat([bytes, Buffer.from("\n")]),
+        rawPath,
+      ),
+    ).toEqual(finding);
+    for (const otherPath of [
+      "server-key.pem",
+      `other/${fixturePath}`,
+      fixturePath.replace("server-key", "other-key"),
+    ]) {
+      expect(scanner.classifications(bytes, Buffer.from(otherPath))).toEqual(
+        finding,
+      );
+    }
+    expect(scanner.classifications(bytes, rawPath, false)).toEqual(finding);
+    expect(scanner.classifications(bytes)).toEqual(finding);
+  });
+});

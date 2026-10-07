@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -9,6 +10,17 @@ const MAX_GIT_OUTPUT_BYTES = 768 * 1024 * 1024;
 const MAX_BLOB_BYTES = 512 * 1024 * 1024;
 const TARGET_BATCH_BYTES = 64 * 1024 * 1024;
 const REDACTED_PATH = "<redacted-path>";
+// Skills update tests use this self-signed synthetic certificate private key.
+// Issuer: FyAgent local review fixture CA. Local loopback TLS tests only;
+// this is not a release signing key. Both exact Git path and bytes must match.
+const TEST_KEY_PATH =
+  "src-tauri/src/services/skill/update/fixtures/server-key.pem";
+const TEST_KEY_SHA256 =
+  "9eb178442a8aea2b23b54ca8b85ddfb8b78272ac6f3a2f5a2e106dab17fbed2f";
+
+function isTestKeyPath(rawPath) {
+  return rawPath !== null && rawPath.equals(Buffer.from(TEST_KEY_PATH));
+}
 
 const SECRET_PATTERNS = Object.freeze([
   {
@@ -110,10 +122,18 @@ function countMatches(text, pattern) {
   return count;
 }
 
-function classifications(bytes) {
+export function classifications(bytes, rawPath = null, allPathsAllowed = true) {
   const text = bytes.toString("latin1");
   const results = [];
   for (const { category, pattern } of SECRET_PATTERNS) {
+    if (
+      category === "private-key" &&
+      allPathsAllowed &&
+      isTestKeyPath(rawPath) &&
+      createHash("sha256").update(bytes).digest("hex") === TEST_KEY_SHA256
+    ) {
+      continue;
+    }
     const count = countMatches(text, pattern);
     if (count > 0) results.push({ category, count });
   }
@@ -167,9 +187,15 @@ function parseCurrentTree(treeOid, oidFormat) {
     if (rawPath.length === 0) fail("current-enumeration-invalid");
     const existing = objects.get(oid);
     if (existing === undefined) {
-      objects.set(oid, { oid, rawPath, pathCount: 1 });
+      objects.set(oid, {
+        oid,
+        rawPath,
+        pathCount: 1,
+        allPathsAllowed: isTestKeyPath(rawPath),
+      });
     } else {
       existing.pathCount += 1;
+      existing.allPathsAllowed &&= isTestKeyPath(rawPath);
     }
   }
   return objects;
@@ -365,10 +391,20 @@ function attachHistoryPaths(metadata, oidFormat, orderedOids) {
     .reverse()
     .map((oid) => ({ oid, prefix: Buffer.alloc(0) }));
   const visited = new Set();
+  const visitedTrees = new Set();
   while (pending.length > 0) {
     const { oid, prefix } = pending.pop();
-    if (visited.has(oid)) continue;
-    visited.add(oid);
+    // Revisit shared trees when their prefix can reach the exact exception.
+    // All other prefixes share one non-allowlisted state per tree.
+    const context = Buffer.from(TEST_KEY_PATH)
+      .subarray(0, prefix.length)
+      .equals(prefix)
+      ? prefix.toString("hex")
+      : "other";
+    const visitKey = `${oid}:${context}`;
+    if (visited.has(visitKey)) continue;
+    visited.add(visitKey);
+    visitedTrees.add(oid);
     for (const entry of trees.get(oid)) {
       const rawPath = Buffer.concat([prefix, entry.name]);
       const object = objects.get(entry.oid);
@@ -377,13 +413,19 @@ function attachHistoryPaths(metadata, oidFormat, orderedOids) {
           oid: entry.oid,
           prefix: Buffer.concat([rawPath, Buffer.from("/")]),
         });
-      } else if (object.rawPath === null) {
-        object.rawPath = rawPath;
-        object.pathCount = 1;
+      } else {
+        if (object.rawPath === null) {
+          object.rawPath = rawPath;
+          object.pathCount = 1;
+          object.allPathsAllowed = isTestKeyPath(rawPath);
+        } else {
+          object.allPathsAllowed &&= isTestKeyPath(rawPath);
+        }
       }
     }
   }
-  if (visited.size !== trees.size) fail("history-path-enumeration-invalid");
+  if (visitedTrees.size !== trees.size)
+    fail("history-path-enumeration-invalid");
 }
 
 function resolveTreeish(treeish, oidFormat) {
@@ -463,7 +505,11 @@ export function scanRepository(args) {
         count: blob.pathCount,
         size: blob.size,
       });
-      for (const finding of classifications(bytes)) {
+      for (const finding of classifications(
+        bytes,
+        blob.rawPath,
+        blob.allPathsAllowed,
+      )) {
         report.findings.push({
           category: finding.category,
           path: safePath,

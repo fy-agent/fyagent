@@ -27,3 +27,5 @@ through the production download and archive extraction path.
 The archive contains `audit-skills-main/audit-skill/SKILL.md` (an updated
 synthetic Skill manifest) and `audit-skills-main/audit-skill/payload.txt` with
 the three bytes `new`. The text representation changes no archive content.
+
+The governance scanner exempts only `src-tauri/src/services/skill/update/fixtures/server-key.pem` from its private-key rule when its SHA-256 matches the pinned fixture digest; changed bytes or any other path remain reportable, including in history scans.
