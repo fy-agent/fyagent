@@ -604,9 +604,49 @@ function DailyView({
   onDirtyChange: (dirty: boolean) => void;
   requestTransition: TransitionRequest;
 }) {
+  const listQuery = useDailyMemoryFiles();
+  if (listQuery.isLoading) {
+    return (
+      <EmptyState title="正在加载每日记忆">
+        <Spinner />
+      </EmptyState>
+    );
+  }
+  if (listQuery.error && listQuery.data === undefined) {
+    return (
+      <NativeOrErrorState
+        error={listQuery.error}
+        feature="每日记忆"
+        onRetry={() => void listQuery.refetch()}
+      />
+    );
+  }
+  return (
+    <DailyWorkspace
+      originRef={originRef}
+      listQuery={listQuery}
+      onDirtyChange={onDirtyChange}
+      requestTransition={requestTransition}
+    />
+  );
+}
+
+function DailyWorkspace({
+  originRef,
+  listQuery,
+  onDirtyChange,
+  requestTransition,
+}: {
+  originRef?: DialogOriginRef;
+  listQuery: ReturnType<typeof useDailyMemoryFiles>;
+  onDirtyChange: (dirty: boolean) => void;
+  requestTransition: TransitionRequest;
+}) {
   const queryClient = useQueryClient();
   const { ports } = useFeatures();
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(
+    () => listQuery.data?.[0]?.filename ?? null,
+  );
   const [editorReset, setEditorReset] = useState(0);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -615,8 +655,7 @@ function DailyView({
   const [directoryBusy, setDirectoryBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const writeLock = useRef(false);
-  const listQuery = useDailyMemoryFiles();
-  const resolvedFile = selectedFile ?? listQuery.data?.[0]?.filename ?? null;
+  const resolvedFile = selectedFile;
   const fileQuery = useDailyMemoryFile(resolvedFile);
   const searchQuery = useDailyMemorySearch(debouncedSearch);
 
@@ -752,23 +791,6 @@ function DailyView({
       setNotice(null);
     });
   };
-
-  if (listQuery.isLoading) {
-    return (
-      <EmptyState title="正在加载每日记忆">
-        <Spinner />
-      </EmptyState>
-    );
-  }
-  if (listQuery.error && listQuery.data === undefined) {
-    return (
-      <NativeOrErrorState
-        error={listQuery.error}
-        feature="每日记忆"
-        onRetry={() => void listQuery.refetch()}
-      />
-    );
-  }
 
   return (
     <div className="fy-memory-workspace">
@@ -928,9 +950,10 @@ function DailyEditor({
 }) {
   const [baseline, setBaseline] = useState(initialContent ?? "");
   const [draft, setDraft] = useState(baseline);
-  const [exists, setExists] = useState(initialContent !== null);
   const dirty = draft !== baseline;
-  const missing = !exists;
+  const missing = initialContent === null;
+  const selectedDate =
+    filename === todayFilename() ? "今天" : filename.slice(0, 10);
   const characterCount = Array.from(draft).length;
   return (
     <section
@@ -969,7 +992,6 @@ function DailyEditor({
                   const authoritative = content ?? "";
                   setBaseline(authoritative);
                   setDraft(authoritative);
-                  setExists(content !== null);
                   onDirtyChange(false);
                 });
               }}
@@ -991,7 +1013,9 @@ function DailyEditor({
         </div>
       </header>
       {missing && (
-        <InlineNotice>今天的记录尚未创建。点击“保存”后即可创建。</InlineNotice>
+        <InlineNotice>
+          {selectedDate}的记录尚未创建。点击“保存”后即可创建。
+        </InlineNotice>
       )}
       <label className="fy-memory-editor-field">
         <span className="fy-memory-editor-field-label">每日记忆内容</span>
