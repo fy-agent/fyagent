@@ -735,7 +735,7 @@ impl SkillService {
             // 下载仓库
             let (temp_guard, used_branch) = timeout(
                 std::time::Duration::from_secs(60),
-                self.download_repo(&repo),
+                self.download_repo(&repo, None),
             )
             .await
             .map_err(|_| {
@@ -1006,7 +1006,7 @@ impl SkillService {
             // 下载仓库 ZIP
             let (temp_guard, _used_branch) = match timeout(
                 std::time::Duration::from_secs(60),
-                self.download_repo(&repo),
+                self.download_repo(&repo, self.update_download_client()),
             )
             .await
             {
@@ -1149,7 +1149,7 @@ impl SkillService {
         // 下载仓库
         let (temp_guard, used_branch) = timeout(
             std::time::Duration::from_secs(60),
-            self.download_repo(&repo),
+            self.download_repo(&repo, self.update_download_client()),
         )
         .await
         .map_err(|_| {
@@ -2424,20 +2424,22 @@ impl SkillService {
 
     /// 从仓库获取技能列表
     async fn fetch_repo_skills(&self, repo: &SkillRepo) -> Result<Vec<DiscoverableSkill>> {
-        let (temp_guard, resolved_branch) =
-            timeout(std::time::Duration::from_secs(60), self.download_repo(repo))
-                .await
-                .map_err(|_| {
-                    anyhow!(format_skill_error(
-                        "DOWNLOAD_TIMEOUT",
-                        &[
-                            ("owner", &repo.owner),
-                            ("name", &repo.name),
-                            ("timeout", "60")
-                        ],
-                        Some("checkNetwork"),
-                    ))
-                })??;
+        let (temp_guard, resolved_branch) = timeout(
+            std::time::Duration::from_secs(60),
+            self.download_repo(repo, None),
+        )
+        .await
+        .map_err(|_| {
+            anyhow!(format_skill_error(
+                "DOWNLOAD_TIMEOUT",
+                &[
+                    ("owner", &repo.owner),
+                    ("name", &repo.name),
+                    ("timeout", "60")
+                ],
+                Some("checkNetwork"),
+            ))
+        })??;
 
         let mut skills = Vec::new();
         let scan_dir = temp_guard.path();
@@ -2878,10 +2880,28 @@ impl SkillService {
 
     /// 下载仓库
     ///
+    // Test-only transport injection is explicitly admitted only by update and
+    // update checks; ordinary install/discovery and marketplace keep the
+    // production global HTTP-client entry point.
+    fn update_download_client(&self) -> Option<&reqwest::Client> {
+        #[cfg(test)]
+        {
+            self.update_test_client.as_ref()
+        }
+        #[cfg(not(test))]
+        {
+            None
+        }
+    }
+
     /// 这里是仓库坐标进入 URL 的**唯一收敛点**——`fetch_repo_skills`、`install`、
     /// `check_updates`、`update_skill` 四条路径都经过它，而 `skill_repos` / `skills`
     /// 两张表都会被同步导入的远端快照整表覆盖，入库校验管不住它们。所以主防线放这里。
-    async fn download_repo(&self, repo: &SkillRepo) -> Result<(tempfile::TempDir, String)> {
+    async fn download_repo(
+        &self,
+        repo: &SkillRepo,
+        client: Option<&reqwest::Client>,
+    ) -> Result<(tempfile::TempDir, String)> {
         Self::validate_repo_ref(&repo.owner, &repo.name, &repo.branch)?;
 
         // 守卫全程持有，成功后连同目录一起交给调用方（见 `extract_local_zip` 的说明）。
@@ -2911,7 +2931,7 @@ impl SkillService {
             );
             Self::assert_github_archive_url(&url, &repo.owner, &repo.name)?;
 
-            match self.download_and_extract(&url, &temp_path).await {
+            match self.download_and_extract(&url, &temp_path, client).await {
                 Ok(_) => return Ok((temp_dir, branch.to_string())),
                 Err(e) => {
                     // 每个分支各自重算预算，所以失败后必须把上一轮的残留清掉——
@@ -2928,25 +2948,36 @@ impl SkillService {
     }
 
     /// 下载并解压 ZIP
-    async fn download_and_extract(&self, url: &str, dest: &Path) -> Result<()> {
+    async fn download_and_extract(
+        &self,
+        url: &str,
+        dest: &Path,
+        client: Option<&reqwest::Client>,
+    ) -> Result<()> {
         let parsed = url::Url::parse(url).map_err(|e| anyhow!("Invalid archive URL: {e}"))?;
-        let body = self
-            .download_bounded_bytes(parsed, Duration::from_secs(60))
-            .await?;
+        let body = match client {
+            Some(client) => {
+                Self::download_bounded_bytes_with_client(client, parsed, Duration::from_secs(60))
+                    .await?
+            }
+            None => Self::download_bounded_bytes(parsed, Duration::from_secs(60)).await?,
+        };
         let cursor = std::io::Cursor::new(body);
         let archive = zip::ZipArchive::new(cursor)?;
         Self::extract_repo_archive(archive, dest)
     }
 
     /// 按实际上传字节卡住压缩体大小，不信 Content-Length。
-    async fn download_bounded_bytes(&self, url: url::Url, timeout: Duration) -> Result<Vec<u8>> {
-        #[cfg(not(test))]
+    async fn download_bounded_bytes(url: url::Url, timeout: Duration) -> Result<Vec<u8>> {
         let client = crate::proxy::http_client::get();
-        #[cfg(test)]
-        let client = self
-            .update_test_client
-            .clone()
-            .unwrap_or_else(crate::proxy::http_client::get);
+        Self::download_bounded_bytes_with_client(&client, url, timeout).await
+    }
+
+    async fn download_bounded_bytes_with_client(
+        client: &reqwest::Client,
+        url: url::Url,
+        timeout: Duration,
+    ) -> Result<Vec<u8>> {
         let response = client.get(url).timeout(timeout).send().await?;
         if !response.status().is_success() {
             let status = response.status().as_u16().to_string();

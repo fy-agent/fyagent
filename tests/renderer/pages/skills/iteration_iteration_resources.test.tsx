@@ -56,9 +56,7 @@ describe("Skills update failure recovery", () => {
     );
     await screen.findByRole("heading", { name: "Review Skill" });
     await user.click(screen.getByRole("button", { name: "检查更新" }));
-    await user.click(
-      await screen.findByRole("button", { name: "更新", exact: true }),
-    );
+    await user.click(await screen.findByRole("button", { name: "更新" }));
     expect(await screen.findByText("Skill 更新完成失败")).toBeVisible();
     expect(
       screen.getByText(/部分目标更新未完成。已完成：.*未完成：Codex/),
@@ -68,9 +66,7 @@ describe("Skills update failure recovery", () => {
     ).toBeVisible();
     await waitFor(() => expect(getInstalled).toHaveBeenCalledTimes(2));
     expect(ports.skills.checkUpdates).toHaveBeenCalledTimes(2);
-    expect(
-      screen.getByRole("button", { name: "更新", exact: true }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "更新" })).toBeEnabled();
     expect(
       screen.queryByText("Skill 更新完成", { exact: true }),
     ).not.toBeInTheDocument();
