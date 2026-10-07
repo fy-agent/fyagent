@@ -130,6 +130,8 @@ impl Isolated {
         let codex = SkillService::get_target_skills_dir(&SkillTargetId::Codex)
             .expect("Codex dir")
             .join(DIRECTORY);
+        assert!(claude.starts_with(temp.path()));
+        assert!(codex.starts_with(temp.path()));
         copy_tree(&source, &claude);
         copy_tree(&source, &codex);
         Self {
@@ -150,6 +152,22 @@ impl Isolated {
 
     async fn update(&self) -> Result<InstalledSkill> {
         self.service.update_skill(&self.db, SKILL_ID).await
+    }
+
+    fn block_codex_projection(&self) -> Result<PathBuf> {
+        let root = SkillService::get_target_skills_dir(&SkillTargetId::Codex)?;
+        assert_eq!(root.join(DIRECTORY), self.codex);
+        assert!(root.is_absolute() && root.starts_with(self._temp.path()));
+        // The managed leaf is replaceable: Copy removes an existing file there.
+        // Block the actual app root, where production must create directories.
+        // Remove only this fixture's known leaf and then its empty parent.
+        fs::remove_dir_all(&self.codex)?;
+        fs::remove_dir(&root)?;
+        fs::write(&root, "blocked target root")?;
+        SkillService::sync_to_app_dir(DIRECTORY, &SkillTargetId::Codex)
+            .expect_err("fixture must block the actual production Codex projection");
+        assert_eq!(fs::read(&root)?, b"blocked target root");
+        Ok(root)
     }
 }
 
@@ -425,9 +443,7 @@ async fn iteration_resources_skill_update_backup_root_file_refusal_has_zero_writ
 async fn iteration_resources_skill_update_retry_resumes_only_blocked_target_in_new_service(
 ) -> Result<()> {
     let mut isolated = Isolated::new();
-    let codex_parent = isolated.codex.parent().expect("Codex root").to_path_buf();
-    fs::remove_dir_all(&isolated.codex)?;
-    fs::write(&isolated.codex, "blocked target root")?;
+    let codex_root = isolated.block_codex_projection()?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
     let error = finish_fixture_request(isolated.update().await, server)
@@ -496,8 +512,8 @@ async fn iteration_resources_skill_update_retry_resumes_only_blocked_target_in_n
     );
     let first_payload = isolated.claude.join("payload.txt");
     let before_retry = fs::metadata(&first_payload)?.modified()?;
-    fs::remove_file(&isolated.codex)?;
-    fs::create_dir_all(&codex_parent)?;
+    fs::remove_file(&codex_root)?;
+    fs::create_dir_all(&codex_root)?;
     let mut fresh_service = SkillService::new();
     fresh_service.update_test_client = Some(offline_client()?);
     let result = fresh_service.update_skill(&isolated.db, SKILL_ID).await?;
@@ -526,8 +542,7 @@ async fn iteration_resources_skill_update_retry_resumes_only_blocked_target_in_n
 async fn iteration_resources_skill_update_retry_preserves_external_first_target_edits() -> Result<()>
 {
     let mut isolated = Isolated::new();
-    fs::remove_dir_all(&isolated.codex)?;
-    fs::write(&isolated.codex, "blocked target root")?;
+    let codex_root = isolated.block_codex_projection()?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
     let error = finish_fixture_request(isolated.update().await, server)
@@ -543,8 +558,8 @@ async fn iteration_resources_skill_update_retry_preserves_external_first_target_
         isolated.claude.join(".user-hidden"),
         "external hidden data\n",
     )?;
-    fs::remove_file(&isolated.codex)?;
-    fs::create_dir_all(isolated.codex.parent().expect("Codex root"))?;
+    fs::remove_file(&codex_root)?;
+    fs::create_dir_all(&codex_root)?;
     let mut fresh_service = SkillService::new();
     fresh_service.update_test_client = Some(offline_client()?);
     let error = fresh_service
@@ -582,8 +597,7 @@ async fn iteration_resources_skill_update_retry_preserves_external_first_target_
 async fn iteration_resources_skill_retry_respects_changed_assignments_and_finishes_offline(
 ) -> Result<()> {
     let mut isolated = Isolated::new();
-    fs::remove_dir_all(&isolated.codex)?;
-    fs::write(&isolated.codex, "blocked target root")?;
+    let codex_root = isolated.block_codex_projection()?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
     let error = finish_fixture_request(isolated.update().await, server)
@@ -591,7 +605,8 @@ async fn iteration_resources_skill_retry_respects_changed_assignments_and_finish
         .expect_err("Codex update is partial");
     assert!(error.to_string().contains("UPDATE_INCOMPLETE"), "{error:#}");
 
-    fs::remove_file(&isolated.codex)?;
+    fs::remove_file(&codex_root)?;
+    fs::create_dir_all(&codex_root)?;
     // Exercise ordinary assignment APIs rather than directly changing the DB.
     SkillService::toggle_app(&isolated.db, SKILL_ID, &AppType::Codex, false)?;
     SkillService::toggle_app(&isolated.db, SKILL_ID, &AppType::Gemini, true)?;
@@ -633,8 +648,7 @@ async fn iteration_resources_skill_retry_respects_changed_assignments_and_finish
 async fn iteration_resources_skill_changed_assignments_preserve_old_and_new_target_edits(
 ) -> Result<()> {
     let mut isolated = Isolated::new();
-    fs::remove_dir_all(&isolated.codex)?;
-    fs::write(&isolated.codex, "blocked target root")?;
+    let codex_root = isolated.block_codex_projection()?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
     let error = finish_fixture_request(isolated.update().await, server)
@@ -642,7 +656,8 @@ async fn iteration_resources_skill_changed_assignments_preserve_old_and_new_targ
         .expect_err("Codex update is partial");
     assert!(error.to_string().contains("UPDATE_INCOMPLETE"), "{error:#}");
 
-    fs::remove_file(&isolated.codex)?;
+    fs::remove_file(&codex_root)?;
+    fs::create_dir_all(&codex_root)?;
     SkillService::toggle_app(&isolated.db, SKILL_ID, &AppType::Codex, false)?;
     SkillService::toggle_app(&isolated.db, SKILL_ID, &AppType::Gemini, true)?;
     let gemini = SkillService::get_target_skills_dir(&SkillTargetId::Gemini)?.join(DIRECTORY);
@@ -691,8 +706,7 @@ async fn iteration_resources_skill_changed_assignments_preserve_old_and_new_targ
 async fn iteration_resources_skill_assignment_retry_still_rejects_changed_installation(
 ) -> Result<()> {
     let mut isolated = Isolated::new();
-    fs::remove_dir_all(&isolated.codex)?;
-    fs::write(&isolated.codex, "blocked target root")?;
+    let codex_root = isolated.block_codex_projection()?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
     finish_fixture_request(isolated.update().await, server)
@@ -718,7 +732,7 @@ async fn iteration_resources_skill_assignment_retry_still_rejects_changed_instal
         .expect_err("assignment reconciliation must not accept a new generation");
     assert_eq!(revision(&source)?, source_revision);
     assert_eq!(revision(&isolated.claude)?, claude_revision);
-    assert_eq!(fs::read(&isolated.codex)?, b"blocked target root");
+    assert_eq!(fs::read(&codex_root)?, b"blocked target root");
     assert_eq!(
         serde_json::to_value(isolated.db.get_installed_skill(SKILL_ID)?.unwrap())?,
         serde_json::to_value(changed)?
@@ -732,15 +746,15 @@ async fn iteration_resources_skill_assignment_retry_still_rejects_changed_instal
 async fn iteration_resources_skill_uninstall_clears_progress_before_restoring_same_id() -> Result<()>
 {
     let mut isolated = Isolated::new();
-    fs::remove_dir_all(&isolated.codex)?;
-    fs::write(&isolated.codex, "blocked target root")?;
+    let codex_root = isolated.block_codex_projection()?;
     let (addr, server) = serve_one().await?;
     isolated.install_client(addr);
     finish_fixture_request(isolated.update().await, server)
         .await?
         .expect_err("update remains partial");
     let preimage = read_pending(SKILL_ID)?.expect("pending preimage").backup_id;
-    fs::remove_file(&isolated.codex)?;
+    fs::remove_file(&codex_root)?;
+    fs::create_dir_all(&codex_root)?;
 
     SkillService::uninstall(&isolated.db, SKILL_ID)?;
     assert!(isolated.db.get_installed_skill(SKILL_ID)?.is_none());
