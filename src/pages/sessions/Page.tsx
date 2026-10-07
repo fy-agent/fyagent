@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
@@ -21,6 +21,7 @@ import { Button } from "../../shared/ui/Button";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { SplitPanes } from "../../shared/ui/split/SplitPanes";
 import { useDialogState } from "../../shared/ui/useDialogState";
+import { usePersistentVisibility } from "../../shared/ui/PersistentSurface";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import type {
   MigratableMessage,
@@ -63,6 +64,8 @@ export function SessionsPage() {
   const { isNative } = detectRuntime();
   const { ports, notify } = useFeatures();
   const queryClient = useQueryClient();
+  const visible = usePersistentVisibility();
+  const pageRef = useRef<HTMLDivElement>(null);
 
   // Navigation & view mode
   const [viewMode, setViewMode] = useState<"sessions" | "attempts">("sessions");
@@ -469,19 +472,75 @@ export function SessionsPage() {
   }, [selectedKeys, sessions, selectedSession, notify, setExportTargets]);
 
   // ─── Keyboard Shortcuts ──────────────────────────────────────────
+  const hasOpenDialog = Boolean(
+    exportTargets || importOpen || remapOpen || guideOpen || attestationOpen,
+  );
   useEffect(() => {
+    if (!visible || hasOpenDialog) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e") {
+      if (
+        e.defaultPrevented ||
+        e.isComposing ||
+        e.repeat ||
+        e.altKey ||
+        e.shiftKey ||
+        !(e.metaKey || e.ctrlKey)
+      ) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key !== "e" && key !== "i") return;
+
+      const page = pageRef.current;
+      if (!page || page.closest("[hidden], [inert]")) return;
+
+      // Window/body events still belong to the focused input context.
+      for (const context of [e.target, document.activeElement]) {
+        if (
+          context === null ||
+          context === window ||
+          context === document ||
+          context === document.body
+        ) {
+          continue;
+        }
+        if (!(context instanceof Node) || !page.contains(context)) return;
+        const element =
+          context instanceof Element ? context : context.parentElement;
+        if (
+          element?.closest("input, textarea, select") ||
+          element?.closest('[contenteditable]:not([contenteditable="false"])')
+        ) {
+          return;
+        }
+      }
+
+      // Portaled dialogs can own the keyboard without being page descendants.
+      const dialogs = document.querySelectorAll(
+        '[role="dialog"], [role="alertdialog"]',
+      );
+      if (
+        Array.from(dialogs).some(
+          (dialog) =>
+            dialog.getAttribute("data-state") !== "closed" &&
+            !dialog.closest('[hidden], [inert], [aria-hidden="true"]'),
+        )
+      ) {
+        return;
+      }
+
+      if (key === "e") {
         e.preventDefault();
         handleOpenExport();
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i") {
+      } else {
         e.preventDefault();
         setImportOpen(true);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleOpenExport, setImportOpen]);
+  }, [visible, hasOpenDialog, handleOpenExport, setImportOpen]);
 
   // ─── Multi-Selection Helpers ─────────────────────────────────────
   const toggleSelectSession = (stableKey: string, e: React.MouseEvent) => {
@@ -674,7 +733,11 @@ export function SessionsPage() {
   // ─── Browser Native-Only Fallback ────────────────────────────────
   if (!isNative) {
     return (
-      <div className="fy-sessions-page" data-testid="sessions-page">
+      <div
+        ref={pageRef}
+        className="fy-sessions-page"
+        data-testid="sessions-page"
+      >
         <div className="fy-browser-native-blocker" role="status">
           <div className="fy-blocker-card">
             <DesktopIcon size={44} weight="duotone" />
@@ -689,7 +752,7 @@ export function SessionsPage() {
   }
 
   return (
-    <div className="fy-sessions-page" data-testid="sessions-page">
+    <div ref={pageRef} className="fy-sessions-page" data-testid="sessions-page">
       {/* 顶部栏 */}
       <header className="fy-sessions-topbar">
         <div className="fy-sessions-breadcrumb">
