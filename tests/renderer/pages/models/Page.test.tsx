@@ -28,6 +28,29 @@ import {
 } from "../../fixtures/changePlans";
 import { managedAuthOverviewFixture } from "../../fixtures/managedAuth";
 
+const CLAUDE_PREVIEW_ID = "11111111-1111-4111-8111-111111111111";
+function stubClaudePreview(ports: FeaturePorts) {
+  ports.providers.previewClaudeQuickSetup = vi.fn(async () => ({
+    contractVersion: 1 as const,
+    previewId: CLAUDE_PREVIEW_ID,
+    writeTargets: [
+      {
+        path: "~/.claude/settings.json",
+        backupPath: "~/.claude/settings.json.fyagent.backup",
+        exists: true,
+      },
+    ],
+    preservedPaths: ["~/.claude.json"],
+    sidecars: [
+      {
+        target: "claude_settings" as const,
+        backupPath: "~/.claude/settings.json.fyagent.backup",
+        undoPath: "~/.claude/settings.json.fyagent.undo.json",
+      },
+    ],
+  }));
+}
+
 function renderPage(ports: FeaturePorts, target?: string) {
   const initialEntry = target ? `/models?target=${target}` : "/models";
   return render(
@@ -847,10 +870,16 @@ describe("Models page", () => {
     ports.providers.fetchModels = vi.fn(async () => [
       { id: "claude-sonnet-4", ownedBy: "anthropic" },
     ]);
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
-      value: { warnings: [] },
-      liveConfigChanged: true,
-      app: "claude" as const,
+    stubClaudePreview(ports);
+    ports.providers.applyQuickSetupWithResult = vi.fn();
+    ports.providers.applyClaudeQuickSetupPreview = vi.fn(async () => ({
+      contractVersion: 1 as const,
+      overall: "applied" as const,
+      providerState: "applied" as const,
+      files: [
+        { target: "claude_settings" as const, state: "applied" as const },
+        { target: "claude_mcp" as const, state: "unchanged" as const },
+      ],
     }));
     renderPage(ports, "claude");
 
@@ -879,17 +908,22 @@ describe("Models page", () => {
     );
     await confirmWriteDisclosure(user);
     await waitFor(() =>
-      expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
+      expect(ports.providers.previewClaudeQuickSetup).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Claude Gateway",
           baseUrl: "https://claude.example.test/v1",
           apiKey: secret,
           modelId: "claude-sonnet-4",
         }),
-        "claude",
       ),
     );
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(ports.providers.applyClaudeQuickSetupPreview).toHaveBeenCalledWith({
+      previewId: CLAUDE_PREVIEW_ID,
+    });
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByLabelText("API Key")).toHaveValue(""),
+    );
     expect(document.body.innerHTML).not.toContain(secret);
   });
 
@@ -1721,7 +1755,8 @@ describe("Models page", () => {
       currentId: "another-provider",
       writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => {
+    stubClaudePreview(ports);
+    ports.providers.applyClaudeQuickSetupPreview = vi.fn(async () => {
       throw new Error("atomic response contains claude-secret");
     });
     renderPage(ports, "claude");
@@ -1739,16 +1774,12 @@ describe("Models page", () => {
     await confirmWriteDisclosure(user);
 
     await screen.findByText("无法确认当前设置");
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: expect.any(String),
-        baseUrl: "https://claude.example/v1",
-        apiKey: "claude-secret",
-        modelId: "claude-model",
-      }),
-      "claude",
+    expect(ports.providers.applyClaudeQuickSetupPreview).toHaveBeenCalledTimes(
+      1,
     );
+    expect(ports.providers.applyClaudeQuickSetupPreview).toHaveBeenCalledWith({
+      previewId: CLAUDE_PREVIEW_ID,
+    });
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(document.body).not.toHaveTextContent("claude-secret");
     expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
