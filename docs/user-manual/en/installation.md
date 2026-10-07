@@ -23,7 +23,7 @@ If the system or security software blocks the installer, follow the "verify firs
 
 1. **Verify file hashes and build attestation first**: Always confirm file integrity and source authenticity before allowing or running the installer:
    - Download installer packages only from official [GitHub Releases](https://github.com/fy-agent/fyagent/releases).
-   - In PowerShell, calculate the SHA-256 hash of the installer (replace filename for ARM64):
+   - Open PowerShell, run the following command in the directory containing the installer to calculate its SHA-256 hash (replace X.Y.Z with the actual version number; replace filename for ARM64):
      ```powershell
      Get-FileHash .\FyAgent-X.Y.Z-Windows-x64-setup.exe -Algorithm SHA256
      ```
@@ -41,9 +41,9 @@ If the system or security software blocks the installer, follow the "verify firs
    - On the **General** tab, look at the **Security** section at the bottom.
    - Check the **Unblock** box and click **OK** before running the installer again. (Note: this is only needed if the "Unblock" checkbox is present.)
 4. **Smart App Control (Windows 11) blocks the application directly**:
-   - When Smart App Control is enabled on Windows 11, it automatically blocks unsigned applications. The system does not provide a "Run anyway" button and cannot whitelist individual files.
+   - When Smart App Control is enabled on Windows 11, it first uses a cloud-powered security service to determine whether an application is safe; applications deemed safe are allowed to run, but if safety cannot be confirmed and the application lacks a valid signature, it is blocked. When blocked by Smart App Control, the system does not provide a "Run anyway" button and cannot whitelist individual files.
    - On personal devices, the feature can only be disabled via **Windows Security → App & browser control → Smart App Control settings**.
-   - **Caution**: Disabling Smart App Control lowers overall system protection; weigh this decision carefully before turning it off. On some Windows versions, once disabled, it cannot be turned back on without resetting or reinstalling Windows. If you prefer not to lower system security, wait for a future signed release. On corporate or managed computers, follow organizational IT policy and let your IT administrator handle it.
+   - **Caution**: Disabling Smart App Control lowers overall system protection; weigh this decision carefully before turning it off. Recent Windows updates allow Smart App Control to be re-enabled without resetting or reinstalling Windows; older versions or devices that have not yet received this update may still require a reset or clean installation, so refer to your local device settings and Microsoft documentation. If you prefer not to lower system security, wait for a future signed release. On corporate or managed computers, follow organizational IT policy and let your IT administrator handle it.
 5. **Antivirus or Defender false positives**:
    - If antivirus software or Microsoft Defender blocks or quarantines the installer, first verify the SHA-256 checksum against the release notes as described in step 1.
    - Do not disable your antivirus software or real-time protection entirely.
