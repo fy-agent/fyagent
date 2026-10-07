@@ -272,6 +272,7 @@ export interface MemoryPort {
 
 export interface FeaturePorts {
   configPack: import("./config-pack").ConfigPackPort;
+  databaseRecovery: import("./database-recovery").DatabaseRecoveryPort;
   health: HealthPort;
   configRecovery: import("./config-recovery").ConfigRecoveryPort;
   catalog: AgentCatalogPort;

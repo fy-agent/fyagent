@@ -26,6 +26,12 @@ export function createTauriFeaturePorts(): FeaturePorts {
     );
     return createConfigRecoveryPort();
   };
+  const databaseRecovery = async () => {
+    const { createDatabaseRecoveryPort } = await import(
+      "./feature-ports/databaseRecovery"
+    );
+    return createDatabaseRecoveryPort();
+  };
   const models = async () => {
     const { createModelFeaturePorts } = await import("./feature-ports/models");
     return createModelFeaturePorts();
@@ -57,6 +63,12 @@ export function createTauriFeaturePorts(): FeaturePorts {
     configRecovery: {
       list: async (...args) => (await configRecovery()).list(...args),
       restore: async (...args) => (await configRecovery()).restore(...args),
+    },
+    databaseRecovery: {
+      list: async () => (await databaseRecovery()).list(),
+      restore: async (filename) => (await databaseRecovery()).restore(filename),
+      checkReadability: async () =>
+        (await databaseRecovery()).checkReadability(),
     },
     agentAuth: createAgentAuthPort(),
     managedAuth: createManagedAuthPort(),

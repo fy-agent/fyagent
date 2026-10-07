@@ -1,17 +1,49 @@
 import { lazy, Suspense, useRef, useState } from "react";
 import { classNames } from "../../shared/design-system/classNames";
+import { useFeatures } from "../../shared/features/provider";
 import { shouldShowMacOverlayDragStrip } from "../../shared/platform";
 import { Button } from "../../shared/ui/Button";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import { Brand } from "./Brand";
 import { ThemeToggle } from "./ThemeToggle";
 import "./top-bar-actions.css";
 
 const AboutDialog = lazy(() => import("./AboutDialog"));
+const DatabaseRecoveryDialog = lazy(async () => {
+  const { DatabaseRecoveryDialog } = await import(
+    "../../shared/features/database-recovery-ui/DatabaseRecoveryDialog"
+  );
+  return { default: DatabaseRecoveryDialog };
+});
+
+function DatabaseRecoveryEntry({
+  open,
+  originRef,
+  onClose,
+}: {
+  open: boolean;
+  originRef: DialogOriginRef;
+  onClose: () => void;
+}) {
+  const { ports } = useFeatures();
+  return (
+    <DatabaseRecoveryDialog
+      open={open}
+      originRef={originRef}
+      onClose={onClose}
+      port={ports.databaseRecovery}
+    />
+  );
+}
 
 export function TopBar() {
   const showMacOverlayDragStrip = shouldShowMacOverlayDragStrip();
   const [aboutOpen, setAboutOpen] = useState<boolean | null>(null);
   const aboutOrigin = useRef<HTMLElement | null>(null);
+  const [databaseRecoveryOpen, setDatabaseRecoveryOpen] = useState<
+    boolean | null
+  >(null);
+  const databaseRecoveryOrigin = useRef<HTMLElement | null>(null);
 
   return (
     <header
@@ -55,6 +87,20 @@ export function TopBar() {
             open={aboutOpen}
             onOpenChange={setAboutOpen}
             originRef={aboutOrigin}
+            databaseRecoveryOriginRef={databaseRecoveryOrigin}
+            onOpenDatabaseRecovery={() => {
+              setAboutOpen(false);
+              setDatabaseRecoveryOpen(true);
+            }}
+          />
+        </Suspense>
+      ) : null}
+      {databaseRecoveryOpen !== null ? (
+        <Suspense fallback={null}>
+          <DatabaseRecoveryEntry
+            open={databaseRecoveryOpen}
+            originRef={databaseRecoveryOrigin}
+            onClose={() => setDatabaseRecoveryOpen(false)}
           />
         </Suspense>
       ) : null}

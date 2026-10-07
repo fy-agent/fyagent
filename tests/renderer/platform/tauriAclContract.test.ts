@@ -124,7 +124,10 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(141);
+    expect(renderer.commands.size).toBe(144);
+    expect(renderer.commands.has("list_db_backups")).toBe(true);
+    expect(renderer.commands.has("restore_db_backup_outcome")).toBe(true);
+    expect(renderer.commands.has("check_db_recovery_readability")).toBe(true);
     expect(renderer.commands.has("run_tool_lifecycle_action")).toBe(false);
     expect(renderer.commands.has("projects_prepare_codex")).toBe(false);
     expect(renderer.commands.has("projects_bind_delivery_kit")).toBe(false);
@@ -157,6 +160,8 @@ describe("Native ACL contract", () => {
     const registered = registeredCommands();
     const expected = [
       "get_agent_health",
+      "restore_db_backup_outcome",
+      "check_db_recovery_readability",
       "create_codex_provider_switch_plan",
       "create_codex_provider_upsert_plan",
       "create_workbuddy_save_plan",

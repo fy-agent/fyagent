@@ -1204,14 +1204,22 @@ pub fn run() {
                 log::warn!("Unable to initialize first-use guide: {error}");
             }
 
+            let mut db_init_attempts = 0;
             let db = loop {
+                db_init_attempts += 1;
                 match crate::database::Database::init() {
                     Ok(db) => break Arc::new(db),
                     Err(e) => {
                         log::error!("Failed to init database: {e}");
 
-                        if !show_database_init_error_dialog(app.handle(), &db_path, &e.to_string())
-                        {
+                        let retry_allowed = db_init_attempts < 2;
+                        let retry_requested = show_database_init_error_dialog(
+                            app.handle(),
+                            &db_path,
+                            &e.to_string(),
+                            retry_allowed,
+                        );
+                        if !retry_allowed || !retry_requested {
                             log::info!("用户选择退出程序");
                             std::process::exit(1);
                         }
@@ -2203,6 +2211,8 @@ pub fn run() {
             commands::create_db_backup,
             commands::list_db_backups,
             commands::restore_db_backup,
+            commands::restore_db_backup_outcome,
+            commands::check_db_recovery_readability,
             commands::rename_db_backup,
             commands::delete_db_backup,
             commands::sync_current_providers_live,
@@ -3135,11 +3145,12 @@ fn show_migration_error_dialog(app: &tauri::AppHandle, error: &str) -> bool {
 }
 
 /// 显示数据库初始化/Schema 迁移失败对话框
-/// 返回 true 表示用户选择重试，false 表示用户选择退出
+/// 仅首次失败可返回 true；重试用完后展示退出提示并返回 false。
 fn show_database_init_error_dialog(
     app: &tauri::AppHandle,
     db_path: &std::path::Path,
     error: &str,
+    retry_allowed: bool,
 ) -> bool {
     let title = if is_chinese_locale() {
         "数据库初始化失败"
@@ -3147,32 +3158,36 @@ fn show_database_init_error_dialog(
         "Database Initialization Failed"
     };
 
+    let next_step = match (is_chinese_locale(), retry_allowed) {
+        (true, true) => {
+            "处理问题后，可点击「重试」再尝试一次；或点击「退出」关闭程序。"
+        }
+        (true, false) => {
+            "本次启动的初始化尝试已用完。请退出并保留数据库与备份，处理问题后重新启动 FyAgent。"
+        }
+        (false, true) => {
+            "After addressing the problem, click 'Retry' to try once more, or 'Exit' to close the program."
+        }
+        (false, false) => {
+            "Initialization attempts for this launch are exhausted. Exit and preserve the database and backups, then restart FyAgent after addressing the problem."
+        }
+    };
     let message = if is_chinese_locale() {
         format!(
             "初始化数据库或迁移数据库结构时发生错误：\n\n{error}\n\n\
             数据库文件路径：\n{db}\n\n\
-            您的数据尚未丢失，应用不会自动删除数据库文件。\n\
-            常见原因包括：数据库版本过新、文件损坏、权限不足、磁盘空间不足等。\n\n\
-            建议：\n\
-            1) 先备份整个配置目录（包含 fyagent.db）\n\
-            2) 如果提示“数据库版本过新”，请升级到更新版本\n\
-            3) 如果刚升级出现异常，可回退旧版本导出/备份后再升级\n\n\
-            点击「重试」重新尝试初始化\n\
-            点击「退出」关闭程序",
+            应用不会自动删除原数据库文件。请保留数据库和备份，先检查磁盘空间和目录权限。\n\
+            数据库版本过新时请升级 FyAgent；不要删除文件或修改版本号。\n\n\
+            {next_step}",
             db = db_path.display()
         )
     } else {
         format!(
             "An error occurred while initializing or migrating the database:\n\n{error}\n\n\
             Database file path:\n{db}\n\n\
-            Your data is NOT lost - the app will not delete the database automatically.\n\
-            Common causes include: newer database version, corrupted file, permission issues, or low disk space.\n\n\
-            Suggestions:\n\
-            1) Back up the entire config directory (including fyagent.db)\n\
-            2) If you see “database version is newer”, please upgrade FyAgent\n\
-            3) If this happened right after upgrading, consider rolling back to export/backup then upgrade again\n\n\
-            Click 'Retry' to attempt initialization again\n\
-            Click 'Exit' to close the program",
+            The app will not automatically delete the original database file. Preserve the database and backups, and check disk space and directory permissions.\n\
+            If the database version is newer, upgrade FyAgent; do not delete the file or change its version number.\n\n\
+            {next_step}",
             db = db_path.display()
         )
     };
@@ -3188,15 +3203,19 @@ fn show_database_init_error_dialog(
         "Exit"
     };
 
-    app.dialog()
+    let buttons = if retry_allowed {
+        MessageDialogButtons::OkCancelCustom(retry_text.to_string(), exit_text.to_string())
+    } else {
+        MessageDialogButtons::OkCustom(exit_text.to_string())
+    };
+    let retry_requested = app
+        .dialog()
         .message(&message)
         .title(title)
         .kind(MessageDialogKind::Error)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            retry_text.to_string(),
-            exit_text.to_string(),
-        ))
-        .blocking_show()
+        .buttons(buttons)
+        .blocking_show();
+    retry_allowed && retry_requested
 }
 
 fn confirm_codex_desktop_installation_cancellation(app: &tauri::AppHandle) -> bool {

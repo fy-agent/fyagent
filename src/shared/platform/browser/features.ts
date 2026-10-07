@@ -19,6 +19,11 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     },
     health: { get: rejectNativeOnly },
     configRecovery: { list: rejectNativeOnly, restore: rejectNativeOnly },
+    databaseRecovery: {
+      list: rejectNativeOnly,
+      restore: rejectNativeOnly,
+      checkReadability: rejectNativeOnly,
+    },
     // The native command is the only Agent capability authority. Browser
     // preview renders the controlled unavailable state instead of carrying a
     // second capability matrix that could drift into a support claim.

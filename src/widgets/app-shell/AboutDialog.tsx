@@ -13,10 +13,14 @@ export default function AboutDialog({
   open,
   onOpenChange,
   originRef,
+  databaseRecoveryOriginRef,
+  onOpenDatabaseRecovery,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   originRef: DialogOriginRef;
+  databaseRecoveryOriginRef: DialogOriginRef;
+  onOpenDatabaseRecovery: () => void;
 }) {
   const version = useAppVersion(open);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -55,6 +59,14 @@ export default function AboutDialog({
           )}
         </div>
         <div className="fy-about-links">
+          <Button
+            aria-haspopup="dialog"
+            dialogOriginRef={databaseRecoveryOriginRef}
+            dialogReturnRef={originRef}
+            onClick={onOpenDatabaseRecovery}
+          >
+            本机备份与恢复
+          </Button>
           <ExternalLinkButton url={`${projectUrl}/releases`}>
             查看更新
           </ExternalLinkButton>
