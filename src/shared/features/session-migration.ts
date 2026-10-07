@@ -333,11 +333,57 @@ export interface SessionMessage {
   ts?: number;
 }
 
-export const sessionMessageSchema = z.strictObject({
-  role: z.string(),
-  content: z.string(),
-  ts: z.optional(z.number()),
+// 阅读消息允许后端扩展字段；导入包和恢复请求仍使用各自的严格校验。
+const sessionBlockProjectionSchema = z.object({
+  type: z.string(),
+  text: z.nullish(z.string()),
+  rawName: z.optional(z.string()),
+  title: z.optional(z.string()),
+  preview: z.optional(z.string()),
+  image: z.optional(z.object({ mediaType: z.string(), size: z.number() })),
 });
+
+// 与后端 session_manager::model::project_content 保持相同投影规则。
+function projectSessionContent(
+  blocks: z.infer<typeof sessionBlockProjectionSchema>[],
+): string {
+  return blocks
+    .map((block) => {
+      switch (block.type) {
+        case "text":
+        case "event":
+          return block.text ?? "";
+        case "tool_call":
+          return `[Tool: ${block.rawName ?? ""}]${block.title ? ` ${block.title}` : ""}`;
+        case "tool_result":
+          return block.preview ?? "";
+        case "image":
+          return block.image
+            ? `[Image: ${block.image.mediaType} ${block.image.size}]`
+            : "";
+        default:
+          return "";
+      }
+    })
+    .filter((part) => part.trim().length > 0)
+    .join("\n\n");
+}
+
+export const sessionMessageSchema = z.pipe(
+  z.object({
+    role: z.string(),
+    content: z.optional(z.string()),
+    ts: z.optional(z.number()),
+    blocks: z.optional(z.array(sessionBlockProjectionSchema)),
+  }),
+  z.transform(
+    ({ role, content, ts, blocks }): SessionMessage => ({
+      role,
+      content: content ?? projectSessionContent(blocks ?? []),
+      ...(ts === undefined ? {} : { ts }),
+    }),
+  ),
+);
 
 // ─── Feature Port Interface ──────────────────────────────────────
 

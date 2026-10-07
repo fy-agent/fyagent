@@ -48,7 +48,7 @@ fn extract_claude_common_config(settings: &Value) -> Result<String, AppError> {
     if let Some(env) = config.get_mut("env").and_then(Value::as_object_mut) {
         let sensitive: Vec<String> = env
             .keys()
-            .filter(|key| is_sensitive_config_key(key))
+            .filter(|key| is_sensitive_config_key(key) || crate::live::floor::claude_floor_env(key))
             .cloned()
             .collect();
         for key in ENV_PROVIDER_SPECIFIC_EXCLUDES {
@@ -65,7 +65,10 @@ fn extract_claude_common_config(settings: &Value) -> Result<String, AppError> {
     if let Some(obj) = config.as_object_mut() {
         let sensitive: Vec<String> = obj
             .keys()
-            .filter(|key| is_sensitive_config_key(key))
+            .filter(|key| {
+                is_sensitive_config_key(key)
+                    || crate::live::floor::CLAUDE_FLOOR_TOP.contains(&key.as_str())
+            })
             .cloned()
             .collect();
         for key in TOP_LEVEL_EXCLUDES {
@@ -168,9 +171,11 @@ fn extract_gemini_common_config(settings: &Value) -> Result<String, AppError> {
 fn extract_opencode_common_config(settings: &Value) -> Result<String, AppError> {
     let mut config = settings.clone();
     if let Some(obj) = config.as_object_mut() {
-        if let Some(options) = obj.get_mut("options").and_then(Value::as_object_mut) {
-            options.remove("apiKey");
-            options.remove("baseURL");
+        for key in ["options", "settings"] {
+            if let Some(options) = obj.get_mut(key).and_then(Value::as_object_mut) {
+                options.remove("apiKey");
+                options.remove("baseURL");
+            }
         }
     }
     serialize_json_common_config(config)

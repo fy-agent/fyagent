@@ -38,10 +38,7 @@ pub(crate) use dao::providers_seed::{
     is_official_seed_id, CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, CODEX_OFFICIAL_PROVIDER_ID,
     GROKBUILD_OFFICIAL_PROVIDER_ID,
 };
-pub(crate) use dao::proxy::{
-    validate_cost_multiplier, validate_pricing_source, PRICING_SOURCE_REQUEST,
-    PRICING_SOURCE_RESPONSE,
-};
+pub(crate) use dao::proxy::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 pub use dao::FailoverQueueItem;
 pub use dao::Profile;
 
@@ -80,6 +77,7 @@ pub(crate) use lock_conn;
 /// 使用 Mutex 包装 Connection 以支持在多线程环境（如 Tauri State）中共享。
 /// rusqlite::Connection 本身不是 Sync 的，因此需要这层包装。
 pub struct Database {
+    pub(crate) log_count_cache: Mutex<Option<crate::services::usage_stats::LogCountCache>>,
     pub(crate) conn: Mutex<Connection>,
     // Injected dependency for the Provider persistence compatibility facade.
     // DAO methods never access the native backend themselves.
@@ -138,6 +136,7 @@ impl Database {
                 crate::services::secret::NativeSecretBackend::new(),
             )),
             provider_secret_guard: Mutex::new(()),
+            log_count_cache: Mutex::new(None),
         };
         db.create_tables()?;
 
@@ -175,7 +174,7 @@ impl Database {
         // Reclaim disk space after cleanup
         {
             let conn = lock_conn!(db.conn);
-            if let Err(e) = conn.execute_batch("PRAGMA incremental_vacuum;") {
+            if let Err(e) = Self::incremental_vacuum_on_conn(&conn) {
                 log::warn!("Startup incremental vacuum failed: {e}");
             }
         }
@@ -214,6 +213,7 @@ impl Database {
                 crate::services::secret::MemorySecretBackend::new(),
             )),
             provider_secret_guard: Mutex::new(()),
+            log_count_cache: Mutex::new(None),
         };
         db.create_tables()?;
         db.ensure_model_pricing_seeded()?;
@@ -224,6 +224,23 @@ impl Database {
     pub(crate) fn get_auto_vacuum_mode(conn: &Connection) -> Result<i32, AppError> {
         conn.query_row("PRAGMA auto_vacuum;", [], |row| row.get(0))
             .map_err(|e| AppError::Database(format!("读取 auto_vacuum 失败: {e}")))
+    }
+
+    /// 回收全部空闲页。`PRAGMA incremental_vacuum` 每释放一页产出一行结果，
+    /// 必须把结果读完才会回收完；`execute_batch` 只 step 一次，只能回收 1 页。
+    pub(crate) fn incremental_vacuum_on_conn(conn: &Connection) -> Result<(), AppError> {
+        let mut stmt = conn
+            .prepare("PRAGMA incremental_vacuum;")
+            .map_err(|e| AppError::Database(format!("执行 incremental_vacuum 失败: {e}")))?;
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| AppError::Database(format!("执行 incremental_vacuum 失败: {e}")))?;
+        while rows
+            .next()
+            .map_err(|e| AppError::Database(format!("执行 incremental_vacuum 失败: {e}")))?
+            .is_some()
+        {}
+        Ok(())
     }
 
     fn has_user_tables(conn: &Connection) -> Result<bool, AppError> {

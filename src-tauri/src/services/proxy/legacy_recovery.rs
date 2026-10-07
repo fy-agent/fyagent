@@ -260,6 +260,9 @@ impl ProxyService {
                 preimage,
                 expected_hash,
             } => {
+                if *app == AppType::Gemini {
+                    return self.restore_gemini_projection(original);
+                }
                 return crate::config::restore_file_preimage_if_owned(
                     &path,
                     preimage.as_deref(),

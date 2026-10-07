@@ -1,3 +1,4 @@
+import type { PresetFamilyFields } from "./presetFamilies";
 /**
  * Grok Build (Grok CLI) 预设供应商配置模板
  *
@@ -25,7 +26,7 @@ import type { ProviderCategory } from "../types";
 import type { CodexApiFormat } from "../types";
 import { GROK_BUILD_DEFAULT_MODEL } from "../serialization/grokBuildConfig";
 
-export interface GrokBuildProviderPreset {
+export interface GrokBuildProviderPreset extends PresetFamilyFields {
   name: string;
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
@@ -303,6 +304,8 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
   },
   {
     name: "Compshare",
+    family: "compshare",
+    planKey: "payg",
     nameKey: "providerForm.presets.ucloud",
     websiteUrl: "https://www.compshare.cn",
     apiKeyUrl: "https://www.compshare.cn/coding-plan",
@@ -315,6 +318,8 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
   },
   {
     name: "Compshare Coding Plan",
+    family: "compshare",
+    planKey: "codingPlan",
     nameKey: "providerForm.presets.ucloudCoding",
     websiteUrl: "https://www.compshare.cn",
     apiKeyUrl: "https://www.compshare.cn/coding-plan",
@@ -434,6 +439,7 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
   },
   {
     name: "SudoCode.chat",
+    family: "sudocode",
     websiteUrl: "https://sudocode.chat",
     apiKeyUrl: "https://sudocode.chat/sign-up",
     auth: grokAuth(),
@@ -448,6 +454,7 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
   },
   {
     name: "SudoCode.us",
+    family: "sudocode",
     websiteUrl: "https://sudocode.us",
     apiKeyUrl: "https://sudocode.us",
     auth: grokAuth(),
@@ -456,6 +463,23 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
     apiFormat: "openai_responses",
     category: "third_party",
     icon: "sudocode-us",
+  },
+  {
+    name: "Tu-zi",
+    nameKey: "providerForm.presets.tuzi",
+    websiteUrl: "https://api.tu-zi.com",
+    apiKeyUrl: "https://api.tu-zi.com/token",
+    auth: grokAuth(),
+    config: grokPresetConfig("Tu-zi", "https://api.tu-zi.com/v1"),
+    endpointCandidates: [
+      "https://api.tu-zi.com/v1",
+      "https://api.ourzhishi.top/v1",
+      "https://api.sydney-ai.com/v1",
+      "https://apicdn.tu-zi.com/v1",
+    ],
+    apiFormat: "openai_responses",
+    category: "aggregator",
+    icon: "tuzi",
   },
   {
     name: "xAI (Grok)",
@@ -562,5 +586,6 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
     ),
     endpointCandidates: ["https://api.therouter.ai/v1"],
     category: "aggregator",
+    icon: "therouter",
   },
 ];

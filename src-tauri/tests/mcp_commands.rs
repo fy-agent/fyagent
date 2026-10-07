@@ -18,7 +18,7 @@ use support::{
 
 #[test]
 fn import_default_config_claude_persists_provider() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -71,7 +71,7 @@ fn import_default_config_claude_persists_provider() {
 
 #[test]
 fn import_default_config_grokbuild_seeds_official_alongside_default() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -128,7 +128,7 @@ context_window = 500000
 
 #[test]
 fn import_default_config_grokbuild_official_live_imports_official_as_current() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -175,7 +175,7 @@ fn import_default_config_grokbuild_official_live_imports_official_as_current() {
 
 #[test]
 fn startup_import_grokbuild_official_live_does_not_resurrect_official() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -208,7 +208,7 @@ fn startup_import_grokbuild_official_live_does_not_resurrect_official() {
 
 #[test]
 fn import_default_config_grokbuild_broken_custom_live_still_errors() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -252,7 +252,7 @@ fn import_default_config_grokbuild_broken_custom_live_still_errors() {
 fn import_default_config_without_live_file_returns_error() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -286,7 +286,7 @@ fn import_default_config_without_live_file_returns_error() {
 
 #[test]
 fn import_mcp_from_claude_creates_config_and_enables_servers() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -333,7 +333,7 @@ fn import_mcp_from_claude_creates_config_and_enables_servers() {
 
 #[test]
 fn import_mcp_from_codex_does_not_rewrite_codex_config() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -365,8 +365,51 @@ command = "echo"
 }
 
 #[test]
+fn import_mcp_from_codex_infers_http_from_url_without_type() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+
+    let codex_dir = home.join(".codex");
+    fs::create_dir_all(&codex_dir).expect("create codex dir");
+    // Codex 的 [mcp_servers.*] 没有 `type`：HTTP server 只带 `url`。
+    fs::write(
+        codex_dir.join("config.toml"),
+        "[mcp_servers.remote]\nurl = \"https://mcp.example.com/mcp\"\n\n\
+         [mcp_servers.remote.http_headers]\nAuthorization = \"Bearer x\"\n",
+    )
+    .expect("seed codex config");
+
+    let state = create_test_state().expect("create test state");
+    let changed = McpService::import_from_codex(&state).expect("import from codex");
+    assert!(changed > 0, "should import the url-only server");
+
+    let servers = state.db.get_all_mcp_servers().expect("get all mcp servers");
+    let entry = servers.get("remote").expect("url-only server imported");
+    assert_eq!(
+        entry.server.get("type").and_then(|v| v.as_str()),
+        Some("http"),
+        "url-only Codex server must import as http, not stdio"
+    );
+    assert_eq!(
+        entry.server.get("url").and_then(|v| v.as_str()),
+        Some("https://mcp.example.com/mcp"),
+        "url must be preserved"
+    );
+    assert_eq!(
+        entry
+            .server
+            .get("headers")
+            .and_then(|v| v.get("Authorization"))
+            .and_then(|v| v.as_str()),
+        Some("Bearer x"),
+        "http_headers must map to headers"
+    );
+}
+
+#[test]
 fn import_mcp_from_claude_does_not_sync_existing_codex_enabled_server() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -445,7 +488,7 @@ command = "echo"
 fn import_mcp_from_claude_invalid_json_preserves_state() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -480,7 +523,7 @@ fn import_mcp_from_claude_invalid_json_preserves_state() {
 fn import_from_all_apps_reports_broken_app_but_imports_the_rest() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -682,7 +725,7 @@ fn failed_live_cleanup_keeps_database_toggle_and_delete_retryable() {
 
 #[test]
 fn set_mcp_enabled_for_codex_writes_live_config() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -757,7 +800,7 @@ fn set_mcp_enabled_for_codex_writes_live_config() {
 fn enabling_codex_mcp_skips_when_codex_dir_missing() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -810,7 +853,7 @@ fn enabling_codex_mcp_skips_when_codex_dir_missing() {
 
 #[test]
 fn upsert_mcp_server_disabling_app_removes_from_claude_live_config() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -894,8 +937,55 @@ fn upsert_mcp_server_disabling_app_removes_from_claude_live_config() {
 }
 
 #[test]
+fn projecting_an_app_continues_past_a_server_that_cannot_be_written() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    fs::create_dir_all(home.join(".claude")).expect("create ~/.claude dir");
+    let mcp_path = get_claude_mcp_path();
+    fs::write(
+        &mcp_path,
+        json!({"mcpServers": {"c-off": {"type": "stdio", "command": "old"}}}).to_string(),
+    )
+    .expect("seed ~/.claude.json");
+
+    let state = support::create_test_state().expect("create test state");
+    // 直接入库，绕过面板校验：规范不是对象的行可能来自云同步或旧数据。
+    for (id, server, claude) in [
+        ("a-broken", json!("not an object"), true),
+        ("b-good", json!({"type": "stdio", "command": "echo"}), true),
+        ("c-off", json!({"type": "stdio", "command": "old"}), false),
+    ] {
+        let server: McpServer = serde_json::from_value(json!({
+            "id": id, "name": id, "server": server, "apps": {"claude": claude}
+        }))
+        .expect("build server");
+        state.db.save_mcp_server(&server).expect("save server");
+    }
+
+    let err = McpService::sync_enabled_for_app(&state, &AppType::Claude)
+        .expect_err("the broken server must still be reported");
+    assert!(
+        err.to_string().contains("a-broken"),
+        "error should name the failed server: {err}"
+    );
+
+    let text = fs::read_to_string(&mcp_path).expect("read ~/.claude.json");
+    let v: serde_json::Value = serde_json::from_str(&text).expect("parse ~/.claude.json");
+    assert!(
+        v.pointer("/mcpServers/b-good").is_some(),
+        "servers after the failed one must still be written"
+    );
+    assert!(
+        v.pointer("/mcpServers/c-off").is_none(),
+        "disabled servers after the failed one must still be removed"
+    );
+    assert!(v.pointer("/mcpServers/a-broken").is_none());
+}
+
+#[test]
 fn import_mcp_from_multiple_apps_merges_enabled_flags() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -940,7 +1030,7 @@ command = "echo"
 
 #[test]
 fn import_mcp_from_gemini_sse_url_only_is_valid() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -981,7 +1071,7 @@ fn import_mcp_from_gemini_sse_url_only_is_valid() {
 fn enabling_gemini_mcp_skips_when_gemini_dir_missing() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -1036,7 +1126,7 @@ fn enabling_gemini_mcp_skips_when_gemini_dir_missing() {
 fn enabling_claude_mcp_skips_when_claude_config_absent() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -1093,7 +1183,7 @@ fn enabling_claude_mcp_skips_when_claude_config_absent() {
 
 #[test]
 fn explicit_default_claude_dir_keeps_default_split_mcp_path() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
     let claude_dir = home.join(".claude");
@@ -1152,7 +1242,7 @@ fn explicit_default_claude_dir_keeps_default_split_mcp_path() {
 
 #[test]
 fn custom_claude_dir_writes_mcp_inside_config_dir() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
     let custom_dir = home.join("profiles").join(".claude");
@@ -1212,7 +1302,7 @@ fn custom_claude_dir_writes_mcp_inside_config_dir() {
 
 #[test]
 fn custom_claude_dir_sync_does_not_copy_default_profile() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
     let home_mcp_path = home.join(".claude.json");
@@ -1318,7 +1408,7 @@ fn custom_claude_dir_sync_does_not_copy_default_profile() {
 
 #[test]
 fn custom_claude_dir_read_only_mcp_queries_do_not_create_profile() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
     let home_mcp_path = home.join(".claude.json");
@@ -1373,7 +1463,7 @@ fn custom_claude_dir_read_only_mcp_queries_do_not_create_profile() {
 
 #[test]
 fn sync_all_enabled_removes_known_disabled_but_preserves_unknown_live_entries() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -1516,4 +1606,29 @@ fn mcp_library_only_upsert_validates_before_persisting_without_native_writes() {
     for native_dir in [".claude", ".codex", ".grok", ".config/opencode"] {
         assert!(!home.join(native_dir).exists(), "created {native_dir}");
     }
+}
+
+#[test]
+fn sync_target_continues_after_invalid_server_and_reports_failure() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let state = create_test_state().unwrap();
+    let invalid: McpServer = serde_json::from_value(json!({
+        "id": "a-invalid", "name": "Invalid", "server": {"type": "unknown"},
+        "apps": {"claude": true}
+    }))
+    .unwrap();
+    let valid: McpServer = serde_json::from_value(json!({
+        "id": "z-valid", "name": "Valid", "server": {"command": "echo"},
+        "apps": {"claude": true}
+    }))
+    .unwrap();
+    state.db.save_mcp_server(&invalid).unwrap();
+    state.db.save_mcp_server(&valid).unwrap();
+    let error = McpService::sync_enabled_for_app(&state, &AppType::Claude).unwrap_err();
+    assert!(error.to_string().contains("a-invalid"));
+    let live: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(get_claude_mcp_path()).unwrap()).unwrap();
+    assert_eq!(live["mcpServers"]["z-valid"]["command"], "echo");
+    assert!(live["mcpServers"].get("a-invalid").is_none());
 }

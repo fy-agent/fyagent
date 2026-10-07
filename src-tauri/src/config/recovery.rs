@@ -210,7 +210,7 @@ pub(super) fn write(path: &Path, bytes: Option<&[u8]>, private: bool) -> Result<
     write_with(path, bytes, |path, bytes| replace(path, bytes, private))
 }
 
-fn write_with(
+pub(super) fn write_with(
     path: &Path,
     bytes: Option<&[u8]>,
     apply: impl FnOnce(&Path, Option<&[u8]>) -> Result<(), AppError>,

@@ -22,6 +22,7 @@ impl AutoSyncSuppressionGuard {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn is_auto_sync_suppressed() -> bool {
     AUTO_SYNC.is_suppressed()
 }

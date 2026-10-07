@@ -45,7 +45,9 @@ pub(crate) fn validate_source(
         {
             Ok(())
         } else {
-            Err(invalid("请先配置模型来源及认证 auth，未修改任何文件"))
+            Err(invalid(
+                "请先配置 config.toml 模型来源及认证 auth，未修改任何文件",
+            ))
         };
     };
     if !is_custom_codex_model_provider_id(&id) {

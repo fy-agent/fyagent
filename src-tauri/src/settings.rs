@@ -371,6 +371,10 @@ pub struct AppSettings {
     /// 是否在主页面启用本地代理功能（默认关闭）
     #[serde(default)]
     pub enable_local_proxy: bool,
+    /// 是否在主页面显示 Stack 模式开关（默认关闭）。和 `enable_local_proxy` 二选一，只影响
+    /// Claude Code、Codex：它们的开关换成 Stack 模式开关，其余应用仍显示路由开关。
+    #[serde(default)]
+    pub enable_stack_mode: bool,
     /// User has confirmed the local proxy first-run notice
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_confirmed: Option<bool>,
@@ -388,7 +392,7 @@ pub struct AppSettings {
     #[serde(default)]
     pub enable_failover_toggle: bool,
     /// Whether to show the project profile switcher on the main page header
-    #[serde(default = "default_show_profile_switcher")]
+    #[serde(default)]
     pub show_profile_switcher: bool,
     /// Legacy compatibility field. Third-party Codex switches always preserve
     /// official ChatGPT login material; this value is ignored.
@@ -518,10 +522,6 @@ fn default_minimize_to_tray_on_close() -> bool {
     true
 }
 
-fn default_show_profile_switcher() -> bool {
-    true
-}
-
 fn default_preserve_codex_official_auth_on_switch() -> bool {
     true
 }
@@ -540,6 +540,7 @@ impl Default for AppSettings {
             launch_on_startup: false,
             silent_startup: false,
             enable_local_proxy: false,
+            enable_stack_mode: false,
             proxy_confirmed: None,
             usage_confirmed: None,
             usage_dashboard_refresh_interval_ms: None,

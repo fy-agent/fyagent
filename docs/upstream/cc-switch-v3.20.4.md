@@ -11,6 +11,8 @@ product version from `0.4.10` to the upstream version.
 检查证据仍为 `code_audit`，不宣称 Rust 类型检查或原生运行已通过。
 2026-10-08 fix3 修复分叉 CI 清单的源码接线及结构指纹；实际 cargo check/Clippy
 在未改动的 user-helper 非支持宿主分支阻断，主库及原生 CI 验收仍未通过。
+2026-10-08 fix4 根据 run `37653821851` 修复行为接线与测试夹具；保留 FyAgent
+config-only / 托管订阅认证边界，原生测试结果仍待下一轮分叉 CI。
 
 ## Verified source and graph
 
@@ -355,3 +357,59 @@ The long-term engineering contract is
 本轮仅留工作树。机器本地交付：`../report-205-fix3.md` 与
 `../fix3-evidence/`（相对工作树根目录；仓库外证据不作为跨机器永久链接）。
 原生分叉 CI 尚须重跑；本轮没有提交、推送、PR、remote 变更或 GitHub 操作。
+
+
+## Fix4：Windows 与行为回归（2026-10-08）
+
+输入为本地已下载的 run `37653821851` 日志；实际工作树起点为 `7097d86a`
+（fix3 `3b850670` 后已包含 #207 Skills 修复）。本轮不改 `skill.rs`，不改
+v27 schema / migration、Cargo 清单和锁，不提交、不推送、不访问 GitHub。
+
+### 行为取舍
+
+- **FyAgent 认证归属保持父提交 `5b1a334b`**：普通请求源、接管热切换和恢复
+  都保持 config-only，不因上游新增测试而启用原生 OAuth 账号替换、token
+  adoption / clearing 或将 OAuth token 固化到 live backup。恢复测试使用真实
+  ownership receipt；继续验证登录刷新、退出登录、缺失/异常 auth 字节的保留，
+  不放宽恢复门禁。默认第三方切换的测试恢复父提交登录保留断言。
+- **官方卡与订阅路由区分**：补齐 official / category-less 卡分类供 backfill、
+  failover 和 tray 使用，但优先排除 `uses_subscription_proxy()`；显式托管订阅
+  仍在请求时解析绑定账号 token，空配置也不能变成原生登录透传。新增组合回归。
+- **合并漏接的已有能力**：接回模型目录 reasoning / parser fields、用户目录
+  所有权、网关 host 匹配；数据库导入在补 schema 前验证原始表，最终 live lock
+  内保留本地数据并生成一致的 safety backup，retention 保护被选中的恢复源。
+  `session_log_sync` 加入同步 skip/preserve，已有凭据与 receipt 保护不撤回。
+- **代理转换**：生成与发现共用 Codex OAuth 兼容版本；修 Kimi 不回放 thinking、
+  hosted web-search sources include、Claude tool-choice parallel 默认与显式覆盖。
+  native Responses 的现有 parallel 默认保持。
+- **夹具适配**：OAuth credential/workspace ID 输入一致；universal metadata
+  测试不在更换 endpoint 时携带旧 usage secret，并通过既有 SecretRef comparison
+  比较配置，认证保护及所有断言保留。
+
+### 客户端适配账目
+
+既有 Pi / Mcode 项仍全部**推迟到 #208**，fix2/fix3 的延期表不变。本轮这批
+失败没有新增 Pi/Mcode 依赖；不重新注册客户端或开放其 cfg。Codex 新版本
+登录状态探测导致 `requires_openai_auth` 与 FyAgent planner / recovery 投射
+不一致，恢复父提交共同投射 owner；这是现有认证架构适配，**不转记 #208**。
+上游整套原生 OAuth 文件事务仍未作为 Provider 保存/切换入口启用，与 fix2
+已记录的决定一致；对应测试按 FyAgent 原生登录文件独立归属验证。
+
+### Windows 和本地证据边界
+
+- Windows builder 改为 cfg 内 shadowing，避免 E0384 和跨平台 `unused_mut`。
+- `codex_oauth_account_id` 接回首发最终 `ChatGPT-Account-Id`，覆盖入站伪造头；
+  与现有单次同账号 401 replay 一致，不用下划线或 allow 隐藏警告。
+- 6 个预设文件仅用仓库 Prettier 重排。最终本机检查和逐项归因记录在仓库外
+  `../report-205-fix4.md`、`../fix4-evidence/`；补丁 `../fix4-evidence/fix4.patch`。
+- Rust 只做源码审计和 rustfmt，证据为 `code_audit`；本机非支持宿主的 user-helper
+  已知边界未改，未再次跑 cargo。macOS 69 个失败测试及 Windows 后端 /
+  Native Contracts X64、ARM64 的执行验收必须等待分叉 CI，不宣称已通过。
+- 最终 `pnpm typecheck`、`pnpm lint`、六文件 `prettier --check` 与 15 个 Rust
+  文件 `rustfmt --check` 均退出 0；审查后更新 7 项结构指纹。直接平台 CLI 遇
+  `spawnSync git EPERM`；按既有 runner 接口注入真实 Git 清单，扫描 3,130 文件、
+  0 findings（替代检查通过，不能记为直接 CLI 通过）。
+
+根因防线：合并拆分模块时同时检查定义、调用、副作用归属和测试夹具；不能把
+上游测试直接当作替代 FyAgent 既有契约的依据。模型目录、数据库 staging 和
+首发路由 header 的漏接均说明“编译通过”不等于行为已恢复。

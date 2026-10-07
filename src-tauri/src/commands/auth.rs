@@ -1,8 +1,5 @@
 use tauri::State;
 
-use crate::store::AppState;
-
-use crate::app_config::AppType;
 use crate::commands::codex_oauth::CodexOAuthState;
 use crate::commands::copilot::CopilotAuthState;
 use crate::commands::managed_auth::ManagedAuthState;
@@ -322,24 +319,6 @@ pub async fn auth_remove_account(
     deny_legacy_auth_mutation()
 }
 
-pub(crate) async fn remove_codex_oauth_account_with_switch_lock(
-    app_state: &AppState,
-    account_id: &str,
-) -> Result<(), String> {
-    // Serialize Auth Center credential deletion with managed provider
-    // add/update/switch/hot-switch. Otherwise a switch that already preflighted
-    // a bundle could recreate auth.json after removal.
-    let _switch_guard = app_state
-        .proxy_service
-        .lock_switch_for_app(AppType::Codex.as_str())
-        .await;
-    app_state
-        .codex_oauth_manager
-        .remove_account(account_id)
-        .await
-        .map_err(|error| error.to_string())
-}
-
 #[tauri::command(rename_all = "camelCase")]
 pub async fn auth_set_default_account(
     _auth_provider: String,
@@ -398,18 +377,4 @@ mod tests {
             assert!(!lower.contains("refresh"));
         }
     }
-}
-
-pub(crate) async fn logout_codex_oauth_with_switch_lock(
-    app_state: &AppState,
-) -> Result<(), String> {
-    let _switch_guard = app_state
-        .proxy_service
-        .lock_switch_for_app(AppType::Codex.as_str())
-        .await;
-    app_state
-        .codex_oauth_manager
-        .clear_auth()
-        .await
-        .map_err(|error| error.to_string())
 }

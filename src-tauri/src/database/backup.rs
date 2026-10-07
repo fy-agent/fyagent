@@ -94,6 +94,7 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "provider_health",
     "proxy_live_backup",
     "usage_daily_rollups",
+    "session_log_sync",
     "change_plans",
     "change_jobs",
     "change_job_events",
@@ -104,6 +105,8 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "managed_auth_migrations",
     "provider_credentials",
     "session_restore_attempts",
+    "session_log_sync",
+    "session_usage_dedup",
 ];
 
 /// Session migration receipts are bound to one installation and one target
@@ -119,6 +122,7 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "stream_check_logs",
     "proxy_live_backup",
     "usage_daily_rollups",
+    "session_log_sync",
     "change_plans",
     "change_jobs",
     "change_job_events",
@@ -129,6 +133,8 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "managed_auth_migrations",
     "provider_credentials",
     "session_restore_attempts",
+    "session_log_sync",
+    "session_usage_dedup",
 ];
 
 /// A database backup entry for the UI
@@ -286,11 +292,6 @@ impl Database {
         let sql_content = sql_raw.trim_start_matches('\u{feff}');
         Self::validate_fyagent_sql_export(sql_content)?;
 
-        // 导入前备份现有数据库
-        let backup_path = self.backup_database_file()?;
-
-        let local_snapshot = self.snapshot_to_memory()?;
-
         // 在临时数据库执行导入，确保失败不会污染主库
         let temp_root = crate::config::get_user_temp_dir();
         std::fs::create_dir_all(&temp_root).map_err(|e| AppError::IoContext {
@@ -332,20 +333,27 @@ impl Database {
         // Authorizer 是外部 SQL 的第一道守卫；schema 检查同时覆盖未来改动中可能
         // 绕开 execute_batch 的导入路径，并与二进制快照恢复共享同一安全边界。
         Self::disarm_imported_triggers(&temp_conn)?;
+        Self::validate_imported_schema(&temp_conn)?;
 
         // 补齐缺失表/索引并进行基础校验
         Self::create_tables_on_conn(&temp_conn)?;
         Self::apply_schema_migrations_on_conn(&temp_conn)?;
-        Self::validate_basic_state(&temp_conn)?;
-        Self::restore_tables(&local_snapshot, &temp_conn, preserve_tables)?;
-        Self::restore_tables(&local_snapshot, &temp_conn, &["provider_credentials"])?;
-        Self::restore_local_provider_credentials(&local_snapshot, &temp_conn)?;
         Self::drop_retired_fde_triggers_on_conn(&temp_conn)?;
         Self::assert_no_persistent_triggers(&temp_conn)?;
         self.archive_retired_customer_project_data_before_replace()?;
 
         before_replace()?;
-        self.replace_from_candidate_preserving_receipts(&temp_conn)?;
+        // Preserve writes that arrived while the SQL was being staged. Keep
+        // the same live connection locked through preservation, safety backup
+        // and replacement so the backup represents exactly the replaced state.
+        let backup_file_guard = lock_backup_file_operations()?;
+        let mut main_conn = lock_conn!(self.conn);
+        Self::restore_tables(&main_conn, &temp_conn, preserve_tables)?;
+        Self::restore_tables(&main_conn, &temp_conn, &["provider_credentials"])?;
+        Self::restore_local_provider_credentials(&main_conn, &temp_conn)?;
+        let backup_path =
+            Self::backup_database_file_from_conn(&backup_file_guard, &main_conn, &[])?;
+        Self::replace_from_candidate_preserving_receipts_locked(&mut main_conn, &temp_conn)?;
 
         let backup_id = backup_path
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
@@ -633,25 +641,30 @@ impl Database {
     /// Publish a validated candidate without losing receipt claims or updates
     /// made during import preparation. Hold the live connection lock across
     /// both the final receipt copy and the atomic SQLite backup replacement.
+    #[cfg(test)]
     fn replace_from_candidate_preserving_receipts(
         &self,
         candidate: &Connection,
     ) -> Result<(), AppError> {
         let mut main_conn = lock_conn!(self.conn);
+        Self::replace_from_candidate_preserving_receipts_locked(&mut main_conn, candidate)
+    }
+
+    fn replace_from_candidate_preserving_receipts_locked(
+        main_conn: &mut Connection,
+        candidate: &Connection,
+    ) -> Result<(), AppError> {
         for table in LOCAL_ONLY_RECEIPT_TABLES {
-            if !Self::table_exists(&main_conn, table)? || !Self::table_exists(candidate, table)? {
+            if !Self::table_exists(main_conn, table)? || !Self::table_exists(candidate, table)? {
                 return Err(AppError::Database(
                     "session_restore_receipts_missing".into(),
                 ));
             }
         }
-        Self::restore_tables(&main_conn, candidate, LOCAL_ONLY_RECEIPT_TABLES)?;
-        let backup = Backup::new(candidate, &mut main_conn)
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        backup
-            .step(-1)
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(())
+        Self::restore_tables(main_conn, candidate, LOCAL_ONLY_RECEIPT_TABLES)?;
+        let backup =
+            Backup::new(candidate, main_conn).map_err(|e| AppError::Database(e.to_string()))?;
+        Self::complete_backup(&backup, "替换数据库")
     }
 
     fn restore_tables(
@@ -827,7 +840,7 @@ impl Database {
         }
         if reclaimed_rows > 0 {
             let conn = lock_conn!(self.conn);
-            if let Err(e) = conn.execute_batch("PRAGMA incremental_vacuum;") {
+            if let Err(e) = Self::incremental_vacuum_on_conn(&conn) {
                 log::warn!("Periodic incremental vacuum failed: {e}");
             }
         }
@@ -894,7 +907,7 @@ impl Database {
         // discovery and retention only see the final path after the complete
         // SQLite image has been atomically published.
         let mut temp_path = Builder::new()
-            .prefix(".cc-switch-backup-")
+            .prefix(".fyagent-backup-")
             .suffix(".tmp")
             .tempfile_in(&backup_dir)
             .map_err(|e| AppError::io(&backup_dir, e))?
@@ -1061,22 +1074,6 @@ impl Database {
                 "backup.sql.invalid_schema",
                 format!("导入的 SQL 缺少 CC Switch 必需表：{names}"),
                 format!("The imported SQL is missing required CC Switch tables: {names}"),
-            ));
-        }
-        Ok(())
-    }
-
-    fn validate_basic_state(conn: &Connection) -> Result<(), AppError> {
-        let provider_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM providers", [], |row| row.get(0))
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        let mcp_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM mcp_servers", [], |row| row.get(0))
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        if provider_count == 0 && mcp_count == 0 {
-            return Err(AppError::Config(
-                "导入的 SQL 未包含有效的供应商或 MCP 数据".to_string(),
             ));
         }
         Ok(())
@@ -1442,8 +1439,14 @@ impl Database {
         Self::assert_no_persistent_triggers(&candidate)?;
         self.archive_retired_customer_project_data_before_replace()?;
 
-        // Step 1: Create safety backup of current database
-        let safety_backup = self.backup_database_file_locked(&backup_file_guard)?;
+        let mut main_conn = lock_conn!(self.conn);
+        // Retention must protect both the selected source and the safety
+        // snapshot, even when the configured retain count is only one.
+        let safety_backup = Self::backup_database_file_from_conn(
+            &backup_file_guard,
+            &main_conn,
+            &[backup_path.as_path()],
+        )?;
         before_replace(safety_backup.as_deref())?;
         let safety_id = safety_backup
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
@@ -1451,7 +1454,8 @@ impl Database {
 
         // A private backup remains lossless, but its native restore journal
         // cannot roll back external provider stores. Keep the live journal.
-        self.replace_from_candidate_preserving_receipts(&candidate)?;
+        Self::replace_from_candidate_preserving_receipts_locked(&mut main_conn, &candidate)?;
+        drop(main_conn);
 
         self.ensure_model_pricing_seeded()?;
 
@@ -2998,7 +3002,7 @@ mod tests {
                 entry
                     .file_name()
                     .to_string_lossy()
-                    .starts_with(".cc-switch-backup-")
+                    .starts_with(".fyagent-backup-")
             })
             .count();
         assert_eq!(

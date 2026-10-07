@@ -1,4 +1,5 @@
 import type { ProviderCategory } from "@/domain/configuration/types";
+import type { PresetFamilyFields } from "./presetFamilies";
 
 /**
  * Gemini 预设供应商的视觉主题配置
@@ -12,7 +13,7 @@ export interface GeminiPresetTheme {
   textColor?: string;
 }
 
-export interface GeminiProviderPreset {
+export interface GeminiProviderPreset extends PresetFamilyFields {
   name: string;
   nameKey?: string; // i18n key for localized display name
   websiteUrl: string;
@@ -507,6 +508,7 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     description: "TheRouter",
     category: "aggregator",
     endpointCandidates: ["https://api.therouter.ai"],
+    icon: "therouter",
   },
   {
     name: "AICodeWith",
@@ -525,19 +527,6 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     endpointCandidates: ["https://api.aicodewith.ai/gemini_cli"],
     icon: "aicodewith",
     iconColor: "#3A3B40",
-  },
-  {
-    name: "自定义",
-    websiteUrl: "",
-    settingsConfig: {
-      env: {
-        GOOGLE_GEMINI_BASE_URL: "",
-        GEMINI_MODEL: "gemini-3.6-flash",
-      },
-    },
-    model: "gemini-3.6-flash",
-    description: "自定义 Gemini API 端点",
-    category: "custom",
   },
 ];
 

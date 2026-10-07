@@ -9,7 +9,67 @@ use crate::store::AppState;
 /// MCP 相关业务逻辑（v3.7.0 统一结构）
 pub struct McpService;
 
+/// 「重新同步到各应用」里单个应用的结果
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpAppSyncOutcome {
+    pub app: String,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 impl McpService {
+    /// 由 FyAgent 管理 MCP 的应用（Claude Desktop、OpenClaw 不支持）
+    pub fn live_sync_apps() -> Vec<AppType> {
+        AppType::all()
+            .filter(|app| !matches!(app, AppType::OpenClaw | AppType::ClaudeDesktop))
+            .collect()
+    }
+
+    /// 解析「重新同步」的目标应用：缺省或空列表＝全部受管应用；
+    /// 不认识或不支持 MCP 的应用直接报错，不静默跳过。
+    pub fn resync_targets(apps: Option<&[String]>) -> Result<Vec<AppType>, AppError> {
+        let managed = Self::live_sync_apps();
+        let Some(apps) = apps.filter(|apps| !apps.is_empty()) else {
+            return Ok(managed);
+        };
+        let mut targets = Vec::new();
+        for raw in apps {
+            let app = <AppType as std::str::FromStr>::from_str(raw)?;
+            if !managed.contains(&app) {
+                return Err(AppError::Message(format!(
+                    "{} 不支持由 FyAgent 管理 MCP",
+                    app.as_str()
+                )));
+            }
+            if !targets.contains(&app) {
+                targets.push(app);
+            }
+        }
+        Ok(targets)
+    }
+
+    /// 把数据库里的启用状态重新投影到一个应用的 live 配置，结果按应用报告。
+    /// 调用方负责先拿这个应用的切换锁。
+    pub fn resync_app(state: &AppState, app: &AppType) -> McpAppSyncOutcome {
+        match Self::sync_enabled_for_app_inner(state, app) {
+            Ok(()) => McpAppSyncOutcome {
+                app: app.as_str().to_string(),
+                ok: true,
+                error: None,
+            },
+            Err(err) => {
+                log::warn!("重新同步 MCP 到 {app:?} 失败: {err}");
+                McpAppSyncOutcome {
+                    app: app.as_str().to_string(),
+                    ok: false,
+                    error: Some(err.to_string()),
+                }
+            }
+        }
+    }
+
     /// 获取所有 MCP 服务器（统一结构）
     pub fn get_all_servers(state: &AppState) -> Result<IndexMap<String, McpServer>, AppError> {
         state.db.get_all_mcp_servers()
@@ -290,15 +350,30 @@ impl McpService {
         servers: &IndexMap<String, McpServer>,
         target: &McpTargetId,
     ) -> Result<(), AppError> {
+        let mut failures: IndexMap<String, Vec<&str>> = IndexMap::new();
         for server in servers.values() {
-            if server.apps.is_enabled_for_target(target) {
-                Self::sync_server_to_target(server, target)?;
+            let result = if server.apps.is_enabled_for_target(target) {
+                Self::sync_server_to_target(server, target)
             } else {
-                Self::remove_server_from_target(&server.id, target)?;
+                Self::remove_server_from_target(&server.id, target)
+            };
+            if let Err(error) = result {
+                failures
+                    .entry(error.to_string())
+                    .or_default()
+                    .push(&server.id);
             }
         }
-
-        Ok(())
+        if failures.is_empty() {
+            return Ok(());
+        }
+        Err(AppError::Message(
+            failures
+                .into_iter()
+                .map(|(error, ids)| format!("{}: {} ({error})", target.as_str(), ids.join(", ")))
+                .collect::<Vec<_>>()
+                .join("; "),
+        ))
     }
 
     // ========================================================================

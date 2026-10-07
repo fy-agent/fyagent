@@ -1,4 +1,5 @@
 mod auto_sync;
+pub(crate) mod backup_storage;
 pub(crate) mod balance;
 pub(crate) mod change_plan;
 pub(crate) mod codex_desktop;

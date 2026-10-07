@@ -550,31 +550,6 @@ impl SkillService {
         )
     }
 
-    fn paths_overlap(left: &Path, right: &Path) -> bool {
-        let overlaps = |left: &Path, right: &Path| {
-            left == right || left.starts_with(right) || right.starts_with(left)
-        };
-        if overlaps(left, right) {
-            return true;
-        }
-
-        if let (Ok(left), Ok(right)) = (left.canonicalize(), right.canonicalize()) {
-            if overlaps(&left, &right) {
-                return true;
-            }
-        }
-
-        // canonicalize() follows the final component and therefore fails for a
-        // dangling symlink. Resolve the parents separately so two applications
-        // cannot delete the same directory entry through aliased roots.
-        let canonical_entry =
-            |path: &Path| Some(path.parent()?.canonicalize().ok()?.join(path.file_name()?));
-        matches!(
-            (canonical_entry(left), canonical_entry(right)),
-            (Some(left), Some(right)) if overlaps(&left, &right)
-        )
-    }
-
     fn ensure_distinct_skill_roots(
         ssot_dir: &Path,
         app_dir: &Path,
@@ -1947,26 +1922,6 @@ impl SkillService {
     ) -> Result<()> {
         let ssot_dir = Self::get_ssot_dir()?;
         Self::get_distinct_app_skills_dir(&ssot_dir, app)?;
-        Ok(())
-    }
-
-    fn persist_and_sync_new_skill(
-        db: &Arc<Database>,
-        skill: &InstalledSkill,
-        app: &SkillTargetId,
-    ) -> Result<()> {
-        let source = Self::get_ssot_dir()?.join(&skill.directory);
-        Self::preflight_install_destination(&source, &skill.directory, app)?;
-        db.save_skill(skill)?;
-        if let Err(error) = Self::sync_to_app_dir(&skill.directory, app) {
-            if let Err(rollback_error) = db.delete_skill(&skill.id) {
-                log::error!(
-                    "Failed to roll back Skill {} after sync error: {rollback_error}",
-                    skill.id
-                );
-            }
-            return Err(error);
-        }
         Ok(())
     }
 

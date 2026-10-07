@@ -933,6 +933,8 @@ pub fn create_tray_menu(
 
     menu_builder = menu_builder.item(&lightweight_item).separator();
 
+    // 保持 app.exit(0) 的托盘退出流程：客户端指回直连、停服务。
+    // 系统 quit 只发 RunEvent::Exit，由 lib.rs 的 cleanup_before_system_exit 限时补做。
     // 退出菜单（分隔符已在上面的 section 循环中添加）
     let quit_item = MenuItem::with_id(app, "quit", tray_texts.quit, true, None::<&str>)
         .map_err(|e| AppError::Message(format!("创建退出菜单失败: {e}")))?;
@@ -1427,6 +1429,8 @@ mod tests {
             extra_usage: None,
             error: None,
             queried_at: Some(0),
+            credits_balance: None,
+            reset_credits: None,
         }
     }
 

@@ -20,9 +20,12 @@ mod gemini_mcp;
 mod grok_config;
 pub mod hermes_config;
 mod init_status;
+mod jsonc_document;
 mod lightweight;
+pub mod live;
 mod macos_system_commit;
 mod mcp;
+pub mod mode;
 mod model_capabilities;
 mod openclaw_config;
 mod opencode_config;
@@ -70,6 +73,7 @@ pub use mcp::{
 };
 pub use prompt::Prompt;
 pub use provider::{Provider, ProviderMeta};
+pub use services::provider::{EditorSave, EditorView};
 pub use services::{
     profile::{ProfilePayload, ProfileScope, ProfileService},
     provider::reapply_current_codex_official_live,
@@ -94,7 +98,7 @@ use std::{
     collections::VecDeque,
     fmt,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
     },
     time::Duration,
@@ -249,6 +253,22 @@ pub(crate) fn redact_url_origin_for_log(url_str: &str) -> String {
         }
         _ => "[invalid target]".to_string(),
     }
+}
+
+/// 给日志用的错误文本：去掉 TOML 解析诊断里引用的源码行（`1 | key = "..."` 和它上下的
+/// `|`、`^` 标注行）。那一行是用户配置原文，出错的可能正是密钥那一行；行列号和原因留着。
+pub(crate) fn error_for_log(error: &str) -> String {
+    error
+        .lines()
+        .filter(|line| {
+            !line
+                .trim_start()
+                .trim_start_matches(|c: char| c.is_ascii_digit())
+                .trim_start()
+                .starts_with('|')
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn runtime_log_level_allows(level: log::Level, max_level: log::LevelFilter) -> bool {
@@ -996,9 +1016,9 @@ pub fn run() {
         }));
 
     #[cfg(target_os = "windows")]
-    {
+    let builder = {
         let startup_page_handled = std::sync::atomic::AtomicBool::new(false);
-        builder = builder.on_page_load(move |webview, payload| {
+        builder.on_page_load(move |webview, payload| {
             if webview.label() == "main"
                 && payload.event() == tauri::webview::PageLoadEvent::Finished
                 && payload.url().scheme() != "about"
@@ -1008,8 +1028,8 @@ pub fn run() {
                 let _ = webview.window().show();
                 log::info!("主页面加载完成，主窗口已显示");
             }
-        });
-    }
+        })
+    };
 
     let builder = builder
         .on_page_load(|webview, payload| {
@@ -1299,6 +1319,7 @@ pub fn run() {
             }
 
             let app_state = AppState::new(db);
+            crate::mode::operation::recover_on_startup(&app_state.db);
 
             // 设置 AppHandle 用于代理故障转移时的 UI 更新
             app_state.proxy_service.set_app_handle(app.handle().clone());
@@ -1945,6 +1966,11 @@ pub fn run() {
                 // 检查 settings 表中的代理状态，自动恢复代理服务
                 restore_proxy_state_on_startup(&state).await;
 
+                // 启动恢复完成后再检查官方模型，避免首次检查撞上旧模式/接管状态。
+                services::provider::codex_official_models::start_background_checks(
+                    state.inner().clone(),
+                );
+
                 // Periodic backup check (on startup)
                 if let Err(e) = state.db.periodic_backup_if_needed() {
                     log::warn!("Periodic backup failed on startup: {e}");
@@ -2140,7 +2166,6 @@ pub fn run() {
             commands::set_claude_common_config_snippet,
             commands::get_common_config_snippet,
             commands::set_common_config_snippet,
-            commands::update_toml_common_config_snippet,
             commands::extract_common_config_snippet,
             commands::read_live_provider_settings,
             commands::get_settings,
@@ -2307,8 +2332,6 @@ pub fn run() {
             commands::update_global_proxy_config,
             commands::get_proxy_config_for_app,
             commands::update_proxy_config_for_app,
-            commands::get_default_cost_multiplier,
-            commands::set_default_cost_multiplier,
             commands::get_pricing_model_source,
             commands::set_pricing_model_source,
             commands::is_proxy_running,
@@ -2329,6 +2352,7 @@ pub fn run() {
             commands::set_auto_failover_enabled,
             // Usage statistics
             commands::get_usage_summary,
+            commands::get_session_usage_summary,
             commands::get_usage_summary_by_app,
             commands::get_usage_trends,
             commands::get_provider_stats,
@@ -2523,6 +2547,7 @@ pub fn run() {
                 // 自定义异步清理和 window-state 插件的退出钩子争用同一把锁。
                 ExitRequestAction::DeferToTauriRestart => {
                     log::info!("收到重启请求 (code={code:?})，交由 Tauri 默认重启流程处理");
+                    RESTART_REQUESTED.store(true, Ordering::SeqCst);
                     return;
                 }
                 // 其它 Some(_)：用户主动调用 app.exit() 退出（如托盘菜单"退出"）。
@@ -2624,6 +2649,15 @@ pub fn run() {
             };
             api.prevent_exit();
             start_claimed_exit_cleanup(app_handle.clone(), claim);
+            return;
+        }
+
+        // macOS ⌘Q、Dock「退出」、注销关机只发 Exit，回调返回后进程就结束。
+        // 重启交给 Tauri 默认流程；普通系统退出同步限时恢复直连并停止服务。
+        if matches!(event, RunEvent::Exit) {
+            if !RESTART_REQUESTED.load(Ordering::SeqCst) {
+                cleanup_before_system_exit(app_handle);
+            }
             return;
         }
 
@@ -2933,6 +2967,28 @@ pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
             }
             log::info!("代理服务器清理完成");
         }
+    }
+}
+
+/// 系统退出的清理上限：停代理已有 5 秒超时，另留配置恢复时间。
+const SYSTEM_EXIT_CLEANUP_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// 系统终止没有 ExitRequested 可拦截，在异步运行时执行清理，主线程限时等待。
+/// 避免清理中需要主线程的步骤把退出卡住。
+fn cleanup_before_system_exit(app_handle: &tauri::AppHandle) {
+    log::info!("系统终止应用，开始退出清理...");
+    let handle = app_handle.clone();
+    let task = tauri::async_runtime::spawn(async move { cleanup_before_exit(&handle).await });
+    let finished = tauri::async_runtime::block_on(async move {
+        tokio::time::timeout(SYSTEM_EXIT_CLEANUP_TIMEOUT, task).await
+    });
+    match finished {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => log::error!("系统退出清理任务失败: {error}"),
+        Err(_) => log::warn!(
+            "退出清理 {} 秒内没做完，直接退出",
+            SYSTEM_EXIT_CLEANUP_TIMEOUT.as_secs()
+        ),
     }
 }
 
@@ -3364,6 +3420,9 @@ enum ExitRequestAction {
     /// 其它 `Some(_)`：用户主动退出（托盘「退出」等），执行完整异步清理后结束进程。
     CleanupAndExit,
 }
+
+/// 重启也会收到 RunEvent::Exit；保留 Tauri 默认重启路径，不重复清理。
+static RESTART_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 fn classify_exit_request(code: Option<i32>) -> ExitRequestAction {
     match code {
@@ -3862,6 +3921,46 @@ mod tests {
         assert_eq!(
             classify_exit_request(Some(1)),
             ExitRequestAction::CleanupAndExit
+        );
+    }
+
+    #[test]
+    fn system_exit_cleanup_is_bounded_and_skips_tauri_restart() {
+        let source = include_str!("lib.rs");
+        let callback = source
+            .split("app.run(|app_handle, event| {")
+            .nth(1)
+            .unwrap();
+        let system_exit = callback
+            .split("if matches!(event, RunEvent::Exit) {")
+            .nth(1)
+            .unwrap()
+            .split("#[cfg(target_os = \"macos\")]")
+            .next()
+            .unwrap();
+        assert!(system_exit.contains("!RESTART_REQUESTED.load(Ordering::SeqCst)"));
+        assert!(system_exit.contains("cleanup_before_system_exit(app_handle)"));
+        let restart = callback
+            .split("ExitRequestAction::DeferToTauriRestart => {")
+            .nth(1)
+            .unwrap()
+            .split("ExitRequestAction::CleanupAndExit")
+            .next()
+            .unwrap();
+        assert!(restart.contains("RESTART_REQUESTED.store(true, Ordering::SeqCst)"));
+        assert!(!restart.contains("cleanup_before_exit("));
+        let cleanup = source
+            .split("fn cleanup_before_system_exit(app_handle:")
+            .nth(1)
+            .unwrap()
+            .split("/// 主动从系统托盘")
+            .next()
+            .unwrap();
+        assert!(cleanup.contains("spawn(async move { cleanup_before_exit(&handle).await })"));
+        assert!(cleanup.contains("tokio::time::timeout(SYSTEM_EXIT_CLEANUP_TIMEOUT, task).await"));
+        assert_eq!(
+            super::SYSTEM_EXIT_CLEANUP_TIMEOUT,
+            std::time::Duration::from_secs(8)
         );
     }
 

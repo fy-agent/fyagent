@@ -261,27 +261,19 @@ pub fn provider_needs_responses_namespace_flatten(provider: &Provider) -> bool {
         .is_some_and(|url| url.host_str() == Some("api.x.ai"))
 }
 
-/// True when this Codex provider talks native Responses to first-party xAI
-/// (`api.x.ai`), including API-key Grok cards that are not `xai_oauth`.
-fn provider_is_xai_native_responses(provider: &Provider) -> bool {
-    let config_text = provider
-        .settings_config
-        .get("config")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
-    let Some(wire_api) = extract_codex_wire_api_from_toml(config_text) else {
-        return false;
-    };
-    if !wire_api.eq_ignore_ascii_case("responses") {
-        return false;
-    }
-
-    extract_codex_base_url_from_toml(config_text)
-        .map(|url| url.to_ascii_lowercase())
-        .is_some_and(|url| url.contains("api.x.ai"))
+/// 原生 Responses 透传的响应要不要补迟到的函数调用参数（见 `responses_late_arguments`）：
+/// 官方以外的上游都补。触发条件是协议违规本身（结束事件参数为空、增量排在后面，实测
+/// MiniMax），不按厂商名：转发 MiniMax 原生流的中转站同样会带过来。顺序正常的流原样放行。
+///
+/// 只在转 Chat / 转 Anthropic / xAI 改写之外的原生透传分支里调用。
+pub fn provider_needs_responses_late_arguments_repair(provider: &Provider) -> bool {
+    !is_codex_official_provider(provider)
 }
 
+/// Codex Official ChatGPT cards receive authentication from the calling Codex
+/// client (`requires_openai_auth = true`). Unbound cards with a stored API key
+/// stay on the direct OpenAI API path instead of being sent to the ChatGPT
+/// backend. The fixed legacy card keeps its existing behavior.
 fn has_explicit_codex_third_party_upstream(provider: &Provider) -> bool {
     let non_empty_setting = |key: &str| {
         provider
@@ -324,15 +316,55 @@ fn has_explicit_codex_third_party_upstream(provider: &Provider) -> bool {
             .is_some_and(|provider_id| provider_id != "openai")
 }
 
-/// Codex Official ChatGPT cards receive authentication from the calling Codex
-/// client (`requires_openai_auth = true`). Unbound cards with a stored API key
-/// stay on the direct OpenAI API path instead of being sent to the ChatGPT
-/// backend. The fixed legacy card keeps its existing behavior.
 pub fn is_codex_official_provider(provider: &Provider) -> bool {
-    provider.id == crate::database::CODEX_OFFICIAL_PROVIDER_ID
-        && provider.category.as_deref() == Some("official")
-        && !provider.is_xai_oauth()
-        && !provider.is_codex_oauth()
+    // Explicit subscription routes use FyAgent's bound-account token resolver,
+    // even if editable native-route metadata has been cleared or contradicted.
+    if provider.uses_subscription_proxy()
+        || provider.id == crate::database::GROKBUILD_OFFICIAL_PROVIDER_ID
+    {
+        return false;
+    }
+    let is_fixed_official_id = provider.id == crate::database::CODEX_OFFICIAL_PROVIDER_ID;
+    if is_fixed_official_id && provider.category.as_deref() == Some("official") {
+        return true;
+    }
+
+    let has_auth_object = provider
+        .settings_config
+        .get("auth")
+        .is_some_and(JsonValue::is_object);
+    let has_valid_config_shape = provider
+        .settings_config
+        .get("config")
+        .is_none_or(|config| config.is_null() || config.is_string());
+    if !has_auth_object || !has_valid_config_shape {
+        return false;
+    }
+
+    if has_explicit_codex_third_party_upstream(provider) {
+        return false;
+    }
+
+    let has_managed_account = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.managed_account_id_for("codex_oauth"))
+        .is_some_and(|account_id| !account_id.trim().is_empty());
+    if has_managed_account {
+        return true;
+    }
+
+    let has_stored_api_key = provider
+        .settings_config
+        .get("auth")
+        .and_then(|auth| auth.get("OPENAI_API_KEY"))
+        .and_then(JsonValue::as_str)
+        .is_some_and(|key| !key.trim().is_empty());
+    if has_stored_api_key {
+        return false;
+    }
+
+    is_fixed_official_id || provider.category.as_deref() == Some("official")
 }
 
 /// Resolve the model-catalog tool profile for a Codex provider using the SAME
@@ -510,6 +542,60 @@ pub fn apply_codex_upstream_model(provider: &Provider, body: &mut JsonValue) -> 
     let upstream_model = codex_provider_upstream_model(provider)?;
     body["model"] = JsonValue::String(upstream_model.clone());
     Some(upstream_model)
+}
+
+/// Stack 请求的上游拒收 Codex 的托管 `web_search`：按这家的地址和模型品牌判断，和它做
+/// 路由时写 `web_search = "disabled"` 的依据相同（归一化后的配置，旧形态的行也认得出
+/// 地址）；另看这次请求的模型：行里配了多个模型时，选中的不一定是行的 `model`。
+pub fn codex_stack_upstream_rejects_web_search(
+    provider: &Provider,
+    request_model: Option<&str>,
+) -> bool {
+    let projected =
+        crate::live::project::codex::CodexProjection::of(&crate::live::project::codex::RowInput {
+            settings: &provider.settings_config,
+            official: false,
+            proxy_injected_oauth: provider.uses_proxy_injected_oauth(),
+        })
+        .map(|projection| projection.catalog_input_text());
+    let config_text = match &projected {
+        Ok(text) => text.as_str(),
+        Err(_) => provider
+            .settings_config
+            .get("config")
+            .and_then(|value| value.as_str())
+            .unwrap_or(""),
+    };
+    crate::codex_config::codex_native_gateway_rejects_web_search(config_text)
+        || request_model.is_some_and(crate::codex_config::codex_model_rejects_web_search)
+}
+
+/// 去掉 Responses 请求里托管的 `web_search` 工具：`tools` 去完为空时整个键删掉；指向它
+/// 的 `tool_choice` 一并删掉，`tools` 整个没了时 `tool_choice` 也删（上游对没有工具的
+/// `tool_choice` 报 400）。其余字段不动。返回是否改了请求。
+pub fn strip_codex_hosted_web_search(body: &mut JsonValue) -> bool {
+    let Some(obj) = body.as_object_mut() else {
+        return false;
+    };
+    let is_web_search =
+        |tool: &JsonValue| tool.get("type").and_then(|value| value.as_str()) == Some("web_search");
+    let mut changed = false;
+    let mut tools_gone = false;
+    if let Some(JsonValue::Array(tools)) = obj.get_mut("tools") {
+        let before = tools.len();
+        tools.retain(|tool| !is_web_search(tool));
+        changed = tools.len() != before;
+        tools_gone = changed && tools.is_empty();
+    }
+    if tools_gone {
+        obj.remove("tools");
+    }
+    let choice_is_web_search = obj.get("tool_choice").is_some_and(is_web_search);
+    if choice_is_web_search || (tools_gone && obj.contains_key("tool_choice")) {
+        obj.remove("tool_choice");
+        changed = true;
+    }
+    changed
 }
 
 pub fn resolve_codex_chat_reasoning_config(
@@ -872,14 +958,6 @@ impl CodexAdapter {
         Self
     }
 
-    /// 检测是否为官方 Codex 客户端
-    ///
-    /// 匹配 User-Agent 模式: `^(codex_vscode|codex_cli_rs)/[\d.]+`
-    #[allow(dead_code)]
-    pub fn is_official_client(user_agent: &str) -> bool {
-        CODEX_CLIENT_REGEX.is_match(user_agent)
-    }
-
     /// 从 Provider 配置中提取 API Key
     fn extract_key(&self, provider: &Provider) -> Option<String> {
         // 1. 尝试从 env 中获取
@@ -1012,6 +1090,9 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<AuthInfo> {
+        if is_codex_official_provider(provider) {
+            return None;
+        }
         if provider.is_codex_oauth() {
             return Some(AuthInfo::new(
                 "codex_oauth_placeholder".into(),
@@ -1198,14 +1279,17 @@ context_window = 500000
         });
         let adapter = CodexAdapter::new();
 
-        assert!(is_codex_official_provider(&provider));
+        assert!(!is_codex_official_provider(&provider));
         assert_eq!(
             adapter
                 .extract_base_url(&provider)
                 .expect("official base url"),
             "https://chatgpt.com/backend-api/codex"
         );
-        assert!(adapter.extract_auth(&provider).is_none());
+        assert_eq!(
+            adapter.extract_auth(&provider).unwrap().strategy,
+            AuthStrategy::CodexOAuth
+        );
         assert_eq!(
             adapter.build_url(
                 "https://chatgpt.com/backend-api/codex",
@@ -1255,12 +1339,19 @@ context_window = 500000
         let mut managed_with_null_config = provider.clone();
         managed_with_null_config.category = None;
         managed_with_null_config.settings_config["config"] = JsonValue::Null;
-        assert!(is_codex_official_provider(&managed_with_null_config));
+        assert!(!is_codex_official_provider(&managed_with_null_config));
+        assert_eq!(
+            adapter
+                .extract_auth(&managed_with_null_config)
+                .unwrap()
+                .strategy,
+            AuthStrategy::CodexOAuth
+        );
 
         let mut unified_session = create_provider(json!({
             "auth": {},
-            "config": crate::codex_config::inject_codex_unified_session_bucket("")
-                .expect("inject unified session route")
+            // 旧版「统一会话历史」注入进 live、又被回填进行里的形态。
+            "config": "model_provider = \"custom\"\n\n[model_providers.custom]\nname = \"OpenAI\"\nrequires_openai_auth = true\nsupports_websockets = true\nwire_api = \"responses\"\n"
         }));
         unified_session.category = Some("official".to_string());
         assert!(is_codex_official_provider(&unified_session));
@@ -1276,6 +1367,44 @@ context_window = 500000
         grok_official.id = crate::database::GROKBUILD_OFFICIAL_PROVIDER_ID.to_string();
         grok_official.category = Some("official".to_string());
         assert!(!is_codex_official_provider(&grok_official));
+    }
+
+    #[test]
+    fn subscription_codex_routes_never_become_native_auth_passthrough() {
+        let adapter = CodexAdapter::new();
+        let mut provider = create_provider(json!({ "auth": {}, "config": "" }));
+        provider.meta = Some(crate::provider::ProviderMeta {
+            provider_type: Some("codex_oauth".to_string()),
+            auth_binding: Some(crate::provider::AuthBinding {
+                source: crate::provider::AuthBindingSource::ManagedAccount,
+                auth_provider: Some("codex_oauth".to_string()),
+                account_id: Some("bound-account".to_string()),
+            }),
+            ..Default::default()
+        });
+
+        for id in [
+            "fyagent-openai-codex-test",
+            crate::database::CODEX_OFFICIAL_PROVIDER_ID,
+        ] {
+            provider.id = id.to_string();
+            for category in [None, Some("third_party"), Some("official")] {
+                provider.category = category.map(str::to_string);
+                for config in [
+                    JsonValue::Null,
+                    json!(""),
+                    json!("model_provider = \"openai\"\n"),
+                ] {
+                    provider.settings_config["config"] = config;
+                    assert!(!is_codex_official_provider(&provider));
+                    let auth = adapter
+                        .extract_auth(&provider)
+                        .expect("bound subscription auth");
+                    assert_eq!(auth.strategy, AuthStrategy::CodexOAuth);
+                    assert_eq!(auth.api_key, "codex_oauth_placeholder");
+                }
+            }
+        }
     }
 
     #[test]
@@ -1779,38 +1908,6 @@ wire_api = "anthropic"
         // base_url 已包含 /v1，endpoint 也包含 /v1
         let url = adapter.build_url("https://www.packyapi.com/v1", "/v1/responses");
         assert_eq!(url, "https://www.packyapi.com/v1/responses");
-    }
-
-    // 官方客户端检测测试
-    #[test]
-    fn test_is_official_client_vscode() {
-        assert!(CodexAdapter::is_official_client("codex_vscode/1.0.0"));
-        assert!(CodexAdapter::is_official_client("codex_vscode/2.3.4"));
-        assert!(CodexAdapter::is_official_client("codex_vscode/0.1"));
-    }
-
-    #[test]
-    fn test_is_official_client_cli() {
-        assert!(CodexAdapter::is_official_client("codex_cli_rs/1.0.0"));
-        assert!(CodexAdapter::is_official_client("codex_cli_rs/0.5.2"));
-    }
-
-    #[test]
-    fn test_is_not_official_client() {
-        assert!(!CodexAdapter::is_official_client("Mozilla/5.0"));
-        assert!(!CodexAdapter::is_official_client("curl/7.68.0"));
-        assert!(!CodexAdapter::is_official_client("python-requests/2.25.1"));
-        assert!(!CodexAdapter::is_official_client("codex_other/1.0.0"));
-        assert!(!CodexAdapter::is_official_client(""));
-    }
-
-    #[test]
-    fn test_is_official_client_partial_match() {
-        // 必须从开头匹配
-        assert!(!CodexAdapter::is_official_client("some codex_vscode/1.0.0"));
-        assert!(!CodexAdapter::is_official_client(
-            "prefix_codex_cli_rs/1.0.0"
-        ));
     }
 
     #[test]

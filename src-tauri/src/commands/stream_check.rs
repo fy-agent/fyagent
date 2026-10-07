@@ -23,7 +23,6 @@ pub async fn stream_check_provider(
     provider_id: String,
 ) -> Result<StreamCheckResult, AppError> {
     let config = state.db.get_stream_check_config()?;
-
     let providers = state.db.get_all_providers(app_type.as_str())?;
     let provider = providers
         .get(&provider_id)

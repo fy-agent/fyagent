@@ -8,6 +8,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::time::Instant;
 
+use super::sync_protocol::should_trigger_auto_sync_for_table as should_trigger;
 use crate::error::AppError;
 
 const DEBOUNCE: Duration = Duration::from_secs(1);
@@ -85,20 +86,6 @@ impl Drop for SuppressionGuard<'_> {
     }
 }
 
-fn should_trigger(table: &str) -> bool {
-    matches!(
-        table.trim().to_ascii_lowercase().as_str(),
-        "providers"
-            | "provider_endpoints"
-            | "mcp_servers"
-            | "prompts"
-            | "skills"
-            | "skill_repos"
-            | "settings"
-            | "proxy_config"
-    )
-}
-
 async fn next_batch(receiver: &mut Receiver<String>) -> Option<(String, usize)> {
     let first = receiver.recv().await?;
     let deadline = Instant::now() + MAX_WAIT;
@@ -164,6 +151,7 @@ mod tests {
             "prompts",
             "skills",
             "skill_repos",
+            "profiles",
             "settings",
             "proxy_config",
             " PROVIDERS ",

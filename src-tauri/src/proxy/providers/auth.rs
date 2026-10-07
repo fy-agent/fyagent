@@ -4,8 +4,7 @@
 
 // Preserve the existing paired compatibility identity for the ChatGPT Codex
 // backend across every consuming Agent (not only the Claude adapter).
-const CODEX_OAUTH_ORIGINATOR: &str = "codex_cli_rs";
-const CODEX_OAUTH_CLIENT_VERSION: &str = "0.144.1";
+use super::codex_oauth_auth::{CODEX_OAUTH_CLIENT_VERSION, CODEX_OAUTH_ORIGINATOR};
 
 pub(super) fn codex_oauth_headers(
     token: &str,

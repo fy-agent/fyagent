@@ -71,10 +71,10 @@ async fn send_bounded(
 }
 
 // Shared by model discovery and generation: ChatGPT gates models by this
-// client identity. gpt-6-astra requires >= 0.153.0 in the rust-v0.153.4 catalog.
-// Bump together when a new model raises its minimal_client_version.
+// client identity. GPT-6.1 Sol enters the ChatGPT-account catalog at 0.159.0.
+// Bump together when a new model raises its minimal_client_version or catalog gate.
 pub(crate) const CODEX_OAUTH_ORIGINATOR: &str = "codex_cli_rs";
-pub(crate) const CODEX_OAUTH_CLIENT_VERSION: &str = "0.153.4";
+pub(crate) const CODEX_OAUTH_CLIENT_VERSION: &str = "0.159.0";
 
 /// Codex OAuth 错误
 #[derive(Debug, thiserror::Error)]
@@ -200,10 +200,6 @@ struct CachedAccessToken {
     token: String,
     /// 过期时间戳（毫秒）
     expires_at_ms: i64,
-    /// 获取（刷新）时间戳（毫秒）。用于写入托管 auth.json 的 `last_refresh`，
-    /// 使其如实反映 access_token 的真实获取时间，而非写盘时刻——否则 Codex CLI
-    /// 会误判一个旧 token 是刚刷新的。
-    obtained_at_ms: i64,
 }
 
 impl CachedAccessToken {
@@ -239,39 +235,6 @@ enum RefreshTokenAdoptionOutcome {
     Ambiguous,
     /// The account is not owned by this manager.
     NotManaged,
-}
-
-/// Keep a deleted account distinct from an existing account with no managed live token.
-pub(crate) enum CodexLiveAuthSwitchGuard {
-    ExistingAccount(Option<String>),
-    MissingAccount,
-}
-
-impl CodexLiveAuthSwitchGuard {
-    pub(crate) fn ensure_unchanged(&self, account_id: &str) -> Result<(), crate::error::AppError> {
-        if let Self::ExistingAccount(Some(token)) = self {
-            crate::codex_config::ensure_codex_live_auth_unchanged_for_managed_account(
-                account_id, token,
-            )?;
-        }
-        Ok(())
-    }
-
-    pub(crate) fn clear_outgoing(&self, account_id: &str) -> Result<(), crate::error::AppError> {
-        match self {
-            Self::ExistingAccount(token) => {
-                crate::codex_config::clear_codex_live_auth_for_managed_account_if_unchanged(
-                    account_id,
-                    token.as_deref(),
-                )
-            }
-            Self::MissingAccount => {
-                crate::codex_config::clear_codex_managed_oauth_live_auth_marker_for_account(
-                    account_id,
-                )
-            }
-        }
-    }
 }
 
 impl RefreshTokenAdoptionOutcome {
@@ -415,13 +378,8 @@ struct LegacyCodexOAuthStore {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ManagedTokenBundle {
-    pub chatgpt_account_id: String,
     pub access_token: String,
     pub id_token: Option<String>,
-    pub refresh_token: String,
-    /// access_token 的真实获取时间，RFC3339 纳秒精度 + `Z`（与原生 auth.json 的
-    /// `last_refresh` 形状一致）。反映 token 何时真正刷新，而非写盘时刻。
-    pub last_refresh: String,
 }
 
 /// Codex OAuth 认证管理器（多账号）
@@ -658,7 +616,6 @@ impl CodexOAuthManager {
             ));
         }
 
-        let obtained_at_ms = chrono::Utc::now().timestamp_millis();
         // Provider switching and managed live-auth writes use the same guard.
         // Acquire it only after the network exchange succeeds so ordinary
         // authorization-pending polls never block provider operations.
@@ -674,7 +631,6 @@ impl CodexOAuthManager {
                 Some(CachedAccessToken {
                     token: tokens.access_token.clone(),
                     expires_at_ms: compute_expires_at_ms(tokens.expires_in),
-                    obtained_at_ms,
                 }),
                 AccountLoginContext {
                     target_account_id: entry.target_account_id.as_deref(),
@@ -746,9 +702,9 @@ impl CodexOAuthManager {
             .is_none()
             || account.chatgpt_account_id.trim().is_empty()
         {
-            return Err(CodexOAuthError::ParseError(format!(
-                "当前账号缺少 id_token 中可证明的用户身份或 workspace，请重新认证"
-            )));
+            return Err(CodexOAuthError::ParseError(
+                "当前账号缺少 id_token 中可证明的用户身份或 workspace，请重新认证".to_string(),
+            ));
         }
         Ok(())
     }
@@ -765,7 +721,9 @@ impl CodexOAuthManager {
             let workspace = Some(account.chatgpt_account_id.clone())
                 .filter(|id| !id.trim().is_empty())
                 .ok_or_else(|| {
-                    CodexOAuthError::ParseError(format!("当前账号缺少 workspace 身份，请重新认证"))
+                    CodexOAuthError::ParseError(
+                        "当前账号缺少 workspace 身份，请重新认证".to_string(),
+                    )
                 })?;
             (account.id_token.clone(), workspace)
         };
@@ -780,9 +738,9 @@ impl CodexOAuthManager {
         };
 
         if managed_workspace != live_refresh.chatgpt_account_id {
-            return Err(CodexOAuthError::TokenFetchFailed(format!(
-                "Codex OAuth 账号的 workspace 与磁盘凭据不一致，本次操作已取消"
-            )));
+            return Err(CodexOAuthError::TokenFetchFailed(
+                "Codex OAuth 账号的 workspace 与磁盘凭据不一致，本次操作已取消".to_string(),
+            ));
         }
         Ok(Some((
             live_refresh.refresh_token,
@@ -791,10 +749,8 @@ impl CodexOAuthManager {
         )))
     }
 
-    /// 解析账号的有效缓存 token（含真实获取时间），必要时刷新。
-    ///
-    /// 返回完整 `CachedAccessToken`，使 token 与其 `obtained_at_ms` 天然配套（写托管
-    /// auth.json 的 `last_refresh` 直接取用），避免分两次读缓存造成的错配。
+    /// 解析账号的有效缓存 token 与过期时间，必要时刷新。
+    /// 账号代际时间仍由 account store 保管，缓存不承担原生登录写入。
     ///
     /// 并发正确性：调用方持 lifecycle 读锁；刷新在 account refresh mutex 下先短暂
     /// 提交 accounts → access_tokens，释放这些锁后再持久化。`save_to_disk` 的实际
@@ -957,7 +913,6 @@ impl CodexOAuthManager {
         let cached = CachedAccessToken {
             token: new_tokens.access_token.clone(),
             expires_at_ms: compute_expires_at_ms(new_tokens.expires_in),
-            obtained_at_ms,
         };
 
         let last_refresh = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(obtained_at_ms)
@@ -1007,12 +962,8 @@ impl CodexOAuthManager {
         Ok((bundle.access_token, bundle.id_token))
     }
 
-    /// 获取写入托管 Codex `auth.json` 所需的完整可刷新 token 束
-    /// （access_token + id_token + refresh_token）。
-    ///
-    /// 与仅返回 access_token 不同：写入 Codex CLI 的 auth.json 必须携带
-    /// refresh_token，否则 CLI 在 access_token 过期后无法自刷新（详见托管直连
-    /// 场景 “裸跑 codex”）。
+    /// 在同一账号代际锁内取得代理使用的 access_token 和 id_token。
+    /// refresh token 留在账号存储中；原生账号投影由 Managed Auth 负责。
     pub(crate) async fn get_valid_token_bundle_for_account(
         &self,
         account_id: &str,
@@ -1029,8 +980,8 @@ impl CodexOAuthManager {
             .resolve_valid_cached_token_under_lock(account_id)
             .await?;
 
-        // A managed bundle is about to overwrite auth.json. Re-read under the
-        // same manager generation lock after token resolution so an ambiguous
+        // Re-read native auth under the same manager generation lock after
+        // token resolution so an ambiguous
         // same-account disk generation can never be hidden by a valid cached
         // access token. Keeping this check after resolution also preserves the
         // RefreshTokenInvalid recovery path: the server may disprove manager R0,
@@ -1055,42 +1006,28 @@ impl CodexOAuthManager {
                     return Err(Self::ambiguous_live_refresh_error(account_id));
                 }
                 RefreshTokenAdoptionOutcome::Adopted => {
-                    return Err(CodexOAuthError::TokenFetchFailed(format!(
-                        "Codex CLI 账号的磁盘凭据在准备写入期间已刷新；为避免写入混合 token bundle，本次操作已取消，请重试"
-                    )));
+                    return Err(CodexOAuthError::TokenFetchFailed("Codex CLI 账号的磁盘凭据在准备写入期间已刷新；为避免写入混合 token bundle，本次操作已取消，请重试".to_string()));
                 }
                 RefreshTokenAdoptionOutcome::NotManaged => {
                     return Err(CodexOAuthError::AccountNotFound(account_id.to_string()));
                 }
             }
         }
-        let last_refresh =
-            chrono::DateTime::<chrono::Utc>::from_timestamp_millis(cached.obtained_at_ms)
-                .unwrap_or_else(chrono::Utc::now)
-                .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
-        let (chatgpt_account_id, id_token, refresh_token) = {
+        let id_token = {
             let accounts = self.accounts.read().await;
             let account = accounts
                 .get(account_id)
                 .ok_or_else(|| CodexOAuthError::AccountNotFound(account_id.to_string()))?;
-            (
-                Some(account.chatgpt_account_id.clone())
-                    .filter(|id| !id.trim().is_empty())
-                    .ok_or_else(|| {
-                        CodexOAuthError::ParseError(
-                            "账号缺少 chatgpt_account_id，请重新认证".to_string(),
-                        )
-                    })?,
-                account.id_token.clone(),
-                account.refresh_token.clone(),
-            )
+            if account.chatgpt_account_id.trim().is_empty() {
+                return Err(CodexOAuthError::ParseError(
+                    "账号缺少 chatgpt_account_id，请重新认证".to_string(),
+                ));
+            }
+            account.id_token.clone()
         };
         Ok(ManagedTokenBundle {
-            chatgpt_account_id,
             access_token: cached.token,
             id_token,
-            refresh_token,
-            last_refresh,
         })
     }
 
@@ -1133,56 +1070,6 @@ impl CodexOAuthManager {
             "Codex CLI 账号的磁盘凭据已变化，但无法安全判断 refresh token 新旧；为避免覆盖或删除有效登录，本次操作已取消。请先在认证中心重新登录该账号；若仍失败，请移除后重新登录"
                 .to_string(),
         )
-    }
-
-    /// Reconcile the same-account Codex CLI refresh generation before a
-    /// provider transaction overwrites or removes live auth.json.
-    ///
-    /// For an existing account, carries the refresh token observed on disk.
-    /// Callers compare it immediately before their live write/delete; the external Codex
-    /// CLI does not participate in cc-switch's switch lock and may refresh in
-    /// the adopt-to-write window.
-    pub(crate) async fn prepare_live_auth_for_account_switch_away(
-        &self,
-        account_id: &str,
-    ) -> Result<CodexLiveAuthSwitchGuard, CodexOAuthError> {
-        let _lifecycle = self.lifecycle_lock.read().await;
-        let refresh_lock = self.get_refresh_lock(account_id).await;
-        let _guard = refresh_lock.lock().await;
-        if !self.accounts.read().await.contains_key(account_id) {
-            self.ensure_account_absent_from_store(account_id).await?;
-            return Ok(CodexLiveAuthSwitchGuard::MissingAccount);
-        }
-        let Some((live_refresh, live_id_token, live_last_refresh_ms)) = self
-            .read_managed_live_auth_refresh_for_account(account_id)
-            .await?
-        else {
-            return Ok(CodexLiveAuthSwitchGuard::ExistingAccount(None));
-        };
-
-        let outcome = self
-            .adopt_account_refresh_token_under_lock(
-                account_id,
-                live_refresh.clone(),
-                live_id_token,
-                live_last_refresh_ms,
-                RefreshTokenAdoptionMode::TimestampChecked,
-            )
-            .await?;
-
-        match outcome {
-            RefreshTokenAdoptionOutcome::Synchronized { .. }
-            | RefreshTokenAdoptionOutcome::Adopted
-            | RefreshTokenAdoptionOutcome::ProvablyOlder => Ok(
-                CodexLiveAuthSwitchGuard::ExistingAccount(Some(live_refresh)),
-            ),
-            RefreshTokenAdoptionOutcome::Ambiguous => {
-                Err(Self::ambiguous_live_refresh_error(account_id))
-            }
-            RefreshTokenAdoptionOutcome::NotManaged => {
-                Err(CodexOAuthError::AccountNotFound(account_id.to_string()))
-            }
-        }
     }
 
     /// Same as `adopt_account_refresh_token`, for callers already holding the
@@ -1560,7 +1447,6 @@ impl CodexOAuthManager {
                 CachedAccessToken {
                     token: access_token.to_string(),
                     expires_at_ms: obtained_at_ms + 3_600_000,
-                    obtained_at_ms,
                 },
             );
         }
@@ -1576,40 +1462,12 @@ impl CodexOAuthManager {
     }
 
     #[cfg(test)]
-    pub(crate) async fn test_cache_access_token(&self, account_id: &str, token: &str) {
-        assert!(self.accounts.read().await.contains_key(account_id));
-        let now = chrono::Utc::now().timestamp_millis();
-        self.access_tokens.write().await.insert(
-            account_id.to_string(),
-            CachedAccessToken {
-                token: token.to_string(),
-                expires_at_ms: now + 3_600_000,
-                obtained_at_ms: now,
-            },
-        );
-    }
-
-    #[cfg(test)]
     pub(crate) async fn test_refresh_token_for_account(&self, account_id: &str) -> Option<String> {
         self.accounts
             .read()
             .await
             .get(account_id)
             .map(|account| account.refresh_token.clone())
-    }
-
-    #[cfg(test)]
-    pub(crate) async fn test_set_token_updated_at_ms(
-        &self,
-        account_id: &str,
-        token_updated_at_ms: i64,
-    ) {
-        self.accounts
-            .write()
-            .await
-            .get_mut(account_id)
-            .expect("test account present")
-            .token_updated_at_ms = token_updated_at_ms;
     }
 
     // ==================== 内部方法 ====================
@@ -1651,9 +1509,9 @@ impl CodexOAuthManager {
                 .ok_or_else(|| CodexOAuthError::AccountNotFound(account_id.clone()))?;
             let expected_workspace = existing.chatgpt_account_id.as_str();
             if expected_workspace != chatgpt_account_id {
-                return Err(CodexOAuthError::TokenFetchFailed(format!(
-                    "重新登录的 ChatGPT workspace 与当前账号 不一致"
-                )));
+                return Err(CodexOAuthError::TokenFetchFailed(
+                    "重新登录的 ChatGPT workspace 与当前账号 不一致".to_string(),
+                ));
             }
 
             let new_id_token = id_token.as_deref().ok_or_else(|| {
@@ -1669,9 +1527,9 @@ impl CodexOAuthManager {
             let user_identity_matches = match existing_subject.as_deref() {
                 Some(existing) if new_subject.as_deref() == Some(existing) => true,
                 Some(_) => {
-                    return Err(CodexOAuthError::TokenFetchFailed(format!(
-                        "重新登录的 ChatGPT 用户与当前账号 不一致"
-                    )));
+                    return Err(CodexOAuthError::TokenFetchFailed(
+                        "重新登录的 ChatGPT 用户与当前账号 不一致".to_string(),
+                    ));
                 }
                 None => {
                     let existing_email = existing
@@ -1690,9 +1548,9 @@ impl CodexOAuthManager {
                 }
             };
             if !user_identity_matches {
-                return Err(CodexOAuthError::TokenFetchFailed(format!(
-                    "无法确认重新登录的 ChatGPT 用户属于当前账号，原账号保持不变"
-                )));
+                return Err(CodexOAuthError::TokenFetchFailed(
+                    "无法确认重新登录的 ChatGPT 用户属于当前账号，原账号保持不变".to_string(),
+                ));
             }
         }
 
@@ -1816,7 +1674,6 @@ impl CodexOAuthManager {
             Some(CachedAccessToken {
                 token: access_token,
                 expires_at_ms: compute_expires_at_ms(expires_in),
-                obtained_at_ms: chrono::Utc::now().timestamp_millis(),
             }),
             AccountLoginContext::default(),
         )
@@ -2227,19 +2084,6 @@ fn compute_expires_at_ms(expires_in: Option<i64>) -> i64 {
     now_ms + secs * 1000
 }
 
-fn extract_refresh_error_code(body: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(body).ok()?;
-    value
-        .get("error")
-        .and_then(|error| match error {
-            serde_json::Value::Object(object) => object.get("code").and_then(|code| code.as_str()),
-            serde_json::Value::String(code) => Some(code.as_str()),
-            _ => None,
-        })
-        .or_else(|| value.get("code").and_then(|code| code.as_str()))
-        .map(|code| code.to_ascii_lowercase())
-}
-
 /// 解析 JWT 中的 claims
 fn parse_jwt_claims(token: &str) -> Option<IdTokenClaims> {
     let parts: Vec<&str> = token.split('.').collect();
@@ -2292,56 +2136,6 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
 
-    #[tokio::test]
-    async fn missing_account_recovery_requires_valid_persisted_state() {
-        let temp = tempfile::tempdir().unwrap();
-        let manager = CodexOAuthManager::new(temp.path().to_path_buf());
-        for content in [
-            "{broken",
-            "{}",
-            r#"{"version":2}"#,
-            r#"{"version":3,"accounts":{}}"#,
-        ] {
-            fs::write(&manager.storage_path, content).unwrap();
-            assert!(manager
-                .prepare_live_auth_for_account_switch_away("missing")
-                .await
-                .is_err());
-            assert!(!matches!(
-                manager.ensure_account_exists("missing").await,
-                Err(CodexOAuthError::AccountUnavailable(_))
-            ));
-        }
-        fs::write(&manager.storage_path, r#"{"version":2,"accounts":{}}"#).unwrap();
-        assert!(matches!(
-            manager
-                .prepare_live_auth_for_account_switch_away("missing")
-                .await,
-            Ok(CodexLiveAuthSwitchGuard::MissingAccount)
-        ));
-        assert!(matches!(
-            manager.ensure_account_exists("missing").await,
-            Err(CodexOAuthError::AccountUnavailable(_))
-        ));
-
-        manager
-            .add_test_account_with_access_token("present", "access", None)
-            .await
-            .unwrap();
-        assert!(
-            manager.ensure_account_exists("present").await.is_ok(),
-            "reauth-required is not removed"
-        );
-        manager.accounts.write().await.clear();
-        assert!(
-            manager
-                .prepare_live_auth_for_account_switch_away("present")
-                .await
-                .is_err(),
-            "an account still on disk cannot be treated as deleted"
-        );
-    }
-
     #[test]
     fn test_parse_interval_number() {
         let v = serde_json::Value::Number(serde_json::Number::from(5));
@@ -2389,7 +2183,6 @@ mod tests {
         let expiring = CachedAccessToken {
             token: "t".to_string(),
             expires_at_ms: now + 30_000,
-            obtained_at_ms: now,
         };
         assert!(expiring.is_expiring_soon());
 
@@ -2397,7 +2190,6 @@ mod tests {
         let valid = CachedAccessToken {
             token: "t".to_string(),
             expires_at_ms: now + 3_600_000,
-            obtained_at_ms: now,
         };
         assert!(!valid.is_expiring_soon());
     }
@@ -2454,7 +2246,7 @@ mod tests {
             let manager = CodexOAuthManager::new(path.clone());
             let account = manager
                 .add_account_internal(
-                    "workspace-123".to_string(),
+                    "acc-123".to_string(),
                     "rt-secret".to_string(),
                     Some("user@example.com".to_string()),
                     "at-secret".to_string(),

@@ -196,7 +196,7 @@ fn normalize_path_lexically(path: &Path) -> PathBuf {
 fn comparable_path_key(path: &Path) -> String {
     let mut key = normalize_path_lexically(path).to_string_lossy().to_string();
 
-    #[cfg(windows)]
+    #[cfg(target_os = "windows")]
     {
         key = key.replace('\\', "/");
     }
@@ -205,7 +205,7 @@ fn comparable_path_key(path: &Path) -> String {
         key.pop();
     }
 
-    #[cfg(windows)]
+    #[cfg(target_os = "windows")]
     {
         key.make_ascii_lowercase();
     }
@@ -431,6 +431,53 @@ pub(crate) fn write_backup_file(path: &Path, data: &[u8]) -> Result<(), AppError
 }
 
 fn atomic_write_unbacked(path: &Path, data: &[u8], private: bool) -> Result<(), AppError> {
+    let staged = stage_write(path, data, private.then_some(0o600), true)?;
+    commit_staged_unbacked(&staged.tmp, &staged.path).inspect_err(|_| {
+        let _ = fs::remove_file(&staged.tmp);
+    })
+}
+
+/// Prepared bytes remain on disk until the engine records and completes its intent.
+#[derive(Debug)]
+pub struct StagedWrite {
+    tmp: PathBuf,
+    path: PathBuf,
+}
+impl StagedWrite {
+    pub fn tmp_path(&self) -> &Path {
+        &self.tmp
+    }
+    pub fn commit(self) -> Result<(), AppError> {
+        commit_staged(&self.tmp, &self.path).inspect_err(|_| {
+            let _ = fs::remove_file(&self.tmp);
+        })
+    }
+}
+
+/// Keep FyAgent's rolling preimage/undo receipt when committing engine writes.
+/// On failure the engine's staged file remains available for startup recovery.
+pub(crate) fn commit_staged(tmp: &Path, path: &Path) -> Result<(), AppError> {
+    recovery::validate_file_leaf(tmp)?;
+    let bytes = fs::read(tmp).map_err(|error| AppError::io(tmp, error))?;
+    recovery::write_with(path, Some(&bytes), |_, _| commit_staged_unbacked(tmp, path))?;
+    // A no-op recovery write intentionally leaves its preimage unchanged.
+    if tmp.exists() {
+        fs::remove_file(tmp).map_err(|error| AppError::io(tmp, error))?;
+    }
+    Ok(())
+}
+
+pub(crate) fn sorted_json_bytes<T: Serialize>(data: &T) -> Result<Vec<u8>, AppError> {
+    json_file_contents(data)
+}
+
+pub(crate) fn stage_write(
+    path: &Path,
+    data: &[u8],
+    unix_mode: Option<u32>,
+    _durable: bool,
+) -> Result<StagedWrite, AppError> {
+    let private = unix_mode.is_some();
     recovery::validate_file_leaf(path)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
@@ -508,7 +555,14 @@ fn atomic_write_unbacked(path: &Path, data: &[u8], private: bool) -> Result<(), 
     #[cfg(target_os = "windows")]
     let _ = private; // Windows replacement retains the destination's ACL.
 
-    #[cfg(windows)]
+    Ok(StagedWrite {
+        tmp,
+        path: path.to_path_buf(),
+    })
+}
+
+fn commit_staged_unbacked(tmp: &Path, path: &Path) -> Result<(), AppError> {
+    #[cfg(target_os = "windows")]
     {
         use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::{
@@ -556,7 +610,7 @@ fn atomic_write_unbacked(path: &Path, data: &[u8], private: bool) -> Result<(), 
                 break;
             }
 
-            match fs::rename(&tmp, path) {
+            match fs::rename(tmp, path) {
                 Ok(()) => {
                     completed = true;
                     break;
@@ -578,7 +632,6 @@ fn atomic_write_unbacked(path: &Path, data: &[u8], private: bool) -> Result<(), 
 
         if !completed {
             let source = last_error.unwrap_or_else(std::io::Error::last_os_error);
-            let _ = fs::remove_file(&tmp);
             return Err(AppError::IoContext {
                 context: format!("原子替换失败: {} -> {}", tmp.display(), path.display()),
                 source,
@@ -588,13 +641,15 @@ fn atomic_write_unbacked(path: &Path, data: &[u8], private: bool) -> Result<(), 
 
     #[cfg(target_os = "macos")]
     {
-        if let Err(source) = fs::rename(&tmp, path) {
-            let _ = fs::remove_file(&tmp);
+        if let Err(source) = fs::rename(tmp, path) {
             return Err(AppError::IoContext {
                 context: format!("原子替换失败: {} -> {}", tmp.display(), path.display()),
                 source,
             });
         }
+        let parent = path
+            .parent()
+            .ok_or_else(|| AppError::Config("无效的路径".into()))?;
         fs::File::open(parent)
             .and_then(|directory| directory.sync_all())
             .map_err(|error| AppError::io(parent, error))?;
@@ -605,6 +660,41 @@ fn atomic_write_unbacked(path: &Path, data: &[u8], private: bool) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn staged_commit_keeps_fyagent_recovery_preimage() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, b"model = 'user'\n").unwrap();
+        let stage = stage_write(&path, b"model = 'managed'\n", Some(0o600), true).unwrap();
+        let tmp = stage.tmp_path().to_path_buf();
+        assert_eq!(fs::read(&path).unwrap(), b"model = 'user'\n");
+        commit_staged(&tmp, &path).unwrap();
+        assert!(!tmp.exists());
+        assert_eq!(fs::read(&path).unwrap(), b"model = 'managed'\n");
+        assert_eq!(
+            fs::read(rolling_backup_path(&path)).unwrap(),
+            b"model = 'user'\n"
+        );
+        let repeated = stage_write(&path, b"model = 'managed'\n", Some(0o600), true).unwrap();
+        repeated.commit().unwrap();
+        assert_eq!(
+            fs::read(rolling_backup_path(&path)).unwrap(),
+            b"model = 'user'\n"
+        );
+    }
+
+    #[test]
+    fn staged_commit_failure_keeps_original_and_pending_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        fs::write(&path, b"old").unwrap();
+        fs::create_dir(rolling_backup_path(&path)).unwrap();
+        let stage = stage_write(&path, b"new", Some(0o600), true).unwrap();
+        assert!(commit_staged(stage.tmp_path(), &path).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"old");
+        assert_eq!(fs::read(stage.tmp_path()).unwrap(), b"new");
+    }
 
     #[test]
     fn bounded_file_read_accepts_exact_limit_and_rejects_larger_files() {
@@ -618,7 +708,7 @@ mod tests {
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     }
 
-    #[cfg(windows)]
+    #[cfg(target_os = "windows")]
     #[test]
     fn atomic_write_preserves_destination_when_windows_replace_fails() {
         use std::os::windows::fs::OpenOptionsExt;
@@ -676,7 +766,7 @@ mod tests {
         assert_eq!(derived, override_dir.join(".claude.json"));
     }
 
-    #[cfg(windows)]
+    #[cfg(target_os = "windows")]
     #[test]
     fn smb_unc_override_uses_nested_mcp_path() {
         let override_dir = PathBuf::from(r"\\server\profiles\claude\.claude");

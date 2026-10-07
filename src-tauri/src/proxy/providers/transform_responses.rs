@@ -1955,6 +1955,11 @@ pub fn anthropic_to_responses(
         }
     }
 
+    // Anthropic permits parallel tools unless the caller explicitly disables
+    // them. Set its default before applying the shared native Responses policy.
+    if is_codex_oauth {
+        result["parallel_tool_calls"] = json!(true);
+    }
     if let Some(v) = body.get("tool_choice") {
         result["tool_choice"] =
             map_tool_choice_to_responses(v, &hosted_web_search_names, is_codex_oauth);
@@ -1990,6 +1995,14 @@ pub fn anthropic_to_responses(
             result["include"] = include.clone();
         }
         super::managed_responses::prepare_openai_generation(&mut result)?;
+        if !hosted_web_search_names.is_empty() {
+            // The shared generation policy has validated and normalized include.
+            if let Some(include) = result["include"].as_array_mut() {
+                if !include.iter().any(|item| item == WEB_SEARCH_SOURCES_MARKER) {
+                    include.push(json!(WEB_SEARCH_SOURCES_MARKER));
+                }
+            }
+        }
     }
 
     Ok(result)
@@ -4566,6 +4579,61 @@ mod tests {
     }
 
     #[test]
+    fn test_replayed_legacy_envelope_omits_output_only_fields() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+        // A pre-whitelist envelope keeps the backend output item verbatim,
+        // including the `status` field the official Codex backend started
+        // emitting on 2026-10-03 and rejects as an unknown input parameter.
+        let legacy = json!({
+            "id": "rs_legacy",
+            "type": "reasoning",
+            "summary": [{"type": "summary_text", "text": "prior turn"}],
+            "encrypted_content": "opaque",
+            "status": "completed"
+        });
+        let signature = format!(
+            "ccswitch-openai-reasoning-v1:{}",
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&legacy).unwrap())
+        );
+        let replay = anthropic_to_responses(
+            json!({
+                "model": "gpt-5.6",
+                "messages": [
+                    {"role": "user", "content": "hi"},
+                    {"role": "assistant", "content": [
+                        {"type": "thinking", "thinking": "prior turn", "signature": signature},
+                        {"type": "tool_use", "id": "call_9", "name": "lookup", "input": {}}
+                    ]},
+                    {"role": "user", "content": [
+                        {"type": "tool_result", "tool_use_id": "call_9", "content": "ok"}
+                    ]}
+                ]
+            }),
+            None,
+            true,
+            false,
+        )
+        .unwrap();
+        let reasoning_items: Vec<&Value> = replay["input"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|item| item.get("type").and_then(Value::as_str) == Some("reasoning"))
+            .collect();
+        assert_eq!(reasoning_items.len(), 1);
+        assert_eq!(
+            reasoning_items[0],
+            &json!({
+                "id": "rs_legacy",
+                "type": "reasoning",
+                "summary": [{"type": "summary_text", "text": "prior turn"}],
+                "encrypted_content": "opaque"
+            })
+        );
+    }
+
+    #[test]
     fn test_reasoning_only_assistant_turn_is_not_replayed() {
         let item = json!({
             "type": "reasoning",
@@ -4800,6 +4868,7 @@ mod tests {
         let input = json!({
             "model": "gpt-5.4",
             "max_tokens": 1024,
+            "thinking": {"type": "adaptive"},
             "output_config": {"effort": "max"},
             "messages": [{"role": "user", "content": "Hello"}]
         });
@@ -4816,10 +4885,13 @@ mod tests {
             "gpt-5.6-terra",
             "gpt-5.6-luna",
             "gpt-6-astra",
+            "gpt-6-sol",
+            "gpt-6-luna",
         ] {
             let input = json!({
                 "model": model,
                 "max_tokens": 1024,
+                "thinking": {"type": "adaptive"},
                 "output_config": {"effort": "max"},
                 "messages": [{"role": "user", "content": "Hello"}]
             });
@@ -4836,6 +4908,7 @@ mod tests {
         let input = json!({
             "model": "gpt-5.4",
             "max_tokens": 1024,
+            "thinking": {"type": "adaptive"},
             "output_config": {"effort": "xhigh"},
             "messages": [{"role": "user", "content": "Hello"}]
         });
@@ -4851,12 +4924,27 @@ mod tests {
         let input = json!({
             "model": "grok-4.6-build",
             "max_tokens": 1024,
+            "thinking": {"type": "adaptive"},
             "output_config": {"effort": "xhigh"},
             "messages": [{"role": "user", "content": "Hello"}]
         });
 
         let result = anthropic_to_responses(input, None, false, false).unwrap();
         assert_eq!(result["reasoning"]["effort"], "xhigh");
+    }
+
+    #[test]
+    fn test_responses_thinking_off_clamps_effort_to_low() {
+        // Thinking turned off in Claude Code: no `thinking`, effort still "high".
+        let input = json!({
+            "model": "gpt-5.4",
+            "max_tokens": 1024,
+            "output_config": {"effort": "high"},
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let result = anthropic_to_responses(input, None, false, false).unwrap();
+        assert_eq!(result["reasoning"]["effort"], "low");
     }
 
     #[test]

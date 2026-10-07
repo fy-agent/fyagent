@@ -15,6 +15,93 @@ describe("session migration Tauri port", () => {
     invoke.mockReset();
   });
 
+  it.each([
+    [
+      {
+        role: "user",
+        content: "原正文",
+        blocks: [{ type: "text", text: "分块" }],
+      },
+      "原正文",
+    ],
+    [
+      {
+        role: "assistant",
+        blocks: [
+          { type: "text", text: "第一段" },
+          { type: "thinking", text: "不展示" },
+          { type: "text", text: "第二段" },
+        ],
+      },
+      "第一段\n\n第二段",
+    ],
+    [
+      {
+        role: "assistant",
+        id: "m1",
+        turnId: "t1",
+        injected: true,
+        meta: { model: "test" },
+        futureField: 1,
+        blocks: [{ type: "text", text: "兼容新字段" }],
+      },
+      "兼容新字段",
+    ],
+    [
+      {
+        role: "assistant",
+        content: "",
+        blocks: [{ type: "text", text: "不覆盖空正文" }],
+      },
+      "",
+    ],
+  ])("normalizes native session message %j", async (message, content) => {
+    invoke.mockResolvedValue([message]);
+    const messages = await createSessionMigrationPort().getSessionMessages(
+      "codex",
+      "/tmp/session.jsonl",
+    );
+    expect(messages[0].content).toBe(content);
+    expect(invoke).toHaveBeenCalledWith("get_session_messages", {
+      providerId: "codex",
+      sourcePath: "/tmp/session.jsonl",
+    });
+  });
+
+  it("projects mixed blocks with the backend text rules", async () => {
+    invoke.mockResolvedValue([
+      {
+        role: "assistant",
+        ts: 123,
+        blocks: [
+          { type: "text", text: "  " },
+          { type: "thinking", text: "隐藏推理" },
+          { type: "tool_call", rawName: "bash", title: "pwd" },
+          { type: "tool_result", preview: "/workspace" },
+          {
+            type: "image",
+            image: { mediaType: "image/png", size: 42, source: {} },
+          },
+          { type: "event", text: "已完成" },
+          { type: "step", phase: "finish" },
+          { type: "future_block", extra: true },
+        ],
+      },
+    ]);
+    const messages = await createSessionMigrationPort().getSessionMessages(
+      "codex",
+      "/tmp/session.jsonl",
+    );
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        ts: 123,
+        content:
+          "[Tool: bash] pwd\n\n/workspace\n\n[Image: image/png 42]\n\n已完成",
+      },
+    ]);
+  });
+
   it("sends a closed restore request without package-controlled commands", async () => {
     const request = {
       packagePath: "/tmp/synthetic.fy-session.json",

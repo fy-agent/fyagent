@@ -706,12 +706,15 @@ enum ShellProbe {
     NotFound(String),
 }
 
+#[cfg(any(target_os = "macos", test))]
 const VERSION_PROBE_SENTINEL: &str = "__CCSWITCH_VERSION__";
 
+#[cfg(any(target_os = "macos", test))]
 fn version_probe_payload(tool: &str) -> String {
     format!("echo {VERSION_PROBE_SENTINEL}; {tool} --version")
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn after_version_sentinel(output: &str) -> &str {
     match output.rfind(VERSION_PROBE_SENTINEL) {
         Some(i) => output[i + VERSION_PROBE_SENTINEL.len()..].trim(),
@@ -1496,7 +1499,7 @@ fn infer_install_source(path: &Path) -> &'static str {
         .to_ascii_lowercase();
     if s.contains("/.nvm/") {
         "nvm"
-    } else if s.contains("/homebrew/") || s.contains("/cellar/") {
+    } else if s.contains("/homebrew/") || s.contains("/cellar/") || s.contains("/caskroom/") {
         "homebrew"
     // `.volta` 是 macOS 默认安装(`~/.volta/bin`),`/volta/` 兜底覆盖
     // Windows 的 `%LOCALAPPDATA%\Volta\bin` / `%VOLTA_HOME%\bin`(无前导点)。
@@ -1635,34 +1638,6 @@ fn resolve_path_default(
         return Ok(None);
     };
     Ok(std::fs::canonicalize(first).ok())
-}
-
-#[cfg(target_os = "windows")]
-fn windows_path_lookup_command(
-    tool: &str,
-    effective_path: &std::ffi::OsStr,
-) -> std::process::Command {
-    use std::os::windows::process::CommandExt;
-    use std::process::{Command, Stdio};
-
-    // Use the system copy explicitly so a project-local `where.exe` cannot
-    // hijack the passive lookup before the PATH-only pattern is evaluated.
-    let where_exe = PathBuf::from(
-        std::env::var_os("SystemRoot").unwrap_or_else(|| std::ffi::OsString::from(r"C:\Windows")),
-    )
-    .join("System32")
-    .join("where.exe");
-    let mut command = Command::new(where_exe);
-    command
-        // `$PATH:pattern` is where.exe's documented environment-variable
-        // search form. Unlike a bare pattern, it does not search the current
-        // directory before PATH.
-        .arg(format!("$PATH:{tool}"))
-        .env("PATH", effective_path)
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    command
 }
 
 #[cfg(target_os = "windows")]
@@ -1811,7 +1786,12 @@ fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
 
             let is_path_default = path_default.as_ref() == Some(&real);
             let path_str = tool_path.display().to_string();
-            let source = infer_install_source(&tool_path);
+            let real_source = infer_install_source(&real);
+            let source = if real_source == "homebrew" {
+                real_source
+            } else {
+                infer_install_source(&tool_path)
+            };
 
             installs.push(ToolInstallation {
                 path: path_str,
@@ -1868,9 +1848,19 @@ fn parent_dir(p: &str) -> String {
 /// npm 全局包落在 `/opt/homebrew/lib/node_modules`（不含 Cellar）。两者升级命令不同。
 #[cfg(target_os = "macos")]
 fn brew_formula_from_path(real: &str) -> Option<String> {
+    brew_token_from_path(real, "Cellar")
+}
+
+#[cfg(target_os = "macos")]
+fn brew_cask_from_path(real: &str) -> Option<String> {
+    brew_token_from_path(real, "Caskroom")
+}
+
+#[cfg(target_os = "macos")]
+fn brew_token_from_path(real: &str, marker: &str) -> Option<String> {
     let mut segs = real.split('/');
     while let Some(seg) = segs.next() {
-        if seg.eq_ignore_ascii_case("Cellar") {
+        if seg.eq_ignore_ascii_case(marker) {
             return segs.next().filter(|s| !s.is_empty()).map(|s| s.to_string());
         }
     }
@@ -2091,6 +2081,14 @@ fn package_manager_anchored_command_from_paths(
         let brew = sibling_bin(bin_path, "brew")?;
         return Some(format!("{} upgrade {formula}", quote_path_if_spaced(&brew)));
     }
+    if let Some(cask) = brew_cask_from_path(real_target) {
+        let brew = sibling_bin(bin_path, "brew")?;
+        return Some(format!(
+            "{} upgrade --cask {}",
+            quote_path_if_spaced(&brew),
+            shell_single_quote(&cask)
+        ));
+    }
     let pkg = npm_package_for(tool)?;
     match infer_install_source(Path::new(bin_path)) {
         "volta" => {
@@ -2178,7 +2176,7 @@ fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) ->
         ));
     }
     let package_command = package_manager_anchored_command_from_paths(tool, bin_path, real_target);
-    if brew_formula_from_path(real_target).is_some() {
+    if brew_formula_from_path(real_target).is_some() || brew_cask_from_path(real_target).is_some() {
         return package_command;
     }
     if prefers_official_update(tool, LifecycleCommandShell::Posix) {
@@ -3238,6 +3236,52 @@ fn escape_windows_batch_value(value: &str) -> String {
         .replace('(', "^(")
         .replace(')', "^)")
 }
+
+pub(crate) fn local_tool_version(tool: &str) -> Option<String> {
+    if !VALID_TOOLS.contains(&tool) {
+        return None;
+    }
+    #[cfg(target_os = "windows")]
+    let probe = match probe_path_default_version(tool) {
+        ShellProbe::NotFound(_) => scan_cli_version(tool),
+        found => found,
+    };
+    #[cfg(target_os = "macos")]
+    let probe = match try_get_version(tool) {
+        ShellProbe::NotFound(_) => scan_cli_version(tool),
+        found => found,
+    };
+    match probe {
+        ShellProbe::Found(version) => Some(version),
+        _ => None,
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod upstream_cask_tests {
+    use super::*;
+
+    #[test]
+    fn cask_updates_stay_with_brew_instead_of_npm() {
+        assert_eq!(
+            brew_cask_from_path("/usr/local/Caskroom/codex/1.0/bin/codex").as_deref(),
+            Some("codex")
+        );
+        assert_eq!(
+            package_manager_anchored_command_from_paths(
+                "codex",
+                "/usr/local/bin/codex",
+                "/usr/local/Caskroom/codex/1.0/bin/codex"
+            ),
+            Some("/usr/local/bin/brew upgrade --cask 'codex'".into())
+        );
+        assert_eq!(
+            brew_cask_from_path("/opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js"),
+            None
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

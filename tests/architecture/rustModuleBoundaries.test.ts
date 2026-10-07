@@ -99,6 +99,29 @@ describe("Rust modular architecture boundaries", () => {
     ).toEqual([]);
   });
 
+  it("registers backend session usage with the existing main-window permission", () => {
+    const command = "get_session_usage_summary";
+    const host = read("src-tauri/src/lib.rs");
+    const permissions = read(
+      "src-tauri/permissions/legacy-application-commands.toml",
+    );
+    const capability = read("src-tauri/capabilities/default.json");
+    expect(host.match(new RegExp(`commands::${command},`, "gu"))).toHaveLength(
+      1,
+    );
+    expect(permissions).toContain(`"${command}"`);
+    expect(capability).toContain('"allow-legacy-application-commands"');
+    expect(read("src-tauri/src/commands/usage.rs")).toContain(
+      `pub async fn ${command}(`,
+    );
+    expect(read("src-tauri/src/commands/mod.rs")).toContain(
+      "pub use usage::*;",
+    );
+    expect(
+      read("src/shared/platform/tauri/feature-ports/sessionMigration.ts"),
+    ).not.toContain(command);
+  });
+
   it("keeps catch-all commands retired and system commands explicitly owned", () => {
     const commandModules = read("src-tauri/src/commands/mod.rs");
     const systemCommands = read("src-tauri/src/commands/system.rs");
