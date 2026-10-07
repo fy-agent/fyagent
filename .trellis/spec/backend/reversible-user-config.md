@@ -88,6 +88,29 @@ files. The scope does not hold the writer lock while invoking format writers,
 does not nest, never crosses an await, and changes no ordinary writer behavior
 after drop. This is per-file conflict protection, not cross-file atomicity.
 
+### Claude Quick Setup preview and independent file results
+
+`services/provider/claude_write_projection.rs` owns the private Claude preview
+and apply contract. Preview is read-only and retains complete inputs, paths,
+preimages and expected bytes in a process-private bounded store. Apply accepts
+only a canonical preview UUID, claims it once, and checks retained inputs under
+the existing Claude switch lock before business writes. Changed or expired
+inputs return stale with zero business writes. The legacy request-bearing
+Claude command rejects before calling the writer.
+
+Settings and MCP root projection share their existing production builders.
+An empty MCP collection preserves the old no-projection behavior; a nonempty
+all-disabled collection still removes managed IDs. Unknown root fields and
+unmanaged server Values are preserved. Proxy takeover retains its MCP skip.
+
+Each file retains its own attempted/failed fact and owned recovery result.
+Never infer the file stage from the Provider transaction's global error.
+Attempted failure with confirmed retained/restored preimage is `rolledBack`;
+only a writer that was never called is `notAttempted`. Unsettled readback is
+`unknown`. Provider success with one failed file remains partial. Compensation
+checks each file independently, refuses external edits and continues checking
+the other file; file recovery leaves the saved Provider row intact.
+
 ### Explicit exceptions are not alternate normal writers
 
 `atomic_write_unbacked` is private. Crate-scoped `write_backup_file` writes a

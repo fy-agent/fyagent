@@ -99,7 +99,7 @@
     ],
     [
       "src-tauri/src/claude_mcp.rs",
-      "4216019d662bcb02b32318163d879fbec7c048a4bfbe6ed3df022630c9447905"
+      "72ac5f7a9bf65c8141da303fc788a356aec24427c51d9cec2a308101ce0ddfbc"
     ],
     [
       "src-tauri/src/codex_config.rs",
@@ -155,11 +155,11 @@
     ],
     [
       "src-tauri/src/config.rs",
-      "513d4c4033692b7b77419d887f8007bd7f9a27b775da5e7146bda818876e68bf"
+      "51e3990abce8e99ed34c863a4f1a8a27ceeafff95281cc3de1ba25d3df81e9fb"
     ],
     [
       "src-tauri/src/config/recovery.rs",
-      "82f62d1e18d8c8503f96f00c27e85e6093bc634895969752f45af385c760fd9a"
+      "2547e00376a9af526b21412fad8298e0e38a2d042145ffcab8fc4da0c0e6cbdf"
     ],
     [
       "src-tauri/src/database/backup/recovery_tests.rs",
@@ -175,7 +175,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "7aa2d2a7eee3edf55d8d88e4e417a52fc7e4896a4f1c4cdfd6a59b95a3e6ac97"
+      "a6a0619f32a76dfe39eb6929eda7ed475d6303ea76cc4c8f0ce845ebcfe28bc8"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -262,8 +262,12 @@
       "051290df679e17d13df3ca035f23d7b6f7931a412eae3570807dc235bb8a2714"
     ],
     [
+      "src-tauri/src/services/provider/claude_write_projection.rs",
+      "600333dba9b136b556d8cd57bfb75ffcf501cd3c4ef49982f2254c706dafcb04"
+    ],
+    [
       "src-tauri/src/services/provider/mod.rs",
-      "4ebb32ab31989cc75c8a4faf62a31b7b66ea0e2226f733ff422650b889df9946"
+      "82e3c866372e673ba597ffc871dbd07d4f7e423e5be7e0c383b2c2979e980bc0"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",

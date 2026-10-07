@@ -58,6 +58,12 @@ keeps the last valid visible target; absent/invalid input defaults to
 
 ```ts
 interface ProvidersPort {
+  previewClaudeQuickSetup(
+    request: ProviderQuickSetupRequest,
+  ): Promise<ClaudeQuickSetupPreview>;
+  applyClaudeQuickSetupPreview(
+    request: ClaudeQuickSetupApplyRequest,
+  ): Promise<ClaudeQuickSetupOutcome>;
   getSummary(
     app: "claude" | "codex" | "grokbuild",
   ): Promise<ProviderSummaryQueryData>;
@@ -157,6 +163,20 @@ interface ProviderQuickSetupRequest {
 }
 ```
 
+Claude uses the private `claude-quick-setup.ts` v1 contract. Preview returns a
+canonical UUID v4, up to two actual write targets, preserved paths and native
+backup/undo display paths. Apply accepts only `{previewId}`. The old
+request-bearing `applyQuickSetupWithResult` keeps its compatible signature but
+rejects Claude before invoke; the native legacy command also rejects it before
+business writes. Codex and Grok Build retain their existing protocols.
+
+The parsed Claude outcome separates `providerState` from the two file results
+(`claude_settings`, `claude_mcp`). Its closed overall state is `applied`,
+`partial`, `stale`, `rolledBack` or `unknown`. A file's `rolledBack` means its
+attempted write failed with the exact preimage retained or restored;
+`notAttempted` means the atomic writer was never called. Neither state means
+the Provider row or the entire save was undone.
+
 WorkBuddy/OpenCode writes include the current authoritative revision and may
 return one of:
 
@@ -206,14 +226,27 @@ an apply instruction.
 - Fetching models calls `providers.fetchModels(baseUrl, apiKey)` and keeps the
   API key in the current draft so the same credential can be used for probe or
   save. Fetch success is not a persisted configuration.
-- The save confirmation shows the native `writeTargets` returned by
-  `getSummary`; React never constructs target or backup paths. Codex and
+- Claude obtains its actual confirmation scope from
+  `previewClaudeQuickSetup`, including preserved paths and sidecar display
+  metadata. Grok Build uses the native summary targets. React never constructs
+  target or backup paths. Codex and
   WorkBuddy disclose those targets in the single Change Plan preview, without
   an earlier write-confirmation dialog. Closing that preview preserves the form
   draft and does not apply or save it.
-- Claude and Grok Build call `applyQuickSetupWithResult`, then reread
-  `getSummary`. They claim the new provider is current only when the reread
-  `currentId` equals the closed quick-setup provider ID.
+- Claude confirms only the retained preview identity through
+  `applyClaudeQuickSetupPreview`. Editing, changing target, hiding or unmounting
+  the panel invalidates a late preview. Stale preserves the draft/key and
+  requires a fresh preview; one confirmation cannot apply twice.
+- Claude renders each file's parsed outcome independently. A Provider/current
+  readback cannot upgrade partial/unknown into success. Unknown/partial or an
+  unclassified apply failure blocks further Claude writes in the parent page,
+  including results arriving after the child panel was unmounted by a target
+  switch. Independent file undo preserves the Provider row and does not clear
+  that block or prove the whole save recovered. Release the temporary write
+  lock in `finally`, including a failed readback.
+- Grok Build calls `applyQuickSetupWithResult`, then rereads `getSummary`. It
+  claims the new provider is current only when the reread `currentId` equals
+  the closed quick-setup provider ID.
 - `APPLY_FAILED_ROLLED_BACK` is the only direct-provider error currently treated
   as confirmed baseline restoration. An unclassified failure or
   `ROLLBACK_PARTIAL_STATE_UNKNOWN` blocks further writes for that target until
@@ -368,6 +401,9 @@ shared lifecycle here.
   request IDs, closed reason/state combinations, and the model-ID snapshot.
 - `models.ts` strictly parses provider summaries, fetched provider refs,
   reachability/model-probe results, and OpenCode snapshot/fetch/save results.
+- `claude-quick-setup.ts` strictly parses the private preview, identity-only
+  request and outcome before UI use. Reject extra authority, invalid identity,
+  duplicate paths/targets, mismatched sidecars and inconsistent result states.
 - `parseModelProbeResult` validates the result shape and closed status, but it
   does not currently bind `modelUsed` back to `request.modelId`. Do not claim
   cross-request identity protection at this Port boundary; adding it requires
@@ -450,9 +486,9 @@ shared lifecycle here.
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** fetch Claude model refs, select one, confirm native write targets,
-  apply quick setup, then claim current only after the provider summary reread
-  returns the expected provider ID.
+- **Good:** fetch Claude model refs, select one, confirm the actual native
+  preview, apply only its identity, and display independent file results before
+  the authoritative Provider reread. Partial remains partial.
 - **Good:** create a Codex or WorkBuddy Change Plan, render its neutral preview,
   apply only `{planId, planDigest}`, poll the parsed job, and reread authority
   before committing the draft.
@@ -522,7 +558,14 @@ Correct:
 if (target === "codex") {
   const plan = await ports.changePlans.createCodexProviderUpsertPlan(request);
   // Show parsed preview; apply later with plan.planId + plan.planDigest only.
-} else if (target === "claude" || target === "grokbuild") {
+} else if (target === "claude") {
+  const preview = await ports.providers.previewClaudeQuickSetup(request);
+  // Show the parsed scope; confirmation consumes this identity only.
+  const result = await ports.providers.applyClaudeQuickSetupPreview({
+    previewId: preview.previewId,
+  });
+  // Handle each file and block uncertain writes before any Provider reread.
+} else if (target === "grokbuild") {
   await ports.providers.applyQuickSetupWithResult(request, target);
   const reread = await summaryQuery.refetch();
   // Claim current only when reread.data.currentId is the expected closed ID.
