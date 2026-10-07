@@ -54,6 +54,8 @@ type RustAllowance = {
   block?: string;
 };
 
+type RustSourceEntry = Readonly<{ path: string; source: string }>;
+
 type SourceContract = { id: string; file: string; snippet: string };
 
 type CheckerModule = {
@@ -128,9 +130,7 @@ type CheckerModule = {
     entries: Array<{ path: string; source: string }>,
   ): Finding[];
   scanPath(relativePath: string): Finding[];
-  scanRustImplicitPredicates(
-    entries: Array<{ path: string; source: string }>,
-  ): Finding[];
+  scanRustImplicitPredicates(entries: readonly RustSourceEntry[]): Finding[];
   scanText(relativePath: string, source: string): Finding[];
   validateActiveTaskExclusion(
     value: string,
@@ -174,7 +174,16 @@ function activeTaskFixture(taskDirectoryName = "08-14-example-active-task") {
   return { directory, relative, root };
 }
 
-function permittedRustEntries() {
+let permittedRustSnapshot: Promise<readonly RustSourceEntry[]> | undefined;
+
+function permittedRustEntries(): Promise<readonly RustSourceEntry[]> {
+  permittedRustSnapshot ??= loadPermittedRustSnapshot();
+  return permittedRustSnapshot;
+}
+
+async function loadPermittedRustSnapshot(): Promise<
+  readonly RustSourceEntry[]
+> {
   const files: string[] = [];
   const visit = (relativeDirectory: string) => {
     const absoluteDirectory = path.join(ROOT, relativeDirectory);
@@ -190,10 +199,25 @@ function permittedRustEntries() {
   };
   visit("src-tauri/src");
   files.push("src-tauri/build.rs", "src-tauri/user-helper/build.rs");
-  return files.map((relativePath) => ({
-    path: relativePath,
-    source: fs.readFileSync(path.join(ROOT, relativePath), "utf8"),
-  }));
+  const entries: RustSourceEntry[] = [];
+  // Keep every file and its order; overlap cold I/O without rerunning or
+  // replacing any production predicate scan. Both consumers share these bytes.
+  for (let index = 0; index < files.length; index += 32) {
+    entries.push(
+      ...(await Promise.all(
+        files.slice(index, index + 32).map(async (relativePath) =>
+          Object.freeze({
+            path: relativePath,
+            source: await fs.promises.readFile(
+              path.join(ROOT, relativePath),
+              "utf8",
+            ),
+          }),
+        ),
+      )),
+    );
+  }
+  return Object.freeze(entries);
 }
 
 function macosPosixEntries() {
@@ -859,14 +883,21 @@ describe("durable supported-platform surface contract", () => {
     ]);
   });
 
-  it("rejects preflight fallbacks that stop rejecting unsupported hosts", () => {
-    const entries = permittedRustEntries();
+  it("rejects preflight fallbacks that stop rejecting unsupported hosts", async () => {
+    const entries = await permittedRustEntries();
+    expect(await permittedRustEntries()).toBe(entries);
+    expect(Object.isFrozen(entries)).toBe(true);
+    expect(entries.every(Object.isFrozen)).toBe(true);
     const guarded = checker.RUST_ALLOWANCE_CONTRACT.filter(
       (item): item is RustAllowance & { block: string } =>
         Boolean(item.block) && !item.id.startsWith("session-migration-"),
     );
     expect(guarded).toHaveLength(4);
     for (const allowance of guarded) {
+      const originalSource = entries.find(
+        (entry) => entry.path === allowance.file,
+      )?.source;
+      expect(originalSource).toBeDefined();
       const pattern = new RegExp(
         allowance.block
           .split(/\s+/u)
@@ -886,6 +917,10 @@ describe("durable supported-platform surface contract", () => {
             }
           : entry,
       );
+      expect(drifted).toHaveLength(entries.length);
+      expect(
+        drifted.find((entry) => entry.path === allowance.file)?.source,
+      ).not.toBe(originalSource);
       expect(checker.scanRustImplicitPredicates(drifted)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -954,8 +989,8 @@ describe("durable supported-platform surface contract", () => {
     }
   });
 
-  it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", () => {
-    const entries = permittedRustEntries();
+  it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", async () => {
+    const entries = await permittedRustEntries();
     expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(47);
     expect(checker.scanRustImplicitPredicates(entries)).toEqual([]);
 
