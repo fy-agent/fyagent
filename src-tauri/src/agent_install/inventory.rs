@@ -5,7 +5,7 @@
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -734,8 +734,12 @@ fn project_desktop_discovery(
             evidence.scope,
             crate::macos_system_commit::production_enabled(),
         );
-        let location_label =
-            desktop_location_label(agent_id, evidence.scope, evidence.package_kind);
+        let location_label = desktop_location_label(
+            agent_id,
+            evidence.scope,
+            evidence.package_kind,
+            &evidence.path,
+        );
         let mut reason_codes = evidence.reason_codes;
         if let Some(reason) = system_update_block_reason {
             if !reason_codes.contains(&reason) {
@@ -1075,7 +1079,6 @@ fn desktop_destinations(_agent_id: AgentCatalogId) -> Vec<ProbeDestination> {
     #[cfg(target_os = "windows")]
     {
         let agent_id = _agent_id;
-        let name = agent_display_name(agent_id);
         return match agent_id {
             AgentCatalogId::QoderWork | AgentCatalogId::OpenCode => vec![destination(
                 &format!("windows:{agent_id:?}:current-user"),
@@ -1083,7 +1086,7 @@ fn desktop_destinations(_agent_id: AgentCatalogId) -> Vec<ProbeDestination> {
                 InstallationPackageKind::Exe,
                 false,
                 true,
-                &format!("当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\{name}）"),
+                &windows_current_user_destination_label(agent_id),
                 FreshDestinationCapability::WindowsCurrentUser,
             )],
             AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy => vec![destination(
@@ -1163,10 +1166,34 @@ fn refresh_destination_revision(destination: &mut ProbeDestination) {
     ]);
 }
 
+/// Per-user directories of the official OpenCode NSIS installers (v2 first,
+/// then 1.x); mirrors `windows_relative_exes` in `desktop.rs`.
+const OPENCODE_WINDOWS_USER_DIRS: [&str; 2] = ["@opencodedesktop", "@opencode-aidesktop"];
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_current_user_destination_label(agent_id: AgentCatalogId) -> String {
+    let dir = match agent_id {
+        AgentCatalogId::OpenCode => OPENCODE_WINDOWS_USER_DIRS[0],
+        _ => agent_display_name(agent_id),
+    };
+    format!("当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\{dir}）")
+}
+
+fn opencode_installed_user_dir(agent_id: AgentCatalogId, path: &Path) -> Option<&'static str> {
+    if agent_id != AgentCatalogId::OpenCode {
+        return None;
+    }
+    let parent = path.parent()?.file_name()?;
+    OPENCODE_WINDOWS_USER_DIRS
+        .into_iter()
+        .find(|dir| parent.eq_ignore_ascii_case(dir))
+}
+
 fn desktop_location_label(
     agent_id: AgentCatalogId,
     scope: InstallationScope,
     package_kind: InstallationPackageKind,
+    path: &Path,
 ) -> String {
     let name = agent_display_name(agent_id);
     match (scope, package_kind) {
@@ -1177,7 +1204,8 @@ fn desktop_location_label(
             format!("/Applications/{name}.app")
         }
         (InstallationScope::CurrentUser, InstallationPackageKind::Exe) => {
-            format!("%LOCALAPPDATA%\\Programs\\{name}")
+            let dir = opencode_installed_user_dir(agent_id, path).unwrap_or(name);
+            format!("%LOCALAPPDATA%\\Programs\\{dir}")
         }
         (InstallationScope::AllUsers, InstallationPackageKind::Exe) => {
             format!("%PROGRAMFILES%\\{name}")
@@ -1428,11 +1456,13 @@ mod tests {
 
     #[test]
     fn location_projection_never_contains_a_user_profile() {
+        let workbuddy = Path::new("C:/Users/Alice/AppData/Local/Programs/WorkBuddy/WorkBuddy.exe");
         assert_eq!(
             desktop_location_label(
                 AgentCatalogId::WorkBuddy,
                 InstallationScope::CurrentUser,
                 InstallationPackageKind::AppBundle,
+                workbuddy,
             ),
             "~/Applications/WorkBuddy.app"
         );
@@ -1441,6 +1471,7 @@ mod tests {
                 AgentCatalogId::WorkBuddy,
                 InstallationScope::CurrentUser,
                 InstallationPackageKind::Exe,
+                workbuddy,
             ),
             "%LOCALAPPDATA%\\Programs\\WorkBuddy"
         );
@@ -1449,8 +1480,86 @@ mod tests {
                 AgentCatalogId::WorkBuddy,
                 InstallationScope::Custom,
                 InstallationPackageKind::Exe,
+                workbuddy,
             ),
             "自定义位置（WorkBuddy）"
+        );
+    }
+
+    #[test]
+    fn opencode_current_user_label_follows_installed_directory() {
+        let label = |path: &str| {
+            desktop_location_label(
+                AgentCatalogId::OpenCode,
+                InstallationScope::CurrentUser,
+                InstallationPackageKind::Exe,
+                Path::new(path),
+            )
+        };
+        assert_eq!(
+            label("C:/Users/Alice/AppData/Local/Programs/@opencodedesktop/OpenCode.exe"),
+            "%LOCALAPPDATA%\\Programs\\@opencodedesktop"
+        );
+        assert_eq!(
+            label("C:/Users/Alice/AppData/Local/Programs/@opencode-aidesktop/OpenCode.exe"),
+            "%LOCALAPPDATA%\\Programs\\@opencode-aidesktop"
+        );
+        assert_eq!(
+            label("C:/Users/Alice/AppData/Local/Programs/OpenCode/OpenCode.exe"),
+            "%LOCALAPPDATA%\\Programs\\OpenCode"
+        );
+        assert_eq!(
+            desktop_location_label(
+                AgentCatalogId::OpenCode,
+                InstallationScope::AllUsers,
+                InstallationPackageKind::Exe,
+                Path::new("C:/Program Files/@opencodedesktop/OpenCode.exe"),
+            ),
+            "%PROGRAMFILES%\\OpenCode"
+        );
+        assert_eq!(
+            desktop_location_label(
+                AgentCatalogId::QoderWork,
+                InstallationScope::CurrentUser,
+                InstallationPackageKind::Exe,
+                Path::new("C:/Users/Alice/AppData/Local/Programs/@opencodedesktop/x.exe"),
+            ),
+            "%LOCALAPPDATA%\\Programs\\QoderWork CN"
+        );
+    }
+
+    #[test]
+    fn windows_current_user_destination_labels() {
+        assert_eq!(
+            windows_current_user_destination_label(AgentCatalogId::OpenCode),
+            "当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\@opencodedesktop）"
+        );
+        assert_eq!(
+            windows_current_user_destination_label(AgentCatalogId::QoderWork),
+            "当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\QoderWork CN）"
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_fresh_destination_labels_match_installer_directories() {
+        let label = |agent_id| {
+            desktop_destinations(agent_id)
+                .into_iter()
+                .map(|destination| destination.location_label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            label(AgentCatalogId::OpenCode),
+            vec!["当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\@opencodedesktop）"]
+        );
+        assert_eq!(
+            label(AgentCatalogId::QoderWork),
+            vec!["当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\QoderWork CN）"]
+        );
+        assert_eq!(
+            label(AgentCatalogId::WorkBuddy),
+            vec!["由安装向导选择安装位置（可能触发 UAC）"]
         );
     }
 
