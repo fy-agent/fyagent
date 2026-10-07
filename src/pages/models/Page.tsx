@@ -1993,7 +1993,7 @@ function ProviderPanel({
                 {
                   applied: "已写入",
                   unchanged: "保持不变",
-                  rolledBack: "已还原",
+                  rolledBack: "未完成，已保留或还原此前内容",
                   conflict: "存在外部改动，未覆盖",
                   notAttempted: "未写入",
                   unknown: "待确认",

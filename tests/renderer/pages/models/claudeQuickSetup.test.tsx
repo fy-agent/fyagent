@@ -345,4 +345,26 @@ describe("Claude Models native consent", () => {
       1,
     );
   });
+  it("reports a failed root writer with retained preimage as partial, not unattempted or full rollback", async () => {
+    const { ports, user } = setup();
+    ports.providers.applyClaudeQuickSetupPreview = vi.fn(
+      async (): Promise<ClaudeQuickSetupOutcome> => ({
+        ...applied,
+        overall: "partial",
+        files: [
+          applied.files[0],
+          { target: "claude_mcp", state: "rolledBack" },
+        ],
+      }),
+    );
+    await draft(user);
+    await save(user);
+    await confirm(user);
+    await screen.findByText("模型条目已保存，部分文件未完成");
+    expect(
+      screen.getByText(/\.claude.json：未完成，已保留或还原此前内容/),
+    ).toBeVisible();
+    expect(screen.queryByText("未能保存设置，已还原之前的状态")).toBeNull();
+    expect(screen.queryByText(/\.claude.json：未写入/)).toBeNull();
+  });
 });

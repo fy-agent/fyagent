@@ -77,6 +77,8 @@ pub enum ClaudeProviderState {
 pub enum ClaudeFileState {
     Applied,
     Unchanged,
+    /// An attempted write failed; exact preimage is retained or restored.
+    /// This says nothing about Provider or the other file.
     RolledBack,
     Conflict,
     NotAttempted,
@@ -136,6 +138,7 @@ struct ProjectedFile {
     before: Option<Vec<u8>>,
     after: Option<Vec<u8>>,
     attempted: Cell<bool>,
+    write_failed: Cell<bool>,
 }
 impl ProjectedFile {
     fn read(path: &PathBuf) -> Result<Option<Vec<u8>>, AppError> {
@@ -169,15 +172,17 @@ impl ProjectedFile {
             .as_ref()
             .map(|bytes| format!("{:x}", Sha256::digest(bytes)));
         let _owned = config::file_restore_scope(vec![(self.path.clone(), hash)])?;
+        let bytes = self
+            .after
+            .as_deref()
+            .ok_or_else(|| AppError::Config("claude_projection_missing".into()))?;
         self.attempted.set(true);
-        config::atomic_write(
-            &self.path,
-            self.after
-                .as_deref()
-                .ok_or_else(|| AppError::Config("claude_projection_missing".into()))?,
-        )
+        let result = config::atomic_write(&self.path, bytes);
+        self.write_failed.set(result.is_err());
+        result
     }
-    fn outcome(&self, failed: bool) -> ClaudeFileOutcome {
+    fn outcome(&self, transaction_failed: bool) -> ClaudeFileOutcome {
+        let failed = transaction_failed || self.write_failed.get();
         let state = match Self::read(&self.path) {
             Err(_) => ClaudeFileState::Unknown,
             Ok(current) if current == self.after && !failed => {
@@ -190,12 +195,15 @@ impl ProjectedFile {
             Ok(current) if current == self.before => {
                 if failed && self.changed() && self.attempted.get() {
                     ClaudeFileState::RolledBack
+                } else if self.changed() && self.attempted.get() {
+                    ClaudeFileState::Unknown
                 } else if self.changed() {
                     ClaudeFileState::NotAttempted
                 } else {
                     ClaudeFileState::Unchanged
                 }
             }
+            Ok(current) if current == self.after => ClaudeFileState::Unknown,
             Ok(_) => ClaudeFileState::Conflict,
         };
         ClaudeFileOutcome {
@@ -293,6 +301,7 @@ impl ClaudeWriteProjection {
                     before: settings_before,
                     after: Some(config::json_file_contents(&settings)?),
                     attempted: Cell::new(false),
+                    write_failed: Cell::new(false),
                 },
                 ProjectedFile {
                     target: ClaudeFileTarget::ClaudeMcp,
@@ -300,6 +309,7 @@ impl ClaudeWriteProjection {
                     before: root_before,
                     after: root_after,
                     attempted: Cell::new(false),
+                    write_failed: Cell::new(false),
                 },
             ],
         })
@@ -884,5 +894,50 @@ mod tests {
         );
         assert!(!config::rolling_backup_path(&settings).exists());
         assert!(!config::rolling_backup_path(&root).exists());
+    }
+    #[test]
+    #[serial]
+    fn claude_apply_root_writer_failure_reports_partial_retained_preimage() {
+        let home = Home::new();
+        let state = home.state();
+        state.db.save_mcp_server(&server(true)).unwrap();
+        let root = config::get_claude_mcp_path();
+        config::write_json_file(&root, &seed_root()).unwrap();
+        let before = fs::read(&root).unwrap();
+        let preview = ProviderService::preview_claude_quick_setup(&state, provider()).unwrap();
+        // Fault occurs after preview revalidation, during Provider persistence,
+        // before the real root atomic writer. No synthetic outcome is returned.
+        let marker = home.root.path().join(".claude.json.fyagent.undo.json");
+        assert!(marker.starts_with(home.root.path()));
+        state.db.conn.lock().unwrap().update_hook(Some(
+            move |action: rusqlite::hooks::Action, _: &str, table: &str, _: i64| {
+                if table == "providers" && action == rusqlite::hooks::Action::SQLITE_INSERT {
+                    fs::remove_file(&marker).unwrap();
+                    fs::create_dir(&marker).unwrap();
+                }
+            },
+        ));
+        let result = apply(&state, preview);
+        state
+            .db
+            .conn
+            .lock()
+            .unwrap()
+            .update_hook(None::<fn(rusqlite::hooks::Action, &str, &str, i64)>);
+        assert!(result.overall == ClaudeOverall::Partial);
+        assert!(result.provider_state == ClaudeProviderState::Applied);
+        assert!(result.files[0].state == ClaudeFileState::Applied);
+        assert!(result.files[1].state == ClaudeFileState::RolledBack);
+        assert!(result.files[1].state != ClaudeFileState::NotAttempted);
+        assert_eq!(fs::read(&root).unwrap(), before);
+        assert!(state
+            .db
+            .get_provider_by_id(QUICK_SETUP_CLAUDE_PROVIDER_ID, "claude")
+            .unwrap()
+            .is_some());
+        assert_eq!(
+            state.db.get_current_provider("claude").unwrap().as_deref(),
+            Some(QUICK_SETUP_CLAUDE_PROVIDER_ID)
+        );
     }
 }
