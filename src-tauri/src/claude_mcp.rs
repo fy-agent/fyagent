@@ -385,7 +385,7 @@ pub(crate) fn sync_collection(
         serde_json::json!({})
     };
     let projected = build_collection_projection(&root, servers)?;
-    crate::config::write_json_file(&path, &projected)
+    write_json_value(&path, &projected)
 }
 
 /// 将给定的启用 MCP 服务器映射写入到用户级 ~/.claude.json 的 mcpServers 字段

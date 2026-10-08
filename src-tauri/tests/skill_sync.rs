@@ -174,7 +174,7 @@ fn import_from_apps_syncs_missing_selected_destinations() {
 }
 
 #[test]
-fn sync_to_app_removes_disabled_and_orphaned_ssot_symlinks() {
+fn sync_to_app_refuses_disabled_and_orphaned_ssot_symlinks() {
     let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
@@ -210,15 +210,32 @@ fn sync_to_app_removes_disabled_and_orphaned_ssot_symlinks() {
         })
         .expect("save disabled skill");
 
-    SkillService::sync_to_app(&state.db, &AppType::OpenCode).expect("reconcile skills");
-
+    let disabled_before = fs::read(disabled_skill.join("SKILL.md")).unwrap();
+    let orphan_before = fs::read(orphan_skill.join("SKILL.md")).unwrap();
+    let disabled_link = fs::read_link(opencode_skills_dir.join("disabled-skill")).unwrap();
+    let orphan_link = fs::read_link(opencode_skills_dir.join("orphan-skill")).unwrap();
+    let error = SkillService::sync_to_app(&state.db, &AppType::OpenCode)
+        .expect_err("linked projections must remain read-only");
     assert!(
-        !opencode_skills_dir.join("disabled-skill").exists(),
-        "DB-known disabled skill should be removed from OpenCode live dir"
+        error.to_string().contains("SKILL_LINK_READ_ONLY"),
+        "{error}"
     );
+    for (name, target, before) in [
+        ("disabled-skill", disabled_link, disabled_before),
+        ("orphan-skill", orphan_link, orphan_before),
+    ] {
+        let projection = opencode_skills_dir.join(name);
+        assert!(fs::symlink_metadata(&projection)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(fs::read_link(&projection).unwrap(), target);
+        assert_eq!(fs::read(projection.join("SKILL.md")).unwrap(), before);
+    }
     assert!(
-        !opencode_skills_dir.join("orphan-skill").exists(),
-        "orphaned symlink into SSOT should be cleaned up"
+        !state.db.get_all_installed_skills().unwrap()["local:disabled-skill"]
+            .apps
+            .opencode
     );
 }
 

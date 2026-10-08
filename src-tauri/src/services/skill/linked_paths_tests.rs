@@ -191,6 +191,9 @@ impl SelfSnapshot {
 
 #[test]
 fn i17_ordinary_directory_remains_writable() {
+    #[cfg(target_os = "macos")]
+    let temp = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    #[cfg(windows)]
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("source");
     write_skill(&source, "Ordinary");

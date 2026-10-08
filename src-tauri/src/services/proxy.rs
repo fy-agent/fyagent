@@ -4342,6 +4342,10 @@ mod tests {
 
     impl TempHome {
         pub(super) fn new() -> Self {
+            #[cfg(target_os = "macos")]
+            let dir = TempDir::new_in(std::env::temp_dir().canonicalize().unwrap())
+                .expect("failed to create temp home");
+            #[cfg(windows)]
             let dir = TempDir::new().expect("failed to create temp home");
             let original_home = env::var("HOME").ok();
             let original_userprofile = env::var("USERPROFILE").ok();

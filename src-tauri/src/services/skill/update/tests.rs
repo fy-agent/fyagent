@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tempfile::{tempdir, TempDir};
+use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_rustls::TlsAcceptor;
 
@@ -85,7 +85,11 @@ struct Isolated {
 
 impl Isolated {
     fn new() -> Self {
-        let temp = tempdir().expect("isolated home");
+        #[cfg(target_os = "macos")]
+        let temp = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap())
+            .expect("isolated home");
+        #[cfg(windows)]
+        let temp = tempfile::tempdir().expect("isolated home");
         let home = HomeGuard::set(temp.path());
         assert!(crate::app_store::get_app_config_dir_override().is_none());
         let home_path = crate::config::get_home_dir();
@@ -93,7 +97,10 @@ impl Isolated {
         let user_temp = crate::config::get_user_temp_dir();
         assert!(home_path.starts_with(temp.path()));
         assert!(config.starts_with(temp.path()));
+        #[cfg(windows)]
         assert!(user_temp.starts_with(temp.path()));
+        #[cfg(target_os = "macos")]
+        assert_eq!(user_temp, std::env::temp_dir());
         let test_settings = crate::settings::AppSettings {
             skill_sync_method: crate::services::skill::SyncMethod::Copy,
             skill_storage_location: SkillStorageLocation::FyAgent,

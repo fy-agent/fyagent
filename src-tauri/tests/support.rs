@@ -11,7 +11,10 @@ use fyagent_lib::{update_settings, AppSettings, AppState, Database, MultiAppConf
 pub fn ensure_test_home() -> &'static Path {
     static HOME: OnceLock<PathBuf> = OnceLock::new();
     HOME.get_or_init(|| {
-        let base = std::env::temp_dir().join(format!("fyagent-test-home-{}", std::process::id()));
+        let temp_root = std::env::temp_dir();
+        #[cfg(target_os = "macos")]
+        let temp_root = temp_root.canonicalize().expect("canonical temp root");
+        let base = temp_root.join(format!("fyagent-test-home-{}", std::process::id()));
         if base.exists() {
             let _ = std::fs::remove_dir_all(&base);
         }

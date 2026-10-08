@@ -99,7 +99,7 @@
     ],
     [
       "src-tauri/src/claude_mcp.rs",
-      "72ac5f7a9bf65c8141da303fc788a356aec24427c51d9cec2a308101ce0ddfbc"
+      "6e3082bc23e5ecb62b86e730e71324a7eda552e2f1b54cbba6a7bace56f39f84"
     ],
     [
       "src-tauri/src/codex_config.rs",
@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/database/backup.rs",
-      "7e5549d3e2ec2c8afc07776d0e51bdc3023bc3dd1496278c162e065d1bf81c01"
+      "1339dae9cc561d75ff1c99bf7b3609842c9e689e0837f7db448c5bb34e2ac731"
     ],
     [
       "src-tauri/src/database/backup/recovery_tests.rs",
@@ -307,7 +307,7 @@
     ],
     [
       "src-tauri/src/services/prompt.rs",
-      "e25e39aa5f73e50c056c8118d9f4bc65cb7a90f6aa3067c20757e79737438776"
+      "ee7c4040f2e1c5ef5f80aae1db0da532d7208edfd72cee4985890709d880c626"
     ],
     [
       "src-tauri/src/services/provider/claude_write_projection.rs",
@@ -327,7 +327,7 @@
     ],
     [
       "src-tauri/src/services/proxy.rs",
-      "891831503d0eeccceeec89decf7d89acb6a04ef8ebc6a561b573f8c7524d3796"
+      "0912f769551d668b03294b58249a42d0ad1cdc462148f22c7b175e9a5d9d776a"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -351,11 +351,15 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "9d049e6d7763b7ccce6d49fb3f18d729df0605a50790129bfd44e583148bba13"
+      "7975e08444e4fc71daf35f764a8541b9c21dd892ddc71a7386a9c6fced9943be"
     ],
     [
       "src-tauri/src/services/skill/linked_paths_tests.rs",
-      "2e72927118df5d17c2a43264d87e9c823aa229215abda3c87ceb37b3a3cc76d6"
+      "c630ed901da47d0d4a4642cffb38128597606bec38f19e25c94a6bc639771a66"
+    ],
+    [
+      "src-tauri/src/services/skill/update/tests.rs",
+      "2eb552a39c23b010a87d49d4c42527e78d73220a428321c007fbd67cc5ee26f8"
     ],
     [
       "src-tauri/src/services/subscription.rs",
@@ -503,11 +507,11 @@
     ],
     [
       "src-tauri/tests/skill_sync.rs",
-      "ef053013c904644a5dc919251d61193e1f76adbd5e172ad6a6bde537ac612390"
+      "30e70a59a93bb926ba83f6834de116257b8461844a9902805a5f336345af0b2b"
     ],
     [
       "src-tauri/tests/support.rs",
-      "3183561145bb79037b1d65c3583a8927fc5a549c32a315e0c85e5b8cfebc80b6"
+      "ee0055000ae102e50978532d132080a9bab04eab8c0fcadac40cc10de4f6ffd0"
     ],
     [
       "src-tauri/user-helper/build.rs",

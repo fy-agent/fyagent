@@ -969,7 +969,10 @@ impl Database {
             .close()
             .map_err(|(_, e)| AppError::Database(format!("关闭数据库安全备份失败: {e}")))?;
         Self::verify_binary_snapshot(temp_db_path, Self::get_user_version(source_conn)?)?;
-        fs::File::open(temp_db_path)
+        // Windows FlushFileBuffers requires a writable handle.
+        fs::OpenOptions::new()
+            .write(true)
+            .open(temp_db_path)
             .and_then(|file| file.sync_all())
             .map_err(|error| AppError::io(temp_db_path, error))?;
         before_publish(temp_db_path, &backup_path)?;
@@ -3771,9 +3774,7 @@ mod tests {
             .restore_from_backup(&source_filename)
             .expect_err("future-schema backup must be rejected");
         assert!(
-            error.to_string().contains("newer")
-                || error.to_string().contains("过新")
-                || error.to_string().contains("版本"),
+            matches!(&error, AppError::Database(code) if code == "database_backup_version_unsupported"),
             "unexpected error: {error}"
         );
 

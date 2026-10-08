@@ -627,6 +627,13 @@ fn proxy_injected_oauth_cards_never_carry_the_official_login() {
 fn model_catalog_pointer_ownership() {
     let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
+    // This fixture tests pointer ownership, not discovery of a real Codex CLI.
+    let template: Value =
+        serde_json::from_str(include_str!("../../src/resources/gpt5_5_template.json")).unwrap();
+    write_home_file(
+        ".codex/models_cache.json",
+        &serde_json::to_string(&json!({ "models": [template] })).unwrap(),
+    );
     set_login_preservation(false);
     let catalog = json!({ "models": [{ "model": "relay-model" }] });
     let with_catalog = |id: &str, extra: &str| {

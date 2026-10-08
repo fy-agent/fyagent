@@ -4549,7 +4549,14 @@ mod linked_paths_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
     use tempfile::tempdir;
+
+    // macOS /var is a system symlink, not a linked Skill under test.
+    #[cfg(target_os = "macos")]
+    fn tempdir() -> io::Result<tempfile::TempDir> {
+        tempfile::tempdir_in(std::env::temp_dir().canonicalize()?)
+    }
 
     #[test]
     #[serial_test::serial]

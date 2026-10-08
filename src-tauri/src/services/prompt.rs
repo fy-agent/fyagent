@@ -22,6 +22,8 @@ static PROMPT_MUTATION_LOCK: Mutex<()> = Mutex::new(());
 // each synchronous mutation from its first DB read through file/DAO commit and
 // any compensation. Public wrappers own the lock; nested paths call `_unlocked`
 // helpers so upsert/import can route into enable without recursively locking.
+// Take this lock before the nonblocking restore lease so another prompt writer
+// waits here instead of being mistaken for an active database restore.
 fn prompt_mutation_lock() -> MutexGuard<'static, ()> {
     #[cfg(test)]
     BEFORE_PROMPT_LOCK_HOOK.with(|hook| {
@@ -101,10 +103,10 @@ impl PromptService {
     ) -> Result<IndexMap<String, Prompt>, AppError> {
         // A restore replaces the DB before projecting it to live files. Keep
         // backfill outside that window, including calls outside the UI command.
+        let _mutation = prompt_mutation_lock();
         let Ok(_sync_guard) = super::database_restore::restore_mutex().try_lock() else {
             return state.db.get_prompts(app.as_str());
         };
-        let _mutation = prompt_mutation_lock();
         let mut prompts = state.db.get_prompts(app.as_str())?;
         // External editors change the live file without updating the saved
         // selection. Refresh only that selection; inactive templates are separate.
@@ -131,10 +133,10 @@ impl PromptService {
         _id: &str,
         prompt: Prompt,
     ) -> Result<(), AppError> {
+        let _mutation = prompt_mutation_lock();
         let _restore = super::database_restore::restore_mutex()
             .try_lock()
             .map_err(|_| AppError::Message("数据库正在恢复，请稍后重试。".into()))?;
-        let _mutation = prompt_mutation_lock();
         Self::upsert_prompt_unlocked(state, app, _id, prompt)
     }
 
@@ -272,10 +274,10 @@ impl PromptService {
     }
 
     pub fn delete_prompt(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
+        let _mutation = prompt_mutation_lock();
         let _restore = super::database_restore::restore_mutex()
             .try_lock()
             .map_err(|_| AppError::Message("数据库正在恢复，请稍后重试。".into()))?;
-        let _mutation = prompt_mutation_lock();
         Self::delete_prompt_unlocked(state, app, id)
     }
 
@@ -293,10 +295,10 @@ impl PromptService {
     }
 
     pub fn enable_prompt(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
+        let _mutation = prompt_mutation_lock();
         let _restore = super::database_restore::restore_mutex()
             .try_lock()
             .map_err(|_| AppError::Message("数据库正在恢复，请稍后重试。".into()))?;
-        let _mutation = prompt_mutation_lock();
         Self::enable_prompt_unlocked(state, app, id)
     }
 
@@ -383,10 +385,10 @@ impl PromptService {
         app: AppType,
         timestamp: i64,
     ) -> Result<String, AppError> {
+        let _mutation = prompt_mutation_lock();
         let _restore = super::database_restore::restore_mutex()
             .try_lock()
             .map_err(|_| AppError::Message("数据库正在恢复，请稍后重试。".into()))?;
-        let _mutation = prompt_mutation_lock();
         Self::import_from_file_at_unlocked(state, app, timestamp)
     }
 
@@ -480,10 +482,10 @@ impl PromptService {
         state: &AppState,
         app: AppType,
     ) -> Result<usize, AppError> {
+        let _mutation = prompt_mutation_lock();
         let _restore = super::database_restore::restore_mutex()
             .try_lock()
             .map_err(|_| AppError::Message("数据库正在恢复，请稍后重试。".into()))?;
-        let _mutation = prompt_mutation_lock();
         Self::import_from_file_on_first_launch_unlocked(state, app)
     }
 
@@ -1069,6 +1071,28 @@ mod tests {
             PromptService::prompt_file_recovery_id(&live).unwrap(),
             other_receipt
         );
+    }
+
+    #[test]
+    #[serial]
+    fn prompt_enable_during_database_restore_keeps_library_and_live_unchanged() {
+        let (_home, _guard, state, live) = setup();
+        let original = prompt("restore-a", true);
+        let target = prompt("restore-b", false);
+        state.db.save_prompt("claude", &original).unwrap();
+        state.db.save_prompt("claude", &target).unwrap();
+        write_text_file(&live, &original.content).unwrap();
+        let _restore = super::super::database_restore::restore_mutex()
+            .try_lock()
+            .unwrap();
+
+        let error = PromptService::enable_prompt(&state, AppType::Claude, "restore-b")
+            .expect_err("active restore must still refuse prompt writes");
+        assert_eq!(error.to_string(), "数据库正在恢复，请稍后重试。");
+        let saved = state.db.get_prompts("claude").unwrap();
+        assert!(saved["restore-a"].enabled);
+        assert!(!saved["restore-b"].enabled);
+        assert_eq!(fs::read_to_string(&live).unwrap(), original.content);
     }
 
     #[test]
