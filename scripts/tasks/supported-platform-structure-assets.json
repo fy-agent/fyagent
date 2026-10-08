@@ -215,11 +215,11 @@
     ],
     [
       "src-tauri/src/mode/operation.rs",
-      "ce5a3724e252392077994e4780b098b1d1dc2e4a7d8c1b70a3e577113c10cd96"
+      "429db5fc75b362239f89b709f81a95044c851a02d14642b10a5d965fc92f5f94"
     ],
     [
       "src-tauri/src/mode/state.rs",
-      "764175a1dac7f5b42e692007ec831926d6aac98bc9ef7e5276e7c9759289460c"
+      "f68cb1883c91dcab2cdc2dfe0fe1cb66c4fa469596b1f9252709e331ecd1af06"
     ],
     [
       "src-tauri/src/opencode_config.rs",
@@ -319,7 +319,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "806b5da30a020f6261ef2691c17ca2a054e51add7b3e0fd708428f20b551af6c"
+      "2bb1e79f1c372f8cbfa1a083203b78a152c797e356d77036f9a0ea214610a64f"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",
@@ -503,7 +503,7 @@
     ],
     [
       "src-tauri/tests/provider_service.rs",
-      "98c1078a1c5feeeeb4bdfa697c3f9d9f13802d57a1b47f11929472be548e274a"
+      "5ed03532b3f8fcd6d462925be16b5b88f64d2985b3515fd57ead2c2e1b9e4763"
     ],
     [
       "src-tauri/tests/secret_service_contract.rs",

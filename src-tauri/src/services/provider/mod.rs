@@ -8032,6 +8032,7 @@ impl ProviderService {
         )?;
         let previous = current_id.as_deref().and_then(|id| providers.get(id));
         let mut previous_snippet = None;
+        let mut pending = crate::mode::state::PendingTarget::pointer(Some(provider.id.clone()));
         if previous.is_some_and(|provider| {
             provider
                 .meta
@@ -8053,7 +8054,8 @@ impl ProviderService {
                 if updated != snippet {
                     state
                         .db
-                        .set_config_snippet(AppType::Codex.as_str(), Some(updated))?;
+                        .set_config_snippet(AppType::Codex.as_str(), Some(updated.clone()))?;
+                    pending.common_config_snippet = Some(updated);
                     previous_snippet = Some(snippet);
                 }
             }
@@ -8065,10 +8067,10 @@ impl ProviderService {
             crate::mode::state::op::SWITCH,
             owner,
             Some(provider),
-            crate::mode::state::PendingTarget::pointer(Some(provider.id.clone())),
+            pending,
         ) {
             // Credential projection reads the synchronized snippet from the DB.
-            // Keep it only if the switch succeeds, under the existing switch lock.
+            // Roll back on error; a published pending replays the new snippet on recovery.
             if let Some(snippet) = previous_snippet {
                 if let Err(rollback_error) = state
                     .db

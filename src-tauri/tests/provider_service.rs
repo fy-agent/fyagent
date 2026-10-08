@@ -3209,6 +3209,24 @@ wire_api = "responses"
         original_snippet,
         "failed switch must restore the exact original common config snippet"
     );
+    assert_eq!(
+        fyagent_lib::mode::operation::settle(&state.db, "codex").expect("recover published switch"),
+        Some(fyagent_lib::mode::operation::RecoveryOutcome::RolledForward)
+    );
+    assert_eq!(
+        state.db.get_current_provider("codex").unwrap().as_deref(),
+        Some("b")
+    );
+    let recovered_snippet = state.db.get_config_snippet("codex").unwrap().unwrap();
+    assert!(!recovered_snippet.contains("disable_response_storage"));
+    assert!(recovered_snippet.contains("notifications = true"));
+    let live = std::fs::read_to_string(get_codex_config_path()).unwrap();
+    assert!(live.contains("bprov"));
+    assert!(!live.contains("disable_response_storage"));
+    assert_eq!(
+        fyagent_lib::mode::operation::settle(&state.db, "codex").unwrap(),
+        None
+    );
 }
 
 /// 未勾选"写入通用配置"的供应商，其 live 改动不应自动污染通用配置片段。
@@ -5238,4 +5256,161 @@ fn source_switch_preserves_native_auth_marker_and_stash_bytes_with_preservation_
         );
         assert!(written.contains("[mcp_servers.keep]"), "{written}");
     }
+}
+
+#[test]
+fn switch_claude_removes_credential_missing_from_previous_row() {
+    assert_claude_switch_removes_stale_credential(None);
+}
+
+#[test]
+fn switch_claude_removes_credential_differing_from_previous_row() {
+    assert_claude_switch_removes_stale_credential(Some("saved-old-key"));
+}
+
+fn assert_claude_switch_removes_stale_credential(saved_key: Option<&str>) {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let _home = ensure_test_home();
+    let path = get_claude_settings_path();
+    std::fs::create_dir_all(path.parent().unwrap()).expect("create claude dir");
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&json!({
+            "env": {"ANTHROPIC_API_KEY": "a-key", "OPENROUTER_API_KEY": "sk-or-leak"},
+            "theme": "dark"
+        }))
+        .unwrap(),
+    )
+    .expect("seed live");
+    let mut config = MultiAppConfig::default();
+    let manager = config.get_manager_mut(&AppType::Claude).unwrap();
+    manager.current = "a".into();
+    let mut saved = json!({"env": {"ANTHROPIC_API_KEY": "a-key"}});
+    if let Some(key) = saved_key {
+        saved["env"]["OPENROUTER_API_KEY"] = json!(key);
+    }
+    for (id, settings) in [
+        ("a", saved),
+        ("b", json!({"env": {"ANTHROPIC_API_KEY": "b-key"}})),
+    ] {
+        let mut provider = Provider::with_id(id.into(), id.into(), settings, None);
+        provider.meta = Some(ProviderMeta {
+            common_config_enabled: Some(true),
+            ..Default::default()
+        });
+        manager.providers.insert(id.into(), provider);
+    }
+    let state = create_test_state_with_config(&config).expect("create state");
+    state
+        .db
+        .set_config_snippet("claude", Some(r#"{"theme":"dark"}"#.into()))
+        .unwrap();
+    ProviderService::switch(&state, AppType::Claude, "b").expect("switch");
+    let live: serde_json::Value = read_json_file(&path).unwrap();
+    let snippet = state.db.get_config_snippet("claude").unwrap().unwrap();
+    let shared: serde_json::Value = serde_json::from_str(&snippet).unwrap();
+    assert!(live.pointer("/env/OPENROUTER_API_KEY").is_none());
+    assert!(shared.pointer("/env/OPENROUTER_API_KEY").is_none());
+    assert!(!live.to_string().contains("sk-or-leak"));
+    assert!(!snippet.contains("sk-or-leak"));
+    assert_eq!(live["env"]["ANTHROPIC_API_KEY"], "b-key");
+    assert_eq!(
+        state.db.get_current_provider("claude").unwrap().as_deref(),
+        Some("b")
+    );
+}
+
+#[test]
+fn switch_codex_prepublication_failure_restores_common_config_snippet() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let _home = ensure_test_home();
+
+    // 片段里有两个共享键，但用户已在 live 里删掉 disable_response_storage
+    let live_config = r#"model_provider = "aprov"
+
+[tui]
+notifications = true
+
+[model_providers.aprov]
+name = "A Prov"
+base_url = "https://a.example/v1"
+wire_api = "responses"
+"#;
+    write_codex_live_atomic(&json!({ "OPENAI_API_KEY": "sk-a" }), Some(live_config))
+        .expect("seed codex live config");
+
+    let mut config = MultiAppConfig::default();
+    {
+        let manager = config
+            .get_manager_mut(&AppType::Codex)
+            .expect("codex manager");
+        manager.current = "a".to_string();
+        for (id, name, prov_key) in [("a", "A", "aprov"), ("b", "B", "bprov")] {
+            let mut provider = Provider::with_id(
+                id.to_string(),
+                name.to_string(),
+                json!({
+                    "auth": { "OPENAI_API_KEY": format!("sk-{id}") },
+                    "config": format!("model_provider = \"{prov_key}\"\n\n[model_providers.{prov_key}]\nname = \"{name} Prov\"\nbase_url = \"https://{id}.example/v1\"\nwire_api = \"responses\"\n")
+                }),
+                None,
+            );
+            provider.meta = Some(ProviderMeta {
+                common_config_enabled: Some(true),
+                ..Default::default()
+            });
+            manager.providers.insert(id.to_string(), provider);
+        }
+    }
+
+    let state = create_test_state_with_config(&config).expect("create test state");
+    state
+        .db
+        .set_config_snippet(
+            AppType::Codex.as_str(),
+            Some("disable_response_storage = true\n\n[tui]\nnotifications = true\n".to_string()),
+        )
+        .expect("seed codex common config snippet");
+
+    let original_snippet = state
+        .db
+        .get_config_snippet(AppType::Codex.as_str())
+        .expect("read original snippet");
+    let before = std::fs::read(get_codex_config_path()).unwrap();
+    // 阻塞首写备份目录：计划和片段同步已完成，但第一个文件尚未发布。
+    let store = fyagent_lib::live::engine::DeviceStore::for_device();
+    let backup_dir = store.first_write_backup_dir();
+    std::fs::create_dir_all(backup_dir.parent().unwrap()).unwrap();
+    std::fs::write(&backup_dir, b"block backup directory").unwrap();
+    ProviderService::switch(&state, AppType::Codex, "b").expect_err("backup must fail");
+    let pending = fyagent_lib::mode::state::pending(&store, "codex")
+        .unwrap()
+        .unwrap();
+    assert!(!pending.published);
+    assert!(!pending
+        .target
+        .common_config_snippet
+        .as_ref()
+        .unwrap()
+        .contains("disable_response_storage"));
+    assert_eq!(
+        state.db.get_config_snippet("codex").unwrap(),
+        original_snippet
+    );
+    assert_eq!(std::fs::read(get_codex_config_path()).unwrap(), before);
+    assert_eq!(
+        state.db.get_current_provider("codex").unwrap().as_deref(),
+        Some("a")
+    );
+    assert_eq!(
+        fyagent_lib::mode::operation::settle(&state.db, "codex").unwrap(),
+        Some(fyagent_lib::mode::operation::RecoveryOutcome::Discarded)
+    );
+    assert_eq!(
+        state.db.get_config_snippet("codex").unwrap(),
+        original_snippet
+    );
+    assert_eq!(std::fs::read(get_codex_config_path()).unwrap(), before);
 }

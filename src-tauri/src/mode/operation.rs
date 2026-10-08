@@ -414,6 +414,10 @@ pub fn commit_target(
     app: &str,
     target: &PendingTarget,
 ) -> Result<(), AppError> {
+    // 与指针使用同一 pending 重试边界；片段写入失败时不能清除 pending。
+    if let Some(snippet) = &target.common_config_snippet {
+        db.set_config_snippet(app, Some(snippet.clone()))?;
+    }
     if let Some(id) = target.pointer.as_deref() {
         let app_type: crate::app_config::AppType = app.parse()?;
         crate::settings::set_current_provider(&app_type, Some(id))?;

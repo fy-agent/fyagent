@@ -263,6 +263,9 @@ pub struct PendingTarget {
     /// `state` 会整体替换，不认识 `stack` 的版本写下的 pending 前滚时就会把名单清空。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stack: Option<StackState>,
+    /// 同步删除后的共享片段；发布失败回滚后，pending 前滚必须重新提交它。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_config_snippet: Option<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -289,6 +292,7 @@ impl PendingTarget {
             && self.state.is_none()
             && self.written.is_none()
             && self.stack.is_none()
+            && self.common_config_snippet.is_none()
             && self.extra.is_empty()
     }
 }

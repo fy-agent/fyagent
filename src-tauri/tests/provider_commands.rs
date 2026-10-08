@@ -783,3 +783,65 @@ fn grokbuild_switch_back_after_client_changed_default_model() {
         "live should select provider a's own model table again, got:\n{live}"
     );
 }
+
+#[test]
+fn switch_provider_does_not_backfill_stale_codex_source() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    enable_codex_official_auth_preservation();
+    let _home = ensure_test_home();
+    write_codex_live_atomic(
+        &json!({"OPENAI_API_KEY": "legacy-key"}),
+        Some(
+            r#"model_provider = "legacy"
+[model_providers.legacy]
+name = "Legacy"
+base_url = "https://legacy.example.invalid/v1"
+wire_api = "responses"
+"#,
+        ),
+    )
+    .expect("seed live differing from saved source");
+    let mut config = MultiAppConfig::default();
+    let manager = config.get_manager_mut(&AppType::Codex).unwrap();
+    manager.current = "old-provider".into();
+    manager.providers.insert(
+        "old-provider".into(),
+        Provider::with_id(
+            "old-provider".into(),
+            "Legacy".into(),
+            json!({"auth": {"OPENAI_API_KEY": "stale"}, "config": "stale-config"}),
+            None,
+        ),
+    );
+    manager.providers.insert(
+        "new-provider".into(),
+        Provider::with_id(
+            "new-provider".into(),
+            "Latest".into(),
+            json!({"auth": {"OPENAI_API_KEY": "fresh-key"}, "config": r#"model_provider = "latest"
+[model_providers.latest]
+name = "Latest"
+base_url = "https://latest.example.invalid/v1"
+wire_api = "responses"
+"#}),
+            None,
+        ),
+    );
+    let state = create_test_state_with_config(&config).expect("create state");
+    let before = state.db.get_all_providers("codex").unwrap()["old-provider"].clone();
+    assert_eq!(before.settings_config["config"], "stale-config");
+    switch_provider_test_hook(&state, AppType::Codex, "new-provider").expect("switch");
+    let after = state.db.get_all_providers("codex").unwrap()["old-provider"].clone();
+    assert_eq!(
+        serde_json::to_value(&after).unwrap(),
+        serde_json::to_value(&before).unwrap(),
+        "switch must leave the entire saved source unchanged despite different live auth/config"
+    );
+    assert_eq!(
+        state.db.get_current_provider("codex").unwrap().as_deref(),
+        Some("new-provider")
+    );
+    let live = std::fs::read_to_string(get_codex_config_path()).unwrap();
+    assert!(live.contains("https://latest.example.invalid/v1"));
+}

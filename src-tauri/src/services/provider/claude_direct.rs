@@ -9,7 +9,8 @@ use crate::config::get_claude_settings_path;
 use crate::database::Database;
 use crate::error::AppError;
 use crate::live::engine::LiveFile;
-use crate::live::patch::json::JsonPatch;
+use crate::live::patch::json::{ClearScope, JsonPatch};
+use crate::live::patch::KeyPath;
 use crate::live::project::claude::{direct_patch, ClaudeProjection};
 use crate::mode::operation::{AppWrite, FileChange, OperationReport};
 use crate::mode::state::{op, PendingTarget};
@@ -52,10 +53,18 @@ fn write(
     pointer: Option<&str>,
 ) -> Result<OperationReport, AppError> {
     let prev = prev.map(|provider| ClaudeProjection::of(&provider.settings_config));
-    let patch = direct_patch(
+    let mut patch = direct_patch(
         prev.as_ref(),
         &ClaudeProjection::of(&target.settings_config),
     );
+    // 普通供应商切换是凭据边界：保存行可能遗漏或滞后，不能据其值判断残留归属。
+    // 托管接管经 controller 构造补丁后直接调用 run，不走此入口，保留用户自有字段。
+    if pointer.is_some() {
+        patch.clear.push(ClearScope {
+            parent: KeyPath::new(&["env"]),
+            is_floor: crate::provider::is_sensitive_config_key,
+        });
+    }
     run(
         db,
         if pointer.is_some() {
