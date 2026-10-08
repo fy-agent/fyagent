@@ -209,6 +209,52 @@ fn i17_ordinary_directory_remains_writable() {
     assert!(source.join("SKILL.md").exists());
 }
 
+#[cfg(any(unix, windows))]
+#[test]
+fn i17_system_symlink_ancestor_is_rejected_and_read_only() {
+    // Physical temp root isolates the synthetic system/HOME link from /var on macOS.
+    let temp = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let real_home = temp.path().join("real-home");
+    let real_skill = real_home.join(".fyagent/skills/ordinary-skill");
+    write_skill(&real_skill, "Ordinary");
+    assert!(!SkillService::observed_read_only(&real_skill));
+    SkillService::require_writable_skill_path(&real_skill).unwrap();
+    let linked_home = temp.path().join("system-home");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&real_home, &linked_home).unwrap();
+    #[cfg(windows)]
+    if let Err(error) = std::os::windows::fs::symlink_dir(&real_home, &linked_home) {
+        if error.kind() == std::io::ErrorKind::PermissionDenied
+            || error.raw_os_error() == Some(1314)
+        {
+            eprintln!("skipping system symlink ancestor fixture: {error}");
+            return;
+        }
+        panic!("create system symlink ancestor: {error}");
+    }
+    let skill = linked_home.join(".fyagent/skills/ordinary-skill");
+    let before = fs::read(real_skill.join("SKILL.md")).unwrap();
+    assert!(!fs::symlink_metadata(&skill)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    // The contract rejects every lexical parent link, with no system-link exception.
+    assert!(SkillService::observed_read_only(&skill));
+    let error = SkillService::require_writable_skill_path(&skill).unwrap_err();
+    assert!(error.to_string().contains("SKILL_LINK_READ_ONLY"));
+    let error = SkillService::remove_path(&skill).unwrap_err();
+    assert!(error.to_string().contains("SKILL_LINK_READ_ONLY"));
+    assert!(fs::symlink_metadata(&linked_home)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_link(&linked_home).unwrap().canonicalize().unwrap(),
+        real_home.canonicalize().unwrap()
+    );
+    assert_eq!(fs::read(real_skill.join("SKILL.md")).unwrap(), before);
+}
+
 #[cfg(windows)]
 #[test]
 #[serial_test::serial]
