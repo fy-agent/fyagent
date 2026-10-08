@@ -225,7 +225,7 @@ fn import_reports_target_read_failure_after_commit_without_rollback_and_continue
     let report = import_with_paused_projection(&state, || {
         // Corrupt only after both imports commit. A pre-import corrupt file
         // would exercise source_failed instead. Malformed JSON yields
-        // AppError::Json -> invalid_config on Windows, macOS and Linux,
+        // AppError::Json -> invalid_config on Windows and macOS,
         // without permission assumptions or scheduler-dependent file races.
         fs::write(&path, broken).unwrap();
     });
