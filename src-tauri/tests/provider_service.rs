@@ -98,6 +98,111 @@ fn migrate_legacy_common_config_usage_marks_historical_provider_enabled() {
 }
 
 #[test]
+fn first_run_codex_import_switch_away_and_back_preserves_model_reasoning_effort() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    enable_codex_official_auth_preservation();
+    let _home = ensure_test_home();
+
+    let live_config = r#"model_provider = "relay"
+model = "gpt-5-codex"
+model_reasoning_effort = "high"
+
+[model_providers.relay]
+name = "relay"
+base_url = "https://relay.example/v1"
+wire_api = "responses"
+
+[projects."/Users/me/repo"]
+trust_level = "trusted"
+"#;
+    write_codex_live_atomic(&json!({ "OPENAI_API_KEY": "sk-live" }), Some(live_config))
+        .expect("seed first-run Codex live config");
+
+    let state = create_test_state().expect("create test state");
+    // 与首启行快照走同一入口，包含 common snippet 提取和行内共享字段剥离。
+    assert!(
+        fyagent_lib::import_default_config_test_hook(&state, AppType::Codex)
+            .expect("import first-run Codex live config"),
+        "first-run import should create the default provider"
+    );
+    state
+        .db
+        .init_default_official_providers()
+        .expect("seed official providers after first-run import");
+    let other = Provider::with_id(
+        "other-codex".to_string(),
+        "Other Codex".to_string(),
+        json!({
+            "auth": { "OPENAI_API_KEY": "sk-other" },
+            "config": r#"model_provider = "other"
+model = "gpt-other"
+model_reasoning_effort = "low"
+
+[model_providers.other]
+name = "other"
+base_url = "https://other.example/v1"
+wire_api = "responses"
+"#
+        }),
+        None,
+    );
+    state
+        .db
+        .save_provider(AppType::Codex.as_str(), &other)
+        .expect("save other Codex provider");
+
+    ProviderService::switch(&state, AppType::Codex, &other.id).expect("switch away from default");
+    let config_text =
+        std::fs::read_to_string(fyagent_lib::get_codex_config_path()).expect("read config.toml");
+    let config: toml_edit::DocumentMut = config_text.parse().expect("parse config.toml");
+    assert_eq!(config["model"].as_str(), Some("gpt-other"));
+    assert_eq!(config["model_reasoning_effort"].as_str(), Some("low"));
+
+    ProviderService::switch(&state, AppType::Codex, "default")
+        .expect("switch back to imported default");
+    let config_text = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
+        .expect("read config.toml after switching back");
+    let config: toml_edit::DocumentMut = config_text.parse().expect("parse restored config.toml");
+    assert_eq!(config["model"].as_str(), Some("gpt-5-codex"));
+    assert_eq!(
+        config
+            .get("model_reasoning_effort")
+            .and_then(|item| item.as_str()),
+        Some("high"),
+        "imported reasoning effort must be written back to config.toml, got: {config_text}"
+    );
+
+    let stored = state
+        .db
+        .get_provider_by_id("default", AppType::Codex.as_str())
+        .expect("query imported default")
+        .expect("imported default exists");
+    let row_config = stored
+        .settings_config
+        .get("config")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    let row_doc: toml_edit::DocumentMut = row_config.parse().expect("parse stored Codex config");
+    assert_eq!(
+        row_doc
+            .get("model_reasoning_effort")
+            .and_then(|item| item.as_str()),
+        Some("high"),
+        "reasoning effort must stay on the imported row, got: {row_config}"
+    );
+    let snippet = state
+        .db
+        .get_config_snippet(AppType::Codex.as_str())
+        .expect("read Codex common snippet")
+        .unwrap_or_default();
+    assert!(
+        !snippet.contains("model_reasoning_effort"),
+        "reasoning effort must stay out of the common snippet, got: {snippet}"
+    );
+}
+
+#[test]
 fn provider_service_switch_codex_updates_live_and_config() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
@@ -2310,6 +2415,83 @@ fn switch_packycode_gemini_updates_security_selected_type() {
             .and_then(|v| v.as_str()),
         Some("gemini-api-key"),
         "PackyCode Gemini should set security.auth.selectedType"
+    );
+}
+
+#[test]
+fn first_run_gemini_import_switch_away_and_back_preserves_gemini_model() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let home = ensure_test_home();
+
+    let gemini_dir = home.join(".gemini");
+    std::fs::create_dir_all(&gemini_dir).expect("create Gemini config directory");
+    let env_path = gemini_dir.join(".env");
+    std::fs::write(
+        &env_path,
+        "GEMINI_API_KEY=g-live\nGOOGLE_GEMINI_BASE_URL=https://relay.example\nGEMINI_MODEL=gemini-2.5-pro\n",
+    )
+    .expect("seed first-run Gemini .env");
+    std::fs::write(
+        gemini_dir.join("settings.json"),
+        r#"{
+  "security": { "auth": { "selectedType": "gemini-api-key" } },
+  "ui": { "theme": "GitHub" }
+}"#,
+    )
+    .expect("seed first-run Gemini settings");
+
+    let state = create_test_state().expect("create test state");
+    // 不能只调用 service 导入：回归还需要覆盖 common snippet 提取和行内剥离。
+    assert!(
+        fyagent_lib::import_default_config_test_hook(&state, AppType::Gemini)
+            .expect("import first-run Gemini live config"),
+        "first-run import should create the default provider"
+    );
+    state
+        .db
+        .init_default_official_providers()
+        .expect("seed official providers after first-run import");
+    let other = Provider::with_id(
+        "other-gemini".to_string(),
+        "Other Gemini".to_string(),
+        json!({
+            "env": {
+                "GEMINI_API_KEY": "g-other",
+                "GOOGLE_GEMINI_BASE_URL": "https://other.example",
+                "GEMINI_MODEL": "gemini-2.5-flash"
+            }
+        }),
+        None,
+    );
+    state
+        .db
+        .save_provider(AppType::Gemini.as_str(), &other)
+        .expect("save other Gemini provider");
+
+    ProviderService::switch(&state, AppType::Gemini, &other.id).expect("switch away from default");
+    let env_content =
+        std::fs::read_to_string(&env_path).expect("read Gemini .env after switching away");
+    assert_eq!(
+        env_content
+            .lines()
+            .filter_map(|line| line.strip_prefix("GEMINI_MODEL="))
+            .collect::<Vec<_>>(),
+        vec!["gemini-2.5-flash"],
+        "switching away must replace the original live model"
+    );
+
+    ProviderService::switch(&state, AppType::Gemini, "default")
+        .expect("switch back to imported default");
+    let env_content =
+        std::fs::read_to_string(&env_path).expect("read Gemini .env after switching back");
+    assert_eq!(
+        env_content
+            .lines()
+            .filter_map(|line| line.strip_prefix("GEMINI_MODEL="))
+            .collect::<Vec<_>>(),
+        vec!["gemini-2.5-pro"],
+        "imported GEMINI_MODEL must be written back to .env, got: {env_content}"
     );
 }
 
