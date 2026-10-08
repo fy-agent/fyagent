@@ -96,18 +96,24 @@ fn extract_codex_common_config(settings: &Value) -> Result<String, AppError> {
         .parse::<toml_edit::DocumentMut>()
         .map_err(|error| AppError::Message(format!("TOML parse error: {error}")))?;
     let root = doc.as_table_mut();
-    for key in [
-        "model",
-        "model_provider",
-        "base_url",
-        "wire_api",
-        "model_providers",
-        "mcp_servers",
-        "experimental_bearer_token",
-        "model_catalog_json",
-    ] {
+    // Provider routing and model fields stay in the row, including nested fields.
+    for key in crate::live::floor::CODEX_FLOOR_TOP {
         root.remove(key);
     }
+    for path in crate::live::floor::CODEX_FLOOR_NESTED {
+        let [parent, key] = path else { continue };
+        if let Some(table) = root
+            .get_mut(parent)
+            .and_then(|item| item.as_table_like_mut())
+        {
+            table.remove(key);
+            if table.is_empty() {
+                root.remove(parent);
+            }
+        }
+    }
+    root.remove("model_providers");
+    root.remove("mcp_servers");
 
     if let Some(mcp_table) = root
         .get_mut("mcp")
@@ -149,7 +155,7 @@ fn extract_gemini_common_config(settings: &Value) -> Result<String, AppError> {
     let mut snippet = serde_json::Map::new();
     if let Some(env) = env {
         for (key, value) in env {
-            if key == "GOOGLE_GEMINI_BASE_URL" || is_sensitive_config_key(key) {
+            if crate::live::floor::gemini_floor_env(key) || is_sensitive_config_key(key) {
                 continue;
             }
             let Value::String(value) = value else {
