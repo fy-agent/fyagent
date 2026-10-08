@@ -211,7 +211,7 @@
     ],
     [
       "src-tauri/src/mode/controller.rs",
-      "a986c0b98c724df383673a4b259d47f08d95dfbff91100ceb1dbe15a071d8d56"
+      "2e3072be99022d0975956a7ce5603f7167101395644bf47ee109ce855e4890db"
     ],
     [
       "src-tauri/src/mode/operation.rs",
@@ -319,7 +319,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "4f7bf76db0d56fcd186fda6ba7bf4a0dce3ab806c7d7749f0c14bbce4b722712"
+      "d760c01721179e7334ecff72b5c22b973df489c617f0d2326349ba916f928cb3"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",

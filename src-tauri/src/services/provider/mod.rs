@@ -7495,6 +7495,14 @@ impl ProviderService {
                 return Ok(());
             }
 
+            // 复用外层切换锁，先移出 Stack 并重写模型目录，成功后再删行。
+            if crate::mode::stack::is_member(&app_type, id)? {
+                futures::executor::block_on(crate::mode::controller::set_stack_member_locked(
+                    state, &app_type, id, false,
+                ))
+                .map_err(AppError::Message)?;
+            }
+
             state.db.delete_provider(app_type.as_str(), id)?;
             ProviderCredentials::settle(&state.db);
             return Ok(());

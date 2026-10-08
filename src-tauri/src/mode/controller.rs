@@ -6368,6 +6368,58 @@ model_provider = "c"
 
     #[tokio::test]
     #[serial]
+    async fn deleting_an_unused_stacked_codex_provider_rewrites_the_catalog() {
+        let _home = Home::new();
+        seed_codex("", None);
+        let state = state_with(AppType::Codex, &codex_stack_rows(), "a").await;
+        enter(&state, &AppType::Codex, true).await.expect("enter");
+        set_codex_member(&state, "deepseek", true).await;
+        set_codex_member(&state, "zhipu", true).await;
+
+        assert_eq!(
+            crate::settings::get_current_provider(&AppType::Codex).as_deref(),
+            Some("a")
+        );
+        assert_eq!(
+            state.db.get_current_provider("codex").unwrap().as_deref(),
+            Some("a")
+        );
+        assert_eq!(
+            stack_state_of(&AppType::Codex).members,
+            vec!["a", "deepseek", "zhipu"]
+        );
+        assert_eq!(
+            catalog_slugs(),
+            vec![
+                "gpt-a",
+                "ccs-deepseek/deepseek-v4-pro",
+                "ccs-zhipu/gpt-zhipu"
+            ]
+        );
+
+        ProviderService::delete(&state, AppType::Codex, "deepseek").expect("delete deepseek");
+
+        let stack = stack_state_of(&AppType::Codex);
+        assert_eq!(stack.members, vec!["a", "zhipu"]);
+        assert_eq!(stack.key_of("deepseek"), Some("deepseek"), "key 继续保留");
+        assert_eq!(catalog_slugs(), vec!["gpt-a", "ccs-zhipu/gpt-zhipu"]);
+        assert!(state
+            .db
+            .get_provider_by_id("deepseek", "codex")
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            crate::settings::get_current_provider(&AppType::Codex).as_deref(),
+            Some("a")
+        );
+        assert_eq!(
+            state.db.get_current_provider("codex").unwrap().as_deref(),
+            Some("a")
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn codex_a_broken_stacked_provider_is_skipped_and_cannot_be_stacked() {
         let _home = Home::new();
         seed_codex("", None);
