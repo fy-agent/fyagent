@@ -349,8 +349,8 @@ command = "echo"
                 "old-provider".to_string(),
                 "Legacy".to_string(),
                 json!({
-                    "auth": {"OPENAI_API_KEY": "stale"},
-                    "config": "stale-config"
+                    "auth": legacy_auth,
+                    "config": legacy_config
                 }),
                 None,
             ),
@@ -408,6 +408,12 @@ command = "say"
     );
 
     let app_state = create_test_state_with_config(&config).expect("create test state");
+    // 来源切换不回填上一家；在夹具建立时通过正式保存入口绑定原有凭据。
+    let legacy = config.get_manager(&AppType::Codex).unwrap().providers["old-provider"].clone();
+    app_state
+        .db
+        .save_provider(AppType::Codex.as_str(), &legacy)
+        .expect("save the original reference-backed source before switching");
 
     fyagent_lib::McpService::sync_enabled_for_app(&app_state, &AppType::Codex)
         .expect("seed MCP independently of source switching");
@@ -475,7 +481,7 @@ command = "say"
         .pointer("/auth/OPENAI_API_KEY")
         .is_none());
     assert!(legacy.settings_config["credentialRef"].as_str().is_some());
-    // Restoring the saved source proves the backfilled native material resolves.
+    // Restoring the saved source proves its original native material still resolves.
     fyagent_lib::McpService::sync_enabled_for_app(&app_state, &AppType::Codex)
         .expect("seed MCP independently");
     ProviderService::switch(&app_state, AppType::Codex, "old-provider")

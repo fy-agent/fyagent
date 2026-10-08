@@ -2691,7 +2691,11 @@ fn switch_claude_syncs_new_shared_keys_from_live_into_common_config() {
         let mut provider_a = Provider::with_id(
             "a".to_string(),
             "A".to_string(),
-            json!({ "env": { "ANTHROPIC_API_KEY": "a-key" } }),
+            // 旧版由 A 写入 live 的凭据必须也归属于 A 的保存行。
+            json!({ "env": {
+                "ANTHROPIC_API_KEY": "a-key",
+                "OPENROUTER_API_KEY": "sk-or-leak"
+            } }),
             None,
         );
         provider_a.meta = Some(ProviderMeta {
@@ -3113,6 +3117,97 @@ wire_api = "responses"
     assert!(
         live_after.contains("notifications = true"),
         "kept shared key should propagate to the next provider, got: {live_after}"
+    );
+}
+
+/// 片段同步后切换失败，必须恢复数据库里的原始片段。
+#[test]
+fn switch_codex_failure_restores_common_config_snippet() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let home = ensure_test_home();
+
+    // 片段里有两个共享键，但用户已在 live 里删掉 disable_response_storage
+    let live_config = r#"model_provider = "aprov"
+
+[tui]
+notifications = true
+
+[model_providers.aprov]
+name = "A Prov"
+base_url = "https://a.example/v1"
+wire_api = "responses"
+"#;
+    write_codex_live_atomic(&json!({ "OPENAI_API_KEY": "sk-a" }), Some(live_config))
+        .expect("seed codex live config");
+
+    let mut config = MultiAppConfig::default();
+    {
+        let manager = config
+            .get_manager_mut(&AppType::Codex)
+            .expect("codex manager");
+        manager.current = "a".to_string();
+        for (id, name, prov_key) in [("a", "A", "aprov"), ("b", "B", "bprov")] {
+            let mut provider = Provider::with_id(
+                id.to_string(),
+                name.to_string(),
+                json!({
+                    "auth": { "OPENAI_API_KEY": format!("sk-{id}") },
+                    "config": format!("model_provider = \"{prov_key}\"\n\n[model_providers.{prov_key}]\nname = \"{name} Prov\"\nbase_url = \"https://{id}.example/v1\"\nwire_api = \"responses\"\n")
+                }),
+                None,
+            );
+            provider.meta = Some(ProviderMeta {
+                common_config_enabled: Some(true),
+                ..Default::default()
+            });
+            manager.providers.insert(id.to_string(), provider);
+        }
+    }
+
+    let state = create_test_state_with_config(&config).expect("create test state");
+    state
+        .db
+        .set_config_snippet(
+            AppType::Codex.as_str(),
+            Some("disable_response_storage = true\n\n[tui]\nnotifications = true\n".to_string()),
+        )
+        .expect("seed codex common config snippet");
+
+    let original_snippet = state
+        .db
+        .get_config_snippet(AppType::Codex.as_str())
+        .expect("read original snippet");
+    let db = rusqlite::Connection::open(home.join(".fyagent/fyagent.db")).expect("open db");
+    db.execute_batch(
+        "CREATE TRIGGER reject_codex_switch_current
+         BEFORE UPDATE OF is_current ON providers
+         WHEN NEW.app_type = 'codex' AND NEW.id = 'b' AND NEW.is_current = 1
+         BEGIN
+           SELECT CASE WHEN instr(
+             (SELECT value FROM settings WHERE key = 'common_config_codex'),
+             'disable_response_storage'
+           ) = 0 THEN RAISE(ABORT, 'injected Codex switch failure')
+           ELSE RAISE(ABORT, 'snippet synchronization did not run') END;
+         END;",
+    )
+    .expect("install switch failure trigger");
+
+    let error = ProviderService::switch(&state, AppType::Codex, "b")
+        .expect_err("switch must fail after snippet synchronization");
+    db.execute_batch("DROP TRIGGER reject_codex_switch_current;")
+        .expect("drop switch failure trigger");
+    assert!(
+        error.to_string().contains("injected Codex switch failure"),
+        "expected the injected switch failure, got: {error}"
+    );
+    assert_eq!(
+        state
+            .db
+            .get_config_snippet(AppType::Codex.as_str())
+            .expect("read snippet after failed switch"),
+        original_snippet,
+        "failed switch must restore the exact original common config snippet"
     );
 }
 

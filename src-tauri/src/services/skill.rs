@@ -6741,7 +6741,10 @@ mod tests {
                 .unwrap_err();
             assert!(error.to_string().contains("SKILL_LINK_READ_ONLY"));
             assert!(error.to_string().contains("useOrdinaryDirectory"));
-            assert!(fs::symlink_metadata(&linked).unwrap().file_type().is_symlink());
+            assert!(fs::symlink_metadata(&linked)
+                .unwrap()
+                .file_type()
+                .is_symlink());
             assert_eq!(fs::read(&blocked).unwrap(), b"ordinary file");
         }
     }

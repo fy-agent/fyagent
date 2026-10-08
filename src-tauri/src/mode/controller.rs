@@ -5792,7 +5792,7 @@ model_provider = "c"
     #[serial]
     async fn editing_or_deleting_an_stacked_provider_rewrites_the_contract() {
         #[cfg(windows)]
-        fyagent_lib::initialize_windows_user_context().expect("Windows test user context");
+        crate::initialize_windows_user_context().expect("Windows test user context");
         let _home = Home::new();
         seed_settings(USER_SETTINGS);
         let state = state_with(AppType::Claude, &stack_rows(), "a").await;

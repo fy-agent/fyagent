@@ -35,12 +35,13 @@ pub(crate) use source_switch::{
 };
 
 pub(crate) use auth::codex_auth_has_credential_login_material;
+#[cfg(all(test, any(target_os = "macos", windows)))]
+pub use auth::codex_auth_has_oauth_login_material;
 #[cfg(test)]
 pub(crate) use auth::codex_live_auth_is_stale_third_party_residue;
 pub use auth::{
     clear_stale_codex_live_auth_after_official_switch, codex_auth_has_login_material,
-    codex_auth_has_oauth_login_material, extract_codex_auth_api_key,
-    should_restore_codex_provider_token_for_backfill,
+    extract_codex_auth_api_key, should_restore_codex_provider_token_for_backfill,
 };
 pub(crate) use credential_store::{
     native_file_projection_allowed, parse_cli_auth_credentials_store, CodexCredentialStore,

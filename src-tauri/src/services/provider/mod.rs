@@ -8031,6 +8031,7 @@ impl ProviderService {
             crate::mode::current::Purpose::Direct,
         )?;
         let previous = current_id.as_deref().and_then(|id| providers.get(id));
+        let mut previous_snippet = None;
         if previous.is_some_and(|provider| {
             provider
                 .meta
@@ -8053,18 +8054,33 @@ impl ProviderService {
                     state
                         .db
                         .set_config_snippet(AppType::Codex.as_str(), Some(updated))?;
+                    previous_snippet = Some(snippet);
                 }
             }
         }
         let owner = previous.map_or(codex_direct::Owner::None, codex_direct::Owner::Provider);
-        codex_direct::write_direct(
+        if let Err(error) = codex_direct::write_direct(
             state.db.as_ref(),
             &state.codex_oauth_manager,
             crate::mode::state::op::SWITCH,
             owner,
             Some(provider),
             crate::mode::state::PendingTarget::pointer(Some(provider.id.clone())),
-        )?;
+        ) {
+            // Credential projection reads the synchronized snippet from the DB.
+            // Keep it only if the switch succeeds, under the existing switch lock.
+            if let Some(snippet) = previous_snippet {
+                if let Err(rollback_error) = state
+                    .db
+                    .set_config_snippet(AppType::Codex.as_str(), Some(snippet))
+                {
+                    return Err(AppError::Message(format!(
+                        "{error}; additionally failed to restore Codex common config snippet: {rollback_error}"
+                    )));
+                }
+            }
+            return Err(error);
+        }
 
         Ok(SwitchResult::default())
     }

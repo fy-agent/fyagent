@@ -24,6 +24,8 @@ pub struct ClaudeProjection {
     pub env: Map<String, Value>,
     /// `env` 里的供应商独有字段（兼容开关、窗口值）。
     pub exclusive: Map<String, Value>,
+    /// 旧行带入的非 Claude 凭据：仅用于按值清理，不投影到 live。
+    pub legacy_credentials: Map<String, Value>,
 }
 
 impl ClaudeProjection {
@@ -46,6 +48,10 @@ impl ClaudeProjection {
                     projection.env.insert(key.clone(), value.clone());
                 } else if floor::claude_exclusive_env(key) {
                     projection.exclusive.insert(key.clone(), value.clone());
+                } else if crate::provider::is_sensitive_config_key(key) {
+                    projection
+                        .legacy_credentials
+                        .insert(key.clone(), value.clone());
                 }
             }
         }
@@ -83,6 +89,7 @@ impl ClaudeProjection {
 /// 以 live 为底切到 `target`：
 /// - 关键字段：一律清空，再写 `target` 的；
 /// - 独有字段：先删 `prev` 带进来、而且值没被改过的，再写 `target` 的；
+/// - 旧行的非 Claude 凭据：只删与上一家保存值相同的键，用户新增或改写的键保留；
 /// - 残留清理：删掉旧版下发过的有害窗口值，`target` 自己要写的键除外。
 ///
 /// `prev` 是 live 当前对应的供应商（直连指针指向的那家）；没有就只做残留清理。
@@ -90,7 +97,7 @@ pub fn direct_patch(prev: Option<&ClaudeProjection>, target: &ClaudeProjection) 
     let env = KeyPath::new(&["env"]);
     let outgoing = prev
         .into_iter()
-        .flat_map(|prev| &prev.exclusive)
+        .flat_map(|prev| prev.exclusive.iter().chain(&prev.legacy_credentials))
         .map(|(key, value)| (env.child(key), vec![value.clone()]));
     let residue = residue::CLAUDE_RESIDUE_ENV
         .iter()
@@ -104,9 +111,7 @@ pub fn direct_patch(prev: Option<&ClaudeProjection>, target: &ClaudeProjection) 
             },
             ClearScope {
                 parent: env.clone(),
-                is_floor: |key| {
-                    floor::claude_floor_env(key) || crate::provider::is_sensitive_config_key(key)
-                },
+                is_floor: floor::claude_floor_env,
             },
         ],
         set: target.set_entries(),
@@ -286,6 +291,7 @@ pub fn proxy_projection(
         top: Map::new(),
         env,
         exclusive: route.exclusive.clone(),
+        legacy_credentials: Map::new(),
     }
 }
 

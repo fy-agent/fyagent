@@ -103,7 +103,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "ac7eed5367317d11f3fa27b131b4756bcdf0fecb18580f76f98a6f335f8bdd72"
+      "7af6b69a843b234298771c310ecbe0281246b900c77addd8dd60b407e28d298d"
     ],
     [
       "src-tauri/src/codex_config/catalog.rs",
@@ -211,7 +211,7 @@
     ],
     [
       "src-tauri/src/mode/controller.rs",
-      "2e3072be99022d0975956a7ce5603f7167101395644bf47ee109ce855e4890db"
+      "6c3391fa788c07837e6b043891c30a9925c41528d15be5d525802139295654e9"
     ],
     [
       "src-tauri/src/mode/operation.rs",
@@ -319,7 +319,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "d760c01721179e7334ecff72b5c22b973df489c617f0d2326349ba916f928cb3"
+      "806b5da30a020f6261ef2691c17ca2a054e51add7b3e0fd708428f20b551af6c"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",
@@ -351,7 +351,7 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "21877b9b911145e61de03ca05fc88df081e3228c2385a67035051200d3a2d31d"
+      "0666207a35b244e805ca31d4b2a91c283c92b63ef5c58184ef18c511368012d4"
     ],
     [
       "src-tauri/src/services/skill/linked_paths_tests.rs",
@@ -503,7 +503,7 @@
     ],
     [
       "src-tauri/tests/provider_service.rs",
-      "cf86d670a2084c54a16efe3c2f723c94f95531bff5847cc2503ae126798518a1"
+      "98c1078a1c5feeeeb4bdfa697c3f9d9f13802d57a1b47f11929472be548e274a"
     ],
     [
       "src-tauri/tests/secret_service_contract.rs",
