@@ -350,6 +350,8 @@ describe("MCP management", () => {
     ports.mcp.importFromApps = vi.fn(
       async (): Promise<McpImportReport> => ({
         contractVersion: 1,
+        projectionFailed: 0,
+        projectionFailures: [],
         sources: [
           {
             source: "qoderwork",
@@ -401,6 +403,10 @@ describe("MCP management", () => {
       };
       return {
         contractVersion: 1,
+        projectionFailed: 1,
+        projectionFailures: [
+          { target: "qoderwork", serverId: "time", reason: "invalid_config" },
+        ],
         sources: [
           {
             source: "qoderwork",
@@ -462,6 +468,13 @@ describe("MCP management", () => {
     expect(result).toHaveTextContent(
       "Codex：来源读取或配置冲突校验失败，本来源未写入",
     );
+    expect(result).toHaveTextContent("工具配置写入失败 1 项");
+    expect(result).toHaveTextContent("QoderWork：配置格式或服务定义无效");
+    expect(
+      await screen.findByText(
+        "MCP 导入完成，1 个来源失败，1 项工具配置写入失败",
+      ),
+    ).toBeVisible();
     expect(ports.mcp.importFromApps).toHaveBeenCalledWith([
       "qoderwork",
       "codex",
@@ -485,6 +498,52 @@ describe("MCP management", () => {
     expect(reopened).toHaveTextContent("QoderWork");
     expect(reopened).toHaveTextContent("连接尚未测试");
     expect(document.body).not.toHaveTextContent("source-secret");
+  });
+
+  it("shows projection partial failure while keeping accepted imports visible", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    const server: McpServer = {
+      id: "time",
+      name: "Imported Time",
+      apps: createMcpAssignments(["qoderwork"]),
+      server: { command: "echo" },
+    };
+    ports.mcp.getAll = vi.fn(async () => ({ time: server }));
+    ports.mcp.importFromApps = vi.fn(
+      async (): Promise<McpImportReport> => ({
+        contractVersion: 1,
+        projectionFailed: 1,
+        projectionFailures: [
+          { target: "qoderwork", serverId: "time", reason: "io_failed" },
+        ],
+        sources: [
+          {
+            source: "qoderwork",
+            added: 1,
+            assignmentChanged: 0,
+            unchanged: 0,
+            disabledSkipped: 0,
+            failureCode: null,
+          },
+        ],
+      }),
+    );
+    renderFeature(<McpPage />, ports);
+    await screen.findByRole("heading", { name: "Imported Time" });
+    await confirmMcpImport(user);
+    const result = await screen.findByRole("region", { name: "MCP 导入结果" });
+    expect(result).toHaveTextContent("新增 1 · 分配状态变化 0");
+    expect(result).toHaveTextContent("工具配置写入失败 1 项");
+    expect(result).toHaveTextContent("QoderWork：配置文件读写失败");
+    expect(result).toHaveTextContent("已收录的数据仍保留");
+    expect(
+      await screen.findByText("MCP 导入完成，部分工具配置写入失败"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Imported Time" }),
+    ).toBeVisible();
+    expect(result).not.toHaveTextContent("本来源未写入");
   });
 
   it("keeps cached MCP data visible when a write-triggered refresh fails", async () => {

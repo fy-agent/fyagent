@@ -49,7 +49,16 @@ export interface McpImportSourceResult {
   failureCode: "source_failed" | null;
 }
 
+export interface McpProjectionFailure {
+  target: McpImportSourceId;
+  /** null represents a failure of the target's complete collection. */
+  serverId: string | null;
+  reason: "invalid_config" | "io_failed" | "projection_failed";
+}
+
 export interface McpImportReport {
   contractVersion: 1;
   sources: McpImportSourceResult[];
+  projectionFailed: number;
+  projectionFailures: McpProjectionFailure[];
 }

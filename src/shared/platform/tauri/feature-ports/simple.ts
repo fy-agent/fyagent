@@ -37,7 +37,12 @@ function parseMcpImportReport(
   const report = value as Record<string, unknown>;
   if (
     report.contractVersion !== 1 ||
-    Object.keys(report).length !== 2 ||
+    Object.keys(report).length !== 4 ||
+    typeof report.projectionFailed !== "number" ||
+    !Number.isSafeInteger(report.projectionFailed) ||
+    report.projectionFailed < 0 ||
+    !Array.isArray(report.projectionFailures) ||
+    report.projectionFailed !== report.projectionFailures.length ||
     !Array.isArray(report.sources) ||
     report.sources.length !== sources.length
   )
@@ -58,6 +63,25 @@ function parseMcpImportReport(
           (row[key] as number) >= 0,
       ) ||
       (row.failureCode !== null && counts.some((key) => row[key] !== 0))
+    )
+      throw new Error("MCP 导入结果无效");
+  }
+  for (const raw of report.projectionFailures) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+      throw new Error("MCP 导入结果无效");
+    const failure = raw as Record<string, unknown>;
+    if (
+      Object.keys(failure).length !== 3 ||
+      !isMcpImportSource(failure.target) ||
+      !report.sources.some(
+        (source) =>
+          source.source === failure.target && source.failureCode === null,
+      ) ||
+      (failure.serverId !== null &&
+        (typeof failure.serverId !== "string" || !failure.serverId.trim())) ||
+      !["invalid_config", "io_failed", "projection_failed"].includes(
+        failure.reason as string,
+      )
     )
       throw new Error("MCP 导入结果无效");
   }

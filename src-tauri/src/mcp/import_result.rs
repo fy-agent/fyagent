@@ -1,4 +1,4 @@
-//! Import observations contain only stable source identities and counts.
+//! Import results separate accepted sources from best-effort live projection.
 
 use serde::Serialize;
 
@@ -33,7 +33,19 @@ pub struct McpImportSourceResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct McpProjectionFailure {
+    pub target: McpTargetId,
+    // None denotes a collection or target-wide failure (including Claude).
+    pub server_id: Option<String>,
+    // Closed reason only; never serialize native errors, paths or secret values.
+    pub reason: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct McpImportReport {
     pub contract_version: u8,
     pub sources: Vec<McpImportSourceResult>,
+    pub projection_failed: usize,
+    pub projection_failures: Vec<McpProjectionFailure>,
 }
