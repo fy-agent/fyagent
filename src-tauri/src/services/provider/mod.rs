@@ -2780,6 +2780,9 @@ context_window = 262144
         let settings = json!({
             "env": {
                 "GEMINI_API_KEY": "g-gem",
+                "GEMINI_MODEL": "gemini-2.5-pro",
+                "GOOGLE_CLOUD_PROJECT": "provider-project",
+                "GEMINI_CLI_USE_COMPUTE_ADC": "true",
                 "GOOGLE_API_KEY": "g-legacy-real-key",
                 "GOOGLE_GEMINI_BASE_URL": "https://gemini.example",
                 "GOOGLE_APPLICATION_CREDENTIALS": "/path/creds.json",
@@ -2798,13 +2801,17 @@ context_window = 262144
 
         for leaked in [
             "GEMINI_API_KEY",
+            "GEMINI_MODEL",
+            "GOOGLE_GEMINI_BASE_URL",
+            "GOOGLE_CLOUD_PROJECT",
+            "GEMINI_CLI_USE_COMPUTE_ADC",
             "GOOGLE_API_KEY",
             "GOOGLE_APPLICATION_CREDENTIALS",
             "SOME_PROXY_AUTH_TOKEN",
         ] {
             assert!(
                 value.get(leaked).is_none(),
-                "credential {leaked} must not leak into the shared Gemini snippet"
+                "provider field {leaked} must not leak into the shared Gemini snippet"
             );
         }
         assert_eq!(
@@ -3632,9 +3639,23 @@ base_url = "https://active.example/v1"
 model = "gpt-4"
 wire_api = "chat"
 disable_response_storage = true
+model_reasoning_effort = "high"
+review_model = "review-provider-model"
+plan_mode_reasoning_effort = "high"
+openai_base_url = "https://provider.example/v1"
+approval_policy = "on-request"
 experimental_bearer_token = "sk-live-secret"
 model_catalog_json = "fyagent-model-catalog.json"
 web_search = "disabled"
+
+[agents]
+default_subagent_model = "provider-subagent"
+default_subagent_reasoning_effort = "high"
+max_threads = 4
+
+[memories]
+extract_model = "provider-extract"
+consolidation_model = "provider-consolidation"
 
 [model_providers.azure]
 name = "Azure OpenAI"
@@ -3698,9 +3719,23 @@ command = "legacy-cmd"
             !extracted.contains("web_search"),
             "should strip the fyagent web_search disabled sentinel, got: {extracted}"
         );
+        for key in crate::live::floor::CODEX_FLOOR_TOP {
+            assert!(
+                !extracted.contains(key),
+                "provider field {key} leaked: {extracted}"
+            );
+        }
+        for path in crate::live::floor::CODEX_FLOOR_NESTED {
+            let key = path.last().expect("nested field path");
+            assert!(
+                !extracted.contains(key),
+                "provider field {key} leaked: {extracted}"
+            );
+        }
         // 真正可共享的键保留
         assert!(
-            extracted.contains("disable_response_storage = true"),
+            extracted.contains("approval_policy = \"on-request\"")
+                && extracted.contains("max_threads = 4"),
             "shareable keys must survive extraction, got: {extracted}"
         );
     }
