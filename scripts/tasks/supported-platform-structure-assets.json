@@ -319,7 +319,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "d271f231ac94ca18ac21ef9b14ed29a5e492967e199538fc6706297cfa7abbe0"
+      "4f7bf76db0d56fcd186fda6ba7bf4a0dce3ab806c7d7749f0c14bbce4b722712"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",
@@ -503,7 +503,7 @@
     ],
     [
       "src-tauri/tests/provider_service.rs",
-      "a6254e770d06eeddfc9046ade024a1b442e389f9263ddcb2fd5f589167e7518b"
+      "cf86d670a2084c54a16efe3c2f723c94f95531bff5847cc2503ae126798518a1"
     ],
     [
       "src-tauri/tests/secret_service_contract.rs",

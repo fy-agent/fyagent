@@ -203,3 +203,37 @@ fn serialize_json_common_config(config: Value) -> Result<String, AppError> {
     serde_json::to_string_pretty(&config)
         .map_err(|error| AppError::Message(format!("Serialization failed: {error}")))
 }
+
+/// Retain only saved shared keys still present in live; never capture new keys.
+pub(super) fn sync_codex_common_deletions(snippet: &str, live: &str) -> Result<String, AppError> {
+    use toml_edit::{DocumentMut, TableLike};
+
+    fn retain_present(shared: &mut dyn TableLike, live: &dyn TableLike) {
+        let keys: Vec<String> = shared.iter().map(|(key, _)| key.to_string()).collect();
+        for key in keys {
+            let Some(current) = live.get(&key) else {
+                shared.remove(&key);
+                continue;
+            };
+            if let Some(saved_table) = shared
+                .get_mut(&key)
+                .and_then(|item| item.as_table_like_mut())
+            {
+                if let Some(live_table) = current.as_table_like() {
+                    retain_present(saved_table, live_table);
+                } else {
+                    shared.remove(&key);
+                }
+            }
+        }
+    }
+
+    let mut shared = snippet
+        .parse::<DocumentMut>()
+        .map_err(|err| AppError::Config(err.to_string()))?;
+    let live = live
+        .parse::<DocumentMut>()
+        .map_err(|err| AppError::Config(err.to_string()))?;
+    retain_present(shared.as_table_mut(), live.as_table());
+    Ok(shared.to_string())
+}

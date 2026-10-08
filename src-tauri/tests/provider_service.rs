@@ -2764,10 +2764,9 @@ fn switch_claude_syncs_new_shared_keys_from_live_into_common_config() {
         Some(&json!(true)),
         "shared key should propagate to the next provider's live config"
     );
-    assert_eq!(
-        live_after.pointer("/env/OPENROUTER_API_KEY"),
-        live.pointer("/env/OPENROUTER_API_KEY"),
-        "an existing user env key outside Claude's owned authentication fields keeps its exact value"
+    assert!(
+        live_after.pointer("/env/OPENROUTER_API_KEY").is_none(),
+        "leaked credential must not be injected into the next provider's live"
     );
     assert_eq!(
         live_after
@@ -3035,7 +3034,7 @@ command = "ghost-cmd"
     );
 }
 
-/// 显式启用的 Codex 通用片段仍参与目标配置；live 删除不会反向改写已保存片段。
+/// 删掉的共享键要同步进通用配置，且不会在下一家被重新注入
 #[test]
 fn switch_codex_syncs_deletions_from_live_into_common_config() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
@@ -3097,8 +3096,8 @@ wire_api = "responses"
         .expect("read snippet")
         .expect("snippet present");
     assert!(
-        snippet.contains("disable_response_storage"),
-        "source selection must not rewrite the saved snippet, got: {snippet}"
+        !snippet.contains("disable_response_storage"),
+        "deleted shared key must be removed from the common snippet, got: {snippet}"
     );
     assert!(
         snippet.contains("notifications = true"),
@@ -3108,8 +3107,8 @@ wire_api = "responses"
     let live_after = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
         .expect("read config.toml after switch");
     assert!(
-        live_after.contains("disable_response_storage = true"),
-        "an explicitly enabled saved snippet is applied without capturing live deletions, got: {live_after}"
+        !live_after.contains("disable_response_storage"),
+        "deleted shared key must not be re-injected into the next provider, got: {live_after}"
     );
     assert!(
         live_after.contains("notifications = true"),

@@ -104,7 +104,9 @@ pub fn direct_patch(prev: Option<&ClaudeProjection>, target: &ClaudeProjection) 
             },
             ClearScope {
                 parent: env.clone(),
-                is_floor: floor::claude_floor_env,
+                is_floor: |key| {
+                    floor::claude_floor_env(key) || crate::provider::is_sensitive_config_key(key)
+                },
             },
         ],
         set: target.set_entries(),

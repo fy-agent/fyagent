@@ -8009,7 +8009,7 @@ impl ProviderService {
     /// Codex 直连切换：`config.toml` 只替换关键字段和独有字段；同一操作提交配置和
     /// 可选的模型目录，再落定指针。不写 `auth.json`，不准备或切换原生账号，不写托管账号标记。
     ///
-    /// 不回填、不同步通用配置片段、不补回 MCP：用户在 live 里的改动（含 `[mcp_servers]`）
+    /// 不回填、不补回 MCP；仅同步已共享键的删除：用户在 live 里的改动（含 `[mcp_servers]`）
     /// 本来就留在原处。行有问题（会把官方登录发给第三方、带 Key 却没地方放）时在写任何
     /// 东西之前报错，指针也不动。
     fn switch_codex_direct(
@@ -8022,10 +8022,33 @@ impl ProviderService {
             &AppType::Codex,
             crate::mode::current::Purpose::Direct,
         )?;
-        let owner = current_id
-            .as_deref()
-            .and_then(|current_id| providers.get(current_id))
-            .map_or(codex_direct::Owner::None, codex_direct::Owner::Provider);
+        let previous = current_id.as_deref().and_then(|id| providers.get(id));
+        if previous.is_some_and(|provider| {
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.common_config_enabled)
+                == Some(true)
+        }) && !state
+            .db
+            .is_config_snippet_cleared(AppType::Codex.as_str())?
+        {
+            if let Some(snippet) = state.db.get_config_snippet(AppType::Codex.as_str())? {
+                let live = read_live_settings(AppType::Codex)?;
+                let updated = common_config::sync_codex_common_deletions(
+                    &snippet,
+                    live.get("config")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                )?;
+                if updated != snippet {
+                    state
+                        .db
+                        .set_config_snippet(AppType::Codex.as_str(), Some(updated))?;
+                }
+            }
+        }
+        let owner = previous.map_or(codex_direct::Owner::None, codex_direct::Owner::Provider);
         codex_direct::write_direct(
             state.db.as_ref(),
             &state.codex_oauth_manager,
