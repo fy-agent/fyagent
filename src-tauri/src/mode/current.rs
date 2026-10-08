@@ -147,12 +147,36 @@ mod tests {
             }
             let text = fs::read_to_string(&path).unwrap();
             // 测试模块里造数据可以直接读写，只查生产代码：跳过顶层的
-            // `#[cfg(test)] mod xxx { … }`（到下一个顶格的 `}` 为止）。
+            // `#[cfg(test)] mod xxx { … }`（到原始字符串外下一个顶格的 `}` 为止）。
             let mut in_tests = false;
+            let mut raw_string_end: Option<String> = None;
             let mut previous = "";
             for (index, line) in text.lines().enumerate() {
                 if in_tests {
-                    in_tests = line != "}";
+                    in_tests = raw_string_end.is_some() || line != "}";
+                    let bytes = line.as_bytes();
+                    let mut cursor = 0;
+                    while cursor < bytes.len() {
+                        if let Some(end) = raw_string_end.as_ref() {
+                            if bytes[cursor..].starts_with(end.as_bytes()) {
+                                cursor += end.len();
+                                raw_string_end = None;
+                                continue;
+                            }
+                        } else if bytes[cursor] == b'r' {
+                            let mut quote = cursor + 1;
+                            while bytes.get(quote) == Some(&b'#') {
+                                quote += 1;
+                            }
+                            if bytes.get(quote) == Some(&b'"') {
+                                raw_string_end =
+                                    Some(format!("\"{}", "#".repeat(quote - cursor - 1)));
+                                cursor = quote + 1;
+                                continue;
+                            }
+                        }
+                        cursor += 1;
+                    }
                     previous = line;
                     continue;
                 }

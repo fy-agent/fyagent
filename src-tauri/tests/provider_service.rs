@@ -2691,7 +2691,7 @@ fn switch_claude_syncs_new_shared_keys_from_live_into_common_config() {
         let mut provider_a = Provider::with_id(
             "a".to_string(),
             "A".to_string(),
-            // 旧版由 A 写入 live 的凭据必须也归属于 A 的保存行。
+            // 即使 A 的保存行里也有这个非托管凭据，切换仍保留 live 原值。
             json!({ "env": {
                 "ANTHROPIC_API_KEY": "a-key",
                 "OPENROUTER_API_KEY": "sk-or-leak"
@@ -2768,9 +2768,11 @@ fn switch_claude_syncs_new_shared_keys_from_live_into_common_config() {
         Some(&json!(true)),
         "shared key should propagate to the next provider's live config"
     );
-    assert!(
-        live_after.pointer("/env/OPENROUTER_API_KEY").is_none(),
-        "leaked credential must not be injected into the next provider's live"
+    // William 2026-10-08 选择 A：非托管凭据留在本机 live，不进入共享片段。
+    assert_eq!(
+        live_after.pointer("/env/OPENROUTER_API_KEY"),
+        Some(&json!("sk-or-leak")),
+        "unmanaged credential must retain its original live value"
     );
     assert_eq!(
         live_after
@@ -3165,7 +3167,9 @@ wire_api = "responses"
         }
     }
 
-    let state = create_test_state_with_config(&config).expect("create test state");
+    // 触发器和切换操作必须使用同一个磁盘数据库；CI 的 test-hooks 保持凭据在内存中。
+    let state = support::create_golden_test_state().expect("create test state");
+    state.db.migrate_from_json(&config).expect("seed providers");
     state
         .db
         .set_config_snippet(
@@ -5259,16 +5263,16 @@ fn source_switch_preserves_native_auth_marker_and_stash_bytes_with_preservation_
 }
 
 #[test]
-fn switch_claude_removes_credential_missing_from_previous_row() {
-    assert_claude_switch_removes_stale_credential(None);
+fn switch_claude_preserves_credential_missing_from_previous_row() {
+    assert_claude_switch_preserves_unmanaged_credential(None);
 }
 
 #[test]
-fn switch_claude_removes_credential_differing_from_previous_row() {
-    assert_claude_switch_removes_stale_credential(Some("saved-old-key"));
+fn switch_claude_preserves_credential_differing_from_previous_row() {
+    assert_claude_switch_preserves_unmanaged_credential(Some("saved-old-key"));
 }
 
-fn assert_claude_switch_removes_stale_credential(saved_key: Option<&str>) {
+fn assert_claude_switch_preserves_unmanaged_credential(saved_key: Option<&str>) {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
     let _home = ensure_test_home();
@@ -5310,9 +5314,12 @@ fn assert_claude_switch_removes_stale_credential(saved_key: Option<&str>) {
     let live: serde_json::Value = read_json_file(&path).unwrap();
     let snippet = state.db.get_config_snippet("claude").unwrap().unwrap();
     let shared: serde_json::Value = serde_json::from_str(&snippet).unwrap();
-    assert!(live.pointer("/env/OPENROUTER_API_KEY").is_none());
+    assert_eq!(
+        live.pointer("/env/OPENROUTER_API_KEY"),
+        Some(&json!("sk-or-leak"))
+    );
     assert!(shared.pointer("/env/OPENROUTER_API_KEY").is_none());
-    assert!(!live.to_string().contains("sk-or-leak"));
+    assert!(live.to_string().contains("sk-or-leak"));
     assert!(!snippet.contains("sk-or-leak"));
     assert_eq!(live["env"]["ANTHROPIC_API_KEY"], "b-key");
     assert_eq!(
