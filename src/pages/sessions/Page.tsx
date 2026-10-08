@@ -1221,8 +1221,8 @@ export function SessionsPage() {
             </div>
             <Link
               to="/memory"
+              className="fy-sessions-memory-link"
               style={{
-                color: "var(--fy-brand-blue)",
                 fontWeight: 600,
                 textDecoration: "none",
                 fontSize: "12px",
@@ -1555,10 +1555,10 @@ export function SessionsPage() {
             </>
           ) : (
             <div
+              className="fy-sessions-empty-state"
               style={{
                 margin: "auto",
                 textAlign: "center",
-                color: "var(--fy-text-tertiary)",
               }}
             >
               请从左侧选择一个会话以查看内容与恢复状态
