@@ -9,6 +9,10 @@ use crate::mcp::{
 };
 use crate::store::AppState;
 
+#[cfg(test)]
+#[path = "mcp_import_tests.rs"]
+mod import_tests;
+
 /// MCP 相关业务逻辑（v3.7.0 统一结构）
 pub struct McpService;
 
