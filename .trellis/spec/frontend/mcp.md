@@ -80,7 +80,15 @@ row containing `source`, nonnegative safe-integer `added`,
 `assignmentChanged`, `unchanged`, `disabledSkipped`, and
 `failureCode: null | "source_failed"`. Display separate accepted/state-change/
 unchanged/disabled-skip/failure results; zero added rows does not mean there
-was nothing to import.
+was nothing to import. The report also requires nonnegative safe-integer
+projectionFailed and projectionFailures, with an exact count/list-length match.
+Each failure has a closed target ID, serverId (nonempty string or null for a
+collection/target-level failure), and reason from invalid_config, io_failed,
+projection_failed. Failure targets must correspond to an accepted selected
+source. Unknown/missing fields and reason codes are rejected.
+Show projection failure count and target/reason separately from source failures
+using hardcoded Chinese copy. Accepted library rows remain visible on partial
+projection failure; raw native errors/paths/secrets are never displayed.
 
 `createSimpleFeaturePorts().mcp` is currently a thin, compile-time-typed Tauri
 adapter over these exact commands:

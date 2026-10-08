@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use crate::app_config::{AppType, McpServer, McpTargetId};
 use crate::error::AppError;
 use crate::mcp;
-use crate::mcp::{McpImportCounts, McpImportReport, McpImportSourceResult, McpServerView};
+use crate::mcp::{
+    McpImportCounts, McpImportReport, McpImportSourceResult, McpProjectionFailure, McpServerView,
+};
 use crate::store::AppState;
 
 /// MCP 相关业务逻辑（v3.7.0 统一结构）
@@ -298,6 +300,7 @@ impl McpService {
 
     /// Each selected source keeps its own atomic DAO transaction. Failures do
     /// not suppress successful independent sources or expose raw diagnostics.
+    /// Project accepted targets only, after all source transactions settle.
     pub fn import_from_sources(
         state: &AppState,
         sources: Vec<McpTargetId>,
@@ -331,9 +334,42 @@ impl McpService {
                 failure_code,
             });
         }
+        let mut projection_failures = Vec::new();
+        for result in &results {
+            if result.failure_code.is_some() {
+                continue;
+            }
+            let target = result.source;
+            let _guard = futures::executor::block_on(
+                state.proxy_service.lock_switch_for_app(target.as_str()),
+            );
+            // A read failure after accepted transactions must not erase their
+            // counts or prevent other targets from being attempted.
+            let failures = match Self::get_all_servers(state) {
+                Ok(servers) => Self::project_servers_to_target_failures(&servers, &target),
+                Err(error) => vec![(None, error)],
+            };
+            for (server_id, error) in failures {
+                let reason = match error {
+                    AppError::Io { .. } | AppError::IoContext { .. } => "io_failed",
+                    AppError::Json { .. }
+                    | AppError::Toml { .. }
+                    | AppError::Config(_)
+                    | AppError::McpValidation(_) => "invalid_config",
+                    _ => "projection_failed",
+                };
+                projection_failures.push(McpProjectionFailure {
+                    target,
+                    server_id,
+                    reason,
+                });
+            }
+        }
         Ok(McpImportReport {
             contract_version: 1,
             sources: results,
+            projection_failed: projection_failures.len(),
+            projection_failures,
         })
     }
 
@@ -407,19 +443,12 @@ impl McpService {
         if *target == McpTargetId::Claude {
             return crate::claude_mcp::sync_collection(servers);
         }
-        let mut failures: IndexMap<String, Vec<&str>> = IndexMap::new();
-        for server in servers.values() {
-            let result = if server.apps.is_enabled_for_target(target) {
-                Self::sync_server_to_target(server, target)
-            } else {
-                Self::remove_server_from_target(&server.id, target)
-            };
-            if let Err(error) = result {
-                failures
-                    .entry(error.to_string())
-                    .or_default()
-                    .push(&server.id);
-            }
+        let mut failures: IndexMap<String, Vec<String>> = IndexMap::new();
+        for (server_id, error) in Self::project_servers_to_target_failures(servers, target) {
+            failures
+                .entry(error.to_string())
+                .or_default()
+                .push(server_id.expect("non-Claude projections report a server ID"));
         }
         if failures.is_empty() {
             return Ok(());
@@ -433,6 +462,32 @@ impl McpService {
                 .collect::<Vec<_>>()
                 .join("; "),
         )))
+    }
+
+    // Retain individual errors for import reporting; the sync compatibility
+    // wrapper above keeps its existing aggregated native error contract.
+    fn project_servers_to_target_failures(
+        servers: &IndexMap<String, McpServer>,
+        target: &McpTargetId,
+    ) -> Vec<(Option<String>, AppError)> {
+        if *target == McpTargetId::Claude {
+            return crate::claude_mcp::sync_collection(servers)
+                .err()
+                .map(|error| vec![(None, error)])
+                .unwrap_or_default();
+        }
+        let mut failures = Vec::new();
+        for server in servers.values() {
+            let result = if server.apps.is_enabled_for_target(target) {
+                Self::sync_server_to_target(server, target)
+            } else {
+                Self::remove_server_from_target(&server.id, target)
+            };
+            if let Err(error) = result {
+                failures.push((Some(server.id.clone()), error));
+            }
+        }
+        failures
     }
 
     // ========================================================================
@@ -533,6 +588,13 @@ impl McpService {
             .filter(|source| source.failure_code.is_some())
             .map(|source| source.source.as_str())
             .collect::<Vec<_>>();
+        if report.projection_failed > 0 {
+            return Err(AppError::Message(format!(
+                "已导入 {total} 个，来源导入失败 {} 个，工具配置写入失败 {} 项",
+                failed.len(),
+                report.projection_failed,
+            )));
+        }
         if failed.is_empty() {
             Ok(total)
         } else {

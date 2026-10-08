@@ -57,7 +57,14 @@ McpServer {
   description?, homepage?, docs?, tags[]
 }
 McpServerView { flattened McpServer, sources: Vec<McpTargetId> }
-McpImportReport { contractVersion: 1, sources: Vec<McpImportSourceResult> }
+McpImportReport {
+  contractVersion: 1, sources: Vec<McpImportSourceResult>,
+  projectionFailed: usize, projectionFailures: Vec<McpProjectionFailure>
+}
+McpProjectionFailure {
+  target: McpTargetId, serverId: null | String,
+  reason: "invalid_config" | "io_failed" | "projection_failed"
+}
 McpImportSourceResult {
   source: McpTargetId,
   added, assignmentChanged, unchanged, disabledSkipped: usize,
@@ -201,8 +208,18 @@ the unified commands.
   source format's existing default. Conflict checks cover both enabled and
   disabled entries, stripping only validated control metadata while preserving
   executable command/args/env/URL/headers and unknown execution fields.
-- Import observes the selected live files and writes the management database;
-  it does not project them back or claim a successful runtime connection.
+- Import first observes every selected live source and settles its independent
+  database transaction. Then, under each target writer lock, it projects the
+  complete managed collection only to selected targets whose source transaction
+  succeeded. Failed sources and unselected target files are not projected.
+- Projection is best-effort per server for non-Claude targets; every failed
+  server write/removal adds a target/serverId/closed-reason entry. Claude retains
+  its atomic collection projection and reports a single target failure with
+  serverId=null. A target-level catalogue-read failure also uses serverId=null.
+- projectionFailed equals projectionFailures.length, independent from source
+  success counts. Projection failures never erase committed counts or stop
+  later servers/targets. Raw native diagnostics remain outside the report;
+  neither successful import nor projection proves a runtime connection.
 - `sync_all_enabled` is best-effort across independent target files and reports
   aggregated failures after attempting the remaining targets.
 
@@ -275,7 +292,8 @@ assertion owners include:
 - `src-tauri/src/services/mcp.rs`: upsert/toggle/delete ordering, target locks,
   the save-before-enabled-projection boundary, invalid all-disabled upsert
   zero-write rejection and valid library-only saves, per-target atomic import, conflict handling, and aggregate
-  synchronization failures;
+  synchronization failures, import projection failure counts/list serialization,
+  successful-server/target continuation and unchanged failed-source files;
 - `src-tauri/src/mcp/**`: each adapter preserves unrelated entries, maps the
   supported transport correctly, removes only the owned ID, and keeps backup/
   absent-product behavior explicit;

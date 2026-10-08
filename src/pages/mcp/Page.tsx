@@ -449,10 +449,14 @@ export function McpPage({
           (source) => source.failureCode !== null,
         ).length;
         notify({
-          tone: failures ? "error" : "info",
+          tone: failures || report.projectionFailed ? "error" : "info",
           title: failures
-            ? `MCP 导入完成，${failures} 个来源失败`
-            : "MCP 导入结果已更新",
+            ? report.projectionFailed
+              ? `MCP 导入完成，${failures} 个来源失败，${report.projectionFailed} 项工具配置写入失败`
+              : `MCP 导入完成，${failures} 个来源失败`
+            : report.projectionFailed
+              ? "MCP 导入完成，部分工具配置写入失败"
+              : "MCP 导入结果已更新",
         });
       },
       undefined,
@@ -526,8 +530,37 @@ export function McpPage({
                 : `新增 ${source.added} · 分配状态变化 ${source.assignmentChanged} · 未变化 ${source.unchanged} · 来源停用，未收录 ${source.disabledSkipped}`}
             </p>
           ))}
+          {importReport.projectionFailed > 0 && (
+            <>
+              <p>
+                <strong>
+                  工具配置写入失败 {importReport.projectionFailed} 项
+                </strong>
+                ，已收录的数据仍保留；请检查工具配置后重试。
+              </p>
+              {importReport.projectionFailures.map((failure, index) => (
+                <p key={`${failure.target}-${index}`}>
+                  <strong>
+                    {
+                      MCP_IMPORT_SOURCES.find(
+                        (item) => item.id === failure.target,
+                      )?.label
+                    }
+                  </strong>
+                  ：
+                  {
+                    {
+                      invalid_config: "配置格式或服务定义无效",
+                      io_failed: "配置文件读写失败",
+                      projection_failed: "工具配置同步失败",
+                    }[failure.reason]
+                  }
+                </p>
+              ))}
+            </>
+          )}
           <p className="fy-feature-description">
-            导入只收录来源配置；分配状态不代表连接或实际运行已经验证。
+            来源收录与工具配置写入分别报告；分配状态不代表连接或实际运行已经验证。
           </p>
         </section>
       )}

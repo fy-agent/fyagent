@@ -1487,6 +1487,8 @@ describe("Renderer feature ports", () => {
       if (command === "import_mcp_from_apps")
         return {
           contractVersion: 1,
+          projectionFailed: 0,
+          projectionFailures: [],
           sources: MCP_IMPORT_SOURCES.map((source) => ({
             source: source.id,
             added: 0,
@@ -1634,6 +1636,8 @@ describe("Renderer feature ports", () => {
     const ports = createTauriFeaturePorts();
     const report = {
       contractVersion: 1,
+      projectionFailed: 0,
+      projectionFailures: [],
       sources: [
         {
           source: "qoderwork",
@@ -1658,9 +1662,48 @@ describe("Renderer feature ports", () => {
     expect(invoke).toHaveBeenCalledWith("import_mcp_from_apps", {
       sources: ["qoderwork"],
     });
+    const partial = {
+      ...report,
+      projectionFailed: 1,
+      projectionFailures: [
+        { target: "qoderwork", serverId: "demo", reason: "io_failed" },
+      ],
+    };
+    invoke.mockResolvedValue(partial);
+    await expect(ports.mcp.importFromApps(["qoderwork"])).resolves.toEqual(
+      partial,
+    );
     for (const bad of [
       0,
       { ...report, contractVersion: 2 },
+      { contractVersion: 1, sources: report.sources },
+      { ...report, projectionFailed: -1 },
+      { ...report, projectionFailed: 0.5 },
+      { ...report, projectionFailed: Number.MAX_SAFE_INTEGER + 1 },
+      { ...partial, projectionFailed: 0 },
+      {
+        ...partial,
+        sources: [
+          {
+            ...report.sources[0],
+            assignmentChanged: 0,
+            disabledSkipped: 0,
+            failureCode: "source_failed",
+          },
+        ],
+      },
+      { ...report, projectionFailures: null },
+      ...[
+        null,
+        [],
+        { target: "unknown", serverId: "demo", reason: "io_failed" },
+        { target: "codex", serverId: "demo", reason: "io_failed" },
+        { target: "qoderwork", reason: "io_failed" },
+        { target: "qoderwork", serverId: "", reason: "io_failed" },
+        { target: "qoderwork", serverId: 1, reason: "io_failed" },
+        { target: "qoderwork", serverId: "demo", reason: "raw-secret" },
+        { ...partial.projectionFailures[0], path: "private-path" },
+      ].map((failure) => ({ ...partial, projectionFailures: [failure] })),
       { ...report, path: "private-path" },
       { ...report, sources: [] },
       { ...report, sources: [{ ...report.sources[0], added: -1 }] },
@@ -1673,6 +1716,17 @@ describe("Renderer feature ports", () => {
       invoke.mockResolvedValue(bad);
       await expect(ports.mcp.importFromApps(["qoderwork"])).rejects.toThrow(
         "MCP 导入结果无效",
+      );
+    }
+    for (const reason of ["invalid_config", "io_failed", "projection_failed"]) {
+      const collectionFailure = {
+        ...partial,
+        sources: [{ ...report.sources[0], source: "claude" }],
+        projectionFailures: [{ target: "claude", serverId: null, reason }],
+      };
+      invoke.mockResolvedValue(collectionFailure);
+      await expect(ports.mcp.importFromApps(["claude"])).resolves.toEqual(
+        collectionFailure,
       );
     }
     invoke.mockResolvedValue({ demo: { sources: ["private-path"] } });

@@ -62,15 +62,22 @@ fn i05_qoder_import_reports_disablements_and_provenance_survives_database_reopen
     );
     assert!(!actual.contains_key("new-disabled"));
     assert!(actual["new-enabled"].apps.qoderwork && actual["new-default"].apps.qoderwork);
+    assert_eq!(report.projection_failed, 0);
+    assert!(report.projection_failures.is_empty());
+    let projected: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert!(projected["mcpServers"].get("existing").is_none());
     assert_eq!(
-        fs::read(&path).unwrap(),
-        original,
-        "import does not project live files"
+        projected["mcpServers"]["new-enabled"],
+        json!({"command":"echo"})
+    );
+    assert_eq!(
+        projected["mcpServers"]["new-disabled"],
+        source["mcpServers"]["new-disabled"]
     );
     let repeated = McpService::import_from_sources(&state, vec![McpTargetId::QoderWork]).unwrap();
     assert_eq!(repeated.sources[0].counts.added, 0);
     assert_eq!(repeated.sources[0].counts.assignment_changed, 0);
-    assert_eq!(repeated.sources[0].counts.unchanged, 3);
+    assert_eq!(repeated.sources[0].counts.unchanged, 2);
     assert_eq!(repeated.sources[0].counts.disabled_skipped, 1);
     let before_reopen =
         serde_json::to_value(McpService::get_server_views(&state).unwrap()).unwrap();
@@ -120,6 +127,12 @@ fn i05_disabled_and_enabled_spec_conflicts_reject_the_complete_source_without_wr
         let before = serde_json::to_value(McpService::get_server_views(&state).unwrap()).unwrap();
         let path = home.join(".qoderworkcn/mcp.json");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // Successful import now creates an adapter backup. Isolate this
+        // zero-write assertion from backups left by other fixture tests.
+        let backup = path.with_file_name("mcp.json.backup");
+        if backup.exists() {
+            fs::remove_file(&backup).unwrap();
+        }
         let bytes = serde_json::to_vec(&json!({"mcpServers": {
             "a-valid-new": {"command":"echo"},
             "z-conflict": {"command":"echo", "custom":"changed", "enabled":enabled}
@@ -129,6 +142,8 @@ fn i05_disabled_and_enabled_spec_conflicts_reject_the_complete_source_without_wr
         let report = McpService::import_from_sources(&state, vec![McpTargetId::QoderWork]).unwrap();
         assert_eq!(report.sources[0].failure_code, Some("source_failed"));
         assert_eq!(report.sources[0].counts, McpImportCounts::default());
+        assert_eq!(report.projection_failed, 0);
+        assert!(report.projection_failures.is_empty());
         assert_eq!(
             serde_json::to_value(McpService::get_server_views(&state).unwrap()).unwrap(),
             before
@@ -218,7 +233,150 @@ fn i05_selected_source_reports_partial_failure_and_rejects_empty_or_duplicate_se
     for private in ["source-secret", "private-key", home_display.as_ref()] {
         assert!(!public.contains(private));
     }
-    assert_eq!(fs::read(&qoder).unwrap(), bytes);
+    assert_eq!(report.projection_failed, 0);
+    assert!(report.projection_failures.is_empty());
+    assert_eq!(fs::read(&codex).unwrap(), b"private-key = = invalid");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&fs::read(&qoder).unwrap()).unwrap(),
+        serde_json::from_slice::<serde_json::Value>(bytes).unwrap()
+    );
+}
+
+#[test]
+fn import_reports_each_failed_projection_without_erasing_accepted_sources() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let home = ensure_test_home();
+    let state = create_test_state().unwrap();
+    let qoder = home.join(".qoderworkcn/mcp.json");
+    fs::create_dir_all(qoder.parent().unwrap()).unwrap();
+    let original = br#"{"mcpServers":{"first":{"command":"echo"},"second":{"command":"echo","env":{"TOKEN":"private-sentinel"}}}}"#;
+    fs::write(&qoder, original).unwrap();
+    let backup = qoder.with_file_name("mcp.json.backup");
+    if backup.is_file() {
+        fs::remove_file(&backup).unwrap();
+    }
+    // A directory at the required backup file deterministically rejects writes
+    // on every host, without relying on chmod or administrator permissions.
+    fs::create_dir(&backup).unwrap();
+    let codex = get_codex_config_path();
+    fs::create_dir_all(codex.parent().unwrap()).unwrap();
+    fs::write(&codex, "[mcp_servers.first]\ncommand = \"echo\"\n[mcp_servers.second]\ncommand = \"echo\"\n[mcp_servers.second.env]\nTOKEN = \"private-sentinel\"\n").unwrap();
+    let report =
+        McpService::import_from_sources(&state, vec![McpTargetId::QoderWork, McpTargetId::Codex])
+            .unwrap();
+    fs::remove_dir(&backup).unwrap();
+    assert_eq!(report.sources[0].counts.added, 2);
+    assert_eq!(report.sources[1].counts.assignment_changed, 2);
+    assert!(report
+        .sources
+        .iter()
+        .all(|source| source.failure_code.is_none()));
+    assert_eq!(report.projection_failed, 2);
+    assert_eq!(report.projection_failures.len(), 2);
+    let mut ids = report
+        .projection_failures
+        .iter()
+        .map(|failure| {
+            assert_eq!(failure.target, McpTargetId::QoderWork);
+            assert_eq!(failure.reason, "io_failed");
+            failure.server_id.as_deref().unwrap()
+        })
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    assert_eq!(ids, vec!["first", "second"]);
+    assert_eq!(fs::read(&qoder).unwrap(), original);
+    let durable = state.db.get_all_mcp_servers().unwrap();
+    assert_eq!(durable.len(), 2);
+    assert!(durable
+        .values()
+        .all(|server| server.apps.qoderwork && server.apps.codex));
+    let live: toml::Value = toml::from_str(&fs::read_to_string(&codex).unwrap()).unwrap();
+    assert_eq!(
+        live["mcp_servers"]["first"]["command"].as_str(),
+        Some("echo")
+    );
+    assert_eq!(
+        live["mcp_servers"]["second"]["env"]["TOKEN"].as_str(),
+        Some("private-sentinel")
+    );
+    let wire = serde_json::to_value(&report).unwrap();
+    assert_eq!(wire["projectionFailed"], 2);
+    assert_eq!(wire["projectionFailures"].as_array().unwrap().len(), 2);
+    assert_eq!(wire["projectionFailures"][0]["target"], "qoderwork");
+    assert_eq!(wire["projectionFailures"][0]["reason"], "io_failed");
+    let public = wire.to_string();
+    assert!(!public.contains("private-sentinel"));
+    assert!(!public.contains(home.to_string_lossy().as_ref()));
+}
+
+#[test]
+fn import_projection_continues_after_invalid_entry_and_claude_collection_failure() {
+    let _guard = test_mutex().lock().unwrap();
+    for target in [McpTargetId::QoderWork, McpTargetId::Claude] {
+        reset_test_fs();
+        let home = ensure_test_home();
+        let state = create_test_state().unwrap();
+        let bad = McpServer {
+            id: "a-invalid".into(),
+            name: "Legacy invalid row".into(),
+            server: json!({"command":[], "env":{"TOKEN":"private-sentinel"}}),
+            apps: McpApps {
+                qoderwork: target == McpTargetId::QoderWork,
+                claude: target == McpTargetId::Claude,
+                ..McpApps::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: vec![],
+        };
+        state.db.save_mcp_server(&bad).unwrap();
+        let path = if target == McpTargetId::Claude {
+            get_claude_mcp_path()
+        } else {
+            home.join(".qoderworkcn/mcp.json")
+        };
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original =
+            br#"{"mcpServers":{"z-valid":{"command":"echo","enabled":true}},"unrelated":"keep"}"#;
+        fs::write(&path, original).unwrap();
+        let codex = get_codex_config_path();
+        fs::create_dir_all(codex.parent().unwrap()).unwrap();
+        fs::write(&codex, "[mcp_servers.codex_good]\ncommand = \"echo\"\n").unwrap();
+        let report =
+            McpService::import_from_sources(&state, vec![target, McpTargetId::Codex]).unwrap();
+        assert_eq!(report.sources[0].counts.added, 1);
+        assert_eq!(report.sources[1].counts.added, 1);
+        assert!(report
+            .sources
+            .iter()
+            .all(|source| source.failure_code.is_none()));
+        assert_eq!(report.projection_failed, 1);
+        assert_eq!(report.projection_failures.len(), 1);
+        let failure = &report.projection_failures[0];
+        assert_eq!(failure.target, target);
+        assert_eq!(failure.reason, "invalid_config");
+        if target == McpTargetId::Claude {
+            assert!(failure.server_id.is_none());
+            assert_eq!(fs::read(&path).unwrap(), original);
+        } else {
+            assert_eq!(failure.server_id.as_deref(), Some("a-invalid"));
+            let live: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            assert_eq!(live["mcpServers"]["z-valid"], json!({"command":"echo"}));
+            assert_eq!(live["unrelated"], "keep");
+        }
+        let live: toml::Value = toml::from_str(&fs::read_to_string(&codex).unwrap()).unwrap();
+        assert_eq!(
+            live["mcp_servers"]["codex_good"]["command"].as_str(),
+            Some("echo")
+        );
+        assert_eq!(state.db.get_all_mcp_servers().unwrap().len(), 3);
+        assert!(!serde_json::to_string(&report)
+            .unwrap()
+            .contains("private-sentinel"));
+    }
 }
 
 #[test]
