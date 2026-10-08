@@ -1162,7 +1162,8 @@ pub async fn set_stack_member(
     })
 }
 
-async fn set_stack_member_locked(
+/// 调用方必须持有应用切换锁并已补完 pending；删除供应商时沿用外层锁，不能重入。
+pub(crate) async fn set_stack_member_locked(
     state: &AppState,
     app: &AppType,
     provider_id: &str,
@@ -3477,21 +3478,16 @@ model_provider = "c"
     #[tokio::test]
     #[serial]
     async fn codex_switch_crash_rolls_every_file_forward() {
-        let _home = Home::new();
-        set_preservation(false);
-        seed_codex(CODEX_USER_LIVE, Some(&chatgpt_login("acct")));
-        let [a, mut b] = codex_a_b();
-        b.settings_config["modelCatalog"] = json!({ "models": [{ "model": "gpt-b" }] });
-        let state = state_with(AppType::Codex, &[a, b, codex_official()], "a").await;
-        ProviderService::switch(
-            &state,
-            AppType::Codex,
-            crate::database::CODEX_OFFICIAL_PROVIDER_ID,
-        )
-        .expect("official");
-
         // 官方 → b：config.toml 和模型目录一起提交，原生登录不参与事务。
         for point in ["published:0", "published:1", "target"] {
+            // 每个故障点从独立夹具开始；复用首轮目录会让后续目录写入变成 no-op，
+            // 此时事务只有一个待发布文件，published:1 根本不会触发。
+            let _home = Home::new();
+            set_preservation(false);
+            seed_codex(CODEX_USER_LIVE, Some(&chatgpt_login("acct")));
+            let [a, mut b] = codex_a_b();
+            b.settings_config["modelCatalog"] = json!({ "models": [{ "model": "gpt-b" }] });
+            let state = state_with(AppType::Codex, &[a, b, codex_official()], "a").await;
             ProviderService::switch(
                 &state,
                 AppType::Codex,
@@ -3499,6 +3495,10 @@ model_provider = "c"
             )
             .expect("reset to official");
             assert!(codex_auth_path().exists(), "{point}: login restored");
+            assert!(
+                !crate::codex_config::get_codex_model_catalog_path().exists(),
+                "{point}: fresh catalog must participate in publication"
+            );
             failpoint::crash_at(Some(point));
             let crashed = ProviderService::switch(&state, AppType::Codex, "b");
             failpoint::crash_at(None);
@@ -6401,7 +6401,8 @@ model_provider = "c"
             .unwrap()
             .unwrap();
         zhipu.settings_config["config"] = json!("model = [\n");
-        state.db.save_provider("codex", &zhipu).unwrap();
+        // 注入已损坏的旧记录，绕过正常保存入口的 TOML 校验（与 state_with 一致）。
+        state.db.save_provider_record("codex", &zhipu).unwrap();
         resync_route(&state, &AppType::Codex).await.expect("resync");
         assert_eq!(
             catalog_slugs(),

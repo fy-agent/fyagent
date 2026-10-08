@@ -7434,9 +7434,7 @@ impl ProviderService {
     /// for every failure after the live write.
     pub fn delete(state: &AppState, app_type: AppType, id: &str) -> Result<(), AppError> {
         let _mutation_guard = if matches!(app_type, AppType::Claude | AppType::Codex) {
-            Some(futures::executor::block_on(
-                state.proxy_service.lock_switch_for_app(app_type.as_str()),
-            ))
+            crate::mode::controller::lock_settled_blocking(state, &app_type)?
         } else {
             None
         };
@@ -7515,10 +7513,10 @@ impl ProviderService {
         // Stack 名单里的先移出（和客户端文件同一个操作提交，key 留在登记簿里），成功了再删行。
         // 删行失败时它已经不在名单里，重新加入即可。
         if crate::mode::stack::is_member(&app_type, id)? {
-            futures::executor::block_on(crate::mode::controller::set_stack_member(
+            futures::executor::block_on(crate::mode::controller::set_stack_member_locked(
                 state, &app_type, id, false,
             ))
-            .map_err(|error| AppError::Message(error.message))?;
+            .map_err(AppError::Message)?;
         }
 
         state.db.delete_provider(app_type.as_str(), id)

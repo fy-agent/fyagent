@@ -11,9 +11,9 @@ fn write_skill(dir: &Path, name: &str) {
     .unwrap();
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 struct HomeGuard(Option<std::ffi::OsString>);
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 impl HomeGuard {
     fn set(home: &Path) -> Self {
         crate::initialize_windows_user_context()
@@ -24,7 +24,7 @@ impl HomeGuard {
         guard
     }
 }
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 impl Drop for HomeGuard {
     fn drop(&mut self) {
         match self.0.take() {
@@ -35,7 +35,7 @@ impl Drop for HomeGuard {
     }
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 fn directory_link(source: &Path, link: &Path, junction: bool) {
     if junction {
         // Arguments travel via isolated child environment, never shell interpolation.
@@ -54,7 +54,7 @@ fn directory_link(source: &Path, link: &Path, junction: bool) {
     }
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 fn assert_windows_parent_link_read_only(junction: bool) {
     let temp = tempfile::tempdir().unwrap();
     let _home = HomeGuard::set(temp.path());
@@ -133,21 +133,21 @@ fn assert_windows_parent_link_read_only(junction: bool) {
     assert_eq!(SelfSnapshot::capture(&outside), before);
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 #[test]
 #[serial_test::serial]
 fn i17_windows_parent_symlink_reads_and_rejects_mutations_without_side_effects() {
     assert_windows_parent_link_read_only(false);
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 #[test]
 #[serial_test::serial]
 fn i17_windows_parent_junction_reads_and_rejects_mutations_without_side_effects() {
     assert_windows_parent_link_read_only(true);
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 #[test]
 fn i17_windows_leaf_link_is_preserved_and_read_source_can_copy_to_normal_root() {
     let temp = tempfile::tempdir().unwrap();
@@ -169,8 +169,10 @@ fn i17_windows_leaf_link_is_preserved_and_read_source_can_copy_to_normal_root() 
     fs::remove_dir(linked).unwrap();
 }
 
+#[cfg(target_os = "windows")]
 #[derive(Debug, PartialEq, Eq)]
 struct SelfSnapshot(Vec<(PathBuf, Option<Vec<u8>>)>);
+#[cfg(target_os = "windows")]
 impl SelfSnapshot {
     fn capture(root: &Path) -> Self {
         // The authoritative existing reader captures hidden files/empty dirs.
@@ -193,7 +195,7 @@ impl SelfSnapshot {
 fn i17_ordinary_directory_remains_writable() {
     #[cfg(target_os = "macos")]
     let temp = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
-    #[cfg(windows)]
+    #[cfg(target_os = "windows")]
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("source");
     write_skill(&source, "Ordinary");
@@ -209,7 +211,7 @@ fn i17_ordinary_directory_remains_writable() {
     assert!(source.join("SKILL.md").exists());
 }
 
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[test]
 fn i17_system_symlink_ancestor_is_rejected_and_read_only() {
     // Physical temp root isolates the synthetic system/HOME link from /var on macOS.
@@ -222,7 +224,7 @@ fn i17_system_symlink_ancestor_is_rejected_and_read_only() {
     let linked_home = temp.path().join("system-home");
     #[cfg(target_os = "macos")]
     std::os::unix::fs::symlink(&real_home, &linked_home).unwrap();
-    #[cfg(windows)]
+    #[cfg(target_os = "windows")]
     if let Err(error) = std::os::windows::fs::symlink_dir(&real_home, &linked_home) {
         if error.kind() == std::io::ErrorKind::PermissionDenied
             || error.raw_os_error() == Some(1314)
@@ -255,7 +257,7 @@ fn i17_system_symlink_ancestor_is_rejected_and_read_only() {
     assert_eq!(fs::read(real_skill.join("SKILL.md")).unwrap(), before);
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 #[test]
 #[serial_test::serial]
 fn i17_storage_migration_preflights_owned_leaf_link_before_any_move_or_setting_write() {
@@ -312,7 +314,7 @@ fn i17_storage_migration_preflights_owned_leaf_link_before_any_move_or_setting_w
     fs::remove_dir(link).unwrap();
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 #[test]
 #[serial_test::serial]
 fn i17_storage_migration_internal_junction_refusal_keeps_all_sources_and_settings() {
