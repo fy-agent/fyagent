@@ -15,7 +15,7 @@ pub(crate) use project::{
     live_codex_requires_restart_for_app, materialize_from_bundle, project_codex_official_account,
     restore_unofficial_codex_selector,
 };
-pub(crate) use swap::{auth_path_in, capture_auth_preimage, restore_auth_recovery};
+pub(crate) use swap::{auth_path_in, capture_auth_preimage};
 
 use crate::services::managed_auth::{
     stable_connection_id, ConnectionRecord, CredentialPurpose, CredentialStatus,

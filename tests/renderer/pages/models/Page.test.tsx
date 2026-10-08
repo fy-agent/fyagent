@@ -41,12 +41,6 @@ function stubClaudePreview(ports: FeaturePorts) {
       },
     ],
     preservedPaths: ["~/.claude.json"],
-    sidecars: [
-      {
-        target: "claude_settings" as const,
-        backupPath: "~/.claude/settings.json.fyagent.backup",
-      },
-    ],
   }));
 }
 

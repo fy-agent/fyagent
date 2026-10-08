@@ -50,10 +50,10 @@ duplicated height controller. Positioned search/secret controls animate their
 existing inner visual via `PressableButton.pressVisualRef` rather than replacing
 the host centering transform or duplicating gestures.
 
-File-impact and recovery controls (`FileWriteDisclosure`, `FileRecoveryButton`)
-live under `shared/features/controls`; Models, Auth and Change Plan reuse their
-ports/parsers and presentation rather than importing a Models page component.
-Their strict file/recovery schemas use the existing `zod/mini` subpath so the
+The file-impact control (`FileWriteDisclosure`) lives under
+`shared/features/controls`; Models, Auth and Change Plan reuse its
+parsers and presentation rather than importing a Models page component.
+The strict file-write schemas use the existing `zod/mini` subpath so the
 native feature-port composition does not pull the classic method surface into
 the startup bundle. Keep the same validation tests, dependency lock and explicitly registered
 lazy product-page entrypoints; do not relax the initial-chunk budget.

@@ -5,9 +5,8 @@
 Read before adding or changing a write/delete of a user's configuration or
 credential file, before bypassing the common file writer, or before changing
 file-impact disclosure and recovery IPC. Mechanism owners are
-`src-tauri/src/config.rs` and `config/recovery.rs`; the closed recovery facade
-is `services/config/recovery.rs`. Domain locks, parsers, permissions and
-multi-resource compensation remain with the originating service.
+`src-tauri/src/config.rs` and `config/recovery.rs`. Domain locks, parsers,
+permissions and multi-resource compensation remain with the originating service.
 
 ## 2. Signatures
 
@@ -20,24 +19,11 @@ config::file_restore_scope(native_expected_files) -> synchronous, non-Send RAII 
 config::file_write_target(path) -> { path, backupPath, exists }
 config::file_recovery(path) -> optional native recovery receipt
 config::restore_file_recovery(path, receiptId) -> Result<(), AppError>
-
-get_config_file_recoveries({ targets }) -> ConfigFileRecoverySnapshot[]
-restore_config_file_recovery({ request: { target, receiptId } })
-  -> ConfigFileRecoverySnapshot | ConfigFileRecoveryError
 ```
 
-Both commands run blocking work off the Tauri command thread. The recovery
-permission is `allow-user-config-recovery`. Targets are the closed enum
-`claude_settings | claude_mcp | codex_auth | codex_config | codex_catalog |
-grok_config | opencode_config | opencode_auth`; paths are resolved natively.
-Lists contain 1–8 distinct targets. Receipts are canonical lowercase UUID v4.
-Requests reject unknown fields and never accept a path, bytes or hash.
-
-Snapshot v1 has exactly `contractVersion`, `target`, `writeTarget`, `state`,
-`receiptId`, `restoresExistingFile`. States are `available`, `none`,
-`manual_backup`, `conflict`, `unavailable`. Only `available` carries a receipt
-and boolean restoration kind. Error v1 is `{ contractVersion, code }` with
-`invalid_request | unavailable | external_change | recovery_required`.
+User file-recovery UI and commands are retired. Internal proxy recovery and
+write-failure compensation retain the common writer and native receipts.
+`allow-user-config-recovery` grants only the proxy restoration preview.
 
 ## 3. Contracts
 
@@ -134,12 +120,12 @@ their handle/ACL/path protections with a weaker generic writer.
 - Recovery validates receipt/path/current postimage and backup preimage, then
   restores exact bytes or removes a newly-created file. It survives process
   restart. Stale receipts, changed primaries or changed backups fail closed.
-  The existing Codex/OpenCode auth locks and Provider lock are reused.
-- Historical backups without receipts remain `manual_backup`; the UI must
-  not turn them into an unverified automatic overwrite capability.
+  Domain-owned locks remain with internal recovery callers.
+- Historical backups without receipts remain available for manual recovery;
+  no user file-recovery command authorizes automatic file restoration.
 - File recovery does not remove saved accounts/Provider rows or revoke server
-  grants. Reread affected domain state after restoration and explain that the
-  user may need to reopen the external software. A successful disk write is
+  grants. Internal compensation rereads affected domain state. Manual recovery
+  may require reopening the external software. A successful disk write is
   not proof of external software pickup.
 
 ## 4. Validation & Error Matrix
@@ -170,10 +156,9 @@ Run `mise run rust:test`, `mise run rust:clippy`, `mise run test:unit --
 tests/architecture/rustModuleBoundaries.test.ts`, `mise run typecheck` and
 `mise run test:unit`. Core tests cover exact bytes, backup failure, no-op history,
 creation/deletion, stale receipts, corruption, symlink/permissions, failed-write
-compensation and scoped rewrites. Facade/parser/UI tests cover closed targets,
-path metadata without credentials, cancel-before-write, one-shot confirmation,
-conflict refusal and explicit deletion copy. Native Windows evidence remains
-separate from portable tests.
+compensation and scoped rewrites. Parser/UI tests cover file-impact metadata
+without credentials, cancel-before-write, one-shot confirmation and independent
+Claude file results. Native Windows evidence remains separate from portable tests.
 
 ## 7. Wrong vs Correct
 

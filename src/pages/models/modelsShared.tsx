@@ -1,4 +1,3 @@
-import type { ClaudeQuickSetupPreview } from "../../shared/features/claude-quick-setup";
 /* eslint-disable react-refresh/only-export-components */
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
@@ -86,7 +85,6 @@ export function ModelsWriteConfirmDialog({
   open,
   targets,
   preservedPaths,
-  sidecars,
   onConfirm,
   onCancel,
 }: {
@@ -94,7 +92,6 @@ export function ModelsWriteConfirmDialog({
   originRef?: DialogOriginRef;
   targets: readonly ModelWriteTarget[];
   preservedPaths?: readonly string[];
-  sidecars?: ClaudeQuickSetupPreview["sidecars"];
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -108,11 +105,7 @@ export function ModelsWriteConfirmDialog({
         if (!next) onCancel();
       }}
       title="保存前确认"
-      description={
-        sidecars
-          ? "下列文件范围来自当前配置。确认后只写入这次预览的内容；已有文件会保留滚动备份。"
-          : "本次只修改下列配置文件中的相关模型字段，并在写入前保留一份滚动备份。"
-      }
+      description="本次只修改下列配置文件中的相关模型字段，并在写入前保留一份滚动备份。"
       actions={
         <>
           <Button ref={cancelRef} onClick={onCancel}>

@@ -20,12 +20,6 @@ export function createTauriFeaturePorts(): FeaturePorts {
     const { createConfigPackPort } = await import("./feature-ports/configPack");
     return createConfigPackPort();
   };
-  const configRecovery = async () => {
-    const { createConfigRecoveryPort } = await import(
-      "./feature-ports/configRecovery"
-    );
-    return createConfigRecoveryPort();
-  };
   const databaseRecovery = async () => {
     const { createDatabaseRecoveryPort } = await import(
       "./feature-ports/databaseRecovery"
@@ -53,10 +47,6 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await configPack()).previewExport(...args),
       saveExport: async (...args) => (await configPack()).saveExport(...args),
       cancel: async (...args) => (await configPack()).cancel(...args),
-    },
-    configRecovery: {
-      list: async (...args) => (await configRecovery()).list(...args),
-      restore: async (...args) => (await configRecovery()).restore(...args),
     },
     databaseRecovery: {
       list: async () => (await databaseRecovery()).list(),

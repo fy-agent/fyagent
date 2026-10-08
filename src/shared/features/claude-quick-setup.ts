@@ -25,14 +25,6 @@ const previewSchema = z.strictObject({
   previewId: identity,
   writeTargets: z.array(fileWriteTargetSchema).check(z.maxLength(2)),
   preservedPaths: z.array(displayPath).check(z.maxLength(2)),
-  sidecars: z
-    .array(
-      z.strictObject({
-        target,
-        backupPath: z.nullable(displayPath),
-      }),
-    )
-    .check(z.maxLength(2)),
 });
 const outcomeSchema = z.strictObject({
   contractVersion: z.literal(1),
@@ -73,20 +65,7 @@ export function parseClaudeQuickSetupPreview(
     ...result.writeTargets.map((item) => item.path),
     ...result.preservedPaths,
   ];
-  if (
-    paths.length !== 2 ||
-    new Set(paths).size !== 2 ||
-    result.sidecars.length !== result.writeTargets.length ||
-    new Set(result.sidecars.map((item) => item.target)).size !==
-      result.sidecars.length ||
-    result.sidecars.some(
-      (item, index) =>
-        item.backupPath !==
-        (result.writeTargets[index].exists
-          ? result.writeTargets[index].backupPath
-          : null),
-    )
-  ) {
+  if (paths.length !== 2 || new Set(paths).size !== 2) {
     throw new Error("无法确认 Claude 保存范围");
   }
   return result;

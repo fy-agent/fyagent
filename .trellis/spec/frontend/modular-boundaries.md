@@ -32,7 +32,7 @@ new implementation. Domain files do not import this facade back from UI.
 - `domain` imports only domain or runtime-neutral dependencies. It has no React,
   Tauri, notification, renderer-cache or UI-lifetime ownership.
 - `shared/ui` does not import feature/platform runtime. Feature-aware controls
-  such as CopyablePath, ExternalLinkButton and FileRecoveryButton belong to
+  such as CopyablePath and ExternalLinkButton belong to
   `shared/features/controls`.
 - Tauri package imports, native command literals and boundary decoding live in
   `shared/platform/tauri/**`. The root facade composes ports; capability-owned

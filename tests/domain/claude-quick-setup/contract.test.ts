@@ -17,12 +17,6 @@ const preview = {
     },
   ],
   preservedPaths: ["~/.claude.json"],
-  sidecars: [
-    {
-      target: "claude_settings",
-      backupPath: null,
-    },
-  ],
 };
 describe("Claude private consent DTO", () => {
   it("accepts identity only and rejects new authority or credentials", () => {
@@ -51,11 +45,6 @@ describe("Claude private consent DTO", () => {
       { ...preview, contractVersion: 2 },
       { ...preview, apiKey: "secret" },
       { ...preview, preservedPaths: [preview.writeTargets[0].path] },
-      { ...preview, sidecars: [] },
-      {
-        ...preview,
-        sidecars: [{ ...preview.sidecars[0], backupPath: "fake prior backup" }],
-      },
       { ...preview, preservedPaths: ["bad\npath"] },
     ])
       expect(() => parseClaudeQuickSetupPreview(invalid)).toThrow();

@@ -196,8 +196,8 @@ interface ProviderQuickSetupRequest {
 ```
 
 Claude uses the private `claude-quick-setup.ts` v1 contract. Preview returns a
-canonical UUID v4, up to two actual write targets, preserved paths and native
-backup/undo display paths. Apply accepts only `{previewId}`. The old
+canonical UUID v4, up to two actual write targets and preserved paths. Apply
+accepts only `{previewId}`. The old
 request-bearing `applyQuickSetupWithResult` keeps its compatible signature but
 rejects Claude before invoke; the native legacy command also rejects it before
 business writes. Codex and Grok Build retain their existing protocols.
@@ -247,10 +247,6 @@ an apply instruction.
   Paths and backup paths are native-owned display metadata. The root Provider
   summary has Quick Setup targets; individual saved sources additionally carry
   their own `writeTargets` (including a generated Codex catalog when relevant).
-- The shared `FileRecoveryButton` restores only a native-admitted file receipt
-  after confirmation and rereads model state. Restore is not deletion of saved
-  Provider records; external edits disable automatic restoration. See
-  [Reversible User Configuration](../backend/reversible-user-config.md).
 
 - `ProviderPanel` is shared only by `claude`, `grokbuild`, and `codex`. It owns
   local `name`, `baseUrl`, API key, `modelId`, fetched model IDs, connectivity
@@ -259,9 +255,8 @@ an apply instruction.
   API key in the current draft so the same credential can be used for probe or
   save. Fetch success is not a persisted configuration.
 - Claude obtains its actual confirmation scope from
-  `previewClaudeQuickSetup`, including preserved paths and sidecar display
-  metadata. Grok Build uses the native summary targets. React never constructs
-  target or backup paths. Codex and
+  `previewClaudeQuickSetup`, including preserved paths. Grok Build uses the
+  native summary targets. React never constructs target or backup paths. Codex and
   WorkBuddy disclose those targets in the single Change Plan preview, without
   an earlier write-confirmation dialog. Closing that preview preserves the form
   draft and does not apply or save it.
@@ -273,9 +268,7 @@ an apply instruction.
   readback cannot upgrade partial/unknown into success. Unknown/partial or an
   unclassified apply failure blocks further Claude writes in the parent page,
   including results arriving after the child panel was unmounted by a target
-  switch. Independent file undo preserves the Provider row and does not clear
-  that block or prove the whole save recovered. Release the temporary write
-  lock in `finally`, including a failed readback.
+  switch. Release the temporary write lock in `finally`, including a failed readback.
 - Grok Build calls `applyQuickSetupWithResult`, then rereads `getSummary`. It
   claims the new provider is current only when the reread `currentId` equals
   the closed quick-setup provider ID.
@@ -435,7 +428,7 @@ shared lifecycle here.
   reachability/model-probe results, and OpenCode snapshot/fetch/save results.
 - `claude-quick-setup.ts` strictly parses the private preview, identity-only
   request and outcome before UI use. Reject extra authority, invalid identity,
-  duplicate paths/targets, mismatched sidecars and inconsistent result states.
+  duplicate paths/targets and inconsistent result states.
 - `parseModelProbeResult` validates the result shape and closed status, but it
   does not currently bind `modelUsed` back to `request.modelId`. Do not claim
   cross-request identity protection at this Port boundary; adding it requires

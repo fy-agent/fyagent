@@ -236,7 +236,6 @@ describe("AuthPage", () => {
       applyConnectionAction,
       previewConnectionAction,
     });
-    ports.configRecovery.list = vi.fn(async () => []);
     renderPage(ports);
     const connect = async (name: string) => {
       const card = (await screen.findByRole("heading", { name })).closest(
@@ -287,10 +286,6 @@ describe("AuthPage", () => {
     expect(bCalls).toHaveLength(2);
     expect(bCalls[1][1]).not.toBe(firstB);
     expect(a).toHaveTextContent("此连接操作已完成并回读。");
-    await user.click(within(b).getByRole("button", { name: "撤回文件修改" }));
-    await waitFor(() =>
-      expect(ports.configRecovery.list).toHaveBeenCalledWith(["opencode_auth"]),
-    );
   });
 
   it("keeps account identity, software connection and current request source visually separate", async () => {

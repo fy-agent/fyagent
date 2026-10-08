@@ -17,7 +17,6 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       saveExport: rejectNativeOnly,
       cancel: rejectNativeOnly,
     },
-    configRecovery: { list: rejectNativeOnly, restore: rejectNativeOnly },
     databaseRecovery: {
       list: rejectNativeOnly,
       restore: rejectNativeOnly,

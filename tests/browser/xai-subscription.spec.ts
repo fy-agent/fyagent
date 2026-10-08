@@ -172,7 +172,7 @@ test("saved Grok subscription can be selected for Claude and continued through t
   await expectHealthyPage(page, health);
 });
 
-test("subscription rejection remains local to its target and exposes the account recovery entry", async ({
+test("subscription rejection remains local to its target", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page, { xaiBindFailure: true });
