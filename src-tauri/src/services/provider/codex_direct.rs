@@ -781,6 +781,8 @@ pub(crate) fn write_direct(
 }
 
 /// 只校验，不写：切换前用它挡住会被拒绝的目标（行有问题时指针不能先动）。
+/// 只给测试用；生产切换的校验在 write_direct。
+#[cfg(test)]
 pub(crate) fn preflight(db: &Database, provider: &Provider) -> Result<(), AppError> {
     let resolved = super::ProviderCredentials::resolve(db, "codex", provider)?;
     let target = Target::Direct(Some(&resolved));

@@ -563,14 +563,6 @@ fn codex_managed_oauth_live_auth(
     )
 }
 
-/// 切换前用同一配置引擎验证目标，并解析 SecretRef；拒绝时不能先移动 current 指针。
-pub(crate) fn preflight_codex_live_write_for_state(
-    state: &AppState,
-    provider: &Provider,
-) -> Result<(), AppError> {
-    super::codex_direct::preflight(state.db.as_ref(), provider)
-}
-
 fn write_quick_setup_live_snapshot(
     app_type: &AppType,
     provider: &Provider,
