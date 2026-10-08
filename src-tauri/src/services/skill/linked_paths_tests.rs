@@ -209,7 +209,7 @@ fn i17_ordinary_directory_remains_writable() {
     assert!(source.join("SKILL.md").exists());
 }
 
-#[cfg(any(unix, windows))]
+#[cfg(any(target_os = "macos", windows))]
 #[test]
 fn i17_system_symlink_ancestor_is_rejected_and_read_only() {
     // Physical temp root isolates the synthetic system/HOME link from /var on macOS.
@@ -220,7 +220,7 @@ fn i17_system_symlink_ancestor_is_rejected_and_read_only() {
     assert!(!SkillService::observed_read_only(&real_skill));
     SkillService::require_writable_skill_path(&real_skill).unwrap();
     let linked_home = temp.path().join("system-home");
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     std::os::unix::fs::symlink(&real_home, &linked_home).unwrap();
     #[cfg(windows)]
     if let Err(error) = std::os::windows::fs::symlink_dir(&real_home, &linked_home) {
