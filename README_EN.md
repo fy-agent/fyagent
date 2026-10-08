@@ -82,9 +82,20 @@ Release files use these names:
 
 Windows releases use an NSIS setup program; MSI and portable ZIP packages are not part of the current release. macOS builds are signed with an Apple Developer ID and notarized.
 
-Before installing, read the release notes and check the published checksums, `signing-status.json`, and build attestation. `NotSigned` describes the signing state; it does not prove that a file is safe. See the [installation guide](docs/user-manual/en/installation.md) for platform-specific steps and the [release notes index](docs/release-notes/README.md) for version history.
+Before installing, read the release notes and check the published checksums, `signing-status.json`, and build attestation. `NotSigned` describes the signing state; it does not prove that a file is safe. If Windows blocks the installer, see [unblocking instructions](docs/user-manual/en/installation.md#if-windows-blocks-the-installer). See the [installation guide](docs/user-manual/en/installation.md) for platform-specific steps and the [release notes index](docs/release-notes/README.md) for version history.
 
 ## FAQ
+
+<details>
+<summary><strong>Windows blocked the installer or showed 'Windows protected your PC'. What should I do?</strong></summary>
+
+FyAgent Windows installer packages currently do not include an Authenticode signature and are marked as `NotSigned` on the release page. If blocked, follow the "verify first, allow later" principle:
+1. Verify the SHA-256 hash in PowerShell using `Get-FileHash` against the release table (if the hash does not match, delete the file and do not run it), optionally also verify the build attestation with `gh attestation verify`.
+2. If SmartScreen shows "Windows protected your PC", click **More info**, confirm the application and file name, and click **Run anyway**.
+3. If marked from the Internet, open installer **Properties → General** and check **Unblock** if present.
+4. For Windows 11 Smart App Control or antivirus false positives, see the [complete unblocking instructions](docs/user-manual/en/installation.md#if-windows-blocks-the-installer).
+
+</details>
 
 <details>
 <summary><strong>Where does FyAgent store its data?</strong></summary>

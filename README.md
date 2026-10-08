@@ -82,9 +82,20 @@ FyAgent 面向正在使用 AI Agent、AI Worker 和智能助手的人。它把�
 
 Windows 当前提供 NSIS 安装程序，不提供 MSI 或便携 ZIP。macOS 构建使用 Apple Developer ID 签名，并经过 Apple 公证。
 
-安装前请阅读发布说明，并核对校验和、`signing-status.json` 和构建证明。`NotSigned` 只表示签名状态，不能单独证明文件安全。各系统的步骤见[安装说明](docs/user-manual/zh/installation.md)，版本记录见[发布说明索引](docs/release-notes/README.md)。
+安装前请阅读发布说明，并核对校验和、`signing-status.json` 和构建证明。`NotSigned` 只表示签名状态，不能单独证明文件安全；若安装包被 Windows 拦截，见[拦截处理说明](docs/user-manual/zh/installation.md#windows-安装包被拦截时)。各系统的步骤见[安装说明](docs/user-manual/zh/installation.md)，版本记录见[发布说明索引](docs/release-notes/README.md)。
 
 ## 常见问题
+
+<details>
+<summary><strong>Windows 提示「Windows 已保护你的电脑」或安装包被拦截怎么办？</strong></summary>
+
+目前 Windows 安装包尚未包含 Authenticode 签名，在 Release 页面显示为 `NotSigned`。遇到系统拦截时，请坚持「先校验、后放行」：
+1. 先用 PowerShell `Get-FileHash` 核对 SHA-256（与 Release 页面一致，不一致请立即删除且切勿运行），可选 `gh attestation verify` 验证构建证明。
+2. SmartScreen 提示「Windows 已保护你的电脑」时，点击「更多信息」并确认文件名后点击「仍要运行」。
+3. 若文件被标记为来自网络，在安装包「属性 → 常规」底部勾选「解除锁定」。
+4. 遇到 Windows 11 智能应用控制（Smart App Control）或安全软件误报等情况，详见[Windows 安装包被拦截时的完整处理步骤](docs/user-manual/zh/installation.md#windows-安装包被拦截时)。
+
+</details>
 
 <details>
 <summary><strong>FyAgent 会把数据保存在哪里？</strong></summary>

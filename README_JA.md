@@ -82,9 +82,20 @@ Provider、MCP、Prompt といった用語を先に理解する必要はあり�
 
 Windows 版は NSIS セットアップを使用し、MSI とポータブル ZIP は現在提供していません。macOS 版は Apple Developer ID で署名され、公証を受けています。
 
-インストール前にリリースノートを読み、公開されたチェックサム、`signing-status.json`、ビルド証明を確認してください。`NotSigned` は署名状態を示すもので、ファイルの安全性を証明するものではありません。各 OS の手順は[インストールガイド](docs/user-manual/ja/installation.md)、変更履歴は[リリースノート一覧](docs/release-notes/README.md)を参照してください。
+インストール前にリリースノートを読み、公開されたチェックサム、`signing-status.json`、ビルド証明を確認してください。`NotSigned` は署名状態を示すもので、ファイルの安全性を証明するものではありません。各 OS の手順は[インストールガイド](docs/user-manual/ja/installation.md)、変更履歴は[リリースノート一覧](docs/release-notes/README.md)を参照してください。Windows でインストーラーがブロックされた場合は、[ブロック時の対処手順](docs/user-manual/ja/installation.md#windows-でインストーラーがブロックされた場合)を参照してください。
 
 ## よくある質問
+
+<details>
+<summary><strong>Windows で「Windows によって PC が保護されました」と表示されたり、インストーラーがブロックされたりした場合はどうすればよいですか？</strong></summary>
+
+現在、Windows 版インストーラーには Authenticode 署名が含まれておらず、Releases ページで `NotSigned` と表示されています。システムによってブロックされた場合は、「まず検証し、確認後に許可する」原則に従ってください：
+1. まず PowerShell の `Get-FileHash` で SHA-256 ハッシュ値を確認し（Releases ページの表と一致することを確認。一致しない場合は直ちに削除し、絶対に実行しないでください）、必要に応じて `gh attestation verify` でビルド証明を検証します。
+2. SmartScreen で「Windows によって PC が保護されました」と表示された場合は、「詳細情報」をクリックし、ファイル名を確認してから「実行」をクリックします。
+3. ファイルがインターネット取得としてマークされている場合は、インストーラーの「プロパティ → 全般」タブ下部で「許可する」にチェックを入れます。
+4. Windows 11 のスマート アプリ コントロール（Smart App Control）やセキュリティ対策ソフトの誤検知などについては、[Windows でインストーラーがブロックされた場合の詳細な対処手順](docs/user-manual/ja/installation.md#windows-でインストーラーがブロックされた場合)を参照してください。
+
+</details>
 
 <details>
 <summary><strong>FyAgent のデータはどこに保存されますか？</strong></summary>
