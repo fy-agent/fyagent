@@ -2097,8 +2097,6 @@ pub fn run() {
             commands::managed_auth_remove_account,
             commands::managed_auth_preview_connection_action,
             commands::managed_auth_apply_connection_action,
-            commands::get_config_file_recoveries,
-            commands::restore_config_file_recovery,
             commands::get_agent_install_readiness,
             commands::get_agent_installation_inventory,
             commands::get_agent_install_preflight,

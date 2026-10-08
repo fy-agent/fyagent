@@ -36,18 +36,11 @@ pub enum ClaudeFileTarget {
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClaudeSidecar {
-    target: ClaudeFileTarget,
-    backup_path: Option<String>,
-}
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ClaudeQuickSetupPreview {
     contract_version: u8,
     preview_id: String,
     write_targets: Vec<FileWriteTarget>,
     preserved_paths: Vec<String>,
-    sidecars: Vec<ClaudeSidecar>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -369,15 +362,10 @@ impl ProviderService {
             preview_id: id.clone(),
             write_targets: Vec::new(),
             preserved_paths: Vec::new(),
-            sidecars: Vec::new(),
         };
         for file in &projection.files {
             let target = config::file_write_target(&file.path)?;
             if file.changed() {
-                dto.sidecars.push(ClaudeSidecar {
-                    target: file.target,
-                    backup_path: target.exists.then(|| target.backup_path.clone()),
-                });
                 dto.write_targets.push(target);
             } else {
                 dto.preserved_paths.push(target.path);
@@ -624,7 +612,6 @@ mod tests {
                     preview.write_targets.len(),
                     if enabled.is_none() { 1 } else { 2 }
                 );
-                assert_eq!(preview.sidecars[0].backup_path.is_some(), existing);
                 assert_eq!(fs::read(config::get_claude_mcp_path()).unwrap(), before);
                 assert!(state
                     .db
@@ -672,7 +659,6 @@ mod tests {
         assert!(!config::get_claude_mcp_path().exists());
         assert!(!config::rolling_backup_path(&config::get_claude_settings_path()).exists());
         assert_eq!(preview.write_targets.len(), 1);
-        assert!(preview.sidecars[0].backup_path.is_none());
         assert!(apply(&state, preview).overall == ClaudeOverall::Applied);
         assert!(!config::get_claude_mcp_path().exists());
     }
@@ -740,39 +726,6 @@ mod tests {
             settings["env"]["ANTHROPIC_AUTH_TOKEN"],
             "fixture-private-key"
         );
-    }
-
-    #[test]
-    #[serial]
-    fn claude_preview_successful_files_restore_independently_and_keep_provider() {
-        let home = Home::new();
-        let state = home.state();
-        state.db.save_mcp_server(&server(true)).unwrap();
-        assert!(
-            apply(
-                &state,
-                ProviderService::preview_claude_quick_setup(&state, provider()).unwrap()
-            )
-            .overall
-                == ClaudeOverall::Applied
-        );
-        let settings = config::get_claude_settings_path();
-        let root = config::get_claude_mcp_path();
-        let settings_receipt = config::file_recovery(&settings)
-            .unwrap()
-            .unwrap()
-            .receipt_id;
-        let root_receipt = config::file_recovery(&root).unwrap().unwrap().receipt_id;
-        fs::write(&root, b"{\"external\":true}").unwrap();
-        assert!(config::restore_file_recovery(&root, &root_receipt).is_err());
-        config::restore_file_recovery(&settings, &settings_receipt).unwrap();
-        assert!(!settings.exists());
-        assert_eq!(fs::read(&root).unwrap(), b"{\"external\":true}");
-        assert!(state
-            .db
-            .get_provider_by_id(QUICK_SETUP_CLAUDE_PROVIDER_ID, "claude")
-            .unwrap()
-            .is_some());
     }
 
     #[test]

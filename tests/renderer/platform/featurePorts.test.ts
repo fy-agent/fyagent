@@ -311,7 +311,6 @@ describe("Renderer feature ports", () => {
       previewId,
       writeTargets: [],
       preservedPaths: ["~/.claude/settings.json", "~/.claude.json"],
-      sidecars: [],
     };
     invoke.mockResolvedValueOnce(preview);
     expect(await ports.providers.previewClaudeQuickSetup(request)).toEqual(

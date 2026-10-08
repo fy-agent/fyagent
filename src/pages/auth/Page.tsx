@@ -14,8 +14,6 @@ import {
   type ManagedAuthProvider,
 } from "../../shared/features/managed-auth";
 import { useFeatures } from "../../shared/features/provider";
-import { CONFIG_RECOVERY_TARGETS } from "../../shared/features/config-recovery";
-import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
 import { useFrontendReady } from "../../shared/platform/useFrontendReady";
 import {
   featureKeys,
@@ -448,33 +446,6 @@ export function AuthPage() {
           <h1>账号与认证</h1>
         </div>
         <div className="fy-feature-actions">
-          <FileRecoveryButton
-            targets={CONFIG_RECOVERY_TARGETS}
-            disabled={
-              mutationBusy ||
-              loginController.busy ||
-              sourceBusy ||
-              connectionAction !== null ||
-              removalAccount !== null
-            }
-            onRestored={async () => {
-              await refetchOverview();
-              await Promise.all([
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.providerSummary("codex"),
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.providerSummary("claude"),
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.providerSummary("grokbuild"),
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.openCodeModelSnapshot,
-                }),
-              ]);
-            }}
-          />
           <Button
             className="fy-control-button-primary"
             disabled={mutationBusy || loginController.busy || sourceBusy}

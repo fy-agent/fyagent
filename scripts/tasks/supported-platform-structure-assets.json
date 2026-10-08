@@ -155,11 +155,11 @@
     ],
     [
       "src-tauri/src/config.rs",
-      "2f50baf081dbcbbfe7e3371ac12d2d55b25949314ee7c8d487d1bf4f20cf9457"
+      "6a485095be546d9219a348e4bfeae6e8fff61ac800036eace81bbc8b9d6f8ac6"
     ],
     [
       "src-tauri/src/config/recovery.rs",
-      "10cb9f6f040c01a0f994a64f63e386eeffa0da6140ba557f4a9112e81746d0f6"
+      "b314acd83c14aded9af14eac401299cb98aee981c3472541a2211962e1ed2a3e"
     ],
     [
       "src-tauri/src/database/backup.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "4a64ee48fcd96e1c769462fd49fedaf126ec03cb62f63f4173ca1c05bb15cbe4"
+      "c89746e144bf16d80f898f8475ee34817121e5fe9770d66f0af5ef983984d81b"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -279,7 +279,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/consumers/opencode.rs",
-      "e5a74a304e83f3ed5e3e3edd5ac7763d1e3877aaa304cc7cd80838dd178e7ca4"
+      "dc9ffcf0fde4f29b35f33bf0fdddd382005a68719a3b65675ad50604ba1b3cea"
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",
@@ -311,7 +311,7 @@
     ],
     [
       "src-tauri/src/services/provider/claude_write_projection.rs",
-      "a15a42ae2d43202f5973edf218fd86d0d94d4bf666bf5045906b8a4bd3fac5bd"
+      "3798cbb5c6fa0586aa863b7fe86db28e940f62a52eb643435250485b0a345a9b"
     ],
     [
       "src-tauri/src/services/provider/codex_client_catalog.rs",

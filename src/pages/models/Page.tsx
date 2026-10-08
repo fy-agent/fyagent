@@ -104,7 +104,6 @@ import {
   hasUnconfirmedAuthority,
 } from "./apply";
 import { changePlanErrorCode } from "../../shared/features/change-plans-ui/changePlanErrors";
-import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
 import { ConfigPackButton } from "../../shared/features/config-pack-ui/ConfigPackButton";
 import type { PortableProvider } from "../../domain/config-pack";
 import {
@@ -1302,8 +1301,7 @@ function ProviderPanel({
         partial: {
           tone: "warning",
           title: "模型条目已保存，部分文件未完成",
-          description:
-            "请分别检查文件结果；可独立撤回文件修改，模型条目会保留。",
+          description: "请分别检查文件结果，模型条目会保留。",
         },
         stale: {
           tone: "warning",
@@ -1318,8 +1316,7 @@ function ProviderPanel({
         unknown: {
           tone: "error",
           title: "无法确认当前设置",
-          description:
-            "已暂停继续保存。请分别检查文件结果，必要时独立撤回文件修改。",
+          description: "已暂停继续保存。请分别检查文件结果。",
         },
       };
       setNotice(notices[outcome.overall]);
@@ -1339,7 +1336,7 @@ function ProviderPanel({
         setNotice({
           tone: "error",
           title: "无法确认当前设置",
-          description: "已暂停继续保存。请分别检查或撤回文件修改。",
+          description: "已暂停继续保存。请分别检查文件结果。",
         });
       }
     } finally {
@@ -1564,37 +1561,6 @@ function ProviderPanel({
       ariaLabel={`${label} 模型配置`}
     >
       <ModelsPanelHeader title={label} pending={draftCommit.pending}>
-        <FileRecoveryButton
-          targets={
-            app === "codex"
-              ? ["codex_config", "codex_catalog", "codex_auth"]
-              : app === "claude"
-                ? ["claude_settings", "claude_mcp"]
-                : ["grok_config"]
-          }
-          disabled={
-            busy ||
-            subscriptionBusy ||
-            probeBusy ||
-            (app !== "claude" && (writesBlocked || draftCommit.pending)) ||
-            writeConfirm.open ||
-            Boolean(codexSaveRequest || codexSavePlan)
-          }
-          onRestored={async () => {
-            try {
-              await summaryQuery.refetch();
-            } catch {
-              /* File recovery is independent of Provider reads. */
-            }
-            setClaudeOutcome(null);
-            setNotice({
-              tone: "warning",
-              title: "文件已恢复",
-              description:
-                "已保存的模型条目保持不变。请重新打开相关软件，检查当前配置。",
-            });
-          }}
-        />
         <Button
           className="fy-control-button-primary fy-models-commit-button"
           disabled={
@@ -2044,11 +2010,6 @@ function ProviderPanel({
         preservedPaths={
           writeConfirm.pending?.kind === "claude"
             ? writeConfirm.pending.preview.preservedPaths
-            : undefined
-        }
-        sidecars={
-          writeConfirm.pending?.kind === "claude"
-            ? writeConfirm.pending.preview.sidecars
             : undefined
         }
         onConfirm={confirmWrite}

@@ -63,7 +63,7 @@ settings persistence, narrow commands and protection against stale settings save
 [Retired Agent Health](./health.md) records the removed dedicated collector and retained domain capabilities.
 
 [Reversible User Configuration](./reversible-user-config.md) owns the default
-backup/atomic-write/undo mechanism, closed recovery commands and disclosure
+backup/atomic-write/undo mechanism, internal recovery and disclosure
 metadata. Read it before any user-file write; domain-specific locks and native
 path protections remain with the focused contracts below.
 

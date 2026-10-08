@@ -1,4 +1,3 @@
-import type { ConfigRecoverySnapshot } from "@/shared/features/config-recovery";
 import { useState } from "react";
 import { PersistentSurface } from "@/shared/ui/PersistentSurface";
 import {
@@ -38,16 +37,6 @@ const preview: ClaudeQuickSetupPreview = {
     },
   ],
   preservedPaths: [],
-  sidecars: [
-    {
-      target: "claude_settings",
-      backupPath: null,
-    },
-    {
-      target: "claude_mcp",
-      backupPath: "~/.claude.json.fyagent.backup",
-    },
-  ],
 };
 const applied: ClaudeQuickSetupOutcome = {
   contractVersion: 1,
@@ -202,7 +191,7 @@ describe("Claude Models native consent", () => {
       expect(ports.providers.previewClaudeQuickSetup).toHaveBeenCalledTimes(2);
     },
   );
-  it("does not upgrade a partial result from matching currentId and leaves independent recovery available", async () => {
+  it("does not upgrade a partial result from matching currentId", async () => {
     const { ports, user } = setup();
     ports.providers.applyClaudeQuickSetupPreview = vi.fn(
       async (): Promise<ClaudeQuickSetupOutcome> => ({
@@ -217,11 +206,6 @@ describe("Claude Models native consent", () => {
     await screen.findByText("模型条目已保存，部分文件未完成");
     expect(screen.queryByText("模型设置已保存并设为当前配置")).toBeNull();
     expect(screen.getByText(/\.claude.json：存在外部改动/)).toBeVisible();
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "撤回文件修改" }),
-      ).toBeEnabled(),
-    );
     expect(
       screen.getByRole("button", { name: "暂时无法确认当前设置" }),
     ).toBeDisabled();
@@ -235,10 +219,11 @@ describe("Claude Models native consent", () => {
     });
     await confirm(user);
     await screen.findByText("模型设置已保存并设为当前配置");
+    await screen.findByText("暂时无法读取当前配置，请稍后重试。");
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "撤回文件修改" }),
-      ).toBeEnabled(),
+        screen.getByRole("button", { name: "保存并设为当前配置" }),
+      ).toBeDisabled(),
     );
   });
   it("keeps credentials after a preview failure and permits retry", async () => {
@@ -257,92 +242,6 @@ describe("Claude Models native consent", () => {
     expect(ports.providers.previewClaudeQuickSetup).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps unknown writes blocked after restoring only settings and retains the Provider", async () => {
-    const { ports, user } = setup();
-    ports.providers.getSummary = vi.fn(async () => ({
-      providers: {
-        "fyagent-v2-quick-setup-claude": {
-          id: "fyagent-v2-quick-setup-claude",
-          name: "Retained provider",
-        },
-      },
-      currentId: "fyagent-v2-quick-setup-claude",
-      writeTargets: [],
-    }));
-    ports.providers.applyClaudeQuickSetupPreview = vi.fn(
-      async (): Promise<ClaudeQuickSetupOutcome> => ({
-        ...applied,
-        overall: "unknown",
-        providerState: "unknown",
-        files: [
-          { target: "claude_settings", state: "unknown" },
-          { target: "claude_mcp", state: "conflict" },
-        ],
-      }),
-    );
-    let restored = false;
-    const recoveries = (): ConfigRecoverySnapshot[] => [
-      {
-        contractVersion: 1,
-        target: "claude_settings",
-        writeTarget: preview.writeTargets[0],
-        state: restored ? "none" : "available",
-        receiptId: restored ? null : previewId,
-        restoresExistingFile: restored ? null : false,
-      },
-      {
-        contractVersion: 1,
-        target: "claude_mcp",
-        writeTarget: preview.writeTargets[1],
-        state: "conflict",
-        receiptId: null,
-        restoresExistingFile: null,
-      },
-    ];
-    ports.configRecovery.list = vi.fn(async () => recoveries());
-    ports.configRecovery.restore = vi.fn(async () => {
-      restored = true;
-      return recoveries()[0];
-    });
-    await draft(user);
-    await save(user);
-    await confirm(user);
-    await screen.findByText("无法确认当前设置");
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "撤回文件修改" }),
-      ).toBeEnabled(),
-    );
-    await user.click(screen.getByRole("button", { name: "撤回文件修改" }));
-    const dialog = await screen.findByRole("dialog", { name: "撤回文件修改" });
-    expect(ports.configRecovery.list).toHaveBeenCalledWith([
-      "claude_settings",
-      "claude_mcp",
-    ]);
-    const settings = await within(dialog).findByRole("radio", {
-      name: "Claude Code 配置",
-    });
-    expect(
-      within(dialog).getByRole("radio", { name: "Claude Code MCP 配置" }),
-    ).toBeDisabled();
-    await user.click(settings);
-    await user.click(
-      within(dialog).getByRole("button", { name: "确认删除新文件" }),
-    );
-    await screen.findByText("文件已恢复");
-    expect(ports.configRecovery.restore).toHaveBeenCalledWith({
-      target: "claude_settings",
-      receiptId: previewId,
-    });
-    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
-    expect(
-      screen.getByRole("button", { name: "暂时无法确认当前设置" }),
-    ).toBeDisabled();
-    expect(screen.getByText("已有设置，将更新")).toBeVisible();
-    expect(ports.providers.applyClaudeQuickSetupPreview).toHaveBeenCalledTimes(
-      1,
-    );
-  });
   it("reports a failed root writer with retained preimage as partial, not unattempted or full rollback", async () => {
     const { ports, user } = setup();
     ports.providers.applyClaudeQuickSetupPreview = vi.fn(
