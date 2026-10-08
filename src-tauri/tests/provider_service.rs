@@ -358,17 +358,26 @@ command = "say"
     let legacy = providers
         .get("old-provider")
         .expect("legacy provider still exists");
-    assert!(legacy
-        .settings_config
-        .pointer("/auth/OPENAI_API_KEY")
-        .is_none());
-    assert!(legacy.settings_config["credentialRef"].as_str().is_some());
-    // Restoring the saved source proves the backfilled native material resolves.
+    assert_eq!(
+        legacy.settings_config,
+        initial_config
+            .get_manager(&AppType::Codex)
+            .unwrap()
+            .providers["old-provider"]
+            .settings_config,
+        "switching must not backfill or migrate the previous saved source"
+    );
+    let before = std::fs::read(fyagent_lib::get_codex_config_path()).unwrap();
     ProviderService::switch(&state, AppType::Codex, "old-provider")
-        .expect("switch back to the reference-backed source");
-    let restored = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
-        .expect("read restored Codex config");
-    assert!(restored.contains("legacy-key"));
+        .expect_err("the unchanged malformed saved source must still be rejected");
+    assert_eq!(
+        std::fs::read(fyagent_lib::get_codex_config_path()).unwrap(),
+        before
+    );
+    assert_eq!(
+        state.db.get_current_provider("codex").unwrap().as_deref(),
+        Some("new-provider")
+    );
 }
 
 #[test]
@@ -2649,8 +2658,7 @@ fn provider_service_switch_claude_updates_live_and_state() {
     );
 }
 
-/// 切走勾选了通用配置的 Claude 供应商时，应把它 live 里新增的可共享键
-/// （用户直接在应用内装插件/改偏好）捕获进通用配置片段，并带到下一个供应商。
+/// 切换只替换 Claude 的关键字段；用户 live 偏好原样保留，旧通用片段不回填。
 #[test]
 fn switch_claude_syncs_new_shared_keys_from_live_into_common_config() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
@@ -2756,12 +2764,10 @@ fn switch_claude_syncs_new_shared_keys_from_live_into_common_config() {
         Some(&json!(true)),
         "shared key should propagate to the next provider's live config"
     );
-    assert!(
-        live_after
-            .get("env")
-            .and_then(|env| env.get("OPENROUTER_API_KEY"))
-            .is_none(),
-        "leaked credential must not be injected into the next provider's live"
+    assert_eq!(
+        live_after.pointer("/env/OPENROUTER_API_KEY"),
+        live.pointer("/env/OPENROUTER_API_KEY"),
+        "an existing user env key outside Claude's owned authentication fields keeps its exact value"
     );
     assert_eq!(
         live_after
@@ -2864,9 +2870,7 @@ fn switch_claude_syncs_deletions_from_live_into_common_config() {
     );
 }
 
-/// Codex 版切换自动回写：live 里新增的共享键被捕获进通用配置片段并传递给
-/// 下一个供应商；供应商专属字段、密钥与 fyagent 注入产物绝不进片段；
-/// 回填后旧供应商的存储配置不残留片段内容（autosync 先于 strip，值必然匹配）。
+/// Codex 切换保留 live 用户偏好与 MCP，但不回填片段或旧供应商；来源关键字段按目标投影。
 #[test]
 fn switch_codex_syncs_shared_keys_from_live_into_common_config() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
@@ -2874,7 +2878,7 @@ fn switch_codex_syncs_shared_keys_from_live_into_common_config() {
     let _home = ensure_test_home();
 
     // A 激活状态下的 live：A 专属路由 + 已共享的 [tui] + 用户刚加的
-    // disable_response_storage + fyagent 注入产物 + MCP 同步投影
+    // hide_agent_reasoning + fyagent 注入产物 + MCP 同步投影
     // + 顶层 wire_api（无 model_provider 时的 fallback 写法，属 A 的路由语义）
     // + 历史错误格式 [mcp.servers]（sync_all_enabled 清不掉的孤儿形态）
     let live_config = r#"model = "gpt-5.5"
@@ -2883,7 +2887,7 @@ wire_api = "chat"
 experimental_bearer_token = "sk-a-live-secret"
 model_catalog_json = "fyagent-model-catalog.json"
 web_search = "disabled"
-disable_response_storage = true
+hide_agent_reasoning = true
 
 [tui]
 notifications = true
@@ -2928,7 +2932,7 @@ command = "ghost-cmd"
             "B".to_string(),
             json!({
                 "auth": { "OPENAI_API_KEY": "sk-b" },
-                "config": "model = \"gpt-5.5\"\nmodel_provider = \"custom\"\n\n[model_providers.bprov]\nname = \"B Prov\"\nbase_url = \"https://b.example/v1\"\nwire_api = \"responses\"\n"
+                "config": "model = \"gpt-5.5\"\nmodel_provider = \"custom\"\n\n[model_providers.custom]\nname = \"B Prov\"\nbase_url = \"https://b.example/v1\"\nwire_api = \"responses\"\n"
             }),
             None,
         );
@@ -2957,7 +2961,7 @@ command = "ghost-cmd"
         .expect("read snippet")
         .expect("snippet present");
     assert!(
-        !snippet.contains("disable_response_storage = true"),
+        !snippet.contains("hide_agent_reasoning = true"),
         "live edits must not be captured into the saved snippet, got: {snippet}"
     );
     assert!(
@@ -2985,7 +2989,7 @@ command = "ghost-cmd"
     let live_after = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
         .expect("read config.toml after switch");
     assert!(
-        live_after.contains("disable_response_storage = true"),
+        live_after.contains("hide_agent_reasoning = true"),
         "shared key should propagate to the next provider's live, got: {live_after}"
     );
     assert!(
@@ -3009,7 +3013,7 @@ command = "ghost-cmd"
         "provider A's top-level wire_api must not rewrite B's protocol, got: {live_after}"
     );
 
-    // A 的存储配置：回填后不残留片段内容 / MCP 投影 / 注入产物
+    // A 的存储配置：保持原样，不从 live 回填。
     let providers = state
         .db
         .get_all_providers(AppType::Codex.as_str())
@@ -3022,29 +3026,16 @@ command = "ghost-cmd"
         .unwrap_or_default();
     assert!(
         stored_a_config.contains("model_provider = \"aprov\""),
-        "provider-owned routing must survive backfill, got: {stored_a_config}"
+        "the previous provider keeps its saved routing, got: {stored_a_config}"
     );
-    // 顶层 wire_api 是 A 自己的路由语义：不进片段，但回填时留在 A 的快照里
-    assert!(
-        stored_a_config.contains("wire_api = \"chat\""),
-        "provider-owned top-level wire_api must survive backfill, got: {stored_a_config}"
+    assert_eq!(
+        stored_a.settings_config,
+        config.get_manager(&AppType::Codex).unwrap().providers["a"].settings_config,
+        "source selection must not backfill the previous saved provider"
     );
-    for forbidden in [
-        "disable_response_storage",
-        "notifications",
-        "mcp_servers",
-        "experimental_bearer_token",
-        "ghost-legacy",
-    ] {
-        assert!(
-            !stored_a_config.contains(forbidden),
-            "'{forbidden}' must be stripped from the stored provider config on backfill, got: {stored_a_config}"
-        );
-    }
 }
 
-/// Codex 版删除同步：用户在 live 里删掉一个已共享的键后，切换应把删除
-/// 同步进通用配置，且不会在切到下一个供应商时被重新注入（否则"删不掉"）。
+/// 显式启用的 Codex 通用片段仍参与目标配置；live 删除不会反向改写已保存片段。
 #[test]
 fn switch_codex_syncs_deletions_from_live_into_common_config() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
@@ -3117,8 +3108,8 @@ wire_api = "responses"
     let live_after = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
         .expect("read config.toml after switch");
     assert!(
-        !live_after.contains("disable_response_storage"),
-        "deleted shared key must not be re-injected into the next provider, got: {live_after}"
+        live_after.contains("disable_response_storage = true"),
+        "an explicitly enabled saved snippet is applied without capturing live deletions, got: {live_after}"
     );
     assert!(
         live_after.contains("notifications = true"),

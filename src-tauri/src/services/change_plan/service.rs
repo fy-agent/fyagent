@@ -2406,8 +2406,11 @@ mod tests {
             parsed["mcp_servers"]["user_owned"]["command"].as_str(),
             Some("echo")
         );
-        assert!(parsed["model_providers"]["custom"].get("custom_user_field").is_none(),
-            "the selected source owns its provider table; unrelated tables and root preferences remain intact");
+        assert_eq!(
+            parsed["model_providers"]["custom"]["custom_user_field"].as_str(),
+            Some("keep-me"),
+            "Quick Setup owns route fields, not unrelated fields in the selected table"
+        );
     }
 
     #[test]

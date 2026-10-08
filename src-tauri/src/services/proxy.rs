@@ -4121,13 +4121,13 @@ impl ProxyService {
             (|| -> Result<(), String> {
                 match (auth, prepared_cfg.as_deref()) {
                     (Some(auth), Some(cfg))
-                        if crate::codex_config::codex_auth_has_oauth_login_material(auth) =>
+                        if crate::codex_config::codex_auth_has_credential_login_material(auth) =>
                     {
                         crate::codex_config::write_codex_live_atomic(auth, Some(cfg))
                             .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
                     }
                     (Some(auth), None)
-                        if crate::codex_config::codex_auth_has_oauth_login_material(auth) =>
+                        if crate::codex_config::codex_auth_has_credential_login_material(auth) =>
                     {
                         let auth_path = get_codex_auth_path();
                         write_json_file(&auth_path, auth)

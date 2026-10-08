@@ -409,6 +409,9 @@ command = "say"
 
     let app_state = create_test_state_with_config(&config).expect("create test state");
 
+    fyagent_lib::McpService::sync_enabled_for_app(&app_state, &AppType::Codex)
+        .expect("seed MCP independently of source switching");
+
     switch_provider_test_hook(&app_state, AppType::Codex, "new-provider")
         .expect("switch provider should succeed");
 

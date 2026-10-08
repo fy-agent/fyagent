@@ -2029,7 +2029,13 @@ impl SkillService {
                         )));
                     }
                 }
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                // A non-directory ancestor is an ordinary I/O failure, not a link.
+                // Continue inspecting parents and let the mutation report it in order.
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                    ) => {}
                 Err(error) => return Err(error.into()),
             }
         }
@@ -2051,6 +2057,9 @@ impl SkillService {
             match fs::symlink_metadata(&path) {
                 Ok(_) => Self::require_writable_skill_path(&path)?,
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) if error.kind() == io::ErrorKind::NotADirectory => {
+                    Self::require_writable_skill_path(&path)?;
+                }
                 Err(error) => return Err(error.into()),
             }
         }
@@ -3338,6 +3347,10 @@ impl SkillService {
         // ——都会把半个解压目录永久留在磁盘上，反复触发即可持续填盘。
         let temp_root = crate::config::get_user_temp_dir();
         fs::create_dir_all(&temp_root)?;
+        // Allocate our own scratch directory on the physical temp root. macOS
+        // may spell it through /var; guarded copies must not receive that link
+        // spelling. User-selected Skill paths still undergo lexical link checks.
+        let temp_root = temp_root.canonicalize()?;
         let temp_dir = tempfile::tempdir_in(&temp_root)?;
         let temp_path = temp_dir.path().to_path_buf();
 
@@ -6710,6 +6723,27 @@ mod tests {
                 .is_none(),
             "a removed child skill must not fall back to an unrelated root skill"
         );
+    }
+
+    #[test]
+    fn ordinary_file_ancestor_is_not_a_link_preflight_failure() {
+        let home = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let blocked = home.path().join("blocked");
+        fs::write(&blocked, "ordinary file").unwrap();
+        SkillService::require_writable_skill_path(&blocked.join("skill")).unwrap();
+        assert_eq!(fs::read(&blocked).unwrap(), b"ordinary file");
+        assert!(fs::create_dir_all(blocked.join("skill")).is_err());
+        #[cfg(target_os = "macos")]
+        {
+            let linked = home.path().join("linked");
+            std::os::unix::fs::symlink(home.path(), &linked).unwrap();
+            let error = SkillService::require_writable_skill_path(&linked.join("blocked/skill"))
+                .unwrap_err();
+            assert!(error.to_string().contains("SKILL_LINK_READ_ONLY"));
+            assert!(error.to_string().contains("useOrdinaryDirectory"));
+            assert!(fs::symlink_metadata(&linked).unwrap().file_type().is_symlink());
+            assert_eq!(fs::read(&blocked).unwrap(), b"ordinary file");
+        }
     }
 
     #[test]

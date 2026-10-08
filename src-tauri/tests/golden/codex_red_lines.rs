@@ -626,6 +626,8 @@ fn proxy_injected_oauth_cards_never_carry_the_official_login() {
 #[test]
 fn model_catalog_pointer_ownership() {
     let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    #[cfg(windows)]
+    fyagent_lib::initialize_windows_user_context().expect("Windows test user context");
     reset_test_fs();
     // This fixture tests pointer ownership, not discovery of a real Codex CLI.
     let template: Value =

@@ -57,13 +57,26 @@ pub(crate) fn validate_source(
     }
     let (_, table) = active_codex_provider_table(&desired)
         .ok_or_else(|| invalid("第三方模型来源缺少提供商配置，未修改任何文件"))?;
+    let has_authorization_header = |key: &str| {
+        table
+            .get(key)
+            .and_then(Item::as_table_like)
+            .is_some_and(|headers| {
+                headers.iter().any(|(name, value)| {
+                    name.eq_ignore_ascii_case("authorization")
+                        && value.as_str().is_some_and(|text| !text.trim().is_empty())
+                })
+            })
+    };
     let has_auth = extract_codex_api_key(Some(auth), Some(desired_config)).is_some()
         || table.get("requires_openai_auth").and_then(Item::as_bool) == Some(true)
         || table
             .get("env_key")
             .and_then(Item::as_str)
             .is_some_and(|key| !key.trim().is_empty())
-        || table.get("auth").and_then(Item::as_table_like).is_some();
+        || table.get("auth").and_then(Item::as_table_like).is_some()
+        || has_authorization_header("http_headers")
+        || has_authorization_header("env_http_headers");
     if !has_auth {
         return Err(invalid(
             "第三方模型来源缺少认证配置，请先保存 API Key 或配置认证方式",
@@ -347,6 +360,24 @@ mod tests {
             &format!("{no_key}env_key = 'USER_MANAGED_KEY'\n")
         )
         .is_ok());
+    }
+
+    #[test]
+    fn source_admission_recognizes_only_authorization_headers() {
+        let config = "model_provider = 'api'\n[model_providers.api]\nname = 'API'\nbase_url = 'https://api.example/v1'\n";
+        for header in [
+            "http_headers = { Authorization = 'Bearer fixture' }",
+            "env_http_headers = { authorization = 'API_AUTHORIZATION' }",
+        ] {
+            validate_source(None, &json!({}), &format!("{config}{header}\n")).unwrap();
+        }
+        for header in [
+            "http_headers = { 'X-Team' = 'fixture' }",
+            "http_headers = { Authorization = '' }",
+            "env_http_headers = { Authorization = '' }",
+        ] {
+            assert!(validate_source(None, &json!({}), &format!("{config}{header}\n")).is_err());
+        }
     }
 
     #[test]

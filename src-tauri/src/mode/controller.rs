@@ -6437,12 +6437,19 @@ model_provider = "c"
         let enter_error = enter_with_route(&state, &AppType::Codex, false, Some("broken"))
             .await
             .unwrap_err();
-        for error in [switch_error, enter_error] {
-            assert!(error.contains(secret), "前提：错误里带配置原文 {error}");
-            let logged = crate::error_for_log(&error);
-            assert!(!logged.contains(secret), "{logged}");
-            assert!(logged.contains("line 1"), "{logged}");
-        }
+        assert!(switch_error.contains("Codex 模型配置格式无效"));
+        assert!(
+            !switch_error.contains(secret),
+            "source admission must redact the config"
+        );
+        assert!(
+            enter_error.contains(secret),
+            "the internal parser diagnostic exercises log redaction"
+        );
+        let logged = crate::error_for_log(&enter_error);
+        assert!(!logged.contains(secret), "{logged}");
+        assert!(logged.contains("line 1"), "{logged}");
+        assert!(!crate::error_for_log(&switch_error).contains(secret));
     }
 
     #[tokio::test]

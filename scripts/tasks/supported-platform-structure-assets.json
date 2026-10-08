@@ -211,7 +211,7 @@
     ],
     [
       "src-tauri/src/mode/controller.rs",
-      "8e00eef3e50221f07209d7dcf703cb2de361f616cdc301df5f0183650aa1e6a9"
+      "78182d4a21a3140aacfbbb5c01dfcf0f9a5bb2854f82e01f2b0ec490ca43a3e2"
     ],
     [
       "src-tauri/src/mode/operation.rs",
@@ -327,7 +327,7 @@
     ],
     [
       "src-tauri/src/services/proxy.rs",
-      "0912f769551d668b03294b58249a42d0ad1cdc462148f22c7b175e9a5d9d776a"
+      "bb5fab3db472dc46c0bccc3a8c413bb1eff1522f0ae1dd3dc86cb1e278602074"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -351,7 +351,7 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "7975e08444e4fc71daf35f764a8541b9c21dd892ddc71a7386a9c6fced9943be"
+      "21877b9b911145e61de03ca05fc88df081e3228c2385a67035051200d3a2d31d"
     ],
     [
       "src-tauri/src/services/skill/linked_paths_tests.rs",
@@ -490,6 +490,10 @@
       "678f9b5d8c8e30c106dcd32ec29c054d3a898816edfd10dd443048b1e9abdd1b"
     ],
     [
+      "src-tauri/tests/golden/codex_red_lines.rs",
+      "83d64cfde32e9adcac8a3970ba9158622fdb86201dc7ea2fabe7a666e68b1fde"
+    ],
+    [
       "src-tauri/tests/golden/file_modes.rs",
       "1b648c1dafe2c5acbebe1a4e8d55f6062033edb2463ca530e82f1ac643a70ed6"
     ],
@@ -499,7 +503,7 @@
     ],
     [
       "src-tauri/tests/provider_service.rs",
-      "b7518d4643eac855a998a8e1fd0fee6a4970020fa6733684d3df732bddb6bfad"
+      "a6254e770d06eeddfc9046ade024a1b442e389f9263ddcb2fd5f589167e7518b"
     ],
     [
       "src-tauri/tests/secret_service_contract.rs",
