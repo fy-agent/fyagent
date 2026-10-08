@@ -355,7 +355,7 @@
     ],
     [
       "src-tauri/src/services/skill/linked_paths_tests.rs",
-      "c630ed901da47d0d4a4642cffb38128597606bec38f19e25c94a6bc639771a66"
+      "c10182a132fc7f778642923a202f41c49be764afb406674dcb035cb70e528f05"
     ],
     [
       "src-tauri/src/services/skill/update/tests.rs",
@@ -507,7 +507,7 @@
     ],
     [
       "src-tauri/tests/skill_sync.rs",
-      "30e70a59a93bb926ba83f6834de116257b8461844a9902805a5f336345af0b2b"
+      "4662768776fc79808e94cfc5d69f406d06e89589d272d37a80ba38130a3f9b27"
     ],
     [
       "src-tauri/tests/support.rs",
