@@ -356,19 +356,25 @@ pub fn get_gemini_settings_path() -> PathBuf {
 fn update_selected_type(selected_type: &str) -> Result<(), AppError> {
     let settings_path = get_gemini_settings_path();
 
-    // 确保目录存在
-    if let Some(parent) = settings_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
-    }
-
     // 读取现有的 settings.json（如果存在）
     let mut settings_content = if settings_path.exists() {
         let content =
             fs::read_to_string(&settings_path).map_err(|e| AppError::io(&settings_path, e))?;
-        serde_json::from_str::<Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
+        serde_json::from_str::<Value>(&content).map_err(|_| {
+            AppError::localized(
+                "gemini.validation.settings_parse_failed",
+                "Gemini 配置文件 ~/.gemini/settings.json 无法解析，为避免覆盖您的现有设置（如 MCP），本次未写入。请先修正该文件的 JSON 格式后重试。",
+                "Unable to parse Gemini config file ~/.gemini/settings.json. To avoid overwriting your existing settings (such as MCP), no files were written. Please fix the file's JSON format and try again.",
+            )
+        })?
     } else {
         serde_json::json!({})
     };
+
+    // 解析成功后再确保目录存在，避免解析失败时修改文件系统
+    if let Some(parent) = settings_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
+    }
 
     // 只更新 security.auth.selectedType 字段
     if let Some(obj) = settings_content.as_object_mut() {
@@ -435,6 +441,120 @@ pub fn write_google_oauth_settings() -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct TestHomeGuard(Option<std::ffi::OsString>);
+
+    impl TestHomeGuard {
+        fn set(home: &std::path::Path) -> Self {
+            let guard = Self(std::env::var_os("FYAGENT_TEST_HOME"));
+            std::env::set_var("FYAGENT_TEST_HOME", home);
+            guard
+        }
+    }
+
+    impl Drop for TestHomeGuard {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+                None => std::env::remove_var("FYAGENT_TEST_HOME"),
+            }
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_update_selected_type_rejects_unparseable_settings_without_writing() {
+        let temp = tempfile::tempdir().expect("temp home");
+        let _home = TestHomeGuard::set(temp.path());
+        crate::settings::reload_settings().expect("reload settings");
+        let settings_path = get_gemini_settings_path();
+        assert_eq!(
+            settings_path,
+            temp.path().join(".gemini").join("settings.json")
+        );
+        fs::create_dir_all(settings_path.parent().unwrap()).expect("create Gemini dir");
+
+        for original in [
+            "{\n// keep my MCP\n\"mcpServers\": {\"custom\": {\"command\": \"custom-mcp\"}}\n}\n",
+            "{\"mcpServers\":",
+            " \t\r\n",
+            "",
+        ] {
+            fs::write(&settings_path, original).expect("seed invalid settings");
+            for selected_type in ["gemini-api-key", "oauth-personal"] {
+                let error = update_selected_type(selected_type).expect_err("reject invalid JSON");
+                assert!(matches!(
+                    error,
+                    AppError::Localized {
+                        key: "gemini.validation.settings_parse_failed",
+                        ..
+                    }
+                ));
+                assert_eq!(fs::read(&settings_path).unwrap(), original.as_bytes());
+                assert_eq!(
+                    fs::read_dir(settings_path.parent().unwrap())
+                        .unwrap()
+                        .count(),
+                    1
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_update_selected_type_preserves_mcp_and_other_settings() {
+        let temp = tempfile::tempdir().expect("temp home");
+        let _home = TestHomeGuard::set(temp.path());
+        crate::settings::reload_settings().expect("reload settings");
+        let settings_path = get_gemini_settings_path();
+        assert_eq!(
+            settings_path,
+            temp.path().join(".gemini").join("settings.json")
+        );
+        fs::create_dir_all(settings_path.parent().unwrap()).expect("create Gemini dir");
+        let original = serde_json::json!({
+            "mcpServers": {"custom": {"command": "custom-mcp", "args": ["--keep"]}},
+            "otherField": {"keep": true},
+            "security": {
+                "otherSetting": "kept",
+                "auth": {"selectedType": "old", "otherAuth": "preserved"}
+            }
+        });
+
+        for selected_type in ["gemini-api-key", "oauth-personal"] {
+            fs::write(&settings_path, serde_json::to_vec(&original).unwrap()).unwrap();
+            update_selected_type(selected_type).expect("update auth type");
+            let updated: Value = crate::config::read_json_file(&settings_path).unwrap();
+            let mut expected = original.clone();
+            expected["security"]["auth"]["selectedType"] = Value::String(selected_type.to_string());
+            assert_eq!(updated, expected);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_update_selected_type_creates_missing_settings() {
+        let temp = tempfile::tempdir().expect("temp home");
+        let _home = TestHomeGuard::set(temp.path());
+        crate::settings::reload_settings().expect("reload settings");
+        let settings_path = get_gemini_settings_path();
+        assert_eq!(
+            settings_path,
+            temp.path().join(".gemini").join("settings.json")
+        );
+        assert!(!settings_path.exists());
+
+        update_selected_type("gemini-api-key").expect("create settings");
+
+        let updated: Value = crate::config::read_json_file(&settings_path).unwrap();
+        assert_eq!(
+            updated,
+            serde_json::json!({
+                "security": {"auth": {"selectedType": "gemini-api-key"}}
+            })
+        );
+    }
 
     #[test]
     fn test_parse_env_file() {
