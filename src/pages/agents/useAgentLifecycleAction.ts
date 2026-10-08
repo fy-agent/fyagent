@@ -292,6 +292,15 @@ export function lifecycleSuccessCopy(vendorHandoff: boolean): string {
     : AGENT_LIFECYCLE_SUCCEEDED_COPY;
 }
 
+function isReadinessInstalled(
+  readiness: AgentInstallReadiness | null,
+): boolean {
+  return (
+    readiness?.installState === "installed" ||
+    readiness?.installState === "installed_not_runnable"
+  );
+}
+
 export function agentLifecycleFailureCopy(
   code: AgentReasonCode | null,
   sourceKind?: AgentSourceKind | null,
@@ -612,7 +621,10 @@ export function useAgentLifecycleAction({
 
       setReasonCode(outcomeReason);
       if (outcome === "succeeded" && readbackOk) {
-        const successCopy = lifecycleSuccessCopy(vendorHandoffRef.current);
+        const successCopy = lifecycleSuccessCopy(
+          vendorHandoffRef.current &&
+            !isReadinessInstalled(readinessRef.current),
+        );
         setSuccess(successCopy);
         setError(null);
       } else if (outcome === "timeout") {
@@ -786,7 +798,11 @@ export function useAgentLifecycleAction({
     progressLabel: transferView.downloadLine,
     error,
     reasonCode,
-    success,
+    success:
+      success === AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY &&
+      isReadinessInstalled(readiness)
+        ? AGENT_LIFECYCLE_SUCCEEDED_COPY
+        : success,
     activeSurface,
     canCancel: busy && jobId !== null && cancellable,
     canRetry:
