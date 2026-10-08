@@ -227,29 +227,78 @@ async function installLongFixture(page: Page) {
 }
 
 async function wheelInside(page: Page, area: Locator, delta: number) {
-  const box = await area.boundingBox();
-  if (!box) throw new Error("Missing visible scroll region");
-  const point = {
-    x: box.x + Math.min(box.width / 2, 100),
-    y: Math.min(
-      box.y + Math.min(box.height / 2, 80),
-      page.viewportSize()!.height - 50,
-    ),
-  };
-  // A valid compact owner can be shorter than 80px. Keep the physical wheel
-  // point inside it and verify hit testing, rather than scrolling its neighbour.
-  await expect
-    .poll(
-      () =>
-        area.evaluate((node, point) => {
+  // Intersect every clipping ancestor, not just the window: a short editor
+  // may expose only the top of a long textarea. Hit-test again after scrolling.
+  const reachablePoint = () =>
+    area.evaluate((node, direction) => {
+      const box = node.getBoundingClientRect();
+      let left = Math.max(0, box.left);
+      let right = Math.min(innerWidth, box.right);
+      let top = Math.max(0, box.top);
+      let bottom = Math.min(innerHeight, box.bottom);
+      for (
+        let parent = node.parentElement;
+        parent;
+        parent = parent.parentElement
+      ) {
+        const style = getComputedStyle(parent);
+        const rect = parent.getBoundingClientRect();
+        if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+          left = Math.max(left, rect.left + parent.clientLeft);
+          right = Math.min(
+            right,
+            rect.left + parent.clientLeft + parent.clientWidth,
+          );
+        }
+        if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+          top = Math.max(top, rect.top + parent.clientTop);
+          bottom = Math.min(
+            bottom,
+            rect.top + parent.clientTop + parent.clientHeight,
+          );
+        }
+      }
+      if (right - left < 4 || bottom - top < 4) return null;
+      const inset = Math.min(6, (right - left) / 4);
+      for (const yRatio of [0.5, 0.1, 0.9]) {
+        for (const x of [(left + right) / 2, left + inset, right - inset]) {
+          const point = {
+            x,
+            y: top + (bottom - top) * yRatio,
+          };
           const hit = document.elementFromPoint(point.x, point.y);
-          return hit === node || (hit !== null && node.contains(hit));
-        }, point),
-      {
-        message: `Wheel target must hit its scroll owner: ${JSON.stringify({ box, point })}`,
-      },
-    )
-    .toBe(true);
+          if (!hit || (hit !== node && !node.contains(hit))) continue;
+          // Match the physical receiver, including empty/exhausted descendants
+          // whose contain/none overscroll rule blocks chaining to this owner.
+          let owner: Element | null = hit;
+          while (owner) {
+            const style = getComputedStyle(owner);
+            if (/auto|scroll/.test(style.overflowY)) {
+              const hasRange =
+                direction < 0
+                  ? owner.scrollTop > 1
+                  : owner.scrollTop <
+                    owner.scrollHeight - owner.clientHeight - 1;
+              if (hasRange || /contain|none/.test(style.overscrollBehaviorY))
+                break;
+            }
+            owner = owner.parentElement;
+          }
+          if (owner === node) return point;
+        }
+      }
+      return null;
+    }, Math.sign(delta));
+  await expect
+    .poll(reachablePoint, {
+      message: "Wheel target must hit its visible scroll owner",
+    })
+    .not.toBeNull();
+  const point = (await reachablePoint())!;
+  expect(
+    point,
+    "Wheel receiver must remain reachable before moving the mouse",
+  ).not.toBeNull();
   await page.mouse.move(point.x, point.y);
   await page.mouse.wheel(0, delta);
 }

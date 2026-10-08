@@ -425,6 +425,8 @@ export async function installRichTauriFeatureFixture(
         name: `Existing ${app} quick setup`,
       };
     }
+    let claudePreview: { id: string; request: Record<string, unknown> } | null =
+      null;
     let workBuddyRevision = "fixture-revision-1";
     let openCodeSubscription: {
       editable: boolean;
@@ -1681,6 +1683,58 @@ export async function installRichTauriFeatureFixture(
               code: "accepted",
               jobId: String(payload.jobId),
             };
+          case "preview_claude_quick_setup": {
+            claudePreview = {
+              id: crypto.randomUUID(),
+              request: structuredClone(
+                payload.request as Record<string, unknown>,
+              ),
+            };
+            return {
+              contractVersion: 1,
+              previewId: claudePreview.id,
+              writeTargets: [
+                {
+                  path: "~/.claude/settings.json",
+                  backupPath: "~/.claude/settings.json.fyagent.backup",
+                  exists: true,
+                },
+                {
+                  path: "~/.claude.json",
+                  backupPath: "~/.claude.json.fyagent.backup",
+                  exists: true,
+                },
+              ],
+              preservedPaths: [],
+            };
+          }
+          case "apply_claude_quick_setup_preview": {
+            const request = payload.request as Record<string, unknown>;
+            if (
+              !claudePreview ||
+              request.previewId !== claudePreview.id ||
+              Object.keys(request).length !== 1
+            ) {
+              throw new Error("fixture Claude preview identity rejected");
+            }
+            const draft = claudePreview.request;
+            claudePreview = null;
+            const providerId = "fyagent-v2-quick-setup-claude";
+            providers.claude[providerId] = {
+              id: providerId,
+              name: String(draft.name),
+            };
+            currentProviderIds.claude = providerId;
+            return {
+              contractVersion: 1,
+              overall: "applied",
+              providerState: "applied",
+              files: [
+                { target: "claude_settings", state: "applied" },
+                { target: "claude_mcp", state: "applied" },
+              ],
+            };
+          }
           case "apply_provider_quick_setup_with_result": {
             await delay(fixtureOptions.providerWriteDelayMs);
             if (fixtureOptions.providerMutation === "save_failure") {

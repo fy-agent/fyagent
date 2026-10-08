@@ -129,7 +129,8 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
     navigation.locator(
       ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
     ),
-  ).toHaveCount(6);
+  ).toHaveCount(5);
+  await expect(navigation.locator('a[href="#/health"]')).toHaveCount(0);
   await expect(
     navigation.getByRole("link", { name: "Agent 目录" }),
   ).toHaveCount(0);

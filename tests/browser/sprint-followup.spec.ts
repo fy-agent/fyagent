@@ -282,16 +282,15 @@ const writes = (state: SprintSnapshot, command: string) =>
   state.events.filter((event) => event.command === command);
 
 async function captureSprintEvidence(page: Page, filename: string) {
-  const evidenceDir = process.env.FYAGENT_SPRINT_EVIDENCE_DIR;
-  if (!evidenceDir)
-    throw new Error(
-      "Set FYAGENT_SPRINT_EVIDENCE_DIR to the controlled evidence directory",
-    );
-  await mkdir(evidenceDir, { recursive: true });
-  await page.screenshot({
-    path: path.join(evidenceDir, filename),
-    fullPage: false,
-  });
+  // Ordinary CI owns artifacts per test/project; controlled exports remain opt-in.
+  const info = test.info();
+  const exportRoot = process.env.FYAGENT_SPRINT_EVIDENCE_DIR;
+  const destination = exportRoot
+    ? path.join(exportRoot, info.project.name, filename)
+    : info.outputPath(filename);
+  await mkdir(path.dirname(destination), { recursive: true });
+  await page.screenshot({ path: destination, fullPage: false });
+  await info.attach(filename, { path: destination, contentType: "image/png" });
 }
 
 test.use({ viewport: { width: 900, height: 600 }, trace: "off" });
@@ -542,16 +541,7 @@ test("linked observation explains protection and keeps the ordinary target writa
   ).toEqual([{ id: "local:sprint-linked", app: "codex", enabled: true }]);
   expect(state.skillApps["local:sprint-linked"].claude).toBe(true);
   await expectNoHorizontalOverflow(page);
-  const evidenceDir = process.env.FYAGENT_SPRINT_EVIDENCE_DIR;
-  if (!evidenceDir)
-    throw new Error(
-      "Set FYAGENT_SPRINT_EVIDENCE_DIR to the controlled evidence directory",
-    );
-  await mkdir(evidenceDir, { recursive: true });
-  await page.screenshot({
-    path: path.join(evidenceDir, "sprint-linked-observation-900x600.png"),
-    fullPage: false,
-  });
+  await captureSprintEvidence(page, "sprint-linked-observation-900x600.png");
   await expectHealthyPage(page, health);
 });
 
