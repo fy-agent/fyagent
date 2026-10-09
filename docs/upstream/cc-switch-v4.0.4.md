@@ -2,7 +2,7 @@
 
 ## Status
 
-Public integration, 2026-10-10. The migration and current main have been reconciled. Isolated macOS VM app acceptance and the affected browser regressions passed. [PR #361](https://github.com/fy-agent/fyagent/pull/361) remains subject to final public CI, task lifecycle gates and Merge Queue; no release is claimed.
+Public integration, 2026-10-10. The migration and current main have been reconciled. Isolated macOS VM app acceptance and the affected browser regressions passed. [PR #361](https://github.com/fy-agent/fyagent/pull/361) records current public CI and Merge Queue status. The task was archived after direct-session prearchive contracts passed; post-archive checks remain a separate gate. This is a pre-merge evidence snapshot, not a release claim.
 
 ## Immutable source identity
 

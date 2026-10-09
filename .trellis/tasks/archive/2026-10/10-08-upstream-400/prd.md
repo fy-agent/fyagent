@@ -1,6 +1,6 @@
 # CC Switch v4.0.4 迁移与迭代整合
 
-状态：本轮隔离 macOS VM 验收和受影响浏览器复验通过。[PR #361](https://github.com/fy-agent/fyagent/pull/361) 的最终公共检查、归档门禁和合并仍待完成，尚未发布。
+状态：本轮隔离 macOS VM 验收、受影响浏览器复验和归档前契约通过，任务已归档。本文记录合入前证据；最终公共检查与合并结果见 [PR #361](https://github.com/fy-agent/fyagent/pull/361)，不代表正式发布。
 
 本次收拢主线 Windows 评审修复、CC Switch v4.0.4 的 live/Aggregation 能力及其页面入口，并补充现有 OpenAI/xAI 账号的额度查询和手动刷新。保留 FyAgent 界面、品牌、Grok、Agent catalog、用户助手、schema v27 和数据目录边界。
 
@@ -10,4 +10,4 @@
 
 完成条件：来源与祖先链正确、合并语义保留主线修复、聚合核心请求与退出恢复可用、账号额度及重新登录回归通过、最终公共候选检查通过。前四项已有相应静态、VM 运行或定向回归证据；最终公共候选 CI 与任务归档门禁待完成。第三方服务状态、客户端验收、PR 合并和发布分别记录。
 
-当前范围和验证边界见[公开验收说明](../../../docs/fyagent/planning/iteration-0411-public-validation-2026-10-10.md)，上游来源见[集成账本](../../../docs/upstream/cc-switch-v4.0.4.md)。
+当前范围和验证边界见[公开验收说明](../../../../../docs/fyagent/planning/iteration-0411-public-validation-2026-10-10.md)，上游来源见[集成账本](../../../../../docs/upstream/cc-switch-v4.0.4.md)。
