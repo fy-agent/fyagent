@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft public integration, 2026-10-10. The migration and current FyAgent main have been reconciled; the final iteration changes are a separate child commit. Final runtime acceptance and public CI are still in progress. This ledger does not claim a merged PR or a released build.
+Public integration, 2026-10-10. The migration and current FyAgent main have been reconciled; the iteration changes are a separate child commit. Final isolated macOS VM app acceptance passed. [PR #361](https://github.com/fy-agent/fyagent/pull/361) remains draft. The separate commit-policy CI repair passed 28 focused checks; remote CI, task lifecycle gates, merge and release remain pending.
 
 ## Immutable source identity
 
@@ -21,6 +21,7 @@ Draft public integration, 2026-10-10. The migration and current FyAgent main hav
 | Main/migration merge base | `5b1a334bbf6a8e3df59d2d5b8b3dd03eb11bd798` |
 | Public semantic integration | `c065c030840584829fe3628295fb298447f02b31` |
 | Public integration parent order | Current main baseline first; public migration head second |
+| Public iteration implementation | `d47f2831fa3e369d15496dd8f57c08bc1561215f` |
 
 The tag-object and peeled identities were read from the official upstream repository's tag refs on 2026-10-10. Both upstream merge ancestry and the peeled commit remain reachable through #360 and the public semantic integration. The public branch does not squash, replay or reconstruct upstream history. Repository roles remain governed by [Upstream Synchronization](../../.trellis/spec/backend/upstream-sync.md); this source check did not add a remote or broaden push access.
 
@@ -33,14 +34,14 @@ The tag-object and peeled identities were read from the official upstream reposi
 
 ## Iteration scope and retained boundaries
 
-The following child commit supplies the aggregation UI/runtime wiring, account-backed provider handling, account quota display/manual refresh, same-account reauthentication fix and concise account/connection summaries. These are subsequent FyAgent iteration changes, not reconstructed upstream commits.
+The public iteration implementation commit supplies the aggregation UI/runtime wiring, account-backed provider handling, account quota display/manual refresh, same-account reauthentication fix and concise account/connection summaries. These are subsequent FyAgent iteration changes, not reconstructed upstream commits.
 
 Keep FyAgent product identities, schema v27, data isolation, account credential ownership and the repository's license/attribution boundaries. No upstream updater, partner or sponsorship surface is enabled by this integration. Pi/Mcode are not claimed as completed UI acceptance in this iteration. Existing legacy source or backend code alone is not a complete feature claim.
 
 ## Validation boundary
 
-The semantic integration's parent order, upstream ancestry, conflict resolution and source inventory identities were checked statically. The final iteration source is carried without code/build/lock/test changes from the frozen implementation snapshot; only the documented public task/provenance/validation text differs.
+The semantic integration's parent order, upstream ancestry, conflict resolution and source inventory identities were checked statically. The public iteration implementation commit listed above carries the frozen, accepted app source without code/build/lock/test changes; only the documented public task/provenance/validation text differs. The later CI-only repair changes the commit-message verifier, its test and its owner specification, with 28 focused checks passed. Product source/build/locks and product tests remain unchanged; remote checks for that later head are pending.
 
-Earlier isolated macOS VM candidates exercised the core aggregation request and recovery flow. Final Rust checks, Auth renderer regressions and the live quota-refresh acceptance are in progress. Native Windows runtime, installer/signing, public CI, PR merge and release are separate evidence scopes and are not established by these earlier VM results.
+Earlier isolated macOS VM candidates exercised the core aggregation request/recovery flow and manual quota refresh. The final app passed quota reading, account/connection state review and exit cleanup, with independent screenshot review. The final source passed 22 focused native regressions and 68 applicable frontend regressions (Auth Page 35, summary 13, unaffected suites 20). Reauthentication was covered by isolated native regressions; no real browser OAuth re-login was performed. A manual refresh success does not establish an exact upstream request count. These are focused checks, not a claim that all repository gates passed. Native Windows runtime, installer/signing, final public CI, PR merge and release remain separate evidence scopes.
 
 See [iteration scope and validation](../fyagent/planning/iteration-0411-public-validation-2026-10-10.md) for the current public status. The earlier October 8 worktree-only/Clippy-blocked notes are superseded by this integration status; they are not the final candidate's acceptance result.

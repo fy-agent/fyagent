@@ -90,7 +90,7 @@ max_entries_to_build           = 2
 max_entries_to_merge           = 1
 min_entries_to_merge           = 1
 min_entries_to_merge_wait_min  = 0
-check_response_timeout_minutes = 30
+check_response_timeout_minutes = 60
 ```
 
 The CI workflow must continue to expose:
@@ -99,6 +99,9 @@ The CI workflow must continue to expose:
 merge_group:
   types: [checks_requested]
 ```
+
+The queue timeout above reflects the existing repository ruleset read back on
+2026-10-10; documenting it does not change repository settings.
 
 ### Merge-ready CLI boundary
 

@@ -1,12 +1,10 @@
-# Progress
+# 当前进度
 
-- 2026-10-08 CLAIMED by Codex: 用户续跑授权，仅写工作树。
-- 177项内容处置完成，TSV已记录；前端52文件942用例通过。
-- 原生编译与正式索引扫描存在外部环境阻断，保持in_progress，未标DONE或发布通过。
+- 2026-10-10：公开整合保留主线和 #360 双父结构与真实上游祖先链；原本地回滚提交保持独立。
+- 聚合核心请求切换、移除成员后拒绝和恢复流程已在隔离 macOS VM 验证；主线 Gemini 无法解析 settings 时不覆盖的保护保留。
+- 最终源码 Rust 定向回归 22 项通过。最终账号 Page 35 项、摘要 13 项，加不受影响的其余 20 项，共 68 项前端有效回归通过；不等同全仓完整门禁。
+- 最终应用的真实额度读取、精简后的账号/连接状态及退出清理通过，完成独立截图复核。手动刷新在前序候选有成功记录；未执行真实浏览器 OAuth 重登，重新登录由隔离原生回归覆盖。
+- [PR #361](https://github.com/fy-agent/fyagent/pull/361) 保持草稿。提交规范修复的 28 项独立检查已通过，远程 CI 待回读；prearchive、归档后检查、最终 PR/合并队列检查及合入回读尚待完成。尚未发布。
+- Pi/Mcode 保持原迁移范围中的延期安排。
 
-## 400c 第三轮收尾
-- 17 文件 / 51 处 fix4 冲突已清；以 4.0.4 结构为主，补回目录归属、事务/备份锁和账号 header 意图。
-- 会话阅读允许扩展字段、缺省 content 从 blocks 投影；原生序列化总带 content。
-- Gemini 旧 writer / OAuth 标记直写删除，兼容代理路径经 gemini_direct 引擎；ConfigService 旧同步入口及 7 个只测该入口的测试按上游移除，另移除旧 env 序列化测试，保留新引擎断言。
-- Windows GNU all-targets 编译退出 0；前端检查、664 项定向测试及 9 项模块边界断言通过。严格 Clippy 尚未通过；未执行原生 Rust 测试，索引 17 个 UU 由军师处理。
-- [本轮报告](/workspace/fy-maint-1007/migration/report-400c.md) / [命令证据](/workspace/fy-maint-1007/migration/p400c-evidence/) / [改动清单](/workspace/fy-maint-1007/migration/p400c-changed.txt)。原 native_validation_blocked 阶段由本轮交叉编译结果更新，原生运行验收仍待完成。
+10 月 8 日有关冲突未清、原生未执行和 Clippy 阻塞的记录是旧候选阶段，已被以上具体范围的证据替代；不能据此声称最终全仓 Clippy 或所有发布检查已通过。公开证据以[验收说明](../../../docs/fyagent/planning/iteration-0411-public-validation-2026-10-10.md)为准。

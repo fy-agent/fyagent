@@ -1,19 +1,23 @@
 {
   "id": "upstream-400",
-  "name": "CC Switch v4.0.4 迁移与迭代整合",
+  "name": "upstream-400",
   "status": "in_progress",
   "ClaimedBy": "Codex",
   "ClaimedAt": "2026-10-07T18:16:49.884897+00:00",
-  "phase": "public_draft_validation_in_progress",
+  "phase": "vm_accepted_public_ci_pending",
   "Deliverables": [
     "[upstream ledger](../../../docs/upstream/cc-switch-v4.0.4.md)",
-    "[scope and validation](../../../docs/fyagent/planning/iteration-0411-public-validation-2026-10-10.md)"
+    "[scope and validation](../../../docs/fyagent/planning/iteration-0411-public-validation-2026-10-10.md)",
+    "[draft PR #361](https://github.com/fy-agent/fyagent/pull/361)"
   ],
   "Acceptance Evidence": [
     "Public integration preserves main and #360 as distinct parents and retains the original upstream merge ancestry.",
     "Gemini invalid-settings protection and the migrated CLI preflight assertion are retained as semantic merge resolutions.",
-    "Earlier isolated macOS VM candidates exercised aggregation request switching, removed-member rejection and exit restoration; this is not final account-quota or Windows native acceptance.",
-    "The account-summary change passed host typecheck and lint; final Rust, Auth renderer and live quota-refresh validation is ongoing.",
-    "Public candidate CI, PR merge and release are pending. No production-service deployment is claimed."
-  ]
+    "Isolated macOS VM candidates verified aggregation switching, removed-member rejection, manual quota refresh and exit restoration. The final app passed quota reading, status-label review and exit cleanup, including independent screenshot review.",
+    "Final source passed 22 focused native regressions and 68 applicable frontend regressions (Auth Page 35, summary 13, unaffected suites 20). Reauthentication uses isolated native regression evidence; no real browser OAuth re-login was performed.",
+    "PR #361 remains draft. The separate commit-policy repair passed 28 focused checks; remote CI, task lifecycle gates, merge and release are pending. Product source/build/locks and product tests remain unchanged from the accepted VM candidate. This does not claim full-repository checks, Windows-native runtime or production-service deployment."
+  ],
+  "branch": "codex/iteration-0411-public-20261010",
+  "title": "CC Switch v4.0.4 迁移与迭代整合",
+  "base_branch": "main"
 }
