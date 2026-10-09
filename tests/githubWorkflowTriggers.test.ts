@@ -169,10 +169,8 @@ describe("GitHub workflow trigger policy", () => {
         "",
         "on:",
         "  schedule:",
-        '    - cron: "17 */3 * * *"',
+        '    - cron: "17 2 * * *"',
         "  workflow_dispatch:",
-        "  watch:",
-        "    types: [started]",
       ].join("\n"),
     );
     expect(source).toContain("permissions:\n  contents: read");
@@ -184,8 +182,10 @@ describe("GitHub workflow trigger policy", () => {
     );
     expect(source).toContain("branch: star-history");
     expect(source).toContain(
-      "token: ${{ secrets.STAR_HISTORY_TOKEN || github.token }}",
+      "token: ${{ secrets.STAR_HISTORY_TOKEN }}",
     );
+    expect(source).not.toContain("github.token");
+    expect(source).not.toContain("watch:");
     expect(source).toContain(
       "uses: xpzouying/star-history@8b1f26dc5e9a17caa75da9351b688509ef312811",
     );

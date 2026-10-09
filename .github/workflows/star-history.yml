@@ -2,10 +2,8 @@ name: Star History
 
 on:
   schedule:
-    - cron: "17 */3 * * *"
+    - cron: "17 2 * * *"
   workflow_dispatch:
-  watch:
-    types: [started]
 
 permissions:
   contents: read
@@ -31,4 +29,4 @@ jobs:
         uses: xpzouying/star-history@8b1f26dc5e9a17caa75da9351b688509ef312811
         with:
           branch: star-history
-          token: ${{ secrets.STAR_HISTORY_TOKEN || github.token }}
+          token: ${{ secrets.STAR_HISTORY_TOKEN }}

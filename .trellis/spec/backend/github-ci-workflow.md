@@ -177,14 +177,15 @@ Classification invariants:
 It calls the public SHA-pinned `xpzouying/star-history` Action instead of
 re-cloning that generator. The README does not depend on a mutable hosted chart
 or token-bearing embed URL; the Action publishes only the generated chart files
-to the unprotected `star-history` data branch. New stars refresh the
-chart through the `watch` `started` event. GitHub's `schedule` trigger is
-best-effort and can skip slots, so it remains the periodic reconciliation path
-(including unstars), every three hours at minute 17. Manual `workflow_dispatch`
-remains available. Chart generation prefers the repository secret
-`STAR_HISTORY_TOKEN` and falls back to `github.token`; the Action's git push
-still uses the job-local `contents: write` built-in token. The job runs on
-`ubuntu-24.04`; that hosted runner label is not a shipped-product surface.
+to the unprotected `star-history` data branch. The workflow does not run on
+`watch`. GitHub's `schedule` trigger is best-effort and can skip slots, so it
+remains the periodic reconciliation path once a day at 02:17 UTC. Manual
+`workflow_dispatch` remains available. Chart generation uses only the repository
+secret `STAR_HISTORY_TOKEN`. The built-in `github.token` is not an
+owner/collaborator credential for the stargazer timeline, so the workflow must
+not fall back to it. The Action's git push still uses the job-local
+`contents: write` built-in token. The job runs on `ubuntu-24.04`; that hosted
+runner label is not a shipped-product surface.
 
 The classifier's `forceFull` is path-derived only. Event policy is applied by
 the Required workflow after classification:
