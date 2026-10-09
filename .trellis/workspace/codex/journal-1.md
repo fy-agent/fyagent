@@ -265,3 +265,28 @@ Implemented final-only session packages, native version-gated recovery, device/s
 ### Status
 
 [OK] **Completed**
+
+
+## Session 14: CC Switch 4.0.4 integration and account quota
+<!-- trellis-session: v=2 fp=10d18223ad655cf6 -->
+
+**Date**: 2026-10-10
+**Task**: CC Switch 4.0.4 integration and account quota
+**Branch**: `codex/iteration-0411-public-20261010`
+
+### Summary
+
+Integrated upstream migration, aggregation and account quota; retained Windows fixes and original upstream ancestry. VM application and focused regressions passed; browser failures were corrected as stale summary assertions and asynchronous layout sampling. Direct-session prearchive passed and task archived. Final public CI and merge queue remain independent; remaining 4.0.4 UI gaps are documented.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c065c030840584829fe3628295fb298447f02b31` | merge: integrate CC Switch v4.0.4 migration with main |
+| `d47f2831fa3e369d15496dd8f57c08bc1561215f` | feat: add aggregation controls and account quota workflows |
+| `b773184a99896cd2a2edca0e8022d346fd91dc30` | fix(ci): preserve pinned upstream commit history in convention checks |
+| `44efc421ad038ea22e06b645da251253568a7511` | test(frontend): await model layout before contrast sampling |
+
+### Status
+
+[OK] **Completed**
