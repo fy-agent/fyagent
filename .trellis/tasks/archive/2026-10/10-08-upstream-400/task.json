@@ -1,7 +1,7 @@
 {
   "id": "upstream-400",
   "name": "upstream-400",
-  "status": "in_progress",
+  "status": "completed",
   "ClaimedBy": "Codex",
   "ClaimedAt": "2026-10-07T18:16:49.884897+00:00",
   "phase": "vm_accepted_closeout_pending",
@@ -19,5 +19,6 @@
   ],
   "branch": "codex/iteration-0411-public-20261010",
   "title": "CC Switch v4.0.4 迁移与迭代整合",
-  "base_branch": "main"
+  "base_branch": "main",
+  "completedAt": "2026-10-10"
 }
