@@ -872,6 +872,30 @@ describe("V3 Agent directory and configuration shell", () => {
     },
   );
 
+  it("keeps 一键安装 on a cli_tooling card whose install state is unknown", async () => {
+    const ports = configuredPorts();
+    ports.agentInstallReadiness.get = vi.fn(async (agentId) =>
+      agentId === "grokbuild"
+        ? readiness(agentId, "unknown", {
+            sourceKind: "cli_tooling",
+            inventoryState: "unknown",
+            allowedActions: ["install"],
+          })
+        : readiness(agentId, "installed"),
+    );
+    renderPage(ports);
+    await waitFor(() =>
+      expect(
+        within(directoryArticle("Grok Build")).getByText("状态未知"),
+      ).toBeVisible(),
+    );
+    const card = directoryArticle("Grok Build");
+    expect(
+      await within(card).findByRole("button", { name: "一键安装" }),
+    ).toBeVisible();
+    expect(within(card).getByText("状态未知")).toBeVisible();
+  });
+
   it("shows all catalog rows immediately and settles readiness progressively", async () => {
     const ports = configuredPorts();
     const reads = {} as Record<
