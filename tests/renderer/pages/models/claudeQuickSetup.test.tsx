@@ -19,6 +19,7 @@ import type {
   ClaudeQuickSetupOutcome,
   ClaudeQuickSetupPreview,
 } from "@/shared/features/claude-quick-setup";
+import type { FeaturePorts } from "@/shared/features/ports";
 
 const previewId = "11111111-1111-4111-8111-111111111111";
 const preview: ClaudeQuickSetupPreview = {
@@ -47,7 +48,7 @@ const applied: ClaudeQuickSetupOutcome = {
     { target: "claude_mcp", state: "applied" },
   ],
 };
-function setup() {
+function setup(configure?: (ports: FeaturePorts) => void) {
   const ports = createBrowserFeaturePorts();
   ports.providers.getSummary = vi.fn(async () => ({
     providers: {},
@@ -57,6 +58,7 @@ function setup() {
   ports.providers.previewClaudeQuickSetup = vi.fn(async () => preview);
   ports.providers.applyClaudeQuickSetupPreview = vi.fn(async () => applied);
   ports.providers.applyQuickSetupWithResult = vi.fn();
+  configure?.(ports);
   let setVisible!: (visible: boolean) => void;
   function Host() {
     const [visible, setState] = useState(true);
@@ -93,6 +95,44 @@ async function confirm(user: ReturnType<typeof userEvent.setup>) {
   await user.click(within(dialog).getByRole("button", { name: "确认保存" }));
 }
 describe("Claude Models native consent", () => {
+  it("refreshes mode and aggregation suppliers after the existing direct save", async () => {
+    let saved = false;
+    const { ports, user } = setup((ports) => {
+      ports.providers.getAll = vi.fn<FeaturePorts["providers"]["getAll"]>(
+        async (): ReturnType<FeaturePorts["providers"]["getAll"]> =>
+          saved
+            ? {
+                fresh: {
+                  id: "fresh",
+                  name: "新直连配置",
+                  settingsConfig: { env: { ANTHROPIC_MODEL: "fixture-model" } },
+                },
+              }
+            : {},
+      );
+      ports.providers.getMode = vi.fn(async () => ({
+        mode: "direct" as const,
+        attached: false,
+        directProviderId: saved ? "fresh" : null,
+        routeProviderId: null,
+      }));
+      ports.providers.getStack = vi.fn(async () => ({
+        active: false,
+        members: [],
+      }));
+      ports.providers.applyClaudeQuickSetupPreview = vi.fn(async () => {
+        saved = true;
+        return applied;
+      });
+    });
+    await draft(user);
+    await save(user);
+    await confirm(user);
+    await screen.findByText("新直连配置");
+    await user.click(screen.getByRole("tab", { name: "聚合" }));
+    expect(screen.getByRole("button", { name: "加入聚合" })).toBeEnabled();
+    expect(ports.providers.getStack).toHaveBeenCalledTimes(2);
+  });
   it("shows the actual two-file scope, cancels without apply, and confirms identity once", async () => {
     const { ports, user } = setup();
     await draft(user);

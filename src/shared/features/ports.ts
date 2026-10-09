@@ -1,3 +1,9 @@
+import type { Provider } from "../../domain/configuration/types";
+import type {
+  AppModeView,
+  ProxyStack,
+  CodexDaemonRestartOutcome,
+} from "../../domain/configuration/types/proxy";
 import type {
   ClaudeQuickSetupPreview,
   ClaudeQuickSetupApplyRequest,
@@ -143,6 +149,27 @@ export interface CodexDesktopPort {
 }
 
 export interface ProvidersPort {
+  getAll(app: "claude" | "codex"): Promise<Record<string, Provider>>;
+  add(app: "claude" | "codex", provider: Provider): Promise<boolean>;
+  update(app: "claude" | "codex", provider: Provider): Promise<boolean>;
+  switch(app: "claude" | "codex", id: string): Promise<unknown>;
+  getMode(app: "claude" | "codex"): Promise<AppModeView>;
+  setMode(
+    app: "claude" | "codex",
+    enabled: boolean,
+    stack?: boolean,
+    route?: string | null,
+  ): Promise<void>;
+  setRoute(app: "claude" | "codex", providerId: string): Promise<void>;
+  getStack(app: "claude" | "codex"): Promise<ProxyStack>;
+  setStackMember(
+    app: "claude" | "codex",
+    providerId: string,
+    enabled: boolean,
+  ): Promise<string | null>;
+  adoptCodexCatalog(): Promise<string | null>;
+  restartCodexDaemon(): Promise<CodexDaemonRestartOutcome>;
+
   previewClaudeQuickSetup(
     request: ProviderQuickSetupRequest,
   ): Promise<ClaudeQuickSetupPreview>;

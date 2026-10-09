@@ -79,6 +79,21 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await codexDesktop()).subscribeJobUpdates(...args),
     },
     providers: {
+      getAll: async (...args) => (await models()).providers.getAll(...args),
+      add: async (...args) => (await models()).providers.add(...args),
+      update: async (...args) => (await models()).providers.update(...args),
+      switch: async (...args) => (await models()).providers.switch(...args),
+      getMode: async (...args) => (await models()).providers.getMode(...args),
+      setMode: async (...args) => (await models()).providers.setMode(...args),
+      setRoute: async (...args) => (await models()).providers.setRoute(...args),
+      getStack: async (...args) => (await models()).providers.getStack(...args),
+      setStackMember: async (...args) =>
+        (await models()).providers.setStackMember(...args),
+      adoptCodexCatalog: async (...args) =>
+        (await models()).providers.adoptCodexCatalog(...args),
+      restartCodexDaemon: async (...args) =>
+        (await models()).providers.restartCodexDaemon(...args),
+
       previewClaudeQuickSetup: async (...args) =>
         (await models()).providers.previewClaudeQuickSetup(...args),
       applyClaudeQuickSetupPreview: async (...args) =>

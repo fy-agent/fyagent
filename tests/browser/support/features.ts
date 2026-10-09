@@ -22,6 +22,7 @@ export interface RichFeatureFixtureOptions {
   holdProviderWrite?: boolean;
   holdAgentAuth?: boolean;
   xaiBindFailure?: boolean;
+  aggregation?: boolean;
   workBuddySave?:
     | "saved"
     | "overwrite_then_saved"
@@ -387,6 +388,54 @@ export async function installRichTauriFeatureFixture(
       codex: "fixture-codex-current",
       claude: "fixture-claude-current",
     };
+    const aggregationProviders: Record<
+      string,
+      Record<string, Record<string, unknown>>
+    > = {};
+    const appModes: Record<string, "direct" | "route" | "stack"> = {
+      codex: "direct",
+      claude: "direct",
+    };
+    const routeProviderIds = { ...currentProviderIds };
+    const stackMembers: Record<string, Set<string>> = {
+      codex: new Set(),
+      claude: new Set(),
+    };
+    let staleDaemon = false;
+    for (const app of ["codex", "claude"]) {
+      if (fixtureOptions.aggregation) {
+        const id = `fixture-${app}-second`;
+        providers[app][id] = { id, name: "第二家供应商" };
+      }
+      aggregationProviders[app] = Object.fromEntries(
+        Object.entries(providers[app]).map(([id, provider]) => [
+          id,
+          {
+            ...provider,
+            category: "custom",
+            settingsConfig:
+              app === "codex"
+                ? {
+                    auth: { OPENAI_API_KEY: "browser-fixture-key" },
+                    config:
+                      'model_provider = "fixture"\nmodel = "gpt-fixture"\n[model_providers.fixture]\nname = "Fixture"\nbase_url = "https://codex.example.test/v1"\nwire_api = "responses"\n',
+                    modelCatalog: { models: [{ model: "gpt-fixture" }] },
+                  }
+                : {
+                    env: {
+                      ANTHROPIC_BASE_URL: "https://claude.example.test",
+                      ANTHROPIC_AUTH_TOKEN: "browser-fixture-key",
+                      ANTHROPIC_MODEL: "claude-fixture",
+                    },
+                  },
+            meta:
+              app === "claude"
+                ? { stackModels: [{ model: "claude-fixture" }] }
+                : {},
+          },
+        ]),
+      );
+    }
     // File observations are explicit fixture state, independent of saved plans.
     const providerLive: Record<string, ProviderLiveSummary> = {
       codex: {
@@ -1056,8 +1105,133 @@ export async function installRichTauriFeatureFixture(
           payload: structuredClone(payload),
         });
         switch (command) {
+          case "get_providers":
+            return structuredClone(aggregationProviders[String(payload.app)]);
+          case "get_current_provider":
+            return currentProviderIds[String(payload.app)];
+          case "switch_provider":
+            currentProviderIds[String(payload.app)] = String(payload.id);
+            return { warnings: [] };
+          case "add_provider":
+          case "update_provider": {
+            const app = String(payload.app);
+            const provider = structuredClone(payload.provider) as Record<
+              string,
+              unknown
+            >;
+            const id = String(provider.id);
+            aggregationProviders[app][id] = provider;
+            providers[app][id] = { id, name: provider.name };
+            return true;
+          }
+          case "delete_provider": {
+            const app = String(payload.app);
+            const id = String(payload.id);
+            delete aggregationProviders[app][id];
+            delete providers[app][id];
+            stackMembers[app].delete(id);
+            return true;
+          }
+          case "get_app_mode": {
+            const app = String(payload.appType);
+            return {
+              mode: appModes[app],
+              attached: appModes[app] !== "direct",
+              routeProviderId: routeProviderIds[app],
+              directProviderId: currentProviderIds[app],
+            };
+          }
+          case "get_proxy_stack": {
+            const app = String(payload.appType);
+            return {
+              active: appModes[app] === "stack",
+              members: [...stackMembers[app]].map((providerId) => ({
+                providerId,
+                modelIds: [`ccs-${providerId}/fixture-model`],
+                route: providerId === routeProviderIds[app],
+              })),
+              ...(app === "codex"
+                ? { staleClients: { daemon: staleDaemon, others: false } }
+                : {}),
+            };
+          }
+          case "set_proxy_takeover_for_app": {
+            const app = String(payload.appType);
+            if (app === "opencode" && payload.enabled === false) {
+              openCodeSubscription = null;
+              return null;
+            }
+            appModes[app] = payload.enabled
+              ? payload.stack
+                ? "stack"
+                : "route"
+              : "direct";
+            if (payload.route) routeProviderIds[app] = String(payload.route);
+            if (appModes[app] === "stack") {
+              stackMembers[app].add(routeProviderIds[app]);
+            }
+            staleDaemon = app === "codex";
+            return null;
+          }
+          case "set_proxy_route": {
+            const app = String(payload.appType);
+            routeProviderIds[app] = String(payload.providerId);
+            if (appModes[app] === "stack")
+              stackMembers[app].add(String(payload.providerId));
+            return null;
+          }
+          case "set_proxy_stack_member": {
+            const app = String(payload.appType);
+            if (payload.enabled)
+              stackMembers[app].add(String(payload.providerId));
+            else stackMembers[app].delete(String(payload.providerId));
+            staleDaemon = app === "codex";
+            return null;
+          }
+          case "adopt_codex_stack_catalog":
+            return null;
+          case "restart_codex_app_server_daemon":
+            staleDaemon = false;
+            return "restarted";
+          case "update_tray_menu":
+            return null;
+          case "fetch_models_for_config":
+            return [{ id: "gpt-fixture" }, { id: "gpt-fixture-second" }];
           case "managed_auth_get_overview":
             return structuredClone(managedAuthOverview);
+          case "managed_auth_get_account_quota": {
+            const accountId = String(payload.accountId);
+            const account = (
+              managedAuthOverview.accounts as Array<{
+                accountId: string;
+                provider: string;
+              }>
+            ).find((item) => item.accountId === accountId);
+            if (
+              !account ||
+              (account.provider !== "openai" && account.provider !== "xai")
+            ) {
+              throw {
+                contractVersion: 1,
+                reasonCode: "provider_not_supported",
+              };
+            }
+            return {
+              contractVersion: 1,
+              accountId,
+              provider: account.provider,
+              checkedAt: "2026-09-03T08:01:00Z",
+              status: "available",
+              reasonCode: null,
+              windows: [
+                {
+                  windowId: "five_hour",
+                  remainingPercent: 88,
+                  resetsAt: "2026-09-03T13:00:00Z",
+                },
+              ],
+            };
+          }
           case "managed_auth_start_login": {
             const request = payload.request as {
               provider: "openai" | "xai" | "github_copilot";
@@ -1486,11 +1660,6 @@ export async function installRichTauriFeatureFixture(
               targets: [],
             };
           }
-          case "set_proxy_takeover_for_app":
-            if (payload.appType !== "opencode" || payload.enabled !== false)
-              throw new Error("Unsupported fixture target");
-            openCodeSubscription = null;
-            return null;
           case "bind_xai_managed_provider":
           case "bind_managed_proxy_provider": {
             const request = payload.request as Record<string, unknown>;

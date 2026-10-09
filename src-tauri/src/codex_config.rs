@@ -74,14 +74,14 @@ use features::{
 pub use features::{
     analyze_codex_provider_features, codex_provider_save_warning_codes,
     patch_codex_provider_features, prepare_codex_provider_features_for_save,
-    validate_codex_provider_features, CodexProviderFeatureIntent, CodexProviderFeaturePatchResult,
-    CodexProviderFeatureState, CODEX_IMAGE_EXTENSION_HEADER, CODEX_IMAGE_EXTENSION_VALUE,
+    validate_codex_provider_features, CodexImageExtensionState, CodexProviderFeatureIntent,
+    CodexProviderFeaturePatchResult, CodexProviderFeatureState, CODEX_IMAGE_EXTENSION_HEADER,
+    CODEX_IMAGE_EXTENSION_VALUE,
 };
 #[cfg(test)]
 use features::{
-    codex_provider_config_text, set_provider_config_text, CodexImageExtensionState,
-    CODEX_FEATURE_INVALID_TOML, CODEX_FEATURE_INVALID_WEBSOCKET,
-    CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED_WARNING,
+    codex_provider_config_text, set_provider_config_text, CODEX_FEATURE_INVALID_TOML,
+    CODEX_FEATURE_INVALID_WEBSOCKET, CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED_WARNING,
 };
 
 pub use storage::{

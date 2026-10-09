@@ -7,6 +7,22 @@ provider quick setup, model discovery/probing, write confirmation, Codex or
 WorkBuddy Change Plans, OpenCode revisioned writes, TRAE observation, or model
 credential handling.
 
+### Upstream aggregation mode
+
+`ProviderModesPanel.tsx` and `aggregationModels.ts` expose the upstream
+Claude/Codex direct, route and stack flows on the existing Models page.
+Browsing a tab does not change the active mode. `ProvidersPort` and
+`providerAggregation.ts` use the existing Provider CRUD and mode/stack commands;
+new providers use `addToLive: false`. The existing quick-setup form remains in
+the direct tab with its existing save semantics.
+
+Reuse the upstream DTOs, model normalization, default-provider rules and
+metadata fill behavior. Codex official accounts can be the default route only;
+Claude official accounts use direct mode. Stack does not fail over. Mutations
+refresh mode, members and provider queries; Codex daemon restart retains its
+interruption confirmation. The focused `ProviderModesPanel`, aggregation model
+and port tests plus `tests/browser/aggregation.spec.ts` cover this flow.
+
 Primary owners are:
 
 - `src/pages/models/Page.tsx` and `OpenCodeModelsPanel.tsx` for current

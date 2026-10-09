@@ -2643,6 +2643,79 @@ context_window = 262144
 
     #[test]
     #[serial]
+    fn update_managed_codex_subscription_model_catalog_without_inline_auth() {
+        with_test_home(|state, _| {
+            crate::settings::reload_settings().expect("reload settings");
+            let mut provider = managed_codex_provider("managed-model-catalog", "test-account");
+            provider.category = Some("third_party".into());
+            let meta = provider.meta.as_mut().expect("managed metadata");
+            meta.provider_type = Some("codex_oauth".into());
+            meta.image_extension_configured = Some(true);
+            provider.settings_config["config"] = json!(format!(
+                "model_provider = \"fyagent_chatgpt\"\nmodel = \"gpt-6-sol\"\n\n[model_providers.fyagent_chatgpt]\nname = \"ChatGPT subscription\"\nbase_url = \"{}\"\nwire_api = \"responses\"\nhttp_headers = {{ \"{}\" = \"{}\" }}\n",
+                crate::proxy::providers::CHATGPT_CODEX_BASE_URL,
+                crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER,
+                crate::codex_config::CODEX_IMAGE_EXTENSION_VALUE,
+            ));
+            assert!(ProviderService::managed_proxy_codex_shape_is_valid(
+                &provider
+            ));
+            state
+                .db
+                .save_provider("codex", &provider)
+                .expect("seed subscription draft");
+            assert!(
+                crate::settings::get_effective_current_provider(&state.db, &AppType::Codex)
+                    .expect("current provider")
+                    .is_none()
+            );
+
+            let mut provider = ProviderService::list(state, AppType::Codex)
+                .expect("list renderer providers")
+                .shift_remove(&provider.id)
+                .expect("renderer subscription draft");
+            provider.settings_config["modelCatalog"] = json!({
+                "models": [{"model": "gpt-6-sol"}]
+            });
+            ProviderService::update(state, AppType::Codex, None, provider.clone())
+                .expect("save managed subscription model catalog");
+
+            let saved = state
+                .db
+                .get_provider_by_id(&provider.id, "codex")
+                .expect("read saved provider")
+                .expect("saved subscription draft");
+            assert_eq!(saved.settings_config["auth"], json!({}));
+            assert_eq!(
+                saved.settings_config["modelCatalog"],
+                provider.settings_config["modelCatalog"]
+            );
+            assert_eq!(
+                serde_json::to_value(
+                    saved
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.auth_binding.as_ref())
+                )
+                .unwrap(),
+                serde_json::to_value(
+                    provider
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.auth_binding.as_ref())
+                )
+                .unwrap(),
+            );
+            assert!(ProviderService::managed_proxy_codex_shape_is_valid(&saved));
+            assert_eq!(
+                crate::codex_config::analyze_codex_provider_features(&saved, false).image_extension,
+                crate::codex_config::CodexImageExtensionState::On
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
     fn add_accepts_multiple_unbound_codex_official_cards() {
         with_test_home(|state, _| {
             crate::settings::reload_settings().expect("reload settings");
@@ -6157,21 +6230,21 @@ impl ProviderService {
         state: &AppState,
         app_type: AppType,
     ) -> Result<IndexMap<String, Provider>, AppError> {
-        Ok(state
+        state
             .db
             .get_all_providers(app_type.as_str())?
             .into_iter()
             .map(|(id, provider)| {
-                (
+                Ok((
                     id,
                     if app_type == AppType::Codex {
-                        ProviderCredentials::renderer_projection(&provider)
+                        ProviderCredentials::renderer_projection(&provider)?
                     } else {
                         provider
                     },
-                )
+                ))
             })
-            .collect())
+            .collect()
     }
 
     /// Get current provider ID

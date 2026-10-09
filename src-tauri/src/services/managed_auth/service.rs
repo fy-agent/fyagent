@@ -25,15 +25,16 @@ use super::migration::{
 use super::{
     now_timestamp, stable_connection_id, stable_credential_id, stable_identity_id, stable_revision,
     ConnectionRecord, ConnectionStatus, CredentialPurpose, CredentialRecord, CredentialStatus,
-    CredentialWithIdentity, IdentityRecord, ManagedAuthAccountAction,
+    CredentialWithIdentity, IdentityRecord, ManagedAuthAccountAction, ManagedAuthAccountQuota,
     ManagedAuthAccountRemovalImpact, ManagedAuthAccountRemovalPreview, ManagedAuthAccountSummary,
     ManagedAuthConnectionAction, ManagedAuthConnectionActionRequest, ManagedAuthConnectionState,
     ManagedAuthConnectionSummary, ManagedAuthConsumer, ManagedAuthCoreError,
     ManagedAuthCredentialManager, ManagedAuthErrorDto, ManagedAuthHealth, ManagedAuthLoginMethod,
     ManagedAuthMutationOutcome, ManagedAuthMutationResult, ManagedAuthOverview,
-    ManagedAuthProvider, ManagedAuthProviderSummary, ManagedAuthReasonCode, ManagedAuthRepository,
-    ManagedAuthRequestMode, ManagedAuthSecretBundle, ManagedAuthSecretBundleParts, MigrationStatus,
-    NewCredential, RefreshOwner, MANAGED_AUTH_CONTRACT_VERSION,
+    ManagedAuthProvider, ManagedAuthProviderSummary, ManagedAuthQuotaStatus,
+    ManagedAuthQuotaWindow, ManagedAuthReasonCode, ManagedAuthRepository, ManagedAuthRequestMode,
+    ManagedAuthSecretBundle, ManagedAuthSecretBundleParts, MigrationStatus, NewCredential,
+    RefreshOwner, MANAGED_AUTH_CONTRACT_VERSION,
 };
 
 pub(crate) type NativeManagedAuthService =
@@ -55,6 +56,42 @@ impl AccessMaterial {
     pub(crate) fn routing_subject(&self) -> Option<&str> {
         self.routing_subject.as_deref()
     }
+
+    fn into_quota_access(self) -> QuotaAccess {
+        QuotaAccess {
+            provider: self.credential.provider,
+            access_token: self.access_token,
+            routing_subject: self.routing_subject,
+            native_owned: false,
+        }
+    }
+}
+
+struct QuotaAccess {
+    provider: ManagedAuthProvider,
+    access_token: Zeroizing<String>,
+    routing_subject: Option<String>,
+    native_owned: bool,
+}
+
+impl QuotaAccess {
+    fn provider(&self) -> ManagedAuthProvider {
+        self.provider
+    }
+
+    fn access_token(&self) -> &str {
+        self.access_token.as_str()
+    }
+
+    fn routing_subject(&self) -> Option<&str> {
+        self.routing_subject.as_deref()
+    }
+}
+
+enum NativeQuotaRead {
+    Expired,
+    Missing,
+    Unavailable(ManagedAuthCoreError),
 }
 
 struct RefreshedGrant {
@@ -315,9 +352,7 @@ where
             return Err(ManagedAuthCoreError::Conflict);
         }
         let bundle = self.readback_bundle(&credential.secret_handle)?;
-        if bundle.credential_id() != credential.credential_id
-            || bundle.provider() != credential.provider
-            || bundle.generation() != credential.generation
+        if !bundle_matches_credential(&bundle, credential)
             || (bundle.refresh_token().is_none()
                 && (bundle.access_token().is_none()
                     || access_expired(credential.access_expires_at)))
@@ -339,6 +374,118 @@ where
             id: "grok-build".into(),
             owned_by: Some("xai".into()),
         }])
+    }
+
+    pub(crate) async fn get_account_quota(
+        &self,
+        account_id: &str,
+    ) -> Result<ManagedAuthAccountQuota, ManagedAuthErrorDto> {
+        self.get_account_quota_with(account_id, query_managed_provider_quota)
+            .await
+    }
+
+    async fn get_account_quota_with<F, Fut>(
+        &self,
+        account_id: &str,
+        query: F,
+    ) -> Result<ManagedAuthAccountQuota, ManagedAuthErrorDto>
+    where
+        F: FnOnce(QuotaAccess) -> Fut,
+        Fut: std::future::Future<
+            Output = Result<crate::services::subscription::SubscriptionQuota, String>,
+        >,
+    {
+        let rows = self
+            .credentials_for_account(account_id)
+            .map_err(ManagedAuthErrorDto::from_core)?;
+        let provider = rows[0].identity.provider;
+        if !matches!(
+            provider,
+            ManagedAuthProvider::Openai | ManagedAuthProvider::Xai
+        ) {
+            return Err(ManagedAuthErrorDto::with_reason(
+                ManagedAuthReasonCode::ProviderNotSupported,
+            ));
+        }
+        let access = match self.proxy_account(account_id) {
+            Ok(selected) => match self.resolve_credential_access(selected.credential).await {
+                Ok(material) => material.into_quota_access(),
+                Err(ManagedAuthCoreError::Conflict) => {
+                    return Ok(closed_account_quota(
+                        account_id,
+                        provider,
+                        ManagedAuthQuotaStatus::RequiresReauth,
+                        Some(ManagedAuthReasonCode::RequiresReauth),
+                        Vec::new(),
+                    ));
+                }
+                Err(error) => return Err(ManagedAuthErrorDto::from_core(error)),
+            },
+            Err(proxy_error) => match self.read_native_quota_access(&rows, provider) {
+                Ok(access) => access,
+                Err(NativeQuotaRead::Expired) => {
+                    return Ok(closed_account_quota(
+                        account_id,
+                        provider,
+                        ManagedAuthQuotaStatus::NativeRefreshRequired,
+                        None,
+                        Vec::new(),
+                    ));
+                }
+                Err(NativeQuotaRead::Missing) => {
+                    return map_ineligible_proxy_quota(account_id, provider, &rows, proxy_error);
+                }
+                Err(NativeQuotaRead::Unavailable(error)) => {
+                    return Err(ManagedAuthErrorDto::from_core(error));
+                }
+            },
+        };
+        let native_owned = access.native_owned;
+        let quota = query(access).await;
+        let mut result = map_subscription_quota(account_id, provider, quota);
+        if native_owned && result.status == ManagedAuthQuotaStatus::RequiresReauth {
+            result.status = ManagedAuthQuotaStatus::NativeRefreshRequired;
+            result.reason_code = None;
+        }
+        Ok(result)
+    }
+
+    fn read_native_quota_access(
+        &self,
+        rows: &[CredentialWithIdentity],
+        provider: ManagedAuthProvider,
+    ) -> Result<QuotaAccess, NativeQuotaRead> {
+        let mut expired = false;
+        for row in rows {
+            if row.credential.provider != provider
+                || row.credential.status != CredentialStatus::Ready
+                || !is_native_quota_session(&row.credential)
+            {
+                continue;
+            }
+            let bundle = self
+                .readback_bundle(&row.credential.secret_handle)
+                .map_err(NativeQuotaRead::Unavailable)?;
+            if !bundle_matches_credential(&bundle, &row.credential) {
+                continue;
+            }
+            match bundle.access_token() {
+                Some(token) if !access_expired(row.credential.access_expires_at) => {
+                    return Ok(QuotaAccess {
+                        provider,
+                        access_token: Zeroizing::new(token.to_string()),
+                        routing_subject: Some(row.identity.provider_subject.clone()),
+                        native_owned: true,
+                    });
+                }
+                _ => expired = true,
+            }
+        }
+        if expired {
+            Err(NativeQuotaRead::Expired)
+        } else {
+            Err(NativeQuotaRead::Missing)
+        }
     }
 
     pub(crate) async fn resolve_access_material(
@@ -596,6 +743,14 @@ where
         };
         let stored_res = self.repository.begin_provisioning(&new_credential);
         let stored = stored_res?;
+        if input.migration_id.is_none()
+            && matches!(
+                stored.status,
+                CredentialStatus::Ready | CredentialStatus::RequiresReauth
+            )
+        {
+            return self.replace_fresh_fyagent_proxy_grant_locked(stored, input);
+        }
         let handle = stored.secret_handle.clone();
         let bundle_res = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
             credential_id: stored.credential_id.clone(),
@@ -751,6 +906,23 @@ where
         expected_owner: RefreshOwner,
         bundle: ManagedAuthSecretBundle,
     ) -> Result<bool, ManagedAuthCoreError> {
+        self.replace_bundle_cas_locked_with(
+            credential_id,
+            expected_generation,
+            expected_owner,
+            bundle,
+            None,
+        )
+    }
+
+    fn replace_bundle_cas_locked_with(
+        &self,
+        credential_id: &str,
+        expected_generation: u64,
+        expected_owner: RefreshOwner,
+        bundle: ManagedAuthSecretBundle,
+        authenticated_at: Option<i64>,
+    ) -> Result<bool, ManagedAuthCoreError> {
         let current = self
             .repository
             .get_credential(credential_id)?
@@ -779,6 +951,7 @@ where
             access_expires_at,
             CredentialStatus::Ready,
             chrono::Utc::now().timestamp(),
+            authenticated_at,
         )?;
         if !updated {
             let _ = self.recover_one(
@@ -790,6 +963,69 @@ where
             return Ok(false);
         }
         Ok(true)
+    }
+
+    fn replace_fresh_fyagent_proxy_grant_locked(
+        &self,
+        current: CredentialRecord,
+        input: LegacyCredentialInput,
+    ) -> Result<CredentialRecord, ManagedAuthCoreError> {
+        if current.refresh_owner != RefreshOwner::Fyagent
+            || input.refresh_owner != RefreshOwner::Fyagent
+            || current.provider != input.provider
+            || current.purpose != input.purpose
+            || current.consumer != input.consumer
+            || current.purpose != CredentialPurpose::ProxyUpstream
+            || current.consumer != Some(ManagedAuthConsumer::FyagentProxy)
+        {
+            return Err(ManagedAuthCoreError::Conflict);
+        }
+        let next_generation = current
+            .generation
+            .checked_add(1)
+            .ok_or(ManagedAuthCoreError::InvalidData)?;
+        let authenticated_at = input
+            .authenticated_at
+            .max(current.authenticated_at.saturating_add(1));
+        let bundle = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
+            credential_id: current.credential_id.clone(),
+            provider: current.provider,
+            generation: next_generation,
+            access_token: input.access_token.map(|value| value.to_string()),
+            refresh_token: input.refresh_token.map(|value| value.to_string()),
+            id_token: input.id_token.map(|value| value.to_string()),
+            token_type: None,
+            granted_scopes: Vec::new(),
+            issued_at: Some(authenticated_at),
+            expires_at: None,
+        })?;
+        if !self.replace_bundle_cas_locked_with(
+            &current.credential_id,
+            current.generation,
+            RefreshOwner::Fyagent,
+            bundle,
+            Some(authenticated_at),
+        )? {
+            return Err(ManagedAuthCoreError::Stale);
+        }
+        let committed = self
+            .repository
+            .get_credential(&current.credential_id)?
+            .ok_or(ManagedAuthCoreError::NotFound)?;
+        let readback = self.readback_bundle(&committed.secret_handle)?;
+        if !bundle_matches_credential(&readback, &committed) {
+            return Err(ManagedAuthCoreError::SecretMissing);
+        }
+        if input.make_default && input.desired_status == CredentialStatus::Ready {
+            let _ = self.repository.set_default(
+                current.provider,
+                current.purpose,
+                current.consumer,
+                &current.credential_id,
+                chrono::Utc::now().timestamp(),
+            )?;
+        }
+        Ok(committed)
     }
 
     pub(crate) async fn resolve_credential_access(
@@ -854,10 +1090,7 @@ where
             return Err(ManagedAuthCoreError::Conflict);
         }
         let bundle = self.readback_bundle(&current.secret_handle)?;
-        if bundle.credential_id() != current.credential_id
-            || bundle.provider() != current.provider
-            || bundle.generation() != current.generation
-        {
+        if !bundle_matches_credential(&bundle, &current) {
             return Err(ManagedAuthCoreError::SecretMissing);
         }
         if current.provider == ManagedAuthProvider::GithubCopilot {
@@ -1877,6 +2110,237 @@ fn account_summary(
     }
 }
 
+const CLOSED_QUOTA_WINDOW_IDS: &[&str] = &[
+    "five_hour",
+    "seven_day",
+    "seven_day_fable",
+    "seven_day_opus",
+    "seven_day_sonnet",
+    "30_day",
+    "weekly_limit",
+    "monthly",
+    "credits",
+];
+
+async fn query_managed_provider_quota(
+    access: QuotaAccess,
+) -> Result<crate::services::subscription::SubscriptionQuota, String> {
+    match access.provider() {
+        ManagedAuthProvider::Openai => {
+            crate::services::subscription::query_codex_quota(
+                access.access_token(),
+                access.routing_subject(),
+                "codex_oauth",
+                "Codex OAuth access token expired or rejected. Please re-login via fyagent.",
+            )
+            .await
+        }
+        ManagedAuthProvider::Xai => {
+            crate::services::subscription_grok::query_grok_quota(
+                access.access_token(),
+                "xai_oauth",
+                "Please re-login via fyagent.",
+            )
+            .await
+        }
+        ManagedAuthProvider::GithubCopilot => Err("unsupported".to_string()),
+    }
+}
+
+fn bundle_matches_credential(
+    bundle: &ManagedAuthSecretBundle,
+    credential: &CredentialRecord,
+) -> bool {
+    bundle.credential_id() == credential.credential_id
+        && bundle.provider() == credential.provider
+        && bundle.generation() == credential.generation
+}
+
+fn is_native_quota_session(credential: &CredentialRecord) -> bool {
+    matches!(
+        (
+            credential.purpose,
+            credential.refresh_owner,
+            credential.consumer
+        ),
+        (
+            CredentialPurpose::CodexNative,
+            RefreshOwner::CodexNative,
+            Some(ManagedAuthConsumer::Codex)
+        ) | (
+            CredentialPurpose::GrokNative,
+            RefreshOwner::GrokNative,
+            Some(ManagedAuthConsumer::Grokbuild)
+        ) | (
+            CredentialPurpose::OpencodeProvider,
+            RefreshOwner::Opencode,
+            Some(ManagedAuthConsumer::Opencode)
+        )
+    )
+}
+
+fn is_proxy_quota_credential(row: &CredentialWithIdentity) -> bool {
+    matches!(
+        row.credential.provider,
+        ManagedAuthProvider::Openai | ManagedAuthProvider::Xai
+    ) && row.credential.purpose == CredentialPurpose::ProxyUpstream
+        && row.credential.consumer == Some(ManagedAuthConsumer::FyagentProxy)
+}
+
+fn map_ineligible_proxy_quota(
+    account_id: &str,
+    provider: ManagedAuthProvider,
+    rows: &[CredentialWithIdentity],
+    proxy_error: ManagedAuthCoreError,
+) -> Result<ManagedAuthAccountQuota, ManagedAuthErrorDto> {
+    if rows.iter().any(|row| {
+        is_proxy_quota_credential(row)
+            && row.credential.status == CredentialStatus::RequiresReauth
+            && row.credential.refresh_owner == RefreshOwner::Fyagent
+    }) {
+        return Ok(closed_account_quota(
+            account_id,
+            provider,
+            ManagedAuthQuotaStatus::RequiresReauth,
+            Some(ManagedAuthReasonCode::RequiresReauth),
+            Vec::new(),
+        ));
+    }
+    Err(ManagedAuthErrorDto::from_core(proxy_error))
+}
+
+fn closed_account_quota(
+    account_id: &str,
+    provider: ManagedAuthProvider,
+    status: ManagedAuthQuotaStatus,
+    reason_code: Option<ManagedAuthReasonCode>,
+    windows: Vec<ManagedAuthQuotaWindow>,
+) -> ManagedAuthAccountQuota {
+    ManagedAuthAccountQuota {
+        contract_version: MANAGED_AUTH_CONTRACT_VERSION,
+        account_id: account_id.to_string(),
+        provider,
+        checked_at: now_timestamp(),
+        status,
+        reason_code,
+        windows,
+    }
+}
+
+fn map_subscription_quota(
+    account_id: &str,
+    provider: ManagedAuthProvider,
+    quota: Result<crate::services::subscription::SubscriptionQuota, String>,
+) -> ManagedAuthAccountQuota {
+    let Ok(quota) = quota else {
+        return closed_account_quota(
+            account_id,
+            provider,
+            ManagedAuthQuotaStatus::Unavailable,
+            Some(ManagedAuthReasonCode::ObserverUnavailable),
+            Vec::new(),
+        );
+    };
+    if matches!(
+        quota.credential_status,
+        crate::services::subscription::CredentialStatus::Expired
+    ) {
+        return closed_account_quota(
+            account_id,
+            provider,
+            ManagedAuthQuotaStatus::RequiresReauth,
+            Some(ManagedAuthReasonCode::RequiresReauth),
+            Vec::new(),
+        );
+    }
+    if !quota.success {
+        return closed_account_quota(
+            account_id,
+            provider,
+            ManagedAuthQuotaStatus::Unavailable,
+            Some(ManagedAuthReasonCode::ObserverUnavailable),
+            Vec::new(),
+        );
+    }
+    let windows = map_quota_windows(&quota.tiers);
+    if windows.is_empty() {
+        return closed_account_quota(
+            account_id,
+            provider,
+            ManagedAuthQuotaStatus::Unavailable,
+            Some(ManagedAuthReasonCode::ObserverUnavailable),
+            Vec::new(),
+        );
+    }
+    closed_account_quota(
+        account_id,
+        provider,
+        ManagedAuthQuotaStatus::Available,
+        None,
+        windows,
+    )
+}
+
+fn map_quota_windows(
+    tiers: &[crate::services::subscription::QuotaTier],
+) -> Vec<ManagedAuthQuotaWindow> {
+    let mut windows = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for tier in tiers {
+        let Some(window_id) = closed_window_id(&tier.name) else {
+            continue;
+        };
+        let Some(remaining_percent) = remaining_percent(tier.utilization) else {
+            continue;
+        };
+        if !seen.insert(window_id.clone()) {
+            continue;
+        }
+        windows.push(ManagedAuthQuotaWindow {
+            window_id,
+            remaining_percent,
+            resets_at: closed_reset_timestamp(tier.resets_at.as_deref()),
+        });
+        if windows.len() == 8 {
+            break;
+        }
+    }
+    windows
+}
+
+fn closed_window_id(name: &str) -> Option<String> {
+    if CLOSED_QUOTA_WINDOW_IDS.contains(&name) {
+        return Some(name.to_string());
+    }
+    let (head, tail) = name.split_once('_')?;
+    if !head.is_empty()
+        && head.len() <= 2
+        && head.bytes().all(|byte| byte.is_ascii_digit())
+        && (tail == "hour" || tail == "day")
+    {
+        Some(name.to_string())
+    } else {
+        None
+    }
+}
+
+fn remaining_percent(utilization: f64) -> Option<u8> {
+    if !utilization.is_finite() {
+        return None;
+    }
+    Some((100.0 - utilization).clamp(0.0, 100.0).round() as u8)
+}
+
+fn closed_reset_timestamp(value: Option<&str>) -> Option<String> {
+    chrono::DateTime::parse_from_rfc3339(value?)
+        .ok()
+        .map(|value| {
+            value
+                .with_timezone(&chrono::Utc)
+                .to_rfc3339_opts(SecondsFormat::Secs, true)
+        })
+}
+
 fn account_health(rows: &[&CredentialWithIdentity], fail: &FailClosedState) -> ManagedAuthHealth {
     if rows
         .iter()
@@ -2175,6 +2639,10 @@ mod proxy_refresh_tests;
 mod proxy_overview_tests;
 
 #[cfg(test)]
+#[path = "quota_tests.rs"]
+mod quota_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::secret::{MemoryFailureMode, MemorySecretBackend};
@@ -2280,6 +2748,152 @@ mod tests {
                 .as_deref(),
             Some(credential.credential_id.as_str())
         );
+    }
+
+    fn assert_reauthentication_replaces_existing_proxy_grant(previous_status: CredentialStatus) {
+        let (service, _dir) = service_with_memory();
+        let mut original = sample_input("proxy_upstream:workspace-subject", "refresh-before", true);
+        original.migration_id = None;
+        original.access_token = Some(Zeroizing::new("access-before".into()));
+        let before = service.provision_legacy_credential(original).unwrap();
+        if previous_status != CredentialStatus::Ready {
+            service
+                .repository
+                .set_status(&before.credential_id, previous_status, 1_700_000_030)
+                .unwrap();
+        }
+        let before = service
+            .repository
+            .get_credential(&before.credential_id)
+            .unwrap()
+            .unwrap();
+
+        let mut renewed = sample_input("proxy_upstream:workspace-subject", "refresh-after", true);
+        renewed.migration_id = None;
+        renewed.access_token = Some(Zeroizing::new("access-after".into()));
+        renewed.authenticated_at = 1_700_000_060;
+        let after = service
+            .provision_legacy_credential(renewed)
+            .expect("a fresh login grant must replace the prior proxy grant");
+        let bundle = service.readback_bundle(&after.secret_handle).unwrap();
+
+        assert_eq!(after.identity_id, before.identity_id);
+        assert_eq!(after.credential_id, before.credential_id);
+        assert_eq!(after.refresh_owner, RefreshOwner::Fyagent);
+        assert_eq!(after.status, CredentialStatus::Ready);
+        assert!(after.generation > before.generation);
+        assert_eq!(after.authenticated_at, 1_700_000_060);
+        assert_eq!(bundle.access_token(), Some("access-after"));
+        assert_eq!(bundle.refresh_token(), Some("refresh-after"));
+        assert!(!same_proxy_lineage(&before, &after));
+    }
+
+    #[test]
+    fn reauthentication_replaces_existing_ready_proxy_grant() {
+        assert_reauthentication_replaces_existing_proxy_grant(CredentialStatus::Ready);
+    }
+
+    #[test]
+    fn reauthentication_replaces_existing_expired_proxy_grant() {
+        assert_reauthentication_replaces_existing_proxy_grant(CredentialStatus::RequiresReauth);
+    }
+
+    #[test]
+    fn reauthentication_stales_prior_admitted_lineage_without_refresh() {
+        let (service, _dir) = service_with_memory();
+        let mut original = sample_input("proxy_upstream:workspace-subject", "refresh-before", true);
+        original.migration_id = None;
+        original.access_token = Some(Zeroizing::new("access-before".into()));
+        let before = service.provision_legacy_credential(original).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let admitted = runtime
+            .block_on(
+                service.resolve_credential_access_with(before, None, |_, _| async {
+                    Ok(RefreshedGrant {
+                        access_token: "admitted-access".into(),
+                        refresh_token: Some("admitted-refresh".into()),
+                        id_token: None,
+                        expires_in: Some(3600),
+                    })
+                }),
+            )
+            .expect("admit");
+        assert_eq!(admitted.credential.authenticated_at, 1_700_000_000);
+        let mut renewed = sample_input("proxy_upstream:workspace-subject", "refresh-after", true);
+        renewed.migration_id = None;
+        renewed.access_token = Some(Zeroizing::new("access-after".into()));
+        renewed.authenticated_at = admitted.credential.authenticated_at;
+        let after = service
+            .provision_legacy_credential(renewed)
+            .expect("reauth");
+        assert!(after.authenticated_at > admitted.credential.authenticated_at);
+        assert!(!same_proxy_lineage(&admitted.credential, &after));
+        let error = runtime
+            .block_on(service.resolve_credential_access_with(
+                admitted.credential,
+                None,
+                |_, _| async { panic!("prior login must not refresh") },
+            ))
+            .expect_err("stale lineage");
+        assert!(matches!(error, ManagedAuthCoreError::Stale));
+    }
+
+    #[test]
+    fn reauthentication_does_not_take_over_native_refresh_owner() {
+        let (service, _dir) = service_with_memory();
+        let mut original = sample_input("proxy_upstream:workspace-subject", "refresh-native", true);
+        original.migration_id = None;
+        original.refresh_owner = RefreshOwner::CodexNative;
+        let before = service.provision_legacy_credential(original).unwrap();
+        let mut renewed =
+            sample_input("proxy_upstream:workspace-subject", "refresh-takeover", true);
+        renewed.migration_id = None;
+        renewed.access_token = Some(Zeroizing::new("access-takeover".into()));
+        renewed.authenticated_at = 1_700_000_060;
+        let error = service
+            .provision_legacy_credential(renewed)
+            .expect_err("native owner");
+        assert!(matches!(error, ManagedAuthCoreError::Conflict));
+        let current = service
+            .repository
+            .get_credential(&before.credential_id)
+            .unwrap()
+            .unwrap();
+        let bundle = service.readback_bundle(&current.secret_handle).unwrap();
+        assert_eq!(current.refresh_owner, RefreshOwner::CodexNative);
+        assert_eq!(current.generation, before.generation);
+        assert_eq!(current.authenticated_at, before.authenticated_at);
+        assert_eq!(bundle.refresh_token(), Some("refresh-native"));
+    }
+
+    #[test]
+    fn migration_repeat_does_not_replace_existing_grant() {
+        let (service, _dir) = service_with_memory();
+        let first = service
+            .provision_legacy_credential(sample_input("legacy-credential", "refresh-value", true))
+            .unwrap();
+        let mut repeated = sample_input("legacy-credential", "refresh-replaced", true);
+        repeated.access_token = Some(Zeroizing::new("access-replaced".into()));
+        repeated.authenticated_at = 1_700_000_999;
+        let error = service
+            .provision_legacy_credential(repeated)
+            .expect_err("migration repeat");
+        assert!(matches!(error, ManagedAuthCoreError::Stale));
+        let current = service
+            .repository
+            .get_credential(&first.credential_id)
+            .unwrap()
+            .unwrap();
+        let bundle = service.readback_bundle(&current.secret_handle).unwrap();
+        assert_eq!(current.generation, first.generation);
+        assert_eq!(current.authenticated_at, first.authenticated_at);
+        assert_eq!(current.status, CredentialStatus::Ready);
+        assert_eq!(current.refresh_owner, RefreshOwner::Fyagent);
+        assert_eq!(bundle.refresh_token(), Some("refresh-value"));
+        assert_eq!(bundle.access_token(), None);
     }
 
     #[test]

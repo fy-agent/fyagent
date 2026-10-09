@@ -291,7 +291,32 @@ fn published_members(
     stack: &StackState,
     route: &Provider,
 ) -> Result<Vec<stack::Member>, String> {
-    stack::published_members(&state.db, app, stack, Some(route.id.as_str())).map_err(err)
+    let members =
+        stack::published_members(&state.db, app, stack, Some(route.id.as_str())).map_err(err)?;
+    // Catalog projection needs the native credential material; member-list getters stay read-only.
+    Ok(members
+        .into_iter()
+        .filter_map(|mut member| {
+            match crate::services::provider::ProviderCredentials::resolve(
+                &state.db,
+                app.as_str(),
+                &member.provider,
+            ) {
+                Ok(provider) => {
+                    member.provider = provider;
+                    Some(member)
+                }
+                Err(error) => {
+                    log::warn!(
+                        "Stack 模型成员 {} 无法准备凭据，这次不发布它: {}",
+                        member.provider.id,
+                        crate::error_for_log(&error.to_string())
+                    );
+                    None
+                }
+            }
+        })
+        .collect())
 }
 
 /// 只落定状态，不碰客户端文件（未接上时换路由、故障转移记下新路由等）。
@@ -1500,7 +1525,7 @@ pub async fn startup(state: &AppState) {
     codex_client_catalog::observe(&DeviceStore::for_device());
 }
 
-async fn startup_app(state: &AppState, app: &AppType) -> Result<(), String> {
+pub(crate) async fn startup_app(state: &AppState, app: &AppType) -> Result<(), String> {
     let had_backup = drain_legacy_backup(state, app).await;
     let mut mode = current::mode_state(app);
     // 新版自己接上时写的占位符不算遗留物（比如重启更新时没来得及分离）。
@@ -2166,6 +2191,8 @@ mod mode_tests {
     //! 双模式的验收：进入 / 退出只动关键字段和独有字段；契约相同的换路由不碰客户端文件；
     //! 代理路由和直连指针互相独立；每一步崩溃都能按 pending 补完；旧版遗留的接管状态
     //! 在启动时迁移掉。
+    mod aggregation_loopback_tests;
+
     use super::*;
     use crate::database::Database;
     use crate::live::engine::DeviceStore;
@@ -5156,6 +5183,44 @@ model_provider = "c"
 
     #[tokio::test]
     #[serial]
+    async fn fyagent_startup_preserves_stack_members_default_and_client_catalog() {
+        let _home = Home::new();
+        seed_settings(USER_SETTINGS);
+        let state = state_with(AppType::Claude, &stack_rows(), "a").await;
+        enter_with_route(&state, &AppType::Claude, true, Some("kimi"))
+            .await
+            .expect("enter aggregation");
+        set_member(&state, "zhipu", true).await;
+        let expected_picker = picker();
+        let expected_live = settings();
+
+        // FyAgent's legacy crash recovery must leave the upstream mode owner in charge.
+        state.proxy_service.recover_from_crash().await.unwrap();
+        assert_eq!(settings(), expected_live);
+        state.proxy_service.stop().await.unwrap();
+        // The new mode is authoritative even when the old enabled mirror is stale.
+        state
+            .db
+            .set_proxy_flags_sync("claude", false, false)
+            .unwrap();
+        crate::restore_proxy_state_on_startup(&state).await;
+        assert_eq!(picker(), expected_picker);
+        assert_eq!(in_use(&state, &AppType::Claude).as_deref(), Some("kimi"));
+        assert!(stack_state().enabled);
+
+        detach_all(&state).await;
+        assert!(!mode(&AppType::Claude).attached);
+        assert!(mode(&AppType::Claude).is_proxy());
+        assert_back_to_user_settings();
+        crate::restore_proxy_state_on_startup(&state).await;
+        assert!(mode(&AppType::Claude).attached);
+        assert_eq!(picker(), expected_picker);
+        assert_eq!(in_use(&state, &AppType::Claude).as_deref(), Some("kimi"));
+        exit(&state, &AppType::Claude).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn stack_models_join_the_claude_contract_and_leave_with_it() {
         let _home = Home::new();
         seed_settings(USER_SETTINGS);
@@ -5565,7 +5630,7 @@ model_provider = "c"
 
         // 服务被手动停掉后，下一次检查（启动、切换、应用项目）会把它拉起来。
         state.proxy_service.stop().await.expect("stop");
-        ensure_desktop_mapping_service(&state).await;
+        crate::restore_proxy_state_on_startup(&state).await;
         assert!(state.proxy_service.is_running().await);
 
         // 从映射卡换走时 Claude Code 还在路由：服务留着，等它退出路由时再停。
@@ -5937,6 +6002,51 @@ model_provider = "c"
 
     fn codex_catalog() -> Value {
         crate::config::read_json_file(&crate::codex_config::get_codex_model_catalog_path()).unwrap()
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn codex_stack_catalog_resolves_protected_member_credentials() {
+        let _home = Home::new();
+        seed_codex("approval_policy = \"on-request\"\n", None);
+        let mut rows = [
+            codex_native("a", "https://a.example/v1", "", None),
+            codex_native("b", "https://b.example/v1", "", None),
+        ];
+        for row in &mut rows {
+            // The real add-provider form sets this flag; save moves its key into SecretRef.
+            row.settings_config["config"] = json!(format!(
+                "{}requires_openai_auth = true\n",
+                row.settings_config["config"].as_str().unwrap()
+            ));
+            row.settings_config["modelCatalog"] =
+                json!({ "models": [{ "model": format!("gpt-{}", row.id) }] });
+        }
+        let state = state_with(AppType::Codex, &rows, "a").await;
+        for id in ["a", "b"] {
+            let stored = state.db.get_provider_by_id(id, "codex").unwrap().unwrap();
+            assert!(stored.settings_config["credentialRef"].is_string());
+            assert!(!stored
+                .settings_config
+                .to_string()
+                .contains(&format!("sk-{id}")));
+        }
+
+        enter(&state, &AppType::Codex, true).await.unwrap();
+        let members = set_codex_member(&state, "b", true).await;
+        assert_eq!(members[1].model_ids, ["ccs-b/gpt-b"]);
+        let catalog = codex_catalog();
+        let slugs: Vec<_> = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["slug"].as_str().unwrap())
+            .collect();
+        assert_eq!(slugs, ["gpt-a", "ccs-b/gpt-b"]);
+        let exported = catalog.to_string();
+        assert!(!exported.contains("sk-a") && !exported.contains("sk-b"));
+        assert!(!exported.contains("credentialRef"));
+        exit(&state, &AppType::Codex).await.unwrap();
     }
 
     #[tokio::test]

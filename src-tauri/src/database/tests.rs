@@ -1407,7 +1407,9 @@ fn model_pricing_seed_repairs_sonnet_5_list_price_but_keeps_custom_price() {
 }
 
 #[test]
+#[serial_test::serial]
 fn ensure_incremental_auto_vacuum_rebuilds_existing_file_db() {
+    // Recovery fixtures redirect the process temporary directory while holding this lock.
     let temp = NamedTempFile::new().expect("create temp db file");
     let path = temp.path().to_path_buf();
 
@@ -1436,6 +1438,7 @@ fn ensure_incremental_auto_vacuum_rebuilds_existing_file_db() {
 }
 
 #[test]
+#[serial_test::serial]
 fn incremental_vacuum_reclaims_entire_freelist() {
     let temp = NamedTempFile::new().expect("create temp db file");
     let conn = Connection::open(temp.path()).expect("open temp db");
@@ -1463,6 +1466,7 @@ fn incremental_vacuum_reclaims_entire_freelist() {
 }
 
 #[test]
+#[serial_test::serial]
 fn fyagent_v27_reopens_and_future_schema_stays_rejected() -> Result<(), AppError> {
     let home = tempfile::tempdir().unwrap();
     let fy_dir = home.path().join(".fyagent");

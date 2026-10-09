@@ -179,3 +179,14 @@ export function providerNeedsRouting(
 
   return false;
 }
+
+/** CC Switch v4.0.4: official Codex may be the default, never an ordinary stack member. */
+export function isOfficialAccount(
+  appId: AppId,
+  provider: Pick<Provider, "id" | "category" | "meta" | "settingsConfig">,
+): boolean {
+  return (
+    provider.category === "official" ||
+    resolveCodexOfficialIdentity(appId, provider) !== null
+  );
+}

@@ -43,7 +43,7 @@ describe("managed auth summaries", () => {
       requestProviderLabel: null,
     }));
     const summary = summarizeAuthOverview(parsedFixtureOverview(overview));
-    expect(summary.label).toBe("尚未保存受管账号 · 未连接");
+    expect(summary.label).toBe("尚未保存账号");
     expect(summary.connections.countsLabel).toBe("4 个连接位置 · 0 个已连接");
     expect(summary.connections.tone).toBe("neutral");
   });
@@ -140,7 +140,7 @@ describe("managed auth summaries", () => {
     expect(
       summarizeAuthOverview(parsedFixtureOverview(overview)),
     ).toMatchObject({
-      label: "受管账号状态正常 · 未连接",
+      label: "未连接",
       connections: { connected: 0, total: 4, label: "未连接" },
     });
   });
@@ -172,8 +172,52 @@ describe("managed auth summaries", () => {
     expect(
       summarizeAuthOverview(parsedFixtureOverview(overview)),
     ).toMatchObject({
-      label: "受管账号状态正常 · 已连接 4/4 · 1 个位置的请求来源暂时无法确认",
+      label: "请求来源暂时无法确认",
       connections: { connected: 4 },
+      needsAttention: true,
+    });
+  });
+
+  it("shows only the saved state for a saved proxy and an unreadable unbound slot", () => {
+    const overview = managedAuthOverviewFixture();
+    overview.accounts = overview.accounts.slice(0, 1);
+    overview.connections = overview.connections
+      .slice(0, 2)
+      .map((connection) => ({
+        ...connection,
+        accountId:
+          connection.consumer === "fyagent_proxy" ? connection.accountId : null,
+        authStatus: "disconnected",
+        requestMode:
+          connection.consumer === "fyagent_proxy" ? "none" : "unknown",
+        requestProviderLabel: null,
+      }));
+    expect(
+      summarizeAuthOverview(parsedFixtureOverview(overview)),
+    ).toMatchObject({
+      label: "账号已保存",
+      connections: { connected: 0, total: 2 },
+      needsAttention: true,
+    });
+  });
+
+  it("prioritizes reauthentication over other account, connection, and source states", () => {
+    const overview = managedAuthOverviewFixture();
+    overview.accounts[0].health = "unavailable";
+    overview.accounts[1].health = "requires_reauth";
+    overview.connections[0] = {
+      ...overview.connections[0],
+      authStatus: "pending_restart",
+      pendingRestart: true,
+      requestMode: "unknown",
+      requestProviderLabel: null,
+    };
+    expect(
+      summarizeAuthOverview(parsedFixtureOverview(overview)),
+    ).toMatchObject({
+      label: "需要重新登录",
+      connections: { connected: 3 },
+      needsAttention: true,
     });
   });
 });

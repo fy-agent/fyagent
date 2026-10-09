@@ -10,6 +10,15 @@ import {
 
 type SummaryState = ManagedAuthConnectionSummary["authStatus"] | "saved";
 
+const CONNECTION_STATE_PRIORITY: SummaryState[] = [
+  "requires_reauth",
+  "pending_restart",
+  "unavailable",
+  "checking",
+  "saved",
+  "disconnected",
+];
+
 function connectionSummaryState(
   connection: ManagedAuthConnectionSummary,
 ): SummaryState {
@@ -59,16 +68,9 @@ export function summarizeConnections(
     label = `部分连接 ${connected}/${total}`;
     tone = needsAttention ? "warning" : "neutral";
   } else {
-    const priority: SummaryState[] = [
-      "requires_reauth",
-      "pending_restart",
-      "unavailable",
-      "checking",
-      "saved",
-      "disconnected",
-    ];
     const primary =
-      priority.find((state) => states.includes(state)) ?? "unavailable";
+      CONNECTION_STATE_PRIORITY.find((state) => states.includes(state)) ??
+      "unavailable";
     ({ label, tone } = statePresentation(primary));
   }
   const remainingLabels = remaining
@@ -100,25 +102,32 @@ export function summarizeAuthOverview(overview: ManagedAuthOverview) {
         .map((account) => account.health),
     ),
   ];
-  const accountsLabel =
-    overview.accounts.length === 0
-      ? "尚未保存受管账号"
-      : accountStates.length > 0
-        ? `受管账号：${accountStates.map((state) => accountHealthPresentation(state).label).join("、")}`
-        : "受管账号状态正常";
-  const unknownSources = overview.connections.filter(
+  const accountState = (
+    ["requires_reauth", "migration_blocked", "unavailable", "checking"] as const
+  ).find((state) => accountStates.includes(state));
+  const connectionStates = overview.connections.map(connectionSummaryState);
+  const connectionState = CONNECTION_STATE_PRIORITY.find(
+    (state) => state !== "disconnected" && connectionStates.includes(state),
+  );
+  const unknownSource = overview.connections.some(
     (connection) => connection.requestMode === "unknown",
-  ).length;
-  const sourceLabel =
-    unknownSources > 0
-      ? ` · ${unknownSources} 个位置的请求来源暂时无法确认`
-      : "";
+  );
+  const label = accountState
+    ? accountHealthPresentation(accountState).label
+    : connectionState
+      ? statePresentation(connectionState).label
+      : unknownSource
+        ? "请求来源暂时无法确认"
+        : overview.accounts.length === 0
+          ? "尚未保存账号"
+          : connections.label;
   return {
     connections,
-    label: `${accountsLabel} · ${connections.summary}${sourceLabel}`,
+    label,
     needsAttention:
       accountStates.length > 0 ||
       connections.needsAttention ||
+      unknownSource ||
       overview.reasonCodes.length > 0,
   };
 }

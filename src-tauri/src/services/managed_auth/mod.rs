@@ -210,6 +210,35 @@ pub struct ManagedAuthAccountSummary {
     pub reason_codes: Vec<ManagedAuthReasonCode>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedAuthQuotaStatus {
+    Available,
+    Unavailable,
+    RequiresReauth,
+    NativeRefreshRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedAuthQuotaWindow {
+    pub window_id: String,
+    pub remaining_percent: u8,
+    pub resets_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedAuthAccountQuota {
+    pub contract_version: u8,
+    pub account_id: String,
+    pub provider: ManagedAuthProvider,
+    pub checked_at: String,
+    pub status: ManagedAuthQuotaStatus,
+    pub reason_code: Option<ManagedAuthReasonCode>,
+    pub windows: Vec<ManagedAuthQuotaWindow>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ManagedAuthConnectionSummary {
@@ -518,6 +547,14 @@ pub fn validate_session_id(value: &str) -> Result<(), ManagedAuthErrorDto> {
         return Err(ManagedAuthErrorDto::invalid_request());
     }
     Ok(())
+}
+
+pub fn validate_account_id(value: &str) -> Result<(), ManagedAuthErrorDto> {
+    if valid_account_id(value) {
+        Ok(())
+    } else {
+        Err(ManagedAuthErrorDto::invalid_request())
+    }
 }
 
 fn valid_account_id(value: &str) -> bool {

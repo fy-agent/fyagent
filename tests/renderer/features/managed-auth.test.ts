@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertManagedAuthConnectionActionRequest,
   assertStartManagedAuthLoginRequest,
+  parseManagedAuthAccountQuota,
   parseManagedAuthCommandError,
   parseManagedAuthLoginSession,
   parseManagedAuthMutationResult,
@@ -14,6 +15,8 @@ import {
   CODEX_CONNECTION_ID,
   CONNECTION_REVISION,
   OPENAI_ACCOUNT_ID,
+  XAI_ACCOUNT_ID,
+  accountQuotaFixture,
   deviceLoginSessionFixture,
   managedAuthOverviewFixture,
   mutationResultFixture,
@@ -163,6 +166,54 @@ describe("managed auth wire contract", () => {
       stage: "completed",
       reasonCode: "pending_restart",
     });
+  });
+
+  it("binds quota DTO to the requested account and rejects leaks", () => {
+    expect(
+      parseManagedAuthAccountQuota(
+        accountQuotaFixture(OPENAI_ACCOUNT_ID),
+        OPENAI_ACCOUNT_ID,
+      ),
+    ).toMatchObject({
+      accountId: OPENAI_ACCOUNT_ID,
+      provider: "openai",
+      status: "available",
+      windows: [{ windowId: "five_hour", remainingPercent: 88 }],
+    });
+    expect(
+      parseManagedAuthAccountQuota(
+        accountQuotaFixture(OPENAI_ACCOUNT_ID, {
+          status: "native_refresh_required",
+          windows: [],
+        }),
+        OPENAI_ACCOUNT_ID,
+      ).status,
+    ).toBe("native_refresh_required");
+    expect(() =>
+      parseManagedAuthAccountQuota(
+        accountQuotaFixture(OPENAI_ACCOUNT_ID),
+        XAI_ACCOUNT_ID,
+      ),
+    ).toThrow("账号与认证数据不可用");
+    expect(() =>
+      parseManagedAuthAccountQuota(
+        {
+          ...accountQuotaFixture(OPENAI_ACCOUNT_ID),
+          error: "raw quota.error",
+          access_token: "sk-leak",
+        },
+        OPENAI_ACCOUNT_ID,
+      ),
+    ).toThrow("账号与认证数据不可用");
+    expect(() =>
+      parseManagedAuthAccountQuota(
+        accountQuotaFixture(OPENAI_ACCOUNT_ID, {
+          status: "available",
+          windows: [],
+        }),
+        OPENAI_ACCOUNT_ID,
+      ),
+    ).toThrow("账号与认证数据不可用");
   });
 
   it("validates closed mutation requests before native IPC", () => {

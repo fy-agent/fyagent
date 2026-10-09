@@ -22,11 +22,13 @@ import {
   GROK_CONNECTION_ID,
   OPENCODE_CONNECTION_ID,
   PREVIEW_ID,
+  accountQuotaFixture,
   deviceLoginSessionFixture,
   managedAuthOverviewFixture,
   mutationResultFixture,
   removalPreviewFixture,
   connectionPreviewFixture,
+  COPILOT_ACCOUNT_ID,
 } from "../../fixtures/managedAuth";
 
 function LocationProbe() {
@@ -45,6 +47,7 @@ function managedPorts(
   const ports = createBrowserFeaturePorts();
   ports.managedAuth = {
     getOverview: vi.fn(async () => managedAuthOverviewFixture()),
+    getAccountQuota: vi.fn(async (accountId) => accountQuotaFixture(accountId)),
     startLogin: vi.fn(async () => deviceLoginSessionFixture()),
     getLoginSession: vi.fn(async () => deviceLoginSessionFixture()),
     cancelLogin: vi.fn(async () =>
@@ -911,13 +914,67 @@ describe("AuthPage", () => {
       "/auth?view=connections&consumer=opencode",
     );
     const summary = await screen.findByTestId("managed-auth-overview-summary");
-    expect(summary).toHaveTextContent("尚未保存受管账号 · 未连接");
+    expect(summary).toHaveTextContent(/^尚未保存账号$/);
     expect(summary).not.toHaveTextContent("状态正常");
     expect(screen.getByRole("tab", { name: "软件连接 0/4" })).toBeVisible();
     expect(
       screen.getByRole("region", { name: "软件连接列表" }),
     ).toHaveTextContent("4 个连接位置 · 0 个已连接");
   });
+
+  it.each([
+    ["disconnected", "尚未连接软件"],
+    ["pending_restart", "等待重启"],
+    ["native_projection_unavailable", "尚未连接软件"],
+    ["connected", "已连接：Codex"],
+  ] as const)(
+    "shows %s accurately in the account list",
+    async (state, label) => {
+      const overview = managedAuthOverviewFixture();
+      const connection = overview.connections[state === "disconnected" ? 1 : 0];
+      overview.accounts = [
+        { ...overview.accounts[0], connectedConsumerCount: 1 },
+      ];
+      overview.connections = [
+        {
+          ...connection,
+          authStatus:
+            state === "native_projection_unavailable" ? "connected" : state,
+          pendingRestart: state === "pending_restart",
+          requestMode:
+            state === "disconnected" ? "none" : connection.requestMode,
+          requestProviderLabel:
+            state === "disconnected" ? null : connection.requestProviderLabel,
+          reasonCodes:
+            state === "native_projection_unavailable"
+              ? ["native_projection_unavailable"]
+              : [],
+        },
+      ];
+      renderPage(
+        managedPorts({
+          getOverview: vi.fn(async () => parseManagedAuthOverview(overview)),
+        }),
+        `/auth?account=${OPENAI_ACCOUNT_ID}`,
+      );
+      const account = await screen.findByTestId(
+        `managed-auth-account-${OPENAI_ACCOUNT_ID}`,
+      );
+      expect(within(account).getByText(label)).toBeVisible();
+      if (state !== "connected") {
+        expect(account).not.toHaveTextContent("已连接：");
+      }
+      if (
+        state === "disconnected" ||
+        state === "native_projection_unavailable"
+      ) {
+        expect(screen.getByText("此账号尚未连接任何软件。")).toBeVisible();
+        expect(
+          screen.getByTestId("managed-auth-overview-summary"),
+        ).toHaveTextContent(/^账号已保存$/);
+      }
+    },
+  );
 
   it("uses one partial summary for the OpenCode rail and group badge", async () => {
     const overview = managedAuthOverviewFixture();
@@ -1045,4 +1102,142 @@ describe("AuthPage", () => {
       expect(screen.getByRole("tab", { name: "软件连接 3/4" })).toBeVisible();
     },
   );
+
+  it("reads quota for the selected account and refreshes without keeping a failed snapshot", async () => {
+    const user = userEvent.setup();
+    let failRefresh = false;
+    const getAccountQuota = vi.fn(async (accountId: string) => {
+      if (failRefresh) {
+        throw { contractVersion: 1, reasonCode: "observer_unavailable" };
+      }
+      return accountQuotaFixture(accountId, {
+        windows: [
+          {
+            windowId: accountId === XAI_ACCOUNT_ID ? "monthly" : "five_hour",
+            remainingPercent: accountId === XAI_ACCOUNT_ID ? 41 : 88,
+            resetsAt: "2026-09-03T13:00:00Z",
+          },
+        ],
+      });
+    });
+    renderPage(
+      managedPorts({ getAccountQuota }),
+      `/auth?view=accounts&account=${OPENAI_ACCOUNT_ID}`,
+    );
+    const openaiDetail = await screen.findByRole("region", {
+      name: "person@example.com 账号详情",
+    });
+    expect(
+      await within(openaiDetail).findByText(/5 小时剩余 88%/),
+    ).toBeVisible();
+    expect(getAccountQuota).toHaveBeenCalledWith(OPENAI_ACCOUNT_ID);
+
+    await user.click(
+      screen.getByTestId(`managed-auth-account-${XAI_ACCOUNT_ID}`),
+    );
+    const xaiDetail = await screen.findByRole("region", {
+      name: "xai@example.com 账号详情",
+    });
+    expect(await within(xaiDetail).findByText(/每月剩余 41%/)).toBeVisible();
+    expect(
+      within(xaiDetail).queryByText(/5 小时剩余 88%/),
+    ).not.toBeInTheDocument();
+    expect(getAccountQuota).toHaveBeenCalledWith(XAI_ACCOUNT_ID);
+
+    failRefresh = true;
+    await user.click(
+      within(xaiDetail).getByRole("button", { name: "刷新额度" }),
+    );
+    expect(
+      await within(xaiDetail).findByText("暂时无法读取额度"),
+    ).toBeVisible();
+    expect(
+      within(xaiDetail).queryByText(/每月剩余 41%/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers account reauthentication when native quota access has expired", async () => {
+    const user = userEvent.setup();
+    const startLogin = vi.fn(async () =>
+      deviceLoginSessionFixture({
+        purpose: "reauthenticate",
+        consumer: null,
+        accountId: OPENAI_ACCOUNT_ID,
+      }),
+    );
+    renderPage(
+      managedPorts({
+        getAccountQuota: vi.fn(async (accountId) =>
+          accountQuotaFixture(accountId, {
+            status: "native_refresh_required",
+            windows: [],
+          }),
+        ),
+        startLogin,
+      }),
+      `/auth?view=accounts&account=${OPENAI_ACCOUNT_ID}`,
+    );
+    expect(await screen.findByText("请重新登录以读取额度")).toBeVisible();
+    const detail = screen.getByRole("region", {
+      name: "person@example.com 账号详情",
+    });
+    await user.click(within(detail).getByRole("button", { name: "重新登录" }));
+    const dialog = screen.getByRole("dialog", {
+      name: "重新登录 person@example.com",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "下一步" }));
+    await user.click(
+      await within(dialog).findByRole("button", { name: "继续" }),
+    );
+    expect(startLogin).toHaveBeenCalledWith({
+      provider: "openai",
+      purpose: "reauthenticate",
+      consumer: null,
+      method: "browser_loopback",
+      accountId: OPENAI_ACCOUNT_ID,
+    });
+  });
+
+  it("does not query quota for unsupported accounts or the connections view", async () => {
+    const overview = managedAuthOverviewFixture();
+    overview.accounts.push({
+      accountId: COPILOT_ACCOUNT_ID,
+      revision: `mr1:${"d".repeat(64)}`,
+      provider: "github_copilot",
+      login: "copilot@example.com",
+      displayName: null,
+      health: "ready",
+      isDefault: false,
+      lastAuthenticatedAt: "2026-09-01T20:00:00Z",
+      connectedConsumerCount: 0,
+      planSummary: null,
+      quotaSummary: null,
+      allowedActions: ["reauthenticate", "remove"],
+      reasonCodes: [],
+    });
+    const getAccountQuota = vi.fn(async (accountId: string) =>
+      accountQuotaFixture(accountId),
+    );
+    const copilotView = renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => overview),
+        getAccountQuota,
+      }),
+      `/auth?view=accounts&account=${COPILOT_ACCOUNT_ID}`,
+    );
+    const copilotDetail = await screen.findByRole("region", {
+      name: "copilot@example.com 账号详情",
+    });
+    expect(within(copilotDetail).getByText("暂时没有额度信息")).toBeVisible();
+    expect(
+      within(copilotDetail).queryByRole("button", { name: "刷新额度" }),
+    ).not.toBeInTheDocument();
+    expect(getAccountQuota).not.toHaveBeenCalled();
+    copilotView.unmount();
+
+    const connectionPorts = managedPorts({ getAccountQuota: vi.fn() });
+    renderPage(connectionPorts, "/auth?view=connections&consumer=codex");
+    await screen.findByRole("tab", { name: "软件连接 4/4" });
+    expect(connectionPorts.managedAuth.getAccountQuota).not.toHaveBeenCalled();
+  });
 });

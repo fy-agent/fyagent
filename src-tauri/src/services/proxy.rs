@@ -2853,6 +2853,10 @@ impl ProxyService {
             AppType::GrokBuild,
             AppType::OpenCode,
         ] {
+            // 新版路由 / 聚合由 mode::controller 接回或分离，不能再回放旧接管配置。
+            if crate::mode::current::is_proxy(&app_type) {
+                continue;
+            }
             if let Err(e) = self
                 .restore_live_config_for_app_with_fallback(&app_type)
                 .await

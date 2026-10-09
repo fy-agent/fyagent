@@ -1,10 +1,12 @@
 import type {
+  ManagedAuthAccountQuota,
   ManagedAuthAccountSummary,
   ManagedAuthConnectionAction,
   ManagedAuthConnectionSummary,
   ManagedAuthConsumer,
   ManagedAuthOverview,
   ManagedAuthProvider,
+  ManagedAuthReasonCode,
 } from "../../shared/features/managed-auth";
 import {
   CatalogDetail,
@@ -32,12 +34,14 @@ import {
   connectionStatusPresentation,
   loginRequiredConnectionsForAccount,
   formatAuthenticatedAt,
+  formatManagedAuthQuotaWindow,
   managedAuthConsumerLabel,
   managedAuthManagerLabel,
   managedAuthProviderLabel,
   requestModeLabel,
   sortManagedAuthAccounts,
 } from "./presentation";
+import { summarizeConnections } from "./summary";
 
 const PROVIDER_FILTERS: Array<ManagedAuthProvider | "all"> = [
   "all",
@@ -45,6 +49,32 @@ const PROVIDER_FILTERS: Array<ManagedAuthProvider | "all"> = [
   "xai",
   "github_copilot",
 ];
+
+function supportsAccountQuota(provider: ManagedAuthProvider): boolean {
+  return provider === "openai" || provider === "xai";
+}
+
+function accountQuotaCopy({
+  quota,
+  pending,
+  reason,
+}: {
+  quota: ManagedAuthAccountQuota | null;
+  pending: boolean;
+  reason: ManagedAuthReasonCode | null;
+}): string {
+  if (quota?.status === "available") {
+    return quota.windows.map(formatManagedAuthQuotaWindow).join("；");
+  }
+  if (quota?.status === "native_refresh_required") {
+    return "请重新登录以读取额度";
+  }
+  if (quota?.status === "requires_reauth" || reason === "requires_reauth") {
+    return "登录已失效，请重新登录。";
+  }
+  if (pending && quota === null) return "正在读取额度";
+  return "暂时无法读取额度";
+}
 
 function AccountConnection({
   originRef,
@@ -135,10 +165,14 @@ function AccountDetail({
   connections,
   providers,
   mutationBusy,
+  quota,
+  quotaPending,
+  quotaReason,
   onBack,
   onReauthenticate,
   onSetDefault,
   onRemove,
+  onRefreshQuota,
   onConnectionAction,
   onConnectViaLogin,
 }: {
@@ -147,10 +181,14 @@ function AccountDetail({
   connections: ManagedAuthConnectionSummary[];
   providers: ManagedAuthOverview["providers"];
   mutationBusy: boolean;
+  quota: ManagedAuthAccountQuota | null;
+  quotaPending: boolean;
+  quotaReason: ManagedAuthReasonCode | null;
   onBack: () => void;
   onReauthenticate: (account: ManagedAuthAccountSummary) => void;
   onSetDefault: (account: ManagedAuthAccountSummary) => void;
   onRemove: (account: ManagedAuthAccountSummary) => void;
+  onRefreshQuota: () => void;
   onConnectionAction: (
     connection: ManagedAuthConnectionSummary,
     action: ManagedAuthConnectionAction,
@@ -223,6 +261,14 @@ function AccountDetail({
                 设为默认
               </Button>
             ) : null}
+            {supportsAccountQuota(account.provider) ? (
+              <Button
+                disabled={mutationBusy || quotaPending}
+                onClick={onRefreshQuota}
+              >
+                刷新额度
+              </Button>
+            ) : null}
           </div>
         </div>
         <dl className="fy-feature-definition fy-auth-definition">
@@ -233,7 +279,13 @@ function AccountDetail({
             {formatAuthenticatedAt(account.lastAuthenticatedAt)}
           </DefinitionRow>
           <DefinitionRow label="额度状态">
-            {account.quotaSummary ?? "暂时没有额度信息"}
+            {supportsAccountQuota(account.provider)
+              ? accountQuotaCopy({
+                  quota: quota?.accountId === account.accountId ? quota : null,
+                  pending: quotaPending,
+                  reason: quotaReason,
+                })
+              : (account.quotaSummary ?? "暂时没有额度信息")}
           </DefinitionRow>
         </dl>
       </section>
@@ -335,6 +387,9 @@ export function AccountView({
   search,
   providerFilter,
   mutationBusy,
+  quota,
+  quotaPending,
+  quotaReason,
   onSearchChange,
   onProviderFilterChange,
   onSelectAccount,
@@ -343,6 +398,7 @@ export function AccountView({
   onReauthenticate,
   onSetDefault,
   onRemove,
+  onRefreshQuota,
   onConnectionAction,
   onConnectViaLogin,
 }: {
@@ -353,6 +409,9 @@ export function AccountView({
   search: string;
   providerFilter: ManagedAuthProvider | "all";
   mutationBusy: boolean;
+  quota: ManagedAuthAccountQuota | null;
+  quotaPending: boolean;
+  quotaReason: ManagedAuthReasonCode | null;
   onSearchChange: (value: string) => void;
   onProviderFilterChange: (value: ManagedAuthProvider | "all") => void;
   onSelectAccount: (accountId: string) => void;
@@ -361,6 +420,7 @@ export function AccountView({
   onReauthenticate: (account: ManagedAuthAccountSummary) => void;
   onSetDefault: (account: ManagedAuthAccountSummary) => void;
   onRemove: (account: ManagedAuthAccountSummary) => void;
+  onRefreshQuota: () => void;
   onConnectionAction: (
     connection: ManagedAuthConnectionSummary,
     action: ManagedAuthConnectionAction,
@@ -449,9 +509,15 @@ export function AccountView({
           <CatalogList>
             {accounts.map((account) => {
               const health = accountHealthPresentation(account.health);
-              const consumers = overview.connections
+              const linkedConnections = linkedConnectionsForAccount(
+                account,
+                overview.connections,
+              );
+              const consumers = linkedConnections
                 .filter(
-                  (connection) => connection.accountId === account.accountId,
+                  (connection) =>
+                    connection.authStatus === "connected" &&
+                    !connection.pendingRestart,
                 )
                 .map((connection) =>
                   managedAuthConsumerLabel(connection.consumer),
@@ -466,7 +532,9 @@ export function AccountView({
                     account.health === "ready"
                       ? consumers.length > 0
                         ? `已连接：${[...new Set(consumers)].join("、")}`
-                        : "尚未连接软件"
+                        : linkedConnections.length > 0
+                          ? summarizeConnections(linkedConnections).label
+                          : "尚未连接软件"
                       : health.label
                   }
                   trailing={
@@ -489,10 +557,14 @@ export function AccountView({
           connections={overview.connections}
           providers={overview.providers}
           mutationBusy={mutationBusy}
+          quota={quota}
+          quotaPending={quotaPending}
+          quotaReason={quotaReason}
           onBack={onClearSelection}
           onReauthenticate={onReauthenticate}
           onSetDefault={onSetDefault}
           onRemove={onRemove}
+          onRefreshQuota={onRefreshQuota}
           onConnectionAction={onConnectionAction}
           onConnectViaLogin={onConnectViaLogin}
         />

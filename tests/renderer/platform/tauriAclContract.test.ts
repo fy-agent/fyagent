@@ -124,7 +124,22 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(145);
+    expect(renderer.commands.size).toBe(157);
+    for (const command of [
+      "get_providers",
+      "add_provider",
+      "update_provider",
+      "switch_provider",
+      "get_app_mode",
+      "set_proxy_route",
+      "get_proxy_stack",
+      "set_proxy_stack_member",
+      "adopt_codex_stack_catalog",
+      "restart_codex_app_server_daemon",
+      "update_tray_menu",
+    ]) {
+      expect(renderer.commands.has(command)).toBe(true);
+    }
     expect(renderer.commands.has("preview_claude_quick_setup")).toBe(true);
     expect(renderer.commands.has("apply_claude_quick_setup_preview")).toBe(
       true,

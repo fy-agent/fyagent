@@ -1447,7 +1447,7 @@ mod tests {
         assert!(!registered.contains("get_agent_health"));
         assert!(registered.contains("get_first_use_guide_state"));
         assert!(registered.contains("dismiss_first_use_guide"));
-        assert_eq!(registered.len(), 388, "review intentional handler changes");
+        assert_eq!(registered.len(), 398, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }

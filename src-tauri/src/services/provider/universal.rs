@@ -184,12 +184,46 @@ pub(super) fn merge_json(base: &mut Value, patch: &Value) {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use std::ffi::OsString;
     use std::sync::Arc;
 
     use super::*;
     use crate::database::Database;
     use crate::provider::{Provider, ProviderMeta};
     use crate::services::provider::ProviderCredentials;
+
+    struct Home {
+        _dir: tempfile::TempDir,
+        saved: Vec<(&'static str, Option<OsString>)>,
+    }
+
+    impl Home {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().expect("isolated provider home");
+            let saved = ["HOME", "USERPROFILE", "FYAGENT_TEST_HOME"]
+                .into_iter()
+                .map(|key| {
+                    let old = std::env::var_os(key);
+                    std::env::set_var(key, dir.path());
+                    (key, old)
+                })
+                .collect();
+            crate::settings::reload_settings().expect("reload isolated settings");
+            Self { _dir: dir, saved }
+        }
+    }
+
+    impl Drop for Home {
+        fn drop(&mut self) {
+            for (key, old) in self.saved.drain(..) {
+                match old {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+            let _ = crate::settings::reload_settings();
+        }
+    }
 
     fn universal_fixture() -> UniversalProvider {
         let mut provider = UniversalProvider::new(
@@ -225,7 +259,9 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn compat_config_universal_sync_preserves_existing_child_metadata() {
+        let _home = Home::new();
         let state = AppState::new(Arc::new(Database::memory().unwrap()));
         let mut parent = universal_fixture();
         let mut previous = parent.clone();
@@ -298,7 +334,9 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn compat_config_universal_sync_initializes_new_child_metadata() {
+        let _home = Home::new();
         let state = AppState::new(Arc::new(Database::memory().unwrap()));
         let parent = universal_fixture();
         state.db.save_universal_provider(&parent).unwrap();

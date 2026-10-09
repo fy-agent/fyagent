@@ -34,6 +34,7 @@ fixtures or mock IPC into native authentication evidence.
 ```ts
 interface ManagedAuthPort {
   getOverview(): Promise<ManagedAuthOverview>;
+  getAccountQuota(accountId: string): Promise<ManagedAuthAccountQuota>;
   startLogin(
     request: StartManagedAuthLoginRequest,
   ): Promise<ManagedAuthLoginSessionSnapshot>;
@@ -115,6 +116,10 @@ request mode is a third-party API.
 - Account rows show provider identity, login label, health, default state and
   connection count. Quota/profile availability does not redefine login health
   or reorder accounts by short-lived usage.
+- Account rows claim connected only for matching `connected` slots without
+  pending restart or `native_projection_unavailable`; the page header shows
+  one prioritized account/connection/source status, with details retained in
+  the existing account and connection rows.
 - Account detail lists already-linked software and matching unlinked software
   for the same provider. Linked means live-connected (`accountId` matches and
   `authStatus` is not `disconnected`). A saved-not-projected Codex slot that
@@ -230,6 +235,16 @@ also applies when recovering active sessions from the account overview.
 - TanStack Query owns the overview and active-session snapshots. URL state owns
   the selected view/account/consumer. Secret or OAuth material never enters
   Query state, route state or localStorage.
+- Account quota is a separate Query keyed by `accountId` and the current
+  account revision. It is enabled only for a visible selected OpenAI/xAI
+  account on the accounts view. There is no polling, timer, extra cache store,
+  retry, refetch-on-focus or refetch-on-reconnect. One read runs when that
+  account is selected; later reads are explicit refresh. Switching accounts
+  must not keep the previous account's windows. A Query error withholds the
+  previous snapshot so a failed refresh cannot present stale remaining
+  percents. `native_refresh_required` copy is 「请重新登录以读取额度」;
+  FyAgent-owned reauth stays 「登录已失效，请重新登录。」 Unknown plan text is
+  omitted.
 - Login-session polling/recovery is owned by one hook. Remount resumes the
   backend session instead of starting a duplicate. Polling stops while the
   persistent route is hidden and on terminal/unmount.
@@ -387,7 +402,9 @@ Required assertions include:
   and under-counted summaries are rejected;
 - maximum-eight/unique session parsing plus backend per-provider single-flight
   and cross-provider coexistence;
-- Tauri command/payload mapping and request/response identity binding;
+- Tauri command/payload mapping and request/response identity binding,
+  including `managed_auth_get_account_quota` accountId binding, leak rejection
+  and selected-account quota query/refresh wiring;
 - `/auth` routing, navigation selection, primary-route keep-alive and browser
   native-only behavior;
 - account/connection/request-source separation, login recovery, device-code

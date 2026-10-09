@@ -1964,6 +1964,10 @@ pub fn run() {
 
                 // 检查 settings 表中的代理状态，自动恢复代理服务
                 restore_proxy_state_on_startup(&state).await;
+                // 与上游 startup 尾部一致：记下启动恢复后客户端将读取的目录。
+                services::provider::codex_client_catalog::observe(
+                    &crate::live::engine::DeviceStore::for_device(),
+                );
 
                 // 启动恢复完成后再检查官方模型，避免首次检查撞上旧模式/接管状态。
                 services::provider::codex_official_models::start_background_checks(
@@ -2086,6 +2090,7 @@ pub fn run() {
             commands::get_active_agent_auth_session,
             commands::stop_waiting_for_agent_auth,
             commands::managed_auth_get_overview,
+            commands::managed_auth_get_account_quota,
 
             commands::managed_auth_start_login,
             commands::managed_auth_get_login_session,
@@ -2315,6 +2320,15 @@ pub fn run() {
             commands::get_proxy_takeover_status,
             commands::get_proxy_restore_preview,
             commands::set_proxy_takeover_for_app,
+            commands::get_app_mode,
+            commands::set_proxy_route,
+            commands::take_startup_attach_failures,
+            commands::exit_proxy_apps_in_mode,
+            commands::get_direct_provider,
+            commands::get_proxy_stack,
+            commands::restart_codex_app_server_daemon,
+            commands::set_proxy_stack_member,
+            commands::adopt_codex_stack_catalog,
             commands::get_proxy_status,
             commands::get_proxy_config,
             commands::update_proxy_config,
@@ -2928,6 +2942,7 @@ fn exit_after_installer_cancellation(app_handle: tauri::AppHandle, job_id: Strin
 /// 使用 stop_with_restore_keep_state 保留 settings 表中的代理状态，下次启动时自动恢复。
 pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
     if let Some(state) = app_handle.try_state::<store::AppState>() {
+        crate::mode::controller::detach_all(state.inner()).await;
         let proxy_service = &state.proxy_service;
 
         // 退出时也需要兜底：代理可能已崩溃/未运行，但 Live 接管残留仍在（占位符/备份）。
@@ -3030,20 +3045,37 @@ async fn enabled_proxy_apps_on_startup(db: &database::Database) -> Vec<&'static 
 }
 
 async fn restore_proxy_state_on_startup(state: &store::AppState) {
-    // 收集需要恢复接管的应用列表（从 proxy_config.enabled 读取）
-    let apps_to_restore = enabled_proxy_apps_on_startup(&state.db).await;
+    // 旧订阅接管按 enabled 恢复；新版路由 / 聚合以 live-state 中的模式为准。
+    let mut apps_to_restore = enabled_proxy_apps_on_startup(&state.db).await;
+    for app_type in PROXY_STARTUP_APP_TYPES {
+        let app = app_type.parse().expect("startup app allowlist");
+        if crate::mode::current::is_proxy(&app) && !apps_to_restore.contains(&app_type) {
+            apps_to_restore.push(app_type);
+        }
+    }
 
     if apps_to_restore.is_empty() {
         log::debug!("启动时无需恢复代理状态");
-        return;
+    } else {
+        log::info!("检测到上次代理状态需要恢复，应用列表: {apps_to_restore:?}");
     }
-
-    log::info!("检测到上次代理状态需要恢复，应用列表: {apps_to_restore:?}");
 
     // 逐个恢复接管状态
     for app_type in apps_to_restore {
         let cloned_state = state.clone();
         let app = app_type.parse().expect("startup app allowlist");
+        if crate::mode::current::is_proxy(&app) {
+            // Upstream startup_app owns these modes. Global startup would also drain
+            // FyAgent managed-account backups, which still need the recovery path below.
+            let result = match crate::mode::controller::lock_settled(state, &app).await {
+                Ok(_guard) => crate::mode::controller::startup_app(state, &app).await,
+                Err(error) => Err(error.to_string()),
+            };
+            if let Err(error) = result {
+                log::error!("启动时恢复 {app_type} 的模式失败: {error}");
+            }
+            continue;
+        }
         match tauri::async_runtime::spawn_blocking(move || {
             ProviderService::resume_managed_proxy(&cloned_state, app)
         })
@@ -3082,6 +3114,7 @@ async fn restore_proxy_state_on_startup(state: &store::AppState) {
             }
         }
     }
+    crate::mode::controller::ensure_desktop_mapping_service(state).await;
 }
 
 fn initialize_common_config_snippets(state: &store::AppState) {
@@ -4172,6 +4205,30 @@ mod tests {
                 !request_lowercase.contains(prohibited),
                 "ordinary start request must not accept {prohibited}"
             );
+        }
+    }
+
+    #[test]
+    fn aggregation_commands_are_registered_and_permitted() {
+        let host = include_str!("lib.rs");
+        let permissions = include_str!("../permissions/legacy-application-commands.toml");
+        let capability = include_str!("../capabilities/default.json");
+        let exports = include_str!("commands/mod.rs");
+        assert!(exports.contains("pub use proxy::*;"));
+        assert!(capability.contains("\"allow-legacy-application-commands\""));
+        for command in [
+            "get_app_mode",
+            "set_proxy_route",
+            "take_startup_attach_failures",
+            "exit_proxy_apps_in_mode",
+            "get_direct_provider",
+            "get_proxy_stack",
+            "restart_codex_app_server_daemon",
+            "set_proxy_stack_member",
+            "adopt_codex_stack_catalog",
+        ] {
+            assert_eq!(host.matches(&format!("commands::{command},")).count(), 1);
+            assert!(permissions.contains(&format!("\"{command}\"")));
         }
     }
 

@@ -25,9 +25,17 @@ const changeJobsKey = [scope, "change-plans", "job"] as const;
 const dailyMemorySearchKey = [scope, "memory", "daily", "search"] as const;
 
 export const featureKeys = {
+  providerMode: (app: "claude" | "codex") =>
+    ["fyagent", "provider-mode", app] as const,
+  providerStack: (app: "claude" | "codex") =>
+    ["fyagent", "provider-stack", app] as const,
+  providerList: (app: "claude" | "codex") =>
+    ["fyagent", "provider-list", app] as const,
   configPackCandidates: [scope, "config-pack", "candidates"] as const,
   agentCatalog: [scope, "agents", "catalog"] as const,
   managedAuthOverview: [scope, "managed-auth", "overview"] as const,
+  managedAuthAccountQuota: (accountId: string, revision: string) =>
+    [scope, "managed-auth", "account-quota", accountId, revision] as const,
   managedAuthConnectionPreview: (request: ManagedAuthConnectionActionRequest) =>
     [scope, "managed-auth", "connection-preview", request] as const,
   agentAuthObservation: (agentId: AgentCatalogId) =>
@@ -88,6 +96,29 @@ export function useManagedAuthOverview(enabled = true) {
     queryKey: featureKeys.managedAuthOverview,
     queryFn: ports.managedAuth.getOverview,
     enabled: useVisibleEnabled(enabled),
+  });
+}
+
+export function useManagedAuthAccountQuota(
+  accountId: string | null,
+  revision: string | null,
+  enabled: boolean,
+) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.managedAuthAccountQuota(
+      accountId ?? "",
+      revision ?? "",
+    ),
+    queryFn: () => ports.managedAuth.getAccountQuota(accountId!),
+    enabled: useVisibleEnabled(
+      enabled && accountId !== null && revision !== null,
+    ),
+    retry: false,
+    gcTime: 0,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 

@@ -5,6 +5,7 @@ import { errorMessage } from "../../shared/features/helpers";
 import {
   MANAGED_AUTH_CONSUMERS,
   MANAGED_AUTH_PROVIDERS,
+  parseManagedAuthCommandError,
   type ManagedAuthAccountRemovalPreview,
   type ManagedAuthAccountSummary,
   type ManagedAuthConnectionAction,
@@ -17,6 +18,7 @@ import { useFeatures } from "../../shared/features/provider";
 import { useFrontendReady } from "../../shared/platform/useFrontendReady";
 import {
   featureKeys,
+  useManagedAuthAccountQuota,
   useManagedAuthOverview,
 } from "../../shared/features/queries";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
@@ -87,6 +89,19 @@ export function AuthPage() {
   const view: AuthView =
     requestedView ?? (requestedConsumer ? "connections" : "accounts");
   const requestedAccountId = searchParams.get("account");
+  const quotaAccount =
+    overviewQuery.data?.accounts.find(
+      (account) => account.accountId === requestedAccountId,
+    ) ??
+    overviewQuery.data?.accounts[0] ??
+    null;
+  const quotaQuery = useManagedAuthAccountQuota(
+    quotaAccount?.accountId ?? null,
+    quotaAccount?.revision ?? null,
+    visible &&
+      view === "accounts" &&
+      (quotaAccount?.provider === "openai" || quotaAccount?.provider === "xai"),
+  );
   const [accountSearch, setAccountSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState<
     ManagedAuthProvider | "all"
@@ -563,6 +578,14 @@ export function AuthPage() {
             sourceBusy ||
             overviewQuery.isError
           }
+          quota={
+            quotaQuery.isError ||
+            quotaQuery.data?.accountId !== selectedAccountId
+              ? null
+              : quotaQuery.data
+          }
+          quotaPending={quotaQuery.isFetching}
+          quotaReason={parseManagedAuthCommandError(quotaQuery.error)}
           onSearchChange={setAccountSearch}
           onProviderFilterChange={(next) => {
             if (next === "all" || MANAGED_AUTH_PROVIDERS.includes(next)) {
@@ -575,6 +598,9 @@ export function AuthPage() {
           onReauthenticate={(account) => openLogin(account, null)}
           onSetDefault={(account) => void setDefaultAccount(account)}
           onRemove={(account) => void beginRemoveAccount(account)}
+          onRefreshQuota={() => {
+            void quotaQuery.refetch();
+          }}
           onConnectionAction={(connection, action) =>
             requestConnectionAction(connection, action, selectedAccountId)
           }

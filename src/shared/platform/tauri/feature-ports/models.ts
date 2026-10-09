@@ -1,3 +1,4 @@
+import { providerAggregationPorts } from "./providerAggregation";
 import {
   parseClaudeQuickSetupApplyRequest,
   parseClaudeQuickSetupPreview,
@@ -599,6 +600,7 @@ export function createModelFeaturePorts(): Pick<
 > {
   return {
     providers: {
+      ...providerAggregationPorts,
       previewClaudeQuickSetup: async (request) =>
         parseClaudeQuickSetupPreview(
           await invoke<unknown>("preview_claude_quick_setup", {

@@ -79,7 +79,7 @@ pub async fn set_proxy_takeover_for_app(
     stack: Option<bool>,
     route: Option<String>,
 ) -> Result<(), String> {
-    if enabled && app_type != "opencode" {
+    if enabled && app_type != "opencode" && stack.is_none() && route.is_none() {
         let app = app_type.parse().map_err(|_| "Invalid proxy target")?;
         let cloned_state = state.inner().clone();
         if tauri::async_runtime::spawn_blocking(move || {

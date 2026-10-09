@@ -19,6 +19,8 @@ another vault, change proxy recovery, or implement hardware support.
 provider_id, secret_ref UNIQUE, secret_version, status)`. Status is constrained
   to `pending|ready|revoked|deleted`. There is no Provider FK because durable
   admission precedes Provider creation and cleanup can outlive Provider deletion.
+- `ProviderCredentials::renderer_projection(&Provider) -> Result<Provider, AppError>`
+  supplies editable Codex DTOs; `ProviderService::list` propagates its errors.
 - Provider JSON stores only `settingsConfig.credentialRef = pc_<random UUID>`.
   Each replacement reserves a new SecretRef/version and credential ID.
 
@@ -55,6 +57,12 @@ provider_id, secret_ref UNIQUE, secret_version, status)`. Status is constrained
   auth/headers/scripts/unknown scalar extensions, endpoint history and full
   profile/universal/common snapshots, and resets exported current/failover flags.
   Private binary backup remains the lossless recovery format.
+- Renderer projection preserves a valid source `auth` object as `auth: {}`.
+  Managed subscription edits require this shape but never an API key. Preserve
+  image-extension `On` by using the existing feature analyzer/patcher to rebuild
+  only its public constant header; do not copy arbitrary headers. `Off` remains
+  off, and unknown/conflicting headers are not promoted. Ordinary exports still
+  omit auth and headers.
 - SQL import preserves device-local credential ledger and full local Provider
   routes which contain credentials; it never attaches a local key to imported
   remote endpoint data. Explicit rotation and removal remain Provider operations.
@@ -97,6 +105,7 @@ provider_id, secret_ref UNIQUE, secret_version, status)`. Status is constrained
 | DB compensation cannot be verified              | `provider_secret_recovery_required`                       |
 | Backend delete fails                            | reference revoked locally; durable cleanup retry retained |
 | Ordinary export cannot safely preserve identity | bounded export error; no output                           |
+| Renderer feature projection fails              | Propagate existing AppError; no raw Provider fallback     |
 | Blank/masked usage test to a changed target     | `provider_secret_invalid`; no script execution            |
 
 ## 5. Good / Base / Bad Cases
@@ -104,6 +113,8 @@ provider_id, secret_ref UNIQUE, secret_version, status)`. Status is constrained
 - Good: first Codex save leaves only a reference in SQLite, and temporary live
   config contains the exact fixture key without modifying login auth bytes.
 - Base: leave key blank, change model, keep the credential ID and update live model.
+- Good: a managed Codex row survives list → model edit → update with its
+  empty auth object, account binding and image-extension state intact.
 - Bad: swap another Provider's credential ID or add a shadow plaintext value;
   no authority is gained and missing/locked resolution does not fall back.
 - Bad: interrupted migration leaves the original usable row and a pending native
@@ -120,6 +131,10 @@ retry, full temporary-file create/edit/switch/delete and export/import negatives
 retain, changed URL/script/template/user rejection without execution, fresh
 credentials for a new target, inference-key fallback, common-config
 redirect rejection, and NewAPI token-only retain/mask/fresh-token cases.
+`update_managed_codex_subscription_model_catalog_without_inline_auth` exercises
+list → edit → update, including binding and image-state readback.
+`renderer_projection_retains_editable_codex_shape_without_credentials` covers
+On/Off/conflicting headers, secret canaries and unchanged ordinary export.
 Schema fixtures cover fresh/v23/failed migration. Change Plan rotation tests assert
 stale and zero writer calls. Renderer tests cover existing-key blank edits and
 plaintext disclosure. Fixture checks do not prove OS-keychain HIL, Windows UAT,
@@ -130,6 +145,9 @@ external Codex process adoption, or release acceptance.
 Wrong: hold a SQLite mutex while querying keyring, overwrite legacy plaintext
 before native readback, serialize a resolved Provider to IPC, or copy local keys
 onto remotely imported routes.
+
+Wrong: use an export projection unchanged as the edit DTO, deleting the empty
+auth schema or silently turning an enabled image feature off.
 
 Correct: prepare outside the DB lock, admit then verify then cut over, resolve
 only for native consumers, project safe DTOs, and preserve exact local bindings.

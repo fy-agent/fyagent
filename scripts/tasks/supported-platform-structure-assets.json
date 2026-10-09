@@ -103,7 +103,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "7af6b69a843b234298771c310ecbe0281246b900c77addd8dd60b407e28d298d"
+      "3390ff91f00caf1d4d20f5f52ab34c7ccbfd723b2bf82f4b1539c6ad5d3cc14c"
     ],
     [
       "src-tauri/src/codex_config/catalog.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "c89746e144bf16d80f898f8475ee34817121e5fe9770d66f0af5ef983984d81b"
+      "401d28cc7f127440dbab36a429e9e98985071573bf135d4e096622cde250c7a1"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -211,7 +211,7 @@
     ],
     [
       "src-tauri/src/mode/controller.rs",
-      "6c3391fa788c07837e6b043891c30a9925c41528d15be5d525802139295654e9"
+      "6d168077c4e41677db16c0ed8af38e4c213311c9ec9c30109eb29eb360b365e5"
     ],
     [
       "src-tauri/src/mode/operation.rs",
@@ -291,7 +291,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/service.rs",
-      "596d38693bcbfa9e4025b78d5bd9deb9d101155743baa42bff13c392786ac7e2"
+      "d32d986a26409d2eec2970c737b3ca20210062f0d4c611932e92bd34c924069c"
     ],
     [
       "src-tauri/src/services/managed_auth/subscription_tests.rs",
@@ -319,7 +319,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "2bb1e79f1c372f8cbfa1a083203b78a152c797e356d77036f9a0ea214610a64f"
+      "6c6443a6db283aa4ce316fe83038032981fc40b1c1dd508f6795735a1066ecbf"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",
@@ -327,7 +327,7 @@
     ],
     [
       "src-tauri/src/services/proxy.rs",
-      "bb5fab3db472dc46c0bccc3a8c413bb1eff1522f0ae1dd3dc86cb1e278602074"
+      "d86d32aba0fe0833bf58e884209a68532140995c4553a34cd05079b1812ff97a"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -471,7 +471,7 @@
     ],
     [
       "src-tauri/src/tray.rs",
-      "ed2dad83816b10a1a679b11112ce92e2a5965c18c2def36fadd70ed9cba95d69"
+      "67ad729790a8c8fb2396d7a2742c0023e1e4a1d3e8edf4550de37c8141a415e4"
     ],
     [
       "src-tauri/src/windows_runtime/mod.rs",

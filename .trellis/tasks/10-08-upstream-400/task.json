@@ -1,21 +1,19 @@
 {
   "id": "upstream-400",
-  "name": "CC Switch v4.0.4 工作树试合",
+  "name": "CC Switch v4.0.4 迁移与迭代整合",
   "status": "in_progress",
   "ClaimedBy": "Codex",
   "ClaimedAt": "2026-10-07T18:16:49.884897+00:00",
-  "phase": "round3_cross_check_passed_native_runtime_pending",
+  "phase": "public_draft_validation_in_progress",
   "Deliverables": [
-    "[ledger](../../../docs/upstream/cc-switch-v4.0.4.md)",
-    "[report](/workspace/fy-maint-1007/migration/report-400.md)",
-    "[resolutions](/workspace/fy-maint-1007/migration/p400-resolved-final.tsv)",
-    "[round3 report](/workspace/fy-maint-1007/migration/report-400c.md)",
-    "[round3 changed files](/workspace/fy-maint-1007/migration/p400c-changed.txt)"
+    "[upstream ledger](../../../docs/upstream/cc-switch-v4.0.4.md)",
+    "[scope and validation](../../../docs/fyagent/planning/iteration-0411-public-validation-2026-10-10.md)"
   ],
   "Acceptance Evidence": [
-    "Windows GNU cargo check --all-targets -j 6 exit 0 (p400c-evidence/cargo-check-final.result.json)",
-    "Frontend typecheck/lint/format exit 0; 26 Vitest files / 664 cases; 9 architecture assertions passed",
-    "13 checklist items passed at code_audit level; 0 worktree conflict markers; 140 fingerprints consistent",
-    "Strict Clippy remains blocked by warnings; Windows native runtime tests not executed; index has 17 UU paths and is user-owned"
+    "Public integration preserves main and #360 as distinct parents and retains the original upstream merge ancestry.",
+    "Gemini invalid-settings protection and the migrated CLI preflight assertion are retained as semantic merge resolutions.",
+    "Earlier isolated macOS VM candidates exercised aggregation request switching, removed-member rejection and exit restoration; this is not final account-quota or Windows native acceptance.",
+    "The account-summary change passed host typecheck and lint; final Rust, Auth renderer and live quota-refresh validation is ongoing.",
+    "Public candidate CI, PR merge and release are pending. No production-service deployment is claimed."
   ]
 }

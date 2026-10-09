@@ -50,6 +50,8 @@ Core renderer-facing commands:
 
 ```text
 managed_auth_get_overview() -> ManagedAuthOverview
+managed_auth_get_account_quota({ accountId })
+  -> ManagedAuthAccountQuota | ManagedAuthErrorDto
 managed_auth_set_default_account({ accountId, expectedRevision })
   -> ManagedAuthMutationResult
 managed_auth_preview_account_removal({ accountId, expectedRevision })
@@ -134,6 +136,31 @@ OpenAI/xAI migrated sessions use `purpose=proxy_upstream`. Copilot uses
 `purpose=copilot`. All three use `refresh_owner=fyagent`. The resolver never
 returns a refresh token or SecretRef.
 
+Account quota observation:
+
+```text
+ManagedAuthAccountQuota {
+  contractVersion, accountId, provider, checkedAt,
+  status: available | unavailable | requires_reauth | native_refresh_required,
+  reasonCode?, windows: [{ windowId, remainingPercent, resetsAt? }]
+}
+```
+
+`managed_auth_get_account_quota` accepts one exact `ma1` identity. It never
+selects a default account, a sibling account, a leftover manager, or a CLI
+auth file. Prefer the existing FyAgent-owned `proxy_account` plus
+`resolve_credential_access` path, including its refresh owner, lock and CAS
+rules; do not widen Proxy request-time authority. If that exact account has no
+eligible FyAgent proxy credential, a Ready native Codex/Grok/OpenCode session
+on the same identity may be read once from its protected bundle using the
+shared identity/provider/generation check. Native-owned tokens are never
+refreshed, transferred, or written. Expired or missing native access returns
+`native_refresh_required` without mutating credential status. Windows expose
+remaining percent, a closed window identifier and a reset timestamp. Tokens,
+SecretRef, `quota.error`, `credential_message` and raw upstream bodies never
+enter the DTO. Non-finite utilization is skipped; a success with no usable
+window is unavailable. Subscription plan is not inferred.
+
 ## 3. Contracts
 
 ### Proxy account boundary
@@ -211,6 +238,16 @@ re-check generation
 replace_reserved + update_secret_cas
 CAS false => discard the network result; do not overwrite
 ```
+
+Fresh FyAgent-owned proxy authorization into an existing Ready or
+RequiresReauth credential (`migration_id` absent) rotates the SecretHandle,
+replaces the reserved bundle, and CAS-updates generation, version, status and
+`authenticated_at`. Refresh leaves `authenticated_at` unchanged. The new epoch
+is monotonic even for same-second repeats so `same_proxy_lineage` rejects an
+earlier admitted request. Do not swallow `AlreadyExists` and `mark_ready` for
+that fresh grant, and do not take over another refresh owner. Repeated
+migration imports (`migration_id` present) stay idempotent and do not replace
+tokens, status, owner or epoch.
 
 Delete order: clear connections → delete SecretRef → delete credential /
 identity metadata. SQLite `ON DELETE CASCADE` is not a license to skip the
@@ -409,6 +446,10 @@ Required assertions:
   concurrent expiry/401 callers share one same-lineage refresh; deletion,
   relogin and ownership changes reject both late success and terminal failure;
   terminal errors require reauth while transient errors retain Ready;
+  a second FyAgent-owned proxy login replaces the existing Ready/RequiresReauth
+  grant and stales the prior admitted epoch without a refresh; migration
+  repeats do not replace tokens, status, owner or epoch; native owners are
+  not taken over;
 - exact proxy-account lookup rejects defaults, missing vault sessions,
   non-proxy purposes and native refresh owners. Provider binding, route
   observation and transport replay assertions are owned by
@@ -430,6 +471,10 @@ Required assertions:
 - leftover `copilot_start_device_flow` / poll / remove / set_default /
   logout helpers return `legacy_auth_mutation_disabled`; `copilot_get_token*`
   returns `copilot_token_not_exposed`;
+- exact `ma1` quota observation uses the named account rather than a default
+  sibling; Ready native access on that account is admitted read-only; expired
+  native access returns `native_refresh_required` without a refresh or status
+  rewrite; the DTO contains no token, SecretRef, or raw quota error;
 - unsigned `cargo test` DPK `errSecMissingEntitlement` is fail-closed
   evidence, not product acceptance. Matching-host HIL remains `#[ignore]`
   until a signed app with `HY446996QX.com.fyagent.desktop` access-group
