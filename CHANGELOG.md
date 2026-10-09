@@ -8,6 +8,45 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.11] - 2026-10-09
+
+### Added
+
+- Integrate the CC Switch 4.0.4 aggregation entry. The account page can view
+  account quota and refresh it manually. Signing in again with the same
+  account replaces the old credentials (#361).
+- Show a connection as connected only for a real software connection, and
+  show one priority status in the page header. Pi, Mcode, Usage, Sessions,
+  and the other interface gaps are not in this release, and full 4.0.4
+  interface alignment is not claimed (#361).
+
+### Changed
+
+- Move the FyAgent base to upstream CC Switch 4.0.4. Switching a Claude
+  provider replaces only the fields that provider manages. Keys the user
+  added stay in the local config and are not put into shared snippets (#360).
+- Roll back config snippets when a Codex switch fails, and commit them when
+  the next startup finishes the remaining work. Deleting an unused Codex
+  overlay member also removes it from the overlay list. The Windows backend
+  tests no longer hang (#360).
+
+### Fixed
+
+- One-click install: after handing off to the vendor installer, the card now
+  shows "Operation completed." once the refreshed status is installed.
+- Command-line tool cards (Grok Build, Claude Code) offer one-click install
+  when the status is unknown but installation is allowed.
+- OpenCode on Windows: the current-user location label shows the real install
+  directory (`@opencodedesktop` for 2.x, `@opencode-aidesktop` for 1.x).
+- Gemini: an unparseable `~/.gemini/settings.json` now stops the switch with
+  `gemini.validation.settings_parse_failed` and writes no files, instead of
+  being rebuilt as `{}` and losing `mcpServers`.
+
+### Documentation
+
+- Installation guides and READMEs (zh, en, ja) explain how to verify and allow
+  the unsigned Windows installer when SmartScreen or Smart App Control blocks it.
+
 ## [0.4.10] - 2026-09-30
 
 ### Fixed
