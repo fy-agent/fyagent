@@ -1,8 +1,8 @@
 use serde_json::json;
 
 use fyagent_lib::{
-    get_claude_settings_path, read_json_file, write_codex_live_atomic, AppError, AppType, McpApps,
-    McpServer, MultiAppConfig, Provider, ProviderMeta, ProviderService,
+    get_claude_settings_path, get_codex_config_path, read_json_file, write_codex_live_atomic,
+    AppError, AppType, McpApps, McpServer, MultiAppConfig, Provider, ProviderMeta, ProviderService,
 };
 
 #[path = "support.rs"]

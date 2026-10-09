@@ -503,7 +503,7 @@
     ],
     [
       "src-tauri/tests/provider_service.rs",
-      "75d732004a2339550212f587cb46cbdf5fa7a1ccec548cb80bef5fd8efe5fe37"
+      "606b7d8eba69b2be40ed8653630eb91c69ebc721dfe60abd8813e0314839f4a8"
     ],
     [
       "src-tauri/tests/secret_service_contract.rs",
