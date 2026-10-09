@@ -17,8 +17,11 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       saveExport: rejectNativeOnly,
       cancel: rejectNativeOnly,
     },
-    health: { get: rejectNativeOnly },
-    configRecovery: { list: rejectNativeOnly, restore: rejectNativeOnly },
+    databaseRecovery: {
+      list: rejectNativeOnly,
+      restore: rejectNativeOnly,
+      checkReadability: rejectNativeOnly,
+    },
     // The native command is the only Agent capability authority. Browser
     // preview renders the controlled unavailable state instead of carrying a
     // second capability matrix that could drift into a support claim.
@@ -27,6 +30,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     },
     managedAuth: {
       getOverview: rejectNativeOnly,
+      getAccountQuota: rejectNativeOnly,
       startLogin: rejectNativeOnly,
       getLoginSession: rejectNativeOnly,
       cancelLogin: rejectNativeOnly,
@@ -114,13 +118,28 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       subscribeJobUpdates: rejectNativeOnly,
     },
     providers: {
+      getAll: rejectNativeOnly,
+      add: rejectNativeOnly,
+      update: rejectNativeOnly,
+      switch: rejectNativeOnly,
+      getMode: rejectNativeOnly,
+      setMode: rejectNativeOnly,
+      setRoute: rejectNativeOnly,
+      getStack: rejectNativeOnly,
+      setStackMember: rejectNativeOnly,
+      adoptCodexCatalog: rejectNativeOnly,
+      restartCodexDaemon: rejectNativeOnly,
       getSummary: rejectNativeOnly,
       getProxyRestorePreview: rejectNativeOnly,
       restoreManagedProxy: rejectNativeOnly,
       applyQuickSetupWithResult: rejectNativeOnly,
+      previewClaudeQuickSetup: rejectNativeOnly,
+      applyClaudeQuickSetupPreview: rejectNativeOnly,
       fetchModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
       checkModel: rejectNativeOnly,
+      getModelProbeStatus: rejectNativeOnly,
+      cancelModelProbe: rejectNativeOnly,
       bindXaiManaged: rejectNativeOnly,
       bindManagedProxy: rejectNativeOnly,
       fetchXaiManagedModels: rejectNativeOnly,
@@ -132,6 +151,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       saveModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
       checkModel: rejectNativeOnly,
+      getModelProbeStatus: rejectNativeOnly,
+      cancelModelProbe: rejectNativeOnly,
     },
     opencodeModels: {
       restoreManagedProxy: rejectNativeOnly,
@@ -141,6 +162,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       saveModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
       checkModel: rejectNativeOnly,
+      getModelProbeStatus: rejectNativeOnly,
+      cancelModelProbe: rejectNativeOnly,
     },
     skills: {
       getInstalled: async () => [],

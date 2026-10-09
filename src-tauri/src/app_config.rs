@@ -666,6 +666,13 @@ impl AppType {
     }
 
     /// Return an iterator over all app types
+    pub fn supports_local_proxy(&self) -> bool {
+        matches!(
+            self,
+            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild
+        )
+    }
+
     pub fn all() -> impl Iterator<Item = AppType> {
         [
             AppType::Claude,
@@ -945,34 +952,6 @@ impl MultiAppConfig {
         if !self.apps.contains_key(app.as_str()) {
             self.apps
                 .insert(app.as_str().to_string(), ProviderManager::default());
-        }
-    }
-
-    /// 获取指定客户端的 MCP 配置（不可变引用）
-    pub fn mcp_for(&self, app: &AppType) -> &McpConfig {
-        match app {
-            AppType::Claude => &self.mcp.claude,
-            AppType::ClaudeDesktop => &self.mcp.claude_desktop,
-            AppType::Codex => &self.mcp.codex,
-            AppType::Gemini => &self.mcp.gemini,
-            AppType::GrokBuild => &self.mcp.grokbuild,
-            AppType::OpenCode => &self.mcp.opencode,
-            AppType::OpenClaw => &self.mcp.openclaw,
-            AppType::Hermes => &self.mcp.hermes,
-        }
-    }
-
-    /// 获取指定客户端的 MCP 配置（可变引用）
-    pub fn mcp_for_mut(&mut self, app: &AppType) -> &mut McpConfig {
-        match app {
-            AppType::Claude => &mut self.mcp.claude,
-            AppType::ClaudeDesktop => &mut self.mcp.claude_desktop,
-            AppType::Codex => &mut self.mcp.codex,
-            AppType::Gemini => &mut self.mcp.gemini,
-            AppType::GrokBuild => &mut self.mcp.grokbuild,
-            AppType::OpenCode => &mut self.mcp.opencode,
-            AppType::OpenClaw => &mut self.mcp.openclaw,
-            AppType::Hermes => &mut self.mcp.hermes,
         }
     }
 

@@ -1,11 +1,5 @@
-# Runtime status
+# Runtime health page retired
 
-Open 「运行状态」, select software and click 「重新检查此软件」 (Check this software again), or use 「检查全部软件」 (Check all software). Search by software name or filter by status.
+The standalone page has been removed. Old bookmarks return to 「AI软件配置」. Review account and connection status in 「账号与认证」, installation and login in 「AI软件配置」, and model configuration and tests in 「模型管理」. Proxy, logging and diagnostics retain their existing flows.
 
-Results are grouped into installation and launch, accounts and configuration, and connection and usage. Address failed or uncertain items first, using their links to installation, account or model settings.
-
-「停止检查」 stops after the current check finishes. Retry individual failures separately. When previous results remain visible, check their timestamp.
-
-These local checks do not test remote services or quota. Refresh results older than five minutes. To check a model response, use 「测试连通」 in [model management](models.md). After changing installation, authentication or model settings, check the affected software again.
-
-[Back to manual](README.md)
+Account and connection counts do not prove installation, a running proxy or successful remote requests. Centralized cross-software troubleshooting, full consistency checks and the exact recent-request snapshot are retired.

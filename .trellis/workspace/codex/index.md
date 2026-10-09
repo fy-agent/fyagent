@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
-- **Last Active**: 2026-09-22
+- **Total Sessions**: 14
+- **Last Active**: 2026-10-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~267 | Active |
+| `journal-1.md` | ~292 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-10-10 | CC Switch 4.0.4 integration and account quota | `c065c030840584829fe3628295fb298447f02b31`, `d47f2831fa3e369d15496dd8f57c08bc1561215f`, `b773184a99896cd2a2edca0e8022d346fd91dc30`, `44efc421ad038ea22e06b645da251253568a7511` | `codex/iteration-0411-public-20261010` |
 | 13 | 2026-09-22 | Session cross-device recovery implementation and verification | `345119d2` | `codex/session-cross-device-recovery-20260922` |
 | 12 | 2026-09-21 | Next iteration engineering: 15 issues ready for delivery | `02138296`, `f324079a`, `b58163d6`, `955a8bde`, `fac051ea`, `3bc8c2e8`, `9fd852cd` | `codex/next-iteration-engineering-20260920` |
 | 11 | 2026-09-20 | FDE and subscription same-delivery integration | `31aa9d92`, `ebbda4ac`, `590f6f96` | `codex/subscription-cross-agent-20260919` |

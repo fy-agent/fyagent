@@ -42,7 +42,7 @@ secret handling, native source checks, and residual-risk reporting.
 | [Supported-Platform Governance](./supported-platform-governance.md)          | Platform-sensitive source/raster identities, one-snapshot repository scans, and fail-closed review seals.                       |
 | [Repository Root and Tool Configuration](./repository-layout.md)             | Root discovery exceptions, explicit config locations, cwd/alias invariants and placement verification.                          |
 | [Database Persistence](./database-persistence.md)                            | SQLite path, schema version, startup lifecycle, migrations, import/backup/restore, DAO placement, and transactional boundaries. |
-| [Automatic Cloud Sync Scheduling](./auto-sync.md)                            | Injected database hints, independent S3/WebDAV workers, bounded debounce, suppression, and upload lifecycle.                    |
+| [Retired Legacy Cloud Sync](./auto-sync.md)                                  | Retirement boundary, opaque legacy configuration preservation, and absence of cloud commands/workers.                           |
 | [Application Identity](./application-identity.md)                            | Product names, identifiers, license/provenance identity, and migration boundaries.                                              |
 | [Application Brand Assets](./application-brand-assets.md)                    | Canonical icons, asset derivation, platform packaging, and byte-level validation.                                               |
 | [Application Version and Installer Assets](./fyagent-version-contract.md)    | Canonical version source, package versions, and installer filename contract.                                                    |
@@ -60,11 +60,10 @@ strict import previews, credentialless draft transactions and native file picker
 [Device-local First-use Guide](./first-use-guide.md) owns new-install eligibility,
 settings persistence, narrow commands and protection against stale settings saves.
 
-[Agent Health Observation](./health.md) owns the on-demand local status
-snapshot and its read-only installation/configuration/auth/proxy evidence.
+[Retired Agent Health](./health.md) records the removed dedicated collector and retained domain capabilities.
 
 [Reversible User Configuration](./reversible-user-config.md) owns the default
-backup/atomic-write/undo mechanism, closed recovery commands and disclosure
+backup/atomic-write/undo mechanism, internal recovery and disclosure
 metadata. Read it before any user-file write; domain-specific locks and native
 path protections remain with the focused contracts below.
 
@@ -83,7 +82,7 @@ and reuse of Grok's npm mirrors and ordinary-user execution boundary.
 | [Codex Provider Configuration](./codex-provider-configuration.md)         | Codex provider/auth projection, writer serialization, backup, rollback, and readback.                                            |
 | [Codex Request-Source Selection](./codex-source-selection.md)             | Shared selector edits, account-versus-source write boundaries, and targeted live TOML projection.                                |
 | [One-click Executable Software Installer](./codex-desktop-installer.md)   | Codex desktop discovery/install/update, PackageBridge/helper, signing, and transaction safety.                                   |
-| [Session Migration](./session-migration.md) | Final-only packages, semantic identity, native restore receipts and honest capability evidence. |
+| [Session Migration](./session-migration.md)                               | Final-only packages, semantic identity, native restore receipts and honest capability evidence.                                  |
 | [Codex Session Usage Sync](./codex-session-usage.md)                      | Codex JSONL usage import, typed deferred reasons, retry/fingerprint separation, and bounded logging.                             |
 | [WorkBuddy Configuration](./workbuddy-configuration.md)                   | Revisioned WorkBuddy model/config writes, overwrite capabilities, backup, and reread.                                            |
 | [External Agent Catalog and Runtime](./external-agent-catalog-runtime.md) | Static Agent catalog, capability/evidence projection, runtime observation, trusted launch, and ACL.                              |

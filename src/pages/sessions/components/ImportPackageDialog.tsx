@@ -1,4 +1,5 @@
-import { useState, useRef, useId } from "react";
+import { SessionEvidenceDetails } from "./SessionEvidenceDetails";
+import { useState, useRef, useId, useEffect } from "react";
 import { FolderOpenIcon } from "@phosphor-icons/react/dist/csr/FolderOpen";
 import { CheckCircleIcon } from "@phosphor-icons/react/dist/csr/CheckCircle";
 import { WarningIcon } from "@phosphor-icons/react/dist/csr/Warning";
@@ -7,6 +8,15 @@ import { XCircleIcon } from "@phosphor-icons/react/dist/csr/XCircle";
 import { Dialog } from "../../../shared/ui/Dialog";
 import { Button } from "../../../shared/ui/Button";
 import type { DialogOriginRef } from "../../../shared/ui/dialogOrigin";
+import { FailureFeedback } from "./FailureFeedback";
+import {
+  canRetryRestoreRequest,
+  hasUnconfirmedRestore,
+  readFailureFeedback,
+  restoreAttemptFeedback,
+  unresolvedRestoreFeedback,
+  type SessionFailureFeedback,
+} from "../failure-feedback";
 import type {
   LocalProviderProbe,
   ReadSessionPackageResult,
@@ -34,6 +44,8 @@ export interface ImportPackageDialogProps {
   initialTargetWorkspace?: string;
   originRef: DialogOriginRef | undefined;
   onImportSuccess?: (attempts: RestoreAttempt[]) => void;
+  onReviewRestore?: () => Promise<RestoreAttempt[]>;
+  onVerifyReadback?: (attemptId: string) => Promise<RestoreAttempt>;
 }
 
 export function ImportPackageDialog({
@@ -47,6 +59,8 @@ export function ImportPackageDialog({
   initialTargetWorkspace,
   originRef,
   onImportSuccess,
+  onReviewRestore,
+  onVerifyReadback,
 }: ImportPackageDialogProps) {
   const dialogId = useId();
   const [packagePath, setPackagePath] = useState("");
@@ -54,7 +68,9 @@ export function ImportPackageDialog({
   const [readResult, setReadResult] = useState<ReadSessionPackageResult | null>(
     null,
   );
-  const [readError, setReadError] = useState<string | null>(null);
+  const [readError, setReadError] = useState<SessionFailureFeedback | null>(
+    null,
+  );
 
   // Target provider and snapshots selection
   const [selectedTargetProviderId, setSelectedTargetProviderId] =
@@ -72,7 +88,8 @@ export function ImportPackageDialog({
 
   // Restore execution state & idempotency tracking
   const [isRestoring, setIsRestoring] = useState(false);
-  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreError, setRestoreError] =
+    useState<SessionFailureFeedback | null>(null);
   const [restoreResult, setRestoreResult] = useState<RestoreAttempt[] | null>(
     null,
   );
@@ -80,11 +97,31 @@ export function ImportPackageDialog({
   // Fixed requestId per confirmed binding parameters (for retry idempotency)
   const bindingKeyRef = useRef<string>("");
   const requestIdRef = useRef<string>("");
+  const frozenRequestRef = useRef<RestoreRequest | null>(null);
+  const [frozenRequest, setFrozenRequest] = useState<RestoreRequest | null>(
+    null,
+  );
   const activeExecutionTokenRef = useRef<number>(0);
+  const packageInputRef = useRef<HTMLInputElement>(null);
+  const workspaceInputRef = useRef<HTMLInputElement>(null);
+  const [unconfirmedRequest, setUnconfirmedRequest] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const bindingLocked = isRestoring || unconfirmedRequest || reviewing;
+  const wasOpenRef = useRef(false);
+
+  // Permanent mounting keeps unresolved operations, but a fresh opening must
+  // still start from the currently selected session's workspace.
+  useEffect(() => {
+    const opening = open && !wasOpenRef.current;
+    wasOpenRef.current = open;
+    if (opening && !unconfirmedRequest && !frozenRequestRef.current) {
+      setTargetWorkspace(initialTargetWorkspace || "");
+    }
+  }, [open, initialTargetWorkspace, unconfirmedRequest]);
 
   // When target provider selection changes, update snapshot selection
   const handleTargetProviderChange = (newProvider: string) => {
-    if (isRestoring || !readResult) return;
+    if (isRestoring || unconfirmedRequest || reviewing || !readResult) return;
     setSelectedTargetProviderId(newProvider);
     const matchingSnapshots = readResult.package.sessions
       .filter((s) => s.origin.providerId === newProvider)
@@ -93,7 +130,7 @@ export function ImportPackageDialog({
   };
 
   const handleToggleSnapshot = (snapshotId: string) => {
-    if (isRestoring) return;
+    if (isRestoring || unconfirmedRequest || reviewing) return;
     setSelectedSnapshotIds((prev) => {
       const next = new Set(prev);
       if (next.has(snapshotId)) {
@@ -106,29 +143,38 @@ export function ImportPackageDialog({
   };
 
   const handlePickPackageFile = async () => {
-    if (isRestoring) return;
+    if (bindingLocked) return;
+    const token = activeExecutionTokenRef.current;
     try {
       const file = await onPickPackageFile();
+      if (token !== activeExecutionTokenRef.current) return;
       if (file) {
         setPackagePath(file);
         setReadError(null);
       }
     } catch (err) {
-      const parsed = parseMigrationError(err);
-      setReadError(parsed.message);
+      if (token !== activeExecutionTokenRef.current) return;
+      setReadError(readFailureFeedback(err, "selection"));
     }
   };
 
   const handleReadPackage = async () => {
-    if (isRestoring) return;
+    if (bindingLocked) return;
     if (!packagePath.trim()) {
-      setReadError("请选择或输入迁移包文件路径");
+      setReadError({
+        phase: "迁移包选择",
+        message: "请选择或输入迁移包文件路径",
+        writeSummary: "未调用目标恢复，未写入目标会话。",
+        nextStep: "输入路径后重试解析。",
+      });
       return;
     }
     setReadError(null);
     setIsReading(true);
+    const token = ++activeExecutionTokenRef.current;
     try {
       const res = await onReadPackage(packagePath.trim());
+      if (token !== activeExecutionTokenRef.current) return;
       setReadResult(res);
 
       const distinct = Array.from(
@@ -141,27 +187,38 @@ export function ImportPackageDialog({
         .filter((s) => s.origin.providerId === initialProvider)
         .map((s) => s.snapshotId);
       setSelectedSnapshotIds(new Set(matchingSnapshots));
+      const existing = res.attempts.filter(
+        (attempt) =>
+          attempt.targetProviderId === initialProvider &&
+          matchingSnapshots.includes(attempt.snapshotId),
+      );
+      if (existing.length > 0 && hasUnconfirmedRestore(existing)) {
+        setRestoreResult(existing);
+        setUnconfirmedRequest(true);
+      }
     } catch (err) {
-      const parsed = parseMigrationError(err);
-      setReadError(parsed.message);
+      if (token !== activeExecutionTokenRef.current) return;
+      setReadError(readFailureFeedback(err, "package"));
       setReadResult(null);
       setSelectedTargetProviderId("");
       setSelectedSnapshotIds(new Set());
     } finally {
-      setIsReading(false);
+      if (token === activeExecutionTokenRef.current) setIsReading(false);
     }
   };
 
   const handlePickFolder = async () => {
-    if (isRestoring) return;
+    if (bindingLocked) return;
+    const token = activeExecutionTokenRef.current;
     try {
       const dir = await onPickDirectory();
+      if (token !== activeExecutionTokenRef.current) return;
       if (dir) {
         setTargetWorkspace(dir);
       }
     } catch (err) {
-      const parsed = parseMigrationError(err);
-      setRestoreError(parsed.message);
+      if (token !== activeExecutionTokenRef.current) return;
+      setRestoreError(readFailureFeedback(err, "selection"));
     }
   };
 
@@ -183,18 +240,38 @@ export function ImportPackageDialog({
       )
     : [];
 
-  const handleExecuteRestore = async () => {
-    if (!readResult || isRestoring) return;
+  const handleExecuteRestore = async (retryRequest?: RestoreRequest) => {
+    if (!readResult || bindingLocked) return;
+    if (
+      retryRequest &&
+      !canRetryRestoreRequest(restoreResult || [], retryRequest)
+    )
+      return;
     if (!probeSupport.supported) {
-      setRestoreError(probeSupport.reason || "目标软件不支持恢复写入");
+      setRestoreError({
+        phase: "目标能力拒绝",
+        message: probeSupport.reason || "目标软件不支持恢复写入",
+        writeSummary: "未调用目标恢复，未写入目标会话。",
+        nextStep: "核验本地客户端版本与安装状态后再继续。",
+      });
       return;
     }
     if (selectedSnapshotIds.size === 0) {
-      setRestoreError("请至少选择一个要恢复的会话快照");
+      setRestoreError({
+        phase: "恢复前校验",
+        message: "请至少选择一个要恢复的会话快照",
+        writeSummary: "未调用目标恢复，未写入目标会话。",
+        nextStep: "选择会话快照后重试同一动作。",
+      });
       return;
     }
     if (!targetWorkspace.trim()) {
-      setRestoreError("请选择当前机器上的工作区绝对目录");
+      setRestoreError({
+        phase: "恢复前校验",
+        message: "请选择当前机器上的工作区绝对目录",
+        writeSummary: "未调用目标恢复，未写入目标会话。",
+        nextStep: "修正工作区目录后重试同一动作。",
+      });
       return;
     }
 
@@ -214,15 +291,18 @@ export function ImportPackageDialog({
     const currentBindingKey = computeRestoreBindingKey(bindingParams);
 
     // Reuse existing requestId if binding parameters haven't changed
-    let requestId = requestIdRef.current;
-    if (currentBindingKey !== bindingKeyRef.current || !requestId) {
+    let requestId = retryRequest?.requestId || requestIdRef.current;
+    if (
+      !retryRequest &&
+      (currentBindingKey !== bindingKeyRef.current || !requestId)
+    ) {
       requestId = crypto.randomUUID();
       requestIdRef.current = requestId;
       bindingKeyRef.current = currentBindingKey;
     }
 
     try {
-      const request: RestoreRequest = {
+      const request: RestoreRequest = retryRequest || {
         packagePath: packagePath.trim(),
         requestId,
         snapshotIds: Array.from(selectedSnapshotIds),
@@ -230,6 +310,11 @@ export function ImportPackageDialog({
         targetWorkspace: targetWorkspace.trim(),
         requestKind: conflictOption,
       };
+      frozenRequestRef.current = {
+        ...request,
+        snapshotIds: [...request.snapshotIds],
+      };
+      setFrozenRequest(frozenRequestRef.current);
 
       const attempts = await onRestore(request);
 
@@ -237,15 +322,113 @@ export function ImportPackageDialog({
       if (executionToken !== activeExecutionTokenRef.current) return;
 
       setRestoreResult(attempts);
+      setUnconfirmedRequest(
+        hasUnconfirmedRestore(attempts) ||
+          (attempts.some((attempt) => attempt.stage === "failed") &&
+            !canRetryRestoreRequest(attempts, frozenRequestRef.current)) ||
+          !request.snapshotIds.every((id) =>
+            attempts.some(
+              (attempt) =>
+                attempt.snapshotId === id &&
+                attempt.targetProviderId === request.targetProviderId,
+            ),
+          ),
+      );
       onImportSuccess?.(attempts);
     } catch (err) {
       if (executionToken !== activeExecutionTokenRef.current) return;
-      const parsed = parseMigrationError(err);
-      setRestoreError(parsed.message);
+      setUnconfirmedRequest(true);
+      setRestoreError(unresolvedRestoreFeedback(err));
     } finally {
       if (executionToken === activeExecutionTokenRef.current) {
         setIsRestoring(false);
       }
+    }
+  };
+
+  const handleReviewRestore = async () => {
+    if (!onReviewRestore || reviewing || isRestoring) return;
+    setReviewing(true);
+    const token = activeExecutionTokenRef.current;
+    try {
+      const receipts = await onReviewRestore();
+      if (token !== activeExecutionTokenRef.current) return;
+      // Match the exact invocation, including default-slot rows returned by
+      // the writer. Unrelated/foreign rows never unlock this selection.
+      const relevant = receipts.filter(
+        (attempt) =>
+          attempt.requestId === requestIdRef.current ||
+          restoreResult?.some(
+            (previous) => previous.attemptId === attempt.attemptId,
+          ),
+      );
+      const selected = Array.from(selectedSnapshotIds);
+      const complete =
+        selected.length > 0 &&
+        selected.every((id) =>
+          relevant.some(
+            (attempt) =>
+              attempt.snapshotId === id &&
+              attempt.targetProviderId === selectedTargetProviderId,
+          ),
+        );
+      if (!complete) {
+        setRestoreError(
+          unresolvedRestoreFeedback({ code: "reconciliationRequired" }),
+        );
+        setUnconfirmedRequest(true);
+        return;
+      }
+      setRestoreResult(relevant);
+      setRestoreError(null);
+      setUnconfirmedRequest(
+        hasUnconfirmedRestore(relevant) ||
+          (relevant.some((attempt) => attempt.stage === "failed") &&
+            !canRetryRestoreRequest(relevant, frozenRequestRef.current)),
+      );
+    } catch (err) {
+      if (token === activeExecutionTokenRef.current)
+        setRestoreError(unresolvedRestoreFeedback(err));
+    } finally {
+      if (token === activeExecutionTokenRef.current) setReviewing(false);
+    }
+  };
+
+  const handleVerifyReadback = async (attempt: RestoreAttempt) => {
+    if (!onVerifyReadback || reviewing || isRestoring) return;
+    setReviewing(true);
+    const token = activeExecutionTokenRef.current;
+    try {
+      const updated = await onVerifyReadback(attempt.attemptId);
+      if (token !== activeExecutionTokenRef.current) return;
+      const next = (restoreResult || []).map((previous) =>
+        previous.attemptId === updated.attemptId ? updated : previous,
+      );
+      setRestoreResult(next);
+      setRestoreError(null);
+      setUnconfirmedRequest(
+        hasUnconfirmedRestore(next) ||
+          (next.some((item) => item.stage === "failed") &&
+            !canRetryRestoreRequest(next, frozenRequestRef.current)) ||
+          !Array.from(selectedSnapshotIds).every((id) =>
+            next.some(
+              (item) =>
+                item.snapshotId === id &&
+                item.targetProviderId === selectedTargetProviderId,
+            ),
+          ),
+      );
+    } catch (error) {
+      if (token === activeExecutionTokenRef.current)
+        setRestoreError({
+          ...restoreAttemptFeedback(attempt),
+          phase: "目标读回调用失败",
+          message: parseMigrationError(error).message,
+          nextStep:
+            "草稿和已写入事实已保留。重新执行系统读回核验，不再次写入。",
+        });
+    } finally {
+      if (token === activeExecutionTokenRef.current) setReviewing(false);
     }
   };
 
@@ -256,22 +439,42 @@ export function ImportPackageDialog({
     setReadError(null);
     setRestoreError(null);
     setPackagePath("");
+    setConflictOption("defaultImport");
     setSelectedTargetProviderId("");
     setSelectedSnapshotIds(new Set());
     bindingKeyRef.current = "";
     requestIdRef.current = "";
+    frozenRequestRef.current = null;
+    setFrozenRequest(null);
     setIsRestoring(false);
+    setIsReading(false);
+    setUnconfirmedRequest(false);
+    setReviewing(false);
   };
 
   // Safe dialog close: forbidden during active restore request
   const handleSafeOpenChange = (next: boolean) => {
-    if (isRestoring) return;
-    if (!next) handleReset();
+    if (isRestoring || reviewing) return;
+    if (!next && !unconfirmedRequest) handleReset();
     onOpenChange(next);
   };
 
   // Determine result banner presentation using shared classifier
-  const classification = classifyRestoreResults(restoreResult);
+  const classification = classifyRestoreResults(
+    restoreResult &&
+      !Array.from(selectedSnapshotIds).every((id) =>
+        restoreResult.some(
+          (attempt) =>
+            attempt.snapshotId === id &&
+            attempt.targetProviderId === selectedTargetProviderId,
+        ),
+      )
+      ? []
+      : restoreResult,
+  );
+  const canRetry = restoreResult
+    ? canRetryRestoreRequest(restoreResult, frozenRequest)
+    : false;
 
   return (
     <Dialog
@@ -285,6 +488,9 @@ export function ImportPackageDialog({
         restoreResult ? (
           <>
             <Button
+              disabled={
+                unconfirmedRequest || reviewing || isRestoring || canRetry
+              }
               onClick={() => {
                 setRestoreResult(null);
                 setRestoreError(null);
@@ -292,11 +498,30 @@ export function ImportPackageDialog({
             >
               重新配置
             </Button>
+            {canRetry && (
+              <Button
+                disabled={isRestoring || reviewing}
+                onClick={() => {
+                  if (frozenRequestRef.current)
+                    void handleExecuteRestore(frozenRequestRef.current);
+                }}
+              >
+                {isRestoring ? "正在写入…" : "重试同一恢复"}
+              </Button>
+            )}
+            {onReviewRestore && (
+              <Button
+                disabled={reviewing || isRestoring}
+                onClick={() => void handleReviewRestore()}
+              >
+                {reviewing ? "正在核对…" : "核对恢复回执"}
+              </Button>
+            )}
             <Button
               className="fy-control-button-primary"
+              disabled={isRestoring || reviewing}
               onClick={() => {
-                handleReset();
-                onOpenChange(false);
+                handleSafeOpenChange(false);
               }}
             >
               完成
@@ -304,7 +529,10 @@ export function ImportPackageDialog({
           </>
         ) : !readResult ? (
           <>
-            <Button disabled={isReading} onClick={() => onOpenChange(false)}>
+            <Button
+              disabled={isReading}
+              onClick={() => handleSafeOpenChange(false)}
+            >
               取消
             </Button>
             <Button
@@ -318,7 +546,7 @@ export function ImportPackageDialog({
         ) : (
           <>
             <Button
-              disabled={isRestoring}
+              disabled={isRestoring || unconfirmedRequest || reviewing}
               onClick={() => {
                 setReadResult(null);
                 setRestoreError(null);
@@ -330,6 +558,8 @@ export function ImportPackageDialog({
               className="fy-control-button-primary"
               disabled={
                 isRestoring ||
+                unconfirmedRequest ||
+                reviewing ||
                 !probeSupport.supported ||
                 selectedSnapshotIds.size === 0 ||
                 !targetWorkspace.trim()
@@ -343,6 +573,26 @@ export function ImportPackageDialog({
       }
     >
       <div className="fy-import-dialog-body" id={`import-dialog-${dialogId}`}>
+        {readError && (
+          <FailureFeedback
+            feedback={readError}
+            onEdit={() => packageInputRef.current?.focus()}
+          />
+        )}
+        {restoreError && (
+          <FailureFeedback
+            feedback={restoreError}
+            onEdit={
+              !unconfirmedRequest
+                ? () => workspaceInputRef.current?.focus()
+                : undefined
+            }
+            onReview={
+              onReviewRestore ? () => void handleReviewRestore() : undefined
+            }
+            reviewing={reviewing}
+          />
+        )}
         {/* 第一阶段：输入与解析会话包 */}
         {!readResult && !restoreResult && (
           <div className="fy-import-step-read">
@@ -353,6 +603,7 @@ export function ImportPackageDialog({
               <div className="fy-input-with-button">
                 <input
                   id="package-path-input"
+                  ref={packageInputRef}
                   type="text"
                   className="fy-input-text"
                   placeholder="/path/to/session-package.json"
@@ -373,12 +624,6 @@ export function ImportPackageDialog({
                 请指定由 FyAgent 导出的标准 JSON 会话迁移包文件绝对路径。
               </span>
             </div>
-
-            {readError && (
-              <div className="fy-field-error" role="alert">
-                {readError}
-              </div>
-            )}
           </div>
         )}
 
@@ -423,7 +668,7 @@ export function ImportPackageDialog({
                 id="target-provider-select"
                 className="fy-input-text"
                 value={selectedTargetProviderId}
-                disabled={isRestoring}
+                disabled={bindingLocked}
                 onChange={(e) => handleTargetProviderChange(e.target.value)}
               >
                 {availableSourceProviders.map((pId) => (
@@ -448,6 +693,9 @@ export function ImportPackageDialog({
                   {probeSupport.reason ||
                     "当前客户端未安装或版本不受支持，禁止执行写入恢复。"}
                 </p>
+                <p className="fy-conflict-desc">
+                  目标能力拒绝：未调用目标恢复，未写入目标会话。请核验已安装版本的恢复支持。
+                </p>
               </div>
             ) : (
               <div className="fy-no-overwrite-guarantee">
@@ -460,7 +708,7 @@ export function ImportPackageDialog({
                   客户端探测就绪：
                   {PROVIDER_LABELS[selectedTargetProviderId] ??
                     selectedTargetProviderId}{" "}
-                  已安装且支持写入恢复。
+                  已安装且支持写入恢复。源提取能力不影响已核验会话包的目标写入。
                 </span>
               </div>
             )}
@@ -482,13 +730,13 @@ export function ImportPackageDialog({
                         alignItems: "center",
                         gap: "8px",
                         padding: "4px 0",
-                        cursor: isRestoring ? "not-allowed" : "pointer",
+                        cursor: bindingLocked ? "not-allowed" : "pointer",
                       }}
                     >
                       <input
                         type="checkbox"
                         checked={isChecked}
-                        disabled={isRestoring}
+                        disabled={bindingLocked}
                         onChange={() =>
                           handleToggleSnapshot(session.snapshotId)
                         }
@@ -520,16 +768,17 @@ export function ImportPackageDialog({
               <div className="fy-input-with-button">
                 <input
                   id="target-workspace-input"
+                  ref={workspaceInputRef}
                   type="text"
                   className="fy-input-text"
                   placeholder="/Users/username/work/project"
                   value={targetWorkspace}
-                  disabled={isRestoring}
+                  disabled={bindingLocked}
                   onChange={(e) => setTargetWorkspace(e.target.value)}
                 />
                 <Button
                   type="button"
-                  disabled={isRestoring}
+                  disabled={bindingLocked}
                   onClick={() => void handlePickFolder()}
                 >
                   <FolderOpenIcon size={16} />
@@ -559,7 +808,7 @@ export function ImportPackageDialog({
                     type="radio"
                     name="conflict-policy"
                     value="defaultImport"
-                    disabled={isRestoring}
+                    disabled={bindingLocked}
                     checked={conflictOption === "defaultImport"}
                     onChange={() => setConflictOption("defaultImport")}
                   />
@@ -580,7 +829,7 @@ export function ImportPackageDialog({
                     type="radio"
                     name="conflict-policy"
                     value="saveAsNewCopy"
-                    disabled={isRestoring}
+                    disabled={bindingLocked}
                     checked={conflictOption === "saveAsNewCopy"}
                     onChange={() => setConflictOption("saveAsNewCopy")}
                   />
@@ -604,12 +853,6 @@ export function ImportPackageDialog({
                 </span>
               </div>
             </div>
-
-            {restoreError && (
-              <div className="fy-field-error" role="alert">
-                {restoreError}
-              </div>
-            )}
           </div>
         )}
 
@@ -637,6 +880,7 @@ export function ImportPackageDialog({
                 const attemptError = attempt.lastError
                   ? parseMigrationError(attempt.lastError).message
                   : null;
+                const feedback = restoreAttemptFeedback(attempt);
 
                 return (
                   <div
@@ -653,13 +897,25 @@ export function ImportPackageDialog({
                       </span>
                     </div>
                     <div className="fy-attempt-meta">
-                      <div>本地 ID: {attempt.targetNativeId || "待分配"}</div>
+                      <SessionEvidenceDetails attempt={attempt} />
                       <div>工作区: {attempt.targetWorkspace || "默认"}</div>
+                      <div>阶段：{feedback.phase}</div>
+                      <div>{feedback.writeSummary}</div>
+                      <div>{feedback.nextStep}</div>
                       {attemptError && (
                         <div style={{ color: "var(--fy-danger-text)" }}>
                           失败原因: {attemptError}
                         </div>
                       )}
+                      {attempt.stage === "nativeWritten" &&
+                        onVerifyReadback && (
+                          <Button
+                            disabled={reviewing || isRestoring}
+                            onClick={() => void handleVerifyReadback(attempt)}
+                          >
+                            系统读回核验
+                          </Button>
+                        )}
                     </div>
                   </div>
                 );

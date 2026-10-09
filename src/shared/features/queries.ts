@@ -3,7 +3,6 @@ import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { usePersistentVisibility } from "../ui/PersistentSurface";
 import { useFeatures } from "./provider";
 import type { ManagedAuthConnectionActionRequest } from "./managed-auth";
-import type { ConfigRecoveryTarget } from "./config-recovery";
 import {
   PROMPT_APP_IDS,
   SKILL_DISCOVERY_PAGE_SIZE,
@@ -15,7 +14,6 @@ import {
   type SkillHubCategoryFilter,
 } from "./types";
 import type { ProviderAppId } from "./types";
-import { HEALTH_STALE_AFTER_MS, type HealthPort } from "./health";
 
 function useVisibleEnabled(enabled = true): boolean {
   const visible = usePersistentVisibility();
@@ -27,12 +25,17 @@ const changeJobsKey = [scope, "change-plans", "job"] as const;
 const dailyMemorySearchKey = [scope, "memory", "daily", "search"] as const;
 
 export const featureKeys = {
+  providerMode: (app: "claude" | "codex") =>
+    ["fyagent", "provider-mode", app] as const,
+  providerStack: (app: "claude" | "codex") =>
+    ["fyagent", "provider-stack", app] as const,
+  providerList: (app: "claude" | "codex") =>
+    ["fyagent", "provider-list", app] as const,
   configPackCandidates: [scope, "config-pack", "candidates"] as const,
-  agentHealth: (agentId: AgentCatalogId) => [scope, "health", agentId] as const,
-  configRecoveries: (targets: readonly ConfigRecoveryTarget[]) =>
-    [scope, "config-recoveries", ...targets] as const,
   agentCatalog: [scope, "agents", "catalog"] as const,
   managedAuthOverview: [scope, "managed-auth", "overview"] as const,
+  managedAuthAccountQuota: (accountId: string, revision: string) =>
+    [scope, "managed-auth", "account-quota", accountId, revision] as const,
   managedAuthConnectionPreview: (request: ManagedAuthConnectionActionRequest) =>
     [scope, "managed-auth", "connection-preview", request] as const,
   agentAuthObservation: (agentId: AgentCatalogId) =>
@@ -87,31 +90,6 @@ export function useFirstUseGuideState(enabled = true) {
   });
 }
 
-export function agentHealthQueryOptions(
-  port: HealthPort,
-  agentId: AgentCatalogId,
-) {
-  return {
-    queryKey: featureKeys.agentHealth(agentId),
-    queryFn: () => port.get(agentId),
-    staleTime: HEALTH_STALE_AFTER_MS,
-    retry: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  } as const;
-}
-
-/** Subscribe without automatic fan-out; the health controller owns serial dispatch. */
-export function useAgentHealthSnapshots(agentIds: readonly AgentCatalogId[]) {
-  const { ports } = useFeatures();
-  return useQueries({
-    queries: agentIds.map((agentId) => ({
-      ...agentHealthQueryOptions(ports.health, agentId),
-      enabled: false,
-    })),
-  });
-}
-
 export function useManagedAuthOverview(enabled = true) {
   const { ports } = useFeatures();
   return useQuery({
@@ -121,19 +99,26 @@ export function useManagedAuthOverview(enabled = true) {
   });
 }
 
-export function useConfigRecoveries(
-  targets: readonly ConfigRecoveryTarget[],
+export function useManagedAuthAccountQuota(
+  accountId: string | null,
+  revision: string | null,
   enabled: boolean,
 ) {
   const { ports } = useFeatures();
   return useQuery({
-    queryKey: featureKeys.configRecoveries(targets),
-    queryFn: () => ports.configRecovery.list(targets),
-    enabled: useVisibleEnabled(enabled),
+    queryKey: featureKeys.managedAuthAccountQuota(
+      accountId ?? "",
+      revision ?? "",
+    ),
+    queryFn: () => ports.managedAuth.getAccountQuota(accountId!),
+    enabled: useVisibleEnabled(
+      enabled && accountId !== null && revision !== null,
+    ),
     retry: false,
     gcTime: 0,
-    staleTime: 0,
+    staleTime: Infinity,
     refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 

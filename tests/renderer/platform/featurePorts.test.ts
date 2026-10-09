@@ -1,3 +1,4 @@
+const probeRequestId = "00000000-0000-4000-8000-000000000001";
 import {
   codexInstallPreflightFixture,
   confirmationId,
@@ -5,6 +6,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CODEX_DESKTOP_PAYLOAD_ERROR } from "@/domain/codex-desktop";
+import { MCP_IMPORT_SOURCES } from "@/shared/features/mcp";
 import type {
   InstallerErrorDto,
   JobSnapshot,
@@ -292,6 +294,74 @@ function catalogFixture(): AgentCatalogResult {
 }
 
 describe("Renderer feature ports", () => {
+  it("uses closed Claude preview/apply commands and refuses new apply authority", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/shared/platform/tauri/features"
+    );
+    const ports = createTauriFeaturePorts();
+    const previewId = "11111111-1111-4111-8111-111111111111";
+    const request = {
+      name: "Claude",
+      baseUrl: "https://claude.example.test",
+      apiKey: "private",
+      modelId: "fixture",
+    };
+    const preview = {
+      contractVersion: 1,
+      previewId,
+      writeTargets: [],
+      preservedPaths: ["~/.claude/settings.json", "~/.claude.json"],
+    };
+    invoke.mockResolvedValueOnce(preview);
+    expect(await ports.providers.previewClaudeQuickSetup(request)).toEqual(
+      preview,
+    );
+    expect(invoke).toHaveBeenLastCalledWith("preview_claude_quick_setup", {
+      request,
+    });
+    const outcome = {
+      contractVersion: 1,
+      overall: "stale",
+      providerState: "unchanged",
+      files: [
+        { target: "claude_settings", state: "notAttempted" },
+        { target: "claude_mcp", state: "notAttempted" },
+      ],
+    };
+    invoke.mockResolvedValueOnce(outcome);
+    expect(
+      await ports.providers.applyClaudeQuickSetupPreview({ previewId }),
+    ).toEqual(outcome);
+    expect(invoke).toHaveBeenLastCalledWith(
+      "apply_claude_quick_setup_preview",
+      { request: { previewId } },
+    );
+    invoke.mockClear();
+    await expect(
+      ports.providers.applyClaudeQuickSetupPreview({
+        previewId,
+        apiKey: "private",
+      } as never),
+    ).rejects.toThrow();
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce({ ...outcome, overall: "applied" });
+    await expect(
+      ports.providers.applyClaudeQuickSetupPreview({ previewId }),
+    ).rejects.toThrow();
+    invoke.mockClear();
+    await expect(
+      ports.providers.applyQuickSetupWithResult(request, "claude"),
+    ).rejects.toThrow("Claude 保存需要先预览");
+    expect(invoke).not.toHaveBeenCalled();
+    const browser = createBrowserFeaturePorts();
+    await expect(
+      browser.providers.previewClaudeQuickSetup(request),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      browser.providers.applyClaudeQuickSetupPreview({ previewId }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+  });
+
   beforeEach(() => {
     invoke.mockReset();
     listen.mockReset();
@@ -521,6 +591,7 @@ describe("Renderer feature ports", () => {
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(
       ports.providers.checkModel({
+        requestId: probeRequestId,
         app: "claude",
         baseUrl: "https://example.test",
         apiKey: "key",
@@ -601,6 +672,10 @@ describe("Renderer feature ports", () => {
       }
       if (command === "stream_check_model") {
         return {
+          requestId: probeRequestId,
+          terminal: "completed",
+          requestCount: 1,
+          inputMode: "compatibility",
           status: "failed",
           success: false,
           message: "HTTP 401: invalid api key",
@@ -657,6 +732,7 @@ describe("Renderer feature ports", () => {
     });
     await expect(
       ports.providers.checkModel({
+        requestId: probeRequestId,
         app: "codex",
         baseUrl: "https://example.test/v1",
         apiKey: "mutation-only-key",
@@ -669,6 +745,11 @@ describe("Renderer feature ports", () => {
       responseTimeMs: 18,
       httpStatus: 401,
       modelUsed: "model-a",
+      requestId: probeRequestId,
+      terminal: "completed",
+      requestCount: 1,
+      inputMode: "compatibility",
+      retryCount: 0,
       errorCategory: null,
     });
 
@@ -701,6 +782,7 @@ describe("Renderer feature ports", () => {
       [
         "stream_check_model",
         {
+          requestId: probeRequestId,
           app: "codex",
           baseUrl: "https://example.test/v1",
           apiKey: "mutation-only-key",
@@ -783,6 +865,10 @@ describe("Renderer feature ports", () => {
       }
       if (command === "stream_check_model") {
         return {
+          requestId: probeRequestId,
+          terminal: "completed",
+          requestCount: 1,
+          inputMode: "compatibility",
           status: "failed",
           success: false,
           message: "HTTP 401: invalid api key",
@@ -842,6 +928,7 @@ describe("Renderer feature ports", () => {
     });
     await expect(
       ports.opencodeModels.checkModel({
+        requestId: probeRequestId,
         app: "opencode",
         baseUrl: "https://example.test/v1",
         apiKey: "oc-key",
@@ -854,6 +941,11 @@ describe("Renderer feature ports", () => {
       responseTimeMs: 18,
       httpStatus: 401,
       modelUsed: "model-a",
+      requestId: probeRequestId,
+      terminal: "completed",
+      requestCount: 1,
+      inputMode: "compatibility",
+      retryCount: 0,
       errorCategory: null,
     });
 
@@ -878,6 +970,7 @@ describe("Renderer feature ports", () => {
       [
         "stream_check_model",
         {
+          requestId: probeRequestId,
           app: "opencode",
           baseUrl: "https://example.test/v1",
           apiKey: "oc-key",
@@ -1384,7 +1477,29 @@ describe("Renderer feature ports", () => {
     const { createTauriFeaturePorts } = await import(
       "@/shared/platform/tauri/features"
     );
-    invoke.mockResolvedValue(undefined);
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "get_mcp_servers") return {};
+      if (
+        command === "get_installed_skills" ||
+        command === "scan_unmanaged_skills"
+      )
+        return [];
+      if (command === "import_mcp_from_apps")
+        return {
+          contractVersion: 1,
+          projectionFailed: 0,
+          projectionFailures: [],
+          sources: MCP_IMPORT_SOURCES.map((source) => ({
+            source: source.id,
+            added: 0,
+            assignmentChanged: 0,
+            unchanged: 0,
+            disabledSkipped: 0,
+            failureCode: null,
+          })),
+        };
+      return undefined;
+    });
     const ports = createTauriFeaturePorts();
     const skill = {
       key: "owner/repo:skill-a",
@@ -1512,6 +1627,110 @@ describe("Renderer feature ports", () => {
       ["get_settings"],
       ["save_settings", { settings: { skillSyncMethod: "copy" } }],
     ]);
+  });
+
+  it("validates selected MCP import sources before invoking and parses closed credential-free results", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/shared/platform/tauri/features"
+    );
+    const ports = createTauriFeaturePorts();
+    const report = {
+      contractVersion: 1,
+      projectionFailed: 0,
+      projectionFailures: [],
+      sources: [
+        {
+          source: "qoderwork",
+          added: 0,
+          assignmentChanged: 1,
+          unchanged: 0,
+          disabledSkipped: 2,
+          failureCode: null,
+        },
+      ],
+    };
+    for (const selection of [[], ["qoderwork", "qoderwork"], ["unknown"]]) {
+      await expect(
+        ports.mcp.importFromApps(selection as never),
+      ).rejects.toThrow("请选择有效且不重复的 MCP 导入来源");
+    }
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValue(report);
+    await expect(ports.mcp.importFromApps(["qoderwork"])).resolves.toEqual(
+      report,
+    );
+    expect(invoke).toHaveBeenCalledWith("import_mcp_from_apps", {
+      sources: ["qoderwork"],
+    });
+    const partial = {
+      ...report,
+      projectionFailed: 1,
+      projectionFailures: [
+        { target: "qoderwork", serverId: "demo", reason: "io_failed" },
+      ],
+    };
+    invoke.mockResolvedValue(partial);
+    await expect(ports.mcp.importFromApps(["qoderwork"])).resolves.toEqual(
+      partial,
+    );
+    for (const bad of [
+      0,
+      { ...report, contractVersion: 2 },
+      { contractVersion: 1, sources: report.sources },
+      { ...report, projectionFailed: -1 },
+      { ...report, projectionFailed: 0.5 },
+      { ...report, projectionFailed: Number.MAX_SAFE_INTEGER + 1 },
+      { ...partial, projectionFailed: 0 },
+      {
+        ...partial,
+        sources: [
+          {
+            ...report.sources[0],
+            assignmentChanged: 0,
+            disabledSkipped: 0,
+            failureCode: "source_failed",
+          },
+        ],
+      },
+      { ...report, projectionFailures: null },
+      ...[
+        null,
+        [],
+        { target: "unknown", serverId: "demo", reason: "io_failed" },
+        { target: "codex", serverId: "demo", reason: "io_failed" },
+        { target: "qoderwork", reason: "io_failed" },
+        { target: "qoderwork", serverId: "", reason: "io_failed" },
+        { target: "qoderwork", serverId: 1, reason: "io_failed" },
+        { target: "qoderwork", serverId: "demo", reason: "raw-secret" },
+        { ...partial.projectionFailures[0], path: "private-path" },
+      ].map((failure) => ({ ...partial, projectionFailures: [failure] })),
+      { ...report, path: "private-path" },
+      { ...report, sources: [] },
+      { ...report, sources: [{ ...report.sources[0], added: -1 }] },
+      {
+        ...report,
+        sources: [{ ...report.sources[0], failureCode: "source_failed" }],
+      },
+      { ...report, sources: [{ ...report.sources[0], source: "codex" }] },
+    ]) {
+      invoke.mockResolvedValue(bad);
+      await expect(ports.mcp.importFromApps(["qoderwork"])).rejects.toThrow(
+        "MCP 导入结果无效",
+      );
+    }
+    for (const reason of ["invalid_config", "io_failed", "projection_failed"]) {
+      const collectionFailure = {
+        ...partial,
+        sources: [{ ...report.sources[0], source: "claude" }],
+        projectionFailures: [{ target: "claude", serverId: null, reason }],
+      };
+      invoke.mockResolvedValue(collectionFailure);
+      await expect(ports.mcp.importFromApps(["claude"])).resolves.toEqual(
+        collectionFailure,
+      );
+    }
+    invoke.mockResolvedValue({ demo: { sources: ["private-path"] } });
+    await expect(ports.mcp.getAll()).rejects.toThrow("MCP 来源记录无效");
   });
 
   it("uses exact Prompt commands for every supported application and parses authoritative data", async () => {

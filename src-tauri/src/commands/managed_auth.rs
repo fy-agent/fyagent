@@ -5,11 +5,12 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::services::managed_auth::{
-    validate_session_id, ManagedAuthAccountMutationRequest, ManagedAuthAccountRemovalPreview,
-    ManagedAuthAccountRemovalRequest, ManagedAuthConnectionActionPreview,
-    ManagedAuthConnectionActionRequest, ManagedAuthErrorDto, ManagedAuthLoginMethod,
-    ManagedAuthLoginSessionSnapshot, ManagedAuthMutationResult, ManagedAuthOverview,
-    ManagedAuthReasonCode, NativeManagedAuthService, StartManagedAuthLoginRequest,
+    validate_account_id, validate_session_id, ManagedAuthAccountMutationRequest,
+    ManagedAuthAccountQuota, ManagedAuthAccountRemovalPreview, ManagedAuthAccountRemovalRequest,
+    ManagedAuthConnectionActionPreview, ManagedAuthConnectionActionRequest, ManagedAuthErrorDto,
+    ManagedAuthLoginMethod, ManagedAuthLoginSessionSnapshot, ManagedAuthMutationResult,
+    ManagedAuthOverview, ManagedAuthReasonCode, NativeManagedAuthService,
+    StartManagedAuthLoginRequest,
 };
 
 pub struct ManagedAuthState(pub(crate) Arc<NativeManagedAuthService>);
@@ -17,6 +18,15 @@ pub struct ManagedAuthState(pub(crate) Arc<NativeManagedAuthService>);
 #[tauri::command]
 pub fn managed_auth_get_overview(state: State<'_, ManagedAuthState>) -> ManagedAuthOverview {
     state.0.overview()
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn managed_auth_get_account_quota(
+    account_id: String,
+    state: State<'_, ManagedAuthState>,
+) -> Result<ManagedAuthAccountQuota, ManagedAuthErrorDto> {
+    validate_account_id(&account_id)?;
+    state.0.get_account_quota(&account_id).await
 }
 
 #[tauri::command(rename_all = "camelCase")]

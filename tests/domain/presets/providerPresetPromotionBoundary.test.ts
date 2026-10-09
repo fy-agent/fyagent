@@ -28,7 +28,7 @@ const partnerMetadataKeys = [
   "primePartner",
   "partnerPromotionKey",
 ] as const;
-const trackingQueryKeys = new Set(["affiliate", "ic", "ref", "referral"]);
+const trackingQueryKeys = new Set(["aff", "affiliate", "ic", "ref", "referral"]);
 
 describe("provider preset promotion boundary", () => {
   it("keeps partner metadata and tracking parameters out of every preset", () => {

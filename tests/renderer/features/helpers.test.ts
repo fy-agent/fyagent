@@ -75,15 +75,27 @@ describe("Renderer feature helpers", () => {
       sanitizeMcpConfigurationError(
         new Error("Authorization header contains secret-token"),
       ),
-    ).toBe("MCP 配置中的敏感字段未通过校验，请检查对应字段格式");
+    ).toBe("MCP 操作未确认完成，请检查敏感字段格式并核对目标配置");
     expect(sanitizeMcpConfigurationError(new Error("URL is required"))).toBe(
-      "MCP 配置中的 URL 未通过校验，请检查连接地址",
+      "MCP 操作未确认完成，请检查连接地址并核对目标配置",
     );
     expect(
       sanitizeMcpConfigurationError(
         new Error("value xyz-unknown was rejected"),
       ),
-    ).toBe("MCP 配置保存失败，请检查服务器字段");
+    ).toBe("MCP 操作未确认完成，请核对管理列表和目标配置后再继续");
+  });
+
+  it("classifies native configuration read failures without echoing source details or claiming zero writes", () => {
+    for (const prefix of ["JSON 解析错误:", "TOML 解析错误:", "IO 错误:"]) {
+      const message = sanitizeMcpConfigurationError(
+        `${prefix} private-path: TOKEN=private-token`,
+      );
+      expect(message).toContain("核对管理列表和目标配置");
+      expect(message).not.toContain("private-");
+      expect(message).not.toContain("未通过校验");
+      expect(message).not.toContain("未写入");
+    }
   });
 
   it("parses env and headers at the required earliest separator", () => {

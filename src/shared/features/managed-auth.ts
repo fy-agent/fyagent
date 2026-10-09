@@ -146,6 +146,51 @@ export const MANAGED_AUTH_MUTATION_OUTCOMES = [
 export type ManagedAuthMutationOutcome =
   (typeof MANAGED_AUTH_MUTATION_OUTCOMES)[number];
 
+export const MANAGED_AUTH_QUOTA_STATUSES = [
+  "available",
+  "unavailable",
+  "requires_reauth",
+  "native_refresh_required",
+] as const;
+export type ManagedAuthQuotaStatus =
+  (typeof MANAGED_AUTH_QUOTA_STATUSES)[number];
+
+export const MANAGED_AUTH_QUOTA_PROVIDERS = ["openai", "xai"] as const;
+export type ManagedAuthQuotaProvider =
+  (typeof MANAGED_AUTH_QUOTA_PROVIDERS)[number];
+
+export const MANAGED_AUTH_QUOTA_WINDOW_IDS = [
+  "five_hour",
+  "seven_day",
+  "seven_day_fable",
+  "seven_day_opus",
+  "seven_day_sonnet",
+  "30_day",
+  "weekly_limit",
+  "monthly",
+  "credits",
+] as const;
+export type ManagedAuthQuotaWindowId =
+  | (typeof MANAGED_AUTH_QUOTA_WINDOW_IDS)[number]
+  | `${number}_hour`
+  | `${number}_day`;
+
+export interface ManagedAuthQuotaWindow {
+  windowId: ManagedAuthQuotaWindowId;
+  remainingPercent: number;
+  resetsAt: string | null;
+}
+
+export interface ManagedAuthAccountQuota {
+  contractVersion: typeof MANAGED_AUTH_CONTRACT_VERSION;
+  accountId: string;
+  provider: ManagedAuthQuotaProvider;
+  checkedAt: string;
+  status: ManagedAuthQuotaStatus;
+  reasonCode: ManagedAuthReasonCode | null;
+  windows: ManagedAuthQuotaWindow[];
+}
+
 export interface ManagedAuthProviderSummary {
   provider: ManagedAuthProvider;
   available: boolean;
@@ -276,6 +321,7 @@ export interface ManagedAuthMutationResult {
 
 export interface ManagedAuthPort {
   getOverview(): Promise<ManagedAuthOverview>;
+  getAccountQuota(accountId: string): Promise<ManagedAuthAccountQuota>;
   startLogin(
     request: StartManagedAuthLoginRequest,
   ): Promise<ManagedAuthLoginSessionSnapshot>;
@@ -716,6 +762,7 @@ export function parseManagedAuthLoginSession(
       (userCode !== null || verificationUri !== null || expiresAt !== null)) ||
     (value.method === "device_code" &&
       !terminal &&
+      value.stage !== "preparing" &&
       (userCode === null || verificationUri === null || expiresAt === null)) ||
     (value.purpose === "save_only" && value.consumer !== null) ||
     (value.purpose === "connect_consumer" && value.consumer === null) ||
@@ -990,6 +1037,91 @@ export function parseManagedAuthMutationResult(
   };
 }
 
+const GENERATED_QUOTA_WINDOW_ID = /^\d{1,2}_(?:hour|day)$/u;
+
+function parseQuotaWindowId(value: unknown): ManagedAuthQuotaWindowId {
+  if (
+    typeof value === "string" &&
+    (isOneOf(value, MANAGED_AUTH_QUOTA_WINDOW_IDS) ||
+      GENERATED_QUOTA_WINDOW_ID.test(value))
+  ) {
+    return value as ManagedAuthQuotaWindowId;
+  }
+  dataError();
+}
+
+function parseQuotaWindow(value: unknown): ManagedAuthQuotaWindow {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["windowId", "remainingPercent", "resetsAt"]) ||
+    typeof value.remainingPercent !== "number" ||
+    !Number.isInteger(value.remainingPercent) ||
+    value.remainingPercent < 0 ||
+    value.remainingPercent > 100
+  ) {
+    dataError();
+  }
+  return {
+    windowId: parseQuotaWindowId(value.windowId),
+    remainingPercent: value.remainingPercent,
+    resetsAt: parseNullableTimestamp(value.resetsAt),
+  };
+}
+
+export function parseManagedAuthAccountQuota(
+  value: unknown,
+  accountId: string,
+): ManagedAuthAccountQuota {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "contractVersion",
+      "accountId",
+      "provider",
+      "checkedAt",
+      "status",
+      "reasonCode",
+      "windows",
+    ]) ||
+    value.contractVersion !== MANAGED_AUTH_CONTRACT_VERSION ||
+    value.accountId !== accountId ||
+    !isOneOf(value.provider, MANAGED_AUTH_QUOTA_PROVIDERS) ||
+    !isIsoTimestamp(value.checkedAt) ||
+    !isOneOf(value.status, MANAGED_AUTH_QUOTA_STATUSES) ||
+    (value.reasonCode !== null &&
+      !isOneOf(value.reasonCode, MANAGED_AUTH_REASON_CODES)) ||
+    !Array.isArray(value.windows) ||
+    value.windows.length > 8
+  ) {
+    dataError();
+  }
+  const windows = value.windows.map(parseQuotaWindow);
+  if (
+    new Set(windows.map((window) => window.windowId)).size !== windows.length
+  ) {
+    dataError();
+  }
+  if (
+    (value.status === "available" &&
+      (value.reasonCode !== null || windows.length === 0)) ||
+    (value.status === "native_refresh_required" &&
+      (value.reasonCode !== null || windows.length > 0)) ||
+    ((value.status === "unavailable" || value.status === "requires_reauth") &&
+      (value.reasonCode === null || windows.length > 0))
+  ) {
+    dataError();
+  }
+  return {
+    contractVersion: MANAGED_AUTH_CONTRACT_VERSION,
+    accountId: parseAccountId(value.accountId),
+    provider: value.provider,
+    checkedAt: value.checkedAt,
+    status: value.status,
+    reasonCode: value.reasonCode,
+    windows,
+  };
+}
+
 function requestRecord(value: unknown, keys: readonly string[]) {
   if (!isRecord(value) || !hasExactKeys(value, keys)) requestError();
   return value;
@@ -1110,6 +1242,10 @@ export function assertManagedAuthRemovalMutation(
 
 export function assertManagedAuthSessionId(sessionId: string): string {
   return requestSessionId(sessionId);
+}
+
+export function assertManagedAuthAccountId(accountId: string): string {
+  return requestAccountId(accountId);
 }
 
 export function assertManagedAuthLoginMethod(

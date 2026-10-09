@@ -1,3 +1,9 @@
+import { providerAggregationPorts } from "./providerAggregation";
+import {
+  parseClaudeQuickSetupApplyRequest,
+  parseClaudeQuickSetupPreview,
+  parseClaudeQuickSetupOutcome,
+} from "../../../features/claude-quick-setup";
 import {
   apiProtocolsForTarget,
   isApiProtocol,
@@ -13,6 +19,7 @@ import type {
   FetchedModelRef,
   ModelProbeRequest,
   ModelProbeResult,
+  ModelProbeSnapshot,
   OpenCodeFetchModelsRequest,
   OpenCodeModelSnapshot,
   OpenCodeSaveModelsRequest,
@@ -155,24 +162,120 @@ function parseReachabilityResult(value: unknown): ReachabilityResult {
   };
 }
 
-function parseModelProbeResult(value: unknown): ModelProbeResult {
+function isModelProbeRequestId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+      value,
+    )
+  );
+}
+
+function hasValidProbeCounts(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.requestCount === "number" &&
+    Number.isInteger(value.requestCount) &&
+    value.requestCount >= 0 &&
+    value.requestCount <= 2 &&
+    typeof value.retryCount === "number" &&
+    Number.isInteger(value.retryCount) &&
+    value.retryCount === Math.max(0, value.requestCount - 1)
+  );
+}
+
+function parseModelProbeSnapshot(
+  value: unknown,
+  requestId: string,
+): ModelProbeSnapshot {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "requestId",
+      "phase",
+      "requestCount",
+      "retryCount",
+    ]) ||
+    value.requestId !== requestId ||
+    !isModelProbeRequestId(value.requestId) ||
+    !isOneOf(value.phase, [
+      "running",
+      "retrying",
+      "cancelling",
+      "completed",
+      "cancelled",
+    ]) ||
+    !hasValidProbeCounts(value) ||
+    (value.phase === "retrying" && value.requestCount !== 2) ||
+    (value.phase === "running" && value.requestCount === 2)
+  ) {
+    throw new Error("Model probe state is unavailable");
+  }
+  return {
+    requestId: value.requestId,
+    phase: value.phase,
+    requestCount: value.requestCount as number,
+    retryCount: value.retryCount as number,
+  };
+}
+
+async function invokeModelProbeStatus(
+  requestId: string,
+): Promise<ModelProbeSnapshot> {
+  if (!isModelProbeRequestId(requestId))
+    throw new Error("Model probe request is invalid");
+  return parseModelProbeSnapshot(
+    await invoke<unknown>("stream_check_model_status", { requestId }),
+    requestId,
+  );
+}
+
+async function invokeCancelModelProbe(
+  requestId: string,
+): Promise<ModelProbeSnapshot> {
+  if (!isModelProbeRequestId(requestId))
+    throw new Error("Model probe request is invalid");
+  return parseModelProbeSnapshot(
+    await invoke<unknown>("stream_check_model_cancel", { requestId }),
+    requestId,
+  );
+}
+
+function parseModelProbeResult(
+  value: unknown,
+  requestId: string,
+): ModelProbeResult {
   if (
     !isRecord(value) ||
     !hasRequiredAndOptionalKeys(
       value,
-      ["status", "success", "message", "modelUsed"],
       [
-        "responseTimeMs",
-        "httpStatus",
-        "testedAt",
+        "status",
+        "success",
+        "message",
+        "modelUsed",
+        "requestId",
+        "terminal",
+        "requestCount",
         "retryCount",
-        "errorCategory",
+        "inputMode",
       ],
+      ["responseTimeMs", "httpStatus", "testedAt", "errorCategory"],
     ) ||
     !isOneOf(value.status, ["operational", "degraded", "failed"]) ||
     typeof value.success !== "boolean" ||
     typeof value.message !== "string" ||
     typeof value.modelUsed !== "string" ||
+    value.requestId !== requestId ||
+    !isModelProbeRequestId(value.requestId) ||
+    !isOneOf(value.terminal, ["completed", "cancelled"]) ||
+    value.inputMode !== "compatibility" ||
+    !hasValidProbeCounts(value) ||
+    (value.success &&
+      (value.requestCount === 0 ||
+        value.terminal !== "completed" ||
+        value.status === "failed")) ||
+    (value.terminal === "cancelled" &&
+      (value.success || value.status !== "failed")) ||
     (value.responseTimeMs !== undefined &&
       value.responseTimeMs !== null &&
       (typeof value.responseTimeMs !== "number" ||
@@ -187,6 +290,11 @@ function parseModelProbeResult(value: unknown): ModelProbeResult {
   )
     throw new Error("Model probe result is unavailable");
   return {
+    requestId: value.requestId,
+    terminal: value.terminal,
+    requestCount: value.requestCount as number,
+    retryCount: value.retryCount as number,
+    inputMode: "compatibility",
     success: value.success,
     status: value.status,
     message: value.message,
@@ -206,9 +314,10 @@ function assertModelProbeRequest(
     !isRecord(request) ||
     !hasRequiredAndOptionalKeys(
       request,
-      ["app", "baseUrl", "apiKey", "modelId"],
+      ["requestId", "app", "baseUrl", "apiKey", "modelId"],
       ["codexImageExtension", "protocol"],
     ) ||
+    !isModelProbeRequestId(request.requestId) ||
     !isOneOf(request.app, [
       "claude",
       "codex",
@@ -246,6 +355,7 @@ async function invokeModelProbe(
   const payload = assertModelProbeRequest(request);
   return parseModelProbeResult(
     await invoke<unknown>("stream_check_model", {
+      requestId: payload.requestId,
       app: payload.app,
       baseUrl: payload.baseUrl,
       apiKey: payload.apiKey,
@@ -253,6 +363,7 @@ async function invokeModelProbe(
       codexImageExtension: payload.codexImageExtension,
       ...(payload.protocol !== undefined ? { protocol: payload.protocol } : {}),
     }),
+    payload.requestId,
   );
 }
 
@@ -489,6 +600,19 @@ export function createModelFeaturePorts(): Pick<
 > {
   return {
     providers: {
+      ...providerAggregationPorts,
+      previewClaudeQuickSetup: async (request) =>
+        parseClaudeQuickSetupPreview(
+          await invoke<unknown>("preview_claude_quick_setup", {
+            request: assertQuickSetupRequest(request, "claude"),
+          }),
+        ),
+      applyClaudeQuickSetupPreview: async (request) =>
+        parseClaudeQuickSetupOutcome(
+          await invoke<unknown>("apply_claude_quick_setup_preview", {
+            request: parseClaudeQuickSetupApplyRequest(request),
+          }),
+        ),
       getSummary: async (app) =>
         parseProviderSummary(
           await invoke("get_provider_summary", { app }),
@@ -502,11 +626,14 @@ export function createModelFeaturePorts(): Pick<
         (
           await import("./managedSubscriptions")
         ).managedProviderPorts.restoreManagedProxy(app),
-      applyQuickSetupWithResult: (request, app) =>
-        invoke("apply_provider_quick_setup_with_result", {
+      applyQuickSetupWithResult: (request, app) => {
+        if (app === "claude")
+          throw new Error("Claude 保存需要先预览并确认保存范围");
+        return invoke("apply_provider_quick_setup_with_result", {
           request: assertQuickSetupRequest(request, app),
           app,
-        }),
+        });
+      },
       fetchModels: async (baseUrl, apiKey) =>
         parseFetchedModelRefs(
           await invoke<unknown>("fetch_models_for_config", {
@@ -516,6 +643,8 @@ export function createModelFeaturePorts(): Pick<
         ),
       checkReachability: invokeReachability,
       checkModel: invokeModelProbe,
+      getModelProbeStatus: invokeModelProbeStatus,
+      cancelModelProbe: invokeCancelModelProbe,
       bindXaiManaged: async (request) =>
         (
           await import("./managedSubscriptions")
@@ -536,6 +665,8 @@ export function createModelFeaturePorts(): Pick<
       saveModels: (request) => invoke("save_workbuddy_models", { request }),
       checkReachability: invokeReachability,
       checkModel: invokeModelProbe,
+      getModelProbeStatus: invokeModelProbeStatus,
+      cancelModelProbe: invokeCancelModelProbe,
     },
     opencodeModels: {
       restoreManagedProxy: async () =>
@@ -564,6 +695,8 @@ export function createModelFeaturePorts(): Pick<
         ),
       checkReachability: invokeReachability,
       checkModel: invokeModelProbe,
+      getModelProbeStatus: invokeModelProbeStatus,
+      cancelModelProbe: invokeCancelModelProbe,
     },
   };
 }

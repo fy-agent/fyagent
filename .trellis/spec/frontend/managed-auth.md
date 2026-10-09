@@ -34,6 +34,7 @@ fixtures or mock IPC into native authentication evidence.
 ```ts
 interface ManagedAuthPort {
   getOverview(): Promise<ManagedAuthOverview>;
+  getAccountQuota(accountId: string): Promise<ManagedAuthAccountQuota>;
   startLogin(
     request: StartManagedAuthLoginRequest,
   ): Promise<ManagedAuthLoginSessionSnapshot>;
@@ -115,6 +116,10 @@ request mode is a third-party API.
 - Account rows show provider identity, login label, health, default state and
   connection count. Quota/profile availability does not redefine login health
   or reorder accounts by short-lived usage.
+- Account rows claim connected only for matching `connected` slots without
+  pending restart or `native_projection_unavailable`; the page header shows
+  one prioritized account/connection/source status, with details retained in
+  the existing account and connection rows.
 - Account detail lists already-linked software and matching unlinked software
   for the same provider. Linked means live-connected (`accountId` matches and
   `authStatus` is not `disconnected`). A saved-not-projected Codex slot that
@@ -140,7 +145,7 @@ request mode is a third-party API.
   installs software as a side effect.
 - Internal terms such as SecretRef, credential ID, refresh-token lineage,
   projection generation never appear in product copy or DOM. Native-resolved
-  display paths are shown only by explicit file-impact/recovery controls;
+  display paths are shown only by explicit file-impact controls;
   paths never become renderer-controlled write destinations.
 
 ### Saved Codex request source
@@ -179,6 +184,10 @@ listed in
 [Renderer Change Plan Workspaces](./change-plan-workspaces.md#6-tests-required).
 
 ### Strict wire boundary
+
+Login-stage parsing, startup feedback and login-dialog observation are owned by
+[Managed Auth Login](./managed-auth-login.md). Its nullable Preparing contract
+also applies when recovering active sessions from the account overview.
 
 - `managed-auth.ts` parses every native response from `unknown`, requires the
   exact contract version and exact key set, and accepts only closed enums,
@@ -222,17 +231,20 @@ listed in
   still requires a separate impact preview and explicit connection action.
   Login stages show their current action and include supporting text when the
   user needs to act, recover or continue in another window.
-- `FileRecoveryButton` composes the closed recovery port. It loads only on
-  request, shows actual source/backup paths, explicitly distinguishes restoring
-  an old file from deleting a first-created file, and requires confirmation.
-  Changed external files or backups disable automatic restore. Successful
-  restore rereads affected feature state; it is not account deletion, Provider
-  deletion, server-side token revocation or proven live consumer pickup.
-  The native contract is [Reversible User Configuration](../backend/reversible-user-config.md).
 
 - TanStack Query owns the overview and active-session snapshots. URL state owns
   the selected view/account/consumer. Secret or OAuth material never enters
   Query state, route state or localStorage.
+- Account quota is a separate Query keyed by `accountId` and the current
+  account revision. It is enabled only for a visible selected OpenAI/xAI
+  account on the accounts view. There is no polling, timer, extra cache store,
+  retry, refetch-on-focus or refetch-on-reconnect. One read runs when that
+  account is selected; later reads are explicit refresh. Switching accounts
+  must not keep the previous account's windows. A Query error withholds the
+  previous snapshot so a failed refresh cannot present stale remaining
+  percents. `native_refresh_required` copy is 「请重新登录以读取额度」;
+  FyAgent-owned reauth stays 「登录已失效，请重新登录。」 Unknown plan text is
+  omitted.
 - Login-session polling/recovery is owned by one hook. Remount resumes the
   backend session instead of starting a duplicate. Polling stops while the
   persistent route is hidden and on terminal/unmount.
@@ -255,9 +267,8 @@ listed in
 - Connection mutation results are retained by connection ID. A failure or partial
   result on target B never clears target A's completion. Failed writes reread the
   overview; retry selects the latest connection revision and opens a fresh,
-  single-use preview rather than resubmitting the consumed one. File recovery is
-  scoped to Codex auth/config or OpenCode auth as applicable and rereads feature
-  state afterwards. These are per-target actions, not an atomic batch operation.
+  single-use preview rather than resubmitting the consumed one. These are
+  per-target actions, not an atomic batch operation.
 - `pendingRestart`, partial completion, external change, unavailable authority
   and recovery-required remain explicit states. Starting a browser, writing a
   credential or launching software is not sufficient to paint success.
@@ -391,7 +402,9 @@ Required assertions include:
   and under-counted summaries are rejected;
 - maximum-eight/unique session parsing plus backend per-provider single-flight
   and cross-provider coexistence;
-- Tauri command/payload mapping and request/response identity binding;
+- Tauri command/payload mapping and request/response identity binding,
+  including `managed_auth_get_account_quota` accountId binding, leak rejection
+  and selected-account quota query/refresh wiring;
 - `/auth` routing, navigation selection, primary-route keep-alive and browser
   native-only behavior;
 - account/connection/request-source separation, login recovery, device-code

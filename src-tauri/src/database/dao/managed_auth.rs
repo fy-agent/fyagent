@@ -279,6 +279,7 @@ impl Database {
         access_expires_at: Option<i64>,
         status: CredentialStatus,
         refreshed_at: i64,
+        authenticated_at: Option<i64>,
     ) -> Result<bool, AppError> {
         let expected_generation = i64::try_from(expected_generation)
             .map_err(|_| AppError::Database("managed auth generation overflow".to_string()))?;
@@ -289,7 +290,8 @@ impl Database {
             .execute(
                 "UPDATE managed_auth_credentials
                  SET secret_version = ?4, generation = ?5, access_expires_at = ?6,
-                     status = ?7, refreshed_at = ?8, updated_at = ?8
+                     status = ?7, refreshed_at = ?8, updated_at = ?8,
+                     authenticated_at = COALESCE(?9, authenticated_at)
                  WHERE credential_id = ?1 AND generation = ?2 AND refresh_owner = ?3",
                 params![
                     credential_id,
@@ -300,6 +302,7 @@ impl Database {
                     access_expires_at,
                     status.as_str(),
                     refreshed_at,
+                    authenticated_at,
                 ],
             )
             .map_err(|error| database_error("update managed auth secret metadata", error))?;

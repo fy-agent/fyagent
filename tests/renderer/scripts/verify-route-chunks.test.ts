@@ -86,11 +86,21 @@ afterEach(async () => {
 });
 
 describe("verifyRouteChunks", () => {
-  it("accepts nine distinct routes and the reviewed deferred ports outside the bounded initial graph", async () => {
+  it("accepts eight distinct routes and the reviewed deferred ports outside the bounded initial graph", async () => {
     const distributionDirectory = await fixture();
     const result = await verifyRouteChunks({ distributionDirectory });
 
-    expect(result.routeChunks).toHaveLength(9);
+    expect(result.routeChunks).toHaveLength(8);
+    expect(result.routeChunks.map(({ route }) => route).sort()).toEqual([
+      "pages/agents/Page.tsx",
+      "pages/auth/Page.tsx",
+      "pages/mcp/Page.tsx",
+      "pages/memory/Page.tsx",
+      "pages/models/Page.tsx",
+      "pages/prompts/Page.tsx",
+      "pages/sessions/Page.tsx",
+      "pages/skills/Page.tsx",
+    ]);
     expect(result.routeChunks.map(({ route }) => route)).toContain(
       "pages/agents/Page.tsx",
     );
@@ -123,6 +133,20 @@ describe("verifyRouteChunks", () => {
     );
   });
 
+  it.each([
+    "shared/platform/tauri/feature-ports/databaseRecovery.ts",
+    "shared/features/database-recovery-ui/DatabaseRecoveryDialog.tsx",
+  ])("rejects a missing retained database recovery entry %s", async (entry) => {
+    const distributionDirectory = await fixture((manifest) => {
+      manifest["_main.js"].dynamicImports = (
+        manifest["_main.js"].dynamicImports as string[]
+      ).filter((key) => key !== entry);
+    });
+    await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
+      "must dynamically import exactly",
+    );
+  });
+
   it("rejects a missing Agents composition entry", async () => {
     const distributionDirectory = await fixture((manifest) => {
       manifest["_main.js"].dynamicImports = [
@@ -134,14 +158,14 @@ describe("verifyRouteChunks", () => {
       ];
     });
     await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
-      `must dynamically import exactly 9 product pages, ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports and ${RENDERER_DEFERRED_SHELL_ENTRIES.length} shell dialogs`,
+      `must dynamically import exactly 8 product pages, ${RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES.length} deferred ports and ${RENDERER_DEFERRED_SHELL_ENTRIES.length} shell dialogs`,
     );
   });
 
   it("rejects Agents sharing another primary route entry chunk", async () => {
     const distributionDirectory = await fixture((manifest) => {
       manifest["pages/agents/Page.tsx"].file =
-        manifest["pages/health/Page.tsx"].file;
+        manifest["pages/auth/Page.tsx"].file;
     });
     await expect(verifyRouteChunks({ distributionDirectory })).rejects.toThrow(
       "product pages share an entry chunk",

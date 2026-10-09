@@ -39,6 +39,7 @@ identifier = "allow-managed-auth"
 description = "Allows the main local webview to read and operate the bounded unified managed-auth control plane."
 commands.allow = [
   "managed_auth_get_overview",
+  "managed_auth_get_account_quota",
   "managed_auth_start_login",
   "managed_auth_get_login_session",
   "managed_auth_cancel_login",

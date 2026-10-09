@@ -103,7 +103,11 @@ bodies or authentication material. Native history stays in the provider store.
   a next request or model reply.
 - Release evidence and per-attempt state are independent. A local HTTP mock
   can prove request history, never a real model response. A user's manual
-  confirmation is `userAttestation`, not a system-stage update.
+  confirmation is `userAttestation`, not a system-stage update. In particular,
+  `nextTurnRequestVerified` records a verified next-turn request, not a verified
+  reply; only `nextTurnReplyVerified` records the system's reply verification.
+  Existing stage definitions do not themselves prove that a real-machine run
+  achieved them.
 - Keep formal Windows ordinary-user execution boundaries. An unavailable
   authenticated helper must fail before executing a user CLI elevated.
 - Source inspection, portable tests, native API readback, UI inspection,
@@ -120,20 +124,75 @@ corresponding provider. Probe failure disables the mutation with a useful reason
 Show unresolved and failed results without a success banner. Modal request IDs
 and pending work follow the shared Dialog lifecycle contract.
 
+The stage panel projects four separate system facts from the matching persisted
+`RestoreAttempt`; it does not add a DTO, backend stage or acceptance protocol:
+
+| System fact       | Existing receipt evidence and display boundary                                                                                                                                                                                                |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package import    | A matching receipt establishes that the package was verified and a restore receipt created. It does not establish target publication.                                                                                                         |
+| Target write      | `nativeWritten` and the existing later verified stages establish publication. Other states retain the existing failure/unknown-write summary; a receipt alone does not mean zero write or success.                                            |
+| Target readback   | `nativeReadbackVerified` and the existing later stages establish target native-history readback. This is separate from actual client opening, restart and continuation.                                                                       |
+| Real-machine loop | Present the existing `targetOpened`, `restartReadbackVerified`, `nextTurnRequestVerified` and `nextTurnReplyVerified` facts separately. Earlier stages leave the remaining actions unverified; a next-turn request is not a real model reply. |
+
+`userAttestation` remains a separate user claim and never promotes any of these
+facts, capability gates or the persisted system stage. Native readback success
+copy must not claim that the actual client has opened/restarted or produced a
+real reply. Code/renderer fixtures of these states do not close
+pending real Windows/macOS, cross-FyAgent-process receipt, actual client
+open/restart or real continuation acceptance.
+
+Renderer feedback derives the current operation from its actual RPC boundary,
+and write facts from the validated, current-device `RestoreAttempt.stage`.
+`failed` already means proven absence of side effects; do not invent a second
+evidence-version protocol or infer publication from exception text. A historical
+receipt without a recorded failure boundary must say that the failure stage was
+not recorded. A readback error preserves an already-written system stage.
+
+After a missing restore response, keep the request binding and draft across
+closing/reopening the dialog. Reconcile/list existing receipts before another
+write. Retry is available only when every selected snapshot has an authoritative
+`failed` receipt for that exact request/provider/workspace/kind binding; reuse
+the same request ID. Missing, partial, ambiguous or still-pending results cannot
+authorize a new binding or a blind retry. Source-read/package-validation errors
+before the restore call remain editable and can be retried without claiming a
+target write happened.
+
+The persistent Sessions surface gates automatic list, local-probe, detail and
+receipt observation by visibility. Hiding a page does not cancel its native
+restore, verify, attestation or reconciliation Promise or discard the known
+written stage. Each explicit operation rereads persisted attempts even while
+hidden and after rejection. Terminal readback first cancels acceptance of the
+exact previous `sessions-attempts` query while reverting to its cached preimage,
+then starts a fresh `fetchQuery(staleTime: 0)`. Stale time alone is insufficient:
+TanStack Query shares an existing in-flight read. A late pre-operation response
+cannot overwrite the new receipt. Readback failure remains a Query error and
+preserves the operation's original result/rejection and any known write facts;
+it does not turn failure into success or authorize another writer.
+
+`tests/renderer/pages/sessions/visibility.test.tsx` exercises page delegates,
+hidden observation, late results, forced-read failures and old-read isolation
+using production DTO parsers. Existing failure-lifecycle tests retain real dialog
+coverage. Browser startup proves prefetch without mounting and DOM/search
+retention; production navigation keeps the established budgets.
+These fixtures do not prove native process lifetime or another platform.
+
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Unknown package version/field, duplicate key, digest mismatch or resource limit | Reject before receipt/native mutation. |
-| Genuine missing final answer | Preserve user text; mark incomplete. |
-| Unknown assistant phase or mixed/unclassified provenance | Block export; never silently discard real input. |
-| Re-export with changed timestamps but same source/content | Same semantic snapshot/default slot. |
-| Same request delivered twice | Reuse its receipt; at most one native write. |
-| Same origin with changed content | Explicit snapshot conflict/copy decision; no auto-append. |
-| Native output unknown or readback differs | Keep unresolved, preserve mappings, prohibit blind retry. |
-| Native format cannot represent some message exactly | Fail before writing that shape; no placeholder or trimming. |
-| Target model/account unavailable | Actionable local setup error; no source credentials or invented model. |
-| User attests successful continuation | Update only the separate attestation. |
+| Condition                                                                       | Required result                                                                           |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Unknown package version/field, duplicate key, digest mismatch or resource limit | Reject before receipt/native mutation.                                                    |
+| Genuine missing final answer                                                    | Preserve user text; mark incomplete.                                                      |
+| Unknown assistant phase or mixed/unclassified provenance                        | Block export; never silently discard real input.                                          |
+| Re-export with changed timestamps but same source/content                       | Same semantic snapshot/default slot.                                                      |
+| Same request delivered twice                                                    | Reuse its receipt; at most one native write.                                              |
+| Same origin with changed content                                                | Explicit snapshot conflict/copy decision; no auto-append.                                 |
+| Native output unknown or readback differs                                       | Keep unresolved, preserve mappings, prohibit blind retry.                                 |
+| Restore RPC rejects, returns no receipt, or returns only part of the selection  | Preserve request/draft across modal lifecycle; reconcile and reread before another write. |
+| Readback RPC fails after nativeWritten                                          | Keep the written stage; show readback failure and its next action.                        |
+| Historical failed receipt has no failure-boundary field                         | Keep its proven no-side-effect fact; do not guess the historical failure operation.       |
+| Native format cannot represent some message exactly                             | Fail before writing that shape; no placeholder or trimming.                               |
+| Target model/account unavailable                                                | Actionable local setup error; no source credentials or invented model.                    |
+| User attests successful continuation                                            | Update only the separate attestation.                                                     |
 
 ## 5. Good / Base / Bad Cases
 
@@ -154,6 +213,13 @@ slots, source conflicts and crash windows. Confirm exact request binding and
 disabled capabilities in component/browser tests, plus the reachable legacy
 Memory route. Native probes use isolated provider stores and synthetic content;
 record their version, platform, commands and actual achieved evidence stage.
+The existing `tests/session-migration/ui-state.test.tsx` covers the four fact
+projections, request-versus-reply distinction and user-attestation separation;
+these are renderer assertions, not native-loop evidence. Preserve the existing
+import-dialog binding/retry and hidden-page writer/receipt lifecycle coverage.
+Cover closing/reopening an unresolved import, incomplete or mismatched receipts,
+same-binding retries after all selected rows are proven failed, source correction
+before restore, partial outcomes, and readback errors that retain written facts.
 
 Run the canonical relevant Rust, frontend, architecture, production build and
 browser gates after the final related changes. Current-host tests do not prove

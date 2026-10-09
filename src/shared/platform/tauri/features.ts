@@ -20,11 +20,11 @@ export function createTauriFeaturePorts(): FeaturePorts {
     const { createConfigPackPort } = await import("./feature-ports/configPack");
     return createConfigPackPort();
   };
-  const configRecovery = async () => {
-    const { createConfigRecoveryPort } = await import(
-      "./feature-ports/configRecovery"
+  const databaseRecovery = async () => {
+    const { createDatabaseRecoveryPort } = await import(
+      "./feature-ports/databaseRecovery"
     );
-    return createConfigRecoveryPort();
+    return createDatabaseRecoveryPort();
   };
   const models = async () => {
     const { createModelFeaturePorts } = await import("./feature-ports/models");
@@ -48,15 +48,11 @@ export function createTauriFeaturePorts(): FeaturePorts {
       saveExport: async (...args) => (await configPack()).saveExport(...args),
       cancel: async (...args) => (await configPack()).cancel(...args),
     },
-    health: {
-      get: async (agentId) => {
-        const { createHealthPort } = await import("./feature-ports/health");
-        return createHealthPort().get(agentId);
-      },
-    },
-    configRecovery: {
-      list: async (...args) => (await configRecovery()).list(...args),
-      restore: async (...args) => (await configRecovery()).restore(...args),
+    databaseRecovery: {
+      list: async () => (await databaseRecovery()).list(),
+      restore: async (filename) => (await databaseRecovery()).restore(filename),
+      checkReadability: async () =>
+        (await databaseRecovery()).checkReadability(),
     },
     agentAuth: createAgentAuthPort(),
     managedAuth: createManagedAuthPort(),
@@ -83,6 +79,25 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await codexDesktop()).subscribeJobUpdates(...args),
     },
     providers: {
+      getAll: async (...args) => (await models()).providers.getAll(...args),
+      add: async (...args) => (await models()).providers.add(...args),
+      update: async (...args) => (await models()).providers.update(...args),
+      switch: async (...args) => (await models()).providers.switch(...args),
+      getMode: async (...args) => (await models()).providers.getMode(...args),
+      setMode: async (...args) => (await models()).providers.setMode(...args),
+      setRoute: async (...args) => (await models()).providers.setRoute(...args),
+      getStack: async (...args) => (await models()).providers.getStack(...args),
+      setStackMember: async (...args) =>
+        (await models()).providers.setStackMember(...args),
+      adoptCodexCatalog: async (...args) =>
+        (await models()).providers.adoptCodexCatalog(...args),
+      restartCodexDaemon: async (...args) =>
+        (await models()).providers.restartCodexDaemon(...args),
+
+      previewClaudeQuickSetup: async (...args) =>
+        (await models()).providers.previewClaudeQuickSetup(...args),
+      applyClaudeQuickSetupPreview: async (...args) =>
+        (await models()).providers.applyClaudeQuickSetupPreview(...args),
       getSummary: async (...args) =>
         (await models()).providers.getSummary(...args),
       getProxyRestorePreview: async (...args) =>
@@ -97,6 +112,10 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).providers.checkReachability(...args),
       checkModel: async (...args) =>
         (await models()).providers.checkModel(...args),
+      getModelProbeStatus: async (...args) =>
+        (await models()).providers.getModelProbeStatus(...args),
+      cancelModelProbe: async (...args) =>
+        (await models()).providers.cancelModelProbe(...args),
       bindXaiManaged: async (...args) =>
         (await models()).providers.bindXaiManaged(...args),
       bindManagedProxy: async (...args) =>
@@ -117,6 +136,10 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).workbuddy.checkReachability(...args),
       checkModel: async (...args) =>
         (await models()).workbuddy.checkModel(...args),
+      getModelProbeStatus: async (...args) =>
+        (await models()).workbuddy.getModelProbeStatus(...args),
+      cancelModelProbe: async (...args) =>
+        (await models()).workbuddy.cancelModelProbe(...args),
     },
     opencodeModels: {
       restoreManagedProxy: async (...args) =>
@@ -133,6 +156,10 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).opencodeModels.checkReachability(...args),
       checkModel: async (...args) =>
         (await models()).opencodeModels.checkModel(...args),
+      getModelProbeStatus: async (...args) =>
+        (await models()).opencodeModels.getModelProbeStatus(...args),
+      cancelModelProbe: async (...args) =>
+        (await models()).opencodeModels.cancelModelProbe(...args),
     },
     ...createSimpleFeaturePorts(),
     ...createContentFeaturePorts(),

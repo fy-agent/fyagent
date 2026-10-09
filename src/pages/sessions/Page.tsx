@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
@@ -21,6 +21,7 @@ import { Button } from "../../shared/ui/Button";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { SplitPanes } from "../../shared/ui/split/SplitPanes";
 import { useDialogState } from "../../shared/ui/useDialogState";
+import { usePersistentVisibility } from "../../shared/ui/PersistentSurface";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import type {
   MigratableMessage,
@@ -38,10 +39,18 @@ import {
   RESTORE_STAGE_LABELS,
   SUPPORTED_PROVIDER_IDS,
   getSessionStableKey,
+  isProviderRestoreSupported,
   parseMigrationError,
 } from "../../shared/features/session-migration";
 
 import { StatusBanners } from "./components/StatusBanners";
+import { SessionStages } from "./components/SessionStages";
+import { SessionEvidenceDetails } from "./components/SessionEvidenceDetails";
+import {
+  readFailureFeedback,
+  restoreAttemptFeedback,
+  type SessionFailureFeedback,
+} from "./failure-feedback";
 import {
   ConversationStream,
   type ConversationTurn,
@@ -63,6 +72,8 @@ export function SessionsPage() {
   const { isNative } = detectRuntime();
   const { ports, notify } = useFeatures();
   const queryClient = useQueryClient();
+  const visible = usePersistentVisibility();
+  const pageRef = useRef<HTMLDivElement>(null);
 
   // Navigation & view mode
   const [viewMode, setViewMode] = useState<"sessions" | "attempts">("sessions");
@@ -93,7 +104,7 @@ export function SessionsPage() {
   } = useQuery<SessionMeta[]>({
     queryKey: ["sessions-list"],
     queryFn: async () => ports.sessions.listSessions(),
-    enabled: isNative,
+    enabled: isNative && visible,
   });
 
   const {
@@ -104,7 +115,7 @@ export function SessionsPage() {
   } = useQuery<RestoreAttempt[]>({
     queryKey: ["sessions-attempts"],
     queryFn: async () => ports.sessions.listRestoreAttempts(),
-    enabled: isNative,
+    enabled: isNative && visible,
   });
 
   // Probe all 7 providers to get real runtime capability
@@ -126,18 +137,14 @@ export function SessionsPage() {
               extractionSupported: false,
               writeSupported: false,
               reasonCode:
-                parsed.message && parsed.message !== "未知错误"
-                  ? parsed.message
-                  : parsed.code !== "unknown"
-                    ? parsed.code
-                    : "probe_error",
+                parsed.code !== "unknown" ? parsed.code : "probe_error",
             };
           }
         }),
       );
       return result;
     },
-    enabled: isNative,
+    enabled: isNative && visible,
   });
 
   // ─── Selected Session Resolution ──────────────────────────────────
@@ -175,18 +182,16 @@ export function SessionsPage() {
       if (!selectedSession) {
         return {
           rawMessages: EMPTY_MESSAGES,
+          sourceRead: "pending" as const,
           migratable: null,
           error: null,
         };
       }
       const sourcePath = selectedSession.sourcePath || "";
       let rawMsgs: SessionMessage[];
+      let sourceRead: "available" | "failed" = "available";
       let migratable: MigratableSession | null = null;
-      let errPayload: {
-        code: string;
-        message: string;
-        detail?: string;
-      } | null = null;
+      let errPayload: SessionFailureFeedback | null = null;
 
       try {
         rawMsgs = await ports.sessions.getSessionMessages(
@@ -195,7 +200,8 @@ export function SessionsPage() {
         );
       } catch (err) {
         rawMsgs = EMPTY_MESSAGES;
-        errPayload = parseMigrationError(err);
+        sourceRead = "failed";
+        errPayload = readFailureFeedback(err, "source");
       }
 
       try {
@@ -205,13 +211,18 @@ export function SessionsPage() {
         );
       } catch (err) {
         if (!errPayload) {
-          errPayload = parseMigrationError(err);
+          errPayload = readFailureFeedback(err, "extraction");
         }
       }
 
-      return { rawMessages: rawMsgs, migratable, error: errPayload };
+      return {
+        rawMessages: rawMsgs,
+        sourceRead,
+        migratable,
+        error: errPayload,
+      };
     },
-    enabled: isNative && Boolean(selectedSession),
+    enabled: isNative && visible && Boolean(selectedSession),
   });
 
   const rawMessages = sessionDetailData?.rawMessages ?? EMPTY_MESSAGES;
@@ -233,8 +244,7 @@ export function SessionsPage() {
   // ─── Modals & Dialogs (useDialogState for lifecycle isolation) ────
   const [exportTargets, setExportTargets, exportSessionKey] =
     useDialogState<ExportTargetItem[]>();
-  const [importOpen, setImportOpen, importSessionKey] =
-    useDialogState<boolean>();
+  const [importOpen, setImportOpen] = useDialogState<boolean>();
   const [remapOpen, setRemapOpen, remapSessionKey] = useDialogState<boolean>();
   const [guideOpen, setGuideOpen, guideSessionKey] = useDialogState<boolean>();
   const [attestationOpen, setAttestationOpen, attestationSessionKey] =
@@ -247,14 +257,35 @@ export function SessionsPage() {
   const [attestationOriginRef] = useState<DialogOriginRef>({ current: null });
 
   const [verifyingReadback, setVerifyingReadback] = useState(false);
+  const [readbackError, setReadbackError] = useState<{
+    attemptId: string;
+    feedback: SessionFailureFeedback;
+  } | null>(null);
+  const [reviewingAttempts, setReviewingAttempts] = useState(false);
 
   const refreshSessions = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["sessions-list"] }),
-      queryClient.invalidateQueries({ queryKey: ["sessions-attempts"] }),
       queryClient.invalidateQueries({ queryKey: ["session-detail"] }),
     ]);
   }, [queryClient]);
+
+  // Explicit operation readback must finish even when its page is hidden.
+  // Disabled query observers do not fetch in response to invalidation alone.
+  const refreshRestoreAttempts = useCallback(async () => {
+    // fetchQuery reuses an in-flight read even with staleTime: 0. Retire
+    // only the old receipt read, keeping its cached preimage, before reading
+    // this operation's terminal state. Native operation Promises are untouched.
+    await queryClient.cancelQueries(
+      { queryKey: ["sessions-attempts"], exact: true },
+      { revert: true },
+    );
+    return queryClient.fetchQuery<RestoreAttempt[]>({
+      queryKey: ["sessions-attempts"],
+      queryFn: () => ports.sessions.listRestoreAttempts(),
+      staleTime: 0,
+    });
+  }, [ports.sessions, queryClient]);
 
   // ─── Filtered Sessions ───────────────────────────────────────────
   const filteredSessions = useMemo(() => {
@@ -355,9 +386,8 @@ export function SessionsPage() {
     ? localProbes[activeProviderId]
     : undefined;
 
-  const isCapabilityVerified = Boolean(
-    activeProviderProbe?.installed && activeProviderProbe?.writeSupported,
-  );
+  const restoreSupport = isProviderRestoreSupported(activeProviderProbe);
+  const isCapabilityVerified = restoreSupport.supported;
 
   const canOpenTarget =
     isCapabilityVerified &&
@@ -370,16 +400,7 @@ export function SessionsPage() {
         "nextTurnReplyVerified",
       ].includes(activeAttempt.stage));
 
-  const capabilityReason = activeProviderProbe
-    ? activeProviderProbe.reasonCode &&
-      activeProviderProbe.reasonCode !== "providerNotInstalled"
-      ? activeProviderProbe.reasonCode
-      : !activeProviderProbe.installed
-        ? "本地未安装该 AI 软件"
-        : !activeProviderProbe.writeSupported
-          ? "软件当前版本暂未通过恢复验证"
-          : undefined
-    : "软件运行环境待探测";
+  const capabilityReason = restoreSupport.reason;
 
   // ─── Turns Projection (No Dropped Messages & Real Roles) ─────────
   const conversationTurns = useMemo<ConversationTurn[]>(() => {
@@ -469,19 +490,75 @@ export function SessionsPage() {
   }, [selectedKeys, sessions, selectedSession, notify, setExportTargets]);
 
   // ─── Keyboard Shortcuts ──────────────────────────────────────────
+  const hasOpenDialog = Boolean(
+    exportTargets || importOpen || remapOpen || guideOpen || attestationOpen,
+  );
   useEffect(() => {
+    if (!visible || hasOpenDialog) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e") {
+      if (
+        e.defaultPrevented ||
+        e.isComposing ||
+        e.repeat ||
+        e.altKey ||
+        e.shiftKey ||
+        !(e.metaKey || e.ctrlKey)
+      ) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key !== "e" && key !== "i") return;
+
+      const page = pageRef.current;
+      if (!page || page.closest("[hidden], [inert]")) return;
+
+      // Window/body events still belong to the focused input context.
+      for (const context of [e.target, document.activeElement]) {
+        if (
+          context === null ||
+          context === window ||
+          context === document ||
+          context === document.body
+        ) {
+          continue;
+        }
+        if (!(context instanceof Node) || !page.contains(context)) return;
+        const element =
+          context instanceof Element ? context : context.parentElement;
+        if (
+          element?.closest("input, textarea, select") ||
+          element?.closest('[contenteditable]:not([contenteditable="false"])')
+        ) {
+          return;
+        }
+      }
+
+      // Portaled dialogs can own the keyboard without being page descendants.
+      const dialogs = document.querySelectorAll(
+        '[role="dialog"], [role="alertdialog"]',
+      );
+      if (
+        Array.from(dialogs).some(
+          (dialog) =>
+            dialog.getAttribute("data-state") !== "closed" &&
+            !dialog.closest('[hidden], [inert], [aria-hidden="true"]'),
+        )
+      ) {
+        return;
+      }
+
+      if (key === "e") {
         e.preventDefault();
         handleOpenExport();
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i") {
+      } else {
         e.preventDefault();
         setImportOpen(true);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleOpenExport, setImportOpen]);
+  }, [visible, hasOpenDialog, handleOpenExport, setImportOpen]);
 
   // ─── Multi-Selection Helpers ─────────────────────────────────────
   const toggleSelectSession = (stableKey: string, e: React.MouseEvent) => {
@@ -546,7 +623,16 @@ export function SessionsPage() {
   );
 
   const handleRestore = async (request: RestoreRequest) => {
-    const res = await ports.sessions.restoreSessionPackage(request);
+    let res: RestoreAttempt[];
+    try {
+      res = await ports.sessions.restoreSessionPackage(request);
+    } finally {
+      // A missing response may follow publication. Reread persisted receipts
+      // even when the transport rejects; never fabricate a write-free result.
+      // Query error state retains readback failure without replacing the restore result.
+      await refreshRestoreAttempts().catch(() => undefined);
+      void refreshSessions();
+    }
     const classification = classifyRestoreResults(res);
 
     if (
@@ -576,12 +662,13 @@ export function SessionsPage() {
       });
     }
 
-    void refreshSessions();
     return res;
   };
 
   const handleVerifyReadback = async () => {
     if (!activeAttempt) return;
+    const attempt = activeAttempt;
+    setReadbackError(null);
     setVerifyingReadback(true);
     try {
       const updated = await ports.sessions.verifyNativeReadback(
@@ -603,7 +690,7 @@ export function SessionsPage() {
         notify({
           tone: "error",
           title: "读回核验失败",
-          description: "本地存储未检测到该会话。",
+          description: restoreAttemptFeedback(updated).writeSummary,
         });
       } else {
         notify({
@@ -614,13 +701,37 @@ export function SessionsPage() {
       }
       void refreshSessions();
     } catch (err) {
+      const feedback = {
+        ...restoreAttemptFeedback(attempt),
+        phase: "目标读回调用失败",
+        message: parseMigrationError(err).message,
+        nextStep: "重新执行系统读回核验或核对恢复回执，不再次写入。",
+      };
+      setReadbackError({ attemptId: attempt.attemptId, feedback });
       notify({
         tone: "error",
         title: "读回核验发生错误",
-        description: err instanceof Error ? err.message : String(err),
+        description: feedback.message,
       });
     } finally {
+      await refreshRestoreAttempts().catch(() => undefined);
       setVerifyingReadback(false);
+    }
+  };
+
+  const handleReviewRestore = async () => {
+    setReviewingAttempts(true);
+    try {
+      try {
+        await ports.sessions.reconcileRestoreAttempts();
+      } catch (error) {
+        await refreshRestoreAttempts().catch(() => undefined);
+        throw error;
+      }
+      const receipts = await refreshRestoreAttempts();
+      return receipts;
+    } finally {
+      setReviewingAttempts(false);
     }
   };
 
@@ -629,13 +740,16 @@ export function SessionsPage() {
     claimedStage: RestoreStage,
     note?: string,
   ) => {
-    await ports.sessions.recordUserAttestation(attemptId, claimedStage, note);
+    try {
+      await ports.sessions.recordUserAttestation(attemptId, claimedStage, note);
+    } finally {
+      await refreshRestoreAttempts().catch(() => undefined);
+    }
     notify({
       tone: "success",
       title: "已记录手动续聊标记",
       description: "已添加您的手动确认标记。系统状态保持客观记录不变。",
     });
-    await queryClient.invalidateQueries({ queryKey: ["sessions-attempts"] });
   };
 
   const handleResumeInTarget = async () => {
@@ -665,7 +779,7 @@ export function SessionsPage() {
       notify({
         tone: "error",
         title: "拉起目标客户端失败",
-        description: err instanceof Error ? err.message : String(err),
+        description: parseMigrationError(err).message,
       });
       setGuideOpen(true);
     }
@@ -674,7 +788,11 @@ export function SessionsPage() {
   // ─── Browser Native-Only Fallback ────────────────────────────────
   if (!isNative) {
     return (
-      <div className="fy-sessions-page" data-testid="sessions-page">
+      <div
+        ref={pageRef}
+        className="fy-sessions-page"
+        data-testid="sessions-page"
+      >
         <div className="fy-browser-native-blocker" role="status">
           <div className="fy-blocker-card">
             <DesktopIcon size={44} weight="duotone" />
@@ -689,7 +807,7 @@ export function SessionsPage() {
   }
 
   return (
-    <div className="fy-sessions-page" data-testid="sessions-page">
+    <div ref={pageRef} className="fy-sessions-page" data-testid="sessions-page">
       {/* 顶部栏 */}
       <header className="fy-sessions-topbar">
         <div className="fy-sessions-breadcrumb">
@@ -967,18 +1085,9 @@ export function SessionsPage() {
                           className="fy-session-item-title"
                           title={s.title || s.sessionId}
                         >
-                          {s.title || s.summary || s.sessionId}
+                          {s.title || s.summary || "未命名会话"}
                         </div>
                         <div className="fy-session-item-meta">
-                          <span
-                            className="fy-session-item-id-snippet"
-                            title={s.sessionId}
-                          >
-                            ID:{" "}
-                            {s.sessionId.length > 14
-                              ? `${s.sessionId.slice(0, 12)}…`
-                              : s.sessionId}
-                          </span>
                           {s.projectDir && (
                             <span
                               title={s.projectDir}
@@ -1074,9 +1183,6 @@ export function SessionsPage() {
                             a.stage}
                         </span>
                       </div>
-                      <div className="fy-attempt-item-native-id">
-                        本地会话 ID: {a.targetNativeId || "待分配"}
-                      </div>
                       <div className="fy-attempt-item-workspace">
                         工作区: {a.targetWorkspace}
                       </div>
@@ -1115,8 +1221,8 @@ export function SessionsPage() {
             </div>
             <Link
               to="/memory"
+              className="fy-sessions-memory-link"
               style={{
-                color: "var(--fy-brand-blue)",
                 fontWeight: 600,
                 textDecoration: "none",
                 fontSize: "12px",
@@ -1139,9 +1245,6 @@ export function SessionsPage() {
                       恢复记录：
                       {PROVIDER_LABELS[activeAttempt.targetProviderId] ??
                         activeAttempt.targetProviderId}{" "}
-                      -{" "}
-                      {activeAttempt.targetNativeId ||
-                        activeAttempt.attemptId.slice(0, 8)}
                     </h1>
                     <div className="fy-detail-meta-tags">
                       <span className="fy-session-item-provider-tag">
@@ -1169,7 +1272,9 @@ export function SessionsPage() {
                       onClick={() => void handleResumeInTarget()}
                     >
                       <PlayIcon size={14} weight="fill" />
-                      <span>在目标软件中恢复</span>
+                      <span>
+                        {activeAttempt ? "打开目标会话" : "查看目标启动说明"}
+                      </span>
                     </Button>
                   </div>
                 </div>
@@ -1191,23 +1296,41 @@ export function SessionsPage() {
               </div>
 
               <div className="fy-sessions-stream-container">
+                <SessionStages
+                  probe={activeProviderProbe}
+                  attempt={activeAttempt}
+                />
                 <StatusBanners
                   stage={activeAttempt.stage}
                   activeAttempt={activeAttempt}
+                  failureFeedback={
+                    readbackError?.attemptId === activeAttempt.attemptId
+                      ? readbackError.feedback
+                      : undefined
+                  }
+                  onReviewRestore={() =>
+                    void handleReviewRestore().catch((error) =>
+                      setReadbackError({
+                        attemptId: activeAttempt.attemptId,
+                        feedback: {
+                          ...restoreAttemptFeedback(activeAttempt),
+                          phase: "恢复回执核对失败",
+                          message: parseMigrationError(error).message,
+                        },
+                      }),
+                    )
+                  }
+                  reviewingAttempts={reviewingAttempts}
                   isCapabilityVerified={isCapabilityVerified}
                   capabilityReason={capabilityReason}
                   onVerifyReadback={() => void handleVerifyReadback()}
                   verifyingReadback={verifyingReadback}
-                  onOpenAttestationModal={() => setAttestationOpen(true)}
                 />
               </div>
 
               <footer className="fy-sessions-bottom-bar">
                 <div className="fy-bottom-info">
-                  <span>
-                    尝试 ID: {activeAttempt.attemptId} • 快照 ID:{" "}
-                    {activeAttempt.snapshotId.slice(0, 16)}…
-                  </span>
+                  <SessionEvidenceDetails attempt={activeAttempt} />
                 </div>
                 <div className="fy-bottom-actions">
                   <Button
@@ -1231,7 +1354,7 @@ export function SessionsPage() {
                     <h1 className="fy-detail-title">
                       {selectedSession.title ||
                         selectedSession.summary ||
-                        selectedSession.sessionId}
+                        "未命名会话"}
                     </h1>
                     <div className="fy-detail-meta-tags">
                       <span className="fy-session-item-provider-tag">
@@ -1254,15 +1377,6 @@ export function SessionsPage() {
                           </span>
                         </>
                       )}
-                      <span>•</span>
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "11px",
-                        }}
-                      >
-                        源ID: {selectedSession.sessionId}
-                      </span>
                     </div>
                   </div>
 
@@ -1280,7 +1394,9 @@ export function SessionsPage() {
                       onClick={() => void handleResumeInTarget()}
                     >
                       <PlayIcon size={14} weight="fill" />
-                      <span>在目标软件中恢复</span>
+                      <span>
+                        {activeAttempt ? "打开目标会话" : "查看目标启动说明"}
+                      </span>
                     </Button>
                   </div>
                 </div>
@@ -1329,19 +1445,58 @@ export function SessionsPage() {
 
               {/* 消息滚动区 */}
               <div className="fy-sessions-stream-container">
-                {/* 动态状态横幅 */}
+                {/* 读取、导出、目标写入与系统确认各有自己的权威状态。 */}
+                <SessionStages
+                  sourceRead={sessionDetailData?.sourceRead ?? "pending"}
+                  extraction={
+                    loadingDetail
+                      ? "pending"
+                      : migratableSession
+                        ? "available"
+                        : "unavailable"
+                  }
+                  probe={activeProviderProbe}
+                  attempt={activeAttempt}
+                />
                 <StatusBanners
                   stage={activeAttempt?.stage}
                   isIndeterminate={hasIndeterminate}
                   hasIncompleteTurn={hasIncomplete}
                   isCapabilityVerified={isCapabilityVerified}
                   capabilityReason={capabilityReason}
-                  isCodexProbeWarning={selectedSession.providerId === "codex"}
                   activeAttempt={activeAttempt}
                   structuredError={structuredError}
+                  onRetrySource={() =>
+                    void queryClient.invalidateQueries({
+                      queryKey: [
+                        "session-detail",
+                        selectedSession.providerId,
+                        selectedSession.sourcePath,
+                        selectedSession.sessionId,
+                      ],
+                    })
+                  }
+                  failureFeedback={
+                    readbackError?.attemptId === activeAttempt?.attemptId
+                      ? readbackError?.feedback
+                      : undefined
+                  }
+                  onReviewRestore={() =>
+                    void handleReviewRestore().catch((error) => {
+                      if (activeAttempt)
+                        setReadbackError({
+                          attemptId: activeAttempt.attemptId,
+                          feedback: {
+                            ...restoreAttemptFeedback(activeAttempt),
+                            phase: "恢复回执核对失败",
+                            message: parseMigrationError(error).message,
+                          },
+                        });
+                    })
+                  }
+                  reviewingAttempts={reviewingAttempts}
                   onVerifyReadback={() => void handleVerifyReadback()}
                   verifyingReadback={verifyingReadback}
-                  onOpenAttestationModal={() => setAttestationOpen(true)}
                 />
 
                 {/* 问答流 */}
@@ -1367,9 +1522,16 @@ export function SessionsPage() {
               {/* 底部操作底栏 */}
               <footer className="fy-sessions-bottom-bar">
                 <div className="fy-bottom-info">
-                  <span>
-                    包含用户原始提问与最终答复；不包含工具日志、思考过程及工作区文件。
-                  </span>
+                  <div>
+                    <span>
+                      导出保留用户提问与最终答复原文，不包含工具日志、思考过程及工作区文件。
+                    </span>
+                    <SessionEvidenceDetails
+                      session={selectedSession}
+                      preview={migratableSession}
+                      attempt={activeAttempt}
+                    />
+                  </div>
                 </div>
                 <div className="fy-bottom-actions">
                   <Button
@@ -1393,10 +1555,10 @@ export function SessionsPage() {
             </>
           ) : (
             <div
+              className="fy-sessions-empty-state"
               style={{
                 margin: "auto",
                 textAlign: "center",
-                color: "var(--fy-text-tertiary)",
               }}
             >
               请从左侧选择一个会话以查看内容与恢复状态
@@ -1423,23 +1585,29 @@ export function SessionsPage() {
       )}
 
       {/* 2. 导入包与冲突处理弹窗 (重试幂等与本地探针门控) */}
-      {importOpen && (
-        <ImportPackageDialog
-          key={importSessionKey}
-          open={Boolean(importOpen)}
-          onOpenChange={(open) => {
-            if (!open) setImportOpen(null);
-          }}
-          onReadPackage={(path) => ports.sessions.readSessionPackage(path)}
-          onRestore={handleRestore}
-          onPickPackageFile={() => ports.sessions.pickPackageFile()}
-          onPickDirectory={() => ports.sessions.pickDirectory()}
-          localProbes={localProbes}
-          initialTargetWorkspace={targetWorkspace}
-          originRef={importOriginRef}
-          onImportSuccess={() => void refreshSessions()}
-        />
-      )}
+      <ImportPackageDialog
+        open={Boolean(importOpen)}
+        onOpenChange={(open) => {
+          if (!open) setImportOpen(null);
+        }}
+        onReadPackage={(path) => ports.sessions.readSessionPackage(path)}
+        onRestore={handleRestore}
+        onReviewRestore={handleReviewRestore}
+        onVerifyReadback={async (attemptId) => {
+          try {
+            return await ports.sessions.verifyNativeReadback(attemptId);
+          } finally {
+            await refreshRestoreAttempts().catch(() => undefined);
+            void refreshSessions();
+          }
+        }}
+        onPickPackageFile={() => ports.sessions.pickPackageFile()}
+        onPickDirectory={() => ports.sessions.pickDirectory()}
+        localProbes={localProbes}
+        initialTargetWorkspace={targetWorkspace}
+        originRef={importOriginRef}
+        onImportSuccess={() => void refreshSessions()}
+      />
 
       {/* 3. 本地工作区重映射弹窗 */}
       {remapOpen && (

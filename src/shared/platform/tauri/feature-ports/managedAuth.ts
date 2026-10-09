@@ -1,12 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import {
+  assertManagedAuthAccountId,
   assertManagedAuthAccountMutation,
   assertManagedAuthConnectionActionRequest,
   assertManagedAuthLoginMethod,
   assertManagedAuthRemovalMutation,
   assertManagedAuthSessionId,
   assertStartManagedAuthLoginRequest,
+  parseManagedAuthAccountQuota,
   parseManagedAuthLoginSession,
   parseManagedAuthMutationResult,
   parseManagedAuthOverview,
@@ -21,6 +23,15 @@ export function createManagedAuthPort(): ManagedAuthPort {
       parseManagedAuthOverview(
         await invoke<unknown>("managed_auth_get_overview"),
       ),
+    getAccountQuota: async (accountId) => {
+      const validated = assertManagedAuthAccountId(accountId);
+      return parseManagedAuthAccountQuota(
+        await invoke<unknown>("managed_auth_get_account_quota", {
+          accountId: validated,
+        }),
+        validated,
+      );
+    },
     startLogin: async (request) =>
       parseManagedAuthLoginSession(
         await invoke<unknown>("managed_auth_start_login", {

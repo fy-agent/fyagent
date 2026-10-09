@@ -253,6 +253,12 @@ impl StreamCheckService {
                 .extract_base_url(provider)
                 .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}"))),
             _ => get_adapter(app_type)
+                .ok_or_else(|| {
+                    AppError::InvalidInput(format!(
+                        "{} does not support proxy adapters",
+                        app_type.as_str()
+                    ))
+                })?
                 .extract_base_url(provider)
                 .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}"))),
         }

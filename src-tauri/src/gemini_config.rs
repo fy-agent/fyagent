@@ -122,23 +122,6 @@ pub fn parse_env_file_strict(content: &str) -> Result<HashMap<String, String>, A
     Ok(map)
 }
 
-/// 将键值对序列化为 .env 格式
-pub fn serialize_env_file(map: &HashMap<String, String>) -> String {
-    let mut lines = Vec::new();
-
-    // 按键排序以保证输出稳定
-    let mut keys: Vec<_> = map.keys().collect();
-    keys.sort();
-
-    for key in keys {
-        if let Some(value) = map.get(key) {
-            lines.push(format!("{key}={value}"));
-        }
-    }
-
-    lines.join("\n")
-}
-
 /// 读取 Gemini .env 文件
 pub fn read_gemini_env() -> Result<HashMap<String, String>, AppError> {
     let path = get_gemini_env_path();
@@ -154,7 +137,7 @@ pub fn read_gemini_env() -> Result<HashMap<String, String>, AppError> {
 
 /// 从 .env 原文中按「键名 + 值」双匹配删除若干行，其余内容逐字保留
 ///
-/// 不走 `parse_env_file` → `serialize_env_file` 的往返：那对函数会丢掉注释、空行、
+/// 不把内容解析成 map 再序列化：那样会丢掉注释、空行、
 /// 无法识别的行和重复定义，并按键名重排整个文件。全量投影时这无所谓（本来就要重写
 /// 整份），但用来做**定向**清理就等于顺手把用户手写的东西一起删了。
 ///
@@ -207,15 +190,7 @@ pub fn remove_gemini_env_entries(doomed: &HashMap<String, String>) -> Result<boo
     }
 }
 
-/// 写入 Gemini .env 文件（原子操作）
-pub fn write_gemini_env_atomic(map: &HashMap<String, String>) -> Result<(), AppError> {
-    write_gemini_env_text_atomic(&serialize_env_file(map))
-}
-
-/// 写入 Gemini .env 文件（原子操作，内容逐字落盘）
-///
-/// 与 `write_gemini_env_atomic` 共用目录/文件权限处理，区别只在于内容不经
-/// `serialize_env_file` 归一化——供保序的定向删除使用。
+/// 写入 Gemini .env 文件（原子操作，内容逐字落盘），用于历史泄露字段的保序清理。
 pub fn write_gemini_env_text_atomic(content: &str) -> Result<(), AppError> {
     let path = get_gemini_env_path();
 
@@ -325,8 +300,16 @@ pub fn validate_gemini_settings_strict(settings: &Value) -> Result<(), AppError>
         return Ok(());
     }
 
-    // 如果 env 不为空，检查必需字段 GEMINI_API_KEY
-    if !env_map.contains_key("GEMINI_API_KEY") {
+    // 如果 env 不为空，要有凭据：GEMINI_API_KEY，或者 Vertex 的 GOOGLE_API_KEY /
+    // GOOGLE_GENAI_USE_VERTEXAI（服务账号凭据走 GOOGLE_APPLICATION_CREDENTIALS 或 ADC）。
+    if ![
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GOOGLE_GENAI_USE_VERTEXAI",
+    ]
+    .iter()
+    .any(|key| env_map.contains_key(*key))
+    {
         return Err(AppError::localized(
             "gemini.validation.missing_api_key",
             "Gemini 配置缺少必需字段: GEMINI_API_KEY",
@@ -344,217 +327,9 @@ pub fn get_gemini_settings_path() -> PathBuf {
     get_gemini_dir().join("settings.json")
 }
 
-/// 更新 Gemini 目录 settings.json 中的 security.auth.selectedType 字段
-///
-/// 此函数会：
-/// 1. 读取现有的 settings.json（如果存在）
-/// 2. 只更新 `security.auth.selectedType` 字段，保留其他所有字段
-/// 3. 原子性写入文件
-///
-/// # 参数
-/// - `selected_type`: 要设置的 selectedType 值（如 "gemini-api-key" 或 "oauth-personal"）
-fn update_selected_type(selected_type: &str) -> Result<(), AppError> {
-    let settings_path = get_gemini_settings_path();
-
-    // 读取现有的 settings.json（如果存在）
-    let mut settings_content = if settings_path.exists() {
-        let content =
-            fs::read_to_string(&settings_path).map_err(|e| AppError::io(&settings_path, e))?;
-        serde_json::from_str::<Value>(&content).map_err(|_| {
-            AppError::localized(
-                "gemini.validation.settings_parse_failed",
-                "Gemini 配置文件 ~/.gemini/settings.json 无法解析，为避免覆盖您的现有设置（如 MCP），本次未写入。请先修正该文件的 JSON 格式后重试。",
-                "Unable to parse Gemini config file ~/.gemini/settings.json. To avoid overwriting your existing settings (such as MCP), no files were written. Please fix the file's JSON format and try again.",
-            )
-        })?
-    } else {
-        serde_json::json!({})
-    };
-
-    // 解析成功后再确保目录存在，避免解析失败时修改文件系统
-    if let Some(parent) = settings_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
-    }
-
-    // 只更新 security.auth.selectedType 字段
-    if let Some(obj) = settings_content.as_object_mut() {
-        let security = obj
-            .entry("security")
-            .or_insert_with(|| serde_json::json!({}));
-
-        if let Some(security_obj) = security.as_object_mut() {
-            let auth = security_obj
-                .entry("auth")
-                .or_insert_with(|| serde_json::json!({}));
-
-            if let Some(auth_obj) = auth.as_object_mut() {
-                auth_obj.insert(
-                    "selectedType".to_string(),
-                    Value::String(selected_type.to_string()),
-                );
-            }
-        }
-    }
-
-    // 写入文件
-    crate::config::write_json_file(&settings_path, &settings_content)?;
-
-    Ok(())
-}
-
-/// 为 Packycode Gemini 供应商写入 settings.json
-///
-/// 设置 `~/.gemini/settings.json` 中的：
-/// ```json
-/// {
-///   "security": {
-///     "auth": {
-///       "selectedType": "gemini-api-key"
-///     }
-///   }
-/// }
-/// ```
-///
-/// 保留文件中的其他所有字段。
-pub fn write_packycode_settings() -> Result<(), AppError> {
-    update_selected_type("gemini-api-key")
-}
-
-/// 为 Google 官方 Gemini 供应商写入 settings.json（OAuth 模式）
-///
-/// 设置 `~/.gemini/settings.json` 中的：
-/// ```json
-/// {
-///   "security": {
-///     "auth": {
-///       "selectedType": "oauth-personal"
-///     }
-///   }
-/// }
-/// ```
-///
-/// 保留文件中的其他所有字段。
-pub fn write_google_oauth_settings() -> Result<(), AppError> {
-    update_selected_type("oauth-personal")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    struct TestHomeGuard(Option<std::ffi::OsString>);
-
-    impl TestHomeGuard {
-        fn set(home: &std::path::Path) -> Self {
-            let guard = Self(std::env::var_os("FYAGENT_TEST_HOME"));
-            std::env::set_var("FYAGENT_TEST_HOME", home);
-            guard
-        }
-    }
-
-    impl Drop for TestHomeGuard {
-        fn drop(&mut self) {
-            match self.0.take() {
-                Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
-                None => std::env::remove_var("FYAGENT_TEST_HOME"),
-            }
-        }
-    }
-
-    #[test]
-    #[serial_test::serial]
-    fn test_update_selected_type_rejects_unparseable_settings_without_writing() {
-        let temp = tempfile::tempdir().expect("temp home");
-        let _home = TestHomeGuard::set(temp.path());
-        crate::settings::reload_settings().expect("reload settings");
-        let settings_path = get_gemini_settings_path();
-        assert_eq!(
-            settings_path,
-            temp.path().join(".gemini").join("settings.json")
-        );
-        fs::create_dir_all(settings_path.parent().unwrap()).expect("create Gemini dir");
-
-        for original in [
-            "{\n// keep my MCP\n\"mcpServers\": {\"custom\": {\"command\": \"custom-mcp\"}}\n}\n",
-            "{\"mcpServers\":",
-            " \t\r\n",
-            "",
-        ] {
-            fs::write(&settings_path, original).expect("seed invalid settings");
-            for selected_type in ["gemini-api-key", "oauth-personal"] {
-                let error = update_selected_type(selected_type).expect_err("reject invalid JSON");
-                assert!(matches!(
-                    error,
-                    AppError::Localized {
-                        key: "gemini.validation.settings_parse_failed",
-                        ..
-                    }
-                ));
-                assert_eq!(fs::read(&settings_path).unwrap(), original.as_bytes());
-                assert_eq!(
-                    fs::read_dir(settings_path.parent().unwrap())
-                        .unwrap()
-                        .count(),
-                    1
-                );
-            }
-        }
-    }
-
-    #[test]
-    #[serial_test::serial]
-    fn test_update_selected_type_preserves_mcp_and_other_settings() {
-        let temp = tempfile::tempdir().expect("temp home");
-        let _home = TestHomeGuard::set(temp.path());
-        crate::settings::reload_settings().expect("reload settings");
-        let settings_path = get_gemini_settings_path();
-        assert_eq!(
-            settings_path,
-            temp.path().join(".gemini").join("settings.json")
-        );
-        fs::create_dir_all(settings_path.parent().unwrap()).expect("create Gemini dir");
-        let original = serde_json::json!({
-            "mcpServers": {"custom": {"command": "custom-mcp", "args": ["--keep"]}},
-            "otherField": {"keep": true},
-            "security": {
-                "otherSetting": "kept",
-                "auth": {"selectedType": "old", "otherAuth": "preserved"}
-            }
-        });
-
-        for selected_type in ["gemini-api-key", "oauth-personal"] {
-            fs::write(&settings_path, serde_json::to_vec(&original).unwrap()).unwrap();
-            update_selected_type(selected_type).expect("update auth type");
-            let updated: Value = crate::config::read_json_file(&settings_path).unwrap();
-            let mut expected = original.clone();
-            expected["security"]["auth"]["selectedType"] = Value::String(selected_type.to_string());
-            assert_eq!(updated, expected);
-        }
-    }
-
-    #[test]
-    #[serial_test::serial]
-    fn test_update_selected_type_creates_missing_settings() {
-        let temp = tempfile::tempdir().expect("temp home");
-        let _home = TestHomeGuard::set(temp.path());
-        crate::settings::reload_settings().expect("reload settings");
-        let settings_path = get_gemini_settings_path();
-        assert_eq!(
-            settings_path,
-            temp.path().join(".gemini").join("settings.json")
-        );
-        assert!(!settings_path.exists());
-
-        update_selected_type("gemini-api-key").expect("create settings");
-
-        let updated: Value = crate::config::read_json_file(&settings_path).unwrap();
-        assert_eq!(
-            updated,
-            serde_json::json!({
-                "security": {"auth": {"selectedType": "gemini-api-key"}}
-            })
-        );
-    }
 
     #[test]
     fn test_parse_env_file() {
@@ -579,18 +354,6 @@ GEMINI_MODEL=gemini-3.5-flash
             map.get("GEMINI_MODEL"),
             Some(&"gemini-3.5-flash".to_string())
         );
-    }
-
-    #[test]
-    fn test_serialize_env_file() {
-        let mut map = HashMap::new();
-        map.insert("GEMINI_API_KEY".to_string(), "sk-test".to_string());
-        map.insert("GEMINI_MODEL".to_string(), "gemini-3.5-flash".to_string());
-
-        let content = serialize_env_file(&map);
-
-        assert!(content.contains("GEMINI_API_KEY=sk-test"));
-        assert!(content.contains("GEMINI_MODEL=gemini-3.5-flash"));
     }
 
     #[test]

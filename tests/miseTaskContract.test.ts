@@ -539,14 +539,80 @@ describe("canonical mise task API", () => {
     ) => { status: number };
 
     let exitCalledWith: number | null = null;
-    const result = run("node", ["-e", "process.kill(process.pid, 'SIGINT')"], {
-      allowSignal: true,
-      exit: (code: number) => {
-        exitCalledWith = code;
-      },
-    });
-    expect(result.status).toBe(130);
-    expect(exitCalledWith).toBeNull();
+    // Windows console interrupts have a dedicated NTSTATUS. Its process.kill
+    // SIGINT emulation uses exit 1 and cannot prove console-interrupt handling.
+    let interrupt: string;
+    switch (process.platform) {
+      case "win32":
+        interrupt = "process.exit(0xC000013A)";
+        break;
+      case "darwin":
+      case "linux":
+        interrupt = "process.kill(process.pid, 'SIGINT')";
+        break;
+      default:
+        throw new Error(`Unsupported test host: ${process.platform}`);
+    }
+    for (const allowSignal of [true, false]) {
+      exitCalledWith = null;
+      const result = run(process.execPath, ["-e", interrupt], {
+        allowSignal,
+        capture: true,
+        exit: (code: number) => {
+          exitCalledWith = code;
+        },
+      });
+      expect(result.status).toBe(130);
+      expect(exitCalledWith).toBe(allowSignal ? null : 130);
+    }
+  });
+
+  it.each([130, 143])(
+    "preserves explicit interrupt exit code %s with and without allowSignal",
+    (code) => {
+      const run = taskLibModule.run as (
+        command: string,
+        args: string[],
+        options: Record<string, unknown>,
+      ) => { status: number };
+      const exits: number[] = [];
+      for (const allowSignal of [true, false]) {
+        const result = run(process.execPath, ["-e", `process.exit(${code})`], {
+          allowSignal,
+          capture: true,
+          exit: (status: number) => exits.push(status),
+        });
+        expect(result.status).toBe(code);
+      }
+      expect(exits).toEqual([code]);
+    },
+  );
+
+  it("keeps ordinary nonzero synchronous exits failed when signals are allowed", () => {
+    const run = taskLibModule.run as (
+      command: string,
+      args: string[],
+      options: Record<string, unknown>,
+    ) => unknown;
+    const exits: number[] = [];
+    expect(() =>
+      run(process.execPath, ["-e", "process.exit(1)"], {
+        allowSignal: true,
+        capture: true,
+        exit: (status: number) => exits.push(status),
+      }),
+    ).toThrow("exited with 1");
+    expect(exits).toEqual([]);
+    if (process.platform === "win32") {
+      expect(() =>
+        run(process.execPath, ["-e", "process.kill(process.pid, 'SIGINT')"], {
+          allowSignal: true,
+          capture: true,
+          exit: (status: number) => exits.push(status),
+        }),
+      ).toThrow("exited with 1");
+      expect(exits).toEqual([]);
+    }
   });
 
   it("forwards a unit-test file filter through the real mise usage parser", () => {

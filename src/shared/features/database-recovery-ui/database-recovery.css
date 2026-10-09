@@ -1,0 +1,53 @@
+.fy-database-recovery {
+  display: grid;
+  gap: 16px;
+  color: var(--fy-text);
+  font-size: var(--fy-font-body);
+  line-height: 1.6;
+}
+.fy-database-recovery p {
+  margin: 0;
+}
+.fy-database-recovery code {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.fy-database-recovery-list {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+}
+.fy-database-recovery-list legend {
+  margin-bottom: 8px;
+}
+.fy-database-recovery-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--fy-border);
+}
+.fy-database-recovery-option span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.fy-database-recovery-option small,
+.fy-database-recovery-types dd {
+  color: var(--fy-text-secondary);
+}
+.fy-database-recovery-types dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 12px;
+}
+.fy-database-recovery-types dd {
+  margin: 0;
+}
+@media (max-width: 480px) {
+  .fy-database-recovery-types dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

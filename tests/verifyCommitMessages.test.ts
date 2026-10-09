@@ -77,6 +77,9 @@ describe("commit message convention", () => {
     expect(validateCommitSubject("merge: ordinary subject")).toContain(
       "Conventional Commits",
     );
+    for (const subject of ["perf: local change", "build: local change"]) {
+      expect(validateCommitSubject(subject)).toContain("Conventional Commits");
+    }
     const longSubject = `fix(ci): ${"x".repeat(240)}`;
     expect(longSubject.length).toBeGreaterThan(200);
     expect(isConventionalCommitSubject(longSubject)).toBe(true);
@@ -133,11 +136,46 @@ describe("commit message range verification", () => {
     const branch = git(root, "branch", "--show-current");
     git(root, "checkout", "-b", "topic");
     git(root, "commit", "--allow-empty", "-m", sideSubject);
+    const side = git(root, "rev-parse", "HEAD");
     git(root, "checkout", branch);
     git(root, "commit", "--allow-empty", "-m", "chore: primary branch change");
     git(root, "merge", "--no-ff", "topic", "-m", mergeSubject);
     const head = git(root, "rev-parse", "HEAD");
-    return { root, base, head };
+    return { root, base, head, side };
+  }
+
+  function upstreamFixture(subject = "Original upstream release title") {
+    const fixture = mergedFixture(
+      subject,
+      "merge(upstream): import CC Switch v4.0.4",
+    );
+    const { root, side } = fixture;
+    git(root, "tag", "-a", "v4.0.4", side, "-m", "upstream release");
+    const tagObject = git(root, "rev-parse", "v4.0.4");
+    const ledger = path.join(root, "docs/upstream/cc-switch-v4.0.4.md");
+    fs.mkdirSync(path.dirname(ledger), { recursive: true });
+    fs.writeFileSync(
+      ledger,
+      [
+        "| Item | Identity |",
+        "| --- | --- |",
+        "| Upstream repository | `https://github.com/farion1231/cc-switch.git` |",
+        "| Annotated tag | `v4.0.4` |",
+        `| Full tag-object SHA | \`${tagObject}\` |`,
+        `| Full peeled commit SHA | \`${side}\` |`,
+        "",
+      ].join("\n"),
+    );
+    git(root, "add", "docs/upstream");
+    git(root, "commit", "-m", "docs(upstream): record verified source");
+    // CI needs no upstream remote or fetched tag ref.
+    git(root, "tag", "-d", "v4.0.4");
+    return {
+      ...fixture,
+      head: git(root, "rev-parse", "HEAD"),
+      ledger,
+      tagObject,
+    };
   }
 
   function verifyRange(
@@ -174,6 +212,8 @@ describe("commit message range verification", () => {
       expect(JSON.parse(result.stdout)).toEqual({
         ok: true,
         commitCount: count,
+        upstreamCommitCount: 0,
+        upstreamSources: [],
         errors: [],
       });
     }
@@ -216,6 +256,130 @@ describe("commit message range verification", () => {
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("Conventional Commits");
     }
+  });
+
+  it.each([
+    "Original upstream release title",
+    "perf: improve requests",
+    "build: update toolchain",
+  ])(
+    "preserves pinned upstream history without applying FyAgent subject rules: %s",
+    (subject) => {
+      const { root, base, head, side, tagObject } = upstreamFixture(subject);
+      const result = verifyRange(
+        root,
+        base,
+        head,
+        "feat: integrate upstream capabilities",
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({
+        ok: true,
+        commitCount: 4,
+        upstreamCommitCount: 1,
+        upstreamSources: [
+          {
+            repository: "https://github.com/farion1231/cc-switch.git",
+            tag: "v4.0.4",
+            tagObject,
+            commit: side,
+          },
+        ],
+        errors: [],
+      });
+      expect(
+        verifyRange(root, base, head, "merge(upstream): invalid PR title")
+          .status,
+      ).toBe(1);
+    },
+  );
+
+  it("keeps local commits above the upstream anchor and first-parent commits strict", () => {
+    const { root, base, side } = upstreamFixture();
+    const branch = git(root, "branch", "--show-current");
+    git(root, "checkout", "-b", "local-above-upstream", side);
+    git(root, "commit", "--allow-empty", "-m", "invalid local side change");
+    git(root, "checkout", branch);
+    git(root, "commit", "--allow-empty", "-m", "invalid local main change");
+    git(
+      root,
+      "merge",
+      "--no-ff",
+      "local-above-upstream",
+      "-m",
+      "merge: integrate local work",
+    );
+    const result = verifyRange(root, base, git(root, "rev-parse", "HEAD"));
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout);
+    expect(report.upstreamCommitCount).toBe(1);
+    expect(report.errors).toHaveLength(2);
+    expect(result.stderr).toContain("invalid local side change");
+    expect(result.stderr).toContain("invalid local main change");
+  });
+
+  it("does not grant upstream exemptions from the subject alone or a mismatched anchor", () => {
+    const missing = mergedFixture(
+      "upstream prose",
+      "merge(upstream): unrecorded import",
+    );
+    const missingResult = verifyRange(missing.root, missing.base, missing.head);
+    expect(missingResult.status).toBe(1);
+    expect(JSON.parse(missingResult.stdout).upstreamCommitCount).toBe(0);
+
+    const { root, base, side, ledger } = upstreamFixture();
+    fs.writeFileSync(
+      ledger,
+      fs.readFileSync(ledger, "utf8").replace(side, base),
+    );
+    git(root, "add", "docs/upstream");
+    git(root, "commit", "-m", "docs: wrong upstream anchor");
+    const mismatch = verifyRange(root, base, git(root, "rev-parse", "HEAD"));
+    expect(mismatch.status).toBe(1);
+    expect(JSON.parse(mismatch.stdout).upstreamCommitCount).toBe(0);
+    expect(mismatch.stderr).toContain("Original upstream release title");
+  });
+
+  it("rejects an upstream-style subject on a single-parent commit", () => {
+    const { root, head: base } = upstreamFixture();
+    git(
+      root,
+      "commit",
+      "--allow-empty",
+      "-m",
+      "merge(upstream): pretend import",
+    );
+    const result = verifyRange(root, base, git(root, "rev-parse", "HEAD"));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("merge(upstream): pretend import");
+  });
+
+  it("reads the established provenance ledger field names and rejects a foreign source", () => {
+    const { root, base, ledger } = upstreamFixture();
+    fs.writeFileSync(
+      ledger,
+      fs
+        .readFileSync(ledger, "utf8")
+        .replace("Full tag-object SHA", "Tag object")
+        .replace("Full peeled commit SHA", "Peeled commit"),
+    );
+    git(root, "add", "docs/upstream");
+    git(root, "commit", "-m", "docs: use existing provenance field names");
+    expect(verifyRange(root, base, git(root, "rev-parse", "HEAD")).status).toBe(
+      0,
+    );
+
+    fs.writeFileSync(
+      ledger,
+      fs
+        .readFileSync(ledger, "utf8")
+        .replace("farion1231/cc-switch", "someone/another-repository"),
+    );
+    git(root, "add", "docs/upstream");
+    git(root, "commit", "-m", "docs: point at a different source");
+    const result = verifyRange(root, base, git(root, "rev-parse", "HEAD"));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("invalid upstream source identity");
   });
 
   it("validates a conventional HEAD subject in an empty comparison", () => {
@@ -278,6 +442,12 @@ describe("commit message range verification", () => {
       commitCount: number;
       errors: string[];
     };
-    expect(report).toEqual({ ok: true, commitCount: 1, errors: [] });
+    expect(report).toEqual({
+      ok: true,
+      commitCount: 1,
+      upstreamCommitCount: 0,
+      upstreamSources: [],
+      errors: [],
+    });
   });
 });

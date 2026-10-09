@@ -5,6 +5,7 @@ import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { Dialog } from "../../../shared/ui/Dialog";
 import { Button } from "../../../shared/ui/Button";
 import type { DialogOriginRef } from "../../../shared/ui/dialogOrigin";
+import { parseMigrationError } from "../../../shared/features/session-migration";
 import type {
   RestoreAttempt,
   RestoreStage,
@@ -46,7 +47,7 @@ export function AttestationDialog({
       );
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(parseMigrationError(err).message);
     } finally {
       setSubmitting(false);
     }
@@ -80,12 +81,8 @@ export function AttestationDialog({
         <div className="fy-attestation-warning" role="note">
           <InfoIcon size={20} weight="bold" />
           <div className="fy-attestation-warning-text">
-            <strong>严肃区分说明：</strong>
-            此操作仅记录你主观确认已在目标客户端中手动发送下一条消息并收到答复。
-            <strong>
-              绝不代表通过端到端自动化测试、多系统双向测试或软件重启读回验证
-            </strong>
-            ， 亦不会提升目标软件底层的恢复能力等级。
+            此操作记录你在目标软件中手动发送新消息并收到回复的说明。
+            系统恢复阶段仍以实际回执为准，记录不会提升系统验证状态。
           </div>
         </div>
 

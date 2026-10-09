@@ -1,4 +1,16 @@
+import type { Provider } from "../../domain/configuration/types";
+import type {
+  AppModeView,
+  ProxyStack,
+  CodexDaemonRestartOutcome,
+} from "../../domain/configuration/types/proxy";
+import type {
+  ClaudeQuickSetupPreview,
+  ClaudeQuickSetupApplyRequest,
+  ClaudeQuickSetupOutcome,
+} from "./claude-quick-setup";
 import type { FirstUseGuideState } from "./first-use-guide";
+import type { McpImportReport, McpImportSourceId } from "./mcp";
 import type {
   CodexInstallPreflight,
   JobSnapshot,
@@ -64,6 +76,7 @@ import type {
   OpenCodeSaveModelsResult,
   ModelProbeRequest,
   ModelProbeResult,
+  ModelProbeSnapshot,
   ReachabilityResult,
   DailyMemoryFileInfo,
   DailyMemorySearchResult,
@@ -79,7 +92,6 @@ import type { AgentAuthPort } from "./agent-auth";
 import type { ManagedAuthPort } from "./managed-auth";
 import type { ChangePlansPort } from "./change-plans";
 import type { GrokToolingPort } from "./grok-tooling";
-import type { HealthPort } from "./health";
 
 export interface AgentCatalogPort {
   get(): Promise<AgentCatalogResult>;
@@ -137,6 +149,33 @@ export interface CodexDesktopPort {
 }
 
 export interface ProvidersPort {
+  getAll(app: "claude" | "codex"): Promise<Record<string, Provider>>;
+  add(app: "claude" | "codex", provider: Provider): Promise<boolean>;
+  update(app: "claude" | "codex", provider: Provider): Promise<boolean>;
+  switch(app: "claude" | "codex", id: string): Promise<unknown>;
+  getMode(app: "claude" | "codex"): Promise<AppModeView>;
+  setMode(
+    app: "claude" | "codex",
+    enabled: boolean,
+    stack?: boolean,
+    route?: string | null,
+  ): Promise<void>;
+  setRoute(app: "claude" | "codex", providerId: string): Promise<void>;
+  getStack(app: "claude" | "codex"): Promise<ProxyStack>;
+  setStackMember(
+    app: "claude" | "codex",
+    providerId: string,
+    enabled: boolean,
+  ): Promise<string | null>;
+  adoptCodexCatalog(): Promise<string | null>;
+  restartCodexDaemon(): Promise<CodexDaemonRestartOutcome>;
+
+  previewClaudeQuickSetup(
+    request: ProviderQuickSetupRequest,
+  ): Promise<ClaudeQuickSetupPreview>;
+  applyClaudeQuickSetupPreview(
+    request: ClaudeQuickSetupApplyRequest,
+  ): Promise<ClaudeQuickSetupOutcome>;
   getSummary(app: ProviderAppId): Promise<ProviderSummaryQueryData>;
   getProxyRestorePreview(
     app: ProviderAppId,
@@ -149,6 +188,8 @@ export interface ProvidersPort {
   fetchModels(baseUrl: string, apiKey: string): Promise<FetchedModelRef[]>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
   bindXaiManaged(request: BindXaiManagedRequest): Promise<BindXaiManagedResult>;
   bindManagedProxy(
     request: BindManagedProxyRequest,
@@ -167,6 +208,8 @@ export interface WorkBuddyPort {
   ): Promise<WorkBuddySaveModelsResult>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
 }
 
 export interface OpenCodeModelsPort {
@@ -183,6 +226,8 @@ export interface OpenCodeModelsPort {
   ): Promise<OpenCodeSaveModelsResult>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  getModelProbeStatus(requestId: string): Promise<ModelProbeSnapshot>;
+  cancelModelProbe(requestId: string): Promise<ModelProbeSnapshot>;
 }
 
 export interface SkillsPort {
@@ -236,7 +281,7 @@ export interface McpPort {
     app: McpTargetId,
     enabled: boolean,
   ): Promise<void>;
-  importFromApps(): Promise<number>;
+  importFromApps(sources?: McpImportSourceId[]): Promise<McpImportReport>;
 }
 
 export interface SettingsPort {
@@ -272,8 +317,7 @@ export interface MemoryPort {
 
 export interface FeaturePorts {
   configPack: import("./config-pack").ConfigPackPort;
-  health: HealthPort;
-  configRecovery: import("./config-recovery").ConfigRecoveryPort;
+  databaseRecovery: import("./database-recovery").DatabaseRecoveryPort;
   catalog: AgentCatalogPort;
   agentAuth: AgentAuthPort;
   managedAuth: ManagedAuthPort;

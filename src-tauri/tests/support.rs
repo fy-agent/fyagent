@@ -4,10 +4,17 @@ use std::sync::{Arc, LockResult, Mutex, MutexGuard, OnceLock};
 use fyagent_lib::{update_settings, AppSettings, AppState, Database, MultiAppConfig};
 
 /// 为测试设置隔离的 HOME 目录，避免污染真实用户数据。
+///
+/// cargo test 下每个测试二进制一个进程、二进制之间顺序执行，共用一个固定目录即可。
+/// nextest 每个测试一个进程、多个进程并发，各自启动时都会清空目录，所以按槽位分开：
+/// 槽位号在同时运行的测试之间唯一、测试结束后复用，目录数不超过并发数。
 pub fn ensure_test_home() -> &'static Path {
     static HOME: OnceLock<PathBuf> = OnceLock::new();
     HOME.get_or_init(|| {
-        let base = std::env::temp_dir().join(format!("fyagent-test-home-{}", std::process::id()));
+        let temp_root = std::env::temp_dir();
+        #[cfg(target_os = "macos")]
+        let temp_root = temp_root.canonicalize().expect("canonical temp root");
+        let base = temp_root.join(format!("fyagent-test-home-{}", std::process::id()));
         if base.exists() {
             let _ = std::fs::remove_dir_all(&base);
         }
@@ -18,6 +25,11 @@ pub fn ensure_test_home() -> &'static Path {
         std::env::set_var("HOME", &base);
         #[cfg(windows)]
         std::env::set_var("USERPROFILE", &base);
+        // Claude Desktop 的配置目录在 Windows 上只读 LOCALAPPDATA（见 claude_desktop_config.rs
+        // 的 windows_local_app_data_dir），既不认 CC_SWITCH_TEST_HOME 也不认 HOME。不覆盖它，
+        // 涉及 Claude Desktop 供应商切换的测试会写进开发者真实的桌面版配置。
+        #[cfg(windows)]
+        std::env::set_var("LOCALAPPDATA", base.join("AppData").join("Local"));
         base
     })
     .as_path()
@@ -131,4 +143,14 @@ pub fn create_credential_test_state_with_config(
     let state = create_credential_test_state()?;
     state.db.migrate_from_json(config)?;
     Ok(state)
+}
+
+/// Golden row snapshots need SQLite on disk, but never access the OS keychain.
+#[allow(dead_code)]
+pub fn create_golden_test_state() -> Result<AppState, Box<dyn std::error::Error>> {
+    #[cfg(feature = "test-hooks")]
+    let db = Database::init_with_memory_secrets_for_test()?;
+    #[cfg(not(feature = "test-hooks"))]
+    let db = Database::init()?;
+    Ok(AppState::new(Arc::new(db)))
 }

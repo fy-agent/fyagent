@@ -62,7 +62,7 @@ test("dark blue text and controls remain readable on actual composited page and 
   await installRichTauriFeatureFixture(page);
   for (const route of [
     "agents",
-    "health",
+    "sessions", // I19 retires /health; cover the current eighth primary route.
     "auth",
     "models?target=codex",
     "skills",
@@ -79,6 +79,14 @@ test("dark blue text and controls remain readable on actual composited page and 
     const scope = `[data-testid="${route.split("?")[0]}-page"]`;
     const routeScope = page.locator(scope);
     await expect(routeScope).toBeVisible();
+    if (route === "sessions") {
+      await expect(
+        routeScope.getByText("本地会话 (2)", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        routeScope.getByText("浏览器会话 Alpha", { exact: true }),
+      ).toBeVisible();
+    }
     if (route === "agents") {
       // Scan completion removes the progress block and commits the card order.
       // Capture glyph coordinates only after those geometry changes settle.
@@ -87,18 +95,16 @@ test("dark blue text and controls remain readable on actual composited page and 
       ).toBeEnabled();
       await expect(routeScope.getByRole("progressbar")).toHaveCount(0);
     }
-    if (route === "health") {
-      // Raster sampling records glyph geometry before it hides text and takes
-      // the screenshot. Let the initial read and its conditional stop action
-      // settle first, otherwise the primary action can move into stale points.
-      await expect(routeScope.locator(".fy-health-status")).toHaveText(
-        "本机检查正常",
-      );
+    if (route === "models?target=codex") {
+      // Loaded mode/provider rows move the subscription section. Capture text
+      // coordinates only after that query-driven layout change is complete.
       await expect(
-        routeScope.getByRole("button", { name: "检查全部软件" }),
-      ).toBeEnabled();
+        routeScope.getByText("当前：直连 · Fixture Codex Current", {
+          exact: true,
+        }),
+      ).toBeVisible();
       await expect(
-        routeScope.getByRole("button", { name: "停止检查" }),
+        routeScope.getByRole("status", { name: "正在读取连接模式" }),
       ).toHaveCount(0);
     }
     const samples = await sampleTextContrast(page, scope);

@@ -24,9 +24,10 @@ fn read_config() -> Result<Value, String> {
     let bytes = read_opencode_config_bytes().map_err(|_| "OpenCode configuration unavailable")?;
     match bytes {
         None => Ok(json!({})),
-        Some(bytes) => serde_json::from_slice::<Value>(&bytes)
+        Some(bytes) => std::str::from_utf8(&bytes)
             .ok()
-            .filter(Value::is_object)
+            .and_then(|text| crate::jsonc_document::JsoncDocument::parse(text).ok())
+            .map(|document| document.value().clone())
             .ok_or_else(|| "OpenCode configuration unavailable".into()),
     }
 }
@@ -160,7 +161,7 @@ impl ProxyService {
             postimage_sha256: format!(
                 "{:x}",
                 Sha256::digest(
-                    crate::config::json_file_contents(&config)
+                    crate::opencode_config::project_opencode_config_bytes(&config)
                         .map_err(|_| "OpenCode projection unavailable")?
                 )
             ),

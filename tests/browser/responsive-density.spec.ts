@@ -78,7 +78,7 @@ for (const route of ["skills", "mcp"] as const) {
     });
   }
 
-  test(`${route} gives extra width to detail and keeps bulk rows uniformly aligned`, async ({
+  test(`${route} gives extra width to detail and keeps assignments and bulk dialog aligned`, async ({
     page,
   }) => {
     await installRichTauriFeatureFixture(page);
@@ -100,26 +100,31 @@ for (const route of ["skills", "mcp"] as const) {
         expect((await rail.boundingBox())!.width).toBeLessThanOrEqual(361);
         expect((await detail.boundingBox())!.width).toBeGreaterThan(550);
       }
-      const rows = await rail
-        .locator(".fy-feature-assignment:not(label)")
-        .evaluateAll((nodes) =>
-          nodes.map((node) => {
-            const label = node.firstElementChild!.getBoundingClientRect();
-            const buttons = [...node.querySelectorAll("button")].map((button) =>
-              button.getBoundingClientRect(),
-            );
-            return {
-              stacked: buttons[0].top >= label.bottom - 1,
-              tops: buttons.map((box) => box.top),
-              right: Math.max(...buttons.map((box) => box.right)),
-              rowRight: node.getBoundingClientRect().right,
-            };
-          }),
-        );
-      expect(rows).toHaveLength(7);
-      expect(new Set(rows.map((row) => row.stacked)).size).toBe(1);
+      // Management pages now keep per-resource switches in the rail and place
+      // bulk selection/preview in a dialog. Do not resurrect inline all-on/off.
+      const assignments = rail.locator("label.fy-feature-assignment");
+      await expect(assignments).toHaveCount(7);
+      await expect(
+        assignments.locator(".fy-feature-assignment-label"),
+      ).toHaveText(targets);
+      const rows = await assignments.evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const row = node.getBoundingClientRect();
+          const label = node.firstElementChild!.getBoundingClientRect();
+          const control = node
+            .querySelector('[role="switch"]')!
+            .getBoundingClientRect();
+          return {
+            centerDelta: Math.abs(
+              label.top + label.height / 2 - control.top - control.height / 2,
+            ),
+            right: control.right,
+            rowRight: row.right,
+          };
+        }),
+      );
       for (const row of rows) {
-        expect(Math.abs(row.tops[0] - row.tops[1])).toBeLessThan(1);
+        expect(row.centerDelta).toBeLessThan(1);
         expect(row.right).toBeLessThanOrEqual(row.rowRight + 1);
       }
       const cards = await page
@@ -138,6 +143,24 @@ for (const route of ["skills", "mcp"] as const) {
       await expect(
         page.locator(".fy-feature-assignments:visible").getByRole("switch"),
       ).toHaveCount(7);
+      await page.getByRole("button", { name: "批量分配", exact: true }).click();
+      const bulk = page.getByRole("dialog", {
+        name: `${route === "skills" ? "Skills" : "MCP"} 批量分配`,
+      });
+      await expect(bulk).toBeVisible();
+      await expect(
+        bulk.getByRole("combobox", { name: "目标软件" }).locator("option"),
+      ).toHaveText(targets);
+      await expect(
+        bulk.getByRole("button", { name: "预览所选 · 0", exact: true }),
+      ).toBeDisabled();
+      const bounds = await bulk.evaluate((node) => ({
+        width: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+      }));
+      expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.width + 1);
+      await bulk.getByRole("button", { name: "关闭", exact: true }).click();
+      await expect(bulk).toHaveCount(0);
     }
     await expectNoHorizontalOverflow(page);
     await expectHealthyPage(page, health);

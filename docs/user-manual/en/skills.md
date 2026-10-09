@@ -1,26 +1,23 @@
-# Skills management
+# Skills
 
-## Install and import
+## Install or import
 
-In 「Skills 管理 → 发现」, search by name or purpose, review the instructions, choose a target and confirm installation. Return to 「已安装」 (Installed) to inspect details and assignments.
+Search in 「发现」, review the Skill, choose a target and confirm. Check 「已安装」 afterward. 「更多 → 从 ZIP 安装」 selects a file before target confirmation.
 
-「更多」 (More) offers:
+For 「更多 → 导入本地 Skill」, select unmanaged rows, adjust software switches, then use 「预览导入」 and 「确认导入」 after reviewing the rows and targets. The original source remains in place; linked sources can be read and copied to ordinary directories.
 
-- 「导入本地 Skill」: scan installed applications for unmanaged Skills, select items and target software, then 「导入所选」 (Import selected).
-- 「从 ZIP 安装」: select a ZIP, check the target and displayed directory, then confirm.
+## Assign and recover
 
-## Assign and update
+Use a target switch for one Skill. 「批量分配」 lets you filter/select resources, choose one target and enable/disable intent, then preview and confirm. Completion requires saved-state readback. If observations changed, preview again. A failed row may have partial writes: refresh actual state before selecting unfinished rows for a new preview.
 
-Select an installed Skill and use the software switches in its assignment area. This changes the target software's Skill directory. Check the resulting switches and reload the target software.
+An import marked 「已入库」 belongs in 「已安装」 for assignment repair, not another import. If insertion is unconfirmed, use 「刷新并查看已安装」 first. Retry only unfinished sources confirmed to remain unmanaged, through a fresh preview.
 
-Use 「检查更新」 to check updates, then update individual items or 「更新全部」. Review success and failure counts after bulk operations and retry failed items.
+Details identify linked sources and read-only targets. Linked directories, including linked parents, are not modified or deleted. Linked target switches are disabled; ordinary targets remain available. If update/uninstall is refused, preserve the original and use ordinary directories. FyAgent readback does not prove that another app loaded the Skill; reload and check in that app.
 
-## Backups and storage
+## Updates, backups and storage
 
-Uninstalling removes the Skill from management and enabled software. To restore an available backup, open 「更多 → 备份恢复」, select the restore target and backup, and click 「恢复」. Confirm a backup is no longer needed before deleting it.
+「检查更新」 offers individual updates or 「更新全部」. Bulk updates can partially succeed; inspect counts and handle failed items. Read uninstall confirmation; a backup is not guaranteed for every removal. 「更多 → 备份恢复」 restores only an existing listed backup: select a target, then 「恢复」.
 
-「更多 → Skill 设置」 offers automatic, symbolic-link or copy synchronization. Save the selected method. Storage migration actions move Skills to FyAgent or the unified directory; review the confirmation, keep the application open during migration and inspect any failures afterward.
-
-Default directories are `~/.fyagent/skills/` and `~/.fyagent/skill-backups/` for uninstall backups. Use the location shown in the details for the actual installation.
+「更多 → Skill 设置」 selects automatic, symlink or copy projection. Confirm storage migration. Link protection rejects migration before changes; ordinary I/O failures may produce partial per-item results. Default storage is `~/.fyagent/skills/`, unified storage `~/.agents/skills/`, and uninstall backups `~/.fyagent/skill-backups/`.
 
 [Back to manual](README.md)

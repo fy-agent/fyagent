@@ -221,11 +221,16 @@ test("cannot promote disabled capability by attestation or workspace choice", as
   await expect(
     page.getByText("当前版本的恢复能力尚未验证", { exact: true }),
   ).toBeVisible();
-  const restore = page.getByRole("button", { name: "在目标软件中恢复" });
+  const restore = page.getByRole("button", {
+    name: "打开目标会话",
+    exact: true,
+  });
   await expect(restore).toBeDisabled();
 
   await page.getByRole("button", { name: "标记：我已手动续聊" }).last().click();
-  await expect(page.getByRole("note")).toContainText("仅记录你主观确认");
+  await expect(page.getByRole("note")).toContainText(
+    "记录不会提升系统验证状态",
+  );
   await page.getByRole("button", { name: "确认记录" }).click();
 
   await expect(

@@ -16,8 +16,10 @@ use crate::app_config::{McpApps, McpServer, MultiAppConfig};
 use crate::config::get_home_dir;
 use crate::error::AppError;
 
-use super::json_document::{read_servers as read_mcp_servers_map_from, write_servers};
-use super::validation::validate_server_spec;
+use super::json_document::{
+    project_server_spec, read_servers as read_mcp_servers_map_from, write_servers,
+};
+use super::validation::{source_server_is_enabled, validate_server_spec};
 
 fn workbuddy_home() -> PathBuf {
     get_home_dir().join(".workbuddy")
@@ -78,9 +80,10 @@ pub fn import_from_workbuddy(config: &mut MultiAppConfig) -> Result<usize, AppEr
             log::warn!("跳过无效 WorkBuddy MCP 服务器 '{id}': {error}");
             continue;
         }
+        let source_enabled = source_server_is_enabled(&spec);
         if let Some(existing) = servers.get_mut(&id) {
-            if !existing.apps.workbuddy {
-                existing.apps.workbuddy = true;
+            if existing.apps.workbuddy != source_enabled {
+                existing.apps.workbuddy = source_enabled;
                 changed += 1;
             }
         } else {
@@ -91,7 +94,7 @@ pub fn import_from_workbuddy(config: &mut MultiAppConfig) -> Result<usize, AppEr
                     name: id.clone(),
                     server: spec,
                     apps: McpApps {
-                        workbuddy: true,
+                        workbuddy: source_enabled,
                         ..McpApps::default()
                     },
                     description: None,
@@ -111,7 +114,7 @@ pub fn sync_single_server_to_workbuddy(id: &str, server_spec: &Value) -> Result<
         return Ok(());
     }
     let mut current = read_live_mcp_servers_map()?;
-    current.insert(id.to_string(), server_spec.clone());
+    current.insert(id.to_string(), project_server_spec(server_spec)?);
     set_live_mcp_servers_map(&current)
 }
 

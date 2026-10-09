@@ -810,7 +810,11 @@ export function planTauriTask({
   });
   const [subcommand, ...fixedArguments] = TAURI_OPERATIONS[operation];
   const signedMacosDevelopment = operation === "dev" && platform === "darwin";
-  const cargoExecutable = path.join(path.dirname(rustcExecutable), "cargo");
+  const pathApi = supportedHostPathApi(platform);
+  const cargoExecutable = pathApi.join(
+    pathApi.dirname(rustcExecutable),
+    "cargo",
+  );
   const args = ["tauri", subcommand, "--target", target, ...fixedArguments];
   const environmentOverrides = {};
   if (signedMacosDevelopment) {
@@ -918,16 +922,12 @@ export function restoreMacosSignedDevelopmentKeychain({
   nodeExecutable = process.execPath,
   environment,
 }) {
-  runCommand(
-    nodeExecutable,
-    [MACOS_SIGNED_DEV_APP_RUNNER, "restore-session"],
-    {
-      env: {
-        ...(environment ?? {}),
-        DEVELOPER_DIR: MACOS_XCODE_DEVELOPER_DIR,
-      },
+  runCommand(nodeExecutable, [MACOS_SIGNED_DEV_APP_RUNNER, "restore-session"], {
+    env: {
+      ...(environment ?? {}),
+      DEVELOPER_DIR: MACOS_XCODE_DEVELOPER_DIR,
     },
-  );
+  });
 }
 
 export function assertCargoRequest({
@@ -1117,11 +1117,7 @@ export function executeTauriTask({
   }
   // runForeground returns as soon as `pnpm tauri dev` is spawned. Restoring
   // here would drop the signing keychain before Cargo's app-runner signs.
-  if (
-    signedMacosDevelopment &&
-    child &&
-    typeof child.on === "function"
-  ) {
+  if (signedMacosDevelopment && child && typeof child.on === "function") {
     child.on("exit", () => {
       restoreMacosSignedDevelopmentKeychain({
         runCommand: runSetupCommand,

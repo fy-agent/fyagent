@@ -52,18 +52,48 @@ describe("Rust modular architecture boundaries", () => {
     ).not.toMatch(/ProviderService|switch_with_lock|write_text_file/u);
   });
 
-  it("keeps sync scheduling out of adapters and cloud consumers out of SQLite", () => {
+  it("retires cloud commands and workers while keeping SQLite listener isolation", () => {
     const database = read("src-tauri/src/database/mod.rs");
-    expect(database).toContain("fn set_change_listener");
+    expect(database).toMatch(
+      /#\[cfg\(test\)\]\s+pub\(crate\) fn set_change_listener/u,
+    );
+    const backup = read("src-tauri/src/database/backup.rs");
+    expect(backup).not.toMatch(
+      /export_sql_string_for_sync|import_sql_string_for_sync|SYNC_SKIP_TABLES|SYNC_PRESERVE_TABLES/u,
+    );
+    expect(backup).toContain("pub fn export_sql_string(");
+    expect(backup).toContain("pub fn import_sql_string(");
     expect(database).not.toMatch(/services::(?:s3|webdav)_auto_sync/u);
-    expect(read("src-tauri/src/lib.rs")).toContain("db.set_change_listener");
-    expect(read("src-tauri/src/services/mod.rs")).toMatch(/^mod auto_sync;$/mu);
-    for (const name of ["s3_auto_sync", "webdav_auto_sync"]) {
-      const source = read(`src-tauri/src/services/${name}.rs`);
-      expect(source).toContain("AUTO_SYNC.start(");
-      expect(source).not.toMatch(
-        /tokio::(?:sync|time)|AtomicUsize|OnceLock|crate::commands::/u,
-      );
+    expect(read("src-tauri/src/lib.rs")).not.toMatch(
+      /(?:webdav|s3)_(?:sync|auto_sync|test_connection)/u,
+    );
+    expect(read("src-tauri/src/lib.rs")).not.toContain(
+      "db.set_change_listener",
+    );
+    expect(read("src-tauri/src/commands/mod.rs")).not.toMatch(
+      /(?:s3|webdav)_sync/u,
+    );
+    expect(read("src-tauri/src/services/mod.rs")).not.toMatch(
+      /mod (?:auto_sync|s3|s3_auto_sync|s3_sync|webdav|webdav_auto_sync|webdav_sync|sync_protocol);/u,
+    );
+    expect(
+      read("src-tauri/permissions/legacy-application-commands.toml"),
+    ).not.toMatch(/"(?:s3|webdav)_(?:sync|test_connection)/u);
+    for (const file of [
+      "auto_sync",
+      "s3",
+      "s3_auto_sync",
+      "s3_sync",
+      "webdav",
+      "webdav_auto_sync",
+      "webdav_sync",
+      "sync_protocol",
+    ]) {
+      expect(
+        fs.existsSync(
+          path.join(repositoryRoot, `src-tauri/src/services/${file}.rs`),
+        ),
+      ).toBe(false);
     }
   });
 
@@ -97,6 +127,29 @@ describe("Rust modular architecture boundaries", () => {
         .filter((match) => !match[0].startsWith("pub(crate) mod "))
         .map((match) => match[0]),
     ).toEqual([]);
+  });
+
+  it("registers backend session usage with the existing main-window permission", () => {
+    const command = "get_session_usage_summary";
+    const host = read("src-tauri/src/lib.rs");
+    const permissions = read(
+      "src-tauri/permissions/legacy-application-commands.toml",
+    );
+    const capability = read("src-tauri/capabilities/default.json");
+    expect(host.match(new RegExp(`commands::${command},`, "gu"))).toHaveLength(
+      1,
+    );
+    expect(permissions).toContain(`"${command}"`);
+    expect(capability).toContain('"allow-legacy-application-commands"');
+    expect(read("src-tauri/src/commands/usage.rs")).toContain(
+      `pub async fn ${command}(`,
+    );
+    expect(read("src-tauri/src/commands/mod.rs")).toContain(
+      "pub use usage::*;",
+    );
+    expect(
+      read("src/shared/platform/tauri/feature-ports/sessionMigration.ts"),
+    ).not.toContain(command);
   });
 
   it("keeps catch-all commands retired and system commands explicitly owned", () => {

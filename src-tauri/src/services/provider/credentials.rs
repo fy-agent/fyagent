@@ -335,8 +335,29 @@ impl ProviderCredentials {
 
     /// Renderer edits need the non-secret usage configuration and retain
     /// markers. Ordinary exports continue to drop the complete script.
-    pub(crate) fn renderer_projection(provider: &Provider) -> Provider {
+    pub(crate) fn renderer_projection(provider: &Provider) -> Result<Provider, AppError> {
         let mut clean = crate::provider::sanitize_provider_for_export(provider);
+        if provider
+            .settings_config
+            .get("auth")
+            .is_some_and(Value::is_object)
+        {
+            clean.settings_config["auth"] = json!({});
+        }
+        if matches!(
+            crate::codex_config::analyze_codex_provider_features(provider, false).image_extension,
+            crate::codex_config::CodexImageExtensionState::On
+        ) {
+            let patch = crate::codex_config::patch_codex_provider_features(
+                &clean,
+                &crate::codex_config::CodexProviderFeatureIntent {
+                    image_extension: Some(true),
+                    websockets: None,
+                },
+                false,
+            )?;
+            clean.settings_config["config"] = Value::String(patch.toml_text);
+        }
         if let Some(meta) = &mut clean.meta {
             meta.native_credential_draft = None;
         }
@@ -357,7 +378,7 @@ impl ProviderCredentials {
                 }
             }
         }
-        clean
+        Ok(clean)
     }
 
     pub(crate) fn comparison(

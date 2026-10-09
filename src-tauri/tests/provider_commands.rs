@@ -349,8 +349,8 @@ command = "echo"
                 "old-provider".to_string(),
                 "Legacy".to_string(),
                 json!({
-                    "auth": {"OPENAI_API_KEY": "stale"},
-                    "config": "stale-config"
+                    "auth": legacy_auth,
+                    "config": legacy_config
                 }),
                 None,
             ),
@@ -408,6 +408,15 @@ command = "say"
     );
 
     let app_state = create_test_state_with_config(&config).expect("create test state");
+    // 来源切换不回填上一家；在夹具建立时通过正式保存入口绑定原有凭据。
+    let legacy = config.get_manager(&AppType::Codex).unwrap().providers["old-provider"].clone();
+    app_state
+        .db
+        .save_provider(AppType::Codex.as_str(), &legacy)
+        .expect("save the original reference-backed source before switching");
+
+    fyagent_lib::McpService::sync_enabled_for_app(&app_state, &AppType::Codex)
+        .expect("seed MCP independently of source switching");
 
     switch_provider_test_hook(&app_state, AppType::Codex, "new-provider")
         .expect("switch provider should succeed");
@@ -472,7 +481,9 @@ command = "say"
         .pointer("/auth/OPENAI_API_KEY")
         .is_none());
     assert!(legacy.settings_config["credentialRef"].as_str().is_some());
-    // Restoring the saved source proves the backfilled native material resolves.
+    // Restoring the saved source proves its original native material still resolves.
+    fyagent_lib::McpService::sync_enabled_for_app(&app_state, &AppType::Codex)
+        .expect("seed MCP independently");
     ProviderService::switch(&app_state, AppType::Codex, "old-provider")
         .expect("switch back to the reference-backed source");
     let restored = std::fs::read_to_string(fyagent_lib::get_codex_config_path())
@@ -597,8 +608,9 @@ fn switch_provider_updates_claude_live_and_state() {
     // 回填机制：切换前会将 live 配置回填到当前供应商
     // 这保护了用户在 live 文件中的手动修改
     assert_eq!(
-        legacy_provider.settings_config, legacy_live,
-        "previous provider should be backfilled with live config"
+        legacy_provider.settings_config,
+        json!({"env": {"ANTHROPIC_API_KEY": "stale-key"}}),
+        "source switching leaves the saved row unchanged"
     );
 
     let new_provider = providers.get("new-provider").expect("new provider exists");
@@ -709,4 +721,127 @@ fn import_refuses_live_config_under_proxy_takeover() {
         providers.is_empty(),
         "taken-over live import must not create providers"
     );
+}
+
+#[test]
+fn grokbuild_switch_back_after_client_changed_default_model() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    let live_path = home.join(".grok").join("config.toml");
+    std::fs::create_dir_all(live_path.parent().expect("grok config dir"))
+        .expect("create grok config dir");
+
+    let state = create_test_state().expect("create test state");
+    let relay_a = grokbuild_config("RelayA", "https://a.example/v1", "key-a");
+    let relay_b = grokbuild_config("RelayB", "https://b.example/v1", "key-b");
+    for (id, name, config) in [("a", "RelayA", &relay_a), ("b", "RelayB", &relay_b)] {
+        state
+            .db
+            .save_provider(
+                AppType::GrokBuild.as_str(),
+                &Provider::with_id(
+                    id.to_string(),
+                    name.to_string(),
+                    json!({ "config": config }),
+                    None,
+                ),
+            )
+            .expect("save Grok Build provider");
+    }
+
+    switch_provider_test_hook(&state, AppType::GrokBuild, "a").expect("switch to provider a");
+    assert_eq!(
+        std::fs::read_to_string(&live_path).expect("read live after switching to a"),
+        relay_a
+    );
+
+    // Simulate Grok's `/settings` → Default model picking the built-in grok-4.6.
+    let client_edited = relay_a.replace("default = \"grok-4.5\"", "default = \"grok-4.6\"");
+    std::fs::write(&live_path, &client_edited).expect("simulate client edit");
+
+    switch_provider_test_hook(&state, AppType::GrokBuild, "b").expect("switch to provider b");
+
+    let backfilled_a = state
+        .db
+        .get_provider_by_id("a", AppType::GrokBuild.as_str())
+        .expect("query provider a")
+        .expect("provider a exists")
+        .settings_config
+        .get("config")
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .unwrap_or_default();
+
+    switch_provider_test_hook(&state, AppType::GrokBuild, "a").unwrap_or_else(|err| {
+        panic!("switching back to provider a failed: {err}\nbackfilled row a:\n{backfilled_a}")
+    });
+
+    let live = std::fs::read_to_string(&live_path).expect("read live after switching back");
+    assert!(
+        live.contains("default = \"grok-4.5\"") && live.contains("https://a.example/v1"),
+        "live should select provider a's own model table again, got:\n{live}"
+    );
+}
+
+#[test]
+fn switch_provider_does_not_backfill_stale_codex_source() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    enable_codex_official_auth_preservation();
+    let _home = ensure_test_home();
+    write_codex_live_atomic(
+        &json!({"OPENAI_API_KEY": "legacy-key"}),
+        Some(
+            r#"model_provider = "legacy"
+[model_providers.legacy]
+name = "Legacy"
+base_url = "https://legacy.example.invalid/v1"
+wire_api = "responses"
+"#,
+        ),
+    )
+    .expect("seed live differing from saved source");
+    let mut config = MultiAppConfig::default();
+    let manager = config.get_manager_mut(&AppType::Codex).unwrap();
+    manager.current = "old-provider".into();
+    manager.providers.insert(
+        "old-provider".into(),
+        Provider::with_id(
+            "old-provider".into(),
+            "Legacy".into(),
+            json!({"auth": {"OPENAI_API_KEY": "stale"}, "config": "stale-config"}),
+            None,
+        ),
+    );
+    manager.providers.insert(
+        "new-provider".into(),
+        Provider::with_id(
+            "new-provider".into(),
+            "Latest".into(),
+            json!({"auth": {"OPENAI_API_KEY": "fresh-key"}, "config": r#"model_provider = "latest"
+[model_providers.latest]
+name = "Latest"
+base_url = "https://latest.example.invalid/v1"
+wire_api = "responses"
+"#}),
+            None,
+        ),
+    );
+    let state = create_test_state_with_config(&config).expect("create state");
+    let before = state.db.get_all_providers("codex").unwrap()["old-provider"].clone();
+    assert_eq!(before.settings_config["config"], "stale-config");
+    switch_provider_test_hook(&state, AppType::Codex, "new-provider").expect("switch");
+    let after = state.db.get_all_providers("codex").unwrap()["old-provider"].clone();
+    assert_eq!(
+        serde_json::to_value(&after).unwrap(),
+        serde_json::to_value(&before).unwrap(),
+        "switch must leave the entire saved source unchanged despite different live auth/config"
+    );
+    assert_eq!(
+        state.db.get_current_provider("codex").unwrap().as_deref(),
+        Some("new-provider")
+    );
+    let live = std::fs::read_to_string(get_codex_config_path()).unwrap();
+    assert!(live.contains("https://latest.example.invalid/v1"));
 }

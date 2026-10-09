@@ -54,6 +54,8 @@ type RustAllowance = {
   block?: string;
 };
 
+type RustSourceEntry = Readonly<{ path: string; source: string }>;
+
 type SourceContract = { id: string; file: string; snippet: string };
 
 type CheckerModule = {
@@ -72,6 +74,10 @@ type CheckerModule = {
     inspectedFiles: number;
   };
   inspectKnownImage(relativePath: string, buffer: Buffer): string | undefined;
+  collectStructureAssetCandidates(
+    currentPaths: string[],
+    options?: Record<string, unknown>,
+  ): unknown;
   loadRasterAssetManifest(
     manifestPath?: string,
     io?: unknown,
@@ -128,9 +134,7 @@ type CheckerModule = {
     entries: Array<{ path: string; source: string }>,
   ): Finding[];
   scanPath(relativePath: string): Finding[];
-  scanRustImplicitPredicates(
-    entries: Array<{ path: string; source: string }>,
-  ): Finding[];
+  scanRustImplicitPredicates(entries: readonly RustSourceEntry[]): Finding[];
   scanText(relativePath: string, source: string): Finding[];
   validateActiveTaskExclusion(
     value: string,
@@ -174,7 +178,80 @@ function activeTaskFixture(taskDirectoryName = "08-14-example-active-task") {
   return { directory, relative, root };
 }
 
-function permittedRustEntries() {
+let permittedRustSnapshot: Promise<readonly RustSourceEntry[]> | undefined;
+
+async function structureSnapshotIo(currentPaths: string[]) {
+  const requested = new Set<string>();
+  // Use the production collector only to discover its complete I/O scope.
+  // Its synthetic probe result is discarded; validation uses real metadata
+  // and bytes captured below, freshly for this one mutation test.
+  checker.collectStructureAssetCandidates(currentPaths, {
+    root: ROOT,
+    io: {
+      lstatSync() {
+        return { isFile: () => true, isSymbolicLink: () => false };
+      },
+      readFileSync(absolutePath: string) {
+        requested.add(absolutePath);
+        return Buffer.alloc(0);
+      },
+    },
+  });
+  type SnapshotEntry = {
+    stat?: fs.Stats;
+    buffer?: Buffer;
+    error?: NodeJS.ErrnoException;
+  };
+  const captured = new Map<string, SnapshotEntry>();
+  const paths = [...requested];
+  for (let index = 0; index < paths.length; index += 32) {
+    await Promise.all(
+      paths.slice(index, index + 32).map(async (absolutePath) => {
+        let stat: fs.Stats;
+        try {
+          stat = await fs.promises.lstat(absolutePath);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          captured.set(absolutePath, {
+            error: error as NodeJS.ErrnoException,
+          });
+          return;
+        }
+        const buffer =
+          stat.isFile() && !stat.isSymbolicLink()
+            ? await fs.promises.readFile(absolutePath)
+            : undefined;
+        captured.set(absolutePath, { stat, buffer });
+      }),
+    );
+  }
+  const entryFor = (absolutePath: fs.PathLike) => {
+    const entry = captured.get(String(absolutePath));
+    if (!entry) throw new Error("Structure source was not captured");
+    if (entry.error) throw entry.error;
+    return entry;
+  };
+  return Object.freeze({
+    lstatSync(absolutePath: fs.PathLike) {
+      return entryFor(absolutePath).stat!;
+    },
+    readFileSync(absolutePath: fs.PathOrFileDescriptor) {
+      const buffer = entryFor(String(absolutePath)).buffer;
+      if (!buffer) throw new Error("Structure source is not a regular file");
+      // A mutation must not change the shared baseline for a later case.
+      return Buffer.from(buffer);
+    },
+  });
+}
+
+function permittedRustEntries(): Promise<readonly RustSourceEntry[]> {
+  permittedRustSnapshot ??= loadPermittedRustSnapshot();
+  return permittedRustSnapshot;
+}
+
+async function loadPermittedRustSnapshot(): Promise<
+  readonly RustSourceEntry[]
+> {
   const files: string[] = [];
   const visit = (relativeDirectory: string) => {
     const absoluteDirectory = path.join(ROOT, relativeDirectory);
@@ -190,17 +267,35 @@ function permittedRustEntries() {
   };
   visit("src-tauri/src");
   files.push("src-tauri/build.rs", "src-tauri/user-helper/build.rs");
-  return files.map((relativePath) => ({
-    path: relativePath,
-    source: fs.readFileSync(path.join(ROOT, relativePath), "utf8"),
-  }));
+  const entries: RustSourceEntry[] = [];
+  // Keep every file and its order; overlap cold I/O without rerunning or
+  // replacing any production predicate scan. Both consumers share these bytes.
+  for (let index = 0; index < files.length; index += 32) {
+    entries.push(
+      ...(await Promise.all(
+        files.slice(index, index + 32).map(async (relativePath) =>
+          Object.freeze({
+            path: relativePath,
+            source: await fs.promises.readFile(
+              path.join(ROOT, relativePath),
+              "utf8",
+            ),
+          }),
+        ),
+      )),
+    );
+  }
+  return Object.freeze(entries);
 }
 
 function macosPosixEntries() {
   return [...new Set(checker.MACOS_POSIX_CONTRACT.map(({ file }) => file))].map(
     (relativePath) => ({
       path: relativePath,
-      source: fs.readFileSync(path.join(ROOT, relativePath), "utf8"),
+      // Model the macOS LF checkout; production still checks actual bytes.
+      source: fs
+        .readFileSync(path.join(ROOT, relativePath), "utf8")
+        .replace(/\r\n/gu, "\n"),
     }),
   );
 }
@@ -482,6 +577,65 @@ describe("durable supported-platform surface contract", () => {
           ]),
         );
       }
+    }
+    const subscriptionGuard = checker.MACOS_POSIX_CONTRACT.find(
+      (item) => item.id === "subscription-test-home-guard",
+    )!;
+    const dataOverride = `        std::env::set_var("${terminology}", path.join(".local/share"));`;
+    const weakenedGuards = [
+      subscriptionGuard.snippet.replace(
+        '        crate::initialize_windows_user_context().expect("Windows test user context");\n',
+        "",
+      ),
+      subscriptionGuard.snippet.replace(
+        "        let guard = Self(previous, data_home);\n",
+        "",
+      ),
+      subscriptionGuard.snippet.replace(
+        "        assert_eq!(crate::config::get_home_dir(), path);\n",
+        "",
+      ),
+      subscriptionGuard.snippet.replace(
+        `            Some(value) => std::env::set_var("${terminology}", value),`,
+        "",
+      ),
+      subscriptionGuard.snippet.replace(
+        `            None => std::env::remove_var("${terminology}"),`,
+        "",
+      ),
+      subscriptionGuard.snippet.replace(
+        '            Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),',
+        "",
+      ),
+      `${subscriptionGuard.snippet.replace(dataOverride, "")}\nfn moved_override(path: &std::path::Path) {\n${dataOverride}\n}`,
+    ];
+    for (const weakenedGuard of weakenedGuards) {
+      expect(weakenedGuard).not.toBe(subscriptionGuard.snippet);
+      const drift = entries.map((entry) =>
+        entry.path === subscriptionGuard.file
+          ? {
+              ...entry,
+              source: entry.source.replace(
+                subscriptionGuard.snippet,
+                weakenedGuard,
+              ),
+            }
+          : entry,
+      );
+      expect(checker.scanMacosPosixContract(drift)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: subscriptionGuard.file,
+            rule: "macos-posix:contract-drift",
+            excerpt: "subscription-test-home-guard",
+          }),
+        ]),
+      );
+      expect(checker.scanDirectoryConventionContract(drift)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ rule: "macos-posix:contract-drift" }),
+        ]),
+      );
     }
     const unexpectedVariable = [
       checker.SURFACE_MARKERS.directoryConvention.toUpperCase(),
@@ -856,14 +1010,21 @@ describe("durable supported-platform surface contract", () => {
     ]);
   });
 
-  it("rejects preflight fallbacks that stop rejecting unsupported hosts", () => {
-    const entries = permittedRustEntries();
+  it("rejects preflight fallbacks that stop rejecting unsupported hosts", async () => {
+    const entries = await permittedRustEntries();
+    expect(await permittedRustEntries()).toBe(entries);
+    expect(Object.isFrozen(entries)).toBe(true);
+    expect(entries.every(Object.isFrozen)).toBe(true);
     const guarded = checker.RUST_ALLOWANCE_CONTRACT.filter(
       (item): item is RustAllowance & { block: string } =>
         Boolean(item.block) && !item.id.startsWith("session-migration-"),
     );
     expect(guarded).toHaveLength(4);
     for (const allowance of guarded) {
+      const originalSource = entries.find(
+        (entry) => entry.path === allowance.file,
+      )?.source;
+      expect(originalSource).toBeDefined();
       const pattern = new RegExp(
         allowance.block
           .split(/\s+/u)
@@ -883,6 +1044,10 @@ describe("durable supported-platform surface contract", () => {
             }
           : entry,
       );
+      expect(drifted).toHaveLength(entries.length);
+      expect(
+        drifted.find((entry) => entry.path === allowance.file)?.source,
+      ).not.toBe(originalSource);
       expect(checker.scanRustImplicitPredicates(drifted)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -951,8 +1116,8 @@ describe("durable supported-platform surface contract", () => {
     }
   });
 
-  it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", () => {
-    const entries = permittedRustEntries();
+  it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", async () => {
+    const entries = await permittedRustEntries();
     expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(47);
     expect(checker.scanRustImplicitPredicates(entries)).toEqual([]);
 
@@ -1550,9 +1715,10 @@ describe("durable supported-platform surface contract", () => {
     );
   });
 
-  it("seals every platform-sensitive source by path, mode, and digest", () => {
+  it("seals every platform-sensitive source by path, mode, and digest", async () => {
     const currentPaths = checker.listCurrentFiles(ROOT);
     const indexModes = checker.listCurrentIndexModes(ROOT);
+    const snapshotIo = await structureSnapshotIo(currentPaths);
     for (const manifestPath of [
       "scripts/tasks/supported-platform-raster-assets.json",
       "scripts/tasks/supported-platform-structure-assets.json",
@@ -1564,9 +1730,9 @@ describe("durable supported-platform surface contract", () => {
       mutate?: (source: string) => string,
     ) => {
       const io = {
-        lstatSync: fs.lstatSync,
+        lstatSync: snapshotIo.lstatSync,
         readFileSync(absolutePath: fs.PathOrFileDescriptor, options?: unknown) {
-          const buffer = fs.readFileSync(absolutePath);
+          const buffer = snapshotIo.readFileSync(absolutePath);
           const relative = path
             .relative(ROOT, String(absolutePath))
             .split(path.sep)
@@ -1650,6 +1816,7 @@ describe("durable supported-platform surface contract", () => {
     expect(() =>
       checker.validateStructureAssetInventory(currentPaths, wrongModes, {
         root: ROOT,
+        io: snapshotIo,
       }),
     ).toThrow(/mode 100644/iu);
 
@@ -1658,6 +1825,7 @@ describe("durable supported-platform surface contract", () => {
     expect(() =>
       checker.validateStructureAssetInventory(currentPaths, runnerModes, {
         root: ROOT,
+        io: snapshotIo,
       }),
     ).toThrow(/mode 100755/iu);
 
@@ -1676,12 +1844,12 @@ describe("durable supported-platform surface contract", () => {
             lstatSync(absolutePath: fs.PathLike) {
               return absolutePath === addedAbsolute
                 ? { isFile: () => true, isSymbolicLink: () => false }
-                : fs.lstatSync(absolutePath);
+                : snapshotIo.lstatSync(absolutePath);
             },
             readFileSync(absolutePath: fs.PathOrFileDescriptor) {
               return absolutePath === addedAbsolute
                 ? Buffer.from('process.platform === "win32"', "utf8")
-                : fs.readFileSync(absolutePath);
+                : snapshotIo.readFileSync(absolutePath);
             },
           },
         },

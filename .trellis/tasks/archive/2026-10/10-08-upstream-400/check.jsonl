@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/upstream-sync.md", "reason": "上游来源、真实祖先链与语义合并边界"}
+{"file": ".trellis/spec/backend/managed-auth.md", "reason": "账号额度、同账号重新登录与续期归属"}
+{"file": ".trellis/spec/backend/provider-credentials.md", "reason": "凭据 owner 与 SecretRef 更新边界"}
+{"file": ".trellis/spec/frontend/managed-auth.md", "reason": "账号连接状态、单一页头摘要与额度呈现"}
+{"file": ".trellis/spec/frontend/models.md", "reason": "聚合入口契约；超出注入上限，相关章节须按需直接完整读取"}
+{"file": "docs/fyagent/planning/iteration-0411-public-validation-2026-10-10.md", "reason": "区分已完成 VM 验收、定向回归与待完成公共 CI/归档/合并"}

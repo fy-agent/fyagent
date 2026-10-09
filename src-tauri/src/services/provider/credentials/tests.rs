@@ -75,11 +75,67 @@ fn saved(db: &Database) -> Provider {
 }
 
 #[test]
+fn renderer_projection_retains_editable_codex_shape_without_credentials() {
+    use crate::codex_config::{
+        analyze_codex_provider_features, CodexImageExtensionState, CODEX_IMAGE_EXTENSION_HEADER,
+        CODEX_IMAGE_EXTENSION_VALUE,
+    };
+
+    for image_header in [Some(CODEX_IMAGE_EXTENSION_VALUE), None, Some(CANARY)] {
+        let mut provider = fixture();
+        provider
+            .meta
+            .get_or_insert_with(Default::default)
+            .image_extension_configured = Some(true);
+        let image = image_header
+            .map(|value| format!(", '{CODEX_IMAGE_EXTENSION_HEADER}' = '{value}'"))
+            .unwrap_or_default();
+        provider.settings_config["config"] = json!(format!(
+            "{}http_headers = {{ Authorization = '{CANARY}'{image} }}\n",
+            provider.settings_config["config"].as_str().unwrap()
+        ));
+
+        let projected = ProviderCredentials::renderer_projection(&provider).unwrap();
+        assert_eq!(projected.settings_config["auth"], json!({}));
+        assert!(!serde_json::to_string(&projected).unwrap().contains(CANARY));
+        let expected = if image_header == Some(CODEX_IMAGE_EXTENSION_VALUE) {
+            CodexImageExtensionState::On
+        } else {
+            CodexImageExtensionState::Off
+        };
+        assert_eq!(
+            analyze_codex_provider_features(&projected, false).image_extension,
+            expected
+        );
+        let config: toml::Value =
+            toml::from_str(projected.settings_config["config"].as_str().unwrap()).unwrap();
+        let headers = config["model_providers"]["custom"].get("http_headers");
+        if image_header == Some(CODEX_IMAGE_EXTENSION_VALUE) {
+            let headers = headers.unwrap().as_table().unwrap();
+            assert_eq!(headers.len(), 1);
+            assert_eq!(
+                headers[CODEX_IMAGE_EXTENSION_HEADER].as_str(),
+                Some(CODEX_IMAGE_EXTENSION_VALUE)
+            );
+        } else {
+            assert!(headers.is_none());
+        }
+
+        let exported = sanitize_provider_for_export(&provider);
+        assert!(exported.settings_config.get("auth").is_none());
+        assert!(!exported.settings_config["config"]
+            .as_str()
+            .unwrap()
+            .contains("http_headers"));
+    }
+}
+
+#[test]
 fn auxiliary_credentials_share_native_lifecycle_and_never_enter_dto_or_export() {
     let (db, _) = database();
     db.save_provider("codex", &usage_fixture()).unwrap();
     let stored = saved(&db);
-    let projected = ProviderCredentials::renderer_projection(&stored);
+    let projected = ProviderCredentials::renderer_projection(&stored).unwrap();
     assert!(binding(&projected).is_none());
     assert_eq!(usage(&projected).api_key.as_deref(), Some(material::MASK));
     assert_eq!(usage(&projected).base_url, usage(&stored).base_url);
@@ -97,7 +153,6 @@ fn auxiliary_credentials_share_native_lifecycle_and_never_enter_dto_or_export() 
         serde_json::to_string(&projected).unwrap(),
         format!("{native:?}"),
         db.export_sql_string().unwrap(),
-        db.export_sql_string_for_sync().unwrap(),
     ] {
         for secret in [CANARY, USAGE_KEY, USAGE_TOKEN, ACCESS_ID, ACCESS_SECRET] {
             assert!(!output.contains(secret));
@@ -112,7 +167,7 @@ fn auxiliary_masks_retain_then_explicit_empty_fields_and_script_removal_revoke()
     db.save_provider("codex", &usage_fixture()).unwrap();
     let original = saved(&db);
     let record = ProviderCredentials::record(&db, &original).unwrap();
-    let mut edit = ProviderCredentials::renderer_projection(&original);
+    let mut edit = ProviderCredentials::renderer_projection(&original).unwrap();
     db.save_provider("codex", &edit).unwrap();
     assert_eq!(binding(&saved(&db)), binding(&original));
     usage_mut(&mut edit).api_key = Some("fixture-replaced-usage-key".into());
@@ -130,7 +185,7 @@ fn auxiliary_masks_retain_then_explicit_empty_fields_and_script_removal_revoke()
         "rollback still owns the old version"
     );
 
-    let mut edit = ProviderCredentials::renderer_projection(&replaced);
+    let mut edit = ProviderCredentials::renderer_projection(&replaced).unwrap();
     usage_mut(&mut edit).api_key = None;
     usage_mut(&mut edit).access_token = Some(String::new());
     db.save_provider("codex", &edit).unwrap();
@@ -140,7 +195,7 @@ fn auxiliary_masks_retain_then_explicit_empty_fields_and_script_removal_revoke()
     assert!(usage(&native).access_token.is_none());
     assert_eq!(usage(&native).access_key_id.as_deref(), Some(ACCESS_ID));
 
-    let mut edit = ProviderCredentials::renderer_projection(&cleared);
+    let mut edit = ProviderCredentials::renderer_projection(&cleared).unwrap();
     edit.meta.as_mut().unwrap().usage_script = None;
     db.save_provider("codex", &edit).unwrap();
     let cleared = saved(&db);
@@ -157,7 +212,7 @@ fn auxiliary_masks_cannot_cross_owners_targets_or_scripts() {
     db.save_provider("codex", &usage_fixture()).unwrap();
     let original = saved(&db);
     for kind in ["owner", "endpoint", "script", "vendor", "user"] {
-        let mut edit = ProviderCredentials::renderer_projection(&original);
+        let mut edit = ProviderCredentials::renderer_projection(&original).unwrap();
         edit.settings_config["auth"]["OPENAI_API_KEY"] = json!(CANARY);
         match kind {
             "owner" => edit.id = "another-provider".into(),
@@ -184,7 +239,7 @@ fn blank_inference_edits_cannot_redirect_credentials_but_fresh_capture_can() {
     db.save_provider("codex", &fixture()).unwrap();
     let original = saved(&db);
     for kind in ["endpoint", "protocol", "auth-role"] {
-        let mut edit = ProviderCredentials::renderer_projection(&original);
+        let mut edit = ProviderCredentials::renderer_projection(&original).unwrap();
         let config = edit.settings_config["config"].as_str().unwrap();
         let changed = match kind {
             "endpoint" => config.replace(
@@ -204,7 +259,7 @@ fn blank_inference_edits_cannot_redirect_credentials_but_fresh_capture_can() {
         assert!(db.save_provider("codex", &edit).is_err(), "{kind}");
         assert_eq!(binding(&saved(&db)), binding(&original));
     }
-    let mut edit = ProviderCredentials::renderer_projection(&original);
+    let mut edit = ProviderCredentials::renderer_projection(&original).unwrap();
     edit.settings_config["config"] =
         json!(edit.settings_config["config"].as_str().unwrap().replace(
             "https://example.invalid/v1",
@@ -240,7 +295,7 @@ fn current_row_target_tampering_cannot_reauthorize_retained_material() {
             usage_mut(&mut tampered).base_url = Some("https://other.example.invalid/usage".into());
         }
         db.save_provider_record("codex", &tampered).unwrap();
-        let edit = ProviderCredentials::renderer_projection(&tampered);
+        let edit = ProviderCredentials::renderer_projection(&tampered).unwrap();
         assert!(ProviderCredentials::resolve(&db, "codex", &tampered).is_err());
         assert!(ProviderCredentials::merge_edit(&db, "codex", &edit).is_err());
         assert!(db.save_provider("codex", &edit).is_err());
@@ -284,7 +339,7 @@ fn common_config_keeps_legal_settings_but_redirect_requires_fresh_authorization(
                 .set_config_snippet("codex", Some(changed.into()))
                 .unwrap();
             assert!(ProviderCredentials::resolve(&state.db, "codex", &original).is_err());
-            let edit = ProviderCredentials::renderer_projection(&original);
+            let edit = ProviderCredentials::renderer_projection(&original).unwrap();
             assert!(ProviderCredentials::merge_edit(&state.db, "codex", &edit).is_err());
             assert!(state.db.save_provider("codex", &edit).is_err());
             assert!(super::super::live::write_live_with_common_config(
@@ -488,7 +543,7 @@ fn enabling_common_redirect_cannot_retain_inference_or_implicit_usage_keys() {
     .unwrap();
     db.save_provider("codex", &provider).unwrap();
     let original = saved(&db);
-    let mut edit = ProviderCredentials::renderer_projection(&original);
+    let mut edit = ProviderCredentials::renderer_projection(&original).unwrap();
     edit.meta.as_mut().unwrap().common_config_enabled = Some(true);
     assert!(ProviderCredentials::merge_edit(&db, "codex", &edit).is_err());
     // A fresh inference key alone does not authorize forwarding retained
@@ -515,7 +570,7 @@ fn native_draft_cannot_redirect_after_merge_or_outlive_its_source_reference() {
             .unwrap();
         state.db.save_provider("codex", &provider).unwrap();
         let original = saved(&state.db);
-        let edit = ProviderCredentials::renderer_projection(&original);
+        let edit = ProviderCredentials::renderer_projection(&original).unwrap();
         let draft = ProviderCredentials::merge_edit(&state.db, "codex", &edit).unwrap();
         assert!(draft
             .meta
@@ -572,7 +627,7 @@ fn native_draft_cannot_redirect_after_merge_or_outlive_its_source_reference() {
 fn serialized_provider_cannot_forge_or_export_native_draft_authority() {
     let (db, _) = database();
     db.save_provider("codex", &fixture()).unwrap();
-    let edit = ProviderCredentials::renderer_projection(&saved(&db));
+    let edit = ProviderCredentials::renderer_projection(&saved(&db)).unwrap();
     let draft = ProviderCredentials::merge_edit(&db, "codex", &edit).unwrap();
     let serialized = serde_json::to_string(&draft).unwrap();
     assert!(!serialized.contains("native_credential_draft"));
@@ -938,13 +993,11 @@ fn deletion_revokes_locally_even_when_backend_cleanup_must_retry() {
 }
 
 #[test]
-fn ordinary_and_sync_exports_scrub_legacy_and_current_provider_secrets() {
+fn ordinary_exports_scrub_legacy_and_current_provider_secrets() {
     let (db, _) = database();
     db.save_provider_record("codex", &fixture()).unwrap();
-    for exported in [
-        db.export_sql_string().unwrap(),
-        db.export_sql_string_for_sync().unwrap(),
-    ] {
+    {
+        let exported = db.export_sql_string().unwrap();
         assert!(!exported.contains(CANARY));
         assert!(db
             .get_provider_by_id("fixture-codex", "codex")
@@ -956,10 +1009,8 @@ fn ordinary_and_sync_exports_scrub_legacy_and_current_provider_secrets() {
     }
     ProviderCredentials::migrate_legacy(&db).unwrap();
     let record = db.provider_credential_records().unwrap().remove(0);
-    for exported in [
-        db.export_sql_string().unwrap(),
-        db.export_sql_string_for_sync().unwrap(),
-    ] {
+    {
+        let exported = db.export_sql_string().unwrap();
         assert!(!exported.contains(CANARY));
         assert!(!exported.contains(record.handle.secret_ref().as_str()));
         assert!(!exported.contains(&record.id));
@@ -1168,10 +1219,8 @@ fn all_provider_export_shapes_and_snapshot_copies_are_secret_free() {
         .unwrap();
         conn.execute_batch("CREATE TABLE credential_spy(value TEXT); CREATE TRIGGER credential_spy_copy BEFORE UPDATE ON providers BEGIN INSERT INTO credential_spy(value) VALUES(OLD.settings_config); END;").unwrap();
     }
-    for export in [
-        db.export_sql_string().unwrap(),
-        db.export_sql_string_for_sync().unwrap(),
-    ] {
+    {
+        let export = db.export_sql_string().unwrap();
         assert!(!export.contains(CANARY));
         assert!(!export.contains("unknownExtension"));
     }
@@ -1187,7 +1236,7 @@ fn all_provider_export_shapes_and_snapshot_copies_are_secret_free() {
 
 #[test]
 #[serial_test::serial]
-fn sync_import_preserves_local_credential_route_without_grafting_to_remote_endpoint() {
+fn sql_import_preserves_local_credential_route_without_grafting_to_imported_endpoint() {
     super::super::tests::with_test_home(|state, _home| {
         state.db.save_provider("codex", &fixture()).unwrap();
         let before = state
@@ -1202,7 +1251,7 @@ fn sync_import_preserves_local_credential_route_without_grafting_to_remote_endpo
         remote.save_provider("codex", &remote_provider).unwrap();
         state
             .db
-            .import_sql_string_for_sync(&remote.export_sql_string_for_sync().unwrap())
+            .import_sql_string(&remote.export_sql_string().unwrap())
             .unwrap();
         let after = state
             .db

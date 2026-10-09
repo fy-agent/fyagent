@@ -204,7 +204,7 @@ added/modified path for:
 - `cc_switch_lib` imports in `src-tauri/tests/provider_service.rs` and elsewhere;
 - former current-product identity in runtime/configuration;
 - upstream updater keys, endpoints, permissions, plugins, UI, and workflows;
-- `dl.ccswitch.io`, `farion1231`, or former-name values, classifying each as an
+- `[retired upstream mirror]`, `farion1231`, or former-name values, classifying each as an
   invalid active dependency or a legitimate provenance/history/external fact;
 - sponsor/partner/referral metadata and clean-added promotion graphics;
 - references to modules deleted by upstream's dead-code cleanup;

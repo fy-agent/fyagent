@@ -5,8 +5,55 @@
 use crate::app_config::{AppType, McpApps, McpServer, McpTargetId};
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
+use crate::mcp::McpImportCounts;
 use indexmap::IndexMap;
 use rusqlite::{params, Connection, OptionalExtension, Row};
+
+// Stable, credential-free provenance fits the existing portable settings store.
+// It is written in the same source transaction as the row/assignment changes.
+const MCP_SOURCE_PREFIX: &str = "mcp_import_sources_v1:";
+
+fn decode_import_sources(value: &str) -> Result<Vec<McpTargetId>, AppError> {
+    let sources: Vec<McpTargetId> =
+        serde_json::from_str(value).map_err(|_| AppError::Database("MCP 来源记录无效".into()))?;
+    if sources
+        .iter()
+        .enumerate()
+        .any(|(index, source)| sources[..index].contains(source))
+    {
+        return Err(AppError::Database("MCP 来源记录无效".into()));
+    }
+    Ok(sources)
+}
+
+fn record_import_source_on(
+    conn: &Connection,
+    id: &str,
+    target: McpTargetId,
+) -> Result<(), AppError> {
+    let key = format!("{MCP_SOURCE_PREFIX}{id}");
+    let stored: Option<String> = conn
+        .query_row("SELECT value FROM settings WHERE key = ?1", [&key], |row| {
+            row.get(0)
+        })
+        .optional()
+        .map_err(|error| AppError::Database(error.to_string()))?;
+    let mut sources: Vec<McpTargetId> = match stored {
+        Some(value) => decode_import_sources(&value)?,
+        None => Vec::new(),
+    };
+    if !sources.contains(&target) {
+        sources.push(target);
+        let value = serde_json::to_string(&sources)
+            .map_err(|_| AppError::Database("无法保存 MCP 来源记录".into()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )
+        .map_err(|error| AppError::Database(error.to_string()))?;
+    }
+    Ok(())
+}
 
 const MCP_SERVER_SELECT: &str =
     "SELECT id, name, server_config, description, homepage, docs, tags, enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild, enabled_opencode, enabled_hermes, enabled_workbuddy, enabled_qoderwork, enabled_trae_work FROM mcp_servers";
@@ -107,6 +154,37 @@ fn row_to_mcp_server(row: &Row<'_>) -> rusqlite::Result<(String, McpServer)> {
 }
 
 impl Database {
+    pub(crate) fn get_mcp_import_sources(
+        &self,
+    ) -> Result<IndexMap<String, Vec<McpTargetId>>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut statement = conn
+            .prepare("SELECT key, value FROM settings WHERE key GLOB 'mcp_import_sources_v1:*' ORDER BY key")
+            .map_err(|error| AppError::Database(error.to_string()))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|error| AppError::Database(error.to_string()))?;
+        let mut result = IndexMap::new();
+        for row in rows {
+            let (key, value) = row.map_err(|error| AppError::Database(error.to_string()))?;
+            let sources = match decode_import_sources(&value) {
+                Ok(sources) => sources,
+                Err(_) => {
+                    // Unknown/corrupt provenance is not authority to invent a
+                    // source. Keep the original bytes; a later import refuses it.
+                    log::warn!("MCP provenance is unreadable; source remains unrecorded");
+                    continue;
+                }
+            };
+            if let Some(id) = key.strip_prefix(MCP_SOURCE_PREFIX) {
+                result.insert(id.to_string(), sources);
+            }
+        }
+        Ok(result)
+    }
+
     pub(crate) fn get_mcp_server(&self, id: &str) -> Result<Option<McpServer>, AppError> {
         let conn = lock_conn!(self.conn);
         conn.query_row(
@@ -203,6 +281,15 @@ impl Database {
         servers: &[McpServer],
         target: &McpTargetId,
     ) -> Result<usize, AppError> {
+        self.import_mcp_servers_with_report(servers, target)
+            .map(|counts| counts.added)
+    }
+
+    pub(crate) fn import_mcp_servers_with_report(
+        &self,
+        servers: &[McpServer],
+        target: &McpTargetId,
+    ) -> Result<McpImportCounts, AppError> {
         let column = mcp_target_column(target);
         let mut conn = lock_conn!(self.conn);
         let transaction = conn
@@ -212,6 +299,7 @@ impl Database {
         ordered.sort_by(|left, right| left.id.cmp(&right.id));
         let mut existing_updates = Vec::new();
         let mut new_servers = Vec::new();
+        let mut counts = McpImportCounts::default();
 
         for server in ordered {
             let source_enabled = server.apps.is_enabled_for_target(target);
@@ -225,20 +313,25 @@ impl Database {
                 .map_err(|e| AppError::Database(e.to_string()))?;
 
             if let Some(existing) = existing {
-                if source_enabled
-                    && !crate::mcp::server_specs_are_equivalent(&existing.server, &server.server)
-                {
+                if !crate::mcp::server_specs_are_equivalent(&existing.server, &server.server) {
                     return Err(AppError::McpValidation(format!(
                         "MCP 服务器 '{}' 在多个应用中的配置冲突；未合并 {} 分配",
                         server.id,
                         target.as_str()
                     )));
                 }
+                if existing.apps.is_enabled_for_target(target) != source_enabled {
+                    counts.assignment_changed += 1;
+                } else {
+                    counts.unchanged += 1;
+                }
                 existing_updates.push((server.id.clone(), source_enabled));
             } else if source_enabled {
                 let mut imported = server.clone();
                 imported.apps.set_enabled_for_target(target, true);
                 new_servers.push(imported);
+            } else {
+                counts.disabled_skipped += 1;
             }
         }
 
@@ -249,22 +342,37 @@ impl Database {
                     params![enabled, id],
                 )
                 .map_err(|e| AppError::Database(e.to_string()))?;
+            record_import_source_on(&transaction, &id, *target)?;
         }
         for server in &new_servers {
             save_mcp_server_on(&transaction, server)?;
+            record_import_source_on(&transaction, &server.id, *target)?;
         }
 
-        let new_count = new_servers.len();
+        counts.added = new_servers.len();
         transaction
             .commit()
             .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(new_count)
+        Ok(counts)
     }
 
     /// 删除 MCP 服务器
     pub fn delete_mcp_server(&self, id: &str) -> Result<(), AppError> {
-        let conn = lock_conn!(self.conn);
-        conn.execute("DELETE FROM mcp_servers WHERE id = ?1", params![id])
+        let mut conn = lock_conn!(self.conn);
+        let transaction = conn
+            .transaction()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        transaction
+            .execute("DELETE FROM mcp_servers WHERE id = ?1", params![id])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        transaction
+            .execute(
+                "DELETE FROM settings WHERE key = ?1",
+                [format!("{MCP_SOURCE_PREFIX}{id}")],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        transaction
+            .commit()
             .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
     }
@@ -496,6 +604,10 @@ mod tests {
             !stored.contains_key("zeta"),
             "failed insert must not persist"
         );
+        assert!(
+            db.get_mcp_import_sources().unwrap().is_empty(),
+            "provenance must roll back with the source"
+        );
     }
 
     #[test]
@@ -530,6 +642,60 @@ mod tests {
             !stored.contains_key("disabled-new"),
             "an explicitly disabled source command must not become a new managed row"
         );
+    }
+
+    #[test]
+    fn unknown_provenance_is_unrecorded_and_cannot_be_overwritten_by_import() {
+        let db = Database::memory().unwrap();
+        let existing = test_server();
+        db.save_mcp_server(&existing).unwrap();
+        let key = format!("{MCP_SOURCE_PREFIX}{}", existing.id);
+        let future = r#"{"contractVersion":2,"source":"future"}"#;
+        db.conn
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO settings (key, value) VALUES (?1, ?2)",
+                params![key, future],
+            )
+            .unwrap();
+        assert!(db.get_mcp_import_sources().unwrap().is_empty());
+        let mut imported = existing.clone();
+        imported.apps.qoderwork = true;
+        assert!(db
+            .import_mcp_servers_with_report(&[imported], &McpTargetId::QoderWork)
+            .is_err());
+        assert_eq!(
+            db.get_mcp_server(&existing.id).unwrap().unwrap().apps,
+            existing.apps
+        );
+        let stored: String = db
+            .conn
+            .lock()
+            .unwrap()
+            .query_row("SELECT value FROM settings WHERE key = ?1", [&key], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(stored, future);
+    }
+
+    #[test]
+    fn deleting_a_server_removes_only_its_import_provenance() {
+        let db = Database::memory().unwrap();
+        let mut first = test_server();
+        first.apps.qoderwork = true;
+        let mut second = first.clone();
+        second.id = "other-server".into();
+        db.import_mcp_servers_with_report(
+            &[first.clone(), second.clone()],
+            &McpTargetId::QoderWork,
+        )
+        .unwrap();
+        db.delete_mcp_server(&first.id).unwrap();
+        let sources = db.get_mcp_import_sources().unwrap();
+        assert!(!sources.contains_key(&first.id));
+        assert_eq!(sources[&second.id], vec![McpTargetId::QoderWork]);
     }
 
     #[test]

@@ -16,6 +16,7 @@ import { Button } from "../../shared/ui/Button";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import { EmptyState } from "../../shared/ui/primitives";
 import { PersistentSurface } from "../../shared/ui/PersistentSurface";
+import { connectionPresentation, summarizeConnections } from "./summary";
 import { GrokOfficialLogin } from "./GrokOfficialLogin";
 import {
   AuthListItem,
@@ -26,66 +27,11 @@ import {
 } from "./common";
 import {
   connectionActionLabel,
-  connectionStatusPresentation,
   managedAuthConsumerLabel,
   managedAuthManagerLabel,
   managedAuthProviderLabel,
   requestModeLabel,
 } from "./presentation";
-
-const statusRank: Record<ManagedAuthConnectionSummary["authStatus"], number> = {
-  requires_reauth: 0,
-  pending_restart: 1,
-  unavailable: 2,
-  checking: 3,
-  disconnected: 4,
-  connected: 5,
-};
-
-function consumerStatus(connections: ManagedAuthConnectionSummary[]) {
-  if (connections.length === 0) {
-    return connectionStatusPresentation("unavailable");
-  }
-  const primary = connections
-    .slice()
-    .sort(
-      (left, right) =>
-        statusRank[left.authStatus] - statusRank[right.authStatus],
-    )[0];
-  return connectionStatusPresentation(primary.authStatus, primary.reasonCodes);
-}
-
-function consumerSummary(connections: ManagedAuthConnectionSummary[]) {
-  if (connections.length === 0) {
-    return "暂时没有可管理的连接";
-  }
-  const projected = connections.filter(
-    (connection) =>
-      connection.authStatus === "connected" &&
-      !connection.reasonCodes.includes("native_projection_unavailable"),
-  ).length;
-  if (projected > 0) {
-    return `${projected} 条已连接`;
-  }
-  const savedNotProjected = connections.filter(
-    (connection) =>
-      connection.authStatus === "disconnected" &&
-      connection.accountId !== null &&
-      !connection.reasonCodes.includes("native_projection_unavailable"),
-  ).length;
-  if (savedNotProjected > 0) {
-    return "账号已保存，尚未写入软件";
-  }
-  const legacySaved = connections.filter(
-    (connection) =>
-      connection.authStatus === "connected" &&
-      connection.reasonCodes.includes("native_projection_unavailable"),
-  ).length;
-  if (legacySaved > 0) {
-    return "账号已保存，尚未写入软件";
-  }
-  return consumerStatus(connections).label;
-}
 
 function ConnectionCard({
   originRef,
@@ -108,20 +54,7 @@ function ConnectionCard({
         (candidate) => candidate.accountId === connection.accountId,
       )
     : null;
-  const status = (() => {
-    const base = connectionStatusPresentation(
-      connection.authStatus,
-      connection.reasonCodes,
-    );
-    if (
-      connection.authStatus === "disconnected" &&
-      account &&
-      !connection.reasonCodes.includes("native_projection_unavailable")
-    ) {
-      return { label: "账号已保存", tone: "warning" as const };
-    }
-    return base;
-  })();
+  const status = connectionPresentation(connection);
   return (
     <article className="fy-auth-consumer-connection">
       <div className="fy-auth-connection-card-heading">
@@ -142,10 +75,10 @@ function ConnectionCard({
       </div>
 
       <dl className="fy-feature-definition fy-auth-definition">
-        <DefinitionRow label="账号连接">
+        <DefinitionRow label="受管账号绑定">
           {account
             ? `${managedAuthProviderLabel(account.provider)} · ${account.login}`
-            : "尚未连接官方账号"}
+            : "尚未绑定受管账号"}
         </DefinitionRow>
         <DefinitionRow label="当前模型来源">
           {requestModeLabel(
@@ -222,7 +155,7 @@ export function ConnectionsView({
       <CatalogRail
         ariaLabel="软件连接列表"
         title="软件连接"
-        meta={`${overview.connections.length} 条连接`}
+        meta={summarizeConnections(overview.connections).countsLabel}
         className="fy-auth-rail"
       >
         <CatalogList>
@@ -230,7 +163,7 @@ export function ConnectionsView({
             const connections = overview.connections.filter(
               (connection) => connection.consumer === consumer,
             );
-            const status = consumerStatus(connections);
+            const status = summarizeConnections(connections);
             return (
               <AuthListItem
                 key={consumer}
@@ -241,7 +174,7 @@ export function ConnectionsView({
                     {managedAuthConsumerLabel(consumer).slice(0, 1)}
                   </span>
                 }
-                summary={consumerSummary(connections)}
+                summary={status.summary}
                 trailing={<StatusBadge {...status} />}
                 onSelect={() => onSelectConsumer(consumer)}
                 testId={`managed-auth-consumer-${consumer}`}
@@ -267,7 +200,7 @@ export function ConnectionsView({
               <div>
                 <h2>{managedAuthConsumerLabel(selectedConsumer)}</h2>
               </div>
-              <StatusBadge {...consumerStatus(selectedConnections)} />
+              <StatusBadge {...summarizeConnections(selectedConnections)} />
             </header>
             {selectedConnections.length === 0 ? (
               <EmptyState

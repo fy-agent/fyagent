@@ -58,6 +58,7 @@ impl ManagedAuthRepository {
         access_expires_at: Option<i64>,
         status: CredentialStatus,
         refreshed_at: i64,
+        authenticated_at: Option<i64>,
     ) -> Result<bool, ManagedAuthCoreError> {
         self.db
             .managed_auth_update_secret_cas(
@@ -69,6 +70,7 @@ impl ManagedAuthRepository {
                 access_expires_at,
                 status,
                 refreshed_at,
+                authenticated_at,
             )
             .map_err(ManagedAuthCoreError::from)
     }

@@ -65,21 +65,30 @@ export function run(command, args = [], options = {}) {
     shell: false,
   });
   if (result.error) throw result.error;
-  if (result.signal) {
+  // Windows reports console Ctrl+C as an NTSTATUS rather than a POSIX signal.
+  // process.kill(..., "SIGINT") on Windows instead exits with 1; keep that a failure.
+  const signal =
+    result.signal ??
+    (process.platform === "win32" &&
+    Number.isInteger(result.status) &&
+    result.status >>> 0 === 0xc000013a
+      ? "SIGINT"
+      : null);
+  if (signal) {
     if (options.allowSignal) {
       return {
-        status: signalExitCode(result.signal),
-        signal: result.signal,
+        status: signalExitCode(signal),
+        signal,
         stdout: (result.stdout ?? "").trim(),
         stderr: (result.stderr ?? "").trim(),
       };
     }
-    if (result.signal === "SIGINT" || result.signal === "SIGTERM") {
+    if (signal === "SIGINT" || signal === "SIGTERM") {
       const exitFn = options.exit ?? process.exit.bind(process);
-      exitFn(signalExitCode(result.signal));
+      exitFn(signalExitCode(signal));
       return {
-        status: signalExitCode(result.signal),
-        signal: result.signal,
+        status: signalExitCode(signal),
+        signal,
         stdout: (result.stdout ?? "").trim(),
         stderr: (result.stderr ?? "").trim(),
       };
@@ -88,21 +97,21 @@ export function run(command, args = [], options = {}) {
       ? `\n${(result.stderr || result.stdout || "").trim()}`
       : "";
     throw new Error(
-      `${command} ${args.join(" ")} terminated by ${result.signal}${detail}`,
+      `${command} ${args.join(" ")} terminated by ${signal}${detail}`,
     );
   }
-  if (
-    (result.status === 130 || result.status === 143) &&
-    !options.allowFailure &&
-    !options.allowSignal
-  ) {
-    const exitFn = options.exit ?? process.exit.bind(process);
-    exitFn(result.status);
-    return {
-      status: result.status,
-      stdout: (result.stdout ?? "").trim(),
-      stderr: (result.stderr ?? "").trim(),
-    };
+  if (result.status === 130 || result.status === 143) {
+    if (options.allowSignal || !options.allowFailure) {
+      if (!options.allowSignal) {
+        const exitFn = options.exit ?? process.exit.bind(process);
+        exitFn(result.status);
+      }
+      return {
+        status: result.status,
+        stdout: (result.stdout ?? "").trim(),
+        stderr: (result.stderr ?? "").trim(),
+      };
+    }
   }
   if (result.status !== 0 && !options.allowFailure) {
     const detail = options.capture

@@ -20,6 +20,23 @@ exists; the forwarder must not grow a second token store. Explicit account
 admission, stable Provider binding and `fyagent_proxy` overview projection are
 owned by [Managed Account Proxy](./managed-account-proxy.md).
 
+### Upstream route and aggregation modes
+
+`mode::controller` owns the migrated direct/route/stack lifecycle. Register its
+existing commands in the application handler and capability permission list;
+do not implement another mode controller. Explicit `stack`/`route` takeover
+arguments go directly to `enter_with_route`, while older managed-account calls
+retain their existing resume path.
+
+Startup restores saved proxy modes through the upstream `startup_app` under
+its switch lock, including when the legacy enabled flag is false. Shutdown
+uses `detach_all`; legacy bulk recovery skips these mode-owned applications.
+Keep the existing managed-account recovery path for other applications because
+global upstream startup drains their legacy backup evidence. Tray selection in
+stack mode changes the default route and preserves the saved failover settings.
+The native startup regression covers crash recovery, detach and subsequent
+reattach with the same members, default provider and model picker.
+
 ## 2. Signatures
 
 The reviewed Tauri command families in `commands/proxy.rs` are:

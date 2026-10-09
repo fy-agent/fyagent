@@ -1,5 +1,6 @@
 import { errorMessage } from "../../shared/features/helpers";
 import {
+  MANAGED_AUTH_QUOTA_WINDOW_IDS,
   parseManagedAuthCommandError,
   type ManagedAuthAccountSummary,
   type ManagedAuthConnectionAction,
@@ -12,6 +13,8 @@ import {
   type ManagedAuthLoginStage,
   type ManagedAuthProvider,
   type ManagedAuthProviderSummary,
+  type ManagedAuthQuotaWindow,
+  type ManagedAuthQuotaWindowId,
   type ManagedAuthReasonCode,
   type ManagedAuthRequestMode,
 } from "../../shared/features/managed-auth";
@@ -179,6 +182,43 @@ export function formatAuthenticatedAt(value: string | null): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+const quotaWindowLabels: Record<
+  (typeof MANAGED_AUTH_QUOTA_WINDOW_IDS)[number],
+  string
+> = {
+  five_hour: "5 小时",
+  seven_day: "7 天",
+  seven_day_fable: "7 天 Fable",
+  seven_day_opus: "7 天 Opus",
+  seven_day_sonnet: "7 天 Sonnet",
+  "30_day": "30 天",
+  weekly_limit: "每周",
+  monthly: "每月",
+  credits: "额度",
+};
+
+export function managedAuthQuotaWindowLabel(
+  windowId: ManagedAuthQuotaWindowId,
+): string {
+  if ((MANAGED_AUTH_QUOTA_WINDOW_IDS as readonly string[]).includes(windowId)) {
+    return quotaWindowLabels[
+      windowId as (typeof MANAGED_AUTH_QUOTA_WINDOW_IDS)[number]
+    ];
+  }
+  if (windowId.endsWith("_hour")) return `${windowId.slice(0, -5)} 小时`;
+  if (windowId.endsWith("_day")) return `${windowId.slice(0, -4)} 天`;
+  return windowId;
+}
+
+export function formatManagedAuthQuotaWindow(
+  window: ManagedAuthQuotaWindow,
+): string {
+  const reset = window.resetsAt
+    ? `，${formatAuthenticatedAt(window.resetsAt)} 重置`
+    : "";
+  return `${managedAuthQuotaWindowLabel(window.windowId)}剩余 ${window.remainingPercent}%${reset}`;
 }
 
 const accountHealthRank: Record<ManagedAuthHealth, number> = {

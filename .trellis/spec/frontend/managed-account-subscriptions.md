@@ -100,6 +100,11 @@ target. The renderer never submits paths as restore instructions.
   model, reuse another account's options, or send subscription credentials to
   an API-key catalog. Account labels distinguish ChatGPT from Grok; changing
   accounts or targets clears stale model selection.
+- Codex model counts and editors share `publishedModels`. If there are no valid
+  nonblank `modelCatalog.models` entries, read the explicit top-level TOML
+  `config.model`, matching native stack semantics. A valid catalog remains
+  authoritative. Do not create a second catalog or migrate a bound account just
+  to display its already-selected model.
 - The bind request has exactly the three keys above. Native response parsing
   checks exact keys, the submitted target identity, bounded provider ID/name,
   boolean fields and activation only for Claude/Grok/OpenCode. Invalid or unknown
@@ -194,6 +199,9 @@ and native still revalidates the selected account. Bad: use the first/default
 account, resurrect `auth_get_status`, or call a draft a working subscription.
 
 ## 6. Tests Required
+
+`aggregationModels.test.ts` covers explicit-model fallback, empty/invalid rows,
+valid-catalog precedence, and preservation of managed binding on model edit.
 
 `XaiSubscriptionSection.test.tsx` covers both providers' explicit account/model selection,
 changed/expired accounts, native failure/readback, per-target draft/application

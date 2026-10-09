@@ -1,5 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AppMode } from "../../domain/configuration/types/proxy";
+import type {
+  ClaudeQuickSetupPreview,
+  ClaudeQuickSetupOutcome,
+} from "../../shared/features/claude-quick-setup";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   defaultApiProtocol,
   isToolOnlyApi,
@@ -24,6 +38,7 @@ import type {
 import type { FeaturePorts } from "../../shared/features/ports";
 import { useFeatures } from "../../shared/features/provider";
 import {
+  featureKeys,
   useProviderSummary,
   useWorkBuddyModelIds,
   useWorkBuddyStatus,
@@ -100,7 +115,6 @@ import {
   hasUnconfirmedAuthority,
 } from "./apply";
 import { changePlanErrorCode } from "../../shared/features/change-plans-ui/changePlanErrors";
-import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
 import { ConfigPackButton } from "../../shared/features/config-pack-ui/ConfigPackButton";
 import type { PortableProvider } from "../../domain/config-pack";
 import {
@@ -109,6 +123,12 @@ import {
   splitWorkBuddyDraft,
 } from "./workBuddyModels";
 import "./Page.css";
+
+const ProviderModesPanel = lazy(() =>
+  import("./ProviderModesPanel").then((module) => ({
+    default: module.ProviderModesPanel,
+  })),
+);
 
 type WorkBuddySaveRequest = Parameters<
   FeaturePorts["workbuddy"]["saveModels"]
@@ -779,8 +799,15 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
               onBusyChange={(probing) =>
                 setBusy(probing ? "reachability" : null)
               }
-              onProbe={(modelId) =>
+              onStatus={(requestId) =>
+                ports.workbuddy.getModelProbeStatus(requestId)
+              }
+              onCancel={(requestId) =>
+                ports.workbuddy.cancelModelProbe(requestId)
+              }
+              onProbe={(modelId, requestId) =>
                 ports.workbuddy.checkModel({
+                  requestId,
                   app: "workbuddy",
                   baseUrl: baseUrl.trim(),
                   apiKey: apiKeyRef.current.trim(),
@@ -931,6 +958,18 @@ function ProviderPanel({
   const { search } = useLocation();
   const { ports } = useFeatures();
   const summaryQuery = useProviderSummary(app, active);
+  const queryClient = useQueryClient();
+  const refreshProviderModes = useCallback(async () => {
+    if (app === "grokbuild") return;
+    await Promise.all(
+      [
+        featureKeys.providerMode(app),
+        featureKeys.providerStack(app),
+        featureKeys.providerList(app),
+      ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+    );
+  }, [app, queryClient]);
+  const [modeView, setModeView] = useState<AppMode>("direct");
   const [name, setName] = useState(
     initialForm?.name ?? PROVIDER_DEFAULT_NAMES[app],
   );
@@ -968,11 +1007,19 @@ function ProviderPanel({
     message?: string;
   } | null>(null);
   const writeLock = useRef(false);
-  const writeConfirm = useModelsWriteConfirm<{
-    request: ProviderQuickSetupRequest;
-    revision: number;
-    targets: readonly ModelWriteTarget[];
-  }>();
+  const writeConfirm = useModelsWriteConfirm<
+    | { kind: "claude"; preview: ClaudeQuickSetupPreview; revision: number }
+    | {
+        kind: "grokbuild";
+        request: ProviderQuickSetupRequest;
+        revision: number;
+        targets: readonly ModelWriteTarget[];
+      }
+  >();
+  const [claudeOutcome, setClaudeOutcome] =
+    useState<ClaudeQuickSetupOutcome | null>(null);
+  const previewGeneration = useRef(0);
+  const activeRef = useRef(active);
   const submittedRevisionRef = useRef(0);
   const mountedRef = useRef(true);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -998,6 +1045,29 @@ function ProviderPanel({
       apiKeyRef.current = "";
     };
   }, []);
+
+  const { pending: pendingWrite, takePending: discardPendingWrite } =
+    writeConfirm;
+  const { resetVersion: draftVersion, isCurrentRevision } = draftCommit;
+  useEffect(() => {
+    activeRef.current = active;
+    previewGeneration.current += 1;
+  }, [active, draftVersion]);
+  useEffect(() => {
+    if (
+      !active ||
+      (pendingWrite?.kind === "claude" &&
+        !isCurrentRevision(pendingWrite.revision))
+    ) {
+      discardPendingWrite();
+    }
+  }, [
+    active,
+    pendingWrite,
+    discardPendingWrite,
+    isCurrentRevision,
+    draftVersion,
+  ]);
 
   const providerId = QUICK_SETUP_PROVIDER_IDS[app];
   const providerExists = Boolean(summaryQuery.data?.providers[providerId]);
@@ -1154,7 +1224,7 @@ function ProviderPanel({
       return;
     }
     const targets = summaryQuery.data?.writeTargets ?? [];
-    if (targets.length === 0) return;
+    if (app !== "claude" && targets.length === 0) return;
     const request = buildQuickSetupRequest(
       app,
       validated.value,
@@ -1166,8 +1236,148 @@ function ProviderPanel({
       // confirmation, including the native-owned file impact disclosure.
       setCodexWriteTargets(targets);
       void submit(request, revision);
+    } else if (app === "claude") {
+      void previewClaude(request, revision);
     } else {
-      writeConfirm.requestConfirm({ request, revision, targets });
+      writeConfirm.requestConfirm({
+        kind: "grokbuild",
+        request,
+        revision,
+        targets,
+      });
+    }
+  };
+
+  const previewClaude = async (
+    request: ProviderQuickSetupRequest,
+    revision: number,
+  ) => {
+    if (writeLock.current) return;
+    writeLock.current = true;
+    setBusy(true);
+    setNotice(null);
+    setClaudeOutcome(null);
+    const generation = previewGeneration.current;
+    try {
+      const preview = await ports.providers.previewClaudeQuickSetup(request);
+      if (
+        !mountedRef.current ||
+        !activeRef.current ||
+        generation !== previewGeneration.current ||
+        !draftCommit.isCurrentRevision(revision)
+      )
+        return;
+      writeConfirm.requestConfirm({ kind: "claude", preview, revision });
+    } catch {
+      if (
+        mountedRef.current &&
+        activeRef.current &&
+        generation === previewGeneration.current &&
+        draftCommit.isCurrentRevision(revision)
+      ) {
+        setNotice({
+          tone: "error",
+          title: "无法读取保存范围",
+          description: "草稿和凭据已保留，请重新预览。",
+        });
+      }
+    } finally {
+      writeLock.current = false;
+      if (mountedRef.current) setBusy(false);
+    }
+  };
+
+  const applyClaude = async (pending: {
+    preview: ClaudeQuickSetupPreview;
+    revision: number;
+  }) => {
+    if (
+      writeLock.current ||
+      writesBlocked ||
+      !activeRef.current ||
+      !draftCommit.isCurrentRevision(pending.revision)
+    )
+      return;
+    writeLock.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const outcome = await ports.providers.applyClaudeQuickSetupPreview({
+        previewId: pending.preview.previewId,
+      });
+      // The keyed panel may unmount on target switch while ModelsPage lives.
+      // Preserve uncertain write authority in that parent before UI admission.
+      if (outcome.overall === "unknown" || outcome.overall === "partial")
+        onBlockWrites(app);
+      if (!mountedRef.current) return;
+      setClaudeOutcome(outcome);
+      if (outcome.providerState === "applied") {
+        draftCommit.commitRevision(pending.revision);
+        if (draftCommit.isCurrentRevision(pending.revision)) clearApiKey();
+      }
+      if (
+        outcome.overall === "unknown" &&
+        draftCommit.isCurrentRevision(pending.revision)
+      )
+        clearApiKey();
+      const notices: Record<ClaudeQuickSetupOutcome["overall"], Notice> = {
+        applied: {
+          tone: "info",
+          title: "模型设置已保存并设为当前配置",
+          description:
+            "两个文件的结果已分别确认。请在 Claude 中刷新或新建会话后查看更改。",
+        },
+        partial: {
+          tone: "warning",
+          title: "模型条目已保存，部分文件未完成",
+          description: "请分别检查文件结果，模型条目会保留。",
+        },
+        stale: {
+          tone: "warning",
+          title: "保存范围已变化，未写入",
+          description: "草稿和凭据已保留，请重新预览后确认。",
+        },
+        rolledBack: {
+          tone: "error",
+          title: "未能保存设置，已还原之前的状态",
+          description: "草稿和凭据已保留，请重新预览后重试。",
+        },
+        unknown: {
+          tone: "error",
+          title: "无法确认当前设置",
+          description: "已暂停继续保存。请分别检查文件结果。",
+        },
+      };
+      setNotice(notices[outcome.overall]);
+    } catch {
+      onBlockWrites(app);
+      if (mountedRef.current) {
+        if (draftCommit.isCurrentRevision(pending.revision)) clearApiKey();
+        setClaudeOutcome({
+          contractVersion: 1,
+          overall: "unknown",
+          providerState: "unknown",
+          files: [
+            { target: "claude_settings", state: "unknown" },
+            { target: "claude_mcp", state: "unknown" },
+          ],
+        });
+        setNotice({
+          tone: "error",
+          title: "无法确认当前设置",
+          description: "已暂停继续保存。请分别检查文件结果。",
+        });
+      }
+    } finally {
+      try {
+        await summaryQuery.refetch();
+        void refreshProviderModes();
+      } catch {
+        /* The native outcome remains authoritative. */
+      } finally {
+        writeLock.current = false;
+        if (mountedRef.current) setBusy(false);
+      }
     }
   };
 
@@ -1175,7 +1385,8 @@ function ProviderPanel({
     if (writeLock.current) return;
     const pending = writeConfirm.takePending();
     if (!pending) return;
-    void submit(pending.request, pending.revision);
+    if (pending.kind === "claude") void applyClaude(pending);
+    else void submit(pending.request, pending.revision);
   };
 
   const submit = async (
@@ -1314,6 +1525,7 @@ function ProviderPanel({
         let refreshed: Awaited<ReturnType<typeof summaryQuery.refetch>> | null;
         try {
           refreshed = await summaryQuery.refetch();
+          void refreshProviderModes();
         } catch {
           refreshed = null;
         }
@@ -1367,7 +1579,14 @@ function ProviderPanel({
         });
       })();
     },
-    [app, draftCommit, onBlockWrites, providerId, summaryQuery],
+    [
+      app,
+      draftCommit,
+      onBlockWrites,
+      providerId,
+      summaryQuery,
+      refreshProviderModes,
+    ],
   );
 
   const label = PROVIDER_LABELS[app];
@@ -1380,461 +1599,512 @@ function ProviderPanel({
       ariaLabel={`${label} 模型配置`}
     >
       <ModelsPanelHeader title={label} pending={draftCommit.pending}>
-        <FileRecoveryButton
-          targets={
-            app === "codex"
-              ? ["codex_config", "codex_catalog", "codex_auth"]
-              : app === "claude"
-                ? ["claude_settings"]
-                : ["grok_config"]
-          }
-          disabled={
-            busy ||
-            subscriptionBusy ||
-            probeBusy ||
-            writesBlocked ||
-            draftCommit.pending ||
-            Boolean(codexSaveRequest || codexSavePlan)
-          }
-          onRestored={async () => {
-            await summaryQuery.refetch();
-            setNotice({
-              tone: "warning",
-              title: "文件已恢复",
-              description:
-                "已保存的模型条目保持不变。请重新打开相关软件，检查当前配置。",
-            });
-          }}
-        />
-        <Button
-          className="fy-control-button-primary fy-models-commit-button"
-          disabled={
-            busy ||
-            subscriptionBusy ||
-            probeBusy ||
-            writesBlocked ||
-            queryPending ||
-            queryUnavailable ||
-            Boolean(codexSaveRequest || codexSavePlan) ||
-            (summaryQuery.data?.writeTargets.length ?? 0) === 0
-          }
-          onClick={requestSave}
-          dialogOriginRef={writeConfirm.originRef}
-        >
-          {busy
-            ? "配置中…"
-            : writesBlocked
-              ? "暂时无法确认当前设置"
-              : "保存并设为当前配置"}
-        </Button>
+        {modeView === "direct" && (
+          <Button
+            className="fy-control-button-primary fy-models-commit-button"
+            disabled={
+              busy ||
+              subscriptionBusy ||
+              probeBusy ||
+              writesBlocked ||
+              queryPending ||
+              queryUnavailable ||
+              Boolean(codexSaveRequest || codexSavePlan) ||
+              (app !== "claude" &&
+                (summaryQuery.data?.writeTargets.length ?? 0) === 0)
+            }
+            onClick={requestSave}
+            dialogOriginRef={writeConfirm.originRef}
+          >
+            {busy
+              ? "配置中…"
+              : writesBlocked
+                ? "暂时无法确认当前设置"
+                : "保存并设为当前配置"}
+          </Button>
+        )}
       </ModelsPanelHeader>
-
-      {app === "claude" || app === "codex" || app === "grokbuild" ? (
-        <XaiSubscriptionSection
-          key={app}
-          app={app}
-          active={active}
-          disabled={
-            busy ||
-            fetchBusy ||
-            probeBusy ||
-            subscriptionBusy ||
-            writesBlocked ||
-            writeConfirm.open ||
-            Boolean(codexSaveRequest || codexSavePlan)
-          }
-          writeTargets={summaryQuery.data?.writeTargets ?? []}
-          recoveryDisabled={
-            busy ||
-            fetchBusy ||
-            probeBusy ||
-            subscriptionBusy ||
-            writeConfirm.open ||
-            Boolean(codexSaveRequest || codexSavePlan)
-          }
-          onBeginRecovery={() => {
-            if (
-              writeLock.current ||
+      {(app === "claude" || app === "codex") && (
+        <Suspense fallback={<Spinner label="正在读取连接模式" />}>
+          <ProviderModesPanel
+            app={app}
+            active={active}
+            disabled={
+              busy ||
+              subscriptionBusy ||
+              writesBlocked ||
+              writeConfirm.open ||
+              Boolean(codexSaveRequest || codexSavePlan)
+            }
+            view={modeView}
+            onViewChange={setModeView}
+          />
+        </Suspense>
+      )}
+      <div className="fy-models-direct-content" hidden={modeView !== "direct"}>
+        {app === "claude" || app === "codex" || app === "grokbuild" ? (
+          <XaiSubscriptionSection
+            key={app}
+            app={app}
+            active={active}
+            disabled={
               busy ||
               fetchBusy ||
               probeBusy ||
+              subscriptionBusy ||
+              writesBlocked ||
               writeConfirm.open ||
-              codexSaveRequest ||
-              codexSavePlan
-            )
-              return false;
-            writeLock.current = true;
-            setSubscriptionBusy(true);
-            return true;
-          }}
-          onRecoveryConfirmed={() => onRecoverWrites(app)}
-          onBeginWrite={() => {
-            if (writeLock.current || writesBlocked) return false;
-            writeLock.current = true;
-            setSubscriptionBusy(true);
-            return true;
-          }}
-          onEndWrite={() => {
-            writeLock.current = false;
-            if (mountedRef.current) setSubscriptionBusy(false);
-          }}
-          onUnconfirmed={() => onBlockWrites(app)}
-        />
-      ) : null}
-
-      {queryPending && <Spinner label={`正在读取 ${label} 配置`} />}
-      {queryUnavailable && (
-        <InlineNotice tone="error">
-          暂时无法读取当前配置，请稍后重试。
-        </InlineNotice>
-      )}
-      {!queryUnavailable && !queryPending && (
-        <div
-          className="fy-models-status-grid"
-          data-testid={active ? "provider-status" : undefined}
-        >
-          <div className="fy-models-status-item">
-            <span>保存的配置</span>
-            <strong>{providerExists ? "已有设置，将更新" : "尚未设置"}</strong>
-          </div>
-          <div className="fy-models-status-item">
-            <span>当前配置</span>
-            <strong>{currentId ? "已设置" : "尚未设置"}</strong>
-          </div>
-        </div>
-      )}
-
-      {app === "codex" && summaryQuery.data ? (
-        <>
-          <div className="fy-models-source-entry">
-            <p>保存后将启用本次配置。</p>
-            <Button
-              onClick={() => {
-                const descriptor =
-                  agentReturnDescriptorFromManagementSearch(search);
-                const path = "/auth?consumer=codex&view=connections";
-                navigate(
-                  descriptor ? appendAgentReturnToPath(path, descriptor) : path,
-                );
-              }}
-            >
-              管理 Codex 账号与来源
-            </Button>
-          </div>
-          <CodexSavePlanWorkspace
-            key={codexSavePlan?.planId ?? "codex-save-preview"}
-            active={active}
-            writeTargets={codexWriteTargets}
-            request={codexSaveRequest}
-            plan={codexSavePlan}
-            previewError={codexSavePreviewError}
-            onPlanChange={handleCodexSavePlanChange}
-            onTerminal={handleCodexSaveTerminal}
-            onDismiss={handleCodexSaveDismiss}
-          />
-        </>
-      ) : null}
-
-      <div className="fy-models-form">
-        <ProviderApiFields
-          app={app}
-          baseUrl={baseUrl}
-          protocol={protocol}
-          saved={Object.values(summaryQuery.data?.providers ?? {})}
-          disabled={
-            busy ||
-            fetchBusy ||
-            probeBusy ||
-            writesBlocked ||
-            writeConfirm.open ||
-            Boolean(codexSaveRequest || codexSavePlan)
-          }
-          error={errors.protocol}
-          onFill={fillApiForm}
-          onProtocolChange={(next) => {
-            setProtocol(next);
-            if (next !== "responses") {
-              setImageExtension(false);
-              setWebsockets(false);
+              Boolean(codexSaveRequest || codexSavePlan)
             }
-            draftCommit.markDirty();
-          }}
-        />
-        <div className="fy-control-field">
-          <label htmlFor={`${app}-quick-setup-name`}>配置名称</label>
-          <Input
-            ref={nameInputRef}
-            id={`${app}-quick-setup-name`}
-            name={`${app}-quick-setup-name`}
-            value={name}
-            onChange={(event) => {
-              setName(event.target.value);
-              draftCommit.markDirty();
-            }}
-            aria-invalid={Boolean(errors.name)}
-            aria-describedby={
-              errors.name ? `${app}-quick-setup-name-error` : undefined
+            writeTargets={summaryQuery.data?.writeTargets ?? []}
+            recoveryDisabled={
+              busy ||
+              fetchBusy ||
+              probeBusy ||
+              subscriptionBusy ||
+              writeConfirm.open ||
+              Boolean(codexSaveRequest || codexSavePlan)
             }
-          />
-          {errors.name && (
-            <span
-              id={`${app}-quick-setup-name-error`}
-              className="fy-control-field-error"
-              role="alert"
-            >
-              {errors.name}
-            </span>
-          )}
-        </div>
-        <div className="fy-control-field">
-          <label htmlFor={`${app}-quick-setup-base-url`}>服务地址</label>
-          <Input
-            ref={baseUrlInputRef}
-            id={`${app}-quick-setup-base-url`}
-            name={`${app}-quick-setup-base-url`}
-            type="url"
-            value={baseUrl}
-            onChange={(event) => {
-              setBaseUrl(event.target.value);
-              draftCommit.markDirty();
-            }}
-            placeholder={
-              app === "claude"
-                ? "https://gateway.example"
-                : "https://gateway.example/v1"
-            }
-            autoComplete="off"
-            spellCheck={false}
-            aria-invalid={Boolean(errors.baseUrl)}
-            aria-describedby={
-              [
-                errors.baseUrl ? `${app}-quick-setup-base-url-error` : null,
-                app === "claude" && claudeBaseUrlHasExplicitV1Path(baseUrl)
-                  ? `${app}-quick-setup-base-url-v1-warning`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(" ") || undefined
-            }
-          />
-          {errors.baseUrl && (
-            <span
-              id={`${app}-quick-setup-base-url-error`}
-              className="fy-control-field-error"
-              role="alert"
-            >
-              {errors.baseUrl}
-            </span>
-          )}
-          {app === "claude" && claudeBaseUrlHasExplicitV1Path(baseUrl) ? (
-            <FieldFeedback
-              id={`${app}-quick-setup-base-url-v1-warning`}
-              notice={{
-                tone: "warning",
-                title: CLAUDE_EXPLICIT_V1_WARNING,
-              }}
-            />
-          ) : null}
-        </div>
-        <div className="fy-control-field">
-          <label htmlFor={`${app}-quick-setup-api-key`}>API Key</label>
-          {canRetainCodexCredential && (
-            <p className="fy-models-muted">
-              留空保留已保存的 API Key，填写新值会替换它。
-            </p>
-          )}
-          <SecretInput
-            ref={apiKeyInputRef}
-            id={`${app}-quick-setup-api-key`}
-            name={`${app}-quick-setup-api-key`}
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-            aria-invalid={Boolean(errors.apiKey)}
-            aria-describedby={
-              errors.apiKey ? `${app}-quick-setup-api-key-error` : undefined
-            }
-            revealLabel="显示 API Key"
-            hideLabel="隐藏 API Key"
-          />
-          {errors.apiKey && (
-            <span
-              id={`${app}-quick-setup-api-key-error`}
-              className="fy-control-field-error"
-              role="alert"
-            >
-              {errors.apiKey}
-            </span>
-          )}
-        </div>
-        <div className="fy-control-field">
-          <label htmlFor={`${app}-quick-setup-model-id`}>模型 ID</label>
-          <div className="fy-models-id-with-icon">
-            <ModelVendorIcon modelId={modelId} />
-            <Input
-              ref={modelIdInputRef}
-              id={`${app}-quick-setup-model-id`}
-              name={`${app}-quick-setup-model-id`}
-              value={modelId}
-              onChange={(event) => {
-                setModelId(event.target.value);
-                draftCommit.markDirty();
-              }}
-              autoComplete="off"
-              spellCheck={false}
-              aria-invalid={Boolean(errors.modelId)}
-              aria-describedby={
-                errors.modelId ? `${app}-quick-setup-model-id-error` : undefined
-              }
-            />
-          </div>
-          {errors.modelId && (
-            <span
-              id={`${app}-quick-setup-model-id-error`}
-              className="fy-control-field-error"
-              role="alert"
-            >
-              {errors.modelId}
-            </span>
-          )}
-        </div>
-        <div className="fy-models-form-wide">
-          <div className="fy-models-actions">
-            <ModelConnectivityTest
-              searchId={`${app}-probe-search`}
-              modelIds={selectableModelIds}
-              ownedByById={ownedByById}
-              disabled={busy || fetchBusy || writesBlocked || restrictedPlan}
-              resetVersion={draftCommit.resetVersion}
-              onPrepare={prepareModelProbe}
-              onBusyChange={setProbeBusy}
-              onProbe={(selectedModelId) =>
-                ports.providers.checkModel({
-                  app,
-                  baseUrl: baseUrl.trim(),
-                  apiKey: apiKeyRef.current.trim(),
-                  modelId: selectedModelId,
-                  protocol,
-                  ...(app === "codex"
-                    ? { codexImageExtension: imageExtension }
-                    : {}),
-                })
-              }
-            />
-            <Button
-              disabled={
+            onBeginRecovery={() => {
+              if (
+                writeLock.current ||
                 busy ||
                 fetchBusy ||
                 probeBusy ||
-                writesBlocked ||
-                restrictedPlan
-              }
-              onClick={() => void fetchProviderModels()}
-            >
-              {fetchBusy ? "读取中…" : "拉取模型"}
-            </Button>
-          </div>
-        </div>
-        {restrictedPlan && (
-          <div className="fy-models-form-wide">
-            <InlineNotice tone="info">
-              此套餐请在允许的目标编程工具中验证；本页不发送模型拉取或测试请求。
-            </InlineNotice>
+                writeConfirm.open ||
+                codexSaveRequest ||
+                codexSavePlan
+              )
+                return false;
+              writeLock.current = true;
+              setSubscriptionBusy(true);
+              return true;
+            }}
+            onRecoveryConfirmed={() => onRecoverWrites(app)}
+            onBeginWrite={() => {
+              if (writeLock.current || writesBlocked) return false;
+              writeLock.current = true;
+              setSubscriptionBusy(true);
+              return true;
+            }}
+            onEndWrite={() => {
+              writeLock.current = false;
+              void refreshProviderModes();
+              if (mountedRef.current) setSubscriptionBusy(false);
+            }}
+            onUnconfirmed={() => onBlockWrites(app)}
+          />
+        ) : null}
+
+        {queryPending && <Spinner label={`正在读取 ${label} 配置`} />}
+        {queryUnavailable && (
+          <InlineNotice tone="error">
+            暂时无法读取当前配置，请稍后重试。
+          </InlineNotice>
+        )}
+        {!queryUnavailable && !queryPending && (
+          <div
+            className="fy-models-status-grid"
+            data-testid={active ? "provider-status" : undefined}
+          >
+            <div className="fy-models-status-item">
+              <span>保存的配置</span>
+              <strong>
+                {providerExists ? "已有设置，将更新" : "尚未设置"}
+              </strong>
+            </div>
+            <div className="fy-models-status-item">
+              <span>当前配置</span>
+              <strong>{currentId ? "已设置" : "尚未设置"}</strong>
+            </div>
           </div>
         )}
-        <div className="fy-models-form-wide">
-          <GroupedModelChips
-            ids={selectableModelIds}
-            selectedId={modelId}
-            onSelect={(id) => {
-              setModelId(id);
+
+        {app === "codex" && summaryQuery.data ? (
+          <>
+            <div className="fy-models-source-entry">
+              <p>保存后将启用本次配置。</p>
+              <Button
+                onClick={() => {
+                  const descriptor =
+                    agentReturnDescriptorFromManagementSearch(search);
+                  const path = "/auth?consumer=codex&view=connections";
+                  navigate(
+                    descriptor
+                      ? appendAgentReturnToPath(path, descriptor)
+                      : path,
+                  );
+                }}
+              >
+                管理 Codex 账号与来源
+              </Button>
+            </div>
+            <CodexSavePlanWorkspace
+              key={codexSavePlan?.planId ?? "codex-save-preview"}
+              active={active}
+              writeTargets={codexWriteTargets}
+              request={codexSaveRequest}
+              plan={codexSavePlan}
+              previewError={codexSavePreviewError}
+              onPlanChange={handleCodexSavePlanChange}
+              onTerminal={handleCodexSaveTerminal}
+              onDismiss={handleCodexSaveDismiss}
+            />
+          </>
+        ) : null}
+
+        <div className="fy-models-form">
+          <ProviderApiFields
+            app={app}
+            baseUrl={baseUrl}
+            protocol={protocol}
+            saved={Object.values(summaryQuery.data?.providers ?? {})}
+            disabled={
+              busy ||
+              fetchBusy ||
+              probeBusy ||
+              writesBlocked ||
+              writeConfirm.open ||
+              Boolean(codexSaveRequest || codexSavePlan)
+            }
+            error={errors.protocol}
+            onFill={fillApiForm}
+            onProtocolChange={(next) => {
+              setProtocol(next);
+              if (next !== "responses") {
+                setImageExtension(false);
+                setWebsockets(false);
+              }
               draftCommit.markDirty();
             }}
-            removable
-            removeDisabled={busy || fetchBusy || probeBusy}
-            ownedByById={ownedByById}
-            onRemove={(id) => {
-              setFetchedModelIds((current) =>
-                current.filter((item) => item !== id),
-              );
-              if (modelId === id) {
-                setModelId("");
-                draftCommit.markDirty();
-              }
-            }}
-            emptyLabel="尚未拉取模型。可点击拉取，或手动填入模型 ID。"
           />
-        </div>
-        {app === "codex" && (
-          <div
-            className="fy-models-codex-features"
-            data-testid="codex-features"
-          >
-            <div className="fy-models-checkbox-row">
-              <Checkbox
-                disabled={protocol !== "responses"}
-                checked={imageExtension}
-                onCheckedChange={(checked) => {
-                  setImageExtension(checked);
+          <div className="fy-control-field">
+            <label htmlFor={`${app}-quick-setup-name`}>配置名称</label>
+            <Input
+              ref={nameInputRef}
+              disabled={writesBlocked}
+              id={`${app}-quick-setup-name`}
+              name={`${app}-quick-setup-name`}
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+                draftCommit.markDirty();
+              }}
+              aria-invalid={Boolean(errors.name)}
+              aria-describedby={
+                errors.name ? `${app}-quick-setup-name-error` : undefined
+              }
+            />
+            {errors.name && (
+              <span
+                id={`${app}-quick-setup-name-error`}
+                className="fy-control-field-error"
+                role="alert"
+              >
+                {errors.name}
+              </span>
+            )}
+          </div>
+          <div className="fy-control-field">
+            <label htmlFor={`${app}-quick-setup-base-url`}>服务地址</label>
+            <Input
+              ref={baseUrlInputRef}
+              disabled={writesBlocked}
+              id={`${app}-quick-setup-base-url`}
+              name={`${app}-quick-setup-base-url`}
+              type="url"
+              value={baseUrl}
+              onChange={(event) => {
+                setBaseUrl(event.target.value);
+                draftCommit.markDirty();
+              }}
+              placeholder={
+                app === "claude"
+                  ? "https://gateway.example"
+                  : "https://gateway.example/v1"
+              }
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={Boolean(errors.baseUrl)}
+              aria-describedby={
+                [
+                  errors.baseUrl ? `${app}-quick-setup-base-url-error` : null,
+                  app === "claude" && claudeBaseUrlHasExplicitV1Path(baseUrl)
+                    ? `${app}-quick-setup-base-url-v1-warning`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" ") || undefined
+              }
+            />
+            {errors.baseUrl && (
+              <span
+                id={`${app}-quick-setup-base-url-error`}
+                className="fy-control-field-error"
+                role="alert"
+              >
+                {errors.baseUrl}
+              </span>
+            )}
+            {app === "claude" && claudeBaseUrlHasExplicitV1Path(baseUrl) ? (
+              <FieldFeedback
+                id={`${app}-quick-setup-base-url-v1-warning`}
+                notice={{
+                  tone: "warning",
+                  title: CLAUDE_EXPLICIT_V1_WARNING,
+                }}
+              />
+            ) : null}
+          </div>
+          <div className="fy-control-field">
+            <label htmlFor={`${app}-quick-setup-api-key`}>API Key</label>
+            {canRetainCodexCredential && (
+              <p className="fy-models-muted">
+                留空保留已保存的 API Key，填写新值会替换它。
+              </p>
+            )}
+            <SecretInput
+              ref={apiKeyInputRef}
+              disabled={writesBlocked}
+              id={`${app}-quick-setup-api-key`}
+              name={`${app}-quick-setup-api-key`}
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={Boolean(errors.apiKey)}
+              aria-describedby={
+                errors.apiKey ? `${app}-quick-setup-api-key-error` : undefined
+              }
+              revealLabel="显示 API Key"
+              hideLabel="隐藏 API Key"
+            />
+            {errors.apiKey && (
+              <span
+                id={`${app}-quick-setup-api-key-error`}
+                className="fy-control-field-error"
+                role="alert"
+              >
+                {errors.apiKey}
+              </span>
+            )}
+          </div>
+          <div className="fy-control-field">
+            <label htmlFor={`${app}-quick-setup-model-id`}>模型 ID</label>
+            <div className="fy-models-id-with-icon">
+              <ModelVendorIcon modelId={modelId} />
+              <Input
+                ref={modelIdInputRef}
+                disabled={writesBlocked}
+                id={`${app}-quick-setup-model-id`}
+                name={`${app}-quick-setup-model-id`}
+                value={modelId}
+                onChange={(event) => {
+                  setModelId(event.target.value);
                   draftCommit.markDirty();
                 }}
-                label="启用内置生图扩展"
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={Boolean(errors.modelId)}
+                aria-describedby={
+                  errors.modelId
+                    ? `${app}-quick-setup-model-id-error`
+                    : undefined
+                }
               />
-              <span>启用内置生图扩展</span>
             </div>
-            <div className="fy-models-checkbox-row">
-              <Checkbox
-                disabled={protocol !== "responses"}
-                checked={websockets}
-                onCheckedChange={(checked) => {
-                  setWebsockets(checked);
-                  draftCommit.markDirty();
-                }}
-                label="启用 WebSocket 传输"
+            {errors.modelId && (
+              <span
+                id={`${app}-quick-setup-model-id-error`}
+                className="fy-control-field-error"
+                role="alert"
+              >
+                {errors.modelId}
+              </span>
+            )}
+          </div>
+          <div className="fy-models-form-wide">
+            <div className="fy-models-actions">
+              <ModelConnectivityTest
+                searchId={`${app}-probe-search`}
+                modelIds={selectableModelIds}
+                ownedByById={ownedByById}
+                disabled={busy || fetchBusy || writesBlocked || restrictedPlan}
+                resetVersion={draftCommit.resetVersion}
+                onPrepare={prepareModelProbe}
+                onBusyChange={setProbeBusy}
+                onStatus={(requestId) =>
+                  ports.providers.getModelProbeStatus(requestId)
+                }
+                onCancel={(requestId) =>
+                  ports.providers.cancelModelProbe(requestId)
+                }
+                onProbe={(selectedModelId, requestId) =>
+                  ports.providers.checkModel({
+                    requestId,
+                    app,
+                    baseUrl: baseUrl.trim(),
+                    apiKey: apiKeyRef.current.trim(),
+                    modelId: selectedModelId,
+                    protocol,
+                    ...(app === "codex"
+                      ? { codexImageExtension: imageExtension }
+                      : {}),
+                  })
+                }
               />
-              <span>启用 WebSocket 传输</span>
+              <Button
+                disabled={
+                  busy ||
+                  fetchBusy ||
+                  probeBusy ||
+                  writesBlocked ||
+                  restrictedPlan
+                }
+                onClick={() => void fetchProviderModels()}
+              >
+                {fetchBusy ? "读取中…" : "拉取模型"}
+              </Button>
             </div>
           </div>
-        )}
-      </div>
+          {restrictedPlan && (
+            <div className="fy-models-form-wide">
+              <InlineNotice tone="info">
+                此套餐请在允许的目标编程工具中验证；本页不发送模型拉取或测试请求。
+              </InlineNotice>
+            </div>
+          )}
+          <div className="fy-models-form-wide">
+            <GroupedModelChips
+              ids={selectableModelIds}
+              selectedId={modelId}
+              onSelect={(id) => {
+                setModelId(id);
+                draftCommit.markDirty();
+              }}
+              removable
+              removeDisabled={busy || fetchBusy || probeBusy}
+              ownedByById={ownedByById}
+              onRemove={(id) => {
+                setFetchedModelIds((current) =>
+                  current.filter((item) => item !== id),
+                );
+                if (modelId === id) {
+                  setModelId("");
+                  draftCommit.markDirty();
+                }
+              }}
+              emptyLabel="尚未拉取模型。可点击拉取，或手动填入模型 ID。"
+            />
+          </div>
+          {app === "codex" && (
+            <div
+              className="fy-models-codex-features"
+              data-testid="codex-features"
+            >
+              <div className="fy-models-checkbox-row">
+                <Checkbox
+                  disabled={protocol !== "responses"}
+                  checked={imageExtension}
+                  onCheckedChange={(checked) => {
+                    setImageExtension(checked);
+                    draftCommit.markDirty();
+                  }}
+                  label="启用内置生图扩展"
+                />
+                <span>启用内置生图扩展</span>
+              </div>
+              <div className="fy-models-checkbox-row">
+                <Checkbox
+                  disabled={protocol !== "responses"}
+                  checked={websockets}
+                  onCheckedChange={(checked) => {
+                    setWebsockets(checked);
+                    draftCommit.markDirty();
+                  }}
+                  label="启用 WebSocket 传输"
+                />
+                <span>启用 WebSocket 传输</span>
+              </div>
+            </div>
+          )}
+        </div>
 
-      <NoticeView notice={notice} />
-      {warningCodes.length > 0 && (
-        <InlineNotice tone="warning">
-          <strong>Codex 使用提示</strong>
-          <ul className="fy-models-warning-list">
-            {warningCodes.map((code) => (
-              <li key={code}>{WARNING_COPY[code]}</li>
+        <NoticeView notice={notice} />
+        {claudeOutcome && (
+          <ul aria-label="Claude 文件保存结果">
+            {claudeOutcome.files.map((file) => (
+              <li key={file.target}>
+                {file.target === "claude_settings"
+                  ? "settings.json"
+                  : ".claude.json"}
+                ：
+                {
+                  {
+                    applied: "已写入",
+                    unchanged: "保持不变",
+                    rolledBack: "未完成，已保留或还原此前内容",
+                    conflict: "存在外部改动，未覆盖",
+                    notAttempted: "未写入",
+                    unknown: "待确认",
+                  }[file.state]
+                }
+              </li>
             ))}
           </ul>
-        </InlineNotice>
-      )}
-      <ModelsWriteConfirmDialog
-        originRef={writeConfirm.originRef}
-        open={writeConfirm.open}
-        targets={writeConfirm.pending?.targets ?? []}
-        onConfirm={confirmWrite}
-        onCancel={() => {
-          writeConfirm.takePending();
-        }}
-      />
+        )}
+        {warningCodes.length > 0 && (
+          <InlineNotice tone="warning">
+            <strong>Codex 使用提示</strong>
+            <ul className="fy-models-warning-list">
+              {warningCodes.map((code) => (
+                <li key={code}>{WARNING_COPY[code]}</li>
+              ))}
+            </ul>
+          </InlineNotice>
+        )}
+        <ModelsWriteConfirmDialog
+          originRef={writeConfirm.originRef}
+          open={writeConfirm.open}
+          targets={
+            writeConfirm.pending?.kind === "claude"
+              ? writeConfirm.pending.preview.writeTargets
+              : (writeConfirm.pending?.targets ?? [])
+          }
+          preservedPaths={
+            writeConfirm.pending?.kind === "claude"
+              ? writeConfirm.pending.preview.preservedPaths
+              : undefined
+          }
+          onConfirm={confirmWrite}
+          onCancel={() => {
+            writeConfirm.takePending();
+          }}
+        />
+      </div>
     </CatalogDetail>
   );
 }
 
-function renderTargetPanel(
-  target: ModelTarget,
-  active: boolean,
-  blockedProviderWrites: Partial<Record<ProviderAppId | "opencode", boolean>>,
-  onBlockProviderWrites: (app: ProviderAppId | "opencode") => void,
-  onRecoverProviderWrites: (app: ProviderAppId) => void,
+function ModelsTargetPanel({
+  target,
+  active,
+  blockedProviderWrites,
+  onBlockProviderWrites,
+  onRecoverProviderWrites,
+  importedForm,
+}: {
+  target: ModelTarget;
+  active: boolean;
+  blockedProviderWrites: Partial<Record<ProviderAppId | "opencode", boolean>>;
+  onBlockProviderWrites: (app: ProviderAppId | "opencode") => void;
+  onRecoverProviderWrites: (app: ProviderAppId) => void;
   importedForm: {
     app: "claude" | "codex";
     sequence: number;
     form: ProviderApiFormFill;
-  } | null,
-) {
+  } | null;
+}) {
   switch (target) {
     case "workbuddy":
       return <WorkBuddyPanel active={active} />;
@@ -1870,6 +2140,13 @@ function renderTargetPanel(
 }
 
 export function ModelsPage() {
+  const pageMountedRef = useRef(true);
+  useEffect(() => {
+    pageMountedRef.current = true;
+    return () => {
+      pageMountedRef.current = false;
+    };
+  }, []);
   const { visible, searchParams, setSearchParams } =
     usePersistentSearchParams();
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
@@ -1903,12 +2180,13 @@ export function ModelsPage() {
   );
   const targets = useMemo(() => MODEL_TARGETS, []);
 
-  const blockProviderWrites = (app: ProviderAppId | "opencode") => {
+  const blockProviderWrites = useCallback((app: ProviderAppId | "opencode") => {
+    if (!pageMountedRef.current) return;
     setBlockedProviderWrites((current) => ({
       ...current,
       [app]: true,
     }));
-  };
+  }, []);
   const recoverProviderWrites = (app: ProviderAppId) => {
     setBlockedProviderWrites((current) => ({ ...current, [app]: false }));
   };
@@ -1948,14 +2226,14 @@ export function ModelsPage() {
           </CatalogList>
         </CatalogRail>
         <div className="fy-models-target-stack">
-          {renderTargetPanel(
-            target,
-            visible,
-            blockedProviderWrites,
-            blockProviderWrites,
-            recoverProviderWrites,
-            importedForm,
-          )}
+          <ModelsTargetPanel
+            target={target}
+            active={visible}
+            blockedProviderWrites={blockedProviderWrites}
+            onBlockProviderWrites={blockProviderWrites}
+            onRecoverProviderWrites={recoverProviderWrites}
+            importedForm={importedForm}
+          />
         </div>
       </CatalogMasterDetail>
     </div>

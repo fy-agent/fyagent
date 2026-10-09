@@ -1,3 +1,4 @@
+use fyagent_lib::{McpImportCounts, McpTargetId};
 use std::collections::HashMap;
 use std::fs;
 
@@ -17,8 +18,370 @@ use support::{
 };
 
 #[test]
+fn i05_qoder_import_reports_disablements_and_provenance_survives_database_reopen() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let home = ensure_test_home();
+    let path = home.join(".qoderworkcn/mcp.json");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let source = json!({"mcpServers": {
+        "existing": {"command":"echo", "args":["same"], "enabled":false},
+        "new-disabled": {"command":"echo", "enabled":false},
+        "new-enabled": {"command":"echo", "enabled":true},
+        "new-default": {"command":"echo"}
+    }});
+    let original = serde_json::to_vec(&source).unwrap();
+    fs::write(&path, &original).unwrap();
+    let state = create_test_state().unwrap();
+    let existing = McpServer {
+        id: "existing".into(),
+        name: "Preserved Name".into(),
+        server: json!({"command":"echo", "args":["same"]}),
+        apps: McpApps {
+            claude: true,
+            qoderwork: true,
+            ..McpApps::default()
+        },
+        description: Some("preserved".into()),
+        homepage: None,
+        docs: None,
+        tags: vec!["preserved".into()],
+    };
+    state.db.save_mcp_server(&existing).unwrap();
+    let report = McpService::import_from_sources(&state, vec![McpTargetId::QoderWork]).unwrap();
+    assert_eq!(report.sources[0].counts.added, 2);
+    assert_eq!(report.sources[0].counts.assignment_changed, 1);
+    assert_eq!(report.sources[0].counts.disabled_skipped, 1);
+    assert!(report.sources[0].failure_code.is_none());
+    let mut expected = existing.clone();
+    expected.apps.qoderwork = false;
+    let actual = state.db.get_all_mcp_servers().unwrap();
+    assert_eq!(
+        serde_json::to_value(&actual["existing"]).unwrap(),
+        serde_json::to_value(&expected).unwrap()
+    );
+    assert!(!actual.contains_key("new-disabled"));
+    assert!(actual["new-enabled"].apps.qoderwork && actual["new-default"].apps.qoderwork);
+    assert_eq!(report.projection_failed, 0);
+    assert!(report.projection_failures.is_empty());
+    let projected: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert!(projected["mcpServers"].get("existing").is_none());
+    assert_eq!(
+        projected["mcpServers"]["new-enabled"],
+        json!({"command":"echo"})
+    );
+    assert_eq!(
+        projected["mcpServers"]["new-disabled"],
+        source["mcpServers"]["new-disabled"]
+    );
+    let repeated = McpService::import_from_sources(&state, vec![McpTargetId::QoderWork]).unwrap();
+    assert_eq!(repeated.sources[0].counts.added, 0);
+    assert_eq!(repeated.sources[0].counts.assignment_changed, 0);
+    assert_eq!(repeated.sources[0].counts.unchanged, 2);
+    assert_eq!(repeated.sources[0].counts.disabled_skipped, 1);
+    let before_reopen =
+        serde_json::to_value(McpService::get_server_views(&state).unwrap()).unwrap();
+    drop(state);
+    let reopened = create_test_state().unwrap();
+    let views = McpService::get_server_views(&reopened).unwrap();
+    assert_eq!(serde_json::to_value(&views).unwrap(), before_reopen);
+    assert_eq!(views["existing"].sources, vec![McpTargetId::QoderWork]);
+
+    // Boolean control changes are allowed; all other row fields stay owned by
+    // the existing catalogue record, and only Qoder's flag changes.
+    let mut enabled_source = source.clone();
+    enabled_source["mcpServers"]["existing"]["enabled"] = json!(true);
+    fs::write(&path, serde_json::to_vec(&enabled_source).unwrap()).unwrap();
+    let enabled = McpService::import_from_sources(&reopened, vec![McpTargetId::QoderWork]).unwrap();
+    assert_eq!(enabled.sources[0].counts.added, 0);
+    assert_eq!(enabled.sources[0].counts.assignment_changed, 1);
+    let saved = reopened.db.get_all_mcp_servers().unwrap();
+    assert_eq!(
+        serde_json::to_value(&saved["existing"]).unwrap(),
+        serde_json::to_value(&existing).unwrap()
+    );
+}
+
+#[test]
+fn i05_disabled_and_enabled_spec_conflicts_reject_the_complete_source_without_writes() {
+    let _guard = test_mutex().lock().unwrap();
+    for enabled in [false, true] {
+        reset_test_fs();
+        let home = ensure_test_home();
+        let state = create_test_state().unwrap();
+        let existing = McpServer {
+            id: "z-conflict".into(),
+            name: "Original".into(),
+            server: json!({"command":"echo", "custom":"original"}),
+            apps: McpApps {
+                qoderwork: true,
+                codex: true,
+                ..McpApps::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: vec![],
+        };
+        state.db.save_mcp_server(&existing).unwrap();
+        let before = serde_json::to_value(McpService::get_server_views(&state).unwrap()).unwrap();
+        let path = home.join(".qoderworkcn/mcp.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // Successful import now creates an adapter backup. Isolate this
+        // zero-write assertion from backups left by other fixture tests.
+        let backup = path.with_file_name("mcp.json.backup");
+        if backup.exists() {
+            fs::remove_file(&backup).unwrap();
+        }
+        let bytes = serde_json::to_vec(&json!({"mcpServers": {
+            "a-valid-new": {"command":"echo"},
+            "z-conflict": {"command":"echo", "custom":"changed", "enabled":enabled}
+        }}))
+        .unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let report = McpService::import_from_sources(&state, vec![McpTargetId::QoderWork]).unwrap();
+        assert_eq!(report.sources[0].failure_code, Some("source_failed"));
+        assert_eq!(report.sources[0].counts, McpImportCounts::default());
+        assert_eq!(report.projection_failed, 0);
+        assert!(report.projection_failures.is_empty());
+        assert_eq!(
+            serde_json::to_value(McpService::get_server_views(&state).unwrap()).unwrap(),
+            before
+        );
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert!(!path.with_file_name("mcp.json.backup").exists());
+    }
+}
+
+#[test]
+fn i05_projection_preserves_unmanaged_disabled_sibling_and_explicit_enable_remains_available() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let home = ensure_test_home();
+    let state = create_test_state().unwrap();
+    let path = home.join(".qoderworkcn/mcp.json");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let sibling = json!({"command":"echo", "enabled":false, "source":"external-owner",
+        "env":{"TOKEN":"private-sentinel"}, "custom":{"nested":true}});
+    fs::write(
+        &path,
+        serde_json::to_vec(&json!({"root":"keep", "mcpServers":{"external":sibling}})).unwrap(),
+    )
+    .unwrap();
+    let managed = McpServer {
+        id: "managed".into(),
+        name: "Managed".into(),
+        server: json!({"command":"echo", "enabled":false}),
+        apps: McpApps::default(),
+        description: None,
+        homepage: None,
+        docs: None,
+        tags: vec![],
+    };
+    state.db.save_mcp_server(&managed).unwrap();
+    for action in ["enable", "sync", "disable", "delete"] {
+        match action {
+            "enable" => {
+                McpService::toggle_target(&state, "managed", McpTargetId::QoderWork, true).unwrap()
+            }
+            "sync" => McpService::sync_all_enabled(&state).unwrap(),
+            "disable" => {
+                McpService::toggle_target(&state, "managed", McpTargetId::QoderWork, false).unwrap()
+            }
+            _ => {
+                McpService::delete_server(&state, "managed").unwrap();
+            }
+        }
+        let live: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(live["mcpServers"]["external"], sibling);
+        assert_eq!(live["root"], "keep");
+        if action == "enable" || action == "sync" {
+            assert_eq!(live["mcpServers"]["managed"], json!({"command":"echo"}));
+        } else {
+            assert!(live["mcpServers"].get("managed").is_none());
+        }
+    }
+}
+
+#[test]
+fn i05_selected_source_reports_partial_failure_and_rejects_empty_or_duplicate_selection() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let home = ensure_test_home();
+    let state = create_test_state().unwrap();
+    let qoder = home.join(".qoderworkcn/mcp.json");
+    fs::create_dir_all(qoder.parent().unwrap()).unwrap();
+    let bytes = br#"{"mcpServers":{"valid":{"command":"echo","env":{"TOKEN":"source-secret"}}}}"#;
+    fs::write(&qoder, bytes).unwrap();
+    let codex = get_codex_config_path();
+    fs::create_dir_all(codex.parent().unwrap()).unwrap();
+    fs::write(&codex, "private-key = = invalid").unwrap();
+    assert!(McpService::import_from_sources(&state, vec![]).is_err());
+    assert!(McpService::import_from_sources(
+        &state,
+        vec![McpTargetId::QoderWork, McpTargetId::QoderWork]
+    )
+    .is_err());
+    assert!(state.db.get_all_mcp_servers().unwrap().is_empty());
+    let report =
+        McpService::import_from_sources(&state, vec![McpTargetId::Codex, McpTargetId::QoderWork])
+            .unwrap();
+    assert_eq!(report.sources[0].failure_code, Some("source_failed"));
+    assert_eq!(report.sources[1].counts.added, 1);
+    let public = serde_json::to_string(&report).unwrap();
+    let home_display = home.to_string_lossy();
+    for private in ["source-secret", "private-key", home_display.as_ref()] {
+        assert!(!public.contains(private));
+    }
+    assert_eq!(report.projection_failed, 0);
+    assert!(report.projection_failures.is_empty());
+    assert_eq!(fs::read(&codex).unwrap(), b"private-key = = invalid");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&fs::read(&qoder).unwrap()).unwrap(),
+        serde_json::from_slice::<serde_json::Value>(bytes).unwrap()
+    );
+}
+
+#[test]
+fn import_reports_each_failed_projection_without_erasing_accepted_sources() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let home = ensure_test_home();
+    let state = create_test_state().unwrap();
+    let qoder = home.join(".qoderworkcn/mcp.json");
+    fs::create_dir_all(qoder.parent().unwrap()).unwrap();
+    let original = br#"{"mcpServers":{"first":{"command":"echo"},"second":{"command":"echo","env":{"TOKEN":"private-sentinel"}}}}"#;
+    fs::write(&qoder, original).unwrap();
+    let backup = qoder.with_file_name("mcp.json.backup");
+    if backup.is_file() {
+        fs::remove_file(&backup).unwrap();
+    }
+    // A directory at the required backup file deterministically rejects writes
+    // on every host, without relying on chmod or administrator permissions.
+    fs::create_dir(&backup).unwrap();
+    let codex = get_codex_config_path();
+    fs::create_dir_all(codex.parent().unwrap()).unwrap();
+    fs::write(&codex, "[mcp_servers.first]\ncommand = \"echo\"\n[mcp_servers.second]\ncommand = \"echo\"\n[mcp_servers.second.env]\nTOKEN = \"private-sentinel\"\n").unwrap();
+    let report =
+        McpService::import_from_sources(&state, vec![McpTargetId::QoderWork, McpTargetId::Codex])
+            .unwrap();
+    fs::remove_dir(&backup).unwrap();
+    assert_eq!(report.sources[0].counts.added, 2);
+    assert_eq!(report.sources[1].counts.assignment_changed, 2);
+    assert!(report
+        .sources
+        .iter()
+        .all(|source| source.failure_code.is_none()));
+    assert_eq!(report.projection_failed, 2);
+    assert_eq!(report.projection_failures.len(), 2);
+    let mut ids = report
+        .projection_failures
+        .iter()
+        .map(|failure| {
+            assert_eq!(failure.target, McpTargetId::QoderWork);
+            assert_eq!(failure.reason, "io_failed");
+            failure.server_id.as_deref().unwrap()
+        })
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    assert_eq!(ids, vec!["first", "second"]);
+    assert_eq!(fs::read(&qoder).unwrap(), original);
+    let durable = state.db.get_all_mcp_servers().unwrap();
+    assert_eq!(durable.len(), 2);
+    assert!(durable
+        .values()
+        .all(|server| server.apps.qoderwork && server.apps.codex));
+    let live: toml::Value = toml::from_str(&fs::read_to_string(&codex).unwrap()).unwrap();
+    assert_eq!(
+        live["mcp_servers"]["first"]["command"].as_str(),
+        Some("echo")
+    );
+    assert_eq!(
+        live["mcp_servers"]["second"]["env"]["TOKEN"].as_str(),
+        Some("private-sentinel")
+    );
+    let wire = serde_json::to_value(&report).unwrap();
+    assert_eq!(wire["projectionFailed"], 2);
+    assert_eq!(wire["projectionFailures"].as_array().unwrap().len(), 2);
+    assert_eq!(wire["projectionFailures"][0]["target"], "qoderwork");
+    assert_eq!(wire["projectionFailures"][0]["reason"], "io_failed");
+    let public = wire.to_string();
+    assert!(!public.contains("private-sentinel"));
+    assert!(!public.contains(home.to_string_lossy().as_ref()));
+}
+
+#[test]
+fn import_projection_continues_after_invalid_entry_and_claude_collection_failure() {
+    let _guard = test_mutex().lock().unwrap();
+    for target in [McpTargetId::QoderWork, McpTargetId::Claude] {
+        reset_test_fs();
+        let home = ensure_test_home();
+        let state = create_test_state().unwrap();
+        let bad = McpServer {
+            id: "a-invalid".into(),
+            name: "Legacy invalid row".into(),
+            server: json!({"command":[], "env":{"TOKEN":"private-sentinel"}}),
+            apps: McpApps {
+                qoderwork: target == McpTargetId::QoderWork,
+                claude: target == McpTargetId::Claude,
+                ..McpApps::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: vec![],
+        };
+        state.db.save_mcp_server(&bad).unwrap();
+        let path = if target == McpTargetId::Claude {
+            get_claude_mcp_path()
+        } else {
+            home.join(".qoderworkcn/mcp.json")
+        };
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original =
+            br#"{"mcpServers":{"z-valid":{"command":"echo","enabled":true}},"unrelated":"keep"}"#;
+        fs::write(&path, original).unwrap();
+        let codex = get_codex_config_path();
+        fs::create_dir_all(codex.parent().unwrap()).unwrap();
+        fs::write(&codex, "[mcp_servers.codex_good]\ncommand = \"echo\"\n").unwrap();
+        let report =
+            McpService::import_from_sources(&state, vec![target, McpTargetId::Codex]).unwrap();
+        assert_eq!(report.sources[0].counts.added, 1);
+        assert_eq!(report.sources[1].counts.added, 1);
+        assert!(report
+            .sources
+            .iter()
+            .all(|source| source.failure_code.is_none()));
+        assert_eq!(report.projection_failed, 1);
+        assert_eq!(report.projection_failures.len(), 1);
+        let failure = &report.projection_failures[0];
+        assert_eq!(failure.target, target);
+        assert_eq!(failure.reason, "invalid_config");
+        if target == McpTargetId::Claude {
+            assert!(failure.server_id.is_none());
+            assert_eq!(fs::read(&path).unwrap(), original);
+        } else {
+            assert_eq!(failure.server_id.as_deref(), Some("a-invalid"));
+            let live: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            assert_eq!(live["mcpServers"]["z-valid"], json!({"command":"echo"}));
+            assert_eq!(live["unrelated"], "keep");
+        }
+        let live: toml::Value = toml::from_str(&fs::read_to_string(&codex).unwrap()).unwrap();
+        assert_eq!(
+            live["mcp_servers"]["codex_good"]["command"].as_str(),
+            Some("echo")
+        );
+        assert_eq!(state.db.get_all_mcp_servers().unwrap().len(), 3);
+        assert!(!serde_json::to_string(&report)
+            .unwrap()
+            .contains("private-sentinel"));
+    }
+}
+
+#[test]
 fn import_default_config_claude_persists_provider() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -71,7 +434,7 @@ fn import_default_config_claude_persists_provider() {
 
 #[test]
 fn import_default_config_grokbuild_seeds_official_alongside_default() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -128,7 +491,7 @@ context_window = 500000
 
 #[test]
 fn import_default_config_grokbuild_official_live_imports_official_as_current() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -175,7 +538,7 @@ fn import_default_config_grokbuild_official_live_imports_official_as_current() {
 
 #[test]
 fn startup_import_grokbuild_official_live_does_not_resurrect_official() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -208,7 +571,7 @@ fn startup_import_grokbuild_official_live_does_not_resurrect_official() {
 
 #[test]
 fn import_default_config_grokbuild_broken_custom_live_still_errors() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -252,7 +615,7 @@ fn import_default_config_grokbuild_broken_custom_live_still_errors() {
 fn import_default_config_without_live_file_returns_error() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -286,7 +649,7 @@ fn import_default_config_without_live_file_returns_error() {
 
 #[test]
 fn import_mcp_from_claude_creates_config_and_enables_servers() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -333,7 +696,7 @@ fn import_mcp_from_claude_creates_config_and_enables_servers() {
 
 #[test]
 fn import_mcp_from_codex_does_not_rewrite_codex_config() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -365,8 +728,51 @@ command = "echo"
 }
 
 #[test]
+fn import_mcp_from_codex_infers_http_from_url_without_type() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+
+    let codex_dir = home.join(".codex");
+    fs::create_dir_all(&codex_dir).expect("create codex dir");
+    // Codex 的 [mcp_servers.*] 没有 `type`：HTTP server 只带 `url`。
+    fs::write(
+        codex_dir.join("config.toml"),
+        "[mcp_servers.remote]\nurl = \"https://mcp.example.com/mcp\"\n\n\
+         [mcp_servers.remote.http_headers]\nAuthorization = \"Bearer x\"\n",
+    )
+    .expect("seed codex config");
+
+    let state = create_test_state().expect("create test state");
+    let changed = McpService::import_from_codex(&state).expect("import from codex");
+    assert!(changed > 0, "should import the url-only server");
+
+    let servers = state.db.get_all_mcp_servers().expect("get all mcp servers");
+    let entry = servers.get("remote").expect("url-only server imported");
+    assert_eq!(
+        entry.server.get("type").and_then(|v| v.as_str()),
+        Some("http"),
+        "url-only Codex server must import as http, not stdio"
+    );
+    assert_eq!(
+        entry.server.get("url").and_then(|v| v.as_str()),
+        Some("https://mcp.example.com/mcp"),
+        "url must be preserved"
+    );
+    assert_eq!(
+        entry
+            .server
+            .get("headers")
+            .and_then(|v| v.get("Authorization"))
+            .and_then(|v| v.as_str()),
+        Some("Bearer x"),
+        "http_headers must map to headers"
+    );
+}
+
+#[test]
 fn import_mcp_from_claude_does_not_sync_existing_codex_enabled_server() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -445,7 +851,7 @@ command = "echo"
 fn import_mcp_from_claude_invalid_json_preserves_state() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -480,7 +886,7 @@ fn import_mcp_from_claude_invalid_json_preserves_state() {
 fn import_from_all_apps_reports_broken_app_but_imports_the_rest() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -682,7 +1088,7 @@ fn failed_live_cleanup_keeps_database_toggle_and_delete_retryable() {
 
 #[test]
 fn set_mcp_enabled_for_codex_writes_live_config() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -757,7 +1163,7 @@ fn set_mcp_enabled_for_codex_writes_live_config() {
 fn enabling_codex_mcp_skips_when_codex_dir_missing() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -810,7 +1216,7 @@ fn enabling_codex_mcp_skips_when_codex_dir_missing() {
 
 #[test]
 fn upsert_mcp_server_disabling_app_removes_from_claude_live_config() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -894,8 +1300,58 @@ fn upsert_mcp_server_disabling_app_removes_from_claude_live_config() {
 }
 
 #[test]
+fn projecting_an_app_continues_past_a_server_that_cannot_be_written() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    fs::create_dir_all(home.join(".gemini")).expect("create ~/.gemini/settings.json dir");
+    let mcp_path = home.join(".gemini/settings.json");
+    fs::write(
+        &mcp_path,
+        json!({"mcpServers": {"c-off": {"type": "stdio", "command": "old"}}}).to_string(),
+    )
+    .expect("seed ~/.gemini/settings.json.json");
+
+    let state = support::create_test_state().expect("create test state");
+    // 直接入库，绕过面板校验：规范不是对象的行可能来自云同步或旧数据。
+    for (id, server, claude) in [
+        ("a-broken", json!("not an object"), true),
+        ("b-good", json!({"type": "stdio", "command": "echo"}), true),
+        ("c-off", json!({"type": "stdio", "command": "old"}), false),
+    ] {
+        let server: McpServer = serde_json::from_value(json!({
+            "id": id, "name": id, "server": server, "apps": {"gemini": claude}
+        }))
+        .expect("build server");
+        state.db.save_mcp_server(&server).expect("save server");
+    }
+
+    let err = McpService::sync_enabled_for_app(&state, &AppType::Gemini)
+        .expect_err("the broken server must still be reported");
+    assert!(
+        err.to_string().contains("a-broken"),
+        "error should name the failed server: {err}"
+    );
+
+    assert!(err.to_string().contains("1 个 MCP 条目写入失败"));
+
+    let text = fs::read_to_string(&mcp_path).expect("read ~/.gemini/settings.json.json");
+    let v: serde_json::Value =
+        serde_json::from_str(&text).expect("parse ~/.gemini/settings.json.json");
+    assert!(
+        v.pointer("/mcpServers/b-good").is_some(),
+        "servers after the failed one must still be written"
+    );
+    assert!(
+        v.pointer("/mcpServers/c-off").is_none(),
+        "disabled servers after the failed one must still be removed"
+    );
+    assert!(v.pointer("/mcpServers/a-broken").is_none());
+}
+
+#[test]
 fn import_mcp_from_multiple_apps_merges_enabled_flags() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -940,7 +1396,7 @@ command = "echo"
 
 #[test]
 fn import_mcp_from_gemini_sse_url_only_is_valid() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -981,7 +1437,7 @@ fn import_mcp_from_gemini_sse_url_only_is_valid() {
 fn enabling_gemini_mcp_skips_when_gemini_dir_missing() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -1036,7 +1492,7 @@ fn enabling_gemini_mcp_skips_when_gemini_dir_missing() {
 fn enabling_claude_mcp_skips_when_claude_config_absent() {
     use support::create_test_state;
 
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -1093,7 +1549,7 @@ fn enabling_claude_mcp_skips_when_claude_config_absent() {
 
 #[test]
 fn explicit_default_claude_dir_keeps_default_split_mcp_path() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
     let claude_dir = home.join(".claude");
@@ -1152,7 +1608,7 @@ fn explicit_default_claude_dir_keeps_default_split_mcp_path() {
 
 #[test]
 fn custom_claude_dir_writes_mcp_inside_config_dir() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
     let custom_dir = home.join("profiles").join(".claude");
@@ -1212,7 +1668,7 @@ fn custom_claude_dir_writes_mcp_inside_config_dir() {
 
 #[test]
 fn custom_claude_dir_sync_does_not_copy_default_profile() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
     let home_mcp_path = home.join(".claude.json");
@@ -1318,7 +1774,7 @@ fn custom_claude_dir_sync_does_not_copy_default_profile() {
 
 #[test]
 fn custom_claude_dir_read_only_mcp_queries_do_not_create_profile() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
     let home_mcp_path = home.join(".claude.json");
@@ -1373,7 +1829,7 @@ fn custom_claude_dir_read_only_mcp_queries_do_not_create_profile() {
 
 #[test]
 fn sync_all_enabled_removes_known_disabled_but_preserves_unknown_live_entries() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -1516,4 +1972,29 @@ fn mcp_library_only_upsert_validates_before_persisting_without_native_writes() {
     for native_dir in [".claude", ".codex", ".grok", ".config/opencode"] {
         assert!(!home.join(native_dir).exists(), "created {native_dir}");
     }
+}
+
+#[test]
+fn claude_collection_failure_keeps_the_original_live_file() {
+    let _guard = test_mutex().lock().unwrap();
+    reset_test_fs();
+    let state = create_test_state().unwrap();
+    let path = get_claude_mcp_path();
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let original = br#"{"mcpServers":{"unmanaged":{"command":"old"}}}"#;
+    fs::write(&path, original).unwrap();
+    let invalid: McpServer = serde_json::from_value(json!({
+        "id": "a-invalid", "name": "Invalid", "server": {"type": "unknown"},
+        "apps": {"claude": true}
+    }))
+    .unwrap();
+    let valid: McpServer = serde_json::from_value(json!({
+        "id": "z-valid", "name": "Valid", "server": {"command": "echo"},
+        "apps": {"claude": true}
+    }))
+    .unwrap();
+    state.db.save_mcp_server(&invalid).unwrap();
+    state.db.save_mcp_server(&valid).unwrap();
+    McpService::sync_enabled_for_app(&state, &AppType::Claude).unwrap_err();
+    assert_eq!(fs::read(&path).unwrap(), original);
 }

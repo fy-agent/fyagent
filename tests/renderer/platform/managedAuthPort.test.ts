@@ -8,6 +8,7 @@ import {
   OPENAI_ACCOUNT_ID,
   PREVIEW_ID,
   SESSION_ID,
+  accountQuotaFixture,
   deviceLoginSessionFixture,
   managedAuthOverviewFixture,
   mutationResultFixture,
@@ -26,6 +27,12 @@ describe("Tauri managed auth port", () => {
     invoke.mockResolvedValueOnce(managedAuthOverviewFixture());
     await port.getOverview();
     expect(invoke).toHaveBeenLastCalledWith("managed_auth_get_overview");
+
+    invoke.mockResolvedValueOnce(accountQuotaFixture(OPENAI_ACCOUNT_ID));
+    await port.getAccountQuota(OPENAI_ACCOUNT_ID);
+    expect(invoke).toHaveBeenLastCalledWith("managed_auth_get_account_quota", {
+      accountId: OPENAI_ACCOUNT_ID,
+    });
 
     invoke.mockResolvedValueOnce(deviceLoginSessionFixture());
     await port.startLogin({
@@ -125,6 +132,9 @@ describe("Tauri managed auth port", () => {
   it("rejects malformed requests before IPC and excess response fields", async () => {
     const port = createManagedAuthPort();
     await expect(port.getLoginSession("not-a-session")).rejects.toThrow(
+      "账号与认证请求无效",
+    );
+    await expect(port.getAccountQuota("not-an-account")).rejects.toThrow(
       "账号与认证请求无效",
     );
     expect(invoke).not.toHaveBeenCalled();

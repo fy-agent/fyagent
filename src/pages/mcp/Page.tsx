@@ -1,6 +1,6 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import {
   buildMcpSearchText,
@@ -10,12 +10,16 @@ import {
   overlayKnownMcpFields,
   parseAdvancedServerJson,
   parseKeyValueLines,
-  runSequentialBulk,
   sanitizeMcpConfigurationError,
   UserFacingError,
 } from "../../shared/features/helpers";
 import { redactMcpArgs, redactMcpUrl } from "../../shared/features/mcpSecurity";
 import { mcpPresets } from "../../shared/features/presets";
+import {
+  MCP_IMPORT_SOURCES,
+  type McpImportReport,
+  type McpImportSourceId,
+} from "../../shared/features/mcp";
 import { useFeatures } from "../../shared/features/provider";
 import { featureKeys, useMcpServers } from "../../shared/features/queries";
 import { useWideFeatureLayout } from "../../shared/features/responsive";
@@ -42,13 +46,20 @@ import { useDialogState } from "../../shared/ui/useDialogState";
 import { ConfirmDialog, Dialog } from "../../shared/ui/Dialog";
 import {
   Badge,
+  Checkbox,
   EmptyState,
   InlineNotice,
   Input,
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
-import { BulkAssignmentPanel } from "../../shared/ui/BulkAssignmentPanel";
+import { BulkAssignmentDialog } from "../../shared/features/controls/BulkAssignmentDialog";
+import {
+  executeBulkAssignment,
+  type BulkAssignmentItem,
+  type BulkAssignmentPlan,
+  type BulkAssignmentResult,
+} from "../../shared/features/bulk-assignment";
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import { ExternalLinkButton } from "../../shared/features/controls/ExternalLinkButton";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
@@ -92,7 +103,16 @@ function ServerDetail({
   const spec = server.server;
   const transport = transportOf(server);
   const catalogItem = findCatalogItem(server.id);
-  const sourceLabel = catalogItem ? "精选目录" : "手动添加";
+  const sourceLabel = server.sources?.length
+    ? server.sources
+        .map(
+          (id) => MCP_IMPORT_SOURCES.find((source) => source.id === id)?.label,
+        )
+        .join("、")
+    : "未记录导入来源";
+  const assignedCount = MCP_IMPORT_SOURCES.filter(
+    (source) => server.apps[source.id],
+  ).length;
   const installDirectory = mcpInstallDirectory(spec);
   const description = server.description?.trim() || catalogItem?.description;
   const homepage = server.homepage || catalogItem?.homepage;
@@ -107,9 +127,17 @@ function ServerDetail({
         <div className="fy-feature-detail-title">
           <h2>{server.name}</h2>
           <Badge tone="accent">{transport}</Badge>
-          <Badge tone={catalogItem ? "accent" : "neutral"}>{sourceLabel}</Badge>
+          <Badge tone="neutral">
+            {server.sources && server.sources.length > 1
+              ? `${server.sources.length} 个导入来源`
+              : sourceLabel}
+          </Badge>
         </div>
         {description && <p className="fy-feature-intro">{description}</p>}
+        <p className="fy-feature-description">
+          {assignedCount ? `已分配 ${assignedCount} 个目标` : "尚未分配"} ·
+          连接尚未测试
+        </p>
         <div className="fy-feature-actions">
           <Button dialogOriginRef={originRef} onClick={onEdit} disabled={busy}>
             编辑
@@ -143,11 +171,13 @@ function ServerDetail({
             </h3>
             <CollapsibleContent open={installationOpen}>
               <dl className="fy-feature-definition">
+                <dt>导入来源</dt>
+                <dd>{sourceLabel}</dd>
                 {catalogItem && (
                   <>
                     <dt>发布方</dt>
                     <dd>{catalogItem.publisher}</dd>
-                    <dt>来源标识</dt>
+                    <dt>目录收录依据</dt>
                     <dd>{MCP_PROVENANCE_LABEL[catalogItem.provenance]}</dd>
                   </>
                 )}
@@ -266,7 +296,15 @@ export function McpPage({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing, editingKey] = useDialogState<McpServer | "new">();
   const [deleteTarget, setDeleteTarget] = useState<McpServer | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkTrustNeeded, setBulkTrustNeeded] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSources, setImportSources] = useState<McpImportSourceId[]>([]);
+  const [importReport, setImportReport] = useState<McpImportReport | null>(
+    null,
+  );
   const [workbuddyTrustOpen, setWorkbuddyTrustOpen] = useState(false);
   const [trustOrigin, setTrustOrigin] = useState<DialogOriginRef>({
     current: null,
@@ -279,7 +317,19 @@ export function McpPage({
   const filtered = useMemo(() => {
     const value = search.trim().toLocaleLowerCase();
     return value
-      ? servers.filter((server) => buildMcpSearchText(server).includes(value))
+      ? servers.filter((server) =>
+          [
+            buildMcpSearchText(server),
+            ...(server.sources ?? []).map(
+              (id) =>
+                MCP_IMPORT_SOURCES.find((source) => source.id === id)?.label ??
+                id,
+            ),
+          ]
+            .join(" ")
+            .toLocaleLowerCase()
+            .includes(value),
+        )
       : servers;
   }, [search, servers]);
   const convergedId = convergeSelection(filtered, selectedId);
@@ -290,24 +340,32 @@ export function McpPage({
     title: string,
     operation: () => Promise<void>,
     onSuccess?: () => void,
+    notifySuccess = true,
+    onFailure?: (message: string) => void,
   ) => {
     if (writeLock.current) return false;
     writeLock.current = true;
     setBusy(true);
     try {
       await operation();
-      notify({ tone: "success", title });
+      await refresh();
+      if (notifySuccess) notify({ tone: "success", title });
       onSuccess?.();
       return true;
     } catch (error) {
-      notify({
-        tone: "error",
-        title: `${title}失败`,
-        description: sanitizeMcpConfigurationError(error),
-      });
+      try {
+        await refresh();
+      } catch {
+        /* Keep the original failure visible. */
+      }
+      const message = sanitizeMcpConfigurationError(error);
+      onFailure?.(message);
+      // The editor callback owns visible inline feedback; a duplicate toast
+      // would cover its footer actions on compact windows.
+      if (!onFailure)
+        notify({ tone: "error", title: `${title}失败`, description: message });
       return false;
     } finally {
-      await refresh();
       setProgress(null);
       setBusy(false);
       writeLock.current = false;
@@ -326,42 +384,85 @@ export function McpPage({
       "分配已更新",
       async () => {
         await ports.mcp.toggleApp(server.id, app, enabled);
+        const observed = (await ports.mcp.getAll())[server.id];
+        if (observed?.apps[app] !== enabled)
+          throw new UserFacingError(
+            "分配未确认，可能存在部分写入。请刷新后重试。",
+          );
       },
       () => {
         if (app === "workbuddy" && enabled) noteWorkBuddyTrust();
       },
     );
-  const bulkAssign = (app: McpTargetId, enabled: boolean) => {
-    const ids = servers
-      .filter((server) => Boolean(server.apps[app]) !== enabled)
-      .map((server) => server.id);
+  const bulkItem = (server: McpServer): BulkAssignmentItem => ({
+    id: server.id,
+    name: server.name,
+    apps: server.apps,
+    // Kept in memory for drift comparison; never rendered, logged or exported.
+    identity: JSON.stringify({ ...server, apps: undefined }),
+  });
+  const executeAssignment = async (
+    plan: BulkAssignmentPlan,
+    onResult: (result: BulkAssignmentResult) => void,
+  ) => {
+    if (writeLock.current)
+      throw new UserFacingError("另一项操作仍在执行，请稍后重新预览。");
+    writeLock.current = true;
+    setBusy(true);
+    try {
+      const results = await executeBulkAssignment(
+        plan,
+        async () => Object.values(await ports.mcp.getAll()).map(bulkItem),
+        (id, target, enabled) => ports.mcp.toggleApp(id, target, enabled),
+        onResult,
+      );
+      if (
+        plan.target === "workbuddy" &&
+        plan.enabled &&
+        results.some(
+          (result) =>
+            result.status === "confirmed" &&
+            plan.items.find((item) => item.id === result.id)?.apps[
+              plan.target
+            ] !== plan.enabled,
+        )
+      )
+        setBulkTrustNeeded(true);
+    } finally {
+      try {
+        await refresh();
+      } finally {
+        setBusy(false);
+        writeLock.current = false;
+      }
+    }
+  };
+  const importExisting = () => {
+    const sources = [...importSources];
+    setImportOpen(false);
     return write(
-      "批量分配完成",
+      "MCP 导入",
       async () => {
-        const result = await runSequentialBulk(
-          ids,
-          (id) => ports.mcp.toggleApp(id, app, enabled),
-          (done, total) => setProgress({ done, total }),
-        );
-        if (result.failures.length)
-          throw new UserFacingError(
-            `${result.failures.length} 项失败，${result.successes.length} 项成功`,
-          );
+        const report = await ports.mcp.importFromApps(sources);
+        setImportReport(report);
+        const failures = report.sources.filter(
+          (source) => source.failureCode !== null,
+        ).length;
+        notify({
+          tone: failures || report.projectionFailed ? "error" : "info",
+          title: failures
+            ? report.projectionFailed
+              ? `MCP 导入完成，${failures} 个来源失败，${report.projectionFailed} 项工具配置写入失败`
+              : `MCP 导入完成，${failures} 个来源失败`
+            : report.projectionFailed
+              ? "MCP 导入完成，部分工具配置写入失败"
+              : "MCP 导入结果已更新",
+        });
       },
-      () => {
-        if (app === "workbuddy" && enabled && ids.length > 0)
-          noteWorkBuddyTrust();
-      },
+      undefined,
+      false,
     );
   };
-  const importExisting = () =>
-    write("MCP 导入", async () => {
-      const count = await ports.mcp.importFromApps();
-      notify({
-        tone: "info",
-        title: count === 0 ? "没有发现可导入的 MCP" : `已导入 ${count} 个 MCP`,
-      });
-    });
   return (
     <div
       className="fy-feature-page fy-split-page fy-mcp-page"
@@ -381,7 +482,21 @@ export function McpPage({
           ]}
         />
         <div className="fy-feature-actions">
-          <Button disabled={busy} onClick={() => void importExisting()}>
+          <Button
+            disabled={busy || !servers.length}
+            dialogOriginRef={dialogOriginRef}
+            onClick={() => setBulkOpen(true)}
+          >
+            批量分配
+          </Button>
+          <Button
+            disabled={busy}
+            dialogOriginRef={dialogOriginRef}
+            onClick={() => {
+              setImportSources([]);
+              setImportOpen(true);
+            }}
+          >
             导入现有
           </Button>
           <Button
@@ -394,6 +509,61 @@ export function McpPage({
           </Button>
         </div>
       </header>
+      {importReport && (
+        <section
+          className="fy-mcp-import-results"
+          aria-label="MCP 导入结果"
+          aria-live="polite"
+          tabIndex={0}
+        >
+          {importReport.sources.map((source) => (
+            <p key={source.source}>
+              <strong>
+                {
+                  MCP_IMPORT_SOURCES.find((item) => item.id === source.source)
+                    ?.label
+                }
+              </strong>
+              ：
+              {source.failureCode
+                ? "来源读取或配置冲突校验失败，本来源未写入；检查配置后重新导入。"
+                : `新增 ${source.added} · 分配状态变化 ${source.assignmentChanged} · 未变化 ${source.unchanged} · 来源停用，未收录 ${source.disabledSkipped}`}
+            </p>
+          ))}
+          {importReport.projectionFailed > 0 && (
+            <>
+              <p>
+                <strong>
+                  工具配置写入失败 {importReport.projectionFailed} 项
+                </strong>
+                ，已收录的数据仍保留；请检查工具配置后重试。
+              </p>
+              {importReport.projectionFailures.map((failure, index) => (
+                <p key={`${failure.target}-${index}`}>
+                  <strong>
+                    {
+                      MCP_IMPORT_SOURCES.find(
+                        (item) => item.id === failure.target,
+                      )?.label
+                    }
+                  </strong>
+                  ：
+                  {
+                    {
+                      invalid_config: "配置格式或服务定义无效",
+                      io_failed: "配置文件读写失败",
+                      projection_failed: "工具配置同步失败",
+                    }[failure.reason]
+                  }
+                </p>
+              ))}
+            </>
+          )}
+          <p className="fy-feature-description">
+            来源收录与工具配置写入分别报告；分配状态不代表连接或实际运行已经验证。
+          </p>
+        </section>
+      )}
       {progress && (
         <>
           <div className="fy-feature-progress">
@@ -413,6 +583,25 @@ export function McpPage({
           刷新失败，正在显示上一次成功数据：{errorMessage(query.error)}
         </InlineNotice>
       )}
+      <AnimatePresence>
+        {bulkOpen && (
+          <BulkAssignmentDialog
+            key="mcp-bulk"
+            kind="MCP"
+            originRef={dialogOriginRef}
+            busy={busy}
+            items={servers.map(bulkItem)}
+            onClose={() => {
+              setBulkOpen(false);
+              if (bulkTrustNeeded) {
+                setBulkTrustNeeded(false);
+                noteWorkBuddyTrust();
+              }
+            }}
+            onExecute={executeAssignment}
+          />
+        )}
+      </AnimatePresence>
       <FeatureTabPanel
         tabsId="mcp-view-tabs"
         value="discovery"
@@ -513,7 +702,7 @@ export function McpPage({
                           {[
                             server.description || server.tags?.join(" · "),
                             transportOf(server),
-                            `${MCP_TARGETS.filter((app) => server.apps[app.id]).length} Agent`,
+                            `${MCP_IMPORT_SOURCES.filter((source) => server.apps[source.id]).length} 个分配`,
                           ]
                             .filter(Boolean)
                             .join(" · ")}
@@ -530,7 +719,10 @@ export function McpPage({
                     busy={busy}
                     onToggle={(app, enabled) => toggle(selected, app, enabled)}
                     onEdit={() => setEditing(selected)}
-                    onDelete={() => setDeleteTarget(selected)}
+                    onDelete={() => {
+                      setDeleteError(null);
+                      setDeleteTarget(selected);
+                    }}
                     showAssignment={!wideLayout}
                   />
                 )}
@@ -547,12 +739,6 @@ export function McpPage({
                       targets={MCP_TARGETS}
                     />
                     <hr />
-                    <BulkAssignmentPanel
-                      targets={MCP_TARGETS}
-                      disabled={busy}
-                      onToggle={bulkAssign}
-                      dialogOriginRef={dialogOriginRef}
-                    />
                   </section>
                 )}
               </SplitPanes>
@@ -560,6 +746,44 @@ export function McpPage({
           </div>
         )}
       </FeatureTabPanel>
+      <Dialog
+        open={importOpen}
+        originRef={dialogOriginRef}
+        onOpenChange={setImportOpen}
+        title="选择 MCP 导入来源"
+        description="只读取所选来源并收录到 FyAgent；保留来源停用状态。此步骤不会写入 Agent 配置或测试连接。"
+        actions={
+          <>
+            <Button onClick={() => setImportOpen(false)}>取消</Button>
+            <Button
+              className="fy-control-button-primary"
+              disabled={busy || importSources.length === 0}
+              onClick={() => void importExisting()}
+            >
+              开始导入
+            </Button>
+          </>
+        }
+      >
+        <div className="fy-mcp-import-source-list">
+          {MCP_IMPORT_SOURCES.map((source) => (
+            <label className="fy-mcp-import-source" key={source.id}>
+              <Checkbox
+                label={source.label}
+                checked={importSources.includes(source.id)}
+                onCheckedChange={(checked) => {
+                  setImportSources((current) =>
+                    checked
+                      ? [...current, source.id]
+                      : current.filter((id) => id !== source.id),
+                  );
+                }}
+              />
+              <span>{source.label}</span>
+            </label>
+          ))}
+        </div>
+      </Dialog>
       <AnimatePresence>
         {editing !== null && (
           <McpEditor
@@ -570,7 +794,7 @@ export function McpPage({
             existingIds={new Set(servers.map((server) => server.id))}
             busy={busy}
             onClose={() => setEditing(null)}
-            onSave={(server, event) => {
+            onSave={async (server, event) => {
               const wasAssigned =
                 editing !== "new" && Boolean(editing.apps.workbuddy);
               if (server.apps.workbuddy && !wasAssigned) {
@@ -581,17 +805,26 @@ export function McpPage({
                   source.returnTarget ?? source.current,
                 );
               }
-              void write(
+              let failure =
+                "MCP 操作未确认完成，请核对管理列表和目标配置后再继续。";
+              const saved = await write(
                 editing === "new" ? "MCP 已添加" : "MCP 已更新",
                 async () => {
                   await ports.mcp.upsert(server);
-                  setEditing(null);
                 },
                 () => {
+                  setEditing(null);
                   if (server.apps.workbuddy && !wasAssigned)
                     noteWorkBuddyTrust();
                 },
+                true,
+                (message) => {
+                  failure = message;
+                },
               );
+              return saved
+                ? null
+                : `${failure}。管理库或部分目标可能已更改；草稿已保留，请先核对管理列表和目标配置，再决定是否重试。`;
             }}
           />
         )}
@@ -607,16 +840,20 @@ export function McpPage({
         originRef={dialogOriginRef}
         open={deleteTarget !== null}
         title={`删除 ${deleteTarget?.name ?? "MCP"}`}
-        description="将从管理列表及已启用的应用中删除。"
+        description={deleteError ?? "将从管理列表及已启用的应用中删除。"}
         pending={busy}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={async () => {
           const target = deleteTarget;
-          if (target)
-            await write("MCP 已删除", async () => {
-              await ports.mcp.delete(target.id);
-            });
-          setDeleteTarget(null);
+          if (!target) return;
+          const removed = await write("MCP 已删除", async () => {
+            await ports.mcp.delete(target.id);
+          });
+          if (removed) setDeleteTarget(null);
+          else
+            setDeleteError(
+              "删除未确认完成，部分目标可能已更改。请先核对管理列表和目标配置，再决定是否重试或取消。",
+            );
         }}
       />
     </div>
@@ -640,7 +877,10 @@ function McpEditor({
   existingIds: Set<string>;
   busy: boolean;
   onClose: () => void;
-  onSave: (server: McpServer, event: MouseEvent<HTMLButtonElement>) => void;
+  onSave: (
+    server: McpServer,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => Promise<string | null>;
 }) {
   const spec = initial?.server ?? {};
   const [id, setId] = useState(initial?.id ?? "");
@@ -676,6 +916,16 @@ function McpEditor({
   const [mode, setMode] = useState<Mode>("quick");
   const [advanced, setAdvanced] = useState(JSON.stringify(spec, null, 2));
   const [errors, setErrors] = useState<string[]>([]);
+  const formRef = useRef<HTMLDivElement>(null);
+  const errorField = useRef("name");
+  useEffect(() => {
+    if (!errors.length) return;
+    const field = formRef.current?.querySelector<HTMLElement>(
+      `[data-mcp-field="${errorField.current}"]`,
+    );
+    field?.focus();
+    field?.scrollIntoView?.({ block: "nearest" });
+  }, [errors]);
   const [preset, setPreset] = useState("custom");
   const original = useRef<McpServer | null>(
     initial ? structuredClone(initial) : null,
@@ -772,6 +1022,12 @@ function McpEditor({
       setMode(next);
       setErrors([]);
     } catch (error) {
+      errorField.current =
+        mode === "advanced"
+          ? "advanced"
+          : transport === "stdio"
+            ? "command"
+            : "url";
       setErrors([errorMessage(error)]);
     }
   };
@@ -791,11 +1047,22 @@ function McpEditor({
       nextErrors.push(errorMessage(error));
     }
     if (nextErrors.length || !spec) {
+      errorField.current =
+        !trimmedId || (!initial && existingIds.has(trimmedId))
+          ? "id"
+          : !name.trim()
+            ? "name"
+            : mode === "advanced"
+              ? "advanced"
+              : transport === "stdio"
+                ? "command"
+                : "url";
       setErrors(nextErrors);
       return;
     }
     const base = original.current ?? {};
-    onSave(
+    setErrors([]);
+    void onSave(
       {
         ...base,
         id: initial?.id ?? trimmedId,
@@ -811,7 +1078,11 @@ function McpEditor({
         docs: docs.trim() || undefined,
       } as McpServer,
       event,
-    );
+    ).then((failure) => {
+      if (!failure) return;
+      errorField.current = "name";
+      setErrors([failure]);
+    });
   };
   return (
     <Dialog
@@ -821,30 +1092,28 @@ function McpEditor({
       title={initial ? `编辑 ${initial.name}` : "添加 MCP"}
       size="wide"
       actions={
-        <>
-          <Button onClick={onClose} disabled={busy}>
-            取消
-          </Button>
-          <Button
-            className="fy-control-button-primary"
-            onClick={submit}
-            disabled={busy}
-          >
-            {busy ? "保存中…" : "保存"}
-          </Button>
-        </>
+        <div className="fy-mcp-editor-actions">
+          {errors.length > 0 && (
+            <div className="fy-mcp-editor-error" tabIndex={0}>
+              <InlineNotice tone="error">{errors.join("；")}</InlineNotice>
+            </div>
+          )}
+          <div className="fy-mcp-editor-buttons">
+            <Button onClick={onClose} disabled={busy}>
+              取消
+            </Button>
+            <Button
+              className="fy-control-button-primary"
+              onClick={submit}
+              disabled={busy}
+            >
+              {busy ? "保存中…" : "保存"}
+            </Button>
+          </div>
+        </div>
       }
     >
-      {errors.length > 0 && (
-        <InlineNotice tone="error">
-          <ul>
-            {errors.map((error) => (
-              <li key={error}>{error}</li>
-            ))}
-          </ul>
-        </InlineNotice>
-      )}
-      <div className="fy-feature-form-grid">
+      <div ref={formRef} className="fy-feature-form-grid">
         {!initial && (
           <label className="fy-control-field">
             模板
@@ -865,6 +1134,7 @@ function McpEditor({
         <label className="fy-control-field">
           ID
           <Input
+            data-mcp-field="id"
             value={id}
             onChange={(event) => setId(event.target.value)}
             disabled={Boolean(initial)}
@@ -873,6 +1143,7 @@ function McpEditor({
         <label className="fy-control-field">
           名称
           <Input
+            data-mcp-field="name"
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
@@ -944,6 +1215,7 @@ function McpEditor({
                 <label className="fy-control-field">
                   命令
                   <Input
+                    data-mcp-field="command"
                     value={command}
                     onChange={(event) => setCommand(event.target.value)}
                   />
@@ -979,6 +1251,7 @@ function McpEditor({
                 <label className="fy-control-field fy-feature-form-span">
                   URL
                   <Input
+                    data-mcp-field="url"
                     value={url}
                     onChange={(event) => setUrl(event.target.value)}
                   />
@@ -1009,6 +1282,7 @@ function McpEditor({
             <textarea
               className="fy-control-textarea"
               rows={14}
+              data-mcp-field="advanced"
               value={advanced}
               onChange={(event) => setAdvanced(event.target.value)}
               spellCheck={false}

@@ -1,7 +1,8 @@
 //! 供应商连通性检查命令
 //!
-//! 注意：本检查只探测 base_url 是否可达，不发真实大模型请求，也不触碰故障转移
-//! 熔断器（熔断器由真实转发流量驱动）。详见 `services::stream_check`。
+//! URL/供应商可达检查不发送模型请求；草稿模型检查则发送真实流式请求，
+//! 请求超时最多重试一次。两类检查均不触碰由实际转发流量驱动的故障转移
+//! 熔断器。分别由 `services::stream_check` 和 `services::model_probe` 拥有。
 
 use crate::app_config::AppType;
 use crate::commands::copilot::CopilotAuthState;
@@ -23,7 +24,6 @@ pub async fn stream_check_provider(
     provider_id: String,
 ) -> Result<StreamCheckResult, AppError> {
     let config = state.db.get_stream_check_config()?;
-
     let providers = state.db.get_all_providers(app_type.as_str())?;
     let provider = providers
         .get(&provider_id)
@@ -55,11 +55,14 @@ pub async fn stream_check_url(
     StreamCheckService::check_url(&base_url, &config).await
 }
 
-/// 草稿模型连通性检查：对选定模型发一次真实流式请求。
+/// 草稿模型连通性检查：固定协议，超时最多重试一次（最多两次请求）。
 ///
-/// 不查找已保存供应商，不触碰故障转移熔断器。失败时 `message` 含上游错误原文。
+/// 不查找已保存供应商，不触碰故障转移熔断器。错误消息先限长并脱敏当前 API Key；
+/// 结果身份、请求次数与取消终态由模型 probe owner 发布。
 #[tauri::command(rename_all = "camelCase")]
+#[allow(clippy::too_many_arguments)]
 pub async fn stream_check_model(
+    request_id: String,
     app: ModelProbeApp,
     base_url: String,
     api_key: String,
@@ -67,7 +70,8 @@ pub async fn stream_check_model(
     codex_image_extension: Option<bool>,
     protocol: Option<crate::services::provider_api::ApiProtocol>,
 ) -> Result<ModelProbeResult, AppError> {
-    model_probe::probe(
+    model_probe::probe_registered(
+        &request_id,
         app,
         &base_url,
         &api_key,
@@ -76,6 +80,20 @@ pub async fn stream_check_model(
         protocol,
     )
     .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn stream_check_model_status(
+    request_id: String,
+) -> Result<model_probe::ModelProbeSnapshot, AppError> {
+    model_probe::probe_status(&request_id)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn stream_check_model_cancel(
+    request_id: String,
+) -> Result<model_probe::ModelProbeSnapshot, AppError> {
+    model_probe::cancel_probe(&request_id)
 }
 
 /// 批量连通性检查

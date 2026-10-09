@@ -19,4 +19,8 @@ Read the disconnect confirmation. Restoring Codex's third-party source restores 
 
 If status cannot be read, refresh first. If official login finished but remains unconfirmed, inspect the target software before continuing.
 
+## Accounts, connections and requests
+
+The overview reports managed accounts, software connections and request sources separately. A saved account is not a connected app; pending restart, unconfirmed and partial connections need their own follow-up. For an unknown request source, refresh and inspect the selected app's current source before reconnecting. Login does not prove proxy connectivity or a successful model request: test the specific service/model in 「模型管理」 and check the target app. The former runtime Health page has been removed.
+
 [Back to manual](README.md)

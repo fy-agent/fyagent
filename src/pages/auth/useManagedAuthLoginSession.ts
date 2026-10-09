@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { errorMessage } from "../../shared/features/helpers";
 import type {
   ManagedAuthLoginMethod,
   ManagedAuthLoginSessionSnapshot,
   ManagedAuthPort,
   StartManagedAuthLoginRequest,
 } from "../../shared/features/managed-auth";
+import { managedAuthCommandErrorCopy } from "./presentation";
 
 const POLL_INTERVAL_MS = 1_000;
 
@@ -49,7 +49,7 @@ export function useManagedAuthLoginSession({
         const next = await port.getLoginSession(snapshot.sessionId);
         if (!disposed) acceptSnapshot(next);
       } catch (cause) {
-        if (!disposed) setError(errorMessage(cause));
+        if (!disposed) setError(managedAuthCommandErrorCopy(cause));
       } finally {
         if (!disposed) timer = window.setTimeout(poll, POLL_INTERVAL_MS);
       }
@@ -73,7 +73,7 @@ export function useManagedAuthLoginSession({
         acceptSnapshot(next);
         return next;
       } catch (cause) {
-        setError(errorMessage(cause));
+        setError(managedAuthCommandErrorCopy(cause));
         return null;
       } finally {
         setSubmitting(false);
@@ -106,7 +106,7 @@ export function useManagedAuthLoginSession({
         acceptSnapshot(next);
         return next;
       } catch (cause) {
-        setError(errorMessage(cause));
+        setError(managedAuthCommandErrorCopy(cause));
         return null;
       } finally {
         setSubmitting(false);

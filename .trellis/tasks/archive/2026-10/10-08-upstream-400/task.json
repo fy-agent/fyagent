@@ -1,0 +1,25 @@
+{
+  "id": "upstream-400",
+  "name": "upstream-400",
+  "status": "completed",
+  "ClaimedBy": "Codex",
+  "ClaimedAt": "2026-10-07T18:16:49.884897+00:00",
+  "phase": "archived",
+  "Deliverables": [
+    "[upstream ledger](../../../../../docs/upstream/cc-switch-v4.0.4.md)",
+    "[scope and validation](../../../../../docs/fyagent/planning/iteration-0411-public-validation-2026-10-10.md)",
+    "[draft PR #361](https://github.com/fy-agent/fyagent/pull/361)"
+  ],
+  "Acceptance Evidence": [
+    "Public integration preserves main and #360 as distinct parents and retains the original upstream merge ancestry.",
+    "Gemini invalid-settings protection and the migrated CLI preflight assertion are retained as semantic merge resolutions.",
+    "Isolated macOS VM candidates verified aggregation switching, removed-member rejection, manual quota refresh and exit restoration. The final app passed quota reading, status-label review and exit cleanup, including independent screenshot review.",
+    "Final source passed 22 focused native regressions and 68 applicable frontend regressions (Auth Page 35, summary 13, unaffected suites 20). Reauthentication uses isolated native regression evidence; no real browser OAuth re-login was performed.",
+    "Public candidate 9f6361f13 passed backend macOS/Windows, Windows ARM64/X64, repository and desktop contracts, frontend unit tests (2980 passed, 1 skipped) and boot smoke (3 passed). Browser tests reported 710 passed and 7 failed; the stale summary assertion and asynchronous-layout contrast sampling were fixed without lowering thresholds. VM summary 5/5 passed at 127d4296f and contrast 5/5 passed at 44efc421a. Product source/build/locks remain identical to the accepted app; only three browser test files and the separate CI-policy repair differ. Final public CI, lifecycle gates, merge and release remain distinct pending evidence.",
+    "Direct-session prearchive contracts passed at efe41af4d in the isolated VM (683 passed, 1 skipped, plus 4 native-fetch checks). Task archived after implementation, review and affected regression acceptance; post-archive and GitHub exact-head/merge-group checks are separate."
+  ],
+  "branch": "codex/iteration-0411-public-20261010",
+  "title": "CC Switch v4.0.4 迁移与迭代整合",
+  "base_branch": "main",
+  "completedAt": "2026-10-10"
+}

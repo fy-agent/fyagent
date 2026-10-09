@@ -4,7 +4,7 @@
 
 use crate::services::model_fetch::{self, FetchedModel};
 use serde::Serialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,6 +98,8 @@ pub async fn fetch_models_for_config(
     is_full_url: Option<bool>,
     models_url: Option<String>,
     custom_user_agent: Option<String>,
+    api_format: Option<String>,
+    request_headers: Option<BTreeMap<String, String>>,
 ) -> Result<Vec<FetchedModel>, String> {
     crate::services::provider_api::ensure_generic_api_allowed(&base_url, &api_key)
         .map_err(|error| error.to_string())?;
@@ -115,6 +117,8 @@ pub async fn fetch_models_for_config(
         is_full_url.unwrap_or(false),
         models_url.as_deref(),
         user_agent,
+        api_format.as_deref(),
+        request_headers.as_ref(),
     )
     .await
 }

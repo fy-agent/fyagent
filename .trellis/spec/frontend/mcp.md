@@ -43,7 +43,7 @@ interface McpPort {
     app: McpTargetId,
     enabled: boolean,
   ): Promise<void>;
-  importFromApps(): Promise<number>;
+  importFromApps(sources?: McpImportSourceId[]): Promise<McpImportReport>;
 }
 ```
 
@@ -70,8 +70,25 @@ interface McpServer extends Record<string, unknown> {
   homepage?: string;
   docs?: string;
   source?: string;
+  sources?: McpImportSourceId[];
 }
 ```
+
+Import source IDs are the nine native target IDs, distinct from the seven
+assignment controls. `McpImportReport` is version 1 with one requested-source
+row containing `source`, nonnegative safe-integer `added`,
+`assignmentChanged`, `unchanged`, `disabledSkipped`, and
+`failureCode: null | "source_failed"`. Display separate accepted/state-change/
+unchanged/disabled-skip/failure results; zero added rows does not mean there
+was nothing to import. The report also requires nonnegative safe-integer
+projectionFailed and projectionFailures, with an exact count/list-length match.
+Each failure has a closed target ID, serverId (nonempty string or null for a
+collection/target-level failure), and reason from invalid_config, io_failed,
+projection_failed. Failure targets must correspond to an accepted selected
+source. Unknown/missing fields and reason codes are rejected.
+Show projection failure count and target/reason separately from source failures
+using hardcoded Chinese copy. Accepted library rows remain visible on partial
+projection failure; raw native errors/paths/secrets are never displayed.
 
 `createSimpleFeaturePorts().mcp` is currently a thin, compile-time-typed Tauri
 adapter over these exact commands:
@@ -81,12 +98,13 @@ get_mcp_servers
 upsert_mcp_server        { server }
 delete_mcp_server        { id }
 toggle_mcp_app           { serverId, app, enabled }
-import_mcp_from_apps
+import_mcp_from_apps     { sources } // omitted selection retains legacy all-source request
 ```
 
-It does not currently perform runtime DTO/version parsing. Do not document a
-strict renderer parser as already present. A future change that adds an
-untrusted or versioned response must add parsing at this adapter boundary.
+The adapter validates a nonempty unique closed source selection, parses the
+versioned import report and validates source metadata on the read view. It
+retains thin mapping for the other management calls. Invalid version, counts,
+source identity/order or failure shape cannot be presented as successful import.
 
 ## 3. Contracts
 
@@ -94,17 +112,23 @@ untrusted or versioned response must add parsing at this adapter boundary.
 
 - `useMcpServers()` owns the installed map under `featureKeys.mcp`. List,
   detail, search, and assignment render from this query result.
-- `McpPage.write` owns a page-wide `writeLock`, busy state, success/error toast,
-  and `featureKeys.mcp` invalidation in `finally`. A concurrent management-page
+- `McpPage.write` owns a page-wide `writeLock`, busy state, success notification and safe failure feedback,
+  and `featureKeys.mcp` invalidation/refetch after command success or failure. A concurrent management-page
   write is ignored before native invocation.
 - Upsert, delete, one-target toggle, import, and sequential bulk assignment all
   go through `McpPort`; the page never serializes a vendor live file or calls a
   compatibility Tauri command directly.
+- Import requires an explicit source selection and confirmation; cancellation
+  invokes no import. Show persisted import origins independently from catalogue
+  publisher metadata, assignment flags and connection status. Legacy rows with
+  no recorded origins say that the source was not recorded. A successful import
+  or assignment does not prove a connection; an untested connection remains
+  untested.
 - Unified upsert can return an adapter validation/write error after native code
   has already saved the SQLite row and before every enabled live target was
   projected. The page sanitizes the error and invalidates/refetches the MCP
-  query in `finally`; the reread may therefore show a durable row after a
-  failed toast. Do not claim native rollback or remove that row optimistically.
+  query after settlement; the reread may therefore show a durable row after a
+  failure feedback. Do not claim native rollback or remove that row optimistically.
 - The management page does not use `useAuthoritativeAssignmentMutation`.
   `toggleApp` returns `void`; convergence happens by invalidating/refetching the
   installed query after the command settles. Do not claim the toggle command
@@ -114,6 +138,21 @@ untrusted or versioned response must add parsing at this adapter boundary.
   when a later item fails.
 - A native command error is sanitized through
   `sanitizeMcpConfigurationError`; the raw backend string is not rendered.
+
+- Single-save command or reread failure keeps the editor and its exact draft
+  open. Present the sanitized error beside the footer actions, retain an
+  accessible bounded error region, and focus a correction field without
+  discarding other input. Close only after the confirmed success path.
+- When the editor callback owns inline failure feedback, suppress the duplicate
+  error toast so it cannot cover the footer controls on a compact viewport.
+  Browser evidence waits for dialog settlement and checks correction focus and
+  save/cancel visibility after the actual screenshot.
+- Single-delete failure keeps confirmation open and states that some target
+  configuration may already have changed. Allow cancellation or review before
+  retry; never claim all targets were removed or that native rollback occurred.
+- Sanitized parse/I/O messages describe the observed failure category without
+  inferring a write stage. Do not render raw paths, headers or secret-bearing
+  native strings. Reread failure after a successful command is still unconfirmed.
 
 ### Quick and advanced editor
 
@@ -198,24 +237,28 @@ untrusted or versioned response must add parsing at this adapter boundary.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                    | Required UI result                                                                                                                                                        |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Installed query fails before any data                                        | Render load failure and retry; do not fabricate an empty map.                                                                                                             |
-| Refresh fails with cached data                                               | Keep the last successful map and show the refresh warning.                                                                                                                |
-| New ID is empty/duplicate or name is empty                                   | Block submit locally.                                                                                                                                                     |
-| New server draft is created                                                  | Initialize all flags disabled, or only an explicit creationTarget; editing preserves stored flags.                                                                        |
-| Quick stdio command is empty                                                 | Block submit with the local command error.                                                                                                                                |
-| Quick HTTP/SSE URL fails `new URL`                                           | Block submit locally.                                                                                                                                                     |
-| Env/header row lacks a usable separator/key                                  | Block submit and list the affected row.                                                                                                                                   |
-| Advanced JSON is invalid, not an object, or contains top-level `mcpServers`  | Block mode switch/save.                                                                                                                                                   |
-| Advanced object contains unknown fields                                      | Preserve them for native validation; do not silently discard.                                                                                                             |
-| Native upsert/delete/toggle/import fails                                     | Show sanitized error, keep/refresh current query authority, and do not claim rollback.                                                                                    |
-| Advanced upsert is saved, then an enabled target rejects its transport shape | Keep the failure toast/editor for correction, refetch the durable map, and allow the saved row to remain visible; do not claim pre-save validation or automatic deletion. |
-| Advanced/direct row has every target disabled                                | Native can currently persist it without target-adapter validation; do not describe successful save as proof that the server is executable.                                |
-| One bulk item fails                                                          | Continue remaining items, report partial counts, and refetch the map.                                                                                                     |
-| WorkBuddy write succeeds                                                     | Show trust disclosure; do not claim vendor reload/execution.                                                                                                              |
-| Ordinary detail/search sees env/header or sensitive URL/arg value            | Redact/exclude as defined above.                                                                                                                                          |
-| Editor opens an existing secret-bearing server                               | Raw values may appear only in the editing controls; do not log/copy them elsewhere.                                                                                       |
+| Condition                                                                    | Required UI result                                                                                                                                                         |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Installed query fails before any data                                        | Render load failure and retry; do not fabricate an empty map.                                                                                                              |
+| Refresh fails with cached data                                               | Keep the last successful map and show the refresh warning.                                                                                                                 |
+| New ID is empty/duplicate or name is empty                                   | Block submit locally.                                                                                                                                                      |
+| New server draft is created                                                  | Initialize all flags disabled, or only an explicit creationTarget; editing preserves stored flags.                                                                         |
+| Quick stdio command is empty                                                 | Block submit with the local command error.                                                                                                                                 |
+| Quick HTTP/SSE URL fails `new URL`                                           | Block submit locally.                                                                                                                                                      |
+| Env/header row lacks a usable separator/key                                  | Block submit and list the affected row.                                                                                                                                    |
+| Advanced JSON is invalid, not an object, or contains top-level `mcpServers`  | Block mode switch/save.                                                                                                                                                    |
+| Advanced object contains unknown fields                                      | Preserve them for native validation; do not silently discard.                                                                                                              |
+| Native upsert/delete/toggle/import fails                                     | Show sanitized error, keep/refresh current query authority, and do not claim rollback.                                                                                     |
+| Advanced upsert is saved, then an enabled target rejects its transport shape | Keep the failure notice/editor for correction, refetch the durable map, and allow the saved row to remain visible; do not claim pre-save validation or automatic deletion. |
+| Advanced/direct row has every target disabled                                | Native can currently persist it without target-adapter validation; do not describe successful save as proof that the server is executable.                                 |
+| One bulk item fails                                                          | Continue remaining items, report partial counts, and refetch the map.                                                                                                      |
+| Import reports zero added but a changed assignment or disabled skip          | Show those observed counts; do not claim that no importable source existed.                                                                                                |
+| Import report has unsupported version or malformed/source-mismatched rows    | Show a result error and reread durable state; do not claim rollback or success.                                                                                            |
+| Import source selection is empty/duplicate/invalid or dialog is cancelled    | Invoke no import mutation.                                                                                                                                                 |
+| A legacy row has no persisted origins                                        | Display source not recorded; catalogue identity and target flags cannot supply a fabricated origin.                                                                        |
+| WorkBuddy write succeeds                                                     | Show trust disclosure; do not claim vendor reload/execution.                                                                                                               |
+| Ordinary detail/search sees env/header or sensitive URL/arg value            | Redact/exclude as defined above.                                                                                                                                           |
+| Editor opens an existing secret-bearing server                               | Raw values may appear only in the editing controls; do not log/copy them elsewhere.                                                                                        |
 
 ## 5. Good / Base / Bad Cases
 
@@ -240,10 +283,12 @@ Run the focused Renderer checks through the repository task runner. Required
 assertion owners include:
 
 - `tests/renderer/platform/featurePorts.test.ts`: exact five `McpPort` command names,
-  camelCase payload keys, and return mapping;
+  camelCase payload keys, selection/version/count/source parsing, and return mapping;
 - `tests/renderer/features/featurePages.test.tsx`: installed loading/error/cached-data
   states, add/edit/delete/import, assignment, sequential partial bulk behavior,
   invalidation, and sanitized errors;
+  import source selection/cancellation, partial source counts, zero-added state
+  changes and disabled skips, independent persisted origins and untested status;
 - `tests/renderer/features/helpers.test.ts`: quick key/value parsing, advanced-object
   rules, known-field overlay, selection/search, and error sanitization;
 - `tests/renderer/features/mcpSecurity.test.ts` and

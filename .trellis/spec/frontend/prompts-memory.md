@@ -17,6 +17,9 @@ New chrome that the other page will need goes in `src/shared/ui` on the
 first commit. See [Frontend Reuse](./reuse.md). Static FDE catalogue and
 draft-only selection are owned by [Prompt Presets](./prompt-presets.md).
 
+Daily-file selection, missing-date feedback and external-deletion draft
+preservation are owned by [Daily Memory Selection](./daily-memory-selection.md).
+
 The selected-Agent `提示词` section may present the existing prompt library,
 enable one entry, and link to `/prompts`, but it remains a consumer of this
 same `PromptsPort`. It calls `enable`, rereads the selected app, and accepts
@@ -147,6 +150,20 @@ paths above.
   reports the current native file content and is not an editable second
   source of truth. Do not keep it as a third always-open column that steals
   width from the prompt body.
+- Prompt descriptions use a multiline textarea. Body, description and expanded
+  read-only live content are bounded independent scroll owners; wheeling one
+  must not shift surrounding panes. Long editor titles retain their full `title`
+  and occupy at most two lines. Compact windows keep name, description, live
+  disclosure and actions reachable by wheel and Tab.
+- In the prompt workspace's stacked layout, non-editor split wrappers and the
+  editor/library panes allow vertical wheel propagation at their boundaries so
+  the outer stacked viewport can reveal clipped controls. Body, description and
+  live textareas keep `overscroll-behavior: contain`; do not weaken the shared
+  split contract or replace physical wheel evidence with programmatic scrolling.
+- `tests/browser/prompts-layout.spec.ts` covers 900x600, 1234x732 and 1440x900,
+  independent wheel receivers, title bounds, Tab hit testing, live collapse,
+  redacted read/write errors and failed-save draft preservation. These controlled
+  browser fixtures are not native file-consumption or pixel-diff acceptance.
 - Claude Desktop is intentionally absent because the native prompt backend does
   not support it.
 
@@ -342,3 +359,23 @@ reread, with a distinct warning if refresh fails.
 await ports.prompts.enable(app, id);
 await Promise.all([refetchPrompts(), refetchLiveFile()]);
 ```
+
+### Public Prompt import error contract
+
+The native public import reads the resolved source before constructing a fresh
+UUID disabled library entry. Only its source-read NotFound, InvalidData and
+PermissionDenied/I/O outcomes use fixed missing-file, UTF-8 or file-type/read
+permission guidance and say that this import was not performed. Do not infer
+this phase from arbitrary writer I/O or raw error text. Other service/DAO
+failures remain unconfirmed and ask the user to refresh the library before
+retrying. The Renderer forwards only the closed safe messages; arbitrary errors
+become the fixed unconfirmed message without paths or contents. Failed import
+preserves the existing editor draft and never displays an import-success notice.
+Import uses an independent error title and visible page inline feedback without
+a duplicate error toast over the editor. Other actions retain their existing
+notification defaults. Expanded current-use evidence scrolls the real content
+into view and captures its retained value with the source-error header visible.
+
+These UI contracts are defined in the existing Prompt Page renderer tests;
+source-read versus DAO-phase behavior is covered by services/prompt.rs tests.
+Neither mock failures nor these definitions prove real permission/native runs.

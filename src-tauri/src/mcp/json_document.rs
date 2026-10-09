@@ -43,22 +43,10 @@ pub(super) fn write_servers(
         .ok_or_else(|| AppError::Config(root_error.into()))?;
     let mut projected = Map::new();
     for (id, spec) in servers {
-        let mut spec = spec
+        let spec = spec
             .as_object()
             .cloned()
             .ok_or_else(|| AppError::McpValidation(format!("MCP 服务器 '{id}' 不是对象")))?;
-        for key in [
-            "enabled",
-            "source",
-            "id",
-            "name",
-            "description",
-            "tags",
-            "homepage",
-            "docs",
-        ] {
-            spec.remove(key);
-        }
         projected.insert(id.clone(), Value::Object(spec));
     }
     object.insert("mcpServers".into(), Value::Object(projected));
@@ -72,6 +60,31 @@ pub(super) fn write_servers(
         fs::copy(path, backup).map_err(|error| AppError::io(backup, error))?;
     }
     atomic_write(path, json.as_bytes())
+}
+
+/// Clean only the newly projected definition. Existing siblings are external
+/// client data and must round-trip without stripping their disablement/secrets.
+pub(super) fn project_server_spec(spec: &Value) -> Result<Value, AppError> {
+    super::validation::validate_server_spec(spec)?;
+    let mut object = spec
+        .as_object()
+        .cloned()
+        .ok_or_else(|| AppError::McpValidation("MCP 服务器连接定义必须为对象".into()))?;
+    if object.get("enabled").is_some_and(Value::is_boolean) {
+        object.remove("enabled");
+    }
+    for key in [
+        "source",
+        "id",
+        "name",
+        "description",
+        "tags",
+        "homepage",
+        "docs",
+    ] {
+        object.remove(key);
+    }
+    Ok(Value::Object(object))
 }
 
 #[cfg(test)]
@@ -88,11 +101,11 @@ mod tests {
         fs::write(&path, original).unwrap();
         let servers = HashMap::from([(
             "demo".into(),
-            json!({
+            project_server_spec(&json!({
                 "command":"echo", "args":["hello"], "custom":{"enabled":true},
                 "env":{"TOKEN":"retain-executable-value"}, "enabled":true, "source":"local",
                 "id":"id", "name":"name", "description":"desc", "tags":[], "homepage":"url", "docs":"url"
-            }),
+            })).unwrap(),
         )]);
         write_servers(&path, &backup, "invalid root", &servers).unwrap();
         assert_eq!(fs::read(&backup).unwrap(), original.as_bytes());

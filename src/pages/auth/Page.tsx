@@ -5,6 +5,7 @@ import { errorMessage } from "../../shared/features/helpers";
 import {
   MANAGED_AUTH_CONSUMERS,
   MANAGED_AUTH_PROVIDERS,
+  parseManagedAuthCommandError,
   type ManagedAuthAccountRemovalPreview,
   type ManagedAuthAccountSummary,
   type ManagedAuthConnectionAction,
@@ -14,11 +15,10 @@ import {
   type ManagedAuthProvider,
 } from "../../shared/features/managed-auth";
 import { useFeatures } from "../../shared/features/provider";
-import { CONFIG_RECOVERY_TARGETS } from "../../shared/features/config-recovery";
-import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
 import { useFrontendReady } from "../../shared/platform/useFrontendReady";
 import {
   featureKeys,
+  useManagedAuthAccountQuota,
   useManagedAuthOverview,
 } from "../../shared/features/queries";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
@@ -40,6 +40,7 @@ import {
   sessionSummary,
 } from "./presentation";
 import { useManagedAuthLoginSession } from "./useManagedAuthLoginSession";
+import { summarizeAuthOverview } from "./summary";
 import "./page.css";
 
 type AuthView = "accounts" | "connections";
@@ -88,6 +89,19 @@ export function AuthPage() {
   const view: AuthView =
     requestedView ?? (requestedConsumer ? "connections" : "accounts");
   const requestedAccountId = searchParams.get("account");
+  const quotaAccount =
+    overviewQuery.data?.accounts.find(
+      (account) => account.accountId === requestedAccountId,
+    ) ??
+    overviewQuery.data?.accounts[0] ??
+    null;
+  const quotaQuery = useManagedAuthAccountQuota(
+    quotaAccount?.accountId ?? null,
+    quotaAccount?.revision ?? null,
+    visible &&
+      view === "accounts" &&
+      (quotaAccount?.provider === "openai" || quotaAccount?.provider === "xai"),
+  );
   const [accountSearch, setAccountSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState<
     ManagedAuthProvider | "all"
@@ -428,13 +442,7 @@ export function AuthPage() {
     null;
   const selectedConsumer =
     requestedConsumer ?? MANAGED_AUTH_CONSUMERS[0] ?? null;
-  const needsAttention =
-    overview.accounts.some((account) => account.health !== "ready") ||
-    overview.connections.some(
-      (connection) =>
-        connection.authStatus !== "connected" &&
-        connection.authStatus !== "disconnected",
-    );
+  const summary = summarizeAuthOverview(overview);
   const mobileDetailSelected =
     view === "accounts"
       ? requestedAccountId !== null && selectedAccountId !== null
@@ -453,33 +461,6 @@ export function AuthPage() {
           <h1>账号与认证</h1>
         </div>
         <div className="fy-feature-actions">
-          <FileRecoveryButton
-            targets={CONFIG_RECOVERY_TARGETS}
-            disabled={
-              mutationBusy ||
-              loginController.busy ||
-              sourceBusy ||
-              connectionAction !== null ||
-              removalAccount !== null
-            }
-            onRestored={async () => {
-              await refetchOverview();
-              await Promise.all([
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.providerSummary("codex"),
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.providerSummary("claude"),
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.providerSummary("grokbuild"),
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.openCodeModelSnapshot,
-                }),
-              ]);
-            }}
-          />
           <Button
             className="fy-control-button-primary"
             disabled={mutationBusy || loginController.busy || sourceBusy}
@@ -501,7 +482,7 @@ export function AuthPage() {
             label:
               option.id === "accounts"
                 ? `账号 ${overview.accounts.length}`
-                : `软件连接 ${overview.connections.length}`,
+                : `软件连接 ${summary.connections.connected}/${summary.connections.total}`,
           }))}
           onChange={(next) =>
             updateRoute({
@@ -512,8 +493,11 @@ export function AuthPage() {
             })
           }
         />
-        <span data-attention={needsAttention ? "true" : undefined}>
-          {needsAttention ? "有状态需要处理" : "账号状态正常"}
+        <span
+          data-testid="managed-auth-overview-summary"
+          data-attention={summary.needsAttention ? "true" : undefined}
+        >
+          {summary.label}
         </span>
       </div>
 
@@ -594,6 +578,14 @@ export function AuthPage() {
             sourceBusy ||
             overviewQuery.isError
           }
+          quota={
+            quotaQuery.isError ||
+            quotaQuery.data?.accountId !== selectedAccountId
+              ? null
+              : quotaQuery.data
+          }
+          quotaPending={quotaQuery.isFetching}
+          quotaReason={parseManagedAuthCommandError(quotaQuery.error)}
           onSearchChange={setAccountSearch}
           onProviderFilterChange={(next) => {
             if (next === "all" || MANAGED_AUTH_PROVIDERS.includes(next)) {
@@ -606,6 +598,9 @@ export function AuthPage() {
           onReauthenticate={(account) => openLogin(account, null)}
           onSetDefault={(account) => void setDefaultAccount(account)}
           onRemove={(account) => void beginRemoveAccount(account)}
+          onRefreshQuota={() => {
+            void quotaQuery.refetch();
+          }}
           onConnectionAction={(connection, action) =>
             requestConnectionAction(connection, action, selectedAccountId)
           }

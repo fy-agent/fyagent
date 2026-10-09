@@ -1,4 +1,5 @@
 import type {
+  ManagedAuthAccountQuota,
   ManagedAuthAccountRemovalPreview,
   ManagedAuthConnectionActionPreview,
   ManagedAuthConnectionActionRequest,
@@ -19,6 +20,29 @@ export const SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
 export const OPERATION_ID = "223e4567-e89b-42d3-a456-426614174000";
 export const PREVIEW_ID = `mp1:${"7".repeat(32)}`;
 export const CONNECTION_PREVIEW_ID = "323e4567-e89b-42d3-a456-426614174000";
+export const COPILOT_ACCOUNT_ID = `ma1:${"8".repeat(32)}`;
+
+export function accountQuotaFixture(
+  accountId: string,
+  overrides: Partial<ManagedAuthAccountQuota> = {},
+): ManagedAuthAccountQuota {
+  return {
+    contractVersion: 1,
+    accountId,
+    provider: accountId === XAI_ACCOUNT_ID ? "xai" : "openai",
+    checkedAt: "2026-09-03T08:01:00Z",
+    status: "available",
+    reasonCode: null,
+    windows: [
+      {
+        windowId: "five_hour",
+        remainingPercent: 88,
+        resetsAt: "2026-09-03T13:00:00Z",
+      },
+    ],
+    ...overrides,
+  };
+}
 
 export function connectionPreviewFixture(
   request: ManagedAuthConnectionActionRequest,

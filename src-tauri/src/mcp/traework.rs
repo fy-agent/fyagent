@@ -17,8 +17,10 @@ use crate::app_config::{McpApps, McpServer, MultiAppConfig};
 use crate::config::get_home_dir;
 use crate::error::AppError;
 
-use super::json_document::{read_servers as read_mcp_servers_map_from, write_servers};
-use super::validation::validate_server_spec;
+use super::json_document::{
+    project_server_spec, read_servers as read_mcp_servers_map_from, write_servers,
+};
+use super::validation::{source_server_is_enabled, validate_server_spec};
 
 fn trae_user_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -76,9 +78,10 @@ pub fn import_from_traework(config: &mut MultiAppConfig) -> Result<usize, AppErr
             log::warn!("跳过无效 TRAE Work MCP 服务器 '{id}': {error}");
             continue;
         }
+        let source_enabled = source_server_is_enabled(&spec);
         if let Some(existing) = servers.get_mut(&id) {
-            if !existing.apps.trae_work {
-                existing.apps.trae_work = true;
+            if existing.apps.trae_work != source_enabled {
+                existing.apps.trae_work = source_enabled;
                 changed += 1;
             }
         } else {
@@ -89,7 +92,7 @@ pub fn import_from_traework(config: &mut MultiAppConfig) -> Result<usize, AppErr
                     name: id.clone(),
                     server: spec,
                     apps: McpApps {
-                        trae_work: true,
+                        trae_work: source_enabled,
                         ..McpApps::default()
                     },
                     description: None,
@@ -109,7 +112,7 @@ pub fn sync_single_server_to_traework(id: &str, server_spec: &Value) -> Result<(
         return Ok(());
     }
     let mut current = read_live_mcp_servers_map()?;
-    current.insert(id.to_string(), server_spec.clone());
+    current.insert(id.to_string(), project_server_spec(server_spec)?);
     set_live_mcp_servers_map(&current)
 }
 

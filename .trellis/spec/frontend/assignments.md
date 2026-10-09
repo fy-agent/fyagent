@@ -14,6 +14,8 @@ Primary owners are:
   and readback confirmation;
 - `src/shared/ui/AssignmentPanel.tsx` for shared switch/radio rendering;
 - `src/shared/ui/BulkAssignmentPanel.tsx` for shared bulk action presentation;
+- `src/shared/features/controls/BulkAssignmentDialog.tsx` and
+  `src/shared/features/bulk-assignment.ts` for management-page preview/confirmation;
 - `src/shared/features/ports.ts` for `SkillsPort` and `McpPort`;
 - `src/pages/agents/AgentAssignmentSections.tsx` for the current
   target-bound Skill/MCP mutation composition.
@@ -47,6 +49,7 @@ type AssignmentPanelProps =
       apps: Record<string, boolean | undefined>;
       onToggle(id: AssignmentTargetId, enabled: boolean): void;
       disabled?: boolean;
+      disabledTargets?: readonly AssignmentTargetId[];
       labelSuffix: string;
       dialogOriginRef?: DialogOriginRef;
     }
@@ -107,10 +110,19 @@ McpPort.toggleApp(serverId, targetId, enabled) -> void
   they exist in a native row.
 - `AssignmentPanel` renders semantic switches for switch mode and one
   radiogroup for radio mode. Labels are visible, inputs remain accessible, and
-  the whole panel honors its `disabled` prop.
+  the whole panel honors its `disabled` prop. Switch mode additionally honors
+  optional `disabledTargets` per target; radio mode is unchanged.
 - The shared component has no native-path, installation, persistence, or
   per-target capability logic. Feature pages decide whether it is available and
-  supply any `labelSuffix` evidence.
+  supply any `labelSuffix` evidence and observed per-target disabled list.
+  Skills uses fresh `readOnlyTargets` to disable linked projections only;
+  source `readOnly` alone does not disable ordinary target assignment. Native
+  guards preserve parent/leaf links and their referents, including formerly
+  owned links. Observation fields are not persisted assignment flags.
+- The two Skills observation Port methods now strictly parse read-only metadata
+  (all nine native IDs accepted, seven displayed) as described in
+  [Renderer Skills](./skills.md). This response parser does not add runtime
+  parsing to the target mutation request described above.
 - `BulkAssignmentPanel` composes existing Buttons and target order. Each target
   has a named group and one atomic enable/disable pair. Native mutations,
   serialization, progress and readback remain in the page; resizing never
@@ -144,6 +156,15 @@ McpPort.toggleApp(serverId, targetId, enabled) -> void
 
 ### Current feature bindings
 
+- Management-page bulk assignment uses the separate `BulkAssignmentDialog` /
+  `executeBulkAssignment` preview flow: explicit rows, frozen single-target
+  intent, same-tick pending ref, whole-preview then per-row fresh drift checks,
+  and confirmation after exact identity/all-flag readback. A selected read-only
+  target is refused; a linked source alone is readable for ordinary projection.
+  Per-row failed/drift/read-only/unreported items need a fresh preview; no
+  optimistic state or atomic rollback is claimed. This does not change the
+  presentational `BulkAssignmentPanel` contract or the Agent hook below.
+
 - `AgentSkillsSection` binds `entry.assignmentId` as the target, uses the Skill
   ID as the pending item, calls `ports.skills.toggleApp`, refetches installed
   Skills, and reads that Skill's `apps[target]` flag.
@@ -176,6 +197,8 @@ McpPort.toggleApp(serverId, targetId, enabled) -> void
 | Mutation/readback matches                                        | Return confirmed and render the reread snapshot.                                                                                                                         |
 | Failure reread also throws                                       | Keep the original rejected outcome and clear pending state.                                                                                                              |
 | Native operation errors after a partial side effect              | Render current reread authority plus error/retry; never claim atomic rollback.                                                                                           |
+| A switch target is in `disabledTargets`                          | Disable that switch without disabling other ordinary targets; global disabled still disables all.                                                                        |
+| Bulk preview drifts or lacks a row                               | Refuse initial writes and require a fresh preview; an acknowledgement without exact readback is unconfirmed.                                                             |
 | Panel is disabled                                                | All switch/radio inputs are disabled and no feature mutation starts.                                                                                                     |
 
 ## 5. Good / Base / Bad Cases
@@ -211,6 +234,11 @@ Required assertion owners include:
 - Agent Skill/MCP section tests: domain Port wiring, fixed assignment target,
   stable resource IDs, explicit disabled readback, missing records/target flags,
   feature-specific reread/readValue, warning copy, and no direct native invocation;
+- `tests/renderer/features/bulkAssignment.test.ts` and
+  `bulkAssignmentDialog.test.tsx`: preview drift, selected-target read-only,
+  all-flag/identity confirmation, same-tick exclusion and partial recovery;
+- Skill linked-path/observation Port tests: required observation fields, all
+  nine native target values, per-target switch disabling and normal-target access;
 - Renderer platform tests: exact valid target-ID transport; native command tests:
   rejection of unknown IDs before mutation. Add renderer-parser rejection tests
   only when such a runtime parser actually becomes an owner;
@@ -238,9 +266,7 @@ const assignment = useAuthoritativeAssignmentMutation({
     return { data: readback.data, error: readback.error };
   },
   readValue: (skills, skillId) =>
-    Boolean(
-      skills?.find((skill) => skill.id === skillId)?.apps[entry.assignmentId],
-    ),
+    skills?.find((skill) => skill.id === skillId)?.apps[entry.assignmentId],
 });
 
 const outcome = await assignment.run(skillId, enabled);
