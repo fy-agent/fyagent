@@ -95,6 +95,18 @@ test("dark blue text and controls remain readable on actual composited page and 
       ).toBeEnabled();
       await expect(routeScope.getByRole("progressbar")).toHaveCount(0);
     }
+    if (route === "models?target=codex") {
+      // Loaded mode/provider rows move the subscription section. Capture text
+      // coordinates only after that query-driven layout change is complete.
+      await expect(
+        routeScope.getByText("当前：直连 · Fixture Codex Current", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        routeScope.getByRole("status", { name: "正在读取连接模式" }),
+      ).toHaveCount(0);
+    }
     const samples = await sampleTextContrast(page, scope);
     expect(samples.length).toBeGreaterThan(3);
     await info.attach(`dark-${route.split("?")[0]}`, {

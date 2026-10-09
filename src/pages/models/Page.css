@@ -117,10 +117,6 @@
   background: var(--fy-surface-inset);
 }
 
-.fy-models-subscription-section {
-  background: var(--fy-surface-opaque);
-}
-
 .fy-models-section-title {
   margin: 0;
   color: var(--fy-text);
