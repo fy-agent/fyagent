@@ -3225,7 +3225,10 @@ wire_api = "responses"
     assert!(!recovered_snippet.contains("disable_response_storage"));
     assert!(recovered_snippet.contains("notifications = true"));
     let live = std::fs::read_to_string(get_codex_config_path()).unwrap();
-    assert!(live.contains("bprov"));
+    assert!(
+        live.contains("https://b.example/v1"),
+        "live config must come from provider b after roll-forward"
+    );
     assert!(!live.contains("disable_response_storage"));
     assert_eq!(
         fyagent_lib::mode::operation::settle(&state.db, "codex").unwrap(),
