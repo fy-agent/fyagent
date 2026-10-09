@@ -56,23 +56,39 @@ It never emits `CI / Required` or invokes the domain classifier.
   or hash allowlist.
 - The verifier enumerates the complete side-branch commit range. A first-parent
   or no-merges filter must not hide invalid merged commits.
+- An ancestry-preserving `merge(upstream): <description>` requires exactly two
+  distinct parents and its second parent must equal a full peeled commit in a
+  maintained `docs/upstream/cc-switch-vX.Y.Z.md` ledger at the checked head.
+  The ledger must identify the canonical CC Switch repository, annotated tag
+  and full tag-object SHA. [Upstream Synchronization](./upstream-sync.md) owns
+  verification of those immutable identities when the ledger is maintained;
+  commit-title checks use local Git objects and do not query/fetch remotes.
+- Only commits reachable from that pinned upstream parent are exempt from
+  FyAgent subject style. The integration subject is accepted by verified
+  topology; first-parent changes, local side commits above the anchor, and PR
+  titles remain strict. A subject, tag name, or arbitrary second parent alone
+  is insufficient. The report retains the full commit count and separately
+  records the exempt upstream count and source identities.
 - Generated GitHub merge subjects and revert subjects remain separate existing
   rules. New integrations may use an ordinary valid conventional subject.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Push `before` is forty zeroes | Use head-to-head empty comparison; validate current head. |
-| Push `before` is a 40-hex SHA but not a commit in clone | Log fallback, use head-to-head; no domain CI. |
-| Normal reachable push range | Validate every commit in explicit base..head range. |
-| PR/merge-group base/head SHA missing | Required CI classifier fails; no push fallback. |
-| Multi-parent object has valid explicit integration subject | Accept topology-specific form. |
-| Same subject is on single-parent commit or PR title | Reject. |
-| Integration subject is empty/nonstandard | Reject. |
-| Side-branch commit has invalid subject | Reject even when merge commit itself is valid. |
-| Queue-ref push triggers this workflow | Contract regression; queue uses merge-group Required CI only. |
-| Push workflow starts product domains or emits `CI / Required` | Contract regression. |
+| Condition                                                              | Required result                                                      |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Push `before` is forty zeroes                                          | Use head-to-head empty comparison; validate current head.            |
+| Push `before` is a 40-hex SHA but not a commit in clone                | Log fallback, use head-to-head; no domain CI.                        |
+| Normal reachable push range                                            | Validate every commit in explicit base..head range.                  |
+| PR/merge-group base/head SHA missing                                   | Required CI classifier fails; no push fallback.                      |
+| Multi-parent object has valid explicit integration subject             | Accept topology-specific form.                                       |
+| Same subject is on single-parent commit or PR title                    | Reject.                                                              |
+| Integration subject is empty/nonstandard                               | Reject.                                                              |
+| Side-branch commit has invalid subject                                 | Reject even when merge commit itself is valid.                       |
+| Ledger-pinned upstream ancestry enters through its exact second parent | Preserve original subjects; report the exempt upstream count/source. |
+| Upstream-style subject has one parent or no matching source ledger     | Reject; no source exemption.                                         |
+| Local bad commit is above a valid upstream anchor                      | Reject; it is not an ancestor of the pinned upstream source.         |
+| Queue-ref push triggers this workflow                                  | Contract regression; queue uses merge-group Required CI only.        |
+| Push workflow starts product domains or emits `CI / Required`          | Contract regression.                                                 |
 
 ## 5. Good / Base / Bad Cases
 
@@ -97,6 +113,9 @@ It never emits `CI / Required` or invokes the domain classifier.
   impostors, PR titles, empty/nonstandard subjects and invalid side commits.
 - Reachable-range fixtures prove every commit is enumerated without
   first-parent/no-merges suppression.
+- Pinned upstream fixtures preserve original prose/perf/build subjects while
+  still rejecting local first-parent/side commits, unmatched anchors,
+  single-parent impostors and invalid PR titles, without a network dependency.
 - Required CI tests independently prove PR/merge-group identity remains strict
   and cannot use this fallback.
 - Local tests do not claim to reproduce GitHub's unreachable object storage;

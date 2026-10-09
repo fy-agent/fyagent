@@ -28,6 +28,9 @@ export const REVERT_COMMIT_SUBJECT_PATTERN = /^Revert "/u;
 
 export const GITHUB_SQUASH_PR_SUFFIX_PATTERN = /\s\(#\d+\)$/u;
 
+const UPSTREAM_REPOSITORY = "https://github.com/farion1231/cc-switch.git";
+const UPSTREAM_MERGE_SUBJECT = /^merge\(upstream\): \S.*$/u;
+
 function git(args) {
   const result = spawnSync("git", args, {
     encoding: "utf8",
@@ -137,12 +140,77 @@ export function listCommitSubjectsInRange(baseSha, headSha) {
   });
 }
 
+function verifiedUpstreamHistory(commits, baseSha, headSha) {
+  const merges = commits.filter(
+    ({ parents, subject }) =>
+      parents.length === 2 &&
+      parents[0] !== parents[1] &&
+      UPSTREAM_MERGE_SUBJECT.test(subject),
+  );
+  const sources = [];
+  const mergeShas = new Set();
+  const upstreamShas = new Set();
+  if (merges.length === 0) return { sources, mergeShas, upstreamShas };
+
+  const paths = git([
+    "ls-tree",
+    "-r",
+    "--name-only",
+    headSha,
+    "--",
+    "docs/upstream",
+  ])
+    .trim()
+    .split("\n");
+  for (const path of paths) {
+    if (!/^docs\/upstream\/cc-switch-v\d+\.\d+\.\d+\.md$/u.test(path)) continue;
+    const ledger = git(["show", `${headSha}:${path}`]);
+    const rows = new Map(
+      [...ledger.matchAll(/^\|\s*([^|]+?)\s*\|\s*`([^`]+)`[^|]*\|/gmu)].map(
+        (match) => [match[1].trim(), match[2]],
+      ),
+    );
+    const commit =
+      rows.get("Full peeled commit SHA") ?? rows.get("Peeled commit");
+    const matchingMerges = merges.filter(
+      ({ parents }) => parents[1] === commit,
+    );
+    if (matchingMerges.length === 0) continue;
+    const tag = rows.get("Annotated tag");
+    const tagObject = rows.get("Full tag-object SHA") ?? rows.get("Tag object");
+    if (
+      rows.get("Upstream repository") !== UPSTREAM_REPOSITORY ||
+      !/^v\d+\.\d+\.\d+$/u.test(tag ?? "") ||
+      path !== `docs/upstream/cc-switch-${tag}.md` ||
+      !/^[0-9a-f]{40}$/u.test(tagObject ?? "")
+    ) {
+      throw new Error(`invalid upstream source identity in ${path}`);
+    }
+    // Source identities are verified when the upstream ledger is maintained.
+    // Title checks use that pinned commit graph without fetching tags or refs.
+    sources.push({ repository: UPSTREAM_REPOSITORY, tag, tagObject, commit });
+    for (const merge of matchingMerges) mergeShas.add(merge.sha);
+    for (const sha of git(["rev-list", commit, "--not", baseSha])
+      .trim()
+      .split("\n")) {
+      if (sha) upstreamShas.add(sha);
+    }
+  }
+  return { sources, mergeShas, upstreamShas };
+}
+
 export function verifyCommitMessages({ baseSha, headSha, prTitle = null }) {
   const errors = [];
   const commits = listCommitSubjectsInRange(baseSha, headSha);
+  const upstream = verifiedUpstreamHistory(commits, baseSha, headSha);
   for (const commit of commits) {
+    if (
+      upstream.upstreamShas.has(commit.sha) ||
+      upstream.mergeShas.has(commit.sha)
+    )
+      continue;
     // Custom integration subjects are meaningful only on real merge objects.
-    // Keep normal commits/PR titles strict and still inspect every side commit.
+    // Ordinary side commits and PR titles remain strict.
     if (
       new Set(commit.parents).size >= 2 &&
       /^merge: \S.*$/u.test(commit.subject)
@@ -166,6 +234,10 @@ export function verifyCommitMessages({ baseSha, headSha, prTitle = null }) {
   return {
     ok: errors.length === 0,
     commitCount: commits.length,
+    upstreamCommitCount: commits.filter(({ sha }) =>
+      upstream.upstreamShas.has(sha),
+    ).length,
+    upstreamSources: upstream.sources,
     errors,
   };
 }
