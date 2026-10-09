@@ -1024,7 +1024,10 @@ export async function installRichTauriFeatureFixture(
           authStatus: "connected",
           credentialManager: "opencode",
           requestMode: "provider_connections",
-          requestProviderLabel: "xAI Provider",
+          requestProviderLabel:
+            fixtureOptions.authSummaryScenario === "mixed"
+              ? null
+              : "xAI Provider",
           officialSessionPreserved: null,
           pendingRestart: false,
           allowedActions: [

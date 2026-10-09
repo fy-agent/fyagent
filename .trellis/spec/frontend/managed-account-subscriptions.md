@@ -9,6 +9,10 @@ authentication page. Agent Grok model entries link to the Claude/Codex Models
 target with the existing validated Agent-return tuple. Login and account
 recovery use `/auth?view=accounts`.
 
+The subscription section uses the existing `--fy-surface-opaque` backing so
+its title and content remain readable over bright composited surfaces in both
+themes; retain the normal 4.5:1 browser text-contrast checks.
+
 General write/draft/secret rules remain in [Models](./models.md). Native
 binding and overview authority stays in
 [Managed Account Proxy](../backend/managed-account-proxy.md); credential and

@@ -310,7 +310,11 @@ export function XaiSubscriptionSection(props: Props) {
   };
 
   return (
-    <ModelsSection title="使用账号订阅（实验性）" ariaLabel="账号订阅设置">
+    <ModelsSection
+      title="使用账号订阅（实验性）"
+      ariaLabel="账号订阅设置"
+      className="fy-models-subscription-section"
+    >
       <p className="fy-models-muted">
         使用订阅时，请保持 FyAgent
         在后台运行；完全退出后会停止转发。账号是否支持调用及额度使用，以服务返回为准。

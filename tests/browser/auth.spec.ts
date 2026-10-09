@@ -145,13 +145,38 @@ test("summarizes mixed connection states at compact desktop width", async ({
   await openRendererPage(page, "/auth?view=connections");
   await expect(page.getByRole("tab", { name: "软件连接 1/6" })).toBeVisible();
   const summary = page.getByTestId("managed-auth-overview-summary");
-  await expect(summary).toContainText("部分连接 1/6");
-  await expect(summary).toContainText("账号已保存");
-  await expect(summary).toContainText("正在确认");
-  await expect(summary).toContainText("需要重新登录");
-  await expect(summary).toContainText("等待重启");
-  await expect(summary).toContainText("状态不可用");
-  await expect(summary).toContainText("1 个位置的请求来源暂时无法确认");
+  await expect(summary).toHaveText("需要重新登录");
+
+  const codexItem = page.getByTestId("managed-auth-consumer-codex");
+  await expect(codexItem).toContainText("部分连接 1/3");
+  await expect(codexItem).toContainText("账号已保存");
+  await expect(codexItem).toContainText("正在确认");
+  await codexItem.click();
+  const codexDetail = page.getByRole("region", { name: "Codex 连接详情" });
+  await expect(codexDetail.getByText("已连接", { exact: true })).toBeVisible();
+  await expect(
+    codexDetail.getByText("账号已保存", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    codexDetail.getByText("正在确认", { exact: true }),
+  ).toBeVisible();
+
+  await page.getByTestId("managed-auth-consumer-fyagent_proxy").click();
+  await expect(
+    page.getByRole("region", { name: "FyAgent Local Proxy 连接详情" }),
+  ).toContainText("等待重启");
+  await page.getByTestId("managed-auth-consumer-grokbuild").click();
+  await expect(
+    page.getByRole("region", { name: "Grok Build 连接详情" }),
+  ).toContainText("需要重新登录");
+  await page.getByTestId("managed-auth-consumer-opencode").click();
+  const openCodeDetail = page.getByRole("region", {
+    name: "OpenCode Desktop 连接详情",
+  });
+  await expect(openCodeDetail).toContainText("状态不可用");
+  await expect(
+    openCodeDetail.getByText("暂时无法确认", { exact: true }),
+  ).toBeVisible();
   await expect(summary).toHaveAttribute("data-attention", "true");
   await expectNoHorizontalOverflow(page);
   const box = await summary.boundingBox();
