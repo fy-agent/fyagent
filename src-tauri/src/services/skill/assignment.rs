@@ -1,4 +1,4 @@
-use super::SkillService;
+use super::{skill_state_read_guard, skill_state_write_guard, SkillService};
 use crate::app_config::{AppType, InstalledSkill, SkillTargetId};
 use crate::database::Database;
 use anyhow::Result;
@@ -17,6 +17,18 @@ pub(super) fn toggle_target(
     app: &SkillTargetId,
     enabled: bool,
 ) -> Result<()> {
+    let _state_guard = skill_state_write_guard();
+    // Reject before adoption can create SSOT/SQLite state.
+    let directory = if let Some(skill) = db.get_installed_skill(id)? {
+        skill.directory
+    } else {
+        SkillService::scan_unmanaged_unlocked(db)?
+            .into_iter()
+            .find(|item| SkillService::observed_skill_id(&item.directory) == id)
+            .ok_or_else(|| anyhow::anyhow!("Skill not found: {id}"))?
+            .directory
+    };
+    SkillService::require_writable_skill_target(&directory, app)?;
     let mut skill = SkillService::adopt_observed_if_needed(db, id)?;
     skill.apps.set_enabled_for_target(app, enabled);
 
@@ -32,9 +44,16 @@ pub(super) fn toggle_target(
 }
 
 pub(super) fn sync_to_target(db: &Arc<Database>, app: &SkillTargetId) -> Result<()> {
+    let _state_guard = skill_state_read_guard();
+    sync_to_target_unlocked(db, app)
+}
+
+/// Caller must hold a Skills state read or write guard.
+pub(super) fn sync_to_target_unlocked(db: &Arc<Database>, app: &SkillTargetId) -> Result<()> {
     let skills = db.get_all_installed_skills()?;
     let ssot_dir = SkillService::get_ssot_dir()?;
-    let app_dir = SkillService::get_target_skills_dir(app)?;
+    let app_dir = SkillService::get_distinct_app_skills_dir(&ssot_dir, app)?;
+    SkillService::require_writable_skill_path(&app_dir)?;
 
     if app.requires_copy() {
         for skill in skills.values() {

@@ -14,6 +14,24 @@
   font-family: inherit;
 }
 
+.fy-sessions-memory-link {
+  color: var(--fy-brand-blue);
+}
+
+.fy-sessions-empty-state {
+  color: var(--fy-text-tertiary);
+}
+
+/* Small text needs primary ink on the brighter composited dark-blue surfaces. */
+:root[data-theme="dark"] .fy-sessions-page .fy-mode-tab.active,
+:root[data-theme="dark"] .fy-sessions-page .fy-session-item-provider-tag,
+:root[data-theme="dark"] .fy-sessions-page .fy-session-item-time,
+:root[data-theme="dark"] .fy-sessions-page .fy-sessions-memory-link,
+:root[data-theme="dark"] .fy-sessions-page .fy-session-item-meta,
+:root[data-theme="dark"] .fy-sessions-page .fy-sessions-empty-state {
+  color: var(--fy-text);
+}
+
 /* ─── Top Bar ────────────────────────────────────────────────────── */
 
 .fy-sessions-topbar {
@@ -756,6 +774,14 @@
   border: 1px solid var(--fy-danger-border);
   color: var(--fy-danger-text);
   font-size: 12px;
+}
+
+.fy-session-failure-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-wrap: anywhere;
+  scroll-margin-block: 12px;
 }
 
 .fy-input-text {

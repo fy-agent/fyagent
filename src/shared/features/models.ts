@@ -205,7 +205,22 @@ export type ModelProbeAppId =
   | "workbuddy"
   | "opencode";
 
+export type ModelProbePhase =
+  | "running"
+  | "retrying"
+  | "cancelling"
+  | "completed"
+  | "cancelled";
+
+export interface ModelProbeSnapshot {
+  requestId: string;
+  phase: ModelProbePhase;
+  requestCount: number;
+  retryCount: number;
+}
+
 export interface ModelProbeRequest {
+  requestId: string;
   app: ModelProbeAppId;
   baseUrl: string;
   apiKey: string;
@@ -215,6 +230,11 @@ export interface ModelProbeRequest {
 }
 
 export interface ModelProbeResult {
+  requestId: string | null;
+  terminal: "completed" | "cancelled";
+  requestCount: number;
+  retryCount: number;
+  inputMode: "compatibility";
   success: boolean;
   status: ReachabilityStatus;
   message: string;

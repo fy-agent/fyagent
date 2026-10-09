@@ -32,6 +32,9 @@ pub struct ManagedAuthAccount {
     pub authenticated_at: i64,
     pub is_default: bool,
     pub github_domain: String,
+    /// Codex 专用：旧账号缺少写入原生 Codex auth.json 所需的 id_token。
+    pub reauth_required: bool,
+    /// xAI 专用：refresh token 已失效，账号不可再用于请求。
     pub requires_reauth: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chatgpt_account_id: Option<String>,
@@ -74,6 +77,7 @@ fn map_account(
 ) -> ManagedAuthAccount {
     ManagedAuthAccount {
         is_default: default_account_id == Some(account.id.as_str()),
+        reauth_required: false,
         id: account.id,
         provider: provider.to_string(),
         login: account.login,
@@ -97,6 +101,7 @@ fn map_xai_account(
         avatar_url: account.avatar_url,
         authenticated_at: account.authenticated_at,
         github_domain: account.github_domain,
+        reauth_required: false,
         requires_reauth: account.requires_reauth,
         chatgpt_account_id: None,
     }
@@ -128,6 +133,7 @@ fn map_compatibility_account(provider: &str, account: CompatibilityAccount) -> M
         authenticated_at: account.authenticated_at,
         is_default: account.is_default,
         github_domain: account.github_domain,
+        reauth_required: account.requires_reauth,
         requires_reauth: account.requires_reauth,
         chatgpt_account_id: account.chatgpt_account_id,
     }
@@ -198,7 +204,7 @@ pub async fn auth_list_accounts(
                 .collect())
         }
         AUTH_PROVIDER_CODEX_OAUTH => {
-            let auth_manager = codex_state.0.read().await;
+            let auth_manager = &codex_state.0;
             let status = auth_manager.get_status().await;
             let default_account_id = status.default_account_id.clone();
             Ok(status
@@ -266,7 +272,7 @@ pub async fn auth_get_status(
             })
         }
         AUTH_PROVIDER_CODEX_OAUTH => {
-            let auth_manager = codex_state.0.read().await;
+            let auth_manager = &codex_state.0;
             let status = auth_manager.get_status().await;
             let default_account_id = status.default_account_id.clone();
             Ok(ManagedAuthStatus {

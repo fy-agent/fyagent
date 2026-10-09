@@ -441,17 +441,19 @@ fn sql_import_of_old_customer_project_dump_restores_shared_config_without_revivi
         "new dumps must omit retired generation triggers"
     );
 
-    let old_dump = format!(
-        "{}\nPRAGMA foreign_keys=OFF;\nPRAGMA user_version=24;\nBEGIN TRANSACTION;\n\
-         CREATE TABLE providers (id TEXT NOT NULL, app_type TEXT NOT NULL, name TEXT NOT NULL, settings_config TEXT NOT NULL, meta TEXT NOT NULL DEFAULT '{{}}', is_current BOOLEAN NOT NULL DEFAULT 0, PRIMARY KEY (id, app_type));\n\
-         CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);\n\
-         CREATE TABLE fde_customers (customer_id TEXT PRIMARY KEY, name TEXT NOT NULL, revision INTEGER NOT NULL, archived INTEGER NOT NULL);\n\
-         INSERT INTO providers (id, app_type, name, settings_config, meta) VALUES ('shared','codex','Shared','{{}}','{{}}');\n\
-         INSERT INTO settings VALUES ('shared-sentinel','kept');\n\
-         INSERT INTO fde_customers VALUES ('customer','Imported customer',1,0);\n\
-         COMMIT;\n",
-        super::FYAGENT_SQL_EXPORT_HEADER
-    );
+    // SQL admission requires a complete shared schema. Add retired data to a
+    // valid portable dump rather than weakening admission for a partial fixture.
+    let old_dump = dump
+        .replace(
+            &format!("PRAGMA user_version={};", crate::database::SCHEMA_VERSION),
+            "PRAGMA user_version=24;",
+        )
+        .replace(
+            "COMMIT;",
+            "CREATE TABLE fde_customers (customer_id TEXT PRIMARY KEY, name TEXT NOT NULL, revision INTEGER NOT NULL, archived INTEGER NOT NULL);\n\
+             INSERT INTO fde_customers VALUES ('customer','Imported customer',1,0);\n\
+             COMMIT;",
+        );
     let target = Database::memory()?;
     target.import_sql_string(&old_dump)?;
     let conn = crate::database::lock_conn!(target.conn);
@@ -700,7 +702,7 @@ fn sql_import_authorizer_still_denies_genuine_retired_trigger_create() -> Result
 
 #[test]
 #[serial]
-fn sync_and_sql_import_archive_live_history_then_replace_shared_config() -> Result<(), AppError> {
+fn sql_import_archives_live_history_then_replaces_shared_config() -> Result<(), AppError> {
     let _home = TestHomeGuard::new();
     let remote = Database::memory()?;
     {
@@ -711,7 +713,7 @@ fn sync_and_sql_import_archive_live_history_then_replace_shared_config() -> Resu
              INSERT INTO settings VALUES('shared-sentinel','from-remote');",
         )?;
     }
-    let remote_sql = remote.export_sql_string_for_sync()?;
+    let remote_sql = remote.export_sql_string()?;
     assert!(!remote_sql.contains("fde_customers"));
 
     let local = Database::memory()?;
@@ -727,7 +729,7 @@ fn sync_and_sql_import_archive_live_history_then_replace_shared_config() -> Resu
         )?;
     }
 
-    local.import_sql_string_for_sync(&remote_sql)?;
+    local.import_sql_string(&remote_sql)?;
     {
         let conn = crate::database::lock_conn!(local.conn);
         let name: String = conn.query_row(
@@ -742,7 +744,7 @@ fn sync_and_sql_import_archive_live_history_then_replace_shared_config() -> Resu
             [],
             |row| row.get(0),
         )?;
-        assert_eq!(logs, 1, "sync must keep local-only logs");
+        assert_eq!(logs, 0, "ordinary import replaces local logs with the exported snapshot");
     }
 
     let archives = list_retired_archives();
@@ -765,11 +767,11 @@ fn sync_and_sql_import_archive_live_history_then_replace_shared_config() -> Resu
     )?;
     assert_eq!(generation, 41);
 
-    local.import_sql_string_for_sync(&remote_sql)?;
+    local.import_sql_string(&remote_sql)?;
     assert_eq!(
         list_retired_archives().len(),
         1,
-        "later syncs must not duplicate archives after leftover tables are gone"
+        "later imports must not duplicate archives after leftover tables are gone"
     );
 
     let ordinary = Database::memory()?;
@@ -847,7 +849,6 @@ fn replace_keeps_live_db_when_retired_archive_fails() -> Result<(), AppError> {
         integration_rows(&conn, "session_restore_attempts")?
     };
     assert!(target.import_sql_string(&dump).is_err());
-    assert!(target.import_sql_string_for_sync(&dump).is_err());
     {
         let conn = crate::database::lock_conn!(target.conn);
         assert_eq!(
@@ -1040,7 +1041,7 @@ fn receipt_migration_failure_rolls_back_retirement_and_version() -> Result<(), A
 
 #[test]
 #[serial]
-fn sql_and_sync_preserve_live_receipts_while_archiving_retired_history() -> Result<(), AppError> {
+fn sql_preserves_live_receipts_while_archiving_retired_history() -> Result<(), AppError> {
     let _home = TestHomeGuard::new();
     let remote = Database::memory()?;
     {
@@ -1052,10 +1053,8 @@ fn sql_and_sync_preserve_live_receipts_while_archiving_retired_history() -> Resu
              VALUES('remote-receipt-provider','codex','Remote fixture','{}','{}')",
         )?;
     }
-    for sql in [
-        remote.export_sql_string()?,
-        remote.export_sql_string_for_sync()?,
-    ] {
+    {
+        let sql = remote.export_sql_string()?;
         assert!(
             !sql.contains("foreign-receipt-sentinel"),
             "exports must omit receipt rows"
@@ -1064,7 +1063,7 @@ fn sql_and_sync_preserve_live_receipts_while_archiving_retired_history() -> Resu
     // Legacy/untrusted dumps may contain receipt rows despite the current export policy.
     let foreign_dump = Database::dump_sql(&remote.snapshot_to_memory()?, &[])?;
     assert!(foreign_dump.contains("foreign-receipt-sentinel"));
-    for sync in [false, true] {
+    {
         let local = Database::memory()?;
         seed_live_historical_customer_project(&local)?;
         let receipts = {
@@ -1075,7 +1074,6 @@ fn sql_and_sync_preserve_live_receipts_while_archiving_retired_history() -> Resu
         };
         for sql in [
             local.export_sql_string()?,
-            local.export_sql_string_for_sync()?,
         ] {
             assert!(!sql.contains("local-complete"));
             for table in RETIRED_MODULE_TABLES {
@@ -1085,11 +1083,7 @@ fn sql_and_sync_preserve_live_receipts_while_archiving_retired_history() -> Resu
                 );
             }
         }
-        if sync {
-            local.import_sql_string_for_sync(&foreign_dump)?;
-        } else {
-            local.import_sql_string(&foreign_dump)?;
-        }
+        local.import_sql_string(&foreign_dump)?;
         let conn = crate::database::lock_conn!(local.conn);
         assert_eq!(
             integration_rows(&conn, "session_restore_attempts")?,
@@ -1106,7 +1100,7 @@ fn sql_and_sync_preserve_live_receipts_while_archiving_retired_history() -> Resu
         );
     }
     let archives = list_retired_archives();
-    assert_eq!(archives.len(), 2);
+    assert_eq!(archives.len(), 1);
     for path in archives {
         let archived = Connection::open(path)?;
         assert_eq!(retired_table_count(&archived)?, 8);

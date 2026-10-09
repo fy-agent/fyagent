@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AuthPage } from "@/pages/auth/Page";
 import type { AgentAuthPort } from "@/shared/features/agent-auth";
-import type { ManagedAuthConnectionActionRequest } from "@/shared/features/managed-auth";
+import {
+  parseManagedAuthOverview,
+  type ManagedAuthConnectionActionRequest,
+} from "@/shared/features/managed-auth";
 import type { FeaturePorts } from "@/shared/features/ports";
 import { FeatureProvider } from "@/shared/features/provider";
 import { createBrowserFeaturePorts } from "@/shared/platform/browser/features";
@@ -233,7 +236,6 @@ describe("AuthPage", () => {
       applyConnectionAction,
       previewConnectionAction,
     });
-    ports.configRecovery.list = vi.fn(async () => []);
     renderPage(ports);
     const connect = async (name: string) => {
       const card = (await screen.findByRole("heading", { name })).closest(
@@ -284,10 +286,6 @@ describe("AuthPage", () => {
     expect(bCalls).toHaveLength(2);
     expect(bCalls[1][1]).not.toBe(firstB);
     expect(a).toHaveTextContent("此连接操作已完成并回读。");
-    await user.click(within(b).getByRole("button", { name: "撤回文件修改" }));
-    await waitFor(() =>
-      expect(ports.configRecovery.list).toHaveBeenCalledWith(["opencode_auth"]),
-    );
   });
 
   it("keeps account identity, software connection and current request source visually separate", async () => {
@@ -606,7 +604,7 @@ describe("AuthPage", () => {
       name: "Codex 连接详情",
     });
     expect(within(detail).getAllByText("账号已保存").length).toBeGreaterThan(0);
-    expect(screen.getByText("账号已保存，尚未写入软件")).toBeVisible();
+    expect(screen.getByText("账号已保存，尚未确认软件连接")).toBeVisible();
     expect(within(detail).getByText("custom")).toBeVisible();
     expect(
       within(detail).getByText(
@@ -827,7 +825,7 @@ describe("AuthPage", () => {
     await user.click(accountsTab);
     await user.keyboard("{ArrowRight}");
 
-    const connectionsTab = screen.getByRole("tab", { name: /软件连接 4/ });
+    const connectionsTab = screen.getByRole("tab", { name: /软件连接 4\/4/ });
     expect(connectionsTab).toHaveFocus();
     // Radix moves focus synchronously; selected state is owned by a separate
     // Router update. Await that commit rather than racing an effect under load.
@@ -896,4 +894,155 @@ describe("AuthPage", () => {
     ).toBeVisible();
     expect(screen.queryByText("person@example.com")).not.toBeInTheDocument();
   });
+  it("shows empty managed accounts and counts disconnected positions truthfully", async () => {
+    const overview = managedAuthOverviewFixture();
+    overview.accounts = [];
+    overview.connections = overview.connections.map((item) => ({
+      ...item,
+      accountId: null,
+      authStatus: "disconnected",
+      requestMode: "none",
+      requestProviderLabel: null,
+    }));
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => parseManagedAuthOverview(overview)),
+      }),
+      "/auth?view=connections&consumer=opencode",
+    );
+    const summary = await screen.findByTestId("managed-auth-overview-summary");
+    expect(summary).toHaveTextContent("尚未保存受管账号 · 未连接");
+    expect(summary).not.toHaveTextContent("状态正常");
+    expect(screen.getByRole("tab", { name: "软件连接 0/4" })).toBeVisible();
+    expect(
+      screen.getByRole("region", { name: "软件连接列表" }),
+    ).toHaveTextContent("4 个连接位置 · 0 个已连接");
+  });
+
+  it("uses one partial summary for the OpenCode rail and group badge", async () => {
+    const overview = managedAuthOverviewFixture();
+    const connected = overview.connections.find(
+      (item) => item.consumer === "opencode",
+    )!;
+    overview.connections.push({
+      ...connected,
+      connectionId: `mc1:${"9".repeat(32)}`,
+      provider: "openai",
+      accountId: null,
+      authStatus: "disconnected",
+      requestMode: "none",
+      requestProviderLabel: null,
+      allowedActions: ["refresh"],
+    });
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => parseManagedAuthOverview(overview)),
+      }),
+      "/auth?view=connections&consumer=opencode",
+    );
+    const rail = await screen.findByTestId("managed-auth-consumer-opencode");
+    expect(rail).toHaveTextContent("部分连接 1/2 · 未连接");
+    expect(within(rail).getByText("部分连接 1/2")).toBeVisible();
+    const detail = screen.getByRole("region", {
+      name: "OpenCode Desktop 连接详情",
+    });
+    expect(within(detail).getByText("部分连接 1/2")).toBeVisible();
+    expect(within(detail).getByText("已连接")).toBeVisible();
+    expect(within(detail).getByText("未连接")).toBeVisible();
+    expect(
+      screen.getByTestId("managed-auth-overview-summary"),
+    ).toHaveTextContent("部分连接 4/5");
+    expect(screen.getByRole("tab", { name: "软件连接 4/5" })).toBeVisible();
+  });
+
+  it("preserves native login and third-party source without claiming a managed binding", async () => {
+    const overview = managedAuthOverviewFixture();
+    overview.accounts[0].connectedConsumerCount = 1;
+    const codex = overview.connections[0];
+    Object.assign(codex, {
+      accountId: null,
+      authStatus: "disconnected",
+      officialSessionPreserved: true,
+      allowedActions: ["refresh"],
+    });
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => parseManagedAuthOverview(overview)),
+      }),
+      "/auth?view=connections&consumer=codex",
+    );
+    const detail = await screen.findByRole("region", {
+      name: "Codex 连接详情",
+    });
+    expect(within(detail).getByText("尚未绑定受管账号")).toBeVisible();
+    expect(within(detail).getByText("已保留")).toBeVisible();
+    expect(within(detail).getByText("DeepSeek API")).toBeVisible();
+    expect(within(detail).queryByText("已连接")).not.toBeInTheDocument();
+  });
+
+  it("keeps unknown reads separate from disconnected state and request source", async () => {
+    const overview = managedAuthOverviewFixture();
+    overview.accounts[0].connectedConsumerCount = 1;
+    Object.assign(overview.connections[0], {
+      accountId: null,
+      authStatus: "unavailable",
+      requestMode: "unknown",
+      requestProviderLabel: null,
+      officialSessionPreserved: null,
+      reasonCodes: ["observer_unavailable"],
+      allowedActions: ["refresh"],
+    });
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => parseManagedAuthOverview(overview)),
+      }),
+      "/auth?view=connections&consumer=codex",
+    );
+    const detail = await screen.findByRole("region", {
+      name: "Codex 连接详情",
+    });
+    expect(within(detail).getAllByText("状态不可用").length).toBeGreaterThan(0);
+    expect(within(detail).getByText("暂时无法确认")).toBeVisible();
+    expect(within(detail).queryByText("未连接")).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("managed-auth-overview-summary"),
+    ).toHaveTextContent("状态不可用");
+  });
+
+  it.each(["saved", "pending_restart"] as const)(
+    "keeps %s distinct from connection and current request source",
+    async (state) => {
+      const overview = managedAuthOverviewFixture();
+      Object.assign(overview.connections[0], {
+        authStatus: state === "saved" ? "disconnected" : "pending_restart",
+        pendingRestart: state === "pending_restart",
+        reasonCodes:
+          state === "saved"
+            ? ["native_projection_unavailable"]
+            : ["pending_restart"],
+        allowedActions: ["refresh"],
+      });
+      renderPage(
+        managedPorts({
+          getOverview: vi.fn(async () => parseManagedAuthOverview(overview)),
+        }),
+        "/auth?view=connections&consumer=codex",
+      );
+      const detail = await screen.findByRole("region", {
+        name: "Codex 连接详情",
+      });
+      const label = state === "saved" ? "账号已保存" : "等待重启";
+      expect(within(detail).getAllByText(label).length).toBeGreaterThan(0);
+      expect(
+        within(detail).getByText("OpenAI · person@example.com"),
+      ).toBeVisible();
+      expect(within(detail).getByText("DeepSeek API")).toBeVisible();
+      expect(within(detail).getByText("已保留")).toBeVisible();
+      expect(within(detail).queryByText("已连接")).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId("managed-auth-overview-summary"),
+      ).toHaveTextContent(label);
+      expect(screen.getByRole("tab", { name: "软件连接 3/4" })).toBeVisible();
+    },
+  );
 });

@@ -60,7 +60,10 @@ async function confirmSaveDisclosure(
 ) {
   const dialog = page.getByRole("dialog", { name: "保存前确认" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("将修改")).toBeVisible();
+  const modifiedFiles = dialog.getByText("将修改", { exact: true });
+  await expect(modifiedFiles).toHaveCount(2);
+  await expect(modifiedFiles.nth(0)).toBeVisible();
+  await expect(modifiedFiles.nth(1)).toBeVisible();
   await dialog.getByRole("button", { name: "确认保存" }).click();
 }
 
@@ -788,6 +791,23 @@ test("Claude quick setup updates its reserved row with exact settings and switch
   await page.getByLabel("API Key", { exact: true }).fill(apiKey);
   await page.getByLabel("模型 ID", { exact: true }).fill("claude-browser");
   await page.getByRole("button", { name: "保存并设为当前配置" }).click();
+  const disclosure = page.getByRole("dialog", { name: "保存前确认" });
+  await expect(disclosure).toBeVisible();
+  await expect(
+    disclosure.getByText("~/.claude/settings.json", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    disclosure.getByText("~/.claude.json", { exact: true }),
+  ).toBeVisible();
+  await expect(disclosure).not.toContainText(apiKey);
+  const previewCalls = (await featureFixtureCalls(page)).filter(
+    (call) => call.command === "preview_claude_quick_setup",
+  );
+  expect(
+    (await featureFixtureCalls(page)).filter(
+      (call) => call.command === "apply_claude_quick_setup_preview",
+    ),
+  ).toEqual([]);
   await confirmSaveDisclosure(page);
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
 
@@ -795,26 +815,50 @@ test("Claude quick setup updates its reserved row with exact settings and switch
     .poll(
       async () =>
         (await featureFixtureCalls(page)).filter(
-          (call) => call.command === "apply_provider_quick_setup_with_result",
+          (call) => call.command === "apply_claude_quick_setup_preview",
         ).length,
     )
     .toBe(1);
   const calls = await featureFixtureCalls(page);
   const applyCalls = calls.filter(
-    (call) => call.command === "apply_provider_quick_setup_with_result",
+    (call) => call.command === "apply_claude_quick_setup_preview",
   );
   expect(applyCalls).toHaveLength(1);
-  expect(applyCalls[0].payload).toMatchObject({
-    app: "claude",
+  expect(previewCalls).toHaveLength(1);
+  expect(previewCalls[0].payload).toEqual({
     request: {
       name: "Browser Claude",
       baseUrl: "https://claude.example.test/v1",
       apiKey,
       modelId: "claude-browser",
+      protocol: "anthropic",
     },
   });
+  expect(applyCalls[0].payload).toEqual({
+    request: { previewId: expect.any(String) },
+  });
+  const summary = (await page.evaluate(() =>
+    window.__TAURI_INTERNALS__.invoke("get_provider_summary", {
+      app: "claude",
+    }),
+  )) as {
+    currentId: string;
+    providers: Record<string, { name: string }>;
+  };
+  expect(summary.currentId).toBe("fyagent-v2-quick-setup-claude");
+  expect(summary.providers[summary.currentId].name).toBe("Browser Claude");
   expect(
-    calls.filter((call) => call.command === "switch_provider_with_result"),
+    Object.values(summary.providers).filter(
+      (provider) => provider.name === "Browser Claude",
+    ),
+  ).toHaveLength(1);
+  expect(
+    calls.filter((call) =>
+      [
+        "switch_provider_with_result",
+        "apply_provider_quick_setup_with_result",
+      ].includes(call.command),
+    ),
   ).toEqual([]);
   await expectHealthyPage(page, health);
 });

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -73,6 +73,33 @@ function dialogProps(
 }
 
 describe("session export preview behavior", () => {
+  it("retries the frozen source selection after extraction refusal without saving or restoring", async () => {
+    const user = userEvent.setup();
+    const preview = vi
+      .fn<
+        (providerId: string, sourcePath: string) => Promise<MigratableSession>
+      >()
+      .mockRejectedValueOnce({
+        code: "finalAnswerIndeterminate",
+        detail: { reason: "SECRET" },
+      })
+      .mockResolvedValueOnce(previewSession());
+    const props = dialogProps(preview);
+    render(<ExportPreviewDialog {...props} />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("会话提取");
+    expect(alert).toHaveTextContent("未调用目标恢复，未写入目标会话");
+    expect(alert).not.toHaveTextContent("SECRET");
+    expect(props.onExport).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "重新读取与提取" }));
+    await screen.findByText(/用户原始提示词/u);
+    expect(preview.mock.calls).toEqual([
+      ["codex", "/isolated/session.jsonl"],
+      ["codex", "/isolated/session.jsonl"],
+    ]);
+    expect(props.onExport).not.toHaveBeenCalled();
+  });
+
   it("leaves ready state immediately when preview validation re-enters", async () => {
     const user = userEvent.setup();
     const initialPreview = vi.fn(async () => previewSession());
@@ -106,6 +133,46 @@ describe("session export preview behavior", () => {
     );
     expect(within(dialog).getAllByText(/正在读取/u).length).toBeGreaterThan(0);
     expect(initialProps.onExport).not.toHaveBeenCalled();
+  });
+
+  it("ignores a superseded extraction response after the new selection is ready", async () => {
+    const user = userEvent.setup();
+    const stale = deferred<MigratableSession>();
+    const current = previewSession();
+    current.messages[0].text = "当前选择的提问";
+    const preview = vi.fn(async (_providerId: string, sourcePath: string) =>
+      sourcePath === targets[0].sourcePath ? stale.promise : current,
+    );
+    const props = dialogProps(preview);
+    const view = render(<ExportPreviewDialog {...props} />);
+    await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
+
+    const nextTargets = [
+      {
+        ...targets[0],
+        sourcePath: "/isolated/current.jsonl",
+        sessionId: "session-current",
+      },
+    ];
+    view.rerender(<ExportPreviewDialog {...props} targets={nextTargets} />);
+    await screen.findByText(/当前选择的提问/u);
+    await user.click(screen.getByRole("button", { name: "选择保存位置" }));
+    expect(
+      screen.getByRole("button", { name: "确认导出迁移包" }),
+    ).toBeEnabled();
+
+    const old = previewSession();
+    old.messages[0].text = "过期选择的提问";
+    await act(async () => {
+      stale.resolve(old);
+    });
+
+    expect(screen.getByText(/当前选择的提问/u)).toBeVisible();
+    expect(screen.queryByText(/过期选择的提问/u)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "确认导出迁移包" }),
+    ).toBeEnabled();
+    expect(props.onExport).not.toHaveBeenCalled();
   });
 
   it("previews consecutive users as ordered messages with incomplete state", async () => {

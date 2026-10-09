@@ -11,7 +11,6 @@ import {
 
 const navigationContract = [
   { path: "/agents", label: "AI软件配置" },
-  { path: "/health", label: "运行状态" },
   { path: "/auth", label: "账号与认证" },
   { path: "/models", label: "模型管理" },
   { path: "/skills", label: "Skills 管理" },
@@ -30,7 +29,6 @@ const windowControlNames = ["最小化", "最大化/还原", "关闭"] as const;
 const primaryControlTestIds = [
   ...visibleControlTestIds,
   "#/agents",
-  "#/health",
   "#/auth",
   "configuration-management-toggle",
   "#/models",
@@ -131,7 +129,8 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
     navigation.locator(
       ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
     ),
-  ).toHaveCount(6);
+  ).toHaveCount(5);
+  await expect(navigation.locator('a[href="#/health"]')).toHaveCount(0);
   await expect(
     navigation.getByRole("link", { name: "Agent 目录" }),
   ).toHaveCount(0);

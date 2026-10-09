@@ -11,7 +11,11 @@ import {
 import { type BlockerFunction } from "react-router-dom";
 
 import { getPromptAppBrand } from "../../shared/assets/apps";
-import { errorMessage, isNativeOnlyError } from "../../shared/features/helpers";
+import {
+  errorMessage,
+  isNativeOnlyError,
+  UserFacingError,
+} from "../../shared/features/helpers";
 import { useFeatures } from "../../shared/features/provider";
 import {
   featureKeys,
@@ -164,7 +168,13 @@ function resolveEditor(
   const dirty =
     editor !== null &&
     (editor.baseline === null || !isSameDraft(editor.draft, editor.baseline));
-  if (dirty) return editor;
+  if (dirty) {
+    // Keep the user's text, but refresh lifecycle metadata from the selected
+    // query row so a stale editor snapshot cannot undo a recent toggle.
+    return selected && editor?.prompt?.id === selected.id
+      ? { ...editor, prompt: selected }
+      : editor;
+  }
   if (!selected) return null;
   if (
     editor?.prompt?.id === selected.id &&
@@ -329,6 +339,8 @@ function PromptsWorkspace({
   const write = async (
     title: string,
     operation: () => Promise<void>,
+    failureTitle = `${title}失败`,
+    notifyFailure = true,
   ): Promise<"failed" | "refreshed" | "refresh-failed"> => {
     if (writeLock.current) return "failed";
     writeLock.current = true;
@@ -340,8 +352,9 @@ function PromptsWorkspace({
       await operation();
     } catch (error) {
       const message = errorMessage(error);
-      setWriteError(`${title}失败：${message}`);
-      notify({ tone: "error", title: `${title}失败`, description: message });
+      setWriteError(`${failureTitle}：${message}`);
+      if (notifyFailure)
+        notify({ tone: "error", title: failureTitle, description: message });
       setBusy(false);
       writeLock.current = false;
       return "failed";
@@ -477,7 +490,12 @@ function PromptsWorkspace({
       name: activeEditor.draft.name.trim(),
       description: activeEditor.draft.description.trim() || undefined,
       content: activeEditor.draft.content.trim(),
-      enabled: activeEditor.prompt?.enabled ?? false,
+      enabled:
+        selected &&
+        activeEditor.prompt &&
+        selected.id === activeEditor.prompt.id
+          ? selected.enabled
+          : (activeEditor.prompt?.enabled ?? false),
       createdAt: activeEditor.prompt?.createdAt ?? now,
       updatedAt: now,
     };
@@ -493,9 +511,31 @@ function PromptsWorkspace({
 
   const importFromFile = async () => {
     let importedId = "";
-    const result = await write("提示词已从文件导入", async () => {
-      importedId = await ports.prompts.importFromFile(app);
-    });
+    const result = await write(
+      "提示词已从文件导入",
+      async () => {
+        try {
+          importedId = await ports.prompts.importFromFile(app);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : error;
+          const safeMessages = [
+            "提示词文件不存在，未导入。请先确认目标应用已创建提示词文件。",
+            "提示词文件不是有效 UTF-8，未导入。请保留原文件，将副本转换为 UTF-8 后重试。",
+            "无法读取提示词文件，未导入。请检查文件类型和读取权限后重试。",
+            "无法读取提示词文件，未导入。请检查文件是否可读后重试。",
+            "提示词导入未确认完成。请先刷新管理列表核对结果，再决定是否重试。",
+          ];
+          if (typeof message === "string" && safeMessages.includes(message))
+            throw new UserFacingError(message);
+          if (isNativeOnlyError(error)) throw error;
+          throw new UserFacingError(
+            "提示词导入未确认完成。请先刷新管理列表核对结果，再决定是否重试。",
+          );
+        }
+      },
+      "提示词导入遇到问题",
+      false,
+    );
     if (result !== "failed" && importedId) {
       setSelectedId(importedId);
       setEditor(null);
@@ -809,8 +849,10 @@ function PromptIdentityFields({
       </label>
       <label className="fy-control-field">
         描述
-        <Input
+        <textarea
+          className="fy-control-textarea fy-prompts-editor-description"
           aria-label="描述"
+          rows={2}
           value={description}
           disabled={busy}
           onChange={onDraftChange("description")}
@@ -869,7 +911,7 @@ function PromptEditorPane({
         <header className="fy-prompts-editor-head">
           <div className="fy-prompts-editor-header-info">
             <div className="fy-prompts-editor-title-row">
-              <h2>{title}</h2>
+              <h2 title={title}>{title}</h2>
               {editor.mode === "edit" && enabled && (
                 <Badge tone="accent">已启用</Badge>
               )}

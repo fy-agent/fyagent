@@ -20,9 +20,12 @@ mod gemini_mcp;
 mod grok_config;
 pub mod hermes_config;
 mod init_status;
+mod jsonc_document;
 mod lightweight;
+pub mod live;
 mod macos_system_commit;
 mod mcp;
+pub mod mode;
 mod model_capabilities;
 mod openclaw_config;
 mod opencode_config;
@@ -49,9 +52,12 @@ use crate::codex_desktop::{
     jobs::{ProcessLifecycleClaim, ProcessLifecycleCoordinator, ProcessLifecycleTransition},
     types::JobStage,
 };
-pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
+pub use app_config::{
+    AppType, InstalledSkill, McpApps, McpServer, McpTargetId, MultiAppConfig, SkillApps,
+};
 pub use codex_config::{
-    get_codex_auth_path, get_codex_config_path, read_codex_live_settings, write_codex_live_atomic,
+    extract_codex_experimental_bearer_token, get_codex_auth_path, get_codex_config_path,
+    read_codex_live_settings, write_codex_live_atomic,
 };
 pub use commands::open_provider_terminal;
 pub use commands::*;
@@ -65,10 +71,12 @@ pub use mcp::{
     remove_server_from_claude, remove_server_from_codex, remove_server_from_gemini,
     remove_server_from_grokbuild, sync_enabled_to_claude, sync_enabled_to_codex,
     sync_enabled_to_gemini, sync_single_server_to_claude, sync_single_server_to_codex,
-    sync_single_server_to_gemini, sync_single_server_to_grokbuild,
+    sync_single_server_to_gemini, sync_single_server_to_grokbuild, McpImportCounts,
+    McpImportReport, McpImportSourceResult, McpServerView,
 };
 pub use prompt::Prompt;
 pub use provider::{Provider, ProviderMeta};
+pub use services::provider::{EditorSave, EditorView};
 pub use services::{
     profile::{ProfilePayload, ProfileScope, ProfileService},
     provider::reapply_current_codex_official_live,
@@ -93,7 +101,7 @@ use std::{
     collections::VecDeque,
     fmt,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
     },
     time::Duration,
@@ -150,10 +158,25 @@ const MIN_KNOWN_SECRET_LEN: usize = 8;
 
 /// 唯一的密钥脱敏原语：把字符串里出现的、我们确切握有的密钥值替换为 [REDACTED]。
 /// 不做任何“看起来像密钥”的形状猜测——只隐藏已知值，天然收敛、不误伤正常路径。
-fn redact_known_secrets(text: &str, known_secrets: &[String]) -> String {
+pub(crate) fn redact_known_secrets(text: &str, known_secrets: &[String]) -> String {
+    redact_known_secrets_with_min_length(text, known_secrets, MIN_KNOWN_SECRET_LEN)
+}
+
+/// Exact-value redaction for user-visible error text. Unlike URL logging, a
+/// short known credential must still be hidden because the result reaches the
+/// UI rather than a diagnostic-only path.
+pub(crate) fn redact_known_secrets_strict(text: &str, known_secrets: &[String]) -> String {
+    redact_known_secrets_with_min_length(text, known_secrets, 1)
+}
+
+fn redact_known_secrets_with_min_length(
+    text: &str,
+    known_secrets: &[String],
+    minimum_chars: usize,
+) -> String {
     let mut output = text.to_string();
     for secret in known_secrets {
-        if secret.chars().count() >= MIN_KNOWN_SECRET_LEN {
+        if secret.chars().count() >= minimum_chars {
             output = output.replace(secret.as_str(), "[REDACTED]");
         }
     }
@@ -233,6 +256,22 @@ pub(crate) fn redact_url_origin_for_log(url_str: &str) -> String {
         }
         _ => "[invalid target]".to_string(),
     }
+}
+
+/// 给日志用的错误文本：去掉 TOML 解析诊断里引用的源码行（`1 | key = "..."` 和它上下的
+/// `|`、`^` 标注行）。那一行是用户配置原文，出错的可能正是密钥那一行；行列号和原因留着。
+pub(crate) fn error_for_log(error: &str) -> String {
+    error
+        .lines()
+        .filter(|line| {
+            !line
+                .trim_start()
+                .trim_start_matches(|c: char| c.is_ascii_digit())
+                .trim_start()
+                .starts_with('|')
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn runtime_log_level_allows(level: log::Level, max_level: log::LevelFilter) -> bool {
@@ -979,6 +1018,22 @@ pub fn run() {
             }
         }));
 
+    #[cfg(target_os = "windows")]
+    let builder = {
+        let startup_page_handled = std::sync::atomic::AtomicBool::new(false);
+        builder.on_page_load(move |webview, payload| {
+            if webview.label() == "main"
+                && payload.event() == tauri::webview::PageLoadEvent::Finished
+                && payload.url().scheme() != "about"
+                && !startup_page_handled.swap(true, Ordering::Relaxed)
+                && !crate::settings::get_settings().silent_startup
+            {
+                let _ = webview.window().show();
+                log::info!("主页面加载完成，主窗口已显示");
+            }
+        })
+    };
+
     let builder = builder
         .on_page_load(|webview, payload| {
             if webview.label() == "main"
@@ -1185,6 +1240,10 @@ pub fn run() {
                     });
                     // 主窗口默认 visible:false，恢复界面必须强制显示
                     if let Some(window) = app.get_webview_window("main") {
+                        #[cfg(target_os = "windows")]
+                        {
+                            let _ = window.set_skip_taskbar(false);
+                        }
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
@@ -1204,14 +1263,22 @@ pub fn run() {
                 log::warn!("Unable to initialize first-use guide: {error}");
             }
 
+            let mut db_init_attempts = 0;
             let db = loop {
+                db_init_attempts += 1;
                 match crate::database::Database::init() {
                     Ok(db) => break Arc::new(db),
                     Err(e) => {
                         log::error!("Failed to init database: {e}");
 
-                        if !show_database_init_error_dialog(app.handle(), &db_path, &e.to_string())
-                        {
+                        let retry_allowed = db_init_attempts < 2;
+                        let retry_requested = show_database_init_error_dialog(
+                            app.handle(),
+                            &db_path,
+                            &e.to_string(),
+                            retry_allowed,
+                        );
+                        if !retry_allowed || !retry_requested {
                             log::info!("用户选择退出程序");
                             std::process::exit(1);
                         }
@@ -1263,6 +1330,7 @@ pub fn run() {
             }
 
             let app_state = AppState::new(db);
+            crate::mode::operation::recover_on_startup(&app_state.db);
 
             // 设置 AppHandle 用于代理故障转移时的 UI 更新
             app_state.proxy_service.set_app_handle(app.handle().clone());
@@ -1468,7 +1536,7 @@ pub fn run() {
 
             // 1.6. 自动同步 OpenCode / OpenClaw 的 live providers 到数据库
             //
-            // additive 模式（OpenCode / OpenClaw）的 import 函数按 id 幂等——
+            // additive 模式的 import 函数按 id 幂等——
             // 新 id 执行导入，已有 id 则更新 settings 和 display name，所以每次
             // 启动都跑是安全的：既保证新装用户开箱可见 live 中的供应商，也让外部
             // 修改的 live 文件能在重启后同步到数据库（与之前依赖前端"导入当前配置"
@@ -1751,18 +1819,6 @@ pub fn run() {
             }
 
             let _tray = tray_builder.build(app)?;
-            app_state.db.set_change_listener(|table| {
-                crate::services::webdav_auto_sync::notify_db_changed(table);
-                crate::services::s3_auto_sync::notify_db_changed(table);
-            })?;
-            crate::services::webdav_auto_sync::start_worker(
-                app_state.db.clone(),
-                app.handle().clone(),
-            );
-            crate::services::s3_auto_sync::start_worker(
-                app_state.db.clone(),
-                app.handle().clone(),
-            );
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
             app.manage(commands::ConfigPackState::default());
             app.manage(app_state);
@@ -1812,14 +1868,13 @@ pub fn run() {
                 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
                 use crate::services::managed_auth::CODEX_MIGRATION_ID;
                 use commands::CodexOAuthState;
-                use tokio::sync::RwLock;
 
                 let codex_oauth_manager = CodexOAuthManager::new(app_config_dir.clone());
                 if managed_auth.legacy_store_sealed(CODEX_MIGRATION_ID) {
                     codex_oauth_manager.seal_json_store();
                 }
                 codex_oauth_manager.remap_provider_bindings();
-                app.manage(CodexOAuthState(Arc::new(RwLock::new(codex_oauth_manager))));
+                app.manage(CodexOAuthState(Arc::new(codex_oauth_manager)));
                 log::info!("✓ CodexOAuthManager initialized");
             }
 
@@ -1910,6 +1965,11 @@ pub fn run() {
                 // 检查 settings 表中的代理状态，自动恢复代理服务
                 restore_proxy_state_on_startup(&state).await;
 
+                // 启动恢复完成后再检查官方模型，避免首次检查撞上旧模式/接管状态。
+                services::provider::codex_official_models::start_background_checks(
+                    state.inner().clone(),
+                );
+
                 // Periodic backup check (on startup)
                 if let Err(e) = state.db.periodic_backup_if_needed() {
                     log::warn!("Periodic backup failed on startup: {e}");
@@ -1937,6 +1997,11 @@ pub fn run() {
                     const SESSION_SYNC_INTERVAL_SECS: u64 = 60;
 
                     async fn run_session_sync(db: std::sync::Arc<crate::database::Database>, backfill: bool) {
+                        // 手动扫描模式下跳过定时扫描；backfill 轮（启动首轮）仍进入，
+                        // 费用回填只修补数据库既有行（含代理记账行），不读会话文件
+                        if !backfill && !crate::settings::get_settings().session_auto_sync_enabled {
+                            return;
+                        }
                         let _guard = crate::services::session_usage::session_sync_mutex()
                             .lock()
                             .await;
@@ -1945,6 +2010,9 @@ pub fn run() {
                                 if let Err(error) = db.backfill_missing_usage_costs() {
                                     log::warn!("Usage cost startup backfill failed: {error}");
                                 }
+                            }
+                            if !crate::settings::get_settings().session_auto_sync_enabled {
+                                return crate::services::session_usage::SessionSyncResult::default();
                             }
                             crate::services::session_usage::sync_all_unlocked(&db)
                         });
@@ -2018,7 +2086,6 @@ pub fn run() {
             commands::get_active_agent_auth_session,
             commands::stop_waiting_for_agent_auth,
             commands::managed_auth_get_overview,
-            commands::get_agent_health,
 
             commands::managed_auth_start_login,
             commands::managed_auth_get_login_session,
@@ -2030,8 +2097,6 @@ pub fn run() {
             commands::managed_auth_remove_account,
             commands::managed_auth_preview_connection_action,
             commands::managed_auth_apply_connection_action,
-            commands::get_config_file_recoveries,
-            commands::restore_config_file_recovery,
             commands::get_agent_install_readiness,
             commands::get_agent_installation_inventory,
             commands::get_agent_install_preflight,
@@ -2063,6 +2128,8 @@ pub fn run() {
             commands::bind_managed_proxy_provider,
             commands::bind_opencode_managed_proxy,
             commands::apply_provider_quick_setup_with_result,
+            commands::preview_claude_quick_setup,
+            commands::apply_claude_quick_setup_preview,
             commands::update_provider,
             commands::update_provider_with_result,
             commands::delete_provider,
@@ -2097,7 +2164,6 @@ pub fn run() {
             commands::set_claude_common_config_snippet,
             commands::get_common_config_snippet,
             commands::set_common_config_snippet,
-            commands::update_toml_common_config_snippet,
             commands::extract_common_config_snippet,
             commands::read_live_provider_settings,
             commands::get_settings,
@@ -2153,6 +2219,7 @@ pub fn run() {
             commands::delete_mcp_server,
             commands::toggle_mcp_app,
             commands::import_mcp_from_apps,
+            commands::resync_mcp_to_apps,
             // Prompt management
             commands::get_prompts,
             commands::upsert_prompt,
@@ -2167,7 +2234,8 @@ pub fn run() {
             commands::delete_profile,
             commands::clear_current_profile,
             commands::apply_profile,
-            // model list fetch (OpenAI-compatible /v1/models)
+            // Fetch OpenAI-compatible and Anthropic model lists. Response data structure:
+            // data[].id, data[]?.owned_by. Special: supports Zhipu OpenAI Responses models[].slug.
             commands::fetch_models_for_config,
             commands::get_opencode_models,
             commands::get_opencode_model_snapshot,
@@ -2187,22 +2255,14 @@ pub fn run() {
             // theirs: config import/export and dialogs
             commands::export_config_to_file,
             commands::import_config_from_file,
-            commands::webdav_test_connection,
-            commands::webdav_sync_upload,
-            commands::webdav_sync_download,
-            commands::webdav_sync_save_settings,
-            commands::webdav_sync_fetch_remote_info,
-            commands::s3_test_connection,
-            commands::s3_sync_upload,
-            commands::s3_sync_download,
-            commands::s3_sync_save_settings,
-            commands::s3_sync_fetch_remote_info,
             commands::save_file_dialog,
             commands::open_file_dialog,
             commands::open_zip_file_dialog,
             commands::create_db_backup,
             commands::list_db_backups,
             commands::restore_db_backup,
+            commands::restore_db_backup_outcome,
+            commands::check_db_recovery_readability,
             commands::rename_db_backup,
             commands::delete_db_backup,
             commands::sync_current_providers_live,
@@ -2263,8 +2323,6 @@ pub fn run() {
             commands::update_global_proxy_config,
             commands::get_proxy_config_for_app,
             commands::update_proxy_config_for_app,
-            commands::get_default_cost_multiplier,
-            commands::set_default_cost_multiplier,
             commands::get_pricing_model_source,
             commands::set_pricing_model_source,
             commands::is_proxy_running,
@@ -2285,6 +2343,7 @@ pub fn run() {
             commands::set_auto_failover_enabled,
             // Usage statistics
             commands::get_usage_summary,
+            commands::get_session_usage_summary,
             commands::get_usage_summary_by_app,
             commands::get_usage_trends,
             commands::get_provider_stats,
@@ -2308,6 +2367,8 @@ pub fn run() {
             commands::stream_check_all_providers,
             commands::stream_check_url,
             commands::stream_check_model,
+            commands::stream_check_model_status,
+            commands::stream_check_model_cancel,
             commands::get_stream_check_config,
             commands::save_stream_check_config,
             // Session manager
@@ -2479,6 +2540,7 @@ pub fn run() {
                 // 自定义异步清理和 window-state 插件的退出钩子争用同一把锁。
                 ExitRequestAction::DeferToTauriRestart => {
                     log::info!("收到重启请求 (code={code:?})，交由 Tauri 默认重启流程处理");
+                    RESTART_REQUESTED.store(true, Ordering::SeqCst);
                     return;
                 }
                 // 其它 Some(_)：用户主动调用 app.exit() 退出（如托盘菜单"退出"）。
@@ -2580,6 +2642,15 @@ pub fn run() {
             };
             api.prevent_exit();
             start_claimed_exit_cleanup(app_handle.clone(), claim);
+            return;
+        }
+
+        // macOS ⌘Q、Dock「退出」、注销关机只发 Exit，回调返回后进程就结束。
+        // 重启交给 Tauri 默认流程；普通系统退出同步限时恢复直连并停止服务。
+        if matches!(event, RunEvent::Exit) {
+            if !RESTART_REQUESTED.load(Ordering::SeqCst) {
+                cleanup_before_system_exit(app_handle);
+            }
             return;
         }
 
@@ -2892,6 +2963,28 @@ pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
     }
 }
 
+/// 系统退出的清理上限：停代理已有 5 秒超时，另留配置恢复时间。
+const SYSTEM_EXIT_CLEANUP_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// 系统终止没有 ExitRequested 可拦截，在异步运行时执行清理，主线程限时等待。
+/// 避免清理中需要主线程的步骤把退出卡住。
+fn cleanup_before_system_exit(app_handle: &tauri::AppHandle) {
+    log::info!("系统终止应用，开始退出清理...");
+    let handle = app_handle.clone();
+    let task = tauri::async_runtime::spawn(async move { cleanup_before_exit(&handle).await });
+    let finished = tauri::async_runtime::block_on(async move {
+        tokio::time::timeout(SYSTEM_EXIT_CLEANUP_TIMEOUT, task).await
+    });
+    match finished {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => log::error!("系统退出清理任务失败: {error}"),
+        Err(_) => log::warn!(
+            "退出清理 {} 秒内没做完，直接退出",
+            SYSTEM_EXIT_CLEANUP_TIMEOUT.as_secs()
+        ),
+    }
+}
+
 /// 主动从系统托盘移除托盘图标。
 ///
 /// `std::process::exit` 会绕过 Tauri 运行时，触发不了 `TrayIcon::drop()`，
@@ -3135,11 +3228,12 @@ fn show_migration_error_dialog(app: &tauri::AppHandle, error: &str) -> bool {
 }
 
 /// 显示数据库初始化/Schema 迁移失败对话框
-/// 返回 true 表示用户选择重试，false 表示用户选择退出
+/// 仅首次失败可返回 true；重试用完后展示退出提示并返回 false。
 fn show_database_init_error_dialog(
     app: &tauri::AppHandle,
     db_path: &std::path::Path,
     error: &str,
+    retry_allowed: bool,
 ) -> bool {
     let title = if is_chinese_locale() {
         "数据库初始化失败"
@@ -3147,32 +3241,36 @@ fn show_database_init_error_dialog(
         "Database Initialization Failed"
     };
 
+    let next_step = match (is_chinese_locale(), retry_allowed) {
+        (true, true) => {
+            "处理问题后，可点击「重试」再尝试一次；或点击「退出」关闭程序。"
+        }
+        (true, false) => {
+            "本次启动的初始化尝试已用完。请退出并保留数据库与备份，处理问题后重新启动 FyAgent。"
+        }
+        (false, true) => {
+            "After addressing the problem, click 'Retry' to try once more, or 'Exit' to close the program."
+        }
+        (false, false) => {
+            "Initialization attempts for this launch are exhausted. Exit and preserve the database and backups, then restart FyAgent after addressing the problem."
+        }
+    };
     let message = if is_chinese_locale() {
         format!(
             "初始化数据库或迁移数据库结构时发生错误：\n\n{error}\n\n\
             数据库文件路径：\n{db}\n\n\
-            您的数据尚未丢失，应用不会自动删除数据库文件。\n\
-            常见原因包括：数据库版本过新、文件损坏、权限不足、磁盘空间不足等。\n\n\
-            建议：\n\
-            1) 先备份整个配置目录（包含 fyagent.db）\n\
-            2) 如果提示“数据库版本过新”，请升级到更新版本\n\
-            3) 如果刚升级出现异常，可回退旧版本导出/备份后再升级\n\n\
-            点击「重试」重新尝试初始化\n\
-            点击「退出」关闭程序",
+            应用不会自动删除原数据库文件。请保留数据库和备份，先检查磁盘空间和目录权限。\n\
+            数据库版本过新时请升级 FyAgent；不要删除文件或修改版本号。\n\n\
+            {next_step}",
             db = db_path.display()
         )
     } else {
         format!(
             "An error occurred while initializing or migrating the database:\n\n{error}\n\n\
             Database file path:\n{db}\n\n\
-            Your data is NOT lost - the app will not delete the database automatically.\n\
-            Common causes include: newer database version, corrupted file, permission issues, or low disk space.\n\n\
-            Suggestions:\n\
-            1) Back up the entire config directory (including fyagent.db)\n\
-            2) If you see “database version is newer”, please upgrade FyAgent\n\
-            3) If this happened right after upgrading, consider rolling back to export/backup then upgrade again\n\n\
-            Click 'Retry' to attempt initialization again\n\
-            Click 'Exit' to close the program",
+            The app will not automatically delete the original database file. Preserve the database and backups, and check disk space and directory permissions.\n\
+            If the database version is newer, upgrade FyAgent; do not delete the file or change its version number.\n\n\
+            {next_step}",
             db = db_path.display()
         )
     };
@@ -3188,15 +3286,19 @@ fn show_database_init_error_dialog(
         "Exit"
     };
 
-    app.dialog()
+    let buttons = if retry_allowed {
+        MessageDialogButtons::OkCancelCustom(retry_text.to_string(), exit_text.to_string())
+    } else {
+        MessageDialogButtons::OkCustom(exit_text.to_string())
+    };
+    let retry_requested = app
+        .dialog()
         .message(&message)
         .title(title)
         .kind(MessageDialogKind::Error)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            retry_text.to_string(),
-            exit_text.to_string(),
-        ))
-        .blocking_show()
+        .buttons(buttons)
+        .blocking_show();
+    retry_allowed && retry_requested
 }
 
 fn confirm_codex_desktop_installation_cancellation(app: &tauri::AppHandle) -> bool {
@@ -3320,6 +3422,9 @@ enum ExitRequestAction {
     /// 其它 `Some(_)`：用户主动退出（托盘「退出」等），执行完整异步清理后结束进程。
     CleanupAndExit,
 }
+
+/// 重启也会收到 RunEvent::Exit；保留 Tauri 默认重启路径，不重复清理。
+static RESTART_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 fn classify_exit_request(code: Option<i32>) -> ExitRequestAction {
     match code {
@@ -3818,6 +3923,46 @@ mod tests {
         assert_eq!(
             classify_exit_request(Some(1)),
             ExitRequestAction::CleanupAndExit
+        );
+    }
+
+    #[test]
+    fn system_exit_cleanup_is_bounded_and_skips_tauri_restart() {
+        let source = include_str!("lib.rs");
+        let callback = source
+            .split("app.run(|app_handle, event| {")
+            .nth(1)
+            .unwrap();
+        let system_exit = callback
+            .split("if matches!(event, RunEvent::Exit) {")
+            .nth(1)
+            .unwrap()
+            .split("#[cfg(target_os = \"macos\")]")
+            .next()
+            .unwrap();
+        assert!(system_exit.contains("!RESTART_REQUESTED.load(Ordering::SeqCst)"));
+        assert!(system_exit.contains("cleanup_before_system_exit(app_handle)"));
+        let restart = callback
+            .split("ExitRequestAction::DeferToTauriRestart => {")
+            .nth(1)
+            .unwrap()
+            .split("ExitRequestAction::CleanupAndExit")
+            .next()
+            .unwrap();
+        assert!(restart.contains("RESTART_REQUESTED.store(true, Ordering::SeqCst)"));
+        assert!(!restart.contains("cleanup_before_exit("));
+        let cleanup = source
+            .split("fn cleanup_before_system_exit(app_handle:")
+            .nth(1)
+            .unwrap()
+            .split("/// 主动从系统托盘")
+            .next()
+            .unwrap();
+        assert!(cleanup.contains("spawn(async move { cleanup_before_exit(&handle).await })"));
+        assert!(cleanup.contains("tokio::time::timeout(SYSTEM_EXIT_CLEANUP_TIMEOUT, task).await"));
+        assert_eq!(
+            super::SYSTEM_EXIT_CLEANUP_TIMEOUT,
+            std::time::Duration::from_secs(8)
         );
     }
 

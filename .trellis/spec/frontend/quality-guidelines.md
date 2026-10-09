@@ -63,6 +63,14 @@ instead of relying on cross-project `--exclude` propagation.
 prove the local/CI set difference and disjoint file ownership. Do not replace
 this evidence with a workflow substring assertion or disable host checks locally.
 
+The root test configuration caps workers at
+`Math.max(1, Math.min(2, availableParallelism()))`. All three projects inherit
+this scheduling limit; their file collections, setup and time budgets remain
+unchanged. During iteration integration, the coordinator owns one heavy
+verification lane and records complete standard-task results. A timeout alone
+does not prove a product defect or justify profiling, removing assertions or
+increasing the budget.
+
 Component tests use React Testing Library (`render`, `screen`, events, and
 role-based queries). Hook tests use `renderHook` and `act`. Tests that need
 TanStack Query create a client with retries disabled so failures are immediate.
@@ -151,7 +159,7 @@ initial-chunk budget; do not raise Vite's warning threshold to hide a
 monolithic entry. Vendor budgets must name their source and remain separate
 from the app route budget.
 
-The browser gate also boots the production bundle and visits all nine registered routes
+The browser gate also boots the production bundle and visits all eight registered routes
 through `config/playwright.performance.config.ts` (the `production boots` case).
 Passing Vite dev-server tests or producing a manifest does not prove bundled
 module initialization. `config/vite.config.ts` uses Rollup's dependency-aware named

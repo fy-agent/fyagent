@@ -76,14 +76,14 @@ project owns a `fyagent.com` DNS namespace.
 | payload prefixes `ccswitch-openai-reasoning-v1:` and `ccswitch-anthropic-thinking-v1:` | `fyagent-...-v1:` or a versioned `v2` prefix | Encoder writes new; decoder must accept old or old sessions lose replay semantics. |
 | proxy markers/error codes `cc_switch_*`, `[cc-switch: ...]` | `fyagent_*`, `[fyagent: ...]` | Treat error codes as a public local API and tool/reasoning markers as serialized wire data; dual-parse where replayed. |
 | Flatpak ID/files `com.ccswitch.desktop*` | proposed `com.fyagent.desktop*` | Rename manifest, desktop, AppStream, icon, launchable and install paths atomically. |
-| GitHub `farion1231/cc-switch`, `ccswitch.io`, `cc-switch-website` | current FyAgent repository/site | New canonical targets were not established by repository source; do not invent them. Preserve upstream citations separately. |
+| GitHub `farion1231/cc-switch`, `[retired upstream website]`, `cc-switch-website` | current FyAgent repository/site | New canonical targets were not established by repository source; do not invent them. Preserve upstream citations separately. |
 
 ### 1. User-visible brand and third-party provider text
 
 Files found:
 
 - `README_ZH.md`, `README_JA.md`, `README_DE.md`: still start with `CC Switch`,
-  include `ccswitch.io`, old repository badges/downloads, old package/install names,
+  include `[retired upstream website]`, old repository badges/downloads, old package/install names,
   `ccswitch://`, and `~/.cc-switch` paths. `README.md` has a FyAgent heading but
   deliberately still contains old URL query values and old runtime paths
   (`README.md:20-181`, `README.md:246`, `README.md:296-300`, `README.md:358-378`).
@@ -339,7 +339,7 @@ Files found:
 - `.github/workflows/claude.yml:56`: public automation prompt still names the
   repository `cc-switch`.
 - `scripts/generate-download-manifest.mjs:3-4`: comments bind the output to
-  `ccswitch.io/download` and `cc-switch-website`.
+  `[retired upstream website]/download` and `cc-switch-website`.
 - `.github/FUNDING.yml`, `.github/ISSUE_TEMPLATE/*.yml`, `CONTRIBUTING.md`,
   `SECURITY.md`, `SUPPORT.md`, Flatpak metadata and translated README files route
   operational users to `farion1231/cc-switch`.
@@ -417,7 +417,7 @@ Static verification:
 Files found:
 
 - `tests/releaseWorkflow.test.ts:22-54` already asserts FyAgent release naming
-  and rejects `CC Switch`, `CC-Switch`, and `ccswitch.io` in the release workflow,
+  and rejects `CC Switch`, `CC-Switch`, and `[retired upstream website]` in the release workflow,
   but it does not reject the old executable path.
 - `src-tauri/src/tray.rs:1116-1118` freezes `TRAY_ID = "cc-switch"`.
 - `src-tauri/tests/support.rs:10-32` and most Rust integration tests freeze

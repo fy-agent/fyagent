@@ -120,6 +120,8 @@ describe("repository governance scanner", () => {
   let currentDuplicateOid = "";
   let binaryOid = "";
   let unusualCommit = "";
+  let unusualOid = "";
+  let nestedOid = "";
 
   beforeAll(() => {
     repository = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-audit-repo-"));
@@ -166,11 +168,17 @@ describe("repository governance scanner", () => {
       path.join(repository, `${candidate}.txt`),
       `protected-path:${candidate}`,
     );
+    fs.mkdirSync(path.join(repository, "nested"));
+    fs.writeFileSync(
+      path.join(repository, "nested", "path=hint.txt"),
+      "nested fixture",
+    );
     gitText(repository, ["add", "--all"]);
     gitText(repository, ["commit", "--quiet", "-m", "fixture: current"]);
     headCommit = gitText(repository, ["rev-parse", "HEAD"]);
     currentDuplicateOid = gitText(repository, ["hash-object", "current-a.txt"]);
     binaryOid = gitText(repository, ["hash-object", "binary-secret.bin"]);
+    nestedOid = gitText(repository, ["hash-object", "nested/path=hint.txt"]);
 
     pathlessOid = gitText(
       repository,
@@ -183,7 +191,7 @@ describe("repository governance scanner", () => {
       pathlessOid,
     ]);
 
-    const unusualBlob = gitText(
+    unusualOid = gitText(
       repository,
       ["hash-object", "-w", "--stdin"],
       `unusual:${candidate}`,
@@ -192,7 +200,10 @@ describe("repository governance scanner", () => {
       repository,
       ["mktree", "-z"],
       Buffer.concat([
-        Buffer.from(`100644 blob ${unusualBlob}\tline\nbreak.bin`, "utf8"),
+        Buffer.from(
+          `100644 blob ${unusualOid}\tline\n${deletedOid}\npath=break.bin`,
+          "utf8",
+        ),
         Buffer.from([0]),
       ]),
     );
@@ -201,6 +212,11 @@ describe("repository governance scanner", () => {
       unusualTree,
       "-m",
       "fixture: unusual path",
+    ]);
+    gitText(repository, [
+      "update-ref",
+      "refs/tags/unusual-audit-fixture",
+      unusualCommit,
     ]);
   });
 
@@ -272,6 +288,31 @@ describe("repository governance scanner", () => {
       report.sizes.length,
     );
     expect(report.findings.some(({ oid }) => oid === pathlessOid)).toBe(true);
+    expect(report.sizes.filter(({ oid }) => oid === nestedOid)).toEqual([
+      expect.objectContaining({ count: 1, path: "nested/path=hint.txt" }),
+    ]);
+    expect(report.sizes.filter(({ oid }) => oid === unusualOid)).toEqual([
+      expect.objectContaining({ count: 1, path: "<redacted-path>" }),
+    ]);
+    const reachableObjects = runGit(repository, [
+      "rev-list",
+      "--objects",
+      "--all",
+      "--no-object-names",
+    ]);
+    const reachableBlobs = runGit(
+      repository,
+      ["cat-file", "--batch-check=%(objectname) %(objecttype)"],
+      reachableObjects,
+    )
+      .toString("ascii")
+      .trim()
+      .split("\n")
+      .filter((record) => record.endsWith(" blob"))
+      .map((record) => record.split(" ")[0]);
+    expect(report.sizes.map(({ oid }) => oid).sort()).toEqual(
+      reachableBlobs.sort(),
+    );
     assertSafeShape(report);
     assertCandidateSuppressed(candidate, result, report);
   });
@@ -320,5 +361,137 @@ describe("repository governance scanner", () => {
     ]);
     assertSafeShape(report);
     assertCandidateSuppressed(candidate, result, report);
+  });
+
+  it("rejects malformed history OID records without normalizing high-bit bytes", async () => {
+    const scanner = await import(/* @vite-ignore */ SCANNER);
+    const format = { length: 40, pattern: /^[0-9a-f]{40}$/u };
+    const valid = Buffer.from(`${"a".repeat(40)}\n`, "ascii");
+    expect(scanner.parseHistoryObjectIds(valid, format)).toEqual([
+      "a".repeat(40),
+    ]);
+    expect(scanner.parseHistoryObjectIds(Buffer.alloc(0), format)).toEqual([]);
+    const highBit = Buffer.from(valid);
+    highBit[0] |= 0x80;
+    for (const invalid of [
+      highBit,
+      valid.subarray(0, -1),
+      Buffer.concat([valid, valid]),
+      Buffer.from("\n"),
+    ]) {
+      expect(() => scanner.parseHistoryObjectIds(invalid, format)).toThrow(
+        "history-enumeration-invalid",
+      );
+    }
+  });
+
+  it("fails closed on a reachable tree with an unsupported entry mode", () => {
+    const malformedTree = gitText(
+      repository,
+      ["hash-object", "-w", "-t", "tree", "--literally", "--stdin"],
+      Buffer.concat([
+        Buffer.from("100600 invalid-mode.txt\0", "ascii"),
+        Buffer.from(deletedOid, "hex"),
+      ]),
+    );
+    const ref = "refs/tags/malformed-audit-fixture";
+    gitText(repository, ["update-ref", ref, malformedTree]);
+    try {
+      const result = runScanner(repository, ["history"]);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toHaveLength(0);
+      const report = JSON.parse(result.stderr) as ScanReport;
+      expect(report.failures).toEqual([
+        expect.objectContaining({
+          category: "history-path-enumeration-invalid",
+        }),
+      ]);
+      assertSafeShape(report);
+      assertCandidateSuppressed(candidate, result, report);
+    } finally {
+      gitText(repository, ["update-ref", "-d", ref]);
+    }
+  });
+
+  it("preserves complete SHA-256 history and binary tree object identities", () => {
+    const root = fs.mkdtempSync(
+      path.join(os.tmpdir(), "fyagent-audit-sha256-"),
+    );
+    try {
+      gitText(root, ["init", "--quiet", "--object-format=sha256"]);
+      const blob = gitText(
+        root,
+        ["hash-object", "-w", "--stdin"],
+        `sha256:${candidate}`,
+      );
+      const childTree = gitText(
+        root,
+        ["mktree"],
+        `100644 blob ${blob}\tchild.txt\n`,
+      );
+      const tree = gitText(
+        root,
+        ["mktree"],
+        `040000 tree ${childTree}\tnested\n`,
+      );
+      gitText(root, ["update-ref", "refs/tags/sha256-tree", tree]);
+      const pathless = gitText(
+        root,
+        ["hash-object", "-w", "--stdin"],
+        `pathless-sha256:${candidate}`,
+      );
+      gitText(root, ["update-ref", "refs/tags/sha256-pathless", pathless]);
+      const result = runScanner(root, ["history"]);
+      const report = successReport(result);
+      expect(report.sizes.map(({ oid }) => oid).sort()).toEqual(
+        [blob, pathless].sort(),
+      );
+      expect(report.sizes.find(({ oid }) => oid === blob)).toEqual(
+        expect.objectContaining({ path: "nested/child.txt", count: 1 }),
+      );
+      expect(report.sizes.find(({ oid }) => oid === pathless)).toEqual(
+        expect.objectContaining({ path: null, count: 0 }),
+      );
+      expect(
+        report.sizes.every(({ oid }) => /^[0-9a-f]{64}$/u.test(oid ?? "")),
+      ).toBe(true);
+      assertCandidateSuppressed(candidate, result, report);
+    } finally {
+      if (
+        path.dirname(root) === path.resolve(os.tmpdir()) &&
+        path.basename(root).startsWith("fyagent-audit-sha256-")
+      ) {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+});
+
+describe("repository governance private-key allowlist without Git writes", () => {
+  it("requires the exact fixture path and pinned digest", async () => {
+    const scanner = await import(/* @vite-ignore */ SCANNER);
+    const fixturePath =
+      "src-tauri/src/services/skill/update/fixtures/server-key.pem";
+    const bytes = fs.readFileSync(path.join(ROOT, fixturePath));
+    const rawPath = Buffer.from(fixturePath);
+    expect(scanner.classifications(bytes, rawPath)).toEqual([]);
+    const finding = [{ category: "private-key", count: 1 }];
+    expect(
+      scanner.classifications(
+        Buffer.concat([bytes, Buffer.from("\n")]),
+        rawPath,
+      ),
+    ).toEqual(finding);
+    for (const otherPath of [
+      "server-key.pem",
+      `other/${fixturePath}`,
+      fixturePath.replace("server-key", "other-key"),
+    ]) {
+      expect(scanner.classifications(bytes, Buffer.from(otherPath))).toEqual(
+        finding,
+      );
+    }
+    expect(scanner.classifications(bytes, rawPath, false)).toEqual(finding);
+    expect(scanner.classifications(bytes)).toEqual(finding);
   });
 });

@@ -100,6 +100,9 @@ export const getApiKeyFromConfig = (
 ): string => {
   try {
     const config = JSON.parse(jsonString);
+    const bedrockToken = config?.env?.AWS_BEARER_TOKEN_BEDROCK;
+    if (typeof bedrockToken === "string" && bedrockToken) return bedrockToken;
+
     if (
       typeof config?.apiKey === "string" &&
       config.apiKey &&
@@ -179,6 +182,10 @@ export const hasApiKeyField = (
     const config = JSON.parse(jsonString);
     if (Object.prototype.hasOwnProperty.call(config, "apiKey")) return true;
     const env = config?.env ?? {};
+    if (Object.prototype.hasOwnProperty.call(env, "AWS_BEARER_TOKEN_BEDROCK")) {
+      return true;
+    }
+
     if (appType === "gemini") {
       return Object.prototype.hasOwnProperty.call(env, "GEMINI_API_KEY");
     }
@@ -206,6 +213,17 @@ export const setApiKeyInConfig = (
   const { createIfMissing = false, appType, apiKeyField } = options;
   try {
     const config = JSON.parse(jsonString);
+    if (
+      isPlainObject(config?.env) &&
+      Object.prototype.hasOwnProperty.call(
+        config.env,
+        "AWS_BEARER_TOKEN_BEDROCK",
+      )
+    ) {
+      config.env.AWS_BEARER_TOKEN_BEDROCK = apiKey;
+      return JSON.stringify(config, null, 2);
+    }
+
     if (Object.prototype.hasOwnProperty.call(config, "apiKey")) {
       config.apiKey = apiKey;
       return JSON.stringify(config, null, 2);

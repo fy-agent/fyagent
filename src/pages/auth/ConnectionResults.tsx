@@ -1,9 +1,6 @@
-import type { ConfigRecoveryTarget } from "../../shared/features/config-recovery";
-import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
 import type {
   ManagedAuthConnectionAction,
   ManagedAuthConnectionSummary,
-  ManagedAuthConsumer,
 } from "../../shared/features/managed-auth";
 import { Button } from "../../shared/ui/Button";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
@@ -20,13 +17,6 @@ export interface ConnectionResult {
   state: "pending" | "completed" | "partial" | "failed";
   message: string;
 }
-
-const recoveryTargets: Partial<
-  Record<ManagedAuthConsumer, readonly ConfigRecoveryTarget[]>
-> = {
-  codex: ["codex_auth", "codex_config"],
-  opencode: ["opencode_auth"],
-};
 
 export function ConnectionResults({
   results,
@@ -53,7 +43,6 @@ export function ConnectionResults({
       <p>每个软件分别保存并检查。一个软件失败不会撤回其他软件已完成的连接。</p>
       {Object.entries(results).map(([id, result]) => {
         const current = connections.find((item) => item.connectionId === id);
-        const targets = recoveryTargets[result.connection.consumer];
         const label = `${managedAuthConsumerLabel(result.connection.consumer)}${result.connection.provider ? ` · ${managedAuthProviderLabel(result.connection.provider)}` : ""}`;
         const failed = result.state === "partial" || result.state === "failed";
         return (
@@ -83,15 +72,6 @@ export function ConnectionResults({
                 >
                   重新读取连接
                 </Button>
-              ) : null}
-              {targets && result.state !== "pending" ? (
-                <FileRecoveryButton
-                  targets={targets}
-                  disabled={disabled}
-                  onRestored={async () => {
-                    await onRefresh();
-                  }}
-                />
               ) : null}
             </div>
           </article>

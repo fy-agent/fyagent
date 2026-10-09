@@ -1,14 +1,8 @@
 import type { Page } from "@playwright/test";
-import {
-  AGENT_CATALOG_IDS,
-  type AgentCatalogId,
-} from "../../../src/shared/features/directory";
-import type { AgentHealthSnapshot } from "../../../src/shared/features/health";
 import type {
   ProviderAppId,
   ProviderLiveSummary,
 } from "../../../src/shared/features/models";
-import { healthSnapshotFixture } from "../../renderer/fixtures/health";
 
 export interface FeatureFixtureCall {
   command: string;
@@ -16,9 +10,8 @@ export interface FeatureFixtureCall {
 }
 
 export interface RichFeatureFixtureOptions {
+  authSummaryScenario?: "mixed";
   firstUseGuideState?: "pending" | "dismissed";
-  healthFailure?: AgentCatalogId;
-  healthStale?: boolean;
   catalogFailure?: boolean;
   observationFailure?: "workbuddy" | "codex" | "claude";
   openExternalFailure?: boolean;
@@ -37,19 +30,12 @@ export interface RichFeatureFixtureOptions {
   workBuddyWriteDelayMs?: number;
 }
 
-type PreparedFixtureOptions = RichFeatureFixtureOptions & {
-  healthSnapshots: AgentHealthSnapshot[];
-};
-
 declare global {
   interface Window {
     __FYAGENT_FEATURE_FIXTURE__: {
       calls: FeatureFixtureCall[];
       releaseProviderWrite: () => void;
       releaseAgentAuth: () => void;
-      failHealth: (agentId: AgentCatalogId | null) => void;
-      holdHealth: () => void;
-      releaseHealth: () => void;
     };
     __TAURI_INTERNALS__: {
       metadata: {
@@ -72,35 +58,13 @@ export async function installRichTauriFeatureFixture(
   page: Page,
   options: RichFeatureFixtureOptions = {},
 ): Promise<void> {
-  const healthSnapshots = AGENT_CATALOG_IDS.map((id) =>
-    healthSnapshotFixture(
-      id,
-      id === "claude-code"
-        ? {
-            auth: {
-              state: "attention",
-              severity: "warning",
-              reasonCode: "auth_logged_out",
-              action: "authentication",
-            },
-          }
-        : {},
-    ),
-  );
-  const preparedOptions: PreparedFixtureOptions = {
-    ...options,
-    healthSnapshots,
-  };
-  await page.addInitScript((fixtureOptions: PreparedFixtureOptions) => {
+  await page.addInitScript((fixtureOptions: RichFeatureFixtureOptions) => {
     // Browser-only persistence models the native device setting across reloads.
     const guideStorageKey = "fyagent-test-first-use-guide";
     let firstUseGuideState =
       localStorage.getItem(guideStorageKey) ??
       fixtureOptions.firstUseGuideState ??
       "dismissed";
-    let healthFailure = fixtureOptions.healthFailure;
-    let healthGate: Promise<void> | null = null;
-    let releaseHealth = () => {};
     let releaseProviderWrite: () => void = () => undefined;
     let agentAuthHeld = fixtureOptions.holdAgentAuth === true;
     const providerWriteGate = new Promise<void>((resolve) => {
@@ -461,6 +425,8 @@ export async function installRichTauriFeatureFixture(
         name: `Existing ${app} quick setup`,
       };
     }
+    let claudePreview: { id: string; request: Record<string, unknown> } | null =
+      null;
     let workBuddyRevision = "fixture-revision-1";
     let openCodeSubscription: {
       editable: boolean;
@@ -1025,6 +991,33 @@ export async function installRichTauriFeatureFixture(
       activeSessions: [] as Array<Record<string, unknown>>,
       reasonCodes: [],
     };
+    if (fixtureOptions.authSummaryScenario === "mixed") {
+      const original = managedAuthOverview.connections[0];
+      managedAuthOverview.connections = [
+        ...managedAuthOverview.connections,
+        {
+          ...original,
+          connectionId: `mc1:${"7".repeat(32)}`,
+          revision: managedRevision("7"),
+          targetId: "target:codex:saved",
+          targetLabel: "已保存位置",
+          authStatus: "disconnected",
+        },
+        {
+          ...original,
+          connectionId: `mc1:${"8".repeat(32)}`,
+          revision: managedRevision("8"),
+          targetId: "target:codex:checking",
+          targetLabel: "检查中位置",
+          authStatus: "checking",
+        },
+      ];
+      managedAuthOverview.connections[1].pendingRestart = true;
+      managedAuthOverview.connections[1].authStatus = "pending_restart";
+      managedAuthOverview.connections[2].authStatus = "requires_reauth";
+      managedAuthOverview.connections[3].authStatus = "unavailable";
+      managedAuthOverview.connections[3].requestMode = "unknown";
+    }
     const managedAuthSessions = new Map<
       string,
       { snapshot: Record<string, unknown>; polls: number }
@@ -1040,18 +1033,6 @@ export async function installRichTauriFeatureFixture(
 
     window.__FYAGENT_FEATURE_FIXTURE__ = {
       calls,
-      failHealth: (agentId) => {
-        healthFailure = agentId ?? undefined;
-      },
-      holdHealth: () => {
-        healthGate = new Promise<void>((resolve) => {
-          releaseHealth = resolve;
-        });
-      },
-      releaseHealth: () => {
-        releaseHealth();
-        healthGate = null;
-      },
       releaseProviderWrite,
       releaseAgentAuth: () => {
         agentAuthHeld = false;
@@ -1075,24 +1056,6 @@ export async function installRichTauriFeatureFixture(
           payload: structuredClone(payload),
         });
         switch (command) {
-          case "get_agent_health": {
-            await healthGate;
-            if (payload.agentId === healthFailure)
-              throw new Error("fixture health read failed");
-            const fixture = fixtureOptions.healthSnapshots.find(
-              (snapshot) => snapshot.agentId === payload.agentId,
-            );
-            if (!fixture) throw new Error("Unsupported health Agent");
-            const snapshot = structuredClone(fixture);
-            const checkedAt = new Date(
-              Date.now() - (fixtureOptions.healthStale ? 6 * 60_000 : 0),
-            ).toISOString();
-            snapshot.checkedAt = checkedAt;
-            snapshot.checks.forEach((check) => {
-              check.checkedAt = checkedAt;
-            });
-            return snapshot;
-          }
           case "managed_auth_get_overview":
             return structuredClone(managedAuthOverview);
           case "managed_auth_start_login": {
@@ -1720,6 +1683,58 @@ export async function installRichTauriFeatureFixture(
               code: "accepted",
               jobId: String(payload.jobId),
             };
+          case "preview_claude_quick_setup": {
+            claudePreview = {
+              id: crypto.randomUUID(),
+              request: structuredClone(
+                payload.request as Record<string, unknown>,
+              ),
+            };
+            return {
+              contractVersion: 1,
+              previewId: claudePreview.id,
+              writeTargets: [
+                {
+                  path: "~/.claude/settings.json",
+                  backupPath: "~/.claude/settings.json.fyagent.backup",
+                  exists: true,
+                },
+                {
+                  path: "~/.claude.json",
+                  backupPath: "~/.claude.json.fyagent.backup",
+                  exists: true,
+                },
+              ],
+              preservedPaths: [],
+            };
+          }
+          case "apply_claude_quick_setup_preview": {
+            const request = payload.request as Record<string, unknown>;
+            if (
+              !claudePreview ||
+              request.previewId !== claudePreview.id ||
+              Object.keys(request).length !== 1
+            ) {
+              throw new Error("fixture Claude preview identity rejected");
+            }
+            const draft = claudePreview.request;
+            claudePreview = null;
+            const providerId = "fyagent-v2-quick-setup-claude";
+            providers.claude[providerId] = {
+              id: providerId,
+              name: String(draft.name),
+            };
+            currentProviderIds.claude = providerId;
+            return {
+              contractVersion: 1,
+              overall: "applied",
+              providerState: "applied",
+              files: [
+                { target: "claude_settings", state: "applied" },
+                { target: "claude_mcp", state: "applied" },
+              ],
+            };
+          }
           case "apply_provider_quick_setup_with_result": {
             await delay(fixtureOptions.providerWriteDelayMs);
             if (fixtureOptions.providerMutation === "save_failure") {
@@ -1756,7 +1771,13 @@ export async function installRichTauriFeatureFixture(
             }
             return undefined;
           case "get_installed_skills":
-            return structuredClone(skills);
+            return structuredClone(
+              skills.map((skill) => ({
+                ...skill,
+                readOnly: false,
+                readOnlyTargets: [],
+              })),
+            );
           case "get_mcp_servers":
             return structuredClone(mcpServers);
           case "toggle_skill_app": {
@@ -1948,6 +1969,51 @@ export async function installRichTauriFeatureFixture(
             firstUseGuideState = "dismissed";
             localStorage.setItem(guideStorageKey, firstUseGuideState);
             return firstUseGuideState;
+          // Read-only synthetic sessions exercise the real route/DTO path.
+          // No restore or filesystem mutation is admitted by this fixture.
+          case "list_sessions":
+            return [
+              {
+                providerId: "codex",
+                sessionId: "browser-session-alpha",
+                title: "浏览器会话 Alpha",
+                summary: "受控导航与草稿保活样本",
+                projectDir: "/browser-fixture/workspace",
+                sourcePath: "/browser-fixture/session-alpha.jsonl",
+                createdAt: 1791324000000,
+                lastActiveAt: 1791324000000,
+              },
+              {
+                providerId: "claude",
+                sessionId: "browser-session-beta",
+                title: "浏览器会话 Beta",
+                sourcePath: "/browser-fixture/session-beta.jsonl",
+              },
+            ];
+          case "list_restore_attempts":
+            return [];
+          case "probe_local_provider": {
+            const providerId = String(payload.providerId);
+            if (
+              ![
+                "codex",
+                "opencode",
+                "hermes",
+                "gemini",
+                "claude",
+                "grokbuild",
+                "openclaw",
+              ].includes(providerId)
+            )
+              throw new Error("Unsupported fixture session provider");
+            return {
+              providerId,
+              installed: false,
+              extractionSupported: false,
+              writeSupported: false,
+              reasonCode: "browser_fixture_no_native_runtime",
+            };
+          }
           case "get_settings":
             return {
               skillSyncMethod: "auto",
@@ -1967,7 +2033,7 @@ export async function installRichTauriFeatureFixture(
         }
       },
     };
-  }, preparedOptions);
+  }, options);
 }
 
 export async function featureFixtureCalls(

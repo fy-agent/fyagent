@@ -39,7 +39,7 @@ native/compatibility targets.
 The current unified Tauri commands are:
 
 ```text
-get_installed_skills() -> Vec<InstalledSkill>
+get_installed_skills() -> Vec<ObservedInstalledSkill>
 get_skill_backups() -> Vec<SkillBackupEntry>
 delete_skill_backup(backup_id) -> bool
 
@@ -48,7 +48,7 @@ uninstall_skill_unified(id) -> SkillUninstallResult
 restore_skill_backup(backup_id, current_app) -> InstalledSkill
 toggle_skill_app(id, app, enabled) -> bool
 
-scan_unmanaged_skills() -> Vec<UnmanagedSkill>
+scan_unmanaged_skills() -> Vec<ObservedUnmanagedSkill>
 import_skills_from_apps(imports) -> Vec<InstalledSkill>
 
 discover_available_skills() -> Vec<DiscoverableSkill>
@@ -81,6 +81,9 @@ InstalledSkill {
   path? // observed display path; not persisted
 }
 
+// Command-only flattened observations; not durable/mutation DTO fields.
+ObservedInstalledSkill { ...InstalledSkill, readOnly: bool, readOnlyTargets: string[] }
+ObservedUnmanagedSkill { ...UnmanagedSkill, readOnly: bool }
 SkillUninstallResult { backupPath? }
 MigrationResult { migratedCount, skippedCount, errors[] }
 ```
@@ -92,8 +95,10 @@ filesystem/database result into success.
 
 ### SSOT, observation, and persistence
 
-- The managed Skill source of truth is under `~/.fyagent/skills/`. Repository
-  code resolves the real home/SSOT path; the Renderer never constructs it.
+- The managed Skill source of truth follows the storage setting: FyAgent uses
+  `~/.fyagent/skills/`, Unified uses `~/.agents/skills/`. `get_ssot_dir` resolves
+  the path without creating it; observation must not create a missing SSOT.
+  The Renderer never constructs the authoritative path.
 - `directory` is a validated single directory name, not a relative or absolute
   path. Traversal, path separators, and values that escape the managed root are
   rejected before copy, removal, backup, or restore.
@@ -103,8 +108,26 @@ filesystem/database result into success.
 - `get_installed_skills` merges durable records with observed target
   directories. Observation may surface an unmanaged/adoptable Skill, but the
   read path does not silently write a new database row.
+- Command wrappers always emit `readOnly` for installed/unmanaged observations
+  and `readOnlyTargets` for installed observations. The latter is a unique list
+  of the nine native target IDs above, including Gemini/Hermes, covering only
+  existing projections with linked lexical parents or a linked leaf. Missing
+  projections under unrelated linked roots do not mark this resource read-only.
+  Source and target observations are independent and are never persisted.
+- Parent-linked directories may be read and copied to ordinary managed/target
+  directories. Linked leaves are also conservatively read-only. Windows reparse
+  points/junctions follow the existing vendor metadata policy. No unlink/delete
+  exception exists for a formerly owned projection. Recursive copy/removal uses
+  the existing bounded no-follow vendor scanner; internal links are refused.
 - The same directory observed in several targets is one logical Skill with
   merged assignment flags, not several independent installations.
+- Skills state uses the shared read/write lock in `services/skill.rs`. Lock
+  order is global sync operation lock, Skills state lock, then database mutex.
+  Install duplicate checks, assignment, restore, import and both migrations
+  hold the write lock; bulk target sync holds the read lock. Storage migration
+  calls the already-locked bulk sync implementation to avoid lock re-entry.
+  Async install/update releases the guard during download and resolves the
+  current SSOT root again after acquiring the guard.
 
 ### Discovery and installation
 
@@ -117,6 +140,13 @@ filesystem/database result into success.
 - Remote and local ZIP extraction is bounded by entry/size budgets, rejects
   traversal, and owns temporary directories until the extracted tree is no
   longer needed. A failed extraction must not leave a partial managed Skill.
+- Both archive paths allow up to 30,000 entries and charge every materialized
+  file/directory at least 4 KiB against the 512 MiB extraction budget. Vendor
+  tree validation shares the entry cap and includes its root directory.
+- Source resolution prefers an explicit path, then the directory name, then a
+  unique metadata name. Update lookup prefers the persisted source URL path;
+  a relocated source refreshes that URL without changing installation identity
+  or assignment flags. Missing SSOT files invalidate a cached update hash.
 - Symlink entries are never followed outside the extracted tree. Local ZIP
   installation accepts the path selected by the trusted desktop picker; the
   product must not expose an arbitrary web/path text box as equivalent trust.
@@ -127,8 +157,9 @@ filesystem/database result into success.
 
 ### Target assignment and non-atomic boundaries
 
-- `SkillService::toggle_target` first adopts a safely observed Skill when
-  needed, changes the in-memory flag, performs the target copy/link or removal,
+- `SkillService::toggle_target` preflights the requested real target and any
+  required adoption destination before adoption/DB writes, then adopts a safely
+  observed Skill when needed, changes the in-memory flag, performs the target copy/link or removal,
   and only then updates the SQLite flags.
 - Therefore a live-target failure leaves the database flag unchanged. A rarer
   database failure after a successful live-target effect can leave filesystem
@@ -142,11 +173,29 @@ filesystem/database result into success.
   row is logged and skipped rather than preventing every other Skill from
   reconciling. The aggregate operation still must not report a skipped row as
   successfully synchronized.
+- Before projection, removal or bulk cleanup, resolve the `SkillTargetId`
+  root and reject equality or canonical path aliases with SSOT. Bulk sync
+  rejects a root conflict before any per-row best-effort handling, even for
+  an empty database. Storage migration validates its destination against all
+  nine target roots before moving any Skill or changing the storage setting.
 - A successful FyAgent projection proves only that FyAgent wrote/read its
   managed/native target state. It does not prove that the vendor application
   reloaded or executed the Skill.
 
 ### Uninstall, backup, restore, and migration
+
+- Write/delete paths check lexical ancestors before canonicalization can hide a
+  parent link. `SKILL_LINK_READ_ONLY` with `useOrdinaryDirectory` rejects linked
+  sources, destinations, backups/update-state paths and existing projections
+  before the corresponding destructive/adoption/DB lifecycle. Update also
+  checks enabled missing projections before backup; removal of an absent
+  projection is a no-op. Ordinary source/target operation ordering is retained.
+- Migration preflights old/new roots, actual move sources/destinations and all
+  enabled or existing projections before destination creation, rename or settings
+  writes. A link refusal (including internal links in a source to be moved and
+  an existing owned linked projection) performs zero writes. Other ordinary I/O
+  failures retain the existing per-item counts/errors; this is not a general
+  all-or-nothing transaction.
 
 - For a normal stored row whose `directory` passes the native identity check,
   uninstall removes owned target projections, creates a recoverable backup
@@ -171,6 +220,9 @@ filesystem/database result into success.
 
 | Condition                                                                        | Required result                                                                                                                          |
 | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Linked source/parent/leaf is a write or delete target                            | Reject with `SKILL_LINK_READ_ONLY`; preserve link and referent, no prior lifecycle side effects for this refusal.                        |
+| Linked source is read for import into ordinary managed storage                   | Permit bounded read/copy; never modify or remove the original directory/link.                                                            |
+| Migration preflight detects a link                                               | Reject before root creation, any rename or storage-setting write; retain ordinary per-item I/O failure semantics.                        |
 | Unknown target ID                                                                | Reject before any filesystem/database mutation.                                                                                          |
 | A new request or backup metadata contains a directory that escapes an owned root | Reject as invalid input; do not inspect/remove the escaped path.                                                                         |
 | An existing installed row has an invalid `directory` during uninstall            | Treat it as database-only recovery: touch no filesystem target/source, create no backup, delete only the row, and return no backup path. |
@@ -212,6 +264,11 @@ assertion owners include:
   merging, every renderer target toggle, direct-copy targets, uninstall/restore path
   confinement, invalid-stored-directory database-only uninstall, discovery
   filtering, and migration result semantics;
+- Skill regressions also cover the 13,248-entry local ZIP to WorkBuddy copy
+  path, exact/overflow vendor entry counts, missing-SSOT update hashes (four
+  cases), relocated/renamed source URLs in both storage modes, duplicate
+  install reuse/conflict, actual public-operation blocking during cloud
+  restore, bulk root equality, and canonical symlink aliases on macOS;
 - `src-tauri/src/services/skill/assignment.rs`: live effect before SQLite flag
   update and best-effort per-row target reconciliation;
 - `src-tauri/src/database/dao/skills.rs`: all nine flags round-trip and metadata
@@ -219,10 +276,14 @@ assertion owners include:
 - `tests/renderer/features/authoritativeAssignment.test.tsx`: serialized toggle,
   explicit-false/error rejection, reread authority, and pending cleanup for the
   Agent-bound shared helper;
-- Skill page/Port tests: current native `true`/throw mapping, page-wide query
-  invalidation, exact seven-target mapping, pagination, backup/restore, and no
-  direct Tauri call. A future meaningful `false` result needs a dedicated page
-  regression because the current management page does not inspect it.
+- `src-tauri/src/services/skill/linked_paths_tests.rs`: parent/leaf/reparse
+  observation, linked source copy, absent-target no-op, ordinary targets remain
+  writable, linked uninstall/update/adoption protection and migration zero-write
+  refusal, including already-owned linked projections.
+- Skill page/Port tests: explicit `false` and mismatched reread rejection,
+  required observation metadata, page-wide query invalidation, exact seven UI
+  versus nine native target mapping, pagination, backup/restore, and no direct
+  Tauri call. Required regression owners are also listed in the Renderer contract.
 
 Portable tests cannot prove a real vendor application reloaded a projected
 Skill; that claim requires separate native/HIL evidence.

@@ -14,8 +14,6 @@ import {
   type ManagedAuthProvider,
 } from "../../shared/features/managed-auth";
 import { useFeatures } from "../../shared/features/provider";
-import { CONFIG_RECOVERY_TARGETS } from "../../shared/features/config-recovery";
-import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
 import { useFrontendReady } from "../../shared/platform/useFrontendReady";
 import {
   featureKeys,
@@ -40,6 +38,7 @@ import {
   sessionSummary,
 } from "./presentation";
 import { useManagedAuthLoginSession } from "./useManagedAuthLoginSession";
+import { summarizeAuthOverview } from "./summary";
 import "./page.css";
 
 type AuthView = "accounts" | "connections";
@@ -428,13 +427,7 @@ export function AuthPage() {
     null;
   const selectedConsumer =
     requestedConsumer ?? MANAGED_AUTH_CONSUMERS[0] ?? null;
-  const needsAttention =
-    overview.accounts.some((account) => account.health !== "ready") ||
-    overview.connections.some(
-      (connection) =>
-        connection.authStatus !== "connected" &&
-        connection.authStatus !== "disconnected",
-    );
+  const summary = summarizeAuthOverview(overview);
   const mobileDetailSelected =
     view === "accounts"
       ? requestedAccountId !== null && selectedAccountId !== null
@@ -453,33 +446,6 @@ export function AuthPage() {
           <h1>账号与认证</h1>
         </div>
         <div className="fy-feature-actions">
-          <FileRecoveryButton
-            targets={CONFIG_RECOVERY_TARGETS}
-            disabled={
-              mutationBusy ||
-              loginController.busy ||
-              sourceBusy ||
-              connectionAction !== null ||
-              removalAccount !== null
-            }
-            onRestored={async () => {
-              await refetchOverview();
-              await Promise.all([
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.providerSummary("codex"),
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.providerSummary("claude"),
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.providerSummary("grokbuild"),
-                }),
-                queryClient.invalidateQueries({
-                  queryKey: featureKeys.openCodeModelSnapshot,
-                }),
-              ]);
-            }}
-          />
           <Button
             className="fy-control-button-primary"
             disabled={mutationBusy || loginController.busy || sourceBusy}
@@ -501,7 +467,7 @@ export function AuthPage() {
             label:
               option.id === "accounts"
                 ? `账号 ${overview.accounts.length}`
-                : `软件连接 ${overview.connections.length}`,
+                : `软件连接 ${summary.connections.connected}/${summary.connections.total}`,
           }))}
           onChange={(next) =>
             updateRoute({
@@ -512,8 +478,11 @@ export function AuthPage() {
             })
           }
         />
-        <span data-attention={needsAttention ? "true" : undefined}>
-          {needsAttention ? "有状态需要处理" : "账号状态正常"}
+        <span
+          data-testid="managed-auth-overview-summary"
+          data-attention={summary.needsAttention ? "true" : undefined}
+        >
+          {summary.label}
         </span>
       </div>
 

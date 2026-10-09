@@ -1,0 +1,20 @@
+[
+  "scripts/tasks/supported-platform-structure-assets.json",
+  "src-tauri/src/commands/import_export.rs",
+  "src-tauri/src/commands/s3_sync.rs",
+  "src-tauri/src/commands/webdav_sync.rs",
+  "src-tauri/src/database/backup.rs",
+  "src-tauri/src/services/auto_sync.rs",
+  "src-tauri/src/services/mcp.rs",
+  "src-tauri/src/services/mod.rs",
+  "src-tauri/src/services/prompt.rs",
+  "src-tauri/src/services/provider/mod.rs",
+  "src-tauri/src/services/s3_auto_sync.rs",
+  "src-tauri/src/services/s3_sync.rs",
+  "src-tauri/src/services/skill.rs",
+  "src-tauri/src/services/skill/assignment.rs",
+  "src-tauri/src/services/sync_protocol.rs",
+  "src-tauri/src/services/webdav_auto_sync.rs",
+  "src-tauri/src/services/webdav_sync.rs",
+  "src-tauri/src/services/webdav_sync/archive.rs"
+]

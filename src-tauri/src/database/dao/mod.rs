@@ -5,7 +5,6 @@
 pub(crate) mod change_plan;
 mod config_pack;
 pub mod failover;
-pub(crate) mod health;
 pub(crate) mod managed_auth;
 pub mod mcp;
 pub mod profiles;

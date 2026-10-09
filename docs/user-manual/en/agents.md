@@ -1,15 +1,15 @@
 # AI software configuration
 
-Open 「AI软件配置」 and click 「开始扫描」 (Start scan) or 「重新扫描」 (Scan again). Use 「进行配置」 to open a software's details, or 「查看状态」 to inspect its health.
+Open 「AI软件配置」 and use 「开始扫描」 or 「重新扫描」. Choose 「进行配置」 for details and installation/authentication status. Account, connection and request-source summaries are in 「账号与认证」; specific model requests are tested in 「模型管理」.
 
 ## Install, update and launch
 
-1. Use the installation or update action offered for that software in the directory or 「安装与更新」 section.
+1. Use 「安装前检查」 or 「更新前检查」 to inspect prerequisites. Choose the method and one installation location, then explicitly start from the final confirmation: 「下载并打开安装窗口」, 「开始命令行安装」／「开始命令行更新」 or 「开始安装」／「开始更新」 as appropriate. Checking or choosing a location does not start installation.
 2. If prompted, choose the installation or update destination and review the confirmation. Select the intended copy when multiple installations are found.
 3. Wait for completion and check the reported installation status and version. If a Windows vendor wizard opens, finish it before refreshing.
 4. Use 「打开软件」 (Open software) to launch an installed application.
 
-Grok Build's install button uses the official npm package. 「使用官方命令行安装」 selects the official CLI installation; follow the confirmation when changing installation methods. Login and online service availability depend on your network.
+Grok Build's install button uses the official npm package. Login and online service availability depend on your network.
 
 ## Configure software
 

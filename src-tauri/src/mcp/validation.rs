@@ -83,6 +83,12 @@ pub(crate) fn server_specs_are_equivalent(left: &Value, right: &Value) -> bool {
     fn comparable(spec: &Value) -> Option<Value> {
         let mut object = spec.as_object()?.clone();
 
+        // Enablement controls an assignment, not the execution specification.
+        // Non-boolean values remain strict unknown data rather than a waiver.
+        if object.get("enabled").is_some_and(Value::is_boolean) {
+            object.remove("enabled");
+        }
+
         object
             .entry("type".to_string())
             .or_insert_with(|| Value::String("stdio".to_string()));
@@ -142,5 +148,23 @@ mod tests {
         assert!(source_server_is_enabled(&json!({ "enabled": true })));
         assert!(source_server_is_enabled(&json!({})));
         assert!(source_server_is_enabled(&json!({ "enabled": "false" })));
+    }
+
+    #[test]
+    fn execution_equivalence_ignores_only_boolean_enablement() {
+        let base = json!({"command":"echo", "env":{"TOKEN":"same"}, "custom":1});
+        for enabled in [true, false] {
+            let mut source = base.clone();
+            source["enabled"] = json!(enabled);
+            assert!(server_specs_are_equivalent(&base, &source));
+        }
+        for changed in [
+            json!({"command":"other", "env":{"TOKEN":"same"}, "custom":1, "enabled":false}),
+            json!({"command":"echo", "env":{"TOKEN":"different"}, "custom":1, "enabled":false}),
+            json!({"command":"echo", "env":{"TOKEN":"same"}, "custom":2, "enabled":false}),
+            json!({"command":"echo", "env":{"TOKEN":"same"}, "custom":1, "enabled":"false"}),
+        ] {
+            assert!(!server_specs_are_equivalent(&base, &changed));
+        }
     }
 }

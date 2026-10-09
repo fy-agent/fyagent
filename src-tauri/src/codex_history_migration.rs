@@ -25,10 +25,11 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use toml_edit::DocumentMut;
 
-const MIGRATION_NAME: &str = "codex-history-provider-migration-v1";
-const OFFICIAL_UNIFY_MIGRATION_NAME: &str = "codex-official-history-unify-v1";
+pub(crate) const MIGRATION_NAME: &str = "codex-history-provider-migration-v1";
+pub(crate) const OFFICIAL_UNIFY_MIGRATION_NAME: &str = "codex-official-history-unify-v1";
 /// 还原操作自身的备份目录（与迁移备份分开，保持迁移账本目录纯净）。
-const OFFICIAL_UNIFY_RESTORE_BACKUP_NAME: &str = "codex-official-history-unify-restore-v1";
+pub(crate) const OFFICIAL_UNIFY_RESTORE_BACKUP_NAME: &str =
+    "codex-official-history-unify-restore-v1";
 /// SQLite 变量上限保守值，IN 列表按此分块。
 const STATE_DB_ID_CHUNK: usize = 500;
 
@@ -40,6 +41,11 @@ fn lock_codex_official_history_op() -> std::sync::MutexGuard<'static, ()> {
     CODEX_OFFICIAL_HISTORY_OP_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// 用户在「备份与恢复」里删除迁移备份目录时拿同一把锁，避免抽掉正在写的备份。
+pub(crate) fn lock_history_op_for_backup_cleanup() -> std::sync::MutexGuard<'static, ()> {
+    lock_codex_official_history_op()
 }
 /// Codex 内建默认 provider id：config.toml 没有 `model_provider` 键时会话归入此桶。
 /// 官方订阅（ChatGPT OAuth / OpenAI API key）的历史会话都记录这个 id。
@@ -220,10 +226,10 @@ pub fn maybe_migrate_codex_official_history_to_unified_bucket(
     }
     // live 必须已实际路由到共享 custom 桶才允许迁移：官方配置的注入可能被拒
     // （已有显式 model_provider / 形态冲突的 custom 表，见
-    // `inject_codex_unified_session_bucket`），代理接管期间的 live 也不带统一
-    // 路由（注入只进备份）。这些状态下新会话仍落 "openai" 桶，迁移只会把
-    // 历史搬进当前 live 看不见的桶里。开关与迁移意愿保持不动，待 live 真正
-    // 统一后（下次切换 / 接管释放后的启动重试）再迁。
+    // `inject_codex_unified_session_bucket`），live 也可能还没按开关重写。
+    // 这些状态下新会话仍落 "openai" 桶，迁移只会把历史搬进当前 live 看不见的
+    // 桶里。开关与迁移意愿保持不动，待 live 真正统一后（下次切换 / 启动重试）
+    // 再迁。
     if !codex_config_text_routes_custom(&read_codex_config_text().unwrap_or_default()) {
         return Ok(CodexHistoryProviderBucketMigrationOutcome {
             skipped_reason: Some("live_not_unified".to_string()),

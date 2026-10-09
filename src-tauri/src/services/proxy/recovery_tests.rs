@@ -301,7 +301,7 @@ async fn legacy_exit_guards_gemini_grok_and_codex_files_and_keeps_refreshed_nati
             AppType::Gemini => {
                 projected["env"]["GOOGLE_GEMINI_BASE_URL"] = json!("http://127.0.0.1:12345");
                 projected["env"]["GEMINI_API_KEY"] = json!(PROXY_TOKEN_PLACEHOLDER);
-                service.write_gemini_live(&projected).unwrap();
+                service.restore_gemini_projection(&projected).unwrap();
             }
             AppType::GrokBuild => {
                 ProxyService::apply_grok_takeover_fields(

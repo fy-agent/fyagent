@@ -29,7 +29,7 @@ fn symlink_dir(src: &std::path::Path, dest: &std::path::Path) {
 
 #[test]
 fn import_from_apps_respects_explicit_app_selection() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -74,7 +74,7 @@ fn import_from_apps_respects_explicit_app_selection() {
 
 #[test]
 fn import_from_apps_does_not_rewrite_selected_app_directory() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -174,21 +174,18 @@ fn import_from_apps_syncs_missing_selected_destinations() {
 }
 
 #[test]
-fn sync_to_app_removes_disabled_and_orphaned_ssot_symlinks() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+fn sync_to_app_refuses_disabled_ssot_symlink() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
     let ssot_dir = home.join(".fyagent").join("skills");
     let disabled_skill = ssot_dir.join("disabled-skill");
-    let orphan_skill = ssot_dir.join("orphan-skill");
     write_skill(&disabled_skill, "Disabled");
-    write_skill(&orphan_skill, "Orphan");
 
     let opencode_skills_dir = home.join(".config").join("opencode").join("skills");
     fs::create_dir_all(&opencode_skills_dir).expect("create opencode skills dir");
     symlink_dir(&disabled_skill, &opencode_skills_dir.join("disabled-skill"));
-    symlink_dir(&orphan_skill, &opencode_skills_dir.join("orphan-skill"));
 
     let state = create_test_state().expect("create test state");
     state
@@ -210,21 +207,69 @@ fn sync_to_app_removes_disabled_and_orphaned_ssot_symlinks() {
         })
         .expect("save disabled skill");
 
-    SkillService::sync_to_app(&state.db, &AppType::OpenCode).expect("reconcile skills");
-
+    let disabled_before = fs::read(disabled_skill.join("SKILL.md")).unwrap();
+    let disabled_link = fs::read_link(opencode_skills_dir.join("disabled-skill")).unwrap();
+    let error = SkillService::sync_to_app(&state.db, &AppType::OpenCode)
+        .expect_err("linked projections must remain read-only");
     assert!(
-        !opencode_skills_dir.join("disabled-skill").exists(),
-        "DB-known disabled skill should be removed from OpenCode live dir"
+        error.to_string().contains("SKILL_LINK_READ_ONLY"),
+        "{error}"
+    );
+    let projection = opencode_skills_dir.join("disabled-skill");
+    assert!(fs::symlink_metadata(&projection)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(fs::read_link(&projection).unwrap(), disabled_link);
+    assert_eq!(
+        fs::read(disabled_skill.join("SKILL.md")).unwrap(),
+        disabled_before
+    );
+    assert_eq!(
+        fs::read(projection.join("SKILL.md")).unwrap(),
+        disabled_before
     );
     assert!(
-        !opencode_skills_dir.join("orphan-skill").exists(),
-        "orphaned symlink into SSOT should be cleaned up"
+        !state.db.get_all_installed_skills().unwrap()["local:disabled-skill"]
+            .apps
+            .opencode
     );
 }
 
 #[test]
+fn sync_to_app_refuses_orphaned_ssot_symlink() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    let orphan_skill = home.join(".fyagent/skills/orphan-skill");
+    write_skill(&orphan_skill, "Orphan");
+    let opencode_skills_dir = home.join(".config/opencode/skills");
+    fs::create_dir_all(&opencode_skills_dir).expect("create opencode skills dir");
+    let projection = opencode_skills_dir.join("orphan-skill");
+    symlink_dir(&orphan_skill, &projection);
+    let state = create_test_state().expect("create test state");
+    assert!(state.db.get_all_installed_skills().unwrap().is_empty());
+    let before = fs::read(orphan_skill.join("SKILL.md")).unwrap();
+    let target = fs::read_link(&projection).unwrap();
+    let error = SkillService::sync_to_app(&state.db, &AppType::OpenCode)
+        .expect_err("orphaned linked projection must remain read-only");
+    assert!(
+        error.to_string().contains("SKILL_LINK_READ_ONLY"),
+        "{error}"
+    );
+    assert!(fs::symlink_metadata(&projection)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(fs::read_link(&projection).unwrap(), target);
+    assert_eq!(fs::read(orphan_skill.join("SKILL.md")).unwrap(), before);
+    assert_eq!(fs::read(projection.join("SKILL.md")).unwrap(), before);
+    assert!(state.db.get_all_installed_skills().unwrap().is_empty());
+}
+
+#[test]
 fn uninstall_skill_creates_backup_before_removing_ssot() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -293,7 +338,7 @@ fn uninstall_skill_creates_backup_before_removing_ssot() {
 
 #[test]
 fn restore_skill_backup_restores_files_to_ssot_and_current_app() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -373,7 +418,7 @@ fn restore_skill_backup_restores_files_to_ssot_and_current_app() {
 
 #[test]
 fn delete_skill_backup_removes_backup_directory() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 
@@ -439,7 +484,7 @@ fn delete_skill_backup_removes_backup_directory() {
 
 #[test]
 fn migration_snapshot_overrides_multi_source_directory_inference() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let home = ensure_test_home();
 

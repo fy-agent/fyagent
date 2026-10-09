@@ -19,12 +19,12 @@ test("keeps the selection frame on the current link after real navigation clicks
   const track = navigation.locator(".fy-side-navigation-track");
   const destinations = [
     ["/agents", "AI软件配置"],
-    ["/health", "运行状态"],
     ["/auth", "账号与认证"],
     ["/models", "模型管理"],
     ["/skills", "Skills 管理"],
     ["/mcp", "MCP 管理"],
     ["/prompts", "提示词管理"],
+    ["/sessions", "会话中心"],
     ["/memory", "记忆模块"],
     ["/agents", "AI软件配置"],
   ] as const;

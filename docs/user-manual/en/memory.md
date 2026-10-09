@@ -19,4 +19,10 @@ Daily records are OpenClaw workspace files at `memory/YYYY-MM-DD.md`.
 
 Switching files, memory types or pages with unsaved edits requires confirmation. Save first to retain your content. A refresh failure can leave previous content visible; retry reading before continuing to edit.
 
+## Manual backfill and recovery limits
+
+For an older Daily date, use 「打开记忆目录」 to find and manually edit the matching `YYYY-MM-DD.md`, then reread in FyAgent. There is no automatic history reconstruction or one-click backfill. Retain any history you need before editing.
+
+When FyAgent actually changes an existing file, the adjacent `<filename>.fyagent.backup` holds the most recent pre-write content. The next different write replaces this generation; saving identical content does not refresh it. A newly created file has no previous body to recover. Daily has no one-click restore button: copy the current file and backup, compare them, then manually backfill and reread. This is not a database or full-history backup.
+
 [Back to manual](README.md)

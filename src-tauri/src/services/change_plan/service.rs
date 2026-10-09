@@ -2408,7 +2408,8 @@ mod tests {
         );
         assert_eq!(
             parsed["model_providers"]["custom"]["custom_user_field"].as_str(),
-            Some("keep-me")
+            Some("keep-me"),
+            "Quick Setup owns route fields, not unrelated fields in the selected table"
         );
     }
 

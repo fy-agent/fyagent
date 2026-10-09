@@ -38,16 +38,15 @@ pub(crate) use dao::providers_seed::{
     is_official_seed_id, CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, CODEX_OFFICIAL_PROVIDER_ID,
     GROKBUILD_OFFICIAL_PROVIDER_ID,
 };
-pub(crate) use dao::proxy::{
-    validate_cost_multiplier, validate_pricing_source, PRICING_SOURCE_REQUEST,
-    PRICING_SOURCE_RESPONSE,
-};
+pub(crate) use dao::proxy::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 pub use dao::FailoverQueueItem;
 pub use dao::Profile;
 
 use crate::config::get_app_config_dir;
 use crate::error::AppError;
-use rusqlite::{hooks::Action, Connection};
+#[cfg(test)]
+use rusqlite::hooks::Action;
+use rusqlite::Connection;
 use serde::Serialize;
 use std::sync::Mutex;
 
@@ -55,7 +54,7 @@ use std::sync::Mutex;
 
 /// 当前 Schema 版本号
 /// 每次修改表结构时递增，并在 schema.rs 中添加相应的迁移逻辑
-pub(crate) const SCHEMA_VERSION: i32 = 26;
+pub(crate) const SCHEMA_VERSION: i32 = 27;
 
 /// 安全地序列化 JSON，避免 unwrap panic
 pub(crate) fn to_json_string<T: Serialize>(value: &T) -> Result<String, AppError> {
@@ -80,6 +79,7 @@ pub(crate) use lock_conn;
 /// 使用 Mutex 包装 Connection 以支持在多线程环境（如 Tauri State）中共享。
 /// rusqlite::Connection 本身不是 Sync 的，因此需要这层包装。
 pub struct Database {
+    pub(crate) log_count_cache: Mutex<Option<crate::services::usage_stats::LogCountCache>>,
     pub(crate) conn: Mutex<Connection>,
     // Injected dependency for the Provider persistence compatibility facade.
     // DAO methods never access the native backend themselves.
@@ -89,8 +89,9 @@ pub struct Database {
 }
 
 impl Database {
-    /// Install the composition root's nonblocking change listener.
+    /// Install a connection-local test listener after production cloud retirement.
     /// This is a dirty hint, not a commit notification; never reenter this DB in the callback.
+    #[cfg(test)]
     pub(crate) fn set_change_listener(
         &self,
         listener: impl Fn(&str) + Send + 'static,
@@ -113,6 +114,30 @@ impl Database {
     ///
     /// 数据库文件位于 `~/.fyagent/fyagent.db`
     pub fn init() -> Result<Self, AppError> {
+        Self::init_with_provider_secrets(Box::new(
+            crate::services::secret::NativeSecretBackend::new(),
+        ))
+    }
+
+    #[cfg(feature = "test-hooks")]
+    pub fn init_with_memory_secrets_for_test() -> Result<Self, AppError> {
+        Self::init_with_provider_secrets(Box::new(
+            crate::services::secret::MemorySecretBackend::new(),
+        ))
+    }
+
+    #[cfg(feature = "test-hooks")]
+    pub fn seed_legacy_provider_for_test(
+        &self,
+        app: &str,
+        provider: &crate::provider::Provider,
+    ) -> Result<(), AppError> {
+        self.save_provider_record(app, provider)
+    }
+
+    fn init_with_provider_secrets(
+        backend: Box<dyn crate::services::secret::SecretBackend>,
+    ) -> Result<Self, AppError> {
         let db_path = get_app_config_dir().join("fyagent.db");
         let db_exists = db_path.exists();
 
@@ -134,28 +159,32 @@ impl Database {
         }
         let db = Self {
             conn: Mutex::new(conn),
-            provider_secrets: crate::services::secret::SecretService::new(Box::new(
-                crate::services::secret::NativeSecretBackend::new(),
-            )),
+            provider_secrets: crate::services::secret::SecretService::new(backend),
             provider_secret_guard: Mutex::new(()),
+            log_count_cache: Mutex::new(None),
         };
-        db.create_tables()?;
-
-        // Pre-migration backup: only when upgrading from an existing database
+        // Recognize the existing version before any schema write. A failed
+        // safety snapshot authorizes no create_tables or migration work.
         {
             let conn = lock_conn!(db.conn);
             let version = Self::get_user_version(&conn)?;
             drop(conn);
-            if version > 0 && version < SCHEMA_VERSION {
+            if version > SCHEMA_VERSION {
+                return Err(AppError::Database(format!(
+                    "数据库版本过新（{version}），当前应用仅支持 {SCHEMA_VERSION}，请升级应用后再尝试。"
+                )));
+            }
+            if db_exists && version < SCHEMA_VERSION {
                 log::info!(
                     "Creating pre-migration database backup (v{version} → v{SCHEMA_VERSION})"
                 );
-                if let Err(e) = db.backup_database_file() {
-                    log::warn!("Pre-migration backup failed, continuing migration: {e}");
-                }
+                db.create_validated_binary_backup()?.ok_or_else(|| {
+                    AppError::Database("database_upgrade_safety_backup_missing".into())
+                })?;
             }
         }
 
+        db.create_tables()?;
         db.apply_schema_migrations()?;
         if let Err(e) = db.ensure_incremental_auto_vacuum() {
             log::warn!("Failed to ensure incremental auto-vacuum: {e}");
@@ -175,7 +204,7 @@ impl Database {
         // Reclaim disk space after cleanup
         {
             let conn = lock_conn!(db.conn);
-            if let Err(e) = conn.execute_batch("PRAGMA incremental_vacuum;") {
+            if let Err(e) = Self::incremental_vacuum_on_conn(&conn) {
                 log::warn!("Startup incremental vacuum failed: {e}");
             }
         }
@@ -214,6 +243,7 @@ impl Database {
                 crate::services::secret::MemorySecretBackend::new(),
             )),
             provider_secret_guard: Mutex::new(()),
+            log_count_cache: Mutex::new(None),
         };
         db.create_tables()?;
         db.ensure_model_pricing_seeded()?;
@@ -224,6 +254,23 @@ impl Database {
     pub(crate) fn get_auto_vacuum_mode(conn: &Connection) -> Result<i32, AppError> {
         conn.query_row("PRAGMA auto_vacuum;", [], |row| row.get(0))
             .map_err(|e| AppError::Database(format!("读取 auto_vacuum 失败: {e}")))
+    }
+
+    /// 回收全部空闲页。`PRAGMA incremental_vacuum` 每释放一页产出一行结果，
+    /// 必须把结果读完才会回收完；`execute_batch` 只 step 一次，只能回收 1 页。
+    pub(crate) fn incremental_vacuum_on_conn(conn: &Connection) -> Result<(), AppError> {
+        let mut stmt = conn
+            .prepare("PRAGMA incremental_vacuum;")
+            .map_err(|e| AppError::Database(format!("执行 incremental_vacuum 失败: {e}")))?;
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| AppError::Database(format!("执行 incremental_vacuum 失败: {e}")))?;
+        while rows
+            .next()
+            .map_err(|e| AppError::Database(format!("执行 incremental_vacuum 失败: {e}")))?
+            .is_some()
+        {}
+        Ok(())
     }
 
     fn has_user_tables(conn: &Connection) -> Result<bool, AppError> {

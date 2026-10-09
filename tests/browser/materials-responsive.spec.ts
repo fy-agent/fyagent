@@ -15,7 +15,7 @@ test("keeps actual text readable on blended surfaces and dialogs", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
   await installRichTauriFeatureFixture(page);
   for (const route of [
-    "health",
+    "sessions", // I19 retires /health; cover the current eighth primary route.
     "models?target=codex",
     "auth",
     "skills",
@@ -27,6 +27,14 @@ test("keeps actual text readable on blended surfaces and dialogs", async ({
     await openRendererPage(page, `/${route}`);
     const id = route.split("?")[0];
     await expect(page.getByTestId(`${id}-page`)).toBeVisible();
+    if (id === "sessions") {
+      await expect(
+        page.getByText("本地会话 (2)", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("浏览器会话 Alpha", { exact: true }),
+      ).toBeVisible();
+    }
     await info.attach(`surface-${id}.png`, {
       body: await page.screenshot(),
       contentType: "image/png",

@@ -48,31 +48,34 @@ fn extract_claude_common_config(settings: &Value) -> Result<String, AppError> {
     if let Some(env) = config.get_mut("env").and_then(Value::as_object_mut) {
         let sensitive: Vec<String> = env
             .keys()
-            .filter(|key| is_sensitive_config_key(key))
+            .filter(|key| is_sensitive_config_key(key) || crate::live::floor::claude_floor_env(key))
             .cloned()
             .collect();
         for key in ENV_PROVIDER_SPECIFIC_EXCLUDES {
-            env.remove(*key);
+            env.shift_remove(*key);
         }
         for key in &sensitive {
-            env.remove(key);
+            env.shift_remove(key);
         }
         if env.is_empty() {
-            config.as_object_mut().map(|obj| obj.remove("env"));
+            config.as_object_mut().map(|obj| obj.shift_remove("env"));
         }
     }
 
     if let Some(obj) = config.as_object_mut() {
         let sensitive: Vec<String> = obj
             .keys()
-            .filter(|key| is_sensitive_config_key(key))
+            .filter(|key| {
+                is_sensitive_config_key(key)
+                    || crate::live::floor::CLAUDE_FLOOR_TOP.contains(&key.as_str())
+            })
             .cloned()
             .collect();
         for key in TOP_LEVEL_EXCLUDES {
-            obj.remove(*key);
+            obj.shift_remove(*key);
         }
         for key in &sensitive {
-            obj.remove(key);
+            obj.shift_remove(key);
         }
     }
 
@@ -93,18 +96,24 @@ fn extract_codex_common_config(settings: &Value) -> Result<String, AppError> {
         .parse::<toml_edit::DocumentMut>()
         .map_err(|error| AppError::Message(format!("TOML parse error: {error}")))?;
     let root = doc.as_table_mut();
-    for key in [
-        "model",
-        "model_provider",
-        "base_url",
-        "wire_api",
-        "model_providers",
-        "mcp_servers",
-        "experimental_bearer_token",
-        "model_catalog_json",
-    ] {
+    // Provider routing and model fields stay in the row, including nested fields.
+    for key in crate::live::floor::CODEX_FLOOR_TOP {
         root.remove(key);
     }
+    for path in crate::live::floor::CODEX_FLOOR_NESTED {
+        let [parent, key] = path else { continue };
+        if let Some(table) = root
+            .get_mut(parent)
+            .and_then(|item| item.as_table_like_mut())
+        {
+            table.remove(key);
+            if table.is_empty() {
+                root.remove(parent);
+            }
+        }
+    }
+    root.remove("model_providers");
+    root.remove("mcp_servers");
 
     if let Some(mcp_table) = root
         .get_mut("mcp")
@@ -146,7 +155,7 @@ fn extract_gemini_common_config(settings: &Value) -> Result<String, AppError> {
     let mut snippet = serde_json::Map::new();
     if let Some(env) = env {
         for (key, value) in env {
-            if key == "GOOGLE_GEMINI_BASE_URL" || is_sensitive_config_key(key) {
+            if crate::live::floor::gemini_floor_env(key) || is_sensitive_config_key(key) {
                 continue;
             }
             let Value::String(value) = value else {
@@ -168,9 +177,11 @@ fn extract_gemini_common_config(settings: &Value) -> Result<String, AppError> {
 fn extract_opencode_common_config(settings: &Value) -> Result<String, AppError> {
     let mut config = settings.clone();
     if let Some(obj) = config.as_object_mut() {
-        if let Some(options) = obj.get_mut("options").and_then(Value::as_object_mut) {
-            options.remove("apiKey");
-            options.remove("baseURL");
+        for key in ["options", "settings"] {
+            if let Some(options) = obj.get_mut(key).and_then(Value::as_object_mut) {
+                options.remove("apiKey");
+                options.remove("baseURL");
+            }
         }
     }
     serialize_json_common_config(config)
@@ -191,4 +202,38 @@ fn serialize_json_common_config(config: Value) -> Result<String, AppError> {
     }
     serde_json::to_string_pretty(&config)
         .map_err(|error| AppError::Message(format!("Serialization failed: {error}")))
+}
+
+/// Retain only saved shared keys still present in live; never capture new keys.
+pub(super) fn sync_codex_common_deletions(snippet: &str, live: &str) -> Result<String, AppError> {
+    use toml_edit::{DocumentMut, TableLike};
+
+    fn retain_present(shared: &mut dyn TableLike, live: &dyn TableLike) {
+        let keys: Vec<String> = shared.iter().map(|(key, _)| key.to_string()).collect();
+        for key in keys {
+            let Some(current) = live.get(&key) else {
+                shared.remove(&key);
+                continue;
+            };
+            if let Some(saved_table) = shared
+                .get_mut(&key)
+                .and_then(|item| item.as_table_like_mut())
+            {
+                if let Some(live_table) = current.as_table_like() {
+                    retain_present(saved_table, live_table);
+                } else {
+                    shared.remove(&key);
+                }
+            }
+        }
+    }
+
+    let mut shared = snippet
+        .parse::<DocumentMut>()
+        .map_err(|err| AppError::Config(err.to_string()))?;
+    let live = live
+        .parse::<DocumentMut>()
+        .map_err(|err| AppError::Config(err.to_string()))?;
+    retain_present(shared.as_table_mut(), live.as_table());
+    Ok(shared.to_string())
 }

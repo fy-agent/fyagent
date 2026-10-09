@@ -10,6 +10,7 @@ use std::str::FromStr;
 
 use crate::app_config::{AppType, McpTargetId};
 use crate::claude_mcp;
+use crate::mcp::{McpImportReport, McpServerView};
 use crate::services::McpService;
 use crate::store::AppState;
 
@@ -160,8 +161,8 @@ use crate::app_config::McpServer;
 #[tauri::command]
 pub async fn get_mcp_servers(
     state: State<'_, AppState>,
-) -> Result<IndexMap<String, McpServer>, String> {
-    McpService::get_all_servers(&state).map_err(|e| e.to_string())
+) -> Result<IndexMap<String, McpServerView>, String> {
+    McpService::get_server_views(&state).map_err(|e| e.to_string())
 }
 
 /// 添加或更新 MCP 服务器
@@ -193,6 +194,31 @@ pub async fn toggle_mcp_app(
 
 /// 从所有应用导入 MCP 服务器（复用已有的导入逻辑）
 #[tauri::command]
-pub async fn import_mcp_from_apps(state: State<'_, AppState>) -> Result<usize, String> {
-    McpService::import_from_all_apps(&state).map_err(|e| e.to_string())
+pub async fn import_mcp_from_apps(
+    state: State<'_, AppState>,
+    sources: Option<Vec<McpTargetId>>,
+) -> Result<McpImportReport, String> {
+    McpService::import_from_sources(
+        &state,
+        sources.unwrap_or_else(|| McpTargetId::all().collect()),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// 按数据库里的开关把 MCP 重新写进各应用的 live 配置，逐应用返回结果。
+///
+/// `apps` 缺省或为空时同步全部受管应用。每个应用先拿它的切换锁再写，
+/// 和切换供应商互斥；单个应用失败（如配置文件解析失败）不影响其余应用。
+#[tauri::command]
+pub async fn resync_mcp_to_apps(
+    state: State<'_, AppState>,
+    apps: Option<Vec<String>>,
+) -> Result<Vec<crate::services::mcp::McpAppSyncOutcome>, String> {
+    let targets = McpService::resync_targets(apps.as_deref()).map_err(|e| e.to_string())?;
+    let mut outcomes = Vec::with_capacity(targets.len());
+    for app in targets {
+        let _guard = state.proxy_service.lock_switch_for_app(app.as_str()).await;
+        outcomes.push(McpService::resync_app(&state, &app));
+    }
+    Ok(outcomes)
 }

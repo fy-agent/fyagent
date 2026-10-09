@@ -7,6 +7,8 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import {
   createMemoryRouter,
   RouterProvider,
@@ -17,6 +19,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MemoryPage } from "@/pages/memory/Page";
 import type { FeaturePorts } from "@/shared/features/ports";
 import { FeatureProvider } from "@/shared/features/provider";
+import { featureKeys } from "@/shared/features/queries";
 import { PrimaryBlockerProvider } from "@/shared/ui/PrimaryBlocker";
 import type {
   DailyMemoryFileInfo,
@@ -118,10 +121,16 @@ function statefulMemoryPorts(
 
 function MemoryRouteFixture({
   showNavigationControl,
+  onQueryClient,
 }: {
   showNavigationControl: boolean;
+  onQueryClient?: (client: QueryClient) => void;
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    onQueryClient?.(queryClient);
+  }, [onQueryClient, queryClient]);
   return (
     <PrimaryBlockerProvider>
       {showNavigationControl ? (
@@ -146,14 +155,23 @@ function MemoryRouteFixture({
 
 function renderMemory(
   ports: FeaturePorts,
-  { showNavigationControl = false } = {},
+  {
+    showNavigationControl = false,
+    onQueryClient,
+  }: {
+    showNavigationControl?: boolean;
+    onQueryClient?: (client: QueryClient) => void;
+  } = {},
 ) {
   const router = createMemoryRouter(
     [
       {
         path: "/memory",
         element: (
-          <MemoryRouteFixture showNavigationControl={showNavigationControl} />
+          <MemoryRouteFixture
+            showNavigationControl={showNavigationControl}
+            onQueryClient={onQueryClient}
+          />
         ),
       },
       { path: "/other", element: <main>其他页面</main> },
@@ -175,6 +193,35 @@ function localTodayFilename(): string {
     "0",
   )}-${String(today.getDate()).padStart(2, "0")}.md`;
 }
+
+function renderRefreshableMemory(ports: FeaturePorts) {
+  let queryClient: QueryClient | undefined;
+  renderMemory(ports, {
+    onQueryClient: (client) => {
+      queryClient = client;
+    },
+  });
+  return async (filename: string) => {
+    if (!queryClient) throw new Error("Memory query client is not mounted");
+    const client = queryClient;
+    await act(async () => {
+      await client.refetchQueries({
+        queryKey: featureKeys.dailyMemoryFiles,
+        exact: true,
+      });
+      await client.refetchQueries({
+        queryKey: featureKeys.dailyMemoryFile(filename),
+        exact: true,
+      });
+    });
+  };
+}
+
+const DAILY_DATE_CASES = [
+  { label: "today", filename: localTodayFilename(), dateLabel: "今天" },
+  { label: "past", filename: "2000-01-02.md", dateLabel: "2000-01-02" },
+  { label: "future", filename: "2999-12-30.md", dateLabel: "2999-12-30" },
+] as const;
 
 async function confirmDialog(
   _user: ReturnType<typeof userEvent.setup>,
@@ -589,6 +636,218 @@ describe("MemoryPage native business management", () => {
     );
     expect(stores.daily[today]).toBeUndefined();
     expect(await screen.findByText(`${today} 已删除`)).toBeVisible();
+  });
+
+  it.each(DAILY_DATE_CASES)(
+    "names the selected $label date when its listed file reads as missing and saves only that date",
+    async ({ filename, dateLabel }) => {
+      const otherFile = "9999-12-31.md";
+      const { ports, stores } = statefulMemoryPorts(
+        { "openclaw-memory": "memory" },
+        { [filename]: "removed before read", [otherFile]: "other record" },
+      );
+      const staleList = await ports.memory.listDailyFiles();
+      delete stores.daily[filename];
+      ports.memory.listDailyFiles = vi.fn(async () => staleList);
+      const user = userEvent.setup();
+      renderMemory(ports);
+      await screen.findByRole("textbox", { name: "记忆内容" });
+      await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+      await screen.findByRole("textbox", { name: "每日记忆内容" });
+      await user.click(
+        within(screen.getByRole("region", { name: "每日记忆列表" })).getByRole(
+          "button",
+          { name: new RegExp(filename.replace(".", "\\.")) },
+        ),
+      );
+
+      expect(
+        await screen.findByRole("heading", { name: filename }),
+      ).toBeVisible();
+      expect(
+        screen.getByText(`${dateLabel}的记录尚未创建。点击“保存”后即可创建。`),
+      ).toBeVisible();
+      expect(ports.memory.readDailyFile).toHaveBeenCalledWith(filename);
+      expect(stores.daily[filename]).toBeUndefined();
+      expect(ports.memory.writeDailyFile).not.toHaveBeenCalled();
+      expect(ports.memory.writeDocument).not.toHaveBeenCalled();
+      expect(ports.memory.deleteDailyFile).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("button", { name: "删除" }),
+      ).not.toBeInTheDocument();
+      const editor = screen.getByRole("textbox", { name: "每日记忆内容" });
+      expect(editor).toHaveValue("");
+      await user.type(editor, "selected date draft");
+      expect(stores.daily[filename]).toBeUndefined();
+      expect(ports.memory.writeDailyFile).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "保存" }));
+      expect(await screen.findByText(`${filename} 已保存`)).toBeVisible();
+      expect(ports.memory.writeDailyFile).toHaveBeenCalledExactlyOnceWith(
+        filename,
+        "selected date draft",
+      );
+      expect(stores.daily).toEqual({
+        [filename]: "selected date draft",
+        [otherFile]: "other record",
+      });
+      expect(editor).toHaveValue("selected date draft");
+      expect(screen.queryByText(/的记录尚未创建/)).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(DAILY_DATE_CASES)(
+    "reads an existing selected $label record without a missing notice or implicit write",
+    async ({ filename }) => {
+      const otherFile = "9999-12-31.md";
+      const { ports, stores } = statefulMemoryPorts(
+        { "openclaw-memory": "memory" },
+        { [filename]: "selected record", [otherFile]: "other record" },
+      );
+      const user = userEvent.setup();
+      renderMemory(ports);
+      await screen.findByRole("textbox", { name: "记忆内容" });
+      await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+      await screen.findByRole("textbox", { name: "每日记忆内容" });
+      await user.click(
+        within(screen.getByRole("region", { name: "每日记忆列表" })).getByRole(
+          "button",
+          { name: new RegExp(filename.replace(".", "\\.")) },
+        ),
+      );
+
+      expect(
+        await screen.findByRole("heading", { name: filename }),
+      ).toBeVisible();
+      const editor = screen.getByRole("textbox", { name: "每日记忆内容" });
+      expect(editor).toHaveValue("selected record");
+      expect(screen.queryByText(/的记录尚未创建/)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "删除" })).toBeEnabled();
+      expect(ports.memory.writeDailyFile).not.toHaveBeenCalled();
+      expect(ports.memory.deleteDailyFile).not.toHaveBeenCalled();
+
+      await user.type(editor, " edited");
+      await user.click(screen.getByRole("button", { name: "保存" }));
+      expect(await screen.findByText(`${filename} 已保存`)).toBeVisible();
+      expect(ports.memory.writeDailyFile).toHaveBeenCalledExactlyOnceWith(
+        filename,
+        "selected record edited",
+      );
+      expect(stores.daily[otherFile]).toBe("other record");
+    },
+  );
+
+  it.each([
+    { selection: "automatic", emptyList: false },
+    { selection: "automatic", emptyList: true },
+    { selection: "explicit", emptyList: false },
+    { selection: "explicit", emptyList: true },
+  ] as const)(
+    "preserves the $selection date and dirty editor after external deletion (empty list: $emptyList)",
+    async ({ selection, emptyList }) => {
+      const newerFile = "2999-12-30.md";
+      const olderFile = "2000-01-02.md";
+      const filename = selection === "automatic" ? newerFile : olderFile;
+      const { ports, stores } = statefulMemoryPorts(
+        { "openclaw-memory": "memory" },
+        { [newerFile]: "newer record", [olderFile]: "older record" },
+      );
+      const refetchDaily = renderRefreshableMemory(ports);
+      const user = userEvent.setup();
+      await screen.findByRole("textbox", { name: "记忆内容" });
+      await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+      await screen.findByRole("textbox", { name: "每日记忆内容" });
+      if (selection === "explicit") {
+        await user.click(
+          within(
+            screen.getByRole("region", { name: "每日记忆列表" }),
+          ).getByRole("button", { name: /2000-01-02\.md/ }),
+        );
+        await screen.findByRole("heading", { name: filename });
+      }
+      const editor = screen.getByRole("textbox", { name: "每日记忆内容" });
+      const draft = `${stores.daily[filename]} + unsaved draft`;
+      await user.type(editor, " + unsaved draft");
+      expect(editor).toHaveValue(draft);
+      delete stores.daily[filename];
+      if (emptyList) {
+        delete stores.daily[newerFile];
+        delete stores.daily[olderFile];
+      }
+      const survivingRecords = { ...stores.daily };
+      await refetchDaily(filename);
+
+      expect(
+        await screen.findByText(
+          `${filename.slice(0, 10)}的记录尚未创建。点击“保存”后即可创建。`,
+        ),
+      ).toBeVisible();
+
+      expect(screen.getByRole("heading", { name: filename })).toBeVisible();
+      expect(screen.getByRole("textbox", { name: "每日记忆内容" })).toBe(
+        editor,
+      );
+      expect(editor).toHaveValue(draft);
+      expect(screen.getByText("未保存")).toBeVisible();
+      expect(
+        screen.queryByText("今天的记录尚未创建。点击“保存”后即可创建。"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("还没有每日记忆")).not.toBeInTheDocument();
+      expect(ports.memory.writeDailyFile).not.toHaveBeenCalled();
+      expect(ports.memory.deleteDailyFile).not.toHaveBeenCalled();
+      expect(ports.memory.readDailyFile).not.toHaveBeenCalledWith(
+        localTodayFilename(),
+      );
+      expect(stores.daily[filename]).toBeUndefined();
+
+      await user.click(screen.getByRole("button", { name: "保存" }));
+      expect(await screen.findByText(`${filename} 已保存`)).toBeVisible();
+      expect(ports.memory.writeDailyFile).toHaveBeenCalledExactlyOnceWith(
+        filename,
+        draft,
+      );
+      expect(stores.daily).toEqual({ ...survivingRecords, [filename]: draft });
+      expect(editor).toHaveValue(draft);
+      expect(screen.queryByText("未保存")).not.toBeInTheDocument();
+      expect(screen.queryByText(/的记录尚未创建/)).not.toBeInTheDocument();
+    },
+  );
+
+  it("updates the missing state after an external recreation while retaining the local draft", async () => {
+    const filename = localTodayFilename();
+    const { ports, stores } = statefulMemoryPorts({
+      "openclaw-memory": "memory",
+    });
+    const refetchDaily = renderRefreshableMemory(ports);
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "记忆内容" });
+    await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+    await screen.findByText("还没有每日记忆");
+    await user.click(screen.getByRole("button", { name: "创建或打开今天" }));
+    const editor = await screen.findByRole("textbox", { name: "每日记忆内容" });
+    await user.type(editor, "local draft");
+    stores.daily[filename] = "externally created record";
+    await refetchDaily(filename);
+    await waitFor(() =>
+      expect(screen.queryByText(/的记录尚未创建/)).not.toBeInTheDocument(),
+    );
+
+    expect(screen.getByRole("textbox", { name: "每日记忆内容" })).toBe(editor);
+    expect(editor).toHaveValue("local draft");
+    expect(screen.queryByText(/的记录尚未创建/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除" })).toBeEnabled();
+    expect(screen.getByText("未保存")).toBeVisible();
+    expect(ports.memory.writeDailyFile).not.toHaveBeenCalled();
+    expect(stores.daily[filename]).toBe("externally created record");
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByText(`${filename} 已保存`)).toBeVisible();
+    expect(ports.memory.writeDailyFile).toHaveBeenCalledExactlyOnceWith(
+      filename,
+      "local draft",
+    );
+    expect(stores.daily[filename]).toBe("local draft");
   });
 
   it("guards dirty long-term document and tab changes with the shared dialog", async () => {

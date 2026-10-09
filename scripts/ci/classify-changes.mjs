@@ -369,7 +369,8 @@ function classifyPath(path, domains) {
 
   if (
     TRELLIS_CONTROL_FILES.has(path) ||
-    hasPrefix(path, DOCUMENTATION_CONTROL_PREFIXES)
+    hasPrefix(path, DOCUMENTATION_CONTROL_PREFIXES) ||
+    path === "p400win-evidence/conflicts-before.json"
   ) {
     return matchDomains(
       domains,

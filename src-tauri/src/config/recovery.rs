@@ -92,9 +92,10 @@ struct RecoveryRecord {
     postimage_sha256: Option<String>,
 }
 
-/// Display metadata only. The transport owner supplies its trusted path label.
+/// Native receipt for guarded internal compensation.
 pub(crate) struct FileRecovery {
     pub receipt_id: String,
+    #[cfg(test)]
     pub had_file: bool,
     pub can_restore: bool,
 }
@@ -210,7 +211,7 @@ pub(super) fn write(path: &Path, bytes: Option<&[u8]>, private: bool) -> Result<
     write_with(path, bytes, |path, bytes| replace(path, bytes, private))
 }
 
-fn write_with(
+pub(super) fn write_with(
     path: &Path,
     bytes: Option<&[u8]>,
     apply: impl FnOnce(&Path, Option<&[u8]>) -> Result<(), AppError>,
@@ -355,6 +356,7 @@ pub(crate) fn file_recovery(path: &Path) -> Result<Option<FileRecovery>, AppErro
     let backup = read_file(&rolling_backup_path(path), MAX_FILE_BYTES)?;
     Ok(Some(FileRecovery {
         receipt_id: record.receipt_id,
+        #[cfg(test)]
         had_file: record.preimage_sha256.is_some(),
         can_restore: digest(current.as_deref()) == record.postimage_sha256
             && digest(backup.as_deref()) == record.preimage_sha256,

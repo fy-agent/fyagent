@@ -95,7 +95,7 @@ pub(crate) fn codex_auth_has_credential_login_material(auth: &Value) -> bool {
 
 /// True when live `auth.json` contains a third-party API key but no material
 /// Codex login credential that should take precedence over it.
-pub(super) fn codex_live_auth_is_stale_third_party_residue(live_auth: &Value) -> bool {
+pub(crate) fn codex_live_auth_is_stale_third_party_residue(live_auth: &Value) -> bool {
     if codex_auth_has_credential_login_material(live_auth) {
         return false;
     }

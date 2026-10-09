@@ -1,0 +1,21 @@
+{
+  "id": "upstream-400",
+  "name": "CC Switch v4.0.4 工作树试合",
+  "status": "in_progress",
+  "ClaimedBy": "Codex",
+  "ClaimedAt": "2026-10-07T18:16:49.884897+00:00",
+  "phase": "round3_cross_check_passed_native_runtime_pending",
+  "Deliverables": [
+    "[ledger](../../../docs/upstream/cc-switch-v4.0.4.md)",
+    "[report](/workspace/fy-maint-1007/migration/report-400.md)",
+    "[resolutions](/workspace/fy-maint-1007/migration/p400-resolved-final.tsv)",
+    "[round3 report](/workspace/fy-maint-1007/migration/report-400c.md)",
+    "[round3 changed files](/workspace/fy-maint-1007/migration/p400c-changed.txt)"
+  ],
+  "Acceptance Evidence": [
+    "Windows GNU cargo check --all-targets -j 6 exit 0 (p400c-evidence/cargo-check-final.result.json)",
+    "Frontend typecheck/lint/format exit 0; 26 Vitest files / 664 cases; 9 architecture assertions passed",
+    "13 checklist items passed at code_audit level; 0 worktree conflict markers; 140 fingerprints consistent",
+    "Strict Clippy remains blocked by warnings; Windows native runtime tests not executed; index has 17 UU paths and is user-owned"
+  ]
+}

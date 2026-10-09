@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::timeout;
 
@@ -26,6 +26,7 @@ mod discovery;
 mod marketplace;
 mod migration;
 mod repository;
+mod update;
 
 use discovery::{
     clamp_discovery_limit, discovery_fingerprint, filter_discoverable_skills,
@@ -39,6 +40,27 @@ use repository::{
     build_repo_info_from_lock, get_agents_skills_dir, parse_agents_lock, save_repos_from_lock,
     LockRepoInfo,
 };
+
+// Lock order: global sync operation lock -> Skills state lock -> database mutex.
+// Async mutation paths acquire the guard after downloads complete.
+fn skill_state_lock() -> &'static RwLock<()> {
+    static LOCK: OnceLock<RwLock<()>> = OnceLock::new();
+    LOCK.get_or_init(|| RwLock::new(()))
+}
+
+pub(crate) fn skill_state_read_guard() -> RwLockReadGuard<'static, ()> {
+    skill_state_lock().read().unwrap_or_else(|poisoned| {
+        log::warn!("Skills state read lock was poisoned; recovering the protected state");
+        poisoned.into_inner()
+    })
+}
+
+pub(crate) fn skill_state_write_guard() -> RwLockWriteGuard<'static, ()> {
+    skill_state_lock().write().unwrap_or_else(|poisoned| {
+        log::warn!("Skills state write lock was poisoned; recovering the protected state");
+        poisoned.into_inner()
+    })
+}
 
 // ========== 数据结构 ==========
 
@@ -256,7 +278,12 @@ const SKILL_BACKUP_RETAIN_COUNT: usize = 20;
 /// 归档字节由第三方完全控制（仓库可经 deeplink 添加，且 branch 可把下载落点
 /// 改写到攻击者自传的 release asset），没有上限时一个几 MB 的压缩炸弹就能塞满磁盘。
 /// 取值对齐 `webdav_sync/archive.rs` 里同款保护的量级。
-const MAX_ARCHIVE_ENTRIES: usize = 10_000;
+///
+/// 条目数只是解压前的快速失败：真正兜底磁盘与 inode 消耗的是字节预算——每个
+/// 文件、目录都至少按一个磁盘块计费。上限曾是 10_000，但下载的是整个仓库归档
+/// 而非单个技能目录，真实技能仓库（如 hugohe3/ppt-master，13k+ 条目）会被误拒
+/// （#7475）；30_000 给这类仓库留出余量，同时仍远低于字节预算能物化的条目数。
+const MAX_ARCHIVE_ENTRIES: usize = 30_000;
 const MAX_ARCHIVE_TOTAL_BYTES: u64 = 512 * 1024 * 1024;
 /// symlink 目标就是一条路径，几十字节就够；给到 4 KiB 是宽松上限。
 /// 必须有这个上限：zip 2.4.2 的 `make_reader` 不按声明的 uncompressed_size
@@ -266,6 +293,9 @@ const MAX_SYMLINK_TARGET_BYTES: u64 = 4 * 1024;
 /// 物化一个目录按一个目录块计费。空目录不写内容字节，但照样吃 inode 和磁盘块，
 /// 不计费就等于允许无限量地造目录。
 const DIRECTORY_BUDGET_COST: u64 = 4096;
+/// 文件同理：空文件与不足一块的小文件照样占 inode 和一个磁盘块。只按内容字节
+/// 计费时，一个全是空文件的归档能让预算读数一直停在 0，条目上限就成了唯一防线。
+const FILE_ENTRY_BUDGET_COST: u64 = DIRECTORY_BUDGET_COST;
 /// 压缩体上限。解压预算只有在 ZipArchive 建起来之后才生效，而那时整个响应体
 /// 已经在内存里了，所以下载这一步需要自己的上限。技能仓库是 Markdown，
 /// 128 MiB 的压缩包已经远超正常规模。
@@ -348,6 +378,10 @@ pub struct ImportSkillSelection {
 
 pub struct SkillService {
     discovery_cache: DiscoveryCache,
+    #[cfg(test)]
+    repo_fixture: Option<PathBuf>,
+    #[cfg(test)]
+    update_test_client: Option<reqwest::Client>,
 }
 
 impl Default for SkillService {
@@ -360,6 +394,10 @@ impl SkillService {
     pub fn new() -> Self {
         Self {
             discovery_cache: DiscoveryCache::new(),
+            #[cfg(test)]
+            repo_fixture: None,
+            #[cfg(test)]
+            update_test_client: None,
         }
     }
 
@@ -423,13 +461,13 @@ impl SkillService {
                 crate::config::get_home_dir().join(".agents").join("skills")
             }
         };
-        fs::create_dir_all(&dir)?;
         Ok(dir)
     }
 
     /// 获取 Skill 卸载备份目录（~/.fyagent/skill-backups/）
     fn get_backup_dir() -> Result<PathBuf> {
         let dir = get_app_config_dir().join("skill-backups");
+        Self::require_writable_skill_path(&dir)?;
         fs::create_dir_all(&dir)?;
         Ok(dir)
     }
@@ -506,6 +544,45 @@ impl SkillService {
         }
     }
 
+    fn paths_alias(left: &Path, right: &Path) -> bool {
+        if left == right {
+            return true;
+        }
+
+        matches!(
+            (left.canonicalize(), right.canonicalize()),
+            (Ok(left), Ok(right)) if left == right
+        )
+    }
+
+    fn ensure_distinct_skill_roots(
+        ssot_dir: &Path,
+        app_dir: &Path,
+        app: &SkillTargetId,
+    ) -> Result<()> {
+        if Self::paths_alias(ssot_dir, app_dir) {
+            return Err(anyhow!(
+                "Skill 存储目录不能与 {app:?} 的 Skills 目录相同: {}",
+                ssot_dir.display()
+            ));
+        }
+        Ok(())
+    }
+
+    fn get_distinct_app_skills_dir(ssot_dir: &Path, app: &SkillTargetId) -> Result<PathBuf> {
+        let app_dir = Self::get_target_skills_dir(app)?;
+        Self::ensure_distinct_skill_roots(ssot_dir, &app_dir, app)?;
+        Ok(app_dir)
+    }
+
+    fn validate_skill_storage_destination(ssot_dir: &Path) -> Result<()> {
+        for app in SkillTargetId::all() {
+            let app_dir = Self::get_target_skills_dir(&app)?;
+            Self::ensure_distinct_skill_roots(ssot_dir, &app_dir, &app)?;
+        }
+        Ok(())
+    }
+
     // ========== 统一管理方法 ==========
 
     /// 获取所有已安装的 Skills。
@@ -572,17 +649,18 @@ impl SkillService {
     }
 
     /// 列表观察项在首次写操作时才收养进 SSOT。读取路径不得静默接管用户原目录。
+    /// 调用方必须持有 Skills 状态写锁。
     fn adopt_observed_if_needed(db: &Arc<Database>, id: &str) -> Result<InstalledSkill> {
         if let Some(skill) = db.get_installed_skill(id)? {
             return Ok(skill);
         }
-        let Some(observed) = Self::scan_unmanaged(db)?
+        let Some(observed) = Self::scan_unmanaged_unlocked(db)?
             .into_iter()
             .find(|item| Self::observed_skill_id(&item.directory) == id)
         else {
             return Err(anyhow!("Skill not found: {id}"));
         };
-        let imported = Self::import_from_apps(
+        let imported = Self::import_from_apps_unlocked(
             db,
             vec![ImportSkillSelection {
                 directory: observed.directory.clone(),
@@ -634,6 +712,66 @@ impl SkillService {
             .and_then(|duration| i64::try_from(duration.as_secs()).ok())
     }
 
+    /// Reuse an existing installation or reject a directory owned by another repo.
+    /// The caller must hold [`skill_state_write_guard`] because this can update the
+    /// database and materialized app directory.
+    fn reuse_existing_install(
+        db: &Arc<Database>,
+        skill: &DiscoverableSkill,
+        install_name: &str,
+        current_app: &SkillTargetId,
+    ) -> Result<Option<InstalledSkill>> {
+        let existing_skills = db.get_all_installed_skills()?;
+        for existing in existing_skills.values() {
+            if !existing.directory.eq_ignore_ascii_case(install_name) {
+                continue;
+            }
+
+            let same_repo = existing.repo_owner.as_deref() == Some(&skill.repo_owner)
+                && existing.repo_name.as_deref() == Some(&skill.repo_name);
+            if same_repo {
+                // Revalidate the actual existing path under the state lock,
+                // including after the download await and case-insensitive reuse.
+                Self::require_writable_skill_path(
+                    &Self::get_ssot_dir()?.join(&existing.directory),
+                )?;
+                Self::require_writable_skill_target(&existing.directory, current_app)?;
+                let mut updated = existing.clone();
+                updated.apps.set_enabled_for_target(current_app, true);
+                db.save_skill(&updated)?;
+                Self::sync_to_app_dir(&updated.directory, current_app)?;
+                log::info!(
+                    "Skill {} 已存在，更新 {:?} 启用状态",
+                    updated.name,
+                    current_app
+                );
+                return Ok(Some(updated));
+            }
+
+            return Err(anyhow!(format_skill_error(
+                "SKILL_DIRECTORY_CONFLICT",
+                &[
+                    ("directory", install_name),
+                    (
+                        "existing_repo",
+                        &format!(
+                            "{}/{}",
+                            existing.repo_owner.as_deref().unwrap_or("unknown"),
+                            existing.repo_name.as_deref().unwrap_or("unknown")
+                        )
+                    ),
+                    (
+                        "new_repo",
+                        &format!("{}/{}", skill.repo_owner, skill.repo_name)
+                    ),
+                ],
+                Some("uninstallFirst"),
+            )));
+        }
+
+        Ok(None)
+    }
+
     /// 安装 Skill
     ///
     /// 流程：
@@ -668,47 +806,16 @@ impl SkillService {
                 ))
             })?;
 
-        // 检查数据库中是否已有同名 directory 的 skill（来自其他仓库）
-        let existing_skills = db.get_all_installed_skills()?;
-        for existing in existing_skills.values() {
-            if existing.directory.eq_ignore_ascii_case(&install_name) {
-                // 检查是否来自同一仓库
-                let same_repo = existing.repo_owner.as_deref() == Some(&skill.repo_owner)
-                    && existing.repo_name.as_deref() == Some(&skill.repo_name);
-                if same_repo {
-                    // 同一仓库的同名 skill，返回现有记录（可能需要更新启用状态）
-                    let mut updated = existing.clone();
-                    updated.apps.set_enabled_for_target(current_app, true);
-                    db.save_skill(&updated)?;
-                    Self::sync_to_app_dir(&updated.directory, current_app)?;
-                    log::info!(
-                        "Skill {} 已存在，更新 {:?} 启用状态",
-                        updated.name,
-                        current_app
-                    );
-                    return Ok(updated);
-                } else {
-                    // 不同仓库的同名 skill，报错
-                    return Err(anyhow!(format_skill_error(
-                        "SKILL_DIRECTORY_CONFLICT",
-                        &[
-                            ("directory", &install_name),
-                            (
-                                "existing_repo",
-                                &format!(
-                                    "{}/{}",
-                                    existing.repo_owner.as_deref().unwrap_or("unknown"),
-                                    existing.repo_name.as_deref().unwrap_or("unknown")
-                                )
-                            ),
-                            (
-                                "new_repo",
-                                &format!("{}/{}", skill.repo_owner, skill.repo_name)
-                            ),
-                        ],
-                        Some("uninstallFirst"),
-                    )));
-                }
+        // Protect the fast path as well as the post-download duplicate check.
+        // The guard must leave scope before any network await.
+        {
+            let _state_guard = skill_state_write_guard();
+            Self::require_writable_skill_path(&Self::get_ssot_dir()?.join(&install_name))?;
+            Self::require_writable_skill_target(&install_name, current_app)?;
+            if let Some(existing) =
+                Self::reuse_existing_install(db, skill, &install_name, current_app)?
+            {
+                return Ok(existing);
             }
         }
 
@@ -717,6 +824,7 @@ impl SkillService {
         let mut repo_branch = skill.repo_branch.clone();
         // 真实解析出的源目录推导的文档路径（仅本次真正下载解析时可得）
         let mut resolved_doc_path: Option<String> = None;
+        let mut downloaded_source: Option<(tempfile::TempDir, PathBuf)> = None;
 
         // 如果已存在则跳过下载
         if !dest.exists() {
@@ -730,7 +838,7 @@ impl SkillService {
             // 下载仓库
             let (temp_guard, used_branch) = timeout(
                 std::time::Duration::from_secs(60),
-                self.download_repo(&repo),
+                self.download_repo(&repo, None),
             )
             .await
             .map_err(|_| {
@@ -780,7 +888,7 @@ impl SkillService {
             // skillId（末级目录名），嵌套目录场景直接拼接会丢路径、链接 404（#6111）
             resolved_doc_path = Self::doc_path_for_source(&canonical_temp, &canonical_source);
 
-            Self::copy_dir_recursive(&canonical_source, &dest)?;
+            downloaded_source = Some((temp_guard, canonical_source));
 
             // 使用实际下载成功的分支，避免 readme_url / repo_branch 与真实分支不一致。
             if repo_branch != skill.repo_branch {
@@ -802,6 +910,24 @@ impl SkillService {
 
         let readme_url =
             Self::build_skill_doc_url(&skill.repo_owner, &skill.repo_name, &repo_branch, &doc_path);
+
+        // Re-check after the network download: another install/uninstall may have
+        // completed while the lock was intentionally released around `.await`.
+        let _state_guard = skill_state_write_guard();
+        let dest = Self::get_ssot_dir()?.join(&install_name);
+        if let Some(existing) = Self::reuse_existing_install(db, skill, &install_name, current_app)?
+        {
+            return Ok(existing);
+        }
+
+        if !dest.exists() {
+            let source = downloaded_source
+                .as_ref()
+                .map(|(_, source)| source)
+                .ok_or_else(|| anyhow!("Skill directory changed during install; please retry"))?;
+            Self::preflight_install_destination(source, &install_name, current_app)?;
+            Self::copy_dir_recursive(source, &dest)?;
+        }
 
         // 创建 InstalledSkill 记录
         // 计算内容哈希
@@ -836,7 +962,7 @@ impl SkillService {
         // 同步到当前应用目录
         if let Err(err) = Self::sync_to_app_dir(&install_name, current_app) {
             let _ = db.delete_skill(&installed_skill.id);
-            let _ = fs::remove_dir_all(&dest);
+            let _ = Self::remove_skill_tree(&dest);
             return Err(err);
         }
 
@@ -856,6 +982,25 @@ impl SkillService {
     /// 2. 从 SSOT 删除
     /// 3. 从数据库删除
     pub fn uninstall(db: &Arc<Database>, id: &str) -> Result<SkillUninstallResult> {
+        let _state_guard = skill_state_write_guard();
+
+        // Preflight before observing/adopting can create a managed copy or row.
+        let candidate = db
+            .get_installed_skill(id)?
+            .map(|skill| skill.directory)
+            .or_else(|| {
+                Self::scan_unmanaged_unlocked(db)
+                    .ok()?
+                    .into_iter()
+                    .find(|item| Self::observed_skill_id(&item.directory) == id)
+                    .map(|item| item.directory)
+            });
+        if let Some(directory) = candidate {
+            if Self::require_valid_directory(&directory).is_ok() {
+                update::require_writable_state(id)?;
+                Self::require_writable_skill_resources(&directory)?;
+            }
+        }
         // 获取 skill 信息
         let skill = Self::adopt_observed_if_needed(db, id)?;
 
@@ -869,6 +1014,7 @@ impl SkillService {
         // 不是「把用户锁在坏状态里」。
         let backup_path = match Self::require_valid_directory(&skill.directory) {
             Ok(directory) => {
+                Self::require_writable_skill_resources(&directory)?;
                 let backup_path = Self::create_uninstall_backup(&skill)?
                     .map(|path| path.to_string_lossy().to_string());
 
@@ -881,7 +1027,7 @@ impl SkillService {
                 let ssot_dir = Self::get_ssot_dir()?;
                 let skill_path = ssot_dir.join(&directory);
                 if skill_path.exists() {
-                    fs::remove_dir_all(&skill_path)?;
+                    Self::remove_skill_tree(&skill_path)?;
                 }
                 backup_path
             }
@@ -896,6 +1042,7 @@ impl SkillService {
 
         // 从数据库删除
         db.delete_skill(id)?;
+        update::clear_after_uninstall(id)?;
 
         log::info!(
             "Skill {} 卸载成功{}",
@@ -958,6 +1105,47 @@ impl SkillService {
         Ok(())
     }
 
+    /// 判定 check_updates 应使用的本地哈希。
+    ///
+    /// 次序关键：必须先确认 SSOT 目录存在，再信任数据库缓存的 content_hash。
+    /// 换机恢复数据库备份后 Skill 文件不随库迁移，此时缓存哈希仍在而目录已
+    /// 缺失；若先取缓存会把这类 Skill 误报成「无更新」，缺失状态被永久掩盖。
+    /// 目录缺失 → 返回 None，与远端哈希必然不等，Skill 进入更新列表，
+    /// update_skill 对缺失目录本就容忍（存在才删、随后整体复制），点更新即可重建。
+    ///
+    /// 返回 `(hash, freshly_computed)`；freshly_computed 表示哈希是现场算出的，
+    /// 调用方应回填数据库缓存。
+    fn local_hash_for_update_check(
+        ssot_dir: &Path,
+        raw_directory: &str,
+        cached_hash: Option<&str>,
+    ) -> Option<(String, bool)> {
+        // 脏 directory 会让 compute_dir_hash 递归遍历任意目录，且哈希结果经
+        // 「有无更新」的界面状态泄露少量信息；无法安全拼路径时也不能报
+        // 「可更新」——update_skill 会在同一校验上硬报错，只能沿用缓存。
+        let directory = match Self::require_valid_directory(raw_directory) {
+            Ok(d) => d,
+            Err(err) => {
+                log::warn!("Skill directory 非法，跳过本地目录检查: {err}");
+                return cached_hash.map(|h| (h.to_string(), false));
+            }
+        };
+
+        let local_dir = ssot_dir.join(&directory);
+        if !local_dir.exists() {
+            return None;
+        }
+
+        if let Some(h) = cached_hash {
+            return Some((h.to_string(), false));
+        }
+
+        match Self::compute_dir_hash(&local_dir) {
+            Ok(h) => Some((h, true)),
+            Err(_) => None,
+        }
+    }
+
     /// 检查所有已安装 Skill 的更新
     ///
     /// 仅检查有 repo_owner 的 Skill（本地 Skill 跳过），
@@ -971,6 +1159,10 @@ impl SkillService {
             HashMap::new();
 
         for skill in skills.into_values() {
+            if let Some(pending) = update::pending_info(&skill)? {
+                updates.push(pending);
+                continue;
+            }
             let (owner, name, branch) =
                 match (&skill.repo_owner, &skill.repo_name, &skill.repo_branch) {
                     (Some(o), Some(n), Some(b)) => (o.clone(), n.clone(), b.clone()),
@@ -983,8 +1175,6 @@ impl SkillService {
                 .push(skill);
         }
 
-        let ssot_dir = Self::get_ssot_dir()?;
-
         for ((owner, name, branch), group_skills) in &repo_groups {
             let repo = SkillRepo {
                 owner: owner.clone(),
@@ -996,7 +1186,7 @@ impl SkillService {
             // 下载仓库 ZIP
             let (temp_guard, _used_branch) = match timeout(
                 std::time::Duration::from_secs(60),
-                self.download_repo(&repo),
+                self.download_repo(&repo, self.update_download_client()),
             )
             .await
             {
@@ -1016,15 +1206,17 @@ impl SkillService {
             let mut remote_skills: Vec<DiscoverableSkill> = Vec::new();
             let _ = self.scan_dir_recursive(temp_dir, temp_dir, &repo, &mut remote_skills);
 
-            for skill in group_skills {
-                // 在远程仓库中找到匹配的 Skill 目录
-                let remote_match = remote_skills.iter().find(|rs| {
-                    // 匹配方式：安装名称的最后一段
-                    let remote_install_name =
-                        rs.directory.rsplit('/').next().unwrap_or(&rs.directory);
-                    remote_install_name.eq_ignore_ascii_case(&skill.directory)
-                });
+            // Remote I/O is complete. Stabilize the local DB + SSOT while hashes
+            // are read and any missing hash metadata is backfilled.
+            let _state_guard = skill_state_read_guard();
+            let ssot_dir = Self::get_ssot_dir()?;
 
+            for skill in group_skills {
+                let remote_match = Self::find_remote_skill_for_install(
+                    &remote_skills,
+                    &skill.directory,
+                    skill.readme_url.as_deref(),
+                );
                 let remote_skill_dir = match remote_match {
                     Some(rs) => match Self::resolve_skill_source_dir(temp_dir, &rs.directory) {
                         Some(path) => path,
@@ -1041,34 +1233,21 @@ impl SkillService {
                     }
                 };
 
-                // 本地哈希：优先数据库，否则实时计算
-                let local_hash = match &skill.content_hash {
-                    Some(h) => Some(h.clone()),
-                    // 脏 directory 会让 compute_dir_hash 递归遍历任意目录，
-                    // 且哈希结果经「有无更新」的界面状态泄露少量信息。
-                    None => match Self::require_valid_directory(&skill.directory) {
-                        Err(err) => {
-                            log::warn!("跳过非法 directory 的哈希计算: {err}");
-                            None
+                let local_hash = match Self::local_hash_for_update_check(
+                    &ssot_dir,
+                    &skill.directory,
+                    skill.content_hash.as_deref(),
+                ) {
+                    Some((h, freshly_computed)) => {
+                        if freshly_computed {
+                            let _ = db.update_skill_hash(&skill.id, &h, 0);
                         }
-                        Ok(directory) => {
-                            let local_dir = ssot_dir.join(&directory);
-                            if local_dir.exists() {
-                                match Self::compute_dir_hash(&local_dir) {
-                                    Ok(h) => {
-                                        let _ = db.update_skill_hash(&skill.id, &h, 0);
-                                        Some(h)
-                                    }
-                                    Err(_) => None,
-                                }
-                            } else {
-                                None
-                            }
-                        }
-                    },
+                        Some(h)
+                    }
+                    None => None,
                 };
 
-                if local_hash.as_deref() != Some(&remote_hash) {
+                if local_hash.as_deref() != Some(&remote_hash) || update::is_pending(&skill.id)? {
                     updates.push(SkillUpdateInfo {
                         id: skill.id.clone(),
                         name: skill.name.clone(),
@@ -1101,6 +1280,7 @@ impl SkillService {
 
     /// 更新单个 Skill（重新下载并替换本地文件）
     pub async fn update_skill(&self, db: &Arc<Database>, skill_id: &str) -> Result<InstalledSkill> {
+        let _update_guard = update::lock().await;
         let skill = db
             .get_installed_skill(skill_id)?
             .ok_or_else(|| anyhow!("Skill not found: {skill_id}"))?;
@@ -1109,6 +1289,11 @@ impl SkillService {
         // 备份区并在界面列出）、remove_dir_all（删任意目录）、copy_dir_recursive
         // （把远端仓库内容写到任意路径）。校验必须在这三者之前。
         Self::require_valid_directory(&skill.directory)?;
+        Self::require_writable_skill_resources(&skill.directory)?;
+
+        if let Some(updated) = update::resume(db, &skill)? {
+            return Ok(updated);
+        }
 
         let (owner, name, branch) = match (&skill.repo_owner, &skill.repo_name) {
             (Some(o), Some(n)) => (
@@ -1129,12 +1314,10 @@ impl SkillService {
             enabled: true,
         };
 
-        let ssot_dir = Self::get_ssot_dir()?;
-
         // 下载仓库
         let (temp_guard, used_branch) = timeout(
             std::time::Duration::from_secs(60),
-            self.download_repo(&repo),
+            self.download_repo(&repo, self.update_download_client()),
         )
         .await
         .map_err(|_| {
@@ -1150,19 +1333,18 @@ impl SkillService {
         let mut remote_skills: Vec<DiscoverableSkill> = Vec::new();
         let _ = self.scan_dir_recursive(temp_dir, temp_dir, &repo, &mut remote_skills);
 
-        let remote_match = remote_skills
-            .iter()
-            .find(|rs| {
-                let remote_install_name = rs.directory.rsplit('/').next().unwrap_or(&rs.directory);
-                remote_install_name.eq_ignore_ascii_case(&skill.directory)
-            })
-            .ok_or_else(|| {
-                anyhow!(format_skill_error(
-                    "SKILL_DIR_NOT_FOUND",
-                    &[("path", &skill.directory)],
-                    Some("checkRepoUrl"),
-                ))
-            })?;
+        let remote_match = Self::find_remote_skill_for_install(
+            &remote_skills,
+            &skill.directory,
+            skill.readme_url.as_deref(),
+        )
+        .ok_or_else(|| {
+            anyhow!(format_skill_error(
+                "SKILL_DIR_NOT_FOUND",
+                &[("path", &skill.directory)],
+                Some("checkRepoUrl"),
+            ))
+        })?;
 
         let source =
             Self::resolve_skill_source_dir(temp_dir, &remote_match.directory).ok_or_else(|| {
@@ -1173,6 +1355,19 @@ impl SkillService {
                     Some("checkRepoUrl"),
                 ))
             })?;
+
+        let canonical_temp = temp_dir
+            .canonicalize()
+            .unwrap_or_else(|_| temp_dir.to_path_buf());
+        let resolved_doc_path = source
+            .canonicalize()
+            .ok()
+            .and_then(|source| Self::doc_path_for_source(&canonical_temp, &source));
+
+        // Downloads do not mutate local state, so acquire only now and hold the
+        // guard through the SSOT replacement, DB metadata update, and app sync.
+        let _state_guard = skill_state_write_guard();
+        let ssot_dir = Self::get_ssot_dir()?;
 
         // 下载和扫描期间用户可能已经卸载了该 Skill。必须在任何备份、删除或
         // 复制之前重新确认记录仍存在；否则即使最终的 metadata UPDATE 能发现
@@ -1191,27 +1386,19 @@ impl SkillService {
         Self::require_valid_directory(&current_skill.directory)?;
         let skill = current_skill;
 
-        // 备份旧文件
-        let _ = Self::create_uninstall_backup(&skill);
-
-        // 删除旧 SSOT 目录并复制新文件
         let dest = ssot_dir.join(&skill.directory);
-        if dest.exists() {
-            fs::remove_dir_all(&dest)?;
-        }
-        Self::copy_dir_recursive(&source, &dest)?;
-
-        // 计算新哈希 + 解析新元数据
-        let new_hash = Self::compute_dir_hash(&dest).ok();
-        let skill_md = dest.join("SKILL.md");
+        // Derive the desired state from the admitted download before touching
+        // the installed tree. The update owner preserves its exact preimage.
+        let new_hash = Some(Self::compute_dir_hash(&source)?);
+        let skill_md = source.join("SKILL.md");
         let (new_name, new_description) = Self::read_skill_name_desc(&skill_md, &skill.directory);
 
         // 更新 readme_url
-        let doc_path = skill
-            .readme_url
-            .as_deref()
-            .and_then(Self::extract_doc_path_from_url)
-            .unwrap_or_else(|| format!("{}/SKILL.md", skill.directory.trim_end_matches('/')));
+        let doc_path = Self::choose_doc_path(
+            resolved_doc_path,
+            skill.readme_url.as_deref(),
+            &skill.directory,
+        );
         let readme_url = Self::build_skill_doc_url(&owner, &name, &used_branch, &doc_path);
 
         let updated_metadata = InstalledSkill {
@@ -1230,21 +1417,12 @@ impl SkillService {
             path: None,
         };
 
-        let updated_skill = Self::persist_updated_skill_metadata(db, &updated_metadata)?;
-
-        // 同步到所有已启用的应用目录
-        for app in updated_skill.apps.enabled_targets() {
-            if let Err(e) = Self::sync_to_app_dir(&updated_skill.directory, &app) {
-                log::warn!("同步更新后的 skill 到 {:?} 失败: {e}", app);
-            }
-        }
-
-        log::info!("Skill {} 更新成功", updated_skill.name);
-        Ok(updated_skill)
+        update::commit(db, &skill, &updated_metadata, &source, &dest)
     }
 
     /// 为缺少 content_hash 的已安装 Skill 补算哈希
     pub fn backfill_content_hashes(db: &Arc<Database>) -> Result<usize> {
+        let _state_guard = skill_state_write_guard();
         let skills = db.get_all_installed_skills()?;
         let ssot_dir = Self::get_ssot_dir()?;
         let mut count = 0;
@@ -1285,6 +1463,8 @@ impl SkillService {
         db: &Arc<Database>,
         target: SkillStorageLocation,
     ) -> Result<MigrationResult> {
+        let _state_guard = skill_state_write_guard();
+
         let current = crate::settings::get_skill_storage_location();
         if current == target {
             return Ok(MigrationResult {
@@ -1302,10 +1482,49 @@ impl SkillService {
                 crate::config::get_home_dir().join(".agents").join("skills")
             }
         };
+        Self::require_writable_skill_path(&old_dir)?;
+        Self::require_writable_skill_path(&new_dir)?;
+        let skills = db.get_all_installed_skills()?;
+        // Link refusal must precede every rename and the destination/settings
+        // creation. Existing owned leaf links are read-only too: moving SSOT
+        // would leave their old targets missing, and refresh may not unlink them.
+        for skill in skills.values() {
+            let Ok(directory) = Self::require_valid_directory(&skill.directory) else {
+                continue;
+            };
+            let src = old_dir.join(&directory);
+            let dst = new_dir.join(&directory);
+            if fs::symlink_metadata(&src).is_ok() && !dst.exists() {
+                Self::require_writable_skill_path(&src)?;
+                Self::require_writable_skill_path(&dst)?;
+                // Reuse the bounded reader to detect internal linked directories
+                // before any earlier row moves. Other I/O/scanner failures keep
+                // the ordinary per-row result handling below.
+                if let Err(error) = Self::scan_vendor_tree(&src) {
+                    let linked = serde_json::from_str::<serde_json::Value>(&error.to_string())
+                        .ok()
+                        .is_some_and(|value| {
+                            value.get("code").and_then(|code| code.as_str())
+                                == Some("SKILL_LINK_READ_ONLY")
+                        });
+                    if linked {
+                        return Err(error);
+                    }
+                }
+            }
+            for app in SkillTargetId::all() {
+                let projection = Self::get_target_skills_dir(&app)?.join(&directory);
+                if skill.apps.is_enabled_for_target(&app)
+                    || fs::symlink_metadata(&projection).is_ok()
+                {
+                    Self::require_writable_skill_path(&projection)?;
+                }
+            }
+        }
         fs::create_dir_all(&new_dir)?;
+        Self::validate_skill_storage_destination(&new_dir)?;
 
         // 2. 逐个移动 skill 目录
-        let skills = db.get_all_installed_skills()?;
         let mut result = MigrationResult {
             migrated_count: 0,
             skipped_count: 0,
@@ -1337,12 +1556,20 @@ impl SkillService {
                 continue;
             }
 
+            if let Err(error) = Self::require_writable_skill_path(&src)
+                .and_then(|_| Self::require_writable_skill_path(&dst))
+                .and_then(|_| Self::scan_vendor_tree(&src).map(|_| ()))
+            {
+                result.errors.push(format!("{}: {error}", skill.directory));
+                continue;
+            }
+
             // 优先 rename（同文件系统原子操作），失败则 copy+delete
             match fs::rename(&src, &dst) {
                 Ok(()) => result.migrated_count += 1,
                 Err(_) => match Self::copy_dir_recursive(&src, &dst) {
                     Ok(()) => {
-                        let _ = fs::remove_dir_all(&src);
+                        let _ = Self::remove_skill_tree(&src);
                         result.migrated_count += 1;
                     }
                     Err(e) => {
@@ -1357,7 +1584,7 @@ impl SkillService {
 
         // 4. 刷新所有应用目录的 symlink（指向新 SSOT）
         for app in SkillTargetId::all() {
-            let _ = Self::sync_to_target(db, &app);
+            let _ = assignment::sync_to_target_unlocked(db, &app);
         }
 
         log::info!(
@@ -1416,7 +1643,7 @@ impl SkillService {
             ));
         }
 
-        fs::remove_dir_all(&backup_path)
+        Self::remove_skill_tree(&backup_path)
             .with_context(|| format!("failed to delete {}", backup_path.display()))?;
 
         log::info!("Skill 备份已删除: {}", backup_path.display());
@@ -1437,6 +1664,7 @@ impl SkillService {
         backup_id: &str,
         current_app: &SkillTargetId,
     ) -> Result<InstalledSkill> {
+        let _state_guard = skill_state_write_guard();
         let backup_path = Self::backup_path_for_id(backup_id)?;
         let metadata = Self::read_backup_metadata(&backup_path)?;
         let backup_skill_dir = backup_path.join("skill");
@@ -1467,6 +1695,8 @@ impl SkillService {
 
         let ssot_dir = Self::get_ssot_dir()?;
         let restore_path = ssot_dir.join(&directory);
+        Self::require_writable_skill_path(&restore_path)?;
+        Self::require_writable_skill_target(&directory, current_app)?;
         if restore_path.exists() || Self::is_symlink(&restore_path) {
             return Err(anyhow!(
                 "Restore target already exists: {}",
@@ -1486,14 +1716,14 @@ impl SkillService {
         restored_skill.content_hash = Self::compute_dir_hash(&restore_path).ok();
 
         if let Err(err) = db.save_skill(&restored_skill) {
-            let _ = fs::remove_dir_all(&restore_path);
+            let _ = Self::remove_skill_tree(&restore_path);
             return Err(err.into());
         }
 
         if !restored_skill.apps.is_empty() {
             if let Err(err) = Self::sync_to_app_dir(&restored_skill.directory, current_app) {
                 let _ = db.delete_skill(&restored_skill.id);
-                let _ = fs::remove_dir_all(&restore_path);
+                let _ = Self::remove_skill_tree(&restore_path);
                 return Err(err);
             }
         }
@@ -1528,6 +1758,12 @@ impl SkillService {
     ///
     /// 扫描各应用目录，找出未被 FyAgent 管理的 Skills
     pub fn scan_unmanaged(db: &Arc<Database>) -> Result<Vec<UnmanagedSkill>> {
+        let _state_guard = skill_state_read_guard();
+        Self::scan_unmanaged_unlocked(db)
+    }
+
+    /// 调用方必须持有 Skills 状态读锁或写锁。
+    fn scan_unmanaged_unlocked(db: &Arc<Database>) -> Result<Vec<UnmanagedSkill>> {
         let managed_skills = db.get_all_installed_skills()?;
         let managed_dirs: HashSet<String> = managed_skills
             .values()
@@ -1597,9 +1833,31 @@ impl SkillService {
         db: &Arc<Database>,
         imports: Vec<ImportSkillSelection>,
     ) -> Result<Vec<InstalledSkill>> {
+        let _state_guard = skill_state_write_guard();
+        Self::import_from_apps_unlocked(db, imports)
+    }
+
+    /// 调用方必须持有 Skills 状态写锁。
+    fn import_from_apps_unlocked(
+        db: &Arc<Database>,
+        imports: Vec<ImportSkillSelection>,
+    ) -> Result<Vec<InstalledSkill>> {
         let ssot_dir = Self::get_ssot_dir()?;
         let agents_lock = parse_agents_lock();
         let mut imported = Vec::new();
+
+        for selection in &imports {
+            let Ok(directory) = Self::require_valid_directory(&selection.directory) else {
+                continue;
+            };
+            Self::require_writable_skill_path(&ssot_dir.join(&directory))?;
+            for target in selection.apps.enabled_targets() {
+                let path = Self::get_target_skills_dir(&target)?.join(&directory);
+                if !path.exists() {
+                    Self::require_writable_skill_path(&path)?;
+                }
+            }
+        }
 
         // 将 lock 文件中发现的仓库保存到 skill_repos
         save_repos_from_lock(
@@ -1702,7 +1960,7 @@ impl SkillService {
             if let Err(err) = Self::sync_imported_skill_targets(&skill) {
                 let _ = db.delete_skill(&skill.id);
                 if created_ssot {
-                    let _ = fs::remove_dir_all(&dest);
+                    let _ = Self::remove_skill_tree(&dest);
                 }
                 return Err(err);
             }
@@ -1748,11 +2006,113 @@ impl SkillService {
             .with_context(|| format!("创建符号链接失败: {} -> {}", src.display(), dest.display()))
     }
 
+    /// Linked Skill directories are readable, but never mutation targets.
+    /// Inspect lexical ancestors before resolving: canonicalize would hide a
+    /// parent junction. Reuse the vendor metadata policy for Windows reparse
+    /// points, including junctions that FileType::is_symlink does not identify.
+    fn require_writable_skill_path(path: &Path) -> Result<()> {
+        if !path.is_absolute()
+            || path
+                .components()
+                .any(|part| matches!(part, Component::ParentDir))
+        {
+            return Err(anyhow!("无效的 Skill 写入路径"));
+        }
+        for ancestor in path.ancestors() {
+            match fs::symlink_metadata(ancestor) {
+                Ok(metadata) => {
+                    if skill_metadata_is_link(&metadata) {
+                        return Err(anyhow!(format_skill_error(
+                            "SKILL_LINK_READ_ONLY",
+                            &[],
+                            Some("useOrdinaryDirectory")
+                        )));
+                    }
+                }
+                // A non-directory ancestor is an ordinary I/O failure, not a link.
+                // Continue inspecting parents and let the mutation report it in order.
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                    ) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(())
+    }
+
+    fn require_writable_skill_target(directory: &str, target: &SkillTargetId) -> Result<()> {
+        let directory = Self::require_valid_directory(directory)?;
+        Self::require_writable_skill_path(&Self::get_target_skills_dir(target)?.join(directory))
+    }
+
+    fn require_writable_skill_resources(directory: &str) -> Result<()> {
+        let directory = Self::require_valid_directory(directory)?;
+        Self::require_writable_skill_path(&Self::get_ssot_dir()?.join(&directory))?;
+        for target in SkillTargetId::all() {
+            let path = Self::get_target_skills_dir(&target)?.join(&directory);
+            // An absent projection has nothing to remove. Unrelated linked
+            // roots must not block mutations of ordinary managed resources.
+            match fs::symlink_metadata(&path) {
+                Ok(_) => Self::require_writable_skill_path(&path)?,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) if error.kind() == io::ErrorKind::NotADirectory => {
+                    Self::require_writable_skill_path(&path)?;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(())
+    }
+
+    /// Refuse recursive deletion if any descendant is a link, using the
+    /// existing bounded no-follow tree reader rather than a second walker.
+    fn remove_skill_tree(path: &Path) -> Result<()> {
+        Self::require_writable_skill_path(path)?;
+        if fs::symlink_metadata(path).is_err_and(|error| error.kind() == io::ErrorKind::NotFound) {
+            return Ok(());
+        }
+        Self::scan_vendor_tree(path)?;
+        Self::require_writable_skill_path(path)?;
+        fs::remove_dir_all(path)?;
+        Ok(())
+    }
+
+    pub(crate) fn observed_read_only(path: &Path) -> bool {
+        path.ancestors().any(|ancestor| {
+            fs::symlink_metadata(ancestor).is_ok_and(|metadata| skill_metadata_is_link(&metadata))
+        })
+    }
+
+    pub(crate) fn observed_read_only_targets(directory: &str) -> Vec<String> {
+        let Ok(directory) = Self::require_valid_directory(directory) else {
+            return Vec::new();
+        };
+        SkillTargetId::all()
+            .filter_map(|target| {
+                let path = Self::get_target_skills_dir(&target).ok()?.join(&directory);
+                (fs::symlink_metadata(&path).is_ok() && Self::observed_read_only(&path))
+                    .then(|| target.as_str().to_string())
+            })
+            .collect()
+    }
+
     /// 检查路径是否为符号链接
     fn is_symlink(path: &Path) -> bool {
         path.symlink_metadata()
             .map(|m| m.file_type().is_symlink())
             .unwrap_or(false)
+    }
+
+    fn preflight_install_destination(
+        _source: &Path,
+        _directory: &str,
+        app: &SkillTargetId,
+    ) -> Result<()> {
+        let ssot_dir = Self::get_ssot_dir()?;
+        Self::get_distinct_app_skills_dir(&ssot_dir, app)?;
+        Ok(())
     }
 
     /// 获取当前同步方式配置
@@ -1775,8 +2135,9 @@ impl SkillService {
 
         Self::validate_sync_source_dir(&source, &directory)?;
 
-        let app_dir = Self::get_target_skills_dir(app)?;
+        let app_dir = Self::get_distinct_app_skills_dir(&ssot_dir, app)?;
         let dest = app_dir.join(&directory);
+        Self::require_writable_skill_path(&dest)?;
 
         // Qoder Work / TRAE Work are fixed-home, copy-only targets. Their vendor
         // directories are a security boundary, so they must not inherit the
@@ -1844,15 +2205,10 @@ impl SkillService {
 
     /// 删除路径（支持 symlink 和真实目录）
     fn remove_path(path: &Path) -> Result<()> {
-        if Self::is_symlink(path) {
-            // 符号链接：仅删除链接本身，不影响源文件
-            #[cfg(target_os = "macos")]
-            fs::remove_file(path)?;
-            #[cfg(windows)]
-            fs::remove_dir(path)?; // Windows 的目录 symlink 需要用 remove_dir
-        } else if path.is_dir() {
+        Self::require_writable_skill_path(path)?;
+        if path.is_dir() {
             // 真实目录：递归删除
-            fs::remove_dir_all(path)?;
+            Self::remove_skill_tree(path)?;
         } else if path.exists() {
             // 普通文件
             fs::remove_file(path)?;
@@ -1878,6 +2234,7 @@ impl SkillService {
 
     fn replace_dest_with_copy(source: &Path, dest: &Path, directory: &str) -> Result<()> {
         Self::validate_sync_source_dir(source, directory)?;
+        Self::require_writable_skill_path(dest)?;
 
         let parent = dest
             .parent()
@@ -1905,6 +2262,7 @@ impl SkillService {
             Self::remove_path(dest)?;
         }
 
+        Self::require_writable_skill_path(dest)?;
         fs::rename(&tmp, dest).with_context(|| {
             let _ = Self::remove_path(&tmp);
             format!(
@@ -2113,8 +2471,12 @@ impl SkillService {
         Self::validate_vendor_relative_path(&relative)?;
         let metadata = fs::symlink_metadata(current)
             .with_context(|| format!("读取 Skill 条目失败: {}", current.display()))?;
-        if metadata.file_type().is_symlink() {
-            return Err(anyhow!("Vendor Skill 拒绝 symlink/reparse 条目"));
+        if skill_metadata_is_link(&metadata) {
+            return Err(anyhow!(format_skill_error(
+                "SKILL_LINK_READ_ONLY",
+                &[("reason", "symlink/reparse")],
+                Some("useOrdinaryDirectory"),
+            )));
         }
         if metadata.is_dir() {
             vendor_validate_directory_metadata(&metadata)?;
@@ -2210,7 +2572,7 @@ impl SkillService {
         if !vendor_open_directory(path)?.1.same_object(identity) {
             return Err(anyhow!("Vendor Skill 删除目标 identity 漂移"));
         }
-        fs::remove_dir_all(path)
+        Self::remove_skill_tree(path)
             .with_context(|| format!("删除 Vendor Skill 目录失败: {}", path.display()))
     }
 
@@ -2264,8 +2626,15 @@ impl SkillService {
         // 这里执行的是删除操作，join 前必须校验，防止任意目录删除。
         let directory = Self::require_valid_directory(directory)?;
 
-        let app_dir = Self::get_target_skills_dir(app)?;
+        let ssot_dir = Self::get_ssot_dir()?;
+        let app_dir = Self::get_distinct_app_skills_dir(&ssot_dir, app)?;
         let skill_path = app_dir.join(&directory);
+        match fs::symlink_metadata(&skill_path) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
+            Ok(_) => {}
+        }
+        Self::require_writable_skill_path(&skill_path)?;
 
         if app.requires_copy() {
             Self::remove_vendor_dest(&crate::config::get_home_dir(), &skill_path)?;
@@ -2427,20 +2796,22 @@ impl SkillService {
 
     /// 从仓库获取技能列表
     async fn fetch_repo_skills(&self, repo: &SkillRepo) -> Result<Vec<DiscoverableSkill>> {
-        let (temp_guard, resolved_branch) =
-            timeout(std::time::Duration::from_secs(60), self.download_repo(repo))
-                .await
-                .map_err(|_| {
-                    anyhow!(format_skill_error(
-                        "DOWNLOAD_TIMEOUT",
-                        &[
-                            ("owner", &repo.owner),
-                            ("name", &repo.name),
-                            ("timeout", "60")
-                        ],
-                        Some("checkNetwork"),
-                    ))
-                })??;
+        let (temp_guard, resolved_branch) = timeout(
+            std::time::Duration::from_secs(60),
+            self.download_repo(repo, None),
+        )
+        .await
+        .map_err(|_| {
+            anyhow!(format_skill_error(
+                "DOWNLOAD_TIMEOUT",
+                &[
+                    ("owner", &repo.owner),
+                    ("name", &repo.name),
+                    ("timeout", "60")
+                ],
+                Some("checkNetwork"),
+            ))
+        })??;
 
         let mut skills = Vec::new();
         let scan_dir = temp_guard.path();
@@ -2786,12 +3157,52 @@ impl SkillService {
         walk(root, target_name, 0)
     }
 
+    /// 在仓库扫描结果中定位已安装的技能：已保存的源路径优先，其次目录名，
+    /// metadata name 仅作唯一兜底。
+    fn find_remote_skill_for_install<'a>(
+        remote_skills: &'a [DiscoverableSkill],
+        install_name: &str,
+        stored_readme_url: Option<&str>,
+    ) -> Option<&'a DiscoverableSkill> {
+        let stored_doc_path = stored_readme_url.and_then(Self::extract_doc_path_from_url);
+        stored_doc_path
+            .as_deref()
+            .and_then(|doc_path| {
+                remote_skills.iter().find(|skill| {
+                    skill
+                        .readme_url
+                        .as_deref()
+                        .and_then(Self::extract_doc_path_from_url)
+                        .as_deref()
+                        == Some(doc_path)
+                })
+            })
+            .or_else(|| {
+                remote_skills.iter().find(|skill| {
+                    skill
+                        .directory
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(&skill.directory)
+                        .eq_ignore_ascii_case(install_name)
+                })
+            })
+            .or_else(|| {
+                let mut matches = remote_skills
+                    .iter()
+                    .filter(|skill| skill.name.trim().eq_ignore_ascii_case(install_name));
+                let found = matches.next()?;
+                matches.next().is_none().then_some(found)
+            })
+    }
+
     /// 将 discoverable skill 的目录信息重新解析为解压目录中的真实源目录。
     ///
     /// **核心原则：返回的目录必定含 `SKILL.md`**（以 SKILL.md 为锚点）。解析顺序：
     /// 1. 直接相对路径命中（如 `skills/foo`），校验含 `SKILL.md`——明确路径优先；
     /// 2. 按安装名递归查找名字匹配 **且** 含 `SKILL.md` 的目录；
-    /// 3. 兜底：仓库根本身含 `SKILL.md`。
+    /// 3. 按 `SKILL.md` 的 metadata name 查找唯一匹配；
+    /// 4. 兜底：仓库根本身含 `SKILL.md`。
     fn resolve_skill_source_dir(root: &Path, raw_directory: &str) -> Option<PathBuf> {
         let source_rel = Self::sanitize_skill_source_path(raw_directory)?;
         let install_name = source_rel
@@ -2815,7 +3226,33 @@ impl SkillService {
             return Some(found);
         }
 
-        // 3. 兜底：仓库根本身是 skill
+        // 3. skills.sh 的 skillId 可能与目录名不同；仅接受唯一 metadata 匹配，
+        //    避免同名 skill 因文件系统遍历顺序不同而随机安装。
+        if let Ok(skill_dirs) = Self::scan_skills_in_dir(root) {
+            let mut metadata_matches = skill_dirs.into_iter().filter(|path| {
+                Self::parse_skill_metadata_static(&path.join("SKILL.md"))
+                    .ok()
+                    .and_then(|metadata| metadata.name)
+                    .is_some_and(|name| name.trim().eq_ignore_ascii_case(install_name.as_str()))
+            });
+            if let Some(found) = metadata_matches.next() {
+                if metadata_matches.next().is_some() {
+                    log::warn!(
+                        "Multiple skill directories declare metadata name '{}'; refusing ambiguous install",
+                        install_name
+                    );
+                    return None;
+                }
+                log::info!(
+                    "Skill directory '{}' resolved from SKILL.md metadata: {}",
+                    install_name,
+                    found.display()
+                );
+                return Some(found);
+            }
+        }
+
+        // 4. 兜底：仓库根本身是 skill
         if root.join("SKILL.md").is_file() {
             log::info!(
                 "Skill directory '{}' not found, but SKILL.md exists at root, using repo root",
@@ -2881,10 +3318,28 @@ impl SkillService {
 
     /// 下载仓库
     ///
+    // Test-only transport injection is explicitly admitted only by update and
+    // update checks; ordinary install/discovery and marketplace keep the
+    // production global HTTP-client entry point.
+    fn update_download_client(&self) -> Option<&reqwest::Client> {
+        #[cfg(test)]
+        {
+            self.update_test_client.as_ref()
+        }
+        #[cfg(not(test))]
+        {
+            None
+        }
+    }
+
     /// 这里是仓库坐标进入 URL 的**唯一收敛点**——`fetch_repo_skills`、`install`、
     /// `check_updates`、`update_skill` 四条路径都经过它，而 `skill_repos` / `skills`
     /// 两张表都会被同步导入的远端快照整表覆盖，入库校验管不住它们。所以主防线放这里。
-    async fn download_repo(&self, repo: &SkillRepo) -> Result<(tempfile::TempDir, String)> {
+    async fn download_repo(
+        &self,
+        repo: &SkillRepo,
+        client: Option<&reqwest::Client>,
+    ) -> Result<(tempfile::TempDir, String)> {
         Self::validate_repo_ref(&repo.owner, &repo.name, &repo.branch)?;
 
         // 守卫全程持有，成功后连同目录一起交给调用方（见 `extract_local_zip` 的说明）。
@@ -2892,8 +3347,19 @@ impl SkillService {
         // ——都会把半个解压目录永久留在磁盘上，反复触发即可持续填盘。
         let temp_root = crate::config::get_user_temp_dir();
         fs::create_dir_all(&temp_root)?;
+        // Allocate our own scratch directory on the physical temp root. macOS
+        // may spell it through /var; guarded copies must not receive that link
+        // spelling. User-selected Skill paths still undergo lexical link checks.
+        let temp_root = temp_root.canonicalize()?;
         let temp_dir = tempfile::tempdir_in(&temp_root)?;
         let temp_path = temp_dir.path().to_path_buf();
+
+        // Exercise the real install/update flow without network access in unit tests.
+        #[cfg(test)]
+        if let Some(fixture) = &self.repo_fixture {
+            Self::copy_dir_recursive(fixture, &temp_path)?;
+            return Ok((temp_dir, repo.branch.clone()));
+        }
 
         let mut branches = Vec::new();
         if !repo.branch.is_empty() && !repo.branch.eq_ignore_ascii_case("HEAD") {
@@ -2914,12 +3380,12 @@ impl SkillService {
             );
             Self::assert_github_archive_url(&url, &repo.owner, &repo.name)?;
 
-            match self.download_and_extract(&url, &temp_path).await {
+            match self.download_and_extract(&url, &temp_path, client).await {
                 Ok(_) => return Ok((temp_dir, branch.to_string())),
                 Err(e) => {
                     // 每个分支各自重算预算，所以失败后必须把上一轮的残留清掉——
                     // 否则 N 个候选分支等于 N 倍的落盘量堆在同一个目录里。
-                    let _ = fs::remove_dir_all(&temp_path);
+                    let _ = Self::remove_skill_tree(&temp_path);
                     let _ = fs::create_dir_all(&temp_path);
                     last_error = Some(e);
                     continue;
@@ -2931,9 +3397,20 @@ impl SkillService {
     }
 
     /// 下载并解压 ZIP
-    async fn download_and_extract(&self, url: &str, dest: &Path) -> Result<()> {
+    async fn download_and_extract(
+        &self,
+        url: &str,
+        dest: &Path,
+        client: Option<&reqwest::Client>,
+    ) -> Result<()> {
         let parsed = url::Url::parse(url).map_err(|e| anyhow!("Invalid archive URL: {e}"))?;
-        let body = Self::download_bounded_bytes(parsed, Duration::from_secs(60)).await?;
+        let body = match client {
+            Some(client) => {
+                Self::download_bounded_bytes_with_client(client, parsed, Duration::from_secs(60))
+                    .await?
+            }
+            None => Self::download_bounded_bytes(parsed, Duration::from_secs(60)).await?,
+        };
         let cursor = std::io::Cursor::new(body);
         let archive = zip::ZipArchive::new(cursor)?;
         Self::extract_repo_archive(archive, dest)
@@ -2942,6 +3419,14 @@ impl SkillService {
     /// 按实际上传字节卡住压缩体大小，不信 Content-Length。
     async fn download_bounded_bytes(url: url::Url, timeout: Duration) -> Result<Vec<u8>> {
         let client = crate::proxy::http_client::get();
+        Self::download_bounded_bytes_with_client(&client, url, timeout).await
+    }
+
+    async fn download_bounded_bytes_with_client(
+        client: &reqwest::Client,
+        url: url::Url,
+        timeout: Duration,
+    ) -> Result<Vec<u8>> {
         let response = client.get(url).timeout(timeout).send().await?;
         if !response.status().is_success() {
             let status = response.status().as_u16().to_string();
@@ -2990,6 +3475,25 @@ impl SkillService {
             Self::charge_archive_budget(total_bytes, read as u64)?;
             writer.write_all(&buffer[..read])?;
         }
+    }
+
+    /// 把单个文件条目写到 `dest` 并计入归档预算，不足一个磁盘块的按一块补齐。
+    ///
+    /// 解压路径（远端归档、本地 ZIP）与 symlink 物化都经这里落盘，保证"一个文件
+    /// 至少一块"的计费只有一处定义。
+    fn write_file_within_budget<R: std::io::Read>(
+        reader: &mut R,
+        dest: &Path,
+        total_bytes: &mut u64,
+    ) -> Result<()> {
+        let mut writer = fs::File::create(dest)?;
+        let before = *total_bytes;
+        Self::copy_entry_within_budget(reader, &mut writer, total_bytes)?;
+        let written = total_bytes.saturating_sub(before);
+        if written < FILE_ENTRY_BUDGET_COST {
+            Self::charge_archive_budget(total_bytes, FILE_ENTRY_BUDGET_COST - written)?;
+        }
+        Ok(())
     }
 
     /// 读取 symlink 条目声明的目标路径。
@@ -3134,10 +3638,9 @@ impl SkillService {
                 if let Some(parent) = outpath.parent() {
                     Self::create_dir_all_within_budget(parent, &mut total_bytes)?;
                 }
-                let mut outfile = fs::File::create(&outpath)?;
                 // 按实际写入的字节累计，而不是信任归档头里声明的 size——
                 // 压缩炸弹的声明值可以是假的。
-                Self::copy_entry_within_budget(&mut file, &mut outfile, &mut total_bytes)?;
+                Self::write_file_within_budget(&mut file, &outpath, &mut total_bytes)?;
             }
         }
 
@@ -3168,31 +3671,24 @@ impl SkillService {
         Ok(())
     }
 
-    /// 复制单个文件并计入归档总预算，复用 `copy_entry_within_budget` 以保证
-    /// 上限与报错文案只有一处定义。
+    /// 复制单个文件并计入归档总预算，复用 `write_file_within_budget` 以保证
+    /// 上限、最小计费与报错文案只有一处定义。
     fn copy_file_within_budget(src: &Path, dest: &Path, total_bytes: &mut u64) -> Result<()> {
         let mut reader = fs::File::open(src)?;
-        let mut writer = fs::File::create(dest)?;
-        Self::copy_entry_within_budget(&mut reader, &mut writer, total_bytes)
+        Self::write_file_within_budget(&mut reader, dest, total_bytes)
     }
 
     /// 递归复制目录
     fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
+        Self::require_writable_skill_path(dest)?;
+        // Resolve only the read source, so a linked parent can be imported to
+        // ordinary managed storage. Internal links remain rejected by the
+        // existing bounded scanner and guarded copy implementation.
+        let source = src.canonicalize()?;
+        let before = Self::scan_vendor_tree(&source)?;
         fs::create_dir_all(dest)?;
-
-        for entry in fs::read_dir(src)? {
-            let entry = entry?;
-            let path = entry.path();
-            let dest_path = dest.join(entry.file_name());
-
-            if path.is_dir() {
-                Self::copy_dir_recursive(&path, &dest_path)?;
-            } else {
-                fs::copy(&path, &dest_path)?;
-            }
-        }
-
-        Ok(())
+        Self::require_writable_skill_path(dest)?;
+        Self::copy_vendor_tree(&source, dest, &before)
     }
 
     fn resolve_uninstall_backup_source(skill: &InstalledSkill) -> Result<Option<PathBuf>> {
@@ -3257,7 +3753,10 @@ impl SkillService {
         let remove_count = entries.len().saturating_sub(SKILL_BACKUP_RETAIN_COUNT);
 
         for (path, _) in entries.into_iter().take(remove_count) {
-            fs::remove_dir_all(&path)?;
+            if update::backup_is_pending(&path)? {
+                continue;
+            }
+            Self::remove_skill_tree(&path)?;
         }
 
         Ok(())
@@ -3320,7 +3819,7 @@ impl SkillService {
         };
 
         if let Err(err) = write_backup() {
-            let _ = fs::remove_dir_all(&backup_path);
+            let _ = Self::remove_skill_tree(&backup_path);
             return Err(err);
         }
 
@@ -3449,6 +3948,8 @@ impl SkillService {
         current_app: &SkillTargetId,
         provenance: Option<&ZipInstallProvenance>,
     ) -> Result<Vec<InstalledSkill>> {
+        Self::require_writable_skill_path(&Self::get_ssot_dir()?)?;
+        Self::require_writable_skill_path(&Self::get_target_skills_dir(current_app)?)?;
         // 解压到临时目录
         let temp_guard = Self::extract_local_zip(zip_path)?;
         let temp_dir = temp_guard.path();
@@ -3464,6 +3965,7 @@ impl SkillService {
             )));
         }
 
+        let _state_guard = skill_state_write_guard();
         let ssot_dir = Self::get_ssot_dir()?;
         let mut installed = Vec::new();
         let existing_skills = db.get_all_installed_skills()?;
@@ -3542,10 +4044,14 @@ impl SkillService {
                 None => (install_name.clone(), None),
             };
 
+            Self::preflight_install_destination(&skill_dir, &install_name, current_app)?;
+
             // 复制到 SSOT
             let dest = ssot_dir.join(&install_name);
+            Self::require_writable_skill_path(&dest)?;
+            Self::require_writable_skill_target(&install_name, current_app)?;
             if dest.exists() {
-                let _ = fs::remove_dir_all(&dest);
+                let _ = Self::remove_skill_tree(&dest);
             }
             Self::copy_dir_recursive(&skill_dir, &dest)?;
 
@@ -3577,7 +4083,7 @@ impl SkillService {
             // 同步到当前应用目录
             if let Err(err) = Self::sync_to_app_dir(&install_name, current_app) {
                 let _ = db.delete_skill(&skill.id);
-                let _ = fs::remove_dir_all(&dest);
+                let _ = Self::remove_skill_tree(&dest);
                 return Err(err);
             }
 
@@ -3676,8 +4182,7 @@ impl SkillService {
                 if let Some(parent) = outpath.parent() {
                     Self::create_dir_all_within_budget(parent, &mut total_bytes)?;
                 }
-                let mut outfile = fs::File::create(&outpath)?;
-                Self::copy_entry_within_budget(&mut file, &mut outfile, &mut total_bytes)?;
+                Self::write_file_within_budget(&mut file, &outpath, &mut total_bytes)?;
             }
         }
 
@@ -3802,6 +4307,20 @@ impl SkillService {
     ) -> Result<Vec<InstalledSkill>> {
         marketplace::install_skillhub(db, slug, current_app).await
     }
+}
+
+fn skill_metadata_is_link(metadata: &fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0
+    }
+    #[cfg(target_os = "macos")]
+    false
 }
 
 fn vendor_validate_directory_metadata(metadata: &fs::Metadata) -> Result<()> {
@@ -4037,9 +4556,206 @@ pub fn migrate_skills_to_ssot(db: &Arc<Database>) -> Result<usize> {
 }
 
 #[cfg(test)]
+#[path = "skill/linked_paths_tests.rs"]
+mod linked_paths_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
     use tempfile::tempdir;
+
+    // macOS /var is a system symlink, not a linked Skill under test.
+    #[cfg(target_os = "macos")]
+    fn tempdir() -> io::Result<tempfile::TempDir> {
+        tempfile::tempdir_in(std::env::temp_dir().canonicalize()?)
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn skill_state_lock_allows_snapshots_but_excludes_writers() {
+        let first_reader = skill_state_read_guard();
+        let second_reader = skill_state_read_guard();
+        assert!(skill_state_lock().try_write().is_err());
+        drop(second_reader);
+        drop(first_reader);
+        assert!(skill_state_lock().try_write().is_ok());
+    }
+
+    // 在恢复持写锁期间调用公共操作；先释放父线程锁，再处理 worker 的结果。
+    // 自锁线程无法安全终止，超时必须中止测试二进制，避免污染后续测试。
+    fn assert_skill_operation_waits_for_restore(operation: impl FnOnce() + Send + 'static) {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let guard = skill_state_write_guard();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let _ = started_tx.send(());
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation));
+            let _ = done_tx.send(result);
+        });
+        let started = started_rx.recv_timeout(Duration::from_secs(5));
+        let early_result = done_rx.recv_timeout(Duration::from_millis(100));
+        let blocked = matches!(early_result, Err(mpsc::RecvTimeoutError::Timeout));
+        drop(guard);
+        let result = match early_result {
+            Err(mpsc::RecvTimeoutError::Timeout) => done_rx.recv_timeout(Duration::from_secs(5)),
+            result => result,
+        };
+        if matches!(result, Err(mpsc::RecvTimeoutError::Timeout)) {
+            eprintln!("Skills 操作在恢复锁释放后仍未完成；可能存在锁重入，中止测试进程");
+            std::process::abort();
+        }
+        worker.join().unwrap();
+        started.unwrap();
+        assert!(blocked, "Skills operation bypassed the state lock");
+        if let Err(panic) = result.unwrap() {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn skill_restore_wait_helper_propagates_worker_panic_after_unlocking() {
+        let result = std::panic::catch_unwind(|| {
+            assert_skill_operation_waits_for_restore(|| {
+                drop(skill_state_write_guard());
+                panic!("被测操作失败");
+            });
+        });
+        let panic = result.expect_err("必须传播 worker 的原始 panic");
+        assert_eq!(panic.downcast_ref::<&str>(), Some(&"被测操作失败"));
+        assert!(skill_state_lock().try_write().is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn skill_restore_wait_helper_rejects_operations_that_bypass_the_lock() {
+        let result = std::panic::catch_unwind(|| {
+            assert_skill_operation_waits_for_restore(|| {});
+        });
+        assert!(result.is_err());
+        assert!(skill_state_lock().try_write().is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn skill_public_operations_wait_for_cloud_restore() {
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _storage = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let db = Arc::new(Database::memory().expect("db"));
+
+        let toggle_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            assert!(SkillService::toggle_target(
+                &toggle_db,
+                "missing",
+                &SkillTargetId::WorkBuddy,
+                true
+            )
+            .is_err());
+        });
+        let sync_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            SkillService::sync_to_target(&sync_db, &SkillTargetId::WorkBuddy).unwrap();
+        });
+        let compatibility_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            SkillService::sync_to_app(&compatibility_db, &AppType::Claude).unwrap();
+        });
+        let restore_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            assert!(SkillService::restore_from_backup_for_target(
+                &restore_db,
+                "missing",
+                &SkillTargetId::WorkBuddy
+            )
+            .is_err());
+        });
+        let storage_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            SkillService::migrate_storage(&storage_db, SkillStorageLocation::FyAgent).unwrap();
+        });
+        assert_skill_operation_waits_for_restore(move || {
+            migrate_skills_to_ssot(&db).unwrap();
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn install_fast_path_waits_for_cloud_restore_and_reuses_the_record() {
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _storage = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let db = Arc::new(Database::memory().expect("db"));
+        let mut installed = sample_installed("existing-skill", Some("owner"), Some("repo"));
+        installed.id = "original-id".to_string();
+        db.save_skill(&installed).unwrap();
+        write_skill(
+            &SkillService::get_ssot_dir()
+                .unwrap()
+                .join(&installed.directory),
+            "existing",
+        );
+        let source = sample_discoverable("existing", "Existing-Skill", "owner", "repo", "");
+        let install_db = db.clone();
+        assert_skill_operation_waits_for_restore(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let reused = runtime
+                .block_on(SkillService::new().install(
+                    &install_db,
+                    &source,
+                    &SkillTargetId::WorkBuddy,
+                ))
+                .unwrap();
+            assert_eq!(reused.id, "original-id");
+            assert!(reused.apps.workbuddy);
+        });
+        assert_eq!(db.get_all_installed_skills().unwrap().len(), 1);
+        assert!(
+            SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+                .unwrap()
+                .join(&installed.directory)
+                .join("SKILL.md")
+                .is_file()
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn install_rejects_a_directory_owned_by_another_repository() {
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _storage = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let db = Arc::new(Database::memory().expect("db"));
+        let installed = sample_installed("existing-skill", Some("owner"), Some("original"));
+        db.save_skill(&installed).unwrap();
+        let source_dir = SkillService::get_ssot_dir()
+            .unwrap()
+            .join(&installed.directory);
+        write_skill(&source_dir, "original");
+        let before = fs::read(source_dir.join("SKILL.md")).unwrap();
+        let source = sample_discoverable("existing", "Existing-Skill", "owner", "other", "");
+        let error = SkillService::new()
+            .install(&db, &source, &SkillTargetId::WorkBuddy)
+            .await
+            .expect_err("another repo must not replace this directory");
+        assert!(error.to_string().contains("SKILL_DIRECTORY_CONFLICT"));
+        assert_eq!(db.get_all_installed_skills().unwrap().len(), 1);
+        assert_eq!(fs::read(source_dir.join("SKILL.md")).unwrap(), before);
+        assert!(
+            !SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+                .unwrap()
+                .join(&installed.directory)
+                .exists()
+        );
+    }
 
     #[test]
     fn skill_storage_location_uses_only_the_fyagent_serialized_identity() {
@@ -4315,6 +5031,93 @@ mod tests {
             .expect_err("entry count over the limit must be rejected");
         assert!(
             err.to_string().contains("ARCHIVE_TOO_MANY_ENTRIES"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn extract_repo_archive_accepts_real_world_sized_skill_repos() {
+        // #7475：hugohe3/ppt-master 整仓归档 13_248 条目，旧上限 10_000 把它当成
+        // 压缩炸弹拒掉。下载的是整个仓库而非单个技能目录，上限必须容得下这种规模。
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        const ENTRIES: usize = 13_248;
+        let mut buf = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let opts = SimpleFileOptions::default();
+            zip.start_file("ppt-master-main/skills/ppt-master/SKILL.md", opts)
+                .unwrap();
+            zip.write_all(b"---\nname: ppt-master\n---\n").unwrap();
+            for i in 1..ENTRIES {
+                zip.start_file(
+                    format!("ppt-master-main/skills/ppt-master/templates/t{i}.md"),
+                    opts,
+                )
+                .unwrap();
+                zip.write_all(b"x").unwrap();
+            }
+            zip.finish().unwrap();
+        }
+
+        let temp = tempdir().expect("tempdir");
+        let archive = zip::ZipArchive::new(std::io::Cursor::new(buf)).expect("archive parses");
+        SkillService::extract_repo_archive(archive, temp.path())
+            .expect("a 13k-entry skill repo must extract");
+        assert!(temp.path().join("skills/ppt-master/SKILL.md").is_file());
+        assert!(temp
+            .path()
+            .join(format!("skills/ppt-master/templates/t{}.md", ENTRIES - 1))
+            .is_file());
+    }
+
+    #[test]
+    fn file_entries_are_charged_at_least_one_block() {
+        // 空文件与小文件照样占 inode 和磁盘块。只按内容字节计费时，全是空文件的
+        // 归档预算读数一直是 0，条目上限提高后就没有东西兜底了。
+        let temp = tempdir().expect("tempdir");
+
+        let mut total_bytes = 0u64;
+        let mut empty = std::io::Cursor::new(Vec::<u8>::new());
+        SkillService::write_file_within_budget(
+            &mut empty,
+            &temp.path().join("empty"),
+            &mut total_bytes,
+        )
+        .expect("within budget");
+        assert_eq!(total_bytes, FILE_ENTRY_BUDGET_COST);
+
+        let mut small = std::io::Cursor::new(vec![7u8; 64]);
+        SkillService::write_file_within_budget(
+            &mut small,
+            &temp.path().join("small"),
+            &mut total_bytes,
+        )
+        .expect("within budget");
+        assert_eq!(total_bytes, 2 * FILE_ENTRY_BUDGET_COST);
+
+        // 超过一块的文件按实际字节计，不重复加最小值
+        let mut large = std::io::Cursor::new(vec![7u8; FILE_ENTRY_BUDGET_COST as usize + 1]);
+        SkillService::write_file_within_budget(
+            &mut large,
+            &temp.path().join("large"),
+            &mut total_bytes,
+        )
+        .expect("within budget");
+        assert_eq!(total_bytes, 3 * FILE_ENTRY_BUDGET_COST + 1);
+
+        // 预算只差一个字节就满，再写一个 1 字节文件也必须被拦下
+        let mut total_bytes = MAX_ARCHIVE_TOTAL_BYTES - FILE_ENTRY_BUDGET_COST + 1;
+        let mut tiny = std::io::Cursor::new(vec![7u8; 1]);
+        let err = SkillService::write_file_within_budget(
+            &mut tiny,
+            &temp.path().join("tiny"),
+            &mut total_bytes,
+        )
+        .expect_err("a file that would exceed the block budget must be rejected");
+        assert!(
+            err.to_string().contains("ARCHIVE_TOO_LARGE"),
             "unexpected error: {err}"
         );
     }
@@ -4679,6 +5482,61 @@ mod tests {
         );
     }
 
+    #[test]
+    #[serial_test::serial]
+    fn local_zip_installs_a_large_skill_to_a_vendor_copy_target() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _storage = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let db = Arc::new(Database::memory().expect("db"));
+        let zip_path = home.path().join("large-skill.zip");
+        const ENTRIES: usize = 13_248;
+        let mut archive = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
+        let options = SimpleFileOptions::default();
+        archive.start_file("large-skill/SKILL.md", options).unwrap();
+        archive.write_all(b"---\nname: large-skill\n---\n").unwrap();
+        for i in 1..ENTRIES {
+            archive
+                .start_file(format!("large-skill/file-{i}.txt"), options)
+                .unwrap();
+            // Empty files still incur the minimum archive block charge.
+        }
+        archive.finish().unwrap();
+
+        let installed = SkillService::install_from_zip(&db, &zip_path, &SkillTargetId::WorkBuddy)
+            .expect("13k-entry local ZIP must pass extraction and vendor tree validation");
+        assert_eq!(installed.len(), 1);
+        assert_eq!(db.get_all_installed_skills().unwrap().len(), 1);
+        let ssot = SkillService::get_ssot_dir().unwrap().join("large-skill");
+        let dest = SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+            .unwrap()
+            .join("large-skill");
+        let tree = SkillService::scan_vendor_tree(&dest).unwrap();
+        assert_eq!(tree.entries.len(), ENTRIES + 1); // files plus the root directory
+        assert!(!SkillService::is_symlink(&dest));
+        assert_eq!(
+            SkillService::compute_dir_hash(&ssot).unwrap(),
+            SkillService::compute_dir_hash(&dest).unwrap()
+        );
+        assert!(dest.join(format!("file-{}.txt", ENTRIES - 1)).is_file());
+    }
+
+    #[test]
+    fn vendor_tree_entry_limit_counts_the_root_and_rejects_overflow() {
+        let temp = tempdir().expect("source");
+        for i in 0..MAX_ARCHIVE_ENTRIES - 1 {
+            fs::File::create(temp.path().join(format!("entry-{i}"))).unwrap();
+        }
+        let accepted = SkillService::scan_vendor_tree(temp.path()).expect("exact entry limit");
+        assert_eq!(accepted.entries.len(), MAX_ARCHIVE_ENTRIES);
+        fs::File::create(temp.path().join("overflow")).unwrap();
+        let error = SkillService::scan_vendor_tree(temp.path()).expect_err("root also counts");
+        assert!(error.to_string().contains("条目或深度上限"));
+    }
+
     fn write_skill(dir: &Path, name: &str) {
         fs::create_dir_all(dir).expect("create skill dir");
         fs::write(
@@ -4804,6 +5662,9 @@ mod tests {
     struct TestHomeGuard(Option<std::ffi::OsString>);
     impl TestHomeGuard {
         fn set(home: &Path) -> Self {
+            #[cfg(target_os = "windows")]
+            crate::initialize_windows_user_context()
+                .expect("initialize the real Windows Shell-user context for Skill tests");
             let guard = Self(std::env::var_os("FYAGENT_TEST_HOME"));
             std::env::set_var("FYAGENT_TEST_HOME", home);
             guard
@@ -4815,6 +5676,39 @@ mod tests {
                 Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
                 None => std::env::remove_var("FYAGENT_TEST_HOME"),
             }
+        }
+    }
+
+    struct ClaudeConfigDirGuard(crate::settings::AppSettings);
+
+    impl ClaudeConfigDirGuard {
+        fn set(path: &Path) -> Self {
+            let previous = crate::settings::get_settings();
+            let mut settings = previous.clone();
+            settings.claude_config_dir = Some(path.to_string_lossy().to_string());
+            crate::settings::update_settings(settings).expect("set Claude config directory");
+            Self(previous)
+        }
+    }
+
+    impl Drop for ClaudeConfigDirGuard {
+        fn drop(&mut self) {
+            crate::settings::update_settings(self.0.clone()).expect("restore settings");
+        }
+    }
+
+    struct StorageLocationGuard(SkillStorageLocation);
+    impl StorageLocationGuard {
+        fn set(location: SkillStorageLocation) -> Self {
+            let previous = crate::settings::get_skill_storage_location();
+            crate::settings::set_skill_storage_location(location)
+                .expect("set test skill storage location");
+            Self(previous)
+        }
+    }
+    impl Drop for StorageLocationGuard {
+        fn drop(&mut self) {
+            let _ = crate::settings::set_skill_storage_location(self.0);
         }
     }
 
@@ -5082,47 +5976,149 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
-    fn toggle_every_v2_skill_target_assigns_then_removes() {
+    fn toggle_every_v2_skill_target_preserves_copy_roundtrip_and_owned_links() {
+        struct SettingsGuard(crate::settings::AppSettings);
+        impl Drop for SettingsGuard {
+            fn drop(&mut self) {
+                let _ = crate::settings::update_settings(self.0.clone());
+            }
+        }
         let temp = tempdir().expect("tempdir");
         let _guard = TestHomeGuard::set(temp.path());
+        assert!(crate::config::get_app_config_dir().starts_with(temp.path()));
+        // Restore the process-local settings while the isolated home is active.
+        let saved = crate::settings::get_settings();
+        let _settings_guard = SettingsGuard(saved.clone());
         let db = Arc::new(Database::memory().expect("memory db"));
 
-        for target in V2_SKILL_TARGETS {
-            let directory = format!("roundtrip-{}", target.as_str().replace('-', "_"));
-            write_skill(
-                &SkillService::get_ssot_dir().expect("ssot").join(&directory),
-                &directory,
-            );
-            let id = format!("local:{directory}");
-            db.save_skill(&poisoned_skill(&id, &directory))
-                .expect("seed skill");
+        for method in [SyncMethod::Copy, SyncMethod::Symlink] {
+            let settings = crate::settings::AppSettings {
+                skill_sync_method: method,
+                skill_storage_location: SkillStorageLocation::FyAgent,
+                ..crate::settings::AppSettings::default()
+            };
+            crate::settings::update_settings(settings).expect("isolated sync method");
+            for target in V2_SKILL_TARGETS {
+                let directory = format!("roundtrip-{}", target.as_str().replace('-', "_"));
+                let source = SkillService::get_ssot_dir().expect("ssot").join(&directory);
+                let target_root = SkillService::get_target_skills_dir(&target).expect("target dir");
+                assert!(source.starts_with(temp.path()));
+                assert!(target_root.starts_with(temp.path()));
+                write_skill(&source, &directory);
+                let id = format!("local:{directory}");
+                db.save_skill(&poisoned_skill(&id, &directory))
+                    .expect("seed skill");
 
-            SkillService::toggle_target(&db, &id, &target, true)
-                .unwrap_or_else(|err| panic!("assign {} failed: {err}", target.as_str()));
-            let dest = SkillService::get_target_skills_dir(&target)
-                .expect("target dir")
-                .join(&directory);
-            assert!(
-                dest.join("SKILL.md").is_file(),
-                "{} dest missing after assign: {}",
-                target.as_str(),
-                dest.display()
-            );
+                // Symlink mode must create a real link or fail this fixture;
+                // Auto's privilege-dependent fallback must not hide the contract.
+                SkillService::toggle_target(&db, &id, &target, true).unwrap_or_else(|err| {
+                    panic!("assign {} ({method:?}) failed: {err}", target.as_str())
+                });
+                let dest = target_root.join(&directory);
+                assert!(
+                    dest.join("SKILL.md").is_file(),
+                    "{} dest missing after assign: {}",
+                    target.as_str(),
+                    dest.display()
+                );
 
-            SkillService::toggle_target(&db, &id, &target, false)
-                .unwrap_or_else(|err| panic!("unassign {} failed: {err}", target.as_str()));
-            assert!(
-                fs::symlink_metadata(&dest).is_err(),
-                "{} dest still present after unassign: {}",
-                target.as_str(),
-                dest.display()
-            );
-            let stored = db.get_installed_skill(&id).expect("db").expect("row");
-            assert!(
-                !stored.apps.is_enabled_for_target(&target),
-                "{} flag still enabled after unassign",
-                target.as_str()
-            );
+                if method == SyncMethod::Copy || target.requires_copy() {
+                    assert!(!fs::symlink_metadata(&dest)
+                        .expect("copy metadata")
+                        .file_type()
+                        .is_symlink());
+                    SkillService::toggle_target(&db, &id, &target, false).unwrap_or_else(|err| {
+                        panic!("unassign {} ({method:?}) failed: {err}", target.as_str())
+                    });
+                    assert!(
+                        fs::symlink_metadata(&dest).is_err(),
+                        "{} dest still present after unassign: {}",
+                        target.as_str(),
+                        dest.display()
+                    );
+                    let stored = db.get_installed_skill(&id).expect("db").expect("row");
+                    assert!(
+                        !stored.apps.is_enabled_for_target(&target),
+                        "{} flag still enabled after unassign",
+                        target.as_str()
+                    );
+                    assert!(
+                        source.join("SKILL.md").is_file(),
+                        "unassign must retain the ordinary source"
+                    );
+                    continue;
+                }
+
+                assert!(
+                    fs::symlink_metadata(&dest)
+                        .expect("link metadata")
+                        .file_type()
+                        .is_symlink(),
+                    "Symlink mode must exercise an owned link"
+                );
+                let link_before = fs::read_link(&dest).expect("owned link target");
+                let ssot = SkillService::get_ssot_dir().expect("ssot");
+                let source_before =
+                    SkillService::compute_dir_hash(&ssot).expect("source tree snapshot");
+                let db_before =
+                    serde_json::to_value(db.get_all_installed_skills().expect("DB snapshot"))
+                        .expect("serialize DB");
+                let settings_path = crate::config::get_app_config_dir().join("settings.json");
+                let settings_before = fs::read(&settings_path).expect("settings snapshot");
+                let new_ssot = temp.path().join(".agents/skills");
+                assert!(!new_ssot.exists(), "migration destination starts absent");
+                for operation in ["unassign", "refresh", "uninstall", "migrate"] {
+                    let result = match operation {
+                        "unassign" => SkillService::toggle_target(&db, &id, &target, false),
+                        "refresh" => SkillService::sync_to_app_dir(&directory, &target),
+                        "uninstall" => SkillService::uninstall(&db, &id).map(|_| ()),
+                        "migrate" => {
+                            SkillService::migrate_storage(&db, SkillStorageLocation::Unified)
+                                .map(|_| ())
+                        }
+                        _ => unreachable!(),
+                    };
+                    let error =
+                        result.expect_err("owned links remain read-only, including unlink/refresh");
+                    assert!(
+                        error.to_string().contains("SKILL_LINK_READ_ONLY"),
+                        "{operation}: {error}"
+                    );
+                    assert!(fs::symlink_metadata(&dest)
+                        .expect("preserved link metadata")
+                        .file_type()
+                        .is_symlink());
+                    assert_eq!(
+                        fs::read_link(&dest).expect("preserved link target"),
+                        link_before,
+                        "{operation} must preserve the link"
+                    );
+                    assert_eq!(
+                        SkillService::compute_dir_hash(&ssot).expect("preserved source tree"),
+                        source_before,
+                        "{operation} must preserve all source bytes"
+                    );
+                    assert_eq!(
+                        serde_json::to_value(db.get_all_installed_skills().expect("preserved DB"))
+                            .expect("serialize DB"),
+                        db_before,
+                        "{operation} must preserve DB rows/assignments"
+                    );
+                    assert_eq!(
+                        fs::read(&settings_path).expect("preserved settings"),
+                        settings_before,
+                        "{operation} must preserve settings bytes"
+                    );
+                    assert_eq!(
+                        crate::settings::get_skill_storage_location(),
+                        SkillStorageLocation::FyAgent
+                    );
+                    assert!(
+                        !new_ssot.exists(),
+                        "{operation} must not create a migration destination"
+                    );
+                }
+            }
         }
     }
 
@@ -5210,6 +6206,58 @@ mod tests {
     }
 
     #[test]
+    fn local_hash_for_update_check_ignores_cached_hash_when_dir_missing() {
+        // 换机恢复数据库备份的现场：content_hash 还在库里，SSOT 目录已不在。
+        // 必须无视缓存返回 None，让 Skill 进入更新列表以便重建文件；
+        // 若信任缓存则界面显示「无更新」，缺失状态被永久掩盖。
+        let ssot = tempdir().expect("tempdir");
+        assert_eq!(
+            SkillService::local_hash_for_update_check(ssot.path(), "my-skill", Some("cached")),
+            None
+        );
+    }
+
+    #[test]
+    fn local_hash_for_update_check_uses_cache_when_dir_exists() {
+        let ssot = tempdir().expect("tempdir");
+        fs::create_dir(ssot.path().join("my-skill")).expect("create skill dir");
+        assert_eq!(
+            SkillService::local_hash_for_update_check(ssot.path(), "my-skill", Some("cached")),
+            Some(("cached".to_string(), false))
+        );
+    }
+
+    #[test]
+    fn local_hash_for_update_check_computes_and_backfills_when_cache_empty() {
+        let ssot = tempdir().expect("tempdir");
+        let dir = ssot.path().join("my-skill");
+        fs::create_dir(&dir).expect("create skill dir");
+        fs::write(dir.join("SKILL.md"), "---\nname: x\n---\n").expect("write skill");
+
+        let expected = SkillService::compute_dir_hash(&dir).expect("hash");
+        assert_eq!(
+            SkillService::local_hash_for_update_check(ssot.path(), "my-skill", None),
+            Some((expected, true))
+        );
+    }
+
+    #[test]
+    fn local_hash_for_update_check_keeps_cache_for_invalid_directory() {
+        // 非法 directory 无法安全拼路径，做不了存在性检查：有缓存沿用缓存
+        // （维持修复前行为），无缓存返回 None。不能因非法值报「可更新」，
+        // 否则用户点更新会在 update_skill 的同一校验上硬报错。
+        let ssot = tempdir().expect("tempdir");
+        assert_eq!(
+            SkillService::local_hash_for_update_check(ssot.path(), "../evil", Some("cached")),
+            Some(("cached".to_string(), false))
+        );
+        assert_eq!(
+            SkillService::local_hash_for_update_check(ssot.path(), "../evil", None),
+            None
+        );
+    }
+
+    #[test]
     #[serial_test::serial]
     fn restore_from_backup_rejects_traversal_directory_in_metadata() {
         let temp = tempdir().expect("tempdir");
@@ -5266,12 +6314,135 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
+    fn aliased_skill_roots_reject_sync_and_remove_without_deleting_the_source() {
+        let _location = StorageLocationGuard::set(SkillStorageLocation::Unified);
+        let temp = tempdir().expect("tempdir");
+        let _home = TestHomeGuard::set(temp.path());
+        let _config = ClaudeConfigDirGuard::set(&temp.path().join(".agents"));
+
+        let source = SkillService::get_ssot_dir()
+            .expect("SSOT")
+            .join("test-skill");
+        write_skill(&source, "managed");
+
+        let sync = SkillService::sync_to_app_dir("test-skill", &SkillTargetId::Claude);
+        assert!(sync.is_err(), "an aliased deployment root must be rejected");
+        assert!(source.join("SKILL.md").exists());
+
+        let remove = SkillService::remove_from_app("test-skill", &AppType::Claude);
+        assert!(
+            remove.is_err(),
+            "an aliased deployment root must be rejected"
+        );
+        assert!(
+            source.join("SKILL.md").exists(),
+            "rejecting the operation must leave the SSOT untouched"
+        );
+
+        let db = Arc::new(Database::memory().expect("db"));
+        assert!(SkillService::sync_to_target(&db, &SkillTargetId::Claude).is_err());
+        let mut skill = poisoned_skill("local:test-skill", "test-skill");
+        for enabled in [false, true] {
+            skill.apps.claude = enabled;
+            db.save_skill(&skill).unwrap();
+            assert!(SkillService::sync_to_target(&db, &SkillTargetId::Claude).is_err());
+            assert!(SkillService::sync_to_app(&db, &AppType::Claude).is_err());
+            assert!(
+                source.join("SKILL.md").is_file(),
+                "bulk cleanup must not delete SSOT"
+            );
+        }
+        assert!(
+            SkillService::toggle_target(&db, &skill.id, &SkillTargetId::Claude, false).is_err()
+        );
+        assert!(
+            db.get_installed_skill(&skill.id)
+                .unwrap()
+                .unwrap()
+                .apps
+                .claude
+        );
+        assert!(source.join("SKILL.md").is_file());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[serial_test::serial]
+    fn canonical_skill_root_aliases_reject_bulk_sync_and_storage_migration() {
+        let home = tempdir().expect("home");
+        let _home = TestHomeGuard::set(home.path());
+        let _storage = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let db = Arc::new(Database::memory().expect("db"));
+        let ssot = SkillService::get_ssot_dir().unwrap();
+        let source = ssot.join("test-skill");
+        write_skill(&source, "managed");
+        let skill = poisoned_skill("local:test-skill", "test-skill");
+        db.save_skill(&skill).unwrap();
+        let vendor_root = SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy).unwrap();
+        fs::create_dir_all(vendor_root.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&ssot, &vendor_root).unwrap();
+        assert_ne!(ssot, vendor_root);
+        assert!(SkillService::paths_alias(&ssot, &vendor_root));
+        assert!(SkillService::sync_to_app_dir("test-skill", &SkillTargetId::WorkBuddy).is_err());
+        assert!(SkillService::remove_from_target("test-skill", &SkillTargetId::WorkBuddy).is_err());
+        assert!(SkillService::sync_to_target(&db, &SkillTargetId::WorkBuddy).is_err());
+        assert!(source.join("SKILL.md").is_file());
+
+        // A different spelled destination resolves to the vendor Skills root.
+        fs::remove_file(&vendor_root).unwrap();
+        fs::create_dir_all(&vendor_root).unwrap();
+        fs::create_dir_all(home.path().join(".agents")).unwrap();
+        std::os::unix::fs::symlink(&vendor_root, home.path().join(".agents/skills")).unwrap();
+        assert!(SkillService::migrate_storage(&db, SkillStorageLocation::Unified).is_err());
+        assert_eq!(
+            crate::settings::get_skill_storage_location(),
+            SkillStorageLocation::FyAgent
+        );
+        assert!(source.join("SKILL.md").is_file());
+        assert!(!vendor_root.join("test-skill").exists());
+        assert!(db.get_installed_skill(&skill.id).unwrap().is_some());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn migrate_storage_rejects_an_aliased_destination_before_moving_skills() {
+        let _location = StorageLocationGuard::set(SkillStorageLocation::FyAgent);
+        let temp = tempdir().expect("tempdir");
+        let _home = TestHomeGuard::set(temp.path());
+        let _config = ClaudeConfigDirGuard::set(&temp.path().join(".agents"));
+
+        let db = std::sync::Arc::new(Database::memory().expect("memory db"));
+        let skill = poisoned_skill("owner/repo:skill", "test-skill");
+        db.save_skill(&skill).expect("save skill");
+        let source = SkillService::get_ssot_dir()
+            .expect("SSOT")
+            .join("test-skill");
+        write_skill(&source, "managed");
+
+        let migration = SkillService::migrate_storage(&db, SkillStorageLocation::Unified);
+
+        assert!(
+            migration.is_err(),
+            "migration must reject a target that aliases an app deployment root"
+        );
+        assert_eq!(
+            crate::settings::get_skill_storage_location(),
+            SkillStorageLocation::FyAgent
+        );
+        assert!(
+            source.join("SKILL.md").exists(),
+            "validation must happen before any source is moved"
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
     fn uninstall_rejects_traversal_directory_from_db_row() {
         let temp = tempdir().expect("tempdir");
         let _guard = TestHomeGuard::set(temp.path());
 
         // 模拟同步导入灌进来的脏数据：directory 含路径穿越（save_skill 不校验，
-        // 与 import_sql_string_for_sync 的效果一致）。SSOT = {home}/.fyagent/skills，
+        // 与普通 SQL 导入的效果一致）。SSOT = {home}/.fyagent/skills，
         // "../../victim-uninstall" 解析为 {home}/victim-uninstall。
         let victim = temp.path().join("victim-uninstall");
         fs::create_dir_all(&victim).expect("create victim dir");
@@ -5280,15 +6451,16 @@ mod tests {
         let skill = poisoned_skill("owner/repo:evil", "../../victim-uninstall");
         db.save_skill(&skill).expect("seed poisoned row");
 
-        let result = SkillService::uninstall(&db, &skill.id);
+        let result = SkillService::uninstall(&db, &skill.id)
+            .expect("uninstall must remove the poisoned database row");
 
         // 危险的文件系统操作必须被跳过……
         assert!(victim.exists(), "victim directory must not be deleted");
         // ……但记录本身必须能删掉。db.delete_skill 全项目只有 uninstall 一处调用
         // 且未暴露为命令，若这里返回 Err，脏行就永远无法从界面清除。
         assert!(
-            result.is_ok(),
-            "uninstall must still succeed so the poisoned row can be removed: {result:?}"
+            result.backup_path.is_none(),
+            "unsafe filesystem cleanup must be skipped"
         );
         assert!(
             db.get_installed_skill(&skill.id)
@@ -5393,7 +6565,7 @@ mod tests {
     }
 
     #[test]
-    // serial：与 backup/s3_sync/deeplink 等同样读写进程级 FYAGENT_TEST_HOME 的测试互斥，
+    // serial：与 backup/deeplink 等同样读写进程级 FYAGENT_TEST_HOME 的测试互斥，
     // EnvGuard 只负责恢复不提供互斥。
     #[serial_test::serial]
     fn get_app_skills_dir_honors_test_home_override() {
@@ -5471,6 +6643,250 @@ mod tests {
             .expect("install name should fall back to the matching discovered skill directory");
 
         assert_eq!(resolved, nested);
+    }
+
+    #[test]
+    fn resolve_skill_source_dir_falls_back_to_unique_metadata_name() {
+        // tencent/WeChatReading: skills.sh returns `weread-skills`, while the
+        // repository stores it at skills/SKILL.md with `name: weread-skills`.
+        let temp = tempdir().expect("tempdir");
+        let skill_dir = temp.path().join("skills");
+        write_skill(&skill_dir, "weread-skills");
+
+        let resolved = SkillService::resolve_skill_source_dir(temp.path(), "weread-skills")
+            .expect("skillId should resolve through the SKILL.md metadata name");
+
+        assert_eq!(resolved, skill_dir);
+    }
+
+    #[test]
+    fn resolve_skill_source_dir_rejects_duplicate_metadata_names() {
+        let temp = tempdir().expect("tempdir");
+        write_skill(&temp.path().join("skills-a"), "duplicate-skill");
+        write_skill(&temp.path().join("skills-b"), "duplicate-skill");
+
+        let resolved = SkillService::resolve_skill_source_dir(temp.path(), "duplicate-skill");
+
+        assert!(
+            resolved.is_none(),
+            "ambiguous metadata names must not select an arbitrary skill directory"
+        );
+    }
+
+    #[test]
+    fn update_lookup_uses_unique_metadata_name_without_overriding_directory_match() {
+        let temp = tempdir().expect("tempdir");
+        write_skill(&temp.path().join("skills"), "weread-skills");
+        let repo = SkillRepo {
+            owner: "owner".to_string(),
+            name: "repo".to_string(),
+            branch: "main".to_string(),
+            enabled: true,
+        };
+        let scan = || {
+            let mut skills = Vec::new();
+            SkillService::new()
+                .scan_dir_recursive(temp.path(), temp.path(), &repo, &mut skills)
+                .expect("scan skills");
+            skills
+        };
+
+        let skills = scan();
+        assert_eq!(
+            SkillService::find_remote_skill_for_install(&skills, "weread-skills", None)
+                .map(|skill| skill.directory.as_str()),
+            Some("skills")
+        );
+
+        write_skill(&temp.path().join("other"), "weread-skills");
+        assert!(
+            SkillService::find_remote_skill_for_install(&scan(), "weread-skills", None).is_none(),
+            "duplicate metadata names must remain ambiguous during updates"
+        );
+
+        write_skill(&temp.path().join("weread-skills"), "Other Skill");
+        assert_eq!(
+            SkillService::find_remote_skill_for_install(&scan(), "weread-skills", None)
+                .map(|skill| skill.directory.as_str()),
+            Some("weread-skills"),
+            "an exact directory match must keep its original priority"
+        );
+
+        let root_only = tempdir().expect("root tempdir");
+        write_skill(root_only.path(), "Root Skill");
+        let mut root_skills = Vec::new();
+        SkillService::new()
+            .scan_dir_recursive(root_only.path(), root_only.path(), &repo, &mut root_skills)
+            .expect("scan root skill");
+        assert!(
+            SkillService::find_remote_skill_for_install(&root_skills, "removed-child", None)
+                .is_none(),
+            "a removed child skill must not fall back to an unrelated root skill"
+        );
+    }
+
+    #[test]
+    fn ordinary_file_ancestor_is_not_a_link_preflight_failure() {
+        let home = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let blocked = home.path().join("blocked");
+        fs::write(&blocked, "ordinary file").unwrap();
+        SkillService::require_writable_skill_path(&blocked.join("skill")).unwrap();
+        assert_eq!(fs::read(&blocked).unwrap(), b"ordinary file");
+        assert!(fs::create_dir_all(blocked.join("skill")).is_err());
+        #[cfg(target_os = "macos")]
+        {
+            let linked = home.path().join("linked");
+            std::os::unix::fs::symlink(home.path(), &linked).unwrap();
+            let error = SkillService::require_writable_skill_path(&linked.join("blocked/skill"))
+                .unwrap_err();
+            assert!(error.to_string().contains("SKILL_LINK_READ_ONLY"));
+            assert!(error.to_string().contains("useOrdinaryDirectory"));
+            assert!(fs::symlink_metadata(&linked)
+                .unwrap()
+                .file_type()
+                .is_symlink());
+            assert_eq!(fs::read(&blocked).unwrap(), b"ordinary file");
+        }
+    }
+
+    #[test]
+    fn update_lookup_prefers_persisted_source_path_after_metadata_rename() {
+        let temp = tempdir().expect("tempdir");
+        write_skill(&temp.path().join("skills"), "renamed-skill");
+        write_skill(&temp.path().join("weread-skills"), "weread-skills");
+        let repo = SkillRepo {
+            owner: "owner".to_string(),
+            name: "repo".to_string(),
+            branch: "main".to_string(),
+            enabled: true,
+        };
+        let mut skills = Vec::new();
+        SkillService::new()
+            .scan_dir_recursive(temp.path(), temp.path(), &repo, &mut skills)
+            .expect("scan skills");
+
+        let stored_url = "https://github.com/owner/repo/blob/main/skills/SKILL.md";
+        assert_eq!(
+            SkillService::find_remote_skill_for_install(
+                &skills,
+                "weread-skills",
+                Some(stored_url),
+            )
+            .map(|skill| skill.directory.as_str()),
+            Some("skills"),
+            "persisted source path should survive metadata changes and competing matches"
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn update_skill_persists_relocated_source_before_metadata_rename() {
+        for location in [SkillStorageLocation::FyAgent, SkillStorageLocation::Unified] {
+            for (directory, old_path, new_path) in [
+                ("weread-skills", "skills", "new-location"),
+                ("ordinary-skill", "old/ordinary-skill", "new/ordinary-skill"),
+                ("weread-skills", "skills", "."),
+            ] {
+                let home = tempdir().expect("home");
+                let config_dir = home.path().join(".fyagent");
+                fs::create_dir_all(&config_dir).expect("isolated config directory");
+                // Keep Windows' legacy-HOME fallback out of this destructive test.
+                fs::File::create(config_dir.join("fyagent.db"))
+                    .expect("isolated database sentinel");
+                let _home = TestHomeGuard::set(home.path());
+                assert_eq!(crate::config::get_app_config_dir(), config_dir);
+                let _storage = StorageLocationGuard::set(location);
+                let remote = tempdir().expect("remote repo");
+                let db = Arc::new(Database::memory().expect("memory db"));
+                let service = SkillService {
+                    repo_fixture: Some(remote.path().to_path_buf()),
+                    ..SkillService::new()
+                };
+                let mut installed = poisoned_skill("owner/repo:skill", directory);
+                installed.name = directory.to_string();
+                installed.apps = SkillApps::only_target(&SkillTargetId::WorkBuddy);
+                installed.repo_owner = Some("owner".to_string());
+                installed.repo_name = Some("repo".to_string());
+                installed.repo_branch = Some("main".to_string());
+                installed.readme_url = SkillService::build_skill_doc_url(
+                    "owner",
+                    "repo",
+                    "main",
+                    &format!("{old_path}/SKILL.md"),
+                );
+                db.save_skill(&installed).expect("seed installed skill");
+                let local = SkillService::get_ssot_dir().unwrap().join(directory);
+                assert!(local.starts_with(home.path()), "SSOT must stay isolated");
+                write_skill(&local, directory);
+                write_skill(&remote.path().join(new_path), directory);
+
+                let updated = service
+                    .update_skill(&db, &installed.id)
+                    .await
+                    .expect("update moved skill");
+                let expected_path = if new_path == "." {
+                    "SKILL.md".to_string()
+                } else {
+                    format!("{new_path}/SKILL.md")
+                };
+                let expected_url =
+                    SkillService::build_skill_doc_url("owner", "repo", "main", &expected_path);
+                let saved = db.get_installed_skill(&installed.id).unwrap().unwrap();
+                assert_eq!(
+                    updated.readme_url, expected_url,
+                    "update must return the resolved source URL"
+                );
+                assert_eq!(
+                    saved.readme_url, expected_url,
+                    "the next update must read the new source URL from the DB"
+                );
+                assert_eq!(saved.directory, installed.directory);
+                assert_eq!(saved.apps, installed.apps);
+                assert_eq!(saved.installed_at, installed.installed_at);
+                assert_eq!(
+                    saved.content_hash,
+                    Some(SkillService::compute_dir_hash(&local).unwrap())
+                );
+                let deployed = SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+                    .unwrap()
+                    .join(directory);
+                assert_eq!(
+                    SkillService::compute_dir_hash(&deployed).unwrap(),
+                    SkillService::compute_dir_hash(&local).unwrap()
+                );
+                assert!(service.check_updates(&db).await.unwrap().is_empty());
+
+                write_skill(&remote.path().join(new_path), "renamed-skill");
+                // Competing directory/name matches must not override the saved source.
+                write_skill(&remote.path().join(directory), directory);
+                let updates = service
+                    .check_updates(&db)
+                    .await
+                    .expect("check renamed skill");
+                assert_eq!(
+                    updates.len(),
+                    1,
+                    "renamed skill must not silently disappear from update checks"
+                );
+                let updated = service
+                    .update_skill(&db, &installed.id)
+                    .await
+                    .expect("update renamed skill");
+                assert_eq!(updated.name, "renamed-skill");
+                assert_eq!(updated.readme_url, expected_url);
+                assert_eq!(updated.directory, installed.directory);
+                assert_eq!(updated.apps, installed.apps);
+                assert_eq!(
+                    SkillService::read_skill_name_desc(&local.join("SKILL.md"), directory).0,
+                    "renamed-skill"
+                );
+                assert_eq!(
+                    SkillService::read_skill_name_desc(&deployed.join("SKILL.md"), directory).0,
+                    "renamed-skill"
+                );
+                assert!(service.check_updates(&db).await.unwrap().is_empty());
+            }
+        }
     }
 
     #[test]

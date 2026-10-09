@@ -7,7 +7,6 @@ mod claude;
 mod discovery;
 mod grok;
 pub(crate) mod grok_npm;
-mod health;
 mod install_preflight;
 pub(crate) use install_preflight::CliInstallPreflight;
 mod lifecycle;
@@ -17,7 +16,6 @@ mod terminal;
 mod versions;
 
 pub(crate) use claude::ClaudeLifecycleError;
-pub(crate) use health::observe_local_tool_health;
 static CLI_LIFECYCLE_WRITER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub(crate) async fn preflight_cli_lifecycle(
@@ -94,7 +92,10 @@ pub(crate) use terminal::launch_terminal_running;
 use terminal::resolve_launch_cwd;
 
 #[cfg(test)]
-use versions::{compare_semver, pick_latest_version};
+use versions::{
+    compare_semver, drop_latest_behind_local, github_release_version_from_json, npm_dist_tags_url,
+    pick_latest_version,
+};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -185,7 +186,7 @@ const ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE: &str =
 pub(crate) const WINDOWS_HELPER_UNCONFIRMED_MESSAGE: &str =
     "暂时无法读取当前 Windows 用户的 CLI 状态，请稍后刷新。";
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(windows, test))]
 fn windows_helper_left_state_unconfirmed(platform_error_code: Option<&str>) -> bool {
     matches!(
         platform_error_code,
@@ -703,6 +704,22 @@ enum ShellProbe {
     NotFound(String),
 }
 
+#[cfg(any(target_os = "macos", test))]
+const VERSION_PROBE_SENTINEL: &str = "__CCSWITCH_VERSION__";
+
+#[cfg(any(target_os = "macos", test))]
+fn version_probe_payload(tool: &str) -> String {
+    format!("echo {VERSION_PROBE_SENTINEL}; {tool} --version")
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn after_version_sentinel(output: &str) -> &str {
+    match output.rfind(VERSION_PROBE_SENTINEL) {
+        Some(i) => output[i + VERSION_PROBE_SENTINEL.len()..].trim(),
+        None => output,
+    }
+}
+
 /// 在非 Windows 平台用用户 shell 执行 `{tool} --version` 探测版本。
 ///
 /// Windows 不走此路径：`cmd /C {tool}` 可能误触发 App Execution Alias /
@@ -720,13 +737,15 @@ fn try_get_version(tool: &str) -> ShellProbe {
         let flag = default_flag_for_shell(&shell);
         Command::new(shell)
             .arg(flag)
-            .arg(format!("{tool} --version"))
+            .arg(version_probe_payload(tool))
             .output()
     };
 
     match output {
         Ok(out) => {
-            let stdout = decode_command_output(&out.stdout).trim().to_string();
+            let stdout = after_version_sentinel(&decode_command_output(&out.stdout))
+                .trim()
+                .to_string();
             let stderr = decode_command_output(&out.stderr).trim().to_string();
             if out.status.success() {
                 let raw = if stdout.is_empty() { &stderr } else { &stdout };
@@ -1234,6 +1253,24 @@ fn is_windows_command_script(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Convert a canonicalized Windows path back to the form accepted by shell
+/// commands. `std::fs::canonicalize` prefixes local paths with `\\?\` (and UNC
+/// paths with `\\?\UNC\`), but `cmd.exe` cannot `call` a batch file through
+/// those verbatim paths and reports "The system cannot find the path
+/// specified." Direct Win32 executable launches accept the prefix; batch
+/// scripts do not.
+#[cfg(target_os = "windows")]
+fn windows_shell_compatible_path(path: &Path) -> std::path::PathBuf {
+    let raw = path.to_string_lossy();
+    if let Some(unc) = raw.strip_prefix(r"\\?\UNC\") {
+        std::path::PathBuf::from(format!(r"\\{unc}"))
+    } else if let Some(local) = raw.strip_prefix(r"\\?\") {
+        std::path::PathBuf::from(local)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn windows_runnable_sibling_for_extensionless_tool(path: &Path) -> Option<std::path::PathBuf> {
     if path.extension().is_some() {
@@ -1247,10 +1284,10 @@ fn windows_runnable_sibling_for_extensionless_tool(path: &Path) -> Option<std::p
 }
 
 #[cfg(target_os = "windows")]
-fn run_windows_tool_command(
+fn build_windows_tool_command(
     tool_path: &Path,
     args: &[&str],
-) -> std::io::Result<std::process::Output> {
+) -> std::io::Result<std::process::Command> {
     use std::process::Command;
 
     if elevated_windows_cli_boundary_active() {
@@ -1261,7 +1298,13 @@ fn run_windows_tool_command(
     }
 
     if is_windows_command_script(tool_path) {
-        let path = tool_path.to_string_lossy();
+        // `resolve_path_default` returns a canonical path so callers can
+        // compare installation identities. Canonical Windows paths carry a
+        // `\\?\` prefix, which `cmd /C call` rejects for batch files. Normalize
+        // only at this shell boundary and keep the canonical identity intact
+        // everywhere else.
+        let shell_path = windows_shell_compatible_path(tool_path);
+        let path = shell_path.to_string_lossy();
         let args = args
             .iter()
             .map(|arg| windows_cmd_double_quote_arg(arg))
@@ -1285,22 +1328,72 @@ fn run_windows_tool_command(
         let mut cmd = Command::new(command_processor);
         crate::windows_runtime::configure_shell_user_command(&mut cmd, tool_path.parent())
             .map_err(|error| std::io::Error::other(error.to_string()))?;
-        return cmd
-            .args(["/D", "/S", "/C"])
+        cmd.args(["/D", "/S", "/C"])
             .raw_arg(&command_line)
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
+            .creation_flags(CREATE_NO_WINDOW);
+        return Ok(cmd);
     }
 
     let mut command = Command::new(tool_path);
     crate::windows_runtime::configure_shell_user_command(&mut command, tool_path.parent())
         .map_err(|error| std::io::Error::other(error.to_string()))?;
-    command.args(args).creation_flags(CREATE_NO_WINDOW).output()
+    command.args(args).creation_flags(CREATE_NO_WINDOW);
+    Ok(command)
+}
+
+#[cfg(target_os = "windows")]
+fn run_windows_tool_command(
+    tool_path: &Path,
+    args: &[&str],
+) -> std::io::Result<std::process::Output> {
+    build_windows_tool_command(tool_path, args)?.output()
 }
 
 #[cfg(target_os = "windows")]
 fn run_windows_tool_version_command(tool_path: &Path) -> std::io::Result<std::process::Output> {
     run_windows_tool_command(tool_path, &["--version"])
+}
+
+/// Probe the version of the PATH-default entry on Windows. Uses
+/// `resolve_path_default` (which merges the registry PATH and filters out
+/// App Execution Aliases) to get the executable the user actually runs, then
+/// runs `--version` on it. Consumed by `get_single_tool_version_impl` before
+/// the directory scan, so the displayed version matches what `tool` resolves
+/// to in a terminal (#4701).
+///
+/// Returns `NotFound` when no entry is resolved on PATH (the caller falls back
+/// to `scan_cli_version` over the hardcoded/registry dirs); `FoundButFailed`
+/// when an entry was resolved but `--version` exited non-zero (installed but
+/// not runnable), which is reported as-is without falling back, so an old
+/// install elsewhere cannot mask a broken default.
+#[cfg(target_os = "windows")]
+fn probe_path_default_version(tool: &str) -> ShellProbe {
+    let path_default = match resolve_path_default(tool, None) {
+        Ok(Some(p)) => p,
+        _ => return ShellProbe::NotFound(NOT_INSTALLED.to_string()),
+    };
+    match run_windows_tool_version_command(&path_default) {
+        Ok(out) => {
+            let stdout = decode_command_output(&out.stdout).trim().to_string();
+            let stderr = decode_command_output(&out.stderr).trim().to_string();
+            if out.status.success() {
+                let raw = if stdout.is_empty() { &stderr } else { &stdout };
+                if raw.is_empty() {
+                    ShellProbe::NotFound(NOT_INSTALLED.to_string())
+                } else {
+                    ShellProbe::Found(extract_version(raw))
+                }
+            } else {
+                let err = if stderr.is_empty() { stdout } else { stderr };
+                if err.is_empty() {
+                    ShellProbe::NotFound(NOT_INSTALLED.to_string())
+                } else {
+                    ShellProbe::FoundButFailed(last_lines(err.trim(), 4))
+                }
+            }
+        }
+        Err(_) => ShellProbe::NotFound(NOT_INSTALLED.to_string()),
+    }
 }
 
 /// 扫描常见路径查找 CLI（PATH 主命令未命中时的兜底单探）。
@@ -1404,7 +1497,7 @@ fn infer_install_source(path: &Path) -> &'static str {
         .to_ascii_lowercase();
     if s.contains("/.nvm/") {
         "nvm"
-    } else if s.contains("/homebrew/") || s.contains("/cellar/") {
+    } else if s.contains("/homebrew/") || s.contains("/cellar/") || s.contains("/caskroom/") {
         "homebrew"
     // `.volta` 是 macOS 默认安装(`~/.volta/bin`),`/volta/` 兜底覆盖
     // Windows 的 `%LOCALAPPDATA%\Volta\bin` / `%VOLTA_HOME%\bin`(无前导点)。
@@ -1523,6 +1616,9 @@ fn resolve_path_default(
     let mut cmd = Command::new(shell);
     cmd.arg(flag)
         .arg(format!("command -v {tool}"))
+        // 改 spawn 后 stdin 不再像 output() 那样默认置 null，须显式关闭：
+        // 继承来的 stdin 可能是终端/管道，交互式 rc 里的读操作会永久阻塞。
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     isolate_child_process_group(&mut cmd);
@@ -1560,30 +1656,93 @@ fn resolve_path_default(
     Ok(None)
 }
 
+#[cfg(target_os = "macos")]
+fn prepend_search_dir_to_path(dir: &Path, current_path: &std::ffi::OsStr) -> std::ffi::OsString {
+    let mut path = dir.as_os_str().to_os_string();
+    if !current_path.is_empty() {
+        path.push(":");
+        path.push(current_path);
+    }
+    path
+}
+
+/// 升级预检/冲突诊断的单条子进程探测预算。枚举会对每个工具开一次登录 shell、对每处
+/// 安装跑一次 `--version`，任何一条挂死（.zshrc 阻塞、nvm shim 指向已删除的 node 等）
+/// 都会卡住整个"全部升级"预检——到点整组击杀，该条按探测失败降级，预检继续。
+const INSTALL_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// 带超时的 `--version` 探测（非 Windows）。与 `scan_cli_version` 的裸 `output()`
+/// 不同：stdin 显式置 null、经 `isolate_child_process_group` 进独立会话，超时可整组击杀。
+/// `new_path` 取 `&OsStr` 而非 `&str`：与 `prepend_search_dir_to_path` 同一约定，
+/// 非 UTF-8 的 PATH 段不能在传递途中被有损转换丢弃。
+#[cfg(target_os = "macos")]
+fn run_probe_version_command(
+    tool_path: &Path,
+    new_path: &std::ffi::OsStr,
+) -> Result<std::process::Output, String> {
+    use std::process::{Command, Stdio};
+
+    let mut cmd = Command::new(tool_path);
+    cmd.arg("--version")
+        .env("PATH", new_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    isolate_child_process_group(&mut cmd);
+    let child = cmd.spawn().map_err(|e| e.to_string())?;
+    wait_child_output(
+        child,
+        CommandDeadline::from_timeout(Some(INSTALL_PROBE_TIMEOUT)),
+    )
+}
+
+/// 带超时的 `--version` 探测（Windows）。命令构造与 `run_windows_tool_version_command`
+/// 完全一致（.cmd/.bat 经 `cmd /C call`、其余直连），但改 spawn + `wait_child_output`：
+/// 挂死的 .cmd shim / CLI 到点由 `terminate_child_tree`（taskkill /T /F）整树击杀，
+/// 预检不再被单个候选卡死。scan 路径保持原 helper 不受影响。
+#[cfg(target_os = "windows")]
+fn run_probe_version_command(
+    tool_path: &Path,
+    _new_path: &str,
+) -> Result<std::process::Output, String> {
+    use std::process::Stdio;
+
+    let mut cmd =
+        build_windows_tool_command(tool_path, &["--version"]).map_err(|e| e.to_string())?;
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child = cmd.spawn().map_err(|e| e.to_string())?;
+    wait_child_output(
+        child,
+        CommandDeadline::from_timeout(Some(INSTALL_PROBE_TIMEOUT)),
+    )
+}
+
 /// 枚举工具在系统中的所有安装（不短路）。与 `scan_cli_version` 共用
 /// `build_tool_search_paths`，但不在首个命中处停止——而是对每个去重后的真实
 /// 可执行文件都跑一次 `--version`，从而能发现"升级写入 A 处、PATH 实际用 B 处"。
 fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
-    #[cfg(target_os = "macos")]
-    use std::process::Command;
-
     if elevated_windows_cli_boundary_active() {
         return Vec::new();
     }
 
     let search_paths = build_tool_search_paths(tool);
     #[cfg(target_os = "macos")]
-    let current_path = std::env::var_os("PATH")
-        .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let path_default = resolve_path_default(tool, None).ok().flatten();
+    let current_path = std::env::var_os("PATH").unwrap_or_default();
+    let path_default = resolve_path_default(
+        tool,
+        CommandDeadline::from_timeout(Some(INSTALL_PROBE_TIMEOUT)),
+    )
+    .ok()
+    .flatten();
 
     let mut seen: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
     let mut installs: Vec<ToolInstallation> = Vec::new();
 
     for dir in &search_paths {
         #[cfg(target_os = "macos")]
-        let new_path = format!("{}:{}", dir.display(), current_path);
+        let new_path = prepend_search_dir_to_path(dir, &current_path);
 
         for tool_path in tool_executable_candidates(tool, dir) {
             if !tool_path.exists() {
@@ -1597,12 +1756,9 @@ fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
             }
 
             #[cfg(target_os = "windows")]
-            let output = run_windows_tool_version_command(&tool_path);
+            let output = run_probe_version_command(&tool_path, "");
             #[cfg(target_os = "macos")]
-            let output = Command::new(&tool_path)
-                .arg("--version")
-                .env("PATH", &new_path)
-                .output();
+            let output = run_probe_version_command(&tool_path, &new_path);
 
             let (version, runnable, error) = match output {
                 Ok(out) if out.status.success() => {
@@ -1623,12 +1779,17 @@ fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
                     };
                     (None, false, error)
                 }
-                Err(e) => (None, false, Some(e.to_string())),
+                Err(e) => (None, false, Some(e)),
             };
 
             let is_path_default = path_default.as_ref() == Some(&real);
             let path_str = tool_path.display().to_string();
-            let source = infer_install_source(&tool_path);
+            let real_source = infer_install_source(&real);
+            let source = if real_source == "homebrew" {
+                real_source
+            } else {
+                infer_install_source(&tool_path)
+            };
 
             installs.push(ToolInstallation {
                 path: path_str,
@@ -1685,9 +1846,19 @@ fn parent_dir(p: &str) -> String {
 /// npm 全局包落在 `/opt/homebrew/lib/node_modules`（不含 Cellar）。两者升级命令不同。
 #[cfg(target_os = "macos")]
 fn brew_formula_from_path(real: &str) -> Option<String> {
+    brew_token_from_path(real, "Cellar")
+}
+
+#[cfg(target_os = "macos")]
+fn brew_cask_from_path(real: &str) -> Option<String> {
+    brew_token_from_path(real, "Caskroom")
+}
+
+#[cfg(target_os = "macos")]
+fn brew_token_from_path(real: &str, marker: &str) -> Option<String> {
     let mut segs = real.split('/');
     while let Some(seg) = segs.next() {
-        if seg.eq_ignore_ascii_case("Cellar") {
+        if seg.eq_ignore_ascii_case(marker) {
             return segs.next().filter(|s| !s.is_empty()).map(|s| s.to_string());
         }
     }
@@ -1908,6 +2079,14 @@ fn package_manager_anchored_command_from_paths(
         let brew = sibling_bin(bin_path, "brew")?;
         return Some(format!("{} upgrade {formula}", quote_path_if_spaced(&brew)));
     }
+    if let Some(cask) = brew_cask_from_path(real_target) {
+        let brew = sibling_bin(bin_path, "brew")?;
+        return Some(format!(
+            "{} upgrade --cask {}",
+            quote_path_if_spaced(&brew),
+            shell_single_quote(&cask)
+        ));
+    }
     let pkg = npm_package_for(tool)?;
     match infer_install_source(Path::new(bin_path)) {
         "volta" => {
@@ -1995,7 +2174,7 @@ fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) ->
         ));
     }
     let package_command = package_manager_anchored_command_from_paths(tool, bin_path, real_target);
-    if brew_formula_from_path(real_target).is_some() {
+    if brew_formula_from_path(real_target).is_some() || brew_cask_from_path(real_target).is_some() {
         return package_command;
     }
     if prefers_official_update(tool, LifecycleCommandShell::Posix) {
@@ -2216,7 +2395,21 @@ fn terminate_child_tree(child: &mut std::process::Child) -> bool {
 fn isolate_child_process_group(cmd: &mut std::process::Command) {
     use std::os::unix::process::CommandExt;
 
-    cmd.process_group(0);
+    // setsid 而非 process_group(0)：新会话自带新进程组（组长=自身，
+    // terminate_child_tree 的 kill(-pid) 整组击杀语义不变），并额外**脱离控制终端**。
+    // 只隔离进程组时，探测用的交互式 shell（zsh -lic）若还持有控制终端（如 dev 模式
+    // 从终端启动），其作业控制会因处于背景进程组被 SIGTTIN/SIGTTOU 停住，`wait()`
+    // 永远等不到退出；脱离终端后 shell 拿不到 /dev/tty，作业控制自动关闭。
+    // SAFETY: setsid 是 async-signal-safe；fork 出的子进程继承父进程组、必不是组长，
+    // 调用不会因 EPERM 失败。
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
 }
 
 #[derive(Default)]
@@ -2249,7 +2442,6 @@ fn capture_child_pipe(mut pipe: impl std::io::Read, limit: Option<usize>) -> Cap
     CapturedPipe { bytes, overflowed }
 }
 
-#[cfg(target_os = "macos")]
 fn wait_child_output(
     child: std::process::Child,
     deadline: Option<CommandDeadline>,
@@ -2526,6 +2718,11 @@ fn install_command_for(tool: &str) -> String {
     posix_install_command_for(tool)
 }
 
+/// 打开指定提供商的终端
+///
+/// 根据提供商配置的环境变量启动一个带有该提供商特定设置的终端
+/// 无需检查是否为当前激活的提供商，任何提供商都可以打开终端
+#[allow(non_snake_case)]
 pub async fn open_provider_terminal(
     state: &crate::store::AppState,
     app: String,
@@ -2613,6 +2810,7 @@ echo "{config_path}"
         "alacritty" => launch_macos_open_app("Alacritty", &script_file, true),
         "kitty" => launch_macos_open_app("kitty", &script_file, false),
         "ghostty" => launch_macos_ghostty(&script_file),
+        "otty" => launch_macos_otty(&script_file),
         "wezterm" => launch_macos_open_app("WezTerm", &script_file, true),
         "kaku" => launch_macos_open_app("Kaku", &script_file, true),
         _ => launch_macos_terminal_app(&script_file),
@@ -2707,6 +2905,77 @@ fn launch_macos_terminal_app(script_file: &std::path::Path) -> Result<(), String
         &build_macos_terminal_applescript(script_file),
         "Terminal.app",
     )
+}
+
+#[cfg(target_os = "macos")]
+fn launch_macos_otty(script_file: &std::path::Path) -> Result<(), String> {
+    use std::process::Command;
+
+    let otty_cli = find_macos_otty_cli().ok_or_else(|| {
+        "未找到 Otty CLI。请将 Otty 安装到 /Applications 或 ~/Applications。".to_string()
+    })?;
+
+    let command = build_macos_dash_c_command(script_file);
+    let tab_result = Command::new(&otty_cli)
+        .args(["tab", "new", "--window", "0", "--command", &command])
+        .output()
+        .map_err(|e| format!("启动 Otty CLI 失败: {e}"))?;
+
+    if tab_result.status.success() {
+        return Ok(());
+    }
+
+    log::debug!(
+        "Otty 新建 Tab 失败，改为新建窗口: {}",
+        decode_command_output(&tab_result.stderr)
+    );
+
+    let window_result = Command::new(&otty_cli)
+        .args(["open", "--command", &command])
+        .output()
+        .map_err(|e| format!("启动 Otty CLI 失败: {e}"))?;
+
+    if window_result.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Otty 新建窗口失败 (exit code: {:?}): {}",
+            window_result.status.code(),
+            decode_command_output(&window_result.stderr)
+        ))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn find_macos_otty_cli() -> Option<std::path::PathBuf> {
+    macos_otty_cli_candidates()
+        .into_iter()
+        .find(|path| path.is_file() && is_executable_file(path))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_otty_cli_candidates() -> Vec<std::path::PathBuf> {
+    let mut candidates = vec![std::path::PathBuf::from(
+        "/Applications/Otty.app/Contents/MacOS/otty-cli",
+    )];
+
+    if let Some(home) = std::env::var_os("HOME") {
+        candidates.push(
+            std::path::PathBuf::from(home).join("Applications/Otty.app/Contents/MacOS/otty-cli"),
+        );
+    }
+
+    candidates.push(std::path::PathBuf::from("/usr/local/bin/otty"));
+    candidates.push(std::path::PathBuf::from("/opt/homebrew/bin/otty"));
+
+    if let Some(path) = std::env::var_os("PATH") {
+        for directory in std::env::split_paths(&path) {
+            candidates.push(directory.join("otty"));
+            candidates.push(directory.join("otty-cli"));
+        }
+    }
+
+    candidates
 }
 
 /// macOS: iTerm2
@@ -2965,10 +3234,94 @@ fn escape_windows_batch_value(value: &str) -> String {
         .replace('(', "^(")
         .replace(')', "^)")
 }
+
+pub(crate) fn local_tool_version(tool: &str) -> Option<String> {
+    if !VALID_TOOLS.contains(&tool) {
+        return None;
+    }
+    #[cfg(target_os = "windows")]
+    let probe = match probe_path_default_version(tool) {
+        ShellProbe::NotFound(_) => scan_cli_version(tool),
+        found => found,
+    };
+    #[cfg(target_os = "macos")]
+    let probe = match try_get_version(tool) {
+        ShellProbe::NotFound(_) => scan_cli_version(tool),
+        found => found,
+    };
+    match probe {
+        ShellProbe::Found(version) => Some(version),
+        _ => None,
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod upstream_cask_tests {
+    use super::*;
+
+    #[test]
+    fn cask_updates_stay_with_brew_instead_of_npm() {
+        assert_eq!(
+            brew_cask_from_path("/usr/local/Caskroom/codex/1.0/bin/codex").as_deref(),
+            Some("codex")
+        );
+        assert_eq!(
+            package_manager_anchored_command_from_paths(
+                "codex",
+                "/usr/local/bin/codex",
+                "/usr/local/Caskroom/codex/1.0/bin/codex"
+            ),
+            Some("/usr/local/bin/brew upgrade --cask 'codex'".into())
+        );
+        assert_eq!(
+            brew_cask_from_path("/opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js"),
+            None
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
+
+    /// 探测 helper 正常路径：spawn（含 pre_exec setsid）能启动、输出能捕获。
+    /// `/bin/echo --version` 在 macOS 上即刻成功退出。
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn probe_version_command_captures_healthy_tool_output() {
+        let out = run_probe_version_command(Path::new("/bin/echo"), std::ffi::OsStr::new(""))
+            .expect("probe of /bin/echo should succeed");
+        assert!(out.status.success());
+    }
+
+    /// 超时击杀路径：挂死的子进程到点被整组击杀、wait 返回超时错误而非永等。
+    /// 同时锚定 setsid 改造后的语义——child 是新会话/新进程组组长，
+    /// terminate_child_tree 的 kill(-pid) 仍能命中（回归红线：改回 process_group
+    /// 或去掉隔离都会让本测试的击杀路径失效）。
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn isolated_hung_child_is_killed_on_deadline() {
+        use std::process::{Command, Stdio};
+
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", "sleep 30"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        isolate_child_process_group(&mut cmd);
+        let child = cmd.spawn().expect("spawn sleep");
+        let started = std::time::Instant::now();
+        let result = wait_child_output(
+            child,
+            CommandDeadline::from_timeout(Some(std::time::Duration::from_millis(200))),
+        );
+        assert!(result.is_err(), "expected timeout error, got {result:?}");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "kill should return promptly instead of waiting out the sleep"
+        );
+    }
 
     #[test]
     fn only_helper_outcomes_where_nothing_ran_leave_cli_state_unconfirmed() {
@@ -3112,10 +3465,129 @@ mod tests {
     }
 
     #[test]
+    fn version_probe_sentinel_drops_shell_startup_output() {
+        assert_eq!(
+            version_probe_payload("claude"),
+            "echo __CCSWITCH_VERSION__; claude --version"
+        );
+
+        // Ubuntu 的 update-motd 在当天第一个交互式 login shell 里打印 MOTD，
+        // 整段取第一个版本号会拿到 24.04.4（#7347）
+        let motd = "Welcome banner 24.04.4\n\n * Documentation:  https://help.ubuntu.com\n__CCSWITCH_VERSION__\n2.1.270 (Claude Code)";
+        assert_eq!(after_version_sentinel(motd), "2.1.270 (Claude Code)");
+
+        // 兜底链 `-lic || -lc || -c` 会多次打印哨兵：取最后一次之后
+        let chained = "__CCSWITCH_VERSION__\nbash: warning\n__CCSWITCH_VERSION__\n1.2.3";
+        assert_eq!(after_version_sentinel(chained), "1.2.3");
+
+        // OSC 序列没有换行、直接粘在哨兵前面（地址取自 RFC 5737 文档保留段）
+        let glued = "\x1b]1337;RemoteHost=user@198.51.100.23\x07__CCSWITCH_VERSION__\n0.154.0";
+        assert_eq!(after_version_sentinel(glued), "0.154.0");
+
+        // 版本打在 stderr 的工具：哨兵之后为空，调用方回退到 stderr
+        assert_eq!(after_version_sentinel("__CCSWITCH_VERSION__\n"), "");
+
+        // 没有哨兵（shell 在执行载荷前就失败）：原样返回，行为不变
+        assert_eq!(
+            after_version_sentinel("sh: 1: bad: not found"),
+            "sh: 1: bad: not found"
+        );
+    }
+
+    #[test]
     fn test_extract_version() {
         assert_eq!(extract_version("claude 1.0.20"), "1.0.20");
         assert_eq!(extract_version("v2.3.4-beta.1"), "2.3.4-beta.1");
         assert_eq!(extract_version("no version here"), "no version here");
+    }
+
+    #[test]
+    fn github_release_version_prefers_semver_in_name_over_calendar_tag() {
+        // Hermes 官方 release：tag 日历式，语义版本只在 name 里；2026-08-19 起括号内还多了个 v
+        for (name, tag, want) in [
+            ("Hermes Agent v0.20.4 (2026.8.18)", "v2026.8.18", "0.20.4"),
+            ("Hermes Agent v0.21.0 (v2026.8.31)", "v2026.8.31", "0.21.0"),
+            (
+                "Hermes Agent v0.20.3 (2026.8.16.2)",
+                "v2026.8.16.2",
+                "0.20.3",
+            ),
+        ] {
+            let json = serde_json::json!({ "name": name, "tag_name": tag });
+            assert_eq!(
+                github_release_version_from_json(&json).as_deref(),
+                Some(want),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn github_release_version_falls_back_to_semver_tag() {
+        // opencode：name == tag，走 name 或 tag 结果一致
+        let named = serde_json::json!({ "name": "v1.18.18", "tag_name": "v1.18.18" });
+        assert_eq!(
+            github_release_version_from_json(&named).as_deref(),
+            Some("1.18.18")
+        );
+        let prose = serde_json::json!({ "name": "August refresh", "tag_name": "v1.18.18" });
+        assert_eq!(
+            github_release_version_from_json(&prose).as_deref(),
+            Some("1.18.18")
+        );
+        let unnamed = serde_json::json!({ "tag_name": "v1.2.3" });
+        assert_eq!(
+            github_release_version_from_json(&unnamed).as_deref(),
+            Some("1.2.3")
+        );
+    }
+
+    #[test]
+    fn github_release_version_rejects_calendar_versions_and_rate_limit_body() {
+        // name 与 tag 都只有日历式数字：不得把 2026.8.31 当版本号（前端会永久判定"可更新"）
+        let calendar = serde_json::json!({
+            "name": "Hermes Agent (2026.8.31)",
+            "tag_name": "v2026.8.31"
+        });
+        assert_eq!(github_release_version_from_json(&calendar), None);
+        let four_seg = serde_json::json!({ "tag_name": "v2026.8.16.2" });
+        assert_eq!(github_release_version_from_json(&four_seg), None);
+        // GitHub 未认证限流响应只有 message / documentation_url
+        let limited = serde_json::json!({
+            "message": "API rate limit exceeded for 1.2.3.4.",
+            "documentation_url": "https://docs.github.com/rest"
+        });
+        assert_eq!(github_release_version_from_json(&limited), None);
+        assert_eq!(
+            github_release_version_from_json(&serde_json::json!({})),
+            None
+        );
+    }
+
+    #[test]
+    fn hermes_pypi_fallback_is_hidden_when_local_leads() {
+        let pypi = || Some("0.19.0".to_string());
+        // GitHub 不可达、PyPI 仍停在 0.19.0：本地 0.21.0 时不展示旧值（否则"最新 < 当前"）
+        assert_eq!(drop_latest_behind_local(pypi(), Some("0.21.0")), None);
+        // 本地等于 / 落后 PyPI，或本地未知：照常展示
+        assert_eq!(
+            drop_latest_behind_local(pypi(), Some("0.19.0")).as_deref(),
+            Some("0.19.0")
+        );
+        assert_eq!(
+            drop_latest_behind_local(pypi(), Some("0.18.2")).as_deref(),
+            Some("0.19.0")
+        );
+        assert_eq!(
+            drop_latest_behind_local(pypi(), None).as_deref(),
+            Some("0.19.0")
+        );
+        // 本地无法解析时保守视为未领先
+        assert_eq!(
+            drop_latest_behind_local(pypi(), Some("unknown")).as_deref(),
+            Some("0.19.0")
+        );
+        assert_eq!(drop_latest_behind_local(None, Some("0.21.0")), None);
     }
 
     #[test]
@@ -3266,6 +3738,17 @@ mod tests {
     }
 
     #[test]
+    fn pi_lifecycle_is_deferred_to_client_adaptation() {
+        let requested = vec!["unsupported".to_string(), "pi".to_string()];
+        assert!(normalize_requested_tools(&requested).is_empty());
+        assert_eq!(tool_display_name("pi"), "Unknown");
+        assert_eq!(npm_package_for("pi"), None);
+        assert_eq!(npm_install_command_for("pi"), None);
+        // Pi lifecycle wiring is deferred to client adaptation package #208.
+        assert_eq!(official_update_args("pi"), None);
+    }
+
+    #[test]
     fn test_compare_semver() {
         use std::cmp::Ordering;
         assert_eq!(
@@ -3343,6 +3826,20 @@ mod tests {
         assert_eq!(
             pick_latest_version(map, &["beta"], Some("0.200.0")),
             Some("0.135.0".to_string())
+        );
+    }
+
+    #[test]
+    fn test_npm_dist_tags_url() {
+        // 普通包名直接拼进路径
+        assert_eq!(
+            npm_dist_tags_url("openclaw"),
+            "https://registry.npmjs.org/-/package/openclaw/dist-tags"
+        );
+        // scoped 包名的 `/` 按 registry 约定转义成 %2f
+        assert_eq!(
+            npm_dist_tags_url("@openai/codex"),
+            "https://registry.npmjs.org/-/package/@openai%2fcodex/dist-tags"
         );
     }
 
@@ -4490,6 +4987,48 @@ mod tests {
         assert_eq!(preferred.as_deref(), Some(cmd.as_path()));
     }
 
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_shell_compatible_path_strips_verbatim_prefixes() {
+        assert_eq!(
+            windows_shell_compatible_path(Path::new(r"\\?\C:\tools\codex.cmd")),
+            PathBuf::from(r"C:\tools\codex.cmd")
+        );
+        assert_eq!(
+            windows_shell_compatible_path(Path::new(r"\\?\UNC\server\share\tools\codex.cmd")),
+            PathBuf::from(r"\\server\share\tools\codex.cmd")
+        );
+        assert_eq!(
+            windows_shell_compatible_path(Path::new(r"C:\tools\codex.cmd")),
+            PathBuf::from(r"C:\tools\codex.cmd")
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn run_windows_tool_version_command_accepts_canonicalized_cmd_path() {
+        let dir = tempfile::tempdir().expect("temp dir should be created");
+        let cmd = dir.path().join("codex.cmd");
+        std::fs::write(&cmd, "@echo off\r\necho codex-cli 0.144.3\r\n")
+            .expect("cmd shim should be created");
+        let canonical = std::fs::canonicalize(&cmd).expect("cmd shim should canonicalize");
+        assert!(
+            canonical.to_string_lossy().starts_with(r"\\?\"),
+            "Windows canonical paths should use the verbatim prefix: {}",
+            canonical.display()
+        );
+
+        let output = run_windows_tool_version_command(&canonical)
+            .expect("canonicalized cmd shim should execute");
+        let stderr = decode_command_output(&output.stderr);
+
+        assert!(output.status.success(), "cmd shim failed: {stderr}");
+        assert_eq!(
+            decode_command_output(&output.stdout).trim(),
+            "codex-cli 0.144.3"
+        );
+    }
+
     #[test]
     fn resolve_launch_cwd_accepts_existing_directory() {
         let resolved =
@@ -4579,6 +5118,27 @@ mod tests {
             script.contains(r#"set launcher_script to "exec sh '/tmp/fyagent_launcher.sh'""#),
             "Terminal should replace the auto-created shell:\n{script}"
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn otty_launcher_command_executes_the_temporary_script() {
+        assert_eq!(
+            build_macos_dash_c_command(Path::new("/tmp/cc_switch_launcher.sh")),
+            "exec sh '/tmp/cc_switch_launcher.sh'"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn otty_cli_candidates_include_bundle_and_installed_cli_locations() {
+        let candidates = macos_otty_cli_candidates();
+
+        assert!(candidates.contains(&PathBuf::from(
+            "/Applications/Otty.app/Contents/MacOS/otty-cli"
+        )));
+        assert!(candidates.contains(&PathBuf::from("/usr/local/bin/otty")));
+        assert!(candidates.contains(&PathBuf::from("/opt/homebrew/bin/otty")));
     }
 
     /// Restored windows should not receive the launcher command.

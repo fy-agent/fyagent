@@ -19,11 +19,11 @@
     ],
     [
       "scripts/tasks/host-native.mjs",
-      "d580175558e8fd277646da8505c66409a4c7b37b0041bb7d99110979a5d81181"
+      "fb9a917cd1f6290c1b418607f2fe876fb74afd166be2688ece695261a288d75f"
     ],
     [
       "scripts/tasks/lib.mjs",
-      "f3e693710f56de54e991c31a1a9ee93c5f654e38831c6fd3fbb8cf7f7a392e94"
+      "7b8008311c83593136052c8e519d583903d66b1f706eaacd965c6e1e0f38c15d"
     ],
     [
       "scripts/tasks/macos-signed-dev-cargo.mjs",
@@ -31,11 +31,11 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "086e8d3af807904bba68d15d9798b47ee589f94564e6e53ec5c101232465d268"
+      "14f228eb690599b98ae1e3c69abb76026c87a97b64a40ffcb48273f77cacbd6b"
     ],
     [
       "scripts/tasks/system-check.mjs",
-      "266ede8818e0a5cd735b59ba184ed85a94e653912c15fe12b08c7c7ab057ccc0"
+      "43748b2d02f8a298d0bdf3f1cc33f047fc7d78b37f17717494d6d3a450e37998"
     ],
     [
       "scripts/tasks/toolchain-check.mjs",
@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "4d5b1367768ae1eb3e76fc7613cdd9ef1cab6de7815e2054cd942efcb7930ba0"
+      "8670bda5e47fa4d9ebd1fd439935c9a2544b829bc3510a4b0e1178ae09058b1f"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "2a4bc778e2c2d4998d156159b5cb3f30b1c6a9aa6293b77489ae6e44d25be88b"
+      "a033fcb1c341851dc19c6d410a2d54b7171241976b59c5c81d184aca2e5803fe"
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
@@ -95,19 +95,19 @@
     ],
     [
       "src-tauri/src/claude_desktop_config.rs",
-      "2152c22d8ed8c49f963053e710778b26c7b536138c0d6aa92508feee8c51bda6"
+      "0a7aafc7e8547dac2126fe35b00d6c0ac8c408e58475a48888f47fbbe0438ae8"
     ],
     [
       "src-tauri/src/claude_mcp.rs",
-      "4216019d662bcb02b32318163d879fbec7c048a4bfbe6ed3df022630c9447905"
+      "6e3082bc23e5ecb62b86e730e71324a7eda552e2f1b54cbba6a7bace56f39f84"
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "70f5781ed2af5673c91623dacac6d56178f3a7b43ac84d5c5eba9ae77a6ff3f0"
+      "7af6b69a843b234298771c310ecbe0281246b900c77addd8dd60b407e28d298d"
     ],
     [
       "src-tauri/src/codex_config/catalog.rs",
-      "8f1e64351390e9e43632c7e54c248fc8fabeda917401d1369c3eb33e4f6cbb4b"
+      "d651c71c18c697b227a102099799b1c470c80e8284cd03088e3420364818275a"
     ],
     [
       "src-tauri/src/codex_desktop_runtime.rs",
@@ -147,7 +147,7 @@
     ],
     [
       "src-tauri/src/codex_history_migration.rs",
-      "24cca2a8c78f68c98d2b8a2d1453b1efc4f288695c23a3d56875093f33aaa02a"
+      "9668c1a1428abd236d4539703cca8311af5d1ea2fe564c16ac7c3648170072a3"
     ],
     [
       "src-tauri/src/codex_state_db.rs",
@@ -155,15 +155,23 @@
     ],
     [
       "src-tauri/src/config.rs",
-      "513d4c4033692b7b77419d887f8007bd7f9a27b775da5e7146bda818876e68bf"
+      "6a485095be546d9219a348e4bfeae6e8fff61ac800036eace81bbc8b9d6f8ac6"
     ],
     [
       "src-tauri/src/config/recovery.rs",
-      "82f62d1e18d8c8503f96f00c27e85e6093bc634895969752f45af385c760fd9a"
+      "b314acd83c14aded9af14eac401299cb98aee981c3472541a2211962e1ed2a3e"
+    ],
+    [
+      "src-tauri/src/database/backup.rs",
+      "1339dae9cc561d75ff1c99bf7b3609842c9e689e0837f7db448c5bb34e2ac731"
+    ],
+    [
+      "src-tauri/src/database/backup/recovery_tests.rs",
+      "20d29c508b82065c82753cf706049884efbdecf4dbf05e4698036fc4295ce7f1"
     ],
     [
       "src-tauri/src/gemini_config.rs",
-      "1221dde9384613351681f3bda4012530099b4880fb5fb776e4a5e1ba1a98cc33"
+      "33c1ea0d87b4ea9d13a222c4cb76851163f68288be7978d3437b1ced336195ba"
     ],
     [
       "src-tauri/src/hermes_config.rs",
@@ -171,11 +179,15 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "2d15ac7411f371c458a0c0bc3296388b6c44b2e403837d9573ce88fa9788a82a"
+      "c89746e144bf16d80f898f8475ee34817121e5fe9770d66f0af5ef983984d81b"
     ],
     [
       "src-tauri/src/lightweight.rs",
       "26afdcaaeb3281ffa63e439eef9becd3ad40743dc186247e245c0307f2dc5b3e"
+    ],
+    [
+      "src-tauri/src/live/engine.rs",
+      "74dda36c94933dc1706f933e429b878ccdac8a9c42eb0e3975d4a7db14628383"
     ],
     [
       "src-tauri/src/macos_system_commit/ffi.rs",
@@ -190,16 +202,36 @@
       "89be46db55626e460b0832ced587c517beed6c22969022888d1f0f0a09d3d623"
     ],
     [
+      "src-tauri/src/mcode_config.rs",
+      "1518279ebf3edfb688866fdb190e68089b53be7e6b984fa4f77805efebd94822"
+    ],
+    [
       "src-tauri/src/mcp/traework.rs",
-      "2a452af2697f2f6bc0281fc5ce7722c572548cea417ae0e84becf8756b25e4e3"
+      "e8326bf6be447bed82292e207011a5729f96bd49516c8ab287412468cfe8e7a4"
+    ],
+    [
+      "src-tauri/src/mode/controller.rs",
+      "6c3391fa788c07837e6b043891c30a9925c41528d15be5d525802139295654e9"
+    ],
+    [
+      "src-tauri/src/mode/operation.rs",
+      "429db5fc75b362239f89b709f81a95044c851a02d14642b10a5d965fc92f5f94"
+    ],
+    [
+      "src-tauri/src/mode/state.rs",
+      "f68cb1883c91dcab2cdc2dfe0fe1cb66c4fa469596b1f9252709e331ecd1af06"
     ],
     [
       "src-tauri/src/opencode_config.rs",
-      "bcce927c10fbcaabd2bca74d5f4858fc3eabeb6f2612074ae730ae4a397aa778"
+      "830f3d4ccf3374f491811f64eea934331d836efed6d5a810c5f167321fcb70e7"
     ],
     [
       "src-tauri/src/panic_hook.rs",
       "7e2bcc0ffb4c075c4e395ad8ae38971e8cb892dcbaf60176e0538ddb7be18e99"
+    ],
+    [
+      "src-tauri/src/pi_config/mod.rs",
+      "2a0c0597c628952c09d2db8ad25eabc5fc1471241a84ea2f201908aeaab6e8b1"
     ],
     [
       "src-tauri/src/platform/mod.rs",
@@ -211,7 +243,7 @@
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
-      "fb3fba3eb4aac05450ee9e2f9bf038349e4c2b3d13a5c72520ac865ba0b1344d"
+      "77b429fbd122de89b61fa3bf9f39572152b15605cb72e78937fb10702af33644"
     ],
     [
       "src-tauri/src/proxy/providers/copilot_auth.rs",
@@ -220,6 +252,10 @@
     [
       "src-tauri/src/proxy/providers/xai_oauth_auth.rs",
       "37654d2a840aabdd23cc5aa3cfa2bb4cd7e04d2d413db2e310b752de408403eb"
+    ],
+    [
+      "src-tauri/src/services/backup_storage.rs",
+      "19d90d83fcc2f2cd2ea3c3994df98eec7b8a86674105de456c94f48c8fb282fa"
     ],
     [
       "src-tauri/src/services/config_pack/files.rs",
@@ -235,31 +271,63 @@
     ],
     [
       "src-tauri/src/services/env_manager.rs",
-      "8d31450f0b157a78b7907eb4b45b54dba1b15da3541ce76bbd3225945b49ff1a"
+      "0fe4bdf4d48e69c43950b8ddfdf8bd8f8df7124dbfae5f32b9fb88057dbc126a"
     ],
     [
       "src-tauri/src/services/managed_auth/consumers/grok.rs",
-      "28330c7d19ab1ed514e9fdd2a0f9af4e6255f40c9a164fd1e8a19b282fd9bd4c"
+      "599c68898d43eb587d32ade0f430c48d4d21ecbc58b64a504e148d060fcbfbb9"
+    ],
+    [
+      "src-tauri/src/services/managed_auth/consumers/opencode.rs",
+      "dc9ffcf0fde4f29b35f33bf0fdddd382005a68719a3b65675ad50604ba1b3cea"
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",
       "c54bbf91b40da1f3be7a74619ed120571f90c9d0c0ed526fdf2fbd0b43947d91"
     ],
     [
-      "src-tauri/src/services/managed_auth/subscription_tests.rs",
-      "031d37552d6fd7970c4dbf3e4cb3bbcee8db1f126631b43b44fa06fc48250b80"
+      "src-tauri/src/services/managed_auth/proxy_overview_tests.rs",
+      "0e5d83574e01f3df64c21d5b3895a726e48b8771606a43cc289f8fa08a56781c"
     ],
     [
-      "src-tauri/src/services/managed_auth/subscription_transport_tests.rs",
-      "cd7d49b3d731caa2db19da40aa58b7816dc9645ddca0de73cd72ea46eda14a17"
+      "src-tauri/src/services/managed_auth/service.rs",
+      "596d38693bcbfa9e4025b78d5bd9deb9d101155743baa42bff13c392786ac7e2"
+    ],
+    [
+      "src-tauri/src/services/managed_auth/subscription_tests.rs",
+      "babe406ec796e8919e08656d30cc42e787365981ce5d649080002dde7b83a876"
     ],
     [
       "src-tauri/src/services/model_probe.rs",
-      "051290df679e17d13df3ca035f23d7b6f7931a412eae3570807dc235bb8a2714"
+      "2cdaa1e8761a5c5618d0b5861dceef95c5c45df9b2f1407c9682184f0b3aa88f"
+    ],
+    [
+      "src-tauri/src/services/omo.rs",
+      "59c377b11d89f9d87877c6b0520837a7a73b068d0db741c2b93ffb565401174f"
+    ],
+    [
+      "src-tauri/src/services/prompt.rs",
+      "ee7c4040f2e1c5ef5f80aae1db0da532d7208edfd72cee4985890709d880c626"
+    ],
+    [
+      "src-tauri/src/services/provider/claude_write_projection.rs",
+      "3798cbb5c6fa0586aa863b7fe86db28e940f62a52eb643435250485b0a345a9b"
+    ],
+    [
+      "src-tauri/src/services/provider/codex_client_catalog.rs",
+      "954d52df3afcb0cfc631726739fcdd36b212d8ba6a2a14b2cb40340c789ef6e5"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "4ebb32ab31989cc75c8a4faf62a31b7b66ea0e2226f733ff422650b889df9946"
+      "2bb1e79f1c372f8cbfa1a083203b78a152c797e356d77036f9a0ea214610a64f"
+    ],
+    [
+      "src-tauri/src/services/provider/opencode_tests.rs",
+      "7647f0ad4dfa875d8a1e8eef33645831acec307b66a47c107c989906b1b63075"
+    ],
+    [
+      "src-tauri/src/services/proxy.rs",
+      "bb5fab3db472dc46c0bccc3a8c413bb1eff1522f0ae1dd3dc86cb1e278602074"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -275,23 +343,31 @@
     ],
     [
       "src-tauri/src/services/session_usage_codex.rs",
-      "6fdfb0a6b01ae5841401622eaa856646d0c0ea262aaafc08aa39563f318dd5c9"
+      "3682b6c8f06fb349495216f3c33fdaa8b09f63b8f815880d608396abd91cacb0"
     ],
     [
       "src-tauri/src/services/session_usage_grokbuild.rs",
-      "c0487b6f48d5560904fe82245bdf53df6daab7870279d4b7f09568a9fec551fa"
+      "876cbb3774d7e9b9253ed36bf21fea8a259c1ccccea6e6f9f73675ceee118049"
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "12752e1d8d3feb080b4e0eebe670097bc3302bf2cd8161fb99fe68cf0f4cc056"
+      "0666207a35b244e805ca31d4b2a91c283c92b63ef5c58184ef18c511368012d4"
+    ],
+    [
+      "src-tauri/src/services/skill/linked_paths_tests.rs",
+      "92cd56d4f3156b4929e345be8efa716d1c1161ffd6c21207412a571de991a59b"
+    ],
+    [
+      "src-tauri/src/services/skill/update/tests.rs",
+      "2eb552a39c23b010a87d49d4c42527e78d73220a428321c007fbd67cc5ee26f8"
     ],
     [
       "src-tauri/src/services/subscription.rs",
-      "28cbe71ded9292ffa3ae9291fd5817507122c50a974b79e3ba312c50e4a093ba"
+      "f03670969c279bcddcc22dc70a4b4486b75ff416eaa88b226f01ee149212adba"
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "e218b9fd92e204cc1d627bea2d3dcd4c9b3ffc72136652cbd515aa3283d472bd"
+      "f3cf8fa9ba0ca67a99ac79135b6d6bb05c945f7cf8a8548a32b34d47a477e855"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",
@@ -310,10 +386,6 @@
       "28d3063637276be6514a7384b103d5d36a57342cfdb55c3103f5ffdc337d6939"
     ],
     [
-      "src-tauri/src/services/tooling/health.rs",
-      "e38d20b4e69f851a76ca8e1ee40a8e3fd4f2d538f3ac4d8a8da3a76d08036abe"
-    ],
-    [
       "src-tauri/src/services/tooling/install_preflight.rs",
       "4e04b5be068fd9e1938c22d2a0d4070283bf4af21817fdd035d779a4fd8e5dc4"
     ],
@@ -327,11 +399,11 @@
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
-      "4c26a83d54b32578418ef557cf4f871fe8d87d21eb420f7937e240df6e8733d1"
+      "b4d97a5d8a3688ecd1b70af88640e26cdbd4066d32b754aaa0aae99827be5b6e"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
-      "fccb243216fd6143a110b2d6c03bd010d60f0b05616340ba832031b42004a78e"
+      "3e3b4913a544b6ba823a4e5809894a0c4a86d6f96e0b1a95fdbfaba5ff46793d"
     ],
     [
       "src-tauri/src/services/workbuddy/config.rs",
@@ -339,7 +411,11 @@
     ],
     [
       "src-tauri/src/services/workbuddy/mod.rs",
-      "c185f51cc2d53519d4c8ecf31205ed284924900b7721580e25b1f8db4a8af811"
+      "8de6dc18cb81fcb721dd14295905523b0c854a268f61cb259d509014c70985dc"
+    ],
+    [
+      "src-tauri/src/session_manager/content.rs",
+      "30f3143e3b0df91343ae25273e4a28b1849787d738e26ccd166c8909e802f30f"
     ],
     [
       "src-tauri/src/session_manager/migrate/identity_platform.rs",
@@ -374,20 +450,28 @@
       "c3b82f84bf879c3643d35ae9fd369c184724dc16e7ddebbe4589d921aa572f90"
     ],
     [
+      "src-tauri/src/session_manager/providers/claude.rs",
+      "5d41ea55642d3b32242af8d43741b2d8bd1b975c84427f1bfd5a860a9b144f0d"
+    ],
+    [
+      "src-tauri/src/session_manager/providers/mcode.rs",
+      "f65a7410538a5070287b19cb3b78881b81c60151d882682c3dcef46f688ea442"
+    ],
+    [
       "src-tauri/src/session_manager/providers/opencode.rs",
-      "4cdb88bab5fdec1834db76f685302ebe96a8442a81a0453575d234ffc55b33fa"
+      "ef0cee8bb74fb908026b0c417429144a409e7033dfcbb64a41fb3c1ca76716d0"
     ],
     [
       "src-tauri/src/session_manager/terminal/mod.rs",
-      "5f31ecef986424a5c44b5a61c8246320c00788923bbf05a3fbbe4d53275aebb3"
+      "5b04b3f1e3ca8005f9322940dd2a8f6481eb530ff460fc679e7f3a7e6ca11454"
     ],
     [
       "src-tauri/src/settings.rs",
-      "721d224a40efc77ad649745472e8b6c6158e16bf5fc5ea73571c0ee7988f9ffe"
+      "0983b964256b6b69510aa72bbb18f93605487676d8bfc2e7a0ce9c49f4053171"
     ],
     [
       "src-tauri/src/tray.rs",
-      "1a8b9a373912bd31aacdf812f432f8176bfe4bd8a1f9527d539f917d5409a607"
+      "ed2dad83816b10a1a679b11112ce92e2a5965c18c2def36fadd70ed9cba95d69"
     ],
     [
       "src-tauri/src/windows_runtime/mod.rs",
@@ -406,8 +490,20 @@
       "678f9b5d8c8e30c106dcd32ec29c054d3a898816edfd10dd443048b1e9abdd1b"
     ],
     [
+      "src-tauri/tests/golden/codex_red_lines.rs",
+      "83d64cfde32e9adcac8a3970ba9158622fdb86201dc7ea2fabe7a666e68b1fde"
+    ],
+    [
+      "src-tauri/tests/golden/file_modes.rs",
+      "1b648c1dafe2c5acbebe1a4e8d55f6062033edb2463ca530e82f1ac643a70ed6"
+    ],
+    [
       "src-tauri/tests/profile_roundtrip.rs",
       "e8ae4c7726f6e0f2ffc60b678f82bbe8d385024c8a1f9555316a0e6846526125"
+    ],
+    [
+      "src-tauri/tests/provider_service.rs",
+      "c6f2e8e5e16cda53b19b9ca873b2b4bbf4b77932a121ad1a1c1b0d0b470725f1"
     ],
     [
       "src-tauri/tests/secret_service_contract.rs",
@@ -415,11 +511,11 @@
     ],
     [
       "src-tauri/tests/skill_sync.rs",
-      "d2a9139faa6b676e6827f3fcd19a25630f0a06f67d97d6650fa033abca8f566a"
+      "4662768776fc79808e94cfc5d69f406d06e89589d272d37a80ba38130a3f9b27"
     ],
     [
       "src-tauri/tests/support.rs",
-      "0f1471540badbb5f6485fcc58515e4c32967bd2b129aca1fde3d3e66bcd41cc8"
+      "ee0055000ae102e50978532d132080a9bab04eab8c0fcadac40cc10de4f6ffd0"
     ],
     [
       "src-tauri/user-helper/build.rs",
@@ -451,7 +547,7 @@
     ],
     [
       "tests/architecture/rustModuleBoundaries.test.ts",
-      "768aa8676416515561053298c2f606858c1fc7a5e31fd8c88f59567c66b79694"
+      "ae213a00ccbf36082be9e90ca3dd507d3f44c93e461cf210cc02908cbc9311c1"
     ],
     [
       "tests/codexUserHelperContract.test.ts",
@@ -459,7 +555,7 @@
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
-      "dfebb5eda13f7b115d83c9e0df681812967f212b93dbd9647ed049a2a7b113c1"
+      "d58b538143af0c26b9326c71ebc1d9e14e563eb82020b715ec43bcf160fe6ea7"
     ],
     [
       "tests/hdiutilRetry.test.ts",
@@ -467,15 +563,15 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "e3b4d0d818956ae8e727236700eb539852f2961dd211e10ee967027eab05cb1c"
+      "8b4cae35be0221010676ba506b405528627a6a389bb9478f1a2aea8a70464233"
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "6fc87fe3f0281d5ac23d9e96b5db1368a61288b9d16f3b97a383eddf86e7aacc"
+      "4c0b6fba3fc892ca43770c4fd196d89fa4463a16c156c291b336ad98e3279dde"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "71e2de3fb37459987893092996b55b8b9a79f0bea0e7e44a13212312c3d09ee4"
+      "2ee68ce6f6c4c4aaab091b548ddbb8ef42ce5e86af920a35e988cdc69263ef37"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
@@ -483,7 +579,7 @@
     ],
     [
       "tests/systemCheck.test.ts",
-      "d70d2475a9b6e7a74615c24050c469b243babe37c389609145557374cb3c9e48"
+      "97de7a8a6eb264bdfdf01778542cf89ecc8e9664175ce8291e57da5240ad020b"
     ],
     [
       "tests/taskAtomicWriter.test.ts",

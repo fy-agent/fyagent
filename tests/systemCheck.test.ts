@@ -2,6 +2,18 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+// @ts-expect-error The task runner executes this JavaScript helper directly.
+import * as systemCheckModule from "../scripts/tasks/system-check.mjs";
+
+type SystemReport = {
+  ok: boolean;
+  platform: string;
+  checks: Array<{ name: string; ok: boolean; hint?: string }>;
+};
+const inspect = systemCheckModule.inspect as (
+  platform: string,
+  probe: (command: string, args: string[]) => { status: number },
+) => SystemReport;
 
 const ROOT = path.resolve(__dirname, "..");
 const SCRIPT = path.join(ROOT, "scripts", "tasks", "system-check.mjs");
@@ -76,23 +88,37 @@ describe("read-only host prerequisite checks", () => {
     }
   });
 
-  it("keeps reporting hints when every probed command is absent from PATH", () => {
-    const result = spawnSync(process.execPath, [SCRIPT, "--json"], {
-      cwd: ROOT,
-      encoding: "utf8",
-      env: { ...process.env, PATH: "" },
-    });
-    const report = JSON.parse(result.stdout) as {
-      ok: boolean;
-      checks: Array<{ name: string; ok: boolean; hint?: string }>;
-    };
+  it.each(["darwin", "win32", "linux"])(
+    "keeps reporting hints when every %s command probe is unavailable",
+    (platform) => {
+      // PATH does not control Windows' fixed-location vswhere lookup.
+      const calls: Array<{ command: string; args: string[] }> = [];
+      const report = inspect(platform, (command, args) => {
+        calls.push({ command, args });
+        return { status: 1 };
+      });
+      expect(report.ok).toBe(false);
+      expect(report.platform).toBe(platform);
+      expect(report.checks).toHaveLength(3);
+      expect(calls).toHaveLength(report.checks.length);
+      expect(
+        calls.map(({ command, args }) => `${command} ${args.join(" ")}`),
+      ).toEqual(report.checks.map((check) => check.name));
+      expect(
+        report.checks.every((check) => !check.ok && Boolean(check.hint)),
+      ).toBe(true);
+    },
+  );
 
-    expect(result.status).toBe(1);
+  it("continues probing after a missing tool and hints only failed checks", () => {
+    const report = inspect("win32", (command) => ({
+      status: command === "vswhere.exe" ? 1 : 0,
+    }));
     expect(report.ok).toBe(false);
-    expect(report.checks.length).toBeGreaterThan(0);
-    expect(
-      report.checks.every((check) => !check.ok && Boolean(check.hint)),
-    ).toBe(true);
+    expect(report.checks.map((check) => check.ok)).toEqual([true, false, true]);
+    expect(report.checks[1].hint).toContain("Desktop development with C++");
+    expect(report.checks[0].hint).toBeUndefined();
+    expect(report.checks[2].hint).toBeUndefined();
   });
 
   it("contains no elevation or package-manager mutation command", () => {

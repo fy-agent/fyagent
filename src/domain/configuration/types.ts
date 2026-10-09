@@ -140,7 +140,10 @@ export type CodexChatEffortValueMode =
   | "low_high"
   | "deepseek"
   // OpenRouter effort 枚举 xhigh|high|medium|low|minimal（无 max，max 钳到 xhigh）
-  | "openrouter";
+  | "openrouter"
+  // OpenCode Zen 网关：合法档位逐模型，见 modelCatalog 各条目 reasoningLevels
+  // （镜像 models.dev）；代理转换层按请求模型查表钳制，无表不发 effort 字段
+  | "zen";
 
 export type CodexChatReasoningOutputFormat =
   | "auto"
@@ -221,6 +224,10 @@ export interface ProviderMeta {
   customUserAgent?: string;
   // Local proxy request overrides. Only applied by the local proxy after route transforms.
   localProxyRequestOverrides?: LocalProxyRequestOverrides;
+  // Whether this provider is currently projected into an additive app's live config.
+  liveConfigManaged?: boolean;
+  // Source format is needed for package-less OpenCode built-in overrides.
+  opencodeConfigFormat?: "v1" | "v2";
   // 供应商类型（用于识别 Copilot 等特殊供应商）
   providerType?: string;
   // GitHub Copilot 关联账号 ID（旧字段，保留兼容读取）
@@ -232,6 +239,18 @@ export interface ProviderMeta {
   // Private ownership marker for the minimal official Codex provider table
   // generated solely to carry native capability fields.
   codexNativeCapabilitiesGeneratedProvider?: boolean;
+  // Stack 模式下这家 Claude Code 供应商发布的模型；没有时按模型映射发布，空列表什么都不发布
+  stackModels?: ClaudeStackModel[];
+}
+
+// Stack 模式下 Claude Code 供应商发布的一个模型
+export interface ClaudeStackModel {
+  // 发往上游的模型名（不带 1M 标记）
+  model: string;
+  // 选择器里的显示名，没有时用模型名
+  displayName?: string;
+  // 上游是 1M 窗口
+  oneM?: boolean;
 }
 
 // Skill 同步方式
@@ -270,6 +289,14 @@ export interface CodexCatalogModel {
   // Codex requires this field in every catalog entry; when omitted the backend
   // falls back to a neutral default. e.g. MiMo "developed by Xiaomi".
   baseInstructions?: string;
+  // Per-model reasoning effort levels exposed in the generated Codex catalog
+  // (e.g. ["none", "low", "medium", "high", "xhigh", "max"]). When omitted the
+  // backend keeps the template's conservative none/high default.
+  reasoningLevels?: string[];
+  // Per-model default reasoning effort. Only meaningful together with
+  // reasoningLevels; when omitted the backend keeps the template default if it
+  // is still in the list, otherwise the highest declared level.
+  defaultReasoningLevel?: string;
 }
 
 // Claude 认证字段类型
@@ -290,58 +317,8 @@ export interface VisibleApps {
   opencode: boolean;
   openclaw: boolean;
   hermes: boolean;
-}
-
-// WebDAV 同步状态
-export interface WebDavSyncStatus {
-  lastSyncAt?: number | null;
-  lastError?: string | null;
-  lastErrorSource?: string | null;
-  lastRemoteEtag?: string | null;
-  lastLocalManifestHash?: string | null;
-  lastRemoteManifestHash?: string | null;
-}
-
-// WebDAV 同步配置
-export interface WebDavSyncSettings {
-  enabled?: boolean;
-  autoSync?: boolean;
-  baseUrl?: string;
-  username?: string;
-  password?: string;
-  remoteRoot?: string;
-  profile?: string;
-  status?: WebDavSyncStatus;
-}
-
-// S3 同步配置
-export interface S3SyncSettings {
-  enabled?: boolean;
-  autoSync?: boolean;
-  region?: string;
-  bucket?: string;
-  accessKeyId?: string;
-  secretAccessKey?: string;
-  endpoint?: string;
-  remoteRoot?: string;
-  profile?: string;
-  status?: WebDavSyncStatus;
-}
-
-export type RemoteSnapshotLayout = "current" | "legacy";
-
-// 远端快照信息（下载前预览）
-export interface RemoteSnapshotInfo {
-  deviceName: string;
-  createdAt: string;
-  snapshotId: string;
-  version: number;
-  protocolVersion: number;
-  dbCompatVersion?: number | null;
-  compatible: boolean;
-  artifacts: string[];
-  layout: RemoteSnapshotLayout;
-  remotePath: string;
+  pi: boolean;
+  mcode: boolean;
 }
 
 // 应用设置类型（用于设置对话框与 Tauri API）
@@ -362,11 +339,15 @@ export interface Settings {
   silentStartup?: boolean;
   // 是否启用主页面本地代理功能（默认关闭）
   enableLocalProxy?: boolean;
+  // 是否在主页面显示 Stack 模式开关（默认关闭）。和 enableLocalProxy 二选一，只影响 Claude Code、Codex
+  enableStackMode?: boolean;
   // User has confirmed the local proxy first-run notice
   proxyConfirmed?: boolean;
   // User has confirmed the usage query first-run notice
   usageConfirmed?: boolean;
   usageDashboardRefreshIntervalMs?: number;
+  // 会话用量自动扫描开关（默认开启=自动模式；关闭后仅手动同步时扫描会话日志，代理记账不受影响）
+  sessionAutoSyncEnabled?: boolean;
   // Whether to show the failover toggle independently on the main page
   enableFailoverToggle?: boolean;
   // Whether to show the project profile switcher on the main page header
@@ -383,6 +364,10 @@ export interface Settings {
   failoverConfirmed?: boolean;
   // User has confirmed the first-run welcome notice
   firstRunNoticeConfirmed?: boolean;
+  // User has confirmed the one-time "new layout" dialog shown to upgrading users
+  newLayoutNoticeConfirmed?: boolean;
+  // Highest app version whose "what's new" summary the user has seen on this device
+  whatsNewSeenVersion?: string;
   // User has confirmed the auto-sync traffic warning
   autoSyncConfirmed?: boolean;
   // User has confirmed the common config first-run notice
@@ -408,6 +393,8 @@ export interface Settings {
   openclawConfigDir?: string;
   // 覆盖 Hermes 配置目录（可选）
   hermesConfigDir?: string;
+  // 覆盖 Pi agent 配置目录（可选）
+  piConfigDir?: string;
 
   // ===== 当前供应商 ID（设备级）=====
   // 当前 Claude 供应商 ID（优先于数据库 is_current）
@@ -425,12 +412,6 @@ export interface Settings {
   // Skill 存储位置：fyagent（默认）或 unified（~/.agents/skills/）
   skillStorageLocation?: SkillStorageLocation;
 
-  // ===== WebDAV v2 同步设置 =====
-  webdavSync?: WebDavSyncSettings;
-
-  // ===== S3 同步设置 =====
-  s3Sync?: S3SyncSettings;
-
   // ===== 备份策略设置 =====
   // Auto-backup interval in hours (0=disabled, default 24)
   backupIntervalHours?: number;
@@ -439,7 +420,7 @@ export interface Settings {
 
   // ===== 终端设置 =====
   // 首选终端应用（可选，默认使用系统默认终端）
-  // macOS: "terminal" | "iterm2" | "warp" | "alacritty" | "kitty" | "ghostty" | "wezterm" | "kaku"
+  // macOS: "terminal" | "iterm2" | "warp" | "alacritty" | "kitty" | "ghostty" | "otty" | "wezterm" | "kaku"
   // Windows: "cmd" | "powershell" | "wt"
   preferredTerminal?: string;
 
@@ -467,11 +448,211 @@ export interface SessionMeta {
   resumeCommand?: string;
 }
 
+// ─── 会话阅读页数据模型（对应 Rust session_manager/model.rs） ───
+
+export type ToolKind =
+  | "shell"
+  | "read"
+  | "search"
+  | "edit"
+  | "write"
+  | "web"
+  | "mcp"
+  | "agent"
+  | "ask"
+  | "todo"
+  | "other";
+
+export type ToolStatus =
+  | "success"
+  | "error"
+  | "interrupted"
+  | "pending"
+  | "unknown";
+
+export type EventKind =
+  | "aborted"
+  | "compaction"
+  | "model_change"
+  | "thinking_level"
+  | "hook"
+  | "pr_link"
+  | "slash_command"
+  | "info"
+  | "error"
+  | "sub_agent"
+  | "other";
+
+/** 大内容的「按需取」引用：前端不解析，原样回传给后端 */
+export type ContentRef =
+  | { kind: "jsonl"; offset: number; len: number; pointer: string }
+  | {
+      kind: "sqlite";
+      table: string;
+      id: string;
+      column: string;
+      pointer: string;
+    }
+  | { kind: "file"; relPath: string; pointer: string }
+  | { kind: "sidecar"; relPath: string };
+
+export type ImageSource =
+  | { kind: "inline"; content: ContentRef }
+  | { kind: "local_file"; path: string };
+
+export interface ImageRef {
+  source: ImageSource;
+  mediaType: string;
+  /** 解码后的字节数估算 */
+  size: number;
+  alt?: string;
+}
+
+export interface DiffFile {
+  path: string;
+  op: "add" | "update" | "delete" | "rename";
+  added: number;
+  removed: number;
+}
+
+export interface DiffSummary {
+  files: DiffFile[];
+  added: number;
+  removed: number;
+  full?: ContentRef;
+}
+
+export interface TextBlock {
+  type: "text";
+  /** 正文；带 full 时只是预览（超长注入文本） */
+  text: string;
+  full?: ContentRef;
+}
+
+export interface ThinkingBlock {
+  type: "thinking";
+  /** 可见正文的预览；可能为空（加密/只有签名） */
+  text: string;
+  summary?: string;
+  redacted?: boolean;
+  durationMs?: number;
+  full?: ContentRef;
+}
+
+export interface ToolCallBlock {
+  type: "tool_call";
+  /** 与 ToolResultBlock.callId 配对 */
+  id: string;
+  rawName: string;
+  kind: ToolKind;
+  title: string;
+  detail?: string;
+  server?: string;
+  inputPreview: string;
+  inputTotalLen: number;
+  inputFull?: ContentRef;
+  diff?: DiffSummary;
+  byUser?: boolean;
+}
+
+export interface ToolResultBlock {
+  type: "tool_result";
+  /** 为空串表示源数据没有配对信息，显示为通用「工具输出」 */
+  callId: string;
+  status: ToolStatus;
+  preview: string;
+  totalLen: number;
+  lineCount: number;
+  truncated: boolean;
+  full?: ContentRef;
+  exitCode?: number;
+  durationMs?: number;
+  images?: ImageRef[];
+  savedPath?: string;
+}
+
+export interface ImageBlock {
+  type: "image";
+  image: ImageRef;
+}
+
+export interface EventBlock {
+  type: "event";
+  kind: EventKind;
+  /** 说明；带 full 时只是预览（压缩摘要等长文本） */
+  text?: string;
+  url?: string;
+  full?: ContentRef;
+}
+
+export interface StepBlock {
+  type: "step";
+  phase: "start" | "finish";
+  tokens?: number;
+  costUsd?: number;
+  reason?: string;
+}
+
+export type SessionBlock =
+  | TextBlock
+  | ThinkingBlock
+  | ToolCallBlock
+  | ToolResultBlock
+  | ImageBlock
+  | EventBlock
+  | StepBlock;
+
+export interface MessageMeta {
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  costUsd?: number;
+  durationMs?: number;
+  stopReason?: string;
+}
+
 export interface SessionMessage {
   role: string;
-  content: string;
+  /**
+   * 旧格式的纯文本内容：只有 blocks 缺失时（旧后端）才下发，
+   * 有 blocks 时前端一律从 blocks 推导（见 reader/turns.ts `messageText`）
+   */
+  content?: string;
   ts?: number;
+  id?: string;
+  turnId?: string;
+  injected?: boolean;
+  /** 旧后端 / 尚未迁移的解析器会省略 → 前端按 content 兜底 */
+  blocks?: SessionBlock[];
+  meta?: MessageMeta;
 }
+
+export interface TurnIndex {
+  turnId: string;
+  firstMessageIndex: number;
+  lastMessageIndex: number;
+  questionPreview: string;
+  ts?: number;
+  stepCount: number;
+  errorCount: number;
+  hasFinalReply: boolean;
+  aborted: boolean;
+}
+
+export type TranscriptChunk =
+  | {
+      type: "header";
+      total: number;
+      turns: TurnIndex[];
+      cached: boolean;
+      parseMs: number;
+    }
+  | { type: "messages"; start: number; messages: SessionMessage[] }
+  | { type: "done"; payloadBytes: number }
+  | { type: "error"; message: string };
 
 // MCP 服务器连接参数（宽松：允许扩展字段）
 export interface McpServerSpec {
@@ -491,6 +672,7 @@ export interface McpServerSpec {
 
 // v3.7.0: MCP 服务器应用启用状态
 export interface McpApps {
+  mcode?: boolean;
   claude: boolean;
   "claude-desktop"?: boolean;
   codex: boolean;
@@ -499,6 +681,7 @@ export interface McpApps {
   opencode: boolean;
   openclaw: boolean;
   hermes: boolean;
+  pi?: boolean;
 }
 
 // MCP 服务器条目（v3.7.0 统一结构）

@@ -140,7 +140,7 @@ request mode is a third-party API.
   installs software as a side effect.
 - Internal terms such as SecretRef, credential ID, refresh-token lineage,
   projection generation never appear in product copy or DOM. Native-resolved
-  display paths are shown only by explicit file-impact/recovery controls;
+  display paths are shown only by explicit file-impact controls;
   paths never become renderer-controlled write destinations.
 
 ### Saved Codex request source
@@ -179,6 +179,10 @@ listed in
 [Renderer Change Plan Workspaces](./change-plan-workspaces.md#6-tests-required).
 
 ### Strict wire boundary
+
+Login-stage parsing, startup feedback and login-dialog observation are owned by
+[Managed Auth Login](./managed-auth-login.md). Its nullable Preparing contract
+also applies when recovering active sessions from the account overview.
 
 - `managed-auth.ts` parses every native response from `unknown`, requires the
   exact contract version and exact key set, and accepts only closed enums,
@@ -222,13 +226,6 @@ listed in
   still requires a separate impact preview and explicit connection action.
   Login stages show their current action and include supporting text when the
   user needs to act, recover or continue in another window.
-- `FileRecoveryButton` composes the closed recovery port. It loads only on
-  request, shows actual source/backup paths, explicitly distinguishes restoring
-  an old file from deleting a first-created file, and requires confirmation.
-  Changed external files or backups disable automatic restore. Successful
-  restore rereads affected feature state; it is not account deletion, Provider
-  deletion, server-side token revocation or proven live consumer pickup.
-  The native contract is [Reversible User Configuration](../backend/reversible-user-config.md).
 
 - TanStack Query owns the overview and active-session snapshots. URL state owns
   the selected view/account/consumer. Secret or OAuth material never enters
@@ -255,9 +252,8 @@ listed in
 - Connection mutation results are retained by connection ID. A failure or partial
   result on target B never clears target A's completion. Failed writes reread the
   overview; retry selects the latest connection revision and opens a fresh,
-  single-use preview rather than resubmitting the consumed one. File recovery is
-  scoped to Codex auth/config or OpenCode auth as applicable and rereads feature
-  state afterwards. These are per-target actions, not an atomic batch operation.
+  single-use preview rather than resubmitting the consumed one. These are
+  per-target actions, not an atomic batch operation.
 - `pendingRestart`, partial completion, external change, unavailable authority
   and recovery-required remain explicit states. Starting a browser, writing a
   credential or launching software is not sufficient to paint success.
