@@ -162,19 +162,19 @@ applicable lifecycle checks again before auto-merge is re-enabled.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| PR created but Trellis task/spec/prearchive/archive is incomplete | Do not enable auto-merge or queue entry |
-| `CI / Required` is green before task archive | Treat as CI evidence only; merge remains blocked |
-| Task is archived but working tree/spec has new drift | Stop; repair and rerun applicable gates before handoff |
-| PR head changes after reviewed exact SHA | Previous handoff is stale; do not merge under old evidence |
-| Merge Queue/ruleset is missing or no longer uses `MERGE` | Stop; restore/explicitly review repository policy before merging |
-| Workflow stops handling `merge_group` | Merge Queue cannot satisfy required CI; fix CI before queue use |
-| Queue merge group fails/conflicts | Let GitHub remove/block the candidate; fix on the PR branch and repeat readiness |
-| `gh pr merge --admin` would bypass queue/protection | Forbidden; never use it for ordinary FyAgent work |
-| Direct push to `main` is proposed | Forbidden; use PR + Merge Queue |
+| Condition                                                                        | Required result                                                                     |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| PR created but Trellis task/spec/prearchive/archive is incomplete                | Do not enable auto-merge or queue entry                                             |
+| `CI / Required` is green before task archive                                     | Treat as CI evidence only; merge remains blocked                                    |
+| Task is archived but working tree/spec has new drift                             | Stop; repair and rerun applicable gates before handoff                              |
+| PR head changes after reviewed exact SHA                                         | Previous handoff is stale; do not merge under old evidence                          |
+| Merge Queue/ruleset is missing or no longer uses `MERGE`                         | Stop; restore/explicitly review repository policy before merging                    |
+| Workflow stops handling `merge_group`                                            | Merge Queue cannot satisfy required CI; fix CI before queue use                     |
+| Queue merge group fails/conflicts                                                | Let GitHub remove/block the candidate; fix on the PR branch and repeat readiness    |
+| `gh pr merge --admin` would bypass queue/protection                              | Forbidden; never use it for ordinary FyAgent work                                   |
+| Direct push to `main` is proposed                                                | Forbidden; use PR + Merge Queue                                                     |
 | A special PR appears to require squash/rebase or temporary queue-method flipping | Stop; keep queue policy stable and resolve commit hygiene/topology on the PR branch |
-| A `push` workflow emits `CI / Required` for main, dev, or `gh-readonly-queue/**` | Policy regression; Required CI authority must remain PR/merge-group/manual only |
+| A `push` workflow emits `CI / Required` for main, dev, or `gh-readonly-queue/**` | Policy regression; Required CI authority must remain PR/merge-group/manual only     |
 
 ## 5. Good / Base / Bad Cases
 
