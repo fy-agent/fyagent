@@ -49,9 +49,10 @@ export type ChangeAdapterDescriptor = {
   readonly idempotencyScope: "plan";
   readonly cancelMode: "before_managed_write";
   readonly compensationMode: "writer_owned_rollback";
-  readonly faultPoints: readonly (
+  readonly faultPoints?: readonly (
     | "before_managed_write"
     | "after_managed_write_before_record"
+    | string
   )[];
 };
 
@@ -273,21 +274,25 @@ function resourcesForOperation(operation: ChangePlanOperation): {
   return { readSet: CODEX_READ_SET, writeSet: CODEX_WRITE_SET };
 }
 
+const ADAPTER_BASE_KEYS = [
+  "adapterId",
+  "adapterVersion",
+  "operationType",
+  "phases",
+  "readSet",
+  "writeSet",
+  "idempotencyScope",
+  "cancelMode",
+  "compensationMode",
+] as const;
+
 function parseAdapterDescriptor(value: unknown): ChangeAdapterDescriptor {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      "adapterId",
-      "adapterVersion",
-      "operationType",
-      "phases",
-      "readSet",
-      "writeSet",
-      "idempotencyScope",
-      "cancelMode",
-      "compensationMode",
-      "faultPoints",
-    ]) ||
+    !(
+      hasExactKeys(value, ADAPTER_BASE_KEYS) ||
+      hasExactKeys(value, [...ADAPTER_BASE_KEYS, "faultPoints"])
+    ) ||
     !isOneOf(value.adapterId, CHANGE_PLAN_OPERATIONS) ||
     value.adapterVersion !== "1" ||
     value.operationType !== value.adapterId ||
@@ -302,10 +307,7 @@ function parseAdapterDescriptor(value: unknown): ChangeAdapterDescriptor {
     value.idempotencyScope !== "plan" ||
     value.cancelMode !== "before_managed_write" ||
     value.compensationMode !== "writer_owned_rollback" ||
-    !isExactSequence(value.faultPoints, [
-      "before_managed_write",
-      "after_managed_write_before_record",
-    ])
+    (value.faultPoints !== undefined && !Array.isArray(value.faultPoints))
   ) {
     throw new Error("Change Plan is unavailable");
   }
