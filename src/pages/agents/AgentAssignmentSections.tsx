@@ -5,7 +5,10 @@ import {
   buildMcpSearchText,
   buildSkillSearchText,
 } from "../../shared/features/helpers";
-import { useAuthoritativeAssignmentMutation } from "../../shared/features/authoritative-assignment";
+import {
+  useAuthoritativeAssignmentMutation,
+  type AuthoritativeAssignmentOutcome,
+} from "../../shared/features/authoritative-assignment";
 import {
   useInstalledSkills,
   useMcpServers,
@@ -28,6 +31,31 @@ type Feedback = {
   tone: "info" | "warning";
   text: string;
 };
+
+function formatAssignmentFailureNotice(
+  entityName: string,
+  outcome: Extract<AuthoritativeAssignmentOutcome, { status: "rejected" }>,
+): string {
+  let stageText = "更新失败";
+  if (outcome.stage === "mutate") {
+    stageText = "后端拒绝";
+  } else if (outcome.stage === "readback") {
+    stageText = "读取失败";
+  } else if (outcome.stage === "mismatch") {
+    stageText = "状态不一致";
+  }
+
+  const reasonDetail = outcome.reason ? `：${outcome.reason}` : "";
+  const recoveryDetail =
+    outcome.observedValue !== undefined
+      ? `（当前实际状态：${outcome.observedValue ? "已启用" : "已停用"}）`
+      : "";
+
+  return `无法更新 ${entityName} 设置，${stageText}${reasonDetail}。${recoveryDetail}请重试。`.replace(
+    "。。",
+    "。",
+  );
+}
 
 export function AgentSkillsSection({
   entry,
@@ -70,7 +98,7 @@ export function AgentSkillsSection({
     } else if (outcome.status === "rejected") {
       setFeedback({
         tone: "warning",
-        text: "无法确认 Skill 设置是否已更新。请刷新后重试。",
+        text: formatAssignmentFailureNotice("Skill", outcome),
       });
     }
   };
@@ -219,7 +247,7 @@ export function AgentMcpSection({
     } else if (outcome.status === "rejected") {
       setFeedback({
         tone: "warning",
-        text: "无法确认 MCP 设置是否已更新。请刷新后重试。",
+        text: formatAssignmentFailureNotice("MCP", outcome),
       });
     }
   };
