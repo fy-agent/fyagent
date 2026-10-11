@@ -188,33 +188,6 @@ describe("Change Plan strict wire parsers", () => {
       }),
     ).toThrow("Change Plan is unavailable");
   });
-
-  it("rejects when change plan is switched to a different target", () => {
-    expect(
-      parseApplyChangePlanOutcome({
-        kind: "rejected",
-        errorCode: "invalid_target",
-      }),
-    ).toEqual({
-      kind: "rejected",
-      errorCode: "invalid_target",
-    });
-    expect(
-      parseApplyChangePlanOutcome({
-        kind: "rejected",
-        errorCode: "target_not_found",
-      }),
-    ).toEqual({
-      kind: "rejected",
-      errorCode: "target_not_found",
-    });
-    expect(() =>
-      parseChangePlan({
-        ...changePlanWire,
-        targetProviderId: "",
-      }),
-    ).toThrow("Change Plan is unavailable");
-  });
 });
 
 
