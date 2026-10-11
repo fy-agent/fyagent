@@ -136,8 +136,9 @@ describe("Change Plan strict wire parsers", () => {
     );
 
     // 4. Omitted faultPoints completely does not block preview
-    const { faultPoints: _unused, ...adapterWithoutFaultPoints } =
+    const { faultPoints, ...adapterWithoutFaultPoints } =
       changePlanWire.adapter;
+    expect(faultPoints).toBeDefined();
     const withOmittedFault = {
       ...changePlanWire,
       adapter: adapterWithoutFaultPoints,
@@ -187,5 +188,33 @@ describe("Change Plan strict wire parsers", () => {
       }),
     ).toThrow("Change Plan is unavailable");
   });
+
+  it("rejects when change plan is switched to a different target", () => {
+    expect(
+      parseApplyChangePlanOutcome({
+        kind: "rejected",
+        errorCode: "invalid_target",
+      }),
+    ).toEqual({
+      kind: "rejected",
+      errorCode: "invalid_target",
+    });
+    expect(
+      parseApplyChangePlanOutcome({
+        kind: "rejected",
+        errorCode: "target_not_found",
+      }),
+    ).toEqual({
+      kind: "rejected",
+      errorCode: "target_not_found",
+    });
+    expect(() =>
+      parseChangePlan({
+        ...changePlanWire,
+        targetProviderId: "",
+      }),
+    ).toThrow("Change Plan is unavailable");
+  });
 });
+
 

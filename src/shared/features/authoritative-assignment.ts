@@ -21,6 +21,32 @@ export type AuthoritativeAssignmentOutcome<TValue = boolean | undefined> =
     }
   | { status: "busy" };
 
+function extractFailureReason(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+  if (typeof err === "string" && err.trim()) {
+    return err;
+  }
+  if (err && typeof err === "object") {
+    if (
+      "message" in err &&
+      typeof (err as { message: unknown }).message === "string" &&
+      (err as { message: string }).message.trim()
+    ) {
+      return (err as { message: string }).message;
+    }
+    if (
+      "error" in err &&
+      typeof (err as { error: unknown }).error === "string" &&
+      (err as { error: string }).error.trim()
+    ) {
+      return (err as { error: string }).error;
+    }
+  }
+  return fallback;
+}
+
 export function useAuthoritativeAssignmentMutation<
   TItemId extends string,
   TSnapshot,
@@ -61,10 +87,7 @@ export function useAuthoritativeAssignmentMutation<
         } catch (err) {
           stage = "mutate";
           originalError = err;
-          failureReason =
-            err instanceof Error && err.message
-              ? err.message
-              : "后端拒绝了赋值请求";
+          failureReason = extractFailureReason(err, "后端拒绝了赋值请求");
           throw err;
         }
 
@@ -80,22 +103,14 @@ export function useAuthoritativeAssignmentMutation<
         } catch (err) {
           stage = "readback";
           originalError = err;
-          failureReason =
-            err instanceof Error && err.message
-              ? err.message
-              : "回读状态失败";
+          failureReason = extractFailureReason(err, "回读状态失败");
           throw err;
         }
 
         if (readback.error) {
           stage = "readback";
           originalError = readback.error;
-          failureReason =
-            readback.error instanceof Error && readback.error.message
-              ? readback.error.message
-              : typeof readback.error === "string"
-                ? readback.error
-                : "回读状态失败";
+          failureReason = extractFailureReason(readback.error, "回读状态失败");
           throw new Error(failureReason);
         }
 

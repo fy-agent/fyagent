@@ -74,6 +74,48 @@ describe("AgentSkillsSection error reporting and recovery state", () => {
     );
   });
 
+  it("displays native plain text rejection reason when mutation fails", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.skills.getInstalled = vi.fn(async () => [makeSkill(false)]);
+    ports.skills.toggleApp = vi.fn(async () => {
+      throw "权限不足";
+    });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <FeatureProvider ports={ports}>
+          <AgentSkillsSection entry={codexEntry} onOpenManagement={vi.fn()} />
+        </FeatureProvider>
+      </QueryClientProvider>,
+    );
+
+    const switchBtn = await screen.findByRole("switch", {
+      name: "在 Codex 中使用 Test Skill",
+    });
+    await user.click(switchBtn);
+
+    await waitFor(
+      () => {
+        expect(
+          screen.queryByText("正在保存 Skill 设置…"),
+        ).not.toBeInTheDocument();
+        const notices = screen.getAllByRole("status");
+        const feedbackNotice = notices.find((n) =>
+          n.textContent?.includes("Skill 设置"),
+        );
+        expect(feedbackNotice).toBeDefined();
+        expect(feedbackNotice!.textContent).toContain("后端拒绝");
+        expect(feedbackNotice!.textContent).toContain("权限不足");
+      },
+      { timeout: 3000 },
+    );
+  });
+
   it("displays read failure reason when reread fails", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();

@@ -179,4 +179,35 @@ describe("useAuthoritativeAssignmentMutation", () => {
     expect(outcome.observedValue).toBe(false);
     expect(reread).toHaveBeenCalledTimes(2);
   });
+
+  it("captures plain string rejection reason from native mutation", async () => {
+    const mutate = vi.fn(async () => {
+      throw "权限不足";
+    });
+    const snapshot: Record<string, boolean> = { alpha: false };
+    const reread = vi.fn(async () => ({
+      data: snapshot,
+      error: null,
+    }));
+    const { result } = renderHook(() =>
+      useAuthoritativeAssignmentMutation({
+        mutate,
+        reread,
+        readValue: (snap: Record<string, boolean> | undefined, itemId: string) => snap?.[itemId],
+      }),
+    );
+
+    let outcome!: Awaited<ReturnType<typeof result.current.run>>;
+    await act(async () => {
+      outcome = await result.current.run("alpha", true);
+    });
+
+    expect(outcome.status).toBe("rejected");
+    if (outcome.status !== "rejected") throw new Error("Expected rejected");
+    expect(outcome.stage).toBe("mutate");
+    expect(outcome.reason).toBe("权限不足");
+    expect(outcome.error).toBe("权限不足");
+    expect(outcome.observedValue).toBe(false);
+    expect(reread).toHaveBeenCalledTimes(1);
+  });
 });
