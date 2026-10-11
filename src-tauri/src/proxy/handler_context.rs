@@ -145,9 +145,12 @@ impl RequestContext {
                 )
             }
             None => {
-                let current_provider = crate::mode::current::provider_in_use(&state.db, &app_type)
-                    .ok()
-                    .flatten();
+                let current_provider = crate::mode::current::provider_in_use(&state.db, &app_type);
+                let current_provider = if app_type == AppType::OpenCode {
+                    current_provider.map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+                } else {
+                    current_provider.ok().flatten()
+                };
                 let current_provider_id = current_provider
                     .as_ref()
                     .map(|provider| provider.id.clone())
