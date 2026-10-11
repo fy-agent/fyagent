@@ -175,24 +175,25 @@ record("uv-managed Python and .venv", verifyPython);
 
 if (!pythonOnly) {
   record("generated tool and lock contract", validateLockfile);
-  const expected = readToolchainContract();
+  const expected = () => readToolchainContract();
   record("Node ownership", () =>
-    verifyTool("node", expected.node, ["--version"], (value) =>
+    verifyTool("node", expected().node, ["--version"], (value) =>
       value.replace(/^v/, ""),
     ),
   );
   record("pnpm ownership", () =>
-    verifyTool("pnpm", expected.pnpm, ["--version"]),
+    verifyTool("pnpm", expected().pnpm, ["--version"]),
   );
   record("uv ownership", () => {
     return verifyTool(
       "uv",
-      expected.uv,
+      expected().uv,
       ["--version"],
       (value) => value.split(/\s+/)[1],
     );
   });
   record("Rust toolchain and components", () => {
+    const expected = readToolchainContract();
     const version = capture("rustc", ["--version"]);
     if (!version.startsWith(`rustc ${expected.rust} `))
       throw new Error(version);
@@ -274,7 +275,7 @@ if (!pythonOnly) {
     if (names.size === 0) throw new Error("mise did not load any local tasks");
     return `${names.size} tasks`;
   });
-  record("standard version facts", () => expected);
+  record("standard version facts", expected);
 }
 
 const report = {

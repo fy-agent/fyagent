@@ -156,6 +156,19 @@ export function validateLockfile() {
     validateArtifactPlatforms("rust", rust);
   }
 
+  const requiresPython =
+    readToml("pyproject.toml").project?.["requires-python"];
+  if (requiresPython !== ">=3.14,<3.15") {
+    throw new Error(
+      `Unsupported pyproject.toml requires-python: ${requiresPython}`,
+    );
+  }
+  if (!expected.python.startsWith("3.14.")) {
+    throw new Error(
+      `.python-version ${expected.python} does not satisfy pyproject.toml requires-python ${requiresPython}`,
+    );
+  }
+
   if (!read("uv.lock").includes('requires-python = "==3.14.*"')) {
     throw new Error("uv.lock does not encode the Python 3.14 project contract");
   }
