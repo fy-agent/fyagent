@@ -3351,17 +3351,7 @@ fn build_terminal_failure_log(
 
 fn summarize_proxy_error(error: &ProxyError) -> String {
     match error {
-        ProxyError::UpstreamError { status, body } => {
-            let body_summary = body
-                .as_deref()
-                .map(summarize_upstream_body)
-                .filter(|summary| !summary.is_empty());
-
-            match body_summary {
-                Some(summary) => format!("上游 HTTP {status}: {summary}"),
-                None => format!("上游 HTTP {status}"),
-            }
-        }
+        ProxyError::UpstreamError { .. } => super::error_mapper::get_log_error_message(error),
         ProxyError::Timeout(message) => {
             format!("请求超时: {}", summarize_text_for_log(message, 180))
         }
@@ -3379,34 +3369,6 @@ fn summarize_proxy_error(error: &ProxyError) -> String {
         }
         _ => summarize_text_for_log(&error.to_string(), 180),
     }
-}
-
-fn summarize_upstream_body(body: &str) -> String {
-    if let Ok(json_body) = serde_json::from_str::<Value>(body) {
-        if let Some(message) = extract_json_error_message(&json_body) {
-            return summarize_text_for_log(&message, 180);
-        }
-
-        if let Ok(compact_json) = serde_json::to_string(&json_body) {
-            return summarize_text_for_log(&compact_json, 180);
-        }
-    }
-
-    summarize_text_for_log(body, 180)
-}
-
-fn extract_json_error_message(body: &Value) -> Option<String> {
-    let candidates = [
-        body.pointer("/error/message"),
-        body.pointer("/message"),
-        body.pointer("/detail"),
-        body.pointer("/error"),
-    ];
-
-    candidates
-        .into_iter()
-        .flatten()
-        .find_map(|value| value.as_str().map(ToString::to_string))
 }
 
 fn split_endpoint_and_query(endpoint: &str) -> (&str, Option<&str>) {
@@ -4692,6 +4654,35 @@ mod tests {
         )
         .unwrap();
         assert_eq!(body, original);
+    }
+
+    #[test]
+    fn upstream_diagnostics_never_include_untrusted_error_body() {
+        for status in [401, 429, 500] {
+            let error = ProxyError::UpstreamError { status, body: Some(
+                r#"{"error":{"message":"Authorization: Bearer fake-key/+ refreshed-token fake-key%2F%2B private-prompt"}}"#.repeat(100)
+            ) };
+            let (_, retry) = build_retryable_failure_log("test", 1, 2, &error);
+            let (_, terminal) = build_terminal_failure_log(2, 2, Some(&error)).unwrap();
+            for message in [
+                retry,
+                terminal,
+                error.to_string(),
+                super::super::error_mapper::get_log_error_message(&error),
+            ] {
+                assert!(message.contains(&status.to_string()));
+                assert!(message.len() <= 256);
+                for secret in [
+                    "Authorization",
+                    "fake-key",
+                    "refreshed-token",
+                    "private-prompt",
+                    "%2F%2B",
+                ] {
+                    assert!(!message.contains(secret), "diagnostic leaked {secret}");
+                }
+            }
+        }
     }
 
     #[test]

@@ -9,7 +9,7 @@
 
 use super::{
     content_encoding::{decompress_body, get_content_encoding, is_supported_content_encoding},
-    error_mapper::{get_error_message, map_proxy_error_to_status},
+    error_mapper::{get_error_message, get_log_error_message, map_proxy_error_to_status},
     forwarder::ActiveConnectionGuard,
     handler_config::{
         claude_stream_usage_event_filter, codex_stream_usage_event_filter, CLAUDE_PARSER_CONFIG,
@@ -48,11 +48,25 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::database::PRICING_SOURCE_REQUEST;
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json, RequestExt};
 use bytes::Bytes;
 use futures::StreamExt;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
+
+// with_limited_body applies the router's DefaultBodyLimit before manual collection.
+fn map_request_body_error(error: axum::Error) -> ProxyError {
+    let mut cause: &(dyn std::error::Error + 'static) = &error;
+    loop {
+        if cause.is::<http_body_util::LengthLimitError>() {
+            return ProxyError::RequestBodyTooLarge;
+        }
+        match cause.source() {
+            Some(source) => cause = source,
+            None => return ProxyError::InvalidRequest("无法读取请求体".to_string()),
+        }
+    }
+}
 
 // ============================================================================
 // 健康检查和状态查询（简单端点）
@@ -288,7 +302,7 @@ async fn handle_messages_for_app(
     app_type_str: &'static str,
     strip_prefix: Option<&'static str>,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, body) = request.into_parts();
+    let (parts, body) = request.with_limited_body().into_parts();
     let method = parts.method.clone();
     let uri = parts.uri;
     let headers = parts.headers;
@@ -296,7 +310,7 @@ async fn handle_messages_for_app(
     let body_bytes = body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(map_request_body_error)?
         .to_bytes();
     let mut body: Value = serde_json::from_slice(&body_bytes)
         .map_err(|e| ProxyError::Internal(format!("Failed to parse request body: {e}")))?;
@@ -893,7 +907,7 @@ pub async fn handle_chat_completions(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, req_body) = request.into_parts();
+    let (parts, req_body) = request.with_limited_body().into_parts();
     let method = parts.method.clone();
     let uri = parts.uri;
     let mut headers = parts.headers;
@@ -901,7 +915,7 @@ pub async fn handle_chat_completions(
     let body_bytes = req_body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(map_request_body_error)?
         .to_bytes();
     let body_bytes = decode_codex_request_body(&mut headers, body_bytes)?;
     let mut body: Value = serde_json::from_slice(&body_bytes)
@@ -1019,7 +1033,7 @@ async fn handle_responses_for_app(
     tag: &'static str,
     app_type_str: &'static str,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, req_body) = request.into_parts();
+    let (parts, req_body) = request.with_limited_body().into_parts();
     let method = parts.method.clone();
     let uri = parts.uri;
     let mut headers = parts.headers;
@@ -1027,7 +1041,7 @@ async fn handle_responses_for_app(
     let body_bytes = req_body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(map_request_body_error)?
         .to_bytes();
     let body_bytes = decode_codex_request_body(&mut headers, body_bytes)?;
     let mut body: Value = serde_json::from_slice(&body_bytes)
@@ -1303,7 +1317,7 @@ async fn handle_codex_standalone_passthrough(
     request: axum::extract::Request,
     canonical_endpoint: &'static str,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, req_body) = request.into_parts();
+    let (parts, req_body) = request.with_limited_body().into_parts();
     let method = parts.method.clone();
     let uri = parts.uri;
     let mut headers = parts.headers;
@@ -1311,7 +1325,7 @@ async fn handle_codex_standalone_passthrough(
     let body_bytes = req_body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(map_request_body_error)?
         .to_bytes();
     let body_bytes = decode_codex_request_body(&mut headers, body_bytes)?;
     let body: Value = serde_json::from_slice(&body_bytes)
@@ -1388,7 +1402,7 @@ async fn handle_responses_compact_for_app(
     tag: &'static str,
     app_type_str: &'static str,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, req_body) = request.into_parts();
+    let (parts, req_body) = request.with_limited_body().into_parts();
     let method = parts.method.clone();
     let uri = parts.uri;
     let mut headers = parts.headers;
@@ -1396,7 +1410,7 @@ async fn handle_responses_compact_for_app(
     let body_bytes = req_body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(map_request_body_error)?
         .to_bytes();
     let body_bytes = decode_codex_request_body(&mut headers, body_bytes)?;
     let mut body: Value = serde_json::from_slice(&body_bytes)
@@ -2418,6 +2432,7 @@ fn codex_proxy_error_code(error: &ProxyError) -> &'static str {
         ProxyError::ConfigError(_) => "fyagent_config_error",
         ProxyError::TransformError(_) => "fyagent_transform_error",
         ProxyError::InvalidRequest(_) => "fyagent_invalid_request",
+        ProxyError::RequestBodyTooLarge => "fyagent_request_body_too_large",
         ProxyError::AuthError(_) => "fyagent_auth_error",
         ProxyError::UpstreamError { .. } => "fyagent_upstream_error",
         ProxyError::DatabaseError(_) => "fyagent_database_error",
@@ -2456,14 +2471,14 @@ pub async fn handle_gemini(
     uri: axum::http::Uri,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (parts, req_body) = request.into_parts();
+    let (parts, req_body) = request.with_limited_body().into_parts();
     let method = parts.method.clone();
     let headers = parts.headers;
     let extensions = parts.extensions;
     let body_bytes = req_body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(map_request_body_error)?
         .to_bytes();
     // GET 类只读端点（/v1beta/models、/v1beta/models/<model> 等）没有请求体，
     // 不能强制 parse 为 JSON —— 否则空 body 会被拒绝。
@@ -3161,7 +3176,7 @@ async fn log_forward_error(
     use super::usage::logger::UsageLogger;
 
     let status_code = map_proxy_error_to_status(error);
-    let error_message = get_error_message(error);
+    let error_message = get_log_error_message(error);
     let request_id = uuid::Uuid::new_v4().to_string();
 
     // #7818：错误行的写入同样要拿 Database 的阻塞锁并做磁盘 IO，

@@ -29,6 +29,20 @@ use std::sync::Arc;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task::JoinHandle;
 
+/// 尚未提供入站认证，普通代理只允许绑定回环 IP。
+pub(crate) fn validate_listen_address(address: &str) -> Result<std::net::IpAddr, ProxyError> {
+    let ip = address.parse::<std::net::IpAddr>().map_err(|_| {
+        ProxyError::ConfigError("代理监听地址必须是回环 IP（127.0.0.1 或 ::1）".to_string())
+    })?;
+    if !ip.is_loopback() {
+        return Err(ProxyError::ConfigError(
+            "代理尚未提供入站认证，仅允许本机回环监听（127.0.0.1 或 ::1）；已拒绝非回环地址"
+                .to_string(),
+        ));
+    }
+    Ok(ip)
+}
+
 /// 代理服务器状态（共享）
 #[derive(Clone)]
 pub struct ProxyState {
@@ -105,16 +119,17 @@ impl ProxyServer {
             return Err(ProxyError::AlreadyRunning);
         }
 
-        let addr: SocketAddr =
-            format!("{}:{}", self.config.listen_address, self.config.listen_port)
-                .parse()
-                .map_err(|e| ProxyError::BindFailed(format!("无效的地址: {e}")))?;
+        let ip = validate_listen_address(&self.config.listen_address).map_err(|error| {
+            log::error!("代理启动被拒绝: {error}");
+            error
+        })?;
+        let addr = SocketAddr::new(ip, self.config.listen_port);
 
         // 创建关闭通道
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
         // 构建路由
-        let app = self.build_router();
+        let app = self.build_router(200 * 1024 * 1024);
 
         // 绑定监听器
         let listener = tokio::net::TcpListener::bind(&addr)
@@ -307,7 +322,7 @@ impl ProxyServer {
         );
     }
 
-    fn build_router(&self) -> Router {
+    fn build_router(&self, body_limit: usize) -> Router {
         Router::new()
             // 健康检查
             .route("/health", get(handlers::health_check))
@@ -434,8 +449,8 @@ impl ProxyServer {
             .route("/gemini/v1beta/*path", any(handlers::handle_gemini))
             // Gemini 的 GA 版本也叫 /v1，给原 SDK 留一条出口
             .route("/gemini/v1/*path", any(handlers::handle_gemini))
-            // 提高默认请求体大小限制（避免 413 Payload Too Large）
-            .layer(DefaultBodyLimit::max(200 * 1024 * 1024))
+            // 手动读取入口通过 RequestExt::with_limited_body 执行此 200 MiB 限额
+            .layer(DefaultBodyLimit::max(body_limit))
             .with_state(self.state.clone())
     }
 
@@ -482,6 +497,193 @@ mod tests {
     use axum::http::{header, HeaderMap, StatusCode};
     use serde_json::{json, Value};
     use tokio::sync::Mutex;
+
+    #[test]
+    fn listener_policy_accepts_only_loopback_ip_literals() {
+        for address in ["127.0.0.1", "127.0.0.2", "::1"] {
+            assert!(validate_listen_address(address).unwrap().is_loopback());
+        }
+        for address in [
+            "0.0.0.0",
+            "::",
+            "192.168.1.2",
+            "8.8.8.8",
+            "localhost",
+            "::ffff:127.0.0.1",
+        ] {
+            assert!(validate_listen_address(address).is_err(), "{address}");
+        }
+    }
+
+    #[tokio::test]
+    async fn saved_non_loopback_config_cannot_start_listener() {
+        for address in ["0.0.0.0", "::", "192.168.1.2"] {
+            let proxy = ProxyServer::new(
+                ProxyConfig {
+                    listen_address: address.into(),
+                    listen_port: 0,
+                    ..Default::default()
+                },
+                Arc::new(Database::memory().unwrap()),
+                None,
+            );
+            let error = proxy.start().await.unwrap_err();
+            assert!(error.to_string().contains("尚未提供入站认证"));
+            assert!(!proxy.state.status.read().await.running);
+            assert!(proxy.shutdown_tx.read().await.is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn manual_body_routes_reject_fixed_and_chunked_overflow_before_routing() {
+        let proxy = ProxyServer::new(
+            ProxyConfig::default(),
+            Arc::new(Database::memory().unwrap()),
+            None,
+        );
+        let app = proxy.build_router(32);
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let addr = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        for path in [
+            "/v1/messages",
+            "/v1/chat/completions",
+            "/v1/responses",
+            "/v1/images/generations",
+            "/v1/responses/compact",
+            "/v1beta/models/test:generateContent",
+        ] {
+            for chunked in [false, true] {
+                let body = if chunked {
+                    reqwest::Body::wrap_stream(futures::stream::iter([
+                        Ok::<_, std::io::Error>(bytes::Bytes::from_static(
+                            b"                                ",
+                        )),
+                        Ok(bytes::Bytes::from_static(b"x")),
+                    ]))
+                } else {
+                    reqwest::Body::from("x".repeat(33))
+                };
+                let response = client
+                    .post(format!("http://{addr}{path}"))
+                    .body(body)
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status(),
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "{path}, chunked={chunked}"
+                );
+                assert!(response
+                    .text()
+                    .await
+                    .unwrap()
+                    .contains("请求体超过大小上限"));
+            }
+        }
+        // No providers exist: reaching selection would return 503, not 413.
+        assert_eq!(proxy.state.status.read().await.total_requests, 0);
+        assert!(proxy.state.current_providers.read().await.is_empty());
+        // At and below the boundary, valid JSON reaches normal provider selection.
+        for length in [31, 32] {
+            let response = client
+                .post(format!("http://{addr}/v1/messages"))
+                .body(format!("{{}}{}", " ".repeat(length - 2)))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        }
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn upstream_error_body_is_kept_for_client_but_not_usage_storage() {
+        for status in [StatusCode::UNAUTHORIZED, StatusCode::INTERNAL_SERVER_ERROR] {
+            let secret_body = json!({"error": {"message": format!(
+                "Authorization: Bearer fake-key/+= refreshed-token/+ query=fake-key%2F%2B%3D private-prompt {}",
+                "x".repeat(4096)
+            )}});
+            let response_body = secret_body.clone();
+            let mock = Router::new().route(
+                "/v1/messages",
+                post(move || {
+                    let body = response_body.clone();
+                    async move { (status, axum::Json(body)) }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+                .await
+                .unwrap();
+            let addr = listener.local_addr().unwrap();
+            let task = tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+            let db = Arc::new(Database::memory().unwrap());
+            let provider = Provider::with_id(
+                "safe-error-test".into(),
+                "Test".into(),
+                json!({
+                    "env": {"ANTHROPIC_BASE_URL": format!("http://{addr}"),
+                        "ANTHROPIC_API_KEY": "fake-key/+="}
+                }),
+                None,
+            );
+            db.save_provider("claude", &provider).unwrap();
+            db.set_current_provider("claude", &provider.id).unwrap();
+            let proxy = ProxyServer::new(
+                ProxyConfig {
+                    listen_port: 0,
+                    max_retries: 0,
+                    non_streaming_timeout: 10,
+                    ..Default::default()
+                },
+                db.clone(),
+                None,
+            );
+            let info = proxy.start().await.unwrap();
+            let response = reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .unwrap()
+                .post(format!(
+                    "http://127.0.0.1:{}/v1/messages",
+                    info.port
+                ))
+                .json(&json!({"model": "claude-test", "max_tokens": 16, "messages": [{"role": "user", "content": "test"}]}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), status);
+            assert_eq!(response.json::<Value>().await.unwrap(), secret_body);
+            {
+                let conn = crate::database::lock_conn!(db.conn);
+                let (stored_status, message): (u16, String) = conn
+                    .query_row(
+                        "SELECT status_code, error_message FROM proxy_request_logs",
+                        [],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .unwrap();
+                assert_eq!(stored_status, status.as_u16());
+                assert!(message.contains(&status.as_u16().to_string()));
+                assert!(message.len() <= 256);
+                for secret in [
+                    "fake-key",
+                    "refreshed-token",
+                    "Authorization",
+                    "private-prompt",
+                    "%2F%2B%3D",
+                ] {
+                    assert!(!message.contains(secret), "stored error leaked {secret}");
+                }
+            }
+            proxy.stop().await.unwrap();
+            task.abort();
+        }
+    }
 
     #[derive(Debug)]
     struct CapturedRequest {

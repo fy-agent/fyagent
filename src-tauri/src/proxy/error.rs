@@ -8,6 +8,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ProxyError {
+    #[error("请求体超过大小上限")]
+    RequestBodyTooLarge,
+
     #[error("上游响应体超过大小上限: {0} 字节")]
     ResponseBodyTooLarge(usize),
 
@@ -42,7 +45,7 @@ pub enum ProxyError {
     #[error("Provider不健康: {0}")]
     ProviderUnhealthy(String),
 
-    #[error("上游错误 (状态码 {status}): {body:?}")]
+    #[error("上游错误 (状态码 {status})")]
     UpstreamError { status: u16, body: Option<String> },
 
     #[error("超过最大重试次数")]
@@ -82,6 +85,7 @@ pub enum ProxyError {
 impl ProxyError {
     pub(super) fn status_code(&self) -> StatusCode {
         match self {
+            Self::RequestBodyTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::AlreadyRunning => StatusCode::CONFLICT,
             Self::NotRunning
             | Self::NoAvailableProvider

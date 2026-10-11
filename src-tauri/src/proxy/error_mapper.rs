@@ -9,6 +9,24 @@ pub fn map_proxy_error_to_status(error: &ProxyError) -> u16 {
     error.status_code().as_u16()
 }
 
+/// 持久化和诊断日志不信任上游正文；只记录状态和固定分类。
+/// 客户端响应仍由 get_error_message / IntoResponse 保留协议正文。
+pub(super) fn get_log_error_message(error: &ProxyError) -> String {
+    match error {
+        ProxyError::UpstreamError { status, .. } => {
+            let kind = match *status {
+                401 => "unauthorized",
+                403 => "forbidden",
+                429 => "rate limit exceeded",
+                500..=599 => "upstream server error",
+                _ => "upstream error",
+            };
+            format!("上游 HTTP {status}: {kind}")
+        }
+        _ => get_error_message(error).chars().take(256).collect(),
+    }
+}
+
 /// 将 ProxyError 转换为用户友好的错误消息
 pub fn get_error_message(error: &ProxyError) -> String {
     match error {
@@ -36,6 +54,19 @@ pub fn get_error_message(error: &ProxyError) -> String {
 mod tests {
     use super::*;
     use axum::response::IntoResponse;
+
+    #[tokio::test]
+    async fn request_body_overflow_maps_to_413_with_readable_json() {
+        let error = ProxyError::RequestBodyTooLarge;
+        assert_eq!(map_proxy_error_to_status(&error), 413);
+        let response = error.into_response();
+        assert_eq!(response.status().as_u16(), 413);
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["error"]["message"], "请求体超过大小上限");
+    }
 
     #[test]
     fn test_map_upstream_error() {

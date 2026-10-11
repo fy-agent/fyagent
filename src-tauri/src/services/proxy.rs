@@ -535,6 +535,8 @@ impl ProxyService {
     }
 
     pub async fn update_global_config(&self, config: &GlobalProxyConfig) -> Result<bool, String> {
+        crate::proxy::server::validate_listen_address(&config.listen_address)
+            .map_err(|error| error.to_string())?;
         let previous = self
             .db
             .get_global_proxy_config()
@@ -4249,6 +4251,8 @@ impl ProxyService {
 
     /// 更新代理配置
     pub async fn update_config(&self, config: &ProxyConfig) -> Result<bool, String> {
+        crate::proxy::server::validate_listen_address(&config.listen_address)
+            .map_err(|error| error.to_string())?;
         // 记录旧配置用于判定是否需要重启
         let previous = self
             .db
@@ -10742,6 +10746,35 @@ experimental_bearer_token = "PROXY_MANAGED"
             23456
         );
         assert_app_proxy_configs_unchanged(&db, &configs).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn config_updates_reject_non_loopback_without_persisting() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let service = ProxyService::new(db.clone());
+        let previous_global = db.get_global_proxy_config().await.unwrap();
+        let previous_legacy = db.get_proxy_config().await.unwrap();
+        for address in ["0.0.0.0", "::", "192.168.1.2"] {
+            let mut global = previous_global.clone();
+            global.listen_address = address.into();
+            let error = service.update_global_config(&global).await.unwrap_err();
+            assert!(error.contains("尚未提供入站认证"));
+            let mut legacy = previous_legacy.clone();
+            legacy.listen_address = address.into();
+            let error = service.update_config(&legacy).await.unwrap_err();
+            assert!(error.contains("尚未提供入站认证"));
+            assert_eq!(
+                serde_json::to_value(db.get_global_proxy_config().await.unwrap()).unwrap(),
+                serde_json::to_value(&previous_global).unwrap()
+            );
+            assert_eq!(
+                serde_json::to_value(db.get_proxy_config().await.unwrap()).unwrap(),
+                serde_json::to_value(&previous_legacy).unwrap()
+            );
+            assert!(!service.is_running().await);
+        }
     }
 
     #[tokio::test]
