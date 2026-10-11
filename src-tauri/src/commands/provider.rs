@@ -1050,22 +1050,22 @@ fn finish_manual_import(state: &AppState, app_type: AppType, warnings: &mut Vec<
         let extract = state
             .db
             .should_auto_extract_config_snippet(app_type.as_str())
-            .map_err(|error| ("common_config_check_failed", Box::new(error)))?;
+            .map_err(|_| "common_config_check_failed")?;
         if extract {
             let snippet = ProviderService::extract_common_config_snippet(state, app_type.clone())
-                .map_err(|error| ("common_config_extract_failed", Box::new(error)))?;
+                .map_err(|_| "common_config_extract_failed")?;
             if !snippet.is_empty() && snippet != "{}" {
                 state
                     .db
                     .save_extracted_config_snippet(app_type.as_str(), &snippet)
-                    .map_err(|error| ("common_config_save_failed", Box::new(error)))?;
+                    .map_err(|_| "common_config_save_failed")?;
             }
         }
         ProviderService::migrate_legacy_common_config_usage_if_needed(state, app_type)
-            .map_err(|error| ("common_config_migration_failed", Box::new(error)))
+            .map_err(|_| "common_config_migration_failed")
     })();
-    if let Err((code, error)) = result {
-        log::warn!("Manual import succeeded, but {code}: {error}");
+    if let Err(code) = result {
+        log::warn!("{code}");
         warnings.push(code.to_string());
     }
 }

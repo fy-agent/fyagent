@@ -878,13 +878,14 @@ mod manual_import_tests {
         conn.execute_batch(
             "CREATE TRIGGER fail_snippet BEFORE INSERT ON settings
              WHEN NEW.key = 'common_config_claude'
-             BEGIN SELECT RAISE(ABORT, 'injected write failure'); END;",
+             BEGIN SELECT RAISE(ABORT, 'FAKE_SECRET_WRITE_FAILURE'); END;",
         )
         .unwrap();
         let error = import_default_config_test_hook(&state, AppType::Claude)
             .expect_err("bool import must report post-processing failure")
             .to_string();
         assert!(error.contains("common_config_save_failed"), "{error}");
+        assert!(!error.contains("FAKE_SECRET_WRITE_FAILURE"), "{error}");
         assert!(error.contains("主导入已完成且不会回滚"), "{error}");
         assert_eq!(state.db.get_config_snippet("claude").unwrap(), None);
         let provider = state
@@ -1026,6 +1027,35 @@ mod manual_import_tests {
         assert_eq!(
             std::fs::read_to_string(config_path).unwrap(),
             "model = \"gpt-5\"\n"
+        );
+    }
+
+    #[test]
+    fn manual_import_bool_redacts_extraction_error_secret() {
+        let _guard = test_mutex().lock().unwrap();
+        let (state, conn, _) = manual_import_fixture();
+        let config_path = get_codex_config_path();
+        std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        std::fs::write(&config_path, "model = \"gpt-5\"\n").unwrap();
+        std::fs::write(get_codex_auth_path(), b"{}").unwrap();
+        conn.execute_batch(
+            r#"CREATE TRIGGER fail_extract AFTER UPDATE OF is_current ON providers
+             WHEN NEW.app_type = 'codex' AND NEW.is_current = 1
+             BEGIN UPDATE providers SET settings_config = '{"auth":{},"config":"[FAKE_SECRET_TOML"}'
+             WHERE id = NEW.id AND app_type = NEW.app_type; END;"#,
+        )
+        .unwrap();
+        let error = import_default_config_test_hook(&state, AppType::Codex)
+            .expect_err("bool import must report extraction failure")
+            .to_string();
+        assert!(error.contains("common_config_extract_failed"), "{error}");
+        assert!(error.contains("主导入已完成且不会回滚"), "{error}");
+        assert!(!error.contains("FAKE_SECRET_TOML"), "{error}");
+        assert!(!error.contains("[FAKE_SECRET_TOML"), "{error}");
+        assert_eq!(state.db.get_config_snippet("codex").unwrap(), None);
+        assert_eq!(
+            state.db.get_current_provider("codex").unwrap().as_deref(),
+            Some("default")
         );
     }
 
