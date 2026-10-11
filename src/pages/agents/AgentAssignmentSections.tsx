@@ -51,10 +51,9 @@ function formatAssignmentFailureReason(
       ? `（当前实际状态：${outcome.observedValue ? "已启用" : "已停用"}）`
       : "";
 
-  return `${stageText}${reasonDetail}。${recoveryDetail}`.replace(
-    "。。",
-    "。",
-  ).trim();
+  return `${stageText}${reasonDetail}。${recoveryDetail}`
+    .replace("。。", "。")
+    .trim();
 }
 
 export function AgentSkillsSection({
