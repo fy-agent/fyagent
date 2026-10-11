@@ -125,8 +125,12 @@ fn row_to_mcp_server(row: &Row<'_>) -> rusqlite::Result<(String, McpServer)> {
     let enabled_qoderwork: bool = row.get(14)?;
     let enabled_trae_work: bool = row.get(15)?;
 
-    let server = serde_json::from_str(&server_config_str).unwrap_or_default();
-    let tags = serde_json::from_str(&tags_str).unwrap_or_default();
+    let server = serde_json::from_str(&server_config_str).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(error))
+    })?;
+    let tags = serde_json::from_str(&tags_str).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(6, rusqlite::types::Type::Text, Box::new(error))
+    })?;
 
     Ok((
         id.clone(),
@@ -469,6 +473,91 @@ mod tests {
         );
         assert!(db.get_mcp_server(&unreadable.id).is_err());
         assert!(db.get_all_mcp_servers().is_err());
+    }
+
+    fn assert_invalid_json_is_reported(column: &str, index: usize, value: &str) {
+        let db = Database::memory().expect("create memory db");
+        let server = test_server();
+        db.save_mcp_server(&server).expect("seed server");
+        {
+            let conn = db.conn.lock().expect("lock database");
+            conn.execute(
+                &format!("UPDATE mcp_servers SET {column} = ?1 WHERE id = ?2"),
+                params![value, server.id],
+            )
+            .expect("set invalid JSON");
+            let error = conn
+                .query_row(MCP_SERVER_SELECT, [], row_to_mcp_server)
+                .expect_err("invalid JSON must fail row conversion");
+            match error {
+                rusqlite::Error::FromSqlConversionFailure(actual_index, kind, source) => {
+                    assert_eq!(actual_index, index);
+                    assert_eq!(kind, rusqlite::types::Type::Text);
+                    let json_error = source
+                        .downcast_ref::<serde_json::Error>()
+                        .expect("preserve original JSON error");
+                    assert!(json_error.is_syntax() || json_error.is_data());
+                    assert_eq!(json_error.line(), 1);
+                    assert!(json_error.column() > 0);
+                }
+                other => panic!("expected JSON conversion failure, got {other:?}"),
+            }
+        }
+        assert!(matches!(
+            db.get_mcp_server(&server.id),
+            Err(AppError::Database(_))
+        ));
+        assert!(matches!(
+            db.get_all_mcp_servers(),
+            Err(AppError::Database(_))
+        ));
+        let stored: String = db
+            .conn
+            .lock()
+            .expect("lock database")
+            .query_row(
+                &format!("SELECT {column} FROM mcp_servers WHERE id = ?1"),
+                params![server.id],
+                |row| row.get(0),
+            )
+            .expect("read original bytes");
+        assert_eq!(stored, value);
+    }
+
+    #[test]
+    fn malformed_server_config_returns_json_conversion_error() {
+        assert_invalid_json_is_reported("server_config", 2, "{");
+    }
+
+    #[test]
+    fn malformed_tags_returns_json_conversion_error() {
+        assert_invalid_json_is_reported("tags", 6, "[");
+    }
+
+    #[test]
+    fn tags_with_invalid_json_type_returns_json_conversion_error() {
+        assert_invalid_json_is_reported("tags", 6, "null");
+    }
+
+    #[test]
+    fn valid_empty_json_round_trips() {
+        let db = Database::memory().expect("create memory db");
+        let mut expected = test_server();
+        expected.server = serde_json::Value::Null;
+        expected.tags.clear();
+        db.save_mcp_server(&expected).expect("seed empty JSON");
+
+        let single = db
+            .get_mcp_server(&expected.id)
+            .expect("read empty JSON")
+            .expect("server exists");
+        let all = db.get_all_mcp_servers().expect("read all empty JSON");
+        for observed in [&single, all.get(&expected.id).expect("server in list")] {
+            assert_eq!(
+                serde_json::to_value(observed).unwrap(),
+                serde_json::to_value(&expected).unwrap()
+            );
+        }
     }
 
     #[test]
