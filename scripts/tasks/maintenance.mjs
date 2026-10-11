@@ -9,6 +9,7 @@ import {
   assertStableSemver,
   capture,
   fail,
+  isMain,
   printPlan,
   read,
   readJson,
@@ -72,9 +73,13 @@ function dependencyUpdate(ecosystem) {
   run(command, args);
 }
 
-function toolchainUpdate(tool) {
-  const version = assertStableSemver(usageValue("version"), `${tool} version`);
-  if (!usageBoolean("apply")) {
+export function toolchainUpdate(tool, options = {}) {
+  const version = assertStableSemver(
+    options.version ?? usageValue("version"),
+    `${tool} version`,
+  );
+  const runner = options.run ?? run;
+  if (!(options.apply ?? usageBoolean("apply"))) {
     printPlan(`update ${tool} toolchain`, "mise", [
       "lock",
       "--platform",
@@ -106,8 +111,8 @@ function toolchainUpdate(tool) {
 
   withFileRollback(changedFiles, () => {
     writeFilesAtomically([change]);
-    run("mise", ["lock", "--platform", platformArgument]);
-    run("node", ["scripts/tasks/lockfile-check.mjs"]);
+    runner("mise", ["lock", "--platform", platformArgument]);
+    runner("node", ["scripts/tasks/lockfile-check.mjs"]);
   });
 }
 
@@ -133,7 +138,7 @@ function versionCommand(command) {
   ]);
 }
 
-try {
+function main() {
   switch (process.argv[2]) {
     case "deps-outdated-frontend":
       run("pnpm", ["outdated"], { allowFailure: true });
@@ -218,6 +223,12 @@ try {
         `Unknown maintenance task command: ${process.argv[2] ?? ""}`,
       );
   }
-} catch (error) {
-  fail(error);
+}
+
+if (isMain(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    fail(error);
+  }
 }
