@@ -3609,73 +3609,31 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
-    fn opencode_oversized_grant_is_rejected_or_connects_with_complete_credentials() {
-        let (service, dir) = service_with_memory();
+    fn opencode_oversized_grant_is_rejected_before_secret_write() {
+        let (service, dir, backend) = service_with_shared_memory();
         let _home = TestHome::set(dir.path());
-        let access = "a".repeat(crate::services::secret::MAX_SECRET_BYTES + 1);
         let mut input = opencode_input("opencode-oversized-grant");
-        input.access_token = Some(Zeroizing::new(access.clone()));
+        input.access_token = Some(Zeroizing::new(
+            "a".repeat(crate::services::secret::MAX_SECRET_BYTES + 1),
+        ));
 
-        // This is the service admission used by login::save_grant, with the
-        // OpenCode purpose/consumer and no provider HTTP or native keychain.
-        // Oversized grants must fail before native storage or retain complete
-        // credentials that can actually connect OpenCode. A refresh-only save
-        // must never become Ready or write auth.json.
-        let credential = match service.provision_legacy_credential(input) {
-            Ok(credential) => credential,
-            Err(_) => {
-                // Any explicit save failure is acceptable. begin_provisioning
-                // persists a row before encoding, so rows need not be absent.
-                assert!(service
-                    .repository
-                    .list_all_credentials()
-                    .expect("credentials after rejected save")
-                    .iter()
-                    .all(|row| row.credential.status != CredentialStatus::Ready));
-                assert!(!service.opencode_auth_path().exists());
-                return;
-            }
-        };
-        assert_eq!(credential.status, CredentialStatus::Ready);
-        // Read through SecretService and decode the stored payload, rather
-        // than projecting the original in-memory grant.
-        let bundle = service
-            .readback_bundle(&credential.secret_handle)
-            .expect("saved grant must decode through the secret service");
-        assert_eq!(bundle.access_token(), Some(access.as_str()));
-        assert_eq!(bundle.refresh_token(), Some("rt-opencode"));
-        let overview = service.overview();
-        assert!(overview.accounts.iter().any(|account| {
-            account.account_id == credential.identity_id
-                && account.health == ManagedAuthHealth::Ready
-        }));
-        let slot = overview
-            .connections
-            .iter()
-            .find(|row| {
-                row.consumer == ManagedAuthConsumer::Opencode
-                    && row.provider == Some(ManagedAuthProvider::Openai)
-            })
-            .expect("OpenCode OpenAI slot");
-        let request = ManagedAuthConnectionActionRequest {
-            connection_id: slot.connection_id.clone(),
-            expected_revision: slot.revision.clone(),
-            action: ManagedAuthConnectionAction::ConnectAccount,
-            account_id: Some(credential.identity_id.clone()),
-        };
-        let preview = service
-            .preview_connection_action(&request)
-            .expect("successfully saved Ready grant must support connection preview");
-        service
-            .apply_connection_action(&request, Some(&preview.preview_id))
-            .expect("H06: successfully saved Ready grant must support OpenCode projection");
-        let raw: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(service.opencode_auth_path()).expect("projected auth.json"),
-        )
-        .expect("valid projected JSON");
-        assert_eq!(raw["openai"]["type"], "oauth");
-        assert_eq!(raw["openai"]["access"].as_str(), Some(access.as_str()));
-        assert_eq!(raw["openai"]["refresh"], "rt-opencode");
+        // Login admission must reject oversized credentials before vault writes
+        // or Ready status; begin_provisioning may leave a non-Ready metadata row.
+        assert!(matches!(
+            service.provision_legacy_credential(input),
+            Err(ManagedAuthCoreError::CredentialTooLarge)
+        ));
+        let rows = service
+            .repository
+            .list_all_credentials()
+            .expect("credentials after rejected save");
+        assert!(!rows.is_empty(), "provisioning metadata must exist");
+        for row in &rows {
+            assert_ne!(row.credential.status, CredentialStatus::Ready);
+            assert!(!backend.contains(row.credential.secret_handle.secret_ref()));
+        }
+        assert_eq!(backend.operation_count(), 0, "no secret backend operations");
+        assert!(!service.opencode_auth_path().exists());
     }
 
     #[test]

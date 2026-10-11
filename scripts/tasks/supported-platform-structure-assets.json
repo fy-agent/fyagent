@@ -291,7 +291,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/service.rs",
-      "e127a006ebaa5782d80619e13ee973fa2fc9d05bd6d4ad501aa5ec485a66847e"
+      "9eac6fd92c8fb792833ff64ee1ff8bdd71866da709c0aee3f315e6a19c985cc7"
     ],
     [
       "src-tauri/src/services/managed_auth/subscription_tests.rs",
