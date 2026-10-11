@@ -67,6 +67,9 @@ describe("AgentSkillsSection error reporting and recovery state", () => {
           n.textContent?.includes("Skill 设置"),
         );
         expect(feedbackNotice).toBeDefined();
+        expect(feedbackNotice!.textContent).toContain(
+          "无法确认 Skill 设置是否已更新。请刷新后重试。",
+        );
         expect(feedbackNotice!.textContent).toContain("后端拒绝");
         expect(feedbackNotice!.textContent).toContain("backend mutation rejected");
       },
@@ -109,6 +112,9 @@ describe("AgentSkillsSection error reporting and recovery state", () => {
           n.textContent?.includes("Skill 设置"),
         );
         expect(feedbackNotice).toBeDefined();
+        expect(feedbackNotice!.textContent).toContain(
+          "无法确认 Skill 设置是否已更新。请刷新后重试。",
+        );
         expect(feedbackNotice!.textContent).toContain("后端拒绝");
         expect(feedbackNotice!.textContent).toContain("权限不足");
       },
@@ -156,6 +162,9 @@ describe("AgentSkillsSection error reporting and recovery state", () => {
           n.textContent?.includes("Skill 设置"),
         );
         expect(feedbackNotice).toBeDefined();
+        expect(feedbackNotice!.textContent).toContain(
+          "无法确认 Skill 设置是否已更新。请刷新后重试。",
+        );
         expect(feedbackNotice!.textContent).toContain("读取失败");
         expect(feedbackNotice!.textContent).toContain("readback network timeout");
       },
@@ -198,6 +207,9 @@ describe("AgentSkillsSection error reporting and recovery state", () => {
           n.textContent?.includes("Skill 设置"),
         );
         expect(feedbackNotice).toBeDefined();
+        expect(feedbackNotice!.textContent).toContain(
+          "无法确认 Skill 设置是否已更新。请刷新后重试。",
+        );
         expect(feedbackNotice!.textContent).toContain("状态不一致");
         expect(feedbackNotice!.textContent).toContain("当前实际状态：已停用");
       },

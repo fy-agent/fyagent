@@ -30,10 +30,10 @@ import { AgentSectionHeader } from "./AgentSectionHeader";
 type Feedback = {
   tone: "info" | "warning";
   text: string;
+  reason?: string;
 };
 
-function formatAssignmentFailureNotice(
-  entityName: string,
+function formatAssignmentFailureReason(
   outcome: Extract<AuthoritativeAssignmentOutcome, { status: "rejected" }>,
 ): string {
   let stageText = "更新失败";
@@ -51,10 +51,10 @@ function formatAssignmentFailureNotice(
       ? `（当前实际状态：${outcome.observedValue ? "已启用" : "已停用"}）`
       : "";
 
-  return `无法更新 ${entityName} 设置，${stageText}${reasonDetail}。${recoveryDetail}请重试。`.replace(
+  return `${stageText}${reasonDetail}。${recoveryDetail}`.replace(
     "。。",
     "。",
-  );
+  ).trim();
 }
 
 export function AgentSkillsSection({
@@ -98,7 +98,8 @@ export function AgentSkillsSection({
     } else if (outcome.status === "rejected") {
       setFeedback({
         tone: "warning",
-        text: formatAssignmentFailureNotice("Skill", outcome),
+        text: "无法确认 Skill 设置是否已更新。请刷新后重试。",
+        reason: formatAssignmentFailureReason(outcome),
       });
     }
   };
@@ -121,7 +122,16 @@ export function AgentSkillsSection({
         disabled={query.isPending}
       />
       {feedback ? (
-        <InlineNotice tone={feedback.tone}>{feedback.text}</InlineNotice>
+        <InlineNotice tone={feedback.tone}>
+          {feedback.reason ? (
+            <>
+              <div>{feedback.text}</div>
+              <div>{feedback.reason}</div>
+            </>
+          ) : (
+            feedback.text
+          )}
+        </InlineNotice>
       ) : null}
       {assignment.busy ? (
         <InlineNotice tone="info">正在保存 Skill 设置…</InlineNotice>
@@ -247,7 +257,8 @@ export function AgentMcpSection({
     } else if (outcome.status === "rejected") {
       setFeedback({
         tone: "warning",
-        text: formatAssignmentFailureNotice("MCP", outcome),
+        text: "无法确认 MCP 设置是否已更新。请刷新后重试。",
+        reason: formatAssignmentFailureReason(outcome),
       });
     }
   };
@@ -270,7 +281,16 @@ export function AgentMcpSection({
         disabled={query.isPending}
       />
       {feedback ? (
-        <InlineNotice tone={feedback.tone}>{feedback.text}</InlineNotice>
+        <InlineNotice tone={feedback.tone}>
+          {feedback.reason ? (
+            <>
+              <div>{feedback.text}</div>
+              <div>{feedback.reason}</div>
+            </>
+          ) : (
+            feedback.text
+          )}
+        </InlineNotice>
       ) : null}
       {assignment.busy ? (
         <InlineNotice tone="info">正在保存 MCP 设置…</InlineNotice>
