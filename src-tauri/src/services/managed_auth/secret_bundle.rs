@@ -139,7 +139,7 @@ impl ManagedAuthSecretBundle {
         Ok(self)
     }
 
-    fn encoded_bytes(&self) -> Result<Vec<u8>, ManagedAuthCoreError> {
+    fn encoded_bytes(&self) -> Result<Zeroizing<Vec<u8>>, ManagedAuthCoreError> {
         let raw = RawSecretBundleRef {
             schema_version: SECRET_BUNDLE_SCHEMA_VERSION,
             credential_id: &self.credential_id,
@@ -153,7 +153,9 @@ impl ManagedAuthSecretBundle {
             issued_at: self.issued_at,
             expires_at: self.expires_at,
         };
-        serde_json::to_vec(&raw).map_err(|_| ManagedAuthCoreError::InvalidData)
+        serde_json::to_vec(&raw)
+            .map(Zeroizing::new)
+            .map_err(|_| ManagedAuthCoreError::InvalidData)
     }
 
     pub(crate) fn encode(self) -> Result<SecretMaterial, ManagedAuthCoreError> {
@@ -165,14 +167,16 @@ impl ManagedAuthSecretBundle {
         {
             encoded = bundle.encoded_bytes()?;
         }
-        if encoded.len() > MAX_SECRET_BYTES
-            && bundle.access_token.take().is_some()
-            && bundle.refresh_token.is_some()
-        {
-            encoded = bundle.encoded_bytes()?;
+        // The shared encoder has no consumer context. Preserve access tokens
+        // required by native consumers instead of saving refresh-only grants.
+        if encoded.len() > MAX_SECRET_BYTES {
+            return Err(ManagedAuthCoreError::CredentialTooLarge);
         }
-        SecretMaterial::from_native_input(encoded, SecretPurpose::ManagedOAuthCredential)
-            .map_err(ManagedAuthCoreError::from)
+        SecretMaterial::from_native_input(
+            std::mem::take(&mut *encoded),
+            SecretPurpose::ManagedOAuthCredential,
+        )
+        .map_err(ManagedAuthCoreError::from)
     }
 
     pub(crate) fn decode(bytes: &[u8]) -> Result<Self, ManagedAuthCoreError> {
@@ -323,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn encode_omits_access_token_when_refresh_is_the_only_fitting_field() {
+    fn encode_rejects_oversized_access_even_when_refresh_fits() {
         let bundle = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
             credential_id: "mcred1:0123456789abcdef0123456789abcdef".to_string(),
             provider: ManagedAuthProvider::Openai,
@@ -337,13 +341,10 @@ mod tests {
             expires_at: None,
         })
         .expect("shape is valid before encoding");
-        let encoded = bundle
-            .encode()
-            .expect("omit access token when refresh still fits");
-        assert!(encoded.as_bytes().len() <= MAX_SECRET_BYTES);
-        let decoded = ManagedAuthSecretBundle::decode(encoded.as_bytes()).expect("decode");
-        assert!(decoded.access_token().is_none());
-        assert_eq!(decoded.refresh_token().map(str::len), Some(196));
+        assert!(matches!(
+            bundle.encode(),
+            Err(ManagedAuthCoreError::CredentialTooLarge)
+        ));
     }
 
     #[test]

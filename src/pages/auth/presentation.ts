@@ -49,6 +49,7 @@ const reasonCopies: Record<ManagedAuthReasonCode, string> = {
   requires_reauth: "登录凭据已失效，需要重新登录。",
   migration_blocked: "旧账号数据尚未完成安全迁移。",
   secret_unavailable: "系统凭据库暂时不可用。",
+  credential_too_large: "凭据太长，超过可安全保存的上限，无法保存。",
   connection_unavailable: "暂时无法确认软件连接状态。",
   native_projection_unavailable:
     "FyAgent 暂时不能改写该软件的本地登录。已保存的账号不代表软件已登录，请使用官方登录入口。",

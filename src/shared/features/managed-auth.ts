@@ -104,6 +104,7 @@ export const MANAGED_AUTH_REASON_CODES = [
   "requires_reauth",
   "migration_blocked",
   "secret_unavailable",
+  "credential_too_large",
   "connection_unavailable",
   "native_projection_unavailable",
   "target_selection_required",

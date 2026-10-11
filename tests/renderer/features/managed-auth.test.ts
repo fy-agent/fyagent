@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { managedAuthReasonCopy } from "@/pages/auth/presentation";
+
 import {
   assertManagedAuthConnectionActionRequest,
   assertStartManagedAuthLoginRequest,
@@ -24,6 +26,26 @@ import {
 } from "../fixtures/managedAuth";
 
 describe("managed auth wire contract", () => {
+  it("preserves oversized credential failures and shows the save limit", () => {
+    const reason = "credential_too_large";
+    expect(
+      parseManagedAuthCommandError({ contractVersion: 1, reasonCode: reason }),
+    ).toBe(reason);
+    expect(
+      parseManagedAuthLoginSession({
+        ...deviceLoginSessionFixture(),
+        stage: "failed",
+        terminal: true,
+        canCancel: false,
+        canRetry: true,
+        reasonCode: reason,
+      }).reasonCode,
+    ).toBe(reason);
+    expect(managedAuthReasonCopy(reason)).toBe(
+      "凭据太长，超过可安全保存的上限，无法保存。",
+    );
+  });
+
   it("keeps account identity, software connection, and request source separate", () => {
     const overview = parseManagedAuthOverview(managedAuthOverviewFixture());
     const account = overview.accounts.find(

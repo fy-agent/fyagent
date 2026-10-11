@@ -140,6 +140,7 @@ pub enum ManagedAuthReasonCode {
     RequiresReauth,
     MigrationBlocked,
     SecretUnavailable,
+    CredentialTooLarge,
     ConnectionUnavailable,
     NativeProjectionUnavailable,
     TargetSelectionRequired,
