@@ -1180,9 +1180,7 @@ pub async fn set_stack_member(
     }
     // 名单已经落定：读不出提示也不能报成保存失败（界面会以为什么都没改）。
     Ok(match app {
-        AppType::Codex => settled_stack(app)
-            .ok()
-            .and_then(|stack| codex_stack_notice(state, &stack)),
+        AppType::Codex => codex_stack_notice_after_write(state),
         _ => None,
     })
 }
@@ -1246,7 +1244,7 @@ pub fn stack_views(state: &AppState, app: &AppType) -> Result<StackView, String>
     let route = mode.proxy_route.as_deref().filter(|_| mode.is_proxy());
     let members = stack::members(&state.db, app, &stack, route).map_err(err)?;
     let notice = match app {
-        AppType::Codex => codex_stack_notice(state, &stack),
+        AppType::Codex => codex_stack_notice(state, &stack)?,
         _ => None,
     };
     Ok(StackView {
@@ -1265,7 +1263,7 @@ pub async fn stack_view_with_clients(state: &AppState, app: &AppType) -> Result<
     if matches!(app, AppType::Codex)
         && view.active
         && view.notice != Some("routeOwnsCatalog")
-        && codex_publishes_stack_models(state, &settled_stack(app)?)
+        && codex_publishes_stack_models(state, &settled_stack(app)?)?
     {
         view.stale_clients = codex_direct::off_runtime(|| {
             codex_client_catalog::stale_clients(&DeviceStore::for_device())
@@ -1277,36 +1275,51 @@ pub async fn stack_view_with_clients(state: &AppState, app: &AppType) -> Result<
 }
 
 /// Codex 接着代理，名单里有要发布的 Stack 模型。
-fn codex_publishes_stack_models(state: &AppState, stack: &StackState) -> bool {
-    attached_route(state, &AppType::Codex)
-        .ok()
-        .flatten()
-        .is_some_and(|(_, route)| {
-            stack::published_members(&state.db, &AppType::Codex, stack, Some(&route.id))
-                .is_ok_and(|published| !published.is_empty())
-        })
+fn codex_publishes_stack_models(state: &AppState, stack: &StackState) -> Result<bool, String> {
+    let Some((_, route)) = attached_route(state, &AppType::Codex)? else {
+        return Ok(false);
+    };
+    let published = stack::published_members(&state.db, &AppType::Codex, stack, Some(&route.id))
+        .map_err(err)?;
+    Ok(!published.is_empty())
 }
 
 /// Codex 在 Stack 模式下有要发布的 Stack 模型，客户端却看不到或看不全：路由那家自己管理模型
 /// 目录文件（Stack 模型不发布）；或者官方做默认、最近一次写目录时没拿到官方列表。
-fn codex_stack_notice(state: &AppState, stack: &StackState) -> Option<&'static str> {
-    let (_, route) = attached_route(state, &AppType::Codex).ok()??;
-    let published =
-        stack::published_members(&state.db, &AppType::Codex, stack, Some(&route.id)).ok()?;
+fn codex_stack_notice(
+    state: &AppState,
+    stack: &StackState,
+) -> Result<Option<&'static str>, String> {
+    let Some((_, route)) = attached_route(state, &AppType::Codex)? else {
+        return Ok(None);
+    };
+    let published = stack::published_members(&state.db, &AppType::Codex, stack, Some(&route.id))
+        .map_err(err)?;
     if published.is_empty() {
-        return None;
+        return Ok(None);
     }
     if codex_direct::route_owns_catalog(&route) {
-        return Some("routeOwnsCatalog");
+        return Ok(Some("routeOwnsCatalog"));
     }
     if !codex_direct::is_official(&route) {
-        return None;
+        return Ok(None);
     }
-    match codex_official_models::last_source()? {
-        codex_official_models::NativeSource::Fetched => None,
-        codex_official_models::NativeSource::Bundled => Some("officialModelsBundled"),
-        codex_official_models::NativeSource::Unavailable => Some("officialModelsUnavailable"),
-    }
+    Ok(match codex_official_models::last_source() {
+        Some(codex_official_models::NativeSource::Bundled) => Some("officialModelsBundled"),
+        Some(codex_official_models::NativeSource::Unavailable) => Some("officialModelsUnavailable"),
+        Some(codex_official_models::NativeSource::Fetched) | None => None,
+    })
+}
+
+/// A committed write must not become a save failure because the notice read failed.
+/// Subsequent Stack reads still propagate the error to the caller.
+fn codex_stack_notice_after_write(state: &AppState) -> Option<&'static str> {
+    settled_stack(&AppType::Codex)
+        .and_then(|stack| codex_stack_notice(state, &stack))
+        .unwrap_or_else(|error| {
+            log::warn!("读取已保存的 Codex Stack 提示失败: {error}");
+            None
+        })
 }
 
 /// Codex Stack 模式下聚合的模型被路由那家自己的模型目录挡住（`routeOwnsCatalog`，用户在提示
@@ -1329,9 +1342,7 @@ pub async fn adopt_codex_stack_catalog(state: &AppState) -> Result<Option<&'stat
     }
     let live_now = LiveNow::of(state, &app, &mode)?;
     write_proxy(state, &app, op::CATALOG, &route, &live_now, mode, None).await?;
-    Ok(settled_stack(&app)
-        .ok()
-        .and_then(|stack| codex_stack_notice(state, &stack)))
+    Ok(codex_stack_notice_after_write(state))
 }
 
 /// 路由供应商的行或代理地址变了：按新契约重写客户端（契约没变就什么都不做）。调用方
@@ -2239,6 +2250,125 @@ mod mode_tests {
             }
             let _ = crate::settings::reload_settings();
         }
+    }
+
+    fn stack_read_fixture() -> (AppState, StackState) {
+        let state = AppState::new(Arc::new(Database::memory().unwrap()));
+        let route = codex_native("route", "https://route.example/v1", "", None);
+        let member = codex_native("member", "https://member.example/v1", "", None);
+        state.db.save_provider("codex", &route).unwrap();
+        state.db.save_provider("codex", &member).unwrap();
+        let mut stack = StackState {
+            enabled: true,
+            ..Default::default()
+        };
+        stack::allocate_key(&mut stack, &member);
+        stack.members.push(member.id);
+        state::update(&DeviceStore::for_device(), |live| {
+            let app = live.apps.entry("codex".into()).or_default();
+            app.set_mode_state(ModeState {
+                mode: Some(Mode::Proxy),
+                attached: true,
+                proxy_route: Some("route".into()),
+                ..Default::default()
+            });
+            app.stack = stack.clone();
+        })
+        .unwrap();
+        (state, stack)
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn stack_route_read_errors_are_propagated() {
+        let _home = Home::new();
+        let (state, _) = stack_read_fixture();
+        // Leave the member query valid, so stack_views must fail on the route read.
+        state
+            .db
+            .conn
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE providers SET name = x'ff' WHERE id = 'route' AND app_type = 'codex'",
+                [],
+            )
+            .unwrap();
+        let stack = settled_stack(&AppType::Codex).unwrap();
+        let error = attached_route(&state, &AppType::Codex).unwrap_err();
+        assert_eq!(codex_stack_notice(&state, &stack).unwrap_err(), error);
+        assert_eq!(
+            codex_publishes_stack_models(&state, &stack).unwrap_err(),
+            error
+        );
+        assert_eq!(stack_views(&state, &AppType::Codex).unwrap_err(), error);
+        assert_eq!(
+            stack_view_with_clients(&state, &AppType::Codex)
+                .await
+                .unwrap_err(),
+            error
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn stack_published_member_read_errors_are_propagated() {
+        let _home = Home::new();
+        let (state, stack) = stack_read_fixture();
+        state
+            .db
+            .conn
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE providers SET name = x'ff' WHERE id = 'member' AND app_type = 'codex'",
+                [],
+            )
+            .unwrap();
+        assert!(attached_route(&state, &AppType::Codex).unwrap().is_some());
+        let error = stack::published_members(&state.db, &AppType::Codex, &stack, Some("route"))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(codex_stack_notice(&state, &stack).unwrap_err(), error);
+        assert_eq!(
+            codex_publishes_stack_models(&state, &stack).unwrap_err(),
+            error
+        );
+        assert_eq!(stack_views(&state, &AppType::Codex).unwrap_err(), error);
+        assert_eq!(
+            stack_view_with_clients(&state, &AppType::Codex)
+                .await
+                .unwrap_err(),
+            error
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn stack_reads_keep_normal_members_and_catalog_notice() {
+        let _home = Home::new();
+        let (state, stack) = stack_read_fixture();
+        let route = codex_native(
+            "route",
+            "https://route.example/v1",
+            "model_catalog_json = \"/tmp/user-models.json\"\n",
+            None,
+        );
+        state.db.save_provider("codex", &route).unwrap();
+        assert!(codex_publishes_stack_models(&state, &stack).unwrap());
+        let view = stack_views(&state, &AppType::Codex).unwrap();
+        assert!(view.active);
+        assert_eq!(view.notice, Some("routeOwnsCatalog"));
+        assert_eq!(view.members.len(), 1);
+        assert_eq!(view.members[0].provider_id, "member");
+        assert!(!view.members[0].model_ids.is_empty());
+
+        state::update(&DeviceStore::for_device(), |live| {
+            live.apps.get_mut("codex").unwrap().attached = false;
+        })
+        .unwrap();
+        assert_eq!(codex_stack_notice(&state, &stack).unwrap(), None);
+        assert!(!codex_publishes_stack_models(&state, &stack).unwrap());
     }
 
     fn claude(id: &str, url: &str, extra: Value) -> Provider {

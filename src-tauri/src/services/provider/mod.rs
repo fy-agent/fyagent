@@ -912,6 +912,119 @@ mod tests {
         });
     }
 
+    #[test]
+    #[serial]
+    fn additive_switch_save_failure_restores_exact_live_preimage() {
+        for app in [AppType::OpenCode, AppType::OpenClaw, AppType::Hermes] {
+            for managed in [None, Some(false)] {
+                for existing in [true, false] {
+                    with_test_home(|state, _| {
+                        crate::settings::reload_settings().unwrap();
+                        let (path, original) = match app {
+                            AppType::OpenCode => (
+                                crate::opencode_config::get_opencode_dir().join(if existing { "opencode.jsonc" } else { "opencode.json" }),
+                                "// keep formatting\n{\n  \"provider\": {\"target\": {\"options\": {\"apiKey\": \"old\"}}, \"other\": {}},\n  \"theme\": \"keep\"\n}\n",
+                            ),
+                            AppType::OpenClaw => (
+                                crate::openclaw_config::get_openclaw_config_path(),
+                                "{\n  \"models\": {\"providers\": {\"target\": {\"apiKey\": \"old\"}, \"other\": {}}},\n  \"custom\": true\n}\n",
+                            ),
+                            AppType::Hermes => (
+                                crate::hermes_config::get_hermes_config_path(),
+                                "# keep formatting\nmodel:\n  provider: old-default\n  default: old-model\ncustom_providers:\n  - name: target\n    api_key: old\n  - name: other\n    api_key: keep\ncustom: true\n",
+                            ),
+                            _ => unreachable!(),
+                        };
+                        if existing {
+                            fs::create_dir_all(path.parent().unwrap()).unwrap();
+                            fs::write(&path, original).unwrap();
+                        }
+                        let mut provider = Provider::with_id(
+                            "target".into(),
+                            "Target".into(),
+                            json!({"api_key": "new", "options": {"apiKey": "new"}, "models": [{"id": "new-model"}]}),
+                            None,
+                        );
+                        if let Some(managed) = managed {
+                            ProviderService::set_provider_live_config_managed(
+                                &mut provider,
+                                managed,
+                            );
+                        }
+                        state.db.save_provider(app.as_str(), &provider).unwrap();
+                        state
+                            .db
+                            .conn
+                            .lock()
+                            .unwrap()
+                            .execute_batch(
+                                "CREATE TRIGGER reject_live_marker BEFORE UPDATE ON providers
+                             BEGIN SELECT RAISE(ABORT, 'forced marker save failure'); END;",
+                            )
+                            .unwrap();
+                        let error = ProviderService::switch(state, app.clone(), "target")
+                            .expect_err("marker persistence must fail")
+                            .to_string();
+                        assert!(error.contains("forced marker save failure"), "{error}");
+                        assert!(error.contains("live changes were rolled back"), "{error}");
+                        if existing {
+                            assert_eq!(fs::read(&path).unwrap(), original.as_bytes(), "{app:?}");
+                        } else {
+                            assert!(!path.exists(), "new live file must be removed: {app:?}");
+                        }
+                        let saved = state
+                            .db
+                            .get_provider_by_id("target", app.as_str())
+                            .unwrap()
+                            .unwrap();
+                        assert_eq!(
+                            ProviderService::provider_live_config_managed(&saved),
+                            managed
+                        );
+
+                        state
+                            .db
+                            .conn
+                            .lock()
+                            .unwrap()
+                            .execute_batch("DROP TRIGGER reject_live_marker;")
+                            .unwrap();
+                        ProviderService::switch(state, app.clone(), "target").unwrap();
+                        assert_ne!(fs::read(&path).unwrap(), original.as_bytes());
+                        let saved = state
+                            .db
+                            .get_provider_by_id("target", app.as_str())
+                            .unwrap()
+                            .unwrap();
+                        assert_eq!(
+                            ProviderService::provider_live_config_managed(&saved),
+                            Some(true)
+                        );
+                        if matches!(app, AppType::Hermes) {
+                            let defaults =
+                                crate::hermes_config::get_model_config().unwrap().unwrap();
+                            assert_eq!(defaults.provider.as_deref(), Some("target"));
+                            assert_eq!(defaults.default.as_deref(), Some("new-model"));
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn additive_live_rollback_refuses_external_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        fs::write(&path, b"original").unwrap();
+        let snapshot = QuickSetupFileSnapshot::capture(path.clone()).unwrap();
+        let _scope = crate::config::file_mutation_scope();
+        crate::config::atomic_write(&path, b"our write").unwrap();
+        fs::write(&path, b"external edit").unwrap();
+        assert!(snapshot.restore_owned().is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"external edit");
+    }
+
     fn write_test_codex_live_config(bytes: &[u8]) {
         let config_path = get_codex_config_path();
         fs::create_dir_all(config_path.parent().expect("Codex config parent"))
@@ -7965,6 +8078,20 @@ impl ProviderService {
             state.db.set_current_provider(app_type.as_str(), id)?;
         }
 
+        // Capture the entire preimage, including Hermes model defaults and formatting.
+        // Snapshot bytes of None mean the file did not exist, not just the entry.
+        let live_before = if Self::provider_live_config_managed(provider) != Some(true) {
+            let path = match app_type {
+                AppType::OpenCode => Some(crate::opencode_config::try_get_opencode_config_path()?),
+                AppType::OpenClaw => Some(crate::openclaw_config::get_openclaw_config_path()),
+                AppType::Hermes => Some(crate::hermes_config::get_hermes_config_path()),
+                _ => None,
+            };
+            path.map(QuickSetupFileSnapshot::capture).transpose()?
+        } else {
+            None
+        };
+
         // The Gemini write engine owns the authentication flag.
         write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
 
@@ -8017,17 +8144,12 @@ impl ProviderService {
         //
         // If persisting the marker fails, roll back the just-written live config so we don't leave
         // the provider in a silent inconsistent state (present in live, but still marked DB-only).
-        if app_type.is_additive_mode() && Self::provider_live_config_managed(provider) != Some(true)
-        {
+        if let Some(snapshot) = live_before {
             let mut updated = provider.clone();
             Self::set_provider_live_config_managed(&mut updated, true);
             if let Err(e) = state.db.save_provider(app_type.as_str(), &updated) {
-                let rollback_result = match app_type {
-                    AppType::OpenCode => remove_opencode_provider_from_live(&provider.id),
-                    AppType::OpenClaw => remove_openclaw_provider_from_live(&provider.id),
-                    AppType::Hermes => remove_hermes_provider_from_live(&provider.id),
-                    _ => Ok(()),
-                };
+                // Refuse to overwrite an external edit made after our write.
+                let rollback_result = snapshot.restore_owned();
 
                 match rollback_result {
                     Ok(()) => {
@@ -8038,7 +8160,7 @@ impl ProviderService {
                     }
                     Err(rollback_err) => {
                         return Err(AppError::Message(format!(
-                            "Failed to persist live_config_managed for '{}' after writing live config: {e}; additionally failed to roll back live config: {rollback_err}",
+                            "Failed to persist live_config_managed for '{}' after writing live config: {e}; failed to restore live config; live state may remain changed, inspect it before retrying: {rollback_err}",
                             provider.id
                         )));
                     }
