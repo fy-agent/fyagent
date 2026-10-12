@@ -270,10 +270,7 @@ pub async fn get_proxy_access_key(
 pub async fn regenerate_proxy_access_key(
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
-    state
-        .db
-        .regenerate_proxy_access_key()
-        .map_err(|error| error.to_string())
+    state.proxy_service.regenerate_proxy_access_key().await
 }
 
 /// 更新全局代理配置

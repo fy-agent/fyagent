@@ -74,7 +74,7 @@ socket, database handle, or raw response-success override.
   using Bearer or `x-api-key`; only the actual TCP loopback peer is exempt.
   Forwarded address headers never establish that exemption. Compare SHA-256
   digests with `subtle`, strip the LAN credential before handlers, and never log
-  it. Read the current saved key per request so rotation revokes subsequent uses.
+  it. Read the shared in-memory key per request; regeneration updates it before returning so rotation revokes subsequent uses.
 
 - `ProxyServer` owns one listener lifecycle and one shared `ProxyState`. The
   shared `ProviderRouter` retains circuit state across requests; per-request

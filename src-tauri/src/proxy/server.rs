@@ -48,9 +48,16 @@ async fn authenticate_lan_request(
         peer.0.ip().is_loopback()
             || matches!(peer.0.ip(), std::net::IpAddr::V6(ip) if ip.to_ipv4_mapped().is_some_and(|ip| ip.is_loopback()))
     });
-    let expected = match state.db.get_setting("proxy_access_key") {
+    let expected = match state.access_key.read().await.clone() {
         Ok(Some(key)) if !key.is_empty() => key,
-        _ if loopback => return next.run(request).await,
+        Err(_) => {
+            return (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "局域网代理访问密钥读取失败",
+            )
+                .into_response();
+        }
+        Ok(_) if loopback => return next.run(request).await,
         _ => {
             return (
                 axum::http::StatusCode::SERVICE_UNAVAILABLE,
@@ -93,6 +100,7 @@ async fn authenticate_lan_request(
 #[derive(Clone)]
 pub struct ProxyState {
     pub db: Arc<Database>,
+    access_key: Arc<RwLock<Result<Option<String>, String>>>,
     pub config: Arc<RwLock<ProxyConfig>>,
     pub status: Arc<RwLock<ProxyStatus>>,
     pub start_time: Arc<RwLock<Option<std::time::Instant>>>,
@@ -138,7 +146,11 @@ impl ProxyServer {
         // 创建故障转移切换管理器
         let failover_manager = Arc::new(FailoverSwitchManager::new());
 
+        let access_key = db
+            .get_setting("proxy_access_key")
+            .map_err(|error| error.to_string());
         let state = ProxyState {
+            access_key: Arc::new(RwLock::new(access_key)),
             db,
             config: Arc::new(RwLock::new(config.clone())),
             status: Arc::new(RwLock::new(ProxyStatus::default())),
@@ -159,6 +171,15 @@ impl ProxyServer {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) async fn cached_access_key_for_test(&self) -> Option<String> {
+        self.state.access_key.read().await.as_ref().unwrap().clone()
+    }
+
+    pub(crate) async fn update_access_key(&self, key: String) {
+        *self.state.access_key.write().await = Ok(Some(key));
+    }
+
     pub async fn start(&self) -> Result<ProxyServerInfo, ProxyError> {
         // 检查是否已在运行
         if self.shutdown_tx.read().await.is_some() {
@@ -172,9 +193,12 @@ impl ProxyServer {
         if !ip.is_loopback()
             && self
                 .state
-                .db
-                .get_setting("proxy_access_key")
-                .map_err(|error| ProxyError::ConfigError(error.to_string()))?
+                .access_key
+                .read()
+                .await
+                .as_ref()
+                .map_err(|_| ProxyError::ConfigError("局域网代理访问密钥读取失败".into()))?
+                .as_ref()
                 .is_none_or(|key| key.is_empty())
         {
             return Err(ProxyError::ConfigError(
@@ -669,6 +693,7 @@ mod tests {
             );
         }
         let new = db.regenerate_proxy_access_key().unwrap();
+        proxy.update_access_key(new.clone()).await;
         assert_ne!(new, old);
         assert_eq!(
             lan_test_request(
@@ -691,6 +716,7 @@ mod tests {
             StatusCode::OK
         );
         db.set_setting("proxy_access_key", "").unwrap();
+        proxy.update_access_key(String::new()).await;
         assert_eq!(
             lan_test_request(&proxy, "/health", "192.168.1.2:1234", None).await,
             StatusCode::SERVICE_UNAVAILABLE
@@ -699,6 +725,45 @@ mod tests {
             lan_test_request(&proxy, "/health", "127.0.0.1:1234", None).await,
             StatusCode::OK
         );
+    }
+
+    #[tokio::test]
+    async fn lan_key_cache_does_not_read_database_per_request() {
+        let db = Arc::new(Database::memory().unwrap());
+        let key = db.regenerate_proxy_access_key().unwrap();
+        let proxy = ProxyServer::new(ProxyConfig::default(), db.clone(), None);
+        db.conn
+            .lock()
+            .unwrap()
+            .execute_batch("DROP TABLE settings;")
+            .unwrap();
+        assert_eq!(
+            lan_test_request(
+                &proxy,
+                "/health",
+                "192.168.1.2:1234",
+                Some(("x-api-key", &key))
+            )
+            .await,
+            StatusCode::OK
+        );
+        let failed = ProxyServer::new(ProxyConfig::default(), db, None);
+        for peer in ["192.168.1.2:1234", "127.0.0.1:1234"] {
+            let request = axum::http::Request::builder()
+                .uri("/health")
+                .extension(axum::extract::ConnectInfo(
+                    peer.parse::<SocketAddr>().unwrap(),
+                ))
+                .body(axum::body::Body::empty())
+                .unwrap();
+            use tower::Service;
+            let response = failed.build_router(32).call(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            let body = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            assert_eq!(body.as_ref(), "局域网代理访问密钥读取失败".as_bytes());
+        }
     }
 
     struct AuthTestLogger(std::sync::Mutex<Option<(std::thread::ThreadId, Vec<String>)>>);
@@ -1344,6 +1409,7 @@ mod tests {
         let db = Arc::new(Database::memory().unwrap());
         let key = db.regenerate_proxy_access_key().unwrap();
         let state = ProxyState::for_test(db.clone());
+        let access_key = state.access_key.clone();
         let mut app =
             Router::new()
                 .route("/", get(inspect))
@@ -1393,7 +1459,40 @@ mod tests {
                 assert_eq!(headers["x-api-key"], json!(expected_api_key));
             }
         }
+        for (auth, api, expected_auth, expected_api) in [
+            (
+                format!("Bearer {key}"),
+                "business-api-key".to_string(),
+                None,
+                Some("business-api-key"),
+            ),
+            (
+                "Bearer business-token".to_string(),
+                key.clone(),
+                Some("Bearer business-token"),
+                None,
+            ),
+        ] {
+            let request = axum::http::Request::builder()
+                .uri("/")
+                .extension(axum::extract::ConnectInfo(
+                    "192.168.1.2:1234".parse::<SocketAddr>().unwrap(),
+                ))
+                .header(header::AUTHORIZATION, auth)
+                .header("x-api-key", api)
+                .body(axum::body::Body::empty())
+                .unwrap();
+            let response = app.call(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let bytes = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            let headers: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(headers["authorization"], json!(expected_auth));
+            assert_eq!(headers["x-api-key"], json!(expected_api));
+        }
         db.set_setting("proxy_access_key", "").unwrap();
+        *access_key.write().await = Ok(None);
         let request = axum::http::Request::builder()
             .uri("/")
             .extension(axum::extract::ConnectInfo(

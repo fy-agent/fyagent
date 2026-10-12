@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/database/backup.rs",
-      "1339dae9cc561d75ff1c99bf7b3609842c9e689e0837f7db448c5bb34e2ac731"
+      "1372268280582425abd5aa0998c91afb8f252c681f4527c44488f89ea0a5f3b3"
     ],
     [
       "src-tauri/src/database/backup/recovery_tests.rs",
@@ -327,7 +327,7 @@
     ],
     [
       "src-tauri/src/services/proxy.rs",
-      "c09519f7a87d52cb4398461acf5b66f3983e5c688b2868d1fa707de5ccb4b592"
+      "525245345b0ff3d3212234df4306dc54f505c4e6a90a2c1fb833aad201c66305"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",

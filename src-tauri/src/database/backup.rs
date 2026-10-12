@@ -8,7 +8,7 @@ use crate::error::AppError;
 use chrono::{Local, Utc};
 use rusqlite::backup::{Backup, StepResult};
 use rusqlite::types::ValueRef;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -235,7 +235,7 @@ impl Database {
         conn.execute("DELETE FROM profiles", [])
             .map_err(|_| AppError::Database("provider_export_failed".into()))?;
         conn.execute(
-            "DELETE FROM settings WHERE key = 'universal_providers' OR key LIKE 'common_config_%'",
+            "DELETE FROM settings WHERE key IN ('universal_providers', 'proxy_access_key') OR key LIKE 'common_config_%'",
             [],
         )
         .map_err(|_| AppError::Database("provider_export_failed".into()))?;
@@ -372,6 +372,20 @@ impl Database {
         // and replacement so the backup represents exactly the replaced state.
         let backup_file_guard = BackupDirectoryLease::acquire();
         let mut main_conn = lock_conn!(self.conn);
+        temp_conn.execute("DELETE FROM settings WHERE key = 'proxy_access_key'", [])?;
+        let local_key: Option<String> = main_conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'proxy_access_key'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(key) = local_key {
+            temp_conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('proxy_access_key', ?1)",
+                [&key],
+            )?;
+        }
         Self::restore_tables(&main_conn, &temp_conn, preserve_tables)?;
         Self::restore_tables(&main_conn, &temp_conn, &["provider_credentials"])?;
         Self::restore_local_provider_credentials(&main_conn, &temp_conn)?;
@@ -1809,6 +1823,33 @@ mod tests {
     use crate::settings::{get_settings, update_settings, AppSettings};
     use rusqlite::Connection;
     use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn ordinary_sql_excludes_lan_key_and_preserves_local_key_on_import() -> Result<(), AppError> {
+        let _home = TestHomeGuard::new();
+        let source = Database::memory()?;
+        source.set_setting("proxy_access_key", "foreign-lan-secret")?;
+        let sql = source.export_sql_string()?;
+        assert!(!sql.contains("proxy_access_key"));
+        assert!(!sql.contains("foreign-lan-secret"));
+        assert_eq!(
+            source.get_setting("proxy_access_key")?.as_deref(),
+            Some("foreign-lan-secret")
+        );
+        let legacy_sql = format!("{sql}\nINSERT INTO settings (key, value) VALUES ('proxy_access_key', 'old-lan-secret');\n");
+        for local in [None, Some("device-lan-secret")] {
+            let target = Database::memory()?;
+            if let Some(key) = local {
+                target.set_setting("proxy_access_key", key)?;
+            }
+            target.import_sql_string(&legacy_sql)?;
+            assert_eq!(target.get_setting("proxy_access_key")?.as_deref(), local);
+            target.import_sql_string(&sql)?;
+            assert_eq!(target.get_setting("proxy_access_key")?.as_deref(), local);
+        }
+        Ok(())
+    }
 
     struct TestHomeGuard {
         previous_test_home: Option<std::ffi::OsString>,

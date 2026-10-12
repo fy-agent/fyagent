@@ -452,6 +452,19 @@ impl SavedProxyConfig {
 }
 
 impl ProxyService {
+    pub async fn regenerate_proxy_access_key(&self) -> Result<String, String> {
+        let _start_guard = self.start_lock.lock().await;
+        let server_guard = self.server.write().await;
+        let key = self
+            .db
+            .regenerate_proxy_access_key()
+            .map_err(|error| error.to_string())?;
+        if let Some(server) = server_guard.as_ref() {
+            server.update_access_key(key.clone()).await;
+        }
+        Ok(key)
+    }
+
     async fn restore_and_start(&self, previous: SavedProxyConfig) -> Result<ProxyServer, String> {
         previous.write(&self.db).await?;
         let config = self
@@ -10756,6 +10769,47 @@ experimental_bearer_token = "PROXY_MANAGED"
             23456
         );
         assert_app_proxy_configs_unchanged(&db, &configs).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn access_key_regeneration_updates_active_server_and_keeps_cache_on_failure() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let old = db.regenerate_proxy_access_key().unwrap();
+        let service = ProxyService::new(db.clone());
+        *service.server.write().await =
+            Some(ProxyServer::new(ProxyConfig::default(), db.clone(), None));
+        let new = service.regenerate_proxy_access_key().await.unwrap();
+        assert_ne!(new, old);
+        assert_eq!(
+            db.get_setting("proxy_access_key").unwrap(),
+            Some(new.clone())
+        );
+        assert_eq!(
+            service
+                .server
+                .read()
+                .await
+                .as_ref()
+                .unwrap()
+                .cached_access_key_for_test()
+                .await,
+            Some(new.clone())
+        );
+        db.conn.lock().unwrap().execute_batch("CREATE TRIGGER reject_key BEFORE INSERT ON settings BEGIN SELECT RAISE(ABORT, 'forced key save failure'); END;").unwrap();
+        assert!(service.regenerate_proxy_access_key().await.is_err());
+        assert_eq!(
+            service
+                .server
+                .read()
+                .await
+                .as_ref()
+                .unwrap()
+                .cached_access_key_for_test()
+                .await,
+            Some(new)
+        );
     }
 
     #[tokio::test]
