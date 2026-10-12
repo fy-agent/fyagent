@@ -1127,7 +1127,7 @@ mod tests {
                     &path,
                     "target",
                     json!({"options": {"apiKey": "new"}}),
-                    crate::opencode_config::OpenCodeConfigFormat::V1,
+                    crate::provider::OpenCodeConfigFormat::V1,
                 );
                 drop(input);
                 if jsonc_exists {
