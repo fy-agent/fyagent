@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -104,4 +104,74 @@ describe("Skills update failure recovery", () => {
       ),
     ).toContain("后续修改已保留");
   });
+
+  it("confirms the update-all list before updating, listing skill name and source repo", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    const skill: InstalledSkill = {
+      id: "fixture/repo:review-skill",
+      name: "Review Skill",
+      directory: "review-skill",
+      apps: createAssignments(["claude"]),
+      installedAt: 1,
+      updatedAt: 1,
+      contentHash: "old",
+      repoOwner: "fixture",
+      repoName: "repo",
+      repoBranch: "main",
+    };
+    ports.skills.getInstalled = vi.fn(async () => [{ ...skill }]);
+    ports.skills.checkUpdates = vi.fn(async () => [
+      { id: skill.id, name: skill.name, remoteHash: "new" },
+      { id: "gone-skill", name: "Gone Skill", remoteHash: "new" },
+    ]);
+    ports.skills.update = vi.fn(async () => skill);
+    const openExternal = vi.fn(async () => undefined);
+    ports.settings.openExternal = openExternal;
+
+    render(
+      <FeatureProvider ports={ports}>
+        <SkillsPage />
+      </FeatureProvider>,
+    );
+
+    await screen.findByRole("heading", { name: "Review Skill" });
+    await user.click(screen.getByRole("button", { name: "检查更新" }));
+
+    const updateAllButton = await screen.findByRole("button", {
+      name: /更新全部/,
+    });
+    expect(updateAllButton).toBeVisible();
+
+    await user.click(updateAllButton);
+    expect(ports.skills.update).not.toHaveBeenCalled();
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Review Skill")).toBeVisible();
+    expect(within(dialog).getByText("fixture/repo")).toBeVisible();
+    expect(within(dialog).queryByText("Gone Skill")).not.toBeInTheDocument();
+
+    const repoButton = within(dialog).getByRole("button", {
+      name: "fixture/repo",
+    });
+    await user.click(repoButton);
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/fixture/repo");
+
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(ports.skills.update).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /更新全部/ }));
+    const confirmDialog = await screen.findByRole("dialog");
+    await user.click(
+      within(confirmDialog).getByRole("button", { name: "确认" }),
+    );
+    await waitFor(() =>
+      expect(ports.skills.update).toHaveBeenCalledWith(skill.id),
+    );
+    expect(ports.skills.update).toHaveBeenCalledTimes(1);
+  });
 });
+

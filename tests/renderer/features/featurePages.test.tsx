@@ -1267,6 +1267,7 @@ describe("Skills management", () => {
     });
 
     await user.click(updateAll);
+    await user.click(screen.getByRole("button", { name: "确认" }));
 
     expect(
       await screen.findByRole("button", { name: "更新全部 · 1" }),

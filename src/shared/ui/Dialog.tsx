@@ -454,6 +454,9 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   originRef,
+  children,
+  confirmLabel,
+  danger = true,
 }: {
   open: boolean;
   title: string;
@@ -462,6 +465,9 @@ export function ConfirmDialog({
   onConfirm: MouseEventHandler<HTMLButtonElement>;
   onCancel: () => void;
   originRef?: DialogOriginRef;
+  children?: ReactNode;
+  confirmLabel?: string;
+  danger?: boolean;
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   return (
@@ -478,14 +484,18 @@ export function ConfirmDialog({
             取消
           </Button>
           <Button
-            className="fy-control-button-danger"
+            className={
+              danger ? "fy-control-button-danger" : "fy-control-button-primary"
+            }
             onClick={onConfirm}
             disabled={pending}
           >
-            {pending ? "处理中…" : "确认"}
+            {pending ? "处理中…" : (confirmLabel ?? "确认")}
           </Button>
         </>
       }
-    />
+    >
+      {children}
+    </Dialog>
   );
 }

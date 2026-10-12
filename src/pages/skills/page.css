@@ -75,3 +75,43 @@
     margin-left: 0;
   }
 }
+
+.fy-skills-update-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-md, 8px);
+}
+
+.fy-skills-update-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fy-border);
+  font-size: 13px;
+}
+
+.fy-skills-update-item:last-child {
+  border-bottom: none;
+}
+
+.fy-skills-update-name {
+  font-weight: 500;
+  color: var(--fy-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fy-skills-update-repo {
+  margin-left: auto;
+  font-family: var(--fy-font-mono, monospace);
+  font-size: 12px;
+  color: var(--fy-text-secondary);
+}
+
