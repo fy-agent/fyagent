@@ -890,6 +890,63 @@ fn unknown_extensions_cannot_keep_short_or_independent_credentials() {
 }
 
 #[test]
+fn normalized_credential_names_reject_independent_material_in_json_and_toml() {
+    for name in [
+        "authToken",
+        "AUTHtoken",
+        "auth_token",
+        "auth-token",
+        "sessionToken",
+        "privateKey",
+        "localToken",
+        "localtoken",
+        "LOCAL_TOKEN",
+        "private-key",
+    ] {
+        assert!(crate::provider::is_sensitive_config_key(name), "{name}");
+        for toml in [false, true] {
+            let (db, _) = database();
+            let mut provider = fixture();
+            if toml {
+                provider.settings_config["config"] = json!(format!(
+                    "model = 'local-model'\n[extension]\n{name} = 'independent-canary'\n"
+                ));
+            } else {
+                provider.settings_config["extension"] = json!({});
+                provider.settings_config["extension"][name] = json!("independent-canary");
+            }
+            assert_eq!(
+                db.save_provider("codex", &provider)
+                    .unwrap_err()
+                    .to_string(),
+                "provider_secret_invalid"
+            );
+            assert!(db
+                .get_provider_by_id(&provider.id, "codex")
+                .unwrap()
+                .is_none());
+            assert!(db.provider_credential_records().unwrap().is_empty());
+        }
+    }
+    for name in [
+        "local",
+        "local_options",
+        "model",
+        "model_provider",
+        "baseUrl",
+        "maxTokens",
+        "tokenizer",
+        "keyboardLayout",
+        "max_tokens",
+        "OLDPWD",
+        "GEMINI_COMPAT",
+        "SSL_BYPASS",
+    ] {
+        assert!(!crate::provider::is_sensitive_config_key(name), "{name}");
+    }
+}
+
+#[test]
 fn unknown_toml_extensions_cannot_keep_captured_material() {
     let (db, _) = database();
     let mut provider = fixture();

@@ -92,20 +92,54 @@ export function validateStandaloneSetup(file, source) {
   if (!normalized.includes("mise run check")) {
     throw new Error(`${file} must name mise run check as the full local gate`);
   }
-  const prose = normalized
-    .replace(/(?:`{3,}|~{3,})[\s\S]*?(?:`{3,}|~{3,})/g, " ")
-    .replace(/\s+/g, " ");
-  const trustReference = `\`${STANDALONE_SETUP_COMMANDS[0]}\``;
-  const trustIndex = prose.indexOf(trustReference);
-  const trustGuidance =
-    trustIndex >= 0 ? prose.slice(trustIndex, trustIndex + 720) : "";
-  if (
-    !/\bdeveloper security decision\b[^.!?]{0,240}\bnever run automatically\b[^.!?]{0,160}\bproject task\b/i.test(
-      trustGuidance,
-    )
-  ) {
+  const prose = normalized.replace(
+    /(?:`{3,}|~{3,})[\s\S]*?(?:`{3,}|~{3,})/g,
+    " ",
+  );
+  const trustParagraphs = prose.split(/\n\s*\n/u);
+  const trustGuidance = trustParagraphs.filter((part) =>
+    part.includes("mise trust"),
+  );
+  const manualTrust = trustGuidance.some((part) => {
+    part = part.replace(/\s+/gu, " ");
+    return (
+      /developer security decision/i.test(part) ||
+      /(?:开发者|开发人员).*(?:手动|自行|亲自).*(?:安全|信任).*(?:决定|决策|确认)/u.test(
+        part,
+      )
+    );
+  });
+  const trustClauses = trustGuidance
+    .flatMap((part) => part.split(/(?<=\.)\s+|[。！？]/u))
+    .flatMap((sentence) => {
+      let projectTask = false;
+      return sentence
+        .split(/[,，;；]|但是|但|而是|却|然而|不过|\b(?:however|but|yet|instead)\b/iu)
+        .map((part) => {
+          part = part.replace(/\s+/gu, " ");
+          // A contrasting clause may omit the preceding project-task subject.
+          projectTask ||= /(?:项目任务|项目脚本)/u.test(part);
+          return { part, projectTask };
+        });
+    });
+  const noAutomaticTrust = trustClauses.some(
+    ({ part, projectTask }) =>
+      /never run automatically[^.!?]*project task/i.test(part) ||
+      (projectTask &&
+        /(?:不得|不能|不会|禁止)\s*自动\s*(?:执行|运行|信任)/u.test(part)),
+  );
+  const automaticTrust = trustClauses.some(
+    ({ part, projectTask }) =>
+      /(?<!never )\brun automatically[^.!?]*project task/i.test(part) ||
+      (projectTask &&
+        [...part.matchAll(/自动\s*(?:执行|运行|信任)/gu)].some(
+          (action) =>
+            !/(?:不得|不能|不会|禁止)\s*$/u.test(part.slice(0, action.index)),
+        )),
+  );
+  if (!manualTrust || !noAutomaticTrust || automaticTrust) {
     throw new Error(
-      `${file} must keep repository trust as a manual developer decision outside project tasks`,
+      `${file} 必须保留由开发者手动决定信任、项目任务不得自动执行的边界 (manual developer decision)`,
     );
   }
 }

@@ -140,7 +140,7 @@ describe("MCP management", () => {
     expect(
       JSON.parse(writeText.mock.calls[0][0]).mcpServers["fyagent-diagnostic"]
         .env.API_KEY,
-    ).toBe("fixture-secret");
+    ).toBe("••••••");
     expect(upsert).not.toHaveBeenCalled();
     expect(toggle).not.toHaveBeenCalled();
     expect(screen.getByText(/连接尚未测试/)).toBeInTheDocument();

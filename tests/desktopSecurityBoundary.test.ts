@@ -138,9 +138,19 @@ describe("desktop IPC capability and CSP boundary", () => {
 
     expect(assetProtocol).toEqual({ enable: true, scope: [] });
     expect(csp).toContain("default-src 'self'");
-    expect(csp).toContain(
-      "connect-src 'self' ipc: http://ipc.localhost https: http:",
-    );
+    expect(
+      csp
+        .split(";")
+        .map((directive) => directive.trim())
+        .find((directive) => directive.startsWith("connect-src "))
+        ?.split(/\s+/),
+    ).toEqual([
+      "connect-src",
+      "'self'",
+      "ipc:",
+      "http://ipc.localhost",
+      "https://models.dev",
+    ]);
     expect(csp).toContain("img-src 'self' data: https: http:");
     expect(csp).not.toContain("*");
   });

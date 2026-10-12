@@ -1,5 +1,12 @@
 import type { McpServerSpec } from "../../shared/features/mcp";
 
+import {
+  REDACTED_SECRET,
+  redactMcpArgs,
+  redactMcpHeaders,
+  redactMcpUrl,
+} from "../../shared/features/mcpSecurity";
+
 export const MCP_INSPECTOR_INITIALIZE_COMMAND =
   "npx @modelcontextprotocol/inspector --cli --config mcp-inspector.json --server fyagent-diagnostic --method initialize --connect-timeout 15000";
 export const MCP_INSPECTOR_TOOLS_COMMAND =
@@ -18,11 +25,19 @@ export function buildMcpInspectorConfig(spec: McpServerSpec): string {
       ? {
           type,
           command: spec.command,
-          args: spec.args,
-          env: spec.env,
+          args: spec.args ? redactMcpArgs(spec.args) : undefined,
+          env: spec.env
+            ? Object.fromEntries(
+                Object.keys(spec.env).map((name) => [name, REDACTED_SECRET]),
+              )
+            : undefined,
           cwd: spec.cwd,
         }
-      : { type, url: spec.url, headers: spec.headers };
+      : {
+          type,
+          url: redactMcpUrl(spec.url!),
+          headers: spec.headers ? redactMcpHeaders(spec.headers) : undefined,
+        };
   return JSON.stringify(
     {
       mcpServers: {

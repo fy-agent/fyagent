@@ -38,7 +38,7 @@ export function InspectorDialog({
       }}
       originRef={originRef}
       title="本地协议诊断"
-      description="复制的配置可能包含凭据，仅保存到本机。FyAgent 不会执行服务器命令或改变分配状态。"
+      description="源配置可能包含凭据，复制时已遮住；实际诊断前请仅在本机补入凭据。FyAgent 不会执行服务器命令或改变分配状态。"
       actions={
         <>
           <Button onClick={onClose}>关闭</Button>
