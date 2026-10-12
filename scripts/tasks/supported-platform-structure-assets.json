@@ -319,7 +319,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "985e92112a3af9610f765fd67d987d500f4c232da3e0e59f087d92f919657e44"
+      "7f3b641d500fdbedc47edb2ceac9af81ea313b782543127f74c1dfea6736f71c"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",
