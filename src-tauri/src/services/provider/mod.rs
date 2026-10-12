@@ -421,6 +421,16 @@ impl QuickSetupFileSnapshot {
         Ok(Self { path, bytes })
     }
 
+    fn expected_input_scope(&self) -> Result<crate::config::FileRestoreScope, AppError> {
+        use sha2::{Digest, Sha256};
+        crate::config::file_restore_scope(vec![(
+            self.path.clone(),
+            self.bytes
+                .as_ref()
+                .map(|bytes| format!("{:x}", Sha256::digest(bytes))),
+        )])
+    }
+
     fn restore(&self) -> Result<(), AppError> {
         crate::config::restore_file_preimage(&self.path, self.bytes.as_deref())
     }
@@ -966,7 +976,10 @@ mod tests {
                             .expect_err("marker persistence must fail")
                             .to_string();
                         assert!(error.contains("forced marker save failure"), "{error}");
-                        assert!(error.contains("live changes were rolled back"), "{error}");
+                        assert!(
+                            error.contains("checked compensating restoration completed"),
+                            "{error}"
+                        );
                         if existing {
                             assert_eq!(fs::read(&path).unwrap(), original.as_bytes(), "{app:?}");
                         } else {
@@ -1023,6 +1036,112 @@ mod tests {
         fs::write(&path, b"external edit").unwrap();
         assert!(snapshot.restore_owned().is_err());
         assert_eq!(fs::read(&path).unwrap(), b"external edit");
+    }
+
+    #[test]
+    #[serial]
+    fn additive_writer_rejects_edit_between_snapshot_and_read() {
+        with_test_home(|state, _| {
+            for app in [AppType::OpenCode, AppType::OpenClaw, AppType::Hermes] {
+                let (path, original, external_bytes) = match app {
+                    AppType::OpenCode => (
+                        crate::opencode_config::try_get_opencode_config_path().unwrap(),
+                        "{}",
+                        "{\"theme\":\"external\"}",
+                    ),
+                    AppType::OpenClaw => (
+                        crate::openclaw_config::get_openclaw_config_path(),
+                        "{}",
+                        "{\"custom\":true}",
+                    ),
+                    AppType::Hermes => (
+                        crate::hermes_config::get_hermes_config_path(),
+                        "custom: original\n",
+                        "custom: external\n",
+                    ),
+                    _ => unreachable!(),
+                };
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::write(&path, original).unwrap();
+                let snapshot = QuickSetupFileSnapshot::capture(path.clone()).unwrap();
+                let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+                let external = {
+                    let barrier = barrier.clone();
+                    let path = path.clone();
+                    std::thread::spawn(move || {
+                        fs::write(path, external_bytes).unwrap();
+                        barrier.wait();
+                    })
+                };
+                barrier.wait();
+                let _operation = crate::config::file_mutation_scope();
+                let input = snapshot.expected_input_scope().unwrap();
+                let provider = Provider::with_id(
+                    "target".into(),
+                    "Target".into(),
+                    json!({"api_key": "new", "options": {"apiKey": "new"}, "models": [{"id": "new-model"}]}),
+                    None,
+                );
+                let error = live::write_live_with_common_config_at_path(
+                    state.db.as_ref(),
+                    &app,
+                    &provider,
+                    matches!(app, AppType::OpenCode).then_some(path.as_path()),
+                )
+                .expect_err("writer must reject stale preimage")
+                .to_string();
+                assert!(error.contains("config_external_change"), "{app:?}: {error}");
+                drop(input);
+                assert_eq!(fs::read(&path).unwrap(), external_bytes.as_bytes());
+                assert!(snapshot.restore_owned().is_err());
+                external.join().unwrap();
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn opencode_writer_and_compensation_share_pinned_path() {
+        with_test_home(|_, _| {
+            for jsonc_exists in [false, true] {
+                let dir = crate::opencode_config::get_opencode_dir();
+                fs::create_dir_all(&dir).unwrap();
+                let json = dir.join("opencode.json");
+                let jsonc = dir.join("opencode.jsonc");
+                fs::write(&json, b"{\"theme\":\"json\"}").unwrap();
+                if jsonc_exists {
+                    fs::write(&jsonc, b"{\"theme\":\"jsonc\"}").unwrap();
+                } else if jsonc.exists() {
+                    fs::remove_file(&jsonc).unwrap();
+                }
+                let path = crate::opencode_config::try_get_opencode_config_path().unwrap();
+                let snapshot = QuickSetupFileSnapshot::capture(path.clone()).unwrap();
+                if jsonc_exists {
+                    fs::remove_file(&jsonc).unwrap();
+                } else {
+                    fs::write(&jsonc, b"{\"theme\":\"external\"}").unwrap();
+                }
+                let _operation = crate::config::file_mutation_scope();
+                let input = snapshot.expected_input_scope().unwrap();
+                let result = crate::opencode_config::set_provider_with_format_at_path(
+                    &path,
+                    "target",
+                    json!({"options": {"apiKey": "new"}}),
+                    crate::opencode_config::OpenCodeConfigFormat::V1,
+                );
+                drop(input);
+                if jsonc_exists {
+                    assert!(result.is_err());
+                    assert!(!jsonc.exists());
+                    assert!(snapshot.restore_owned().is_err());
+                } else {
+                    result.unwrap();
+                    snapshot.restore_owned().unwrap();
+                    assert_eq!(fs::read(&json).unwrap(), snapshot.bytes.unwrap());
+                    assert_eq!(fs::read(&jsonc).unwrap(), b"{\"theme\":\"external\"}");
+                }
+            }
+        });
     }
 
     fn write_test_codex_live_config(bytes: &[u8]) {
@@ -8092,8 +8211,20 @@ impl ProviderService {
             None
         };
 
-        // The Gemini write engine owns the authentication flag.
-        write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
+        // Writers reject a changed preimage; subsequent Hermes writes advance the expected hash.
+        let input_guard = live_before
+            .as_ref()
+            .map(|snapshot| snapshot.expected_input_scope())
+            .transpose()?;
+        live::write_live_with_common_config_at_path(
+            state.db.as_ref(),
+            &app_type,
+            provider,
+            live_before
+                .as_ref()
+                .filter(|_| matches!(app_type, AppType::OpenCode))
+                .map(|snapshot| snapshot.path.as_path()),
+        )?;
 
         // A material-less official Codex provider gets a config-only live
         // write, which can leave the previous third-party key in
@@ -8142,8 +8273,8 @@ impl ProviderService {
         // flip the flag to true now that the provider has been successfully written to the live
         // file. This ensures sync_all_providers_to_live() will include it on future syncs.
         //
-        // If persisting the marker fails, roll back the just-written live config so we don't leave
-        // the provider in a silent inconsistent state (present in live, but still marked DB-only).
+        // On synchronous marker failure, attempt checked compensation, not an atomic transaction.
+        drop(input_guard);
         if let Some(snapshot) = live_before {
             let mut updated = provider.clone();
             Self::set_provider_live_config_managed(&mut updated, true);
@@ -8154,7 +8285,7 @@ impl ProviderService {
                 match rollback_result {
                     Ok(()) => {
                         return Err(AppError::Message(format!(
-                            "Failed to persist live_config_managed for '{}' after writing live config; live changes were rolled back: {e}",
+                            "Failed to persist live_config_managed for '{}' after writing live config; checked compensating restoration completed: {e}",
                             provider.id
                         )));
                     }
