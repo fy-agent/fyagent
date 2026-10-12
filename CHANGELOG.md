@@ -8,6 +8,27 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.12] - 2026-10-12
+
+Transitional pre-release with the high-priority fixes from the 0.4.11 review.
+
+### Changed
+
+- Require the access key when the local proxy listens beyond loopback; keep
+  keys in memory and redact them in logs, health and usage (H04 H05 H07).
+
+### Fixed
+
+- Bound proxy decompression, redact upstream error bodies, enforce the body
+  limit, and reject oversized OpenCode credentials (H06 H02).
+- Restore the exact previous file on save failure and propagate database, MCP
+  and snapshot errors instead of ignoring them (R01 R03 R07).
+- Keep assignment failure details and reject retargeted change plans (F01 F07).
+- Cancel in-flight prompt reads before refresh and reset the prompt view per
+  app (#363 #364).
+- Read toolchain versions from the declared contract (C05) and align security
+  docs (H01).
+
 ## [0.4.11] - 2026-10-09
 
 ### Added
