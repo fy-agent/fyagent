@@ -210,10 +210,7 @@ impl<'a> UsageLogger<'a> {
 
         if affected_rows > 0 {
             if collision {
-                log::warn!(
-                    "usage request_id collision: primary={}, fallback={request_id}",
-                    log.request_id
-                );
+                log::warn!("usage request_id collision: fallback generated");
             }
             crate::usage_events::notify_log_recorded();
         }
@@ -395,7 +392,7 @@ impl<'a> UsageLogger<'a> {
             || usage.cache_creation_tokens > 0;
 
         if pricing.is_none() && has_usage && !is_placeholder_pricing_model(&pricing_model) {
-            log::warn!("[USG-002] 模型定价未找到，成本将记录为 0: {pricing_model}");
+            log::warn!("[USG-002] 模型定价未找到，成本将记录为 0");
         }
 
         let cost = CostCalculator::try_calculate_for_app(

@@ -1,0 +1,13 @@
+.fy-proxy-settings {
+  display: grid;
+  gap: 8px;
+}
+.fy-proxy-settings p {
+  color: var(--fy-text-secondary);
+  font-size: var(--fy-font-caption);
+  overflow-wrap: anywhere;
+}
+.fy-proxy-settings-actions {
+  display: flex;
+  gap: 8px;
+}

@@ -5,6 +5,14 @@ const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 describe("upstream aggregation commands", () => {
+  it("propagates Stack native read errors without replacing them with an empty DTO", async () => {
+    const port = createTauriFeaturePorts().providers;
+    invoke.mockRejectedValueOnce("database read failed");
+    await expect(port.getStack("codex")).rejects.toBe("database read failed");
+    expect(invoke).toHaveBeenCalledWith("get_proxy_stack", {
+      appType: "codex",
+    });
+  });
   beforeEach(() => invoke.mockReset());
   it("preserves mode/member/default command arguments through the production facade", async () => {
     const port = createTauriFeaturePorts().providers;

@@ -3043,6 +3043,45 @@ mod tests {
 
     #[test]
     #[serial]
+    fn retargeted_plan_to_another_valid_provider_is_rejected_without_writing() {
+        let (_home, _guard, db, state, _current, target) = setup_switch_state();
+        let target2 = provider("target2", "Target 2", "gpt-target2");
+        db.save_provider(AppType::Codex.as_str(), &target2).unwrap();
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+        db.conn
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE change_plans SET target_provider_id=?1 WHERE plan_id=?2",
+                [&target2.id, &plan.plan_id],
+            )
+            .unwrap();
+
+        let calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            |_| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok::<_, ()>(WriterReceipt {
+                    live_config_changed: false,
+                })
+            },
+        )
+        .unwrap();
+        assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(db
+            .get_change_job_by_plan_id(&plan.plan_id)
+            .unwrap()
+            .is_none());
+        assert!(db.list_recoverable_change_jobs().unwrap().is_empty());
+    }
+
+    #[test]
+    #[serial]
     fn stale_expired_and_invalid_requests_never_call_writer() {
         let (_home, _guard, db, state, _current, mut target) = setup_switch_state();
         let calls = AtomicUsize::new(0);

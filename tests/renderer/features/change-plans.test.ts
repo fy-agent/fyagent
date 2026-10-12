@@ -94,4 +94,100 @@ describe("Change Plan strict wire parsers", () => {
       }),
     ).toThrow("Change Job Cancel is unavailable");
   });
+
+  it("allows adding, removing, omitting, or reordering faultPoints without blocking preview while rejecting other errors", () => {
+    const originalFaultPoints = changePlanWire.adapter.faultPoints ?? [];
+
+    // 1. Added fault point does not block preview
+    const withAddedFault = {
+      ...changePlanWire,
+      adapter: {
+        ...changePlanWire.adapter,
+        faultPoints: [
+          ...originalFaultPoints,
+          "unexpected_fault_injection",
+        ],
+      },
+    };
+    expect(parseChangePlan(withAddedFault).planId).toBe(changePlanWire.planId);
+
+    // 2. Reordered fault points do not block preview
+    const withReorderedFault = {
+      ...changePlanWire,
+      adapter: {
+        ...changePlanWire.adapter,
+        faultPoints: [...originalFaultPoints].reverse(),
+      },
+    };
+    expect(parseChangePlan(withReorderedFault).planId).toBe(
+      changePlanWire.planId,
+    );
+
+    // 3. Removed fault point does not block preview
+    const withRemovedFault = {
+      ...changePlanWire,
+      adapter: {
+        ...changePlanWire.adapter,
+        faultPoints: originalFaultPoints.slice(0, 1),
+      },
+    };
+    expect(parseChangePlan(withRemovedFault).planId).toBe(
+      changePlanWire.planId,
+    );
+
+    // 4. Omitted faultPoints completely does not block preview
+    const { faultPoints, ...adapterWithoutFaultPoints } =
+      changePlanWire.adapter;
+    expect(faultPoints).toBeDefined();
+    const withOmittedFault = {
+      ...changePlanWire,
+      adapter: adapterWithoutFaultPoints,
+    };
+    expect(parseChangePlan(withOmittedFault).planId).toBe(
+      changePlanWire.planId,
+    );
+
+    // 5. Version error must still be rejected
+    expect(() =>
+      parseChangePlan({
+        ...changePlanWire,
+        adapter: {
+          ...changePlanWire.adapter,
+          adapterVersion: "2",
+        },
+      }),
+    ).toThrow("Change Plan is unavailable");
+
+    // 6. Operation identity error must still be rejected
+    expect(() =>
+      parseChangePlan({
+        ...changePlanWire,
+        adapter: {
+          ...changePlanWire.adapter,
+          operationType: "workbuddy_models_save",
+        },
+      }),
+    ).toThrow("Change Plan is unavailable");
+
+    // 7. Real read/write set errors must still be rejected
+    expect(() =>
+      parseChangePlan({
+        ...changePlanWire,
+        adapter: {
+          ...changePlanWire.adapter,
+          writeSet: ["arbitrary_file"],
+        },
+      }),
+    ).toThrow("Change Plan is unavailable");
+
+    // 8. Digest error must still be rejected
+    expect(() =>
+      parseChangePlan({
+        ...changePlanWire,
+        planDigest: "not-a-valid-sha256-hex-digest",
+      }),
+    ).toThrow("Change Plan is unavailable");
+  });
 });
+
+

@@ -107,6 +107,39 @@ fn save_mcp_server_on(conn: &Connection, server: &McpServer) -> Result<(), AppEr
     Ok(())
 }
 
+// Serde data errors can contain credentials; retain only safe diagnostics.
+#[derive(Debug)]
+struct McpJsonError {
+    column: &'static str,
+    line: usize,
+    offset: usize,
+    category: serde_json::error::Category,
+}
+
+impl std::fmt::Display for McpJsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}: {:?} JSON error at line {} column {}",
+            self.column, self.category, self.line, self.offset
+        )
+    }
+}
+impl std::error::Error for McpJsonError {}
+
+fn mcp_json_error(index: usize, column: &'static str, error: serde_json::Error) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        index,
+        rusqlite::types::Type::Text,
+        Box::new(McpJsonError {
+            column,
+            line: error.line(),
+            offset: error.column(),
+            category: error.classify(),
+        }),
+    )
+}
+
 fn row_to_mcp_server(row: &Row<'_>) -> rusqlite::Result<(String, McpServer)> {
     let id: String = row.get(0)?;
     let name: String = row.get(1)?;
@@ -125,8 +158,9 @@ fn row_to_mcp_server(row: &Row<'_>) -> rusqlite::Result<(String, McpServer)> {
     let enabled_qoderwork: bool = row.get(14)?;
     let enabled_trae_work: bool = row.get(15)?;
 
-    let server = serde_json::from_str(&server_config_str).unwrap_or_default();
-    let tags = serde_json::from_str(&tags_str).unwrap_or_default();
+    let server = serde_json::from_str(&server_config_str)
+        .map_err(|error| mcp_json_error(2, "server_config", error))?;
+    let tags = serde_json::from_str(&tags_str).map_err(|error| mcp_json_error(6, "tags", error))?;
 
     Ok((
         id.clone(),
@@ -238,23 +272,29 @@ impl Database {
         target: &McpTargetId,
         enabled: bool,
     ) -> Result<Option<McpServer>, AppError> {
-        let conn = lock_conn!(self.conn);
+        let mut conn = lock_conn!(self.conn);
+        let tx = conn
+            .transaction()
+            .map_err(|e| AppError::Database(e.to_string()))?;
         let column = mcp_target_column(target);
         let sql = format!("UPDATE mcp_servers SET {column} = ?1 WHERE id = ?2");
-        let affected = conn
+        let affected = tx
             .execute(&sql, params![enabled, id])
             .map_err(|e| AppError::Database(e.to_string()))?;
         if affected == 0 {
             return Ok(None);
         }
 
-        conn.query_row(
-            &format!("{MCP_SERVER_SELECT} WHERE id = ?1"),
-            params![id],
-            |row| row_to_mcp_server(row).map(|(_, server)| server),
-        )
-        .optional()
-        .map_err(|e| AppError::Database(e.to_string()))
+        let server = tx
+            .query_row(
+                &format!("{MCP_SERVER_SELECT} WHERE id = ?1"),
+                params![id],
+                |row| row_to_mcp_server(row).map(|(_, server)| server),
+            )
+            .optional()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        tx.commit().map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(server)
     }
 
     /// 保存 MCP 服务器
@@ -469,6 +509,166 @@ mod tests {
         );
         assert!(db.get_mcp_server(&unreadable.id).is_err());
         assert!(db.get_all_mcp_servers().is_err());
+    }
+
+    fn assert_invalid_json_is_reported(column: &str, index: usize, value: &str) {
+        let db = Database::memory().expect("create memory db");
+        let server = test_server();
+        db.save_mcp_server(&server).expect("seed server");
+        {
+            let conn = db.conn.lock().expect("lock database");
+            conn.execute(
+                &format!("UPDATE mcp_servers SET {column} = ?1 WHERE id = ?2"),
+                params![value, server.id],
+            )
+            .expect("set invalid JSON");
+            let error = conn
+                .query_row(MCP_SERVER_SELECT, [], row_to_mcp_server)
+                .expect_err("invalid JSON must fail row conversion");
+            match error {
+                rusqlite::Error::FromSqlConversionFailure(actual_index, kind, source) => {
+                    assert_eq!(actual_index, index);
+                    assert_eq!(kind, rusqlite::types::Type::Text);
+                    let json_error = source
+                        .downcast_ref::<McpJsonError>()
+                        .expect("preserve safe JSON diagnostics");
+                    let expected = if column == "tags" {
+                        serde_json::from_str::<Vec<String>>(value)
+                            .unwrap_err()
+                            .classify()
+                    } else {
+                        serde_json::from_str::<serde_json::Value>(value)
+                            .unwrap_err()
+                            .classify()
+                    };
+                    assert_eq!(json_error.category, expected);
+                    assert_eq!(json_error.column, column);
+                    assert_eq!(json_error.line, 1);
+                    assert!(json_error.offset > 0);
+                    assert!(source.to_string().contains(column));
+                    assert!(source.to_string().contains(&format!("{expected:?}")));
+                    assert!(!source.to_string().contains("FAKE_SECRET_DO_NOT_LEAK"));
+                }
+                other => panic!("expected JSON conversion failure, got {other:?}"),
+            }
+        }
+        assert!(matches!(
+            db.get_mcp_server(&server.id),
+            Err(AppError::Database(_))
+        ));
+        assert!(matches!(
+            db.get_all_mcp_servers(),
+            Err(AppError::Database(_))
+        ));
+        for error in [
+            db.get_mcp_server(&server.id).unwrap_err(),
+            db.get_all_mcp_servers().unwrap_err(),
+        ] {
+            let text = error.to_string();
+            assert!(text.contains(column));
+            let category = if column == "tags" {
+                serde_json::from_str::<Vec<String>>(value)
+                    .unwrap_err()
+                    .classify()
+            } else {
+                serde_json::from_str::<serde_json::Value>(value)
+                    .unwrap_err()
+                    .classify()
+            };
+            assert!(text.contains(&format!("{category:?}")));
+            assert!(!text.contains("FAKE_SECRET_DO_NOT_LEAK"));
+        }
+        let stored: String = db
+            .conn
+            .lock()
+            .expect("lock database")
+            .query_row(
+                &format!("SELECT {column} FROM mcp_servers WHERE id = ?1"),
+                params![server.id],
+                |row| row.get(0),
+            )
+            .expect("read original bytes");
+        assert_eq!(stored, value);
+    }
+
+    #[test]
+    fn malformed_server_config_returns_json_conversion_error() {
+        assert_invalid_json_is_reported("server_config", 2, "{");
+    }
+
+    #[test]
+    fn malformed_tags_returns_json_conversion_error() {
+        assert_invalid_json_is_reported("tags", 6, "[");
+    }
+
+    #[test]
+    fn tags_with_invalid_json_type_returns_json_conversion_error() {
+        assert_invalid_json_is_reported("tags", 6, "null");
+    }
+
+    #[test]
+    fn invalid_json_errors_redact_secret_values() {
+        assert_invalid_json_is_reported("tags", 6, r#""FAKE_SECRET_DO_NOT_LEAK""#);
+        assert_invalid_json_is_reported(
+            "server_config",
+            2,
+            r#"{"key":"FAKE_SECRET_DO_NOT_LEAK", invalid}"#,
+        );
+    }
+
+    #[test]
+    fn target_toggle_rolls_back_when_row_json_is_invalid() {
+        let db = Database::memory().expect("create memory db");
+        let server = test_server();
+        db.save_mcp_server(&server).expect("seed server");
+        db.conn
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE mcp_servers SET tags = ?1 WHERE id = ?2",
+                params![r#""FAKE_SECRET_DO_NOT_LEAK""#, server.id],
+            )
+            .unwrap();
+        let error = db
+            .update_mcp_server_target_enabled(&server.id, &McpTargetId::Claude, true)
+            .expect_err("invalid row must roll back toggle")
+            .to_string();
+        assert!(error.contains("tags"));
+        assert!(error.contains("Data"));
+        assert!(!error.contains("FAKE_SECRET_DO_NOT_LEAK"));
+        let stored: (bool, String) = db
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT enabled_claude, tags FROM mcp_servers WHERE id = ?1",
+                params![server.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(!stored.0, "failed toggle must preserve original flag");
+        assert_eq!(stored.1, r#""FAKE_SECRET_DO_NOT_LEAK""#);
+    }
+
+    #[test]
+    fn valid_empty_json_round_trips() {
+        let db = Database::memory().expect("create memory db");
+        let mut expected = test_server();
+        expected.server = serde_json::Value::Null;
+        expected.tags.clear();
+        db.save_mcp_server(&expected).expect("seed empty JSON");
+
+        let single = db
+            .get_mcp_server(&expected.id)
+            .expect("read empty JSON")
+            .expect("server exists");
+        let all = db.get_all_mcp_servers().expect("read all empty JSON");
+        for observed in [&single, all.get(&expected.id).expect("server in list")] {
+            assert_eq!(
+                serde_json::to_value(observed).unwrap(),
+                serde_json::to_value(&expected).unwrap()
+            );
+        }
     }
 
     #[test]

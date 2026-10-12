@@ -738,9 +738,9 @@ pub fn openai_to_anthropic(body: Value) -> Result<Value, ProxyError> {
             "length" => "max_tokens",
             "tool_calls" | "function_call" => "tool_use",
             "content_filter" => "end_turn",
-            other => {
+            _ => {
                 log::warn!(
-                    "[Claude/OpenAI] Unknown finish_reason in non-streaming response: {other}"
+                    "[Claude/OpenAI] Unknown finish_reason in non-streaming response: unknown"
                 );
                 "end_turn"
             }

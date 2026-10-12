@@ -59,15 +59,22 @@ ProviderAdapter::get_auth_headers(...)
 ProviderAdapter::transform_request(...) / transform_response(...)
 ```
 
-Proxy control commands/services remain registered, but the current renderer
-has no general Proxy settings Port or panel. Managed Auth's Local Proxy account
-connection is a separate feature, not that retired UI. Any command caller must
-not supply an arbitrary adapter implementation, retry classifier, upstream
+Proxy control commands/services remain registered. The renderer exposes minimal
+listener settings and LAN access-key controls through About → Proxy settings.
+Managed Auth's Local Proxy account connection remains a separate feature. Any
+command caller must not supply an arbitrary adapter implementation, retry classifier, upstream
 socket, database handle, or raw response-success override.
 
 ## 3. Contracts
 
 ### Server and request context
+
+- Non-loopback listeners require a saved `settings.proxy_access_key` before
+  binding. All HTTP routes and WebSocket handshakes authenticate remote peers
+  using Bearer or `x-api-key`; only the actual TCP loopback peer is exempt.
+  Forwarded address headers never establish that exemption. Compare SHA-256
+  digests with `subtle`, strip the LAN credential before handlers, and never log
+  it. Read the shared in-memory key per request; regeneration updates it before returning so rotation revokes subsequent uses.
 
 - `ProxyServer` owns one listener lifecycle and one shared `ProxyState`. The
   shared `ProviderRouter` retains circuit state across requests; per-request

@@ -2334,6 +2334,8 @@ pub fn run() {
             commands::update_proxy_config,
             // Global & Per-App Config
             commands::get_global_proxy_config,
+            commands::get_proxy_access_key,
+            commands::regenerate_proxy_access_key,
             commands::update_global_proxy_config,
             commands::get_proxy_config_for_app,
             commands::update_proxy_config_for_app,

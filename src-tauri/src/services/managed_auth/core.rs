@@ -264,6 +264,8 @@ pub(crate) enum ManagedAuthCoreError {
     SecretUnavailable,
     #[error("managed auth secret is missing")]
     SecretMissing,
+    #[error("凭据太长，超过可安全保存的上限，无法保存。")]
+    CredentialTooLarge,
     #[error("managed auth data is invalid")]
     InvalidData,
     #[error("managed auth state is stale")]
@@ -284,6 +286,7 @@ impl ManagedAuthCoreError {
             Self::SecretUnavailable | Self::SecretMissing => {
                 ManagedAuthReasonCode::SecretUnavailable
             }
+            Self::CredentialTooLarge => ManagedAuthReasonCode::CredentialTooLarge,
             Self::Stale => ManagedAuthReasonCode::ExternalChangeDetected,
             Self::Conflict => ManagedAuthReasonCode::OperationConflict,
             Self::MigrationBlocked => ManagedAuthReasonCode::MigrationBlocked,

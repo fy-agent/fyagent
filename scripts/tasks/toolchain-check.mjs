@@ -8,12 +8,12 @@ import {
   ROOT,
   capture,
   read,
-  readJson,
   readToml,
   run,
   usageBoolean,
   isPosixTaskHost,
 } from "./lib.mjs";
+import { readToolchainContract } from "../ci/verify-toolchain.mjs";
 import { validateLockfile } from "./lockfile-check.mjs";
 
 const checks = [];
@@ -91,7 +91,6 @@ function findOnPath(command) {
 
 function verifyPython() {
   const expected = read(".python-version").trim();
-  expectEqual(expected, "3.14.7", ".python-version");
   const project = readToml("pyproject.toml");
   expectEqual(
     project.project?.["requires-python"],
@@ -176,24 +175,28 @@ record("uv-managed Python and .venv", verifyPython);
 
 if (!pythonOnly) {
   record("generated tool and lock contract", validateLockfile);
+  const expected = () => readToolchainContract();
   record("Node ownership", () =>
-    verifyTool("node", "24.19.0", ["--version"], (value) =>
+    verifyTool("node", expected().node, ["--version"], (value) =>
       value.replace(/^v/, ""),
     ),
   );
-  record("pnpm ownership", () => verifyTool("pnpm", "10.12.3", ["--version"]));
+  record("pnpm ownership", () =>
+    verifyTool("pnpm", expected().pnpm, ["--version"]),
+  );
   record("uv ownership", () => {
-    const expected = readToml("mise.lock").tools.uv[0].version;
     return verifyTool(
       "uv",
-      expected,
+      expected().uv,
       ["--version"],
       (value) => value.split(/\s+/)[1],
     );
   });
   record("Rust toolchain and components", () => {
+    const expected = readToolchainContract();
     const version = capture("rustc", ["--version"]);
-    if (!version.startsWith("rustc 1.97.1 ")) throw new Error(version);
+    if (!version.startsWith(`rustc ${expected.rust} `))
+      throw new Error(version);
     const components = capture("rustup", ["component", "list", "--installed"]);
     for (const component of ["rustfmt", "clippy"]) {
       if (!new RegExp(`^${component}-`, "m").test(components)) {
@@ -204,12 +207,12 @@ if (!pythonOnly) {
     if (
       !path.isAbsolute(sysroot) ||
       !fs.existsSync(sysroot) ||
-      !sysroot.includes("1.97.1")
+      !sysroot.includes(expected.rust)
     )
       throw new Error(`Unexpected Rust sysroot: ${sysroot}`);
     expectEqual(
       capture("mise", ["current", "rust"]),
-      "1.97.1",
+      expected.rust,
       "mise Rust selection",
     );
     const miseRustc = real(capture("mise", ["which", "rustc"]));
@@ -226,7 +229,7 @@ if (!pythonOnly) {
       }
     }
     const activeToolchain = capture("rustup", ["show", "active-toolchain"]);
-    if (!activeToolchain.startsWith("1.97.1-")) {
+    if (!activeToolchain.startsWith(`${expected.rust}-`)) {
       throw new Error(`Unexpected rustup active toolchain: ${activeToolchain}`);
     }
     return {
@@ -272,27 +275,7 @@ if (!pythonOnly) {
     if (names.size === 0) throw new Error("mise did not load any local tasks");
     return `${names.size} tasks`;
   });
-  record("standard version facts", () => {
-    const packageJson = readJson("package.json");
-    return {
-      node: expectEqual(read(".node-version").trim(), "24.19.0", "Node fact"),
-      pnpm: expectEqual(
-        packageJson.packageManager,
-        "pnpm@10.12.3",
-        "pnpm fact",
-      ),
-      rust: expectEqual(
-        readToml("rust-toolchain.toml").toolchain.channel,
-        "1.97.1",
-        "Rust fact",
-      ),
-      python: expectEqual(
-        read(".python-version").trim(),
-        "3.14.7",
-        "Python fact",
-      ),
-    };
-  });
+  record("standard version facts", expected);
 }
 
 const report = {

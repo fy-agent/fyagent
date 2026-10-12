@@ -39,7 +39,7 @@
     ],
     [
       "scripts/tasks/toolchain-check.mjs",
-      "4714948980c3c66742912d0f7da86fac7bb2e3dcbe067860b5f9db9fd77fc679"
+      "620fb8fa11ebffaf2d9656473d52fc2137b5b8f613f4c24e29136948ba350b51"
     ],
     [
       "scripts/tasks/windows-msvc-cross.mjs",
@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "db6d076601eb6246936e80fdeef4bf3962be93940bd0b153d02f04689dfcc7b6"
+      "370ea37af3768e076cf20631f81b611baa21814099bb12adeb4b871a375740fc"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -155,15 +155,15 @@
     ],
     [
       "src-tauri/src/config.rs",
-      "6a485095be546d9219a348e4bfeae6e8fff61ac800036eace81bbc8b9d6f8ac6"
+      "190e9cff83e40366d807d60ce126f1aec75bc190abd2efd2fb18c78e27c98579"
     ],
     [
       "src-tauri/src/config/recovery.rs",
-      "b314acd83c14aded9af14eac401299cb98aee981c3472541a2211962e1ed2a3e"
+      "ba3aca94909af97faf46f4f6956c57835fec406711b5b81be5eb908dbbe08fed"
     ],
     [
       "src-tauri/src/database/backup.rs",
-      "1339dae9cc561d75ff1c99bf7b3609842c9e689e0837f7db448c5bb34e2ac731"
+      "092c495f4b0c8f465b9114aa65d8eb359dda04b1d565b4422cdb32a3b0d77925"
     ],
     [
       "src-tauri/src/database/backup/recovery_tests.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "401d28cc7f127440dbab36a429e9e98985071573bf135d4e096622cde250c7a1"
+      "b632289d66555d121bb0041d8b5a3a59d9295d56a3e22fe5e049b21b618c7514"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -211,7 +211,7 @@
     ],
     [
       "src-tauri/src/mode/controller.rs",
-      "6d168077c4e41677db16c0ed8af38e4c213311c9ec9c30109eb29eb360b365e5"
+      "0d0e6e21b7b593bd494305a6ce560ba7f48ed4ad509b9b1cf30aedba659eb70d"
     ],
     [
       "src-tauri/src/mode/operation.rs",
@@ -223,7 +223,7 @@
     ],
     [
       "src-tauri/src/opencode_config.rs",
-      "830f3d4ccf3374f491811f64eea934331d836efed6d5a810c5f167321fcb70e7"
+      "888c618411e376fb450f00658c9217bbf260c3d01edcf3c7380f33638c391c12"
     ],
     [
       "src-tauri/src/panic_hook.rs",
@@ -243,15 +243,15 @@
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
-      "77b429fbd122de89b61fa3bf9f39572152b15605cb72e78937fb10702af33644"
+      "7912ada6ed1942b52683726f7d8aca330f7d07b03c9f890835db57ba50c7d59c"
     ],
     [
       "src-tauri/src/proxy/providers/copilot_auth.rs",
-      "d32f136064da7843448917e4c9224ec69e905267b0488372701e9881bb972715"
+      "fc848eccb5131bc414978cdecc50c52fada44cf0ae7ebd7995cdd65f2278ef69"
     ],
     [
       "src-tauri/src/proxy/providers/xai_oauth_auth.rs",
-      "37654d2a840aabdd23cc5aa3cfa2bb4cd7e04d2d413db2e310b752de408403eb"
+      "e89dee38184ab443fc884944d4fde2108f710fce28a1cb9af81f04ce4cf36449"
     ],
     [
       "src-tauri/src/services/backup_storage.rs",
@@ -291,7 +291,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/service.rs",
-      "d32d986a26409d2eec2970c737b3ca20210062f0d4c611932e92bd34c924069c"
+      "9eac6fd92c8fb792833ff64ee1ff8bdd71866da709c0aee3f315e6a19c985cc7"
     ],
     [
       "src-tauri/src/services/managed_auth/subscription_tests.rs",
@@ -319,7 +319,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "6c6443a6db283aa4ce316fe83038032981fc40b1c1dd508f6795735a1066ecbf"
+      "7f3b641d500fdbedc47edb2ceac9af81ea313b782543127f74c1dfea6736f71c"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",
@@ -327,7 +327,7 @@
     ],
     [
       "src-tauri/src/services/proxy.rs",
-      "d86d32aba0fe0833bf58e884209a68532140995c4553a34cd05079b1812ff97a"
+      "fd27638be20a2f96e919e83e6dd96d037bd944f44c8bb7e457be163171a26dcc"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",

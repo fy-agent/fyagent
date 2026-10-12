@@ -169,6 +169,7 @@ export function AgentPromptsSection({
       />
       {entry.promptAppId ? (
         <SupportedPromptProjection
+          key={entry.promptAppId}
           appId={entry.promptAppId}
           displayName={entry.displayName}
         />

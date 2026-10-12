@@ -9,6 +9,50 @@ pub fn map_proxy_error_to_status(error: &ProxyError) -> u16 {
     error.status_code().as_u16()
 }
 
+/// 持久化和诊断日志不信任上游正文；只记录状态和固定分类。
+/// 客户端响应仍由 get_error_message / IntoResponse 保留协议正文。
+pub(super) fn get_log_error_message(error: &ProxyError) -> String {
+    match error {
+        ProxyError::UpstreamError { status, .. } => {
+            let kind = match *status {
+                401 => "unauthorized",
+                403 => "forbidden",
+                429 => "rate limit exceeded",
+                500..=599 => "upstream server error",
+                _ => "upstream error",
+            };
+            format!("上游 HTTP {status}: {kind}")
+        }
+        // HTTP 2xx 的错误信封也会携带不可信正文（包括错误类型字段）。
+        // 保留错误对象供客户端/重试使用，日志和数据库只接收固定分类。
+        ProxyError::TransformError(_) => "请求/响应转换错误: transformation failed".to_string(),
+        // 认证交换、CONNECT 状态行和其他自由文本也可能携带上游正文或凭据。
+        ProxyError::AuthError(_) => "认证失败: authentication failed".to_string(),
+        ProxyError::ForwardFailed(message) if message.contains("connection reset by peer") => {
+            "请求转发失败: connection reset by peer".to_string()
+        }
+        ProxyError::ForwardFailed(_) => "请求转发失败: forwarding failed".to_string(),
+        ProxyError::Timeout(_) => "请求超时: request timed out".to_string(),
+        ProxyError::ConfigError(_) => "配置错误: configuration failed".to_string(),
+        ProxyError::InvalidRequest(_) => "无效的请求: invalid request".to_string(),
+        ProxyError::Internal(_) => "内部错误: internal error".to_string(),
+        ProxyError::ProviderUnhealthy(_) => "Provider 不健康: provider unhealthy".to_string(),
+        ProxyError::DatabaseError(_) => "数据库错误: database error".to_string(),
+        ProxyError::BindFailed(_) => "地址绑定失败: bind failed".to_string(),
+        ProxyError::StopFailed(_) => "停止失败: stop failed".to_string(),
+        ProxyError::RequestBodyTooLarge
+        | ProxyError::ResponseBodyTooLarge(_)
+        | ProxyError::AlreadyRunning
+        | ProxyError::NotRunning
+        | ProxyError::StopTimeout
+        | ProxyError::NoAvailableProvider
+        | ProxyError::AllProvidersCircuitOpen
+        | ProxyError::NoProvidersConfigured
+        | ProxyError::MaxRetriesExceeded
+        | ProxyError::StreamIdleTimeout(_) => get_error_message(error),
+    }
+}
+
 /// 将 ProxyError 转换为用户友好的错误消息
 pub fn get_error_message(error: &ProxyError) -> String {
     match error {
@@ -36,6 +80,80 @@ pub fn get_error_message(error: &ProxyError) -> String {
 mod tests {
     use super::*;
     use axum::response::IntoResponse;
+
+    #[test]
+    fn free_text_diagnostics_use_fixed_categories_without_changing_details() {
+        let detail = "500 Internal Server Error: Authorization: Bearer fake-copilot-key/+=private";
+        for (error, expected) in [
+            (
+                ProxyError::AuthError(detail.into()),
+                "认证失败: authentication failed",
+            ),
+            (
+                ProxyError::ForwardFailed(detail.into()),
+                "请求转发失败: forwarding failed",
+            ),
+            (
+                ProxyError::Timeout(detail.into()),
+                "请求超时: request timed out",
+            ),
+            (
+                ProxyError::ConfigError(detail.into()),
+                "配置错误: configuration failed",
+            ),
+            (
+                ProxyError::InvalidRequest(detail.into()),
+                "无效的请求: invalid request",
+            ),
+            (
+                ProxyError::Internal(detail.into()),
+                "内部错误: internal error",
+            ),
+            (
+                ProxyError::ProviderUnhealthy(detail.into()),
+                "Provider 不健康: provider unhealthy",
+            ),
+            (
+                ProxyError::DatabaseError(detail.into()),
+                "数据库错误: database error",
+            ),
+            (
+                ProxyError::BindFailed(detail.into()),
+                "地址绑定失败: bind failed",
+            ),
+            (
+                ProxyError::StopFailed(detail.into()),
+                "停止失败: stop failed",
+            ),
+            (
+                ProxyError::TransformError(detail.into()),
+                "请求/响应转换错误: transformation failed",
+            ),
+            (
+                ProxyError::ForwardFailed(format!("connection reset by peer: {detail}")),
+                "请求转发失败: connection reset by peer",
+            ),
+        ] {
+            let summary = get_log_error_message(&error);
+            assert_eq!(summary, expected);
+            assert!(!summary.contains("fake-copilot-key"));
+            assert!(!summary.contains("Authorization"));
+            assert!(get_error_message(&error).contains(detail));
+        }
+    }
+
+    #[tokio::test]
+    async fn request_body_overflow_maps_to_413_with_readable_json() {
+        let error = ProxyError::RequestBodyTooLarge;
+        assert_eq!(map_proxy_error_to_status(&error), 413);
+        let response = error.into_response();
+        assert_eq!(response.status().as_u16(), 413);
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["error"]["message"], "请求体超过大小上限");
+    }
 
     #[test]
     fn test_map_upstream_error() {

@@ -523,14 +523,7 @@ fn convert_input_to_messages(
             Some("function_call" | "custom_tool_call" | "tool_search_call")
         ) && item.get("status").and_then(Value::as_str) == Some("incomplete")
         {
-            log::warn!(
-                "[Codex/Anthropic] Dropping incomplete historical tool call: type={}, call_id={}",
-                item_type.unwrap_or("unknown"),
-                item.get("call_id")
-                    .and_then(Value::as_str)
-                    .or_else(|| item.get("id").and_then(Value::as_str))
-                    .unwrap_or("")
-            );
+            log::warn!("[Codex/Anthropic] Dropping incomplete historical tool call");
             continue;
         }
 

@@ -61,6 +61,7 @@ function setup(
   initial?: Partial<AppModeView>,
   stale = false,
   firstProvider?: Provider,
+  readStack?: () => Promise<ProxyStack>,
 ) {
   const ports = createBrowserFeaturePorts();
   let mode: AppModeView = {
@@ -87,7 +88,7 @@ function setup(
   };
   ports.providers.getAll = vi.fn(async () => providers);
   ports.providers.getMode = vi.fn(async () => mode);
-  ports.providers.getStack = vi.fn(async () => stack);
+  ports.providers.getStack = vi.fn(readStack ?? (async () => stack));
   ports.providers.setMode = vi.fn(async (_app, enabled, isStack, route) => {
     mode = {
       ...mode,
@@ -148,6 +149,74 @@ function setup(
 }
 
 describe("upstream provider modes", () => {
+  it("shows Stack read failure instead of an empty count and recovers on retry", async () => {
+    const user = userEvent.setup();
+    let unavailable = true;
+    setup(
+      "codex",
+      { mode: "stack", attached: true },
+      false,
+      undefined,
+      async () => {
+        if (unavailable) throw new Error("database unavailable");
+        return {
+          active: true,
+          members: [
+            { providerId: "A", modelIds: ["ccs-a/model-a"], route: false },
+          ],
+        };
+      },
+    );
+    await user.click(screen.getByRole("tab", { name: "聚合" }));
+    await screen.findByText("无法读取连接模式。", {}, { timeout: 3000 });
+    expect(screen.queryByText(/0 家供应商/)).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "加入聚合" })[0],
+    ).toBeDisabled();
+    unavailable = false;
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByText(/1 家供应商 · 1 个模型/);
+    expect(screen.queryByText("无法读取连接模式。")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "移出聚合" })).toBeEnabled();
+  });
+
+  it("hides cached Stack counts and catalog notices when rereading fails", async () => {
+    const user = userEvent.setup();
+    let unavailable = false;
+    const { ports } = setup(
+      "codex",
+      { mode: "stack", attached: true },
+      false,
+      undefined,
+      async () => {
+        if (unavailable) throw new Error("database unavailable");
+        return {
+          active: true,
+          members: [
+            { providerId: "A", modelIds: ["ccs-a/model-a"], route: false },
+          ],
+          notice: "routeOwnsCatalog",
+        };
+      },
+    );
+    await user.click(screen.getByRole("tab", { name: "聚合" }));
+    await screen.findByText(/1 家供应商 · 1 个模型/);
+    expect(
+      screen.getByRole("button", { name: "使用聚合模型列表" }),
+    ).toBeEnabled();
+    ports.providers.setStackMember = vi.fn(async () => {
+      unavailable = true;
+      return null;
+    });
+    await user.click(screen.getByRole("button", { name: "移出聚合" }));
+    await screen.findByText("无法读取连接模式。", {}, { timeout: 3000 });
+    expect(screen.queryByText(/家供应商 ·/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "使用聚合模型列表" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "移出聚合" })).toBeDisabled();
+  });
+
   it("creates a Codex supplier with image extension explicitly off", async () => {
     const user = userEvent.setup();
     const { ports } = setup("codex");
@@ -173,7 +242,9 @@ describe("upstream provider modes", () => {
       apiFormat: "openai_responses",
       imageExtensionConfigured: true,
     });
-    expect(saved.settingsConfig.config).toContain("requires_openai_auth = true");
+    expect(saved.settingsConfig.config).toContain(
+      "requires_openai_auth = true",
+    );
     expect(saved.settingsConfig.config).not.toContain(
       "x-openai-actor-authorization",
     );

@@ -845,3 +845,272 @@ wire_api = "responses"
     let live = std::fs::read_to_string(get_codex_config_path()).unwrap();
     assert!(live.contains("https://latest.example.invalid/v1"));
 }
+
+#[cfg(feature = "test-hooks")]
+mod manual_import_tests {
+    use super::*;
+    // Use the existing disk-backed, memory-secret fixture so SQLite triggers can
+    // inject real failures without adding production failure switches.
+    fn manual_import_fixture() -> (
+        fyagent_lib::AppState,
+        rusqlite::Connection,
+        serde_json::Value,
+    ) {
+        reset_test_fs();
+        let home = ensure_test_home();
+        let settings = json!({"env": {"ANTHROPIC_AUTH_TOKEN": "test-key"}, "permissions": {"allow": ["Read"]}});
+        let path = home.join(".claude/settings.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_vec(&settings).unwrap()).unwrap();
+        let state = support::create_golden_test_state().unwrap();
+        let conn = rusqlite::Connection::open(home.join(".fyagent/fyagent.db")).unwrap();
+        state
+            .db
+            .set_setting("common_config_claude_cleared", "false")
+            .unwrap();
+        (state, conn, settings)
+    }
+
+    #[test]
+    fn manual_import_bool_reports_post_processing_failure_and_preserves_import() {
+        let _guard = test_mutex().lock().unwrap();
+        let (state, conn, settings) = manual_import_fixture();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_snippet BEFORE INSERT ON settings
+             WHEN NEW.key = 'common_config_claude'
+             BEGIN SELECT RAISE(ABORT, 'FAKE_SECRET_WRITE_FAILURE'); END;",
+        )
+        .unwrap();
+        let error = import_default_config_test_hook(&state, AppType::Claude)
+            .expect_err("bool import must report post-processing failure")
+            .to_string();
+        assert!(error.contains("common_config_save_failed"), "{error}");
+        assert!(!error.contains("FAKE_SECRET_WRITE_FAILURE"), "{error}");
+        assert!(error.contains("主导入已完成且不会回滚"), "{error}");
+        assert_eq!(state.db.get_config_snippet("claude").unwrap(), None);
+        let provider = state
+            .db
+            .get_provider_by_id("default", "claude")
+            .unwrap()
+            .unwrap();
+        assert_eq!(provider.settings_config, settings);
+        assert_eq!(
+            provider.meta.and_then(|meta| meta.common_config_enabled),
+            None,
+            "dependent migration must not run after failed save"
+        );
+        assert_eq!(
+            state.db.get_current_provider("claude").unwrap().as_deref(),
+            Some("default")
+        );
+    }
+
+    #[test]
+    fn manual_import_bool_returns_true_after_successful_post_processing() {
+        let _guard = test_mutex().lock().unwrap();
+        let (state, _conn, _) = manual_import_fixture();
+        assert!(matches!(
+            import_default_config_test_hook(&state, AppType::Claude),
+            Ok(true)
+        ));
+        let snippet = state.db.get_config_snippet("claude").unwrap().unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&snippet).unwrap(),
+            json!({"permissions": {"allow": ["Read"]}})
+        );
+        let provider = state
+            .db
+            .get_provider_by_id("default", "claude")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            provider.meta.and_then(|meta| meta.common_config_enabled),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn manual_import_snippet_write_failures_are_atomic_and_nonfatal() {
+        let _guard = test_mutex().lock().unwrap();
+        for (operation, key) in [
+            ("INSERT", "common_config_claude"),
+            ("DELETE", "common_config_claude_cleared"),
+        ] {
+            let (state, conn, settings) = manual_import_fixture();
+            let row = if operation == "DELETE" { "OLD" } else { "NEW" };
+            conn.execute_batch(&format!(
+                "CREATE TRIGGER fail_snippet BEFORE {operation} ON settings
+             WHEN {row}.key = '{key}' BEGIN SELECT RAISE(ABORT, 'injected write failure'); END;"
+            ))
+            .unwrap();
+            let result =
+                fyagent_lib::import_default_config_with_result_test_hook(&state, AppType::Claude)
+                    .unwrap();
+            assert!(result.value, "the primary import must remain successful");
+            assert_eq!(result.warning_codes, vec!["common_config_save_failed"]);
+            assert!(!result.live_config_changed);
+            assert_eq!(state.db.get_config_snippet("claude").unwrap(), None);
+            assert_eq!(
+                state
+                    .db
+                    .get_setting("common_config_claude_cleared")
+                    .unwrap()
+                    .as_deref(),
+                Some("false")
+            );
+            let provider = state
+                .db
+                .get_provider_by_id("default", "claude")
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                provider.settings_config, settings,
+                "failed save must not normalize the imported row"
+            );
+            assert_eq!(
+                provider.meta.and_then(|meta| meta.common_config_enabled),
+                None,
+                "dependent migration must not run"
+            );
+            assert_eq!(
+                state.db.get_current_provider("claude").unwrap().as_deref(),
+                Some("default")
+            );
+            drop(conn);
+            drop(state);
+        }
+    }
+
+    #[test]
+    fn manual_import_extraction_failure_reports_warning_and_preserves_import() {
+        let _guard = test_mutex().lock().unwrap();
+        let (state, conn, _) = manual_import_fixture();
+        let config_path = get_codex_config_path();
+        std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        std::fs::write(&config_path, "model = \"gpt-5\"\n").unwrap();
+        std::fs::write(get_codex_auth_path(), b"{}").unwrap();
+        // Inject malformed TOML only after the primary import/current writes.
+        // This drives the actual extractor's parsing error, while live stays valid.
+        conn.execute_batch(
+        "CREATE TRIGGER fail_extract AFTER UPDATE OF is_current ON providers
+         WHEN NEW.app_type = 'codex' AND NEW.is_current = 1
+         BEGIN UPDATE providers SET settings_config = '{\"auth\":{},\"config\":\"[broken\"}' WHERE id = NEW.id AND app_type = NEW.app_type; END;"
+    ).unwrap();
+        let result =
+            fyagent_lib::import_default_config_with_result_test_hook(&state, AppType::Codex)
+                .unwrap();
+        assert!(result.value);
+        assert_eq!(result.warning_codes, vec!["common_config_extract_failed"]);
+        assert!(!result.live_config_changed);
+        assert_eq!(state.db.get_config_snippet("codex").unwrap(), None);
+        assert_eq!(
+            state.db.get_setting("common_config_codex_cleared").unwrap(),
+            None
+        );
+        let provider = state
+            .db
+            .get_provider_by_id("default", "codex")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            provider.settings_config,
+            json!({"auth": {}, "config": "[broken"})
+        );
+        assert_eq!(
+            provider.meta.and_then(|meta| meta.common_config_enabled),
+            None
+        );
+        assert_eq!(
+            state.db.get_current_provider("codex").unwrap().as_deref(),
+            Some("default")
+        );
+        assert_eq!(
+            std::fs::read_to_string(config_path).unwrap(),
+            "model = \"gpt-5\"\n"
+        );
+    }
+
+    #[test]
+    fn manual_import_bool_redacts_extraction_error_secret() {
+        let _guard = test_mutex().lock().unwrap();
+        let (state, conn, _) = manual_import_fixture();
+        let config_path = get_codex_config_path();
+        std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        std::fs::write(&config_path, "model = \"gpt-5\"\n").unwrap();
+        std::fs::write(get_codex_auth_path(), b"{}").unwrap();
+        conn.execute_batch(
+            r#"CREATE TRIGGER fail_extract AFTER UPDATE OF is_current ON providers
+             WHEN NEW.app_type = 'codex' AND NEW.is_current = 1
+             BEGIN UPDATE providers SET settings_config = '{"auth":{},"config":"[FAKE_SECRET_TOML"}'
+             WHERE id = NEW.id AND app_type = NEW.app_type; END;"#,
+        )
+        .unwrap();
+        let error = import_default_config_test_hook(&state, AppType::Codex)
+            .expect_err("bool import must report extraction failure")
+            .to_string();
+        assert!(error.contains("common_config_extract_failed"), "{error}");
+        assert!(error.contains("主导入已完成且不会回滚"), "{error}");
+        assert!(!error.contains("FAKE_SECRET_TOML"), "{error}");
+        assert!(!error.contains("[FAKE_SECRET_TOML"), "{error}");
+        assert_eq!(state.db.get_config_snippet("codex").unwrap(), None);
+        assert_eq!(
+            state.db.get_current_provider("codex").unwrap().as_deref(),
+            Some("default")
+        );
+    }
+
+    #[test]
+    fn manual_import_empty_snippet_is_success_without_warning() {
+        let _guard = test_mutex().lock().unwrap();
+        let (state, _conn, _) = manual_import_fixture();
+        let path = ensure_test_home().join(".claude/settings.json");
+        std::fs::write(path, br#"{"env":{"ANTHROPIC_AUTH_TOKEN":"test-key"}}"#).unwrap();
+        let result =
+            fyagent_lib::import_default_config_with_result_test_hook(&state, AppType::Claude)
+                .unwrap();
+        assert!(result.value);
+        assert!(result.warning_codes.is_empty());
+        assert_eq!(state.db.get_config_snippet("claude").unwrap(), None);
+        assert_eq!(
+            state
+                .db
+                .get_setting("common_config_claude_cleared")
+                .unwrap()
+                .as_deref(),
+            Some("false")
+        );
+    }
+
+    #[test]
+    fn manual_import_saved_snippet_runs_dependent_migration() {
+        let _guard = test_mutex().lock().unwrap();
+        let (state, _conn, _) = manual_import_fixture();
+        let result =
+            fyagent_lib::import_default_config_with_result_test_hook(&state, AppType::Claude)
+                .unwrap();
+        assert!(result.value);
+        assert!(result.warning_codes.is_empty());
+        let snippet = state.db.get_config_snippet("claude").unwrap().unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&snippet).unwrap(),
+            json!({"permissions": {"allow": ["Read"]}})
+        );
+        assert_eq!(
+            state
+                .db
+                .get_setting("common_config_claude_cleared")
+                .unwrap(),
+            None
+        );
+        let provider = state
+            .db
+            .get_provider_by_id("default", "claude")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            provider.meta.and_then(|meta| meta.common_config_enabled),
+            Some(true)
+        );
+        assert!(provider.settings_config.get("permissions").is_none());
+    }
+}

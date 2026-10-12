@@ -313,13 +313,26 @@ function PromptsWorkspace({
   const activeEditor = resolveEditor(editor, selected);
 
   const refresh = async (targetApp: PromptAppId): Promise<boolean> => {
+    // A write's readback must not reuse a snapshot requested before it finished.
+    await Promise.all([
+      queryClient.cancelQueries(
+        { queryKey: featureKeys.prompts(targetApp), exact: true },
+        { revert: true },
+      ),
+      queryClient.cancelQueries(
+        { queryKey: featureKeys.promptLiveFile(targetApp), exact: true },
+        { revert: true },
+      ),
+    ]);
     await Promise.all([
       queryClient.invalidateQueries({
         queryKey: featureKeys.prompts(targetApp),
+        exact: true,
         refetchType: "none",
       }),
       queryClient.invalidateQueries({
         queryKey: featureKeys.promptLiveFile(targetApp),
+        exact: true,
         refetchType: "none",
       }),
     ]);

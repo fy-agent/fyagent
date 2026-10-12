@@ -107,13 +107,17 @@ export function ProviderModesPanel({
   const members = stack.data?.members ?? [];
   const defaultId = current?.routeProviderId;
   const hasOfficial = list.some((provider) => isOfficialAccount(app, provider));
-  const staleClients = stack.data?.staleClients;
+  const staleClients = stack.isError ? undefined : stack.data?.staleClients;
   const currentName = list.find(
     (provider) =>
       provider.id ===
       (current?.mode === "direct" ? current.directProviderId : defaultId),
   )?.name;
-  const blocked = disabled || busy || !active;
+  const blocked =
+    disabled ||
+    busy ||
+    !active ||
+    (view === "stack" && (stack.isPending || stack.isError));
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries(
@@ -320,7 +324,9 @@ export function ProviderModesPanel({
           </Button>
         </InlineNotice>
       )}
-      {(mode.isLoading || providers.isLoading) && (
+      {(mode.isLoading ||
+        providers.isLoading ||
+        (view === "stack" && stack.isLoading)) && (
         <Spinner label="正在读取连接模式" />
       )}
       {MODES.map((tab) => (
@@ -362,14 +368,16 @@ export function ProviderModesPanel({
               )}
               {tab.id === "stack" && (
                 <>
-                  <p className="fy-models-muted">
-                    {members.length} 家供应商 ·{" "}
-                    {members.reduce(
-                      (sum, member) => sum + member.modelIds.length,
-                      0,
-                    )}{" "}
-                    个模型
-                  </p>
+                  {stack.data && !stack.isError && (
+                    <p className="fy-models-muted">
+                      {members.length} 家供应商 ·{" "}
+                      {members.reduce(
+                        (sum, member) => sum + member.modelIds.length,
+                        0,
+                      )}{" "}
+                      个模型
+                    </p>
+                  )}
                   {hasOfficial && (
                     <p className="fy-models-muted">
                       {app === "claude"
@@ -377,7 +385,7 @@ export function ProviderModesPanel({
                         : "ChatGPT 官方订阅只能作为默认供应商。"}
                     </p>
                   )}
-                  {stack.data?.notice && (
+                  {!stack.isError && stack.data?.notice && (
                     <InlineNotice tone="warning">
                       {NOTICE_COPY[stack.data.notice]}
                       {stack.data.notice === "routeOwnsCatalog" && (

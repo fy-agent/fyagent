@@ -610,6 +610,10 @@ where
             })
         });
         let admitted = provision_res.map_err(|error| match error {
+            ManagedAuthCoreError::CredentialTooLarge => (
+                ManagedAuthLoginStage::Failed,
+                ManagedAuthReasonCode::CredentialTooLarge,
+            ),
             ManagedAuthCoreError::SecretUnavailable | ManagedAuthCoreError::SecretMissing => (
                 ManagedAuthLoginStage::Failed,
                 ManagedAuthReasonCode::SecretUnavailable,

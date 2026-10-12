@@ -985,7 +985,11 @@ pub async fn switch_provider_with_result(
     .map_err(|e| format!("供应商切换任务执行失败: {e}"))?
 }
 
-fn import_default_config_internal(state: &AppState, app_type: AppType) -> Result<bool, AppError> {
+fn import_default_config_internal(
+    state: &AppState,
+    app_type: AppType,
+    warnings: &mut Vec<String>,
+) -> Result<bool, AppError> {
     // Keep the eligibility checks, live read, Provider/current writes, and
     // command-only post-processing in one per-app critical section. Calling
     // the public service wrapper below would acquire this same lock again.
@@ -1033,28 +1037,37 @@ fn import_default_config_internal(state: &AppState, app_type: AppType) -> Result
     let imported = ProviderService::import_default_config_with_lock_held(state, app_type.clone())?;
 
     if imported {
-        // Extract common config snippet (mirrors old startup logic in lib.rs)
-        if state
-            .db
-            .should_auto_extract_config_snippet(app_type.as_str())?
-        {
-            match ProviderService::extract_common_config_snippet(state, app_type.clone()) {
-                Ok(snippet) if !snippet.is_empty() && snippet != "{}" => {
-                    let _ = state
-                        .db
-                        .set_config_snippet(app_type.as_str(), Some(snippet));
-                    let _ = state
-                        .db
-                        .set_config_snippet_cleared(app_type.as_str(), false);
-                }
-                _ => {}
-            }
-        }
-
-        ProviderService::migrate_legacy_common_config_usage_if_needed(state, app_type.clone())?;
+        finish_manual_import(state, app_type, warnings);
     }
 
     Ok(imported)
+}
+
+// The provider import is already committed. Report post-processing failures
+// separately and never migrate against an unsaved snippet.
+fn finish_manual_import(state: &AppState, app_type: AppType, warnings: &mut Vec<String>) {
+    let result = (|| {
+        let extract = state
+            .db
+            .should_auto_extract_config_snippet(app_type.as_str())
+            .map_err(|_| "common_config_check_failed")?;
+        if extract {
+            let snippet = ProviderService::extract_common_config_snippet(state, app_type.clone())
+                .map_err(|_| "common_config_extract_failed")?;
+            if !snippet.is_empty() && snippet != "{}" {
+                state
+                    .db
+                    .save_extracted_config_snippet(app_type.as_str(), &snippet)
+                    .map_err(|_| "common_config_save_failed")?;
+            }
+        }
+        ProviderService::migrate_legacy_common_config_usage_if_needed(state, app_type)
+            .map_err(|_| "common_config_migration_failed")
+    })();
+    if let Err(code) = result {
+        log::warn!("{code}");
+        warnings.push(code.to_string());
+    }
 }
 
 #[cfg_attr(not(feature = "test-hooks"), doc(hidden))]
@@ -1062,13 +1075,21 @@ pub fn import_default_config_test_hook(
     state: &AppState,
     app_type: AppType,
 ) -> Result<bool, AppError> {
-    import_default_config_internal(state, app_type)
+    let mut warnings = Vec::new();
+    let imported = import_default_config_internal(state, app_type, &mut warnings)?;
+    if !warnings.is_empty() {
+        return Err(AppError::Message(format!(
+            "主导入已完成且不会回滚，但公共配置后处理（提取检查/提取/保存/迁移）失败: {}",
+            warnings.join(", ")
+        )));
+    }
+    Ok(imported)
 }
 
 #[tauri::command]
 pub fn import_default_config(state: State<'_, AppState>, app: String) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    import_default_config_internal(&state, app_type).map_err(Into::into)
+    import_default_config_test_hook(state.inner(), app_type).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -1077,11 +1098,22 @@ pub fn import_default_config_with_result(
     app: String,
 ) -> Result<ProviderMutationResult<bool>, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
+    import_default_config_with_result_test_hook(state.inner(), app_type)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg_attr(not(feature = "test-hooks"), doc(hidden))]
+pub fn import_default_config_with_result_test_hook(
+    state: &AppState,
+    app_type: AppType,
+) -> Result<ProviderMutationResult<bool>, AppError> {
     let mutation_app_type = app_type.clone();
-    ProviderService::with_live_config_result(app_type, || {
-        import_default_config_internal(state.inner(), mutation_app_type)
-    })
-    .map_err(|error| error.to_string())
+    let mut warnings = Vec::new();
+    let mut result = ProviderService::with_live_config_result(app_type, || {
+        import_default_config_internal(state, mutation_app_type, &mut warnings)
+    })?;
+    result.warning_codes = warnings;
+    Ok(result)
 }
 
 #[tauri::command]

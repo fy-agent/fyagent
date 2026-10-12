@@ -88,6 +88,29 @@ impl Database {
         }
     }
 
+    /// 原子保存提取出的片段，并重置显式清空标记。
+    pub fn save_extracted_config_snippet(
+        &self,
+        app_type: &str,
+        snippet: &str,
+    ) -> Result<(), AppError> {
+        let mut conn = lock_conn!(self.conn);
+        let tx = conn
+            .transaction()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        tx.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+            params![format!("common_config_{app_type}"), snippet],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        tx.execute(
+            "DELETE FROM settings WHERE key = ?1",
+            params![Self::config_snippet_cleared_key(app_type)],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        tx.commit().map_err(|e| AppError::Database(e.to_string()))
+    }
+
     /// 当前是否允许从 live 配置自动抽取通用配置片段
     pub fn should_auto_extract_config_snippet(&self, app_type: &str) -> Result<bool, AppError> {
         Ok(self.get_config_snippet(app_type)?.is_none()

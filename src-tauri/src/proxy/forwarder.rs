@@ -507,7 +507,8 @@ impl RequestForwarder {
                 &retry_err,
                 format!(
                     "Provider {} {rectifier_label}重试失败: {}",
-                    provider.name, retry_err
+                    provider.name,
+                    summarize_proxy_error(&retry_err)
                 ),
             )
             .await;
@@ -613,7 +614,7 @@ impl RequestForwarder {
                 app_type_str,
                 used_half_open_permit,
                 false,
-                Some(error.to_string()),
+                Some(summarize_proxy_error(error)),
             )
             .await;
         self.status.write().await.last_error = Some(last_error);
@@ -631,7 +632,8 @@ impl RequestForwarder {
             self.router
                 .release_permit_neutral(&provider.id, app_type_str, used_half_open_permit)
                 .await;
-            self.record_failed_request(error.to_string()).await;
+            let last_error = summarize_proxy_error(&error);
+            self.record_failed_request(last_error).await;
         }
         ForwardError {
             error,
@@ -880,7 +882,8 @@ impl RequestForwarder {
                                 }
                                 Err(retry_err) => {
                                     log::warn!(
-                                        "[{app_type_str}] [Media] Unsupported-image retry still failed: {retry_err}"
+                                        "[{app_type_str}] [Media] Unsupported-image retry still failed: {}",
+                                        summarize_proxy_error(&retry_err)
                                     );
                                     if let Some(err) = self
                                         .handle_rectifier_retry_failure(
@@ -951,7 +954,8 @@ impl RequestForwarder {
                                 // 决定是否计入熔断、是否换下一家。
                                 Err(retry_err) => {
                                     log::warn!(
-                                        "[{app_type_str}] [RECT-022] 密文整流重试仍失败: {retry_err}"
+                                        "[{app_type_str}] [RECT-022] 密文整流重试仍失败: {}",
+                                        summarize_proxy_error(&retry_err)
                                     );
                                     e = retry_err;
                                 }
@@ -1027,7 +1031,8 @@ impl RequestForwarder {
                                     }
                                     Err(retry_err) => {
                                         log::warn!(
-                                            "[{app_type_str}] [RECT-003] 整流重试仍失败: {retry_err}"
+                                            "[{app_type_str}] [RECT-003] 整流重试仍失败: {}",
+                                            summarize_proxy_error(&retry_err)
                                         );
                                         if let Some(err) = self
                                             .handle_rectifier_retry_failure(
@@ -1088,10 +1093,12 @@ impl RequestForwarder {
                             }
 
                             log::info!(
-                                "[{}] [RECT-010] thinking budget 整流器触发, before={:?}, after={:?}",
+                                "[{}] [RECT-010] thinking budget 整流器触发, before_max_tokens={:?}, before_budget_tokens={:?}, after_max_tokens={:?}, after_budget_tokens={:?}",
                                 app_type_str,
-                                budget_rectified.before,
-                                budget_rectified.after
+                                budget_rectified.before.max_tokens,
+                                budget_rectified.before.thinking_budget_tokens,
+                                budget_rectified.after.max_tokens,
+                                budget_rectified.after.thinking_budget_tokens
                             );
 
                             let _ = std::mem::replace(&mut budget_rectifier_retried, true);
@@ -1123,7 +1130,8 @@ impl RequestForwarder {
                                 }
                                 Err(retry_err) => {
                                     log::warn!(
-                                        "[{app_type_str}] [RECT-012] budget 整流重试仍失败: {retry_err}"
+                                        "[{app_type_str}] [RECT-012] budget 整流重试仍失败: {}",
+                                        summarize_proxy_error(&retry_err)
                                     );
                                     if let Some(err) = self
                                         .handle_rectifier_retry_failure(
@@ -1169,17 +1177,21 @@ impl RequestForwarder {
                                 app_type_str,
                                 used_half_open_permit,
                                 &e,
-                                format!("Provider {} 失败: {}", provider.name, e),
+                                format!(
+                                    "Provider {} 失败: {}",
+                                    provider.name,
+                                    summarize_proxy_error(&e)
+                                ),
                             )
                             .await;
 
-                            let (log_code, log_message) = build_retryable_failure_log(
+                            log_retryable_failure(
+                                app_type_str,
                                 &provider.name,
                                 attempted_providers,
                                 providers.len(),
                                 &e,
                             );
-                            log::warn!("[{app_type_str}] [{log_code}] {log_message}");
 
                             last_error = Some(e);
                             last_provider = Some(provider.clone());
@@ -1512,11 +1524,7 @@ impl RequestForwarder {
 
                 // 只在动态 endpoint 与当前 base_url 不同时替换
                 if dynamic_endpoint != base_url {
-                    log::debug!(
-                        "[Copilot] 使用动态 API endpoint: {} (原: {})",
-                        dynamic_endpoint,
-                        base_url
-                    );
+                    log::debug!("[Copilot] 使用动态 API endpoint");
                     base_url = dynamic_endpoint;
                 }
             }
@@ -2686,7 +2694,10 @@ impl RequestForwarder {
             .get("model")
             .and_then(|v| v.as_str())
             .unwrap_or("<none>");
-        log::info!("[{tag}] >>> 请求目标: {target_for_log} (model={request_model})");
+        log::info!(
+            "[{tag}] >>> 请求目标: {target_for_log} (model_present={})",
+            request_model != "<none>"
+        );
         log::debug!(
             "[{tag}] >>> 请求体已准备: bytes={}, hash={} (content omitted)",
             body_bytes.len(),
@@ -3169,8 +3180,8 @@ impl RequestForwarder {
 
         let models = match models_result {
             Ok(m) => m,
-            Err(err) => {
-                log::debug!("[Copilot] live model list unavailable, skip resolution: {err}");
+            Err(_) => {
+                log::debug!("[Copilot] live model list unavailable, skip resolution: model lookup failed (details omitted)");
                 return;
             }
         };
@@ -3178,7 +3189,7 @@ impl RequestForwarder {
         if let Some(resolved) =
             super::providers::copilot_model_map::resolve_against_models(&model_id, &models)
         {
-            log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
+            log::info!("[Copilot] live-model resolve: resolved");
             body["model"] = serde_json::Value::String(resolved);
         }
     }
@@ -3213,9 +3224,9 @@ impl RequestForwarder {
                 );
                 false
             }
-            Err(err) => {
+            Err(_) => {
                 log::warn!(
-                    "[Copilot] Failed to resolve model vendor for {model_id}, fallback to chat/completions: {err}"
+                    "[Copilot] Failed to resolve model vendor for {model_id}, fallback to chat/completions: model lookup failed (details omitted)"
                 );
                 false
             }
@@ -3283,6 +3294,7 @@ impl RequestForwarder {
 fn extract_error_message(error: &ProxyError) -> Option<String> {
     match error {
         ProxyError::UpstreamError { body, .. } => body.clone(),
+        ProxyError::TransformError(message) => Some(message.clone()),
         _ => Some(error.to_string()),
     }
 }
@@ -3303,6 +3315,18 @@ fn refresh_success_rate(status: &mut ProxyStatus) {
         status.success_rate =
             (status.success_requests as f32 / status.total_requests as f32) * 100.0;
     }
+}
+
+pub(super) fn log_retryable_failure(
+    app_type_str: &str,
+    provider_name: &str,
+    attempted_providers: usize,
+    total_providers: usize,
+    error: &ProxyError,
+) {
+    let (log_code, log_message) =
+        build_retryable_failure_log(provider_name, attempted_providers, total_providers, error);
+    log::warn!("[{app_type_str}] [{log_code}] {log_message}");
 }
 
 fn build_retryable_failure_log(
@@ -3350,63 +3374,7 @@ fn build_terminal_failure_log(
 }
 
 fn summarize_proxy_error(error: &ProxyError) -> String {
-    match error {
-        ProxyError::UpstreamError { status, body } => {
-            let body_summary = body
-                .as_deref()
-                .map(summarize_upstream_body)
-                .filter(|summary| !summary.is_empty());
-
-            match body_summary {
-                Some(summary) => format!("上游 HTTP {status}: {summary}"),
-                None => format!("上游 HTTP {status}"),
-            }
-        }
-        ProxyError::Timeout(message) => {
-            format!("请求超时: {}", summarize_text_for_log(message, 180))
-        }
-        ProxyError::ForwardFailed(message) => {
-            format!("请求转发失败: {}", summarize_text_for_log(message, 180))
-        }
-        ProxyError::TransformError(message) => {
-            format!("响应转换失败: {}", summarize_text_for_log(message, 180))
-        }
-        ProxyError::ConfigError(message) => {
-            format!("配置错误: {}", summarize_text_for_log(message, 180))
-        }
-        ProxyError::AuthError(message) => {
-            format!("认证失败: {}", summarize_text_for_log(message, 180))
-        }
-        _ => summarize_text_for_log(&error.to_string(), 180),
-    }
-}
-
-fn summarize_upstream_body(body: &str) -> String {
-    if let Ok(json_body) = serde_json::from_str::<Value>(body) {
-        if let Some(message) = extract_json_error_message(&json_body) {
-            return summarize_text_for_log(&message, 180);
-        }
-
-        if let Ok(compact_json) = serde_json::to_string(&json_body) {
-            return summarize_text_for_log(&compact_json, 180);
-        }
-    }
-
-    summarize_text_for_log(body, 180)
-}
-
-fn extract_json_error_message(body: &Value) -> Option<String> {
-    let candidates = [
-        body.pointer("/error/message"),
-        body.pointer("/message"),
-        body.pointer("/detail"),
-        body.pointer("/error"),
-    ];
-
-    candidates
-        .into_iter()
-        .flatten()
-        .find_map(|value| value.as_str().map(ToString::to_string))
+    summarize_text_for_log(&super::error_mapper::get_log_error_message(error), 180)
 }
 
 fn split_endpoint_and_query(endpoint: &str) -> (&str, Option<&str>) {
@@ -4262,7 +4230,7 @@ fn apply_local_proxy_header_overrides(
         }
 
         let Ok(name) = http::HeaderName::from_bytes(header_name.as_bytes()) else {
-            log::warn!("[LocalProxyOverrides] Ignoring invalid header override name: {raw_name}");
+            log::warn!("[LocalProxyOverrides] Ignoring invalid header override name");
             continue;
         };
 
@@ -4275,10 +4243,7 @@ fn apply_local_proxy_header_overrides(
         }
 
         let Ok(value) = http::HeaderValue::from_str(raw_value) else {
-            log::warn!(
-                "[LocalProxyOverrides] Ignoring invalid header override value for {}",
-                name.as_str()
-            );
+            log::warn!("[LocalProxyOverrides] Ignoring invalid header override value");
             continue;
         };
 
@@ -4398,7 +4363,15 @@ fn cache_control_summary(value: &Value) -> String {
                         .get("ttl")
                         .and_then(Value::as_str)
                         .unwrap_or("default");
-                    ttls.insert(ttl.to_string());
+                    ttls.insert(
+                        match ttl {
+                            "5m" => "5m",
+                            "1h" => "1h",
+                            "default" => "default",
+                            _ => "unknown",
+                        }
+                        .to_string(),
+                    );
                 }
                 for child in object.values() {
                     walk(child, count, ttls);
@@ -4430,7 +4403,7 @@ fn value_for_log(value: &Value) -> String {
     match value {
         Value::Bool(value) => value.to_string(),
         Value::Number(value) => value.to_string(),
-        Value::String(value) => value.clone(),
+        Value::String(_) => "string".to_string(),
         Value::Null => "null".to_string(),
         Value::Array(values) => format!("array(len={})", values.len()),
         Value::Object(values) => format!("object(len={})", values.len()),
@@ -4695,6 +4668,190 @@ mod tests {
     }
 
     #[test]
+    fn upstream_diagnostics_never_include_untrusted_error_body() {
+        for status in [401, 429, 500] {
+            let error = ProxyError::UpstreamError { status, body: Some(
+                r#"{"error":{"message":"Authorization: Bearer fake-key/+ refreshed-token fake-key%2F%2B private-prompt"}}"#.repeat(100)
+            ) };
+            let (_, retry) = build_retryable_failure_log("test", 1, 2, &error);
+            let (_, terminal) = build_terminal_failure_log(2, 2, Some(&error)).unwrap();
+            for message in [
+                retry,
+                terminal,
+                error.to_string(),
+                super::super::error_mapper::get_log_error_message(&error),
+            ] {
+                assert!(message.contains(&status.to_string()));
+                assert!(message.len() <= 256);
+                for secret in [
+                    "Authorization",
+                    "fake-key",
+                    "refreshed-token",
+                    "private-prompt",
+                    "%2F%2B",
+                ] {
+                    assert!(!message.contains(secret), "diagnostic leaked {secret}");
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn free_text_failures_store_fixed_health_and_status_summaries() {
+        let db = Arc::new(Database::memory().unwrap());
+        let mut forwarder = test_forwarder(Duration::ZERO, Duration::ZERO);
+        forwarder.router = Arc::new(ProviderRouter::new(db.clone()));
+        let provider = test_provider_with_type(None);
+        db.save_provider("claude", &provider).unwrap();
+        let detail = "500 Internal Server Error: Authorization: Bearer fake-copilot-key/+=private";
+        for error in [
+            ProxyError::AuthError(format!("GitHub Copilot 认证失败: {detail}")),
+            ProxyError::ForwardFailed(format!("Proxy CONNECT rejected: {detail}")),
+            ProxyError::ConfigError(detail.into()),
+            ProxyError::Timeout(detail.into()),
+        ] {
+            assert_eq!(
+                forwarder.categorize_proxy_error(&error, &provider),
+                ErrorCategory::Retryable
+            );
+            let summary = summarize_proxy_error(&error);
+            assert_eq!(
+                summary,
+                super::super::error_mapper::get_log_error_message(&error)
+            );
+            forwarder
+                .record_provider_failure(
+                    &provider,
+                    "claude",
+                    false,
+                    &error,
+                    format!("Provider {} 失败: {summary}", provider.name),
+                )
+                .await;
+            let health = db
+                .get_provider_health(&provider.id, "claude")
+                .await
+                .unwrap();
+            assert_eq!(health.last_error.as_deref(), Some(summary.as_str()));
+            assert_eq!(
+                forwarder.status.read().await.last_error.as_deref(),
+                Some(format!("Provider {} 失败: {summary}", provider.name).as_str())
+            );
+            let (_, terminal) = build_terminal_failure_log(2, 2, Some(&error)).unwrap();
+            assert!(terminal.contains(&summary));
+            assert!(!terminal.contains("fake-copilot-key"));
+            assert!(!summary.contains("Authorization"));
+        }
+        let error = ProxyError::InvalidRequest(detail.into());
+        let failure = forwarder
+            .finish_neutral_failure(error, &provider, "claude", false)
+            .await;
+        assert!(matches!(failure.error, ProxyError::InvalidRequest(message) if message == detail));
+        assert_eq!(
+            forwarder.status.read().await.last_error.as_deref(),
+            Some("无效的请求: invalid request")
+        );
+        assert_eq!(
+            db.get_provider_health(&provider.id, "claude")
+                .await
+                .unwrap()
+                .consecutive_failures,
+            4
+        );
+    }
+
+    #[tokio::test]
+    async fn success_error_envelope_logs_never_include_body_secrets() {
+        let forwarder = test_forwarder(Duration::ZERO, Duration::ZERO);
+        let secret = "sk-test-2xx-body-secret";
+        for anthropic in [true, false] {
+            // 类型、code 和 message 都是不可信的上游正文。
+            let body = json!({
+                "type": "error", "status": "failed",
+                "error": {"type": secret, "code": secret, "message": secret}
+            });
+            let response = ProxyResponse::buffered(
+                StatusCode::OK,
+                HeaderMap::new(),
+                Bytes::from(serde_json::to_vec(&body).unwrap()),
+            );
+            let result = if anthropic {
+                forwarder
+                    .validate_codex_anthropic_success_response(response)
+                    .await
+            } else {
+                forwarder
+                    .validate_responses_success_response(response)
+                    .await
+            };
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("HTTP 200 error envelope must fail validation"),
+            };
+            assert!(matches!(&error, ProxyError::TransformError(_)));
+            assert!(!error.to_string().contains(secret));
+            let persisted = super::super::error_mapper::get_log_error_message(&error);
+            assert_eq!(persisted, "请求/响应转换错误: transformation failed");
+            for message in [
+                persisted,
+                summarize_proxy_error(&error),
+                build_retryable_failure_log("test-provider", 1, 1, &error).1,
+                build_retryable_failure_log("test-provider", 1, 2, &error).1,
+                build_terminal_failure_log(2, 2, Some(&error)).unwrap().1,
+            ] {
+                assert!(!message.contains(secret), "secret leaked: {message}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn success_error_envelopes_preserve_retry_and_client_details() {
+        use axum::response::IntoResponse;
+
+        let forwarder = test_forwarder(Duration::ZERO, Duration::ZERO);
+        let message = "thinking.budget_tokens: Input should be greater than or equal to 1024; fake-json-key/+=private";
+        for anthropic in [true, false] {
+            let body = json!({"type": "error", "status": "failed",
+                "error": {"type": "invalid_request_error", "message": message}});
+            let response = ProxyResponse::buffered(
+                StatusCode::OK,
+                HeaderMap::new(),
+                Bytes::from(serde_json::to_vec(&body).unwrap()),
+            );
+            let result = if anthropic {
+                forwarder
+                    .validate_codex_anthropic_success_response(response)
+                    .await
+            } else {
+                forwarder
+                    .validate_responses_success_response(response)
+                    .await
+            };
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("HTTP 200 error envelope must fail validation"),
+            };
+            let internal = extract_error_message(&error).unwrap();
+            assert!(internal.contains(message));
+            assert!(should_rectify_thinking_budget(
+                Some(&internal),
+                &forwarder.rectifier_config
+            ));
+            assert!(!error.to_string().contains("fake-json-key"));
+            let response = error.into_response();
+            assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+            let bytes = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            let value: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(
+                value["error"]["message"],
+                format!("格式转换错误: {internal}")
+            );
+        }
+    }
+
+    #[test]
     fn single_provider_retryable_log_uses_single_provider_code() {
         let error = ProxyError::UpstreamError {
             status: 429,
@@ -4706,7 +4863,7 @@ mod tests {
         assert_eq!(code, log_fwd::SINGLE_PROVIDER_FAILED);
         assert!(message.contains("Provider PackyCode-response 请求失败"));
         assert!(message.contains("上游 HTTP 429"));
-        // 上游错误消息保留(截断)，用于诊断失败原因。
+        // 日志保留固定 HTTP 分类，用于诊断失败原因。
         assert!(message.contains("rate limit exceeded"));
         assert!(!message.contains("切换下一个"));
     }
@@ -7201,7 +7358,7 @@ mod tests {
                     failed: 1,
                     success_rate: 0.0,
                     failover_count: 0,
-                    last_error: Some(err.error.to_string()),
+                    last_error: Some("上游 HTTP 400: upstream error".into()),
                     attempting: Some("p1".into()),
                     in_use: None,
                 }
@@ -7320,7 +7477,7 @@ mod tests {
             let up = upstream(vec![error(400, SIGNATURE_ERROR), error(400, "still bad")]).await;
             let fwd = forwarder(1, "p1");
 
-            let err = expect_err(
+            let _err = expect_err(
                 send(
                     &fwd,
                     vec![provider("p1", &up)],
@@ -7337,7 +7494,7 @@ mod tests {
                     failed: 1,
                     success_rate: 0.0,
                     failover_count: 0,
-                    last_error: Some(err.error.to_string()),
+                    last_error: Some("上游 HTTP 400: upstream error".into()),
                     attempting: Some("p1".into()),
                     in_use: None,
                 }
@@ -7383,7 +7540,7 @@ mod tests {
             let up = upstream(vec![error(400, SIGNATURE_ERROR)]).await;
             let fwd = forwarder(1, "p1");
 
-            let err = expect_err(send(&fwd, vec![provider("p1", &up)], plain_body()).await);
+            let _err = expect_err(send(&fwd, vec![provider("p1", &up)], plain_body()).await);
 
             assert_eq!(
                 books(&fwd).await,
@@ -7393,7 +7550,7 @@ mod tests {
                     failed: 1,
                     success_rate: 0.0,
                     failover_count: 0,
-                    last_error: Some(err.error.to_string()),
+                    last_error: Some("上游 HTTP 400: upstream error".into()),
                     attempting: Some("p1".into()),
                     in_use: None,
                 }
@@ -7439,7 +7596,7 @@ mod tests {
             let up = upstream(vec![error(400, BUDGET_ERROR)]).await;
             let fwd = forwarder(1, "p1");
 
-            let err = expect_err(
+            let _err = expect_err(
                 send(
                     &fwd,
                     vec![provider("p1", &up)],
@@ -7456,7 +7613,7 @@ mod tests {
                     failed: 1,
                     success_rate: 0.0,
                     failover_count: 0,
-                    last_error: Some(err.error.to_string()),
+                    last_error: Some("上游 HTTP 400: upstream error".into()),
                     attempting: Some("p1".into()),
                     in_use: None,
                 }

@@ -3609,6 +3609,35 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
+    fn opencode_oversized_grant_is_rejected_before_secret_write() {
+        let (service, dir, backend) = service_with_shared_memory();
+        let _home = TestHome::set(dir.path());
+        let mut input = opencode_input("opencode-oversized-grant");
+        input.access_token = Some(Zeroizing::new(
+            "a".repeat(crate::services::secret::MAX_SECRET_BYTES + 1),
+        ));
+
+        // Login admission must reject oversized credentials before vault writes
+        // or Ready status; begin_provisioning may leave a non-Ready metadata row.
+        assert!(matches!(
+            service.provision_legacy_credential(input),
+            Err(ManagedAuthCoreError::CredentialTooLarge)
+        ));
+        let rows = service
+            .repository
+            .list_all_credentials()
+            .expect("credentials after rejected save");
+        assert!(!rows.is_empty(), "provisioning metadata must exist");
+        for row in &rows {
+            assert_ne!(row.credential.status, CredentialStatus::Ready);
+            assert!(!backend.contains(row.credential.secret_handle.secret_ref()));
+        }
+        assert_eq!(backend.operation_count(), 0, "no secret backend operations");
+        assert!(!service.opencode_auth_path().exists());
+    }
+
+    #[test]
+    #[serial_test::serial]
     fn opencode_connect_projects_independent_session_and_rejects_proxy_lineage() {
         let (service, dir) = service_with_memory();
         let _home = TestHome::set(dir.path());
