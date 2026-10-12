@@ -48,7 +48,8 @@ async fn authenticate_lan_request(
         peer.0.ip().is_loopback()
             || matches!(peer.0.ip(), std::net::IpAddr::V6(ip) if ip.to_ipv4_mapped().is_some_and(|ip| ip.is_loopback()))
     });
-    let expected = match state.access_key.read().await.clone() {
+    let access_key = state.access_key.read().await.clone();
+    let expected = match access_key {
         Ok(Some(key)) if !key.is_empty() => key,
         Err(_) => {
             return (
@@ -174,6 +175,14 @@ impl ProxyServer {
     #[cfg(test)]
     pub(crate) async fn cached_access_key_for_test(&self) -> Option<String> {
         self.state.access_key.read().await.as_ref().unwrap().clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn authenticate_router_for_test(&self, router: Router) -> Router {
+        router.layer(axum::middleware::from_fn_with_state(
+            self.state.clone(),
+            authenticate_lan_request,
+        ))
     }
 
     pub(crate) async fn update_access_key(&self, key: String) {

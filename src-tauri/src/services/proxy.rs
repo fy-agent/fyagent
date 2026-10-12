@@ -453,6 +453,9 @@ impl SavedProxyConfig {
 
 impl ProxyService {
     pub async fn regenerate_proxy_access_key(&self) -> Result<String, String> {
+        let _restore_guard = crate::services::database_restore::restore_mutex()
+            .lock()
+            .await;
         let _start_guard = self.start_lock.lock().await;
         let server_guard = self.server.write().await;
         let key = self
@@ -10780,7 +10783,33 @@ experimental_bearer_token = "PROXY_MANAGED"
         let service = ProxyService::new(db.clone());
         *service.server.write().await =
             Some(ProxyServer::new(ProxyConfig::default(), db.clone(), None));
-        let new = service.regenerate_proxy_access_key().await.unwrap();
+        let restore_guard = crate::services::database_restore::restore_mutex()
+            .lock()
+            .await;
+        let mut rotation = std::pin::pin!(service.regenerate_proxy_access_key());
+        assert!(
+            std::future::poll_fn(|cx| std::task::Poll::Ready(
+                std::future::Future::poll(rotation.as_mut(), cx).is_pending()
+            ))
+            .await
+        );
+        assert_eq!(
+            db.get_setting("proxy_access_key").unwrap(),
+            Some(old.clone())
+        );
+        assert_eq!(
+            service
+                .server
+                .read()
+                .await
+                .as_ref()
+                .unwrap()
+                .cached_access_key_for_test()
+                .await,
+            Some(old.clone())
+        );
+        drop(restore_guard);
+        let new = rotation.await.unwrap();
         assert_ne!(new, old);
         assert_eq!(
             db.get_setting("proxy_access_key").unwrap(),
@@ -10810,6 +10839,130 @@ experimental_bearer_token = "PROXY_MANAGED"
                 .await,
             Some(new)
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn binary_restore_keeps_rotated_key_and_strips_it_before_upstream() {
+        use axum::{http::StatusCode, routing::get, Router};
+        use tower::Service;
+
+        let _home = TempHome::new();
+        let db = Arc::new(Database::init().unwrap());
+        let old = db.regenerate_proxy_access_key().unwrap();
+        let mut config = db.get_global_proxy_config().await.unwrap();
+        config.listen_address = "0.0.0.0".into();
+        config.listen_port = 0;
+        db.update_global_proxy_config(config).await.unwrap();
+        let service = ProxyService::new(db.clone());
+        let info = service.start().await.unwrap();
+        assert_ne!(info.port, 0);
+        let backup = db.backup_database_file().unwrap().unwrap();
+        let original_backup = std::fs::read(&backup).unwrap();
+        let new = service.regenerate_proxy_access_key().await.unwrap();
+        assert_ne!(old, new);
+        {
+            let _restore_guard = crate::services::database_restore::restore_mutex()
+                .lock()
+                .await;
+            db.restore_from_backup(backup.file_name().unwrap().to_str().unwrap())
+                .unwrap();
+        }
+
+        let displayed = db.get_setting("proxy_access_key").unwrap().unwrap();
+        assert_eq!(displayed, new);
+        assert_eq!(std::fs::read(&backup).unwrap(), original_backup);
+        let server_guard = service.server.read().await;
+        let server = server_guard.as_ref().unwrap();
+        assert_eq!(
+            server.cached_access_key_for_test().await,
+            Some(displayed.clone())
+        );
+        assert!(server.get_status().await.running);
+
+        let upstream = Router::new().route(
+            "/",
+            get(|headers: axum::http::HeaderMap| async move {
+                assert!(!headers.contains_key("authorization"));
+                assert!(!headers.contains_key("x-api-key"));
+                StatusCode::OK
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let upstream_addr = listener.local_addr().unwrap();
+        let upstream_task =
+            tokio::spawn(async move { axum::serve(listener, upstream).await.unwrap() });
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let forward = Router::new().route(
+            "/",
+            get(move |request: axum::extract::Request| {
+                let client = client.clone();
+                async move {
+                    assert!(!request.headers().contains_key("authorization"));
+                    assert!(!request.headers().contains_key("x-api-key"));
+                    client
+                        .get(format!("http://{upstream_addr}/"))
+                        .headers(request.headers().clone())
+                        .send()
+                        .await
+                        .unwrap()
+                        .status()
+                }
+            }),
+        );
+        let mut app = server.authenticate_router_for_test(forward);
+        for peer in [
+            "192.168.1.2:1234",
+            "127.0.0.1:1234",
+            "[::1]:1234",
+            "[::ffff:127.0.0.1]:1234",
+        ] {
+            for header in ["authorization", "x-api-key", "both"] {
+                let mut request =
+                    axum::http::Request::builder()
+                        .uri("/")
+                        .extension(axum::extract::ConnectInfo(
+                            peer.parse::<std::net::SocketAddr>().unwrap(),
+                        ));
+                if header != "x-api-key" {
+                    request = request.header("authorization", format!("Bearer {displayed}"));
+                }
+                if header != "authorization" {
+                    request = request.header("x-api-key", &displayed);
+                }
+                assert_eq!(
+                    app.call(request.body(axum::body::Body::empty()).unwrap())
+                        .await
+                        .unwrap()
+                        .status(),
+                    StatusCode::OK
+                );
+            }
+        }
+        for header in ["authorization", "x-api-key"] {
+            let value = if header == "authorization" {
+                format!("Bearer {old}")
+            } else {
+                old.clone()
+            };
+            let request = axum::http::Request::builder()
+                .uri("/")
+                .extension(axum::extract::ConnectInfo(
+                    "192.168.1.2:1234".parse::<std::net::SocketAddr>().unwrap(),
+                ))
+                .header(header, value)
+                .body(axum::body::Body::empty())
+                .unwrap();
+            assert_eq!(
+                app.call(request).await.unwrap().status(),
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        upstream_task.abort();
+        drop(server_guard);
+        service.stop().await.unwrap();
     }
 
     #[tokio::test]

@@ -372,20 +372,6 @@ impl Database {
         // and replacement so the backup represents exactly the replaced state.
         let backup_file_guard = BackupDirectoryLease::acquire();
         let mut main_conn = lock_conn!(self.conn);
-        temp_conn.execute("DELETE FROM settings WHERE key = 'proxy_access_key'", [])?;
-        let local_key: Option<String> = main_conn
-            .query_row(
-                "SELECT value FROM settings WHERE key = 'proxy_access_key'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
-        if let Some(key) = local_key {
-            temp_conn.execute(
-                "INSERT INTO settings (key, value) VALUES ('proxy_access_key', ?1)",
-                [&key],
-            )?;
-        }
         Self::restore_tables(&main_conn, &temp_conn, preserve_tables)?;
         Self::restore_tables(&main_conn, &temp_conn, &["provider_credentials"])?;
         Self::restore_local_provider_credentials(&main_conn, &temp_conn)?;
@@ -690,6 +676,21 @@ impl Database {
         main_conn: &mut Connection,
         candidate: &Connection,
     ) -> Result<(), AppError> {
+        // Rotation uses this same connection lock; restore never revives a backed-up LAN key.
+        let local_key: Option<String> = main_conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'proxy_access_key'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        candidate.execute("DELETE FROM settings WHERE key = 'proxy_access_key'", [])?;
+        if let Some(key) = local_key {
+            candidate.execute(
+                "INSERT INTO settings (key, value) VALUES ('proxy_access_key', ?1)",
+                [&key],
+            )?;
+        }
         for table in LOCAL_ONLY_RECEIPT_TABLES {
             if !Self::table_exists(main_conn, table)? || !Self::table_exists(candidate, table)? {
                 return Err(AppError::Database(
@@ -1854,6 +1855,60 @@ mod tests {
     struct TestHomeGuard {
         previous_test_home: Option<std::ffi::OsString>,
         temp_dir: tempfile::TempDir,
+    }
+
+    #[test]
+    #[serial]
+    fn binary_restore_preserves_unconfigured_lan_key() -> Result<(), AppError> {
+        let _home = TestHomeGuard::new();
+        let db = Database::init()?;
+        db.set_setting("proxy_access_key", "backup-key")?;
+        let backup = db.backup_database_file()?.unwrap();
+        let filename = backup.file_name().unwrap().to_str().unwrap();
+        for local in [None, Some("")] {
+            {
+                let conn = crate::database::lock_conn!(db.conn);
+                conn.execute("DELETE FROM settings WHERE key = 'proxy_access_key'", [])?;
+            }
+            if let Some(key) = local {
+                db.set_setting("proxy_access_key", key)?;
+            }
+            db.restore_from_backup(filename)?;
+            assert_eq!(db.get_setting("proxy_access_key")?.as_deref(), local);
+        }
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn binary_restore_serializes_key_preservation_with_rotation() -> Result<(), AppError> {
+        let _home = TestHomeGuard::new();
+        let db = std::sync::Arc::new(Database::init()?);
+        let old = db.regenerate_proxy_access_key()?;
+        let backup = db.backup_database_file()?.unwrap();
+        let current = db.regenerate_proxy_access_key()?;
+        assert_ne!(old, current);
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let mut rotation = None;
+        db.restore_from_backup_with_hook(backup.file_name().unwrap().to_str().unwrap(), |_| {
+            let db = db.clone();
+            rotation = Some(std::thread::spawn(move || {
+                assert!(matches!(
+                    db.conn.try_lock(),
+                    Err(std::sync::TryLockError::WouldBlock)
+                ));
+                entered_tx.send(()).unwrap();
+                db.regenerate_proxy_access_key().unwrap()
+            }));
+            entered_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            Ok(())
+        })?;
+        let rotated = rotation.unwrap().join().unwrap();
+        assert_ne!(rotated, current);
+        assert_eq!(db.get_setting("proxy_access_key")?, Some(rotated));
+        Ok(())
     }
 
     impl TestHomeGuard {
