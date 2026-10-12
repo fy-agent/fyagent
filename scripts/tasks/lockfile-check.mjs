@@ -1,20 +1,9 @@
 #!/usr/bin/env node
 
 import process from "node:process";
-import {
-  SUPPORTED_PLATFORMS,
-  fail,
-  isMain,
-  read,
-  readJson,
-  readToml,
-} from "./lib.mjs";
+import { SUPPORTED_PLATFORMS, fail, isMain, read, readToml } from "./lib.mjs";
 
-const EXPECTED = Object.freeze({
-  node: "24.19.0",
-  pnpm: "10.12.3",
-  rust: "1.97.1",
-});
+import { readToolchainContract } from "../ci/verify-toolchain.mjs";
 
 const ARCH_MARKERS = Object.freeze({
   "macos-x64": /(?:x64|x86_64)/i,
@@ -62,6 +51,7 @@ function validateArtifactPlatforms(name, entry) {
 }
 
 export function validateLockfile() {
+  const expected = readToolchainContract();
   const config = readToml("mise.toml");
   const configTools = Object.keys(config.tools ?? {});
   if (
@@ -110,7 +100,7 @@ export function validateLockfile() {
 
   for (const name of ["node", "pnpm", "uv"]) {
     const entry = entriesFor(lock, name);
-    if (name !== "uv" && entry.version !== EXPECTED[name]) {
+    if (name !== "uv" && entry.version !== expected[name]) {
       throw new Error(`${name} lock version drifted: ${entry.version}`);
     }
     validateArtifactPlatforms(name, entry);
@@ -150,7 +140,7 @@ export function validateLockfile() {
   if (rust.backend !== "core:rust") {
     throw new Error("Rust lock backend drifted from core:rust");
   }
-  if (rust.version !== EXPECTED.rust) {
+  if (rust.version !== expected.rust) {
     throw new Error(`Rust lock version drifted: ${rust.version}`);
   }
   if (
@@ -166,19 +156,19 @@ export function validateLockfile() {
     validateArtifactPlatforms("rust", rust);
   }
 
-  const packageJson = readJson("package.json");
-  if (read(".node-version").trim() !== EXPECTED.node) {
-    throw new Error(".node-version drifted");
+  const requiresPython =
+    readToml("pyproject.toml").project?.["requires-python"];
+  if (requiresPython !== ">=3.14,<3.15") {
+    throw new Error(
+      `Unsupported pyproject.toml requires-python: ${requiresPython}`,
+    );
   }
-  if (packageJson.packageManager !== `pnpm@${EXPECTED.pnpm}`) {
-    throw new Error("packageManager drifted");
+  if (!expected.python.startsWith("3.14.")) {
+    throw new Error(
+      `.python-version ${expected.python} does not satisfy pyproject.toml requires-python ${requiresPython}`,
+    );
   }
-  if (!read("rust-toolchain.toml").includes('channel = "1.97.1"')) {
-    throw new Error("rust-toolchain.toml drifted");
-  }
-  if (read(".python-version").trim() !== "3.14.7") {
-    throw new Error(".python-version drifted");
-  }
+
   if (!read("uv.lock").includes('requires-python = "==3.14.*"')) {
     throw new Error("uv.lock does not encode the Python 3.14 project contract");
   }
@@ -186,11 +176,11 @@ export function validateLockfile() {
   return {
     ok: true,
     tools: {
-      node: EXPECTED.node,
-      pnpm: EXPECTED.pnpm,
-      rust: EXPECTED.rust,
+      node: expected.node,
+      pnpm: expected.pnpm,
+      rust: expected.rust,
       uv: uv.version,
-      python: "3.14.7",
+      python: expected.python,
     },
     artifactPlatforms: SUPPORTED_PLATFORMS,
     rustLockCoverage:

@@ -39,7 +39,7 @@
     ],
     [
       "scripts/tasks/toolchain-check.mjs",
-      "4714948980c3c66742912d0f7da86fac7bb2e3dcbe067860b5f9db9fd77fc679"
+      "620fb8fa11ebffaf2d9656473d52fc2137b5b8f613f4c24e29136948ba350b51"
     ],
     [
       "scripts/tasks/windows-msvc-cross.mjs",
