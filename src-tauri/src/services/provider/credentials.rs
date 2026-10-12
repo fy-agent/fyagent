@@ -293,7 +293,7 @@ fn is_public_provider_field(path: &[&str]) -> bool {
             ]
             | [
                 "meta",
-                "usageScript",
+                "usageScript" | "usage_script",
                 "baseUrl"
                     | "language"
                     | "templateType"

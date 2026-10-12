@@ -98,7 +98,7 @@ export function validateStandaloneSetup(file, source) {
   );
   const trustParagraphs = prose.split(/\n\s*\n/u);
   const trustGuidance = trustParagraphs.filter((part) =>
-    part.includes("mise trust"),
+    part.includes(STANDALONE_SETUP_COMMANDS[0]),
   );
   const manualTrust = trustGuidance.some((part) => {
     part = part.replace(/\s+/gu, " ");
@@ -114,7 +114,9 @@ export function validateStandaloneSetup(file, source) {
     .flatMap((sentence) => {
       let projectTask = false;
       return sentence
-        .split(/[,，;；]|但是|但|而是|却|然而|不过|\b(?:however|but|yet|instead)\b/iu)
+        .split(
+          /[,，;；]|但是|但|而是|却|然而|不过|\b(?:however|but|yet|instead)\b/iu,
+        )
         .map((part) => {
           part = part.replace(/\s+/gu, " ");
           // A contrasting clause may omit the preceding project-task subject.
