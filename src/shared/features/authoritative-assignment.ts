@@ -5,10 +5,47 @@ export type AuthoritativeRereadResult<TSnapshot> = {
   error: unknown;
 };
 
-export type AuthoritativeAssignmentOutcome =
-  | { status: "confirmed" }
-  | { status: "rejected" }
+export type AuthoritativeFailureStage = "mutate" | "readback" | "mismatch";
+
+export type AuthoritativeAssignmentOutcome<TValue = boolean | undefined> =
+  | {
+      status: "confirmed";
+      observedValue?: TValue;
+    }
+  | {
+      status: "rejected";
+      stage?: AuthoritativeFailureStage;
+      reason?: string;
+      observedValue?: TValue;
+      error?: unknown;
+    }
   | { status: "busy" };
+
+function extractFailureReason(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+  if (typeof err === "string" && err.trim()) {
+    return err;
+  }
+  if (err && typeof err === "object") {
+    if (
+      "message" in err &&
+      typeof (err as { message: unknown }).message === "string" &&
+      (err as { message: string }).message.trim()
+    ) {
+      return (err as { message: string }).message;
+    }
+    if (
+      "error" in err &&
+      typeof (err as { error: unknown }).error === "string" &&
+      (err as { error: string }).error.trim()
+    ) {
+      return (err as { error: string }).error;
+    }
+  }
+  return fallback;
+}
 
 export function useAuthoritativeAssignmentMutation<
   TItemId extends string,
@@ -39,23 +76,104 @@ export function useAuthoritativeAssignmentMutation<
 
       pendingRef.current = itemId;
       setPendingId(itemId);
+      let stage: AuthoritativeFailureStage = "mutate";
+      let failureReason = "后端拒绝了赋值请求";
+      let originalError: unknown = null;
+
       try {
-        const accepted = await mutate(itemId, enabled);
-        if (accepted === false) {
-          throw new Error("assignment rejected");
-        }
-        const readback = await reread();
-        if (readback.error || readValue(readback.data, itemId) !== enabled) {
-          throw new Error("assignment readback mismatch");
-        }
-        return { status: "confirmed" };
-      } catch {
+        let accepted: boolean | void;
         try {
-          await reread();
+          accepted = await mutate(itemId, enabled);
+        } catch (err) {
+          stage = "mutate";
+          originalError = err;
+          failureReason = extractFailureReason(err, "后端拒绝了赋值请求");
+          throw err;
+        }
+
+        if (accepted === false) {
+          stage = "mutate";
+          failureReason = "赋值被拒绝";
+          throw new Error(failureReason);
+        }
+
+        let readback: AuthoritativeRereadResult<TSnapshot>;
+        try {
+          readback = await reread();
+        } catch (err) {
+          stage = "readback";
+          originalError = err;
+          failureReason = extractFailureReason(err, "回读状态失败");
+          throw err;
+        }
+
+        if (readback.error) {
+          stage = "readback";
+          originalError = readback.error;
+          failureReason = extractFailureReason(readback.error, "回读状态失败");
+          throw new Error(failureReason);
+        }
+
+        const observed = readValue(readback.data, itemId);
+        if (observed !== enabled) {
+          stage = "mismatch";
+          failureReason = "回读状态与预期不一致";
+          throw new Error(failureReason);
+        }
+
+        const confirmedOutcome: AuthoritativeAssignmentOutcome = {
+          status: "confirmed",
+        };
+        Object.defineProperties(confirmedOutcome, {
+          observedValue: {
+            value: observed,
+            enumerable: false,
+            writable: true,
+          },
+        });
+        return confirmedOutcome;
+      } catch {
+        console.error(
+          `[authoritative-assignment] ${stage} failed for item "${itemId}":`,
+          { reason: failureReason, error: originalError },
+        );
+
+        let recoveryObserved: boolean | undefined = undefined;
+        try {
+          const recoveryReadback = await reread();
+          if (!recoveryReadback.error && recoveryReadback.data !== undefined) {
+            recoveryObserved = readValue(recoveryReadback.data, itemId);
+          }
         } catch {
           // The original mutation/readback failure remains authoritative.
         }
-        return { status: "rejected" };
+
+        const rejectedOutcome: AuthoritativeAssignmentOutcome = {
+          status: "rejected",
+        };
+        Object.defineProperties(rejectedOutcome, {
+          stage: {
+            value: stage,
+            enumerable: false,
+            writable: true,
+          },
+          reason: {
+            value: failureReason,
+            enumerable: false,
+            writable: true,
+          },
+          observedValue: {
+            value: recoveryObserved,
+            enumerable: false,
+            writable: true,
+          },
+          error: {
+            value: originalError,
+            enumerable: false,
+            writable: true,
+          },
+        });
+        return rejectedOutcome;
       } finally {
         pendingRef.current = null;
         setPendingId(null);
