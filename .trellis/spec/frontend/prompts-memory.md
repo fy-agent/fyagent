@@ -25,6 +25,9 @@ enable one entry, and link to `/prompts`, but it remains a consumer of this
 same `PromptsPort`. It calls `enable`, rereads the selected app, and accepts
 success only when the authoritative row is enabled. When `promptAppId` is
 absent it renders `此应用暂不支持提示词管理` and never invents a writer.
+The prompt projection's local search, selection, pending state and feedback
+have a lifecycle keyed by `PromptAppId`; late source operations cannot update
+another application's projection. Same-app rerenders retain local state.
 Failed or mismatched readback remains non-optimistic. `/memory` uses the common
 shell only; its native data, persistence, limits, and directory behavior remain
 owned here.
@@ -119,7 +122,13 @@ paths above.
   the editor with the empty-search state while a prompt is selected.
 - Each application has an independent prompt collection and live-file query.
   Enabling one prompt uses the backend's single-enabled invariant; the result
-  shown in the UI comes from the authoritative reread.
+  shown in the UI comes from the authoritative reread. After every successful
+  write (save, create, import, delete, enable or disable), await cancellation
+  with cache reversion for the current application's exact library/live-file
+  keys before invalidating and rereading them. Pre-write snapshots, even when
+  their native reads finish late, cannot satisfy readback or overwrite its
+  result. A failed reread keeps the last successful data and reports uncertainty
+  instead of success; other applications' in-flight reads remain untouched.
 - Creating and editing happen inline in the detail pane. The prompt body is
   the first readable surface after the compact title row. Name and
   description stay on a secondary identity row and must not sit above a

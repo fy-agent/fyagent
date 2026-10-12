@@ -3,7 +3,13 @@ import { codexInstallPreflightFixture } from "../../../fixtures/codexInstallPref
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentsPage } from "@/pages/agents/Page";
@@ -2102,6 +2108,52 @@ describe("V3 Agent directory and configuration shell", () => {
       );
     },
   );
+
+  it("#364 resets prompt interactions when the actual route target changes", async () => {
+    const ports = configuredPorts();
+    ports.prompts.getAll = vi.fn(async (app) => [
+      {
+        id: "shared",
+        name: app === "codex" ? "Source prompt" : "Target prompt",
+        content: `${app} body`,
+        enabled: false,
+      },
+    ]);
+    function ChangeTarget() {
+      const navigate = useNavigate();
+      return (
+        <button
+          onClick={() =>
+            void navigate("/agents?target=claude-code&section=prompts")
+          }
+        >
+          切换测试应用
+        </button>
+      );
+    }
+    render(
+      <MemoryRouter initialEntries={["/agents?target=codex&section=prompts"]}>
+        <FeatureProvider ports={ports}>
+          <AgentsPage />
+          <ChangeTarget />
+          <LocationProbe />
+        </FeatureProvider>
+      </MemoryRouter>,
+    );
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { name: "Source prompt" });
+    await user.type(screen.getByRole("searchbox"), "Source");
+    await user.click(screen.getByRole("button", { name: "切换测试应用" }));
+    expect(
+      await screen.findByRole("heading", { name: "Target prompt" }),
+    ).toBeVisible();
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(screen.getByText("claude body")).toBeVisible();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "target=claude-code",
+    );
+    expect(ports.prompts.enable).not.toHaveBeenCalled();
+  });
 
   it("keeps model capability honest and uses PromptAppId only where an owner exists", async () => {
     const user = userEvent.setup();

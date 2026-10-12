@@ -1,3 +1,4 @@
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   act,
   fireEvent,
@@ -16,6 +17,7 @@ import {
 } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+import { featureKeys } from "@/shared/features/queries";
 import { PromptsPage } from "@/pages/prompts/Page";
 import { FDE_PROMPT_PRESETS } from "@/pages/prompts/presets";
 import type { FeaturePorts } from "@/shared/features/ports";
@@ -137,9 +139,34 @@ function PromptsRouteFixture({
   );
 }
 
+function CaptureQueryClient({
+  capture,
+}: {
+  capture: (client: QueryClient) => void;
+}) {
+  capture(useQueryClient());
+  return null;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function renderPrompts(
   ports: FeaturePorts,
-  { showNavigationControl = false, initialEntry = "/prompts" } = {},
+  {
+    showNavigationControl = false,
+    initialEntry = "/prompts",
+    captureClient,
+  }: {
+    showNavigationControl?: boolean;
+    initialEntry?: string;
+    captureClient?: (client: QueryClient) => void;
+  } = {},
 ) {
   const router = createMemoryRouter(
     [
@@ -155,6 +182,7 @@ function renderPrompts(
   );
   render(
     <FeatureProvider ports={ports}>
+      {captureClient && <CaptureQueryClient capture={captureClient} />}
       <RouterProvider router={router} />
     </FeatureProvider>,
   );
@@ -173,6 +201,231 @@ function PersistentPromptsFixture() {
 }
 
 describe("PromptsPage native business management", () => {
+  it.each(["save", "create", "import", "delete", "enable", "disable"] as const)(
+    "#363 %s rereads after writing and ignores old snapshots in either completion order",
+    async (operation) => {
+      for (const oldFirst of [true, false]) {
+        const initiallyEnabled =
+          operation === "save" || operation === "disable";
+        const { ports, stores, liveFiles } = statefulPorts({
+          claude: [prompt("existing", "Existing", initiallyEnabled)],
+          codex: [prompt("other", "Other")],
+        });
+        liveFiles.claude = initiallyEnabled ? "Existing content" : null;
+        let client!: QueryClient;
+        const user = userEvent.setup();
+        renderPrompts(ports, {
+          captureClient: (value) => {
+            client = value;
+          },
+        });
+        await screen.findByRole("heading", { name: "Existing" });
+        if (operation === "create") {
+          await user.click(screen.getByRole("button", { name: "新建提示词" }));
+        }
+        if (operation === "save" || operation === "create") {
+          fireEvent.change(screen.getByRole("textbox", { name: "名称" }), {
+            target: { value: "Updated" },
+          });
+          fireEvent.change(screen.getByRole("textbox", { name: "内容" }), {
+            target: { value: "Updated content" },
+          });
+        }
+        const oldLibrary = deferred<ManagedPrompt[]>();
+        const oldLive = deferred<string | null>();
+        const other = deferred<ManagedPrompt[]>();
+        const newReads = deferred<void>();
+        let snapshot!: ManagedPrompt[];
+        let liveSnapshot!: string | null;
+        const getAll = ports.prompts.getAll;
+        const getLive = ports.prompts.getCurrentFileContent;
+        ports.prompts.getAll = vi
+          .fn(async (app) => {
+            if (app === "codex") return other.promise;
+            await newReads.promise;
+            return getAll(app);
+          })
+          .mockImplementationOnce(() => {
+            snapshot = stores.claude.map(clonePrompt);
+            return oldLibrary.promise;
+          });
+        ports.prompts.getCurrentFileContent = vi
+          .fn(async (app) => {
+            await newReads.promise;
+            return getLive(app);
+          })
+          .mockImplementationOnce(() => {
+            liveSnapshot = liveFiles.claude;
+            return oldLive.promise;
+          });
+        const reads = [
+          client
+            .fetchQuery({
+              queryKey: featureKeys.prompts("claude"),
+              queryFn: () => ports.prompts.getAll("claude"),
+              staleTime: 0,
+            })
+            .catch(() => undefined),
+          client
+            .fetchQuery({
+              queryKey: featureKeys.promptLiveFile("claude"),
+              queryFn: () => ports.prompts.getCurrentFileContent("claude"),
+              staleTime: 0,
+            })
+            .catch(() => undefined),
+          client.fetchQuery({
+            queryKey: featureKeys.prompts("codex"),
+            queryFn: () => ports.prompts.getAll("codex"),
+            staleTime: 0,
+          }),
+        ];
+        expect(
+          client.getQueryState(featureKeys.prompts("claude"))?.fetchStatus,
+        ).toBe("fetching");
+        expect(
+          client.getQueryState(featureKeys.promptLiveFile("claude"))
+            ?.fetchStatus,
+        ).toBe("fetching");
+        if (operation === "save" || operation === "create")
+          await user.click(screen.getByRole("button", { name: "保存" }));
+        else if (operation === "import")
+          await user.click(screen.getByRole("button", { name: "从文件导入" }));
+        else if (operation === "delete") {
+          await user.click(screen.getByRole("button", { name: "删除" }));
+          await user.click(
+            within(
+              screen.getByRole("dialog", { name: "删除 Existing" }),
+            ).getByRole("button", { name: "确认" }),
+          );
+        } else
+          await user.click(
+            screen.getByRole("switch", {
+              name: `${initiallyEnabled ? "停用" : "启用"}Existing`,
+            }),
+          );
+        const success = {
+          save: "提示词已保存",
+          create: "提示词已创建",
+          import: "提示词已从文件导入",
+          delete: "提示词已删除",
+          enable: "提示词已启用",
+          disable: "提示词已停用",
+        }[operation];
+        if (oldFirst)
+          await act(async () => {
+            oldLibrary.resolve(snapshot);
+            oldLive.resolve(liveSnapshot);
+          });
+        await act(async () => {
+          newReads.resolve();
+        });
+        await screen.findByText(success, { exact: true });
+        if (!oldFirst)
+          await act(async () => {
+            oldLibrary.resolve(snapshot);
+            oldLive.resolve(liveSnapshot);
+          });
+        expect(client.getQueryData(featureKeys.prompts("claude"))).toEqual(
+          stores.claude,
+        );
+        expect(client.getQueryData(featureKeys.promptLiveFile("claude"))).toBe(
+          liveFiles.claude,
+        );
+        if (operation === "delete")
+          expect(
+            screen.queryByRole("heading", { name: "Existing" }),
+          ).not.toBeInTheDocument();
+        else {
+          const expectedName =
+            operation === "save" || operation === "create"
+              ? "Updated"
+              : operation === "import"
+                ? "claude imported"
+                : "Existing";
+          expect(
+            screen.getByRole("heading", { name: expectedName }),
+          ).toBeVisible();
+          expect(
+            screen.getByRole("button", { name: new RegExp(expectedName) }),
+          ).toBeVisible();
+          expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue(
+            stores.claude.find((item) => item.name === expectedName)?.content,
+          );
+        }
+        if (liveFiles.claude !== null) {
+          expect(
+            screen.getByRole("textbox", { name: "当前使用的内容" }),
+          ).toHaveValue(liveFiles.claude);
+        } else if (operation === "delete") {
+          expect(screen.getByText("Claude Code 还没有提示词")).toBeVisible();
+          expect(
+            screen.queryByRole("textbox", { name: "当前使用的内容" }),
+          ).not.toBeInTheDocument();
+        } else
+          expect(
+            screen.getByText("当前没有使用中的内容。"),
+          ).toBeInTheDocument();
+        expect(
+          client.getQueryState(featureKeys.prompts("codex"))?.fetchStatus,
+        ).toBe("fetching");
+        await act(async () => {
+          other.resolve(stores.codex.map(clonePrompt));
+          await Promise.all(reads);
+        });
+        expect(client.getQueryData(featureKeys.prompts("codex"))).toEqual(
+          stores.codex,
+        );
+        cleanup();
+      }
+    },
+  );
+
+  it.each(["library", "live"])(
+    "#363 retains the failed %s read cache without success",
+    async (failedRead) => {
+      const { ports, liveFiles } = statefulPorts({
+        claude: [prompt("existing", "Existing", true)],
+      });
+      liveFiles.claude = "Existing content";
+      let client!: QueryClient;
+      renderPrompts(ports, {
+        captureClient: (value) => {
+          client = value;
+        },
+      });
+      await screen.findByRole("heading", { name: "Existing" });
+      const key =
+        failedRead === "library"
+          ? featureKeys.prompts("claude")
+          : featureKeys.promptLiveFile("claude");
+      const previous = client.getQueryData(key);
+      client.setDefaultOptions({ queries: { retry: false } });
+      if (failedRead === "library")
+        ports.prompts.getAll = vi.fn(async () => {
+          throw new Error("unavailable");
+        });
+      else
+        ports.prompts.getCurrentFileContent = vi.fn(async () => {
+          throw new Error("unavailable");
+        });
+      fireEvent.change(screen.getByRole("textbox", { name: "内容" }), {
+        target: { value: "Changed" },
+      });
+      await userEvent
+        .setup()
+        .click(screen.getByRole("button", { name: "保存" }));
+      expect(
+        await screen.findByText(
+          /写入可能已完成，但状态刷新失败。已保留上一次成功读取的数据/,
+        ),
+      ).toBeVisible();
+      expect(client.getQueryData(key)).toEqual(previous);
+      expect(
+        screen.queryByText("提示词已保存", { exact: true }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it("opens the requested app and saves only to that prompt library", async () => {
     const { ports, stores } = statefulPorts({
       claude: [prompt("claude-one", "Claude rule")],
