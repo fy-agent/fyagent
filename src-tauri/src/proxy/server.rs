@@ -878,7 +878,8 @@ mod tests {
             .any(|line| line == "[Claude/OpenRouter] Unknown finish_reason in streaming: unknown"));
         assert!(logs
             .iter()
-            .any(|line| line == "[Claude/Gemini] Unknown Gemini finishReason unknown, using end_turn"));
+            .any(|line| line
+                == "[Claude/Gemini] Unknown Gemini finishReason unknown, using end_turn"));
         assert!(logs
             .iter()
             .all(|line| !line.contains("Authorization") && !line.contains("fake-key")));
@@ -900,7 +901,8 @@ mod tests {
         )
         .is_none());
         assert!(
-            TokenUsage::from_codex_response_auto(&json!({"usage":{"Authorization":DETAIL}})).is_none()
+            TokenUsage::from_codex_response_auto(&json!({"usage":{"Authorization":DETAIL}}))
+                .is_none()
         );
         let codex = TokenUsage::from_codex_response_auto(&json!({
             "id":DETAIL,"model":DETAIL,"usage":{"input_tokens":3,"output_tokens":2,
@@ -1051,7 +1053,8 @@ mod tests {
         *AUTH_TEST_LOGGER.0.lock().unwrap() = Some((std::thread::current().id(), Vec::new()));
         const DETAIL: &str = "Authorization: Bearer fake-key";
         for responses in [false, true] {
-            let stream = futures::stream::iter(vec![Err::<Bytes, _>(std::io::Error::other(DETAIL))]);
+            let stream =
+                futures::stream::iter(vec![Err::<Bytes, _>(std::io::Error::other(DETAIL))]);
             let chunks = if responses {
                 create_anthropic_sse_stream_from_responses(stream)
                     .collect::<Vec<_>>()
@@ -1102,7 +1105,10 @@ mod tests {
         const DETAIL: &str = "Authorization: Bearer fake-key";
         let private_key = format!("_{DETAIL}");
         assert_eq!(
-            filter_private_params_with_whitelist(json!({private_key:DETAIL,"answer":"unchanged"}), &[]),
+            filter_private_params_with_whitelist(
+                json!({private_key:DETAIL,"answer":"unchanged"}),
+                &[]
+            ),
             json!({"answer":"unchanged"})
         );
         assert!(decompress_body_with_limit(DETAIL, b"unchanged body", 1024)
@@ -1455,7 +1461,8 @@ mod tests {
                             return (
                                 StatusCode::BAD_REQUEST,
                                 [(header::CONTENT_TYPE, "application/json")],
-                                json!({"error": {"message": "unsupported image input"}}).to_string(),
+                                json!({"error": {"message": "unsupported image input"}})
+                                    .to_string(),
                             );
                         }
                         (
@@ -1549,9 +1556,11 @@ mod tests {
                 .count()
                 >= 3
         );
-        assert!(logs.iter().any(|line| line.contains(
+        assert!(logs.iter().any(|line| {
+            line.contains(
             "[Media] Unsupported-image retry still failed: 请求/响应转换错误: transformation failed"
-        )));
+        )
+        }));
         assert!(logs.iter().all(|line| !line.contains(SECRET)));
     }
 

@@ -243,7 +243,7 @@
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
-      "575b4149d046b5015f240adbf5e8a440baba10c72fe7919650eb38d1da8a0036"
+      "7912ada6ed1942b52683726f7d8aca330f7d07b03c9f890835db57ba50c7d59c"
     ],
     [
       "src-tauri/src/proxy/providers/copilot_auth.rs",

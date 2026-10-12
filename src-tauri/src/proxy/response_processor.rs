@@ -174,7 +174,10 @@ pub async fn handle_streaming(
     );
     // 检查流式响应是否被压缩（SSE 通常不压缩，如果压缩则 SSE 解析会失败）
     if get_content_encoding(response.headers()).is_some() {
-        log::warn!("[{}] 流式响应含 content-encoding，SSE 解析可能失败。上游压缩了 SSE 流。", ctx.tag);
+        log::warn!(
+            "[{}] 流式响应含 content-encoding，SSE 解析可能失败。上游压缩了 SSE 流。",
+            ctx.tag
+        );
     }
 
     let mut response_headers = response.headers().clone();
@@ -707,11 +710,15 @@ async fn log_usage_internal(
             is_streaming,
         )
     });
-    if write.await.unwrap_or_else(|e| {
-        Err(crate::error::AppError::Database(format!(
-            "usage 记录任务失败: {e}"
-        )))
-    }).is_err() {
+    if write
+        .await
+        .unwrap_or_else(|e| {
+            Err(crate::error::AppError::Database(format!(
+                "usage 记录任务失败: {e}"
+            )))
+        })
+        .is_err()
+    {
         log::warn!("[USG-001] 记录使用量失败: usage write failed");
     }
 }

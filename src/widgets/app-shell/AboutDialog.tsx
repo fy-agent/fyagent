@@ -7,6 +7,8 @@ import { Dialog } from "../../shared/ui/Dialog";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import "./about-dialog.css";
 
+export { default as ProxySettingsDialog } from "./ProxySettingsDialog";
+
 const projectUrl = "https://github.com/fy-agent/fyagent";
 
 export default function AboutDialog({

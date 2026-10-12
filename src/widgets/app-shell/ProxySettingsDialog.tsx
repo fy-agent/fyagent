@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { GlobalProxyConfig } from "../../domain/configuration/types/proxy";
+import type { GlobalProxyConfig } from "../../shared/features/settings";
 import { useFeatures } from "../../shared/features/provider";
 import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";

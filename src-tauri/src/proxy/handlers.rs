@@ -746,7 +746,10 @@ async fn handle_claude_transform(
                         })?
                     }
                     Err(e) => {
-                        log::error!("[Claude] 解析上游响应失败: invalid JSON, body_bytes={}", body_bytes.len());
+                        log::error!(
+                            "[Claude] 解析上游响应失败: invalid JSON, body_bytes={}",
+                            body_bytes.len()
+                        );
                         return Err(upstream_body_parse_error(
                             "Failed to parse upstream response",
                             &e,
@@ -1855,7 +1858,10 @@ async fn handle_codex_chat_to_responses_transform(
             })?
         }
         Err(e) => {
-            log::error!("[Codex] 解析 Chat 上游响应失败: invalid JSON, body_bytes={}", body_bytes.len());
+            log::error!(
+                "[Codex] 解析 Chat 上游响应失败: invalid JSON, body_bytes={}",
+                body_bytes.len()
+            );
             return Err(upstream_body_parse_error(
                 "Failed to parse upstream chat response",
                 &e,
@@ -2005,15 +2011,20 @@ async fn handle_codex_anthropic_to_responses_transform(
         // aggregate it back into a message before continuing the conversion.
         Err(_) if body_looks_like_sse(&body_str) => {
             log::warn!("[Codex] Upstream returned an unmarked Anthropic SSE body, falling back to aggregation");
-            transform_codex_anthropic::anthropic_sse_to_message_value(&body_str).inspect_err(|e| {
-                log::error!(
-                    "[Codex] Failed to aggregate Anthropic SSE body: {}",
-                    get_log_error_message(e)
-                );
-            })?
+            transform_codex_anthropic::anthropic_sse_to_message_value(&body_str).inspect_err(
+                |e| {
+                    log::error!(
+                        "[Codex] Failed to aggregate Anthropic SSE body: {}",
+                        get_log_error_message(e)
+                    );
+                },
+            )?
         }
         Err(e) => {
-            log::error!("[Codex] Failed to parse Anthropic upstream response: invalid JSON, body_bytes={}", body_bytes.len());
+            log::error!(
+                "[Codex] Failed to parse Anthropic upstream response: invalid JSON, body_bytes={}",
+                body_bytes.len()
+            );
             return Err(upstream_body_parse_error(
                 "Failed to parse upstream anthropic response",
                 &e,
@@ -3203,11 +3214,15 @@ async fn log_forward_error(
             None,
         )
     });
-    if write.await.unwrap_or_else(|e| {
-        Err(crate::error::AppError::Database(format!(
-            "usage 记录任务失败: {e}"
-        )))
-    }).is_err() {
+    if write
+        .await
+        .unwrap_or_else(|e| {
+            Err(crate::error::AppError::Database(format!(
+                "usage 记录任务失败: {e}"
+            )))
+        })
+        .is_err()
+    {
         log::warn!("记录失败请求日志失败: usage write failed");
     }
 }
@@ -3276,11 +3291,15 @@ async fn log_usage(
             is_streaming,
         )
     });
-    if write.await.unwrap_or_else(|e| {
-        Err(crate::error::AppError::Database(format!(
-            "usage 记录任务失败: {e}"
-        )))
-    }).is_err() {
+    if write
+        .await
+        .unwrap_or_else(|e| {
+            Err(crate::error::AppError::Database(format!(
+                "usage 记录任务失败: {e}"
+            )))
+        })
+        .is_err()
+    {
         log::warn!("[USG-001] 记录使用量失败: usage write failed");
     }
 }

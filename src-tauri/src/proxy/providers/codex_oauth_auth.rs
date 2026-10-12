@@ -927,7 +927,8 @@ impl CodexOAuthManager {
             &refresh_token,
             &refreshed_auth,
         )
-        .is_err() {
+        .is_err()
+        {
             // The manager token remains valid; a later provider write will
             // retry the live synchronization without rolling it back.
             log::warn!("[CodexOAuth] 同步刷新后的 Codex live auth 失败: auth sync error");

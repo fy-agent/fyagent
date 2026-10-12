@@ -277,7 +277,11 @@ pub async fn send_request(
         log_display,
         headers.len(),
         headers.contains_key(http::header::HOST),
-        proxy_url.map(|url| if url::Url::parse(url).is_ok() { super::http_client::mask_url(url) } else { "invalid proxy URL".to_string() }),
+        proxy_url.map(|url| if url::Url::parse(url).is_ok() {
+            super::http_client::mask_url(url)
+        } else {
+            "invalid proxy URL".to_string()
+        }),
     );
 
     if let Some(original_cases) = original_cases
@@ -299,7 +303,9 @@ pub async fn send_request(
                     // Don't bypass configured proxy with direct connect fallback
                     return Err(e);
                 }
-                log::warn!("[HyperClient] Raw write failed, falling back to hyper-util: transport error");
+                log::warn!(
+                    "[HyperClient] Raw write failed, falling back to hyper-util: transport error"
+                );
                 // Fall through to hyper-util Client
             }
         }

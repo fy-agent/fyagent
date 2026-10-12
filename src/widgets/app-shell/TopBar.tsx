@@ -8,7 +8,11 @@ import { Brand } from "./Brand";
 import { ThemeToggle } from "./ThemeToggle";
 import "./top-bar-actions.css";
 
-const ProxySettingsDialog = lazy(() => import("./ProxySettingsDialog"));
+const ProxySettingsDialog = lazy(() =>
+  import("./AboutDialog").then((module) => ({
+    default: module.ProxySettingsDialog,
+  })),
+);
 
 const AboutDialog = lazy(() => import("./AboutDialog"));
 const DatabaseRecoveryDialog = lazy(async () => {

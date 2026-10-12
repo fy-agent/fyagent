@@ -2694,7 +2694,10 @@ impl RequestForwarder {
             .get("model")
             .and_then(|v| v.as_str())
             .unwrap_or("<none>");
-        log::info!("[{tag}] >>> 请求目标: {target_for_log} (model_present={})", request_model != "<none>");
+        log::info!(
+            "[{tag}] >>> 请求目标: {target_for_log} (model_present={})",
+            request_model != "<none>"
+        );
         log::debug!(
             "[{tag}] >>> 请求体已准备: bytes={}, hash={} (content omitted)",
             body_bytes.len(),
@@ -4360,7 +4363,15 @@ fn cache_control_summary(value: &Value) -> String {
                         .get("ttl")
                         .and_then(Value::as_str)
                         .unwrap_or("default");
-                    ttls.insert(match ttl { "5m" => "5m", "1h" => "1h", "default" => "default", _ => "unknown" }.to_string());
+                    ttls.insert(
+                        match ttl {
+                            "5m" => "5m",
+                            "1h" => "1h",
+                            "default" => "default",
+                            _ => "unknown",
+                        }
+                        .to_string(),
+                    );
                 }
                 for child in object.values() {
                     walk(child, count, ttls);
