@@ -40,9 +40,7 @@ use crate::services::session_usage::{
     metadata_modified_nanos, update_sync_state, SessionSyncResult,
 };
 use crate::services::sql_helpers::INPUT_TOKEN_SEMANTICS_TOTAL;
-use crate::services::usage_stats::{
-    find_model_pricing, has_recent_grokbuild_proxy_activity, SESSION_PROXY_DEDUP_WINDOW_SECONDS,
-};
+use crate::services::usage_stats::{find_model_pricing, has_recent_grokbuild_proxy_activity};
 use rust_decimal::Decimal;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -55,7 +53,8 @@ use std::time::SystemTime;
 /// 代理行而放行，双算永久留存。让事件先「沉降」再导入后，守卫查询必然
 /// 能看到已落库的代理行，竞态从源头消除。代价：官方态用量最多延迟约一个
 /// 窗口 + 一次后台同步周期（60s）上屏。
-const SETTLE_WINDOW_SECONDS: i64 = SESSION_PROXY_DEDUP_WINDOW_SECONDS;
+// 导入等待独立于公共代理去重窗口，避免官方直连用量等待十分钟。
+const SETTLE_WINDOW_SECONDS: i64 = 60;
 
 /// 单个模型的本轮用量（从 `modelUsage` 或顶层 usage 提取，均为逐轮口径）
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -578,6 +577,7 @@ fn insert_grok_session_entry(
 mod tests {
     use super::*;
     use crate::services::session_usage::get_sync_state;
+    use crate::services::usage_stats::SESSION_PROXY_DEDUP_WINDOW_SECONDS;
     use std::io::Write;
     use tempfile::tempdir;
 
@@ -850,6 +850,44 @@ mod tests {
         let rows = query_rows(&db)?;
         assert!(rows[0].0.ends_with(":grok-4.3"));
         assert!(rows[1].0.ends_with(":grok-4.5-build"));
+        Ok(())
+    }
+
+    #[test]
+    fn settle_window_imports_after_one_minute_without_shortening_proxy_dedup(
+    ) -> Result<(), AppError> {
+        assert_eq!(SETTLE_WINDOW_SECONDS, 60, "Grok 导入只等待一分钟");
+        assert_eq!(
+            SESSION_PROXY_DEDUP_WINDOW_SECONDS, 600,
+            "公共去重窗口仍为十分钟"
+        );
+
+        let db = Database::memory()?;
+        let temp = tempdir().expect("tempdir");
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("now")
+            .as_secs() as i64;
+        // 固定两分钟的年龄，不按待测常量构造，且留出一分钟的执行余量。
+        let lines = vec![usage_event_line(
+            now - 120,
+            "p1",
+            &model_counters("grok-4.5-build", 100, 10, 0, 1),
+        )];
+        let path = write_session_file(temp.path(), "sess-one-minute", &lines);
+
+        let result = sync_single_grok_file(
+            &db,
+            &path,
+            &crate::services::session_usage::load_sync_cursors(&db).unwrap(),
+        )?;
+        assert_eq!(result.imported, 1, "超过一分钟的无代理事件应导入");
+        assert_eq!(result.deferred_files, 0);
+        let rows = query_rows(&db)?;
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].1, rows[0].2, rows[0].3), (100, 10, 0));
+        let (last_modified, _) = get_sync_state(&db, &path.to_string_lossy())?;
+        assert_ne!(last_modified, 0, "导入完成应记录同步状态");
         Ok(())
     }
 

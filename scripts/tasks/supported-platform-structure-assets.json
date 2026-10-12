@@ -347,7 +347,7 @@
     ],
     [
       "src-tauri/src/services/session_usage_grokbuild.rs",
-      "876cbb3774d7e9b9253ed36bf21fea8a259c1ccccea6e6f9f73675ceee118049"
+      "581aa3c00191fc4f79ecf4fec570fd33543f0b63f0393ff7c92a3fb8be2161c1"
     ],
     [
       "src-tauri/src/services/skill.rs",
