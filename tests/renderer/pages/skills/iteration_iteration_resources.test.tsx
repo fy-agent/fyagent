@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -155,7 +161,9 @@ describe("Skills update failure recovery", () => {
       name: "fixture/repo",
     });
     await user.click(repoButton);
-    expect(openExternal).toHaveBeenCalledWith("https://github.com/fixture/repo");
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://github.com/fixture/repo",
+    );
 
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
     await waitFor(() =>
@@ -174,4 +182,3 @@ describe("Skills update failure recovery", () => {
     expect(ports.skills.update).toHaveBeenCalledTimes(1);
   });
 });
-

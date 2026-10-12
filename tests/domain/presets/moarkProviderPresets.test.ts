@@ -276,6 +276,4 @@ describe("MoArk (模力方舟) provider presets", () => {
       expect(model.limit?.output, `${id} output`).toBe(counterpart?.maxTokens);
     }
   });
-
-
 });

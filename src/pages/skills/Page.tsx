@@ -914,10 +914,7 @@ export function SkillsPage() {
         }}
       >
         {confirm?.kind === "updateAll" && (
-          <ul
-            aria-label="将要更新的 Skill"
-            className="fy-skills-update-list"
-          >
+          <ul aria-label="将要更新的 Skill" className="fy-skills-update-list">
             {applicableUpdates.map((update) => {
               const skill = installed.find((item) => item.id === update.id);
               const name = skill?.name ?? update.name;
@@ -933,8 +930,8 @@ export function SkillsPage() {
               return (
                 <li key={update.id} className="fy-skills-update-item">
                   <span className="fy-skills-update-name">{name}</span>
-                  {repo && (
-                    repoUrl ? (
+                  {repo &&
+                    (repoUrl ? (
                       <ExternalLinkButton
                         url={repoUrl}
                         className="fy-skills-update-repo"
@@ -943,8 +940,7 @@ export function SkillsPage() {
                       </ExternalLinkButton>
                     ) : (
                       <span className="fy-skills-update-repo">{repo}</span>
-                    )
-                  )}
+                    ))}
                 </li>
               );
             })}
