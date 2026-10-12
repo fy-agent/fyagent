@@ -256,6 +256,25 @@ pub enum CopilotAuthError {
     InvalidDomain(String),
 }
 
+// 日志只使用固定分类；原错误详情继续用于返回值和迁移状态。
+pub(crate) fn log_copilot_auth_warning(context: &'static str, error: &CopilotAuthError) {
+    let category = match error {
+        CopilotAuthError::DeviceFlowNotStarted => "device flow not started",
+        CopilotAuthError::AuthorizationPending => "authorization pending",
+        CopilotAuthError::AccessDenied => "access denied",
+        CopilotAuthError::ExpiredToken => "expired token",
+        CopilotAuthError::GitHubTokenInvalid => "invalid GitHub token",
+        CopilotAuthError::CopilotTokenFetchFailed(_) => "Copilot token exchange failed",
+        CopilotAuthError::NetworkError(_) => "network error",
+        CopilotAuthError::ParseError(_) => "parse error",
+        CopilotAuthError::IoError(_) => "IO error",
+        CopilotAuthError::NoCopilotSubscription => "no Copilot subscription",
+        CopilotAuthError::AccountNotFound(_) => "account not found",
+        CopilotAuthError::InvalidDomain(_) => "invalid GitHub domain",
+    };
+    log::warn!("[CopilotAuth] {context}: {category}");
+}
+
 impl From<reqwest::Error> for CopilotAuthError {
     fn from(err: reqwest::Error) -> Self {
         CopilotAuthError::NetworkError(err.to_string())
@@ -458,7 +477,7 @@ impl CopilotAuthManager {
 
         // 尝试从磁盘加载（同步，不发起网络请求）
         if let Err(e) = manager.load_from_disk_sync() {
-            log::warn!("[CopilotAuth] 加载存储失败: {e}");
+            log_copilot_auth_warning("加载存储失败", &e);
         }
 
         manager
@@ -574,7 +593,7 @@ impl CopilotAuthManager {
         // 持久化
         self.save_to_disk().await?;
 
-        log::info!("[CopilotAuth] 添加账号成功: {}", user.login);
+        log::info!("[CopilotAuth] 添加账号成功");
 
         Ok(account)
     }
@@ -634,10 +653,7 @@ impl CopilotAuthManager {
             .await
             .map_err(|e| CopilotAuthError::ParseError(e.to_string()))?;
 
-        log::info!(
-            "[CopilotAuth] 获取设备码成功，user_code: {}",
-            device_code.user_code
-        );
+        log::info!("[CopilotAuth] 获取设备码成功");
 
         Ok(device_code)
     }
@@ -960,11 +976,7 @@ impl CopilotAuthManager {
             log::debug!("[CopilotAuth] 已保存动态 API 端点");
         }
 
-        log::info!(
-            "[CopilotAuth] 获取使用量成功，计划: {}, 重置日期: {}",
-            usage.copilot_plan,
-            usage.quota_reset_date
-        );
+        log::info!("[CopilotAuth] 获取使用量成功");
 
         Ok(usage)
     }
@@ -1331,7 +1343,7 @@ impl CopilotAuthManager {
             .await
             .map_err(|e| CopilotAuthError::ParseError(e.to_string()))?;
 
-        log::info!("[CopilotAuth] 获取用户信息成功: {}", user.login);
+        log::info!("[CopilotAuth] 获取用户信息成功");
 
         Ok(user)
     }
@@ -1427,7 +1439,7 @@ impl CopilotAuthManager {
                         )
                         .await
                     {
-                        log::warn!("[CopilotAuth] 迁移时验证 Copilot 订阅失败: {e}");
+                        log_copilot_auth_warning("迁移时验证 Copilot 订阅失败", &e);
                     }
 
                     // 添加账号
@@ -1446,7 +1458,7 @@ impl CopilotAuthManager {
                         "Legacy Copilot auth migration failed: {e}"
                     )))
                     .await;
-                    log::warn!("[CopilotAuth] 迁移失败，旧 token 可能已失效: {e}");
+                    log_copilot_auth_warning("迁移失败，旧 token 可能已失效", &e);
                 }
             }
 

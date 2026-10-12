@@ -8,7 +8,9 @@
 //! - Claude 的格式转换逻辑保留在此文件（用于 OpenRouter 旧接口回退）
 
 use super::{
-    content_encoding::{decompress_body, get_content_encoding, is_supported_content_encoding},
+    content_encoding::{
+        decompress_body, get_content_encoding, is_supported_content_encoding, DecompressError,
+    },
     error_mapper::{get_error_message, get_log_error_message, map_proxy_error_to_status},
     forwarder::ActiveConnectionGuard,
     handler_config::{
@@ -736,17 +738,15 @@ async fn handle_claude_transform(
                         // 裸聚合错误、丢失非嗅探臂已有的诊断增强（C7）
                         aggregated.map_err(|e| {
                             log::error!(
-                                "[Claude] SSE 聚合兜底失败: {e}, body_bytes={}",
+                                "[Claude] SSE 聚合兜底失败: {}, body_bytes={}",
+                                get_log_error_message(&e),
                                 body_bytes.len()
                             );
                             aggregate_fallback_error(e, &response_headers, &body_str)
                         })?
                     }
                     Err(e) => {
-                        log::error!(
-                            "[Claude] 解析上游响应失败: {e}, body_bytes={}",
-                            body_bytes.len()
-                        );
+                        log::error!("[Claude] 解析上游响应失败: invalid JSON, body_bytes={}", body_bytes.len());
                         return Err(upstream_body_parse_error(
                             "Failed to parse upstream response",
                             &e,
@@ -801,7 +801,7 @@ async fn handle_claude_transform(
     let anthropic_response = match transform_result {
         Ok(response) => response,
         Err(error) => {
-            log::error!("[Claude] 转换响应失败: {error}");
+            log::error!("[Claude] 转换响应失败: {}", get_log_error_message(&error));
             if usage_logging_enabled(state) {
                 if let Some(log) = raw_usage_response.as_ref().and_then(|response| {
                     prepare_claude_usage_log(ctx, response, status.as_u16(), false)
@@ -873,9 +873,10 @@ fn decode_codex_request_body(
         )));
     }
 
-    log::debug!("[Codex] 解压请求体: content-encoding={encoding}");
+    log::debug!("[Codex] 解压请求体: encoded body");
     let decompressed = match decompress_body(&encoding, &body_bytes) {
         Ok(Some(decompressed)) => decompressed,
+        Err(DecompressError::TooLarge { .. }) => return Err(ProxyError::RequestBodyTooLarge),
         // is_supported_content_encoding 已确保编码受支持，正常不会返回 None；
         // 防御性兜底：宁可报错，也不能把压缩字节当 JSON 透传下去。
         Ok(None) => {
@@ -884,7 +885,7 @@ fn decode_codex_request_body(
             )));
         }
         Err(e) => {
-            log::warn!("[Codex] 请求体解压失败 ({encoding}): {e}");
+            log::warn!("[Codex] 请求体解压失败: invalid data");
             return Err(ProxyError::InvalidRequest(format!(
                 "Failed to decompress request body ({encoding}): {e}"
             )));
@@ -1846,17 +1847,15 @@ async fn handle_codex_chat_to_responses_transform(
             // 聚合也失败时：服务端日志只记录长度，并给客户端错误附带现场诊断（C7）
             chat_sse_to_response_value(&body_str).map_err(|e| {
                 log::error!(
-                    "[Codex] SSE 聚合兜底失败: {e}, body_bytes={}",
+                    "[Codex] SSE 聚合兜底失败: {}, body_bytes={}",
+                    get_log_error_message(&e),
                     body_bytes.len()
                 );
                 aggregate_fallback_error(e, &response_headers, &body_str)
             })?
         }
         Err(e) => {
-            log::error!(
-                "[Codex] 解析 Chat 上游响应失败: {e}, body_bytes={}",
-                body_bytes.len()
-            );
+            log::error!("[Codex] 解析 Chat 上游响应失败: invalid JSON, body_bytes={}", body_bytes.len());
             return Err(upstream_body_parse_error(
                 "Failed to parse upstream chat response",
                 &e,
@@ -1869,9 +1868,11 @@ async fn handle_codex_chat_to_responses_transform(
         chat_response,
         &tool_context,
     )
-    .map_err(|e| {
-        log::error!("[Codex] Chat → Responses 响应转换失败: {e}");
-        e
+    .inspect_err(|e| {
+        log::error!(
+            "[Codex] Chat → Responses 响应转换失败: {}",
+            get_log_error_message(e)
+        );
     })?;
     state
         .codex_chat_history
@@ -2004,16 +2005,15 @@ async fn handle_codex_anthropic_to_responses_transform(
         // aggregate it back into a message before continuing the conversion.
         Err(_) if body_looks_like_sse(&body_str) => {
             log::warn!("[Codex] Upstream returned an unmarked Anthropic SSE body, falling back to aggregation");
-            transform_codex_anthropic::anthropic_sse_to_message_value(&body_str).map_err(|e| {
-                log::error!("[Codex] Failed to aggregate Anthropic SSE body: {e}");
-                e
+            transform_codex_anthropic::anthropic_sse_to_message_value(&body_str).inspect_err(|e| {
+                log::error!(
+                    "[Codex] Failed to aggregate Anthropic SSE body: {}",
+                    get_log_error_message(e)
+                );
             })?
         }
         Err(e) => {
-            log::error!(
-                "[Codex] Failed to parse Anthropic upstream response: {e}, body_bytes={}",
-                body_bytes.len()
-            );
+            log::error!("[Codex] Failed to parse Anthropic upstream response: invalid JSON, body_bytes={}", body_bytes.len());
             return Err(upstream_body_parse_error(
                 "Failed to parse upstream anthropic response",
                 &e,
@@ -2042,9 +2042,11 @@ async fn handle_codex_anthropic_to_responses_transform(
             anthropic_response,
             &codex_tool_context,
         )
-        .map_err(|e| {
-            log::error!("[Codex] Failed to convert Anthropic response to Responses: {e}");
-            e
+        .inspect_err(|e| {
+            log::error!(
+                "[Codex] Failed to convert Anthropic response to Responses: {}",
+                get_log_error_message(e)
+            );
         })?;
 
     if let Some(usage) = TokenUsage::from_codex_response_auto(&responses_response)
@@ -3201,12 +3203,12 @@ async fn log_forward_error(
             None,
         )
     });
-    if let Err(e) = write.await.unwrap_or_else(|e| {
+    if write.await.unwrap_or_else(|e| {
         Err(crate::error::AppError::Database(format!(
             "usage 记录任务失败: {e}"
         )))
-    }) {
-        log::warn!("记录失败请求日志失败: {e}");
+    }).is_err() {
+        log::warn!("记录失败请求日志失败: usage write failed");
     }
 }
 
@@ -3274,17 +3276,40 @@ async fn log_usage(
             is_streaming,
         )
     });
-    if let Err(e) = write.await.unwrap_or_else(|e| {
+    if write.await.unwrap_or_else(|e| {
         Err(crate::error::AppError::Database(format!(
             "usage 记录任务失败: {e}"
         )))
-    }) {
-        log::warn!("[USG-001] 记录使用量失败: {e}");
+    }).is_err() {
+        log::warn!("[USG-001] 记录使用量失败: usage write failed");
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn compressed_request_overflow_returns_request_body_too_large() {
+        use crate::proxy::content_encoding::MAX_REQUEST_BODY_BYTES;
+        use std::io::Read;
+
+        // 流式生成压缩炸弹，避免测试额外分配一份 200 MiB 明文。
+        let compressed = zstd::stream::encode_all(
+            std::io::repeat(b'a').take((MAX_REQUEST_BODY_BYTES + 1) as u64),
+            0,
+        )
+        .unwrap();
+        assert!(compressed.len() < MAX_REQUEST_BODY_BYTES);
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("content-encoding", "zstd".parse().unwrap());
+        let error = super::decode_codex_request_body(&mut headers, Bytes::from(compressed))
+            .expect_err("decompressed request must be bounded");
+        assert!(matches!(error, ProxyError::RequestBodyTooLarge));
+        assert_eq!(
+            error.status_code(),
+            axum::http::StatusCode::PAYLOAD_TOO_LARGE
+        );
+    }
+
     use super::{
         body_looks_like_sse, chat_sse_to_response_value, classify_body_for_diagnostics,
         codex_proxy_error_json, responses_sse_stream_to_anthropic_message,

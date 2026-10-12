@@ -7,6 +7,9 @@
 use axum::http::header::HeaderMap;
 use std::io::Read;
 
+/// 请求体读取和每层解压输出共用的上限（200 MiB）。
+pub(crate) const MAX_REQUEST_BODY_BYTES: usize = 200 * 1024 * 1024;
+
 /// 把 content-encoding 值拆成有序 coding 列表（去掉 identity 与空值）。
 ///
 /// HTTP 允许堆叠编码（如 `gzip, zstd`），各 coding 以逗号分隔；亦允许重复
@@ -101,10 +104,10 @@ fn decompress_single(
             let zlib = flate2::read::ZlibDecoder::new(body);
             match read_with_output_limit(zlib, max_output_bytes) {
                 Ok(decompressed) => Ok(Some(decompressed)),
-                Err(zlib_err) => {
-                    // TooLarge 也要回退：raw 流被误判为 zlib 时可能在预算处截停，
-                    // 回退后若真是炸弹，raw 解码同样会触发 TooLarge。
-                    log::debug!("deflate 按 zlib 解压失败（{zlib_err}），回退 raw deflate");
+                Err(e @ DecompressError::TooLarge { .. }) => Err(e),
+                Err(_) => {
+                    // 仅格式错误回退；超限必须保留为安全拒绝信号。
+                    log::debug!("deflate 按 zlib 解压失败（invalid data），回退 raw deflate");
                     let raw = flate2::read::DeflateDecoder::new(body);
                     Ok(Some(read_with_output_limit(raw, max_output_bytes)?))
                 }
@@ -141,7 +144,7 @@ pub(crate) fn decompress_body_with_limit(
     }
     // 任一 coding 不支持就整体放弃解压、保头透传，避免半解码的脏数据。
     if !codings.iter().all(|c| is_single_supported(c)) {
-        log::warn!("不支持的 content-encoding: {content_encoding}，跳过解压");
+        log::warn!("不支持的 content-encoding: unknown，跳过解压");
         return Ok(None);
     }
 
@@ -158,13 +161,12 @@ pub(crate) fn decompress_body_with_limit(
     Ok(data)
 }
 
-/// 无输出上限的 [`decompress_body_with_limit`] 版本，供请求侧等已有自身
-/// 体积约束的调用方使用。
+/// 请求侧解压：每层输出最多 200 MiB，不能仅限制压缩前的请求体。
 pub(crate) fn decompress_body(
     content_encoding: &str,
     body: &[u8],
-) -> Result<Option<Vec<u8>>, std::io::Error> {
-    decompress_body_with_limit(content_encoding, body, usize::MAX).map_err(Into::into)
+) -> Result<Option<Vec<u8>>, DecompressError> {
+    decompress_body_with_limit(content_encoding, body, MAX_REQUEST_BODY_BYTES)
 }
 
 /// 该 content-encoding（含堆叠，如 `gzip, zstd`）是否全部可被解压。
@@ -199,6 +201,25 @@ pub(crate) fn get_content_encoding(headers: &HeaderMap) -> Option<String> {
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
+
+    #[test]
+    fn deflate_output_overflow_preserves_too_large_error() {
+        let payload = [b'a'; 1025];
+        let mut encoder =
+            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut encoder, &payload).unwrap();
+        let compressed = encoder.finish().unwrap();
+        assert_eq!(
+            decompress_body_with_limit("deflate", &compressed, payload.len())
+                .unwrap()
+                .unwrap(),
+            payload
+        );
+        assert!(matches!(
+            decompress_body_with_limit("deflate", &compressed, payload.len() - 1),
+            Err(DecompressError::TooLarge { limit: 1024 })
+        ));
+    }
 
     #[test]
     fn decompress_body_deflate_handles_zlib_wrapped_per_rfc9110() {

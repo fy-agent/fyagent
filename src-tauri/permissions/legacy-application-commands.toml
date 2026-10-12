@@ -124,6 +124,8 @@ commands.allow = [
   "get_direct_provider",
   "get_failover_queue",
   "get_global_proxy_config",
+  "get_proxy_access_key",
+  "regenerate_proxy_access_key",
   "get_global_proxy_url",
   "get_hermes_live_provider",
   "get_hermes_live_provider_ids",

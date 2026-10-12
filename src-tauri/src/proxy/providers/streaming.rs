@@ -493,10 +493,7 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
                                                                 }
                                                             }
                                                             if state.consecutive_whitespace >= INFINITE_WHITESPACE_THRESHOLD {
-                                                                log::warn!(
-                                                                    "[Copilot] 检测到无限空白 bug (tool: {}), 中止此 tool call 流",
-                                                                    state.name
-                                                                );
+                                                                log::warn!("[Copilot] 检测到无限空白 bug，中止此 tool call 流");
                                                                 state.aborted = true;
                                                                 None
                                                             } else if state.started {
@@ -701,7 +698,7 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
                     }
                 }
                 Err(e) => {
-                    log::error!("Stream error: {e}");
+                    log::error!("Stream error: upstream stream failed");
                     stream_ended_with_error = true;
                     // 错误路径同样冲刷 inline think 残留：先下发已收到的载荷，
                     // 再以 error 事件收尾，不伪造成功终止事件。
@@ -812,8 +809,8 @@ fn map_stop_reason(finish_reason: Option<&str>) -> Option<String> {
             "stop" => "end_turn",
             "length" => "max_tokens",
             "content_filter" => "end_turn",
-            other => {
-                log::warn!("[Claude/OpenRouter] Unknown finish_reason in streaming: {other}");
+            _ => {
+                log::warn!("[Claude/OpenRouter] Unknown finish_reason in streaming: unknown");
                 "end_turn"
             }
         }

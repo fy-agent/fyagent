@@ -856,10 +856,8 @@ fn normalize_function_call_arguments_field(obj: &mut Map<String, Value>) -> bool
                 true
             }
             Ok(None) => false,
-            Err(error) => {
-                log::debug!(
-                    "[Codex] xAI function_call arguments were not rewritten; passing through unchanged: {error}"
-                );
+            Err(_) => {
+                log::debug!("[Codex] xAI function_call arguments were not rewritten; passing through unchanged: invalid JSON");
                 false
             }
         },

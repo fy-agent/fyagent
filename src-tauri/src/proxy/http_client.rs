@@ -69,7 +69,7 @@ pub fn init(proxy_url: Option<&str>) -> Result<(), String> {
         log::warn!(
             "[GlobalProxy] [GP-003] Already initialized, updating instead: {}",
             effective_url
-                .map(mask_url)
+                .map(|url| if url::Url::parse(url).is_ok() { mask_url(url) } else { "invalid proxy URL".to_string() })
                 .unwrap_or_else(|| "direct connection".to_string())
         );
         // 已初始化，改用 apply_proxy 更新
@@ -82,7 +82,7 @@ pub fn init(proxy_url: Option<&str>) -> Result<(), String> {
     log::info!(
         "[GlobalProxy] Initialized: {}",
         effective_url
-            .map(mask_url)
+            .map(|url| if url::Url::parse(url).is_ok() { mask_url(url) } else { "invalid proxy URL".to_string() })
             .unwrap_or_else(|| "direct connection".to_string())
     );
 
@@ -141,7 +141,7 @@ pub fn apply_proxy(proxy_url: Option<&str>) -> Result<(), String> {
     log::info!(
         "[GlobalProxy] Applied: {}",
         effective_url
-            .map(mask_url)
+            .map(|url| if url::Url::parse(url).is_ok() { mask_url(url) } else { "invalid proxy URL".to_string() })
             .unwrap_or_else(|| "direct connection".to_string())
     );
 
@@ -185,7 +185,7 @@ pub fn update_proxy(proxy_url: Option<&str>) -> Result<(), String> {
     log::info!(
         "[GlobalProxy] Updated: {}",
         effective_url
-            .map(mask_url)
+            .map(|url| if url::Url::parse(url).is_ok() { mask_url(url) } else { "invalid proxy URL".to_string() })
             .unwrap_or_else(|| "direct connection".to_string())
     );
 
@@ -303,7 +303,7 @@ fn build_client(proxy_url: Option<&str>) -> Result<Client, String> {
         let proxy = reqwest::Proxy::all(url)
             .map_err(|e| format!("Invalid proxy URL '{}': {}", mask_url(url), e))?;
         builder = builder.proxy(proxy);
-        log::debug!("[GlobalProxy] Proxy configured: {}", mask_url(url));
+        log::debug!("[GlobalProxy] Proxy configured: {}", if url::Url::parse(url).is_ok() { mask_url(url) } else { "invalid proxy URL".to_string() });
     } else {
         // 未设置全局代理时，让 reqwest 自动检测系统代理（环境变量）
         // 若系统代理指向本机，禁用系统代理避免自环

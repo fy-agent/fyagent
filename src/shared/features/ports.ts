@@ -1,5 +1,6 @@
 import type { Provider } from "../../domain/configuration/types";
 import type {
+  GlobalProxyConfig,
   AppModeView,
   ProxyStack,
   CodexDaemonRestartOutcome,
@@ -285,6 +286,10 @@ export interface McpPort {
 }
 
 export interface SettingsPort {
+  getProxyConfig(): Promise<GlobalProxyConfig>;
+  saveProxyConfig(config: GlobalProxyConfig): Promise<void>;
+  getProxyAccessKey(): Promise<string | null>;
+  regenerateProxyAccessKey(): Promise<string>;
   getAppVersion(): Promise<string>;
   get(): Promise<FeatureSettings>;
   save(settings: FeatureSettings): Promise<boolean>;

@@ -1862,9 +1862,7 @@ fn chat_legacy_function_call_to_response_item(
             .and_then(|v| v.as_str())
             .map(str::len)
             .unwrap_or(0);
-        log::warn!(
-            "[Codex] dropped legacy function_call: call_id={call_id} args_bytes={args_bytes}"
-        );
+        log::warn!("[Codex] dropped legacy function_call: args_bytes={args_bytes}");
         return None;
     }
 

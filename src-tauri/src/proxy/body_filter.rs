@@ -102,7 +102,7 @@ fn filter_recursive_with_whitelist(
 
             // 仅在有过滤时记录日志（避免每次请求都打印）
             if !removed_keys.is_empty() {
-                log::debug!("[BodyFilter] 过滤私有参数: {removed_keys:?}");
+                log::debug!("[BodyFilter] 过滤私有参数: count={}", removed_keys.len());
                 removed_keys.clear();
             }
 

@@ -24,6 +24,42 @@ fn validate_pricing_source(value: &str) -> Result<&str, AppError> {
 }
 
 impl Database {
+    pub fn regenerate_proxy_access_key(&self) -> Result<String, AppError> {
+        let key = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        );
+        self.set_setting("proxy_access_key", &key)?;
+        Ok(key)
+    }
+
+    pub fn ensure_proxy_access_key(&self) -> Result<String, AppError> {
+        use rusqlite::OptionalExtension;
+        let conn = lock_conn!(self.conn);
+        let existing: Option<String> = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'proxy_access_key'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| AppError::Database(error.to_string()))?;
+        if let Some(key) = existing.filter(|key| !key.is_empty()) {
+            return Ok(key);
+        }
+        let key = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        );
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('proxy_access_key', ?1)",
+            [&key],
+        )
+        .map_err(|error| AppError::Database(error.to_string()))?;
+        Ok(key)
+    }
     // ==================== Global Proxy Config ====================
 
     /// 获取全局代理配置（统一字段）

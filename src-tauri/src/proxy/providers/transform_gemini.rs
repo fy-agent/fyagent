@@ -935,7 +935,7 @@ pub fn rectify_tool_call_parts(
         };
 
         if rectify_tool_call_args(&name, args, tool_schema_hints) {
-            log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
+            log::info!("[Claude/Gemini] Rectified tool args");
         }
     }
 }
@@ -1253,8 +1253,8 @@ fn map_finish_reason(reason: Option<&str>, has_tool_use: bool) -> Value {
         | Some("SPII")
         | Some("BLOCKLIST")
         | Some("PROHIBITED_CONTENT") => Some("refusal"),
-        Some(other) => {
-            log::warn!("[Claude/Gemini] Unknown Gemini finishReason `{other}`, using end_turn");
+        Some(_) => {
+            log::warn!("[Claude/Gemini] Unknown Gemini finishReason unknown, using end_turn");
             Some("end_turn")
         }
     };

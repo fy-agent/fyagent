@@ -58,7 +58,7 @@ pub enum ProxyError {
     ConfigError(String),
 
     #[allow(dead_code)]
-    #[error("格式转换错误: {0}")]
+    #[error("格式转换错误: {}", transform_error_display(.0))]
     TransformError(String),
 
     #[allow(dead_code)]
@@ -80,6 +80,19 @@ pub enum ProxyError {
     #[allow(dead_code)]
     #[error("内部错误: {0}")]
     Internal(String),
+}
+
+/// Validated 2xx envelopes retain untrusted details for retries and clients.
+/// Their Display representation is a diagnostic; local validation errors keep
+/// their existing readable messages.
+fn transform_error_display(message: &str) -> &str {
+    if message.starts_with("Anthropic upstream returned a 2xx error envelope:")
+        || message.starts_with("Responses upstream returned a 2xx failure:")
+    {
+        "transformation failed"
+    } else {
+        message
+    }
 }
 
 impl ProxyError {
@@ -146,7 +159,10 @@ impl IntoResponse for ProxyError {
             }
             _ => {
                 let http_status = self.status_code();
-                let message = self.to_string();
+                let message = match &self {
+                    ProxyError::TransformError(message) => format!("格式转换错误: {message}"),
+                    _ => self.to_string(),
+                };
 
                 let error_body = json!({
                     "error": {
