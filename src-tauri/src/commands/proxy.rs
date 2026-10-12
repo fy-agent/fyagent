@@ -256,6 +256,23 @@ pub async fn get_global_proxy_config(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn get_proxy_access_key(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    state
+        .db
+        .get_setting("proxy_access_key")
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn regenerate_proxy_access_key(
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    state.proxy_service.regenerate_proxy_access_key().await
+}
+
 /// 更新全局代理配置
 ///
 /// 更新统一的全局配置字段，四行镜像写，各应用自己的重试和超时不碰。设置页的按钮写着

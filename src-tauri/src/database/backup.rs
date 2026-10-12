@@ -8,7 +8,7 @@ use crate::error::AppError;
 use chrono::{Local, Utc};
 use rusqlite::backup::{Backup, StepResult};
 use rusqlite::types::ValueRef;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -235,7 +235,7 @@ impl Database {
         conn.execute("DELETE FROM profiles", [])
             .map_err(|_| AppError::Database("provider_export_failed".into()))?;
         conn.execute(
-            "DELETE FROM settings WHERE key = 'universal_providers' OR key LIKE 'common_config_%'",
+            "DELETE FROM settings WHERE key IN ('universal_providers', 'proxy_access_key') OR key LIKE 'common_config_%'",
             [],
         )
         .map_err(|_| AppError::Database("provider_export_failed".into()))?;
@@ -676,6 +676,21 @@ impl Database {
         main_conn: &mut Connection,
         candidate: &Connection,
     ) -> Result<(), AppError> {
+        // Rotation uses this same connection lock; restore never revives a backed-up LAN key.
+        let local_key: Option<String> = main_conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'proxy_access_key'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        candidate.execute("DELETE FROM settings WHERE key = 'proxy_access_key'", [])?;
+        if let Some(key) = local_key {
+            candidate.execute(
+                "INSERT INTO settings (key, value) VALUES ('proxy_access_key', ?1)",
+                [&key],
+            )?;
+        }
         for table in LOCAL_ONLY_RECEIPT_TABLES {
             if !Self::table_exists(main_conn, table)? || !Self::table_exists(candidate, table)? {
                 return Err(AppError::Database(
@@ -1810,9 +1825,90 @@ mod tests {
     use rusqlite::Connection;
     use serial_test::serial;
 
+    #[test]
+    #[serial]
+    fn ordinary_sql_excludes_lan_key_and_preserves_local_key_on_import() -> Result<(), AppError> {
+        let _home = TestHomeGuard::new();
+        let source = Database::memory()?;
+        source.set_setting("proxy_access_key", "foreign-lan-secret")?;
+        let sql = source.export_sql_string()?;
+        assert!(!sql.contains("proxy_access_key"));
+        assert!(!sql.contains("foreign-lan-secret"));
+        assert_eq!(
+            source.get_setting("proxy_access_key")?.as_deref(),
+            Some("foreign-lan-secret")
+        );
+        let legacy_sql = format!("{sql}\nINSERT INTO settings (key, value) VALUES ('proxy_access_key', 'old-lan-secret');\n");
+        for local in [None, Some("device-lan-secret")] {
+            let target = Database::memory()?;
+            if let Some(key) = local {
+                target.set_setting("proxy_access_key", key)?;
+            }
+            target.import_sql_string(&legacy_sql)?;
+            assert_eq!(target.get_setting("proxy_access_key")?.as_deref(), local);
+            target.import_sql_string(&sql)?;
+            assert_eq!(target.get_setting("proxy_access_key")?.as_deref(), local);
+        }
+        Ok(())
+    }
+
     struct TestHomeGuard {
         previous_test_home: Option<std::ffi::OsString>,
         temp_dir: tempfile::TempDir,
+    }
+
+    #[test]
+    #[serial]
+    fn binary_restore_preserves_unconfigured_lan_key() -> Result<(), AppError> {
+        let _home = TestHomeGuard::new();
+        let db = Database::init()?;
+        db.set_setting("proxy_access_key", "backup-key")?;
+        let backup = db.backup_database_file()?.unwrap();
+        let filename = backup.file_name().unwrap().to_str().unwrap();
+        for local in [None, Some("")] {
+            {
+                let conn = crate::database::lock_conn!(db.conn);
+                conn.execute("DELETE FROM settings WHERE key = 'proxy_access_key'", [])?;
+            }
+            if let Some(key) = local {
+                db.set_setting("proxy_access_key", key)?;
+            }
+            db.restore_from_backup(filename)?;
+            assert_eq!(db.get_setting("proxy_access_key")?.as_deref(), local);
+        }
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn binary_restore_serializes_key_preservation_with_rotation() -> Result<(), AppError> {
+        let _home = TestHomeGuard::new();
+        let db = std::sync::Arc::new(Database::init()?);
+        let old = db.regenerate_proxy_access_key()?;
+        let backup = db.backup_database_file()?.unwrap();
+        let current = db.regenerate_proxy_access_key()?;
+        assert_ne!(old, current);
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let mut rotation = None;
+        db.restore_from_backup_with_hook(backup.file_name().unwrap().to_str().unwrap(), |_| {
+            let db = db.clone();
+            rotation = Some(std::thread::spawn(move || {
+                assert!(matches!(
+                    db.conn.try_lock(),
+                    Err(std::sync::TryLockError::WouldBlock)
+                ));
+                entered_tx.send(()).unwrap();
+                db.regenerate_proxy_access_key().unwrap()
+            }));
+            entered_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            Ok(())
+        })?;
+        let rotated = rotation.unwrap().join().unwrap();
+        assert_ne!(rotated, current);
+        assert_eq!(db.get_setting("proxy_access_key")?, Some(rotated));
+        Ok(())
     }
 
     impl TestHomeGuard {

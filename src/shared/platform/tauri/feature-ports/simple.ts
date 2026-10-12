@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { GlobalProxyConfig } from "../../../../domain/configuration/types/proxy";
+
 import type { FeaturePorts } from "../../../features/ports";
 import { parseFirstUseGuideState } from "../../../features/first-use-guide";
 import {
@@ -12,6 +14,33 @@ import {
   type McpImportSourceId,
   type McpServersMap,
 } from "../../../features/mcp";
+
+function parseProxyConfig(value: unknown): GlobalProxyConfig {
+  if (!value || typeof value !== "object") throw new Error("无法读取代理设置");
+  const config = value as Record<string, unknown>;
+  if (
+    typeof config.proxyEnabled !== "boolean" ||
+    typeof config.listenAddress !== "string" ||
+    typeof config.listenPort !== "number" ||
+    !Number.isInteger(config.listenPort) ||
+    config.listenPort < 0 ||
+    config.listenPort > 65535 ||
+    typeof config.enableLogging !== "boolean"
+  ) {
+    throw new Error("无法读取代理设置");
+  }
+  return {
+    proxyEnabled: config.proxyEnabled,
+    listenAddress: config.listenAddress,
+    listenPort: config.listenPort,
+    enableLogging: config.enableLogging,
+  };
+}
+
+function parseProxyAccessKey(value: unknown): string | null {
+  if (value === null || typeof value === "string") return value;
+  throw new Error("无法读取代理访问密钥");
+}
 
 function isMcpImportSource(value: unknown): value is McpImportSourceId {
   return MCP_IMPORT_SOURCES.some((source) => source.id === value);
@@ -180,6 +209,22 @@ export function createSimpleFeaturePorts(): Pick<
       },
     },
     settings: {
+      getProxyConfig: async () =>
+        parseProxyConfig(await invoke<unknown>("get_global_proxy_config")),
+      saveProxyConfig: async (config) => {
+        await invoke("update_global_proxy_config", {
+          config: parseProxyConfig(config),
+        });
+      },
+      getProxyAccessKey: async () =>
+        parseProxyAccessKey(await invoke<unknown>("get_proxy_access_key")),
+      regenerateProxyAccessKey: async () => {
+        const key = parseProxyAccessKey(
+          await invoke<unknown>("regenerate_proxy_access_key"),
+        );
+        if (!key) throw new Error("无法重新生成代理访问密钥");
+        return key;
+      },
       getAppVersion: async () => {
         const { readAppVersion } = await import("./application");
         return readAppVersion();

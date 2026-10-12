@@ -8,6 +8,12 @@ import { Brand } from "./Brand";
 import { ThemeToggle } from "./ThemeToggle";
 import "./top-bar-actions.css";
 
+const ProxySettingsDialog = lazy(() =>
+  import("./AboutDialog").then((module) => ({
+    default: module.ProxySettingsDialog,
+  })),
+);
+
 const AboutDialog = lazy(() => import("./AboutDialog"));
 const DatabaseRecoveryDialog = lazy(async () => {
   const { DatabaseRecoveryDialog } = await import(
@@ -39,6 +45,8 @@ function DatabaseRecoveryEntry({
 export function TopBar() {
   const showMacOverlayDragStrip = shouldShowMacOverlayDragStrip();
   const [aboutOpen, setAboutOpen] = useState<boolean | null>(null);
+  const [proxyOpen, setProxyOpen] = useState(false);
+  const proxyOrigin = useRef<HTMLElement | null>(null);
   const aboutOrigin = useRef<HTMLElement | null>(null);
   const [databaseRecoveryOpen, setDatabaseRecoveryOpen] = useState<
     boolean | null
@@ -81,6 +89,14 @@ export function TopBar() {
           </Button>
         </div>
       </div>
+      {proxyOpen ? (
+        <Suspense fallback={null}>
+          <ProxySettingsDialog
+            originRef={proxyOrigin}
+            onClose={() => setProxyOpen(false)}
+          />
+        </Suspense>
+      ) : null}
       {aboutOpen !== null ? (
         <Suspense fallback={null}>
           <AboutDialog
@@ -88,6 +104,11 @@ export function TopBar() {
             onOpenChange={setAboutOpen}
             originRef={aboutOrigin}
             databaseRecoveryOriginRef={databaseRecoveryOrigin}
+            proxyOriginRef={proxyOrigin}
+            onOpenProxySettings={() => {
+              setAboutOpen(false);
+              setProxyOpen(true);
+            }}
             onOpenDatabaseRecovery={() => {
               setAboutOpen(false);
               setDatabaseRecoveryOpen(true);

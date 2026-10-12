@@ -275,8 +275,8 @@ impl XaiOAuthManager {
             json_store_sealed: AtomicBool::new(false),
         };
 
-        if let Err(error) = manager.load_from_disk_sync() {
-            log::warn!("[XaiOAuth] 加载存储失败: {error}");
+        if manager.load_from_disk_sync().is_err() {
+            log::warn!("[XaiOAuth] 加载存储失败: auth storage error");
         }
         manager
     }

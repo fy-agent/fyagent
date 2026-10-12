@@ -2536,7 +2536,34 @@ fn create_anthropic_sse_stream_from_responses_raw<E: std::error::Error + Send + 
                             .or_else(|| data.get("type").and_then(Value::as_str))
                             .unwrap_or("");
 
-                        log::debug!("[Claude/Responses] <<< SSE event: {event_name}");
+                        log::debug!("[Claude/Responses] <<< SSE event: {}", match event_name {
+                            "error" => "error",
+                            "response.completed" => "response.completed",
+                            "response.content_part.added" => "response.content_part.added",
+                            "response.content_part.done" => "response.content_part.done",
+                            "response.created" => "response.created",
+                            "response.failed" => "response.failed",
+                            "response.function_call_arguments.delta" => "response.function_call_arguments.delta",
+                            "response.function_call_arguments.done" => "response.function_call_arguments.done",
+                            "response.in_progress" => "response.in_progress",
+                            "response.incomplete" => "response.incomplete",
+                            "response.output_item.added" => "response.output_item.added",
+                            "response.output_item.done" => "response.output_item.done",
+                            "response.output_text.annotation.added" => "response.output_text.annotation.added",
+                            "response.output_text.delta" => "response.output_text.delta",
+                            "response.output_text.done" => "response.output_text.done",
+                            "response.reasoning.delta" => "response.reasoning.delta",
+                            "response.reasoning.done" => "response.reasoning.done",
+                            "response.reasoning_summary_part.added" => "response.reasoning_summary_part.added",
+                            "response.reasoning_summary_part.done" => "response.reasoning_summary_part.done",
+                            "response.reasoning_summary_text.delta" => "response.reasoning_summary_text.delta",
+                            "response.reasoning_summary_text.done" => "response.reasoning_summary_text.done",
+                            "response.reasoning_text.delta" => "response.reasoning_text.delta",
+                            "response.reasoning_text.done" => "response.reasoning_text.done",
+                            "response.refusal.delta" => "response.refusal.delta",
+                            "response.refusal.done" => "response.refusal.done",
+                            _ => "unknown",
+                        });
 
                         // Ignore every event after a terminal response. In particular,
                         // do not synthesize message_start if a broken gateway emits a
@@ -4564,7 +4591,7 @@ fn create_anthropic_sse_stream_from_responses_raw<E: std::error::Error + Send + 
                     }
                 }
                 Err(e) => {
-                    log::error!("Responses stream error: {e}");
+                    log::error!("Responses stream error: upstream stream failed");
                     let error_event = json!({
                         "type": "error",
                         "error": {

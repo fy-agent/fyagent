@@ -101,17 +101,17 @@ pub(crate) async fn read_decoded_body(
     };
 
     log::debug!(
-        "[{tag}] 已接收上游响应体: status={}, bytes={}, headers={}",
+        "[{tag}] 已接收上游响应体: status={}, bytes={}, header_summary_bytes={}",
         status.as_u16(),
         raw_bytes.len(),
-        format_headers(&headers)
+        format_headers(&headers).len()
     );
 
     let mut body_bytes = raw_bytes.clone();
     let mut decoded = false;
 
     if let Some(encoding) = get_content_encoding(&headers) {
-        log::debug!("[{tag}] 解压非流式响应: content-encoding={encoding}");
+        log::debug!("[{tag}] 解压非流式响应: encoded body");
         match decompress_body_with_limit(&encoding, &raw_bytes, MAX_RESPONSE_BODY_BYTES) {
             Ok(Some(decompressed)) => {
                 // 解码器在预算耗尽处即截停，此处必然 ≤ MAX_RESPONSE_BODY_BYTES
@@ -124,8 +124,8 @@ pub(crate) async fn read_decoded_body(
             Err(DecompressError::TooLarge { .. }) => {
                 return Err(ProxyError::ResponseBodyTooLarge(MAX_RESPONSE_BODY_BYTES));
             }
-            Err(DecompressError::Io(e)) => {
-                log::warn!("[{tag}] 解压失败 ({encoding}): {e}，使用原始数据");
+            Err(DecompressError::Io(_)) => {
+                log::warn!("[{tag}] 解压失败: invalid data，使用原始数据");
             }
         }
     }
@@ -167,16 +167,15 @@ pub async fn handle_streaming(
 ) -> Response {
     let status = response.status();
     log::debug!(
-        "[{}] 已接收上游流式响应: status={}, headers={}",
+        "[{}] 已接收上游流式响应: status={}, header_summary_bytes={}",
         ctx.tag,
         status.as_u16(),
-        format_headers(response.headers())
+        format_headers(response.headers()).len()
     );
     // 检查流式响应是否被压缩（SSE 通常不压缩，如果压缩则 SSE 解析会失败）
-    if let Some(encoding) = get_content_encoding(response.headers()) {
+    if get_content_encoding(response.headers()).is_some() {
         log::warn!(
-            "[{}] 流式响应含 content-encoding={encoding}，SSE 解析可能失败。\
-             上游在 accept-encoding 透传后压缩了 SSE 流。",
+            "[{}] 流式响应含 content-encoding，SSE 解析可能失败。上游压缩了 SSE 流。",
             ctx.tag
         );
     }
@@ -673,14 +672,7 @@ async fn log_usage_internal(
     let dedup_scope = super::usage::parser::dedup_scope_for_app(app_type, provider_id);
     let request_id = usage.dedup_request_id(dedup_scope);
 
-    log::debug!(
-        "[{app_type}] 记录请求日志: id={request_id}, provider={provider_id}, model={model}, streaming={is_streaming}, status={status_code}, latency_ms={latency_ms}, first_token_ms={first_token_ms:?}, session={}, input={}, output={}, cache_read={}, cache_creation={}",
-        session_id.as_deref().unwrap_or("none"),
-        usage.input_tokens,
-        usage.output_tokens,
-        usage.cache_read_tokens,
-        usage.cache_creation_tokens
-    );
+    log::debug!("[{app_type}] 记录请求日志: provider={provider_id}, streaming={is_streaming}, status={status_code}, latency_ms={latency_ms}, first_token_ms={first_token_ms:?}, input={}, output={}, cache_read={}, cache_creation={}", usage.input_tokens, usage.output_tokens, usage.cache_read_tokens, usage.cache_creation_tokens);
 
     // #7818：使用量写入要拿 Database 的单把 std::sync::Mutex<Connection> 并做
     // 磁盘 IO，同步执行会卡住 tokio worker，移到阻塞线程池执行。计费模式
@@ -718,12 +710,16 @@ async fn log_usage_internal(
             is_streaming,
         )
     });
-    if let Err(e) = write.await.unwrap_or_else(|e| {
-        Err(crate::error::AppError::Database(format!(
-            "usage 记录任务失败: {e}"
-        )))
-    }) {
-        log::warn!("[USG-001] 记录使用量失败: {e}");
+    if write
+        .await
+        .unwrap_or_else(|e| {
+            Err(crate::error::AppError::Database(format!(
+                "usage 记录任务失败: {e}"
+            )))
+        })
+        .is_err()
+    {
+        log::warn!("[USG-001] 记录使用量失败: usage write failed");
     }
 }
 
@@ -837,7 +833,7 @@ pub fn create_logged_passthrough_stream(
                     yield Ok(bytes);
                 }
                 Some(Err(e)) => {
-                    log::error!("[{tag}] 流错误: {e}");
+                    log::error!("[{tag}] 流错误: upstream stream failed");
                     yield Err(std::io::Error::other(e.to_string()));
                     break;
                 }

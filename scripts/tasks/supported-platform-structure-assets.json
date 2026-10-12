@@ -163,7 +163,7 @@
     ],
     [
       "src-tauri/src/database/backup.rs",
-      "1339dae9cc561d75ff1c99bf7b3609842c9e689e0837f7db448c5bb34e2ac731"
+      "092c495f4b0c8f465b9114aa65d8eb359dda04b1d565b4422cdb32a3b0d77925"
     ],
     [
       "src-tauri/src/database/backup/recovery_tests.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "401d28cc7f127440dbab36a429e9e98985071573bf135d4e096622cde250c7a1"
+      "b632289d66555d121bb0041d8b5a3a59d9295d56a3e22fe5e049b21b618c7514"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -243,15 +243,15 @@
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
-      "77b429fbd122de89b61fa3bf9f39572152b15605cb72e78937fb10702af33644"
+      "7912ada6ed1942b52683726f7d8aca330f7d07b03c9f890835db57ba50c7d59c"
     ],
     [
       "src-tauri/src/proxy/providers/copilot_auth.rs",
-      "d32f136064da7843448917e4c9224ec69e905267b0488372701e9881bb972715"
+      "fc848eccb5131bc414978cdecc50c52fada44cf0ae7ebd7995cdd65f2278ef69"
     ],
     [
       "src-tauri/src/proxy/providers/xai_oauth_auth.rs",
-      "37654d2a840aabdd23cc5aa3cfa2bb4cd7e04d2d413db2e310b752de408403eb"
+      "e89dee38184ab443fc884944d4fde2108f710fce28a1cb9af81f04ce4cf36449"
     ],
     [
       "src-tauri/src/services/backup_storage.rs",
@@ -327,7 +327,7 @@
     ],
     [
       "src-tauri/src/services/proxy.rs",
-      "d86d32aba0fe0833bf58e884209a68532140995c4553a34cd05079b1812ff97a"
+      "fd27638be20a2f96e919e83e6dd96d037bd944f44c8bb7e457be163171a26dcc"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",

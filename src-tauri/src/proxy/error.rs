@@ -8,6 +8,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ProxyError {
+    #[error("请求体超过大小上限")]
+    RequestBodyTooLarge,
+
     #[error("上游响应体超过大小上限: {0} 字节")]
     ResponseBodyTooLarge(usize),
 
@@ -42,7 +45,7 @@ pub enum ProxyError {
     #[error("Provider不健康: {0}")]
     ProviderUnhealthy(String),
 
-    #[error("上游错误 (状态码 {status}): {body:?}")]
+    #[error("上游错误 (状态码 {status})")]
     UpstreamError { status: u16, body: Option<String> },
 
     #[error("超过最大重试次数")]
@@ -55,7 +58,7 @@ pub enum ProxyError {
     ConfigError(String),
 
     #[allow(dead_code)]
-    #[error("格式转换错误: {0}")]
+    #[error("格式转换错误: {}", transform_error_display(.0))]
     TransformError(String),
 
     #[allow(dead_code)]
@@ -79,9 +82,23 @@ pub enum ProxyError {
     Internal(String),
 }
 
+/// Validated 2xx envelopes retain untrusted details for retries and clients.
+/// Their Display representation is a diagnostic; local validation errors keep
+/// their existing readable messages.
+fn transform_error_display(message: &str) -> &str {
+    if message.starts_with("Anthropic upstream returned a 2xx error envelope:")
+        || message.starts_with("Responses upstream returned a 2xx failure:")
+    {
+        "transformation failed"
+    } else {
+        message
+    }
+}
+
 impl ProxyError {
     pub(super) fn status_code(&self) -> StatusCode {
         match self {
+            Self::RequestBodyTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::AlreadyRunning => StatusCode::CONFLICT,
             Self::NotRunning
             | Self::NoAvailableProvider
@@ -142,7 +159,10 @@ impl IntoResponse for ProxyError {
             }
             _ => {
                 let http_status = self.status_code();
-                let message = self.to_string();
+                let message = match &self {
+                    ProxyError::TransformError(message) => format!("格式转换错误: {message}"),
+                    _ => self.to_string(),
+                };
 
                 let error_body = json!({
                     "error": {

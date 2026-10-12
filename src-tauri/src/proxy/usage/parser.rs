@@ -249,10 +249,7 @@ impl TokenUsage {
     pub fn from_codex_response(body: &Value) -> Option<Self> {
         let usage = body.get("usage");
         if usage.is_none() {
-            log::debug!(
-                "[Codex] 响应中没有 usage 字段，body keys: {:?}",
-                body.as_object().map(|o| o.keys().collect::<Vec<_>>())
-            );
+            log::debug!("[Codex] 响应中没有 usage 字段");
             return None;
         }
         let usage = usage?;
@@ -261,7 +258,7 @@ impl TokenUsage {
         let output_tokens = usage.get("output_tokens").and_then(|v| v.as_u64());
 
         if input_tokens.is_none() || output_tokens.is_none() {
-            log::debug!("[Codex] usage 字段缺少 input_tokens 或 output_tokens，usage: {usage:?}");
+            log::debug!("[Codex] usage 字段缺少 input_tokens 或 output_tokens");
             return None;
         }
 
@@ -303,7 +300,7 @@ impl TokenUsage {
             // 使用非调整版本，记录原始 input_tokens
             Self::from_codex_response(body)
         } else {
-            log::debug!("[Codex] 无法识别响应格式，usage: {usage:?}");
+            log::debug!("[Codex] 无法识别响应格式");
             None
         }
     }
@@ -378,7 +375,7 @@ impl TokenUsage {
         for event in events.iter().rev() {
             if let Some(usage) = event.get("usage") {
                 if !usage.is_null() {
-                    log::debug!("[Codex] 找到 usage: {usage:?}");
+                    log::debug!("[Codex] 找到非空 usage 字段");
                     let mut parsed = Self::from_openai_response(event)?;
                     if parsed.message_id.is_none() {
                         parsed.message_id =

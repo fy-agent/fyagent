@@ -47,6 +47,7 @@ get_proxy_status / is_proxy_running
 get_proxy_config / update_proxy_config
 
 get_global_proxy_config / update_global_proxy_config
+get_proxy_access_key / regenerate_proxy_access_key
 get_proxy_config_for_app / update_proxy_config_for_app
 get_default_cost_multiplier / set_default_cost_multiplier
 get_pricing_model_source / set_pricing_model_source

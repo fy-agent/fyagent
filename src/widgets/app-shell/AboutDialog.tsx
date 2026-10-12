@@ -7,6 +7,8 @@ import { Dialog } from "../../shared/ui/Dialog";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import "./about-dialog.css";
 
+export { default as ProxySettingsDialog } from "./ProxySettingsDialog";
+
 const projectUrl = "https://github.com/fy-agent/fyagent";
 
 export default function AboutDialog({
@@ -15,12 +17,16 @@ export default function AboutDialog({
   originRef,
   databaseRecoveryOriginRef,
   onOpenDatabaseRecovery,
+  proxyOriginRef,
+  onOpenProxySettings,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   originRef: DialogOriginRef;
   databaseRecoveryOriginRef: DialogOriginRef;
   onOpenDatabaseRecovery: () => void;
+  proxyOriginRef: DialogOriginRef;
+  onOpenProxySettings: () => void;
 }) {
   const version = useAppVersion(open);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -59,6 +65,14 @@ export default function AboutDialog({
           )}
         </div>
         <div className="fy-about-links">
+          <Button
+            aria-haspopup="dialog"
+            dialogOriginRef={proxyOriginRef}
+            dialogReturnRef={originRef}
+            onClick={onOpenProxySettings}
+          >
+            代理设置
+          </Button>
           <Button
             aria-haspopup="dialog"
             dialogOriginRef={databaseRecoveryOriginRef}

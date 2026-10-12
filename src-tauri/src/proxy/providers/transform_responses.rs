@@ -2171,7 +2171,9 @@ pub(crate) fn build_anthropic_usage_from_responses(usage: Option<&Value>) -> Val
     // Log if only one field present (partial object). Streaming chunks legitimately
     // arrive with partial usage, so this stays at debug level to avoid noise.
     if (input == 0 && output > 0) || (input > 0 && output == 0) {
-        log::debug!("[Responses] Partial usage object: {:?}", u);
+        log::debug!(
+            "[Responses] Partial usage object: input_tokens={input}, output_tokens={output}"
+        );
     }
 
     let mut result = json!({
@@ -2652,10 +2654,8 @@ pub(crate) fn responses_to_anthropic_with_web_search_options(
                 } else {
                     match serde_json::from_str(args_str) {
                         Ok(value) => value,
-                        Err(error) if !response_completed => {
-                            log::warn!(
-                                "[Responses] Replacing incomplete function_call '{name}' arguments with an empty object: {error}"
-                            );
+                        Err(_) if !response_completed => {
+                            log::warn!("[Responses] Replacing incomplete function_call arguments with an empty object: invalid JSON");
                             json!({})
                         }
                         Err(error) => {
@@ -2667,9 +2667,7 @@ pub(crate) fn responses_to_anthropic_with_web_search_options(
                 };
                 if !input.is_object() {
                     if !response_completed {
-                        log::warn!(
-                            "[Responses] Replacing incomplete function_call '{name}' non-object arguments with an empty object"
-                        );
+                        log::warn!("[Responses] Replacing incomplete function_call non-object arguments with an empty object");
                         content.push(json!({
                             "type": "tool_use",
                             "id": call_id,
