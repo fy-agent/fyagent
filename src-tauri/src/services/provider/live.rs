@@ -505,6 +505,15 @@ pub(crate) fn write_live_with_common_config(
     app_type: &AppType,
     provider: &Provider,
 ) -> Result<(), AppError> {
+    write_live_with_common_config_at_path(db, app_type, provider, None)
+}
+
+pub(crate) fn write_live_with_common_config_at_path(
+    db: &Database,
+    app_type: &AppType,
+    provider: &Provider,
+    opencode_path: Option<&std::path::Path>,
+) -> Result<(), AppError> {
     let mut effective_provider = provider.clone();
     effective_provider.settings_config =
         build_effective_settings_with_common_config(db, app_type, provider)?;
@@ -539,7 +548,7 @@ pub(crate) fn write_live_with_common_config(
         AppType::GrokBuild => {
             super::grok_direct::reapply(db, Some(provider), &effective_provider).map(|_| ())
         }
-        _ => write_live_snapshot(app_type, &effective_provider),
+        _ => write_live_snapshot_at_path(app_type, &effective_provider, opencode_path),
     }
 }
 
@@ -1098,6 +1107,14 @@ fn write_codex_live_snapshot(
 
 /// Write live configuration snapshot for a provider
 pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
+    write_live_snapshot_at_path(app_type, provider, None)
+}
+
+fn write_live_snapshot_at_path(
+    app_type: &AppType,
+    provider: &Provider,
+    opencode_path: Option<&std::path::Path>,
+) -> Result<(), AppError> {
     match app_type {
         AppType::Claude => {
             return Err(AppError::localized(
@@ -1174,7 +1191,19 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
                 &provider.settings_config,
                 provider.opencode_config_format(),
             )?;
-            opencode_config::set_provider_with_format(&provider.id, config_to_write, format)?;
+            match opencode_path {
+                Some(path) => opencode_config::set_provider_with_format_at_path(
+                    path,
+                    &provider.id,
+                    config_to_write,
+                    format,
+                )?,
+                None => opencode_config::set_provider_with_format(
+                    &provider.id,
+                    config_to_write,
+                    format,
+                )?,
+            }
         }
         AppType::OpenClaw => {
             // OpenClaw uses additive mode - write provider to config

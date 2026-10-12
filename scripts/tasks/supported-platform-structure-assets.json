@@ -155,11 +155,11 @@
     ],
     [
       "src-tauri/src/config.rs",
-      "6a485095be546d9219a348e4bfeae6e8fff61ac800036eace81bbc8b9d6f8ac6"
+      "190e9cff83e40366d807d60ce126f1aec75bc190abd2efd2fb18c78e27c98579"
     ],
     [
       "src-tauri/src/config/recovery.rs",
-      "b314acd83c14aded9af14eac401299cb98aee981c3472541a2211962e1ed2a3e"
+      "ba3aca94909af97faf46f4f6956c57835fec406711b5b81be5eb908dbbe08fed"
     ],
     [
       "src-tauri/src/database/backup.rs",
@@ -211,7 +211,7 @@
     ],
     [
       "src-tauri/src/mode/controller.rs",
-      "6d168077c4e41677db16c0ed8af38e4c213311c9ec9c30109eb29eb360b365e5"
+      "0d0e6e21b7b593bd494305a6ce560ba7f48ed4ad509b9b1cf30aedba659eb70d"
     ],
     [
       "src-tauri/src/mode/operation.rs",
@@ -223,7 +223,7 @@
     ],
     [
       "src-tauri/src/opencode_config.rs",
-      "830f3d4ccf3374f491811f64eea934331d836efed6d5a810c5f167321fcb70e7"
+      "888c618411e376fb450f00658c9217bbf260c3d01edcf3c7380f33638c391c12"
     ],
     [
       "src-tauri/src/panic_hook.rs",
@@ -319,7 +319,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "6c6443a6db283aa4ce316fe83038032981fc40b1c1dd508f6795735a1066ecbf"
+      "7f3b641d500fdbedc47edb2ceac9af81ea313b782543127f74c1dfea6736f71c"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",

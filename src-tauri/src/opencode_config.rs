@@ -577,7 +577,25 @@ pub fn set_provider_with_format(
     config: Value,
     format: OpenCodeConfigFormat,
 ) -> Result<(), AppError> {
-    try_edit_config(try_get_opencode_config_path, |full_config| {
+    set_provider_with_format_resolved(try_get_opencode_config_path, id, config, format)
+}
+
+pub(crate) fn set_provider_with_format_at_path(
+    path: &Path,
+    id: &str,
+    config: Value,
+    format: OpenCodeConfigFormat,
+) -> Result<(), AppError> {
+    set_provider_with_format_resolved(|| Ok(path.to_path_buf()), id, config, format)
+}
+
+fn set_provider_with_format_resolved(
+    resolve_path: impl FnOnce() -> Result<PathBuf, AppError>,
+    id: &str,
+    config: Value,
+    format: OpenCodeConfigFormat,
+) -> Result<(), AppError> {
+    try_edit_config(resolve_path, |full_config| {
         let key = match format {
             OpenCodeConfigFormat::V1 => {
                 if full_config

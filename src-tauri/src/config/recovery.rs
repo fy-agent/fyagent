@@ -1,8 +1,8 @@
 //! One rolling preimage below every managed JSON/text/auth writer.
 //!
 //! The sidecar is written before the primary and contains only local recovery
-//! control data. Its hashes never cross IPC. A crash or external edit cannot
-//! turn a stale backup into permission to overwrite the current file.
+//! control data. Its hashes never cross IPC. Checked compensation detects stale
+//! ownership but provides no cross-process or file/database transaction.
 
 use std::fs::{self, OpenOptions};
 use std::io::Read;
@@ -442,6 +442,7 @@ pub(super) fn restore_preimage(path: &Path, bytes: Option<&[u8]>) -> Result<(), 
     replace(path, bytes, false)
 }
 
+// Checked synchronous compensation only; external processes do not share WRITER.
 pub(crate) fn restore_file_preimage_if_owned(
     path: &Path,
     bytes: Option<&[u8]>,
