@@ -103,11 +103,11 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "3390ff91f00caf1d4d20f5f52ab34c7ccbfd723b2bf82f4b1539c6ad5d3cc14c"
+      "170d400552cf8eef802c8131b584a6643645ce49f7d270901fb4997444beef86"
     ],
     [
       "src-tauri/src/codex_config/catalog.rs",
-      "d651c71c18c697b227a102099799b1c470c80e8284cd03088e3420364818275a"
+      "2df207a0b66f35c8a5822c05bd0fea499fc1277bf017e08e037b1abc876633bc"
     ],
     [
       "src-tauri/src/codex_desktop_runtime.rs",
