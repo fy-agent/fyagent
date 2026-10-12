@@ -1,0 +1,24 @@
+{
+  "$schema": "./upstream-sources.schema.json",
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "repository": "https://github.com/farion1231/cc-switch.git",
+      "tag": "v3.19.2",
+      "tagObject": "f6882b69f0a30968dcc6dbb1153b6b12b50e6b1a",
+      "commit": "43eaf07355af145aebfee301801779e824d4c221"
+    },
+    {
+      "repository": "https://github.com/farion1231/cc-switch.git",
+      "tag": "v3.20.4",
+      "tagObject": "93994110505d4d4aae3a7a3582797aae48c2dc74",
+      "commit": "43e1d99084ed9b2f5dc252fd35c5adaf29d6876e"
+    },
+    {
+      "repository": "https://github.com/farion1231/cc-switch.git",
+      "tag": "v4.0.4",
+      "tagObject": "7e3be0a6385873987a1cb77123d76ccaef298532",
+      "commit": "a29a4f3868e9c6ffc2212957cfa66a718642e344"
+    }
+  ]
+}

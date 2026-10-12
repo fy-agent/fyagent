@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTauriFeaturePorts } from "@/shared/platform/tauri/features";
 
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+const { invoke, reportFrontendError } = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  reportFrontendError: vi.fn(),
+}));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+vi.mock("@/shared/platform/tauri/frontendLogger", () => ({
+  reportFrontendError,
+}));
 
 describe("upstream aggregation commands", () => {
   beforeEach(() => invoke.mockReset());
@@ -65,5 +71,50 @@ describe("upstream aggregation commands", () => {
     });
     invoke.mockResolvedValueOnce("notRunning");
     expect(await port.restartCodexDaemon()).toBe("notRunning");
+  });
+
+  it("logs and retries a failed tray refresh without failing the saved mode", async () => {
+    const error = new Error("托盘暂时不可用");
+    invoke
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce(undefined);
+    await expect(
+      createTauriFeaturePorts().providers.setMode("codex", true),
+    ).resolves.toBeUndefined();
+    expect(invoke.mock.calls.map(([command]) => command)).toEqual([
+      "set_proxy_takeover_for_app",
+      "update_tray_menu",
+      "update_tray_menu",
+    ]);
+    expect(reportFrontendError).toHaveBeenCalledWith(
+      "update_tray_menu：模式已保存，托盘刷新失败，将重试一次",
+      error,
+    );
+  });
+
+  it("keeps the saved mode successful and logs a failed bounded retry", async () => {
+    const error = new Error("托盘不可用");
+    invoke
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(error)
+      .mockRejectedValueOnce(error);
+    await expect(
+      createTauriFeaturePorts().providers.setMode("codex", true),
+    ).resolves.toBeUndefined();
+    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(reportFrontendError).toHaveBeenCalledWith(
+      "update_tray_menu：托盘刷新重试失败，模式已保存",
+      error,
+    );
+  });
+
+  it("does not refresh the tray when saving the mode fails", async () => {
+    const error = new Error("模式保存失败");
+    invoke.mockRejectedValueOnce(error);
+    await expect(
+      createTauriFeaturePorts().providers.setMode("codex", true),
+    ).rejects.toBe(error);
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 });
