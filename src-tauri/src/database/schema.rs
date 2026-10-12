@@ -394,43 +394,55 @@ impl Database {
             let _ = conn.execute("DELETE FROM settings WHERE key = 'current_profile_id'", []);
         }
 
-        // 尝试添加 live_takeover_active 列到 proxy_config 表
-        let _ = conn.execute(
-            "ALTER TABLE proxy_config ADD COLUMN live_takeover_active INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-
-        // 尝试添加基础配置列到 proxy_config 表（兼容 v3.9.0-2 升级）
-        let _ = conn.execute(
-            "ALTER TABLE proxy_config ADD COLUMN proxy_enabled INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE proxy_config ADD COLUMN listen_address TEXT NOT NULL DEFAULT '127.0.0.1'",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE proxy_config ADD COLUMN listen_port INTEGER NOT NULL DEFAULT 15721",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE proxy_config ADD COLUMN enable_logging INTEGER NOT NULL DEFAULT 1",
-            [],
-        );
-
-        // 尝试添加超时配置列到 proxy_config 表
-        let _ = conn.execute(
-            "ALTER TABLE proxy_config ADD COLUMN streaming_first_byte_timeout INTEGER NOT NULL DEFAULT 60",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE proxy_config ADD COLUMN streaming_idle_timeout INTEGER NOT NULL DEFAULT 120",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE proxy_config ADD COLUMN non_streaming_timeout INTEGER NOT NULL DEFAULT 600",
-            [],
-        );
+        // 补齐旧版 proxy_config 配置列；已存在时跳过，真正的添加失败向上传播。
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "live_takeover_active",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "proxy_enabled",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "listen_address",
+            "TEXT NOT NULL DEFAULT '127.0.0.1'",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "listen_port",
+            "INTEGER NOT NULL DEFAULT 15721",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "enable_logging",
+            "INTEGER NOT NULL DEFAULT 1",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "streaming_first_byte_timeout",
+            "INTEGER NOT NULL DEFAULT 60",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "streaming_idle_timeout",
+            "INTEGER NOT NULL DEFAULT 120",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "non_streaming_timeout",
+            "INTEGER NOT NULL DEFAULT 600",
+        )?;
 
         // 兼容：若旧版 proxy_config 仍为单例结构（无 app_type），则在启动时直接转换为三行结构
         // 说明：user_version=2 时不会再触发 v1->v2 迁移，但新代码查询依赖 app_type 列。
@@ -4235,6 +4247,116 @@ mod tests {
     }
 
     use super::*;
+
+    fn legacy_proxy_config_fixture(conn: &Connection) -> Result<(), AppError> {
+        Database::create_tables_on_conn(conn)?;
+        conn.execute_batch(
+            "DROP TABLE proxy_config;
+             CREATE TABLE proxy_config (id INTEGER PRIMARY KEY, max_retries INTEGER NOT NULL);
+             INSERT INTO proxy_config VALUES (1, 7);",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn create_tables_preserves_existing_proxy_columns() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        Database::create_tables_on_conn(&conn)?;
+        conn.execute(
+            "UPDATE proxy_config SET listen_port = 32123, live_takeover_active = 1",
+            [],
+        )?;
+        let before: String = conn.query_row(
+            "SELECT sql FROM sqlite_master WHERE name = 'proxy_config'",
+            [],
+            |row| row.get(0),
+        )?;
+        Database::create_tables_on_conn(&conn)?;
+        let after: String = conn.query_row(
+            "SELECT sql FROM sqlite_master WHERE name = 'proxy_config'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(after, before);
+        let preserved: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM proxy_config WHERE listen_port = 32123 AND live_takeover_active = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(preserved, 4);
+        Ok(())
+    }
+
+    #[test]
+    fn create_tables_adds_missing_legacy_proxy_columns() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        legacy_proxy_config_fixture(&conn)?;
+        Database::create_tables_on_conn(&conn)?;
+        for column in [
+            "live_takeover_active",
+            "proxy_enabled",
+            "listen_address",
+            "listen_port",
+            "enable_logging",
+            "streaming_first_byte_timeout",
+            "streaming_idle_timeout",
+            "non_streaming_timeout",
+        ] {
+            assert!(
+                Database::has_column(&conn, "proxy_config", column)?,
+                "missing {column}"
+            );
+        }
+        let defaults: (String, i64, i64, i64, i64, i64, i64, i64) = conn.query_row(
+            "SELECT listen_address, listen_port, enable_logging, live_takeover_active,
+                    proxy_enabled, streaming_first_byte_timeout, streaming_idle_timeout,
+                    non_streaming_timeout FROM proxy_config WHERE app_type = 'claude'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                ))
+            },
+        )?;
+        assert_eq!(defaults, ("127.0.0.1".into(), 15721, 1, 0, 0, 45, 90, 600));
+        Ok(())
+    }
+
+    #[test]
+    fn create_tables_reports_readonly_proxy_column_failure() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        legacy_proxy_config_fixture(&conn)?;
+        conn.execute_batch("PRAGMA query_only = ON;")?;
+        let error = Database::create_tables_on_conn(&conn)
+            .expect_err("missing columns on a read-only database must fail creation");
+        assert!(matches!(&error, AppError::Database(_)));
+        let message = error.to_string();
+        assert!(
+            message.contains("为表 proxy_config 添加列 live_takeover_active 失败"),
+            "{message}"
+        );
+        assert!(message.contains("readonly"), "{message}");
+        assert!(!Database::has_column(
+            &conn,
+            "proxy_config",
+            "live_takeover_active"
+        )?);
+        assert!(!Database::has_column(&conn, "proxy_config", "app_type")?);
+        let retries: i64 = conn.query_row(
+            "SELECT max_retries FROM proxy_config WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(retries, 7);
+        Ok(())
+    }
 
     fn change_plan_table_count(conn: &Connection) -> Result<i64, AppError> {
         conn.query_row(

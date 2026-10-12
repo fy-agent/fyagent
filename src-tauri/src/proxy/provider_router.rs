@@ -44,11 +44,15 @@ impl ProviderRouter {
     /// - 故障转移开启时：仅使用故障转移队列，按队列顺序依次尝试（P1 → P2 → ...）
     pub async fn select_providers(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
         // 代理模式下路由到代理路由那家，和直连指针无关。
-        let current_provider = AppType::from_str(app_type).ok().and_then(|app_enum| {
-            crate::mode::current::provider_in_use(&self.db, &app_enum)
-                .ok()
-                .flatten()
-        });
+        let current_provider = if app_type == AppType::OpenCode.as_str() {
+            crate::mode::current::provider_in_use(&self.db, &AppType::OpenCode)?
+        } else {
+            AppType::from_str(app_type).ok().and_then(|app_enum| {
+                crate::mode::current::provider_in_use(&self.db, &app_enum)
+                    .ok()
+                    .flatten()
+            })
+        };
         self.select_providers_with_current(app_type, current_provider)
             .await
     }
@@ -63,10 +67,7 @@ impl ProviderRouter {
     ) -> Result<Vec<Provider>, AppError> {
         if app_type == "opencode" {
             let config = self.db.get_proxy_config_for_app(app_type).await?;
-            let current =
-                crate::settings::get_effective_current_provider(&self.db, &AppType::OpenCode)?
-                    .and_then(|id| self.db.get_provider_by_id(&id, app_type).ok().flatten());
-            return current
+            return current_provider
                 .filter(|provider| config.enabled && provider.uses_subscription_proxy())
                 .map(|provider| vec![provider])
                 .ok_or(AppError::NoProvidersConfigured);
@@ -379,6 +380,95 @@ mod tests {
                 None => env::remove_var("FYAGENT_TEST_HOME"),
             }
         }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn opencode_reuses_current_snapshot_without_provider_reads() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let mut provider = Provider::with_id(
+            "snapshot".to_string(),
+            "Snapshot".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(crate::provider::ProviderMeta {
+            provider_type: Some("codex_oauth".to_string()),
+            ..Default::default()
+        });
+        db.save_provider("opencode", &provider).unwrap();
+        db.set_current_provider("opencode", &provider.id).unwrap();
+        let snapshot = crate::mode::current::provider_in_use(&db, &AppType::OpenCode)
+            .unwrap()
+            .unwrap();
+        let mut config = db.get_proxy_config_for_app("opencode").await.unwrap();
+        config.enabled = true;
+        db.update_proxy_config_for_app(config).await.unwrap();
+        db.conn
+            .lock()
+            .unwrap()
+            .execute("DROP TABLE providers", [])
+            .unwrap();
+
+        let selected = ProviderRouter::new(db)
+            .select_providers_with_current("opencode", Some(snapshot.clone()))
+            .await
+            .unwrap();
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].id, snapshot.id);
+        assert_eq!(selected[0].settings_config, snapshot.settings_config);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn opencode_missing_provider_and_database_failure_are_distinct() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let router = ProviderRouter::new(db.clone());
+        assert!(matches!(
+            router.select_providers("opencode").await,
+            Err(AppError::NoProvidersConfigured)
+        ));
+        let state = crate::proxy::server::ProxyState::for_test(db.clone());
+        let result = crate::proxy::handler_context::RequestContext::new(
+            &state,
+            &json!({"model": "test"}),
+            &axum::http::HeaderMap::new(),
+            AppType::OpenCode,
+            "OpenCode",
+            "opencode",
+            None,
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(crate::proxy::error::ProxyError::NoProvidersConfigured)
+        ));
+        db.conn
+            .lock()
+            .unwrap()
+            .execute("DROP TABLE providers", [])
+            .unwrap();
+        let error = router.select_providers("opencode").await.unwrap_err();
+        assert!(matches!(&error, AppError::Database(_)));
+        assert!(error.to_string().contains("providers"));
+
+        let result = crate::proxy::handler_context::RequestContext::new(
+            &state,
+            &json!({"model": "test"}),
+            &axum::http::HeaderMap::new(),
+            AppType::OpenCode,
+            "OpenCode",
+            "opencode",
+            None,
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(crate::proxy::error::ProxyError::DatabaseError(message))
+                if message.contains("providers")
+        ));
     }
 
     #[tokio::test]

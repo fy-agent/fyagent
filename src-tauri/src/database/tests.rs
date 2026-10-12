@@ -1516,3 +1516,44 @@ fn fyagent_v27_reopens_and_future_schema_stays_rejected() -> Result<(), AppError
     assert_eq!(std::fs::read(&cc_path).unwrap(), cc_before);
     Ok(())
 }
+
+#[test]
+fn extracted_snippet_transaction_preserves_both_fields_on_either_write_failure() {
+    for (operation, key, row) in [
+        ("INSERT", "common_config_claude", "NEW"),
+        ("DELETE", "common_config_claude_cleared", "OLD"),
+    ] {
+        let db = Database::memory().unwrap();
+        db.set_config_snippet("claude", Some("old snippet".to_string()))
+            .unwrap();
+        db.set_config_snippet_cleared("claude", true).unwrap();
+        db.conn
+            .lock()
+            .unwrap()
+            .execute_batch(&format!(
+                "CREATE TRIGGER fail_snippet BEFORE {operation} ON settings
+             WHEN {row}.key = '{key}' BEGIN SELECT RAISE(ABORT, 'injected write failure'); END;"
+            ))
+            .unwrap();
+        assert!(db
+            .save_extracted_config_snippet("claude", "new snippet")
+            .is_err());
+        assert_eq!(
+            db.get_config_snippet("claude").unwrap().as_deref(),
+            Some("old snippet")
+        );
+        assert!(db.is_config_snippet_cleared("claude").unwrap());
+        db.conn
+            .lock()
+            .unwrap()
+            .execute_batch("DROP TRIGGER fail_snippet;")
+            .unwrap();
+        db.save_extracted_config_snippet("claude", "new snippet")
+            .unwrap();
+        assert_eq!(
+            db.get_config_snippet("claude").unwrap().as_deref(),
+            Some("new snippet")
+        );
+        assert!(!db.is_config_snippet_cleared("claude").unwrap());
+    }
+}
