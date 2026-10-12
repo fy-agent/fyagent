@@ -77,13 +77,19 @@ pub(crate) struct ManagedAuthSecretBundleParts {
 }
 
 impl ManagedAuthSecretBundle {
-    pub(crate) fn new(parts: ManagedAuthSecretBundleParts) -> Result<Self, ManagedAuthCoreError> {
+    pub(crate) fn new(
+        mut parts: ManagedAuthSecretBundleParts,
+    ) -> Result<Self, ManagedAuthCoreError> {
+        // Protect every token before any validation can return early.
+        let access_token = parts.access_token.take().map(Zeroizing::new);
+        let refresh_token = parts.refresh_token.take().map(Zeroizing::new);
+        let id_token = parts.id_token.take().map(Zeroizing::new);
         if !valid_credential_id(&parts.credential_id) || parts.generation == 0 {
             return Err(ManagedAuthCoreError::InvalidData);
         }
-        let access_token = optional_token(parts.access_token)?;
-        let refresh_token = optional_token(parts.refresh_token)?;
-        let id_token = optional_token(parts.id_token)?;
+        let access_token = optional_token(access_token)?;
+        let refresh_token = optional_token(refresh_token)?;
+        let id_token = optional_token(id_token)?;
         if access_token.is_none() && refresh_token.is_none() && id_token.is_none() {
             return Err(ManagedAuthCoreError::InvalidData);
         }
@@ -139,7 +145,7 @@ impl ManagedAuthSecretBundle {
         Ok(self)
     }
 
-    fn encoded_bytes(&self) -> Result<Vec<u8>, ManagedAuthCoreError> {
+    fn encoded_bytes(&self) -> Result<Zeroizing<Vec<u8>>, ManagedAuthCoreError> {
         let raw = RawSecretBundleRef {
             schema_version: SECRET_BUNDLE_SCHEMA_VERSION,
             credential_id: &self.credential_id,
@@ -153,7 +159,9 @@ impl ManagedAuthSecretBundle {
             issued_at: self.issued_at,
             expires_at: self.expires_at,
         };
-        serde_json::to_vec(&raw).map_err(|_| ManagedAuthCoreError::InvalidData)
+        serde_json::to_vec(&raw)
+            .map(Zeroizing::new)
+            .map_err(|_| ManagedAuthCoreError::InvalidData)
     }
 
     pub(crate) fn encode(self) -> Result<SecretMaterial, ManagedAuthCoreError> {
@@ -165,14 +173,16 @@ impl ManagedAuthSecretBundle {
         {
             encoded = bundle.encoded_bytes()?;
         }
-        if encoded.len() > MAX_SECRET_BYTES
-            && bundle.access_token.take().is_some()
-            && bundle.refresh_token.is_some()
-        {
-            encoded = bundle.encoded_bytes()?;
+        // The shared encoder has no consumer context. Preserve access tokens
+        // required by native consumers instead of saving refresh-only grants.
+        if encoded.len() > MAX_SECRET_BYTES {
+            return Err(ManagedAuthCoreError::CredentialTooLarge);
         }
-        SecretMaterial::from_native_input(encoded, SecretPurpose::ManagedOAuthCredential)
-            .map_err(ManagedAuthCoreError::from)
+        SecretMaterial::from_native_input(
+            std::mem::take(&mut *encoded),
+            SecretPurpose::ManagedOAuthCredential,
+        )
+        .map_err(ManagedAuthCoreError::from)
     }
 
     pub(crate) fn decode(bytes: &[u8]) -> Result<Self, ManagedAuthCoreError> {
@@ -197,7 +207,7 @@ impl ManagedAuthSecretBundle {
 }
 
 fn optional_token(
-    value: Option<String>,
+    value: Option<Zeroizing<String>>,
 ) -> Result<Option<Zeroizing<String>>, ManagedAuthCoreError> {
     let Some(value) = value else {
         return Ok(None);
@@ -205,7 +215,7 @@ fn optional_token(
     if value.is_empty() || value.as_bytes().contains(&0) {
         return Err(ManagedAuthCoreError::InvalidData);
     }
-    Ok(Some(Zeroizing::new(value)))
+    Ok(Some(value))
 }
 
 fn valid_credential_id(value: &str) -> bool {
@@ -323,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn encode_omits_access_token_when_refresh_is_the_only_fitting_field() {
+    fn encode_rejects_oversized_access_even_when_refresh_fits() {
         let bundle = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
             credential_id: "mcred1:0123456789abcdef0123456789abcdef".to_string(),
             provider: ManagedAuthProvider::Openai,
@@ -337,13 +347,50 @@ mod tests {
             expires_at: None,
         })
         .expect("shape is valid before encoding");
-        let encoded = bundle
+        assert!(matches!(
+            bundle.encode(),
+            Err(ManagedAuthCoreError::CredentialTooLarge)
+        ));
+    }
+
+    #[test]
+    fn encode_accepts_exact_secret_limit_and_rejects_one_byte_over() {
+        let make_bundle = |access_token: String| {
+            ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
+                credential_id: "mcred1:0123456789abcdef0123456789abcdef".to_string(),
+                provider: ManagedAuthProvider::Openai,
+                generation: 1,
+                access_token: Some(access_token),
+                refresh_token: Some("rt-boundary".to_string()),
+                id_token: None,
+                token_type: None,
+                granted_scopes: Vec::new(),
+                issued_at: None,
+                expires_at: None,
+            })
+            .expect("valid bundle")
+        };
+        // ASCII 'a' adds exactly one JSON byte, without escaping.
+        let baseline = make_bundle("a".to_string()).encode().expect("baseline");
+        let access_len = 1 + MAX_SECRET_BYTES - baseline.as_bytes().len();
+        let access = Zeroizing::new("a".repeat(access_len));
+        let encoded = make_bundle(access.to_string())
             .encode()
-            .expect("omit access token when refresh still fits");
-        assert!(encoded.as_bytes().len() <= MAX_SECRET_BYTES);
+            .expect("exact limit is accepted");
+        assert_eq!(encoded.as_bytes().len(), MAX_SECRET_BYTES);
         let decoded = ManagedAuthSecretBundle::decode(encoded.as_bytes()).expect("decode");
-        assert!(decoded.access_token().is_none());
-        assert_eq!(decoded.refresh_token().map(str::len), Some(196));
+        assert_eq!(decoded.access_token(), Some(access.as_str()));
+        assert_eq!(decoded.refresh_token(), Some("rt-boundary"));
+
+        let oversized = make_bundle("a".repeat(access_len + 1));
+        assert_eq!(
+            oversized.encoded_bytes().expect("JSON").len(),
+            MAX_SECRET_BYTES + 1
+        );
+        assert!(matches!(
+            oversized.encode(),
+            Err(ManagedAuthCoreError::CredentialTooLarge)
+        ));
     }
 
     #[test]

@@ -120,10 +120,11 @@ grantedScopes, issuedAt?, expiresAt?
 At least one of access/refresh/id is required. Encoded UTF-8 JSON must fit
 `MAX_SECRET_BYTES` (2560), the Windows generic-credential blob cap. Tokens
 are never truncated and never spilled to a second file. When the encoded
-bundle would exceed 2560, omit `idToken` first, then `accessToken` if a
-`refreshToken` remains. Identity stays in SQLite metadata; a missing access
-token is re-minted from refresh. Fail closed if the remaining fields still
-exceed 2560 or contain NUL.
+bundle would exceed 2560, omit optional `idToken` first. Never discard
+`accessToken`: the shared encoder has no consumer context and OpenCode cannot use refresh-only
+projections. Fail before native write with `credential_too_large` if the
+remaining fields exceed 2560; reject NUL. Existing refresh-only proxy bundles
+can still use the FyAgent refresh path.
 
 Proxy resolution:
 
@@ -379,7 +380,7 @@ metadata and must never include token columns.
 | unsupported host / locked / denied vault                                                                                                         | fail-closed overview; old JSON not renamed                                   |
 | reserved SecretRef not yet in SQLite                                                                                                             | reject; do not call native create                                            |
 | create/replace readback or typed decode fails                                                                                                    | keep provisioning/secret_missing; no plaintext fallback                      |
-| encoded bundle still exceeds 2560 after omitting optional id/access tokens, or contains NUL                                                      | reject before native write                                                   |
+| encoded bundle still exceeds 2560 after omitting optional id token, or contains NUL                                                      | reject before native write                                                   |
 | refresh_owner is not `fyagent`                                                                                                                   | resolver conflict; no refresh                                                |
 | CAS generation/owner mismatch                                                                                                                    | discard late result; store unchanged                                         |
 | Copilot v1 JSON without identity                                                                                                                 | that source `blocked`; other sources continue                                |
