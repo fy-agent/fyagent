@@ -119,6 +119,27 @@ describe("bulk assignment preview execution", () => {
     ).toBe("failed");
   });
 
+  it("does not perform a discarded full read after a mutation throws", async () => {
+    const original = item("a");
+    const read = vi.fn(async () => [original]);
+    const mutate = vi.fn(async () => {
+      throw new Error("partial write failed");
+    });
+    const onResult = vi.fn();
+
+    const results = await executeBulkAssignment(
+      plan([original]),
+      read,
+      mutate,
+      onResult,
+    );
+
+    expect(results).toEqual([{ id: "a", name: "a", status: "failed" }]);
+    expect(onResult).toHaveBeenCalledExactlyOnceWith(results[0]);
+    expect(mutate).toHaveBeenCalledExactlyOnceWith("a", "codex", true);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects void command acknowledgement when readback lacks the row", async () => {
     const original = item("a");
     let reads = 0;
