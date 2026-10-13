@@ -7,9 +7,17 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::services::managed_auth::providers::openai::{self, OpenAiTokenGrant};
+
+impl Zeroize for OpenAiTokenGrant {
+    fn zeroize(&mut self) {
+        self.access_token.zeroize();
+        self.refresh_token.zeroize();
+        self.id_token.zeroize();
+    }
+}
 
 pub(crate) const MAX_AUTH_JSON_BYTES: usize = 256 * 1024;
 
@@ -130,12 +138,12 @@ impl CodexChatGptAuthDocument {
         {
             return None;
         }
-        let grant = OpenAiTokenGrant {
+        let grant = Zeroizing::new(OpenAiTokenGrant {
             access_token: access_token.to_string(),
             refresh_token: Some(refresh_token.to_string()),
             id_token: Some(id_token.to_string()),
             expires_in: None,
-        };
+        });
         let identity = openai::extract_identity(&grant).ok()?;
         let account = account_id
             .map(str::to_string)
@@ -352,6 +360,41 @@ mod tests {
             .as_bytes(),
         );
         format!("{header}.{payload}.sig")
+    }
+
+    #[test]
+    fn temporary_grant_rejects_invalid_identity_and_account_mismatch() {
+        assert!(CodexChatGptAuthDocument::from_tokens(
+            "invalid-id",
+            "invalid-access",
+            "refresh-test",
+            Some("acct-1"),
+            None
+        )
+        .is_none());
+        let token = jwt_with_account("acct-1");
+        assert!(CodexChatGptAuthDocument::from_tokens(
+            &token,
+            &token,
+            "refresh-test",
+            Some("acct-2"),
+            None
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn temporary_grant_zeroizes_all_tokens() {
+        let mut grant = OpenAiTokenGrant {
+            access_token: "access-test".into(),
+            refresh_token: Some("refresh-test".into()),
+            id_token: Some("id-test".into()),
+            expires_in: None,
+        };
+        grant.zeroize();
+        assert!(grant.access_token.is_empty());
+        assert!(grant.refresh_token.as_deref().is_none_or(str::is_empty));
+        assert!(grant.id_token.as_deref().is_none_or(str::is_empty));
     }
 
     #[test]

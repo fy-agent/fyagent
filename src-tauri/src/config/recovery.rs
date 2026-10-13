@@ -12,6 +12,7 @@ use std::{cell::RefCell, collections::HashMap, marker::PhantomData, rc::Rc};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
 
 use super::{atomic_write_unbacked, rolling_backup_path};
 use crate::error::AppError;
@@ -173,14 +174,14 @@ fn read_file(path: &Path, limit: u64) -> Result<Option<Vec<u8>>, AppError> {
             return Err(failure("config_file_not_regular"));
         }
     }
-    let mut bytes = Vec::new();
+    let mut bytes = Zeroizing::new(Vec::new());
     file.take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| AppError::io(path, error))?;
     if bytes.len() as u64 > limit {
         return Err(failure("config_file_size_or_type_invalid"));
     }
-    Ok(Some(bytes))
+    Ok(Some(std::mem::take(&mut *bytes)))
 }
 
 fn digest(bytes: Option<&[u8]>) -> Option<String> {
@@ -222,7 +223,7 @@ pub(super) fn write_with(
     if bytes.is_some_and(|bytes| bytes.len() as u64 > MAX_FILE_BYTES) {
         return Err(failure("config_file_size_or_type_invalid"));
     }
-    let before = read_file(path, MAX_FILE_BYTES)?;
+    let before = Zeroizing::new(read_file(path, MAX_FILE_BYTES)?);
     RESTORE_EXPECTED.with(|state| {
         if let Some(expected) = state.borrow().as_ref() {
             if expected.get(path) != Some(&digest(before.as_deref())) {
@@ -236,7 +237,7 @@ pub(super) fn write_with(
     }
     let backup = rolling_backup_path(path);
     let marker = record_path(path);
-    let old_backup = read_file(&backup, MAX_FILE_BYTES)?;
+    let old_backup = Zeroizing::new(read_file(&backup, MAX_FILE_BYTES)?);
     let old_marker = read_file(&marker, MAX_RECORD_BYTES)?;
     let restore_history = || -> Result<(), AppError> {
         replace(&backup, old_backup.as_deref(), true)?;
@@ -281,12 +282,12 @@ pub(super) fn write_with(
         restore_history()?;
         return Err(error);
     }
-    if read_file(path, MAX_FILE_BYTES)?.as_deref() != before.as_deref() {
+    if Zeroizing::new(read_file(path, MAX_FILE_BYTES)?).as_deref() != before.as_deref() {
         restore_history()?;
         return Err(failure("config_external_change"));
     }
     let result = apply(path, bytes);
-    let after = read_file(path, MAX_FILE_BYTES);
+    let after = read_file(path, MAX_FILE_BYTES).map(Zeroizing::new);
     if result.is_ok() && after.as_ref().is_ok_and(|after| after.as_deref() == bytes) {
         RESTORE_EXPECTED.with(|state| {
             if let Some(expected) = state.borrow_mut().as_mut() {
@@ -306,12 +307,12 @@ pub(super) fn write_with(
     match after {
         Ok(after) if after.as_deref() == bytes => {
             replace(path, before.as_deref(), false)?;
-            if read_file(path, MAX_FILE_BYTES)? != before {
+            if Zeroizing::new(read_file(path, MAX_FILE_BYTES)?).as_deref() != before.as_deref() {
                 return Err(failure("config_recovery_required"));
             }
             restore_history()?;
         }
-        Ok(after) if after == before => restore_history()?,
+        Ok(after) if after.as_deref() == before.as_deref() => restore_history()?,
         _ => return Err(failure("config_recovery_required")),
     }
     result.and(Err(failure("config_write_readback_failed")))

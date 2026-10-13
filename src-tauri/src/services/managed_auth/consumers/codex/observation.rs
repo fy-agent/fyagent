@@ -4,6 +4,7 @@ use std::io::Read;
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
 
 use crate::codex_config::is_custom_codex_model_provider_id;
 use crate::codex_config::{
@@ -243,12 +244,12 @@ pub(crate) fn document_from_bundle(
     let access = bundle.access_token()?;
     let refresh = bundle.refresh_token()?;
     let id_token = bundle.id_token()?;
-    let grant = openai::OpenAiTokenGrant {
+    let grant = Zeroizing::new(openai::OpenAiTokenGrant {
         access_token: access.to_string(),
         refresh_token: Some(refresh.to_string()),
         id_token: Some(id_token.to_string()),
         expires_in: None,
-    };
+    });
     let identity = openai::extract_identity(&grant).ok()?;
     if identity.subject != expected_subject {
         return None;
