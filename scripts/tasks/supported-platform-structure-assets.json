@@ -91,7 +91,7 @@
     ],
     [
       "src-tauri/src/auto_launch.rs",
-      "ea39499ab6960ed7d80f43968f1952bbc2fd7a0f32707b61ee5983c5c219ee0a"
+      "442e9364e5af759f70f9fbe39b5d8bd11bdb6ea0678d509d47693fa53e79eb16"
     ],
     [
       "src-tauri/src/claude_desktop_config.rs",
