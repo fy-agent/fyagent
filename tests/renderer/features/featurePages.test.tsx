@@ -97,6 +97,96 @@ function deferred<T>() {
 }
 
 describe("MCP management", () => {
+  it("copies Inspector configuration only after an explicit action without mutating MCP state", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = async () => ({
+      local: {
+        id: "local",
+        name: "Local MCP",
+        apps: createMcpAssignments(["codex"]),
+        server: {
+          type: "stdio",
+          command: "node",
+          args: ["server.js"],
+          env: { API_KEY: "fixture-secret" },
+        },
+      },
+    });
+    const upsert = vi.spyOn(ports.mcp, "upsert");
+    const toggle = vi.spyOn(ports.mcp, "toggleApp");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderFeature(<McpPage />, ports);
+    await screen.findByRole("heading", { name: "Local MCP" });
+    expect(writeText).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "本地协议诊断" }));
+    const dialog = await screen.findByRole("dialog", { name: "本地协议诊断" });
+    expect(dialog).toHaveTextContent("可能包含凭据");
+    expect(dialog).toHaveTextContent("Ctrl+C");
+    expect(dialog).not.toHaveTextContent("fixture-secret");
+    expect(writeText).not.toHaveBeenCalled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "复制 Inspector 配置" }),
+    );
+    expect(
+      await within(dialog).findByText(
+        "配置已复制，请保存为本机文件 mcp-inspector.json",
+      ),
+    ).toBeVisible();
+    expect(
+      JSON.parse(writeText.mock.calls[0][0]).mcpServers["fyagent-diagnostic"]
+        .env.API_KEY,
+    ).toBe("••••••");
+    expect(upsert).not.toHaveBeenCalled();
+    expect(toggle).not.toHaveBeenCalled();
+    expect(screen.getByText(/连接尚未测试/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(
+      screen.queryByRole("dialog", { name: "本地协议诊断" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps Inspector export retryable after a clipboard failure", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = async () => ({
+      local: {
+        id: "local",
+        name: "Local MCP",
+        apps: createMcpAssignments(),
+        server: { command: "node" },
+      },
+    });
+    const writeText = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("denied"))
+      .mockResolvedValueOnce(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderFeature(<McpPage />, ports);
+    await screen.findByRole("heading", { name: "Local MCP" });
+    await user.click(screen.getByRole("button", { name: "本地协议诊断" }));
+    const dialog = await screen.findByRole("dialog", { name: "本地协议诊断" });
+    const copy = within(dialog).getByRole("button", {
+      name: "复制 Inspector 配置",
+    });
+    await user.click(copy);
+    expect(await within(dialog).findByText(/无法复制配置/)).toBeVisible();
+    await user.click(copy);
+    expect(
+      await within(dialog).findByText(
+        "配置已复制，请保存为本机文件 mcp-inspector.json",
+      ),
+    ).toBeVisible();
+    expect(writeText).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps editor errors beside actions, focuses a correction field, and preserves the draft", async () => {
     const ports = createBrowserFeaturePorts();
     ports.mcp.getAll = async () => ({});

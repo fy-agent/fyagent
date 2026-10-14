@@ -57,6 +57,8 @@ const CI_AUTHORITY_FILES = new Set([
 
 const CI_POLICY_FILES = new Set([
   ".github/workflows/commit-convention-push.yml",
+  "scripts/ci/upstream-sources.json",
+  "scripts/ci/upstream-sources.schema.json",
   "scripts/ci/verify-commit-messages.mjs",
 ]);
 

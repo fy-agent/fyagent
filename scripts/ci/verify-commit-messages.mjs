@@ -152,42 +152,57 @@ function verifiedUpstreamHistory(commits, baseSha, headSha) {
   const upstreamShas = new Set();
   if (merges.length === 0) return { sources, mergeShas, upstreamShas };
 
-  const paths = git([
-    "ls-tree",
-    "-r",
-    "--name-only",
-    headSha,
-    "--",
-    "docs/upstream",
-  ])
-    .trim()
-    .split("\n");
-  for (const path of paths) {
-    if (!/^docs\/upstream\/cc-switch-v\d+\.\d+\.\d+\.md$/u.test(path)) continue;
-    const ledger = git(["show", `${headSha}:${path}`]);
-    const rows = new Map(
-      [...ledger.matchAll(/^\|\s*([^|]+?)\s*\|\s*`([^`]+)`[^|]*\|/gmu)].map(
-        (match) => [match[1].trim(), match[2]],
-      ),
-    );
-    const commit =
-      rows.get("Full peeled commit SHA") ?? rows.get("Peeled commit");
+  const manifestPath = "scripts/ci/upstream-sources.json";
+  if (!git(["ls-tree", "--name-only", headSha, "--", manifestPath]).trim()) {
+    return { sources, mergeShas, upstreamShas };
+  }
+  const manifest = JSON.parse(git(["show", `${headSha}:${manifestPath}`]));
+  const identityError = () => {
+    throw new Error(`invalid upstream source identity in ${manifestPath}`);
+  };
+  // Enforce upstream-sources.schema.json locally; no schema fetch or tag fetch.
+  if (
+    !manifest ||
+    typeof manifest !== "object" ||
+    Array.isArray(manifest) ||
+    manifest.schemaVersion !== 1 ||
+    !Array.isArray(manifest.sources) ||
+    Object.keys(manifest).some(
+      (key) => !["$schema", "schemaVersion", "sources"].includes(key),
+    ) ||
+    (manifest.$schema !== undefined &&
+      manifest.$schema !== "./upstream-sources.schema.json")
+  )
+    identityError();
+  const tags = new Set();
+  for (const source of manifest.sources) {
+    if (
+      !source ||
+      typeof source !== "object" ||
+      Array.isArray(source) ||
+      Object.keys(source).length !== 4 ||
+      Object.keys(source).some(
+        (key) => !["repository", "tag", "tagObject", "commit"].includes(key),
+      ) ||
+      source.repository !== UPSTREAM_REPOSITORY ||
+      typeof source.tag !== "string" ||
+      !/^v\d+\.\d+\.\d+$/u.test(source.tag) ||
+      typeof source.tagObject !== "string" ||
+      !/^[0-9a-f]{40}$/u.test(source.tagObject) ||
+      typeof source.commit !== "string" ||
+      !/^[0-9a-f]{40}$/u.test(source.commit) ||
+      tags.has(source.tag)
+    )
+      identityError();
+    const { tag, tagObject, commit } = source;
+    tags.add(tag);
     const matchingMerges = merges.filter(
       ({ parents }) => parents[1] === commit,
     );
     if (matchingMerges.length === 0) continue;
-    const tag = rows.get("Annotated tag");
-    const tagObject = rows.get("Full tag-object SHA") ?? rows.get("Tag object");
-    if (
-      rows.get("Upstream repository") !== UPSTREAM_REPOSITORY ||
-      !/^v\d+\.\d+\.\d+$/u.test(tag ?? "") ||
-      path !== `docs/upstream/cc-switch-${tag}.md` ||
-      !/^[0-9a-f]{40}$/u.test(tagObject ?? "")
-    ) {
-      throw new Error(`invalid upstream source identity in ${path}`);
-    }
-    // Source identities are verified when the upstream ledger is maintained.
-    // Title checks use that pinned commit graph without fetching tags or refs.
+    assertCommitSha(commit, "upstream commit");
+    // Immutable source verification belongs to integration; the title gate
+    // checks only the pinned local commit graph, independent of Markdown.
     sources.push({ repository: UPSTREAM_REPOSITORY, tag, tagObject, commit });
     for (const merge of matchingMerges) mergeShas.add(merge.sha);
     for (const sha of git(["rev-list", commit, "--not", baseSha])

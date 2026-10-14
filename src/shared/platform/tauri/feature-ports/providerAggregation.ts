@@ -2,6 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import * as z from "zod/mini";
 import type { ProvidersPort } from "../../../features/ports";
+import { reportFrontendError } from "../frontendLogger";
 
 const record = z.record(z.string(), z.unknown());
 const provider = z.looseObject({
@@ -109,7 +110,20 @@ export const providerAggregationPorts: Pick<
       stack,
       route,
     });
-    await invoke("update_tray_menu").catch(() => undefined);
+    try {
+      await invoke("update_tray_menu");
+    } catch (error) {
+      reportFrontendError(
+        "update_tray_menu：模式已保存，托盘刷新失败，将重试一次",
+        error,
+      );
+      await invoke("update_tray_menu").catch((retryError: unknown) => {
+        reportFrontendError(
+          "update_tray_menu：托盘刷新重试失败，模式已保存",
+          retryError,
+        );
+      });
+    }
   },
   setRoute: (appType, providerId) =>
     invoke("set_proxy_route", { appType, providerId }),

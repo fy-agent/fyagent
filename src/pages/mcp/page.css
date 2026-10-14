@@ -98,3 +98,7 @@
   overflow: auto;
   overflow-wrap: anywhere;
 }
+.fy-mcp-inspector-command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

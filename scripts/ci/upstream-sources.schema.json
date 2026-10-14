@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sources"],
+  "properties": {
+    "$schema": { "const": "./upstream-sources.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["repository", "tag", "tagObject", "commit"],
+        "properties": {
+          "repository": {
+            "const": "https://github.com/farion1231/cc-switch.git"
+          },
+          "tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$" },
+          "tagObject": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+        }
+      }
+    }
+  }
+}
