@@ -36,15 +36,21 @@ pub(crate) fn project_opencode_config_bytes(config: &Value) -> Result<Vec<u8>, A
 }
 
 pub(crate) fn write_opencode_config_value(config: &Value) -> Result<Vec<u8>, AppError> {
-    let path = try_get_opencode_config_path()?;
-    let mut document = OpenCodeDocument::load(&path)?;
+    write_opencode_config_value_at_path(&try_get_opencode_config_path()?, config)
+}
+
+pub(crate) fn write_opencode_config_value_at_path(
+    path: &Path,
+    config: &Value,
+) -> Result<Vec<u8>, AppError> {
+    let mut document = OpenCodeDocument::load(path)?;
     document.document.apply(config)?;
     let bytes = document.document.validated_source()?.as_bytes().to_vec();
     document.save()?;
     Ok(bytes)
 }
 
-fn read_config_contents(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
+pub(crate) fn read_config_contents(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
     match std::fs::read(path) {
         Ok(contents) => Ok(Some(contents)),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -85,16 +91,9 @@ pub fn get_opencode_dir() -> PathBuf {
         .join("opencode")
 }
 
-/// Infallible path disclosure for existing native consumers; actual reads and
-/// writes use the checked resolver and never fall back after access failures.
+/// Compatibility path disclosure. Fallible consumers must use the checked resolver.
 pub fn get_opencode_config_path() -> PathBuf {
-    let dir = get_opencode_dir();
-    let jsonc = dir.join("opencode.jsonc");
-    if jsonc.exists() {
-        jsonc
-    } else {
-        dir.join("opencode.json")
-    }
+    try_get_opencode_config_path().expect("OpenCode config path is unavailable")
 }
 
 pub fn try_get_opencode_config_path() -> Result<PathBuf, AppError> {
@@ -1414,6 +1413,22 @@ mod tests {
         .unwrap();
 
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[serial_test::serial]
+    fn path_disclosure_does_not_fall_back_after_probe_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let _guard = TestHomeGuard::set(temp.path());
+        let dir = get_opencode_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let jsonc = dir.join("opencode.jsonc");
+        std::os::unix::fs::symlink(&jsonc, &jsonc).unwrap();
+        std::fs::write(dir.join("opencode.json"), "{}").unwrap();
+
+        assert!(try_get_opencode_config_path().is_err());
+        assert!(std::panic::catch_unwind(get_opencode_config_path).is_err());
     }
 
     #[test]
