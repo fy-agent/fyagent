@@ -16,6 +16,8 @@ impl Zeroize for OpenAiTokenGrant {
         self.access_token.zeroize();
         self.refresh_token.zeroize();
         self.id_token.zeroize();
+        #[cfg(test)]
+        tests::record_zeroized_grant(self);
     }
 }
 
@@ -114,14 +116,22 @@ struct AuthDotJsonRead {
 
 #[derive(Deserialize)]
 struct TokenDataRead {
-    #[serde(default)]
-    id_token: Option<String>,
-    #[serde(default)]
-    access_token: Option<String>,
-    #[serde(default)]
-    refresh_token: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_secret")]
+    id_token: Option<Zeroizing<String>>,
+    #[serde(default, deserialize_with = "deserialize_secret")]
+    access_token: Option<Zeroizing<String>>,
+    #[serde(default, deserialize_with = "deserialize_secret")]
+    refresh_token: Option<Zeroizing<String>>,
     #[serde(default)]
     account_id: Option<String>,
+}
+
+// Wrap each parsed string before serde can fail on a later field or trailing JSON.
+fn deserialize_secret<'de, D>(deserializer: D) -> Result<Option<Zeroizing<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer).map(|secret| secret.map(Zeroizing::new))
 }
 
 impl CodexChatGptAuthDocument {
@@ -288,12 +298,19 @@ pub(crate) fn classify_auth_bytes(bytes: &[u8], revision: String) -> CodexNative
         return CodexNativeAuthState::Invalid { revision };
     }
 
-    let grant = OpenAiTokenGrant {
-        access_token: tokens.access_token.clone().unwrap_or_default(),
-        refresh_token: tokens.refresh_token.clone(),
-        id_token: tokens.id_token.clone(),
+    let grant = Zeroizing::new(OpenAiTokenGrant {
+        access_token: tokens
+            .access_token
+            .as_ref()
+            .map(|secret| secret.to_string())
+            .unwrap_or_default(),
+        refresh_token: tokens
+            .refresh_token
+            .as_ref()
+            .map(|secret| secret.to_string()),
+        id_token: tokens.id_token.as_ref().map(|secret| secret.to_string()),
         expires_in: None,
-    };
+    });
     match openai::extract_identity(&grant) {
         Ok(identity) => {
             let account_id = tokens
@@ -316,7 +333,7 @@ pub(crate) fn classify_auth_bytes(bytes: &[u8], revision: String) -> CodexNative
     }
 }
 
-fn non_empty(value: &Option<String>) -> bool {
+fn non_empty(value: &Option<Zeroizing<String>>) -> bool {
     value.as_ref().is_some_and(|text| !text.trim().is_empty())
 }
 
@@ -330,11 +347,26 @@ fn value_present(value: &Option<Value>) -> bool {
     }
 }
 
-fn fingerprint_unmanaged(id_token: &Option<String>, access_token: &Option<String>) -> String {
+fn fingerprint_unmanaged(
+    id_token: &Option<Zeroizing<String>>,
+    access_token: &Option<Zeroizing<String>>,
+) -> String {
     let mut digest = Sha256::new();
-    digest.update(id_token.as_deref().unwrap_or("").as_bytes());
+    digest.update(
+        id_token
+            .as_ref()
+            .map(|secret| secret.as_str())
+            .unwrap_or("")
+            .as_bytes(),
+    );
     digest.update(b"|");
-    digest.update(access_token.as_deref().unwrap_or("").as_bytes());
+    digest.update(
+        access_token
+            .as_ref()
+            .map(|secret| secret.as_str())
+            .unwrap_or("")
+            .as_bytes(),
+    );
     digest
         .finalize()
         .iter()
@@ -383,15 +415,41 @@ mod tests {
         .is_none());
     }
 
+    thread_local! {
+        static ZEROIZED_GRANT: std::cell::RefCell<Option<OpenAiTokenGrant>> = const {
+            std::cell::RefCell::new(None)
+        };
+    }
+
+    // Inspect safe copies after production Zeroize runs, without reading freed memory.
+    pub(super) fn record_zeroized_grant(grant: &OpenAiTokenGrant) {
+        ZEROIZED_GRANT.with(|observed| {
+            *observed.borrow_mut() = Some(OpenAiTokenGrant {
+                access_token: grant.access_token.clone(),
+                refresh_token: grant.refresh_token.clone(),
+                id_token: grant.id_token.clone(),
+                expires_in: grant.expires_in,
+            });
+        });
+    }
+
     #[test]
     fn temporary_grant_zeroizes_all_tokens() {
-        let mut grant = OpenAiTokenGrant {
-            access_token: "access-test".into(),
-            refresh_token: Some("refresh-test".into()),
-            id_token: Some("id-test".into()),
-            expires_in: None,
-        };
-        grant.zeroize();
+        ZEROIZED_GRANT.with(|observed| *observed.borrow_mut() = None);
+        assert!(CodexChatGptAuthDocument::from_tokens(
+            "id-test",
+            "access-test",
+            "refresh-test",
+            None,
+            None,
+        )
+        .is_none());
+        let grant = ZEROIZED_GRANT.with(|observed| {
+            observed
+                .borrow_mut()
+                .take()
+                .expect("error exit must drop and zeroize the grant")
+        });
         assert!(grant.access_token.is_empty());
         assert!(grant.refresh_token.as_deref().is_none_or(str::is_empty));
         assert!(grant.id_token.as_deref().is_none_or(str::is_empty));
