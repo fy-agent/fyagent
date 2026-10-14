@@ -121,7 +121,7 @@ pub fn disable_auto_launch() -> Result<(), AppError> {
 pub fn is_auto_launch_enabled() -> Result<bool, AppError> {
     #[cfg(target_os = "windows")]
     {
-        clear_windows_auto_launch_entry()?;
+        // Querying is read-only; legacy cleanup belongs to startup and explicit toggles.
         Ok(false)
     }
 
