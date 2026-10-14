@@ -66,6 +66,7 @@ pub async fn get_current_prompt_file_content(app: String) -> Result<Option<Strin
 
 // This public import reads the source before creating a disabled library entry.
 // In this fresh disabled-entry import, Io comes from the source read.
+// Known admission/time/path and DB-lock failures occur before any library write.
 // Library DAO failures remain unconfirmed; this is not a general Io/write rule.
 fn prompt_import_error(error: AppError) -> String {
     match error {
@@ -81,6 +82,27 @@ fn prompt_import_error(error: AppError) -> String {
             }
             _ => "无法读取提示词文件，未导入。请检查文件是否可读后重试。".into(),
         },
+        AppError::Message(message) if message == "数据库正在恢复，请稍后重试。" => {
+            "数据库正在恢复，未导入。请稍后重试。".into()
+        }
+        AppError::Message(message) if message.starts_with("Failed to get system time: ") => {
+            "无法获取系统时间，未导入。请检查系统时间后重试。".into()
+        }
+        AppError::Database(message) if message.starts_with("Mutex lock failed: ") => {
+            "无法获取数据库锁，未导入。请稍后重试。".into()
+        }
+        AppError::Localized {
+            key: "app.prompts_unsupported",
+            ..
+        } => {
+            "当前应用不支持提示词，未导入。".into()
+        }
+        AppError::Localized {
+            key: "home_dir_not_found",
+            ..
+        } => {
+            "无法确定提示词配置目录，未导入。请检查用户主目录。".into()
+        }
         _ => "提示词导入未确认完成。请先刷新管理列表核对结果，再决定是否重试。".into(),
     }
 }
@@ -88,6 +110,42 @@ fn prompt_import_error(error: AppError) -> String {
 #[cfg(test)]
 mod import_error_tests {
     use super::*;
+
+    #[test]
+    fn public_import_prewrite_errors_report_specific_reasons() {
+        for (error, expected) in [
+            (
+                AppError::Message("数据库正在恢复，请稍后重试。".into()),
+                "数据库正在恢复，未导入。请稍后重试。",
+            ),
+            (
+                AppError::Message("Failed to get system time: private-detail".into()),
+                "无法获取系统时间，未导入。请检查系统时间后重试。",
+            ),
+            (
+                AppError::Database("Mutex lock failed: private-lock-detail".into()),
+                "无法获取数据库锁，未导入。请稍后重试。",
+            ),
+            (
+                AppError::localized(
+                    "app.prompts_unsupported",
+                    "private-detail",
+                    "private-detail",
+                ),
+                "当前应用不支持提示词，未导入。",
+            ),
+            (
+                AppError::localized(
+                    "home_dir_not_found",
+                    "private-detail",
+                    "private-detail",
+                ),
+                "无法确定提示词配置目录，未导入。请检查用户主目录。",
+            ),
+        ] {
+            assert_eq!(prompt_import_error(error), expected);
+        }
+    }
 
     #[test]
     fn public_import_errors_do_not_expose_paths_or_contents() {
