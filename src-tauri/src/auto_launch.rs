@@ -178,4 +178,55 @@ mod tests {
         let result = get_macos_app_bundle_path(exe_path);
         assert_eq!(result, None);
     }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_windows_is_auto_launch_enabled_does_not_delete_run_entry() {
+        use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+
+        struct RunEntryGuard<'a>(&'a RegKey);
+
+        impl Drop for RunEntryGuard<'_> {
+            fn drop(&mut self) {
+                let _ = self.0.delete_value(WINDOWS_AUTO_LAUNCH_VALUE);
+                if let Ok(hkcu) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(
+                    "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                    winreg::enums::KEY_SET_VALUE,
+                ) {
+                    let _ = hkcu.delete_value(WINDOWS_AUTO_LAUNCH_VALUE);
+                }
+            }
+        }
+
+        let _ = crate::initialize_windows_user_context();
+
+        let run_key = crate::windows_runtime::open_shell_user_run_update().unwrap_or_else(|_| {
+            let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+            let (key, _) = hkcu
+                .create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+                .expect("无法打开或创建 HKCU Run 注册表键");
+            key
+        });
+
+        let _guard = RunEntryGuard(&run_key);
+
+        run_key
+            .set_value(WINDOWS_AUTO_LAUNCH_VALUE, &"test_auto_launch_entry")
+            .expect("写入 Windows Run 启动项失败");
+
+        let result = is_auto_launch_enabled();
+        let value_after: Result<String, _> = run_key.get_value(WINDOWS_AUTO_LAUNCH_VALUE);
+
+        drop(_guard);
+
+        assert!(
+            matches!(result, Ok(false)),
+            "期望 is_auto_launch_enabled() 返回 Ok(false)，实际为: {result:?}"
+        );
+        assert!(
+            value_after.is_ok(),
+            "is_auto_launch_enabled() 查询时不应删除 HKCU Run 下的 \"{}\" 启动项",
+            WINDOWS_AUTO_LAUNCH_VALUE
+        );
+    }
 }
