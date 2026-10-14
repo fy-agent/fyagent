@@ -239,4 +239,84 @@ describe("bulk assignment preview execution", () => {
     ).toBe("drift");
     expect(mutate).not.toHaveBeenCalled();
   });
+
+  it("does not treat different object key order in readback as drift", async () => {
+    const original: BulkAssignmentItem = {
+      ...item("a"),
+      apps: { codex: false, claude: true },
+    };
+    let live: BulkAssignmentItem[] = [
+      {
+        ...original,
+        apps: { claude: true, codex: false },
+      },
+    ];
+    const mutate = vi.fn(async () => {
+      live = [
+        {
+          ...original,
+          apps: { codex: true, claude: true },
+        },
+      ];
+      return true;
+    });
+    const results = await executeBulkAssignment(
+      plan([original]),
+      async () => live,
+      mutate,
+    );
+    expect(results[0].status).toBe("confirmed");
+    expect(mutate).toHaveBeenCalledExactlyOnceWith("a", "codex", true);
+  });
+
+  it("still detects drift when assignment content genuinely differs", async () => {
+    const original: BulkAssignmentItem = {
+      ...item("a"),
+      apps: { codex: false, claude: true },
+    };
+    const live: BulkAssignmentItem[] = [
+      {
+        ...original,
+        apps: { claude: false, codex: false },
+      },
+    ];
+    const mutate = vi.fn();
+    const results = await executeBulkAssignment(
+      plan([original]),
+      async () => live,
+      mutate,
+    );
+    expect(results[0].status).toBe("drift");
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("does not treat different read-only target set order as drift", async () => {
+    const original: BulkAssignmentItem = {
+      ...item("a"),
+      readOnlyTargets: ["claude", "workbuddy"],
+    };
+    let live: BulkAssignmentItem[] = [
+      {
+        ...original,
+        readOnlyTargets: ["workbuddy", "claude"],
+      },
+    ];
+    const mutate = vi.fn(async () => {
+      live = [
+        {
+          ...original,
+          apps: { codex: true },
+          readOnlyTargets: ["workbuddy", "claude"],
+        },
+      ];
+      return true;
+    });
+    const results = await executeBulkAssignment(
+      plan([original]),
+      async () => live,
+      mutate,
+    );
+    expect(results[0].status).toBe("confirmed");
+    expect(mutate).toHaveBeenCalledExactlyOnceWith("a", "codex", true);
+  });
 });

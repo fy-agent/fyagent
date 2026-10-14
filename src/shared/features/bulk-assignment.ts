@@ -24,13 +24,38 @@ export interface BulkAssignmentResult {
   status: "confirmed" | "failed" | "drift" | "read_only";
 }
 
+function sameSets(a?: readonly string[], b?: readonly string[]): boolean {
+  if (a === b) return true;
+  const setA = new Set(a ?? []);
+  const setB = new Set(b ?? []);
+  if (setA.size !== setB.size) return false;
+  for (const item of setA) {
+    if (!setB.has(item)) return false;
+  }
+  return true;
+}
+
+function sameApps(
+  a?: Record<string, boolean | undefined>,
+  b?: Record<string, boolean | undefined>,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keysA = Object.keys(a).filter((key) => a[key] !== undefined);
+  const keysB = Object.keys(b).filter((key) => b[key] !== undefined);
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
 function unchanged(before: BulkAssignmentItem, current: BulkAssignmentItem) {
   return (
     before.identity === current.identity &&
     before.readOnly === current.readOnly &&
-    JSON.stringify(before.readOnlyTargets) ===
-      JSON.stringify(current.readOnlyTargets) &&
-    JSON.stringify(before.apps) === JSON.stringify(current.apps)
+    sameSets(before.readOnlyTargets, current.readOnlyTargets) &&
+    sameApps(before.apps, current.apps)
   );
 }
 
@@ -72,8 +97,10 @@ export async function executeBulkAssignment(
             (current.allowAdoption &&
               current.readbackIdentity !== undefined &&
               observed.readbackIdentity === current.readbackIdentity)) &&
-          JSON.stringify(observed.apps) ===
-            JSON.stringify({ ...current.apps, [plan.target]: plan.enabled })
+          sameApps(observed.apps, {
+            ...current.apps,
+            [plan.target]: plan.enabled,
+          })
         )
           status = "confirmed";
       }
