@@ -412,6 +412,9 @@ impl NativeCompactionState {
         if status == "incomplete" {
             return vec![response_event("response.incomplete", response)];
         }
+        if status == "failed" {
+            return vec![response_event("response.failed", response)];
+        }
 
         let mut summary = summary_from_output_items(&self.done_items);
         if summary.is_empty() {
@@ -701,6 +704,32 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn native_compaction_preserves_failed_status_and_error_with_summary_text() {
+        let error = json!({"type": "content_filter", "message": "summary rejected"});
+        let mut state = NativeCompactionState::default();
+        let output = state.finish(json!({
+            "type": "response.completed",
+            "response": {
+                "status": "failed",
+                "error": error,
+                "output": [{"type": "message", "content": [
+                    {"type": "output_text", "text": "partial summary"}
+                ]}]
+            }
+        }));
+        assert_eq!(output.len(), 1);
+        let events = parse_events(std::str::from_utf8(&output[0]).unwrap());
+        assert_eq!(events[0]["type"], "response.failed");
+        assert_eq!(events[0]["response"]["status"], "failed");
+        assert_eq!(events[0]["response"]["error"], error);
+        assert!(events[0]["response"]["output"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["type"] != "compaction"));
     }
 
     #[tokio::test]
