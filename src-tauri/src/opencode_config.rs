@@ -91,9 +91,9 @@ pub fn get_opencode_dir() -> PathBuf {
         .join("opencode")
 }
 
-/// Compatibility path disclosure. Fallible consumers must use the checked resolver.
-pub fn get_opencode_config_path() -> PathBuf {
-    try_get_opencode_config_path().expect("OpenCode config path is unavailable")
+/// Compatibility path disclosure through the checked resolver, without fallback.
+pub fn get_opencode_config_path() -> Result<PathBuf, AppError> {
+    try_get_opencode_config_path()
 }
 
 pub fn try_get_opencode_config_path() -> Result<PathBuf, AppError> {
@@ -1428,7 +1428,7 @@ mod tests {
         std::fs::write(dir.join("opencode.json"), "{}").unwrap();
 
         assert!(try_get_opencode_config_path().is_err());
-        assert!(std::panic::catch_unwind(get_opencode_config_path).is_err());
+        assert!(get_opencode_config_path().is_err());
     }
 
     #[test]

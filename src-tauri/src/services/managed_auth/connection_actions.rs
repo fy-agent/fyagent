@@ -256,7 +256,11 @@ impl<B: SecretBackend + 'static> ManagedAuthService<B> {
                 | ManagedAuthConnectionAction::Disconnect,
             ) => Ok((
                 vec![self.opencode_auth_path()],
-                vec![crate::opencode_config::get_opencode_config_path()],
+                vec![crate::opencode_config::get_opencode_config_path().map_err(|_| {
+                    ManagedAuthErrorDto::with_reason(
+                        ManagedAuthReasonCode::NativeProjectionUnavailable,
+                    )
+                })?],
             )),
             (ManagedAuthConsumer::Grokbuild, ManagedAuthConnectionAction::Disconnect) => Ok((
                 Vec::new(),

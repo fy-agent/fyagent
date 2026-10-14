@@ -477,7 +477,7 @@ fn snapshot_quick_setup_live(app_type: &AppType) -> Result<Vec<QuickSetupFileSna
         ],
         AppType::GrokBuild => vec![crate::grok_config::get_grok_config_path()],
         AppType::OpenCode => vec![
-            crate::opencode_config::get_opencode_config_path(),
+            crate::opencode_config::get_opencode_config_path()?,
             crate::opencode_config::get_opencode_dir().join("opencode.json.backup"),
         ],
         _ => {
@@ -4756,7 +4756,7 @@ requires_openai_auth = true
             crate::opencode_config::set_provider("legacy-projection", fragment.clone()).unwrap();
             assert_eq!(import_opencode_providers_from_live(state).unwrap(), 0);
             assert!(state.db.get_all_providers("opencode").unwrap().is_empty());
-            let path = crate::opencode_config::get_opencode_config_path();
+            let path = crate::opencode_config::get_opencode_config_path().unwrap();
             let bytes = std::fs::read(&path).unwrap();
             let mut provider = Provider::with_id(
                 reserved.into(),

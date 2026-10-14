@@ -227,7 +227,8 @@ impl ProxyService {
                 .as_deref()
                 .map(|bytes| format!("{:x}", Sha256::digest(bytes)));
             crate::config::restore_file_preimage_if_owned(
-                &crate::opencode_config::get_opencode_config_path(),
+                &crate::opencode_config::get_opencode_config_path()
+                    .map_err(|_| "OpenCode configuration unavailable")?,
                 backup.original.as_deref(),
                 owned_hash.as_deref(),
             )

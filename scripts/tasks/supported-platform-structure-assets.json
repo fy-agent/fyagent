@@ -223,7 +223,7 @@
     ],
     [
       "src-tauri/src/opencode_config.rs",
-      "4c6248b8db8e9e4cb97eb3c5ab9fc7bd502e84822fa58e29f5e97340a2176a10"
+      "3efd1406387c1579ad490e1871b9604a1830cf02463a89a353591545a90f0242"
     ],
     [
       "src-tauri/src/panic_hook.rs",
@@ -319,7 +319,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "7f3b641d500fdbedc47edb2ceac9af81ea313b782543127f74c1dfea6736f71c"
+      "7e64056a45282b1d390e4d1ea36f61649e19b873160cf11e845ef229c294ab9a"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",
