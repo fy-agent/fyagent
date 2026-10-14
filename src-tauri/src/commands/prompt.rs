@@ -94,15 +94,11 @@ fn prompt_import_error(error: AppError) -> String {
         AppError::Localized {
             key: "app.prompts_unsupported",
             ..
-        } => {
-            "当前应用不支持提示词，未导入。".into()
-        }
+        } => "当前应用不支持提示词，未导入。".into(),
         AppError::Localized {
             key: "home_dir_not_found",
             ..
-        } => {
-            "无法确定提示词配置目录，未导入。请检查用户主目录。".into()
-        }
+        } => "无法确定提示词配置目录，未导入。请检查用户主目录。".into(),
         _ => "提示词导入未确认完成。请先刷新管理列表核对结果，再决定是否重试。".into(),
     }
 }
@@ -135,11 +131,7 @@ mod import_error_tests {
                 "当前应用不支持提示词，未导入。",
             ),
             (
-                AppError::localized(
-                    "home_dir_not_found",
-                    "private-detail",
-                    "private-detail",
-                ),
+                AppError::localized("home_dir_not_found", "private-detail", "private-detail"),
                 "无法确定提示词配置目录，未导入。请检查用户主目录。",
             ),
         ] {
