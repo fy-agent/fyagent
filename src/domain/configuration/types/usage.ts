@@ -83,11 +83,13 @@ export interface ModelsDevSyncState {
 
 export interface UsageSummary {
   totalRequests: number;
+  /** 总费用按已存数据估算，不代表完整计价。 */
   totalCost: string;
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCacheCreationTokens: number;
   totalCacheReadTokens: number;
+  /** 成功率只统计已入库的请求。 */
   successRate: number;
   /** input + output + cache_creation + cache_read, all cache-normalized */
   realTotalTokens: number;
@@ -103,6 +105,7 @@ export interface UsageSummaryByApp {
 export interface DailyStats {
   date: string;
   requestCount: number;
+  /** 总费用按已存数据估算，不代表完整计价。 */
   totalCost: string;
   totalTokens: number;
   totalInputTokens: number;
@@ -117,7 +120,9 @@ export interface ProviderStats {
   requestCount: number;
   /** 真实消耗 Tokens（新增输入 + 输出 + 缓存写入 + 缓存命中），与指标卡同口径 */
   totalTokens: number;
+  /** 总费用按已存数据估算，不代表完整计价。 */
   totalCost: string;
+  /** 成功率只统计已入库的请求。 */
   successRate: number;
   avgLatencyMs: number;
   /** 速度分子：有首字、输出 ≥ 100 token 的明细请求的输出之和（日汇总不计） */
@@ -135,8 +140,10 @@ export interface ModelStats {
   requestCount: number;
   /** 真实消耗 Tokens（新增输入 + 输出 + 缓存写入 + 缓存命中），与指标卡同口径 */
   totalTokens: number;
+  /** 总费用按已存数据估算，不代表完整计价。 */
   totalCost: string;
   avgCostPerRequest: string;
+  /** 成功率只统计已入库的请求。 */
   successRate: number;
   /** 速度分子分母，口径同 ProviderStats 的四个速度字段 */
   speedOutputTokens?: number;

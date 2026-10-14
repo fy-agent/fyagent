@@ -21,11 +21,13 @@ use std::sync::LazyLock;
 #[serde(rename_all = "camelCase")]
 pub struct UsageSummary {
     pub total_requests: u64,
+    /// 总费用按已存数据估算，不代表完整计价。
     pub total_cost: String,
     pub total_input_tokens: u64,
     pub total_output_tokens: u64,
     pub total_cache_creation_tokens: u64,
     pub total_cache_read_tokens: u64,
+    /// 成功率只统计已入库的请求。
     pub success_rate: f32,
     /// input + output + cache_creation + cache_read — the total tokens
     /// actually processed by the model (including cache hits). Used as the
@@ -105,6 +107,7 @@ fn usage_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<UsageSumm
 pub struct DailyStats {
     pub date: String,
     pub request_count: u64,
+    /// 总费用按已存数据估算，不代表完整计价。
     pub total_cost: String,
     pub total_tokens: u64,
     pub total_input_tokens: u64,
@@ -122,7 +125,9 @@ pub struct ProviderStats {
     pub request_count: u64,
     /// 真实消耗 Tokens（新增输入 + 输出 + 缓存写入 + 缓存命中），与指标卡同口径。
     pub total_tokens: u64,
+    /// 总费用按已存数据估算，不代表完整计价。
     pub total_cost: String,
+    /// 成功率只统计已入库的请求。
     pub success_rate: f32,
     pub avg_latency_ms: u64,
     /// 速度的分子：满足条件（有首字、输出 >= 100 token、耗时 > 首字）的明细请求的输出 token 之和。
@@ -180,8 +185,10 @@ pub struct ModelStats {
     pub request_count: u64,
     /// 真实消耗 Tokens（新增输入 + 输出 + 缓存写入 + 缓存命中），与指标卡同口径。
     pub total_tokens: u64,
+    /// 总费用按已存数据估算，不代表完整计价。
     pub total_cost: String,
     pub avg_cost_per_request: String,
+    /// 成功率只统计已入库的请求。
     pub success_rate: f32,
     /// 速度的分子分母，口径同 [`ProviderStats::speed_output_tokens`] 那四个字段。
     pub speed_output_tokens: u64,
