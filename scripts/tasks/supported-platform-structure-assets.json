@@ -159,7 +159,7 @@
     ],
     [
       "src-tauri/src/config/recovery.rs",
-      "ba3aca94909af97faf46f4f6956c57835fec406711b5b81be5eb908dbbe08fed"
+      "89a7e866cf47c7a44e746a21e64ae4a74ea763f186fedb497d43814b5b83954a"
     ],
     [
       "src-tauri/src/database/backup.rs",
@@ -279,7 +279,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/consumers/opencode.rs",
-      "dc9ffcf0fde4f29b35f33bf0fdddd382005a68719a3b65675ad50604ba1b3cea"
+      "7558e51ce727cb47afbb9d33aac1ebbacacdf4de480148dc6d862a32374f0959"
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",
@@ -291,7 +291,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/service.rs",
-      "9eac6fd92c8fb792833ff64ee1ff8bdd71866da709c0aee3f315e6a19c985cc7"
+      "0ae42eaec346c9defc4ca50707d4354dc73c432022d1e9dd829812d51f460bca"
     ],
     [
       "src-tauri/src/services/managed_auth/subscription_tests.rs",
