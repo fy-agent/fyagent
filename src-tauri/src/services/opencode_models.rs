@@ -14,7 +14,8 @@ use sha2::Sha256;
 use uuid::Uuid;
 
 use crate::opencode_config::{
-    lock_opencode_config, read_opencode_config_bytes, write_opencode_config_value,
+    lock_opencode_config, read_config_contents, read_opencode_config_bytes,
+    try_get_opencode_config_path, write_opencode_config_value_at_path,
 };
 
 const MAX_MODELS: usize = 1_000;
@@ -189,9 +190,10 @@ pub(crate) fn current_revision_locked() -> Result<Option<String>, OpenCodeModels
 pub(crate) fn get_opencode_model_snapshot() -> Result<OpenCodeModelSnapshot, OpenCodeModelsErrorDto>
 {
     let _guard = lock_opencode_config();
-    let config_path = crate::opencode_config::get_opencode_config_path();
-    let backup_path = crate::opencode_config::get_opencode_dir().join("opencode.json.backup");
-    let bytes = read_opencode_config_bytes()
+    let config_path = try_get_opencode_config_path()
+        .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::ConfigUnavailable))?;
+    let backup_path = config_path.with_file_name("opencode.json.backup");
+    let bytes = read_config_contents(&config_path)
         .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::ConfigUnavailable))?;
     let Some(bytes) = bytes else {
         return Ok(OpenCodeModelSnapshot {
@@ -292,7 +294,9 @@ fn save_opencode_models_locked(
         .map(|token| consume_overwrite_token(token, request, &selected, &removed))
         .transpose()?;
 
-    let previous_bytes = read_opencode_config_bytes()
+    let config_path = try_get_opencode_config_path()
+        .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::ConfigUnavailable))?;
+    let previous_bytes = read_config_contents(&config_path)
         .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::ConfigUnavailable))?;
     let current_revision = previous_bytes.as_deref().map(revision_for);
     if request.expected_revision != current_revision {
@@ -353,15 +357,12 @@ fn save_opencode_models_locked(
     )?;
     reject_secret_model_ids(&config, credential)?;
 
-    let backup_path = crate::opencode_config::get_opencode_dir().join("opencode.json.backup");
+    let backup_path = config_path.with_file_name("opencode.json.backup");
     if previous_bytes.is_some() {
-        crate::config::backup_existing_file_to(
-            &crate::opencode_config::get_opencode_config_path(),
-            &backup_path,
-        )
+        crate::config::backup_existing_file_to(&config_path, &backup_path)
         .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::BackupFailed))?;
     }
-    let written = write_opencode_config_value(&config)
+    let written = write_opencode_config_value_at_path(&config_path, &config)
         .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::WriteFailed))?;
     let model_count = existing_model_ids(&config, &provider_id)?.len();
     Ok(SaveOpenCodeModelsOutcome::Saved {

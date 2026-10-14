@@ -34,7 +34,7 @@ fn original_config() -> Value {
 }
 
 fn write_native() -> (std::path::PathBuf, Vec<u8>, std::path::PathBuf, Vec<u8>) {
-    let path = crate::opencode_config::get_opencode_config_path();
+    let path = crate::opencode_config::get_opencode_config_path().unwrap();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let original = serde_json::to_vec_pretty(&original_config()).unwrap();
     std::fs::write(&path, &original).unwrap();
