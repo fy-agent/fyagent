@@ -360,7 +360,7 @@ fn save_opencode_models_locked(
     let backup_path = config_path.with_file_name("opencode.json.backup");
     if previous_bytes.is_some() {
         crate::config::backup_existing_file_to(&config_path, &backup_path)
-        .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::BackupFailed))?;
+            .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::BackupFailed))?;
     }
     let written = write_opencode_config_value_at_path(&config_path, &config)
         .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::WriteFailed))?;
