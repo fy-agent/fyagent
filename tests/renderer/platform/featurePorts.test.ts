@@ -1779,6 +1779,29 @@ describe("Renderer feature ports", () => {
     );
   });
 
+  it("ignores extra Prompt fields when reading and upserting", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/shared/platform/tauri/features"
+    );
+    const prompt: ManagedPrompt = {
+      id: "prompt-a",
+      name: "Prompt A",
+      content: "Keep answers concise.",
+      enabled: false,
+    };
+    const extendedPrompt = { ...prompt, nativeMetadata: { revision: 2 } };
+    invoke.mockResolvedValueOnce({ [prompt.id]: extendedPrompt });
+    const ports = createTauriFeaturePorts();
+
+    await expect(ports.prompts.getAll("claude")).resolves.toEqual([prompt]);
+    await ports.prompts.upsert("claude", extendedPrompt);
+    expect(invoke).toHaveBeenLastCalledWith("upsert_prompt", {
+      app: "claude",
+      id: prompt.id,
+      prompt,
+    });
+  });
+
   it("rejects invalid Prompt identifiers and malformed native payloads", async () => {
     const { createTauriFeaturePorts } = await import(
       "@/shared/platform/tauri/features"
