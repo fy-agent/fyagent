@@ -1,5 +1,7 @@
 //! Narrow Codex `auth.json` swapper with revision CAS and rollback.
 
+use zeroize::Zeroizing;
+
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -67,9 +69,11 @@ fn swap_codex_chatgpt_auth_locked(
         .account_id()
         .ok_or(CodexAuthSwapError::IdentityMismatch)?
         .to_string();
-    let serialized = target
-        .serialize_bytes()
-        .map_err(|_| CodexAuthSwapError::Invalid)?;
+    let serialized = Zeroizing::new(
+        target
+            .serialize_bytes()
+            .map_err(|_| CodexAuthSwapError::Invalid)?,
+    );
     let current = read_auth_bytes(auth_path)?;
 
     // Revision CAS:
@@ -82,7 +86,7 @@ fn swap_codex_chatgpt_auth_locked(
     }
 
     if let Some(bytes) = current.as_ref() {
-        if bytes == &serialized {
+        if bytes.as_slice() == serialized.as_slice() {
             return Ok(CodexAuthSwapReceipt {
                 revision: revision_for_bytes(bytes),
                 account_id: target_account,
@@ -96,7 +100,7 @@ fn swap_codex_chatgpt_auth_locked(
     let written_revision = revision_for_bytes(&serialized);
     write_auth_json_0600(auth_path, &serialized).map_err(|_| CodexAuthSwapError::Io)?;
     match read_auth_bytes(auth_path) {
-        Ok(Some(readback)) if readback == serialized => {
+        Ok(Some(readback)) if readback.as_slice() == serialized.as_slice() => {
             let revision = revision_for_bytes(&readback);
             match classify_auth_bytes(&readback, revision.clone()) {
                 CodexNativeAuthState::ChatGptKnown { account_id, .. }
@@ -110,7 +114,11 @@ fn swap_codex_chatgpt_auth_locked(
                     })
                 }
                 _ => {
-                    try_restore_preimage(auth_path, preimage.as_deref(), &written_revision)?;
+                    try_restore_preimage(
+                        auth_path,
+                        preimage.as_deref().map(Vec::as_slice),
+                        &written_revision,
+                    )?;
                     Err(CodexAuthSwapError::IdentityMismatch)
                 }
             }
@@ -120,11 +128,19 @@ fn swap_codex_chatgpt_auth_locked(
             if live_revision != written_revision {
                 return Err(CodexAuthSwapError::ExternalChange);
             }
-            try_restore_preimage(auth_path, preimage.as_deref(), &written_revision)?;
+            try_restore_preimage(
+                auth_path,
+                preimage.as_deref().map(Vec::as_slice),
+                &written_revision,
+            )?;
             Err(CodexAuthSwapError::Io)
         }
         Ok(None) | Err(_) => {
-            try_restore_preimage(auth_path, preimage.as_deref(), &written_revision)?;
+            try_restore_preimage(
+                auth_path,
+                preimage.as_deref().map(Vec::as_slice),
+                &written_revision,
+            )?;
             Err(CodexAuthSwapError::Io)
         }
     }
@@ -152,13 +168,13 @@ fn write_auth_json_0600(path: &Path, bytes: &[u8]) -> Result<(), ManagedAuthCore
     crate::config::atomic_write_private(path, bytes).map_err(|_| ManagedAuthCoreError::Io)
 }
 
-fn read_auth_bytes(path: &Path) -> Result<Option<Vec<u8>>, CodexAuthSwapError> {
+fn read_auth_bytes(path: &Path) -> Result<Option<Zeroizing<Vec<u8>>>, CodexAuthSwapError> {
     let file = match fs::File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err(CodexAuthSwapError::Io),
     };
-    let mut bytes = Vec::new();
+    let mut bytes = Zeroizing::new(Vec::new());
     let limit = u64::try_from(MAX_AUTH_JSON_BYTES.saturating_add(1)).expect("auth limit");
     file.take(limit)
         .read_to_end(&mut bytes)
@@ -180,7 +196,7 @@ pub(crate) fn capture_auth_preimage(
     let _guard = auth_json_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    read_auth_bytes(auth_path)
+    read_auth_bytes(auth_path).map(|bytes| bytes.map(|mut bytes| std::mem::take(&mut *bytes)))
 }
 
 #[cfg(test)]
@@ -188,7 +204,10 @@ pub(crate) fn read_auth_bytes_for_test(path: &Path) -> Option<Vec<u8>> {
     let _guard = auth_json_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    read_auth_bytes(path).ok().flatten()
+    read_auth_bytes(path)
+        .ok()
+        .flatten()
+        .map(|mut bytes| std::mem::take(&mut *bytes))
 }
 
 #[cfg(test)]
@@ -222,6 +241,55 @@ mod tests {
             Some(1_700_000_000),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn swap_read_failure_preserves_target() {
+        let dir = tempdir().unwrap();
+        let target = doc("acct-target");
+        assert_eq!(
+            swap_codex_chatgpt_auth(dir.path(), None, &target),
+            Err(CodexAuthSwapError::Io)
+        );
+        assert_eq!(target.account_id(), Some("acct-target"));
+        assert!(dir.path().is_dir());
+    }
+
+    #[test]
+    fn swap_write_failure_preserves_live_auth() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        let live = doc("acct-live").serialize_bytes().unwrap();
+        fs::write(&path, &live).unwrap();
+        let backup = crate::config::rolling_backup_path(&path);
+        fs::create_dir(&backup).unwrap();
+        let revision = revision_for_bytes(&live);
+        assert_eq!(
+            swap_codex_chatgpt_auth(&path, Some(&revision), &doc("acct-target")),
+            Err(CodexAuthSwapError::Io)
+        );
+        assert_eq!(fs::read(&path).unwrap(), live);
+        assert!(backup.is_dir());
+    }
+
+    #[test]
+    fn stale_swap_preserves_live_auth_and_target() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        let live = doc("acct-live").serialize_bytes().unwrap();
+        fs::write(&path, &live).unwrap();
+        let target = doc("acct-target");
+        assert_eq!(
+            swap_codex_chatgpt_auth(&path, Some("outdated-revision"), &target),
+            Err(CodexAuthSwapError::Stale)
+        );
+        assert_eq!(fs::read(&path).unwrap(), live);
+        assert_eq!(target.account_id(), Some("acct-target"));
+        assert!(target
+            .serialize_bytes()
+            .unwrap()
+            .windows(19)
+            .any(|bytes| bytes == b"refresh-acct-target"));
     }
 
     #[test]

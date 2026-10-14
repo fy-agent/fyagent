@@ -355,6 +355,7 @@ export function SkillsPage() {
   const [confirm, setConfirm] = useState<
     | { kind: "uninstall"; skill: InstalledSkill }
     | { kind: "backup"; backup: SkillBackupEntry }
+    | { kind: "updateAll" }
     | null
   >(null);
   const [busy, setBusy] = useState(false);
@@ -372,6 +373,13 @@ export function SkillsPage() {
     [installedQuery.data],
   );
   const updates = useMemo(() => updatesQuery.data ?? [], [updatesQuery.data]);
+  const applicableUpdates = useMemo(
+    () =>
+      updates.filter((update) =>
+        installed.some((item) => item.id === update.id),
+      ),
+    [updates, installed],
+  );
   const updatesById = useMemo(
     () => new Map(updates.map((item) => [item.id, item])),
     [updates],
@@ -453,7 +461,7 @@ export function SkillsPage() {
   const updateAll = () =>
     write("批量更新完成", async () => {
       const result = await runSequentialBulk(
-        updates.map((item) => item.id),
+        applicableUpdates.map((item) => item.id),
         async (id) => {
           try {
             return await ports.skills.update(id);
@@ -580,13 +588,14 @@ export function SkillsPage() {
           >
             检查更新
           </Button>
-          {updates.length > 0 && (
+          {applicableUpdates.length > 0 && (
             <Button
               className="fy-control-button-primary"
-              onClick={updateAll}
+              dialogOriginRef={dialogOriginRef}
+              onClick={() => setConfirm({ kind: "updateAll" })}
               disabled={busy}
             >
-              更新全部 · {updates.length}
+              更新全部 · {applicableUpdates.length}
             </Button>
           )}
           <PopoverPrimitive.Root
@@ -867,15 +876,22 @@ export function SkillsPage() {
         title={
           confirm?.kind === "uninstall"
             ? `卸载 ${confirm.skill.name}`
-            : confirm
+            : confirm?.kind === "backup"
               ? `删除 ${confirm.backup.skill.name} 的备份`
-              : "确认操作"
+              : confirm?.kind === "updateAll"
+                ? `更新 ${applicableUpdates.length} 个 Skill？`
+                : "确认操作"
         }
         description={
           confirm?.kind === "uninstall"
             ? "将从管理列表及已启用的应用中移除。"
-            : "删除后无法从该备份恢复。"
+            : confirm?.kind === "backup"
+              ? "删除后无法从该备份恢复。"
+              : confirm?.kind === "updateAll"
+                ? "更新会用仓库里的内容替换本地目录。本地改过的地方只保留在备份里。"
+                : ""
         }
+        danger={confirm?.kind !== "updateAll"}
         pending={busy}
         onCancel={() => setConfirm(null)}
         onConfirm={async () => {
@@ -885,13 +901,52 @@ export function SkillsPage() {
             await write("Skill 已卸载", async () => {
               await ports.skills.uninstall(action.skill.id);
             });
-          else
+          else if (action.kind === "backup")
             await write("备份已删除", async () => {
               await ports.skills.deleteBackup(action.backup.backupId);
             });
+          else if (action.kind === "updateAll") {
+            setConfirm(null);
+            await updateAll();
+            return;
+          }
           setConfirm(null);
         }}
-      />
+      >
+        {confirm?.kind === "updateAll" && (
+          <ul aria-label="将要更新的 Skill" className="fy-skills-update-list">
+            {applicableUpdates.map((update) => {
+              const skill = installed.find((item) => item.id === update.id);
+              const name = skill?.name ?? update.name;
+              const repo =
+                skill?.repoOwner && skill?.repoName
+                  ? `${skill.repoOwner}/${skill.repoName}`
+                  : null;
+              const repoUrl =
+                skill?.readmeUrl ??
+                (skill?.repoOwner && skill?.repoName
+                  ? githubRepoUrl(skill.repoOwner, skill.repoName)
+                  : null);
+              return (
+                <li key={update.id} className="fy-skills-update-item">
+                  <span className="fy-skills-update-name">{name}</span>
+                  {repo &&
+                    (repoUrl ? (
+                      <ExternalLinkButton
+                        url={repoUrl}
+                        className="fy-skills-update-repo"
+                      >
+                        {repo}
+                      </ExternalLinkButton>
+                    ) : (
+                      <span className="fy-skills-update-repo">{repo}</span>
+                    ))}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

@@ -5818,6 +5818,30 @@ model = "gpt-4"
     }
 
     #[test]
+    fn catalog_configured_models_are_visible_despite_hidden_template() {
+        let mut template = load_codex_model_template_static().expect("bundled template");
+        template["visibility"] = json!("hide");
+        let specs = codex_catalog_model_specs(&json!({
+            "modelCatalog": {
+                "models": [{ "model": "glm-5.2v" }]
+            }
+        }));
+
+        for profile in [
+            CodexCatalogToolProfile::ProxyChat,
+            CodexCatalogToolProfile::NativeResponses,
+            CodexCatalogToolProfile::Anthropic,
+        ] {
+            let catalog = codex_model_catalog_from_specs(&specs, &template, profile, 128_000);
+            let models = catalog["models"].as_array().expect("models array");
+            assert_eq!(models.len(), 1);
+            assert_eq!(models[0]["slug"], json!("glm-5.2v"));
+            assert_eq!(models[0]["visibility"], json!("list"));
+        }
+        assert_eq!(template["visibility"], json!("hide"));
+    }
+
+    #[test]
     fn catalog_infers_image_input_independently_of_tool_profile() {
         // Start from a deliberately text-only template to prove that every
         // profile overwrites template defaults with shared capability logic.

@@ -1564,7 +1564,7 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
         AppType::OpenCode => {
             use crate::opencode_config::{get_opencode_config_path, read_opencode_config_from_path};
 
-            let config_path = get_opencode_config_path();
+            let config_path = get_opencode_config_path()?;
             if !config_path.try_exists().map_err(|e| AppError::io(&config_path, e))? {
                 return Err(AppError::localized(
                     "opencode.config.missing",

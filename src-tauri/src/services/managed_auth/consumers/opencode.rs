@@ -11,7 +11,7 @@ use std::sync::{Mutex, OnceLock};
 
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::services::managed_auth::{
     stable_connection_id, stable_revision, ConnectionRecord, CredentialPurpose, CredentialStatus,
@@ -21,8 +21,45 @@ use crate::services::managed_auth::{
     ManagedAuthRequestMode,
 };
 
-type AuthJsonMap = Map<String, Value>;
-type LoadedAuthJson = (AuthJsonMap, Option<Vec<u8>>);
+struct AuthJsonMap(Map<String, Value>);
+
+fn erase_json(value: &mut Value) {
+    match value {
+        Value::String(secret) => secret.zeroize(),
+        Value::Array(values) => values.iter_mut().for_each(erase_json),
+        Value::Object(values) => values.values_mut().for_each(erase_json),
+        _ => {}
+    }
+}
+
+impl Zeroize for AuthJsonMap {
+    fn zeroize(&mut self) {
+        self.0.values_mut().for_each(erase_json);
+    }
+}
+
+struct AuthJsonValue(Value);
+
+impl Zeroize for AuthJsonValue {
+    fn zeroize(&mut self) {
+        erase_json(&mut self.0);
+    }
+}
+
+impl std::ops::Deref for AuthJsonMap {
+    type Target = Map<String, Value>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for AuthJsonMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+type LoadedAuthJson = (Zeroizing<AuthJsonMap>, Zeroizing<Option<Vec<u8>>>);
 
 /// External `auth.json` writes are not proven to hot-reload a live Desktop.
 pub(crate) const OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN: bool = false;
@@ -189,7 +226,9 @@ pub(crate) fn upsert_projection(
             return Err(OpencodeAuthError::Stale);
         }
     }
-    raw.insert(file_key_for(provider).to_string(), projection_value(entry)?);
+    let _replaced = raw
+        .insert(file_key_for(provider).to_string(), projection_value(entry)?)
+        .map(|value| Zeroizing::new(AuthJsonValue(value)));
     commit_map(path, &raw, source_bytes.as_deref())
 }
 
@@ -208,9 +247,10 @@ pub(crate) fn remove_file_key(
             return Err(OpencodeAuthError::Stale);
         }
     }
-    if raw.remove(official_key).is_none() {
-        return Err(OpencodeAuthError::NotFound);
-    }
+    let _removed = Zeroizing::new(AuthJsonValue(
+        raw.remove(official_key)
+            .ok_or(OpencodeAuthError::NotFound)?,
+    ));
     commit_map(path, &raw, source_bytes.as_deref())
 }
 
@@ -366,7 +406,8 @@ fn classify_bytes(bytes: &[u8]) -> OpencodeAuthObservation {
     let Ok(value) = serde_json::from_slice::<Value>(bytes) else {
         return OpencodeAuthObservation::unreadable(true);
     };
-    let Some(object) = value.as_object() else {
+    let value = Zeroizing::new(AuthJsonValue(value));
+    let Some(object) = value.0.as_object() else {
         return OpencodeAuthObservation::unreadable(true);
     };
     if object.len() > MAX_PROVIDER_KEYS {
@@ -510,18 +551,18 @@ fn display_label(provider: ManagedAuthProvider) -> &'static str {
 
 fn load_raw_map(path: &Path) -> Result<LoadedAuthJson, OpencodeAuthError> {
     match read_auth_bytes(path) {
-        Ok(None) => Ok((Map::new(), None)),
-        Ok(Some(bytes)) => {
-            let value =
-                serde_json::from_slice::<Value>(&bytes).map_err(|_| OpencodeAuthError::Invalid)?;
-            let object = value
-                .as_object()
-                .cloned()
-                .ok_or(OpencodeAuthError::Invalid)?;
+        Ok(None) => Ok((
+            Zeroizing::new(AuthJsonMap(Map::new())),
+            Zeroizing::new(None),
+        )),
+        Ok(Some(mut bytes)) => {
+            let value = serde_json::from_slice::<Map<String, Value>>(&bytes)
+                .map_err(|_| OpencodeAuthError::Invalid)?;
+            let object = Zeroizing::new(AuthJsonMap(value));
             if object.len() > MAX_PROVIDER_KEYS {
                 return Err(OpencodeAuthError::Invalid);
             }
-            Ok((object, Some(bytes)))
+            Ok((object, Zeroizing::new(Some(std::mem::take(&mut *bytes)))))
         }
         Err(_) => Err(OpencodeAuthError::Io),
     }
@@ -532,7 +573,8 @@ fn commit_map(
     raw: &Map<String, Value>,
     _preimage: Option<&[u8]>,
 ) -> Result<AuthJsonWriteReceipt, OpencodeAuthError> {
-    let serialized = serde_json::to_vec_pretty(raw).map_err(|_| OpencodeAuthError::Invalid)?;
+    let mut serialized = Zeroizing::new(Vec::new());
+    serde_json::to_writer_pretty(&mut *serialized, raw).map_err(|_| OpencodeAuthError::Invalid)?;
     write_auth_json_0600(path, &serialized).map_err(|_| OpencodeAuthError::Io)?;
     match read_auth_bytes(path) {
         Ok(Some(readback)) if readback == serialized => Ok(AuthJsonWriteReceipt {
@@ -554,13 +596,13 @@ fn write_auth_json_0600(path: &Path, bytes: &[u8]) -> Result<(), ManagedAuthCore
     crate::config::atomic_write_private(path, bytes).map_err(|_| ManagedAuthCoreError::Io)
 }
 
-fn read_auth_bytes(path: &Path) -> Result<Option<Vec<u8>>, OpencodeAuthError> {
+fn read_auth_bytes(path: &Path) -> Result<Option<Zeroizing<Vec<u8>>>, OpencodeAuthError> {
     let file = match fs::File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err(OpencodeAuthError::Io),
     };
-    let mut bytes = Vec::new();
+    let mut bytes = Zeroizing::new(Vec::new());
     let limit = u64::try_from(MAX_AUTH_JSON_BYTES.saturating_add(1)).expect("auth.json limit");
     file.take(limit)
         .read_to_end(&mut bytes)
@@ -653,6 +695,41 @@ mod tests {
         ] {
             assert!(!text.contains(forbidden), "leaked {forbidden}: {text}");
         }
+    }
+
+    #[test]
+    fn auth_json_map_zeroizes_nested_token_values() {
+        let mut raw = AuthJsonMap(
+            json!({
+                "openai": {"access": "access-test", "refresh": "refresh-test"},
+                "custom": {"nested": ["secret-test", {"key": "api-test"}]}
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        );
+        raw.zeroize();
+        assert_eq!(raw["openai"]["access"], "");
+        assert_eq!(raw["openai"]["refresh"], "");
+        assert_eq!(raw["custom"]["nested"][0], "");
+        assert_eq!(raw["custom"]["nested"][1]["key"], "");
+    }
+
+    #[test]
+    fn commit_map_write_failure_preserves_input_and_blocker() {
+        let dir = tempdir().unwrap();
+        let blocker = dir.path().join("blocked-parent");
+        fs::write(&blocker, b"keep-parent").unwrap();
+        let path = blocker.join("auth.json");
+        let raw = json!({"openai": {"type": "oauth", "access": "access-test", "refresh": "refresh-test"}})
+            .as_object().unwrap().clone();
+        assert_eq!(
+            commit_map(&path, &raw, None).unwrap_err(),
+            OpencodeAuthError::Io
+        );
+        assert_eq!(fs::read(&blocker).unwrap(), b"keep-parent");
+        assert!(!path.exists());
+        assert_eq!(raw["openai"]["refresh"], "refresh-test");
     }
 
     #[test]

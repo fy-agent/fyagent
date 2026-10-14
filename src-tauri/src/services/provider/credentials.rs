@@ -251,37 +251,86 @@ fn strip_key(provider: &mut Provider, secret: &str) -> Result<(), AppError> {
         usage.access_key_id = None;
         usage.secret_access_key = None;
     }
-    if !secret.is_empty()
-        && contains_value(
-            &serde_json::to_value(&provider).map_err(|_| invalid())?,
-            secret,
-        )
-    {
-        return Err(invalid());
-    }
     Ok(())
 }
 
 fn strip_material(provider: &mut Provider, material: &CredentialMaterial) -> Result<(), AppError> {
     strip_key(provider, material.key())?;
-    let value = serde_json::to_value(&provider).map_err(|_| invalid())?;
-    if material
-        .values()
-        .into_iter()
-        .any(|secret| !secret.is_empty() && contains_value(&value, secret))
+    let mut value = serde_json::to_value(&provider).map_err(|_| invalid())?;
+    // Inspect TOML fields rather than treating names, addresses and formatting
+    // as one credential string. Unknown extension values remain fail closed.
+    if let Some(config) = provider
+        .settings_config
+        .get("config")
+        .and_then(Value::as_str)
     {
+        let parsed = config.parse::<toml::Value>().map_err(|_| invalid())?;
+        value["settingsConfig"]["config"] = serde_json::to_value(parsed).map_err(|_| invalid())?;
+    }
+    if contains_unowned_material(&value, &material.values(), &mut Vec::new()) {
         return Err(invalid());
     }
     material.project_usage(provider, false)
 }
 
-fn contains_value(value: &Value, secret: &str) -> bool {
+fn is_public_provider_field(path: &[&str]) -> bool {
+    matches!(
+        path,
+        ["id" | "name" | "websiteUrl" | "category" | "icon" | "iconColor"]
+            | ["settingsConfig", REF_KEY]
+            | ["settingsConfig", "env", "OPENAI_BASE_URL"]
+            | [
+                "settingsConfig",
+                "config",
+                "model" | "model_provider" | "base_url"
+            ]
+            | [
+                "settingsConfig",
+                "config",
+                "model_providers",
+                _,
+                "name" | "base_url" | "wire_api"
+            ]
+            | [
+                "meta",
+                "usageScript" | "usage_script",
+                "baseUrl"
+                    | "language"
+                    | "templateType"
+                    | "codingPlanProvider"
+                    | "userId"
+                    | "teamOrganizationId"
+                    | "teamProjectId"
+            ]
+    )
+}
+
+fn contains_unowned_material<'a>(
+    value: &'a Value,
+    secrets: &[&str],
+    path: &mut Vec<&'a str>,
+) -> bool {
     match value {
-        Value::String(text) => text.contains(secret),
-        Value::Array(values) => values.iter().any(|value| contains_value(value, secret)),
-        Value::Object(values) => values
-            .iter()
-            .any(|(name, value)| name.contains(secret) || contains_value(value, secret)),
+        Value::String(text) => {
+            !is_public_provider_field(path)
+                && secrets
+                    .iter()
+                    .any(|secret| !secret.is_empty() && text.contains(*secret))
+        }
+        Value::Array(values) => values.iter().any(|value| {
+            path.push("[]");
+            let found = contains_unowned_material(value, secrets, path);
+            path.pop();
+            found
+        }),
+        Value::Object(values) => values.iter().any(|(name, value)| {
+            // Key names identify fields; a substring of a key is not material.
+            // Sensitive field names are checked structurally by strip_key.
+            path.push(name);
+            let found = contains_unowned_material(value, secrets, path);
+            path.pop();
+            found
+        }),
         _ => false,
     }
 }

@@ -181,6 +181,53 @@ describe("standalone setup contract", () => {
     ).not.toThrow();
   });
 
+  it.each([
+    ["developer security decision", "developer\nsecurity decision"],
+    ["never run automatically", "never run\nautomatically"],
+  ])("accepts Markdown line wrapping within %s", (phrase, wrapped) => {
+    expect(() =>
+      docsChecker.validateStandaloneSetup(
+        "fixture.md",
+        valid.replace(phrase, wrapped),
+      ),
+    ).not.toThrow();
+  });
+
+  it("accepts equivalent Chinese manual trust guidance, including separate sentences", () => {
+    for (const guidance of [
+      "`mise trust` 由开发者手动做出安全决定，项目任务不得自动执行。",
+      "`mise trust` 由开发人员自行做出信任决策。项目脚本不能自动运行。",
+    ]) {
+      expect(() =>
+        docsChecker.validateStandaloneSetup(
+          "fixture.md",
+          valid.replace(
+            "`mise trust` is a developer security decision and is never run automatically by a project task.",
+            guidance,
+          ),
+        ),
+      ).not.toThrow();
+    }
+  });
+
+  it("rejects Chinese automatic trust ownership and missing manual guidance", () => {
+    for (const guidance of [
+      "`mise trust` 由项目任务自动执行。",
+      "`mise trust` 由开发者手动做出安全决定，项目任务自动执行。",
+      "`mise trust` 项目任务不得自动执行。",
+    ]) {
+      expect(() =>
+        docsChecker.validateStandaloneSetup(
+          "fixture.md",
+          valid.replace(
+            "`mise trust` is a developer security decision and is never run automatically by a project task.",
+            guidance,
+          ),
+        ),
+      ).toThrow(/开发者手动决定信任、项目任务不得自动执行/);
+    }
+  });
+
   it("rejects reordered setup commands", () => {
     expect(() =>
       docsChecker.validateStandaloneSetup(
@@ -193,6 +240,23 @@ describe("standalone setup contract", () => {
     ).toThrow(/exact order/);
   });
 
+  it.each([
+    "`mise trust` 由开发者手动做出安全决定，项目任务不会询问确认，而是自动执行。",
+    "项目任务不得自动执行其他命令，但会自动执行 mise trust",
+  ])("rejects automatic trust after a contrasting clause: %s", (guidance) => {
+    for (const source of [
+      valid.replace(
+        "`mise trust` is a developer security decision and is never run automatically by a project task.",
+        guidance,
+      ),
+      `${valid}\n\n${guidance}`,
+    ]) {
+      expect(() =>
+        docsChecker.validateStandaloneSetup("fixture.md", source),
+      ).toThrow(/开发者手动决定信任、项目任务不得自动执行/);
+    }
+  });
+
   it("rejects automatic trust ownership", () => {
     expect(() =>
       docsChecker.validateStandaloneSetup(
@@ -202,6 +266,6 @@ describe("standalone setup contract", () => {
           "is run automatically by a project task",
         ),
       ),
-    ).toThrow(/manual developer decision/);
+    ).toThrow(/开发者手动决定信任、项目任务不得自动执行/);
   });
 });

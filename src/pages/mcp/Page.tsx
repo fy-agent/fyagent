@@ -71,6 +71,7 @@ import { WorkBuddyTrustDialog } from "../../shared/ui/WorkBuddyTrustDialog";
 import { findCatalogItem, MCP_PROVENANCE_LABEL } from "./catalog";
 import { DEFAULT_NEW_APPS } from "./constants";
 import { McpDiscovery } from "./Discovery";
+import { InspectorDialog } from "./InspectorDialog";
 import "./page.css";
 
 function transportOf(server: McpServer): "stdio" | "http" | "sse" {
@@ -89,6 +90,7 @@ function ServerDetail({
   onToggle,
   onEdit,
   onDelete,
+  onInspect,
   showAssignment,
 }: {
   originRef?: DialogOriginRef;
@@ -97,6 +99,7 @@ function ServerDetail({
   onToggle: (app: McpTargetId, enabled: boolean) => void;
   onEdit: () => void;
   onDelete: () => void;
+  onInspect: () => void;
   showAssignment: boolean;
 }) {
   const [installationOpen, setInstallationOpen] = useState(false);
@@ -141,6 +144,13 @@ function ServerDetail({
         <div className="fy-feature-actions">
           <Button dialogOriginRef={originRef} onClick={onEdit} disabled={busy}>
             编辑
+          </Button>
+          <Button
+            dialogOriginRef={originRef}
+            onClick={onInspect}
+            disabled={busy}
+          >
+            本地协议诊断
           </Button>
           <Button
             className="fy-control-button-danger"
@@ -295,6 +305,8 @@ export function McpPage({
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing, editingKey] = useDialogState<McpServer | "new">();
+  const [inspecting, setInspecting, inspectingKey] =
+    useDialogState<McpServer>();
   const [deleteTarget, setDeleteTarget] = useState<McpServer | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -719,6 +731,7 @@ export function McpPage({
                     busy={busy}
                     onToggle={(app, enabled) => toggle(selected, app, enabled)}
                     onEdit={() => setEditing(selected)}
+                    onInspect={() => setInspecting(selected)}
                     onDelete={() => {
                       setDeleteError(null);
                       setDeleteTarget(selected);
@@ -746,6 +759,14 @@ export function McpPage({
           </div>
         )}
       </FeatureTabPanel>
+      {inspecting && (
+        <InspectorDialog
+          key={inspectingKey}
+          server={inspecting}
+          originRef={dialogOriginRef}
+          onClose={() => setInspecting(null)}
+        />
+      )}
       <Dialog
         open={importOpen}
         originRef={dialogOriginRef}

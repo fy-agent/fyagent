@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::SecondsFormat;
 use tauri::Manager;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::database::Database;
 use crate::proxy::providers::copilot_auth::exchange_github_token_for_copilot;
@@ -94,10 +94,13 @@ enum NativeQuotaRead {
     Unavailable(ManagedAuthCoreError),
 }
 
+#[derive(Zeroize)]
+#[zeroize(drop)]
 struct RefreshedGrant {
     access_token: String,
     refresh_token: Option<String>,
     id_token: Option<String>,
+    #[zeroize(skip)]
     expires_in: Option<i64>,
 }
 
@@ -1149,7 +1152,7 @@ where
         {
             return Err(ManagedAuthCoreError::Stale);
         }
-        let refreshed = match result {
+        let mut refreshed = match result {
             Ok(grant) => grant,
             Err(ProxyRefreshFailure::Terminal) => {
                 self.repository.set_status(
@@ -1212,7 +1215,7 @@ where
             return Err(ManagedAuthCoreError::SecretMissing);
         }
         Ok(AccessMaterial {
-            access_token: Zeroizing::new(refreshed.access_token),
+            access_token: Zeroizing::new(std::mem::take(&mut refreshed.access_token)),
             routing_subject: Some(identity.provider_subject),
             credential: committed,
         })
@@ -2718,6 +2721,21 @@ mod tests {
             authenticated_at: 1_700_000_000,
             make_default,
         }
+    }
+
+    #[test]
+    fn refreshed_grant_zeroizes_all_original_tokens() {
+        let mut grant = RefreshedGrant {
+            access_token: "access-test".into(),
+            refresh_token: Some("refresh-test".into()),
+            id_token: Some("id-test".into()),
+            expires_in: Some(3600),
+        };
+        grant.zeroize();
+        assert!(grant.access_token.is_empty());
+        assert!(grant.refresh_token.as_deref().is_none_or(str::is_empty));
+        assert!(grant.id_token.as_deref().is_none_or(str::is_empty));
+        assert_eq!(grant.expires_in, Some(3600));
     }
 
     #[test]

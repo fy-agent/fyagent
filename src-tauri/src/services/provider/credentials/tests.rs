@@ -788,6 +788,184 @@ fn save_uses_reference_and_native_resolution_without_dto_or_debug_leak() {
 }
 
 #[test]
+fn short_credential_does_not_reject_public_names_addresses_or_key_names() {
+    let (db, _) = database();
+    let mut provider = fixture();
+    provider.name = "local".into();
+    provider.website_url = Some("https://localhost.invalid".into());
+    provider.settings_config = json!({
+        "auth": {"OPENAI_API_KEY": "local"},
+        "env": {"OPENAI_API_KEY": "local", "OPENAI_BASE_URL": "http://localhost:11434/v1"},
+        "apiKey": "local",
+        "api_key": "local",
+        "local": true,
+        "local_options": {"enabled": true},
+        "config": "model = 'local-model'\nmodel_provider = 'local'\n[model_providers.local]\nname = 'local'\nbase_url = 'http://localhost:11434/v1'\nwire_api = 'responses'\nexperimental_bearer_token = 'local'\n"
+    });
+    db.save_provider("codex", &provider).unwrap();
+    let stored = saved(&db);
+    assert_eq!(stored.name, "local");
+    assert_eq!(stored.settings_config["local"], true);
+    assert_eq!(stored.settings_config["auth"], json!({}));
+    assert!(stored.settings_config["env"]
+        .get("OPENAI_API_KEY")
+        .is_none());
+    assert!(stored.settings_config.get("apiKey").is_none());
+    assert!(stored.settings_config.get("api_key").is_none());
+    let config = stored.settings_config["config"]
+        .as_str()
+        .unwrap()
+        .parse::<toml::Value>()
+        .unwrap();
+    assert_eq!(
+        config["model_providers"]["local"]["base_url"].as_str(),
+        Some("http://localhost:11434/v1")
+    );
+    assert!(config["model_providers"]["local"]
+        .get("experimental_bearer_token")
+        .is_none());
+    let resolved = ProviderCredentials::resolve(&db, "codex", &stored).unwrap();
+    assert_eq!(resolved.settings_config["auth"]["OPENAI_API_KEY"], "local");
+}
+
+#[test]
+fn short_credential_accepts_the_existing_top_level_base_url_fallback() {
+    let (db, _) = database();
+    let mut provider = fixture();
+    provider.settings_config["auth"]["OPENAI_API_KEY"] = json!("local");
+    provider.settings_config["config"] =
+        json!("model = 'local-model'\nbase_url = 'http://localhost:11434/v1'\n");
+    db.save_provider("codex", &provider).unwrap();
+    let stored = saved(&db);
+    assert_eq!(stored.settings_config["auth"], json!({}));
+    assert_eq!(
+        crate::codex_config::extract_codex_base_url(
+            stored.settings_config["config"].as_str().unwrap()
+        )
+        .as_deref(),
+        Some("http://localhost:11434/v1")
+    );
+}
+
+#[test]
+fn short_usage_credentials_are_removed_without_rejecting_the_usage_address() {
+    let (db, _) = database();
+    let mut provider = usage_fixture();
+    usage_mut(&mut provider).api_key = Some("local".into());
+    usage_mut(&mut provider).base_url = Some("https://localhost.invalid/api".into());
+    db.save_provider("codex", &provider).unwrap();
+    let stored = saved(&db);
+    assert_eq!(usage(&stored).api_key.as_deref(), Some("[REDACTED]"));
+    let resolved = ProviderCredentials::resolve(&db, "codex", &stored).unwrap();
+    assert_eq!(usage(&resolved).api_key.as_deref(), Some("local"));
+    assert_eq!(
+        usage(&resolved).base_url.as_deref(),
+        Some("https://localhost.invalid/api")
+    );
+}
+
+#[test]
+fn unknown_extensions_cannot_keep_short_or_independent_credentials() {
+    for extension in [
+        json!({"nested": [{"name": "prefix-local-suffix"}]}),
+        json!({"token": "independent-secret"}),
+    ] {
+        let (db, _) = database();
+        let mut provider = fixture();
+        provider.settings_config["auth"]["OPENAI_API_KEY"] = json!("local");
+        provider.settings_config["config"] = json!("model = 'local-model'\n");
+        provider.settings_config["extension"] = extension;
+        assert_eq!(
+            db.save_provider("codex", &provider)
+                .unwrap_err()
+                .to_string(),
+            "provider_secret_invalid"
+        );
+        assert!(db
+            .get_provider_by_id(&provider.id, "codex")
+            .unwrap()
+            .is_none());
+        assert!(db.provider_credential_records().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn normalized_credential_names_reject_independent_material_in_json_and_toml() {
+    for name in [
+        "authToken",
+        "AUTHtoken",
+        "auth_token",
+        "auth-token",
+        "sessionToken",
+        "privateKey",
+        "localToken",
+        "localtoken",
+        "LOCAL_TOKEN",
+        "private-key",
+    ] {
+        assert!(crate::provider::is_sensitive_config_key(name), "{name}");
+        for toml in [false, true] {
+            let (db, _) = database();
+            let mut provider = fixture();
+            if toml {
+                provider.settings_config["config"] = json!(format!(
+                    "model = 'local-model'\n[extension]\n{name} = 'independent-canary'\n"
+                ));
+            } else {
+                provider.settings_config["extension"] = json!({});
+                provider.settings_config["extension"][name] = json!("independent-canary");
+            }
+            assert_eq!(
+                db.save_provider("codex", &provider)
+                    .unwrap_err()
+                    .to_string(),
+                "provider_secret_invalid"
+            );
+            assert!(db
+                .get_provider_by_id(&provider.id, "codex")
+                .unwrap()
+                .is_none());
+            assert!(db.provider_credential_records().unwrap().is_empty());
+        }
+    }
+    for name in [
+        "local",
+        "local_options",
+        "model",
+        "model_provider",
+        "baseUrl",
+        "maxTokens",
+        "tokenizer",
+        "keyboardLayout",
+        "max_tokens",
+        "OLDPWD",
+        "GEMINI_COMPAT",
+        "SSL_BYPASS",
+    ] {
+        assert!(!crate::provider::is_sensitive_config_key(name), "{name}");
+    }
+}
+
+#[test]
+fn unknown_toml_extensions_cannot_keep_captured_material() {
+    let (db, _) = database();
+    let mut provider = fixture();
+    provider.settings_config["auth"]["OPENAI_API_KEY"] = json!("local");
+    provider.settings_config["config"] =
+        json!("model = 'local-model'\n[extension]\nname = 'prefix-local-suffix'\n");
+    assert_eq!(
+        db.save_provider("codex", &provider)
+            .unwrap_err()
+            .to_string(),
+        "provider_secret_invalid"
+    );
+    assert!(db
+        .get_provider_by_id(&provider.id, "codex")
+        .unwrap()
+        .is_none());
+}
+
+#[test]
 fn blank_and_masked_edits_retain_the_same_credential() {
     let (db, _) = database();
     db.save_provider("codex", &fixture()).unwrap();

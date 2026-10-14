@@ -166,7 +166,23 @@ describe("commit message range verification", () => {
         "",
       ].join("\n"),
     );
-    git(root, "add", "docs/upstream");
+    const manifest = path.join(root, "scripts/ci/upstream-sources.json");
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(
+      manifest,
+      JSON.stringify({
+        schemaVersion: 1,
+        sources: [
+          {
+            repository: "https://github.com/farion1231/cc-switch.git",
+            tag: "v4.0.4",
+            tagObject,
+            commit: side,
+          },
+        ],
+      }),
+    );
+    git(root, "add", "docs/upstream", "scripts/ci");
     git(root, "commit", "-m", "docs(upstream): record verified source");
     // CI needs no upstream remote or fetched tag ref.
     git(root, "tag", "-d", "v4.0.4");
@@ -174,6 +190,7 @@ describe("commit message range verification", () => {
       ...fixture,
       head: git(root, "rev-parse", "HEAD"),
       ledger,
+      manifest,
       tagObject,
     };
   }
@@ -327,12 +344,16 @@ describe("commit message range verification", () => {
     expect(missingResult.status).toBe(1);
     expect(JSON.parse(missingResult.stdout).upstreamCommitCount).toBe(0);
 
-    const { root, base, side, ledger } = upstreamFixture();
+    const { root, base, side, ledger, manifest } = upstreamFixture();
     fs.writeFileSync(
       ledger,
       fs.readFileSync(ledger, "utf8").replace(side, base),
     );
-    git(root, "add", "docs/upstream");
+    fs.writeFileSync(
+      manifest,
+      fs.readFileSync(manifest, "utf8").replace(side, base),
+    );
+    git(root, "add", "docs/upstream", "scripts/ci");
     git(root, "commit", "-m", "docs: wrong upstream anchor");
     const mismatch = verifyRange(root, base, git(root, "rev-parse", "HEAD"));
     expect(mismatch.status).toBe(1);
@@ -354,8 +375,8 @@ describe("commit message range verification", () => {
     expect(result.stderr).toContain("merge(upstream): pretend import");
   });
 
-  it("reads the established provenance ledger field names and rejects a foreign source", () => {
-    const { root, base, ledger } = upstreamFixture();
+  it("allows provenance ledger field renaming and rejects a foreign machine source", () => {
+    const { root, base, ledger, manifest } = upstreamFixture();
     fs.writeFileSync(
       ledger,
       fs
@@ -375,11 +396,63 @@ describe("commit message range verification", () => {
         .readFileSync(ledger, "utf8")
         .replace("farion1231/cc-switch", "someone/another-repository"),
     );
-    git(root, "add", "docs/upstream");
+    fs.writeFileSync(
+      manifest,
+      fs
+        .readFileSync(manifest, "utf8")
+        .replace("farion1231/cc-switch", "someone/another-repository"),
+    );
+    git(root, "add", "docs/upstream", "scripts/ci");
     git(root, "commit", "-m", "docs: point at a different source");
     const result = verifyRange(root, base, git(root, "rev-parse", "HEAD"));
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("invalid upstream source identity");
+  });
+
+  it("keeps pinned ancestry verified when Markdown is translated or replaced", () => {
+    const { root, base, ledger } = upstreamFixture();
+    fs.writeFileSync(
+      ledger,
+      "# 上游来源\n\n来源身份见机器清单，说明可独立编辑。\n",
+    );
+    git(root, "add", "docs/upstream");
+    git(root, "commit", "-m", "docs: translate upstream notes");
+    const result = verifyRange(root, base, git(root, "rev-parse", "HEAD"));
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).upstreamCommitCount).toBe(1);
+  });
+
+  it.each([
+    { schemaVersion: 2, sources: [] },
+    { schemaVersion: 1, sources: "invalid" },
+    { schemaVersion: 1, sources: [], extra: true },
+    {
+      schemaVersion: 1,
+      sources: [
+        {
+          repository: "https://github.com/farion1231/cc-switch.git",
+          tag: "v4.0.4",
+          tagObject: "abc",
+          commit: "abc",
+        },
+      ],
+    },
+  ])("fails closed on malformed source manifests: %j", (value) => {
+    const { root, base, manifest } = upstreamFixture();
+    fs.writeFileSync(manifest, JSON.stringify(value));
+    git(root, "add", "scripts/ci");
+    git(root, "commit", "-m", "test: malformed source manifest");
+    const result = verifyRange(root, base, git(root, "rev-parse", "HEAD"));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("invalid upstream source identity");
+  });
+
+  it("ignores an uncommitted source edit and reads only the checked head", () => {
+    const { root, base, head, manifest } = upstreamFixture();
+    fs.writeFileSync(manifest, "{}");
+    const result = verifyRange(root, base, head);
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).upstreamCommitCount).toBe(1);
   });
 
   it("validates a conventional HEAD subject in an empty comparison", () => {

@@ -119,6 +119,27 @@ describe("bulk assignment preview execution", () => {
     ).toBe("failed");
   });
 
+  it("does not perform a discarded full read after a mutation throws", async () => {
+    const original = item("a");
+    const read = vi.fn(async () => [original]);
+    const mutate = vi.fn(async () => {
+      throw new Error("partial write failed");
+    });
+    const onResult = vi.fn();
+
+    const results = await executeBulkAssignment(
+      plan([original]),
+      read,
+      mutate,
+      onResult,
+    );
+
+    expect(results).toEqual([{ id: "a", name: "a", status: "failed" }]);
+    expect(onResult).toHaveBeenCalledExactlyOnceWith(results[0]);
+    expect(mutate).toHaveBeenCalledExactlyOnceWith("a", "codex", true);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects void command acknowledgement when readback lacks the row", async () => {
     const original = item("a");
     let reads = 0;
@@ -238,5 +259,85 @@ describe("bulk assignment preview execution", () => {
       )[0].status,
     ).toBe("drift");
     expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("does not treat different object key order in readback as drift", async () => {
+    const original: BulkAssignmentItem = {
+      ...item("a"),
+      apps: { codex: false, claude: true },
+    };
+    let live: BulkAssignmentItem[] = [
+      {
+        ...original,
+        apps: { claude: true, codex: false },
+      },
+    ];
+    const mutate = vi.fn(async () => {
+      live = [
+        {
+          ...original,
+          apps: { codex: true, claude: true },
+        },
+      ];
+      return true;
+    });
+    const results = await executeBulkAssignment(
+      plan([original]),
+      async () => live,
+      mutate,
+    );
+    expect(results[0].status).toBe("confirmed");
+    expect(mutate).toHaveBeenCalledExactlyOnceWith("a", "codex", true);
+  });
+
+  it("still detects drift when assignment content genuinely differs", async () => {
+    const original: BulkAssignmentItem = {
+      ...item("a"),
+      apps: { codex: false, claude: true },
+    };
+    const live: BulkAssignmentItem[] = [
+      {
+        ...original,
+        apps: { claude: false, codex: false },
+      },
+    ];
+    const mutate = vi.fn();
+    const results = await executeBulkAssignment(
+      plan([original]),
+      async () => live,
+      mutate,
+    );
+    expect(results[0].status).toBe("drift");
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("does not treat different read-only target set order as drift", async () => {
+    const original: BulkAssignmentItem = {
+      ...item("a"),
+      readOnlyTargets: ["claude", "workbuddy"],
+    };
+    let live: BulkAssignmentItem[] = [
+      {
+        ...original,
+        readOnlyTargets: ["workbuddy", "claude"],
+      },
+    ];
+    const mutate = vi.fn(async () => {
+      live = [
+        {
+          ...original,
+          apps: { codex: true },
+          readOnlyTargets: ["workbuddy", "claude"],
+        },
+      ];
+      return true;
+    });
+    const results = await executeBulkAssignment(
+      plan([original]),
+      async () => live,
+      mutate,
+    );
+    expect(results[0].status).toBe("confirmed");
+    expect(mutate).toHaveBeenCalledExactlyOnceWith("a", "codex", true);
   });
 });

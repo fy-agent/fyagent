@@ -8,6 +8,26 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.13] - 2026-10-14
+
+Transitional pre-release with the follow-up fixes from the 0.4.12 review.
+
+### Added
+
+- Confirm the update-all list before updating skills.
+
+### Fixed
+
+- Keep the Windows auto-launch status query read-only.
+- Zeroize remaining managed-auth token copies, including Codex readback.
+- Compare bulk-assignment readback by target set and drop the discarded
+  convergence read after a failed write.
+- Report determinate prompt import failure reasons and ignore extra fields in
+  managed prompt payloads.
+- Harden MCP inspector redaction, keep configured third-party Codex catalog
+  models visible, and list all five Moark models in the Codex preset.
+- Separate Grok session import settling from proxy deduplication.
+
 ## [0.4.12] - 2026-10-12
 
 Transitional pre-release with the high-priority fixes from the 0.4.11 review.

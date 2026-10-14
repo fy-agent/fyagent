@@ -27,14 +27,6 @@ const MEMORY_DOCUMENT_TARGETS = {
   | { source: "hermes"; kind: HermesMemoryKind }
 >;
 
-function hasOnlyKeys(
-  value: Record<string, unknown>,
-  keys: readonly string[],
-): boolean {
-  const allowed = new Set(keys);
-  return Object.keys(value).every((key) => allowed.has(key));
-}
-
 function assertPromptAppId(app: PromptAppId): PromptAppId {
   if (!isOneOf(app, PROMPT_APP_IDS))
     throw new Error("Prompt application is invalid");
@@ -68,15 +60,6 @@ function parseManagedPrompt(
 ): ManagedPrompt {
   if (
     !isRecord(value) ||
-    !hasOnlyKeys(value, [
-      "id",
-      "name",
-      "content",
-      "description",
-      "enabled",
-      "createdAt",
-      "updatedAt",
-    ]) ||
     typeof value.name !== "string" ||
     typeof value.content !== "string" ||
     (value.description !== undefined &&

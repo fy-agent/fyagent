@@ -4,6 +4,7 @@ use serde_json::Value;
 const REF_KEY: &str = "credentialRef";
 
 pub(crate) fn is_sensitive_config_key(name: &str) -> bool {
+    // Collapse spelling variants before applying the same credential rules.
     let upper = name.replace('-', "_").to_ascii_uppercase();
     let collapsed = upper.replace('_', "");
     if matches!(
@@ -62,13 +63,18 @@ pub(crate) fn is_sensitive_config_key(name: &str) -> bool {
         "BEARER_TOKEN",
     ];
 
-    SENSITIVE_EXACT.contains(&upper.as_str())
+    SENSITIVE_EXACT
+        .iter()
+        .any(|key| key.replace('_', "") == collapsed)
         || SENSITIVE_SUFFIXES
             .iter()
-            .any(|suffix| upper.ends_with(suffix))
+            .any(|suffix| upper.ends_with(*suffix))
+        // Token spellings include camelCase and unseparated names; short
+        // suffixes such as _PWD, _PAT and _PASS keep their word boundary.
+        || collapsed.ends_with("TOKEN")
         || SENSITIVE_CONTAINS
             .iter()
-            .any(|fragment| upper.contains(fragment))
+            .any(|fragment| collapsed.contains(&fragment.replace('_', "")))
 }
 
 fn collect_secrets(value: &Value, out: &mut Vec<String>) {
