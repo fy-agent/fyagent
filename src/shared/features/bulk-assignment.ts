@@ -105,13 +105,7 @@ export async function executeBulkAssignment(
           status = "confirmed";
       }
     } catch {
-      // A partial durable write is still a failure. Best-effort convergence
-      // never changes the recorded outcome or fabricates rollback.
-      try {
-        await read();
-      } catch {
-        /* The row remains visibly failed. */
-      }
+      // A partial durable write is still a failure; never fabricate rollback.
     }
     const result = { id: item.id, name: item.name, status };
     results.push(result);
