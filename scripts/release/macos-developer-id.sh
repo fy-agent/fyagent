@@ -367,19 +367,40 @@ notarize_app() {
   rm -f "$archive_path"
 }
 
+staple_with_retry() {
+  local target="$1"
+  local delays=(15 30 60 120)
+  local attempt=1
+  local max_attempts=5
+  while true; do
+    if xcrun stapler staple "$target"; then
+      # Ticket presence is checked by verify-macos-signed-{app,dmg}.sh.
+      return 0
+    fi
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      echo "stapler staple failed after $max_attempts attempts: $target" >&2
+      return 1
+    fi
+    local delay="${delays[$((attempt - 1))]}"
+    echo "stapler staple attempt $attempt/$max_attempts failed; retrying in ${delay}s" >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+}
+
 notarize_dmg() {
   local dmg_path="$1"
   require_regular_file "$dmg_path" "macOS DMG"
   load_state
   submit_for_notarization "$dmg_path"
-  xcrun stapler staple "$dmg_path"
+  staple_with_retry "$dmg_path"
 }
 
 staple_app() {
   local app_path="$1"
   require_app_bundle "$app_path"
   load_state
-  xcrun stapler staple "$app_path"
+  staple_with_retry "$app_path"
 }
 
 teardown() {
