@@ -42,7 +42,18 @@ function assertOpenCodeFetchRequest(
 ): OpenCodeFetchModelsRequest {
   if (
     !isRecord(request) ||
-    !hasExactKeys(request, ["baseUrl", "apiKey", "allowNoApiKey"]) ||
+    !hasRequiredAndOptionalKeys(
+      request,
+      ["baseUrl", "apiKey", "allowNoApiKey"],
+      ["providerId", "expectedRevision"],
+    ) ||
+    (request.providerId !== undefined &&
+      request.providerId !== null &&
+      (typeof request.providerId !== "string" ||
+        request.providerId.trim().length === 0)) ||
+    (request.expectedRevision !== undefined &&
+      request.expectedRevision !== null &&
+      typeof request.expectedRevision !== "string") ||
     typeof request.baseUrl !== "string" ||
     typeof request.apiKey !== "string" ||
     typeof request.allowNoApiKey !== "boolean"
