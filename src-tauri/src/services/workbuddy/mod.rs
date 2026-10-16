@@ -7,6 +7,7 @@ pub mod config;
 pub mod document;
 pub mod error;
 pub mod model_fetch;
+pub mod subscription;
 pub mod types;
 pub mod url;
 
@@ -15,7 +16,8 @@ mod windows_storage;
 
 pub(crate) use config::{
     current_paths, get_workbuddy_model_ids, get_workbuddy_status, load_workbuddy_files,
-    normalized_target_ids, save_workbuddy_models, save_workbuddy_models_at_locked, write_lock,
+    normalized_target_ids, save_workbuddy_models, save_workbuddy_models_at_locked,
+    subscription_config_locator, write_lock,
 };
 
 #[cfg(test)]

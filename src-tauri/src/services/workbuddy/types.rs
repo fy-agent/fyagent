@@ -141,6 +141,23 @@ pub enum SaveWorkBuddyModelsOutcome {
     ConcurrentModification,
 }
 
+/// Secret-free view of the internal WorkBuddy subscription binding.
+///
+/// This is not a page DTO and is not exposed through a user write command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkBuddySubscriptionSnapshot {
+    pub route_id: String,
+    pub account_id: String,
+    pub provider: String,
+    pub model_id: String,
+    pub status: String,
+    pub version: u64,
+    pub connected: bool,
+    pub config_locator: String,
+    pub local_base_path: String,
+    pub provider_id: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

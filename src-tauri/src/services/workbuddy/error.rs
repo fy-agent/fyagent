@@ -193,3 +193,74 @@ mod tests {
         assert_eq!(summary, "The server returned an error response.");
     }
 }
+
+/// Closed failures for the subscription route. Display is the code only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkBuddySubscriptionErrorCode {
+    InvalidRequest,
+    AccountUnavailable,
+    SubscriptionUnavailable,
+    ModelMismatch,
+    UnknownRoute,
+    ProxyCredentialRejected,
+    Timeout,
+    UpstreamError,
+    PortConflict,
+    Internal,
+}
+
+impl WorkBuddySubscriptionErrorCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidRequest => "invalid_request",
+            Self::AccountUnavailable => "account_unavailable",
+            Self::SubscriptionUnavailable => "subscription_unavailable",
+            Self::ModelMismatch => "model_mismatch",
+            Self::UnknownRoute => "unknown_route",
+            Self::ProxyCredentialRejected => "proxy_credential_rejected",
+            Self::Timeout => "timeout",
+            Self::UpstreamError => "upstream_error",
+            Self::PortConflict => "port_conflict",
+            Self::Internal => "internal",
+        }
+    }
+
+    pub const fn http_status(self) -> u16 {
+        match self {
+            Self::InvalidRequest | Self::ModelMismatch => 400,
+            Self::AccountUnavailable | Self::ProxyCredentialRejected => 401,
+            Self::SubscriptionUnavailable | Self::UnknownRoute => 404,
+            Self::Timeout => 504,
+            Self::UpstreamError | Self::PortConflict | Self::Internal => 502,
+        }
+    }
+}
+
+impl std::fmt::Display for WorkBuddySubscriptionErrorCode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkBuddySubscriptionError {
+    code: WorkBuddySubscriptionErrorCode,
+}
+
+impl WorkBuddySubscriptionError {
+    pub const fn new(code: WorkBuddySubscriptionErrorCode) -> Self {
+        Self { code }
+    }
+
+    pub const fn code(self) -> WorkBuddySubscriptionErrorCode {
+        self.code
+    }
+}
+
+impl std::fmt::Display for WorkBuddySubscriptionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.code.as_str())
+    }
+}
+
+impl std::error::Error for WorkBuddySubscriptionError {}

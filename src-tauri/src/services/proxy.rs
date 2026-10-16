@@ -468,6 +468,21 @@ impl ProxyService {
         Ok(key)
     }
 
+    /// Ensure the listener can recognize a WorkBuddy client key.
+    ///
+    /// The binding itself never stores this key. A running listener picks up
+    /// the same value the next request will check.
+    pub(crate) async fn sync_workbuddy_proxy_credential(&self) -> Result<(), String> {
+        let key = self
+            .db
+            .ensure_proxy_access_key()
+            .map_err(|error| error.to_string())?;
+        if let Some(server) = self.server.read().await.as_ref() {
+            server.update_access_key(key).await;
+        }
+        Ok(())
+    }
+
     async fn restore_and_start(&self, previous: SavedProxyConfig) -> Result<ProxyServer, String> {
         previous.write(&self.db).await?;
         let config = self
@@ -723,6 +738,16 @@ impl ProxyService {
                 Ok(false) => {}
                 Err(_) => unreadable = true,
             }
+        }
+        match crate::services::workbuddy::subscription::observe_connected_binding(
+            &self.db,
+            auth_kind,
+            legacy_account_id,
+            status.port,
+        ) {
+            Ok(Some(true)) => return Some(true),
+            Ok(Some(false) | None) => {}
+            Err(()) => unreadable = true,
         }
         if unreadable {
             None
@@ -2401,9 +2426,11 @@ impl ProxyService {
                 }
             }
 
+            crate::services::workbuddy::subscription::mark_listener_down(&self.db);
             log::info!("代理服务器已停止");
             Ok(())
         } else {
+            crate::services::workbuddy::subscription::mark_listener_down(&self.db);
             Err("代理服务器未运行".to_string())
         }
     }

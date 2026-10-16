@@ -48,15 +48,23 @@ async fn authenticate_lan_request(
         peer.0.ip().is_loopback()
             || matches!(peer.0.ip(), std::net::IpAddr::V6(ip) if ip.to_ipv4_mapped().is_some_and(|ip| ip.is_loopback()))
     });
+    let path = request.uri().path();
+    let workbuddy_route = path == "/workbuddy" || path.starts_with("/workbuddy/");
     let access_key = state.access_key.read().await.clone();
     let expected = match access_key {
         Ok(Some(key)) if !key.is_empty() => key,
+        Err(_) if workbuddy_route => {
+            return super::workbuddy::proxy_credential_rejected_response();
+        }
         Err(_) => {
             return (
                 axum::http::StatusCode::SERVICE_UNAVAILABLE,
                 "局域网代理访问密钥读取失败",
             )
                 .into_response();
+        }
+        Ok(_) if workbuddy_route => {
+            return super::workbuddy::proxy_credential_rejected_response();
         }
         Ok(_) if loopback => return next.run(request).await,
         _ => {
@@ -83,6 +91,19 @@ async fn authenticate_lan_request(
     };
     let bearer_matches = matches(bearer);
     let api_key_matches = matches(api_key);
+    if workbuddy_route {
+        if !(bearer_matches || api_key_matches) {
+            return super::workbuddy::proxy_credential_rejected_response();
+        }
+        request
+            .headers_mut()
+            .remove(axum::http::header::AUTHORIZATION);
+        request.headers_mut().remove("x-api-key");
+        request
+            .extensions_mut()
+            .insert(super::workbuddy::WorkbuddyProxyCredentialAccepted);
+        return next.run(request).await;
+    }
     if !loopback && !(bearer_matches | api_key_matches) {
         return ProxyError::AuthError("局域网代理访问密钥缺失或无效".into()).into_response();
     }
@@ -420,6 +441,19 @@ impl ProxyServer {
             // 健康检查
             .route("/health", get(handlers::health_check))
             .route("/status", get(handlers::get_status))
+            // WorkBuddy keeps its own Chat Completions prefix. Codex already owns
+            // `/v1/chat/completions`; sharing that path would use Codex's provider.
+            .nest(
+                "/workbuddy",
+                Router::new()
+                    .route(
+                        "/v1/chat/completions",
+                        any(super::workbuddy::handle_chat_completions),
+                    )
+                    .route("/v1/models", any(super::workbuddy::reject_unknown_route))
+                    .route("/v1/responses", any(super::workbuddy::reject_unknown_route))
+                    .fallback(super::workbuddy::reject_unknown_route),
+            )
             // Claude API (支持带前缀和不带前缀两种格式)
             .route("/v1/messages", post(handlers::handle_messages))
             .route("/claude/v1/messages", post(handlers::handle_messages))

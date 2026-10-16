@@ -38,6 +38,14 @@ use super::{
 
 const MODELS_FILE_NAME: &str = "models.json";
 const BACKUP_FILE_NAME: &str = "models.json.backup";
+
+/// Stable recovery locator for a subscription binding.
+///
+/// The binding stores this text only. This function does not read or write the file.
+pub(crate) fn subscription_config_locator() -> &'static str {
+    "~/.workbuddy/models.json"
+}
+
 const OVERWRITE_TOKEN_TTL: Duration = Duration::from_secs(3 * 60);
 const OVERWRITE_TOKEN_EXPIRED_RETENTION: Duration = Duration::from_secs(3 * 60);
 type HmacSha256 = Hmac<Sha256>;

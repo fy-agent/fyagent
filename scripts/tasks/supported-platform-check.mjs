@@ -974,6 +974,40 @@ export const MACOS_POSIX_CONTRACT = Object.freeze([
     file: SUBSCRIPTION_TEST_HOME_PATH,
     snippet: SUBSCRIPTION_TEST_HOME_GUARD,
   }),
+  Object.freeze({
+    id: "workbuddy-subscription-test-home-guard",
+    file: "src-tauri/src/services/managed_auth/subscription_workbuddy_tests.rs",
+    snippet: `struct TestHome(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
+
+impl TestHome {
+    fn set(path: &std::path::Path) -> Self {
+        #[cfg(target_os = "windows")]
+        crate::initialize_windows_user_context().expect("Windows test user context");
+        let previous = std::env::var_os("FYAGENT_TEST_HOME");
+        let data_home = std::env::var_os("${DATA_HOME_VARIABLE}");
+        let guard = Self(previous, data_home);
+        std::env::set_var("FYAGENT_TEST_HOME", path);
+        assert_eq!(crate::config::get_home_dir(), path);
+        std::env::set_var("${DATA_HOME_VARIABLE}", path.join(".local/share"));
+        crate::settings::reload_settings().unwrap();
+        guard
+    }
+}
+
+impl Drop for TestHome {
+    fn drop(&mut self) {
+        match self.1.take() {
+            Some(value) => std::env::set_var("${DATA_HOME_VARIABLE}", value),
+            None => std::env::remove_var("${DATA_HOME_VARIABLE}"),
+        }
+        match self.0.take() {
+            Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
+            None => std::env::remove_var("FYAGENT_TEST_HOME"),
+        }
+        crate::settings::reload_settings().unwrap();
+    }
+}`,
+  }),
 ]);
 
 const DIRECTORY_IDENTIFIER = SURFACE_MARKERS.directoryConvention;
@@ -1051,6 +1085,16 @@ const DIRECTORY_OCCURRENCE_CONTRACT = Object.freeze(
       SUBSCRIPTION_TEST_HOME_PATH,
       snippet,
       SUBSCRIPTION_TEST_HOME_GUARD,
+    ]),
+    ...[
+      `let data_home = std::env::var_os("${DATA_HOME_VARIABLE}");`,
+      `std::env::set_var("${DATA_HOME_VARIABLE}", path.join(".local/share"));`,
+      `Some(value) => std::env::set_var("${DATA_HOME_VARIABLE}", value),`,
+      `None => std::env::remove_var("${DATA_HOME_VARIABLE}"),`,
+    ].map((snippet) => [
+      "src-tauri/src/services/managed_auth/subscription_workbuddy_tests.rs",
+      snippet,
+      "//! WorkBuddy subscription routing. Knife 1 only: an explicit account binding,",
     ]),
   ].map(([file, snippet, anchor]) =>
     Object.freeze({ file, snippet, anchor, count: 1 }),
