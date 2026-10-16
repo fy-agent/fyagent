@@ -438,7 +438,7 @@ fn translate_upstream_stream(
         while let Some(item) = incoming.next().await {
             match item {
                 Err(error) => {
-                    yield Ok(sse_error_event(body_read_code(&error)));
+                    yield Ok(sse_error_event(body_read_code(error)));
                     terminal = true;
                     break;
                 }
