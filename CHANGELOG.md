@@ -8,6 +8,33 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.14] - 2026-10-16
+
+Transitional pre-release following 0.4.12 and the 0.4.13 pre-release.
+
+### Added
+
+- Confirm the update-all skill list before applying updates (#366).
+
+### Fixed
+
+- Preserve failed native context compaction responses as failures (#367).
+- Keep Windows auto-launch status queries read-only; zeroize remaining
+  managed-auth token copies, including Codex readback (#366).
+- Compare bulk-assignment readback by target set and skip the discarded
+  convergence read after failed writes (#366).
+- Report prompt import failure reasons, accept extra managed prompt fields,
+  and propagate OpenCode configuration path errors without panicking (#366).
+- Harden MCP inspector redaction, retain configured third-party Codex models,
+  list all five Moark preset models, and separate Grok import settling from
+  proxy deduplication (#366).
+- Retry macOS ticket stapling with backoff for transient failures (#371).
+
+### Documentation
+
+- Incorporate the 0.4.13 release notes and corrected Windows signing status
+  (#370, #372); preserve the 0.4.13 changelog history.
+
 ## [0.4.13] - 2026-10-14
 
 Transitional pre-release with the follow-up fixes from the 0.4.12 review.
