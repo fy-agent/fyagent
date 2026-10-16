@@ -196,6 +196,42 @@ fn seed_provider(
         .unwrap()
 }
 
+/// `set_status(Ready)` is rejected on purpose. A fresh grant is the generation-aware way back.
+fn admit_ready_again(
+    auth: &ManagedAuthService<MemorySecretBackend>,
+    credential_id: &str,
+    account: &str,
+) {
+    let current = auth
+        .repository
+        .get_credential(credential_id)
+        .unwrap()
+        .expect("credential remains after fail-closed restore");
+    let bundle = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
+        credential_id: current.credential_id.clone(),
+        provider: current.provider,
+        generation: current.generation + 1,
+        access_token: Some(format!("synthetic-access-{account}")),
+        refresh_token: Some(format!("synthetic-refresh-{account}")),
+        id_token: None,
+        token_type: Some("Bearer".into()),
+        granted_scopes: vec![],
+        issued_at: Some(chrono::Utc::now().timestamp()),
+        expires_at: Some(chrono::Utc::now().timestamp() + 3600),
+    })
+    .unwrap();
+    assert!(
+        auth.replace_bundle_cas(
+            &current.credential_id,
+            current.generation,
+            RefreshOwner::Fyagent,
+            bundle,
+        )
+        .unwrap(),
+        "generation-aware ready transition must apply"
+    );
+}
+
 fn open_fixture() -> (
     tempfile::TempDir,
     TestHome,
@@ -1146,13 +1182,7 @@ fn subscription_workbuddy_invalid_account_fails_closed() {
         assert_eq!(stored["desired"], true);
         assert!(!restored.proxy_service.is_running().await);
 
-        auth.repository
-            .set_status(
-                &selected.credential_id,
-                CredentialStatus::Ready,
-                chrono::Utc::now().timestamp(),
-            )
-            .unwrap();
+        admit_ready_again(&auth, &selected.credential_id, "selected");
         listen_loopback(&state, 0).await;
         let snapshot = publish_probe(&state, &auth, &selected.identity_id).await;
         let (upstream, task, calls, _hits) =

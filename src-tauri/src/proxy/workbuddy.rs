@@ -37,6 +37,12 @@ use super::ProxyError;
 
 pub(crate) const WORKBUDDY_CHAT_COMPLETIONS_PATH: &str = "/workbuddy/v1/chat/completions";
 
+/// Nested route under the `/workbuddy` prefix. Derived from the full path so the
+/// listener and the constant cannot drift.
+pub(crate) const WORKBUDDY_CHAT_COMPLETIONS_ROUTE: &str = WORKBUDDY_CHAT_COMPLETIONS_PATH
+    .strip_prefix("/workbuddy")
+    .expect("WorkBuddy chat path must stay under /workbuddy");
+
 const MAX_UPSTREAM_BODY: usize = 2 * 1024 * 1024;
 const DEFAULT_UPSTREAM_TIMEOUT_SECS: u64 = 20;
 
@@ -196,12 +202,13 @@ fn admit(state: &ProxyState, record: &WorkBuddySubscriptionRecord) -> Result<(),
 
 fn build_forwarder(state: &ProxyState, provider_id: &str) -> RequestForwarder {
     let timeout = upstream_timeout_secs();
-    let mut rectifier = RectifierConfig::default();
-    rectifier.enabled = false;
-    rectifier.request_thinking_signature = false;
-    rectifier.request_thinking_budget = false;
-    rectifier.request_media_fallback = false;
-    rectifier.request_media_heuristic = false;
+    let rectifier = RectifierConfig {
+        enabled: false,
+        request_thinking_signature: false,
+        request_thinking_budget: false,
+        request_media_fallback: false,
+        request_media_heuristic: false,
+    };
     RequestForwarder::new(
         state.provider_router.clone(),
         timeout,
@@ -760,18 +767,9 @@ struct PendingTool {
 }
 
 fn text_suffix(sent: &str, next: &str) -> Option<String> {
-    if next.starts_with(sent) {
-        let rest = &next[sent.len()..];
-        if rest.is_empty() {
-            None
-        } else {
-            Some(rest.to_string())
-        }
-    } else if sent.is_empty() && !next.is_empty() {
-        Some(next.to_string())
-    } else {
-        None
-    }
+    next.strip_prefix(sent)
+        .filter(|rest| !rest.is_empty())
+        .map(|rest| rest.to_string())
 }
 
 fn finish_sse(model_id: &str, turn: &CollectedTurn) -> String {
@@ -1029,6 +1027,23 @@ fn map_forward_error(error: ProxyError) -> Response {
     )
 }
 
+fn closed(status: StatusCode, code: WorkBuddySubscriptionErrorCode) -> Response {
+    let token = code.as_str();
+    let body = json!({
+        "error": {
+            "message": token,
+            "type": "invalid_request_error",
+            "code": token
+        }
+    });
+    (
+        status,
+        [(header::CONTENT_TYPE, "application/json")],
+        body.to_string(),
+    )
+        .into_response()
+}
+
 #[cfg(test)]
 mod stream_tests {
     use super::translate_upstream_stream;
@@ -1173,21 +1188,4 @@ mod stream_tests {
         assert!(body.contains("data: [DONE]"), "{body}");
         assert!(!body.contains("\"code\":\"upstream_error\""), "{body}");
     }
-}
-
-fn closed(status: StatusCode, code: WorkBuddySubscriptionErrorCode) -> Response {
-    let token = code.as_str();
-    let body = json!({
-        "error": {
-            "message": token,
-            "type": "invalid_request_error",
-            "code": token
-        }
-    });
-    (
-        status,
-        [(header::CONTENT_TYPE, "application/json")],
-        body.to_string(),
-    )
-        .into_response()
 }

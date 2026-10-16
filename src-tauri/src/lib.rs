@@ -3147,6 +3147,8 @@ async fn restore_workbuddy_subscription_on_startup(
             )
             .await,
         );
+        // 测试构建里后面还有无 AppHandle 的恢复分支，这里必须返回，避免两边都跑。
+        #[cfg(test)]
         return;
     }
 

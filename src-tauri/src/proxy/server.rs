@@ -447,7 +447,7 @@ impl ProxyServer {
                 "/workbuddy",
                 Router::new()
                     .route(
-                        "/v1/chat/completions",
+                        super::workbuddy::WORKBUDDY_CHAT_COMPLETIONS_ROUTE,
                         any(super::workbuddy::handle_chat_completions),
                     )
                     .route("/v1/models", any(super::workbuddy::reject_unknown_route))

@@ -17,6 +17,8 @@ impl Database {
         self.set_setting(WORKBUDDY_SUBSCRIPTION_BINDING_KEY, value)
     }
 
+    // 第一刀仅测试覆盖，第二刀再挂命令。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn delete_workbuddy_subscription_binding(&self) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
         conn.execute(

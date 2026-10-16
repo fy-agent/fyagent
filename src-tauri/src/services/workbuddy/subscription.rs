@@ -24,6 +24,8 @@ const SCHEMA_VERSION: u8 = 1;
 const ROUTE_ID: &str = "workbuddy";
 const LOCAL_BASE_PATH: &str = "/workbuddy/v1";
 const STATUS_ACTIVE: &str = "active";
+// 第一刀仅测试覆盖，第二刀再挂命令。
+#[cfg_attr(not(test), allow(dead_code))]
 const STATUS_INACTIVE: &str = "inactive";
 const STATUS_ACCOUNT_UNAVAILABLE: &str = "account_unavailable";
 
@@ -119,6 +121,8 @@ fn save_record(
         .map_err(|_| internal())
 }
 
+// 第一刀仅测试覆盖，第二刀再挂命令。
+#[cfg_attr(not(test), allow(dead_code))]
 fn delete_record(db: &Database) -> Result<(), WorkBuddySubscriptionError> {
     db.delete_workbuddy_subscription_binding()
         .map_err(|_| internal())
@@ -177,6 +181,8 @@ pub(crate) fn observe_connected_binding(
     Ok(Some(matched))
 }
 
+// 第一刀仅测试覆盖，第二刀再挂命令。
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) async fn publish_workbuddy_subscription<B: SecretBackend>(
     state: &AppState,
     auth: &ManagedAuthService<B>,
@@ -336,6 +342,8 @@ pub(crate) async fn restore_workbuddy_subscription<B: SecretBackend>(
     Ok(Some(record.snapshot()))
 }
 
+// 第一刀仅测试覆盖，第二刀再挂命令。
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) async fn deactivate_workbuddy_subscription(
     state: &AppState,
 ) -> Result<Option<WorkBuddySubscriptionSnapshot>, WorkBuddySubscriptionError> {
@@ -424,6 +432,8 @@ fn admit<B: SecretBackend>(
         .map_err(|_| account_unavailable())
 }
 
+// 第一刀仅测试覆盖，第二刀再挂命令。
+#[cfg_attr(not(test), allow(dead_code))]
 fn workbuddy_provider_id(
     provider: ManagedAuthProvider,
     legacy_account_id: &str,
@@ -450,6 +460,8 @@ fn provider_id_is_closed(provider: &str, provider_id: &str) -> bool {
     provider_id.starts_with(prefix) && provider_id.len() > prefix.len()
 }
 
+// 第一刀仅测试覆盖，第二刀再挂命令。
+#[cfg_attr(not(test), allow(dead_code))]
 fn validate_account_id(account_id: &str) -> Result<(), WorkBuddySubscriptionError> {
     if account_id.is_empty()
         || account_id.len() > 200
@@ -460,6 +472,8 @@ fn validate_account_id(account_id: &str) -> Result<(), WorkBuddySubscriptionErro
     Ok(())
 }
 
+// 第一刀仅测试覆盖，第二刀再挂命令。
+#[cfg_attr(not(test), allow(dead_code))]
 fn validate_model_id(model_id: &str) -> Result<(), WorkBuddySubscriptionError> {
     let model = model_id.as_bytes();
     if model.is_empty()
@@ -474,6 +488,8 @@ fn validate_model_id(model_id: &str) -> Result<(), WorkBuddySubscriptionError> {
     Ok(())
 }
 
+// 第一刀仅测试覆盖，第二刀再挂命令。
+#[cfg_attr(not(test), allow(dead_code))]
 async fn other_agent_proxy_enabled(db: &Database) -> bool {
     for app in ["claude", "codex", "gemini", "grokbuild", "opencode"] {
         match db.get_proxy_config_for_app(app).await {

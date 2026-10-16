@@ -252,6 +252,8 @@ impl WorkBuddySubscriptionError {
         Self { code }
     }
 
+    // 第一刀仅测试覆盖，第二刀再挂命令。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub const fn code(self) -> WorkBuddySubscriptionErrorCode {
         self.code
     }
