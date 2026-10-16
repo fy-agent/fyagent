@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "b632289d66555d121bb0041d8b5a3a59d9295d56a3e22fe5e049b21b618c7514"
+      "4833a47dddceb4bfd791ef4a7a6978bad4ab47545fbd42f301b7474b571f8f25"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -299,7 +299,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/subscription_workbuddy_tests.rs",
-      "619e540968d51b82d0263544bb1ba4964ab398a338aa54e81f1f508ef17ab718"
+      "c8d7f8c57ff8a1b3172d6d6455260a11ee076bacc5aaccee88f4bee545026db7"
     ],
     [
       "src-tauri/src/services/model_probe.rs",

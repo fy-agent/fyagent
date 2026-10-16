@@ -296,8 +296,23 @@ fn header_text(headers: &axum::http::HeaderMap, name: &str) -> String {
 }
 
 fn text_sse(model: &str) -> String {
+    format!(
+        "{}{}",
+        text_delta_sse("fixture-ok"),
+        text_completed_sse(model, "fixture-ok")
+    )
+}
+
+fn text_delta_sse(text: &str) -> String {
     use crate::proxy::providers::codex_responses_sse as sse;
-    let message = sse::message_item("msg_fixture", "fixture-ok");
+    std::str::from_utf8(&sse::output_text_delta(0, "msg_fixture", text))
+        .unwrap()
+        .to_string()
+}
+
+fn text_completed_sse(model: &str, text: &str) -> String {
+    use crate::proxy::providers::codex_responses_sse as sse;
+    let message = sse::message_item("msg_fixture", text);
     let response = json!({
         "id": "resp_fixture",
         "object": "response",
@@ -305,10 +320,26 @@ fn text_sse(model: &str) -> String {
         "model": model,
         "output": [message]
     });
+    std::str::from_utf8(&sse::response_completed(&response))
+        .unwrap()
+        .to_string()
+}
+
+fn failed_after_delta_sse() -> String {
+    use crate::proxy::providers::codex_responses_sse as sse;
+    let response = json!({
+        "id": "resp_fixture",
+        "object": "response",
+        "status": "failed",
+        "error": {
+            "type": "server_error",
+            "message": "SENTINEL_UPSTREAM_SECRET"
+        }
+    });
     format!(
         "{}{}",
-        std::str::from_utf8(&sse::output_text_delta(0, "msg_fixture", "fixture-ok")).unwrap(),
-        std::str::from_utf8(&sse::response_completed(&response)).unwrap()
+        text_delta_sse("partial-visible"),
+        std::str::from_utf8(&sse::response_failed(&response)).unwrap()
     )
 }
 
@@ -361,6 +392,9 @@ enum UpstreamMode {
     ToolAware,
     Fail500,
     Hang,
+    MidStreamError,
+    EarlyClose,
+    StallAfterChunk,
 }
 
 async fn spawn_upstream(
@@ -408,6 +442,29 @@ async fn spawn_upstream(
                             "SENTINEL_UPSTREAM_SECRET",
                         )
                             .into_response(),
+                        UpstreamMode::MidStreamError => (
+                            [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+                            failed_after_delta_sse(),
+                        )
+                            .into_response(),
+                        UpstreamMode::EarlyClose => (
+                            [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+                            text_delta_sse("partial-visible"),
+                        )
+                            .into_response(),
+                        UpstreamMode::StallAfterChunk => {
+                            let body = async_stream::stream! {
+                                yield Ok::<bytes::Bytes, std::io::Error>(bytes::Bytes::from(
+                                    text_delta_sse("partial-visible"),
+                                ));
+                                std::future::pending::<()>().await;
+                            };
+                            (
+                                [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+                                axum::body::Body::from_stream(body),
+                            )
+                                .into_response()
+                        }
                         UpstreamMode::ToolAware if text.contains("function_call_output") => (
                             [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
                             text_sse("probe-model"),
@@ -1502,4 +1559,282 @@ fn subscription_workbuddy_generic_bind_rejects_workbuddy_target() {
         .get_workbuddy_subscription_binding()
         .unwrap()
         .is_none());
+}
+
+fn assert_stream_failure(body: &str, code: &str) {
+    assert!(body.contains(&format!("\"code\":\"{code}\"")), "{body}");
+    assert!(!body.contains("data: [DONE]"), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
+    assert!(!body.contains("\"finish_reason\":\"tool_calls\""), "{body}");
+    assert!(!body.contains("SENTINEL_UPSTREAM_SECRET"), "{body}");
+    assert!(!body.contains("synthetic-access"), "{body}");
+    assert!(!body.contains("synthetic-refresh"), "{body}");
+}
+
+#[test]
+#[serial]
+fn subscription_workbuddy_mid_stream_error_is_not_a_normal_end() {
+    let runtime = RuntimeGuard::new();
+    let tasks = TaskGuard::new();
+    let fixtures = FixtureGuard::new();
+    let (_home, _guard, state, auth) = open_fixture();
+    let _auth = AuthGuard::arm(auth.clone());
+    let selected = seed_provider(&auth, "selected", ManagedAuthProvider::Openai);
+    runtime.block_on(async {
+        listen_loopback(&state, 0).await;
+        let snapshot = publish_probe(&state, &auth, &selected.identity_id).await;
+        let (upstream, task, calls, _hits) =
+            spawn_upstream(ManagedAuthProvider::Openai, UpstreamMode::MidStreamError).await;
+        tasks.track(task);
+        fixtures.arm(&snapshot.provider_id, auth.clone(), upstream);
+        let key = state.db.ensure_proxy_access_key().unwrap();
+        let port = state.proxy_service.get_status().await.unwrap().port;
+        let (status, body) = post_chat(
+            &reqwest::Client::new(),
+            port,
+            "/workbuddy/v1/chat/completions",
+            &key,
+            "bearer",
+            chat_message("hello"),
+            Some("conversation"),
+        )
+        .await;
+        assert!(status.is_success(), "{status} {body}");
+        assert!(body.contains("partial-visible"), "{body}");
+        assert_stream_failure(&body, "upstream_error");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        state.proxy_service.stop().await.unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn subscription_workbuddy_early_disconnect_is_not_a_normal_end() {
+    let runtime = RuntimeGuard::new();
+    let tasks = TaskGuard::new();
+    let fixtures = FixtureGuard::new();
+    let (_home, _guard, state, auth) = open_fixture();
+    let _auth = AuthGuard::arm(auth.clone());
+    let selected = seed_provider(&auth, "selected", ManagedAuthProvider::Openai);
+    runtime.block_on(async {
+        listen_loopback(&state, 0).await;
+        let snapshot = publish_probe(&state, &auth, &selected.identity_id).await;
+        let (upstream, task, calls, _hits) =
+            spawn_upstream(ManagedAuthProvider::Openai, UpstreamMode::EarlyClose).await;
+        tasks.track(task);
+        fixtures.arm(&snapshot.provider_id, auth.clone(), upstream);
+        let key = state.db.ensure_proxy_access_key().unwrap();
+        let port = state.proxy_service.get_status().await.unwrap().port;
+        let (status, body) = post_chat(
+            &reqwest::Client::new(),
+            port,
+            "/workbuddy/v1/chat/completions",
+            &key,
+            "bearer",
+            chat_message("hello"),
+            Some("conversation"),
+        )
+        .await;
+        assert!(status.is_success(), "{status} {body}");
+        assert!(body.contains("partial-visible"), "{body}");
+        assert_stream_failure(&body, "upstream_error");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        state.proxy_service.stop().await.unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn subscription_workbuddy_stall_after_first_chunk_times_out_without_done() {
+    let runtime = RuntimeGuard::new();
+    let tasks = TaskGuard::new();
+    let fixtures = FixtureGuard::new();
+    let (_home, _guard, state, auth) = open_fixture();
+    let _auth = AuthGuard::arm(auth.clone());
+    let selected = seed_provider(&auth, "selected", ManagedAuthProvider::Openai);
+    runtime.block_on(async {
+        crate::proxy::workbuddy::set_workbuddy_upstream_timeout_for_test(1);
+        listen_loopback(&state, 0).await;
+        let snapshot = publish_probe(&state, &auth, &selected.identity_id).await;
+        let (upstream, task, calls, _hits) =
+            spawn_upstream(ManagedAuthProvider::Openai, UpstreamMode::StallAfterChunk).await;
+        tasks.track(task);
+        fixtures.arm(&snapshot.provider_id, auth.clone(), upstream);
+        let key = state.db.ensure_proxy_access_key().unwrap();
+        let port = state.proxy_service.get_status().await.unwrap().port;
+        let started = std::time::Instant::now();
+        let (status, body) = post_chat(
+            &reqwest::Client::new(),
+            port,
+            "/workbuddy/v1/chat/completions",
+            &key,
+            "bearer",
+            chat_message("hello"),
+            Some("conversation"),
+        )
+        .await;
+        assert!(
+            started.elapsed() < Duration::from_secs(6),
+            "stalled upstream should end the request"
+        );
+        assert!(status.is_success(), "{status} {body}");
+        assert!(body.contains("partial-visible"), "{body}");
+        assert_stream_failure(&body, "timeout");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        crate::proxy::workbuddy::set_workbuddy_upstream_timeout_for_test(0);
+        state.proxy_service.stop().await.unwrap();
+    });
+}
+
+async fn spawn_gated_text_upstream() -> (
+    String,
+    tokio::task::JoinHandle<()>,
+    tokio::sync::oneshot::Sender<()>,
+) {
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+    let release_rx = std::sync::Arc::new(tokio::sync::Mutex::new(Some(release_rx)));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let release_rx = release_rx.clone();
+    let router = axum::Router::new().route(
+        "/backend-api/codex/responses",
+        axum::routing::post(move |_body: axum::body::Bytes| {
+            let release_rx = release_rx.clone();
+            async move {
+                let body = async_stream::stream! {
+                    yield Ok::<bytes::Bytes, std::io::Error>(bytes::Bytes::from(text_delta_sse(
+                        "fixture-ok",
+                    )));
+                    if let Some(rx) = release_rx.lock().await.take() {
+                        let _ = rx.await;
+                    }
+                    yield Ok(bytes::Bytes::from(text_completed_sse("probe-model", "fixture-ok")));
+                };
+                (
+                    [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+                    axum::body::Body::from_stream(body),
+                )
+            }
+        }),
+    );
+    let task = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    (format!("http://{address}"), task, release_tx)
+}
+
+#[test]
+#[serial]
+fn subscription_workbuddy_forwards_chunks_before_upstream_completes() {
+    let runtime = RuntimeGuard::new();
+    let tasks = TaskGuard::new();
+    let fixtures = FixtureGuard::new();
+    let (_home, _guard, state, auth) = open_fixture();
+    let _auth = AuthGuard::arm(auth.clone());
+    let selected = seed_provider(&auth, "selected", ManagedAuthProvider::Openai);
+    runtime.block_on(async {
+        listen_loopback(&state, 0).await;
+        let snapshot = publish_probe(&state, &auth, &selected.identity_id).await;
+        let (upstream, task, release_tx) = spawn_gated_text_upstream().await;
+        tasks.track(task);
+        fixtures.arm(&snapshot.provider_id, auth.clone(), upstream);
+        let key = state.db.ensure_proxy_access_key().unwrap();
+        let port = state.proxy_service.get_status().await.unwrap().port;
+        let mut response = reqwest::Client::new()
+            .post(format!(
+                "http://127.0.0.1:{port}/workbuddy/v1/chat/completions"
+            ))
+            .timeout(Duration::from_secs(8))
+            .header("authorization", format!("Bearer {key}"))
+            .json(&chat_message("hello"))
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success(), "{}", response.status());
+        let mut collected = String::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            assert!(
+                !remaining.is_zero(),
+                "first text should arrive before upstream completion: {collected}"
+            );
+            let chunk = tokio::time::timeout(remaining, response.chunk())
+                .await
+                .expect("timed out waiting for a forwarded chunk")
+                .expect("read chunk");
+            let Some(chunk) = chunk else {
+                panic!("stream ended before text and before completion: {collected}");
+            };
+            collected.push_str(&String::from_utf8_lossy(&chunk));
+            assert!(
+                !collected.contains("data: [DONE]"),
+                "normal end arrived before the upstream finished: {collected}"
+            );
+            if collected.contains("fixture-ok") {
+                break;
+            }
+        }
+        release_tx.send(()).expect("release upstream");
+        let rest = response.text().await.unwrap();
+        let all = format!("{collected}{rest}");
+        assert!(all.contains("data: [DONE]"), "{all}");
+        assert!(all.contains("\"finish_reason\":\"stop\""), "{all}");
+        assert!(!all.contains("synthetic-access"), "{all}");
+        state.proxy_service.stop().await.unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn subscription_workbuddy_startup_restores_active_binding() {
+    let runtime = RuntimeGuard::new();
+    let (_home, _guard, state, auth) = open_fixture();
+    let _auth = AuthGuard::arm(auth.clone());
+    let selected = seed_provider(&auth, "selected", ManagedAuthProvider::Openai);
+    runtime.block_on(async {
+        listen_loopback(&state, 0).await;
+        publish_probe(&state, &auth, &selected.identity_id).await;
+        state.proxy_service.stop().await.unwrap();
+        let stopped = binding_json(&state);
+        assert_eq!(stopped["connected"], false);
+        assert_eq!(stopped["desired"], true);
+        assert_eq!(stopped["status"], "active");
+        let restarted = AppState::new(state.db.clone());
+        crate::restore_proxy_state_on_startup(&restarted).await;
+        let stored = binding_json(&restarted);
+        assert_eq!(stored["connected"], true);
+        assert_eq!(stored["status"], "active");
+        assert_eq!(stored["desired"], true);
+        assert!(restarted.proxy_service.is_running().await);
+        restarted.proxy_service.stop().await.unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn subscription_workbuddy_startup_invalid_account_fails_closed() {
+    let runtime = RuntimeGuard::new();
+    let (_home, _guard, state, auth) = open_fixture();
+    let _auth = AuthGuard::arm(auth.clone());
+    let selected = seed_provider(&auth, "selected", ManagedAuthProvider::Openai);
+    runtime.block_on(async {
+        listen_loopback(&state, 0).await;
+        publish_probe(&state, &auth, &selected.identity_id).await;
+        state.proxy_service.stop().await.unwrap();
+        auth.repository
+            .set_status(
+                &selected.credential_id,
+                CredentialStatus::RequiresReauth,
+                chrono::Utc::now().timestamp(),
+            )
+            .unwrap();
+        let restarted = AppState::new(state.db.clone());
+        crate::restore_proxy_state_on_startup(&restarted).await;
+        let stored = binding_json(&restarted);
+        assert_eq!(stored["status"], "account_unavailable");
+        assert_eq!(stored["connected"], false);
+        assert_eq!(stored["desired"], true);
+        assert!(!restarted.proxy_service.is_running().await);
+    });
 }

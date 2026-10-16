@@ -166,29 +166,93 @@ impl ProxyResponse {
     ///
     /// 所有变体都在累积过程中逐块检查、超限即断开（drop stream 中止上游连接），
     /// 而不是先收满再比较——否则超大明文 body 仍会完整进入内存，限制形同虚设。
+    /// 这一路不设空闲超时；需要在上游停住时结束的调用方用 [`Self::bytes_with_limit_idle`]
+    /// 或 [`Self::limited_chunk_stream`]。
     pub async fn bytes_with_limit(self, max_bytes: usize) -> Result<Bytes, ProxyError> {
-        match self {
-            Self::Buffered { body, .. } => {
-                // 调用方已把 body 完整缓冲，无法中途截停，只能事后比较
-                if body.len() > max_bytes {
-                    return Err(ProxyError::ResponseBodyTooLarge(body.len()));
-                }
-                Ok(body)
+        self.bytes_with_limit_idle(max_bytes, None).await
+    }
+
+    /// 同 [`Self::bytes_with_limit`]，但每个数据块的等待受 `idle` 限制。
+    /// `None` 或零时长表示不额外限时。上游在块与块之间停住时返回 [`ProxyError::StreamIdleTimeout`]。
+    pub async fn bytes_with_limit_idle(
+        self,
+        max_bytes: usize,
+        idle: Option<std::time::Duration>,
+    ) -> Result<Bytes, ProxyError> {
+        if let Self::Buffered { body, .. } = &self {
+            if body.len() > max_bytes {
+                return Err(ProxyError::ResponseBodyTooLarge(body.len()));
             }
+        }
+        match self {
+            Self::Buffered { body, .. } => Ok(body),
             response => {
-                // Hyper / Reqwest / Streamed 统一走逐块流式累积，超预算立即报错
-                let mut stream = response.bytes_stream();
+                let mut stream = response.limited_chunk_stream(max_bytes, idle);
                 let mut body = bytes::BytesMut::new();
                 while let Some(chunk) = stream.next().await {
-                    let chunk = chunk.map_err(|e| {
-                        ProxyError::ForwardFailed(format!("Failed to read response body: {e}"))
-                    })?;
-                    if body.len() + chunk.len() > max_bytes {
-                        return Err(ProxyError::ResponseBodyTooLarge(body.len() + chunk.len()));
-                    }
-                    body.extend_from_slice(&chunk);
+                    body.extend_from_slice(&chunk?);
                 }
                 Ok(body.freeze())
+            }
+        }
+    }
+
+    /// 边收边交出响应体数据块，不把整段先攒进内存。
+    ///
+    /// 超过 `max_bytes` 时立刻结束并报错，调用方丢掉返回的流就会断开上游。
+    /// `idle` 非空且非零时，下一块超过这个间隔还没到就返回 [`ProxyError::StreamIdleTimeout`]。
+    pub fn limited_chunk_stream(
+        self,
+        max_bytes: usize,
+        idle: Option<std::time::Duration>,
+    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Bytes, ProxyError>> + Send>> {
+        let idle = idle.filter(|duration| !duration.is_zero());
+        match self {
+            Self::Buffered { body, .. } => {
+                let stream = async_stream::stream! {
+                    if body.len() > max_bytes {
+                        yield Err(ProxyError::ResponseBodyTooLarge(body.len()));
+                    } else if !body.is_empty() {
+                        yield Ok(body);
+                    }
+                };
+                Box::pin(stream)
+            }
+            response => {
+                let mut stream = response.bytes_stream();
+                let mut total = 0usize;
+                Box::pin(async_stream::stream! {
+                    loop {
+                        let next = match idle {
+                            Some(duration) => match tokio::time::timeout(duration, stream.next()).await {
+                                Ok(item) => item,
+                                Err(_) => {
+                                    let seconds = duration.as_secs().max(1);
+                                    yield Err(ProxyError::StreamIdleTimeout(seconds));
+                                    break;
+                                }
+                            },
+                            None => stream.next().await,
+                        };
+                        match next {
+                            Some(Ok(chunk)) => {
+                                total = total.saturating_add(chunk.len());
+                                if total > max_bytes {
+                                    yield Err(ProxyError::ResponseBodyTooLarge(total));
+                                    break;
+                                }
+                                yield Ok(chunk);
+                            }
+                            Some(Err(error)) => {
+                                yield Err(ProxyError::ForwardFailed(format!(
+                                    "Failed to read response body: {error}"
+                                )));
+                                break;
+                            }
+                            None => break,
+                        }
+                    }
+                })
             }
         }
     }
@@ -944,5 +1008,67 @@ mod tests {
         assert!(matches!(result, Err(ProxyError::ResponseBodyTooLarge(_))));
 
         assert_server_aborted_early(written, BODY_LEN).await;
+    }
+
+    fn channel_stream() -> (
+        tokio::sync::mpsc::Sender<Result<Bytes, std::io::Error>>,
+        ProxyResponse,
+    ) {
+        let (tx, rx) = tokio::sync::mpsc::channel(2);
+        let stream = futures::stream::unfold(rx, |mut rx| async move {
+            rx.recv().await.map(|item| (item, rx))
+        });
+        let response =
+            ProxyResponse::streamed(http::StatusCode::OK, http::HeaderMap::new(), stream);
+        (tx, response)
+    }
+
+    #[tokio::test]
+    async fn limited_chunk_stream_yields_before_upstream_finishes() {
+        let (tx, response) = channel_stream();
+        let mut chunks =
+            response.limited_chunk_stream(1024, Some(std::time::Duration::from_secs(2)));
+        tx.send(Ok(Bytes::from_static(b"first"))).await.unwrap();
+        let first = tokio::time::timeout(std::time::Duration::from_secs(1), chunks.next())
+            .await
+            .expect("first chunk should arrive before the upstream stream ends")
+            .expect("chunk")
+            .expect("ok");
+        assert_eq!(first, Bytes::from_static(b"first"));
+        tx.send(Ok(Bytes::from_static(b"second"))).await.unwrap();
+        let second = chunks.next().await.expect("second").expect("ok");
+        assert_eq!(second, Bytes::from_static(b"second"));
+        drop(tx);
+        assert!(chunks.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn limited_chunk_stream_idle_timeout_when_upstream_stalls() {
+        let (tx, response) = channel_stream();
+        let mut chunks =
+            response.limited_chunk_stream(1024, Some(std::time::Duration::from_millis(200)));
+        let started = std::time::Instant::now();
+        let item = chunks.next().await;
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "idle timeout should end the read"
+        );
+        assert!(matches!(item, Some(Err(ProxyError::StreamIdleTimeout(_)))));
+        drop(tx);
+    }
+
+    #[tokio::test]
+    async fn bytes_with_limit_idle_times_out_when_upstream_stalls() {
+        let (tx, response) = channel_stream();
+        let started = std::time::Instant::now();
+        let result = response
+            .bytes_with_limit_idle(1024, Some(std::time::Duration::from_millis(200)))
+            .await;
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "collecting the body should stop when the upstream stalls"
+        );
+        assert!(matches!(result, Err(ProxyError::StreamIdleTimeout(_))));
+        drop(tx);
     }
 }
