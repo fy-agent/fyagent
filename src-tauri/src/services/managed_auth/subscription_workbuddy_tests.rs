@@ -1182,7 +1182,13 @@ fn subscription_workbuddy_invalid_account_fails_closed() {
         assert_eq!(stored["desired"], true);
         assert!(!restored.proxy_service.is_running().await);
 
-        admit_ready_again(&auth, &selected.credential_id, "selected");
+        let ready_auth = auth.clone();
+        let ready_credential_id = selected.credential_id.clone();
+        tokio::task::spawn_blocking(move || {
+            admit_ready_again(&ready_auth, &ready_credential_id, "selected");
+        })
+        .await
+        .expect("generation-aware ready transition task must complete");
         listen_loopback(&state, 0).await;
         let snapshot = publish_probe(&state, &auth, &selected.identity_id).await;
         let (upstream, task, calls, _hits) =

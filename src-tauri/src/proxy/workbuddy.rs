@@ -37,8 +37,12 @@ use super::ProxyError;
 
 pub(crate) const WORKBUDDY_CHAT_COMPLETIONS_PATH: &str = "/workbuddy/v1/chat/completions";
 
-/// Nested route under the `/workbuddy` prefix; a test keeps it in sync with the full path.
-pub(crate) const WORKBUDDY_CHAT_COMPLETIONS_ROUTE: &str = "/v1/chat/completions";
+/// Nested route derived from the full path under the `/workbuddy` prefix.
+pub(crate) fn workbuddy_chat_completions_route() -> &'static str {
+    WORKBUDDY_CHAT_COMPLETIONS_PATH
+        .strip_prefix("/workbuddy")
+        .expect("WorkBuddy chat path must start with /workbuddy")
+}
 
 const MAX_UPSTREAM_BODY: usize = 2 * 1024 * 1024;
 const DEFAULT_UPSTREAM_TIMEOUT_SECS: u64 = 20;
@@ -1193,9 +1197,6 @@ mod route_const_tests {
 
     #[test]
     fn workbuddy_route_matches_full_path() {
-        assert_eq!(
-            WORKBUDDY_CHAT_COMPLETIONS_PATH.strip_prefix("/workbuddy"),
-            Some(WORKBUDDY_CHAT_COMPLETIONS_ROUTE)
-        );
+        assert_eq!(workbuddy_chat_completions_route(), "/v1/chat/completions");
     }
 }
