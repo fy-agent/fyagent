@@ -31,7 +31,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "14f228eb690599b98ae1e3c69abb76026c87a97b64a40ffcb48273f77cacbd6b"
+      "26660c70617a41d4e477f60feb8313f2a4e670cf8484872fcf00687bc81ced1a"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "b632289d66555d121bb0041d8b5a3a59d9295d56a3e22fe5e049b21b618c7514"
+      "502e0b3182ea124457d30b29d91202674833574200e96deaf4afd74d1cf12e94"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -291,11 +291,15 @@
     ],
     [
       "src-tauri/src/services/managed_auth/service.rs",
-      "0ae42eaec346c9defc4ca50707d4354dc73c432022d1e9dd829812d51f460bca"
+      "2b3768a8010376bc244a49f71107840e3168d6f4e636b5e8eb7f5e9389e58c9e"
     ],
     [
       "src-tauri/src/services/managed_auth/subscription_tests.rs",
       "babe406ec796e8919e08656d30cc42e787365981ce5d649080002dde7b83a876"
+    ],
+    [
+      "src-tauri/src/services/managed_auth/subscription_workbuddy_tests.rs",
+      "9fb48b4904ba751f18b515c10ac12ae20a72c2c5f2ebe6c08d1fe01ade2882e2"
     ],
     [
       "src-tauri/src/services/model_probe.rs",
@@ -327,7 +331,7 @@
     ],
     [
       "src-tauri/src/services/proxy.rs",
-      "fd27638be20a2f96e919e83e6dd96d037bd944f44c8bb7e457be163171a26dcc"
+      "12cfe50946cf60861ac767c7fe8b80915c0c0bb41533e9038e8306385dd736be"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -407,11 +411,11 @@
     ],
     [
       "src-tauri/src/services/workbuddy/config.rs",
-      "586c31b4c99493862dd6349513e43bfd0ce74959aff2f075585c8a710c77b99f"
+      "583a6093a1f0baa8ce0a960ab761446fb437f7ea55400c6063372081779dcc89"
     ],
     [
       "src-tauri/src/services/workbuddy/mod.rs",
-      "8de6dc18cb81fcb721dd14295905523b0c854a268f61cb259d509014c70985dc"
+      "d6d258b180bdc41b201c5c11993250a30110ed1f5019ceef40549c1edfafb17c"
     ],
     [
       "src-tauri/src/session_manager/content.rs",

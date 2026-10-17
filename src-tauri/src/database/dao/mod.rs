@@ -18,6 +18,7 @@ pub mod skills;
 pub mod stream_check;
 pub mod universal_providers;
 pub mod usage_rollup;
+pub(crate) mod workbuddy_subscription;
 
 // 所有 DAO 方法都通过 Database impl 提供，无需单独导出
 // 导出 FailoverQueueItem / Profile 供外部使用

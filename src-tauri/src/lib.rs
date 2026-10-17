@@ -1962,8 +1962,9 @@ pub fn run() {
 
                 initialize_common_config_snippets(&state);
 
-                // 检查 settings 表中的代理状态，自动恢复代理服务
-                restore_proxy_state_on_startup(&state).await;
+                // 检查 settings 表中的代理状态，自动恢复代理服务。
+                // WorkBuddy 绑定跟这次恢复走同一条启动任务，账号服务用上面放进应用状态的那一个。
+                restore_proxy_state_on_startup_with(&state, Some(&app_handle)).await;
                 // 与上游 startup 尾部一致：记下启动恢复后客户端将读取的目录。
                 services::provider::codex_client_catalog::observe(
                     &crate::live::engine::DeviceStore::for_device(),
@@ -3046,7 +3047,16 @@ async fn enabled_proxy_apps_on_startup(db: &database::Database) -> Vec<&'static 
     apps
 }
 
+#[cfg(test)]
 async fn restore_proxy_state_on_startup(state: &store::AppState) {
+    restore_proxy_state_on_startup_with(state, None).await;
+}
+
+async fn restore_proxy_state_on_startup_with(
+    state: &store::AppState,
+    startup_app: Option<&tauri::AppHandle>,
+) {
+    restore_workbuddy_subscription_on_startup(state, startup_app).await;
     // 旧订阅接管按 enabled 恢复；新版路由 / 聚合以 live-state 中的模式为准。
     let mut apps_to_restore = enabled_proxy_apps_on_startup(&state.db).await;
     for app_type in PROXY_STARTUP_APP_TYPES {
@@ -3117,6 +3127,60 @@ async fn restore_proxy_state_on_startup(state: &store::AppState) {
         }
     }
     crate::mode::controller::ensure_desktop_mapping_service(state).await;
+}
+
+/// 启动时恢复 WorkBuddy 订阅绑定。失败只记日志并保持未接通，不把别的应用的恢复一起停掉。
+async fn restore_workbuddy_subscription_on_startup(
+    state: &store::AppState,
+    app: Option<&tauri::AppHandle>,
+) {
+    if let Some(app) = app {
+        let Some(managed) = app.try_state::<commands::ManagedAuthState>() else {
+            log::error!("WorkBuddy 订阅恢复失败，按失败关闭处理：账号服务还没准备好");
+            crate::services::workbuddy::subscription::mark_listener_down(&state.db);
+            return;
+        };
+        log_workbuddy_subscription_restore(
+            crate::services::workbuddy::subscription::restore_workbuddy_subscription(
+                state,
+                managed.0.as_ref(),
+            )
+            .await,
+        );
+        // 测试构建里后面还有无 AppHandle 的恢复分支，这里必须返回，避免两边都跑。
+        #[cfg(test)]
+        return;
+    }
+
+    #[cfg(test)]
+    if let Some(auth) =
+        crate::services::workbuddy::subscription::workbuddy_subscription_auth_for_test()
+    {
+        log_workbuddy_subscription_restore(
+            crate::services::workbuddy::subscription::restore_workbuddy_subscription(
+                state,
+                auth.as_ref(),
+            )
+            .await,
+        );
+    }
+}
+
+fn log_workbuddy_subscription_restore(
+    result: Result<
+        Option<crate::services::workbuddy::types::WorkBuddySubscriptionSnapshot>,
+        crate::services::workbuddy::error::WorkBuddySubscriptionError,
+    >,
+) {
+    match result {
+        Ok(Some(snapshot)) if snapshot.connected => {
+            log::info!("已恢复 WorkBuddy 订阅绑定");
+        }
+        Ok(_) => {}
+        Err(error) => {
+            log::error!("WorkBuddy 订阅恢复失败，按失败关闭处理：{error}");
+        }
+    }
 }
 
 fn initialize_common_config_snippets(state: &store::AppState) {

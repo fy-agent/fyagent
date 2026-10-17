@@ -40,6 +40,16 @@ use super::{
 pub(crate) type NativeManagedAuthService =
     ManagedAuthService<crate::services::secret::NativeSecretBackend>;
 
+/// Routing identity for one explicit WorkBuddy account. No token material.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WorkBuddyAccountAdmission {
+    pub(crate) identity_id: String,
+    pub(crate) legacy_account_id: String,
+    pub(crate) provider: ManagedAuthProvider,
+    pub(crate) credential_id: String,
+    pub(crate) generation: u64,
+}
+
 pub(crate) struct AccessMaterial {
     access_token: Zeroizing<String>,
     routing_subject: Option<String>,
@@ -363,6 +373,24 @@ where
             return Err(ManagedAuthCoreError::SecretMissing);
         }
         Ok(selected)
+    }
+
+    /// Admit one explicit proxy account. The default account is never selected.
+    pub(crate) fn admit_explicit_workbuddy_account(
+        &self,
+        account_id: &str,
+    ) -> Result<WorkBuddyAccountAdmission, ManagedAuthCoreError> {
+        let selected = self.proxy_account(account_id)?;
+        if selected.identity.identity_id != account_id {
+            return Err(ManagedAuthCoreError::NotFound);
+        }
+        Ok(WorkBuddyAccountAdmission {
+            identity_id: selected.identity.identity_id,
+            legacy_account_id: selected.credential.legacy_account_id,
+            provider: selected.credential.provider,
+            credential_id: selected.credential.credential_id,
+            generation: selected.credential.generation,
+        })
     }
 
     pub(crate) async fn fetch_xai_models(

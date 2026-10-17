@@ -21,6 +21,9 @@ mod secret_bundle;
 mod service;
 #[cfg(test)]
 mod subscription_tests;
+#[cfg(test)]
+#[path = "subscription_workbuddy_tests.rs"]
+mod subscription_workbuddy_tests;
 
 pub(crate) use core::{
     stable_connection_id, stable_credential_id, stable_identity_id, stable_revision,
@@ -33,6 +36,7 @@ pub(crate) use repository::ManagedAuthRepository;
 pub(crate) use secret_bundle::{ManagedAuthSecretBundle, ManagedAuthSecretBundleParts};
 pub(crate) use service::{
     AccessMaterial, CompatibilityAccount, ManagedAuthService, NativeManagedAuthService,
+    WorkBuddyAccountAdmission,
 };
 
 pub const MANAGED_AUTH_CONTRACT_VERSION: u8 = 1;
