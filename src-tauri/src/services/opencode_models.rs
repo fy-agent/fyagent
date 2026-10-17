@@ -44,6 +44,8 @@ pub enum OpenCodeModelsErrorCode {
     InvalidRequest,
     #[serde(rename = "OPENCODE_FETCH_FAILED")]
     FetchFailed,
+    #[serde(rename = "OPENCODE_CONCURRENT_MODIFICATION")]
+    ConcurrentModification,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -60,6 +62,10 @@ impl OpenCodeModelsErrorDto {
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FetchOpenCodeModelsRequest {
+    #[serde(default)]
+    pub provider_id: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<String>,
     pub base_url: String,
     pub api_key: String,
     pub allow_no_api_key: bool,
@@ -85,6 +91,8 @@ impl fmt::Debug for FetchOpenCodeModelsRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("FetchOpenCodeModelsRequest")
+            .field("provider_id", &"[REDACTED]")
+            .field("expected_revision", &"[REDACTED]")
             .field("base_url", &"[REDACTED]")
             .field("api_key", &"[REDACTED]")
             .field("allow_no_api_key", &self.allow_no_api_key)
@@ -232,20 +240,139 @@ pub(crate) fn get_opencode_model_snapshot() -> Result<OpenCodeModelSnapshot, Ope
 pub(crate) async fn fetch_opencode_provider_models(
     request: FetchOpenCodeModelsRequest,
 ) -> Result<FetchedModelList, OpenCodeModelsErrorDto> {
-    if request.base_url.trim().is_empty() {
-        return Err(OpenCodeModelsErrorDto::new(
-            OpenCodeModelsErrorCode::InvalidRequest,
-        ));
+    // Resolve under the same native lock as snapshots and writes. Do not hold
+    // the synchronous config lock across the network await or expose secrets.
+    let connection = {
+        let _guard = lock_opencode_config();
+        if let Some(id) = request.provider_id.as_deref() {
+            let bytes = read_opencode_config_bytes()
+                .map_err(|_| error(OpenCodeModelsErrorCode::ConfigUnavailable))?
+                .ok_or_else(|| error(OpenCodeModelsErrorCode::ConfigUnavailable))?;
+            if request.expected_revision.as_deref() != Some(revision_for(&bytes).as_str()) {
+                return Err(error(OpenCodeModelsErrorCode::ConcurrentModification));
+            }
+            let config = parse_config_object(&bytes)?;
+            let provider = editable_provider(&config, id)?;
+            resolve_connection(Some(provider), &request.base_url, &request.api_key)?
+        } else {
+            resolve_connection(None, &request.base_url, &request.api_key)?
+        }
+    };
+    if is_native_reference(&connection.api_key)
+        || (connection.api_key.is_empty() && !request.allow_no_api_key)
+    {
+        return Err(error(OpenCodeModelsErrorCode::InvalidRequest));
     }
-    let models = super::model_fetch::fetch_models_optional_auth(
-        request.base_url.trim(),
-        request.api_key.trim(),
-        false,
-        request.allow_no_api_key,
-    )
-    .await
-    .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::FetchFailed))?;
-    project_fetched_models(models, request.api_key.trim())
+    let fetched = if request.provider_id.is_some() {
+        super::model_fetch::fetch_models_without_redirects(
+            &connection.base_url,
+            &connection.api_key,
+            request.allow_no_api_key,
+        )
+        .await
+    } else {
+        super::model_fetch::fetch_models_optional_auth(
+            &connection.base_url,
+            &connection.api_key,
+            false,
+            request.allow_no_api_key,
+        )
+        .await
+    };
+    let models = fetched.map_err(|_| error(OpenCodeModelsErrorCode::FetchFailed))?;
+    project_fetched_models(models, &connection.api_key)
+}
+
+fn error(code: OpenCodeModelsErrorCode) -> OpenCodeModelsErrorDto {
+    OpenCodeModelsErrorDto::new(code)
+}
+
+// Kept native and deliberately without Debug/Serialize: only the fetched IDs
+// cross the command boundary. Native reference strings are never bearer keys.
+struct ProviderConnection {
+    base_url: String,
+    api_key: String,
+}
+
+fn is_native_reference(value: &str) -> bool {
+    value.contains("{env:") || value.contains("{file:")
+}
+
+fn connection_url(value: &str) -> Result<url::Url, OpenCodeModelsErrorDto> {
+    let parsed =
+        url::Url::parse(value).map_err(|_| error(OpenCodeModelsErrorCode::InvalidRequest))?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || is_native_reference(value)
+    {
+        return Err(error(OpenCodeModelsErrorCode::InvalidRequest));
+    }
+    Ok(parsed)
+}
+
+fn resolve_connection(
+    provider: Option<&Value>,
+    supplied_url: &str,
+    supplied_key: &str,
+) -> Result<ProviderConnection, OpenCodeModelsErrorDto> {
+    let supplied_url = supplied_url.trim();
+    let supplied_key = supplied_key.trim();
+    let saved_url = provider
+        .and_then(|provider| provider.pointer("/options/baseURL"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let saved_key = provider
+        .and_then(|provider| provider.pointer("/options/apiKey"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let base_url = if supplied_url.is_empty() {
+        saved_url
+    } else {
+        supplied_url
+    };
+    let parsed = connection_url(base_url)?;
+    // A draft endpoint is a new credential destination. An empty key can reuse
+    // a saved key only when the endpoint still denotes the saved connection.
+    if provider.is_some() && !supplied_url.is_empty() && supplied_key.is_empty() {
+        let unchanged = connection_url(saved_url).is_ok_and(|saved| {
+            saved.as_str().trim_end_matches('/') == parsed.as_str().trim_end_matches('/')
+        });
+        if !unchanged {
+            return Err(error(OpenCodeModelsErrorCode::InvalidRequest));
+        }
+    }
+    Ok(ProviderConnection {
+        base_url: base_url.to_owned(),
+        api_key: if supplied_key.is_empty() {
+            saved_key
+        } else {
+            supplied_key
+        }
+        .to_owned(),
+    })
+}
+
+fn editable_provider<'a>(config: &'a Value, id: &str) -> Result<&'a Value, OpenCodeModelsErrorDto> {
+    let providers = providers_object(config)?;
+    // A native v2 declaration may supersede the legacy entry. This editor
+    // cannot guess its transport or fall back to a different saved identity.
+    if providers.keys().any(|id| is_managed_proxy_provider_id(id))
+        || config
+            .get("providers")
+            .is_some_and(|native| !native.is_object() || native.get(id).is_some())
+    {
+        return Err(error(OpenCodeModelsErrorCode::ConfigUnavailable));
+    }
+    providers
+        .get(id)
+        .filter(|provider| !id.trim().is_empty() && provider_is_editable(provider))
+        .ok_or_else(|| error(OpenCodeModelsErrorCode::ConfigUnavailable))
 }
 
 pub(crate) fn save_opencode_models(
@@ -282,12 +409,6 @@ fn save_opencode_models_locked(
             OpenCodeModelsErrorCode::CredentialCollision,
         ));
     }
-    if !selected.is_empty() && request.base_url.trim().is_empty() {
-        return Err(OpenCodeModelsErrorDto::new(
-            OpenCodeModelsErrorCode::InvalidRequest,
-        ));
-    }
-
     let pending = request
         .overwrite_token
         .as_deref()
@@ -323,14 +444,26 @@ fn save_opencode_models_locked(
         ));
     }
     let provider_id = resolve_provider_id(&config, request)?;
-    if is_managed_proxy_provider_id(&provider_id)
-        || providers_object(&config)?
-            .get(&provider_id)
-            .is_some_and(|provider| !provider_is_editable(provider))
-    {
-        return Err(OpenCodeModelsErrorDto::new(
-            OpenCodeModelsErrorCode::ConfigUnavailable,
-        ));
+    let provider = if request.provider_id.is_some() {
+        Some(editable_provider(&config, &provider_id)?)
+    } else {
+        None
+    };
+    // Removing entries needs no connection; adding entries must have a valid
+    // effective URL. Blank drafts preserve existing credential/reference values.
+    let connection =
+        if !selected.is_empty() || !request.base_url.trim().is_empty() || !credential.is_empty() {
+            Some(resolve_connection(provider, &request.base_url, credential)?)
+        } else {
+            None
+        };
+    if let Some(connection) = &connection {
+        if selected
+            .iter()
+            .any(|id| credential_matches_model_id(&connection.api_key, id))
+        {
+            return Err(error(OpenCodeModelsErrorCode::CredentialCollision));
+        }
     }
     let existing = existing_model_ids(&config, &provider_id)?;
     let confirmation = existing_targets(&existing, &selected, &removed);
@@ -364,9 +497,13 @@ fn save_opencode_models_locked(
     }
     let written = write_opencode_config_value_at_path(&config_path, &config)
         .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::WriteFailed))?;
-    let model_count = existing_model_ids(&config, &provider_id)?.len();
+    let reread = read_config_contents(&config_path)
+        .map_err(|_| error(OpenCodeModelsErrorCode::WriteFailed))?
+        .filter(|bytes| bytes == &written)
+        .ok_or_else(|| error(OpenCodeModelsErrorCode::WriteFailed))?;
+    let model_count = existing_model_ids(&parse_config_object(&reread)?, &provider_id)?.len();
     Ok(SaveOpenCodeModelsOutcome::Saved {
-        revision: revision_for(&written),
+        revision: revision_for(&reread),
         model_count,
         created_entries: created,
         updated_entries: updated,
@@ -374,15 +511,11 @@ fn save_opencode_models_locked(
 }
 
 fn parse_config_object(bytes: &[u8]) -> Result<Value, OpenCodeModelsErrorDto> {
-    let value: Value = serde_json::from_slice(bytes)
-        .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::ConfigUnavailable))?;
-    if value.is_object() {
-        Ok(value)
-    } else {
-        Err(OpenCodeModelsErrorDto::new(
-            OpenCodeModelsErrorCode::ConfigUnavailable,
-        ))
-    }
+    let source = std::str::from_utf8(bytes)
+        .map_err(|_| error(OpenCodeModelsErrorCode::ConfigUnavailable))?;
+    crate::jsonc_document::JsoncDocument::parse(source)
+        .map(|document| document.value().clone())
+        .map_err(|_| error(OpenCodeModelsErrorCode::ConfigUnavailable))
 }
 
 fn providers_object(config: &Value) -> Result<&Map<String, Value>, OpenCodeModelsErrorDto> {
@@ -432,7 +565,7 @@ fn project_providers(
             id: id.clone(),
             name,
             model_ids: model_ids_from_provider(value)?,
-            editable: !is_managed_proxy_provider_id(id) && provider_is_editable(value),
+            editable: editable_provider(config, id).is_ok(),
         });
     }
     Ok(providers)
@@ -445,7 +578,13 @@ fn provider_is_editable(provider: &Value) -> bool {
             .get("npm")
             .and_then(Value::as_str)
             .is_some_and(|npm| !npm.trim().is_empty())
-            && provider.get("options").is_none_or(Value::is_object)
+            && provider.get("options").is_none_or(|options| {
+                options.as_object().is_some_and(|options| {
+                    ["baseURL", "apiKey"]
+                        .iter()
+                        .all(|key| options.get(*key).is_none_or(Value::is_string))
+                })
+            })
             && provider.get("models").is_none_or(Value::is_object)
     })
 }
@@ -517,7 +656,11 @@ fn resolve_provider_id(
         ));
     }
     let id = slugify(request.provider_name.trim());
-    if providers.contains_key(&id) {
+    if providers.contains_key(&id)
+        || config
+            .get("providers")
+            .is_some_and(|native| !native.is_object() || native.get(&id).is_some())
+    {
         return Err(OpenCodeModelsErrorDto::new(
             OpenCodeModelsErrorCode::InvalidRequest,
         ));
@@ -671,7 +814,12 @@ fn project_fetched_models(
         if id.is_empty() || !seen.insert(id.clone()) {
             continue;
         }
-        if credential_matches_model_id(api_key, &id) {
+        if credential_matches_model_id(api_key, &id)
+            || model
+                .owned_by
+                .as_deref()
+                .is_some_and(|owner| credential_matches_model_id(api_key, owner))
+        {
             return Err(OpenCodeModelsErrorDto::new(
                 OpenCodeModelsErrorCode::CredentialCollision,
             ));
@@ -848,312 +996,4 @@ fn random_mac_key() -> [u8; 32] {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use serial_test::serial;
-
-    struct TestHomeGuard(Option<std::ffi::OsString>);
-    impl TestHomeGuard {
-        fn set(home: &std::path::Path) -> Self {
-            let guard = Self(std::env::var_os("FYAGENT_TEST_HOME"));
-            std::env::set_var("FYAGENT_TEST_HOME", home);
-            guard
-        }
-    }
-    impl Drop for TestHomeGuard {
-        fn drop(&mut self) {
-            match self.0.take() {
-                Some(value) => std::env::set_var("FYAGENT_TEST_HOME", value),
-                None => std::env::remove_var("FYAGENT_TEST_HOME"),
-            }
-        }
-    }
-
-    fn write_config(home: &std::path::Path, value: &Value) {
-        let dir = home.join(".config").join("opencode");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("opencode.json"),
-            serde_json::to_vec_pretty(value).unwrap(),
-        )
-        .unwrap();
-    }
-
-    fn read_config(home: &std::path::Path) -> Value {
-        serde_json::from_slice(
-            &std::fs::read(home.join(".config").join("opencode").join("opencode.json")).unwrap(),
-        )
-        .unwrap()
-    }
-
-    fn seeded_config() -> Value {
-        json!({
-            "theme": "keep-me",
-            "provider": {
-                "gateway": {
-                    "npm": "@ai-sdk/openai-compatible",
-                    "name": "Gateway",
-                    "extra": { "keep": true },
-                    "options": {
-                        "baseURL": "https://old.example.test/v1",
-                        "apiKey": "OPENCODE-SECRET"
-                    },
-                    "models": {
-                        "existing-model": { "name": "Existing", "limit": { "context": 8 } }
-                    }
-                }
-            }
-        })
-    }
-
-    fn save_request(
-        revision: Option<String>,
-        selected: &[&str],
-        removed: &[&str],
-    ) -> SaveOpenCodeModelsRequest {
-        SaveOpenCodeModelsRequest {
-            provider_id: Some("gateway".into()),
-            provider_name: "Gateway".into(),
-            base_url: "https://gateway.example.test/v1".into(),
-            api_key: "USER-OPENCODE-KEY".into(),
-            selected_model_ids: selected.iter().map(|id| (*id).to_string()).collect(),
-            removed_model_ids: removed.iter().map(|id| (*id).to_string()).collect(),
-            expected_revision: revision,
-            overwrite_token: None,
-        }
-    }
-
-    #[test]
-    #[serial]
-    fn config_reliability_builtin_snapshot_is_read_only_and_save_never_injects_npm() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _home = TestHomeGuard::set(temp.path());
-        let config = json!({"provider":{"builtin":{"options":{"apiKey":"FIXTURE-SECRET"},"models":{"builtin-model":{}},"extra":{"keep":true}}}});
-        write_config(temp.path(), &config);
-        let path = temp.path().join(".config/opencode/opencode.json");
-        let before = std::fs::read(&path).unwrap();
-        let snapshot = get_opencode_model_snapshot().unwrap();
-        assert!(!snapshot.providers[0].editable);
-        assert_eq!(snapshot.providers[0].model_ids, vec!["builtin-model"]);
-        assert!(!serde_json::to_string(&snapshot)
-            .unwrap()
-            .contains("FIXTURE-SECRET"));
-        let mut request = save_request(snapshot.revision, &["new-model"], &[]);
-        request.provider_id = Some("builtin".into());
-        let error = save_opencode_models(request).unwrap_err();
-        assert_eq!(error.code, OpenCodeModelsErrorCode::ConfigUnavailable);
-        assert_eq!(std::fs::read(&path).unwrap(), before);
-        assert!(!path.with_extension("json.backup").exists());
-    }
-
-    #[test]
-    #[serial]
-    fn config_reliability_exact_target_and_explicit_create_preserve_builtin() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _home = TestHomeGuard::set(temp.path());
-        let builtin = json!({"models":{"builtin-model":{}},"vendor":{"keep":true}});
-        write_config(temp.path(), &json!({"provider":{"builtin":builtin}}));
-        let mut create = save_request(
-            get_opencode_model_snapshot().unwrap().revision,
-            &["custom-model"],
-            &[],
-        );
-        create.provider_id = None;
-        assert!(matches!(
-            save_opencode_models(create).unwrap(),
-            SaveOpenCodeModelsOutcome::Saved { .. }
-        ));
-        let after_create = read_config(temp.path());
-        assert_eq!(after_create["provider"]["builtin"], builtin);
-        assert_eq!(after_create["provider"]["gateway"]["npm"], DEFAULT_NPM);
-
-        let mut targeted = save_request(
-            get_opencode_model_snapshot().unwrap().revision,
-            &["second-model"],
-            &[],
-        );
-        targeted.provider_name = "Renamed Display Name".into();
-        assert!(matches!(
-            save_opencode_models(targeted).unwrap(),
-            SaveOpenCodeModelsOutcome::Saved { .. }
-        ));
-        let after_edit = read_config(temp.path());
-        assert_eq!(after_edit["provider"].as_object().unwrap().len(), 2);
-        assert!(after_edit["provider"]["gateway"]["models"]
-            .get("second-model")
-            .is_some());
-        assert_eq!(after_edit["provider"]["builtin"], builtin);
-
-        for target in [None, Some("missing".into())] {
-            let mut rejected = save_request(
-                get_opencode_model_snapshot().unwrap().revision,
-                &["third-model"],
-                &[],
-            );
-            rejected.provider_id = target;
-            rejected.provider_name = "Builtin".into();
-            assert!(save_opencode_models(rejected).is_err());
-            assert_eq!(read_config(temp.path()), after_edit);
-        }
-    }
-
-    #[test]
-    #[serial]
-    fn config_reliability_overwrite_token_is_bound_to_exact_provider() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _home = TestHomeGuard::set(temp.path());
-        let mut config = seeded_config();
-        config["provider"]["other"] = config["provider"]["gateway"].clone();
-        write_config(temp.path(), &config);
-        let mut request = save_request(
-            get_opencode_model_snapshot().unwrap().revision,
-            &["existing-model"],
-            &[],
-        );
-        let SaveOpenCodeModelsOutcome::OverwriteConfirmationRequired { token, .. } =
-            save_opencode_models(request.clone()).unwrap()
-        else {
-            panic!("expected confirmation")
-        };
-        request.provider_id = Some("other".into());
-        request.overwrite_token = Some(token);
-        assert_eq!(
-            save_opencode_models(request).unwrap_err().code,
-            OpenCodeModelsErrorCode::OverwriteTokenInvalid
-        );
-        assert_eq!(read_config(temp.path()), config);
-    }
-
-    #[test]
-    #[serial]
-    fn snapshot_is_secret_free_and_preserves_ids() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _home = TestHomeGuard::set(temp.path());
-        write_config(temp.path(), &seeded_config());
-        let snapshot = get_opencode_model_snapshot().unwrap();
-        assert_eq!(snapshot.providers.len(), 1);
-        assert_eq!(snapshot.providers[0].id, "gateway");
-        assert_eq!(snapshot.providers[0].name, "Gateway");
-        assert_eq!(snapshot.providers[0].model_ids, vec!["existing-model"]);
-        assert!(snapshot.revision.is_some());
-        let debug = format!("{snapshot:?}");
-        let json = serde_json::to_string(&snapshot).unwrap();
-        for secret in ["OPENCODE-SECRET", "USER-OPENCODE-KEY"] {
-            assert!(!debug.contains(secret));
-            assert!(!json.contains(secret));
-        }
-        assert!(!json.contains("apiKey"));
-    }
-
-    #[test]
-    #[serial]
-    fn save_adds_model_keeps_unknown_fields_and_never_returns_secrets() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _home = TestHomeGuard::set(temp.path());
-        write_config(temp.path(), &seeded_config());
-        let original_bytes = std::fs::read(
-            temp.path()
-                .join(".config")
-                .join("opencode")
-                .join("opencode.json"),
-        )
-        .unwrap();
-        let revision = get_opencode_model_snapshot().unwrap().revision;
-        let outcome = save_opencode_models(save_request(revision, &["new-model"], &[])).unwrap();
-        match outcome {
-            SaveOpenCodeModelsOutcome::Saved {
-                created_entries,
-                updated_entries,
-                model_count,
-                ..
-            } => {
-                assert_eq!(created_entries, 1);
-                assert_eq!(updated_entries, 0);
-                assert_eq!(model_count, 2);
-            }
-            other => panic!("unexpected outcome: {other:?}"),
-        }
-        let config = read_config(temp.path());
-        assert_eq!(config["theme"], "keep-me");
-        assert_eq!(config["provider"]["gateway"]["extra"]["keep"], true);
-        assert_eq!(
-            config["provider"]["gateway"]["models"]["existing-model"]["limit"]["context"],
-            8
-        );
-        assert_eq!(
-            config["provider"]["gateway"]["models"]["new-model"]["name"],
-            "new-model"
-        );
-        assert_eq!(
-            config["provider"]["gateway"]["options"]["apiKey"],
-            "USER-OPENCODE-KEY"
-        );
-        let snapshot = get_opencode_model_snapshot().unwrap();
-        let debug = format!("{snapshot:?}");
-        assert!(!debug.contains("USER-OPENCODE-KEY"));
-        assert!(!debug.contains("OPENCODE-SECRET"));
-        assert_eq!(
-            std::fs::read(
-                temp.path()
-                    .join(".config")
-                    .join("opencode")
-                    .join("opencode.json.backup"),
-            )
-            .unwrap(),
-            original_bytes
-        );
-    }
-
-    #[test]
-    #[serial]
-    fn first_save_creates_no_fake_backup_without_a_preimage() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _home = TestHomeGuard::set(temp.path());
-        let mut request = save_request(None, &["new-model"], &[]);
-        request.provider_id = None;
-        let outcome = save_opencode_models(request).unwrap();
-        assert!(matches!(outcome, SaveOpenCodeModelsOutcome::Saved { .. }));
-        let dir = temp.path().join(".config").join("opencode");
-        assert!(dir.join("opencode.json").exists());
-        assert!(!dir.join("opencode.json.backup").exists());
-    }
-
-    #[test]
-    #[serial]
-    fn updating_existing_model_requires_overwrite_token() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _home = TestHomeGuard::set(temp.path());
-        write_config(temp.path(), &seeded_config());
-        let revision = get_opencode_model_snapshot().unwrap().revision;
-        let first =
-            save_opencode_models(save_request(revision.clone(), &["existing-model"], &[])).unwrap();
-        let SaveOpenCodeModelsOutcome::OverwriteConfirmationRequired {
-            token,
-            existing_ids,
-        } = first
-        else {
-            panic!("expected overwrite: {first:?}");
-        };
-        assert_eq!(existing_ids, vec!["existing-model"]);
-        let mut confirmed = save_request(revision, &["existing-model"], &[]);
-        confirmed.overwrite_token = Some(token);
-        match save_opencode_models(confirmed).unwrap() {
-            SaveOpenCodeModelsOutcome::Saved {
-                updated_entries, ..
-            } => assert_eq!(updated_entries, 1),
-            other => panic!("unexpected outcome: {other:?}"),
-        }
-    }
-
-    #[test]
-    #[serial]
-    fn stale_revision_is_concurrent_modification() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _home = TestHomeGuard::set(temp.path());
-        write_config(temp.path(), &seeded_config());
-        let outcome =
-            save_opencode_models(save_request(Some("stale".into()), &["new-model"], &[])).unwrap();
-        assert_eq!(outcome, SaveOpenCodeModelsOutcome::ConcurrentModification);
-    }
-}
+mod tests;

@@ -310,6 +310,10 @@
       "59c377b11d89f9d87877c6b0520837a7a73b068d0db741c2b93ffb565401174f"
     ],
     [
+      "src-tauri/src/services/opencode_models/tests.rs",
+      "7615af02f6712da0160ca42cc8d78b4cda090b331c1e405090ea7f558feb7058"
+    ],
+    [
       "src-tauri/src/services/prompt.rs",
       "ee7c4040f2e1c5ef5f80aae1db0da532d7208edfd72cee4985890709d880c626"
     ],
