@@ -61,6 +61,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       createCodexProviderSwitchPlan: rejectNativeOnly,
       createCodexProviderUpsertPlan: rejectNativeOnly,
       createWorkBuddySavePlan: rejectNativeOnly,
+      createWorkBuddySubscriptionPlan: rejectNativeOnly,
       applyChangePlan: rejectNativeOnly,
       cancelChangeJob: rejectNativeOnly,
       getChangeJob: rejectNativeOnly,
@@ -145,6 +146,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       fetchXaiManagedModels: rejectNativeOnly,
     },
     workbuddy: {
+      getSubscriptionSource: rejectNativeOnly,
       getStatus: rejectNativeOnly,
       getModelIds: rejectNativeOnly,
       fetchModels: rejectNativeOnly,

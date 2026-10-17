@@ -73,6 +73,7 @@ describe("WorkBuddy save Change Plan workspace", () => {
     const ports = {
       ...createBrowserFeaturePorts(),
       changePlans: {
+        createWorkBuddySubscriptionPlan: vi.fn(),
         createCodexProviderSwitchPlan: vi.fn(),
         createCodexProviderUpsertPlan: vi.fn(),
         createWorkBuddySavePlan: create,

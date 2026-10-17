@@ -61,3 +61,6 @@ export const changeJobWorkBuddyWire: ChangeJobSnapshot = {
     { kind: "work_buddy_backup", status: "pending", code: "pending" },
   ],
 };
+
+export const changePlanWorkBuddySubscriptionWire =
+  fixture.subscriptionPlan as ChangePlan;

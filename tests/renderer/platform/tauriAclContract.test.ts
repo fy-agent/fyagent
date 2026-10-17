@@ -214,3 +214,17 @@ describe("Native ACL contract", () => {
     expect(forbidden).toEqual([]);
   });
 });
+
+it("registers and grants only native WorkBuddy subscription plan/read commands", () => {
+  const renderer = rendererInvokeCommands();
+  const registered = registeredCommands();
+  const allowed = activeAclCommands();
+  for (const command of [
+    "create_workbuddy_subscription_plan",
+    "get_workbuddy_subscription_source",
+  ]) {
+    expect(renderer.commands.has(command)).toBe(true);
+    expect(registered.has(command)).toBe(true);
+    expect(allowed.has(command)).toBe(true);
+  }
+});

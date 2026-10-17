@@ -1,3 +1,4 @@
+import type { WorkBuddySubscriptionSourceResult } from "../../../features/models";
 import { providerAggregationPorts } from "./providerAggregation";
 import {
   parseClaudeQuickSetupApplyRequest,
@@ -36,6 +37,87 @@ import {
   isRecord,
   isStringArray,
 } from "./validation";
+
+function parseSubscriptionSource(
+  value: unknown,
+): WorkBuddySubscriptionSourceResult {
+  const fail = () => new Error("WorkBuddy subscription source is unavailable");
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["revision", "bindingVersion", "source"]) ||
+    !(
+      value.bindingVersion === null ||
+      (typeof value.bindingVersion === "number" &&
+        Number.isSafeInteger(value.bindingVersion) &&
+        value.bindingVersion > 0)
+    ) ||
+    !(
+      value.revision === null ||
+      (typeof value.revision === "string" && value.revision.length > 0)
+    )
+  )
+    throw fail();
+  if (value.source === null)
+    return {
+      revision: value.revision,
+      bindingVersion: value.bindingVersion,
+      source: null,
+    };
+  const source = value.source;
+  if (
+    !isRecord(source) ||
+    !hasExactKeys(source, [
+      "accountId",
+      "provider",
+      "modelId",
+      "bindingVersion",
+      "localBaseUrl",
+    ]) ||
+    typeof source.accountId !== "string" ||
+    !/^ma1:[0-9a-f]{32}$/u.test(source.accountId) ||
+    !isOneOf(source.provider, ["openai", "xai"] as const) ||
+    typeof source.modelId !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u.test(source.modelId) ||
+    typeof source.bindingVersion !== "number" ||
+    !Number.isSafeInteger(source.bindingVersion) ||
+    source.bindingVersion < 1 ||
+    source.bindingVersion !== value.bindingVersion ||
+    typeof source.localBaseUrl !== "string" ||
+    value.revision === null
+  )
+    throw fail();
+  let url: URL;
+  try {
+    url = new URL(source.localBaseUrl);
+  } catch {
+    throw fail();
+  }
+  if (
+    url.protocol !== "http:" ||
+    !(
+      url.hostname === "[::1]" ||
+      /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(url.hostname)
+    ) ||
+    url.port === "0" ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.pathname !== "/workbuddy/v1"
+  )
+    throw fail();
+  return {
+    revision: value.revision,
+    bindingVersion: value.bindingVersion,
+    source: {
+      accountId: source.accountId,
+      provider: source.provider,
+      modelId: source.modelId,
+      bindingVersion: source.bindingVersion,
+      localBaseUrl: source.localBaseUrl,
+    },
+  };
+}
 
 function assertOpenCodeFetchRequest(
   request: OpenCodeFetchModelsRequest,
@@ -659,6 +741,10 @@ export function createModelFeaturePorts(): Pick<
         ).managedProviderPorts.fetchXaiManagedModels(accountId),
     },
     workbuddy: {
+      getSubscriptionSource: async () =>
+        parseSubscriptionSource(
+          await invoke<unknown>("get_workbuddy_subscription_source"),
+        ),
       getStatus: () => invoke("get_workbuddy_status"),
       getModelIds: () => invoke("get_workbuddy_model_ids"),
       fetchModels: (request) => invoke("fetch_workbuddy_models", { request }),

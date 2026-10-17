@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   ProviderQuickSetupRequest,
   WorkBuddySaveModelsRequest,
+  WorkBuddySubscriptionPlanRequest,
 } from "../../../features/models";
 import {
   parseApplyChangePlanOutcome,
@@ -101,6 +102,35 @@ function assertWorkBuddySaveRequest(
   return request;
 }
 
+function assertSubscriptionRequest(
+  request: WorkBuddySubscriptionPlanRequest,
+): WorkBuddySubscriptionPlanRequest {
+  if (
+    typeof request !== "object" ||
+    request === null ||
+    Array.isArray(request) ||
+    Object.keys(request).sort().join(",") !==
+      "accountId,expectedBindingVersion,expectedRevision,modelId" ||
+    typeof request.accountId !== "string" ||
+    !/^ma1:[0-9a-f]{32}$/u.test(request.accountId) ||
+    typeof request.modelId !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u.test(request.modelId) ||
+    !(
+      request.expectedRevision === null ||
+      (typeof request.expectedRevision === "string" &&
+        request.expectedRevision.length > 0)
+    ) ||
+    !(
+      request.expectedBindingVersion === null ||
+      (Number.isSafeInteger(request.expectedBindingVersion) &&
+        request.expectedBindingVersion > 0)
+    )
+  ) {
+    throw new Error("Change Plan WorkBuddy subscription request is invalid");
+  }
+  return { ...request };
+}
+
 export function createChangePlansPort(): ChangePlansPort {
   return {
     createCodexProviderSwitchPlan: async (targetProviderId) =>
@@ -116,6 +146,12 @@ export function createChangePlansPort(): ChangePlansPort {
       parseChangePlan(
         await invoke<unknown>("create_codex_provider_upsert_plan", {
           request: assertUpsertRequest(request),
+        }),
+      ),
+    createWorkBuddySubscriptionPlan: async (request) =>
+      parseChangePlan(
+        await invoke<unknown>("create_workbuddy_subscription_plan", {
+          request: assertSubscriptionRequest(request),
         }),
       ),
     createWorkBuddySavePlan: async (request) =>

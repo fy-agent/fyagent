@@ -133,6 +133,7 @@ const RESOURCE_LABELS = {
   codex_live_projection: "Codex 配置文件",
   work_buddy_models_config: "WorkBuddy 模型设置",
   work_buddy_backup: "WorkBuddy 配置备份",
+  work_buddy_subscription_binding: "WorkBuddy 订阅来源",
 } as const satisfies Record<
   ChangeJobSnapshot["resources"][number]["kind"],
   string

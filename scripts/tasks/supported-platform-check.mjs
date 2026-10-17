@@ -1077,6 +1077,16 @@ const DIRECTORY_OCCURRENCE_CONTRACT = Object.freeze(
       `assert_eq!(paths[1], PathBuf::from("/custom/${DIRECTORY_IDENTIFIER}/bin"));`,
     ],
     ...[
+      `let previous_data_home = std::env::var_os("${DATA_HOME_VARIABLE}");`,
+      `std::env::set_var("${DATA_HOME_VARIABLE}", home.path().join(".local/share"));`,
+      `std::env::set_var("${DATA_HOME_VARIABLE}", value);`,
+      `std::env::remove_var("${DATA_HOME_VARIABLE}");`,
+    ].map((snippet) => [
+      "src-tauri/src/services/workbuddy/subscription.rs",
+      snippet,
+      "#[cfg(test)]\npub(crate) mod plan_tests {",
+    ]),
+    ...[
       `let data_home = std::env::var_os("${DATA_HOME_VARIABLE}");`,
       `std::env::set_var("${DATA_HOME_VARIABLE}", path.join(".local/share"));`,
       `Some(value) => std::env::set_var("${DATA_HOME_VARIABLE}", value),`,

@@ -2057,3 +2057,142 @@ describe("Renderer feature ports", () => {
     });
   });
 });
+
+describe("WorkBuddy subscription source contract", () => {
+  beforeEach(() => invoke.mockReset());
+  const result = {
+    revision: "a".repeat(64),
+    bindingVersion: 1,
+    source: {
+      accountId: `ma1:${"1".repeat(32)}`,
+      provider: "openai",
+      modelId: "gpt-5",
+      bindingVersion: 1,
+      localBaseUrl: "http://127.0.0.1:15721/workbuddy/v1",
+    },
+  };
+  it("reads only a redacted source and supports no active subscription", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/shared/platform/tauri/features"
+    );
+    invoke
+      .mockResolvedValueOnce(result)
+      .mockResolvedValueOnce({
+        revision: null,
+        bindingVersion: null,
+        source: null,
+      });
+    const port = createTauriFeaturePorts().workbuddy;
+    expect(await port.getSubscriptionSource()).toEqual(result);
+    expect(await port.getSubscriptionSource()).toEqual({
+      revision: null,
+      bindingVersion: null,
+      source: null,
+    });
+    expect(invoke.mock.calls).toEqual([
+      ["get_workbuddy_subscription_source"],
+      ["get_workbuddy_subscription_source"],
+    ]);
+  });
+  it.each([
+    { ...result, apiKey: "secret" },
+    { ...result, bindingVersion: null },
+    { ...result, bindingVersion: 2 },
+    { ...result, bindingVersion: undefined },
+    { ...result, source: null, bindingVersion: -1 },
+    { ...result, source: { ...result.source, oauthToken: "secret" } },
+    { ...result, source: { ...result.source, provider: "other" } },
+    { ...result, source: { ...result.source, bindingVersion: 0 } },
+    {
+      ...result,
+      source: {
+        ...result.source,
+        localBaseUrl: "https://example.com/workbuddy/v1",
+      },
+    },
+    {
+      ...result,
+      source: {
+        ...result.source,
+        localBaseUrl: "http://secret@127.0.0.1:15721/workbuddy/v1",
+      },
+    },
+    {
+      ...result,
+      source: { ...result.source, localBaseUrl: "http://127.0.0.1:15721/v1" },
+    },
+    { ...result, revision: null },
+    { source: null },
+    null,
+  ])(
+    "rejects malformed or credential-bearing source output",
+    async (invalid) => {
+      const { createTauriFeaturePorts } = await import(
+        "@/shared/platform/tauri/features"
+      );
+      invoke.mockResolvedValue(invalid);
+      await expect(
+        createTauriFeaturePorts().workbuddy.getSubscriptionSource(),
+      ).rejects.toThrow("WorkBuddy subscription source is unavailable");
+    },
+  );
+  it("keeps subscription operations native-only in the browser", async () => {
+    const ports = createBrowserFeaturePorts();
+    await expect(ports.workbuddy.getSubscriptionSource()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(
+      ports.changePlans.createWorkBuddySubscriptionPlan({
+        accountId: `ma1:${"1".repeat(32)}`,
+        modelId: "gpt-5",
+        expectedRevision: null,
+        expectedBindingVersion: null,
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+  });
+});
+
+it.each([
+  "http://[::1]:15721/workbuddy/v1",
+  "http://127.0.0.1/workbuddy/v1",
+  "http://127.0.0.1:80/workbuddy/v1",
+  "http://127.0.0.2:15721/workbuddy/v1",
+])("accepts native loopback subscription address %s", async (localBaseUrl) => {
+  const { createTauriFeaturePorts } = await import(
+    "@/shared/platform/tauri/features"
+  );
+  const result = {
+    revision: "a".repeat(64),
+    bindingVersion: 2,
+    source: {
+      accountId: `ma1:${"1".repeat(32)}`,
+      provider: "xai",
+      modelId: "grok-4",
+      bindingVersion: 2,
+      localBaseUrl,
+    },
+  };
+  invoke.mockResolvedValue(result);
+  expect(
+    await createTauriFeaturePorts().workbuddy.getSubscriptionSource(),
+  ).toEqual(result);
+});
+
+it("preserves the binding version after API overwrite without claiming an active subscription", async () => {
+  const { createTauriFeaturePorts } = await import(
+    "@/shared/platform/tauri/features"
+  );
+  invoke.mockResolvedValue({
+    revision: "b".repeat(64),
+    bindingVersion: 2,
+    source: null,
+  });
+  const readback =
+    await createTauriFeaturePorts().workbuddy.getSubscriptionSource();
+  expect(readback).toEqual({
+    revision: "b".repeat(64),
+    bindingVersion: 2,
+    source: null,
+  });
+  expect(readback.source).toBeNull();
+});

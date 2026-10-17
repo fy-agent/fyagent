@@ -34,6 +34,7 @@ describe("Models Change Plan connection", () => {
     const ports = {
       ...createBrowserFeaturePorts(),
       changePlans: {
+        createWorkBuddySubscriptionPlan: vi.fn(),
         createCodexProviderSwitchPlan: create,
         createCodexProviderUpsertPlan: vi.fn(),
         createWorkBuddySavePlan: vi.fn(),
@@ -118,6 +119,7 @@ describe("Models Change Plan connection", () => {
     const ports = {
       ...createBrowserFeaturePorts(),
       changePlans: {
+        createWorkBuddySubscriptionPlan: vi.fn(),
         createCodexProviderSwitchPlan: vi.fn(async () => ({
           ...changePlanWire,
           planId: "plan-targetA",

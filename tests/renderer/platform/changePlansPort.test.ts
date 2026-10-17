@@ -4,6 +4,7 @@ import {
   changeJobWire,
   changePlanWire,
   changePlanWorkBuddyWire,
+  changePlanWorkBuddySubscriptionWire,
 } from "../fixtures/changePlans";
 import { createChangePlansPort } from "@/shared/platform/tauri/feature-ports/changePlans";
 
@@ -112,5 +113,59 @@ describe("Tauri Change Plans port", () => {
         expectedRevision: null,
       } as never),
     ).rejects.toThrow("Change Plan WorkBuddy save request is invalid");
+  });
+});
+
+describe("WorkBuddy subscription plan port", () => {
+  beforeEach(() => invoke.mockReset());
+  const request = {
+    accountId: `ma1:${"1".repeat(32)}`,
+    modelId: "gpt-5",
+    expectedRevision: null,
+    expectedBindingVersion: null,
+  };
+  it("sends only explicit business values and parses the subscription adapter", async () => {
+    invoke.mockResolvedValue(changePlanWorkBuddySubscriptionWire);
+    expect(
+      await createChangePlansPort().createWorkBuddySubscriptionPlan(request),
+    ).toEqual(changePlanWorkBuddySubscriptionWire);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith("create_workbuddy_subscription_plan", {
+      request,
+    });
+  });
+  it.each([
+    { ...request, apiKey: "secret" },
+    { ...request, baseUrl: "http://127.0.0.1" },
+    { ...request, expectedBindingVersion: undefined },
+    { ...request, expectedBindingVersion: -1 },
+    { ...request, expectedBindingVersion: 1.5 },
+    { ...request, expectedRevision: undefined },
+    { ...request, accountId: "../other" },
+    { ...request, modelId: " " },
+  ])(
+    "rejects invalid subscription input before invoking native",
+    async (invalid) => {
+      await expect(
+        createChangePlansPort().createWorkBuddySubscriptionPlan(
+          invalid as never,
+        ),
+      ).rejects.toThrow(
+        "Change Plan WorkBuddy subscription request is invalid",
+      );
+      expect(invoke).not.toHaveBeenCalled();
+    },
+  );
+  it("rejects an incomplete subscription resource contract", async () => {
+    invoke.mockResolvedValue({
+      ...changePlanWorkBuddySubscriptionWire,
+      adapter: {
+        ...changePlanWorkBuddySubscriptionWire.adapter,
+        writeSet: changePlanWorkBuddyWire.adapter.writeSet,
+      },
+    });
+    await expect(
+      createChangePlansPort().createWorkBuddySubscriptionPlan(request),
+    ).rejects.toThrow("Change Plan is unavailable");
   });
 });

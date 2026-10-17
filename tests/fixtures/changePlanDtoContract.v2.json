@@ -84,5 +84,58 @@
   "eventHint": {
     "jobId": "job-1",
     "eventSeq": 4
+  },
+  "subscriptionPlan": {
+    "planId": "plan-1",
+    "operation": "workbuddy_subscription_save",
+    "targetProviderId": "fyagent-v2-workbuddy-models",
+    "targetProviderName": "http://127.0.0.1:15721/workbuddy/v1",
+    "planDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "baselineDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "dbBaselineProviderId": null,
+    "deviceBaselineProviderId": "provider-before",
+    "secretCapability": "no_new_credential_material",
+    "createdAt": 1800000000,
+    "expiresAt": 1800000900,
+    "status": "ready",
+    "adapter": {
+      "adapterId": "workbuddy_subscription_save",
+      "adapterVersion": "1",
+      "operationType": "workbuddy_subscription_save",
+      "phases": [
+        "precheck",
+        "snapshot",
+        "managed_write",
+        "readback",
+        "finalize"
+      ],
+      "readSet": [
+        "work_buddy_models_config",
+        "work_buddy_backup",
+        "work_buddy_subscription_binding"
+      ],
+      "writeSet": [
+        "work_buddy_models_config",
+        "work_buddy_backup",
+        "work_buddy_subscription_binding"
+      ],
+      "idempotencyScope": "plan",
+      "cancelMode": "before_managed_write",
+      "compensationMode": "writer_owned_rollback",
+      "faultPoints": [
+        "before_managed_write",
+        "after_managed_write_before_record"
+      ]
+    },
+    "currentProviderCode": "object_root",
+    "targetProviderCode": "object_root",
+    "restartExpectation": "not_required",
+    "risks": [
+      {
+        "code": "local_configuration_write",
+        "severity": "notice"
+      }
+    ],
+    "evidenceNote": "usage_not_observed"
   }
 }
