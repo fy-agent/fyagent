@@ -197,6 +197,8 @@ mod tests {
 /// Closed failures for the subscription route. Display is the code only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkBuddySubscriptionErrorCode {
+    Stale,
+    RecoveryRequired,
     InvalidRequest,
     AccountUnavailable,
     SubscriptionUnavailable,
@@ -212,6 +214,8 @@ pub enum WorkBuddySubscriptionErrorCode {
 impl WorkBuddySubscriptionErrorCode {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Stale => "stale",
+            Self::RecoveryRequired => "recovery_required",
             Self::InvalidRequest => "invalid_request",
             Self::AccountUnavailable => "account_unavailable",
             Self::SubscriptionUnavailable => "subscription_unavailable",
@@ -227,6 +231,8 @@ impl WorkBuddySubscriptionErrorCode {
 
     pub const fn http_status(self) -> u16 {
         match self {
+            Self::Stale => 409,
+            Self::RecoveryRequired => 500,
             Self::InvalidRequest | Self::ModelMismatch => 400,
             Self::AccountUnavailable | Self::ProxyCredentialRejected => 401,
             Self::SubscriptionUnavailable | Self::UnknownRoute => 404,

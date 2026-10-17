@@ -466,6 +466,104 @@ pub(crate) fn save_workbuddy_models_at_locked(
     })
 }
 
+/// Project with the same shape-preserving primitives as the API-key writer.
+pub(super) fn project_subscription_file(
+    loaded: &LoadedConfig,
+    request: &SaveWorkBuddyModelsRequest,
+) -> Result<Vec<u8>, WorkBuddyError> {
+    let mut document = loaded.document.clone();
+    let url = normalize_workbuddy_base_url(&request.base_url)?
+        .base_url
+        .to_string();
+    let ids = normalized_target_ids(request);
+    for id in &ids {
+        let mut found = false;
+        for entry in document.models_mut() {
+            if entry["id"]
+                .as_str()
+                .is_some_and(|existing| existing.trim() == id)
+            {
+                patch_existing_connection_fields(entry.as_object_mut().unwrap(), &url, request);
+                found = true;
+            }
+        }
+        if !found {
+            document
+                .models_mut()
+                .push(Value::Object(new_managed_model(id, &url, request)));
+        }
+    }
+    document.update_available_models(&ids)?;
+    document.serialize()
+}
+
+/// Restore only this transaction's publication (or unchanged baseline). Never
+/// use a historical backup as the restoration authority.
+pub(super) fn compensate_subscription_files(
+    paths: &WorkBuddyPaths,
+    before: &LoadedConfig,
+    backup_before: Option<&[u8]>,
+    published: &[u8],
+) -> Result<(), WorkBuddyError> {
+    let original = before.exists.then_some(before.original_bytes.as_slice());
+    let (current, backup) = load_workbuddy_files(paths)?;
+    if current.exists == before.exists
+        && current.original_bytes == before.original_bytes
+        && backup.as_deref() == backup_before
+    {
+        return Ok(());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let storage = open_windows_storage(paths, false)
+            .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
+        storage
+            .restore_subscription(original, backup_before, published)
+            .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let capture = |path: &Path| {
+            MacRestoreGuard::capture(path)
+                .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))
+        };
+        let current = capture(&paths.models)?;
+        let backup = capture(&paths.backup)?;
+        if current.bytes.as_deref() != original && current.bytes.as_deref() != Some(published) {
+            return Err(WorkBuddyError::new(
+                WorkBuddyErrorCode::ConfigConcurrentModification,
+            ));
+        }
+        if backup.bytes.as_deref() != backup_before && backup.bytes.as_deref() != original {
+            return Err(WorkBuddyError::new(
+                WorkBuddyErrorCode::ConfigConcurrentModification,
+            ));
+        }
+        let restore = |path: &Path,
+                       bytes: Option<&[u8]>,
+                       guard: &MacRestoreGuard|
+         -> Result<(), WorkBuddyError> {
+            let result = match bytes {
+                Some(bytes) => write_credential_file_atomically_guarded(path, bytes, Some(guard)),
+                None => guard
+                    .recheck(path)
+                    .and_then(|_| match fs::remove_file(path) {
+                        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+                        other => other,
+                    }),
+            };
+            result.map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))
+        };
+        if current.bytes.as_deref() != original {
+            restore(&paths.models, original, &current)?;
+        }
+        if backup.bytes.as_deref() != backup_before {
+            restore(&paths.backup, backup_before, &backup)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(all(test, target_os = "macos"))]
 thread_local! {
     static WORKBUDDY_PRECOMMIT_REPLACEMENT: std::cell::RefCell<Option<Vec<u8>>> =
@@ -840,15 +938,113 @@ fn random_mac_key() -> [u8; 32] {
     key
 }
 
+/// Subscription compensation checks the exact bytes and inode again immediately
+/// before rename/unlink. POSIX does not provide a compare-and-rename primitive:
+/// an external writer can still race the final check/syscall interval.
+#[cfg(target_os = "macos")]
+#[derive(PartialEq, Eq)]
+struct MacRestoreGuard {
+    bytes: Option<Vec<u8>>,
+    identity: Option<(u64, u64)>,
+    parent_identity: (u64, u64),
+}
+
+#[cfg(target_os = "macos")]
+impl MacRestoreGuard {
+    fn capture(path: &Path) -> io::Result<Self> {
+        use std::{io::Read, os::unix::fs::MetadataExt};
+        let parent = path
+            .parent()
+            .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?;
+        let metadata = fs::symlink_metadata(parent)?;
+        if !metadata.is_dir() {
+            return Err(io::ErrorKind::PermissionDenied.into());
+        }
+        let parent_identity = (metadata.dev(), metadata.ino());
+        let metadata = match fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(Self {
+                    bytes: None,
+                    identity: None,
+                    parent_identity,
+                })
+            }
+            Err(error) => return Err(error),
+        };
+        if !metadata.is_file() || metadata.len() > super::document::MAX_CONFIG_BYTES {
+            return Err(io::ErrorKind::PermissionDenied.into());
+        }
+        let identity = (metadata.dev(), metadata.ino());
+        let file = File::open(path)?;
+        let opened = file.metadata()?;
+        if (opened.dev(), opened.ino()) != identity {
+            return Err(io::ErrorKind::PermissionDenied.into());
+        }
+        let mut bytes = Vec::new();
+        file.take(super::document::MAX_CONFIG_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > super::document::MAX_CONFIG_BYTES {
+            return Err(io::ErrorKind::PermissionDenied.into());
+        }
+        Ok(Self {
+            bytes: Some(bytes),
+            identity: Some(identity),
+            parent_identity,
+        })
+    }
+
+    fn recheck(&self, path: &Path) -> io::Result<()> {
+        #[cfg(test)]
+        if let Some(bytes) = SUBSCRIPTION_RESTORE_REPLACEMENT.with(|slot| slot.borrow_mut().take())
+        {
+            fs::write(path, bytes)?;
+        }
+        if Self::capture(path)? != *self {
+            return Err(io::ErrorKind::PermissionDenied.into());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+thread_local! {
+    static SUBSCRIPTION_RESTORE_REPLACEMENT: std::cell::RefCell<Option<Vec<u8>>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(all(test, target_os = "macos"))]
+pub(super) fn arm_subscription_restore_external_edit(bytes: Vec<u8>) {
+    SUBSCRIPTION_RESTORE_REPLACEMENT.with(|slot| *slot.borrow_mut() = Some(bytes));
+}
+
 #[cfg(target_os = "macos")]
 fn write_credential_file_atomically(path: &Path, data: &[u8]) -> io::Result<()> {
+    write_credential_file_atomically_guarded(path, data, None)
+}
+
+#[cfg(target_os = "macos")]
+fn write_credential_file_atomically_guarded(
+    path: &Path,
+    data: &[u8],
+    guard: Option<&MacRestoreGuard>,
+) -> io::Result<()> {
+    if let Some(guard) = guard {
+        if MacRestoreGuard::capture(path)? != *guard {
+            return Err(io::ErrorKind::PermissionDenied.into());
+        }
+    }
     let parent = path
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing parent directory"))?;
     fs::create_dir_all(parent)?;
 
     let temp = create_temp_file(parent, path.file_name().unwrap_or_default(), data)?;
-    let result = replace_file(&temp, path).and_then(|_| sync_parent_directory(parent));
+    let result = (|| {
+        if let Some(guard) = guard {
+            guard.recheck(path)?;
+        }
+        replace_file(&temp, path).and_then(|_| sync_parent_directory(parent))
+    })();
     if result.is_err() {
         let _ = fs::remove_file(&temp);
     }

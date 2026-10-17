@@ -11,7 +11,11 @@ use crate::services::provider::{
     build_codex_switch_target_live_projection, inspect_codex_switch_environment,
     QUICK_SETUP_CODEX_PROVIDER_ID,
 };
+use crate::services::workbuddy::subscription::{self, SubscriptionDraft};
 use crate::services::workbuddy::types::WorkBuddyConfigFormat;
+use crate::services::workbuddy::types::{
+    SaveWorkBuddySubscriptionRequest, WorkBuddySubscriptionSource,
+};
 use crate::services::workbuddy::url::{
     normalize_workbuddy_base_url, reject_url_credential_collision,
 };
@@ -159,6 +163,11 @@ fn take_upsert_draft(plan_id: &str) -> Result<Option<Provider>, ChangePlanErrorC
         .lock()
         .map_err(|_| ChangePlanErrorCode::Internal)?
         .remove(plan_id))
+}
+
+fn subscription_drafts() -> &'static Mutex<HashMap<String, SubscriptionDraft>> {
+    static DRAFTS: OnceLock<Mutex<HashMap<String, SubscriptionDraft>>> = OnceLock::new();
+    DRAFTS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn workbuddy_drafts() -> &'static Mutex<HashMap<String, SaveWorkBuddyModelsRequest>> {
@@ -553,6 +562,9 @@ impl ChangePlanService {
             now: chrono::Utc::now().timestamp(),
         };
         match stored.public.operation {
+            ChangeOperation::WorkbuddySubscriptionSave => {
+                Self::apply_workbuddy_subscription_inner(state, identity, observer, None)
+            }
             ChangeOperation::WorkbuddyModelsSave => {
                 drop(switch_writer);
                 drop(upsert_writer);
@@ -717,7 +729,7 @@ impl ChangePlanService {
                     upsert_writer,
                 )))
             }
-            ChangeOperation::WorkbuddyModelsSave => {
+            ChangeOperation::WorkbuddyModelsSave | ChangeOperation::WorkbuddySubscriptionSave => {
                 return Ok(ApplyChangePlanOutcome::rejected(
                     ChangePlanErrorCode::Internal,
                 ));
@@ -892,6 +904,324 @@ impl ChangePlanService {
 
         let readback = adapter.verify();
         classify_job(&stored, &mut job, writer_result, readback, now);
+        let terminal_reason = job
+            .diagnostic_code
+            .clone()
+            .unwrap_or_else(|| "recovery_required".to_string());
+        set_step(
+            &mut job,
+            ChangeStepKind::Finalize,
+            ChangeStepStatus::Succeeded,
+            "finalized",
+        );
+        persist_transition(
+            state,
+            &mut job,
+            ChangeStepKind::Finalize,
+            &terminal_reason,
+            now,
+            &observer,
+        )?;
+        execution.gate.mark_terminal();
+        Ok(ApplyChangePlanOutcome {
+            kind: ChangeApplyOutcomeKind::Admitted,
+            job: Some(job),
+            error_code: None,
+        })
+    }
+
+    /// Preview freezes business intent and native authorities; it performs no
+    /// WorkBuddy publication and keeps the executable draft process-local.
+    pub fn plan_workbuddy_subscription(
+        state: &AppState,
+        request: SaveWorkBuddySubscriptionRequest,
+    ) -> Result<ChangePlan, ChangePlanErrorCode> {
+        let _guard = write_lock().blocking_lock();
+        let draft =
+            subscription::prepare_subscription(state, request).map_err(|error| {
+                match error.code() {
+                    crate::services::workbuddy::error::WorkBuddySubscriptionErrorCode::Stale => {
+                        ChangePlanErrorCode::Stale
+                    }
+                    _ => ChangePlanErrorCode::InvalidTarget,
+                }
+            })?;
+        let disk = inspect_workbuddy_disk()?;
+        let baseline = subscription_plan_baseline(state, &draft)?;
+        let operation = ChangeOperation::WorkbuddySubscriptionSave;
+        let descriptor = descriptor_for_operation(operation);
+        let secret_capability = SecretCapabilityResult::NoNewCredentialMaterial;
+        let now = chrono::Utc::now().timestamp();
+        let public = ChangePlan {
+            plan_id: uuid::Uuid::new_v4().to_string(),
+            operation,
+            target_provider_id: WORKBUDDY_MODELS_TARGET_ID.to_string(),
+            target_provider_name: "WorkBuddy subscription".to_string(),
+            plan_digest: plan_approval_digest(
+                operation,
+                WORKBUDDY_MODELS_TARGET_ID,
+                &baseline,
+                secret_capability,
+                &descriptor,
+            ),
+            baseline_digest: baseline,
+            db_baseline_provider_id: None,
+            device_baseline_provider_id: None,
+            secret_capability,
+            created_at: now,
+            expires_at: now + CHANGE_PLAN_TTL_SECONDS,
+            status: ChangePlanStatus::Ready,
+            adapter: descriptor,
+            current_provider_code: "workbuddy_configuration".to_string(),
+            target_provider_code: "workbuddy_subscription".to_string(),
+            restart_expectation: RestartRequirement::NotRequired,
+            risks: vec![ChangePlanRisk {
+                code: "local_configuration_write".to_string(),
+                severity: "notice".to_string(),
+            }],
+            evidence_note: "usage_not_observed".to_string(),
+        };
+        state
+            .db
+            .insert_change_plan(&StoredChangePlan {
+                public: public.clone(),
+                target_definition_digest: subscription_state_digest(state)?,
+                live_baseline_digest: if disk.exists {
+                    disk.config_digest
+                } else {
+                    disk.backup_digest
+                },
+                target_projection_digest: subscription_source_digest(&draft.target_source()),
+                contract_digest: CHANGE_PLAN_CONTRACT_VERSION.to_string(),
+            })
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        subscription_drafts()
+            .lock()
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+            .insert(public.plan_id.clone(), draft);
+        Ok(public)
+    }
+
+    fn apply_workbuddy_subscription_inner<O>(
+        state: &AppState,
+        identity: CodexApplyIdentity<'_>,
+        observer: O,
+        injected_fault: Option<ChangeFaultPoint>,
+    ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
+    where
+        O: Fn(ChangeJobEventHint),
+    {
+        let CodexApplyIdentity {
+            plan_id,
+            plan_digest,
+            now,
+        } = identity;
+        if let Some(existing) = Self::idempotent_replay_if_consumed(state, plan_id, plan_digest)? {
+            return Ok(existing);
+        }
+        let _guard = write_lock().blocking_lock();
+        if let Some(existing) = Self::idempotent_replay_if_consumed(state, plan_id, plan_digest)? {
+            return Ok(existing);
+        }
+        let stored = state
+            .db
+            .get_stored_change_plan(plan_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        let Some(stored) = stored else {
+            return Ok(ApplyChangePlanOutcome::rejected(
+                ChangePlanErrorCode::PlanNotFound,
+            ));
+        };
+        if stored.public.operation != ChangeOperation::WorkbuddySubscriptionSave {
+            return Ok(ApplyChangePlanOutcome::rejected(
+                ChangePlanErrorCode::Internal,
+            ));
+        }
+        if stored.public.secret_capability != SecretCapabilityResult::NoNewCredentialMaterial {
+            return Ok(ApplyChangePlanOutcome::rejected(
+                ChangePlanErrorCode::SecretDependencyUnavailable,
+            ));
+        }
+        if stored.contract_digest != CHANGE_PLAN_CONTRACT_VERSION {
+            return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
+        }
+        if stored.public.adapter != descriptor_for_operation(stored.public.operation) {
+            return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
+        }
+        if stored.public.plan_digest
+            != plan_approval_digest(
+                stored.public.operation,
+                &stored.public.target_provider_id,
+                &stored.public.baseline_digest,
+                stored.public.secret_capability,
+                &stored.public.adapter,
+            )
+        {
+            return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
+        }
+        let draft = subscription_drafts()
+            .lock()
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+            .get(plan_id)
+            .cloned();
+        let Some(draft) = draft else {
+            return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
+        };
+        if subscription::validate_subscription_draft(state, &draft).is_err()
+            || subscription_state_digest(state)? != stored.target_definition_digest
+            || subscription_plan_baseline(state, &draft)? != stored.public.baseline_digest
+        {
+            return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
+        }
+        let job_id = uuid::Uuid::new_v4().to_string();
+        let admitted = state
+            .db
+            .admit_change_plan(
+                plan_id,
+                plan_digest,
+                &stored.public.baseline_digest,
+                &job_id,
+                now,
+            )
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        if admitted.kind == ChangeApplyOutcomeKind::Rejected {
+            return Ok(admitted);
+        }
+
+        let mut job = admitted.job.ok_or(ChangePlanErrorCode::Internal)?;
+        subscription_drafts()
+            .lock()
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+            .remove(plan_id);
+        normalize_job_projection(&mut job);
+        let execution = ActiveExecutionRegistration::register(&job.job_id)?;
+        observer(job_hint(&job));
+
+        job.status = ChangeJobStatus::Running;
+        job.result_code = ChangeResultCode::Running;
+        set_step(
+            &mut job,
+            ChangeStepKind::Precheck,
+            ChangeStepStatus::Succeeded,
+            "baseline_matched",
+        );
+        persist_transition(
+            state,
+            &mut job,
+            ChangeStepKind::Precheck,
+            "precheck_succeeded",
+            now,
+            &observer,
+        )?;
+
+        set_step(
+            &mut job,
+            ChangeStepKind::Snapshot,
+            ChangeStepStatus::Succeeded,
+            "snapshot_bound",
+        );
+        persist_transition(
+            state,
+            &mut job,
+            ChangeStepKind::Snapshot,
+            "snapshot_succeeded",
+            now,
+            &observer,
+        )?;
+
+        if injected_fault == Some(ChangeFaultPoint::BeforeManagedWrite) {
+            return Err(ChangePlanErrorCode::Internal);
+        }
+
+        if !execution.gate.claim_managed_write() {
+            set_step(
+                &mut job,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepStatus::Skipped,
+                "cancelled_before_write",
+            );
+            set_step(
+                &mut job,
+                ChangeStepKind::Readback,
+                ChangeStepStatus::Skipped,
+                "cancelled_before_write",
+            );
+            set_step(
+                &mut job,
+                ChangeStepKind::Finalize,
+                ChangeStepStatus::Succeeded,
+                "cancelled_before_write",
+            );
+            job.status = ChangeJobStatus::Cancelled;
+            job.result_code = ChangeResultCode::CancelledBeforeWrite;
+            job.restart_requirement = RestartRequirement::NotRequired;
+            job.recovery_state = RecoveryState::NotNeeded;
+            job.diagnostic_code = Some("cancelled_before_write".to_string());
+            persist_transition(
+                state,
+                &mut job,
+                ChangeStepKind::Finalize,
+                "cancelled_before_write",
+                now,
+                &observer,
+            )?;
+            execution.gate.mark_terminal();
+            return Ok(ApplyChangePlanOutcome {
+                kind: ChangeApplyOutcomeKind::Admitted,
+                job: Some(job),
+                error_code: None,
+            });
+        }
+
+        set_step(
+            &mut job,
+            ChangeStepKind::ManagedWrite,
+            ChangeStepStatus::Running,
+            "managed_write_started",
+        );
+        persist_transition(
+            state,
+            &mut job,
+            ChangeStepKind::ManagedWrite,
+            "managed_write_started",
+            now,
+            &observer,
+        )?;
+
+        let writer_result = subscription::commit_subscription_locked(state, &draft);
+        if injected_fault == Some(ChangeFaultPoint::AfterManagedWriteBeforeRecord) {
+            return Err(ChangePlanErrorCode::Internal);
+        }
+        set_step(
+            &mut job,
+            ChangeStepKind::ManagedWrite,
+            if writer_result.is_ok() {
+                ChangeStepStatus::Succeeded
+            } else {
+                ChangeStepStatus::Failed
+            },
+            if writer_result.is_ok() {
+                "writer_returned"
+            } else {
+                "writer_failed"
+            },
+        );
+        set_step(
+            &mut job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Running,
+            "readback_started",
+        );
+        persist_transition(
+            state,
+            &mut job,
+            ChangeStepKind::Readback,
+            "readback_started",
+            now,
+            &observer,
+        )?;
+
+        classify_subscription_job(state, &stored, &mut job, writer_result.is_ok(), now);
         let terminal_reason = job
             .diagnostic_code
             .clone()
@@ -1237,7 +1567,7 @@ impl ChangePlanService {
         let _workbuddy_guard;
         let _provider_guard;
         match stored_hint.public.operation {
-            ChangeOperation::WorkbuddyModelsSave => {
+            ChangeOperation::WorkbuddyModelsSave | ChangeOperation::WorkbuddySubscriptionSave => {
                 _workbuddy_guard = Some(write_lock().blocking_lock());
                 _provider_guard = None;
             }
@@ -1269,6 +1599,9 @@ impl ChangePlanService {
             .find(|step| step.kind == ChangeStepKind::ManagedWrite)
             .is_some_and(|step| step.status != ChangeStepStatus::Pending);
         match stored.public.operation {
+            ChangeOperation::WorkbuddySubscriptionSave => {
+                classify_subscription_job(state, &stored, &mut job, false, now);
+            }
             ChangeOperation::WorkbuddyModelsSave => {
                 classify_workbuddy_job(&stored, &mut job, Err(()), inspect_workbuddy_disk(), now);
             }
@@ -2049,6 +2382,142 @@ fn classify_job(
             ChangeStepKind::Readback,
             ChangeStepStatus::Failed,
             "state_mixed",
+        );
+    }
+}
+
+fn subscription_source_digest(source: &WorkBuddySubscriptionSource) -> String {
+    digest_json("fyagent.change-plan.workbuddy-source.v1", &json!(source))
+}
+
+fn subscription_state_digest(state: &AppState) -> Result<String, ChangePlanErrorCode> {
+    let disk = inspect_workbuddy_disk()?;
+    let binding = state
+        .db
+        .get_workbuddy_subscription_binding()
+        .map_err(|_| ChangePlanErrorCode::Internal)?;
+    Ok(digest_json(
+        "fyagent.change-plan.workbuddy-state.v1",
+        &json!({
+            "config": disk.config_digest, "backup": disk.backup_digest, "binding": binding,
+        }),
+    ))
+}
+
+fn subscription_plan_baseline(
+    state: &AppState,
+    draft: &SubscriptionDraft,
+) -> Result<String, ChangePlanErrorCode> {
+    Ok(digest_json(
+        "fyagent.change-plan.workbuddy-subscription.v1",
+        &json!({
+            "state": subscription_state_digest(state)?,
+            "admission": draft.baseline_digest(),
+            "target": draft.target_source(),
+        }),
+    ))
+}
+
+fn classify_subscription_job(
+    state: &AppState,
+    stored: &StoredChangePlan,
+    job: &mut ChangeJobSnapshot,
+    writer_succeeded: bool,
+    now: i64,
+) {
+    job.updated_at = now;
+    let observed = (|| {
+        let source = subscription::read_subscription_source(state)
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        let disk = inspect_workbuddy_disk()?;
+        let baseline = subscription_state_digest(state)? == stored.target_definition_digest;
+        let target = source.source.as_ref().is_some_and(|source| {
+            subscription_source_digest(source) == stored.target_projection_digest
+        }) && disk.backup_digest == stored.live_baseline_digest;
+        Ok::<_, ChangePlanErrorCode>((baseline, target))
+    })();
+    let (baseline, target) = observed
+        .as_ref()
+        .map(|value| *value)
+        .unwrap_or((false, false));
+    for resource in resources_for_operation(ChangeOperation::WorkbuddySubscriptionSave) {
+        set_resource(
+            job,
+            resource,
+            if baseline || target {
+                ChangeResourceStatus::Matched
+            } else if observed.is_err() {
+                ChangeResourceStatus::Unavailable
+            } else {
+                ChangeResourceStatus::Mismatched
+            },
+            if target {
+                "target_matched"
+            } else if baseline {
+                "baseline_restored"
+            } else {
+                "state_unconfirmed"
+            },
+        );
+    }
+    job.status = if target && writer_succeeded {
+        ChangeJobStatus::Succeeded
+    } else {
+        ChangeJobStatus::Failed
+    };
+    job.result_code = if target && writer_succeeded {
+        ChangeResultCode::Applied
+    } else if baseline && !writer_succeeded {
+        ChangeResultCode::WriterFailedBaselineRestored
+    } else if observed.is_err() {
+        ChangeResultCode::ReadbackUnavailable
+    } else {
+        ChangeResultCode::PostWriteMismatch
+    };
+    job.recovery_state = if target && writer_succeeded {
+        RecoveryState::NotNeeded
+    } else if baseline && !writer_succeeded {
+        RecoveryState::Succeeded
+    } else {
+        RecoveryState::RecoveryRequired
+    };
+    job.restart_requirement = if job.recovery_state == RecoveryState::RecoveryRequired {
+        RestartRequirement::Unknown
+    } else {
+        RestartRequirement::NotRequired
+    };
+    job.diagnostic_code = Some(
+        if target && writer_succeeded {
+            "target_readback_matched"
+        } else if baseline && !writer_succeeded {
+            "baseline_restored"
+        } else {
+            "recovery_required"
+        }
+        .to_string(),
+    );
+    set_step(
+        job,
+        ChangeStepKind::Readback,
+        if job.recovery_state == RecoveryState::RecoveryRequired {
+            ChangeStepStatus::Failed
+        } else {
+            ChangeStepStatus::Succeeded
+        },
+        if target && writer_succeeded {
+            "target_matched"
+        } else if baseline {
+            "baseline_restored"
+        } else {
+            "state_unconfirmed"
+        },
+    );
+    if baseline && !writer_succeeded {
+        set_step(
+            job,
+            ChangeStepKind::ManagedWrite,
+            ChangeStepStatus::Compensated,
+            "writer_owned_rollback_confirmed",
         );
     }
 }
@@ -4078,3 +4547,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, any(target_os = "windows", target_os = "macos")))]
+#[path = "subscription_tests.rs"]
+mod subscription_tests;

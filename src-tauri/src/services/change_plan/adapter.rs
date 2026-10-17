@@ -54,6 +54,7 @@ pub(crate) fn descriptor_for_operation(operation: ChangeOperation) -> ChangeAdap
         ChangeOperation::CodexProviderSwitch => "codex_provider_switch",
         ChangeOperation::CodexProviderUpsertAndSwitch => "codex_provider_upsert_and_switch",
         ChangeOperation::WorkbuddyModelsSave => "workbuddy_models_save",
+        ChangeOperation::WorkbuddySubscriptionSave => "workbuddy_subscription_save",
     };
     let (read_set, write_set) = match operation {
         ChangeOperation::CodexProviderSwitch | ChangeOperation::CodexProviderUpsertAndSwitch => (
@@ -64,7 +65,7 @@ pub(crate) fn descriptor_for_operation(operation: ChangeOperation) -> ChangeAdap
                 ChangeResourceKind::CodexLiveProjection,
             ],
         ),
-        ChangeOperation::WorkbuddyModelsSave => {
+        ChangeOperation::WorkbuddyModelsSave | ChangeOperation::WorkbuddySubscriptionSave => {
             let resources = resources_for_operation(operation);
             (resources.clone(), resources)
         }

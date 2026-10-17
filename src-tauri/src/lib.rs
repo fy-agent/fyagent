@@ -2112,6 +2112,7 @@ pub fn run() {
             commands::create_codex_provider_switch_plan,
             commands::create_codex_provider_upsert_plan,
             commands::create_workbuddy_save_plan,
+            commands::create_workbuddy_subscription_plan,
             commands::apply_change_plan,
             commands::cancel_change_job,
             commands::get_change_job,
@@ -2505,6 +2506,7 @@ pub fn run() {
             // WorkBuddy is an isolated top-level configuration domain.
             commands::get_workbuddy_status,
             commands::get_workbuddy_model_ids,
+            commands::get_workbuddy_subscription_source,
             commands::fetch_workbuddy_models,
             commands::save_workbuddy_models,
             commands::codex_desktop_get_local_status,

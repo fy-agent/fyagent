@@ -645,3 +645,6 @@ mod tests {
         assert!(invalid.validate().is_err());
     }
 }
+
+#[cfg(test)]
+pub(crate) use migration::LegacyCredentialInput;

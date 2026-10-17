@@ -14,6 +14,11 @@ pub(crate) fn resources_for_operation(operation: ChangeOperation) -> Vec<ChangeR
                 ChangeResourceKind::CodexLiveProjection,
             ]
         }
+        ChangeOperation::WorkbuddySubscriptionSave => vec![
+            ChangeResourceKind::WorkBuddyModelsConfig,
+            ChangeResourceKind::WorkBuddyBackup,
+            ChangeResourceKind::WorkBuddySubscriptionBinding,
+        ],
         ChangeOperation::WorkbuddyModelsSave => vec![
             ChangeResourceKind::WorkBuddyModelsConfig,
             ChangeResourceKind::WorkBuddyBackup,
@@ -32,7 +37,8 @@ macro_rules! string_enum {
 string_enum!(ChangeOperation {
     CodexProviderSwitch,
     CodexProviderUpsertAndSwitch,
-    WorkbuddyModelsSave
+    WorkbuddyModelsSave,
+    WorkbuddySubscriptionSave
 });
 string_enum!(ChangePlanStatus { Ready, Consumed });
 string_enum!(SecretCapabilityResult {
@@ -76,7 +82,8 @@ string_enum!(ChangeResourceKind {
     TargetDefinition,
     CodexLiveProjection,
     WorkBuddyModelsConfig,
-    WorkBuddyBackup
+    WorkBuddyBackup,
+    WorkBuddySubscriptionBinding
 });
 string_enum!(ChangeResourceStatus {
     Pending,
@@ -575,5 +582,22 @@ mod tests {
             event_seq: 4,
         };
         assert_eq!(serde_json::to_value(hint).unwrap(), fixture["eventHint"]);
+    }
+    #[test]
+    fn subscription_plan_fixture_uses_registered_resource_contract() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/changePlanDtoContract.v2.json"
+        ))
+        .unwrap();
+        let plan: ChangePlan = serde_json::from_value(fixture["subscriptionPlan"].clone()).unwrap();
+        assert_eq!(plan.operation, ChangeOperation::WorkbuddySubscriptionSave);
+        assert_eq!(
+            plan.adapter,
+            crate::services::change_plan::descriptor_for_operation(plan.operation)
+        );
+        assert_eq!(
+            serde_json::to_value(plan).unwrap(),
+            fixture["subscriptionPlan"]
+        );
     }
 }

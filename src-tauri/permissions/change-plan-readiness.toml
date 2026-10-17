@@ -5,6 +5,7 @@ commands.allow = [
   "create_codex_provider_switch_plan",
   "create_codex_provider_upsert_plan",
   "create_workbuddy_save_plan",
+  "create_workbuddy_subscription_plan",
   "apply_change_plan",
   "cancel_change_job",
   "get_change_job",
