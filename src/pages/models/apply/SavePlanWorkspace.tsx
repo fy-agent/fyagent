@@ -1,3 +1,4 @@
+import type { SaveReconciliation } from "../../../shared/features/change-plans-ui/view-model";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
@@ -17,6 +18,7 @@ import { useChangeJob } from "../../../shared/features/change-plans-ui/useChange
 
 export interface SavePlanWorkspaceProps<Request> {
   active: boolean;
+  reconciliation?: SaveReconciliation;
   canApply?: boolean;
   onApplyStart?: () => void;
   onApplyError?: () => void;
@@ -31,6 +33,7 @@ export interface SavePlanWorkspaceProps<Request> {
 
 export function SavePlanWorkspace<Request>({
   active,
+  reconciliation,
   canApply = true,
   onApplyStart,
   onApplyError,
@@ -170,6 +173,7 @@ export function SavePlanWorkspace<Request>({
       <p className="fy-models-muted">{description}</p>
       {plan || job || displayError ? (
         <ApplyWorkspace
+          reconciliation={reconciliation}
           writeTargets={writeTargets}
           plan={plan}
           job={job}

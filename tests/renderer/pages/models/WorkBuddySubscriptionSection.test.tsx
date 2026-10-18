@@ -265,11 +265,13 @@ describe("WorkBuddy subscription selection and confirmation", () => {
         errorCode: "stale",
       });
     fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
-    await screen.findByText("当前配置待确认");
+    await screen.findAllByText("当前配置待确认");
     expect(
       screen.queryByText("WorkBuddy 订阅配置已保存"),
     ).not.toBeInTheDocument();
     expect(props.onUnconfirmed).toHaveBeenCalled();
+    expect(document.body).not.toHaveTextContent("设置已保存，并已确认当前配置");
+    expect(document.body).not.toHaveTextContent("配置已应用");
     expect(props.onSaved).not.toHaveBeenCalled();
     expect(document.body).not.toHaveTextContent("secret-sentinel");
     await waitFor(() =>
@@ -312,6 +314,41 @@ describe("WorkBuddy subscription selection and confirmation", () => {
     fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
     expect(ports.changePlans.applyChangePlan).not.toHaveBeenCalled();
   });
+  it("withholds workspace success while fresh source readback is pending", async () => {
+    const { ports } = setup();
+    await chooseOpenAI();
+    await preview();
+    let resolve!: (
+      result: Awaited<ReturnType<typeof ports.workbuddy.getSubscriptionSource>>,
+    ) => void;
+    vi.mocked(ports.workbuddy.getSubscriptionSource).mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
+    await screen.findByRole("heading", { name: "正在核对当前配置" });
+    expect(document.body).not.toHaveTextContent("设置已保存，并已确认当前配置");
+    expect(document.body).not.toHaveTextContent("配置已应用");
+    expect(
+      screen.queryByText("WorkBuddy 订阅配置已保存"),
+    ).not.toBeInTheDocument();
+    await act(async () =>
+      resolve({
+        revision: "after",
+        bindingVersion: 1,
+        source: {
+          accountId: OPENAI_ACCOUNT_ID,
+          modelId: "gpt-test",
+          provider: "openai",
+          bindingVersion: 1,
+          localBaseUrl: plan.targetProviderName,
+        },
+      }),
+    );
+    await screen.findByText("WorkBuddy 订阅配置已保存");
+    expect(screen.getByText("设置已保存，并已确认当前配置。")).toBeVisible();
+  });
   it("never lets late source readback override a job refresh failure", async () => {
     const { ports, props } = setup();
     await chooseOpenAI();
@@ -328,7 +365,7 @@ describe("WorkBuddy subscription selection and confirmation", () => {
       new Error("unavailable"),
     );
     fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
-    await screen.findByText("当前配置待确认");
+    await screen.findAllByText("当前配置待确认");
     await act(async () =>
       resolve({
         revision: "after",
@@ -345,6 +382,8 @@ describe("WorkBuddy subscription selection and confirmation", () => {
     expect(
       screen.queryByText("WorkBuddy 订阅配置已保存"),
     ).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("设置已保存，并已确认当前配置");
+    expect(document.body).not.toHaveTextContent("配置已应用");
     expect(props.onSaved).not.toHaveBeenCalled();
     expect(props.onUnconfirmed).toHaveBeenCalled();
   });
@@ -370,6 +409,8 @@ describe("WorkBuddy subscription selection and confirmation", () => {
     view.unmount();
     await act(async () => resolve(plan));
     expect(ports.changePlans.applyChangePlan).not.toHaveBeenCalled();
+    expect(document.body).not.toHaveTextContent("设置已保存，并已确认当前配置");
+    expect(document.body).not.toHaveTextContent("配置已应用");
     expect(props.onSaved).not.toHaveBeenCalled();
   });
 });

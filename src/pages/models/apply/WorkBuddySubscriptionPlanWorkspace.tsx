@@ -12,6 +12,7 @@ export function WorkBuddySubscriptionPlanWorkspace(
   return (
     <SavePlanWorkspace
       {...props}
+      reconciliation={props.reconciliation ?? { status: "pending" }}
       create={ports.changePlans.createWorkBuddySubscriptionPlan}
       label="保存 WorkBuddy 订阅设置"
       title="确认订阅设置"

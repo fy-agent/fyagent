@@ -10,7 +10,10 @@ import type {
 import { useFeatures } from "../../shared/features/provider";
 import { useManagedAuthOverview } from "../../shared/features/queries";
 import { isXaiSubscriptionModelId } from "../../shared/features/xai-subscription";
-import { hasUnconfirmedAuthority } from "../../shared/features/change-plans-ui/view-model";
+import {
+  hasUnconfirmedAuthority,
+  type SaveReconciliation,
+} from "../../shared/features/change-plans-ui/view-model";
 import { Button } from "../../shared/ui/Button";
 import { Input } from "../../shared/ui/primitives";
 import { FieldFeedback, ModelsSection, type Notice } from "./feedback";
@@ -40,6 +43,9 @@ export function WorkBuddySubscriptionSection(props: Props) {
     provider: "openai" | "xai";
     accountName: string;
   } | null>(null);
+  const [reconciliation, setReconciliation] = useState<SaveReconciliation>({
+    status: "pending",
+  });
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [blocked, setBlocked] = useState(false);
@@ -69,6 +75,7 @@ export function WorkBuddySubscriptionSection(props: Props) {
     !props.active || props.disabled || busy || pending !== null || blocked;
   const markUnconfirmed = () => {
     uncertain.current = true;
+    setReconciliation({ status: "unconfirmed" });
     setBlocked(true);
     props.onUnconfirmed();
     setNotice({
@@ -111,6 +118,7 @@ export function WorkBuddySubscriptionSection(props: Props) {
     localLock.current = true;
     attempted.current = false;
     uncertain.current = false;
+    setReconciliation({ status: "pending" });
     setBusy(true);
     setNotice(null);
     const revision = ++generation.current;
@@ -162,6 +170,7 @@ export function WorkBuddySubscriptionSection(props: Props) {
     if (!pending) return;
     const revision = generation.current;
     const readbackRevision = ++readbackGeneration.current;
+    setReconciliation({ status: "pending" });
     if (
       job.planId !== pending.plan.planId ||
       job.targetProviderId !== pending.plan.targetProviderId ||
@@ -201,6 +210,11 @@ export function WorkBuddySubscriptionSection(props: Props) {
         return;
       }
       attempted.current = false;
+      setReconciliation({
+        status: "confirmed",
+        jobId: job.jobId,
+        revision: job.revision,
+      });
       setNotice({
         tone: "info",
         title: "WorkBuddy 订阅配置已保存",
@@ -287,6 +301,7 @@ export function WorkBuddySubscriptionSection(props: Props) {
             账号：{pending.accountName} · 模型：{pending.request.modelId}
           </p>
           <WorkBuddySubscriptionPlanWorkspace
+            reconciliation={reconciliation}
             active={props.active}
             request={pending.request}
             plan={pending.plan}

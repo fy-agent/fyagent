@@ -8,6 +8,7 @@ import {
   createApplyViewModel,
   type ApplyStepPresentation,
   type ApplyWorkspaceError,
+  type SaveReconciliation,
 } from "./view-model";
 import "./apply-workspace.css";
 
@@ -17,6 +18,7 @@ export type ConfirmChangePlanInput = {
 };
 
 export type ApplyWorkspaceProps = {
+  readonly reconciliation?: SaveReconciliation;
   readonly writeTargets?: readonly FileWriteTarget[];
   readonly plan: ChangePlan | null;
   readonly job: ChangeJobSnapshot | null;
@@ -45,6 +47,7 @@ function ApplyStep({ step }: { readonly step: ApplyStepPresentation }) {
 }
 
 export function ApplyWorkspace({
+  reconciliation,
   writeTargets,
   plan,
   job,
@@ -60,7 +63,7 @@ export function ApplyWorkspace({
   const confirmLockRef = useRef<string | null>(null);
   const [lockedPlanKey, setLockedPlanKey] = useState<string | null>(null);
   const confirmLocked = planKey !== null && lockedPlanKey === planKey;
-  const view = createApplyViewModel(plan, job, { busy, error });
+  const view = createApplyViewModel(plan, job, { busy, error, reconciliation });
 
   const handleConfirm = () => {
     if (
