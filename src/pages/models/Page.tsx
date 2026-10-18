@@ -108,6 +108,7 @@ import {
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
+import { WorkBuddySubscriptionSection } from "./WorkBuddySubscriptionSection";
 import { XaiSubscriptionSection } from "./XaiSubscriptionSection";
 import {
   CodexSavePlanWorkspace,
@@ -168,6 +169,9 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
   const statusQuery = useWorkBuddyStatus(active);
   const modelIdsQuery = useWorkBuddyModelIds(active);
+  const [sourceMode, setSourceMode] = useState<"api" | "subscription">("api");
+  const [subscriptionWriting, setSubscriptionWriting] = useState(false);
+  const [subscriptionBlocked, setSubscriptionBlocked] = useState(false);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKeyState] = useState("");
   const apiKeyRef = useRef("");
@@ -610,6 +614,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
         <Button
           className="fy-control-button-primary fy-models-commit-button"
           disabled={
+            sourceMode !== "api" || subscriptionWriting || subscriptionBlocked ||
             busy !== null ||
             loading ||
             readFailed ||
@@ -624,6 +629,27 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           {busy === "save" ? "保存中…" : "保存并应用"}
         </Button>
       </ModelsPanelHeader>
+      <div className="fy-models-inline-fields" aria-label="WorkBuddy 配置来源">
+        <Button aria-pressed={sourceMode === "api"} disabled={subscriptionWriting || busy !== null || Boolean(workBuddySaveRequest)} onClick={() => setSourceMode("api")}>API Key 配置</Button>
+        <Button aria-pressed={sourceMode === "subscription"} disabled={subscriptionWriting || busy !== null || Boolean(workBuddySaveRequest)} onClick={() => setSourceMode("subscription")}>账号订阅</Button>
+      </div>
+      <div hidden={sourceMode !== "subscription"}>
+        <WorkBuddySubscriptionSection
+          active={active && sourceMode === "subscription"}
+          disabled={loading || readFailed || subscriptionBlocked || subscriptionWriting || busy !== null || Boolean(workBuddySaveRequest)}
+          writeTargets={statusQuery.data ? [{ path: statusQuery.data.path, backupPath: statusQuery.data.backupPath, exists: statusQuery.data.exists }] : []}
+          onBeginWrite={() => {
+            if (writeLock.current || subscriptionBlocked || !active) return false;
+            writeLock.current = true;
+            setSubscriptionWriting(true);
+            return true;
+          }}
+          onEndWrite={() => { writeLock.current = false; setSubscriptionWriting(false); }}
+          onUnconfirmed={() => { writeLock.current = true; setSubscriptionBlocked(true); setSubscriptionWriting(false); }}
+          onSaved={() => { void refreshAuthoritativeState(); }}
+        />
+      </div>
+      <div hidden={sourceMode !== "api"}>
       <FieldFeedback id="workbuddy-save-error" notice={notices.save} />
       <WorkBuddySavePlanWorkspace
         key={workBuddySavePlan?.planId ?? "workbuddy-save-preview"}
@@ -902,6 +928,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           </p>
         ) : null}
       </Dialog>
+      </div>
     </CatalogDetail>
   );
 }

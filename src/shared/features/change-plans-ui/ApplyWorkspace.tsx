@@ -21,6 +21,7 @@ export type ApplyWorkspaceProps = {
   readonly plan: ChangePlan | null;
   readonly job: ChangeJobSnapshot | null;
   readonly busy: boolean;
+  readonly actionsDisabled?: boolean;
   readonly error: ApplyWorkspaceError | null;
   readonly onConfirm: (input: ConfirmChangePlanInput) => void | Promise<void>;
   readonly onRegenerate: () => void;
@@ -48,6 +49,7 @@ export function ApplyWorkspace({
   plan,
   job,
   busy,
+  actionsDisabled = false,
   error,
   onConfirm,
   onRegenerate,
@@ -62,6 +64,7 @@ export function ApplyWorkspace({
 
   const handleConfirm = () => {
     if (
+      actionsDisabled ||
       !plan ||
       !planKey ||
       !view.canConfirm ||
@@ -253,7 +256,7 @@ export function ApplyWorkspace({
           关闭
         </Button>
         {view.canRegenerate ? (
-          <Button className="fy-control-button-primary" onClick={onRegenerate}>
+          <Button className="fy-control-button-primary" disabled={actionsDisabled} onClick={onRegenerate}>
             重新生成预览
           </Button>
         ) : null}
@@ -261,7 +264,7 @@ export function ApplyWorkspace({
           <Button
             className="fy-control-button-primary"
             onClick={handleConfirm}
-            disabled={!view.canConfirm || confirmLocked}
+            disabled={actionsDisabled || !view.canConfirm || confirmLocked}
           >
             {view.confirmLabel}
           </Button>

@@ -17,6 +17,9 @@ import { useChangeJob } from "../../../shared/features/change-plans-ui/useChange
 
 export interface SavePlanWorkspaceProps<Request> {
   active: boolean;
+  canApply?: boolean;
+  onApplyStart?: () => void;
+  onApplyError?: () => void;
   writeTargets?: readonly FileWriteTarget[];
   request: Request | null;
   plan: ChangePlan | null;
@@ -28,6 +31,9 @@ export interface SavePlanWorkspaceProps<Request> {
 
 export function SavePlanWorkspace<Request>({
   active,
+  canApply = true,
+  onApplyStart,
+  onApplyError,
   writeTargets,
   request,
   plan,
@@ -99,7 +105,7 @@ export function SavePlanWorkspace<Request>({
   };
 
   const createPlan = async () => {
-    if (!request) return;
+    if (!request || !canApply) return;
     const revision = begin();
     if (revision === null) return;
     setJob(null);
@@ -119,12 +125,16 @@ export function SavePlanWorkspace<Request>({
     readonly planId: string;
     readonly planDigest: string;
   }) => {
+    if (!canApply || !plan || plan.status !== "ready" ||
+        input.planId !== plan.planId || input.planDigest !== plan.planDigest) return;
     const revision = begin();
     if (revision === null) return;
+    onApplyStart?.();
     try {
       const outcome = await ports.changePlans.applyChangePlan(input);
       if (requestRevision.current !== revision) return;
       if (outcome.kind === "rejected") {
+        onApplyError?.();
         setError({ code: outcome.errorCode });
         return;
       }
@@ -138,8 +148,10 @@ export function SavePlanWorkspace<Request>({
       setJob(refreshed);
       notifyTerminal(refreshed);
     } catch (cause) {
-      if (requestRevision.current === revision)
+      if (requestRevision.current === revision) {
+        onApplyError?.();
         setError({ code: changePlanErrorCode(cause) });
+      }
     } finally {
       finish(revision);
     }
@@ -156,6 +168,7 @@ export function SavePlanWorkspace<Request>({
           plan={plan}
           job={job}
           busy={busy}
+          actionsDisabled={!canApply}
           error={displayError}
           onConfirm={applyPlan}
           onRegenerate={() => void createPlan()}

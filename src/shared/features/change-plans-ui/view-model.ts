@@ -210,7 +210,7 @@ function previewValidityLabel(plan: ChangePlan): string {
 
 function createPreviewModel(plan: ChangePlan): ApplyPreviewModel {
   const summary =
-    plan.operation === "workbuddy_models_save"
+    (plan.operation === "workbuddy_models_save" || plan.operation === "workbuddy_subscription_save")
       ? `保存 WorkBuddy 模型设置，服务地址为 ${plan.targetProviderName}。`
       : plan.operation === "codex_provider_upsert_and_switch"
         ? `保存 ${plan.targetProviderName} 并设为 Codex 当前 Provider。`
