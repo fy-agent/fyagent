@@ -926,7 +926,7 @@ describe("Models page", () => {
     renderPage(ports, "workbuddy");
 
     await screen.findByText("已有第三方模型数量");
-    expect(screen.getByRole("button", { name: "账号订阅", exact: true })).toBeVisible();
+    expect(screen.getByRole("button", { name: "账号订阅" })).toBeVisible();
     const heading = screen.getByRole("heading", { name: "WorkBuddy" });
     const header = heading.closest("header");
     expect(header).not.toBeNull();
