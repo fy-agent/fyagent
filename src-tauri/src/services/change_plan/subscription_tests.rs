@@ -55,6 +55,14 @@ fn workbuddy_subscription_plan_preview_is_readonly_and_secret_free() {
     assert_ne!(plan.plan_id, repeat.plan_id);
     assert_eq!(plan.plan_digest, repeat.plan_digest);
     assert_eq!(plan.operation, ChangeOperation::WorkbuddySubscriptionSave);
+    let frozen_source = subscription_drafts()
+        .lock()
+        .unwrap()
+        .get(&plan.plan_id)
+        .unwrap()
+        .target_source();
+    assert_eq!(plan.target_provider_name, frozen_source.local_base_url);
+    assert_eq!(repeat.target_provider_name, plan.target_provider_name);
     assert_eq!(std::fs::read(&path).unwrap(), original);
     assert!(!path.with_file_name("models.json.backup").exists());
     assert!(state
@@ -176,6 +184,7 @@ fn workbuddy_subscription_plan_confirm_replays_without_rewriting_and_reads_sourc
     assert_eq!(source.provider, "openai");
     assert_eq!(source.binding_version, 1);
     assert!(source.local_base_url.ends_with("/workbuddy/v1"));
+    assert_eq!(plan.target_provider_name, source.local_base_url);
     let path = fixture.home.path().join(".workbuddy/models.json");
     let bytes = std::fs::read(&path).unwrap();
     let modified = std::fs::metadata(&path).unwrap().modified().unwrap();

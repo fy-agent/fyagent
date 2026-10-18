@@ -956,7 +956,7 @@ impl ChangePlanService {
             plan_id: uuid::Uuid::new_v4().to_string(),
             operation,
             target_provider_id: WORKBUDDY_MODELS_TARGET_ID.to_string(),
-            target_provider_name: "WorkBuddy subscription".to_string(),
+            target_provider_name: draft.target_source().local_base_url,
             plan_digest: plan_approval_digest(
                 operation,
                 WORKBUDDY_MODELS_TARGET_ID,
