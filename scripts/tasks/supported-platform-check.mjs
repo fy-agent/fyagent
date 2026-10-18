@@ -975,6 +975,11 @@ export const MACOS_POSIX_CONTRACT = Object.freeze([
     snippet: SUBSCRIPTION_TEST_HOME_GUARD,
   }),
   Object.freeze({
+    id: "workbuddy-subscription-plan-tests-module",
+    file: "src-tauri/src/services/workbuddy/subscription.rs",
+    snippet: "#[cfg(test)]\npub(crate) mod plan_tests {",
+  }),
+  Object.freeze({
     id: "workbuddy-subscription-test-home-guard",
     file: "src-tauri/src/services/managed_auth/subscription_workbuddy_tests.rs",
     snippet: `struct TestHome(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
