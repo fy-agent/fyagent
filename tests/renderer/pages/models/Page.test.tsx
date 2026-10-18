@@ -959,7 +959,7 @@ describe("Models page", () => {
     ports.managedAuth.getOverview = vi.fn(async () => managedAuthOverviewFixture());
     ports.workbuddy.getSubscriptionSource = vi.fn(async () => ({ revision: "r1", bindingVersion: null, source: null }));
     let resolve!: (value: typeof changePlanWorkBuddySubscriptionWire) => void;
-    ports.changePlans.createWorkBuddySubscriptionPlan = vi.fn(() => new Promise(r => { resolve = r; }));
+    ports.changePlans.createWorkBuddySubscriptionPlan = vi.fn(() => new Promise<typeof changePlanWorkBuddySubscriptionWire>(r => { resolve = r; }));
     ports.changePlans.applyChangePlan = vi.fn();
     ports.workbuddy.saveModels = vi.fn();
     renderPage(ports, "workbuddy");

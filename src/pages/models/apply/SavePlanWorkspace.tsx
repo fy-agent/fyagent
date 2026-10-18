@@ -78,10 +78,10 @@ export function SavePlanWorkspace<Request>({
     (next: ChangeJobSnapshot) => {
       if (
         isActiveJobStatus(next.status) ||
-        terminalNotified.current === next.jobId
+        terminalNotified.current === `${next.jobId}:${next.revision}`
       )
         return;
-      terminalNotified.current = next.jobId;
+      terminalNotified.current = `${next.jobId}:${next.revision}`;
       onTerminal(next);
     },
     [onTerminal],
@@ -125,8 +125,14 @@ export function SavePlanWorkspace<Request>({
     readonly planId: string;
     readonly planDigest: string;
   }) => {
-    if (!canApply || !plan || plan.status !== "ready" ||
-        input.planId !== plan.planId || input.planDigest !== plan.planDigest) return;
+    if (
+      !canApply ||
+      !plan ||
+      plan.status !== "ready" ||
+      input.planId !== plan.planId ||
+      input.planDigest !== plan.planDigest
+    )
+      return;
     const revision = begin();
     if (revision === null) return;
     onApplyStart?.();

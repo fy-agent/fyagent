@@ -256,7 +256,11 @@ export function ApplyWorkspace({
           关闭
         </Button>
         {view.canRegenerate ? (
-          <Button className="fy-control-button-primary" disabled={actionsDisabled} onClick={onRegenerate}>
+          <Button
+            className="fy-control-button-primary"
+            disabled={actionsDisabled}
+            onClick={onRegenerate}
+          >
             重新生成预览
           </Button>
         ) : null}
