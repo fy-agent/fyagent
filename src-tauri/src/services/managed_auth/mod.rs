@@ -648,4 +648,3 @@ mod tests {
         assert!(invalid.validate().is_err());
     }
 }
-
