@@ -407,7 +407,13 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
   await expect(page.getByRole("button", { name: "打开官方设置" })).toHaveCount(
     0,
   );
+  await expect(page.getByRole("region", { name: "账号订阅设置" })).toHaveCount(
+    0,
+  );
   await page.getByTestId("model-target-trae").click();
+  await expect(page.getByRole("region", { name: "账号订阅设置" })).toHaveCount(
+    0,
+  );
   await expect(
     page.getByRole("region", { name: "TRAE Work CN 模型设置" }),
   ).toBeVisible();
@@ -443,6 +449,11 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
         "apply_provider_quick_setup_with_result",
         "switch_provider_with_result",
         "save_workbuddy_models",
+        "create_workbuddy_subscription_plan",
+        "create_workbuddy_save_plan",
+        "bind_managed_proxy_provider",
+        "bind_opencode_managed_proxy",
+        "apply_change_plan",
         "test_traework_model_endpoint",
       ].includes(call.command),
     ),
@@ -512,7 +523,11 @@ test("WorkBuddy save preview uses Change Plan and does not expose overwrite toke
 
   const calls = await featureFixtureCalls(page);
   expect(
-    calls.filter((call) => call.command === "save_workbuddy_models"),
+    calls.filter((call) =>
+      ["save_workbuddy_models", "create_workbuddy_subscription_plan"].includes(
+        call.command,
+      ),
+    ),
   ).toEqual([]);
   const createCalls = calls.filter(
     (call) => call.command === "create_workbuddy_save_plan",
@@ -560,7 +575,11 @@ test("WorkBuddy write failures stay redacted and clear the submitted credential"
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
   const calls = await featureFixtureCalls(page);
   expect(
-    calls.filter((call) => call.command === "save_workbuddy_models"),
+    calls.filter((call) =>
+      ["save_workbuddy_models", "create_workbuddy_subscription_plan"].includes(
+        call.command,
+      ),
+    ),
   ).toEqual([]);
   expect(
     calls.filter((call) => call.command === "create_workbuddy_save_plan"),
@@ -599,7 +618,11 @@ test("WorkBuddy concurrent modification rereads authority instead of claiming su
   );
   const calls = await featureFixtureCalls(page);
   expect(
-    calls.filter((call) => call.command === "save_workbuddy_models"),
+    calls.filter((call) =>
+      ["save_workbuddy_models", "create_workbuddy_subscription_plan"].includes(
+        call.command,
+      ),
+    ),
   ).toEqual([]);
   expect(
     calls.filter((call) => call.command === "create_workbuddy_save_plan"),

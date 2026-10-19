@@ -28,6 +28,13 @@ export interface RichFeatureFixtureOptions {
     | "overwrite_then_saved"
     | "concurrent_modification"
     | "failure";
+  workBuddySubscription?:
+    | "saved"
+    | "stale"
+    | "readback_failed"
+    | "wrong_account"
+    | "wrong_route"
+    | "wrong_model";
   workBuddyWriteDelayMs?: number;
 }
 
@@ -484,6 +491,14 @@ export async function installRichTauriFeatureFixture(
       modelIds: string[];
     } | null = null;
     let workBuddyModelIds = ["existing-model"];
+    let workBuddySubscriptionSource: {
+      accountId: string;
+      provider: "openai" | "xai";
+      modelId: string;
+      bindingVersion: number;
+      localBaseUrl: string;
+    } | null = null;
+    let workBuddySubscriptionRequest: Record<string, unknown> | null = null;
     let workBuddySaveAttempts = 0;
     let workBuddyPlan: Record<string, unknown> | null = null;
     let workBuddySaveRequest: Record<string, unknown> | null = null;
@@ -1763,6 +1778,62 @@ export async function installRichTauriFeatureFixture(
             changeJob = null;
             return structuredClone(upsertPlan);
           }
+          case "get_workbuddy_subscription_source": {
+            if (
+              workBuddySubscriptionSource &&
+              fixtureOptions.workBuddySubscription === "readback_failed"
+            )
+              throw new Error("fixture source readback failed");
+            const source = workBuddySubscriptionSource
+              ? { ...workBuddySubscriptionSource }
+              : null;
+            if (
+              source &&
+              fixtureOptions.workBuddySubscription === "wrong_account"
+            )
+              source.accountId = `ma1:${"3".repeat(32)}`;
+            if (
+              source &&
+              fixtureOptions.workBuddySubscription === "wrong_route"
+            )
+              source.localBaseUrl = "http://127.0.0.1:15721/other/v1";
+            if (
+              source &&
+              fixtureOptions.workBuddySubscription === "wrong_model"
+            )
+              source.modelId = "other-model";
+            return {
+              revision: workBuddyRevision,
+              bindingVersion: source?.bindingVersion ?? null,
+              source,
+            };
+          }
+          case "create_workbuddy_subscription_plan": {
+            workBuddySubscriptionRequest = structuredClone(
+              payload.request as Record<string, unknown>,
+            );
+            workBuddyPlan = {
+              ...makeWorkBuddyPlan(true),
+              planId: "plan-workbuddy-subscription",
+              operation: "workbuddy_subscription_save",
+              targetProviderName: "http://127.0.0.1:15721/workbuddy/v1",
+              adapter: {
+                ...workBuddyAdapter,
+                adapterId: "workbuddy_subscription_save",
+                operationType: "workbuddy_subscription_save",
+                readSet: [
+                  ...workBuddyAdapter.readSet,
+                  "work_buddy_subscription_binding",
+                ],
+                writeSet: [
+                  ...workBuddyAdapter.writeSet,
+                  "work_buddy_subscription_binding",
+                ],
+              },
+            };
+            changeJob = null;
+            return structuredClone(workBuddyPlan);
+          }
           case "create_workbuddy_save_plan": {
             const request = payload.request as
               | Record<string, unknown>
@@ -1793,6 +1864,44 @@ export async function installRichTauriFeatureFixture(
             if (workBuddyPlan && payload.planId === workBuddyPlan.planId) {
               if (payload.planDigest !== workBuddyPlan.planDigest) {
                 return { kind: "rejected", errorCode: "stale" };
+              }
+              if (
+                workBuddyPlan.operation === "workbuddy_subscription_save" &&
+                workBuddySubscriptionRequest
+              ) {
+                if (fixtureOptions.workBuddySubscription === "stale")
+                  return { kind: "rejected", errorCode: "stale" };
+                const request = workBuddySubscriptionRequest;
+                workBuddySubscriptionSource = {
+                  accountId: String(request.accountId),
+                  provider:
+                    request.accountId === `ma1:${"1".repeat(32)}`
+                      ? "openai"
+                      : "xai",
+                  modelId: String(request.modelId),
+                  bindingVersion:
+                    Number(request.expectedBindingVersion ?? 0) + 1,
+                  localBaseUrl: String(workBuddyPlan.targetProviderName),
+                };
+                workBuddyRevision = "fixture-revision-subscription";
+                workBuddyModelIds = [
+                  ...new Set([...workBuddyModelIds, String(request.modelId)]),
+                ];
+                changeJob = {
+                  ...makeWorkBuddyJob(false),
+                  planId: workBuddyPlan.planId,
+                  idempotencyKey: workBuddyPlan.planId,
+                  resources: [
+                    ...makeWorkBuddyJob(false).resources,
+                    {
+                      kind: "work_buddy_subscription_binding",
+                      status: "matched",
+                      code: "target_matched",
+                    },
+                  ],
+                };
+                workBuddyPlan = { ...workBuddyPlan, status: "consumed" };
+                return { kind: "admitted", job: structuredClone(changeJob) };
               }
               if (fixtureOptions.workBuddySave === "concurrent_modification") {
                 return { kind: "rejected", errorCode: "stale" };
