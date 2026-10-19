@@ -289,7 +289,13 @@ for (const source of [
       await section
         .getByRole("radio", { name: source.label, exact: true })
         .check();
-      await section.getByLabel("订阅模型 ID").fill(source.modelId);
+      if (source.provider === "xAI") {
+        await section
+          .getByRole("button", { name: source.modelId, exact: true })
+          .click();
+      } else {
+        await section.getByLabel("订阅模型 ID").fill(source.modelId);
+      }
       await section.getByRole("button", { name: action, exact: true }).click();
       await page
         .getByRole("dialog")

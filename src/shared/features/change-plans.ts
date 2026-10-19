@@ -645,7 +645,8 @@ export function parseChangeJobSnapshot(value: unknown): ChangeJobSnapshot {
       STEP_KINDS,
     ) ||
     (!isExactSequence(resourceKinds, CODEX_READ_SET) &&
-      !isExactSequence(resourceKinds, WORKBUDDY_READ_SET))
+      !isExactSequence(resourceKinds, WORKBUDDY_READ_SET) &&
+      !isExactSequence(resourceKinds, WORKBUDDY_SUBSCRIPTION_SET))
   ) {
     throw new Error("Change Job is unavailable");
   }
