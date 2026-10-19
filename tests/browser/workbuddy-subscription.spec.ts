@@ -159,7 +159,7 @@ for (const source of sources) {
       const section = await preview(page, source);
       await section.getByRole("button", { name: "应用更改" }).click();
       await expect(
-        section.getByText("当前配置待确认", { exact: true }),
+        section.getByRole("status").getByText("当前配置待确认", { exact: true }),
       ).toBeVisible();
       await expect(
         section.getByText("WorkBuddy 订阅配置已保存", { exact: true }),
