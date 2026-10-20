@@ -85,23 +85,35 @@ pub struct CommandOutput {
     status_code: Option<i32>,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
 }
 
 impl CommandOutput {
     pub fn success(stdout: impl Into<Vec<u8>>) -> Self {
-        Self {
-            status_code: Some(0),
-            stdout: bounded_output(stdout.into()),
-            stderr: Vec::new(),
-        }
+        Self::new(Some(0), stdout.into(), Vec::new())
     }
 
     pub fn failure(status_code: Option<i32>, stderr: impl Into<Vec<u8>>) -> Self {
+        Self::new(status_code, Vec::new(), stderr.into())
+    }
+
+    fn new(status_code: Option<i32>, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
             status_code,
-            stdout: Vec::new(),
-            stderr: bounded_output(stderr.into()),
+            stdout_truncated: stdout.len() > MAX_COMMAND_OUTPUT_BYTES,
+            stderr_truncated: stderr.len() > MAX_COMMAND_OUTPUT_BYTES,
+            stdout: bounded_output(stdout),
+            stderr: bounded_output(stderr),
         }
+    }
+
+    pub fn stdout_truncated(&self) -> bool {
+        self.stdout_truncated
+    }
+
+    pub fn stderr_truncated(&self) -> bool {
+        self.stderr_truncated
     }
 
     pub fn is_success(&self) -> bool {
@@ -198,11 +210,7 @@ impl CommandRunner for SystemCommandRunner {
         let stderr = stderr_handle
             .map(|handle| handle.join().unwrap_or_default())
             .unwrap_or_default();
-        Ok(CommandOutput {
-            status_code,
-            stdout: bounded_output(stdout),
-            stderr: bounded_output(stderr),
-        })
+        Ok(CommandOutput::new(status_code, stdout, stderr))
     }
 }
 
@@ -1185,11 +1193,7 @@ pub(super) mod test_support {
         pub fn queue_success_stderr(&self, program: &'static str, stderr: impl Into<Vec<u8>>) {
             self.queue(
                 program,
-                CommandOutput {
-                    status_code: Some(0),
-                    stdout: Vec::new(),
-                    stderr: super::bounded_output(stderr.into()),
-                },
+                CommandOutput::new(Some(0), Vec::new(), stderr.into()),
             );
         }
 
@@ -1287,6 +1291,14 @@ mod tests {
     fn command_output_is_bounded_before_test_diagnostics_can_observe_it() {
         let output = CommandOutput::success(vec![b'x'; MAX_COMMAND_OUTPUT_BYTES + 1024]);
         assert_eq!(output.stdout().len(), MAX_COMMAND_OUTPUT_BYTES);
+        assert!(output.is_success());
+        assert!(output.stdout_truncated());
+        assert!(!output.stderr_truncated());
+        let exact = CommandOutput::success(vec![b'x'; MAX_COMMAND_OUTPUT_BYTES]);
+        assert!(!exact.stdout_truncated());
+        let failure = CommandOutput::failure(Some(1), vec![b'x'; MAX_COMMAND_OUTPUT_BYTES + 1]);
+        assert!(failure.stderr_truncated());
+        assert!(!failure.stdout_truncated());
     }
 
     #[test]

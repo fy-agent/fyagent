@@ -5,6 +5,8 @@ use std::path::Path;
 use super::{command, stable_bundle_id, CommandOutput, CommandRunner};
 use crate::codex_desktop::error::{InstallerError, InstallerErrorCode};
 
+const SIGNATURE_REQUIREMENT: &str = "--test-requirement==identifier \"com.openai.codex\" and anchor apple generic and certificate leaf[subject.OU] = \"2DC432GLL2\"";
+
 const TEAM_ID: &str = "2DC432GLL2";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -52,7 +54,7 @@ pub(super) fn verify_bundle_signature(
     let display = run_check(
         runner,
         bundle,
-        "codesign",
+        "/usr/bin/codesign",
         &["--display", "--verbose=4"],
         "无法读取应用签名（codesign --display 失败），已拒绝安装",
     )?;
@@ -72,14 +74,14 @@ pub(super) fn verify_bundle_signature(
     run_check(
         runner,
         bundle,
-        "codesign",
-        &["--verify", "--deep", "--strict"],
+        "/usr/bin/codesign",
+        &["--verify", "--deep", "--strict", SIGNATURE_REQUIREMENT],
         "应用签名完整性校验失败（codesign --verify），已拒绝安装",
     )?;
     run_check(
         runner,
         bundle,
-        "spctl",
+        "/usr/sbin/spctl",
         &["--assess", "--type", "execute", "--verbose=2"],
         "macOS 安全评估未通过（spctl），请检查签名、公证或吊销状态，已拒绝安装",
     )?;
@@ -101,6 +103,9 @@ fn run_check(
             .chain(std::iter::once(bundle.as_os_str().to_owned())),
     );
     let output = runner.run(&invocation).map_err(|_| rejected(message))?;
+    if output.stdout_truncated() || output.stderr_truncated() {
+        return Err(rejected("签名校验输出被截断，已拒绝安装"));
+    }
     if !output.is_success() {
         return Err(rejected(message));
     }
@@ -116,11 +121,11 @@ pub(super) mod tests {
 
     pub(in crate::codex_desktop::platform::macos) fn queue_valid_signature(runner: &FakeRunner) {
         runner.queue_success_stderr(
-            "codesign",
+            "/usr/bin/codesign",
             display(stable_bundle_id(), TEAM_ID, "OpenAI OpCo, LLC"),
         );
-        runner.queue_success("codesign", Vec::new());
-        runner.queue_success("spctl", Vec::new());
+        runner.queue_success("/usr/bin/codesign", Vec::new());
+        runner.queue_success("/usr/sbin/spctl", Vec::new());
     }
 
     fn display(id: &str, team: &str, authority: &str) -> String {
@@ -133,18 +138,18 @@ pub(super) mod tests {
             for authority in ["OpenAI, L.L.C.", "OpenAI OpCo, LLC", "任意名称"] {
                 let runner = FakeRunner::new();
                 runner.queue_success_stderr(
-                    "codesign",
+                    "/usr/bin/codesign",
                     display(stable_bundle_id(), TEAM_ID, authority),
                 );
-                runner.queue_success("codesign", Vec::new());
-                runner.queue_success("spctl", Vec::new());
+                runner.queue_success("/usr/bin/codesign", Vec::new());
+                runner.queue_success("/usr/sbin/spctl", Vec::new());
                 let path = Path::new("/Volumes/Codex").join(basename);
                 verify_bundle_signature(&runner, &path).unwrap();
                 runner.assert_drained();
                 let calls = runner.invocations();
                 for (call, expected) in calls.iter().zip([
                     vec!["--display", "--verbose=4"],
-                    vec!["--verify", "--deep", "--strict"],
+                    vec!["--verify", "--deep", "--strict", SIGNATURE_REQUIREMENT],
                     vec!["--assess", "--type", "execute", "--verbose=2"],
                 ]) {
                     let mut args: Vec<std::ffi::OsString> =
@@ -165,6 +170,10 @@ pub(super) mod tests {
             display(stable_bundle_id(), "not set", "ignored"),
             "Identifier=com.openai.codex\n".into(),
             "TeamIdentifier=2DC432GLL2\n".into(),
+            format!(
+                "{}TeamIdentifier=2DC432GLL2\n",
+                display(stable_bundle_id(), TEAM_ID, "ignored")
+            ),
             display("", TEAM_ID, "ignored"),
             display(stable_bundle_id(), "", "ignored"),
             format!(
@@ -173,7 +182,7 @@ pub(super) mod tests {
             ),
         ] {
             let runner = FakeRunner::new();
-            runner.queue_success_stderr("codesign", output);
+            runner.queue_success_stderr("/usr/bin/codesign", output);
             let error = verify_bundle_signature(&runner, Path::new("/Volumes/Codex/Codex.app"))
                 .unwrap_err();
             assert_eq!(error.code(), InstallerErrorCode::PackageSignatureInvalid);
@@ -193,18 +202,18 @@ pub(super) mod tests {
             let runner = FakeRunner::new();
             if failed_step > 0 {
                 runner.queue_success_stderr(
-                    "codesign",
+                    "/usr/bin/codesign",
                     display(stable_bundle_id(), TEAM_ID, "ignored"),
                 );
             }
             if failed_step > 1 {
-                runner.queue_success("codesign", Vec::new());
+                runner.queue_success("/usr/bin/codesign", Vec::new());
             }
             runner.queue_failure(
                 if failed_step == 2 {
-                    "spctl"
+                    "/usr/sbin/spctl"
                 } else {
-                    "codesign"
+                    "/usr/bin/codesign"
                 },
                 Some(1),
                 "denied",
@@ -213,6 +222,45 @@ pub(super) mod tests {
                 verify_bundle_signature(&runner, Path::new("/Volumes/Codex/Codex.app")).is_err()
             );
             runner.assert_drained();
+        }
+    }
+
+    #[test]
+    fn truncated_output_on_either_stream_rejects_every_signature_step() {
+        for failed_step in 0..3 {
+            for stderr in [false, true] {
+                let runner = FakeRunner::new();
+                if failed_step > 0 {
+                    runner.queue_success_stderr(
+                        "/usr/bin/codesign",
+                        display(stable_bundle_id(), TEAM_ID, "ignored"),
+                    );
+                }
+                if failed_step > 1 {
+                    runner.queue_success("/usr/bin/codesign", Vec::new());
+                }
+                let program = if failed_step == 2 {
+                    "/usr/sbin/spctl"
+                } else {
+                    "/usr/bin/codesign"
+                };
+                let mut output = display(stable_bundle_id(), TEAM_ID, "ignored").into_bytes();
+                output.resize(super::super::MAX_COMMAND_OUTPUT_BYTES + 1, b' ');
+                if stderr {
+                    runner.queue_success_stderr(program, output);
+                } else {
+                    runner.queue_success(program, output);
+                }
+                let error = verify_bundle_signature(&runner, Path::new("/Codex.app")).unwrap_err();
+                assert_eq!(error.code(), InstallerErrorCode::PackageSignatureInvalid);
+                assert!(error
+                    .to_dto()
+                    .details
+                    .redacted_message
+                    .unwrap()
+                    .contains("截断"));
+                runner.assert_drained();
+            }
         }
     }
 

@@ -325,7 +325,10 @@ pub(crate) fn install_current_user(
     })();
     let detach_result = mounted.detach();
     match (result, detach_result) {
-        (Ok(installed), Ok(())) => {
+        (Ok(installed), detach_result) => {
+            if detach_result.is_err() {
+                log::warn!("Codex 安装已成功，但磁盘映像卸载失败");
+            }
             progress.report_progress(JobProgress::new(
                 ProgressPhase::Installation,
                 Some(3),
@@ -333,7 +336,6 @@ pub(crate) fn install_current_user(
             ));
             Ok(bundle::installed_application(&installed.info))
         }
-        (Ok(_), Err(detach_error)) => Err(detach_error),
         (Err(primary_error), _) => Err(primary_error),
     }
 }
@@ -614,7 +616,7 @@ impl MountedDmg<'_> {
         self.detach_attempted = true;
         for _ in 0..MAX_DETACH_ATTEMPTS {
             let output = self.runner.run(&command(
-                "hdiutil",
+                "/usr/bin/hdiutil",
                 vec![
                     OsString::from("detach"),
                     self.mount_point.clone().into_os_string(),
@@ -638,7 +640,7 @@ impl Drop for MountedDmg<'_> {
             return;
         }
         let _ = self.runner.run(&command(
-            "hdiutil",
+            "/usr/bin/hdiutil",
             vec![
                 OsString::from("detach"),
                 self.mount_point.clone().into_os_string(),
@@ -654,7 +656,7 @@ fn mount_dmg<'a>(
 ) -> Result<MountedDmg<'a>, InstallerError> {
     let output = runner
         .run(&command(
-            "hdiutil",
+            "/usr/bin/hdiutil",
             vec![
                 OsString::from("attach"),
                 artifact_path.to_path_buf().into_os_string(),
@@ -1216,7 +1218,7 @@ where
     })?;
 
     let copy_output = match runner.run(&command(
-        "ditto",
+        "/usr/bin/ditto",
         vec![
             source_bundle
                 .info
@@ -1506,6 +1508,9 @@ fn verify_staged_bundle(
             InstallerErrorCode::InstallationVerifyFailed,
             "staged application differs from the mounted source bundle",
         ));
+    }
+    if matches!(policy, BundleTransactionPolicy::Codex { .. }) {
+        super::signature::verify_bundle_signature(runner, &canonical_staging)?;
     }
     Ok(staged)
 }
@@ -1944,7 +1949,7 @@ mod tests {
     }
 
     fn queue_read_with_identity(runner: &FakeRunner, bundle_id: &str, version: &str) {
-        runner.queue_success("plutil", plist(bundle_id, version));
+        runner.queue_success("/usr/bin/plutil", plist(bundle_id, version));
     }
 
     fn queue_managed_read(
@@ -1954,7 +1959,7 @@ mod tests {
         short_version: &str,
     ) {
         runner.queue_success(
-            "plutil",
+            "/usr/bin/plutil",
             managed_plist(bundle_id, bundle_version, short_version),
         );
     }
@@ -1974,7 +1979,7 @@ mod tests {
     fn install_copy_hook(runner: &Arc<FakeRunner>, filesystem: &Arc<FakeFilesystem>) {
         let filesystem_for_ditto = filesystem.clone();
         runner.set_hook(Arc::new(move |invocation| {
-            if invocation.program() == "ditto" {
+            if invocation.program() == "/usr/bin/ditto" {
                 filesystem_for_ditto
                     .copy_tree(
                         PathBuf::from(invocation.arguments()[0].clone()),
@@ -2009,13 +2014,14 @@ mod tests {
     }
 
     fn queue_fresh_install_with_identity(runner: &FakeRunner, bundle_id: &str, version: &str) {
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_read_with_identity(runner, bundle_id, version); // mounted source
         super::super::signature::tests::queue_valid_signature(runner);
-        runner.queue_success("ditto", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/ditto", Vec::<u8>::new());
         queue_read_with_identity(runner, bundle_id, version); // staging
+        super::super::signature::tests::queue_valid_signature(runner);
         queue_read_with_identity(runner, bundle_id, version); // target
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
     }
 
     #[test]
@@ -2049,8 +2055,8 @@ mod tests {
     fn attach_validation_failure_still_detaches_the_mounted_image() {
         let filesystem = FakeFilesystem::new();
         let runner = FakeRunner::new();
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
 
         let mount_error = mount_dmg(&runner, &filesystem, Path::new(ARTIFACT))
             .err()
@@ -2061,7 +2067,7 @@ mod tests {
             .into_iter()
             .map(|invocation| invocation.program())
             .collect::<Vec<_>>();
-        assert_eq!(commands, ["hdiutil", "hdiutil"]);
+        assert_eq!(commands, ["/usr/bin/hdiutil", "/usr/bin/hdiutil"]);
         runner.assert_drained();
     }
 
@@ -2183,7 +2189,7 @@ mod tests {
         let runner = Arc::new(FakeRunner::new());
         let filesystem_for_ditto = filesystem.clone();
         runner.set_hook(Arc::new(move |invocation| {
-            if invocation.program() == "ditto" {
+            if invocation.program() == "/usr/bin/ditto" {
                 filesystem_for_ditto
                     .copy_tree(
                         PathBuf::from(invocation.arguments()[0].clone()),
@@ -2226,7 +2232,7 @@ mod tests {
         );
         let invocations = runner.invocations();
         let attach = invocations.first().unwrap();
-        assert_eq!(attach.program(), "hdiutil");
+        assert_eq!(attach.program(), "/usr/bin/hdiutil");
         assert!(attach
             .arguments()
             .iter()
@@ -2248,7 +2254,7 @@ mod tests {
         }));
         let ditto = invocations
             .iter()
-            .find(|invocation| invocation.program() == "ditto")
+            .find(|invocation| invocation.program() == "/usr/bin/ditto")
             .unwrap();
         assert_eq!(ditto.arguments()[0], source_bundle.as_os_str());
         assert!(Path::new(&ditto.arguments()[1])
@@ -2264,7 +2270,7 @@ mod tests {
         let runner = Arc::new(FakeRunner::new());
         let filesystem_for_ditto = filesystem.clone();
         runner.set_hook(Arc::new(move |invocation| {
-            if invocation.program() == "ditto" {
+            if invocation.program() == "/usr/bin/ditto" {
                 filesystem_for_ditto
                     .copy_tree(
                         PathBuf::from(invocation.arguments()[0].clone()),
@@ -2323,20 +2329,20 @@ mod tests {
         ] {
             let (filesystem, _) = fixture_filesystem();
             let runner = FakeRunner::new();
-            runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+            runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
             queue_read_and_validate(&runner, "5848");
             if failed_step == Some(0) {
-                runner.queue_failure("codesign", Some(1), "display failed");
+                runner.queue_failure("/usr/bin/codesign", Some(1), "display failed");
             } else {
-                runner.queue_success_stderr("codesign", identity);
+                runner.queue_success_stderr("/usr/bin/codesign", identity);
                 if failed_step == Some(1) {
-                    runner.queue_failure("codesign", Some(1), "invalid signature");
+                    runner.queue_failure("/usr/bin/codesign", Some(1), "invalid signature");
                 } else if failed_step == Some(2) {
-                    runner.queue_success("codesign", Vec::new());
-                    runner.queue_failure("spctl", Some(1), "assessment denied");
+                    runner.queue_success("/usr/bin/codesign", Vec::new());
+                    runner.queue_failure("/usr/sbin/spctl", Some(1), "assessment denied");
                 }
             }
-            runner.queue_success("hdiutil", Vec::new());
+            runner.queue_success("/usr/bin/hdiutil", Vec::new());
             let error = install_current_user(
                 &runner,
                 filesystem.as_ref(),
@@ -2349,11 +2355,86 @@ mod tests {
             assert!(runner
                 .invocations()
                 .iter()
-                .all(|call| call.program() != "ditto"));
+                .all(|call| call.program() != "/usr/bin/ditto"));
             assert!(!filesystem.contains(Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app")));
             assert!(!filesystem.contains(Path::new(USER_APPLICATIONS).join("ChatGPT.app")));
             runner.assert_drained();
         }
+    }
+
+    #[test]
+    fn staged_signature_failure_cleans_copy_without_committing_and_preserves_error() {
+        let (filesystem, _) = fixture_filesystem();
+        let runner = Arc::new(FakeRunner::new());
+        install_copy_hook(&runner, &filesystem);
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
+        queue_read_with_identity(&runner, stable_bundle_id(), "5848");
+        super::super::signature::tests::queue_valid_signature(&runner);
+        runner.queue_success("/usr/bin/ditto", Vec::new());
+        queue_read_with_identity(&runner, stable_bundle_id(), "5848");
+        runner.queue_success_stderr(
+            "/usr/bin/codesign",
+            "Identifier=com.openai.codex\nTeamIdentifier=2DC432GLL2\n",
+        );
+        runner.queue_failure("/usr/bin/codesign", Some(3), "modified code");
+        for _ in 0..MAX_DETACH_ATTEMPTS {
+            runner.queue_failure("/usr/bin/hdiutil", Some(1), "busy");
+        }
+
+        let failure = install_current_user(
+            runner.as_ref(),
+            filesystem.as_ref(),
+            &host(),
+            &package(&release("5848")),
+            Arc::new(|_| {}),
+        )
+        .unwrap_err();
+        assert_eq!(failure.code(), InstallerErrorCode::PackageSignatureInvalid);
+        let calls = runner.invocations();
+        let staging = calls
+            .iter()
+            .find(|call| call.program() == "/usr/bin/ditto")
+            .map(|call| PathBuf::from(&call.arguments()[1]))
+            .unwrap();
+        assert!(calls
+            .iter()
+            .any(|call| call.program() == "/usr/bin/codesign"
+                && call.arguments()[0] == "--verify"
+                && call
+                    .arguments()
+                    .last()
+                    .is_some_and(|path| Path::new(path) == staging)));
+        assert!(!filesystem.contains(&staging));
+        assert!(!filesystem.contains(Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app")));
+        assert!(!filesystem.contains(Path::new(USER_APPLICATIONS).join("ChatGPT.app")));
+        runner.assert_drained();
+    }
+
+    #[test]
+    fn committed_install_succeeds_when_detach_fails() {
+        let (filesystem, _) = fixture_filesystem();
+        let runner = Arc::new(FakeRunner::new());
+        install_copy_hook(&runner, &filesystem);
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
+        queue_read_with_identity(&runner, stable_bundle_id(), "5848");
+        super::super::signature::tests::queue_valid_signature(&runner);
+        runner.queue_success("/usr/bin/ditto", Vec::new());
+        queue_read_with_identity(&runner, stable_bundle_id(), "5848");
+        super::super::signature::tests::queue_valid_signature(&runner);
+        queue_read_with_identity(&runner, stable_bundle_id(), "5848");
+        for _ in 0..MAX_DETACH_ATTEMPTS {
+            runner.queue_failure("/usr/bin/hdiutil", Some(1), "busy");
+        }
+        install_current_user(
+            runner.as_ref(),
+            filesystem.as_ref(),
+            &host(),
+            &package(&release("5848")),
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert!(filesystem.contains(Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app")));
+        runner.assert_drained();
     }
 
     #[test]
@@ -2362,7 +2443,7 @@ mod tests {
         let runner = Arc::new(FakeRunner::new());
         let filesystem_for_ditto = filesystem.clone();
         runner.set_hook(Arc::new(move |invocation| {
-            if invocation.program() == "ditto" {
+            if invocation.program() == "/usr/bin/ditto" {
                 filesystem_for_ditto
                     .copy_tree(
                         PathBuf::from(invocation.arguments()[0].clone()),
@@ -2371,11 +2452,11 @@ mod tests {
                     .unwrap();
             }
         }));
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_read_and_validate(runner.as_ref(), "5848"); // mounted source
         super::super::signature::tests::queue_valid_signature(runner.as_ref());
-        runner.queue_failure("ditto", Some(1), b"copy failed".to_vec());
-        runner.queue_success("hdiutil", Vec::<u8>::new()); // detach
+        runner.queue_failure("/usr/bin/ditto", Some(1), b"copy failed".to_vec());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new()); // detach
         let release = release("5848");
         let progress: PlatformProgressSink = Arc::new(|_| {});
 
@@ -2395,7 +2476,7 @@ mod tests {
         let staging = runner
             .invocations()
             .into_iter()
-            .find(|invocation| invocation.program() == "ditto")
+            .find(|invocation| invocation.program() == "/usr/bin/ditto")
             .map(|invocation| PathBuf::from(invocation.arguments()[1].clone()))
             .expect("the failed copy still used a generated staging bundle");
         assert!(!filesystem.contains(staging));
@@ -2408,7 +2489,7 @@ mod tests {
         let runner = Arc::new(FakeRunner::new());
         let filesystem_for_ditto = filesystem.clone();
         runner.set_hook(Arc::new(move |invocation| {
-            if invocation.program() == "ditto" {
+            if invocation.program() == "/usr/bin/ditto" {
                 filesystem_for_ditto
                     .copy_tree(
                         PathBuf::from(invocation.arguments()[0].clone()),
@@ -2417,12 +2498,12 @@ mod tests {
                     .unwrap();
             }
         }));
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_read_and_validate(runner.as_ref(), "5848"); // mounted source
         super::super::signature::tests::queue_valid_signature(runner.as_ref());
-        runner.queue_success("ditto", Vec::<u8>::new());
-        runner.queue_failure("plutil", Some(1), b"invalid staged plist".to_vec());
-        runner.queue_success("hdiutil", Vec::<u8>::new()); // detach
+        runner.queue_success("/usr/bin/ditto", Vec::<u8>::new());
+        runner.queue_failure("/usr/bin/plutil", Some(1), b"invalid staged plist".to_vec());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new()); // detach
         let release = release("5848");
         let progress: PlatformProgressSink = Arc::new(|_| {});
 
@@ -2442,7 +2523,7 @@ mod tests {
         let staging = runner
             .invocations()
             .into_iter()
-            .find(|invocation| invocation.program() == "ditto")
+            .find(|invocation| invocation.program() == "/usr/bin/ditto")
             .map(|invocation| PathBuf::from(invocation.arguments()[1].clone()))
             .expect("the staging validation followed a generated copy target");
         assert!(!filesystem.contains(staging));
@@ -2459,7 +2540,7 @@ mod tests {
         let runner = Arc::new(FakeRunner::new());
         let filesystem_for_ditto = filesystem.clone();
         runner.set_hook(Arc::new(move |invocation| {
-            if invocation.program() == "ditto" {
+            if invocation.program() == "/usr/bin/ditto" {
                 filesystem_for_ditto
                     .copy_tree(
                         PathBuf::from(invocation.arguments()[0].clone()),
@@ -2492,10 +2573,10 @@ mod tests {
         let (filesystem, source_bundle) = fixture_filesystem();
         let target = Path::new(SYSTEM_APPLICATIONS).join("OpenCode.app");
         let runner = FakeRunner::new();
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
         queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let policy = managed_policy(
             BUNDLE_ID,
             ManagedBundleVersionSource::InfoPlist,
@@ -2546,7 +2627,7 @@ mod tests {
         assert!(runner
             .invocations()
             .iter()
-            .all(|invocation| invocation.program() != "ditto"));
+            .all(|invocation| invocation.program() != "/usr/bin/ditto"));
         runner.assert_drained();
     }
 
@@ -2557,12 +2638,12 @@ mod tests {
         let target = Path::new(SYSTEM_APPLICATIONS).join("OpenCode.app");
         add_bundle(filesystem.as_ref(), &target);
         let runner = FakeRunner::new();
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
         queue_managed_read(&runner, BUNDLE_ID, "1.2.2", "1.2.2");
         runner.queue_success("osascript", b"not_running\n".to_vec());
         queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let policy = managed_policy(
             BUNDLE_ID,
             ManagedBundleVersionSource::InfoPlist,
@@ -2626,11 +2707,11 @@ mod tests {
         let target = Path::new(SYSTEM_APPLICATIONS).join("OpenCode.app");
         add_bundle(filesystem.as_ref(), &target);
         let runner = FakeRunner::new();
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
         queue_managed_read(&runner, BUNDLE_ID, "1.2.2", "1.2.2");
         runner.queue_success("osascript", b"running\n".to_vec());
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let policy = managed_policy(
             BUNDLE_ID,
             ManagedBundleVersionSource::InfoPlist,
@@ -2674,9 +2755,9 @@ mod tests {
         let (filesystem, _) = fixture_filesystem();
         let target = Path::new(SYSTEM_APPLICATIONS).join("OpenCode.app");
         let runner = FakeRunner::new();
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let policy = managed_policy(
             BUNDLE_ID,
             ManagedBundleVersionSource::InfoPlist,
@@ -2706,7 +2787,7 @@ mod tests {
             runner
                 .invocations()
                 .iter()
-                .filter(|invocation| invocation.program() == "hdiutil")
+                .filter(|invocation| invocation.program() == "/usr/bin/hdiutil")
                 .count(),
             2
         );
@@ -2719,10 +2800,10 @@ mod tests {
         let (filesystem, source_bundle) = fixture_filesystem();
         let target = Path::new(SYSTEM_APPLICATIONS).join("OpenCode.app");
         let runner = FakeRunner::new();
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
         queue_managed_read(&runner, BUNDLE_ID, "1.2.2", "1.2.2");
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let policy = managed_policy(
             BUNDLE_ID,
             ManagedBundleVersionSource::InfoPlist,
@@ -2766,16 +2847,16 @@ mod tests {
         add_bundle(filesystem.as_ref(), &target);
         let runner = Arc::new(FakeRunner::new());
         install_copy_hook(&runner, &filesystem);
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "36279234", "5.3.14");
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "36200000", "5.3.13");
         runner.queue_success("osascript", b"not_running\n".to_vec());
-        runner.queue_success("ditto", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/ditto", Vec::<u8>::new());
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "36279234", "5.3.14");
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "36200000", "5.3.13");
         runner.queue_success("osascript", b"not_running\n".to_vec());
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "36279234", "5.3.14");
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let commits = Arc::new(Mutex::new(0_u8));
         let commits_for_gate = commits.clone();
         let policy = managed_policy(
@@ -2827,13 +2908,13 @@ mod tests {
         add_bundle(filesystem.as_ref(), &target);
         let runner = Arc::new(FakeRunner::new());
         install_copy_hook(&runner, &filesystem);
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.15", "0.9.15");
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.12", "0.9.12");
         runner.queue_success("osascript", b"not_running\n".to_vec());
-        runner.queue_success("ditto", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/ditto", Vec::<u8>::new());
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.15", "0.9.15");
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let policy = managed_policy(
             BUNDLE_ID,
             ManagedBundleVersionSource::InfoPlist,
@@ -2861,7 +2942,7 @@ mod tests {
         let staging = runner
             .invocations()
             .into_iter()
-            .find(|invocation| invocation.program() == "ditto")
+            .find(|invocation| invocation.program() == "/usr/bin/ditto")
             .map(|invocation| PathBuf::from(invocation.arguments()[1].clone()))
             .expect("managed update must stage before the commit gate");
         assert!(!filesystem.contains(staging));
@@ -2876,18 +2957,18 @@ mod tests {
         add_bundle(filesystem.as_ref(), &target);
         let runner = Arc::new(FakeRunner::new());
         install_copy_hook(&runner, &filesystem);
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.15", "0.9.15");
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.12", "0.9.12");
         runner.queue_success("osascript", b"not_running\n".to_vec());
-        runner.queue_success("ditto", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/ditto", Vec::<u8>::new());
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.15", "0.9.15");
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.12", "0.9.12");
         runner.queue_success("osascript", b"not_running\n".to_vec());
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.15", "0.9.15");
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.15", "0.9.15");
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.12", "0.9.12");
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let policy = managed_policy(
             BUNDLE_ID,
             ManagedBundleVersionSource::InfoPlist,
@@ -2929,11 +3010,11 @@ mod tests {
         let target = Path::new(USER_APPLICATIONS).join("WorkBuddy.app");
         add_bundle(filesystem.as_ref(), &target);
         let runner = FakeRunner::new();
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_managed_read(&runner, BUNDLE_ID, "100", "5.3.14");
         queue_managed_read(&runner, BUNDLE_ID, "99", "5.3.13");
         runner.queue_success("osascript", b"running\n".to_vec());
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let policy = managed_policy(
             BUNDLE_ID,
             ManagedBundleVersionSource::InfoPlist,
@@ -2961,7 +3042,7 @@ mod tests {
         assert!(runner
             .invocations()
             .iter()
-            .all(|invocation| invocation.program() != "ditto"));
+            .all(|invocation| invocation.program() != "/usr/bin/ditto"));
         runner.assert_drained();
     }
 
@@ -2972,12 +3053,12 @@ mod tests {
         add_trae_product_json(filesystem.as_ref(), &source_bundle, "2.3.71801");
         let runner = Arc::new(FakeRunner::new());
         install_copy_hook(&runner, &filesystem);
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        runner.queue_success("/usr/bin/hdiutil", mount_plist(MOUNT_POINT));
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.1.51", "0.1.51");
-        runner.queue_success("ditto", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/ditto", Vec::<u8>::new());
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.1.51", "0.1.51");
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.1.51", "0.1.51");
-        runner.queue_success("hdiutil", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let policy = managed_policy(
             BUNDLE_ID,
             ManagedBundleVersionSource::TraeProductJson,
@@ -3020,11 +3101,11 @@ mod tests {
         let runner = FakeRunner::new();
         let host = host();
         let policy = BundleTransactionPolicy::Codex { host: &host };
-        runner.queue_success("plutil", plist(stable_bundle_id(), "5848"));
+        runner.queue_success("/usr/bin/plutil", plist(stable_bundle_id(), "5848"));
         let expected = policy
             .inspect_source(&runner, &filesystem, &target)
             .unwrap();
-        runner.queue_success("plutil", plist("com.example.changed", "5848"));
+        runner.queue_success("/usr/bin/plutil", plist("com.example.changed", "5848"));
 
         assert_eq!(
             restore_backup(

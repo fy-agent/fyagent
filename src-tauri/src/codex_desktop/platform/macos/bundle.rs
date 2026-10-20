@@ -188,7 +188,7 @@ fn read_structured_bundle_plist_on_macos(bundle_path: &Path) -> Option<RawInfoPl
     if meta.len() == 0 || meta.len() > MAX_STRUCTURED_PLIST_JSON_BYTES as u64 * 4 {
         return None;
     }
-    let output = Command::new("plutil")
+    let output = Command::new("/usr/bin/plutil")
         .args(["-convert", "json", "-o", "-", "--"])
         .arg(&info_plist)
         .output()
@@ -472,7 +472,7 @@ fn probe_bundle_identifier(
 
     let output = runner
         .run(&command(
-            "plutil",
+            "/usr/bin/plutil",
             vec![
                 OsString::from("-convert"),
                 OsString::from(PLUTIL_OUTPUT_FORMAT),
@@ -513,7 +513,7 @@ fn read_raw_info_plist(
 
     let output = runner
         .run(&command(
-            "plutil",
+            "/usr/bin/plutil",
             vec![
                 OsString::from("-convert"),
                 OsString::from(PLUTIL_OUTPUT_FORMAT),
@@ -1081,7 +1081,7 @@ mod tests {
     }
 
     fn queue_bundle_read(runner: &FakeRunner, plist: Vec<u8>) {
-        runner.queue_success("plutil", plist);
+        runner.queue_success("/usr/bin/plutil", plist);
     }
 
     fn queue_stable_bundle_scan(runner: &FakeRunner, bundle_version: &str) {
@@ -1111,7 +1111,7 @@ mod tests {
         runner.assert_drained();
 
         let invocations = runner.invocations();
-        assert_eq!(invocations[0].program(), "plutil");
+        assert_eq!(invocations[0].program(), "/usr/bin/plutil");
         assert_eq!(invocations[0].arguments()[0], "-convert");
         assert_eq!(invocations[0].arguments()[1], "json");
         assert_eq!(invocations.len(), 1);
@@ -1164,7 +1164,7 @@ mod tests {
         assert!(runner
             .invocations()
             .iter()
-            .all(|invocation| invocation.program() == "plutil"));
+            .all(|invocation| invocation.program() == "/usr/bin/plutil"));
         runner.assert_drained();
     }
 
@@ -1177,7 +1177,7 @@ mod tests {
         add_bundle(&filesystem, &stable);
         let runner = FakeRunner::new();
         runner.queue_success(
-            "plutil",
+            "/usr/bin/plutil",
             br#"{"CFBundleIdentifier":"com.example.unrelated"}"#.to_vec(),
         );
         queue_stable_bundle_scan(&runner, "5848");
@@ -1221,7 +1221,7 @@ mod tests {
             runner
                 .invocations()
                 .iter()
-                .filter(|invocation| invocation.program() == "plutil")
+                .filter(|invocation| invocation.program() == "/usr/bin/plutil")
                 .count(),
             2
         );
@@ -1252,7 +1252,7 @@ mod tests {
         let malformed = Path::new(SYSTEM_APPLICATIONS).join("Archive.app");
         add_bundle(&filesystem, &malformed);
         let runner = FakeRunner::new();
-        runner.queue_success("plutil", b"not-json".to_vec());
+        runner.queue_success("/usr/bin/plutil", b"not-json".to_vec());
 
         assert!(matches!(
             inspect_local(&runner, &filesystem, &host()).unwrap(),
@@ -1275,8 +1275,8 @@ mod tests {
             stable_bundle_id()
         )
         .into_bytes();
-        runner.queue_success("plutil", stable_identity_only.clone());
-        runner.queue_success("plutil", stable_identity_only);
+        runner.queue_success("/usr/bin/plutil", stable_identity_only.clone());
+        runner.queue_success("/usr/bin/plutil", stable_identity_only);
 
         assert_eq!(
             inspect_local(&runner, &filesystem, &host())
@@ -1321,7 +1321,7 @@ mod tests {
         assert!(runner
             .invocations()
             .iter()
-            .all(|invocation| invocation.program() == "plutil"));
+            .all(|invocation| invocation.program() == "/usr/bin/plutil"));
         runner.assert_drained();
     }
 
@@ -1331,7 +1331,7 @@ mod tests {
         let bundle_path = Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app");
         add_bundle(&filesystem, &bundle_path);
         let runner = FakeRunner::new();
-        runner.queue_success("plutil", b"not-json".to_vec());
+        runner.queue_success("/usr/bin/plutil", b"not-json".to_vec());
 
         assert_eq!(
             read_bundle_info(&runner, &filesystem, &bundle_path)
