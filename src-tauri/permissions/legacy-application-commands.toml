@@ -190,6 +190,7 @@ commands.allow = [
   "get_usage_trends",
   "get_user_home_dir",
   "get_workbuddy_model_ids",
+  "get_workbuddy_subscription_source",
   "get_workbuddy_status",
   "get_xai_oauth_models",
   "get_xai_oauth_quota",

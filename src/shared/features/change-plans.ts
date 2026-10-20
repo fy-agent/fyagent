@@ -1,6 +1,7 @@
 import type {
   ProviderQuickSetupRequest,
   WorkBuddySaveModelsRequest,
+  WorkBuddySubscriptionPlanRequest,
 } from "./models";
 
 export const CHANGE_PLAN_CONTRACT_VERSION = "fyagent-change-plan/v2" as const;
@@ -32,12 +33,14 @@ export type ChangeResourceKind =
   | "target_definition"
   | "codex_live_projection"
   | "work_buddy_models_config"
-  | "work_buddy_backup";
+  | "work_buddy_backup"
+  | "work_buddy_subscription_binding";
 
 export type ChangePlanOperation =
   | "codex_provider_switch"
   | "codex_provider_upsert_and_switch"
-  | "workbuddy_models_save";
+  | "workbuddy_models_save"
+  | "workbuddy_subscription_save";
 
 export type ChangeAdapterDescriptor = {
   readonly adapterId: ChangePlanOperation;
@@ -184,6 +187,9 @@ export type CancelChangeJobOutcome = {
 };
 
 export interface ChangePlansPort {
+  createWorkBuddySubscriptionPlan(
+    request: WorkBuddySubscriptionPlanRequest,
+  ): Promise<ChangePlan>;
   createCodexProviderSwitchPlan(targetProviderId: string): Promise<ChangePlan>;
   createCodexProviderUpsertPlan(
     request: ProviderQuickSetupRequest,
@@ -256,18 +262,33 @@ const WORKBUDDY_READ_SET = [
 
 const WORKBUDDY_WRITE_SET = WORKBUDDY_READ_SET;
 
-const RESOURCE_KINDS = [...CODEX_READ_SET, ...WORKBUDDY_READ_SET] as const;
+const WORKBUDDY_SUBSCRIPTION_SET = [
+  ...WORKBUDDY_READ_SET,
+  "work_buddy_subscription_binding",
+] as const;
+
+const RESOURCE_KINDS = [
+  ...CODEX_READ_SET,
+  ...WORKBUDDY_SUBSCRIPTION_SET,
+] as const;
 
 const CHANGE_PLAN_OPERATIONS = [
   "codex_provider_switch",
   "codex_provider_upsert_and_switch",
   "workbuddy_models_save",
+  "workbuddy_subscription_save",
 ] as const;
 
 function resourcesForOperation(operation: ChangePlanOperation): {
   readonly readSet: readonly ChangeResourceKind[];
   readonly writeSet: readonly ChangeResourceKind[];
 } {
+  if (operation === "workbuddy_subscription_save") {
+    return {
+      readSet: WORKBUDDY_SUBSCRIPTION_SET,
+      writeSet: WORKBUDDY_SUBSCRIPTION_SET,
+    };
+  }
   if (operation === "workbuddy_models_save") {
     return { readSet: WORKBUDDY_READ_SET, writeSet: WORKBUDDY_WRITE_SET };
   }
@@ -624,7 +645,8 @@ export function parseChangeJobSnapshot(value: unknown): ChangeJobSnapshot {
       STEP_KINDS,
     ) ||
     (!isExactSequence(resourceKinds, CODEX_READ_SET) &&
-      !isExactSequence(resourceKinds, WORKBUDDY_READ_SET))
+      !isExactSequence(resourceKinds, WORKBUDDY_READ_SET) &&
+      !isExactSequence(resourceKinds, WORKBUDDY_SUBSCRIPTION_SET))
   ) {
     throw new Error("Change Job is unavailable");
   }

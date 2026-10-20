@@ -287,6 +287,73 @@ impl WindowsWorkBuddyStorage {
             .map_err(|_| WindowsCommitError::Primary)
     }
 
+    /// Compensate the exact subscription publication while retaining the same
+    /// pinned namespace and no-write leaf guards as ordinary commits.
+    pub(super) fn restore_subscription(
+        &self,
+        original: Option<&[u8]>,
+        backup_before: Option<&[u8]>,
+        published: &[u8],
+    ) -> io::Result<()> {
+        let mut primary = self.open_leaf(MODELS_FILE_NAME, LeafAccess::Restore)?;
+        let mut backup = self.open_leaf(BACKUP_FILE_NAME, LeafAccess::Restore)?;
+        let primary_bytes = primary
+            .as_mut()
+            .map(|leaf| read_bounded(&mut leaf.file))
+            .transpose()?;
+        let backup_bytes = backup
+            .as_mut()
+            .map(|leaf| read_bounded(&mut leaf.file))
+            .transpose()?;
+        if primary_bytes.as_deref() != original && primary_bytes.as_deref() != Some(published) {
+            return Err(integrity_error());
+        }
+        if backup_bytes.as_deref() != backup_before && backup_bytes.as_deref() != original {
+            return Err(integrity_error());
+        }
+        self.recheck()?;
+        if primary_bytes.as_deref() != original {
+            self.restore_held(MODELS_FILE_NAME, primary.as_ref(), original)?;
+        }
+        if backup_bytes.as_deref() != backup_before {
+            self.restore_held(BACKUP_FILE_NAME, backup.as_ref(), backup_before)?;
+        }
+        Ok(())
+    }
+
+    fn restore_held(
+        &self,
+        name: &str,
+        held: Option<&HeldLeaf>,
+        bytes: Option<&[u8]>,
+    ) -> io::Result<()> {
+        self.recheck()?;
+        revalidate_production_context(self.production_context)?;
+        if let Some(bytes) = bytes {
+            return self.write_named_atomically(
+                name,
+                bytes,
+                match held {
+                    Some(held) => TargetExpectation::Existing(held),
+                    None => TargetExpectation::Missing,
+                },
+            );
+        }
+        if let Some(held) = held {
+            held.recheck()?;
+            let current = self
+                .open_leaf(name, LeafAccess::Read)?
+                .ok_or_else(integrity_error)?;
+            if current.identity != held.identity {
+                return Err(integrity_error());
+            }
+            self.recheck()?;
+            revalidate_production_context(self.production_context)?;
+            mark_delete_by_handle(&held.file)?;
+        }
+        Ok(())
+    }
+
     fn read_named(&self, name: &str) -> io::Result<Option<Vec<u8>>> {
         self.recheck()?;
         let Some(mut leaf) = self.open_leaf(name, LeafAccess::Read)? else {
@@ -329,6 +396,11 @@ impl WindowsWorkBuddyStorage {
     fn open_leaf(&self, name: &str, access: LeafAccess) -> io::Result<Option<HeldLeaf>> {
         self.recheck()?;
         let (desired_access, share_access, disposition) = match access {
+            LeafAccess::Restore => (
+                (FILE_GENERIC_READ | FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE).0,
+                (FILE_SHARE_READ | FILE_SHARE_DELETE).0,
+                RelativeDisposition::Open,
+            ),
             LeafAccess::Read => (
                 (FILE_GENERIC_READ | FILE_READ_ATTRIBUTES | SYNCHRONIZE).0,
                 (FILE_SHARE_READ | FILE_SHARE_DELETE).0,
@@ -477,6 +549,7 @@ impl WindowsWorkBuddyStorage {
 #[derive(Clone, Copy)]
 enum LeafAccess {
     Read,
+    Restore,
 }
 
 #[derive(Clone, Copy)]
@@ -1028,6 +1101,72 @@ mod tests {
             names.iter().all(|name| !name.contains(".tmp.")),
             "temporary WorkBuddy leaves must not remain: {names:?}"
         );
+    }
+
+    #[test]
+    fn subscription_restore_removes_first_publication_by_handle() {
+        let home = tempfile::tempdir().unwrap();
+        let storage = WindowsWorkBuddyStorage::open(home.path(), true).unwrap();
+        let mut snapshot = storage.snapshot_models().unwrap();
+        storage.commit(&mut snapshot, b"publication").unwrap();
+        drop(snapshot);
+        storage
+            .restore_subscription(None, None, b"publication")
+            .unwrap();
+        assert_eq!(storage.read_models().unwrap(), None);
+        assert_eq!(storage.read_backup().unwrap(), None);
+        assert_no_temp_leaves(&home.path().join(".workbuddy"));
+    }
+
+    #[test]
+    fn subscription_restore_preserves_exact_preimage_and_old_backup() {
+        let home = tempfile::tempdir().unwrap();
+        let directory = home.path().join(".workbuddy");
+        fs::create_dir(&directory).unwrap();
+        fs::write(directory.join("models.json"), b"original").unwrap();
+        fs::write(directory.join("models.json.backup"), b"older backup").unwrap();
+        let storage = WindowsWorkBuddyStorage::open(home.path(), false).unwrap();
+        let mut snapshot = storage.snapshot_models().unwrap();
+        storage.commit(&mut snapshot, b"publication").unwrap();
+        drop(snapshot);
+        storage
+            .restore_subscription(Some(b"original"), Some(b"older backup"), b"publication")
+            .unwrap();
+        assert_eq!(
+            storage.read_models().unwrap().as_deref(),
+            Some(b"original".as_slice())
+        );
+        assert_eq!(
+            storage.read_backup().unwrap().as_deref(),
+            Some(b"older backup".as_slice())
+        );
+        assert_no_temp_leaves(&directory);
+    }
+
+    #[test]
+    fn subscription_restore_rejects_external_bytes_and_no_delete_share() {
+        let home = tempfile::tempdir().unwrap();
+        let directory = home.path().join(".workbuddy");
+        fs::create_dir(&directory).unwrap();
+        let primary = directory.join("models.json");
+        fs::write(&primary, b"external").unwrap();
+        let storage = WindowsWorkBuddyStorage::open(home.path(), false).unwrap();
+        assert!(storage
+            .restore_subscription(None, None, b"publication")
+            .is_err());
+        assert_eq!(fs::read(&primary).unwrap(), b"external");
+        fs::write(&primary, b"publication").unwrap();
+        let held = OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ.0)
+            .open(&primary)
+            .unwrap();
+        assert!(storage
+            .restore_subscription(None, None, b"publication")
+            .is_err());
+        assert_eq!(fs::read(&primary).unwrap(), b"publication");
+        drop(held);
+        assert_no_temp_leaves(&directory);
     }
 
     #[test]

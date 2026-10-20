@@ -199,6 +199,9 @@ export interface ProvidersPort {
 }
 
 export interface WorkBuddyPort {
+  getSubscriptionSource(): Promise<
+    import("./models").WorkBuddySubscriptionSourceResult
+  >;
   getStatus(): Promise<WorkBuddyStatus>;
   getModelIds(): Promise<WorkBuddyModelIdsResult>;
   fetchModels(

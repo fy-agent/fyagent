@@ -170,9 +170,17 @@ target. The renderer never submits paths as restore instructions.
   managed-auth overview. Account/login changes reuse the same overview key.
   The UI states that using the subscription requires FyAgent running in the
   background, and separates saved config from actual calls/quota use.
-- WorkBuddy has no subscription picker: CLI route suggestions do not describe
-  models supported by its configured API-key service. Its existing service/key
-  input, model discovery and save-plan behavior stay intact.
+- WorkBuddy has a dedicated experimental subscription mode, separate from its
+  default API-key service/discovery/save workflow. Explicit OpenAI/xAI account
+  and model selection creates `create_workbuddy_subscription_plan` with fresh
+  `expectedRevision` and `expectedBindingVersion`; only `{planId, planDigest}`
+  reaches `apply_change_plan`. It never uses the four Agents' binding commands.
+  Preview discloses the native plan's frozen local route and same-model overwrite.
+  Cancellation before apply writes nothing. Saved copy requires a matched binding
+  job resource and fresh `get_workbuddy_subscription_source` matching account,
+  provider, model, route and incremented binding version. Failed/mismatched reads
+  block writes and remain unconfirmed. FyAgent must keep running; saved settings
+  are not conversation or quota evidence. QoderWork/TRAE remain out of scope.
 
 ## 4. Validation & Error Matrix
 
@@ -188,7 +196,7 @@ These focused cases extend the general write, secret and lifecycle matrix in
 | Native cannot confirm restoration, or either post-bind owner read fails                  | Block further target writes; no optimistic success or automatic write retry.               |
 | Codex draft is saved                                                                     | State that it is a draft and expose the existing Auth source-plan continuation.            |
 | Claude Code picker is open                                                               | Offer only its own target; do not save a Desktop source then read the Claude Code summary. |
-| WorkBuddy is selected                                                                    | Keep its service/key workflow; do not offer subscription route suggestions.                |
+| WorkBuddy is selected                                                                    | Keep API-key mode separate; subscription mode uses its own preview/apply/readback.                |
 
 ## 5. Good / Base / Bad Cases
 
@@ -205,12 +213,12 @@ valid-catalog precedence, and preservation of managed binding on model edit.
 
 `XaiSubscriptionSection.test.tsx` covers both providers' explicit account/model selection,
 changed/expired accounts, native failure/readback, per-target draft/application
-copy, navigation and hidden reads. Models Page coverage verifies that WorkBuddy
-has no unsupported subscription picker. `xaiSubscriptionPort.test.ts` covers
+copy, navigation and hidden reads. Models Page coverage verifies WorkBuddy's
+separate API-key and experimental subscription modes. `xaiSubscriptionPort.test.ts` covers
 exact vault identity payloads, invalid fields, target/result agreement, closed
 errors, old/new command compatibility, Grok activation and browser native-only
 behavior. OpenAI selection must not call xAI/API-key model discovery. Models
-Page tests retain target-switch isolation and WorkBuddy's non-subscription scope.
+Page tests retain target-switch isolation and WorkBuddy's dedicated subscription boundary.
 OpenCode cases cover exact revision/null admission, stale conflicts, secret/extra
 field rejection, native-only browser ports, target-local readback, and pending
 binding failure after a target switch.
@@ -234,3 +242,9 @@ by immediate "已切换" copy. Correct: pass the exact selected
 `{app, accountId, modelId}`, reread the saved source, then hand off to Auth's
 existing preview/apply workspace. A model fetch or saved draft is never live
 usage evidence.
+
+`WorkBuddySubscriptionSection.test.tsx`, `WorkBuddySubscriptionPlanWorkspace.test.tsx`
+and `tests/browser/workbuddy-subscription.spec.ts` cover explicit OpenAI/xAI
+selection, zero-write cancellation, stale plans and failed/mismatched fresh
+readback. Browser fixtures prove renderer command isolation only, not native
+file preservation, proxy routing or successful real-account requests.

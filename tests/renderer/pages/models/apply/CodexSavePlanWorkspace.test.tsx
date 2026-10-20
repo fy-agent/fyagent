@@ -146,6 +146,7 @@ describe("Codex save Change Plan workspace", () => {
     const ports = {
       ...createBrowserFeaturePorts(),
       changePlans: {
+        createWorkBuddySubscriptionPlan: vi.fn(),
         createCodexProviderSwitchPlan: vi.fn(),
         createCodexProviderUpsertPlan: create,
         createWorkBuddySavePlan: vi.fn(),
@@ -206,6 +207,7 @@ describe("Codex save Change Plan workspace", () => {
     const ports = {
       ...createBrowserFeaturePorts(),
       changePlans: {
+        createWorkBuddySubscriptionPlan: vi.fn(),
         createCodexProviderSwitchPlan: vi.fn(),
         createCodexProviderUpsertPlan: create,
         createWorkBuddySavePlan: vi.fn(),

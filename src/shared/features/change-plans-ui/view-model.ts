@@ -91,7 +91,16 @@ export type ApplyPresentation = {
   readonly confirmLabel: string;
 };
 
+export type SaveReconciliation =
+  | { readonly status: "pending" | "unconfirmed" }
+  | {
+      readonly status: "confirmed";
+      readonly jobId: string;
+      readonly revision: number;
+    };
+
 type ViewOptions = {
+  readonly reconciliation?: SaveReconciliation;
   readonly busy: boolean;
   readonly error: ApplyWorkspaceError | null;
   readonly nowMs?: number;
@@ -133,6 +142,7 @@ const RESOURCE_LABELS = {
   codex_live_projection: "Codex 配置文件",
   work_buddy_models_config: "WorkBuddy 模型设置",
   work_buddy_backup: "WorkBuddy 配置备份",
+  work_buddy_subscription_binding: "WorkBuddy 订阅来源",
 } as const satisfies Record<
   ChangeJobSnapshot["resources"][number]["kind"],
   string
@@ -209,7 +219,8 @@ function previewValidityLabel(plan: ChangePlan): string {
 
 function createPreviewModel(plan: ChangePlan): ApplyPreviewModel {
   const summary =
-    plan.operation === "workbuddy_models_save"
+    plan.operation === "workbuddy_models_save" ||
+    plan.operation === "workbuddy_subscription_save"
       ? `保存 WorkBuddy 模型设置，服务地址为 ${plan.targetProviderName}。`
       : plan.operation === "codex_provider_upsert_and_switch"
         ? `保存 ${plan.targetProviderName} 并设为 Codex 当前 Provider。`
@@ -494,7 +505,7 @@ function terminalPresentation(
 export function createApplyViewModel(
   plan: ChangePlan | null,
   job: ChangeJobSnapshot | null,
-  { busy, error, nowMs = Date.now() }: ViewOptions,
+  { busy, error, reconciliation, nowMs = Date.now() }: ViewOptions,
 ): ApplyPresentation {
   const expired = plan ? plan.expiresAt * 1000 <= nowMs : false;
   const mustRegenerate =
@@ -503,39 +514,60 @@ export function createApplyViewModel(
     (error ? REGENERATE_ERRORS.has(error.code) : false);
   const secretBlocked = error?.code === "secret_dependency_unavailable";
 
-  const base = job
-    ? terminalPresentation(job)
-    : secretBlocked
-      ? {
-          mode: "blocked" as const,
-          tone: "warning" as const,
-          title: "缺少可用凭据",
-          description: "请返回连接设置补充 API Key 或登录信息，然后重试。",
-          statusLabel: "需要补充凭据",
-        }
-      : mustRegenerate
+  const awaitingReconciliation =
+    job &&
+    reconciliation &&
+    (job.status === "succeeded" || job.status === "warning") &&
+    (reconciliation.status !== "confirmed" ||
+      reconciliation.jobId !== job.jobId ||
+      reconciliation.revision !== job.revision);
+  const base = awaitingReconciliation
+    ? {
+        mode: "unknown" as const,
+        tone: "unknown" as const,
+        title:
+          reconciliation.status === "unconfirmed"
+            ? "当前配置待确认"
+            : "正在核对当前配置",
+        description:
+          reconciliation.status === "unconfirmed"
+            ? "无法确认保存结果。请重新打开页面并检查当前配置。"
+            : "正在读取模型来源，核对完成后才会显示保存结果。",
+        statusLabel: "待确认",
+      }
+    : job
+      ? terminalPresentation(job)
+      : secretBlocked
         ? {
-            mode: "regenerate" as const,
+            mode: "blocked" as const,
             tone: "warning" as const,
-            title: "预览已过期",
-            description: "请重新生成预览后再确认。",
-            statusLabel: "需要更新预览",
+            title: "缺少可用凭据",
+            description: "请返回连接设置补充 API Key 或登录信息，然后重试。",
+            statusLabel: "需要补充凭据",
           }
-        : error
+        : mustRegenerate
           ? {
-              mode: "unknown" as const,
-              tone: "unknown" as const,
-              title: "暂时无法继续",
-              description: "请刷新页面后重试。",
-              statusLabel: "暂时不可用",
+              mode: "regenerate" as const,
+              tone: "warning" as const,
+              title: "预览已过期",
+              description: "请重新生成预览后再确认。",
+              statusLabel: "需要更新预览",
             }
-          : {
-              mode: "preview" as const,
-              tone: "neutral" as const,
-              title: "确认配置更改",
-              description: "确认前不会修改配置。请检查以下内容。",
-              statusLabel: "待确认",
-            };
+          : error
+            ? {
+                mode: "unknown" as const,
+                tone: "unknown" as const,
+                title: "暂时无法继续",
+                description: "请刷新页面后重试。",
+                statusLabel: "暂时不可用",
+              }
+            : {
+                mode: "preview" as const,
+                tone: "neutral" as const,
+                title: "确认配置更改",
+                description: "确认前不会修改配置。请检查以下内容。",
+                statusLabel: "待确认",
+              };
 
   const steps = (job?.steps ?? []).map((step, index) => ({
     key: `${step.kind}-${String(index)}`,

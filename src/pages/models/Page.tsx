@@ -108,6 +108,7 @@ import {
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
+import { WorkBuddySubscriptionSection } from "./WorkBuddySubscriptionSection";
 import { XaiSubscriptionSection } from "./XaiSubscriptionSection";
 import {
   CodexSavePlanWorkspace,
@@ -168,6 +169,9 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
   const statusQuery = useWorkBuddyStatus(active);
   const modelIdsQuery = useWorkBuddyModelIds(active);
+  const [sourceMode, setSourceMode] = useState<"api" | "subscription">("api");
+  const [subscriptionWriting, setSubscriptionWriting] = useState(false);
+  const [subscriptionBlocked, setSubscriptionBlocked] = useState(false);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKeyState] = useState("");
   const apiKeyRef = useRef("");
@@ -610,6 +614,9 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
         <Button
           className="fy-control-button-primary fy-models-commit-button"
           disabled={
+            sourceMode !== "api" ||
+            subscriptionWriting ||
+            subscriptionBlocked ||
             busy !== null ||
             loading ||
             readFailed ||
@@ -624,284 +631,357 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           {busy === "save" ? "保存中…" : "保存并应用"}
         </Button>
       </ModelsPanelHeader>
-      <FieldFeedback id="workbuddy-save-error" notice={notices.save} />
-      <WorkBuddySavePlanWorkspace
-        key={workBuddySavePlan?.planId ?? "workbuddy-save-preview"}
-        active={active}
-        writeTargets={workBuddyWriteTargets}
-        request={workBuddySaveRequest}
-        plan={workBuddySavePlan}
-        previewError={workBuddySavePreviewError}
-        onPlanChange={handleWorkBuddySavePlanChange}
-        onTerminal={handleWorkBuddySaveTerminal}
-        onDismiss={handleWorkBuddySaveDismiss}
-      />
-
-      {loading && <Spinner label="正在读取 WorkBuddy 状态" />}
-      {readFailed && (
-        <InlineNotice tone="error">
-          暂时无法读取 WorkBuddy 配置，请重试。
-        </InlineNotice>
-      )}
-      <ModelsExistingSection
-        title="当前已有的第三方模型 ID"
-        countLabel="已有第三方模型数量"
-        count={modelIds.length}
-        open={existingOpen}
-        onOpenChange={setExistingOpen}
-        testId="workbuddy-model-ids"
-        toggleTestId="workbuddy-status"
-        invalid={isErrorNotice(notices.existing)}
-        ariaLabel="当前已有的第三方模型 ID"
-      >
-        {modelIds.length > 0 ? (
-          <ModelSearchField
-            id="workbuddy-existing-search"
-            label="搜索已有模型"
-            value={existingSearch}
-            onChange={setExistingSearch}
-          />
-        ) : null}
-        <GroupedModelChips
-          ids={filteredExistingIds}
-          removable
-          removeDisabled={busy !== null || loading || readFailed}
-          removeOriginRef={deleteOriginRef}
-          onRemove={(modelId) => {
-            if (busy !== null || writeLock.current) return;
-            setPendingDeleteId(modelId);
-          }}
-          emptyLabel={
-            existingSearch.trim()
-              ? "没有匹配的模型 ID"
-              : "还没有找到已配置的模型 ID"
+      <div className="fy-models-inline-fields" aria-label="WorkBuddy 配置来源">
+        <Button
+          aria-pressed={sourceMode === "api"}
+          disabled={
+            subscriptionWriting ||
+            busy !== null ||
+            Boolean(workBuddySaveRequest)
           }
+          onClick={() => setSourceMode("api")}
+        >
+          API Key 配置
+        </Button>
+        <Button
+          aria-pressed={sourceMode === "subscription"}
+          disabled={
+            subscriptionWriting ||
+            busy !== null ||
+            Boolean(workBuddySaveRequest)
+          }
+          onClick={() => setSourceMode("subscription")}
+        >
+          账号订阅
+        </Button>
+      </div>
+      <div hidden={sourceMode !== "subscription"}>
+        <WorkBuddySubscriptionSection
+          active={active && sourceMode === "subscription"}
+          disabled={
+            loading ||
+            readFailed ||
+            subscriptionBlocked ||
+            subscriptionWriting ||
+            busy !== null ||
+            Boolean(workBuddySaveRequest)
+          }
+          writeTargets={
+            statusQuery.data
+              ? [
+                  {
+                    path: statusQuery.data.path,
+                    backupPath: statusQuery.data.backupPath,
+                    exists: statusQuery.data.exists,
+                  },
+                ]
+              : []
+          }
+          onBeginWrite={() => {
+            if (writeLock.current || subscriptionBlocked || !active)
+              return false;
+            writeLock.current = true;
+            setSubscriptionWriting(true);
+            return true;
+          }}
+          onEndWrite={() => {
+            writeLock.current = false;
+            setSubscriptionWriting(false);
+          }}
+          onUnconfirmed={() => {
+            writeLock.current = true;
+            setSubscriptionBlocked(true);
+            setSubscriptionWriting(false);
+          }}
+          onSaved={() => {
+            void refreshAuthoritativeState();
+          }}
         />
-        <FieldFeedback
-          id="workbuddy-existing-error"
-          notice={notices.existing}
+      </div>
+      <div hidden={sourceMode !== "api"}>
+        <FieldFeedback id="workbuddy-save-error" notice={notices.save} />
+        <WorkBuddySavePlanWorkspace
+          key={workBuddySavePlan?.planId ?? "workbuddy-save-preview"}
+          active={active}
+          writeTargets={workBuddyWriteTargets}
+          request={workBuddySaveRequest}
+          plan={workBuddySavePlan}
+          previewError={workBuddySavePreviewError}
+          onPlanChange={handleWorkBuddySavePlanChange}
+          onTerminal={handleWorkBuddySaveTerminal}
+          onDismiss={handleWorkBuddySaveDismiss}
         />
-      </ModelsExistingSection>
 
-      <ModelsSection
-        title="连接设置"
-        titleId="workbuddy-connection-title"
-        invalid={
-          isErrorNotice(notices.baseUrl) || isErrorNotice(notices.apiKey)
-        }
-      >
-        <div className="fy-models-form">
-          <label className="fy-control-field">
-            服务地址
-            <Input
-              ref={baseUrlInputRef}
-              id="workbuddy-base-url"
-              name="workbuddy-base-url"
-              type="url"
-              value={baseUrl}
-              onChange={(event) => {
-                setBaseUrl(event.target.value);
-                draftCommit.markDirty();
-                dismiss("baseUrl");
-              }}
-              placeholder="https://gateway.example/v1"
-              autoComplete="off"
-              spellCheck={false}
-              aria-invalid={isErrorNotice(notices.baseUrl)}
-              aria-describedby={
-                notices.baseUrl ? "workbuddy-base-url-error" : undefined
-              }
+        {loading && <Spinner label="正在读取 WorkBuddy 状态" />}
+        {readFailed && (
+          <InlineNotice tone="error">
+            暂时无法读取 WorkBuddy 配置，请重试。
+          </InlineNotice>
+        )}
+        <ModelsExistingSection
+          title="当前已有的第三方模型 ID"
+          countLabel="已有第三方模型数量"
+          count={modelIds.length}
+          open={existingOpen}
+          onOpenChange={setExistingOpen}
+          testId="workbuddy-model-ids"
+          toggleTestId="workbuddy-status"
+          invalid={isErrorNotice(notices.existing)}
+          ariaLabel="当前已有的第三方模型 ID"
+        >
+          {modelIds.length > 0 ? (
+            <ModelSearchField
+              id="workbuddy-existing-search"
+              label="搜索已有模型"
+              value={existingSearch}
+              onChange={setExistingSearch}
             />
-            <FieldFeedback
-              id="workbuddy-base-url-error"
-              notice={notices.baseUrl}
-            />
-          </label>
-          <div className="fy-control-field">
-            <label htmlFor="workbuddy-api-key">API Key</label>
-            <SecretInput
-              ref={apiKeyInputRef}
-              id="workbuddy-api-key"
-              name="workbuddy-api-key"
-              value={apiKey}
-              onChange={(event) => {
-                setApiKey(event.target.value);
-                dismiss("apiKey");
-              }}
-              autoComplete="off"
-              spellCheck={false}
-              aria-invalid={isErrorNotice(notices.apiKey)}
-              aria-describedby={
-                notices.apiKey ? "workbuddy-api-key-error" : undefined
-              }
-              revealLabel="显示 API Key"
-              hideLabel="隐藏 API Key"
-            />
-            <FieldFeedback
-              id="workbuddy-api-key-error"
-              notice={notices.apiKey}
-            />
-          </div>
-          <NoApiKeyOption
-            checked={allowNoApiKey}
-            onCheckedChange={(checked) => {
-              setAllowNoApiKey(checked);
-              draftCommit.markDirty();
-              if (checked) dismiss("apiKey");
+          ) : null}
+          <GroupedModelChips
+            ids={filteredExistingIds}
+            removable
+            removeDisabled={busy !== null || loading || readFailed}
+            removeOriginRef={deleteOriginRef}
+            onRemove={(modelId) => {
+              if (busy !== null || writeLock.current) return;
+              setPendingDeleteId(modelId);
             }}
-            disabled={busy !== null}
+            emptyLabel={
+              existingSearch.trim()
+                ? "没有匹配的模型 ID"
+                : "还没有找到已配置的模型 ID"
+            }
           />
-        </div>
-      </ModelsSection>
+          <FieldFeedback
+            id="workbuddy-existing-error"
+            notice={notices.existing}
+          />
+        </ModelsExistingSection>
 
-      <section
-        className="fy-models-draft"
-        data-testid="workbuddy-draft-models"
-        data-invalid={isErrorNotice(notices.draft) || undefined}
-        aria-label="待保存的模型 ID"
-      >
-        <h3>待保存的模型 ID</h3>
-        {truncated ? (
-          <p className="fy-models-muted">已达到可显示的模型数量上限。</p>
-        ) : null}
-        {draftModelIds.length > 0 ? (
-          <ModelSearchField
-            id="workbuddy-draft-search"
-            label="搜索待保存模型"
-            value={draftSearch}
-            onChange={setDraftSearch}
-          />
-        ) : null}
-        <GroupedModelChips
-          ids={filteredDraftIds}
-          removable
-          removeDisabled={busy !== null}
-          onRemove={(modelId) => {
-            setDraftModelIds((current) =>
-              current.filter((id) => id !== modelId),
-            );
-            draftCommit.markDirty();
-          }}
-          emptyLabel={
-            draftSearch.trim()
-              ? "没有匹配的模型 ID"
-              : "尚未添加模型。可拉取远程模型，或手动填入模型 ID。"
+        <ModelsSection
+          title="连接设置"
+          titleId="workbuddy-connection-title"
+          invalid={
+            isErrorNotice(notices.baseUrl) || isErrorNotice(notices.apiKey)
           }
-        />
-        <div className="fy-models-action-block">
-          <div className="fy-models-actions">
-            <ModelConnectivityTest
-              searchId="workbuddy-probe-search"
-              modelIds={draftModelIds}
-              disabled={busy !== null && busy !== "reachability"}
-              resetVersion={draftCommit.resetVersion}
-              onPrepare={validateConnection}
-              onBusyChange={(probing) =>
-                setBusy(probing ? "reachability" : null)
-              }
-              onStatus={(requestId) =>
-                ports.workbuddy.getModelProbeStatus(requestId)
-              }
-              onCancel={(requestId) =>
-                ports.workbuddy.cancelModelProbe(requestId)
-              }
-              onProbe={(modelId, requestId) =>
-                ports.workbuddy.checkModel({
-                  requestId,
-                  app: "workbuddy",
-                  baseUrl: baseUrl.trim(),
-                  apiKey: apiKeyRef.current.trim(),
-                  modelId,
-                })
-              }
+        >
+          <div className="fy-models-form">
+            <label className="fy-control-field">
+              服务地址
+              <Input
+                ref={baseUrlInputRef}
+                id="workbuddy-base-url"
+                name="workbuddy-base-url"
+                type="url"
+                value={baseUrl}
+                onChange={(event) => {
+                  setBaseUrl(event.target.value);
+                  draftCommit.markDirty();
+                  dismiss("baseUrl");
+                }}
+                placeholder="https://gateway.example/v1"
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={isErrorNotice(notices.baseUrl)}
+                aria-describedby={
+                  notices.baseUrl ? "workbuddy-base-url-error" : undefined
+                }
+              />
+              <FieldFeedback
+                id="workbuddy-base-url-error"
+                notice={notices.baseUrl}
+              />
+            </label>
+            <div className="fy-control-field">
+              <label htmlFor="workbuddy-api-key">API Key</label>
+              <SecretInput
+                ref={apiKeyInputRef}
+                id="workbuddy-api-key"
+                name="workbuddy-api-key"
+                value={apiKey}
+                onChange={(event) => {
+                  setApiKey(event.target.value);
+                  dismiss("apiKey");
+                }}
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={isErrorNotice(notices.apiKey)}
+                aria-describedby={
+                  notices.apiKey ? "workbuddy-api-key-error" : undefined
+                }
+                revealLabel="显示 API Key"
+                hideLabel="隐藏 API Key"
+              />
+              <FieldFeedback
+                id="workbuddy-api-key-error"
+                notice={notices.apiKey}
+              />
+            </div>
+            <NoApiKeyOption
+              checked={allowNoApiKey}
+              onCheckedChange={(checked) => {
+                setAllowNoApiKey(checked);
+                draftCommit.markDirty();
+                if (checked) dismiss("apiKey");
+              }}
+              disabled={busy !== null}
             />
-            <Button disabled={busy !== null} onClick={() => void fetchModels()}>
-              {busy === "fetch" ? "读取中…" : "拉取模型"}
-            </Button>
-            <Button
-              className="fy-control-button-danger"
-              disabled={busy !== null || draftModelIds.length === 0}
-              onClick={clearDraftModels}
-            >
-              清除所有模型
+          </div>
+        </ModelsSection>
+
+        <section
+          className="fy-models-draft"
+          data-testid="workbuddy-draft-models"
+          data-invalid={isErrorNotice(notices.draft) || undefined}
+          aria-label="待保存的模型 ID"
+        >
+          <h3>待保存的模型 ID</h3>
+          {truncated ? (
+            <p className="fy-models-muted">已达到可显示的模型数量上限。</p>
+          ) : null}
+          {draftModelIds.length > 0 ? (
+            <ModelSearchField
+              id="workbuddy-draft-search"
+              label="搜索待保存模型"
+              value={draftSearch}
+              onChange={setDraftSearch}
+            />
+          ) : null}
+          <GroupedModelChips
+            ids={filteredDraftIds}
+            removable
+            removeDisabled={busy !== null}
+            onRemove={(modelId) => {
+              setDraftModelIds((current) =>
+                current.filter((id) => id !== modelId),
+              );
+              draftCommit.markDirty();
+            }}
+            emptyLabel={
+              draftSearch.trim()
+                ? "没有匹配的模型 ID"
+                : "尚未添加模型。可拉取远程模型，或手动填入模型 ID。"
+            }
+          />
+          <div className="fy-models-action-block">
+            <div className="fy-models-actions">
+              <ModelConnectivityTest
+                searchId="workbuddy-probe-search"
+                modelIds={draftModelIds}
+                disabled={busy !== null && busy !== "reachability"}
+                resetVersion={draftCommit.resetVersion}
+                onPrepare={validateConnection}
+                onBusyChange={(probing) =>
+                  setBusy(probing ? "reachability" : null)
+                }
+                onStatus={(requestId) =>
+                  ports.workbuddy.getModelProbeStatus(requestId)
+                }
+                onCancel={(requestId) =>
+                  ports.workbuddy.cancelModelProbe(requestId)
+                }
+                onProbe={(modelId, requestId) =>
+                  ports.workbuddy.checkModel({
+                    requestId,
+                    app: "workbuddy",
+                    baseUrl: baseUrl.trim(),
+                    apiKey: apiKeyRef.current.trim(),
+                    modelId,
+                  })
+                }
+              />
+              <Button
+                disabled={busy !== null}
+                onClick={() => void fetchModels()}
+              >
+                {busy === "fetch" ? "读取中…" : "拉取模型"}
+              </Button>
+              <Button
+                className="fy-control-button-danger"
+                disabled={busy !== null || draftModelIds.length === 0}
+                onClick={clearDraftModels}
+              >
+                清除所有模型
+              </Button>
+            </div>
+            <FieldFeedback id="workbuddy-fetch-error" notice={notices.fetch} />
+          </div>
+          <div className="fy-models-manual-row">
+            <label className="fy-control-field fy-models-manual-field">
+              自定义模型 ID
+              <Input
+                ref={manualModelsInputRef}
+                id="workbuddy-manual-model-ids"
+                name="workbuddy-manual-model-ids"
+                value={manualDraft}
+                onChange={(event) => {
+                  setManualDraft(event.target.value);
+                  draftCommit.markDirty();
+                  dismiss("draft");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    fillManualModels();
+                  }
+                }}
+                placeholder="输入模型 ID，多个用逗号分隔"
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={isErrorNotice(notices.draft)}
+                aria-describedby={
+                  notices.draft ? "workbuddy-draft-error" : undefined
+                }
+              />
+            </label>
+            <Button disabled={busy !== null} onClick={fillManualModels}>
+              填入
             </Button>
           </div>
-          <FieldFeedback id="workbuddy-fetch-error" notice={notices.fetch} />
-        </div>
-        <div className="fy-models-manual-row">
-          <label className="fy-control-field fy-models-manual-field">
-            自定义模型 ID
-            <Input
-              ref={manualModelsInputRef}
-              id="workbuddy-manual-model-ids"
-              name="workbuddy-manual-model-ids"
-              value={manualDraft}
-              onChange={(event) => {
-                setManualDraft(event.target.value);
-                draftCommit.markDirty();
-                dismiss("draft");
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  fillManualModels();
-                }
-              }}
-              placeholder="输入模型 ID，多个用逗号分隔"
-              autoComplete="off"
-              spellCheck={false}
-              aria-invalid={isErrorNotice(notices.draft)}
-              aria-describedby={
-                notices.draft ? "workbuddy-draft-error" : undefined
-              }
-            />
-          </label>
-          <Button disabled={busy !== null} onClick={fillManualModels}>
-            填入
-          </Button>
-        </div>
-        <FieldFeedback id="workbuddy-draft-error" notice={notices.draft} />
-        <p className="fy-models-muted">
-          {draftModelIds.length > 0
-            ? `已选择 ${draftModelIds.length} 个模型，尚未保存。`
-            : "已选择 0 个模型"}
-        </p>
-      </section>
-
-      <Dialog
-        open={pendingDeleteId !== null}
-        originRef={deleteOriginRef}
-        onOpenChange={(open) => {
-          if (!open && busy !== "delete") setPendingDeleteId(null);
-        }}
-        title="确认删除模型"
-        description="模型配置删除后无法恢复。"
-        actions={
-          <>
-            <Button
-              disabled={busy === "delete"}
-              onClick={() => setPendingDeleteId(null)}
-            >
-              取消
-            </Button>
-            <Button
-              className="fy-control-button-danger"
-              disabled={busy === "delete" || pendingDeleteId === null}
-              onClick={() => {
-                if (pendingDeleteId) void deleteExistingModel(pendingDeleteId);
-              }}
-            >
-              {busy === "delete" ? "删除中…" : "确认删除"}
-            </Button>
-          </>
-        }
-      >
-        {pendingDeleteId ? (
-          <p>
-            将删除 <code>{pendingDeleteId}</code>。
+          <FieldFeedback id="workbuddy-draft-error" notice={notices.draft} />
+          <p className="fy-models-muted">
+            {draftModelIds.length > 0
+              ? `已选择 ${draftModelIds.length} 个模型，尚未保存。`
+              : "已选择 0 个模型"}
           </p>
-        ) : null}
-      </Dialog>
+        </section>
+
+        <Dialog
+          open={pendingDeleteId !== null}
+          originRef={deleteOriginRef}
+          onOpenChange={(open) => {
+            if (!open && busy !== "delete") setPendingDeleteId(null);
+          }}
+          title="确认删除模型"
+          description="模型配置删除后无法恢复。"
+          actions={
+            <>
+              <Button
+                disabled={busy === "delete"}
+                onClick={() => setPendingDeleteId(null)}
+              >
+                取消
+              </Button>
+              <Button
+                className="fy-control-button-danger"
+                disabled={busy === "delete" || pendingDeleteId === null}
+                onClick={() => {
+                  if (pendingDeleteId)
+                    void deleteExistingModel(pendingDeleteId);
+                }}
+              >
+                {busy === "delete" ? "删除中…" : "确认删除"}
+              </Button>
+            </>
+          }
+        >
+          {pendingDeleteId ? (
+            <p>
+              将删除 <code>{pendingDeleteId}</code>。
+            </p>
+          ) : null}
+        </Dialog>
+      </div>
     </CatalogDetail>
   );
 }

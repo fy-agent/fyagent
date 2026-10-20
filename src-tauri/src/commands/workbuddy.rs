@@ -47,3 +47,21 @@ pub async fn save_workbuddy_models(
         .await
         .map_err(Into::into)
 }
+
+/// Fresh native comparison of the selected binding and actual model connection.
+#[tauri::command]
+pub async fn get_workbuddy_subscription_source(
+    app_handle: tauri::AppHandle,
+) -> Result<workbuddy::types::WorkBuddySubscriptionSourceResult, String> {
+    use tauri::Manager;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<crate::store::AppState>()
+            .ok_or_else(|| "internal".to_string())?;
+        let _guard = workbuddy::write_lock().blocking_lock();
+        workbuddy::subscription::read_subscription_source(&state)
+            .map_err(|error| error.code().as_str().to_string())
+    })
+    .await
+    .map_err(|_| "internal".to_string())?
+}

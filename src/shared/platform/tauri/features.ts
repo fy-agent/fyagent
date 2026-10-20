@@ -124,6 +124,8 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).providers.fetchXaiManagedModels(...args),
     },
     workbuddy: {
+      getSubscriptionSource: async () =>
+        (await models()).workbuddy.getSubscriptionSource(),
       getStatus: async (...args) =>
         (await models()).workbuddy.getStatus(...args),
       getModelIds: async (...args) =>

@@ -60,6 +60,21 @@ pub async fn create_workbuddy_save_plan(
 }
 
 #[tauri::command]
+pub async fn create_workbuddy_subscription_plan(
+    app_handle: AppHandle,
+    request: crate::services::workbuddy::types::SaveWorkBuddySubscriptionRequest,
+) -> Result<ChangePlan, ChangePlanErrorCode> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or(ChangePlanErrorCode::Internal)?;
+        ChangePlanService::plan_workbuddy_subscription(&state, request)
+    })
+    .await
+    .map_err(|_| ChangePlanErrorCode::Internal)?
+}
+
+#[tauri::command]
 pub async fn apply_change_plan(
     app_handle: AppHandle,
     plan_id: String,

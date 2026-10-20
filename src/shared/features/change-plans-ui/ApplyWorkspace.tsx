@@ -8,6 +8,7 @@ import {
   createApplyViewModel,
   type ApplyStepPresentation,
   type ApplyWorkspaceError,
+  type SaveReconciliation,
 } from "./view-model";
 import "./apply-workspace.css";
 
@@ -17,10 +18,12 @@ export type ConfirmChangePlanInput = {
 };
 
 export type ApplyWorkspaceProps = {
+  readonly reconciliation?: SaveReconciliation;
   readonly writeTargets?: readonly FileWriteTarget[];
   readonly plan: ChangePlan | null;
   readonly job: ChangeJobSnapshot | null;
   readonly busy: boolean;
+  readonly actionsDisabled?: boolean;
   readonly error: ApplyWorkspaceError | null;
   readonly onConfirm: (input: ConfirmChangePlanInput) => void | Promise<void>;
   readonly onRegenerate: () => void;
@@ -44,10 +47,12 @@ function ApplyStep({ step }: { readonly step: ApplyStepPresentation }) {
 }
 
 export function ApplyWorkspace({
+  reconciliation,
   writeTargets,
   plan,
   job,
   busy,
+  actionsDisabled = false,
   error,
   onConfirm,
   onRegenerate,
@@ -58,10 +63,11 @@ export function ApplyWorkspace({
   const confirmLockRef = useRef<string | null>(null);
   const [lockedPlanKey, setLockedPlanKey] = useState<string | null>(null);
   const confirmLocked = planKey !== null && lockedPlanKey === planKey;
-  const view = createApplyViewModel(plan, job, { busy, error });
+  const view = createApplyViewModel(plan, job, { busy, error, reconciliation });
 
   const handleConfirm = () => {
     if (
+      actionsDisabled ||
       !plan ||
       !planKey ||
       !view.canConfirm ||
@@ -253,7 +259,11 @@ export function ApplyWorkspace({
           关闭
         </Button>
         {view.canRegenerate ? (
-          <Button className="fy-control-button-primary" onClick={onRegenerate}>
+          <Button
+            className="fy-control-button-primary"
+            disabled={actionsDisabled}
+            onClick={onRegenerate}
+          >
             重新生成预览
           </Button>
         ) : null}
@@ -261,7 +271,7 @@ export function ApplyWorkspace({
           <Button
             className="fy-control-button-primary"
             onClick={handleConfirm}
-            disabled={!view.canConfirm || confirmLocked}
+            disabled={actionsDisabled || !view.canConfirm || confirmLocked}
           >
             {view.confirmLabel}
           </Button>

@@ -4,9 +4,11 @@
 
 Read this contract before changing WorkBuddy model discovery, URL admission,
 credential handling, `models.json` persistence, overwrite/revision semantics,
-or renderer navigation and query isolation. WorkBuddy is a top-level
+subscription Change Plans, or renderer navigation and query isolation. WorkBuddy is a top-level
 configuration domain; it is not an `AppType`, Provider, MCP, Skill, Prompt,
-Profile, Session, usage, environment, migration, or local-proxy domain.
+Profile, Session, usage, environment, or migration domain. Its dedicated
+subscription binding reuses the managed proxy through a WorkBuddy route; it
+does not become a generic Provider/AppType binding.
 
 ## 2. Signatures
 
@@ -41,6 +43,11 @@ save_workbuddy_models({
    | { state: "concurrent_modification" }
 
 create_workbuddy_save_plan(SaveWorkBuddyModelsRequest) -> ChangePlan
+create_workbuddy_subscription_plan({
+  accountId, modelId, expectedRevision, expectedBindingVersion
+}) -> ChangePlan // operation: workbuddy_subscription_save
+get_workbuddy_subscription_source() -> { revision, bindingVersion, source }
+// source: null | { accountId, provider, modelId, bindingVersion, localBaseUrl }
 ```
 
 The dedicated commands accept no `AppType`, Provider ID, renderer-controlled
@@ -319,3 +326,24 @@ revision = HMAC(process-local key, complete current bytes)
 overwrite confirmed = one-time request-and-revision-bound backend capability
 main/backup display paths = native status DTO only
 ```
+
+## 8. Dedicated subscription boundary
+
+- OpenAI/xAI credentials stay in managed auth. WorkBuddy receives the dedicated
+  loopback route and local credential, never the upstream account token.
+- Preview is zero-write and freezes the account, model, document revision,
+  binding version and disclosed route. Apply accepts only plan identity/digest;
+  it revalidates the account and both baselines before committing the binding
+  and WorkBuddy configuration. A stale plan must not overwrite external edits.
+- Same-model replacement is disclosed; unrelated model entries remain intact.
+  API-key save/discovery/removal retain their existing independent contracts.
+  Source readback must not report a subscription as valid after its model's
+  route or local credential has been overwritten or removed.
+- Binding, listener ownership and compensation are WorkBuddy-specific. Never
+  mutate Codex auth/config/catalog, Claude/Grok providers, or OpenCode binding
+  and backup state as a side effect. Failure must not silently choose another
+  account or API-key source. Shutdown stops forwarding; restoration must either
+  validate the saved binding or fail closed.
+- Native fault tests and Windows/macOS persistence tests are separate evidence
+  from renderer mocks. Real WorkBuddy OpenAI and xAI requests each require their
+  own device evidence; saved configuration is not upstream success.

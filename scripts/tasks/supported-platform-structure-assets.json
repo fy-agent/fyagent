@@ -31,7 +31,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "26660c70617a41d4e477f60feb8313f2a4e670cf8484872fcf00687bc81ced1a"
+      "bffe45273ac7340a60f3609c99106e846e676082ffe1959a9ed48910c4465125"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "502e0b3182ea124457d30b29d91202674833574200e96deaf4afd74d1cf12e94"
+      "8981762f1d0dc0705fb2f5383bd4a94e1890c4aeda365bbfe2d6bb0cd6d7e75e"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -256,6 +256,10 @@
     [
       "src-tauri/src/services/backup_storage.rs",
       "19d90d83fcc2f2cd2ea3c3994df98eec7b8a86674105de456c94f48c8fb282fa"
+    ],
+    [
+      "src-tauri/src/services/change_plan/service.rs",
+      "a6f7be2baa89849123e51423166c691147d73bd810fe113d02a95716f877e7fe"
     ],
     [
       "src-tauri/src/services/config_pack/files.rs",
@@ -411,11 +415,15 @@
     ],
     [
       "src-tauri/src/services/workbuddy/config.rs",
-      "583a6093a1f0baa8ce0a960ab761446fb437f7ea55400c6063372081779dcc89"
+      "e57b226260ebc299c70c26e200267ecc2cfdb7662113d56319aea2d61e9081b0"
     ],
     [
       "src-tauri/src/services/workbuddy/mod.rs",
       "d6d258b180bdc41b201c5c11993250a30110ed1f5019ceef40549c1edfafb17c"
+    ],
+    [
+      "src-tauri/src/services/workbuddy/subscription.rs",
+      "b97bbfcde01b0af2b128d8ed93810a0303bfa88ad2272d423c66975fc1019494"
     ],
     [
       "src-tauri/src/session_manager/content.rs",

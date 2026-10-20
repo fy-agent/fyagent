@@ -584,6 +584,9 @@ pub(crate) fn now_timestamp() -> String {
 }
 
 #[cfg(test)]
+pub(crate) use migration::LegacyCredentialInput;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -12,9 +12,40 @@ import {
   changePlanWire,
   changePlanWorkBuddyWire,
   changeJobWorkBuddyWire,
+  changePlanWorkBuddySubscriptionWire,
 } from "../fixtures/changePlans";
 
 describe("Change Plan strict wire parsers", () => {
+  it("accepts subscription plans and jobs while requiring exact resource sequences", () => {
+    expect(parseChangePlan(changePlanWorkBuddySubscriptionWire)).toEqual(
+      changePlanWorkBuddySubscriptionWire,
+    );
+    const resources = [
+      ...changeJobWorkBuddyWire.resources,
+      {
+        kind: "work_buddy_subscription_binding",
+        status: "pending",
+        code: "pending",
+      },
+    ];
+    const job = { ...changeJobWorkBuddyWire, resources };
+    expect(parseChangeJobSnapshot(job)).toEqual(job);
+    expect(parseApplyChangePlanOutcome({ kind: "admitted", job })).toEqual({
+      kind: "admitted",
+      job,
+    });
+    for (const invalidResources of [
+      [...resources].reverse(),
+      resources.slice(1),
+      [...resources, resources[2]],
+      [...resources, changeJobWire.resources[0]],
+    ]) {
+      expect(() =>
+        parseChangeJobSnapshot({ ...job, resources: invalidResources }),
+      ).toThrow("Change Job is unavailable");
+    }
+  });
+
   it("accepts the exact nullable plan and job contracts", () => {
     expect(parseChangePlan(changePlanWire)).toEqual(changePlanWire);
     expect(parseChangePlan(changePlanUpsertWire)).toEqual(changePlanUpsertWire);

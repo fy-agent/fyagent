@@ -290,3 +290,22 @@ export type OpenCodeSaveModelsResult =
   | WorkBuddySaveModelsSavedResult
   | WorkBuddyOverwriteConfirmationRequiredResult
   | WorkBuddyConcurrentModificationResult;
+
+export interface WorkBuddySubscriptionPlanRequest {
+  accountId: string;
+  modelId: string;
+  expectedRevision: string | null;
+  expectedBindingVersion: number | null;
+}
+
+export interface WorkBuddySubscriptionSourceResult {
+  revision: string | null;
+  bindingVersion: number | null;
+  source: {
+    accountId: string;
+    provider: "openai" | "xai";
+    modelId: string;
+    bindingVersion: number;
+    localBaseUrl: string;
+  } | null;
+}

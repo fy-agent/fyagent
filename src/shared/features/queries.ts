@@ -51,6 +51,11 @@ export const featureKeys = {
     [scope, "providers", app, "summary"] as const,
   providerProxyRestorePreview: (app: ProviderAppId) =>
     [scope, "providers", app, "proxy-restore-preview"] as const,
+  workbuddySubscriptionSource: [
+    scope,
+    "workbuddy",
+    "subscription-source",
+  ] as const,
   workbuddyStatus: [scope, "workbuddy", "status"] as const,
   workbuddyModelIds: [scope, "workbuddy", "model-ids"] as const,
   traeWorkModelIds: [scope, "trae-work", "model-ids"] as const,
@@ -415,5 +420,15 @@ export function useFeatureSettings(enabled = false) {
     queryKey: featureKeys.settings,
     queryFn: ports.settings.get,
     enabled: useVisibleEnabled(enabled),
+  });
+}
+
+export function useWorkBuddySubscriptionSource(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.workbuddySubscriptionSource,
+    queryFn: ports.workbuddy.getSubscriptionSource,
+    enabled: useVisibleEnabled(enabled),
+    retry: false,
   });
 }

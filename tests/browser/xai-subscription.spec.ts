@@ -172,9 +172,7 @@ test("saved Grok subscription can be selected for Claude and continued through t
   await expectHealthyPage(page, health);
 });
 
-test("subscription rejection remains local to its target", async ({
-  page,
-}) => {
+test("subscription rejection remains local to its target", async ({ page }) => {
   await installRichTauriFeatureFixture(page, { xaiBindFailure: true });
   await openRendererPage(
     page,
@@ -256,3 +254,89 @@ test("ChatGPT account can be bound to Grok Build through the existing model targ
   await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);
 });
+
+for (const source of [
+  {
+    provider: "OpenAI",
+    label: "ChatGPT · Browser Fixture",
+    accountId: `ma1:${"1".repeat(32)}`,
+    modelId: "chatgpt-fixture-model",
+  },
+  {
+    provider: "xAI",
+    label: "xAI 设备码 · browser-xai@example.com",
+    accountId: `ma1:${"2".repeat(32)}`,
+    modelId: "grok-subscription-fixture-1",
+  },
+]) {
+  for (const target of [
+    { app: "claude", name: "Claude Code" },
+    { app: "codex", name: "Codex" },
+    { app: "grokbuild", name: "Grok Build" },
+    { app: "opencode", name: "OpenCode" },
+  ]) {
+    test(`${target.name} ${source.provider}: explicit binding retains target semantics and never writes WorkBuddy`, async ({
+      page,
+    }) => {
+      await installRichTauriFeatureFixture(page);
+      await openRendererPage(page, `/models?target=${target.app}`);
+      const section = page.getByRole("region", { name: "账号订阅设置" });
+      const draft = target.app === "codex";
+      const action = draft ? "保存 Codex 订阅配置" : `应用到 ${target.name}`;
+      await expect(
+        section.getByRole("button", { name: action, exact: true }),
+      ).toBeDisabled();
+      await section
+        .getByRole("radio", { name: source.label, exact: true })
+        .check();
+      if (source.provider === "xAI") {
+        await section
+          .getByRole("button", { name: source.modelId, exact: true })
+          .click();
+      } else {
+        await section.getByLabel("订阅模型 ID").fill(source.modelId);
+      }
+      await section.getByRole("button", { name: action, exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", {
+          name: draft ? "确认保存" : "确认应用",
+          exact: true,
+        })
+        .click();
+      await expect(
+        section.getByText(
+          draft ? /当前请求来源尚未切换/ : `已将账号订阅应用到 ${target.name}`,
+        ),
+      ).toBeVisible();
+      const calls = await featureFixtureCalls(page);
+      const command =
+        target.app === "opencode"
+          ? "bind_opencode_managed_proxy"
+          : "bind_managed_proxy_provider";
+      expect(
+        calls.filter((c) => c.command === command).map((c) => c.payload),
+      ).toEqual([
+        {
+          request: {
+            accountId: source.accountId,
+            modelId: source.modelId,
+            ...(target.app === "opencode"
+              ? { expectedRevision: null }
+              : { app: target.app }),
+          },
+        },
+      ]);
+      expect(
+        calls.filter((c) =>
+          [
+            "create_workbuddy_subscription_plan",
+            "create_workbuddy_save_plan",
+            "save_workbuddy_models",
+            "apply_change_plan",
+          ].includes(c.command),
+        ),
+      ).toEqual([]);
+    });
+  }
+}
