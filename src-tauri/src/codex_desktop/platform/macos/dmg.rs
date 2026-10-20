@@ -261,6 +261,8 @@ pub(crate) fn install_current_user(
     let mut mounted = mount_dmg(runner, filesystem, package.artifact_path())?;
     let result = (|| {
         let source_bundle = discover_single_bundle(runner, filesystem, mounted.mount_point())?;
+        super::signature::verify_bundle_signature(runner, source_bundle.bundle_path())?;
+        bundle::validate_stable_bundle(runner, filesystem, host, &source_bundle, None)?;
         let policy = BundleTransactionPolicy::Codex { host };
         let source_bundle = policy.inspect_source_info(filesystem, source_bundle)?;
         let mut targets = plan_targets(runner, filesystem, host, &source_bundle, &policy)?;
@@ -2009,6 +2011,7 @@ mod tests {
     fn queue_fresh_install_with_identity(runner: &FakeRunner, bundle_id: &str, version: &str) {
         runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
         queue_read_with_identity(runner, bundle_id, version); // mounted source
+        super::super::signature::tests::queue_valid_signature(runner);
         runner.queue_success("ditto", Vec::<u8>::new());
         queue_read_with_identity(runner, bundle_id, version); // staging
         queue_read_with_identity(runner, bundle_id, version); // target
@@ -2256,7 +2259,7 @@ mod tests {
     }
 
     #[test]
-    fn downloaded_bundle_identity_and_version_drift_do_not_block_fresh_install() {
+    fn downloaded_bundle_version_drift_does_not_block_signed_stable_install() {
         let (filesystem, _) = fixture_filesystem();
         let runner = Arc::new(FakeRunner::new());
         let filesystem_for_ditto = filesystem.clone();
@@ -2270,7 +2273,7 @@ mod tests {
                     .unwrap();
             }
         }));
-        queue_fresh_install_with_identity(runner.as_ref(), "com.example.future", "1");
+        queue_fresh_install_with_identity(runner.as_ref(), stable_bundle_id(), "1");
         let release = release("9999");
 
         let installed = install_current_user(
@@ -2282,12 +2285,75 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(installed.stable_identity, "com.example.future");
+        assert_eq!(installed.stable_identity, stable_bundle_id());
         assert_eq!(
             installed.platform_version,
             PlatformVersion::parse_mac_bundle("1").unwrap()
         );
         runner.assert_drained();
+    }
+
+    #[test]
+    fn signature_failures_detach_without_copying_or_installing() {
+        for (identity, failed_step) in [
+            ("Identifier=com.openai.codex\nTeamIdentifier=WRONG\n", None),
+            (
+                "Identifier=com.openai.chat\nTeamIdentifier=2DC432GLL2\n",
+                None,
+            ),
+            (
+                "Identifier=com.openai.codex.beta\nTeamIdentifier=2DC432GLL2\n",
+                None,
+            ),
+            (
+                "Identifier=com.openai.codex\nTeamIdentifier=not set\n",
+                None,
+            ),
+            ("Identifier=com.openai.codex\n", None),
+            ("TeamIdentifier=2DC432GLL2\n", None),
+            ("", Some(0)),
+            (
+                "Identifier=com.openai.codex\nTeamIdentifier=2DC432GLL2\n",
+                Some(1),
+            ),
+            (
+                "Identifier=com.openai.codex\nTeamIdentifier=2DC432GLL2\n",
+                Some(2),
+            ),
+        ] {
+            let (filesystem, _) = fixture_filesystem();
+            let runner = FakeRunner::new();
+            runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+            queue_read_and_validate(&runner, "5848");
+            if failed_step == Some(0) {
+                runner.queue_failure("codesign", Some(1), "display failed");
+            } else {
+                runner.queue_success_stderr("codesign", identity);
+                if failed_step == Some(1) {
+                    runner.queue_failure("codesign", Some(1), "invalid signature");
+                } else if failed_step == Some(2) {
+                    runner.queue_success("codesign", Vec::new());
+                    runner.queue_failure("spctl", Some(1), "assessment denied");
+                }
+            }
+            runner.queue_success("hdiutil", Vec::new());
+            let error = install_current_user(
+                &runner,
+                filesystem.as_ref(),
+                &host(),
+                &package(&release("5848")),
+                Arc::new(|_| {}),
+            )
+            .unwrap_err();
+            assert_eq!(error.code(), InstallerErrorCode::PackageSignatureInvalid);
+            assert!(runner
+                .invocations()
+                .iter()
+                .all(|call| call.program() != "ditto"));
+            assert!(!filesystem.contains(Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app")));
+            assert!(!filesystem.contains(Path::new(USER_APPLICATIONS).join("ChatGPT.app")));
+            runner.assert_drained();
+        }
     }
 
     #[test]
@@ -2307,6 +2373,7 @@ mod tests {
         }));
         runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
         queue_read_and_validate(runner.as_ref(), "5848"); // mounted source
+        super::super::signature::tests::queue_valid_signature(runner.as_ref());
         runner.queue_failure("ditto", Some(1), b"copy failed".to_vec());
         runner.queue_success("hdiutil", Vec::<u8>::new()); // detach
         let release = release("5848");
@@ -2352,6 +2419,7 @@ mod tests {
         }));
         runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
         queue_read_and_validate(runner.as_ref(), "5848"); // mounted source
+        super::super::signature::tests::queue_valid_signature(runner.as_ref());
         runner.queue_success("ditto", Vec::<u8>::new());
         runner.queue_failure("plutil", Some(1), b"invalid staged plist".to_vec());
         runner.queue_success("hdiutil", Vec::<u8>::new()); // detach

@@ -7,6 +7,7 @@
 
 pub(crate) mod bundle;
 pub(crate) mod dmg;
+mod signature;
 
 use std::{
     collections::HashMap,
@@ -1179,6 +1180,17 @@ pub(super) mod test_support {
 
         pub fn queue_success(&self, program: &'static str, stdout: impl Into<Vec<u8>>) {
             self.queue(program, CommandOutput::success(stdout));
+        }
+
+        pub fn queue_success_stderr(&self, program: &'static str, stderr: impl Into<Vec<u8>>) {
+            self.queue(
+                program,
+                CommandOutput {
+                    status_code: Some(0),
+                    stdout: Vec::new(),
+                    stderr: super::bounded_output(stderr.into()),
+                },
+            );
         }
 
         pub fn queue_failure(

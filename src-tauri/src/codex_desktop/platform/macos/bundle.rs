@@ -544,9 +544,10 @@ fn read_raw_info_plist(
 }
 
 /// Confirms that an already discovered local Stable bundle is still the same
-/// operational identity. Publisher, signature, Team ID, architecture and
-/// minimum-OS policy remain the responsibility of macOS and are not FyAgent
-/// installer admission checks.
+/// operational identity. The DMG installer separately checks the downloaded
+/// bundle's exact signing identifier and Team ID before copying it, then asks
+/// codesign and Gatekeeper to verify integrity and system trust. Authority names
+/// are not pinned; architecture and minimum-OS policy remain macOS concerns.
 pub(crate) fn validate_stable_bundle(
     _runner: &dyn CommandRunner,
     _filesystem: &dyn MacosFilesystem,
