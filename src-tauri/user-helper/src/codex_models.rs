@@ -154,10 +154,12 @@ pub fn classify_response_line(line: &[u8], expected_id: u64) -> Result<RpcLine, 
 }
 
 /// Extracts the CLI version from the `initialize` result's `userAgent`
-/// (`<originator>/<version> (...)`). An unrecognized agent yields `None`.
+/// (`<originator>/<version> (...)`), including originators containing spaces.
+/// An unrecognized agent yields `None`.
 pub fn cli_version_from_initialize(result: &Value) -> Option<String> {
     let agent = result.get("userAgent")?.as_str()?;
-    let version = agent.split_whitespace().next()?.split_once('/')?.1;
+    let product = agent.split('(').next()?.trim();
+    let version = product.split_once('/')?.1.split_whitespace().next()?;
     is_cli_version(version).then(|| version.to_owned())
 }
 
@@ -422,6 +424,10 @@ mod tests {
     fn cli_version_comes_only_from_a_well_formed_user_agent() {
         for (agent, expected) in [
             (
+                "Codex Desktop/0.160.1 (Windows 10.0.22635; x86_64) fyagent/0.4.14",
+                Some("0.160.1"),
+            ),
+            (
                 "fyagent/0.160.1 (Windows 10.0.22635; x86_64) xterm",
                 Some("0.160.1"),
             ),
@@ -430,6 +436,7 @@ mod tests {
                 Some("0.163.0-alpha.11"),
             ),
             ("fyagent (Windows)", None),
+            ("fyagent (Windows/10.0.22635)", None),
             ("fyagent/ (Windows)", None),
             ("fyagent/v1 (Windows)", None),
             ("fyagent/1.0;rm (Windows)", None),
