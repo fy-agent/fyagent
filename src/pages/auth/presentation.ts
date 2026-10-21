@@ -130,6 +130,21 @@ export function accountHealthPresentation(health: ManagedAuthHealth): {
   }
 }
 
+/** Connect/switch lead the card so small windows keep them on the first screen. */
+export function splitConnectionActions(
+  actions: readonly ManagedAuthConnectionAction[],
+): {
+  primary: ManagedAuthConnectionAction[];
+  secondary: ManagedAuthConnectionAction[];
+} {
+  const isPrimary = (action: ManagedAuthConnectionAction) =>
+    action === "connect_account" || action === "switch_account";
+  return {
+    primary: actions.filter(isPrimary),
+    secondary: actions.filter((action) => !isPrimary(action)),
+  };
+}
+
 export function connectionStatusPresentation(
   state: ManagedAuthConnectionState,
   reasonCodes: readonly ManagedAuthReasonCode[] = [],

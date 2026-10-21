@@ -13,6 +13,8 @@ export interface RichFeatureFixtureOptions {
   authSummaryScenario?: "mixed";
   /** Consumers whose first connection apply fails with an external change. */
   authConnectionFailOnce?: string[];
+  /** Codex starts unbound so the OpenAI account offers "用此账号连接". */
+  authCodexConnectable?: boolean;
   /** First OpenAI catalog read fails with this managed-auth reason. */
   openAiModelsFailOnce?: string;
   firstUseGuideState?: "pending" | "dismissed";
@@ -1088,6 +1090,24 @@ export async function installRichTauriFeatureFixture(
       managedAuthOverview.connections[2].authStatus = "requires_reauth";
       managedAuthOverview.connections[3].authStatus = "unavailable";
       managedAuthOverview.connections[3].requestMode = "unknown";
+    }
+    if (fixtureOptions.authCodexConnectable) {
+      const codex = managedAuthOverview.connections.find(
+        (item) => item.consumer === "codex",
+      )!;
+      Object.assign(codex, {
+        accountId: null,
+        authStatus: "disconnected",
+        requestMode: "none",
+        requestProviderLabel: null,
+        allowedActions: ["connect_account", "refresh"],
+      });
+      for (const account of managedAuthOverview.accounts)
+        account.connectedConsumerCount = new Set(
+          managedAuthOverview.connections
+            .filter((item) => item.accountId === account.accountId)
+            .map((item) => item.consumer),
+        ).size;
     }
     const managedAuthSessions = new Map<
       string,

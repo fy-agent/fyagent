@@ -399,9 +399,17 @@
   .fy-auth-connection-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .fy-auth-detail-header,
   .fy-auth-consumer-header {
     flex-wrap: wrap;
+  }
+  .fy-auth-provider-mark[data-size="detail"] {
+    width: 40px;
+    height: 40px;
+  }
+  .fy-auth-provider-mark[data-size="detail"] img,
+  .fy-auth-provider-mark[data-size="detail"] svg {
+    width: 24px;
+    height: 24px;
   }
   .fy-auth-definition {
     grid-template-columns: minmax(0, 1fr);

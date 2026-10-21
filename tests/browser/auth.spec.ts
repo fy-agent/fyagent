@@ -13,6 +13,8 @@ import {
 
 const CONNECTION_RESULTS_TEST =
   "keeps connection results compact and account actions on the first screen";
+const CONNECT_ENTRY_TEST =
+  "keeps the main connect entry hittable on the first screen of both views";
 
 test.beforeEach(async ({ page }, testInfo) => {
   await installRichTauriFeatureFixture(page, {
@@ -22,7 +24,11 @@ test.beforeEach(async ({ page }, testInfo) => {
         ? "mixed"
         : undefined,
     authConnectionFailOnce:
-      testInfo.title === CONNECTION_RESULTS_TEST ? ["opencode"] : undefined,
+      testInfo.title === CONNECTION_RESULTS_TEST ||
+      testInfo.title === CONNECT_ENTRY_TEST
+        ? ["opencode"]
+        : undefined,
+    authCodexConnectable: testInfo.title === CONNECT_ENTRY_TEST,
   });
 });
 
@@ -321,5 +327,85 @@ test(CONNECTION_RESULTS_TEST, async ({ page }, testInfo) => {
   await confirmDisconnect();
   await expect(results).toContainText("1 个已完成");
   await expect(failed).toBeHidden();
+  await expectHealthyPage(page, health);
+});
+
+test(CONNECT_ENTRY_TEST, async ({ page }, testInfo) => {
+  const health = monitorPageHealth(page);
+  await openRendererPage(page, "/auth?view=connections&consumer=grokbuild");
+  const disconnect = async (consumer: string, label: string) => {
+    await page.getByTestId(`managed-auth-consumer-${consumer}`).click();
+    await page
+      .getByRole("region", { name: `${label} 连接详情` })
+      .getByRole("button", { name: "断开", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "断开", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+  };
+  await disconnect("grokbuild", "Grok Build");
+  await disconnect("opencode", "OpenCode Desktop");
+  const results = page.getByRole("region", { name: "软件连接操作结果" });
+  await expect(results).toContainText("1 个需要处理，1 个已完成");
+
+  const viewports = [
+    { width: 900, height: 600 },
+    { width: 1232, height: 700 },
+  ];
+  // No scrolling: the entry must sit fully inside the first screen and be
+  // the topmost element at its centre.
+  const expectHittable = async (control: Locator, viewportHeight: number) => {
+    await expect(control).toBeInViewport({ ratio: 1 });
+    const box = (await control.boundingBox())!;
+    expect(box.y + box.height).toBeLessThanOrEqual(viewportHeight);
+    const hit = await control.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const target = document.elementFromPoint(
+        rect.x + rect.width / 2,
+        rect.y + rect.height / 2,
+      );
+      return target !== null && element.contains(target);
+    });
+    expect(hit).toBe(true);
+    await control.click({ trial: true });
+  };
+  const expectConnectDialog = async (entry: Locator) => {
+    await entry.click();
+    const dialog = page.getByRole("dialog", { name: "连接 Codex 账号" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "取消" }).click();
+    await expect(dialog).toHaveCount(0);
+  };
+
+  await page.getByTestId("managed-auth-consumer-codex").click();
+  const connectionEntry = page
+    .getByRole("region", { name: "Codex 连接详情" })
+    .getByRole("button", { name: "连接账号", exact: true });
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await expectHittable(connectionEntry, viewport.height);
+    await page.screenshot({
+      path: testInfo.outputPath(
+        `connect-entry-connections-${viewport.width}x${viewport.height}.png`,
+      ),
+    });
+  }
+  await expectConnectDialog(connectionEntry);
+
+  await page.getByRole("tab", { name: /^账号/u }).click();
+  const accountEntry = page
+    .getByRole("region", { name: "连接到软件" })
+    .getByRole("button", { name: "用此账号连接", exact: true });
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await expectHittable(accountEntry, viewport.height);
+    await page.screenshot({
+      path: testInfo.outputPath(
+        `connect-entry-accounts-${viewport.width}x${viewport.height}.png`,
+      ),
+    });
+  }
+  await expectConnectDialog(accountEntry);
+  await expect(results).toContainText("1 个需要处理");
   await expectHealthyPage(page, health);
 });

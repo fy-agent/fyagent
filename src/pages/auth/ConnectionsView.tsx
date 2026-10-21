@@ -32,6 +32,7 @@ import {
   managedAuthManagerLabel,
   managedAuthProviderLabel,
   requestModeLabel,
+  splitConnectionActions,
   SUBSCRIPTION_FORWARDING_NOTE,
 } from "./presentation";
 
@@ -57,6 +58,22 @@ function ConnectionCard({
       )
     : null;
   const status = connectionPresentation(connection);
+  const { primary, secondary } = splitConnectionActions(
+    connection.allowedActions,
+  );
+  const actionButton = (action: ManagedAuthConnectionAction) => (
+    <Button
+      key={action}
+      dialogOriginRef={originRef}
+      className={
+        action === "disconnect" ? "fy-control-button-danger-subtle" : undefined
+      }
+      disabled={mutationBusy}
+      onClick={() => onAction(connection, action)}
+    >
+      {connectionActionLabel(action, connection)}
+    </Button>
+  );
   return (
     <article className="fy-auth-consumer-connection">
       <div className="fy-auth-connection-card-heading">
@@ -75,6 +92,10 @@ function ConnectionCard({
         </div>
         <StatusBadge {...status} />
       </div>
+
+      {primary.length > 0 ? (
+        <div className="fy-feature-actions">{primary.map(actionButton)}</div>
+      ) : null}
 
       <dl className="fy-feature-definition fy-auth-definition">
         <DefinitionRow label="受管账号绑定">
@@ -104,24 +125,8 @@ function ConnectionCard({
 
       <ReasonList reasons={connection.reasonCodes} />
 
-      {connection.allowedActions.length > 0 ? (
-        <div className="fy-feature-actions">
-          {connection.allowedActions.map((action) => (
-            <Button
-              key={action}
-              dialogOriginRef={originRef}
-              className={
-                action === "disconnect"
-                  ? "fy-control-button-danger-subtle"
-                  : undefined
-              }
-              disabled={mutationBusy}
-              onClick={() => onAction(connection, action)}
-            >
-              {connectionActionLabel(action, connection)}
-            </Button>
-          ))}
-        </div>
+      {secondary.length > 0 ? (
+        <div className="fy-feature-actions">{secondary.map(actionButton)}</div>
       ) : null}
     </article>
   );
@@ -196,6 +201,7 @@ export function ConnectionsView({
             : "软件连接详情"
         }
         className="fy-auth-detail"
+        scrollKey={selectedConsumer ?? null}
       >
         {selectedConsumer ? (
           <>
