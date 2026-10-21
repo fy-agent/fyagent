@@ -265,9 +265,7 @@ export function AuthPage() {
         result.outcome === "completed"
           ? connection?.pendingRestart
             ? "此连接已保存并回读，需要重新启动软件后使用。"
-            : target?.action === "refresh"
-              ? "已重新读取此连接的状态。"
-              : "此连接操作已完成并回读。"
+            : "此连接操作已完成并回读。"
           : (managedAuthReasonCopy(result.reasonCode) ??
               "此连接尚未确认完成，请检查当前状态后重试。"),
       );
