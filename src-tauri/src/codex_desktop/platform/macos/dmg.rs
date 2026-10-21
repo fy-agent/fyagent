@@ -1109,12 +1109,14 @@ fn recovery_candidate(path: &Path) -> Option<(&str, u128)> {
         .to_str()?
         .strip_prefix(BACKUP_PREFIX)?
         .strip_suffix(BACKUP_SUFFIX)?;
-    if let Some((name, id)) = name.rsplit_once("--") {
-        let (timestamp, uuid) = id.split_once('-')?;
-        if valid_recovery_basename(name) && Uuid::parse_str(uuid).is_ok() {
-            return Some((name, timestamp.parse().ok()?));
+    if let Some((base, id)) = name.rsplit_once("--") {
+        if let Some((timestamp, uuid)) = id.split_once('-') {
+            if valid_recovery_basename(base) && Uuid::parse_str(uuid).is_ok() {
+                if let Ok(timestamp) = timestamp.parse() {
+                    return Some((base, timestamp));
+                }
+            }
         }
-        return None;
     }
     // Older deterministic backups sort before timestamped transactions.
     valid_recovery_basename(name).then_some((name, 0))
@@ -1122,6 +1124,73 @@ fn recovery_candidate(path: &Path) -> Option<(&str, u128)> {
 
 pub(super) fn is_transaction_backup(path: &Path) -> bool {
     recovery_candidate(path).is_some()
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateRecord {
+    installer_prefix: String,
+    transaction_id: String,
+    target: PathBuf,
+    backup: PathBuf,
+    backup_identity: super::FileIdentity,
+    phase: UpdatePhase,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum UpdatePhase {
+    Staged,
+    Swapped,
+    Committed,
+    RolledBack,
+}
+
+fn record_path(backup: &Path) -> PathBuf {
+    backup.with_file_name(format!(
+        "{}.transaction.json",
+        backup.file_name().unwrap().to_string_lossy()
+    ))
+}
+
+impl UpdateRecord {
+    fn new(target: &Path, backup: &Path, identity: super::FileIdentity) -> Self {
+        Self {
+            installer_prefix: BACKUP_PREFIX.into(),
+            transaction_id: transaction_id(),
+            target: target.into(),
+            backup: backup.into(),
+            backup_identity: identity,
+            phase: UpdatePhase::Staged,
+        }
+    }
+    fn save(&self, fs: &dyn MacosFilesystem) -> Result<(), InstallerError> {
+        let data =
+            serde_json::to_vec(self).map_err(|_| identity_conflict(&self.target, &self.backup))?;
+        fs.write_record_atomic(&record_path(&self.backup), &data)
+            .map_err(|_| {
+                error(
+                    InstallerErrorCode::MacCopyFailed,
+                    "更新事务记录写入失败，已保留应用与备份",
+                )
+            })
+    }
+    fn advance(
+        &mut self,
+        fs: &dyn MacosFilesystem,
+        phase: UpdatePhase,
+    ) -> Result<(), InstallerError> {
+        self.phase = phase;
+        self.save(fs)
+    }
+    fn remove(&self, fs: &dyn MacosFilesystem) -> Result<(), InstallerError> {
+        fs.remove_record(&record_path(&self.backup))
+            .map_err(|_| error(InstallerErrorCode::MacCopyFailed, "更新事务记录清理失败"))
+    }
+}
+
+fn read_record(fs: &dyn MacosFilesystem, backup: &Path) -> Option<UpdateRecord> {
+    serde_json::from_slice(&fs.read_file_bounded(&record_path(backup), 16 * 1024).ok()?).ok()
 }
 
 fn recover_interrupted_updates(
@@ -1149,8 +1218,20 @@ fn recover_interrupted_updates(
     let mut candidates = entries
         .into_iter()
         .filter_map(|entry| {
-            let (name, timestamp) = recovery_candidate(&entry)?;
-            Some((timestamp, parent.join(name), entry))
+            if let Some((name, timestamp)) = recovery_candidate(&entry) {
+                return Some((timestamp, parent.join(name), entry));
+            }
+            if is_transaction_staging(&entry) {
+                let Some(record) = read_record(filesystem, &entry) else {
+                    log::warn!(
+                        "暂存备份事务记录缺失或损坏，已保留、不恢复：{}",
+                        entry.display()
+                    );
+                    return None;
+                };
+                return Some((0, record.target, entry));
+            }
+            None
         })
         .collect::<Vec<_>>();
     candidates.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.2.cmp(&a.2)));
@@ -1160,8 +1241,37 @@ fn recover_interrupted_updates(
             Ok(_) => continue,
             Err(_) => return Err(identity_conflict(&target, &entry)),
         }
+        let Some(mut record) = read_record(filesystem, &entry).filter(|record| {
+            record.installer_prefix == BACKUP_PREFIX
+                && record
+                    .transaction_id
+                    .split_once('-')
+                    .is_some_and(|(time, id)| {
+                        time.parse::<u128>().is_ok() && Uuid::parse_str(id).is_ok()
+                    })
+                && record.target == target
+                && target.parent() == Some(parent.as_path())
+                && target
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(valid_recovery_basename)
+                && record.backup == entry
+                && matches!(record.phase, UpdatePhase::Staged | UpdatePhase::Swapped)
+                && filesystem.identity(&entry).ok() == Some(record.backup_identity)
+        }) else {
+            log::warn!(
+                "备份事务已结束、记录缺失、损坏或不一致，已保留、不恢复：{}",
+                entry.display()
+            );
+            continue;
+        };
         let verified = (|| {
-            ensure_generated_path(filesystem, &parent, &entry, BACKUP_PREFIX, BACKUP_SUFFIX)?;
+            let (prefix, suffix) = if is_transaction_staging(&entry) {
+                (STAGING_PREFIX, STAGING_SUFFIX)
+            } else {
+                (BACKUP_PREFIX, BACKUP_SUFFIX)
+            };
+            ensure_generated_path(filesystem, &parent, &entry, prefix, suffix)?;
             verify_transaction_bundle(runner, filesystem, policy, &entry)
         })();
         let verified = match verified {
@@ -1180,13 +1290,17 @@ fn recover_interrupted_updates(
             continue;
         }
         target_is_available(filesystem, &target)?;
-        if filesystem.identity(&entry).ok() != Some(verified.identity) {
+        if verified.identity != record.backup_identity
+            || filesystem.identity(&entry).ok() != Some(verified.identity)
+        {
             log::warn!("中断更新备份身份变化，已保留：{}", entry.display());
             continue;
         }
         filesystem
             .rename_exclusive(&entry, &target)
             .map_err(|_| identity_conflict(&target, &entry))?;
+        record.advance(filesystem, UpdatePhase::RolledBack)?;
+        record.remove(filesystem)?;
     }
     Ok(())
 }
@@ -1478,17 +1592,29 @@ where
             return Err(TransactionFailure::terminal(error));
         }
         verify_before_commit(runner, filesystem, policy, &parent, &staging)?;
+        let mut record = UpdateRecord::new(&target_path, &staging, expected_backup.identity);
+        record
+            .save(filesystem)
+            .map_err(TransactionFailure::terminal)?;
         let swapped = match filesystem.swap(&staging, &target_path) {
             Ok(()) => true,
             Err(error) if error.kind() == MacosFilesystemErrorKind::Unsupported => false,
             Err(_) => {
-                let _ = remove_generated_path(
+                let cleaned = remove_generated_path(
                     filesystem,
                     &parent,
                     &staging,
                     STAGING_PREFIX,
                     STAGING_SUFFIX,
                 );
+                record
+                    .advance(filesystem, UpdatePhase::RolledBack)
+                    .map_err(TransactionFailure::RecoveryRequired)?;
+                if cleaned.is_ok() {
+                    record
+                        .remove(filesystem)
+                        .map_err(TransactionFailure::RecoveryRequired)?;
+                }
                 return Err(TransactionFailure::terminal(error(
                     InstallerErrorCode::MacCopyFailed,
                     "application bundle atomic exchange failed",
@@ -1496,16 +1622,31 @@ where
             }
         };
         if !swapped {
+            record
+                .remove(filesystem)
+                .map_err(TransactionFailure::terminal)?;
+            record = UpdateRecord::new(&target_path, &backup, expected_backup.identity);
+            record
+                .save(filesystem)
+                .map_err(TransactionFailure::terminal)?;
             filesystem
                 .rename(&target_path, &backup)
                 .map_err(|filesystem_error| {
-                    let _ = remove_generated_path(
+                    let cleaned = remove_generated_path(
                         filesystem,
                         &parent,
                         &staging,
                         STAGING_PREFIX,
                         STAGING_SUFFIX,
                     );
+                    if let Err(error) = record.advance(filesystem, UpdatePhase::RolledBack) {
+                        return TransactionFailure::RecoveryRequired(error);
+                    }
+                    if cleaned.is_ok() {
+                        if let Err(error) = record.remove(filesystem) {
+                            return TransactionFailure::RecoveryRequired(error);
+                        }
+                    }
                     let error = error(
                         InstallerErrorCode::MacCopyFailed,
                         "existing Stable application could not be moved to its backup",
@@ -1529,13 +1670,18 @@ where
                         expected_backup,
                     },
                 );
-                let _ = remove_generated_path(
+                let cleaned = remove_generated_path(
                     filesystem,
                     &parent,
                     &staging,
                     STAGING_PREFIX,
                     STAGING_SUFFIX,
                 );
+                if restored.is_ok() && cleaned.is_ok() {
+                    record
+                        .remove(filesystem)
+                        .map_err(TransactionFailure::RecoveryRequired)?;
+                }
                 let replacement_error = error(
                     InstallerErrorCode::MacCopyFailed,
                     "new Stable application could not replace the existing bundle",
@@ -1554,6 +1700,9 @@ where
         // After RENAME_SWAP the old application is at the original staging
         // path. Never delete it before both post-commit checks succeed.
         let backup = if swapped { staging.clone() } else { backup };
+        record
+            .advance(filesystem, UpdatePhase::Swapped)
+            .map_err(TransactionFailure::RecoveryRequired)?;
         progress.report_progress(JobProgress::new(
             ProgressPhase::Installation,
             Some(2),
@@ -1612,6 +1761,9 @@ where
                 ))
             });
         }
+        record
+            .advance(filesystem, UpdatePhase::Committed)
+            .map_err(TransactionFailure::RecoveryRequired)?;
         let (prefix, suffix) = if swapped {
             (STAGING_PREFIX, STAGING_SUFFIX)
         } else {
@@ -1629,6 +1781,9 @@ where
         )
         .map_err(TransactionFailure::RecoveryRequired)?;
         remove_generated_path(filesystem, &parent, &backup, prefix, suffix)
+            .map_err(TransactionFailure::RecoveryRequired)?;
+        record
+            .remove(filesystem)
             .map_err(TransactionFailure::RecoveryRequired)?;
         Ok(installed_bundle)
     } else {
@@ -1821,6 +1976,9 @@ fn restore_backup(
                 "restored application identity changed",
             ));
         }
+        if let Some(mut record) = read_record(filesystem, request.backup) {
+            record.advance(filesystem, UpdatePhase::RolledBack)?;
+        }
         require_expected_identity(
             runner,
             filesystem,
@@ -1837,6 +1995,9 @@ fn restore_backup(
             STAGING_PREFIX,
             STAGING_SUFFIX,
         )?;
+        if let Some(record) = read_record(filesystem, request.backup) {
+            record.remove(filesystem)?;
+        }
         return Ok(());
     }
     match filesystem.file_kind(request.target) {
@@ -1881,6 +2042,17 @@ fn restore_backup(
             InstallerErrorCode::InstallationVerifyFailed,
             "restored application did not match the verified backup identity",
         ));
+    }
+    if let Some(mut record) = read_record(filesystem, request.backup) {
+        record.advance(filesystem, UpdatePhase::RolledBack)?;
+        // A failed second rename leaves the replacement in staging. Its caller
+        // removes that directory before discarding the terminal record.
+        if filesystem
+            .file_kind(request.expected_replacement.info.bundle_path())
+            .is_err_and(is_not_found)
+        {
+            record.remove(filesystem)?;
+        }
     }
     Ok(())
 }
@@ -2379,6 +2551,7 @@ mod tests {
             "swap_error",
             "swap_rollback_error",
             "swap_cleanup_error",
+            "swap_rollback_cleanup_error",
             "fallback_ok",
             "fallback_first_error",
             "fallback_second_error",
@@ -2429,7 +2602,7 @@ mod tests {
                         filesystem.fail_operation("rename", MacosFilesystemErrorKind::Other);
                     }
                 }
-                "swap_cleanup_error" | "fallback_cleanup_error" => {
+                "swap_cleanup_error" | "fallback_cleanup_error" | "swap_rollback_cleanup_error" => {
                     filesystem.fail_operation_after(
                         "remove",
                         if fallback { 0 } else { 1 },
@@ -2452,7 +2625,11 @@ mod tests {
             );
             let rollback = matches!(
                 case,
-                "swap_post_bad" | "swap_metadata_bad" | "swap_rollback_error" | "fallback_post_bad"
+                "swap_post_bad"
+                    | "swap_metadata_bad"
+                    | "swap_rollback_error"
+                    | "fallback_post_bad"
+                    | "swap_rollback_cleanup_error"
             );
             if committed {
                 if case == "swap_metadata_bad" {
@@ -2547,6 +2724,17 @@ mod tests {
                     );
                     let retained = if fallback { &backup } else { &staging };
                     assert!(filesystem.contains(retained.join("old-marker")), "{case}");
+                } else if case == "swap_rollback_cleanup_error" {
+                    assert!(matches!(
+                        result,
+                        Err(TransactionFailure::RecoveryRequired(_))
+                    ));
+                    assert!(filesystem.contains(target_path.join("old-marker")));
+                    assert!(filesystem.contains(staging.join("new-marker")));
+                    assert!(matches!(
+                        read_record(&*filesystem, &staging).unwrap().phase,
+                        UpdatePhase::RolledBack
+                    ));
                 } else if case == "fallback_restore_error" {
                     assert!(matches!(
                         result,
@@ -2578,6 +2766,27 @@ mod tests {
                     assert!(!filesystem.contains(&backup), "{case}");
                 }
             }
+            if matches!(
+                case,
+                "swap_cleanup_error" | "fallback_cleanup_error" | "swap_rollback_cleanup_error"
+            ) {
+                let retained = if fallback { &backup } else { &staging };
+                let phase = read_record(&*filesystem, retained).unwrap().phase;
+                assert!(matches!(
+                    phase,
+                    UpdatePhase::Committed | UpdatePhase::RolledBack
+                ));
+                filesystem.remove_dir_all(&target_path).unwrap(); // user uninstalls
+                recover_interrupted_updates(
+                    &*runner,
+                    &*filesystem,
+                    &policy,
+                    Path::new(USER_APPLICATIONS),
+                )
+                .unwrap();
+                assert!(!filesystem.contains(&target_path), "{case}");
+                assert!(filesystem.contains(retained), "{case}");
+            }
             // The last command before the filesystem commit must be spctl;
             // the next command can only be installed/rollback metadata readback.
             let spctl = calls
@@ -2596,13 +2805,35 @@ mod tests {
 
     #[test]
     fn recovery_only_restores_exact_installer_backup_without_overwriting_target() {
-        for scenario in ["missing", "occupied", "symlink", "invalid", "rename_error"] {
+        for scenario in [
+            "missing",
+            "swapped",
+            "swap_missing",
+            "occupied",
+            "symlink",
+            "invalid",
+            "rename_error",
+        ] {
             let filesystem = FakeFilesystem::new();
             let parent = Path::new(USER_APPLICATIONS);
             filesystem.add_dir(parent);
             let target = parent.join("Renamed Codex.app");
-            let backup = recovery_backup_path(&target).unwrap();
+            let backup = if scenario == "swap_missing" {
+                parent.join(format!(
+                    "{STAGING_PREFIX}{}{STAGING_SUFFIX}",
+                    transaction_id()
+                ))
+            } else {
+                recovery_backup_path(&target).unwrap()
+            };
             add_bundle(&filesystem, &backup);
+            UpdateRecord::new(&target, &backup, filesystem.identity(&backup).unwrap())
+                .save(&filesystem)
+                .unwrap();
+            if scenario == "swapped" {
+                let mut record = read_record(&filesystem, &backup).unwrap();
+                record.advance(&filesystem, UpdatePhase::Swapped).unwrap();
+            }
             filesystem.add_file(backup.join("old-marker"));
             // A UUID-only backup from older versions has no recoverable target
             // binding. Neither it nor another arbitrary directory may be moved.
@@ -2627,9 +2858,10 @@ mod tests {
             }
             let result = recover_interrupted_updates(&runner, &filesystem, &policy, parent);
             assert_eq!(result.is_ok(), scenario != "rename_error", "{scenario}");
-            if scenario == "missing" {
+            if matches!(scenario, "missing" | "swapped" | "swap_missing") {
                 assert!(filesystem.contains(target.join("old-marker")));
                 assert!(!filesystem.contains(&backup));
+                assert!(!filesystem.contains(record_path(&backup)));
             } else {
                 assert!(filesystem.contains(&backup), "{scenario}");
             }
@@ -3925,6 +4157,9 @@ mod tests {
             let bad = candidate(3);
             for path in [&oldest, &good, &bad] {
                 add_bundle(&fs, path);
+                UpdateRecord::new(&target, path, fs.identity(path).unwrap())
+                    .save(&fs)
+                    .unwrap();
             }
             fs.add_file(good.join("chosen"));
             let runner = FakeRunner::new();
@@ -3983,6 +4218,9 @@ mod tests {
         let target = parent.join("Codex.app");
         let backup = recovery_backup_path(&target).unwrap();
         add_bundle(&fs, &backup);
+        UpdateRecord::new(&target, &backup, fs.identity(&backup).unwrap())
+            .save(&*fs)
+            .unwrap();
         let runner = FakeRunner::new();
         queue_read_and_validate(&runner, "1");
         super::super::signature::tests::queue_valid_signature(&runner);
@@ -4006,5 +4244,93 @@ mod tests {
         assert!(fs.rename_exclusive(&backup, &target).is_err());
         assert!(fs.contains(target.join("concurrent-app")) && fs.contains(&backup));
         runner.assert_drained();
+    }
+    #[test]
+    fn recovery_recognizes_legacy_and_timestamped_double_dash_names() {
+        let target = Path::new(USER_APPLICATIONS).join("Codex--Work.app");
+        let legacy =
+            target.with_file_name(format!("{BACKUP_PREFIX}Codex--Work.app{BACKUP_SUFFIX}"));
+        assert_eq!(recovery_candidate(&legacy), Some(("Codex--Work.app", 0)));
+        let modern = recovery_backup_path(&target).unwrap();
+        assert_eq!(recovery_candidate(&modern).unwrap().0, "Codex--Work.app");
+    }
+
+    #[test]
+    fn recovery_keeps_finished_missing_corrupt_and_inconsistent_records_after_uninstall() {
+        for case in [
+            "committed",
+            "rolled-back",
+            "missing",
+            "corrupt",
+            "identity",
+            "target",
+            "backup",
+            "prefix",
+            "id",
+            "legacy",
+        ] {
+            let fs = FakeFilesystem::new();
+            let parent = Path::new(USER_APPLICATIONS);
+            let target = parent.join("Codex--Work.app");
+            let backup = if case == "legacy" {
+                parent.join(format!("{BACKUP_PREFIX}Codex--Work.app{BACKUP_SUFFIX}"))
+            } else {
+                recovery_backup_path(&target).unwrap()
+            };
+            add_bundle(&fs, &backup);
+            let mut record = UpdateRecord::new(&target, &backup, fs.identity(&backup).unwrap());
+            match case {
+                "committed" => record.phase = UpdatePhase::Committed,
+                "rolled-back" => record.phase = UpdatePhase::RolledBack,
+                "identity" => record.backup_identity.inode += 1,
+                "target" => record.target = parent.join("Other.app"),
+                "backup" => record.backup = parent.join("other"),
+                "prefix" => record.installer_prefix = "other".into(),
+                "id" => record.transaction_id = "broken".into(),
+                _ => {}
+            }
+            if !matches!(case, "missing" | "legacy") {
+                fs.add_file_with_contents(
+                    record_path(&backup),
+                    serde_json::to_vec(&record).unwrap(),
+                );
+            }
+            if case == "corrupt" {
+                fs.add_file_with_contents(record_path(&backup), b"{broken".to_vec());
+            }
+            let runner = FakeRunner::new();
+            let host = host();
+            recover_interrupted_updates(
+                &runner,
+                &fs,
+                &BundleTransactionPolicy::Codex { host: &host },
+                parent,
+            )
+            .unwrap();
+            assert!(fs.contains(&backup), "{case}");
+            assert!(!fs.contains(&target), "{case}");
+            runner.assert_drained();
+        }
+    }
+
+    #[test]
+    fn transaction_record_atomic_write_roundtrips_and_removes() {
+        let dir = tempfile::tempdir().unwrap();
+        let fs = super::super::StdMacosFilesystem;
+        let backup = dir.path().join("backup");
+        let mut record = UpdateRecord::new(
+            &dir.path().join("Codex.app"),
+            &backup,
+            super::super::FileIdentity { dev: 1, inode: 2 },
+        );
+        record.save(&fs).unwrap();
+        record.advance(&fs, UpdatePhase::Committed).unwrap();
+        assert!(matches!(
+            read_record(&fs, &backup).unwrap().phase,
+            UpdatePhase::Committed
+        ));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        record.remove(&fs).unwrap();
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 }

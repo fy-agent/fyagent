@@ -295,13 +295,16 @@ impl MacosFilesystemError {
 /// Filesystem operations required by the macOS adapter. The implementation
 /// deliberately has no generic arbitrary-path deletion API: all removal is
 /// guarded by the DMG transaction code before it reaches this boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileIdentity {
     dev: u64,
     inode: u64,
 }
 
 pub trait MacosFilesystem: Send + Sync {
+    fn write_record_atomic(&self, path: &Path, data: &[u8]) -> Result<(), MacosFilesystemError>;
+    fn remove_record(&self, path: &Path) -> Result<(), MacosFilesystemError>;
+
     fn identity(&self, path: &Path) -> Result<FileIdentity, MacosFilesystemError>;
 
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, MacosFilesystemError>;
@@ -342,6 +345,28 @@ pub trait MacosFilesystem: Send + Sync {
 pub struct StdMacosFilesystem;
 
 impl MacosFilesystem for StdMacosFilesystem {
+    fn write_record_atomic(&self, path: &Path, data: &[u8]) -> Result<(), MacosFilesystemError> {
+        use std::io::Write;
+        let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+        let result = (|| {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary)?;
+            file.write_all(data)?;
+            file.sync_all()?;
+            fs::rename(&temporary, path)?;
+            fs::File::open(path.parent().unwrap())?.sync_all()
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result.map_err(macos_filesystem_error_from_io)
+    }
+    fn remove_record(&self, path: &Path) -> Result<(), MacosFilesystemError> {
+        fs::remove_file(path).map_err(macos_filesystem_error_from_io)
+    }
+
     fn identity(&self, path: &Path) -> Result<FileIdentity, MacosFilesystemError> {
         #[cfg(unix)]
         {
@@ -1162,6 +1187,19 @@ pub(super) mod test_support {
     }
 
     impl MacosFilesystem for FakeFilesystem {
+        fn write_record_atomic(
+            &self,
+            path: &Path,
+            data: &[u8],
+        ) -> Result<(), MacosFilesystemError> {
+            self.add_file_with_contents(path, data.to_vec());
+            Ok(())
+        }
+        fn remove_record(&self, path: &Path) -> Result<(), MacosFilesystemError> {
+            self.lock().entries.remove(path);
+            Ok(())
+        }
+
         fn identity(&self, path: &Path) -> Result<super::FileIdentity, MacosFilesystemError> {
             self.lock()
                 .entries
