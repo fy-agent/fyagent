@@ -150,6 +150,10 @@
       "e0af17bdb6dfc52aeb84684635484f3653028b02ad3aa927fdb8fd5e3b897f2f"
     ],
     [
+      "src-tauri/src/codex_desktop/platform/windows/signature.rs",
+      "ea32691411799f237d174cc391fe7c80334b3b334ca8ea69ccb668ec07b8cb74"
+    ],
+    [
       "src-tauri/src/codex_desktop/temp.rs",
       "caf96c18b6e07ba5728a270c7eb5a4cd8692955c03518e3647d185f4943ad78b"
     ],
