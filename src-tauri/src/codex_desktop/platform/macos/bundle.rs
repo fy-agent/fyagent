@@ -288,6 +288,11 @@ pub(crate) fn scan_stable_bundles(
                 "a standard Applications directory could not be enumerated",
             )
         })? {
+            // A crash after an atomic swap can leave the old application in
+            // its UUID staging slot. It is a backup, not a second installation.
+            if super::dmg::is_transaction_staging(&entry) {
+                continue;
+            }
             // Local discovery must not follow an escaped alias just to learn
             // its identity. Downloaded package discovery uses the strict
             // wrapper below and continues to reject the same path shape.
@@ -772,7 +777,7 @@ fn running_applications(
 ) -> Result<Vec<RunningApplication>, InstallerError> {
     let output = runner
         .run(&command(
-            "osascript",
+            "/usr/bin/osascript",
             vec![
                 OsString::from("-l"),
                 OsString::from("JavaScript"),
@@ -834,7 +839,7 @@ fn terminate_runtime(
     };
     let output = runner
         .run(&command(
-            "osascript",
+            "/usr/bin/osascript",
             vec![
                 OsString::from("-l"),
                 OsString::from("JavaScript"),
@@ -933,7 +938,10 @@ pub(crate) fn launch_verified(
     #[cfg(any(not(target_os = "macos"), test))]
     {
         let output = runner
-            .run(&command("open", vec![requested_path.into_os_string()]))
+            .run(&command(
+                "/usr/bin/open",
+                vec![requested_path.into_os_string()],
+            ))
             .map_err(|_| {
                 error(
                     InstallerErrorCode::LaunchFailed,
@@ -1357,7 +1365,7 @@ mod tests {
         filesystem.add_dir(&bundle_path);
         let runner = FakeRunner::new();
         runner.queue_success(
-            "osascript",
+            "/usr/bin/osascript",
             format!(
                 "[{{\"bundleIdentifier\":\"{}\",\"bundlePath\":\"{}\"}}]",
                 stable_bundle_id(),
@@ -1373,7 +1381,7 @@ mod tests {
             InstallerErrorCode::MacAppRunning
         );
         let invocation = runner.invocations().pop().unwrap();
-        assert_eq!(invocation.program(), "osascript");
+        assert_eq!(invocation.program(), "/usr/bin/osascript");
         assert_eq!(invocation.arguments()[0], "-l");
         assert_eq!(invocation.arguments()[1], "JavaScript");
         assert_eq!(invocation.arguments()[2], "-e");
@@ -1399,7 +1407,7 @@ mod tests {
 
         for is_finished_launching in [false, true] {
             runner.queue_success(
-                "osascript",
+                "/usr/bin/osascript",
                 serde_json::json!([{
                     "bundleIdentifier": stable_bundle_id(),
                     "bundlePath": bundle_path.to_string_lossy(),
@@ -1424,7 +1432,7 @@ mod tests {
 
         let invocations = runner.invocations();
         assert!(invocations.iter().all(|invocation| {
-            invocation.program() == "osascript"
+            invocation.program() == "/usr/bin/osascript"
                 && invocation.arguments()[3]
                     .to_string_lossy()
                     .contains("isFinishedLaunching")
@@ -1440,7 +1448,7 @@ mod tests {
         filesystem.add_dir(USER_APPLICATIONS);
         let runner = FakeRunner::new();
         queue_stable_bundle_scan(&runner, "5848");
-        runner.queue_success("open", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/open", Vec::<u8>::new());
         let installed = InstalledApplication {
             stable_identity: stable_bundle_id().to_owned(),
             display_name: Some("Codex".to_owned()),
@@ -1453,7 +1461,7 @@ mod tests {
 
         launch_verified(&runner, filesystem.as_ref(), &host(), &installed).unwrap();
         let invocation = runner.invocations().pop().unwrap();
-        assert_eq!(invocation.program(), "open");
+        assert_eq!(invocation.program(), "/usr/bin/open");
         assert_eq!(invocation.arguments(), [bundle_path.as_os_str()]);
         runner.assert_drained();
     }
