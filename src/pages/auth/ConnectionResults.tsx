@@ -137,9 +137,10 @@ export function ConnectionResults({
                 : `查看已完成（${completed.length}）`}
             </Button>
             <Button
-              onClick={() =>
-                onDismissCompleted(completed.map((item) => item.id))
-              }
+              onClick={() => {
+                setShowCompleted(false);
+                onDismissCompleted(completed.map((item) => item.id));
+              }}
             >
               关闭已完成
             </Button>

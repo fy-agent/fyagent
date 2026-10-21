@@ -188,7 +188,7 @@ describe("AuthPage", () => {
     expect(screen.getByRole("dialog")).not.toHaveTextContent("用于 Grok Build");
   });
 
-  it("preserves target A success when B fails and retries B with a fresh preview", async () => {
+  async function connectCodexThenFailOpenCode() {
     const user = userEvent.setup();
     let overview = managedAuthOverviewFixture();
     overview.connections = overview.connections
@@ -262,6 +262,25 @@ describe("AuthPage", () => {
     await connect("Codex");
     await connect("OpenCode Desktop");
     const results = screen.getByRole("region", { name: "软件连接操作结果" });
+    const retryOpenCode = async () => {
+      const b = screen.getByRole("article", {
+        name: "OpenCode Desktop · OpenAI 操作结果",
+      });
+      await user.click(within(b).getByRole("button", { name: "重试此连接" }));
+      const retry = screen.getByRole("dialog");
+      await waitFor(() =>
+        expect(
+          within(retry).getByRole("button", { name: "确认" }),
+        ).toBeEnabled(),
+      );
+      await user.click(within(retry).getByRole("button", { name: "确认" }));
+    };
+    return { user, applyConnectionAction, results, retryOpenCode };
+  }
+
+  it("preserves target A success when B fails and retries B with a fresh preview", async () => {
+    const { user, applyConnectionAction, results, retryOpenCode } =
+      await connectCodexThenFailOpenCode();
     expect(results).toHaveTextContent("1 个需要处理，1 个已完成");
     expect(
       screen.queryByRole("article", { name: "Codex · OpenAI 操作结果" }),
@@ -281,12 +300,7 @@ describe("AuthPage", () => {
     const firstB = applyConnectionAction.mock.calls.find(
       ([request]) => request.connectionId === OPENCODE_CONNECTION_ID,
     )![1];
-    await user.click(within(b).getByRole("button", { name: "重试此连接" }));
-    const retry = screen.getByRole("dialog");
-    await waitFor(() =>
-      expect(within(retry).getByRole("button", { name: "确认" })).toBeEnabled(),
-    );
-    await user.click(within(retry).getByRole("button", { name: "确认" }));
+    await retryOpenCode();
     await waitFor(() => expect(results).toHaveTextContent("2 个已完成"));
     expect(
       screen.getByRole("article", {
@@ -313,6 +327,28 @@ describe("AuthPage", () => {
     await waitFor(() =>
       expect(screen.getByRole("tab", { selected: true })).toHaveFocus(),
     );
+  });
+
+  it("folds the next success after completed results were expanded and dismissed", async () => {
+    const { user, results, retryOpenCode } =
+      await connectCodexThenFailOpenCode();
+    await user.click(
+      within(results).getByRole("button", { name: "查看已完成（1）" }),
+    );
+    await user.click(
+      within(results).getByRole("button", { name: "关闭已完成" }),
+    );
+    expect(results).toHaveTextContent("1 个需要处理");
+    await retryOpenCode();
+    await waitFor(() => expect(results).toHaveTextContent("1 个已完成"));
+    expect(
+      within(results).getByRole("button", { name: "查看已完成（1）" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("article", {
+        name: "OpenCode Desktop · OpenAI 操作结果",
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps a pending-restart connection result visible while completed results fold", async () => {
