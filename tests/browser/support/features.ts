@@ -36,6 +36,7 @@ export interface RichFeatureFixtureOptions {
     | "wrong_route"
     | "wrong_model";
   workBuddyWriteDelayMs?: number;
+  opencodeSavedProvider?: boolean;
 }
 
 declare global {
@@ -490,6 +491,8 @@ export async function installRichTauriFeatureFixture(
       name: string;
       modelIds: string[];
     } | null = null;
+    let openCodeSavedModelIds = ["grok-4.6", "grok-4.5"];
+    let openCodeSavedRevision = "fixture-vibekey-revision-1";
     let workBuddyModelIds = ["existing-model"];
     let workBuddySubscriptionSource: {
       accountId: string;
@@ -1511,6 +1514,23 @@ export async function installRichTauriFeatureFixture(
               truncated: false,
             };
           case "get_opencode_model_snapshot":
+            if (fixtureOptions.opencodeSavedProvider) {
+              return {
+                selectedModel: "vibekey/grok-4.6",
+                providers: [
+                  {
+                    id: "vibekey",
+                    name: "VibeKey",
+                    editable: true,
+                    modelIds: [...openCodeSavedModelIds],
+                  },
+                ],
+                revision: openCodeSavedRevision,
+                path: "~/.config/opencode/opencode.json",
+                backupPath: "~/.config/opencode/opencode.json.backup",
+                exists: true,
+              };
+            }
             return {
               selectedModel: openCodeSubscription
                 ? `${openCodeSubscription.id}/${openCodeSubscription.modelIds[0]}`
@@ -1526,11 +1546,42 @@ export async function installRichTauriFeatureFixture(
               exists: true,
             };
           case "fetch_opencode_provider_models":
+            if (fixtureOptions.opencodeSavedProvider) {
+              return {
+                models: [
+                  { id: "grok-4.5" },
+                  { id: "grok-4.6" },
+                  { id: "grok-4.7" },
+                  { id: "grok-imagine-image" },
+                ],
+                truncated: false,
+              };
+            }
             return {
               models: [{ id: "fixture-opencode-model" }],
               truncated: false,
             };
           case "save_opencode_models":
+            if (fixtureOptions.opencodeSavedProvider) {
+              const request = payload.request as {
+                selectedModelIds: string[];
+              };
+              const previousCount = openCodeSavedModelIds.length;
+              openCodeSavedModelIds = [
+                ...new Set([
+                  ...openCodeSavedModelIds,
+                  ...request.selectedModelIds,
+                ]),
+              ];
+              openCodeSavedRevision = "fixture-vibekey-revision-2";
+              return {
+                state: "saved",
+                revision: openCodeSavedRevision,
+                modelCount: openCodeSavedModelIds.length,
+                createdEntries: openCodeSavedModelIds.length - previousCount,
+                updatedEntries: 0,
+              };
+            }
             return {
               state: "saved",
               revision: "fixture-opencode-revision",
