@@ -4,6 +4,8 @@
 //! backup path. It only removes generated transaction paths or a target which
 //! was freshly re-verified as the exact Stable bundle identity.
 
+#![cfg_attr(target_os = "windows", allow(dead_code))]
+
 use std::{
     ffi::OsString,
     path::{Path, PathBuf},

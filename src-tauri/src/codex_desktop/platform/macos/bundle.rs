@@ -5,6 +5,8 @@
 //! still be named `Codex.app`; the fixed bundle ID is used only to find an
 //! already installed Stable application, not to admit downloaded content.
 
+#![cfg_attr(target_os = "windows", allow(dead_code))]
+
 #[cfg(target_os = "macos")]
 use std::process::Command;
 use std::{
