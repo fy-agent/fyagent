@@ -205,6 +205,15 @@ pub(super) fn verify_package(
     file: impl Read + Seek,
     path: &Path,
 ) -> Result<(), InstallerError> {
+    // AppInstaller XML can reference remote packages and is not supported.
+    // Reject its extension even for ZIP bytes; read_manifest also rejects XML
+    // content disguised with a supported package extension.
+    if path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("appinstaller"))
+    {
+        return Err(rejected("不支持 AppInstaller 安装描述文件，已拒绝安装"));
+    }
     let (bytes, bundle) = read_manifest(file)?;
     let (name, publisher) = super::manifest::parse_identity(&bytes, bundle)?;
     check_identity(&name, &publisher)?;
@@ -233,6 +242,10 @@ struct SignatureEvidence {
     status: String,
     signer: String,
     chain_valid: bool,
+    // Required, strictly typed metadata only. Status=Valid owns timestamp trust;
+    // a timestamp is not required for a currently valid, untimestamped signer.
+    #[serde(rename = "timestamped")]
+    _timestamped: bool,
     root_subject: String,
     root_thumbprint: String,
 }
@@ -295,7 +308,7 @@ pub(super) mod tests {
         }
     }
     fn evidence() -> serde_json::Value {
-        serde_json::json!({"status":"Valid", "signer":PUBLISHER, "chain_valid":true, "root_subject":ROOT_SUBJECT, "root_thumbprint":ROOT_THUMBPRINT})
+        serde_json::json!({"status":"Valid", "signer":PUBLISHER, "chain_valid":true, "timestamped":false, "root_subject":ROOT_SUBJECT, "root_thumbprint":ROOT_THUMBPRINT})
     }
     fn runner(evidence: serde_json::Value) -> FakeRunner {
         FakeRunner(
@@ -615,7 +628,7 @@ pub(super) mod tests {
         .is_err());
     }
     #[test]
-    fn truncated_malformed_duplicate_missing_output_and_command_failure_reject() {
+    fn truncated_malformed_missing_output_and_command_failure_reject() {
         for variant in 0..9 {
             let runner = runner(evidence());
             {
@@ -626,7 +639,7 @@ pub(super) mod tests {
                     1 => output.stdout.resize(MAX_OUTPUT + 1, b' '),
                     2 => output.stderr.resize(MAX_OUTPUT + 1, b' '),
                     3 => output.stdout = b"not json".to_vec(),
-                    4 => output.stdout = br#"{"status":"Valid","status":"Valid"}"#.to_vec(),
+                    4 => output.stderr = b"unexpected diagnostic".to_vec(),
                     5 => output.stdout = b"{}".to_vec(),
                     6 => output.status = Some(1),
                     7 => output.stdout = vec![0xff],
@@ -642,6 +655,250 @@ pub(super) mod tests {
             );
         }
     }
+    #[test]
+    fn every_required_evidence_field_rejects_duplicates_in_otherwise_valid_json() {
+        let valid = evidence();
+        verify_authenticode(
+            &runner(valid.clone()),
+            Path::new(POWERSHELL),
+            Path::new("package.msix"),
+        )
+        .unwrap();
+        let json = serde_json::to_string(&valid).unwrap();
+        for (key, value) in valid.as_object().unwrap() {
+            let duplicate = format!(
+                "{},{}:{}}}",
+                &json[..json.len() - 1],
+                serde_json::to_string(key).unwrap(),
+                value
+            );
+            let runner = runner(valid.clone());
+            runner.0.lock().unwrap().as_mut().unwrap().stdout = duplicate.into_bytes();
+            assert!(
+                verify_authenticode(&runner, Path::new(POWERSHELL), Path::new("package.msix"))
+                    .is_err(),
+                "{key}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_required_evidence_field_rejects_missing_null_and_wrong_type() {
+        let valid = evidence();
+        verify_authenticode(
+            &runner(valid.clone()),
+            Path::new(POWERSHELL),
+            Path::new("package.msix"),
+        )
+        .unwrap();
+        for key in valid.as_object().unwrap().keys() {
+            for replacement in [
+                None,
+                Some(serde_json::Value::Null),
+                Some(serde_json::json!([])),
+            ] {
+                let mut invalid = valid.clone();
+                match replacement {
+                    Some(value) => {
+                        invalid[key] = value;
+                    }
+                    None => {
+                        invalid.as_object_mut().unwrap().remove(key);
+                    }
+                }
+                assert!(
+                    verify_authenticode(
+                        &runner(invalid),
+                        Path::new(POWERSHELL),
+                        Path::new("package.msix")
+                    )
+                    .is_err(),
+                    "{key}"
+                );
+            }
+        }
+        let mut unknown = valid;
+        unknown["untrusted_extra"] = true.into();
+        assert!(verify_authenticode(
+            &runner(unknown),
+            Path::new(POWERSHELL),
+            Path::new("package.msix")
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn timestamped_expired_signer_accepts_only_valid_authenticode_and_pinned_root() {
+        // Fake the OS result for an expired signer with a trusted timestamp.
+        // Certificate-time semantics themselves require Windows runtime evidence.
+        let mut valid = evidence();
+        valid["timestamped"] = true.into();
+        verify_authenticode(
+            &runner(valid.clone()),
+            Path::new(POWERSHELL),
+            Path::new("package.msix"),
+        )
+        .unwrap();
+        for (field, value) in [
+            ("status", "NotTrusted"),
+            ("root_subject", "CN=Other Root"),
+            (
+                "root_thumbprint",
+                "0000000000000000000000000000000000000000",
+            ),
+        ] {
+            let mut invalid = valid.clone();
+            invalid[field] = value.into();
+            assert!(
+                verify_authenticode(
+                    &runner(invalid),
+                    Path::new(POWERSHELL),
+                    Path::new("package.msix")
+                )
+                .is_err(),
+                "{field}"
+            );
+        }
+    }
+
+    #[test]
+    fn expired_signer_without_timestamp_rejects_nonvalid_authenticode() {
+        let mut expired = evidence();
+        expired["timestamped"] = false.into();
+        expired["status"] = "NotTrusted".into();
+        assert!(verify_authenticode(
+            &runner(expired),
+            Path::new(POWERSHELL),
+            Path::new("package.msix")
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn root_extraction_does_not_revalidate_certificate_time_or_revocation() {
+        let trust = SCRIPT.find("if ($signature.Status -ne 'Valid'").unwrap();
+        let flags = SCRIPT.find("$chain.ChainPolicy.VerificationFlags = [System.Security.Cryptography.X509Certificates.X509VerificationFlags]::IgnoreNotTimeValid").unwrap();
+        let build = SCRIPT
+            .find("$chain.Build($signature.SignerCertificate)")
+            .unwrap();
+        assert!(trust < flags && flags < build);
+        assert!(SCRIPT.contains("$chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck"));
+        assert!(SCRIPT.contains("timestamped = ($null -ne $signature.TimeStamperCertificate)"));
+        assert!(SCRIPT.contains("root_thumbprint = $root.Thumbprint"));
+        for forbidden in [
+            "::NoFlag",
+            "::Online",
+            "VerificationTime",
+            "Get-Date",
+            "::Now",
+            "::UtcNow",
+        ] {
+            assert!(!SCRIPT.contains(forbidden), "{forbidden}");
+        }
+    }
+
+    #[test]
+    fn extended_length_paths_remain_literal_command_data() {
+        for path in [
+            r"\\?\C:\cache\'; $(exit 0); [x]\installer.msix",
+            r"\\?\UNC\server\share\installer.msix",
+        ] {
+            let runner = runner(evidence());
+            verify_package(
+                &runner,
+                Path::new(POWERSHELL),
+                std::io::Cursor::new(valid_package(false)),
+                Path::new(path),
+            )
+            .unwrap();
+            let calls = runner.1.lock().unwrap();
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].package_path, Path::new(path).as_os_str());
+            assert_eq!(calls[0].arguments.last().unwrap(), SCRIPT);
+            assert!(!calls[0]
+                .arguments
+                .iter()
+                .any(|arg| arg.to_string_lossy().contains(path)));
+        }
+        assert!(include_str!("command.rs")
+            .contains(".env(\"FYAGENT_CODEX_SIGNATURE_PATH\", &invocation.package_path)"));
+        assert!(SCRIPT.contains("-LiteralPath $env:FYAGENT_CODEX_SIGNATURE_PATH"));
+    }
+
+    #[test]
+    fn appinstaller_extension_and_xml_disguised_as_msix_never_reach_authenticode() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?><AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2018" Version="1.0.0.0" Uri="https://example.com/Codex.appinstaller"><MainPackage Name="OpenAI.Codex" Publisher="CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B" Version="1.0.0.0" ProcessorArchitecture="x64" Uri="https://example.com/Codex.msix"/></AppInstaller>"#;
+        for path in [
+            "installer.appinstaller",
+            "installer.APPINSTALLER",
+            "installer.msix",
+        ] {
+            let runner = runner(evidence());
+            assert!(verify_package(
+                &runner,
+                Path::new(POWERSHELL),
+                std::io::Cursor::new(xml),
+                Path::new(path)
+            )
+            .is_err());
+            assert!(runner.1.lock().unwrap().is_empty());
+        }
+        // Even a supported ZIP payload cannot opt into the unsupported extension.
+        for path in ["installer.appinstaller", "installer.APPINSTALLER"] {
+            let runner = runner(evidence());
+            assert!(verify_package(
+                &runner,
+                Path::new(POWERSHELL),
+                std::io::Cursor::new(valid_package(false)),
+                Path::new(path)
+            )
+            .is_err());
+            assert!(runner.1.lock().unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn renamed_msixbundle_uses_bundle_identity_and_full_signature_admission() {
+        let package = valid_package(true);
+        assert!(read_manifest(std::io::Cursor::new(&package)).unwrap().1);
+        for basename in ["installer.msixbundle", "installer.msix"] {
+            let fake = runner(evidence());
+            verify_package(
+                &fake,
+                Path::new(POWERSHELL),
+                std::io::Cursor::new(&package),
+                Path::new(basename),
+            )
+            .unwrap();
+            assert_eq!(fake.1.lock().unwrap().len(), 1);
+            for field in ["status", "signer", "root_subject", "root_thumbprint"] {
+                let mut invalid = evidence();
+                invalid[field] = "wrong".into();
+                let fake = runner(invalid);
+                assert!(
+                    verify_package(
+                        &fake,
+                        Path::new(POWERSHELL),
+                        std::io::Cursor::new(&package),
+                        Path::new(basename)
+                    )
+                    .is_err(),
+                    "{field}"
+                );
+                assert_eq!(fake.1.lock().unwrap().len(), 1);
+            }
+            let fake = runner(evidence());
+            assert!(verify_package(
+                &fake,
+                Path::new(POWERSHELL),
+                std::io::Cursor::new(package_with_identity(true, "OpenAI.Other", PUBLISHER)),
+                Path::new(basename)
+            )
+            .is_err());
+            assert!(fake.1.lock().unwrap().is_empty());
+        }
+    }
+
     fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
         use std::io::{Cursor, Write};
         let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));

@@ -7,9 +7,12 @@ try {
     if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate) { exit 1 }
     $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
     try {
-        $chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::Online
-        $chain.ChainPolicy.RevocationFlag = [System.Security.Cryptography.X509Certificates.X509RevocationFlag]::ExcludeRoot
-        $chain.ChainPolicy.VerificationFlags = [System.Security.Cryptography.X509Certificates.X509VerificationFlags]::NoFlag
+        # Status=Valid above is the trust decision (WinVerifyTrust handles trusted
+        # timestamps). This chain only resolves the signer's root for pinning:
+        # do not reject a historically valid signer for expiry or recheck current
+        # revocation. Never derive trust from timestamp presence or package dates.
+        $chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+        $chain.ChainPolicy.VerificationFlags = [System.Security.Cryptography.X509Certificates.X509VerificationFlags]::IgnoreNotTimeValid
         $chain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(10)
         if (-not $chain.Build($signature.SignerCertificate)) { exit 1 }
         $root = $chain.ChainElements[$chain.ChainElements.Count - 1].Certificate
@@ -19,7 +22,9 @@ try {
         $result = [ordered]@{
             status = [string]$signature.Status
             signer = $signature.SignerCertificate.Subject
+            # This means root-chain resolution succeeded, not a second trust decision.
             chain_valid = $true
+            timestamped = ($null -ne $signature.TimeStamperCertificate)
             root_subject = $root.Subject
             root_thumbprint = $root.Thumbprint
         }
