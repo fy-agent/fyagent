@@ -206,7 +206,7 @@ export function AuthPage() {
     (
       result: ManagedAuthMutationResult,
       successTitle: string,
-      showToast = true,
+      announce: boolean,
     ) => {
       queryClient.setQueryData(
         featureKeys.managedAuthOverview,
@@ -214,17 +214,17 @@ export function AuthPage() {
       );
       invalidateRequestSources();
       setMutationError(null);
-      if (showToast)
-        notify({
-          tone: result.outcome === "completed" ? "success" : "info",
-          title: successTitle,
-          description:
-            result.pendingRestartConsumers.length > 0
-              ? `${result.pendingRestartConsumers
-                  .map(managedAuthConsumerLabel)
-                  .join("、")} 需要重新启动。`
-              : undefined,
-        });
+      if (!announce) return;
+      notify({
+        tone: result.outcome === "completed" ? "success" : "info",
+        title: successTitle,
+        description:
+          result.pendingRestartConsumers.length > 0
+            ? `${result.pendingRestartConsumers
+                .map(managedAuthConsumerLabel)
+                .join("、")} 需要重新启动。`
+            : undefined,
+      });
     },
     [notify, queryClient, invalidateRequestSources],
   );
@@ -254,6 +254,8 @@ export function AuthPage() {
     record("pending", "正在处理此连接并读取结果…");
     try {
       const result = await action();
+      // Connection actions report in the page results region; a second,
+      // global toast would cover the next action's entry on small windows.
       commitMutationResult(result, successTitle, !target);
       const connection = result.overview.connections.find(
         (item) => item.connectionId === target?.connection.connectionId,
@@ -272,7 +274,10 @@ export function AuthPage() {
       return result;
     } catch (cause) {
       const message = managedAuthCommandErrorCopy(cause);
-      if (!target) {
+      record("failed", message);
+      if (target) {
+        await refetchOverview();
+      } else {
         setMutationError(message);
         notify({
           tone: "error",
@@ -280,8 +285,6 @@ export function AuthPage() {
           description: message,
         });
       }
-      record("failed", message);
-      if (target) await refetchOverview();
       return null;
     } finally {
       mutationBusyRef.current = false;

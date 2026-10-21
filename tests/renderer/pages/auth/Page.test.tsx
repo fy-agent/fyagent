@@ -352,6 +352,30 @@ describe("AuthPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("reports targeted connection actions only in the results region while untargeted ones keep their toast", async () => {
+    const { user, results } = await connectCodexThenFailOpenCode();
+    const failed = screen.getByRole("article", {
+      name: "OpenCode Desktop · OpenAI 操作结果",
+    });
+    expect(within(failed).getByRole("status")).toHaveTextContent(
+      "检测到软件在 FyAgent 外部修改了登录信息",
+    );
+    expect(
+      within(failed).getByRole("button", { name: "重试此连接" }),
+    ).toBeVisible();
+    expect(results).toHaveTextContent("1 个需要处理，1 个已完成");
+    expect(document.querySelector(".fy-toast")).toBeNull();
+    expect(screen.queryByText("账号操作未完成")).not.toBeInTheDocument();
+    expect(screen.queryByText("Codex 状态已更新")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /^软件连接/u }));
+    await user.click(await screen.findByTestId("managed-auth-consumer-codex"));
+    const codex = await screen.findByRole("region", { name: "Codex 连接详情" });
+    await user.click(within(codex).getByRole("button", { name: "刷新状态" }));
+    expect(await screen.findByText("Codex 状态已更新")).toBeVisible();
+    expect(document.querySelectorAll(".fy-toast")).toHaveLength(1);
+  });
+
   it("keeps a pending-restart connection result visible while completed results fold", async () => {
     const user = userEvent.setup();
     let overview = managedAuthOverviewFixture();

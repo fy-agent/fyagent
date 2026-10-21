@@ -345,9 +345,15 @@ test(CONNECT_ENTRY_TEST, async ({ page }, testInfo) => {
   };
   await disconnect("grokbuild", "Grok Build");
   await disconnect("opencode", "OpenCode Desktop");
+  const operationsDoneAt = Date.now();
   const results = page.getByRole("region", { name: "软件连接操作结果" });
   await expect(results).toContainText("1 个需要处理，1 个已完成");
-  await expect(page.locator(".fy-toast-host .fy-toast")).toHaveCount(0);
+  await expect(
+    page.getByRole("article", { name: /^OpenCode Desktop · .+ 操作结果$/u }),
+  ).toContainText("检测到软件在 FyAgent 外部修改了登录信息");
+  // Measured well inside the 4.2s toast lifetime: targeted connection
+  // results live in the page, so no global toast may cover the entry.
+  await expect(page.locator(".fy-toast")).toHaveCount(0);
 
   const viewports = [
     { width: 900, height: 600 },
@@ -368,6 +374,20 @@ test(CONNECT_ENTRY_TEST, async ({ page }, testInfo) => {
       return target !== null && element.contains(target);
     });
     expect(hit).toBe(true);
+    // Toasts ignore pointer events, so hit-testing alone cannot see them.
+    const covered = await control.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return [...document.querySelectorAll(".fy-toast")].some((toast) => {
+        const other = toast.getBoundingClientRect();
+        return (
+          other.left < rect.right &&
+          rect.left < other.right &&
+          other.top < rect.bottom &&
+          rect.top < other.bottom
+        );
+      });
+    });
+    expect(covered).toBe(false);
     await control.click({ trial: true });
   };
   const expectConnectDialog = async (entry: Locator) => {
@@ -378,35 +398,44 @@ test(CONNECT_ENTRY_TEST, async ({ page }, testInfo) => {
     await expect(dialog).toHaveCount(0);
   };
 
-  await page.getByTestId("managed-auth-consumer-codex").click();
+  // Every screenshot must land before a toast from the operation could have
+  // expired, otherwise an empty corner proves nothing.
+  const capture = async (name: string) => {
+    await page.screenshot({ path: testInfo.outputPath(name) });
+    const elapsed = Date.now() - operationsDoneAt;
+    testInfo.annotations.push({
+      type: "screenshot-after-operation",
+      description: `${name} ${elapsed}ms`,
+    });
+    expect(elapsed).toBeLessThan(3200);
+  };
   const connectionEntry = page
     .getByRole("region", { name: "Codex 连接详情" })
     .getByRole("button", { name: "连接账号", exact: true });
-  for (const viewport of viewports) {
-    await page.setViewportSize(viewport);
-    await expectHittable(connectionEntry, viewport.height);
-    await page.screenshot({
-      path: testInfo.outputPath(
-        `connect-entry-connections-${viewport.width}x${viewport.height}.png`,
-      ),
-    });
-  }
-  await expectConnectDialog(connectionEntry);
-
-  await page.getByRole("tab", { name: /^账号/u }).click();
   const accountEntry = page
     .getByRole("region", { name: "连接到软件" })
     .getByRole("button", { name: "用此账号连接", exact: true });
+
+  await page.getByTestId("managed-auth-consumer-codex").click();
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await expectHittable(connectionEntry, viewport.height);
+    await capture(
+      `connect-entry-connections-${viewport.width}x${viewport.height}.png`,
+    );
+  }
+  await page.getByRole("tab", { name: /^账号/u }).click();
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await expectHittable(accountEntry, viewport.height);
-    await page.screenshot({
-      path: testInfo.outputPath(
-        `connect-entry-accounts-${viewport.width}x${viewport.height}.png`,
-      ),
-    });
+    await capture(
+      `connect-entry-accounts-${viewport.width}x${viewport.height}.png`,
+    );
   }
+
   await expectConnectDialog(accountEntry);
+  await page.getByRole("tab", { name: /^软件连接/u }).click();
+  await expectConnectDialog(connectionEntry);
   await expect(results).toContainText("1 个需要处理");
   await expectHealthyPage(page, health);
 });
