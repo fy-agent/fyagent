@@ -4,7 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { appendAgentReturnToPath } from "../../shared/features/agent-navigation";
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
+import { ompModelSelector } from "../../shared/features/omp";
 import {
+  useOmpConfig,
   useOpenCodeModelSnapshot,
   useProviderSummary,
   useTraeWorkModelIds,
@@ -110,6 +112,7 @@ export function AgentModelsSection({
   const workBuddyModels = useWorkBuddyModelIds(entry.agentId === "workbuddy");
   const traeModels = useTraeWorkModelIds(entry.agentId === "trae-work");
   const openCodeModels = useOpenCodeModelSnapshot(entry.agentId === "opencode");
+  const ompConfig = useOmpConfig(entry.agentId === "omp");
   const grokSummary = useProviderSummary(
     "grokbuild",
     entry.agentId === "grokbuild",
@@ -197,6 +200,25 @@ export function AgentModelsSection({
       pending = openCodeModels.isPending;
       failed = openCodeModels.isError;
       break;
+    case "omp": {
+      const defaultModel = ompConfig.data?.defaultModel ?? null;
+      observations = (ompConfig.data?.providers ?? []).flatMap((provider) =>
+        provider.models.map((model) => {
+          const selector = ompModelSelector(provider.id, model.id);
+          return {
+            id: selector,
+            label: model.name ?? model.id,
+            detail:
+              selector === defaultModel
+                ? `omp 默认模型 · ${provider.id}`
+                : `omp 供应商 · ${provider.id}`,
+          };
+        }),
+      );
+      pending = ompConfig.isPending;
+      failed = ompConfig.isError;
+      break;
+    }
   }
 
   const normalizedSearch = search.trim().toLocaleLowerCase();

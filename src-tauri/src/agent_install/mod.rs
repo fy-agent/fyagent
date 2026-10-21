@@ -90,6 +90,7 @@ pub async fn readiness_for(agent_id: AgentCatalogId, state: &AppState) -> AgentI
     let mut readiness = match agent_id {
         AgentCatalogId::Codex => codex_readiness(state).await,
         AgentCatalogId::GrokBuild | AgentCatalogId::ClaudeCode => cli_readiness(agent_id).await,
+        AgentCatalogId::Omp => omp_readiness_from_inventory(&inventory),
         AgentCatalogId::OpenCode
         | AgentCatalogId::QoderWork
         | AgentCatalogId::TraeWork
@@ -105,7 +106,7 @@ fn configuration_eligibility(
 ) -> AgentConfigurationEligibility {
     let cli = matches!(
         agent_id,
-        AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild
+        AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild | AgentCatalogId::Omp
     );
     let (state, evidence) = match observed_state {
         AgentInstallState::Installed if cli => (
@@ -181,6 +182,44 @@ async fn cli_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto {
         observation.as_ref().is_some_and(|value| value.unavailable),
     );
     cli_readiness_from_observation(agent_id, observation.as_ref(), auth_state)
+}
+
+fn omp_readiness_from_inventory(
+    inventory: &InventoryReadinessProjection,
+) -> AgentInstallReadinessDto {
+    let install_state = match inventory.state {
+        InstallationInventoryState::Single => AgentInstallState::Installed,
+        InstallationInventoryState::NotObserved => AgentInstallState::NotInstalled,
+        InstallationInventoryState::Unsupported => AgentInstallState::Unavailable,
+        InstallationInventoryState::Multiple | InstallationInventoryState::Unknown => {
+            AgentInstallState::Unknown
+        }
+    };
+    let mut reason_codes = vec![AgentReasonCode::AuthStateUnknown];
+    if install_state != AgentInstallState::Installed {
+        reason_codes.push(AgentReasonCode::OfficialPageOnly);
+    }
+    AgentInstallReadinessDto {
+        contract_version: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+        agent_id: AgentCatalogId::Omp,
+        reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
+        configuration_eligibility: configuration_eligibility(install_state, AgentCatalogId::Omp),
+        install_state,
+        inventory_state: InstallationInventoryState::Unknown,
+        requires_target_selection: false,
+        update_state: AgentUpdateState::Unavailable,
+        release_id: None,
+        local_version: (install_state == AgentInstallState::Installed)
+            .then(|| inventory.single_local_version.clone())
+            .flatten(),
+        remote_version: None,
+        auth_ownership: AgentAuthOwnership::AgentOwned,
+        auth_state: AgentAuthState::Unknown,
+        source_kind: AgentSourceKind::CliTooling,
+        allowed_actions: Vec::new(),
+        reason_codes,
+        surfaces: Vec::new(),
+    }
 }
 
 fn cli_readiness_from_observation(
@@ -1095,7 +1134,7 @@ fn map_windows_installer_error_parts(
     match platform_error_code {
         Some("agent_installer_user_cancelled") => return AgentReasonCode::InstallerUserCancelled,
         Some("agent_installer_process_unobservable") => {
-            return AgentReasonCode::InstallerProcessUnobservable
+            return AgentReasonCode::InstallerProcessUnobservable;
         }
         Some("agent_installer_timed_out") => return AgentReasonCode::InstallerTimedOut,
         Some("agent_installer_exited_nonzero") => return AgentReasonCode::InstallerExitedNonzero,
@@ -1191,7 +1230,7 @@ pub fn get_agent_action_job(
 mod tests {
     use super::*;
 
-    const IDS: [AgentCatalogId; 7] = [
+    const IDS: [AgentCatalogId; 8] = [
         AgentCatalogId::QoderWork,
         AgentCatalogId::TraeWork,
         AgentCatalogId::WorkBuddy,
@@ -1199,6 +1238,7 @@ mod tests {
         AgentCatalogId::Codex,
         AgentCatalogId::ClaudeCode,
         AgentCatalogId::OpenCode,
+        AgentCatalogId::Omp,
     ];
 
     fn dto_keys() -> &'static [&'static str] {
@@ -1336,6 +1376,81 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn omp_readiness_uses_inventory_projection_without_granting_lifecycle_actions() {
+        let readiness = omp_readiness_from_inventory(&inventory_projection(
+            InstallationInventoryState::Single,
+            Some("18.12.5"),
+            false,
+            false,
+        ));
+        assert_eq!(readiness.agent_id, AgentCatalogId::Omp);
+        assert_eq!(readiness.install_state, AgentInstallState::Installed);
+        assert_eq!(readiness.local_version.as_deref(), Some("18.12.5"));
+        assert_eq!(readiness.source_kind, AgentSourceKind::CliTooling);
+        assert_eq!(readiness.auth_ownership, AgentAuthOwnership::AgentOwned);
+        assert_eq!(readiness.auth_state, AgentAuthState::Unknown);
+        assert_eq!(
+            readiness.configuration_eligibility,
+            AgentConfigurationEligibility {
+                state: AgentConfigurationState::Eligible,
+                evidence: AgentConfigurationEvidence::CliRunnable,
+            }
+        );
+        assert!(readiness.allowed_actions.is_empty());
+        assert_eq!(readiness.update_state, AgentUpdateState::Unavailable);
+        assert!(!readiness
+            .reason_codes
+            .contains(&AgentReasonCode::OfficialPageOnly));
+
+        let no_version = omp_readiness_from_inventory(&inventory_projection(
+            InstallationInventoryState::Single,
+            None,
+            false,
+            false,
+        ));
+        assert_eq!(no_version.install_state, AgentInstallState::Installed);
+        assert_eq!(no_version.local_version, None);
+        assert_eq!(
+            no_version.configuration_eligibility,
+            AgentConfigurationEligibility {
+                state: AgentConfigurationState::Eligible,
+                evidence: AgentConfigurationEvidence::CliRunnable,
+            }
+        );
+
+        let readiness = omp_readiness_from_inventory(&inventory_projection(
+            InstallationInventoryState::NotObserved,
+            None,
+            false,
+            false,
+        ));
+        assert_eq!(readiness.install_state, AgentInstallState::NotInstalled);
+        assert_eq!(
+            readiness.configuration_eligibility,
+            AgentConfigurationEligibility {
+                state: AgentConfigurationState::NotDetected,
+                evidence: AgentConfigurationEvidence::None,
+            }
+        );
+        assert!(readiness.allowed_actions.is_empty());
+        assert!(readiness
+            .reason_codes
+            .contains(&AgentReasonCode::OfficialPageOnly));
+
+        let failed = omp_readiness_from_inventory(&inventory_projection(
+            InstallationInventoryState::Unknown,
+            None,
+            false,
+            false,
+        ));
+        assert_eq!(failed.install_state, AgentInstallState::Unknown);
+        assert_eq!(
+            failed.configuration_eligibility.state,
+            AgentConfigurationState::Unknown
+        );
     }
 
     #[test]
@@ -1516,7 +1631,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_ids_remain_the_canonical_seven() {
+    fn catalog_ids_remain_the_canonical_eight() {
         let encoded: Vec<_> = IDS
             .into_iter()
             .map(|id| serde_json::to_value(id).unwrap())
@@ -1531,6 +1646,7 @@ mod tests {
                 "codex",
                 "claude-code",
                 "opencode",
+                "omp",
             ]
         );
         for invalid in ["pi", "qoderwork-cn", "codex-cli", "claude"] {
@@ -1691,6 +1807,7 @@ mod tests {
             super::cli::tooling_id_for(AgentCatalogId::OpenCode),
             Some("opencode")
         );
+        assert_eq!(super::cli::tooling_id_for(AgentCatalogId::Omp), None);
     }
 
     fn start_request(
@@ -1818,6 +1935,20 @@ mod tests {
                 Err(AgentReasonCode::TargetSelectionRequired),
                 "{agent_id:?} update must be admitted but require an inventory-bound target"
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn omp_lifecycle_requests_are_not_supported() {
+        let state = test_app_state();
+        for action in [
+            AgentActionId::Install,
+            AgentActionId::Update,
+            AgentActionId::Launch,
+        ] {
+            let result =
+                start_agent_action(start_request(AgentCatalogId::Omp, action, None), &state).await;
+            assert_eq!(result, Err(AgentReasonCode::ActionNotSupported));
         }
     }
 

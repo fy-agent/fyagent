@@ -199,7 +199,7 @@ function catalog(): AgentCatalogResult {
     evidenceIds: ["p0_scope"],
   }));
   return {
-    contractVersion: 5,
+    contractVersion: 6,
     reviewedAt: "2026-08-20",
     agents: [
       {
@@ -531,6 +531,7 @@ describe("Models page", () => {
       "Codex",
       "Claude Code",
       "OpenCode",
+      "Oh My Pi",
     ]);
 
     const expectedIcons = [
@@ -541,6 +542,7 @@ describe("Models page", () => {
       getAgentIcon("codex"),
       getAgentIcon("claude-code"),
       getAgentIcon("opencode"),
+      getAgentIcon("omp"),
     ];
     buttons.forEach((button, index) => {
       const icon = button.querySelector("img");
@@ -923,29 +925,53 @@ describe("Models page", () => {
 
   it("preserves separate WorkBuddy drafts and locks API writes during subscription preview", async () => {
     const ports = workBuddyPorts();
-    ports.managedAuth.getOverview = vi.fn(async () => managedAuthOverviewFixture());
-    ports.workbuddy.getSubscriptionSource = vi.fn(async () => ({ revision: "r1", bindingVersion: null, source: null }));
-    ports.changePlans.createWorkBuddySubscriptionPlan = vi.fn(async () => changePlanWorkBuddySubscriptionWire);
+    ports.managedAuth.getOverview = vi.fn(async () =>
+      managedAuthOverviewFixture(),
+    );
+    ports.workbuddy.getSubscriptionSource = vi.fn(async () => ({
+      revision: "r1",
+      bindingVersion: null,
+      source: null,
+    }));
+    ports.changePlans.createWorkBuddySubscriptionPlan = vi.fn(
+      async () => changePlanWorkBuddySubscriptionWire,
+    );
     ports.changePlans.createWorkBuddySavePlan = vi.fn();
     ports.changePlans.applyChangePlan = vi.fn();
     renderPage(ports, "workbuddy");
     await screen.findByText("已有第三方模型数量");
-    fireEvent.change(screen.getByLabelText("服务地址"), { target: { value: "https://draft.example/v1" } });
-    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "api-draft-secret" } });
-    fireEvent.change(screen.getByLabelText("自定义模型 ID"), { target: { value: "api-model" } });
+    fireEvent.change(screen.getByLabelText("服务地址"), {
+      target: { value: "https://draft.example/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "api-draft-secret" },
+    });
+    fireEvent.change(screen.getByLabelText("自定义模型 ID"), {
+      target: { value: "api-model" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "账号订阅" }));
     fireEvent.click(await screen.findByRole("radio", { name: /ChatGPT/ }));
-    fireEvent.change(screen.getByLabelText("订阅模型 ID"), { target: { value: "gpt-subscription" } });
+    fireEvent.change(screen.getByLabelText("订阅模型 ID"), {
+      target: { value: "gpt-subscription" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "API Key 配置" }));
     expect(screen.getByLabelText("API Key")).toHaveValue("api-draft-secret");
     expect(screen.getByLabelText("自定义模型 ID")).toHaveValue("api-model");
     fireEvent.click(screen.getByRole("button", { name: "账号订阅" }));
-    expect(screen.getByLabelText("订阅模型 ID")).toHaveValue("gpt-subscription");
-    fireEvent.click(screen.getByRole("button", { name: "预览 WorkBuddy 订阅设置" }));
+    expect(screen.getByLabelText("订阅模型 ID")).toHaveValue(
+      "gpt-subscription",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "预览 WorkBuddy 订阅设置" }),
+    );
     await screen.findByRole("region", { name: "保存 WorkBuddy 订阅设置" });
     expect(screen.getByRole("button", { name: "API Key 配置" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存并应用" })).toBeDisabled();
-    expect(JSON.stringify(vi.mocked(ports.changePlans.createWorkBuddySubscriptionPlan).mock.calls)).not.toContain("api-draft-secret");
+    expect(
+      JSON.stringify(
+        vi.mocked(ports.changePlans.createWorkBuddySubscriptionPlan).mock.calls,
+      ),
+    ).not.toContain("api-draft-secret");
     expect(ports.changePlans.createWorkBuddySavePlan).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
     expect(ports.changePlans.applyChangePlan).not.toHaveBeenCalled();
@@ -956,25 +982,50 @@ describe("Models page", () => {
 
   it("ignores WorkBuddy preview arriving after changing Agent and never writes QoderWork or TRAE", async () => {
     const ports = workBuddyPorts();
-    ports.managedAuth.getOverview = vi.fn(async () => managedAuthOverviewFixture());
-    ports.workbuddy.getSubscriptionSource = vi.fn(async () => ({ revision: "r1", bindingVersion: null, source: null }));
+    ports.managedAuth.getOverview = vi.fn(async () =>
+      managedAuthOverviewFixture(),
+    );
+    ports.workbuddy.getSubscriptionSource = vi.fn(async () => ({
+      revision: "r1",
+      bindingVersion: null,
+      source: null,
+    }));
     let resolve!: (value: typeof changePlanWorkBuddySubscriptionWire) => void;
-    ports.changePlans.createWorkBuddySubscriptionPlan = vi.fn(() => new Promise<typeof changePlanWorkBuddySubscriptionWire>(r => { resolve = r; }));
+    ports.changePlans.createWorkBuddySubscriptionPlan = vi.fn(
+      () =>
+        new Promise<typeof changePlanWorkBuddySubscriptionWire>((r) => {
+          resolve = r;
+        }),
+    );
     ports.changePlans.applyChangePlan = vi.fn();
     ports.workbuddy.saveModels = vi.fn();
     renderPage(ports, "workbuddy");
     await screen.findByText("已有第三方模型数量");
     fireEvent.click(screen.getByRole("button", { name: "账号订阅" }));
     fireEvent.click(await screen.findByRole("radio", { name: /ChatGPT/ }));
-    fireEvent.change(screen.getByLabelText("订阅模型 ID"), { target: { value: "gpt-test" } });
-    fireEvent.click(screen.getByRole("button", { name: "预览 WorkBuddy 订阅设置" }));
-    await waitFor(() => expect(ports.changePlans.createWorkBuddySubscriptionPlan).toHaveBeenCalledOnce());
+    fireEvent.change(screen.getByLabelText("订阅模型 ID"), {
+      target: { value: "gpt-test" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "预览 WorkBuddy 订阅设置" }),
+    );
+    await waitFor(() =>
+      expect(
+        ports.changePlans.createWorkBuddySubscriptionPlan,
+      ).toHaveBeenCalledOnce(),
+    );
     fireEvent.click(screen.getByTestId("model-target-qoderwork"));
     await act(async () => resolve(changePlanWorkBuddySubscriptionWire));
-    expect(screen.queryByRole("region", { name: "账号订阅设置" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "应用更改" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "账号订阅设置" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "应用更改" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("model-target-trae"));
-    expect(screen.queryByRole("region", { name: "账号订阅设置" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "账号订阅设置" }),
+    ).not.toBeInTheDocument();
     expect(ports.changePlans.applyChangePlan).not.toHaveBeenCalled();
     expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
   });

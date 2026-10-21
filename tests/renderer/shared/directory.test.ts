@@ -2,11 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import {
   AGENT_CATALOG_IDS,
+  isAssignableProductEntry,
   MCP_TARGET_IDS,
+  MCP_TARGETS,
   MODEL_DIRECTORY_IDS,
   PRODUCT_DIRECTORY,
   PROMPT_APP_IDS,
   PROMPT_ONLY_DIRECTORY,
+  SKILL_TARGET_IDS,
+  SKILL_TARGETS,
+  SUPPORTED_APP_IDS,
+  SUPPORTED_APPS,
 } from "@/shared/features/directory";
 
 describe("Shared product directory", () => {
@@ -14,9 +20,11 @@ describe("Shared product directory", () => {
     expect(PRODUCT_DIRECTORY.map((entry) => entry.agentId)).toEqual([
       ...AGENT_CATALOG_IDS,
     ]);
-    expect(PRODUCT_DIRECTORY.map((entry) => entry.assignmentId)).toEqual([
-      ...MCP_TARGET_IDS,
-    ]);
+    expect(
+      PRODUCT_DIRECTORY.filter(isAssignableProductEntry).map(
+        (entry) => entry.assignmentId,
+      ),
+    ).toEqual([...MCP_TARGET_IDS]);
     expect(PRODUCT_DIRECTORY.map((entry) => entry.modelTarget)).toEqual([
       ...MODEL_DIRECTORY_IDS,
     ]);
@@ -34,6 +42,7 @@ describe("Shared product directory", () => {
       "codex",
       "claude-code",
       "opencode",
+      "omp",
     ]);
     expect(
       PRODUCT_DIRECTORY.map((entry) => [
@@ -48,6 +57,23 @@ describe("Shared product directory", () => {
       ["codex", "standard"],
       ["claude-code", "standard"],
       ["opencode", "standard"],
+      ["omp", "standard"],
     ]);
+  });
+
+  it("lists Oh My Pi as an Agent with models only, never for MCP, Skills, Prompts or Supported Apps", () => {
+    expect(AGENT_CATALOG_IDS).toContain("omp");
+    expect(MODEL_DIRECTORY_IDS).toContain("omp");
+    for (const ids of [
+      MCP_TARGET_IDS,
+      SKILL_TARGET_IDS,
+      SUPPORTED_APP_IDS,
+      PROMPT_APP_IDS,
+    ]) {
+      expect(ids as readonly string[]).not.toContain("omp");
+    }
+    for (const targets of [MCP_TARGETS, SKILL_TARGETS, SUPPORTED_APPS]) {
+      expect(targets.map((target) => target.id as string)).not.toContain("omp");
+    }
   });
 });

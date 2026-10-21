@@ -60,6 +60,8 @@ export const featureKeys = {
   workbuddyModelIds: [scope, "workbuddy", "model-ids"] as const,
   traeWorkModelIds: [scope, "trae-work", "model-ids"] as const,
   openCodeModelSnapshot: [scope, "opencode", "model-snapshot"] as const,
+  ompConfig: [scope, "omp", "config"] as const,
+  ompCli: [scope, "omp", "cli"] as const,
   skills: [scope, "skills", "installed"] as const,
   skillBackups: [scope, "skills", "backups"] as const,
   skillDiscovery: [scope, "skills", "discovery"] as const,
@@ -240,6 +242,29 @@ export function useOpenCodeModelSnapshot(enabled = true) {
     queryKey: featureKeys.openCodeModelSnapshot,
     queryFn: ports.opencodeModels.getSnapshot,
     enabled: useVisibleEnabled(enabled),
+  });
+}
+
+export function useOmpConfig(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.ompConfig,
+    queryFn: ports.ompModels.readConfig,
+    enabled: useVisibleEnabled(enabled),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useOmpCliDiscovery(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.ompCli,
+    queryFn: ports.ompModels.discoverCli,
+    enabled: useVisibleEnabled(enabled),
+    retry: false,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 

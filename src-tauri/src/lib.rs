@@ -27,6 +27,7 @@ mod macos_system_commit;
 mod mcp;
 pub mod mode;
 mod model_capabilities;
+mod omp_config;
 mod openclaw_config;
 mod opencode_config;
 mod panic_hook;
@@ -2250,6 +2251,10 @@ pub fn run() {
             commands::get_opencode_model_snapshot,
             commands::fetch_opencode_provider_models,
             commands::save_opencode_models,
+            commands::read_omp_config,
+            commands::preview_omp_save,
+            commands::apply_omp_save,
+            commands::discover_omp_cli,
             // ours: endpoint speed test + custom endpoint management
             commands::test_api_endpoints,
             commands::get_custom_endpoints,
@@ -4296,6 +4301,25 @@ mod tests {
             "restart_codex_app_server_daemon",
             "set_proxy_stack_member",
             "adopt_codex_stack_catalog",
+        ] {
+            assert_eq!(host.matches(&format!("commands::{command},")).count(), 1);
+            assert!(permissions.contains(&format!("\"{command}\"")));
+        }
+    }
+
+    #[test]
+    fn omp_commands_are_registered_and_permitted() {
+        let host = include_str!("lib.rs");
+        let permissions = include_str!("../permissions/legacy-application-commands.toml");
+        let capability = include_str!("../capabilities/default.json");
+        let exports = include_str!("commands/mod.rs");
+        assert!(exports.contains("pub use omp_config::*;"));
+        assert!(capability.contains("\"allow-legacy-application-commands\""));
+        for command in [
+            "read_omp_config",
+            "preview_omp_save",
+            "apply_omp_save",
+            "discover_omp_cli",
         ] {
             assert_eq!(host.matches(&format!("commands::{command},")).count(), 1);
             assert!(permissions.contains(&format!("\"{command}\"")));

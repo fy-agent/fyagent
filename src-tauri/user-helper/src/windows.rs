@@ -196,6 +196,9 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
     let channel = PipeChannel::connect(&pipe_name(request.pipe_nonce()))?;
     let channel = Arc::new(channel);
     channel.send_hello(action)?;
+    if action == UserHelperAction::OmpProbe {
+        return omp::run_session(&controls, channel);
+    }
     if matches!(
         action,
         UserHelperAction::GrokTool { .. } | UserHelperAction::ClaudeTool { .. }
@@ -248,7 +251,8 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
         }
         UserHelperAction::GrokTool { .. }
         | UserHelperAction::ClaudeTool { .. }
-        | UserHelperAction::CodexModels => Err(DeploymentFailure::Operation(
+        | UserHelperAction::CodexModels
+        | UserHelperAction::OmpProbe => Err(DeploymentFailure::Operation(
             HelperErrorCode::InstallLayoutInvalid,
         )),
     };
@@ -299,6 +303,7 @@ fn run_codex_models_session(
         }
     }
 }
+mod omp;
 
 fn run_cli_tool_session(
     controls: &ParentControls,
@@ -2681,6 +2686,7 @@ impl PipeChannel {
             HelperMessage::Success
                 | HelperMessage::ToolResult(_)
                 | HelperMessage::CodexModels(_)
+                | HelperMessage::OmpProbeResult(_)
                 | HelperMessage::Error { .. }
         ) {
             return self.fail_write();

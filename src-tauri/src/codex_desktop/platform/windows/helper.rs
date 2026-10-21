@@ -23,9 +23,9 @@ use fyagent_user_helper::{
     admission_event_name, cancel_event_name, decode_frame, encode_plan_control, layout::pipe_name,
     AgentInstallerProduct, CanonicalJobId, CodexModelCatalog, GrokNpmInstallPlan, GrokOwner,
     GrokToolAction, HelperErrorCode, HelperMessage, HelperProtocolAction, HelperProtocolSequence,
-    HelperProtocolTerminal, PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity,
-    PipeNonce, ProtocolError, ToolOperationResult, UserHelperAction, BRIDGE_CONTROL_BYTES,
-    MAX_FRAME_BYTES, TOOL_OPERATION_STARTED_IDENTITY,
+    HelperProtocolTerminal, OmpProbeResult, PackageBridgeArtifactKind, PackageBridgeControl,
+    PinnedPackageIdentity, PipeNonce, ProtocolError, ToolOperationResult, UserHelperAction,
+    BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES, TOOL_OPERATION_STARTED_IDENTITY,
 };
 use windows::{
     core::{HRESULT, PCWSTR, PWSTR},
@@ -221,6 +221,22 @@ pub(crate) fn run_claude_tool_operation(
         WindowsHelperDeadlines::GROK_TOOL,
     )
     .and_then(protocol_tool_result)
+}
+
+pub(crate) fn run_omp_cli_probe(
+    context: &InteractiveUserContext,
+) -> Result<OmpProbeResult, InstallerError> {
+    let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
+        .map_err(|_| helper_identity_error())?;
+    run_unpinned_tool_helper(
+        context,
+        UserHelperAction::OmpProbe,
+        &job_id,
+        None,
+        Arc::new(|_: JobProgress| {}),
+        WindowsHelperDeadlines::OMP_PROBE,
+    )
+    .and_then(protocol_omp_probe_result)
 }
 
 /// Reads the model catalog of the current user's own Codex CLI through the
@@ -1316,6 +1332,9 @@ fn consume_protocol(
             HelperProtocolAction::CodexModels(catalog) => {
                 break HelperProtocolTerminal::CodexModels(catalog)
             }
+            HelperProtocolAction::OmpProbeResult(result) => {
+                break HelperProtocolTerminal::OmpProbeSuccess(result)
+            }
             HelperProtocolAction::Failure(code) => break HelperProtocolTerminal::Failure(code),
         }
     };
@@ -1455,9 +1474,11 @@ fn protocol_codex_catalog(
 ) -> Result<CodexModelCatalog, InstallerError> {
     match terminal {
         HelperProtocolTerminal::CodexModels(catalog) => Ok(catalog),
-        HelperProtocolTerminal::Success | HelperProtocolTerminal::ToolSuccess(_) => Err(
-            helper_pipe_error("the user-helper omitted the Codex model catalog"),
-        ),
+        HelperProtocolTerminal::Success
+        | HelperProtocolTerminal::ToolSuccess(_)
+        | HelperProtocolTerminal::OmpProbeSuccess(_) => Err(helper_pipe_error(
+            "the user-helper omitted the Codex model catalog",
+        )),
         HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
     }
 }
@@ -1465,9 +1486,11 @@ fn protocol_codex_catalog(
 fn protocol_terminal_result(terminal: HelperProtocolTerminal) -> Result<(), InstallerError> {
     match terminal {
         HelperProtocolTerminal::Success => Ok(()),
-        HelperProtocolTerminal::ToolSuccess(_) | HelperProtocolTerminal::CodexModels(_) => Err(
-            helper_pipe_error("the user-helper sent a tool result on a package action"),
-        ),
+        HelperProtocolTerminal::ToolSuccess(_)
+        | HelperProtocolTerminal::CodexModels(_)
+        | HelperProtocolTerminal::OmpProbeSuccess(_) => Err(helper_pipe_error(
+            "the user-helper sent a tool result on a package action",
+        )),
         HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
     }
 }
@@ -1477,10 +1500,24 @@ fn protocol_tool_result(
 ) -> Result<ToolOperationResult, InstallerError> {
     match terminal {
         HelperProtocolTerminal::ToolSuccess(result) => Ok(result),
-        HelperProtocolTerminal::Success | HelperProtocolTerminal::CodexModels(_) => {
+        HelperProtocolTerminal::Success
+        | HelperProtocolTerminal::CodexModels(_)
+        | HelperProtocolTerminal::OmpProbeSuccess(_) => {
             Err(helper_pipe_error("the user-helper omitted the tool result"))
         }
         HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
+    }
+}
+
+fn protocol_omp_probe_result(
+    terminal: HelperProtocolTerminal,
+) -> Result<OmpProbeResult, InstallerError> {
+    match terminal {
+        HelperProtocolTerminal::OmpProbeSuccess(result) => Ok(result),
+        HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
+        _ => Err(helper_pipe_error(
+            "the user-helper omitted the OMP probe result",
+        )),
     }
 }
 

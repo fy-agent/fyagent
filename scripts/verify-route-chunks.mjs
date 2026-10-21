@@ -21,6 +21,7 @@ export const RENDERER_ROUTE_ENTRIES = Object.freeze([
 export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
   "shared/platform/tauri/feature-ports/application.ts",
   "shared/platform/tauri/feature-ports/models.ts",
+  "shared/platform/tauri/feature-ports/omp.ts",
   "shared/platform/tauri/feature-ports/databaseRecovery.ts",
   "shared/platform/tauri/feature-ports/configPack.ts",
   "shared/platform/tauri/feature-ports/codexDesktop.ts",

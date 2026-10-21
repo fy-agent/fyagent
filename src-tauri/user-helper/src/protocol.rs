@@ -7,8 +7,9 @@ use crate::codex_models::{
     MAX_CODEX_MODEL_NAME_BYTES, MAX_CODEX_REASONING_EFFORTS, MAX_CODEX_REASONING_EFFORT_BYTES,
 };
 use crate::grok::{GrokOutcome, GrokOwner, NpmDestinationObservation, ToolOperationResult};
+use crate::omp::{OmpProbeResult, MAX_OMP_PATH_BYTES, MAX_OMP_VERSION_BYTES};
 
-/// v5 adds the bounded `CodexModels` catalog terminal. The parent and the
+/// v5 adds bounded `CodexModels` and `OmpProbeResult` terminals. The parent and the
 /// sibling helper ship in one package, so any other version is a mismatched
 /// install and is rejected as `UnsupportedVersion`.
 pub const PROTOCOL_VERSION: u8 = 5;
@@ -33,12 +34,19 @@ const CODEX_MODEL_MAX_BYTES: usize = 1
 /// Kind, version, CLI version, catalog flags, model count, then models.
 pub const MAX_CODEX_CATALOG_PAYLOAD_BYTES: usize =
     2 + 1 + MAX_CODEX_CLI_VERSION_BYTES + 1 + 1 + MAX_CODEX_MODELS * CODEX_MODEL_MAX_BYTES;
-pub const MAX_PAYLOAD_BYTES: usize =
-    if MAX_CODEX_CATALOG_PAYLOAD_BYTES > MAX_TOOL_RESULT_PAYLOAD_BYTES {
+const MAX_OMP_PAYLOAD_BYTES: usize = 6 + MAX_OMP_VERSION_BYTES + MAX_OMP_PATH_BYTES;
+pub const MAX_PAYLOAD_BYTES: usize = {
+    let legacy_and_codex = if MAX_CODEX_CATALOG_PAYLOAD_BYTES > MAX_TOOL_RESULT_PAYLOAD_BYTES {
         MAX_CODEX_CATALOG_PAYLOAD_BYTES
     } else {
         MAX_TOOL_RESULT_PAYLOAD_BYTES
     };
+    if legacy_and_codex > MAX_OMP_PAYLOAD_BYTES {
+        legacy_and_codex
+    } else {
+        MAX_OMP_PAYLOAD_BYTES
+    }
+};
 pub const MAX_FRAME_BYTES: usize = FRAME_LENGTH_BYTES + MAX_PAYLOAD_BYTES;
 // One message-mode pipe read buffers a whole frame on both sides.
 const _: () = assert!(MAX_FRAME_BYTES < 32 * 1024);
@@ -53,6 +61,7 @@ const ERROR_KIND: u8 = 4;
 const HELLO_KIND: u8 = 5;
 const TOOL_RESULT_KIND: u8 = 6;
 const CODEX_MODELS_KIND: u8 = 7;
+const OMP_PROBE_RESULT_KIND: u8 = 8;
 const STARTED_IDENTITY_BYTES: usize = 3 * size_of::<u64>();
 const MAX_TOOL_VERSION_BYTES: usize = crate::grok::MAX_NORMALIZED_VERSION_BYTES;
 
@@ -245,6 +254,7 @@ pub enum HelperMessage {
     Success,
     ToolResult(ToolOperationResult),
     CodexModels(CodexModelCatalog),
+    OmpProbeResult(OmpProbeResult),
     Error {
         code: HelperErrorCode,
         message: String,
@@ -352,6 +362,19 @@ pub fn encode_frame(message: &HelperMessage) -> Result<Vec<u8>, ProtocolError> {
         HelperMessage::CodexModels(catalog) => {
             encode_codex_catalog(&mut payload, catalog)?;
         }
+        HelperMessage::OmpProbeResult(result) => {
+            if !result.is_valid() {
+                return Err(ProtocolError::InvalidMessageLength);
+            }
+            let version = result.version.as_deref().unwrap_or("");
+            let path = result.executable_path.as_deref().unwrap_or("");
+            payload.push(OMP_PROBE_RESULT_KIND);
+            payload.push(u8::from(result.detected));
+            payload.push(version.len() as u8);
+            payload.extend_from_slice(&(path.len() as u16).to_le_bytes());
+            payload.extend_from_slice(version.as_bytes());
+            payload.extend_from_slice(path.as_bytes());
+        }
         HelperMessage::Error { code, message } => {
             validate_error_message(message)?;
             payload.push(ERROR_KIND);
@@ -431,12 +454,40 @@ pub fn decode_frame(frame: &[u8]) -> Result<HelperMessage, ProtocolError> {
         SUCCESS_KIND if payload.len() == 2 => Ok(HelperMessage::Success),
         TOOL_RESULT_KIND => decode_tool_result_payload(payload),
         CODEX_MODELS_KIND => decode_codex_catalog_payload(payload),
+        OMP_PROBE_RESULT_KIND => decode_omp_probe_payload(payload),
         ERROR_KIND => decode_error_payload(payload),
         HELLO_KIND | STARTED_KIND | PROGRESS_KIND | SUCCESS_KIND => {
             Err(ProtocolError::InvalidMessageLength)
         }
         _ => Err(ProtocolError::UnknownMessageKind),
     }
+}
+
+fn decode_omp_probe_payload(payload: &[u8]) -> Result<HelperMessage, ProtocolError> {
+    if payload.len() < 6 || payload[2] > 1 {
+        return Err(ProtocolError::InvalidMessageLength);
+    }
+    let version_len = payload[3] as usize;
+    let path_len = u16::from_le_bytes([payload[4], payload[5]]) as usize;
+    if version_len > MAX_OMP_VERSION_BYTES
+        || path_len > MAX_OMP_PATH_BYTES
+        || payload.len() != 6 + version_len + path_len
+    {
+        return Err(ProtocolError::InvalidMessageLength);
+    }
+    let version = std::str::from_utf8(&payload[6..6 + version_len])
+        .map_err(|_| ProtocolError::InvalidUtf8)?;
+    let path =
+        std::str::from_utf8(&payload[6 + version_len..]).map_err(|_| ProtocolError::InvalidUtf8)?;
+    let result = OmpProbeResult {
+        detected: payload[2] == 1,
+        version: (!version.is_empty()).then(|| version.to_owned()),
+        executable_path: (!path.is_empty()).then(|| path.to_owned()),
+    };
+    if !result.is_valid() {
+        return Err(ProtocolError::InvalidMessageLength);
+    }
+    Ok(HelperMessage::OmpProbeResult(result))
 }
 
 fn encode_tool_result(
@@ -771,6 +822,7 @@ pub enum HelperProtocolTerminal {
     Success,
     ToolSuccess(ToolOperationResult),
     CodexModels(CodexModelCatalog),
+    OmpProbeSuccess(OmpProbeResult),
     Failure(HelperErrorCode),
 }
 
@@ -782,6 +834,7 @@ pub enum HelperProtocolAction {
     Success,
     ToolResult(ToolOperationResult),
     CodexModels(CodexModelCatalog),
+    OmpProbeResult(OmpProbeResult),
     Failure(HelperErrorCode),
 }
 
@@ -886,7 +939,10 @@ impl HelperProtocolSequence {
                 Ok(HelperProtocolAction::CodexModels(catalog))
             }
             (ProtocolPhase::Running, HelperMessage::Success | HelperMessage::ToolResult(_))
-                if self.action == Some(UserHelperAction::CodexModels) =>
+                if matches!(
+                    self.action,
+                    Some(UserHelperAction::CodexModels | UserHelperAction::OmpProbe)
+                ) =>
             {
                 Err(ProtocolSequenceError::UnexpectedMessage)
             }
@@ -899,6 +955,13 @@ impl HelperProtocolSequence {
                 self.phase = ProtocolPhase::Terminal;
                 self.terminal = Some(HelperProtocolTerminal::ToolSuccess(result.clone()));
                 Ok(HelperProtocolAction::ToolResult(result))
+            }
+            (ProtocolPhase::Running, HelperMessage::OmpProbeResult(result))
+                if self.action == Some(UserHelperAction::OmpProbe) && result.is_valid() =>
+            {
+                self.phase = ProtocolPhase::Terminal;
+                self.terminal = Some(HelperProtocolTerminal::OmpProbeSuccess(result.clone()));
+                Ok(HelperProtocolAction::OmpProbeResult(result))
             }
             _ => Err(ProtocolSequenceError::UnexpectedMessage),
         }
@@ -928,6 +991,74 @@ impl HelperProtocolSequence {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn omp_probe_frame_is_bounded_and_distinct_from_tool_results() {
+        let result = OmpProbeResult {
+            detected: true,
+            version: Some("18.12.5".into()),
+            executable_path: Some("C:\\Users\\example\\omp.exe".into()),
+        };
+        let message = HelperMessage::OmpProbeResult(result);
+        let frame = encode_frame(&message).unwrap();
+        assert_eq!(frame[5], 8);
+        assert_eq!(decode_frame(&frame).unwrap(), message);
+        let missing = HelperMessage::OmpProbeResult(OmpProbeResult::not_detected());
+        assert_eq!(
+            decode_frame(&encode_frame(&missing).unwrap()).unwrap(),
+            missing
+        );
+        let mut invalid = frame.clone();
+        invalid[6] = 0;
+        assert!(decode_frame(&invalid).is_err());
+        let mut invalid = frame;
+        invalid[8] = 255;
+        invalid[9] = 255;
+        assert!(decode_frame(&invalid).is_err());
+    }
+
+    #[test]
+    fn maximum_omp_probe_frame_fits_and_rejects_oversized_path() {
+        let mut result = OmpProbeResult {
+            detected: true,
+            version: Some(format!("1.2.3+{}", "a".repeat(MAX_OMP_VERSION_BYTES - 6))),
+            executable_path: Some(format!("C:\\{}", "a".repeat(MAX_OMP_PATH_BYTES - 3))),
+        };
+        let message = HelperMessage::OmpProbeResult(result.clone());
+        let frame = encode_frame(&message).unwrap();
+        assert_eq!(frame.len(), FRAME_LENGTH_BYTES + MAX_OMP_PAYLOAD_BYTES);
+        assert!(frame.len() <= MAX_FRAME_BYTES);
+        assert_eq!(decode_frame(&frame).unwrap(), message);
+        result.executable_path.as_mut().unwrap().push('x');
+        assert!(encode_frame(&HelperMessage::OmpProbeResult(result)).is_err());
+    }
+
+    #[test]
+    fn omp_probe_result_requires_its_own_admitted_action() {
+        for action in [
+            UserHelperAction::CodexMsixInstall,
+            UserHelperAction::OmpProbe,
+        ] {
+            let mut sequence = HelperProtocolSequence::default();
+            sequence.accept(HelperMessage::Hello { action }).unwrap();
+            sequence.mark_control_sent().unwrap();
+            sequence
+                .accept(HelperMessage::Started {
+                    package: PINNED_PACKAGE,
+                })
+                .unwrap();
+            sequence.mark_admitted().unwrap();
+            if action == UserHelperAction::OmpProbe {
+                assert_eq!(
+                    sequence.accept(HelperMessage::Success),
+                    Err(ProtocolSequenceError::UnexpectedMessage)
+                );
+            }
+            let result =
+                sequence.accept(HelperMessage::OmpProbeResult(OmpProbeResult::not_detected()));
+            assert_eq!(result.is_ok(), action == UserHelperAction::OmpProbe);
+        }
+    }
 
     const HELLO_ACTION: UserHelperAction = UserHelperAction::CodexMsixInstall;
     const PINNED_PACKAGE: PinnedPackageIdentity = PinnedPackageIdentity::new(
@@ -971,6 +1102,20 @@ mod tests {
             })
             .unwrap(),
             [3, 0, 0, 0, 5, 5, 22]
+        );
+        assert_eq!(
+            encode_frame(&HelperMessage::Hello {
+                action: UserHelperAction::OmpProbe,
+            })
+            .unwrap(),
+            [3, 0, 0, 0, 5, 5, 23]
+        );
+        assert_eq!(
+            encode_frame(&HelperMessage::OmpProbeResult(
+                OmpProbeResult::not_detected()
+            ))
+            .unwrap(),
+            [6, 0, 0, 0, 5, 8, 0, 0, 0, 0]
         );
         assert_eq!(
             encode_frame(&HelperMessage::CodexModels(CodexModelCatalog {
@@ -1717,6 +1862,70 @@ mod tests {
     }
 
     #[test]
+    fn typed_probe_terminals_cannot_cross_admitted_actions() {
+        for (expected_action, message) in [
+            (
+                UserHelperAction::CodexModels,
+                HelperMessage::CodexModels(sample_catalog()),
+            ),
+            (
+                UserHelperAction::OmpProbe,
+                HelperMessage::OmpProbeResult(OmpProbeResult::not_detected()),
+            ),
+        ] {
+            for action in [
+                UserHelperAction::CodexModels,
+                UserHelperAction::OmpProbe,
+                UserHelperAction::CodexMsixInstall,
+                UserHelperAction::GrokTool {
+                    action: crate::grok::GrokToolAction::Observe,
+                    expected_owner: None,
+                },
+                UserHelperAction::ClaudeTool {
+                    action: crate::grok::GrokToolAction::Observe,
+                },
+            ] {
+                let mut sequence = HelperProtocolSequence::default();
+                admit_action(&mut sequence, action);
+                let result = sequence.accept(message.clone());
+                assert_eq!(result.is_ok(), action == expected_action);
+                assert_eq!(sequence.terminal().is_some(), action == expected_action);
+                if action != expected_action {
+                    assert_eq!(result, Err(ProtocolSequenceError::UnexpectedMessage));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_terminals_cannot_complete_either_typed_probe() {
+        for action in [UserHelperAction::CodexModels, UserHelperAction::OmpProbe] {
+            let mut sequence = HelperProtocolSequence::default();
+            admit_action(&mut sequence, action);
+            for message in [
+                HelperMessage::Success,
+                HelperMessage::ToolResult(ToolOperationResult::observed(true, None, None)),
+            ] {
+                assert_eq!(
+                    sequence.accept(message),
+                    Err(ProtocolSequenceError::UnexpectedMessage)
+                );
+                assert_eq!(sequence.terminal(), None);
+            }
+        }
+    }
+
+    #[test]
+    fn payload_limit_covers_all_terminal_shapes() {
+        assert_eq!(
+            MAX_PAYLOAD_BYTES,
+            MAX_TOOL_RESULT_PAYLOAD_BYTES
+                .max(MAX_CODEX_CATALOG_PAYLOAD_BYTES)
+                .max(MAX_OMP_PAYLOAD_BYTES)
+        );
+    }
+
+    #[test]
     fn codex_catalog_is_the_only_success_terminal_for_codex_models() {
         let mut sequence = HelperProtocolSequence::default();
         admit_action(&mut sequence, UserHelperAction::CodexModels);
@@ -1792,6 +2001,7 @@ mod tests {
             encoded.len(),
             FRAME_LENGTH_BYTES + MAX_TOOL_RESULT_PAYLOAD_BYTES
         );
+        assert!(encoded.len() <= MAX_FRAME_BYTES);
         assert_eq!(decode_frame(&encoded).unwrap(), message);
         for field in 0..4 {
             let mut oversized = result.clone();

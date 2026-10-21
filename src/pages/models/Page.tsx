@@ -105,6 +105,7 @@ import {
   useModelsDraftCommit,
   useModelsWriteConfirm,
 } from "./modelsShared";
+import { OmpModelsPanel } from "./OmpModelsPanel";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
@@ -145,6 +146,7 @@ const TARGET_LABELS: Record<ModelTarget, string> = {
   codex: "Codex",
   claude: "Claude Code",
   opencode: "OpenCode",
+  omp: "Oh My Pi",
 };
 
 const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
@@ -155,6 +157,7 @@ const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
   codex: "codex",
   claude: "claude-code",
   opencode: "opencode",
+  omp: "omp",
 };
 
 type WorkBuddyNoticeField =
@@ -2176,8 +2179,10 @@ function ModelsTargetPanel({
 }: {
   target: ModelTarget;
   active: boolean;
-  blockedProviderWrites: Partial<Record<ProviderAppId | "opencode", boolean>>;
-  onBlockProviderWrites: (app: ProviderAppId | "opencode") => void;
+  blockedProviderWrites: Partial<
+    Record<ProviderAppId | "opencode" | "omp", boolean>
+  >;
+  onBlockProviderWrites: (app: ProviderAppId | "opencode" | "omp") => void;
   onRecoverProviderWrites: (app: ProviderAppId) => void;
   importedForm: {
     app: "claude" | "codex";
@@ -2216,6 +2221,14 @@ function ModelsTargetPanel({
           onBlockWrites={() => onBlockProviderWrites("opencode")}
         />
       );
+    case "omp":
+      return (
+        <OmpModelsPanel
+          active={active}
+          writesBlocked={Boolean(blockedProviderWrites.omp)}
+          onBlockWrites={() => onBlockProviderWrites("omp")}
+        />
+      );
   }
 }
 
@@ -2230,7 +2243,7 @@ export function ModelsPage() {
   const { visible, searchParams, setSearchParams } =
     usePersistentSearchParams();
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
-    Partial<Record<ProviderAppId | "opencode", boolean>>
+    Partial<Record<ProviderAppId | "opencode" | "omp", boolean>>
   >({});
   const [importedForm, setImportedForm] = useState<{
     app: "claude" | "codex";
@@ -2260,13 +2273,16 @@ export function ModelsPage() {
   );
   const targets = useMemo(() => MODEL_TARGETS, []);
 
-  const blockProviderWrites = useCallback((app: ProviderAppId | "opencode") => {
-    if (!pageMountedRef.current) return;
-    setBlockedProviderWrites((current) => ({
-      ...current,
-      [app]: true,
-    }));
-  }, []);
+  const blockProviderWrites = useCallback(
+    (app: ProviderAppId | "opencode" | "omp") => {
+      if (!pageMountedRef.current) return;
+      setBlockedProviderWrites((current) => ({
+        ...current,
+        [app]: true,
+      }));
+    },
+    [],
+  );
   const recoverProviderWrites = (app: ProviderAppId) => {
     setBlockedProviderWrites((current) => ({ ...current, [app]: false }));
   };

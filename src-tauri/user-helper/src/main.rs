@@ -17,6 +17,7 @@ const USAGE: &str = concat!(
     "       fyagent-user-helper.exe grok-tool --action <observe|install|update> [--owner <none|native|npm>] --job-id <lowercase-uuid> --pipe <64-lowercase-hex>\n",
     "       fyagent-user-helper.exe claude-tool --action <observe|install|update> --job-id <lowercase-uuid> --pipe <64-lowercase-hex>\n",
     "       fyagent-user-helper.exe codex-models --job-id <lowercase-uuid> --pipe <64-lowercase-hex>",
+    "       fyagent-user-helper.exe omp-probe --job-id <lowercase-uuid> --pipe <64-lowercase-hex>",
 );
 
 fn main() -> ExitCode {

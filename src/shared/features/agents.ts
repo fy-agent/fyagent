@@ -79,6 +79,8 @@ export const AGENT_EVIDENCE_IDS = [
   "opencode_product",
   "opencode_models",
   "grokbuild_product",
+  "omp_product",
+  "omp_models",
   "p0_scope",
 ] as const;
 export type AgentEvidenceId = (typeof AGENT_EVIDENCE_IDS)[number];
@@ -99,7 +101,7 @@ export interface AgentCatalogEntry {
   capabilities: DeclaredAgentCapability[];
 }
 
-export const AGENT_CATALOG_CONTRACT_VERSION = 5;
+export const AGENT_CATALOG_CONTRACT_VERSION = 6;
 export interface AgentCatalogResult {
   contractVersion: typeof AGENT_CATALOG_CONTRACT_VERSION;
   reviewedAt: string;

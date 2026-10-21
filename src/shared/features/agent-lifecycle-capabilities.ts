@@ -18,6 +18,7 @@ export const AGENT_DIRECTORY_UPDATE_UI = {
   codex: "codex_desktop",
   "claude-code": "generic",
   opencode: "generic",
+  omp: "none",
 } as const satisfies Record<AgentCatalogId, AgentDirectoryUpdateUi>;
 
 export const DIRECTORY_UPDATE_DISABLED_AGENT_IDS = AGENT_CATALOG_IDS.filter(

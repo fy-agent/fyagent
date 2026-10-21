@@ -7,6 +7,7 @@ pub const AGENT_EXE_INSTALL_ACTION: &str = "agent-exe-install";
 pub const GROK_TOOL_ACTION: &str = "grok-tool";
 pub const CLAUDE_TOOL_ACTION: &str = "claude-tool";
 pub const CODEX_MODELS_ACTION: &str = "codex-models";
+pub const OMP_PROBE_ACTION: &str = "omp-probe";
 const PRODUCT_FLAG: &str = "--product";
 const ACTION_FLAG: &str = "--action";
 const OWNER_FLAG: &str = "--owner";
@@ -124,6 +125,7 @@ impl fmt::Display for AgentInstallerProduct {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UserHelperAction {
+    OmpProbe,
     CodexMsixInstall,
     AgentExeInstall(AgentInstallerProduct),
     GrokTool {
@@ -141,6 +143,7 @@ pub enum UserHelperAction {
 impl UserHelperAction {
     pub const fn wire_code(self) -> u8 {
         match self {
+            Self::OmpProbe => 23,
             Self::CodexMsixInstall => 1,
             Self::AgentExeInstall(AgentInstallerProduct::QoderWork) => 2,
             Self::AgentExeInstall(AgentInstallerProduct::TraeWork) => 3,
@@ -162,6 +165,7 @@ impl UserHelperAction {
 
     pub const fn from_wire(value: u8) -> Option<Self> {
         match value {
+            23 => Some(Self::OmpProbe),
             1 => Some(Self::CodexMsixInstall),
             2 => Some(Self::AgentExeInstall(AgentInstallerProduct::QoderWork)),
             3 => Some(Self::AgentExeInstall(AgentInstallerProduct::TraeWork)),
@@ -196,7 +200,7 @@ impl UserHelperAction {
     pub const fn requires_package_bridge(self) -> bool {
         !matches!(
             self,
-            Self::GrokTool { .. } | Self::ClaudeTool { .. } | Self::CodexModels
+            Self::GrokTool { .. } | Self::ClaudeTool { .. } | Self::CodexModels | Self::OmpProbe
         )
     }
 
@@ -206,12 +210,17 @@ impl UserHelperAction {
             Self::AgentExeInstall(_)
             | Self::GrokTool { .. }
             | Self::ClaudeTool { .. }
-            | Self::CodexModels => crate::layout::PackageBridgeArtifactKind::Exe,
+            | Self::CodexModels
+            | Self::OmpProbe => crate::layout::PackageBridgeArtifactKind::Exe,
         }
     }
 
     pub fn command_line(self, job_id: &CanonicalJobId, pipe_nonce: &PipeNonce) -> String {
         match self {
+            Self::OmpProbe => format!(
+                "{OMP_PROBE_ACTION} --job-id {job_id} --pipe {}",
+                pipe_nonce.as_str()
+            ),
             Self::CodexMsixInstall => format!(
                 "{INSTALL_ACTION} --job-id {job_id} --pipe {}",
                 pipe_nonce.as_str()
@@ -370,6 +379,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     let (action, job_flag_index) = match raw.first().map(String::as_str) {
+        Some(OMP_PROBE_ACTION) if raw.len() == 5 => (UserHelperAction::OmpProbe, 1),
         Some(INSTALL_ACTION) if raw.len() == 5 => (UserHelperAction::CodexMsixInstall, 1),
         Some(CODEX_MODELS_ACTION) if raw.len() == 5 => (UserHelperAction::CodexModels, 1),
         Some(AGENT_EXE_INSTALL_ACTION) if raw.len() == 7 => {
@@ -424,7 +434,8 @@ where
             | AGENT_EXE_INSTALL_ACTION
             | GROK_TOOL_ACTION
             | CLAUDE_TOOL_ACTION
-            | CODEX_MODELS_ACTION,
+            | CODEX_MODELS_ACTION
+            | OMP_PROBE_ACTION,
         ) => return Err(CliError::WrongArgumentCount),
         Some(_) => return Err(CliError::UnknownAction),
         None => return Err(CliError::WrongArgumentCount),
@@ -465,6 +476,38 @@ mod tests {
 
     const JOB_ID: &str = "123e4567-e89b-12d3-a456-426614174000";
     const NONCE: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn omp_probe_has_fixed_identity_and_cannot_accept_paths_or_arguments() {
+        let request =
+            parse_cli_args([OMP_PROBE_ACTION, JOB_ID_FLAG, JOB_ID, PIPE_FLAG, NONCE]).unwrap();
+        assert_eq!(request.action(), UserHelperAction::OmpProbe);
+        assert_eq!(request.action().wire_code(), 23);
+        assert_eq!(
+            UserHelperAction::from_wire(23),
+            Some(UserHelperAction::OmpProbe)
+        );
+        assert!(!request.action().requires_package_bridge());
+        let command = request
+            .action()
+            .command_line(request.job_id(), request.pipe_nonce());
+        assert_eq!(
+            parse_cli_args(command.split_whitespace()).unwrap().action(),
+            request.action()
+        );
+        for flag in ["--path", "--action", "--args"] {
+            assert!(parse_cli_args([
+                OMP_PROBE_ACTION,
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+                flag,
+                "anything"
+            ])
+            .is_err());
+        }
+    }
 
     #[test]
     fn preflight_wire_actions_are_closed_and_do_not_require_package_admission() {
@@ -785,7 +828,11 @@ mod tests {
             UserHelperAction::from_wire(22),
             Some(UserHelperAction::CodexModels)
         );
-        assert_eq!(UserHelperAction::from_wire(23), None);
+        assert_eq!(
+            UserHelperAction::from_wire(23),
+            Some(UserHelperAction::OmpProbe)
+        );
+        assert_eq!(UserHelperAction::from_wire(24), None);
         assert_eq!(
             UserHelperAction::GrokTool {
                 action: GrokToolAction::Install,

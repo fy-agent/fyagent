@@ -106,6 +106,12 @@ history to failed intermediate bytes. Architecture tests enumerate their
 owners. A new bypass caller requires review and a corresponding negative
 boundary test; ordinary config writes never use these helpers.
 
+The omp configuration service is a reviewed backup-artifact owner. Its
+ordinary YAML writes use `atomic_write_private`; compensation after the
+second file fails uses `restore_file_preimage_if_owned` with the expected
+postimage hash, preserving a later external edit. Focused tests cover both
+restored preimages and preserved external edits.
+
 WorkBuddy and Qoder protected native writers retain their existing focused
 transaction/backup contracts. This mechanism is not permission to replace
 their handle/ACL/path protections with a weaker generic writer.

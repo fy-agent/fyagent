@@ -13,6 +13,7 @@ pub mod codex_models;
 pub mod grok;
 pub mod grok_npm;
 pub mod layout;
+pub mod omp;
 pub mod protocol;
 
 pub use bridge_control::{
@@ -22,7 +23,7 @@ pub use bridge_control::{
 pub use cli::{
     parse_cli_args, AgentInstallerProduct, CanonicalJobId, CliError, InstallRequest, PipeNonce,
     UserHelperAction, AGENT_EXE_INSTALL_ACTION, CODEX_MODELS_ACTION, GROK_TOOL_ACTION,
-    INSTALL_ACTION,
+    INSTALL_ACTION, OMP_PROBE_ACTION,
 };
 pub use codex_models::{CodexCatalogError, CodexModelCatalog, CodexModelEntry};
 pub use grok::{
@@ -42,6 +43,7 @@ pub use layout::{
     INSTALLER_FILE_NAME, PACKAGE_BRIDGE_PART_FILE_NAME, PACKAGE_BRIDGE_ROOT_DIRECTORY,
     PACKAGE_BRIDGE_VERSION_DIRECTORY,
 };
+pub use omp::OmpProbeResult;
 pub use protocol::{
     decode_frame, decode_frame_length, encode_frame, helper_error_code_for_deployment_hresult,
     HelperErrorCode, HelperMessage, HelperProtocolAction, HelperProtocolSequence,

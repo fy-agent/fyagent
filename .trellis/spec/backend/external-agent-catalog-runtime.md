@@ -9,6 +9,7 @@ or the Tauri permission set for those commands.
 This contract owns product identity and read/launch projection only. It does
 not own installation, update, Auth sessions, Skills, MCP, Models, or vendor
 configuration. Use the linked feature contracts for those domains.
+The model writer remains owned by its own feature contract; catalog addition does not change that.
 
 Primary evidence:
 
@@ -43,7 +44,7 @@ Closed Agent IDs, in catalog order:
 
 ```text
 qoderwork | trae-work | workbuddy | grokbuild |
-codex | claude-code | opencode
+codex | claude-code | opencode | omp
 ```
 
 `destination` is exactly:
@@ -52,7 +53,7 @@ codex | claude-code | opencode
 home | skills | hooks | models | mcp
 ```
 
-The current static catalog contract version is `5`. Every product exposes the
+The current static catalog contract version is `6`. Every product exposes the
 same ordered capability IDs:
 
 ```text
@@ -63,23 +64,23 @@ hooks.read hooks.write models.validate models.write mcp.validate mcp.write
 Capability mode/reason/evidence enums are closed in Rust and parsed strictly
 at `src/shared/features/agents.ts`.
 
-Official link IDs are frozen per product and must match
-`EXPECTED_AGENT_LINK_IDS` in `src/shared/platform/tauri/feature-ports/agents.ts`:
+Official link IDs are frozen per product and must match the native v6 table:
 
 ```text
-qoderwork     ["product"]
-trae-work     ["product"]
-workbuddy     ["product"]
-grokbuild     ["product"]
-codex         []
-claude-code   ["product"]
-opencode      ["product", "desktop"]
+qoderwork     ["product", "download", "terms"]
+trae-work     ["product", "download", "terms"]
+workbuddy     ["product", "download", "terms"]
+grokbuild     ["product", "docs", "download", "license"]
+codex         ["product", "desktop", "download", "terms"]
+claude-code   ["product", "download", "terms"]
+opencode      ["product", "desktop", "license", "terms"]
+omp           ["product", "docs", "download", "license"]
 ```
 
-`claude-code` exposes the reviewed CLI setup document as `product`. It must
-not carry a Claude Desktop download `desktop` link or a legacy `cli` link.
-OpenCode keeps product plus desktop. Codex has no official catalog link.
-Parser drift against this table rejects the whole catalog.
+`omp` uses the reviewed product page, release page, model documentation at
+`https://github.com/can1357/oh-my-pi/blob/main/docs/models.md`, and license at
+`https://github.com/can1357/oh-my-pi/blob/main/LICENSE`. Parser drift against
+this table rejects the whole catalog.
 
 ## 3. Contracts
 
@@ -96,6 +97,9 @@ Parser drift against this table rejects the whole catalog.
 - IDs, order, display names, variant IDs, official links, capability order and
   contract version are one code-owned table. The renderer must not merge it
   with a second local catalog or silently render an older fallback.
+- `omp` is the closed Oh My Pi catalog product and uses variant ID `omp`. It
+  declares model configuration support only; MCP, Skills, Auth credential
+  reads, install, update, and launch capabilities remain unsupported.
 - Pi is not an Agent catalog product. Adding it to types, fixtures, UI or
   lifecycle requires a separately reviewed product decision and contract
   version.
@@ -157,7 +161,7 @@ Parser drift against this table rejects the whole catalog.
 | Catalog version, product order, capability order or enum drifts | Strict Rust/TypeScript parser rejects the whole catalog.                               |
 | Duplicate product/capability/link ID                            | Reject the catalog; do not deduplicate in the UI.                                      |
 | Official link is non-HTTPS, unexpected or malformed             | Reject the catalog entry/catalog according to the strict parser.                       |
-| Claude official link is `desktop` or `cli`                      | Reject the whole catalog. Native v5 uses ordered `product, download, terms` CLI links. |
+| Claude official link is `desktop` or `cli`                      | Reject the whole catalog. Native v6 uses ordered `product, download, terms` CLI links. |
 | Runtime adapter cannot answer                                   | Return `null`/closed unknown reason; never manufacture `false`.                        |
 | Renderer supplies path, URL, command, executable or extra field | Reject before filesystem/process/network side effect.                                  |
 | Launch identity is missing, ambiguous or untrusted              | Controlled unavailable/unverified result; start nothing.                               |
@@ -167,7 +171,7 @@ Parser drift against this table rejects the whole catalog.
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** return catalog v5 in the exact seven-product order, then parse it
+- **Good:** return catalog v6 in the exact eight-product order, then parse it
   once at the platform adapter before page rendering.
 - **Good:** a runtime adapter cannot distinguish absent from inaccessible, so
   it returns `detected: null` and a closed reason instead of “not installed.”
@@ -194,7 +198,7 @@ Required assertion points:
   enums in Rust and `src/shared/features/agents.ts`;
 - every directory description remains positive supported-capability prose while
   the exact capability modes/reasons stay unchanged and independently asserted;
-- `EXPECTED_AGENT_LINK_IDS` matches the native v5 table; Claude Desktop and
+- renderer link ID expectations match the native v6 table; Claude Desktop and
   Claude CLI+Desktop payloads fail closed;
 - unknown/excess fields, duplicate IDs and legacy/future versions fail closed;
 - no Pi and no second renderer catalog;

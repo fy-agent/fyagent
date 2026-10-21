@@ -339,6 +339,7 @@ export interface FeaturePorts {
   providers: ProvidersPort;
   workbuddy: WorkBuddyPort;
   opencodeModels: OpenCodeModelsPort;
+  ompModels: import("./omp").OmpModelsPort;
   skills: SkillsPort;
   mcp: McpPort;
   prompts: PromptsPort;
