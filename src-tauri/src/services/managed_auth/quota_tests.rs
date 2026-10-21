@@ -678,6 +678,56 @@ fn native_catalog() -> fyagent_user_helper::CodexModelCatalog {
 }
 
 #[test]
+fn codex_native_models_describe_config_overrides_without_claiming_official_entitlement() {
+    let (service, _dir) = service();
+    let selected = seed_proxy(
+        &service,
+        "native-selected",
+        "acct-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    write_codex_login(&service, "acct-selected");
+    for (config, route) in [
+        ("", "official"),
+        ("model_provider = \"openai\"\n", "official"),
+        ("model_provider = \"OpenAI\"\n", "custom"),
+        ("model_provider = \"ollama\"\n", "custom"),
+        ("model_provider = \"lmstudio\"\n", "custom"),
+        ("model_provider = \"amazon-bedrock\"\n", "custom"),
+        ("model_provider = \"amazon-bedrock-runtime\"\n", "custom"),
+        (
+            "openai_base_url = \"http://127.0.0.1:15721/v1\"\n",
+            "custom",
+        ),
+        (
+            "model_provider = \"openai\"\nopenai_base_url = \"https://example.test/v1\"\n",
+            "custom",
+        ),
+        (
+            "[model_providers.openai]\nbase_url = \"https://example.test/v1\"\n",
+            "custom",
+        ),
+        (
+            "profile = \"work\"\n[profiles.work]\nmodel_provider = \"custom\"\n",
+            "unknown",
+        ),
+        ("openai_base_url = 42\n", "unknown"),
+    ] {
+        std::fs::write(service.codex_home().join("config.toml"), config).unwrap();
+        let result = runtime()
+            .block_on(
+                service.get_codex_native_models_with(&selected.identity_id, true, || async {
+                    Ok(native_catalog())
+                }),
+            )
+            .expect("catalog");
+        assert_eq!(value_of(&result, "providerRoute"), route, "{config}");
+        assert_eq!(value_of(&result, "catalogStatus"), "ready");
+    }
+}
+
+#[test]
 fn codex_native_models_are_read_only_for_the_live_matching_login() {
     use super::super::codex_native_models::{CodexNativeAccountBinding, CodexNativeCatalogStatus};
 

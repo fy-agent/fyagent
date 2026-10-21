@@ -89,6 +89,7 @@ mod tests {
             config_revision: "mr1:cfg".into(),
             auth_revision: Some("mr1:auth".into()),
             effective_store: CodexCredentialStore::File,
+            catalog_provider_route: CodexProviderRoute::Unknown,
             provider_route: if official {
                 CodexProviderRoute::Official
             } else {

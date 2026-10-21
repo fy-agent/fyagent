@@ -61,7 +61,7 @@ test("reads and refreshes the attributed Codex native catalog in connection deta
 }, testInfo) => {
   const { detail, catalog, health } = await openCodexCatalog(page);
   const source = catalog.getByText(
-    /来源：本机 Codex 原生官方目录 · Codex CLI 0\.0\.0-fixture · 读取于/u,
+    /来源：本机 Codex app-server 返回的目录 · Codex CLI 0\.0\.0-fixture · 读取于/u,
   );
   await expect(source).toBeVisible();
   const models = catalog.getByRole("list").getByRole("listitem");
@@ -75,8 +75,10 @@ test("reads and refreshes the attributed Codex native catalog in connection deta
   await expect(models.nth(0).getByText("默认", { exact: true })).toBeVisible();
   await expect(models.nth(1)).toHaveText("gpt-fixture-mini");
   await expect(catalog).toContainText("与订阅转发的模型目录分开");
-  // The native login catalog is not the current third-party request provider.
+  // Login attribution and the request route are separate facts.
   await expect(detail).toContainText("DeepSeek API");
+  await expect(catalog).toContainText("本机配置：自定义模型服务");
+  await expect(catalog).not.toContainText("原生官方");
 
   const refresh = catalog.getByRole("button", {
     name: "重新获取模型",
@@ -101,6 +103,9 @@ test("reads and refreshes the attributed Codex native catalog in connection deta
   await catalog.scrollIntoViewIfNeeded();
   await expect(refresh).toBeInViewport();
   await refresh.click({ trial: true });
+  // In the compact detail pane the result is below the refresh action.
+  // Verify that the scroll owner exposes both the source and the last model.
+  await models.nth(1).scrollIntoViewIfNeeded();
   await expect(source).toBeInViewport();
   await expect(models.nth(1)).toBeInViewport();
   await expectNoHorizontalOverflow(page);
@@ -122,9 +127,9 @@ test("explains a different native ChatGPT account without showing its catalog", 
   );
   await expect(catalog).toContainText("把此账号连接到 Codex 后再获取");
   await expect(catalog.getByRole("list")).toHaveCount(0);
-  await expect(catalog.getByText(/来源：本机 Codex 原生官方目录/u)).toHaveCount(
-    0,
-  );
+  await expect(
+    catalog.getByText(/来源：本机 Codex app-server 返回的目录/u),
+  ).toHaveCount(0);
   await expect(
     catalog.getByRole("button", { name: "重新获取模型", exact: true }),
   ).toBeEnabled();
@@ -144,9 +149,9 @@ test("gives a file-store recovery path when native credential attribution is uns
   await expect(status).toContainText("file");
   await expect(status).toContainText(/重新登录|再次登录/u);
   await expect(catalog.getByRole("list")).toHaveCount(0);
-  await expect(catalog.getByText(/来源：本机 Codex 原生官方目录/u)).toHaveCount(
-    0,
-  );
+  await expect(
+    catalog.getByText(/来源：本机 Codex app-server 返回的目录/u),
+  ).toHaveCount(0);
   await expect(
     catalog.getByRole("button", { name: "重新获取模型", exact: true }),
   ).toBeEnabled();

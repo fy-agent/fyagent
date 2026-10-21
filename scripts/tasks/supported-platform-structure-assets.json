@@ -283,7 +283,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/codex_native_models.rs",
-      "34c4df9949e19f1e504872e92d5f72cbc69633eaabf2a7bfea1606713456ce93"
+      "c86a19e6f87eb232cdccf7814f995a5fb32602b76766c5db8baf0b457ba9cfe5"
     ],
     [
       "src-tauri/src/services/managed_auth/consumers/grok.rs",
@@ -303,7 +303,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/service.rs",
-      "9c752a351b820b4fd752b07ea86fe1da80d57f519578d3aab32b21421e97f3a9"
+      "b680a5eab25fa6d3431cb70907648e5567bd021876b2e9d730d32c2126867cc6"
     ],
     [
       "src-tauri/src/services/managed_auth/subscription_tests.rs",

@@ -535,7 +535,7 @@ where
         );
         let matched = attribution.binding == CodexNativeAccountBinding::Matched;
         let provider_route = if cli_reads_managed_home {
-            before.provider_route.into()
+            before.catalog_provider_route.into()
         } else {
             super::codex_native_models::CodexNativeProviderRoute::Unknown
         };

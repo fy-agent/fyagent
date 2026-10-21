@@ -452,7 +452,7 @@ test("reads the native Codex catalog only on request and labels its source", asy
     "本机 Codex app-server 返回的目录 · Codex CLI 0.0.0-fixture",
   );
   await expect(catalog).not.toContainText("原生官方");
-  await expect(catalog).toContainText("未确认这些模型对应此 ChatGPT 账号");
+  await expect(catalog).toContainText("本机配置：自定义模型服务");
   const models = catalog.getByRole("list");
   await expect(models.getByRole("listitem")).toHaveCount(2);
   await expect(models).toContainText("Fixture Codex");

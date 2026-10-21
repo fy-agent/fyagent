@@ -451,6 +451,27 @@ Browser and mock tests prove renderer behavior only. Real OAuth, OS keyring,
 consumer projection, token renewal and restart evidence require the native/HIL
 matrix in the backend owner.
 
+### On-demand Codex catalog
+
+The Codex connection card reads `managed_auth_get_codex_native_models` only
+after an explicit request. Its query key contains the saved account and the
+connection revision; changed accounts or revisions discard the previous list.
+The response separates account attribution, catalog status and the route
+described by the same `config.toml` snapshot. File attribution is available
+only for the file/unset credential store; keyring/auto has a recovery message.
+
+Label the source as the local Codex app-server result. The configured route
+does not certify account entitlement or the helper's effective environment.
+Default OpenAI, custom services and unresolved configuration have distinct
+short labels. The catalog-specific classifier recognizes `openai_base_url`,
+implicit OpenAI provider overrides and other built-in services; selected
+profiles remain unknown until their effective configuration is resolved.
+These display rules leave the existing account projection policy unchanged.
+
+The Windows ordinary-user helper owns the bounded app-server session and its
+process tree. The existing subscription-forwarding catalog is a separate
+source. macOS currently reports `platform_unsupported` for this native action.
+
 ## 7. Wrong vs Correct
 
 Wrong:

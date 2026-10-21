@@ -92,9 +92,13 @@ describe("CodexNativeModels", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "获取模型" }));
     expect(
-      await screen.findByText(/本机 Codex 原生官方目录 · Codex CLI 0\.160\.1/u),
+      await screen.findByText(
+        /本机 Codex app-server 返回的目录 · Codex CLI 0\.160\.1/u,
+      ),
     ).toBeVisible();
     expect(getCodexNativeModels).toHaveBeenCalledWith(OPENAI_ACCOUNT_ID);
+    expect(screen.getByText("本机配置：默认 OpenAI 路由")).toBeVisible();
+    expect(screen.queryByText(/原生官方/u)).toBeNull();
     const list = screen.getByRole("list");
     expect(list).toHaveTextContent("GPT-6 Sol");
     expect(list).toHaveTextContent("gpt-6-sol");
@@ -105,7 +109,7 @@ describe("CodexNativeModels", () => {
 
   it.each([
     ["custom", /自定义模型服务/u],
-    ["unknown", /无法确认 Codex 当前的模型请求路由/u],
+    ["unknown", /模型服务来源待确认/u],
   ] as const)(
     "does not call a %s-route catalog official",
     async (providerRoute, notice) => {
