@@ -2,6 +2,8 @@ import { errorMessage } from "../../shared/features/helpers";
 import {
   MANAGED_AUTH_QUOTA_WINDOW_IDS,
   parseManagedAuthCommandError,
+  type CodexNativeBindingDetail,
+  type CodexNativeCatalogFailure,
   type ManagedAuthAccountSummary,
   type ManagedAuthConnectionAction,
   type ManagedAuthConnectionState,
@@ -176,6 +178,47 @@ const CODEX_CHATGPT_FORWARDING_SLOT = "fyagent_chatgpt";
 
 export const SUBSCRIPTION_FORWARDING_NOTE =
   "订阅转发经本机 FyAgent 代理发出，所以 Codex 配置和界面里会显示为 custom provider。能否调用及额度以服务实际返回为准。";
+
+const codexNativeBindingCopies: Record<CodexNativeBindingDetail, string> = {
+  signed_out:
+    "本机 Codex 尚未登录 ChatGPT，无法确认目录属于此账号。连接此账号后再获取。",
+  other_login:
+    "本机 Codex 当前使用的不是 ChatGPT 登录（例如 API Key），目录不能代表此账号。",
+  unreadable:
+    "无法读取本机 Codex 的登录信息，无法确认目录属于此账号。刷新状态后再试。",
+  custom_codex_home:
+    "FyAgent 管理的 Codex 配置目录不是 ~/.codex，codex 命令读取的可能是另一份登录，无法确认目录属于此账号。",
+};
+
+const codexNativeFailureCopies: Record<CodexNativeCatalogFailure, string> = {
+  platform_unsupported: "当前系统暂不支持读取本机 Codex 模型目录。",
+  helper_unavailable:
+    "FyAgent 的普通用户辅助程序没有完成读取。请重试；如果一直出现，请检查 FyAgent 安装是否完整。",
+  helper_outdated:
+    "FyAgent 辅助程序与主程序版本不一致。请重新安装 FyAgent 后重试。",
+  cli_missing:
+    "未找到 Codex 命令行（codex）。安装 Codex CLI 后重试，或在模型配置中手动填写模型。",
+  app_server_failed:
+    "Codex app-server 启动或初始化失败。请在终端运行 codex 确认可以使用后重试。",
+  timed_out: "Codex app-server 在 45 秒内没有返回模型目录。请重试。",
+  model_list_unsupported:
+    "当前 Codex 版本不支持读取模型目录（model/list）。升级 Codex 后重试，或手动填写模型。",
+  invalid_response: "Codex 返回的模型目录格式无法识别。请重试或升级 Codex。",
+  changed_during_read:
+    "读取期间本机 Codex 的登录或配置发生了变化，结果已丢弃。请重新获取。",
+};
+
+export function codexNativeBindingCopy(
+  detail: CodexNativeBindingDetail,
+): string {
+  return codexNativeBindingCopies[detail];
+}
+
+export function codexNativeFailureCopy(
+  failure: CodexNativeCatalogFailure,
+): string {
+  return codexNativeFailureCopies[failure];
+}
 
 export function isSubscriptionForwardingLabel(
   providerLabel: string | null,

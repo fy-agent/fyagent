@@ -49,6 +49,7 @@ function managedPorts(
     getOverview: vi.fn(async () => managedAuthOverviewFixture()),
     getAccountQuota: vi.fn(async (accountId) => accountQuotaFixture(accountId)),
     getOpenAiModels: vi.fn(),
+    getCodexNativeModels: vi.fn(),
     startLogin: vi.fn(async () => deviceLoginSessionFixture()),
     getLoginSession: vi.fn(async () => deviceLoginSessionFixture()),
     cancelLogin: vi.fn(async () =>

@@ -1332,6 +1332,49 @@ export async function installRichTauriFeatureFixture(
               models: ["chatgpt-fixture-model", "gpt-fixture-codex"],
             };
           }
+          case "managed_auth_get_codex_native_models": {
+            const accountId = String(payload.accountId);
+            const connection = (
+              managedAuthOverview.connections as Array<{
+                consumer: string;
+                accountId: string | null;
+                revision: string;
+              }>
+            ).find((item) => item.consumer === "codex");
+            if (!connection || connection.accountId !== accountId)
+              throw {
+                contractVersion: 1,
+                reasonCode: "connection_unavailable",
+              };
+            return {
+              contractVersion: 1,
+              accountId,
+              source: "codex_app_server",
+              accountBinding: "matched",
+              bindingDetail: null,
+              nativeAccountId: accountId,
+              revision: connection.revision,
+              checkedAt: "2026-10-22T04:30:00Z",
+              catalogStatus: "ready",
+              failure: null,
+              cliVersion: "0.0.0-fixture",
+              truncated: false,
+              models: [
+                {
+                  id: "gpt-fixture-codex",
+                  displayName: "Fixture Codex",
+                  isDefault: true,
+                  reasoningEfforts: ["low", "medium", "high"],
+                },
+                {
+                  id: "gpt-fixture-mini",
+                  displayName: null,
+                  isDefault: false,
+                  reasoningEfforts: [],
+                },
+              ],
+            };
+          }
           case "managed_auth_get_account_quota": {
             const accountId = String(payload.accountId);
             const account = (

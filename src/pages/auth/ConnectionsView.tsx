@@ -16,6 +16,7 @@ import { Button } from "../../shared/ui/Button";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import { EmptyState, InlineNotice } from "../../shared/ui/primitives";
 import { PersistentSurface } from "../../shared/ui/PersistentSurface";
+import { CodexNativeModels } from "./CodexNativeModels";
 import { connectionPresentation, summarizeConnections } from "./summary";
 import { GrokOfficialLogin } from "./GrokOfficialLogin";
 import {
@@ -124,6 +125,17 @@ function ConnectionCard({
       ) : null}
 
       <ReasonList reasons={connection.reasonCodes} />
+
+      {connection.consumer === "codex" &&
+      connection.provider === "openai" &&
+      connection.accountId ? (
+        <CodexNativeModels
+          accountId={connection.accountId}
+          revision={connection.revision}
+          accounts={overview.accounts}
+          disabled={mutationBusy}
+        />
+      ) : null}
 
       {secondary.length > 0 ? (
         <div className="fy-feature-actions">{secondary.map(actionButton)}</div>

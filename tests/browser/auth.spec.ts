@@ -439,3 +439,40 @@ test(CONNECT_ENTRY_TEST, async ({ page }, testInfo) => {
   await expect(results).toContainText("1 个需要处理");
   await expectHealthyPage(page, health);
 });
+
+test("reads the native Codex catalog only on request and labels its source", async ({
+  page,
+}, testInfo) => {
+  const health = monitorPageHealth(page);
+  await openRendererPage(page, "/auth?consumer=codex&view=connections");
+
+  const detail = page.getByRole("region", { name: "Codex 连接详情" });
+  const catalog = detail.getByRole("region", { name: "本机 Codex 模型目录" });
+  await expect(catalog).toBeVisible();
+  const nativeCalls = async () =>
+    (await featureFixtureCalls(page))
+      .filter((call) => call.command === "managed_auth_get_codex_native_models")
+      .map((call) => call.payload);
+  expect(await nativeCalls()).toEqual([]);
+
+  await catalog.getByRole("button", { name: "获取模型", exact: true }).click();
+  await expect(catalog).toContainText(
+    "本机 Codex 原生官方目录 · Codex CLI 0.0.0-fixture",
+  );
+  const models = catalog.getByRole("list");
+  await expect(models.getByRole("listitem")).toHaveCount(2);
+  await expect(models).toContainText("Fixture Codex");
+  await expect(models).toContainText("默认");
+  await expect(catalog).not.toContainText("DeepSeek");
+  expect(await nativeCalls()).toEqual([{ accountId: `ma1:${"1".repeat(32)}` }]);
+
+  await catalog.scrollIntoViewIfNeeded();
+  await expectNoHorizontalOverflow(page);
+  const size = page.viewportSize();
+  await page.screenshot({
+    path: testInfo.outputPath(
+      `codex-native-catalog-${size?.width}x${size?.height}.png`,
+    ),
+  });
+  await expectHealthyPage(page, health);
+});

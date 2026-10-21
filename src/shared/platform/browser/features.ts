@@ -32,6 +32,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       getOverview: rejectNativeOnly,
       getAccountQuota: rejectNativeOnly,
       getOpenAiModels: rejectNativeOnly,
+      getCodexNativeModels: rejectNativeOnly,
       startLogin: rejectNativeOnly,
       getLoginSession: rejectNativeOnly,
       cancelLogin: rejectNativeOnly,

@@ -375,6 +375,48 @@
   padding-top: 2px;
 }
 
+.fy-auth-native-models {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fy-border);
+}
+.fy-auth-native-models h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.fy-auth-native-models-meta {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.fy-auth-native-model-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fy-auth-native-model-list li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-pill);
+  background: var(--fy-surface-soft);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.fy-auth-native-model-list code,
+.fy-auth-native-model-list em {
+  color: var(--fy-text-secondary);
+  font-style: normal;
+}
+
 .fy-auth-connection-grid,
 .fy-auth-consumer-connections {
   display: grid;
