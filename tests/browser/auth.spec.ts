@@ -347,6 +347,7 @@ test(CONNECT_ENTRY_TEST, async ({ page }, testInfo) => {
   await disconnect("opencode", "OpenCode Desktop");
   const results = page.getByRole("region", { name: "软件连接操作结果" });
   await expect(results).toContainText("1 个需要处理，1 个已完成");
+  await expect(page.locator(".fy-toast-host .fy-toast")).toHaveCount(0);
 
   const viewports = [
     { width: 900, height: 600 },
