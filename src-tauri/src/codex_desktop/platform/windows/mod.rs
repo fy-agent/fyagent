@@ -5,11 +5,14 @@
 //! evidence, delegates current-user deployment to the installed unelevated
 //! helper, then relies on the common service to re-query the registered package.
 
+mod command;
 mod deployment;
 #[cfg(target_os = "windows")]
 mod helper;
+mod manifest;
 #[cfg(target_os = "windows")]
 mod package_bridge;
+mod signature;
 
 use std::{path::Path, sync::Arc, time::Duration};
 
@@ -122,6 +125,8 @@ impl WindowsHelperDeadlines {
 
 #[derive(Clone)]
 struct WindowsInstallDependencies {
+    signature_runner: Arc<dyn command::CommandRunner>,
+    signature_program: std::path::PathBuf,
     context_revalidator: Arc<dyn WindowsContextRevalidator>,
     pin_factory: Arc<dyn WindowsFilePinFactory>,
     helper_runner: Arc<dyn WindowsUserHelperRunner>,
@@ -193,6 +198,11 @@ impl WindowsPlatformAdapter {
             user_context,
             WindowsHost::for_current_host()?,
             WindowsInstallDependencies {
+                signature_runner: Arc::new(command::SystemCommandRunner),
+                signature_program: command::powershell_path().map_err(|_| {
+                    InstallerError::new(InstallerErrorCode::PackageSignatureInvalid)
+                        .with_diagnostic_message("无法定位系统签名校验工具，已拒绝安装")
+                })?,
                 context_revalidator: Arc::new(helper::SystemWindowsContextRevalidator),
                 pin_factory: Arc::new(helper::SystemWindowsFilePinFactory),
                 helper_runner: Arc::new(helper::SystemWindowsUserHelperRunner),
@@ -291,6 +301,7 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         artifact: &'a DownloadedArtifact,
     ) -> BoxFuture<'a, Result<PreparedInstallPackage, InstallerError>> {
         let host = self.host.clone();
+        let dependencies = self.install_dependencies.clone();
         let release = release.clone();
         let artifact = artifact.clone();
         let host_error = self.host_support_error();
@@ -300,6 +311,16 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
             }
             run_blocking(move || {
                 validate_release_for_host(&host, &release)?;
+                // Keep the no-write/no-delete source handle alive through both
+                // manifest and system signature checks. The service owns job cleanup.
+                let file = artifact.open_for_read()?;
+                signature::verify_package(
+                    dependencies.signature_runner.as_ref(),
+                    &dependencies.signature_program,
+                    &file,
+                    artifact.path(),
+                )?;
+                drop(file);
                 PreparedInstallPackage::from_prepared_artifact(&release, artifact)
             })
             .await
@@ -1151,6 +1172,8 @@ mod tests {
 
         fn dependencies(&self) -> WindowsInstallDependencies {
             WindowsInstallDependencies {
+                signature_runner: Arc::new(signature::tests::valid_runner()),
+                signature_program: signature::tests::POWERSHELL.into(),
                 context_revalidator: self.context.clone(),
                 pin_factory: Arc::new(FakePinFactory {
                     state: self.pin_state.clone(),
@@ -1392,7 +1415,7 @@ mod tests {
         let directory =
             JobTempDir::create(root.path(), &Uuid::new_v4().hyphenated().to_string()).unwrap();
         let path = directory.final_path(ArtifactKind::Msix);
-        fs::write(&path, b"opaque msix bytes for local handoff").unwrap();
+        fs::write(&path, signature::tests::valid_package(false)).unwrap();
 
         let bytes = fs::read(&path).unwrap();
         let release = ReleaseDescriptor::new(
@@ -1850,32 +1873,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn same_size_content_replacement_is_not_a_package_hash_admission_gate() {
+    async fn preparation_rejects_tampered_package_before_helper() {
         let manager = Arc::new(FakePackageManager::default());
         let harness = FakeInstallHarness::new();
-        let adapter = WindowsPlatformAdapter::new(
-            manager.clone(),
-            user_context(USER_SID),
-            host(CpuArchitecture::X86_64, "10.0.22631.0"),
-            harness.dependencies(),
-        );
+        let adapter = adapter_with_harness(manager.clone(), &harness);
         let (_root, release, artifact) = verified_msix_artifact();
-        let package = adapter
+        // Destroy the central directory without changing the pinned file size.
+        let mut bytes = fs::read(artifact.path()).unwrap();
+        let length = bytes.len();
+        bytes[length - 22] ^= 1;
+        fs::write(artifact.path(), bytes).unwrap();
+        let error = adapter
+            .prepare_install_package(&release, &artifact)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::PackageSignatureInvalid);
+        assert_eq!(harness.helper_state.calls.load(Ordering::Acquire), 0);
+        assert_eq!(harness.pin_state.opened.load(Ordering::Acquire), 0);
+        assert!(manager.operations().is_empty());
+    }
+
+    #[tokio::test]
+    async fn preparation_accepts_signed_manifest_before_install_handoff() {
+        let harness = FakeInstallHarness::new();
+        let adapter = adapter_with_harness(Arc::new(FakePackageManager::default()), &harness);
+        let (_root, release, artifact) = verified_msix_artifact();
+        let prepared = adapter
             .prepare_install_package(&release, &artifact)
             .await
             .unwrap();
-        let mut replacement = fs::read(package.artifact_path()).unwrap();
-        replacement[0] ^= 0x01;
-        fs::write(package.artifact_path(), replacement).unwrap();
-
-        let error = adapter
-            .install_current_user(&package, Arc::new(|_| {}))
-            .await
-            .expect_err("install still requires a unique post-install result");
-
-        assert_ne!(error.code(), InstallerErrorCode::ChecksumMismatch);
-        assert!(harness.pin_state.opened.load(Ordering::Acquire) >= 1);
-        assert!(harness.helper_state.calls.load(Ordering::Acquire) >= 1);
+        assert_eq!(prepared.artifact_path(), artifact.path());
+        assert_eq!(harness.helper_state.calls.load(Ordering::Acquire), 0);
     }
 
     #[tokio::test]
