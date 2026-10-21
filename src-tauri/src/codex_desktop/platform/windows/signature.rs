@@ -242,6 +242,7 @@ struct SignatureEvidence {
     status: String,
     signer: String,
     chain_valid: bool,
+    chain_status: Vec<String>,
     // Required, strictly typed metadata only. Status=Valid owns timestamp trust;
     // a timestamp is not required for a currently valid, untimestamped signer.
     #[serde(rename = "timestamped")]
@@ -285,6 +286,12 @@ fn verify_authenticode(
     if evidence.status != "Valid"
         || evidence.signer != PUBLISHER
         || !evidence.chain_valid
+        // Only certificate-time diagnostics are delegated to Authenticode's
+        // Valid result. Never let chain_valid or timestamp presence mask a
+        // revoked, unavailable, unknown or otherwise invalid chain status.
+        || evidence.chain_status.iter().any(|status| {
+            !matches!(status.as_str(), "NotTimeValid" | "NotTimeNested")
+        })
         || evidence.root_subject != ROOT_SUBJECT
         || evidence.root_thumbprint != ROOT_THUMBPRINT
     {
@@ -308,7 +315,7 @@ pub(super) mod tests {
         }
     }
     fn evidence() -> serde_json::Value {
-        serde_json::json!({"status":"Valid", "signer":PUBLISHER, "chain_valid":true, "timestamped":false, "root_subject":ROOT_SUBJECT, "root_thumbprint":ROOT_THUMBPRINT})
+        serde_json::json!({"status":"Valid", "signer":PUBLISHER, "chain_valid":true, "chain_status":[], "timestamped":false, "root_subject":ROOT_SUBJECT, "root_thumbprint":ROOT_THUMBPRINT})
     }
     fn runner(evidence: serde_json::Value) -> FakeRunner {
         FakeRunner(
@@ -695,7 +702,7 @@ pub(super) mod tests {
             for replacement in [
                 None,
                 Some(serde_json::Value::Null),
-                Some(serde_json::json!([])),
+                Some(serde_json::json!({})),
             ] {
                 let mut invalid = valid.clone();
                 match replacement {
@@ -733,6 +740,7 @@ pub(super) mod tests {
         // Certificate-time semantics themselves require Windows runtime evidence.
         let mut valid = evidence();
         valid["timestamped"] = true.into();
+        valid["chain_status"] = serde_json::json!(["NotTimeValid", "NotTimeNested"]);
         verify_authenticode(
             &runner(valid.clone()),
             Path::new(POWERSHELL),
@@ -775,25 +783,55 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn root_extraction_does_not_revalidate_certificate_time_or_revocation() {
-        let trust = SCRIPT.find("if ($signature.Status -ne 'Valid'").unwrap();
-        let flags = SCRIPT.find("$chain.ChainPolicy.VerificationFlags = [System.Security.Cryptography.X509Certificates.X509VerificationFlags]::IgnoreNotTimeValid").unwrap();
-        let build = SCRIPT
-            .find("$chain.Build($signature.SignerCertificate)")
-            .unwrap();
-        assert!(trust < flags && flags < build);
-        assert!(SCRIPT.contains("$chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck"));
-        assert!(SCRIPT.contains("timestamped = ($null -ne $signature.TimeStamperCertificate)"));
-        assert!(SCRIPT.contains("root_thumbprint = $root.Thumbprint"));
-        for forbidden in [
-            "::NoFlag",
-            "::Online",
-            "VerificationTime",
-            "Get-Date",
-            "::Now",
-            "::UtcNow",
+    fn revoked_signer_is_rejected_even_with_valid_timestamped_signature() {
+        assert_chain_status_rejected(&["Revoked"]);
+        assert_chain_status_rejected(&["NotTimeValid", "Revoked"]);
+    }
+
+    #[test]
+    fn unreachable_revocation_service_is_rejected() {
+        for statuses in [
+            vec!["RevocationStatusUnknown"],
+            vec!["OfflineRevocation"],
+            vec!["RevocationStatusUnknown", "OfflineRevocation"],
+            vec![
+                "NotTimeValid",
+                "RevocationStatusUnknown",
+                "OfflineRevocation",
+            ],
         ] {
-            assert!(!SCRIPT.contains(forbidden), "{forbidden}");
+            assert_chain_status_rejected(&statuses);
+        }
+    }
+
+    #[test]
+    fn non_time_and_unknown_chain_statuses_are_rejected() {
+        for status in [
+            "UntrustedRoot",
+            "PartialChain",
+            "NotSignatureValid",
+            "FutureStatus",
+            "",
+            "NotTimeValid, Revoked",
+        ] {
+            assert_chain_status_rejected(&[status]);
+        }
+    }
+
+    fn assert_chain_status_rejected(statuses: &[&str]) {
+        for timestamped in [false, true] {
+            let mut invalid = evidence();
+            invalid["timestamped"] = timestamped.into();
+            invalid["chain_status"] = serde_json::json!(statuses);
+            assert!(
+                verify_authenticode(
+                    &runner(invalid),
+                    Path::new(POWERSHELL),
+                    Path::new("package.msix"),
+                )
+                .is_err(),
+                "{statuses:?}, timestamped={timestamped}"
+            );
         }
     }
 
