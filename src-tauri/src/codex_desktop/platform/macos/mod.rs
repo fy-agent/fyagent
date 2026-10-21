@@ -374,7 +374,7 @@ impl MacosFilesystem for StdMacosFilesystem {
     }
 
     fn identity(&self, path: &Path) -> Result<FileIdentity, MacosFilesystemError> {
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         {
             use std::os::unix::fs::MetadataExt;
             let metadata = fs::symlink_metadata(path).map_err(macos_filesystem_error_from_io)?;
@@ -383,12 +383,12 @@ impl MacosFilesystem for StdMacosFilesystem {
                     kind: MacosFilesystemErrorKind::Invalid,
                 });
             }
-            Ok(FileIdentity {
+            return Ok(FileIdentity {
                 dev: metadata.dev(),
                 inode: metadata.ino(),
-            })
+            });
         }
-        #[cfg(not(unix))]
+        #[allow(unreachable_code)]
         {
             let _ = path;
             Err(MacosFilesystemError {
@@ -477,17 +477,18 @@ impl MacosFilesystem for StdMacosFilesystem {
             };
             let source = path(source)?;
             let destination = path(destination)?;
-            if unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL) }
-                == 0
+            return if unsafe {
+                libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL)
+            } == 0
             {
                 Ok(())
             } else {
                 Err(macos_filesystem_error_from_io(
                     std::io::Error::last_os_error(),
                 ))
-            }
+            };
         }
-        #[cfg(not(target_os = "macos"))]
+        #[allow(unreachable_code)]
         {
             let _ = (source, destination);
             Err(MacosFilesystemError {
@@ -523,9 +524,9 @@ impl MacosFilesystem for StdMacosFilesystem {
                     kind: MacosFilesystemErrorKind::Unsupported,
                 });
             }
-            Err(macos_filesystem_error_from_io(error))
+            return Err(macos_filesystem_error_from_io(error));
         }
-        #[cfg(not(target_os = "macos"))]
+        #[allow(unreachable_code)]
         {
             let _ = (source, destination);
             Err(MacosFilesystemError {

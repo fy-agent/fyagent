@@ -2579,7 +2579,7 @@ fn xml_unescape(value: &str) -> Result<String, InstallerError> {
     Ok(result)
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use std::{
         fs,
