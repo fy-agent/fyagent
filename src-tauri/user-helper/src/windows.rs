@@ -243,9 +243,11 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
         UserHelperAction::AgentExeInstall(product) => {
             run_verified_exe_installer(&package_pin, product, &channel)
         }
-        UserHelperAction::GrokTool { .. } | UserHelperAction::ClaudeTool { .. } => Err(
-            DeploymentFailure::Operation(HelperErrorCode::InstallLayoutInvalid),
-        ),
+        UserHelperAction::GrokTool { .. }
+        | UserHelperAction::ClaudeTool { .. }
+        | UserHelperAction::CodexModels => Err(DeploymentFailure::Operation(
+            HelperErrorCode::InstallLayoutInvalid,
+        )),
     };
 
     match result {
@@ -2641,7 +2643,10 @@ impl PipeChannel {
     fn send_terminal(&self, message: HelperMessage) -> Result<(), HelperRunError> {
         if !matches!(
             message,
-            HelperMessage::Success | HelperMessage::ToolResult(_) | HelperMessage::Error { .. }
+            HelperMessage::Success
+                | HelperMessage::ToolResult(_)
+                | HelperMessage::CodexModels(_)
+                | HelperMessage::Error { .. }
         ) {
             return self.fail_write();
         }

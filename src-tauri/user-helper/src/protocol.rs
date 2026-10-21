@@ -1,23 +1,49 @@
 use std::{fmt, mem::size_of};
 
 use crate::cli::UserHelperAction;
+use crate::codex_models::{
+    is_cli_version, is_display_name, is_model_id, is_reasoning_effort, CodexModelCatalog,
+    CodexModelEntry, MAX_CODEX_CLI_VERSION_BYTES, MAX_CODEX_MODELS, MAX_CODEX_MODEL_ID_BYTES,
+    MAX_CODEX_MODEL_NAME_BYTES, MAX_CODEX_REASONING_EFFORTS, MAX_CODEX_REASONING_EFFORT_BYTES,
+};
 use crate::grok::{GrokOutcome, GrokOwner, NpmDestinationObservation, ToolOperationResult};
 
-/// v4 appends an optional bounded npm destination to ToolResult. A v3
-/// ToolResult frame is rejected as `UnsupportedVersion`.
-pub const PROTOCOL_VERSION: u8 = 4;
+/// v5 adds the bounded `CodexModels` catalog terminal. The parent and the
+/// sibling helper ship in one package, so any other version is a mismatched
+/// install and is rejected as `UnsupportedVersion`.
+pub const PROTOCOL_VERSION: u8 = 5;
 pub const FRAME_LENGTH_BYTES: usize = 4;
 pub const MAX_ERROR_MESSAGE_BYTES: usize = 256;
 pub const MAX_TOOL_DEST_BYTES: usize = 255;
 const TOOL_RESULT_FIXED_BYTES: usize = 4;
 const TOOL_DEST_FIELD_COUNT: usize = 4;
 const TOOL_DEST_OVERHEAD_BYTES: usize = 1 + 8 + TOOL_DEST_FIELD_COUNT;
-pub const MAX_PAYLOAD_BYTES: usize = 2
+pub const MAX_TOOL_RESULT_PAYLOAD_BYTES: usize = 2
     + TOOL_RESULT_FIXED_BYTES
     + crate::grok::MAX_NORMALIZED_VERSION_BYTES
     + TOOL_DEST_OVERHEAD_BYTES
     + TOOL_DEST_FIELD_COUNT * MAX_TOOL_DEST_BYTES;
+const CODEX_MODEL_MAX_BYTES: usize = 1
+    + MAX_CODEX_MODEL_ID_BYTES
+    + 1
+    + MAX_CODEX_MODEL_NAME_BYTES
+    + 1
+    + 1
+    + MAX_CODEX_REASONING_EFFORTS * (1 + MAX_CODEX_REASONING_EFFORT_BYTES);
+/// Kind, version, CLI version, catalog flags, model count, then models.
+pub const MAX_CODEX_CATALOG_PAYLOAD_BYTES: usize =
+    2 + 1 + MAX_CODEX_CLI_VERSION_BYTES + 1 + 1 + MAX_CODEX_MODELS * CODEX_MODEL_MAX_BYTES;
+pub const MAX_PAYLOAD_BYTES: usize =
+    if MAX_CODEX_CATALOG_PAYLOAD_BYTES > MAX_TOOL_RESULT_PAYLOAD_BYTES {
+        MAX_CODEX_CATALOG_PAYLOAD_BYTES
+    } else {
+        MAX_TOOL_RESULT_PAYLOAD_BYTES
+    };
 pub const MAX_FRAME_BYTES: usize = FRAME_LENGTH_BYTES + MAX_PAYLOAD_BYTES;
+// One message-mode pipe read buffers a whole frame on both sides.
+const _: () = assert!(MAX_FRAME_BYTES < 32 * 1024);
+const CATALOG_TRUNCATED_FLAG: u8 = 1;
+const MODEL_DEFAULT_FLAG: u8 = 1;
 pub const MAX_PROTOCOL_MESSAGES: usize = 104;
 
 const STARTED_KIND: u8 = 1;
@@ -26,6 +52,7 @@ const SUCCESS_KIND: u8 = 3;
 const ERROR_KIND: u8 = 4;
 const HELLO_KIND: u8 = 5;
 const TOOL_RESULT_KIND: u8 = 6;
+const CODEX_MODELS_KIND: u8 = 7;
 const STARTED_IDENTITY_BYTES: usize = 3 * size_of::<u64>();
 const MAX_TOOL_VERSION_BYTES: usize = crate::grok::MAX_NORMALIZED_VERSION_BYTES;
 
@@ -96,10 +123,15 @@ pub enum HelperErrorCode {
     InsufficientDiskSpace = 28,
     ToolCandidateConflict = 29,
     ToolTargetChanged = 30,
+    CodexCliMissing = 31,
+    CodexAppServerFailed = 32,
+    CodexModelListUnsupported = 33,
+    CodexAppServerTimedOut = 34,
+    CodexCatalogInvalid = 35,
 }
 
 impl HelperErrorCode {
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 35] = [
         Self::InstallLayoutInvalid,
         Self::WinRtInitializationFailed,
         Self::PackageUriInvalid,
@@ -130,6 +162,11 @@ impl HelperErrorCode {
         Self::InsufficientDiskSpace,
         Self::ToolCandidateConflict,
         Self::ToolTargetChanged,
+        Self::CodexCliMissing,
+        Self::CodexAppServerFailed,
+        Self::CodexModelListUnsupported,
+        Self::CodexAppServerTimedOut,
+        Self::CodexCatalogInvalid,
     ];
 
     pub const fn wire_code(self) -> u8 {
@@ -178,6 +215,11 @@ impl HelperErrorCode {
                 "A conflicting global CLI dependency is already installed"
             }
             Self::ToolTargetChanged => "The confirmed npm install destination changed",
+            Self::CodexCliMissing => "Codex CLI is not installed for the current user",
+            Self::CodexAppServerFailed => "Codex app-server could not start or initialize",
+            Self::CodexModelListUnsupported => "This Codex CLI version does not support model/list",
+            Self::CodexAppServerTimedOut => "Codex app-server did not answer before the deadline",
+            Self::CodexCatalogInvalid => "Codex app-server returned an invalid model catalog",
         }
     }
 
@@ -202,6 +244,7 @@ pub enum HelperMessage {
     },
     Success,
     ToolResult(ToolOperationResult),
+    CodexModels(CodexModelCatalog),
     Error {
         code: HelperErrorCode,
         message: String,
@@ -251,6 +294,7 @@ pub enum ProtocolError {
     EmptyErrorMessage,
     ErrorMessageContainsControl,
     InvalidUtf8,
+    InvalidCatalogField,
 }
 
 impl fmt::Display for ProtocolError {
@@ -271,6 +315,7 @@ impl fmt::Display for ProtocolError {
                 "helper protocol error message contains a control character"
             }
             Self::InvalidUtf8 => "helper protocol error message is not valid UTF-8",
+            Self::InvalidCatalogField => "helper protocol model catalog field is invalid",
         };
         formatter.write_str(message)
     }
@@ -303,6 +348,9 @@ pub fn encode_frame(message: &HelperMessage) -> Result<Vec<u8>, ProtocolError> {
         HelperMessage::Success => payload.push(SUCCESS_KIND),
         HelperMessage::ToolResult(result) => {
             encode_tool_result(&mut payload, result)?;
+        }
+        HelperMessage::CodexModels(catalog) => {
+            encode_codex_catalog(&mut payload, catalog)?;
         }
         HelperMessage::Error { code, message } => {
             validate_error_message(message)?;
@@ -382,6 +430,7 @@ pub fn decode_frame(frame: &[u8]) -> Result<HelperMessage, ProtocolError> {
         }
         SUCCESS_KIND if payload.len() == 2 => Ok(HelperMessage::Success),
         TOOL_RESULT_KIND => decode_tool_result_payload(payload),
+        CODEX_MODELS_KIND => decode_codex_catalog_payload(payload),
         ERROR_KIND => decode_error_payload(payload),
         HELLO_KIND | STARTED_KIND | PROGRESS_KIND | SUCCESS_KIND => {
             Err(ProtocolError::InvalidMessageLength)
@@ -529,6 +578,161 @@ fn decode_tool_dest_field(payload: &[u8], index: usize) -> Result<(String, usize
     Ok((text.to_owned(), end))
 }
 
+fn push_short_field(payload: &mut Vec<u8>, value: &str) {
+    payload.push(value.len() as u8);
+    payload.extend_from_slice(value.as_bytes());
+}
+
+/// Encodes only values the catalog builder could have produced; anything
+/// else is a helper bug and fails closed instead of crossing the pipe.
+fn encode_codex_catalog(
+    payload: &mut Vec<u8>,
+    catalog: &CodexModelCatalog,
+) -> Result<(), ProtocolError> {
+    if catalog.models.len() > MAX_CODEX_MODELS
+        || catalog
+            .models
+            .iter()
+            .filter(|model| model.is_default)
+            .count()
+            > 1
+    {
+        return Err(ProtocolError::InvalidMessageLength);
+    }
+    payload.push(CODEX_MODELS_KIND);
+    match catalog.cli_version.as_deref() {
+        None => payload.push(0),
+        Some(version) if is_cli_version(version) => push_short_field(payload, version),
+        Some(_) => return Err(ProtocolError::InvalidCatalogField),
+    }
+    payload.push(if catalog.truncated {
+        CATALOG_TRUNCATED_FLAG
+    } else {
+        0
+    });
+    payload.push(catalog.models.len() as u8);
+    for model in &catalog.models {
+        if !is_model_id(&model.id)
+            || model
+                .display_name
+                .as_deref()
+                .is_some_and(|name| !is_display_name(name))
+            || model.reasoning_efforts.len() > MAX_CODEX_REASONING_EFFORTS
+            || !model
+                .reasoning_efforts
+                .iter()
+                .all(|effort| is_reasoning_effort(effort))
+        {
+            return Err(ProtocolError::InvalidCatalogField);
+        }
+        push_short_field(payload, &model.id);
+        push_short_field(payload, model.display_name.as_deref().unwrap_or(""));
+        payload.push(if model.is_default {
+            MODEL_DEFAULT_FLAG
+        } else {
+            0
+        });
+        payload.push(model.reasoning_efforts.len() as u8);
+        for effort in &model.reasoning_efforts {
+            push_short_field(payload, effort);
+        }
+    }
+    Ok(())
+}
+
+struct PayloadCursor<'a> {
+    payload: &'a [u8],
+    index: usize,
+}
+
+impl<'a> PayloadCursor<'a> {
+    fn byte(&mut self) -> Result<u8, ProtocolError> {
+        let byte = *self
+            .payload
+            .get(self.index)
+            .ok_or(ProtocolError::InvalidMessageLength)?;
+        self.index += 1;
+        Ok(byte)
+    }
+
+    fn short_text(&mut self, max: usize) -> Result<&'a str, ProtocolError> {
+        let length = self.byte()? as usize;
+        if length > max {
+            return Err(ProtocolError::InvalidCatalogField);
+        }
+        let bytes = self
+            .payload
+            .get(self.index..self.index + length)
+            .ok_or(ProtocolError::InvalidMessageLength)?;
+        self.index += length;
+        std::str::from_utf8(bytes).map_err(|_| ProtocolError::InvalidUtf8)
+    }
+}
+
+fn decode_codex_catalog_payload(payload: &[u8]) -> Result<HelperMessage, ProtocolError> {
+    let mut cursor = PayloadCursor { payload, index: 2 };
+    let cli_version = match cursor.short_text(MAX_CODEX_CLI_VERSION_BYTES)? {
+        "" => None,
+        version if is_cli_version(version) => Some(version.to_owned()),
+        _ => return Err(ProtocolError::InvalidCatalogField),
+    };
+    let truncated = match cursor.byte()? {
+        0 => false,
+        CATALOG_TRUNCATED_FLAG => true,
+        _ => return Err(ProtocolError::InvalidCatalogField),
+    };
+    let count = cursor.byte()? as usize;
+    if count > MAX_CODEX_MODELS {
+        return Err(ProtocolError::InvalidCatalogField);
+    }
+    let mut models = Vec::with_capacity(count);
+    for _ in 0..count {
+        let id = cursor.short_text(MAX_CODEX_MODEL_ID_BYTES)?;
+        if !is_model_id(id) || models.iter().any(|model: &CodexModelEntry| model.id == id) {
+            return Err(ProtocolError::InvalidCatalogField);
+        }
+        let display_name = match cursor.short_text(MAX_CODEX_MODEL_NAME_BYTES)? {
+            "" => None,
+            name if is_display_name(name) => Some(name.to_owned()),
+            _ => return Err(ProtocolError::InvalidCatalogField),
+        };
+        let is_default = match cursor.byte()? {
+            0 => false,
+            MODEL_DEFAULT_FLAG => true,
+            _ => return Err(ProtocolError::InvalidCatalogField),
+        };
+        if is_default && models.iter().any(|model| model.is_default) {
+            return Err(ProtocolError::InvalidCatalogField);
+        }
+        let effort_count = cursor.byte()? as usize;
+        if effort_count > MAX_CODEX_REASONING_EFFORTS {
+            return Err(ProtocolError::InvalidCatalogField);
+        }
+        let mut reasoning_efforts = Vec::with_capacity(effort_count);
+        for _ in 0..effort_count {
+            let effort = cursor.short_text(MAX_CODEX_REASONING_EFFORT_BYTES)?;
+            if !is_reasoning_effort(effort) {
+                return Err(ProtocolError::InvalidCatalogField);
+            }
+            reasoning_efforts.push(effort.to_owned());
+        }
+        models.push(CodexModelEntry {
+            id: id.to_owned(),
+            display_name,
+            is_default,
+            reasoning_efforts,
+        });
+    }
+    if cursor.index != payload.len() {
+        return Err(ProtocolError::InvalidMessageLength);
+    }
+    Ok(HelperMessage::CodexModels(CodexModelCatalog {
+        cli_version,
+        models,
+        truncated,
+    }))
+}
+
 fn decode_error_payload(payload: &[u8]) -> Result<HelperMessage, ProtocolError> {
     if payload.len() < 5 {
         return Err(ProtocolError::InvalidMessageLength);
@@ -566,6 +770,7 @@ fn validate_error_message(message: &str) -> Result<(), ProtocolError> {
 pub enum HelperProtocolTerminal {
     Success,
     ToolSuccess(ToolOperationResult),
+    CodexModels(CodexModelCatalog),
     Failure(HelperErrorCode),
 }
 
@@ -576,6 +781,7 @@ pub enum HelperProtocolAction {
     Progress(u8),
     Success,
     ToolResult(ToolOperationResult),
+    CodexModels(CodexModelCatalog),
     Failure(HelperErrorCode),
 }
 
@@ -627,6 +833,7 @@ enum ProtocolPhase {
 pub struct HelperProtocolSequence {
     message_count: usize,
     phase: ProtocolPhase,
+    action: Option<UserHelperAction>,
     last_progress: Option<u8>,
     terminal: Option<HelperProtocolTerminal>,
 }
@@ -644,6 +851,7 @@ impl HelperProtocolSequence {
         match (self.phase, message) {
             (ProtocolPhase::AwaitingHello, HelperMessage::Hello { action }) => {
                 self.phase = ProtocolPhase::AwaitingControl;
+                self.action = Some(action);
                 Ok(HelperProtocolAction::Hello(action))
             }
             (ProtocolPhase::AwaitingStarted, HelperMessage::Started { package }) => {
@@ -669,6 +877,18 @@ impl HelperProtocolSequence {
                 }
                 self.last_progress = Some(completed);
                 Ok(HelperProtocolAction::Progress(completed))
+            }
+            (ProtocolPhase::Running, HelperMessage::CodexModels(catalog))
+                if self.action == Some(UserHelperAction::CodexModels) =>
+            {
+                self.phase = ProtocolPhase::Terminal;
+                self.terminal = Some(HelperProtocolTerminal::CodexModels(catalog.clone()));
+                Ok(HelperProtocolAction::CodexModels(catalog))
+            }
+            (ProtocolPhase::Running, HelperMessage::Success | HelperMessage::ToolResult(_))
+                if self.action == Some(UserHelperAction::CodexModels) =>
+            {
+                Err(ProtocolSequenceError::UnexpectedMessage)
             }
             (ProtocolPhase::Running, HelperMessage::Success) => {
                 self.phase = ProtocolPhase::Terminal;
@@ -718,32 +938,56 @@ mod tests {
 
     #[test]
     fn exact_wire_codes_are_stable_and_unique() {
-        assert_eq!(PROTOCOL_VERSION, 4);
+        assert_eq!(PROTOCOL_VERSION, 5);
         assert_eq!(
             HelperErrorCode::ALL.map(HelperErrorCode::wire_code),
             [
                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                24, 25, 26, 27, 28, 29, 30,
+                24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
             ]
         );
-        assert_eq!(encode_frame(&hello()).unwrap(), [3, 0, 0, 0, 4, 5, 1]);
+        assert_eq!(encode_frame(&hello()).unwrap(), [3, 0, 0, 0, 5, 5, 1]);
         assert_eq!(
             encode_frame(&HelperMessage::Started {
                 package: PINNED_PACKAGE,
             })
             .unwrap(),
             [
-                26, 0, 0, 0, 4, 1, 8, 7, 6, 5, 4, 3, 2, 1, 24, 23, 22, 21, 20, 19, 18, 17, 40, 39,
+                26, 0, 0, 0, 5, 1, 8, 7, 6, 5, 4, 3, 2, 1, 24, 23, 22, 21, 20, 19, 18, 17, 40, 39,
                 38, 37, 36, 35, 34, 33,
             ]
         );
         assert_eq!(
             encode_frame(&HelperMessage::Progress { completed: 42 }).unwrap(),
-            [3, 0, 0, 0, 4, 2, 42]
+            [3, 0, 0, 0, 5, 2, 42]
         );
         assert_eq!(
             encode_frame(&HelperMessage::Success).unwrap(),
-            [2, 0, 0, 0, 4, 3]
+            [2, 0, 0, 0, 5, 3]
+        );
+        assert_eq!(
+            encode_frame(&HelperMessage::Hello {
+                action: UserHelperAction::CodexModels,
+            })
+            .unwrap(),
+            [3, 0, 0, 0, 5, 5, 22]
+        );
+        assert_eq!(
+            encode_frame(&HelperMessage::CodexModels(CodexModelCatalog {
+                cli_version: Some("0.1".into()),
+                models: vec![CodexModelEntry {
+                    id: "m".into(),
+                    display_name: Some("M".into()),
+                    is_default: true,
+                    reasoning_efforts: vec!["low".into()],
+                }],
+                truncated: true,
+            }))
+            .unwrap(),
+            [
+                18, 0, 0, 0, 5, 7, 3, b'0', b'.', b'1', 1, 1, 1, b'm', 1, b'M', 1, 1, 3, b'l',
+                b'o', b'w',
+            ]
         );
     }
 
@@ -791,6 +1035,11 @@ mod tests {
                 outcome: crate::grok::GrokOutcome::Observed,
                 npm_destination: None,
             }),
+            HelperMessage::Hello {
+                action: UserHelperAction::CodexModels,
+            },
+            HelperMessage::CodexModels(CodexModelCatalog::default()),
+            HelperMessage::CodexModels(sample_catalog()),
         ];
         messages.extend(HelperErrorCode::ALL.map(HelperMessage::error));
 
@@ -1264,11 +1513,263 @@ mod tests {
             decode_frame(&frame).expect("decode"),
             HelperMessage::ToolResult(result)
         );
-        let v3_tool_result = [6, 0, 0, 0, 3, TOOL_RESULT_KIND, 0, 0, 0, 0];
+        for older in [3, 4] {
+            let older_tool_result = [6, 0, 0, 0, older, TOOL_RESULT_KIND, 0, 0, 0, 0];
+            assert_eq!(
+                decode_frame(&older_tool_result).unwrap_err(),
+                ProtocolError::UnsupportedVersion
+            );
+        }
+    }
+
+    fn sample_catalog() -> CodexModelCatalog {
+        CodexModelCatalog {
+            cli_version: Some("0.160.1".into()),
+            models: vec![
+                CodexModelEntry {
+                    id: "gpt-6.1-sol".into(),
+                    display_name: Some("GPT-6.1-Sol".into()),
+                    is_default: true,
+                    reasoning_efforts: vec!["low".into(), "medium".into(), "ultra".into()],
+                },
+                CodexModelEntry {
+                    id: "gpt-6-luna".into(),
+                    display_name: None,
+                    is_default: false,
+                    reasoning_efforts: Vec::new(),
+                },
+            ],
+            truncated: false,
+        }
+    }
+
+    fn maximum_catalog() -> CodexModelCatalog {
+        CodexModelCatalog {
+            cli_version: Some(format!("1{}", "0".repeat(MAX_CODEX_CLI_VERSION_BYTES - 1))),
+            models: (0..MAX_CODEX_MODELS)
+                .map(|index| CodexModelEntry {
+                    id: format!("{index:02}{}", "m".repeat(MAX_CODEX_MODEL_ID_BYTES - 2)),
+                    display_name: Some("N".repeat(MAX_CODEX_MODEL_NAME_BYTES)),
+                    is_default: index == 0,
+                    reasoning_efforts: (0..MAX_CODEX_REASONING_EFFORTS)
+                        .map(|effort| {
+                            format!(
+                                "{effort}{}",
+                                "e".repeat(MAX_CODEX_REASONING_EFFORT_BYTES - 1)
+                            )
+                        })
+                        .collect(),
+                })
+                .collect(),
+            truncated: true,
+        }
+    }
+
+    #[test]
+    fn maximum_catalog_fills_exactly_the_bounded_frame() {
+        let message = HelperMessage::CodexModels(maximum_catalog());
+        let encoded = encode_frame(&message).expect("maximum catalog must fit");
+        assert_eq!(encoded.len(), MAX_FRAME_BYTES);
+        assert_eq!(MAX_PAYLOAD_BYTES, MAX_CODEX_CATALOG_PAYLOAD_BYTES);
+        assert_eq!(decode_frame(&encoded).unwrap(), message);
         assert_eq!(
-            decode_frame(&v3_tool_result).unwrap_err(),
+            decode_frame_length(((MAX_PAYLOAD_BYTES + 1) as u32).to_le_bytes()).unwrap_err(),
+            ProtocolError::PayloadTooLarge
+        );
+    }
+
+    #[test]
+    fn catalog_encoder_refuses_values_outside_the_builder_bounds() {
+        let mut too_many = maximum_catalog();
+        too_many.models.push(CodexModelEntry {
+            id: "extra".into(),
+            display_name: None,
+            is_default: false,
+            reasoning_efforts: Vec::new(),
+        });
+        let mut two_defaults = sample_catalog();
+        two_defaults.models[1].is_default = true;
+        let mut bad_id = sample_catalog();
+        bad_id.models[0].id = "has space".into();
+        let mut bad_name = sample_catalog();
+        bad_name.models[0].display_name = Some("line\nbreak".into());
+        let mut bad_effort = sample_catalog();
+        bad_effort.models[0].reasoning_efforts.push("LOUD".into());
+        let mut bad_version = sample_catalog();
+        bad_version.cli_version = Some("v1".into());
+        for catalog in [
+            too_many,
+            two_defaults,
+            bad_id,
+            bad_name,
+            bad_effort,
+            bad_version,
+        ] {
+            assert!(encode_frame(&HelperMessage::CodexModels(catalog)).is_err());
+        }
+    }
+
+    #[test]
+    fn catalog_decoder_rejects_malformed_fields() {
+        let frame = |body: &[u8]| {
+            let mut payload = vec![PROTOCOL_VERSION, CODEX_MODELS_KIND];
+            payload.extend_from_slice(body);
+            let mut frame = (payload.len() as u32).to_le_bytes().to_vec();
+            frame.extend_from_slice(&payload);
+            frame
+        };
+        let one_model = |id: &[u8], name: &[u8], flags: u8, efforts: &[&[u8]]| {
+            let mut body = vec![0, 0, 1, id.len() as u8];
+            body.extend_from_slice(id);
+            body.push(name.len() as u8);
+            body.extend_from_slice(name);
+            body.push(flags);
+            body.push(efforts.len() as u8);
+            for effort in efforts {
+                body.push(effort.len() as u8);
+                body.extend_from_slice(effort);
+            }
+            frame(&body)
+        };
+
+        assert!(decode_frame(&one_model(b"ok", b"", 0, &[b"low"])).is_ok());
+        for (bad, expected) in [
+            (frame(&[]), ProtocolError::InvalidMessageLength),
+            (
+                frame(&[2, b'v', b'1', 0, 0]),
+                ProtocolError::InvalidCatalogField,
+            ),
+            (frame(&[0, 2, 0]), ProtocolError::InvalidCatalogField),
+            (
+                frame(&[0, 0, MAX_CODEX_MODELS as u8 + 1]),
+                ProtocolError::InvalidCatalogField,
+            ),
+            (frame(&[0, 0, 1]), ProtocolError::InvalidMessageLength),
+            (frame(&[0, 0, 0, 9]), ProtocolError::InvalidMessageLength),
+            (
+                one_model(b"", b"", 0, &[]),
+                ProtocolError::InvalidCatalogField,
+            ),
+            (
+                one_model(b"a b", b"", 0, &[]),
+                ProtocolError::InvalidCatalogField,
+            ),
+            (
+                one_model(b"ok", b"x\ny", 0, &[]),
+                ProtocolError::InvalidCatalogField,
+            ),
+            (
+                one_model(b"ok", b"", 2, &[]),
+                ProtocolError::InvalidCatalogField,
+            ),
+            (
+                one_model(b"ok", b"", 0, &[b"UP"]),
+                ProtocolError::InvalidCatalogField,
+            ),
+            (
+                one_model(b"ok", &[0xff], 0, &[]),
+                ProtocolError::InvalidUtf8,
+            ),
+        ] {
+            assert_eq!(decode_frame(&bad).unwrap_err(), expected, "{bad:?}");
+        }
+
+        let mut duplicate = vec![0, 0, 2];
+        for _ in 0..2 {
+            duplicate.extend_from_slice(&[1, b'a', 0, 0, 0]);
+        }
+        assert_eq!(
+            decode_frame(&frame(&duplicate)).unwrap_err(),
+            ProtocolError::InvalidCatalogField
+        );
+        let mut two_defaults = vec![0, 0, 2];
+        two_defaults.extend_from_slice(&[1, b'a', 0, 1, 0, 1, b'b', 0, 1, 0]);
+        assert_eq!(
+            decode_frame(&frame(&two_defaults)).unwrap_err(),
+            ProtocolError::InvalidCatalogField
+        );
+    }
+
+    #[test]
+    fn helper_from_the_previous_release_is_rejected_by_version() {
+        // A v4 helper paired with this parent: its first frame is a v4 Hello.
+        let v4_hello = [3, 0, 0, 0, 4, HELLO_KIND, 1];
+        assert_eq!(
+            decode_frame(&v4_hello).unwrap_err(),
             ProtocolError::UnsupportedVersion
         );
+        let v6_hello = [3, 0, 0, 0, 6, HELLO_KIND, 22];
+        assert_eq!(
+            decode_frame(&v6_hello).unwrap_err(),
+            ProtocolError::UnsupportedVersion
+        );
+    }
+
+    fn admit_action(sequence: &mut HelperProtocolSequence, action: UserHelperAction) {
+        sequence.accept(HelperMessage::Hello { action }).unwrap();
+        sequence.mark_control_sent().unwrap();
+        sequence
+            .accept(HelperMessage::Started {
+                package: crate::grok::TOOL_OPERATION_STARTED_IDENTITY,
+            })
+            .unwrap();
+        sequence.mark_admitted().unwrap();
+    }
+
+    #[test]
+    fn codex_catalog_is_the_only_success_terminal_for_codex_models() {
+        let mut sequence = HelperProtocolSequence::default();
+        admit_action(&mut sequence, UserHelperAction::CodexModels);
+        assert_eq!(
+            sequence.accept(HelperMessage::Success),
+            Err(ProtocolSequenceError::UnexpectedMessage)
+        );
+        assert_eq!(
+            sequence.accept(HelperMessage::ToolResult(ToolOperationResult {
+                detected: true,
+                normalized_version: None,
+                owner: None,
+                outcome: crate::grok::GrokOutcome::Observed,
+                npm_destination: None,
+            })),
+            Err(ProtocolSequenceError::UnexpectedMessage)
+        );
+        assert_eq!(
+            sequence.accept(HelperMessage::CodexModels(sample_catalog())),
+            Ok(HelperProtocolAction::CodexModels(sample_catalog()))
+        );
+        assert_eq!(
+            sequence.terminal(),
+            Some(HelperProtocolTerminal::CodexModels(sample_catalog()))
+        );
+
+        let mut failure = HelperProtocolSequence::default();
+        admit_action(&mut failure, UserHelperAction::CodexModels);
+        assert_eq!(
+            failure.accept(HelperMessage::error(
+                HelperErrorCode::CodexModelListUnsupported
+            )),
+            Ok(HelperProtocolAction::Failure(
+                HelperErrorCode::CodexModelListUnsupported
+            ))
+        );
+
+        for other in [
+            UserHelperAction::GrokTool {
+                action: crate::grok::GrokToolAction::Observe,
+                expected_owner: None,
+            },
+            UserHelperAction::ClaudeTool {
+                action: crate::grok::GrokToolAction::Observe,
+            },
+        ] {
+            let mut sequence = HelperProtocolSequence::default();
+            admit_action(&mut sequence, other);
+            assert_eq!(
+                sequence.accept(HelperMessage::CodexModels(sample_catalog())),
+                Err(ProtocolSequenceError::UnexpectedMessage)
+            );
+        }
     }
 
     #[test]
@@ -1287,7 +1788,10 @@ mod tests {
         });
         let message = HelperMessage::ToolResult(result.clone());
         let encoded = encode_frame(&message).expect("maximum destination frame");
-        assert_eq!(encoded.len(), MAX_FRAME_BYTES);
+        assert_eq!(
+            encoded.len(),
+            FRAME_LENGTH_BYTES + MAX_TOOL_RESULT_PAYLOAD_BYTES
+        );
         assert_eq!(decode_frame(&encoded).unwrap(), message);
         for field in 0..4 {
             let mut oversized = result.clone();

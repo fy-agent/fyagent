@@ -9,6 +9,7 @@ pub mod bridge_control;
 pub mod claude;
 pub mod cli;
 pub mod closed_dep;
+pub mod codex_models;
 pub mod grok;
 pub mod grok_npm;
 pub mod layout;
@@ -20,8 +21,10 @@ pub use bridge_control::{
 };
 pub use cli::{
     parse_cli_args, AgentInstallerProduct, CanonicalJobId, CliError, InstallRequest, PipeNonce,
-    UserHelperAction, AGENT_EXE_INSTALL_ACTION, GROK_TOOL_ACTION, INSTALL_ACTION,
+    UserHelperAction, AGENT_EXE_INSTALL_ACTION, CODEX_MODELS_ACTION, GROK_TOOL_ACTION,
+    INSTALL_ACTION,
 };
+pub use codex_models::{CodexCatalogError, CodexModelCatalog, CodexModelEntry};
 pub use grok::{
     admit_confirmed_npm_target, GrokOutcome, GrokOwner, GrokOwnerObservation, GrokPlanFailure,
     GrokPlanKind, GrokToolAction, NpmDestinationObservation, NpmTargetBinding, NpmTargetError,

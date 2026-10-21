@@ -6,6 +6,7 @@ pub const INSTALL_ACTION: &str = "codex-msix-install";
 pub const AGENT_EXE_INSTALL_ACTION: &str = "agent-exe-install";
 pub const GROK_TOOL_ACTION: &str = "grok-tool";
 pub const CLAUDE_TOOL_ACTION: &str = "claude-tool";
+pub const CODEX_MODELS_ACTION: &str = "codex-models";
 const PRODUCT_FLAG: &str = "--product";
 const ACTION_FLAG: &str = "--action";
 const OWNER_FLAG: &str = "--owner";
@@ -132,6 +133,9 @@ pub enum UserHelperAction {
     ClaudeTool {
         action: GrokToolAction,
     },
+    /// Reads the current user's Codex app-server model catalog. Takes no
+    /// path, program, or account argument.
+    CodexModels,
 }
 
 impl UserHelperAction {
@@ -152,6 +156,7 @@ impl UserHelperAction {
                 GrokToolAction::Update => 17,
                 GrokToolAction::Preflight => 21,
             },
+            Self::CodexModels => 22,
         }
     }
 
@@ -183,20 +188,25 @@ impl UserHelperAction {
             21 => Some(Self::ClaudeTool {
                 action: GrokToolAction::Preflight,
             }),
+            22 => Some(Self::CodexModels),
             _ => None,
         }
     }
 
     pub const fn requires_package_bridge(self) -> bool {
-        !matches!(self, Self::GrokTool { .. } | Self::ClaudeTool { .. })
+        !matches!(
+            self,
+            Self::GrokTool { .. } | Self::ClaudeTool { .. } | Self::CodexModels
+        )
     }
 
     pub const fn artifact_kind(self) -> crate::layout::PackageBridgeArtifactKind {
         match self {
             Self::CodexMsixInstall => crate::layout::PackageBridgeArtifactKind::Msix,
-            Self::AgentExeInstall(_) | Self::GrokTool { .. } | Self::ClaudeTool { .. } => {
-                crate::layout::PackageBridgeArtifactKind::Exe
-            }
+            Self::AgentExeInstall(_)
+            | Self::GrokTool { .. }
+            | Self::ClaudeTool { .. }
+            | Self::CodexModels => crate::layout::PackageBridgeArtifactKind::Exe,
         }
     }
 
@@ -204,6 +214,10 @@ impl UserHelperAction {
         match self {
             Self::CodexMsixInstall => format!(
                 "{INSTALL_ACTION} --job-id {job_id} --pipe {}",
+                pipe_nonce.as_str()
+            ),
+            Self::CodexModels => format!(
+                "{CODEX_MODELS_ACTION} --job-id {job_id} --pipe {}",
                 pipe_nonce.as_str()
             ),
             Self::AgentExeInstall(product) => format!(
@@ -357,6 +371,7 @@ where
 
     let (action, job_flag_index) = match raw.first().map(String::as_str) {
         Some(INSTALL_ACTION) if raw.len() == 5 => (UserHelperAction::CodexMsixInstall, 1),
+        Some(CODEX_MODELS_ACTION) if raw.len() == 5 => (UserHelperAction::CodexModels, 1),
         Some(AGENT_EXE_INSTALL_ACTION) if raw.len() == 7 => {
             if raw[1] != PRODUCT_FLAG {
                 return Err(CliError::ExpectedProductFlag);
@@ -404,9 +419,13 @@ where
             let action = GrokToolAction::parse_cli(&raw[2]).ok_or(CliError::InvalidToolAction)?;
             (UserHelperAction::ClaudeTool { action }, 3)
         }
-        Some(INSTALL_ACTION | AGENT_EXE_INSTALL_ACTION | GROK_TOOL_ACTION | CLAUDE_TOOL_ACTION) => {
-            return Err(CliError::WrongArgumentCount)
-        }
+        Some(
+            INSTALL_ACTION
+            | AGENT_EXE_INSTALL_ACTION
+            | GROK_TOOL_ACTION
+            | CLAUDE_TOOL_ACTION
+            | CODEX_MODELS_ACTION,
+        ) => return Err(CliError::WrongArgumentCount),
         Some(_) => return Err(CliError::UnknownAction),
         None => return Err(CliError::WrongArgumentCount),
     };
@@ -552,6 +571,63 @@ mod tests {
             NONCE
         ])
         .is_err());
+    }
+
+    #[test]
+    fn codex_models_accepts_only_the_action_name_and_fixed_job_pipe() {
+        let request = parse_cli_args([CODEX_MODELS_ACTION, JOB_ID_FLAG, JOB_ID, PIPE_FLAG, NONCE])
+            .expect("closed codex-models shape");
+        let action = request.action();
+        assert_eq!(action, UserHelperAction::CodexModels);
+        assert_eq!(action.wire_code(), 22);
+        assert_eq!(UserHelperAction::from_wire(22), Some(action));
+        assert!(!action.requires_package_bridge());
+        assert_eq!(
+            action.command_line(request.job_id(), request.pipe_nonce()),
+            format!("{CODEX_MODELS_ACTION} --job-id {JOB_ID} --pipe {NONCE}")
+        );
+
+        for (flag, value) in [
+            ("--path", "C:\\Users\\alice\\codex.exe"),
+            ("--program", "codex.exe"),
+            ("--command", "app-server"),
+            ("--codex-home", "C:\\other"),
+            ("--account", "acct"),
+            (ACTION_FLAG, "observe"),
+        ] {
+            assert_eq!(
+                parse_cli_args([
+                    CODEX_MODELS_ACTION,
+                    flag,
+                    value,
+                    JOB_ID_FLAG,
+                    JOB_ID,
+                    PIPE_FLAG,
+                    NONCE
+                ])
+                .unwrap_err(),
+                CliError::WrongArgumentCount,
+                "{flag}"
+            );
+            assert_eq!(
+                parse_cli_args([CODEX_MODELS_ACTION, flag, JOB_ID, PIPE_FLAG, NONCE]).unwrap_err(),
+                CliError::ExpectedJobIdFlag,
+                "{flag}"
+            );
+        }
+        assert_eq!(
+            parse_cli_args([
+                CODEX_MODELS_ACTION,
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+                "--",
+                "app-server"
+            ])
+            .unwrap_err(),
+            CliError::WrongArgumentCount
+        );
     }
 
     fn valid_args() -> [&'static str; 5] {
@@ -705,7 +781,11 @@ mod tests {
             UserHelperAction::AgentExeInstall(AgentInstallerProduct::OpenCode)
                 .requires_package_bridge()
         );
-        assert_eq!(UserHelperAction::from_wire(22), None);
+        assert_eq!(
+            UserHelperAction::from_wire(22),
+            Some(UserHelperAction::CodexModels)
+        );
+        assert_eq!(UserHelperAction::from_wire(23), None);
         assert_eq!(
             UserHelperAction::GrokTool {
                 action: GrokToolAction::Install,
