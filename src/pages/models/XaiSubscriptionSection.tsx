@@ -14,6 +14,7 @@ import type {
   ModelWriteTarget,
   ProviderAppId,
 } from "../../shared/features/models";
+import { parseManagedAuthCommandError } from "../../shared/features/managed-auth";
 import { useFeatures } from "../../shared/features/provider";
 import {
   featureKeys,
@@ -76,11 +77,13 @@ export function XaiSubscriptionSection(props: Props) {
   const [pending, setPending] = useState<CliBindRequest | null>(null);
   const [busy, setBusy] = useState<"fetch" | "bind" | "restore" | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [catalogNotice, setCatalogNotice] = useState<Notice | null>(null);
   const [saved, setSaved] = useState<
     BindManagedProxyResult | BindOpenCodeManagedResult | null
   >(null);
   const lock = useRef(false);
   const mounted = useRef(true);
+  const selectedAccountRef = useRef("");
   const originRef = useRef<HTMLElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -131,28 +134,27 @@ export function XaiSubscriptionSection(props: Props) {
       return;
     lock.current = true;
     setBusy("fetch");
-    setNotice(null);
+    setCatalogNotice(null);
+    const account = accounts.find(
+      (item) => item.accountId === selectedAccountId,
+    );
+    const current = () =>
+      mounted.current && selectedAccountRef.current === selectedAccountId;
     try {
-      if (
-        accounts.find((account) => account.accountId === selectedAccountId)
-          ?.provider === "openai"
-      ) {
-        setModelIds([]);
-        setManualModel(true);
-        setNotice({
-          tone: "info",
-          title: "填写订阅模型 ID",
-          description:
-            "填写该 ChatGPT 账号在 Codex 中可用的模型 ID，实际可用性以服务返回为准。",
-        });
+      if (account?.provider === "openai") {
+        await fetchOpenAiModels(
+          selectedAccountId,
+          account.displayName ?? account.login,
+          current,
+        );
         return;
       }
       const result =
         await ports.providers.fetchXaiManagedModels(selectedAccountId);
-      if (!mounted.current) return;
+      if (!current()) return;
       setModelIds(result.models);
       setManualModel(result.models.length === 0);
-      setNotice({
+      setCatalogNotice({
         tone: result.models.length ? "info" : "warning",
         title: result.models.length
           ? `已加载 ${result.models.length} 个模型选项`
@@ -161,9 +163,9 @@ export function XaiSubscriptionSection(props: Props) {
           "这些选项来自 Grok CLI 官方示例，并非你的账号模型名单。请选择一个，或手动填写订阅支持的模型 ID；实际可用性以服务返回为准。",
       });
     } catch {
-      if (mounted.current) {
+      if (current()) {
         setManualModel(true);
-        setNotice({
+        setCatalogNotice({
           tone: "error",
           title: "无法加载模型选项",
           description: "请检查账号登录状态。也可以手动填写订阅支持的模型 ID。",
@@ -172,6 +174,63 @@ export function XaiSubscriptionSection(props: Props) {
     } finally {
       lock.current = false;
       if (mounted.current) setBusy(null);
+    }
+  };
+
+  const fetchOpenAiModels = async (
+    selectedAccountId: string,
+    label: string,
+    current: () => boolean,
+  ) => {
+    try {
+      const result = await ports.managedAuth.getOpenAiModels(selectedAccountId);
+      if (!current()) return;
+      const fetchedAt = new Date(result.fetchedAt).toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      setModelIds(result.models);
+      setManualModel(result.models.length === 0);
+      setCatalogNotice(
+        result.models.length
+          ? {
+              tone: "info",
+              title: `已读取 ${result.models.length} 个 Codex 模型`,
+              description: `来自 OpenAI 为「${label}」提供的 Codex 模型目录，读取于 ${fetchedAt}。实际可用性以服务返回为准。`,
+            }
+          : {
+              tone: "warning",
+              title: "该账号的 Codex 模型目录为空",
+              description: `OpenAI 未向「${label}」返回可选模型（读取于 ${fetchedAt}）。可以稍后重试，或手动填写订阅支持的模型 ID。`,
+            },
+      );
+    } catch (error) {
+      if (!current()) return;
+      setModelIds([]);
+      setManualModel(true);
+      const reason = parseManagedAuthCommandError(error);
+      setCatalogNotice(
+        reason === "requires_reauth"
+          ? {
+              tone: "error",
+              title: "需要重新登录此 ChatGPT 账号",
+              description:
+                "登录已过期或被拒绝。请在账号与认证中重新登录后重试，也可以手动填写模型 ID。",
+            }
+          : reason === "connection_unavailable"
+            ? {
+                tone: "error",
+                title: "此账号暂时不能用于订阅转发",
+                description:
+                  "请到账号与认证检查此账号的登录状态，必要时重新登录；也可以手动填写模型 ID。",
+              }
+            : {
+                tone: "error",
+                title: "暂时无法读取 Codex 模型目录",
+                description:
+                  "请检查网络后点「查看模型选项」重试，或手动填写订阅支持的模型 ID。",
+              },
+      );
     }
   };
 
@@ -367,11 +426,13 @@ export function XaiSubscriptionSection(props: Props) {
                 disabled={account.health !== "ready"}
                 onChange={() => {
                   if (locked) return;
+                  selectedAccountRef.current = account.accountId;
                   setAccountId(account.accountId);
                   setModelId("");
                   setModelIds([]);
                   setSaved(null);
                   setNotice(null);
+                  setCatalogNotice(null);
                   setManualModel(false);
                   void fetchModels(account.accountId);
                 }}
@@ -400,12 +461,13 @@ export function XaiSubscriptionSection(props: Props) {
           刷新订阅账号
         </Button>
         <Button
-          disabled={locked || !accountReady || selected?.provider !== "xai"}
+          disabled={locked || !accountReady}
           onClick={() => void fetchModels()}
         >
           {busy === "fetch" ? "加载中…" : "查看模型选项"}
         </Button>
       </div>
+      <FieldFeedback notice={catalogNotice} />
       {modelIds.length > 0 ? (
         <GroupedModelChips
           ids={modelIds}

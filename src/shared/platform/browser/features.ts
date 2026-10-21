@@ -31,6 +31,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     managedAuth: {
       getOverview: rejectNativeOnly,
       getAccountQuota: rejectNativeOnly,
+      getOpenAiModels: rejectNativeOnly,
       startLogin: rejectNativeOnly,
       getLoginSession: rejectNativeOnly,
       cancelLogin: rejectNativeOnly,

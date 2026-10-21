@@ -156,10 +156,26 @@ export function connectionStatusPresentation(
   }
 }
 
+/** Codex config slot written only by FyAgent's ChatGPT subscription forwarding. */
+const CODEX_CHATGPT_FORWARDING_SLOT = "fyagent_chatgpt";
+
+export const SUBSCRIPTION_FORWARDING_NOTE =
+  "订阅转发经本机 FyAgent 代理发出，所以 Codex 配置和界面里会显示为 custom provider；实际请求和额度使用你绑定的 ChatGPT 订阅账号。";
+
+export function isSubscriptionForwardingLabel(
+  providerLabel: string | null,
+): boolean {
+  return providerLabel === CODEX_CHATGPT_FORWARDING_SLOT;
+}
+
 export function requestModeLabel(
   mode: ManagedAuthRequestMode,
   providerLabel: string | null,
 ): string {
+  if (isSubscriptionForwardingLabel(providerLabel))
+    return "ChatGPT 订阅转发（本机 custom provider）";
+  if (mode === "official_subscription" && providerLabel === "openai")
+    return "ChatGPT 官方登录";
   if (providerLabel) return providerLabel;
   switch (mode) {
     case "official_subscription":

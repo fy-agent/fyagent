@@ -244,6 +244,17 @@ pub struct ManagedAuthAccountQuota {
     pub windows: Vec<ManagedAuthQuotaWindow>,
 }
 
+/// The Codex picker catalog that OpenAI serves to one saved ChatGPT account,
+/// read with that account's own credential. Model IDs only.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedAuthOpenAiModels {
+    pub contract_version: u8,
+    pub account_id: String,
+    pub fetched_at: String,
+    pub models: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ManagedAuthConnectionSummary {

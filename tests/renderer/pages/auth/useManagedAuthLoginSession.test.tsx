@@ -21,6 +21,7 @@ function loginPort(overrides: Partial<ManagedAuthPort> = {}): ManagedAuthPort {
   return {
     getOverview: vi.fn(),
     getAccountQuota: vi.fn(),
+    getOpenAiModels: vi.fn(),
     startLogin: vi.fn(async () => deviceLoginSessionFixture()),
     getLoginSession: vi.fn(async () => deviceLoginSessionFixture()),
     cancelLogin: vi.fn(),

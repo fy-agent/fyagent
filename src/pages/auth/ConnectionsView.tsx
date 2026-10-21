@@ -14,7 +14,7 @@ import {
 } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/Button";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
-import { EmptyState } from "../../shared/ui/primitives";
+import { EmptyState, InlineNotice } from "../../shared/ui/primitives";
 import { PersistentSurface } from "../../shared/ui/PersistentSurface";
 import { connectionPresentation, summarizeConnections } from "./summary";
 import { GrokOfficialLogin } from "./GrokOfficialLogin";
@@ -27,10 +27,12 @@ import {
 } from "./common";
 import {
   connectionActionLabel,
+  isSubscriptionForwardingLabel,
   managedAuthConsumerLabel,
   managedAuthManagerLabel,
   managedAuthProviderLabel,
   requestModeLabel,
+  SUBSCRIPTION_FORWARDING_NOTE,
 } from "./presentation";
 
 function ConnectionCard({
@@ -95,6 +97,10 @@ function ConnectionCard({
           {managedAuthManagerLabel(connection.credentialManager)}
         </DefinitionRow>
       </dl>
+
+      {isSubscriptionForwardingLabel(connection.requestProviderLabel) ? (
+        <InlineNotice tone="info">{SUBSCRIPTION_FORWARDING_NOTE}</InlineNotice>
+      ) : null}
 
       <ReasonList reasons={connection.reasonCodes} />
 

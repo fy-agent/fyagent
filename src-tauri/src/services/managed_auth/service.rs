@@ -30,8 +30,8 @@ use super::{
     ManagedAuthConnectionAction, ManagedAuthConnectionActionRequest, ManagedAuthConnectionState,
     ManagedAuthConnectionSummary, ManagedAuthConsumer, ManagedAuthCoreError,
     ManagedAuthCredentialManager, ManagedAuthErrorDto, ManagedAuthHealth, ManagedAuthLoginMethod,
-    ManagedAuthMutationOutcome, ManagedAuthMutationResult, ManagedAuthOverview,
-    ManagedAuthProvider, ManagedAuthProviderSummary, ManagedAuthQuotaStatus,
+    ManagedAuthMutationOutcome, ManagedAuthMutationResult, ManagedAuthOpenAiModels,
+    ManagedAuthOverview, ManagedAuthProvider, ManagedAuthProviderSummary, ManagedAuthQuotaStatus,
     ManagedAuthQuotaWindow, ManagedAuthReasonCode, ManagedAuthRepository, ManagedAuthRequestMode,
     ManagedAuthSecretBundle, ManagedAuthSecretBundleParts, MigrationStatus, NewCredential,
     RefreshOwner, MANAGED_AUTH_CONTRACT_VERSION,
@@ -405,6 +405,73 @@ where
             id: "grok-build".into(),
             owned_by: Some("xai".into()),
         }])
+    }
+
+    pub(crate) async fn fetch_openai_models(
+        &self,
+        account_id: &str,
+    ) -> Result<ManagedAuthOpenAiModels, ManagedAuthErrorDto> {
+        self.fetch_openai_models_with(account_id, |token, subject| async move {
+            crate::services::codex_oauth_models::fetch_listed_models_with_token(&token, &subject)
+                .await
+        })
+        .await
+    }
+
+    /// Reads the catalog with the exact account's proxy credential, so the
+    /// result can only describe that account; never the default or the local
+    /// Codex login.
+    pub(crate) async fn fetch_openai_models_with<F, Fut>(
+        &self,
+        account_id: &str,
+        fetch: F,
+    ) -> Result<ManagedAuthOpenAiModels, ManagedAuthErrorDto>
+    where
+        F: FnOnce(Zeroizing<String>, String) -> Fut,
+        Fut: std::future::Future<
+            Output = Result<Vec<String>, crate::services::codex_oauth_models::ListedModelsError>,
+        >,
+    {
+        use crate::services::codex_oauth_models::ListedModelsError;
+
+        let unavailable =
+            || ManagedAuthErrorDto::with_reason(ManagedAuthReasonCode::ConnectionUnavailable);
+        let selected = self.proxy_account(account_id).map_err(|_| unavailable())?;
+        if selected.credential.provider != ManagedAuthProvider::Openai
+            || selected.identity.identity_id != account_id
+        {
+            return Err(unavailable());
+        }
+        let material = match self.resolve_credential_access(selected.credential).await {
+            Ok(material) => material,
+            Err(ManagedAuthCoreError::Conflict) => {
+                return Err(ManagedAuthErrorDto::with_reason(
+                    ManagedAuthReasonCode::RequiresReauth,
+                ))
+            }
+            Err(error) => return Err(ManagedAuthErrorDto::from_core(error)),
+        };
+        let subject = material
+            .routing_subject()
+            .map(str::to_string)
+            .ok_or_else(|| {
+                ManagedAuthErrorDto::with_reason(ManagedAuthReasonCode::RequiresReauth)
+            })?;
+        let models = fetch(Zeroizing::new(material.access_token().to_string()), subject)
+            .await
+            .map_err(|error| {
+                ManagedAuthErrorDto::with_reason(match error {
+                    ListedModelsError::Unauthorized => ManagedAuthReasonCode::RequiresReauth,
+                    ListedModelsError::Unavailable => ManagedAuthReasonCode::ObserverUnavailable,
+                    ListedModelsError::InvalidResponse => ManagedAuthReasonCode::InvalidResponse,
+                })
+            })?;
+        Ok(ManagedAuthOpenAiModels {
+            contract_version: MANAGED_AUTH_CONTRACT_VERSION,
+            account_id: account_id.to_string(),
+            fetched_at: now_timestamp(),
+            models,
+        })
     }
 
     pub(crate) async fn get_account_quota(

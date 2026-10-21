@@ -2092,6 +2092,7 @@ pub fn run() {
             commands::stop_waiting_for_agent_auth,
             commands::managed_auth_get_overview,
             commands::managed_auth_get_account_quota,
+            commands::managed_auth_get_openai_models,
 
             commands::managed_auth_start_login,
             commands::managed_auth_get_login_session,

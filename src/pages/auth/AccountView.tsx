@@ -35,11 +35,13 @@ import {
   loginRequiredConnectionsForAccount,
   formatAuthenticatedAt,
   formatManagedAuthQuotaWindow,
+  isSubscriptionForwardingLabel,
   managedAuthConsumerLabel,
   managedAuthManagerLabel,
   managedAuthProviderLabel,
   requestModeLabel,
   sortManagedAuthAccounts,
+  SUBSCRIPTION_FORWARDING_NOTE,
 } from "./presentation";
 import { summarizeConnections } from "./summary";
 
@@ -131,6 +133,9 @@ function AccountConnection({
           {managedAuthManagerLabel(connection.credentialManager)}
         </DefinitionRow>
       </dl>
+      {isSubscriptionForwardingLabel(connection.requestProviderLabel) ? (
+        <InlineNotice tone="info">{SUBSCRIPTION_FORWARDING_NOTE}</InlineNotice>
+      ) : null}
       <ReasonList reasons={connection.reasonCodes} />
       {actions.length > 0 || loginConnectLabel ? (
         <div className="fy-feature-actions">

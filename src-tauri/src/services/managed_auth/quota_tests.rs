@@ -471,6 +471,125 @@ fn quota_dto_binds_requested_account_id() {
 }
 
 #[test]
+fn openai_models_use_exact_account_credential() {
+    use crate::services::codex_oauth_models::ListedModelsError;
+
+    let (service, _dir) = service();
+    let default_account = seed_proxy(
+        &service,
+        "models-default",
+        "models-subject-default",
+        ManagedAuthProvider::Openai,
+        true,
+    );
+    let selected = seed_proxy(
+        &service,
+        "models-selected",
+        "models-subject-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    let seen = Mutex::new(Vec::new());
+    let result = runtime()
+        .block_on(
+            service.fetch_openai_models_with(&selected.identity_id, |token, subject| {
+                seen.lock().unwrap().push((token.to_string(), subject));
+                async { Ok(vec!["gpt-6-sol".to_string(), "gpt-5.5".to_string()]) }
+            }),
+        )
+        .expect("models");
+    assert_eq!(
+        seen.into_inner().unwrap(),
+        vec![(
+            "quota-access-models-selected".to_string(),
+            "models-subject-selected".to_string()
+        )]
+    );
+    assert_eq!(result.account_id, selected.identity_id);
+    assert_ne!(result.account_id, default_account.identity_id);
+    assert_eq!(result.models, vec!["gpt-6-sol", "gpt-5.5"]);
+    let value = serde_json::to_value(&result).unwrap();
+    let keys: std::collections::BTreeSet<_> = value.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(
+        keys,
+        ["accountId", "contractVersion", "fetchedAt", "models"]
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    );
+    let text = value.to_string();
+    assert!(!text.contains("quota-access"));
+    assert!(!text.contains("quota-refresh"));
+
+    for (error, reason) in [
+        (
+            ListedModelsError::Unauthorized,
+            ManagedAuthReasonCode::RequiresReauth,
+        ),
+        (
+            ListedModelsError::Unavailable,
+            ManagedAuthReasonCode::ObserverUnavailable,
+        ),
+        (
+            ListedModelsError::InvalidResponse,
+            ManagedAuthReasonCode::InvalidResponse,
+        ),
+    ] {
+        let failure = runtime()
+            .block_on(
+                service.fetch_openai_models_with(&selected.identity_id, |_, _| async move {
+                    Err(error)
+                }),
+            )
+            .expect_err("mapped failure");
+        assert_eq!(failure.reason_code, reason);
+    }
+}
+
+#[test]
+fn openai_models_refuse_other_providers_and_unknown_accounts() {
+    let (service, _dir) = service();
+    let xai = seed_proxy(
+        &service,
+        "models-xai",
+        "models-subject-xai",
+        ManagedAuthProvider::Xai,
+        true,
+    );
+    let native_only = seed_native(
+        &service,
+        "models-native",
+        "models-subject-native",
+        ManagedAuthProvider::Openai,
+        (
+            CredentialPurpose::CodexNative,
+            ManagedAuthConsumer::Codex,
+            RefreshOwner::CodexNative,
+        ),
+        chrono::Utc::now().timestamp() + 3600,
+    );
+    let queried = Arc::new(Mutex::new(false));
+    for account in [
+        xai.identity_id.as_str(),
+        native_only.identity_id.as_str(),
+        "ma1:ffffffffffffffffffffffffffffffff",
+    ] {
+        let error = runtime()
+            .block_on(service.fetch_openai_models_with(account, |_, _| {
+                *queried.lock().unwrap() = true;
+                async { Ok(vec!["gpt-5.5".to_string()]) }
+            }))
+            .expect_err("refused");
+        assert_eq!(
+            error.reason_code,
+            ManagedAuthReasonCode::ConnectionUnavailable,
+            "{account}"
+        );
+    }
+    assert!(!*queried.lock().unwrap());
+}
+
+#[test]
 fn quota_nonfinite_windows_are_not_success() {
     let mut quota = success_quota();
     quota.tiers[0].utilization = f64::NAN;

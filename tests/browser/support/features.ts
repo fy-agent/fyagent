@@ -13,6 +13,8 @@ export interface RichFeatureFixtureOptions {
   authSummaryScenario?: "mixed";
   /** Consumers whose first connection apply fails with an external change. */
   authConnectionFailOnce?: string[];
+  /** First OpenAI catalog read fails with this managed-auth reason. */
+  openAiModelsFailOnce?: string;
   firstUseGuideState?: "pending" | "dismissed";
   catalogFailure?: boolean;
   observationFailure?: "workbuddy" | "codex" | "claude";
@@ -1220,6 +1222,31 @@ export async function installRichTauriFeatureFixture(
             return [{ id: "gpt-fixture" }, { id: "gpt-fixture-second" }];
           case "managed_auth_get_overview":
             return structuredClone(managedAuthOverview);
+          case "managed_auth_get_openai_models": {
+            const accountId = String(payload.accountId);
+            const account = (
+              managedAuthOverview.accounts as Array<{
+                accountId: string;
+                provider: string;
+              }>
+            ).find((item) => item.accountId === accountId);
+            if (!account || account.provider !== "openai")
+              throw {
+                contractVersion: 1,
+                reasonCode: "connection_unavailable",
+              };
+            const failure = fixtureOptions.openAiModelsFailOnce;
+            if (failure) {
+              fixtureOptions.openAiModelsFailOnce = undefined;
+              throw { contractVersion: 1, reasonCode: failure };
+            }
+            return {
+              contractVersion: 1,
+              accountId,
+              fetchedAt: "2026-10-22T04:30:00Z",
+              models: ["chatgpt-fixture-model", "gpt-fixture-codex"],
+            };
+          }
           case "managed_auth_get_account_quota": {
             const accountId = String(payload.accountId);
             const account = (

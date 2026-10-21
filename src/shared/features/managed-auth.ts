@@ -320,9 +320,18 @@ export interface ManagedAuthMutationResult {
   reasonCode: ManagedAuthReasonCode | null;
 }
 
+/** The Codex picker catalog OpenAI serves to this exact saved account. */
+export interface ManagedAuthOpenAiModels {
+  contractVersion: typeof MANAGED_AUTH_CONTRACT_VERSION;
+  accountId: string;
+  fetchedAt: string;
+  models: string[];
+}
+
 export interface ManagedAuthPort {
   getOverview(): Promise<ManagedAuthOverview>;
   getAccountQuota(accountId: string): Promise<ManagedAuthAccountQuota>;
+  getOpenAiModels(accountId: string): Promise<ManagedAuthOpenAiModels>;
   startLogin(
     request: StartManagedAuthLoginRequest,
   ): Promise<ManagedAuthLoginSessionSnapshot>;
@@ -1066,6 +1075,40 @@ function parseQuotaWindow(value: unknown): ManagedAuthQuotaWindow {
     windowId: parseQuotaWindowId(value.windowId),
     remainingPercent: value.remainingPercent,
     resetsAt: parseNullableTimestamp(value.resetsAt),
+  };
+}
+
+const OPENAI_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+
+export function parseManagedAuthOpenAiModels(
+  value: unknown,
+  accountId: string,
+): ManagedAuthOpenAiModels {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "contractVersion",
+      "accountId",
+      "fetchedAt",
+      "models",
+    ]) ||
+    value.contractVersion !== MANAGED_AUTH_CONTRACT_VERSION ||
+    value.accountId !== accountId ||
+    !isIsoTimestamp(value.fetchedAt) ||
+    !Array.isArray(value.models) ||
+    value.models.length > 500 ||
+    value.models.some(
+      (id) => typeof id !== "string" || !OPENAI_MODEL_ID.test(id),
+    ) ||
+    new Set(value.models).size !== value.models.length
+  ) {
+    dataError();
+  }
+  return {
+    contractVersion: MANAGED_AUTH_CONTRACT_VERSION,
+    accountId: parseAccountId(value.accountId),
+    fetchedAt: value.fetchedAt,
+    models: [...(value.models as string[])],
   };
 }
 

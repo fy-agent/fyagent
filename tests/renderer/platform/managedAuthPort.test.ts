@@ -21,6 +21,39 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 describe("Tauri managed auth port", () => {
   beforeEach(() => invoke.mockReset());
 
+  it("reads one account's OpenAI catalog and rejects any other shape", async () => {
+    const port = createManagedAuthPort();
+    const catalog = {
+      contractVersion: 1,
+      accountId: OPENAI_ACCOUNT_ID,
+      fetchedAt: "2026-10-22T04:30:00Z",
+      models: ["gpt-6-sol", "gpt-5.5"],
+    };
+    invoke.mockResolvedValueOnce(catalog);
+    await expect(port.getOpenAiModels(OPENAI_ACCOUNT_ID)).resolves.toEqual(
+      catalog,
+    );
+    expect(invoke).toHaveBeenLastCalledWith("managed_auth_get_openai_models", {
+      accountId: OPENAI_ACCOUNT_ID,
+    });
+
+    for (const invalid of [
+      { ...catalog, accountId: `ma1:${"9".repeat(32)}` },
+      { ...catalog, token: "leak" },
+      { ...catalog, models: ["bad id"] },
+      { ...catalog, models: ["gpt-5.5", "gpt-5.5"] },
+      { ...catalog, models: Array.from({ length: 501 }, (_, i) => `m-${i}`) },
+      { ...catalog, fetchedAt: "yesterday" },
+      { ...catalog, contractVersion: 2 },
+    ]) {
+      invoke.mockResolvedValueOnce(invalid);
+      await expect(port.getOpenAiModels(OPENAI_ACCOUNT_ID)).rejects.toThrow();
+    }
+    invoke.mockClear();
+    await expect(port.getOpenAiModels("not-an-account")).rejects.toThrow();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("uses only closed commands and bounded payloads", async () => {
     const port = createManagedAuthPort();
 

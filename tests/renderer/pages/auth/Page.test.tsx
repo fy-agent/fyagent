@@ -48,6 +48,7 @@ function managedPorts(
   ports.managedAuth = {
     getOverview: vi.fn(async () => managedAuthOverviewFixture()),
     getAccountQuota: vi.fn(async (accountId) => accountQuotaFixture(accountId)),
+    getOpenAiModels: vi.fn(),
     startLogin: vi.fn(async () => deviceLoginSessionFixture()),
     getLoginSession: vi.fn(async () => deviceLoginSessionFixture()),
     cancelLogin: vi.fn(async () =>
@@ -479,6 +480,39 @@ describe("AuthPage", () => {
       "323e4567-e89b-42d3-a456-426614174000",
     );
   });
+
+  it.each([
+    {
+      requestMode: "third_party_api" as const,
+      requestProviderLabel: "fyagent_chatgpt",
+      label: "ChatGPT 订阅转发（本机 custom provider）",
+      note: true,
+    },
+    {
+      requestMode: "official_subscription" as const,
+      requestProviderLabel: "openai",
+      label: "ChatGPT 官方登录",
+      note: false,
+    },
+  ])(
+    "names the Codex request source as $label",
+    async ({ requestMode, requestProviderLabel, label, note }) => {
+      const overview = managedAuthOverviewFixture();
+      overview.connections[0] = {
+        ...overview.connections[0],
+        accountId: OPENAI_ACCOUNT_ID,
+        authStatus: "connected",
+        requestMode,
+        requestProviderLabel,
+      };
+      renderPage(managedPorts({ getOverview: vi.fn(async () => overview) }));
+      expect((await screen.findAllByText(label)).length).toBeGreaterThan(0);
+      expect(screen.queryByText("fyagent_chatgpt")).toBeNull();
+      expect(screen.queryAllByText(/会显示为 custom provider/).length > 0).toBe(
+        note,
+      );
+    },
+  );
 
   it("lets a saved-only Codex account connect even when the card still names that account", async () => {
     const user = userEvent.setup();
