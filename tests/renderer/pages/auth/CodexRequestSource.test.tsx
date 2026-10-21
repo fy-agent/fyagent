@@ -198,7 +198,7 @@ describe("central Codex request source", () => {
     }));
     const view = render(renderSource());
     expect(
-      await screen.findByText(/会显示为 custom provider；实际请求和额度使用/),
+      await screen.findByText(/会显示为 custom provider。能否调用及额度以服务/),
     ).toBeVisible();
     view.unmount();
 

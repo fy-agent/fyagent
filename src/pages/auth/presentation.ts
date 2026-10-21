@@ -160,7 +160,7 @@ export function connectionStatusPresentation(
 const CODEX_CHATGPT_FORWARDING_SLOT = "fyagent_chatgpt";
 
 export const SUBSCRIPTION_FORWARDING_NOTE =
-  "订阅转发经本机 FyAgent 代理发出，所以 Codex 配置和界面里会显示为 custom provider；实际请求和额度使用你绑定的 ChatGPT 订阅账号。";
+  "订阅转发经本机 FyAgent 代理发出，所以 Codex 配置和界面里会显示为 custom provider。能否调用及额度以服务实际返回为准。";
 
 export function isSubscriptionForwardingLabel(
   providerLabel: string | null,
