@@ -269,6 +269,10 @@ also applies when recovering active sessions from the account overview.
   overview; retry selects the latest connection revision and opens a fresh,
   single-use preview rather than resubmitting the consumed one. These are
   per-target actions, not an atomic batch operation.
+- ConnectionResults is the feedback owner for those per-target actions. Keep
+  success, failure and restart details there without duplicating a toast over
+  the primary connection controls. Account-level actions retain their existing
+  notifications.
 - `pendingRestart`, partial completion, external change, unavailable authority
   and recovery-required remain explicit states. Starting a browser, writing a
   credential or launching software is not sufficient to paint success.

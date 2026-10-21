@@ -282,6 +282,7 @@ describe("AuthPage", () => {
     const { user, applyConnectionAction, results, retryOpenCode } =
       await connectCodexThenFailOpenCode();
     expect(results).toHaveTextContent("1 个需要处理，1 个已完成");
+    expect(document.querySelector(".fy-toast-host .fy-toast")).toBeNull();
     expect(
       screen.queryByRole("article", { name: "Codex · OpenAI 操作结果" }),
     ).not.toBeInTheDocument();

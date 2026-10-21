@@ -203,23 +203,28 @@ export function AuthPage() {
   );
 
   const commitMutationResult = useCallback(
-    (result: ManagedAuthMutationResult, successTitle: string) => {
+    (
+      result: ManagedAuthMutationResult,
+      successTitle: string,
+      showToast = true,
+    ) => {
       queryClient.setQueryData(
         featureKeys.managedAuthOverview,
         result.overview,
       );
       invalidateRequestSources();
       setMutationError(null);
-      notify({
-        tone: result.outcome === "completed" ? "success" : "info",
-        title: successTitle,
-        description:
-          result.pendingRestartConsumers.length > 0
-            ? `${result.pendingRestartConsumers
-                .map(managedAuthConsumerLabel)
-                .join("、")} 需要重新启动。`
-            : undefined,
-      });
+      if (showToast)
+        notify({
+          tone: result.outcome === "completed" ? "success" : "info",
+          title: successTitle,
+          description:
+            result.pendingRestartConsumers.length > 0
+              ? `${result.pendingRestartConsumers
+                  .map(managedAuthConsumerLabel)
+                  .join("、")} 需要重新启动。`
+              : undefined,
+        });
     },
     [notify, queryClient, invalidateRequestSources],
   );
@@ -249,7 +254,7 @@ export function AuthPage() {
     record("pending", "正在处理此连接并读取结果…");
     try {
       const result = await action();
-      commitMutationResult(result, successTitle);
+      commitMutationResult(result, successTitle, !target);
       const connection = result.overview.connections.find(
         (item) => item.connectionId === target?.connection.connectionId,
       );
@@ -267,9 +272,15 @@ export function AuthPage() {
       return result;
     } catch (cause) {
       const message = managedAuthCommandErrorCopy(cause);
-      if (!target) setMutationError(message);
+      if (!target) {
+        setMutationError(message);
+        notify({
+          tone: "error",
+          title: "账号操作未完成",
+          description: message,
+        });
+      }
       record("failed", message);
-      notify({ tone: "error", title: "账号操作未完成", description: message });
       if (target) await refetchOverview();
       return null;
     } finally {
