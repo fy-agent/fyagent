@@ -347,6 +347,12 @@ pub struct StdMacosFilesystem;
 impl MacosFilesystem for StdMacosFilesystem {
     fn write_record_atomic(&self, path: &Path, data: &[u8]) -> Result<(), MacosFilesystemError> {
         use std::io::Write;
+        let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+        let Some(parent) = parent.filter(|_| path.file_name().is_some()) else {
+            return Err(MacosFilesystemError {
+                kind: MacosFilesystemErrorKind::Invalid,
+            });
+        };
         let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
         let result = (|| {
             let mut file = fs::OpenOptions::new()
@@ -356,7 +362,7 @@ impl MacosFilesystem for StdMacosFilesystem {
             file.write_all(data)?;
             file.sync_all()?;
             fs::rename(&temporary, path)?;
-            fs::File::open(path.parent().unwrap())?.sync_all()
+            fs::File::open(parent)?.sync_all()
         })();
         if result.is_err() {
             let _ = fs::remove_file(&temporary);
@@ -1192,11 +1198,18 @@ pub(super) mod test_support {
             path: &Path,
             data: &[u8],
         ) -> Result<(), MacosFilesystemError> {
+            {
+                let mut state = self.lock();
+                fail_operation(&mut state, "write_record")?;
+                fail_operation(&mut state, "rename_record")?;
+            }
             self.add_file_with_contents(path, data.to_vec());
             Ok(())
         }
         fn remove_record(&self, path: &Path) -> Result<(), MacosFilesystemError> {
-            self.lock().entries.remove(path);
+            let mut state = self.lock();
+            fail_operation(&mut state, "remove_record")?;
+            state.entries.remove(path);
             Ok(())
         }
 
