@@ -119,6 +119,7 @@ pub(super) mod tests {
     };
     use super::*;
 
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     pub(in crate::codex_desktop::platform::macos) fn queue_valid_signature(runner: &FakeRunner) {
         runner.queue_success_stderr(
             "/usr/bin/codesign",

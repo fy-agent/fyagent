@@ -123,15 +123,19 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
-      "6766f68f66d3d618c70809b81a6571e00117f7857fb801d9f80a9fd7c5cfbd2d"
+      "604d12b2c593f0e25eeb6b2d0e6984adc9be98a8d1a1df1f15b7e3db73298aa5"
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/dmg.rs",
-      "8c2f10dcbba17dc2d576ac6d9e4b535e47154812119b9dbcc811d76c836f63e8"
+      "15f36d7ee030a7d0b5ab20eafd1941347fc487597e5d0331fc0a2ac96c8d9713"
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/mod.rs",
-      "df3ca19080eaf0abd992d0c6e2612631bb74714b672c33d1d0a7f7c5b9a7f265"
+      "17a36a82835732387e92d1a681253044011a64bf27310f15a0e322b6c5f484c1"
+    ],
+    [
+      "src-tauri/src/codex_desktop/platform/macos/signature.rs",
+      "73860f863ab38dcc46c58e956f6d5512dfda9ecb81e2a009c0de496d39daad70"
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/deployment.rs",

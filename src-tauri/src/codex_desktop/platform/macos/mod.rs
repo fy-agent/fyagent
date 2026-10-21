@@ -1099,6 +1099,7 @@ pub(super) mod test_support {
         state: Arc<Mutex<FakeFilesystemState>>,
     }
 
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     impl FakeFilesystem {
         pub fn new() -> Self {
             Self::default()
@@ -1428,6 +1429,7 @@ pub(super) mod test_support {
         }
     }
 
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     fn copy_tree(
         entries: &mut BTreeMap<PathBuf, FakeEntry>,
         source: &Path,
@@ -1544,6 +1546,7 @@ pub(super) mod test_support {
             self.queue(program, CommandOutput::failure(status_code, stderr));
         }
 
+        #[cfg_attr(target_os = "windows", allow(dead_code))]
         pub fn set_hook(&self, hook: CommandHook) {
             *self
                 .hook
