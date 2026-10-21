@@ -514,6 +514,7 @@ describe("committed directory order lifecycle", () => {
       "codex",
       "claude-code",
       "opencode",
+      "omp",
     ]);
   });
 

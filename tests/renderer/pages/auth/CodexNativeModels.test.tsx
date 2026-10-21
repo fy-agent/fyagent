@@ -137,6 +137,20 @@ describe("CodexNativeModels", () => {
     expect(screen.queryByRole("list")).toBeNull();
   });
 
+  it("explains a credential store that cannot establish the account", async () => {
+    setup(async () => ({
+      ...notRead,
+      accountBinding: "unknown",
+      bindingDetail: "unsupported_credential_store",
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "获取模型" }));
+    expect(
+      await screen.findByText(/当前 Codex 使用系统凭据库/u),
+    ).toHaveTextContent("设为 file 后重新登录");
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.getByRole("button", { name: "重新获取模型" })).toBeEnabled();
+  });
+
   it("drops a catalog once the connection revision moves", async () => {
     const { rerender } = setup(async () => ready);
     fireEvent.click(screen.getByRole("button", { name: "获取模型" }));

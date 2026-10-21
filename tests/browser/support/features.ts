@@ -17,6 +17,11 @@ export interface RichFeatureFixtureOptions {
   authCodexConnectable?: boolean;
   /** First OpenAI catalog read fails with this managed-auth reason. */
   openAiModelsFailOnce?: string;
+  /** Account attribution returned by the native Codex catalog command. */
+  codexNativeModelsScenario?:
+    | "ready"
+    | "other_account"
+    | "unsupported_credential_store";
   firstUseGuideState?: "pending" | "dismissed";
   catalogFailure?: boolean;
   observationFailure?: "workbuddy" | "codex" | "claude";
@@ -1346,33 +1351,49 @@ export async function installRichTauriFeatureFixture(
                 contractVersion: 1,
                 reasonCode: "connection_unavailable",
               };
+            const scenario =
+              fixtureOptions.codexNativeModelsScenario ?? "ready";
+            const readable = scenario === "ready";
             return {
               contractVersion: 1,
               accountId,
               source: "codex_app_server",
-              accountBinding: "matched",
-              bindingDetail: null,
-              nativeAccountId: accountId,
+              accountBinding: readable
+                ? "matched"
+                : scenario === "other_account"
+                  ? "mismatch"
+                  : "unknown",
+              bindingDetail:
+                scenario === "unsupported_credential_store"
+                  ? "unsupported_credential_store"
+                  : null,
+              nativeAccountId: readable
+                ? accountId
+                : scenario === "other_account"
+                  ? `ma1:${"9".repeat(32)}`
+                  : null,
               revision: connection.revision,
               checkedAt: "2026-10-22T04:30:00Z",
-              catalogStatus: "ready",
+              catalogStatus: readable ? "ready" : "not_read",
               failure: null,
-              cliVersion: "0.0.0-fixture",
+              cliVersion: readable ? "0.0.0-fixture" : null,
               truncated: false,
-              models: [
-                {
-                  id: "gpt-fixture-codex",
-                  displayName: "Fixture Codex",
-                  isDefault: true,
-                  reasoningEfforts: ["low", "medium", "high"],
-                },
-                {
-                  id: "gpt-fixture-mini",
-                  displayName: null,
-                  isDefault: false,
-                  reasoningEfforts: [],
-                },
-              ],
+              models: readable
+                ? [
+                    {
+                      id: "gpt-fixture-codex",
+                      displayName: "Fixture Codex",
+                      isDefault: true,
+                      reasoningEfforts: ["low", "medium", "high"],
+                    },
+                    {
+                      id: "gpt-fixture-mini",
+                      displayName: null,
+                      isDefault: false,
+                      reasoningEfforts: [],
+                    },
+                  ]
+                : [],
             };
           }
           case "managed_auth_get_account_quota": {

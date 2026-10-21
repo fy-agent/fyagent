@@ -107,6 +107,18 @@ describe("Tauri managed auth port", () => {
       port.getCodexNativeModels(OPENAI_ACCOUNT_ID),
     ).resolves.toMatchObject({ catalogStatus: "not_read" });
 
+    invoke.mockResolvedValueOnce({
+      ...notRead,
+      bindingDetail: "unsupported_credential_store",
+    });
+    await expect(
+      port.getCodexNativeModels(OPENAI_ACCOUNT_ID),
+    ).resolves.toMatchObject({
+      accountBinding: "unknown",
+      bindingDetail: "unsupported_credential_store",
+      catalogStatus: "not_read",
+    });
+
     const model = ready.models[0];
     for (const invalid of [
       { ...ready, accountId: `ma1:${"9".repeat(32)}` },

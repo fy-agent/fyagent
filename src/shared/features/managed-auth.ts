@@ -341,6 +341,7 @@ export const CODEX_NATIVE_BINDING_DETAILS = [
   "other_login",
   "unreadable",
   "custom_codex_home",
+  "unsupported_credential_store",
 ] as const;
 export type CodexNativeBindingDetail =
   (typeof CODEX_NATIVE_BINDING_DETAILS)[number];

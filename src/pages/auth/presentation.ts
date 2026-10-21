@@ -180,6 +180,8 @@ export const SUBSCRIPTION_FORWARDING_NOTE =
   "订阅转发经本机 FyAgent 代理发出，所以 Codex 配置和界面里会显示为 custom provider。能否调用及额度以服务实际返回为准。";
 
 const codexNativeBindingCopies: Record<CodexNativeBindingDetail, string> = {
+  unsupported_credential_store:
+    "当前 Codex 使用系统凭据库或自动凭据存储，无法从文件确认登录账号。可以在 Codex 中查看当前账号与模型；如需在此读取，将 Codex 凭据存储方式设为 file 后重新登录，再重新获取模型。",
   signed_out:
     "本机 Codex 尚未登录 ChatGPT，无法确认目录属于此账号。连接此账号后再获取。",
   other_login:

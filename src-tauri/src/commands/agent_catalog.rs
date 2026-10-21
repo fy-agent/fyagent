@@ -1646,8 +1646,9 @@ mod tests {
         ] {
             assert!(registered.contains(command));
         }
+        assert!(registered.contains("managed_auth_get_openai_models"));
         assert!(registered.contains("managed_auth_get_codex_native_models"));
-        assert_eq!(registered.len(), 407, "review intentional handler changes");
+        assert_eq!(registered.len(), 408, "review intentional handler changes");
         assert_eq!(
             allowed, registered,
             "every registered application command must be granted exactly once while an app ACL manifest exists"
