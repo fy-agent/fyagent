@@ -1186,6 +1186,7 @@ struct UpdateRecord {
 enum UpdatePhase {
     Staged,
     Swapped,
+    RollingBack,
     Committed,
     RolledBack,
 }
@@ -1288,8 +1289,9 @@ impl UpdateRecord {
             .map_err(|_| failure())
     }
 
-    // This independent tombstone is persisted BEFORE verification can accept
-    // the replacement. Even a rewritten JSON phase cannot revive this backup.
+    // This independent tombstone is persisted only AFTER all replacement and
+    // inventory verification succeeds. It blocks Staged/Swapped recovery; an
+    // explicitly persisted RollingBack phase retains bound recovery authority.
     // If persistence fails we must roll back, never report a committed install.
     fn retire(&self, fs: &dyn MacosFilesystem) -> Result<(), InstallerError> {
         self.validate_paths()?;
@@ -1300,6 +1302,29 @@ impl UpdateRecord {
                     "更新终态标记写入失败，必须回滚并保留未清理备份",
                 )
             })
+    }
+
+    fn begin_rollback(&mut self, fs: &dyn MacosFilesystem) -> Result<(), InstallerError> {
+        // Persist recovery authority before revoking any legacy terminal marker
+        // or touching either application. A crash here must remain recoverable.
+        self.advance(fs, UpdatePhase::RollingBack)?;
+        if let Err(reason) = fs.remove_record(&self.auxiliary_path("terminal")) {
+            if !is_not_found(reason) {
+                return Err(error(
+                    InstallerErrorCode::MacCopyFailed,
+                    "无法撤销更新终态标记，已保留新版与旧版备份，未执行破坏性回滚",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn permits_recovery(&self, fs: &dyn MacosFilesystem) -> bool {
+        matches!(self.phase, UpdatePhase::RollingBack)
+            || (matches!(self.phase, UpdatePhase::Staged | UpdatePhase::Swapped)
+                && fs
+                    .file_kind(&self.auxiliary_path("terminal"))
+                    .is_err_and(is_not_found))
     }
 
     fn advance(
@@ -1383,15 +1408,12 @@ fn recover_interrupted_updates(
                 && record.target == target
                 && target.parent() == Some(parent.as_path())
                 && record.backup == entry
-                && matches!(record.phase, UpdatePhase::Staged | UpdatePhase::Swapped)
+                && record.permits_recovery(filesystem)
                 && filesystem.identity(&entry).ok() == Some(record.backup_identity)
                 && record.binding().ok()
                     == filesystem
                         .read_file_bounded(&record.auxiliary_path("binding"), 32)
                         .ok()
-                && filesystem
-                    .file_kind(&record.auxiliary_path("terminal"))
-                    .is_err_and(is_not_found)
         }) else {
             log::warn!(
                 "备份事务已结束、记录缺失、损坏或不一致，已保留、不恢复：{}",
@@ -1425,9 +1447,7 @@ fn recover_interrupted_updates(
         }
         target_is_available(filesystem, &target)?;
         if verified.identity != record.backup_identity
-            || !filesystem
-                .file_kind(&record.auxiliary_path("terminal"))
-                .is_err_and(is_not_found)
+            || !record.permits_recovery(filesystem)
             || filesystem.identity(&entry).ok() != Some(verified.identity)
         {
             log::warn!("中断更新备份身份变化，已保留：{}", entry.display());
@@ -1843,7 +1863,6 @@ where
         // path. Never delete it before both post-commit checks succeed.
         let backup = if swapped { staging.clone() } else { backup };
         let swapped_record_error = record.advance(filesystem, UpdatePhase::Swapped).err();
-        let retirement_error = record.retire(filesystem).err();
         progress.report_progress(JobProgress::new(
             ProgressPhase::Installation,
             Some(2),
@@ -1882,6 +1901,11 @@ where
             }
         };
         let post_commit_result = post_commit_verify(&installed_bundle);
+        let retirement_error = if post_commit_result.is_ok() {
+            record.retire(filesystem).err()
+        } else {
+            None
+        };
         if post_commit_result.is_err() || retirement_error.is_some() {
             let restored = restore_backup(
                 runner,
@@ -2109,6 +2133,7 @@ fn restore_backup(
             request.expected_replacement,
         )?;
     }
+    request.record.begin_rollback(filesystem)?;
     if request
         .backup
         .file_name()
@@ -4868,6 +4893,290 @@ mod tests {
             assert_eq!(fs.identity(&backup).unwrap(), old.identity);
             assert_eq!(fs.read_file_bounded(&fixed, 16 * 1024).unwrap(), before);
             runner.assert_drained();
+        }
+    }
+    // Every filesystem operation (including the copy command's effect)
+    // is a crash boundary. Recreate the runner after the crash: no in-memory
+    // UpdateRecord or queued command response survives a process restart.
+    fn crash_transaction(
+        fallback: bool,
+        rollback: bool,
+        crash: usize,
+        rename_failure: bool,
+    ) -> (usize, bool, bool) {
+        let (fs, source_path) = fixture_filesystem();
+        let parent = Path::new(USER_APPLICATIONS);
+        let target_path = parent.join("Codex.app");
+        add_bundle(&fs, &target_path);
+        fs.add_file(target_path.join("old-marker"));
+        fs.add_file(source_path.join("new-marker"));
+        let runner = Arc::new(FakeRunner::new());
+        install_copy_hook(&runner, &fs);
+        let host = host();
+        let policy = BundleTransactionPolicy::Codex { host: &host };
+        queue_read_and_validate(&runner, "2");
+        let source = policy.inspect_source(&*runner, &*fs, &source_path).unwrap();
+        queue_read_and_validate(&runner, "1");
+        let existing = policy
+            .inspect_existing(&*runner, &*fs, &target_path)
+            .unwrap();
+        let old_identity = existing.identity;
+        let target = TargetPlan {
+            parent: parent.into(),
+            target: target_path.clone(),
+            existing: Some(existing),
+            allows_permission_fallback: false,
+        };
+        if fallback {
+            fs.fail_operation("swap", MacosFilesystemErrorKind::Unsupported);
+        }
+        runner.queue_success("/usr/bin/ditto", vec![]);
+        queue_read_and_validate(&runner, "2");
+        queue_read_and_validate(&runner, "1");
+        runner.queue_success("/usr/bin/osascript", b"[]".to_vec());
+        super::super::signature::tests::queue_valid_signature(&runner);
+        queue_read_and_validate(&runner, "2");
+        queue_read_and_validate(&runner, "1");
+        super::super::signature::tests::queue_valid_signature(&runner);
+        if rollback {
+            queue_read_and_validate(&runner, "2");
+            super::super::signature::tests::queue_valid_signature(&runner);
+            if fallback {
+                queue_read_and_validate(&runner, "2");
+                super::super::signature::tests::queue_valid_signature(&runner);
+                queue_read_and_validate(&runner, "1");
+            } else {
+                queue_read_and_validate(&runner, "1");
+                queue_read_and_validate(&runner, "2");
+                super::super::signature::tests::queue_valid_signature(&runner);
+            }
+        }
+        fs.crash_after_operation(crash);
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            install_at_target(
+                &*runner,
+                &*fs,
+                &source,
+                &target,
+                &policy,
+                Arc::new(|_| {}),
+                TransactionHooks {
+                    before_commit: || Ok(()),
+                    post_commit_verify: |_: &VerifiedBundle| {
+                        let backup = fs
+                            .read_dir(parent)
+                            .unwrap()
+                            .into_iter()
+                            .find(|p| {
+                                if fallback {
+                                    is_transaction_backup(p)
+                                } else {
+                                    is_transaction_staging(p)
+                                }
+                            })
+                            .unwrap();
+                        let record = read_record(&*fs, &backup).unwrap();
+                        assert!(
+                            !fs.contains(record.auxiliary_path("terminal")),
+                            "terminal must not precede inventory verification"
+                        );
+                        if rename_failure {
+                            fs.fail_operation("rename", MacosFilesystemErrorKind::Other);
+                        }
+                        if rollback {
+                            Err(error(
+                                InstallerErrorCode::InstallationVerifyFailed,
+                                "模拟清单验证失败",
+                            ))
+                        } else {
+                            Ok(())
+                        }
+                    },
+                },
+            )
+        }));
+        let count = fs.completed_operations();
+        if crash != usize::MAX {
+            let panic = outcome.err().expect("crash boundary was not reached");
+            assert_eq!(
+                panic.downcast_ref::<&str>(),
+                Some(&"simulated filesystem crash")
+            );
+        } else {
+            let result = outcome.unwrap();
+            assert_eq!(result.is_err(), rollback);
+            if !rename_failure {
+                runner.assert_drained();
+            }
+        }
+        // Disable crash injection before restarting, including baseline runs.
+        fs.crash_after_operation(usize::MAX);
+        if rename_failure {
+            assert!(
+                !fs.contains(&target_path),
+                "delete must succeed before rename fails"
+            );
+            let backup = fs
+                .read_dir(parent)
+                .unwrap()
+                .into_iter()
+                .find(|p| is_transaction_backup(p))
+                .unwrap();
+            let record = read_record(&*fs, &backup).unwrap();
+            assert!(matches!(record.phase, UpdatePhase::RollingBack));
+            assert_eq!(fs.identity(&backup).unwrap(), old_identity);
+        }
+        let restarted = FakeRunner::new();
+        let missing = !fs.contains(&target_path);
+        let interrupted_rollback = missing
+            && fs.read_dir(parent).unwrap().iter().any(|p| {
+                read_record(&*fs, p).is_some_and(|r| matches!(r.phase, UpdatePhase::RollingBack))
+            });
+        if missing {
+            queue_read_and_validate(&restarted, "1");
+            super::super::signature::tests::queue_valid_signature(&restarted);
+        }
+        recover_interrupted_updates(&restarted, &*fs, &policy, parent).unwrap();
+        assert!(
+            fs.contains(&target_path),
+            "fallback={fallback}, rollback={rollback}, crash={crash}"
+        );
+        if fs.contains(target_path.join("old-marker")) {
+            assert_eq!(fs.identity(&target_path).unwrap(), old_identity);
+        } else {
+            assert!(fs.contains(target_path.join("new-marker")));
+            // Independently verify the surviving replacement after restart,
+            // including signature, version, executable and exact target path.
+            queue_read_and_validate(&restarted, "2");
+            super::super::signature::tests::queue_valid_signature(&restarted);
+            let verified =
+                verify_transaction_bundle(&restarted, &*fs, &policy, &target_path).unwrap();
+            assert!(policy.copies_are_equivalent(&source, &verified));
+        }
+        restarted.assert_drained();
+        (count, missing, interrupted_rollback)
+    }
+
+    #[test]
+    fn update_recovers_after_every_filesystem_operation_in_swap_and_fallback() {
+        for fallback in [false, true] {
+            for rollback in [false, true] {
+                let (count, _, _) = crash_transaction(fallback, rollback, usize::MAX, false);
+                assert!(count > 10);
+                let mut missing_target_crashes = 0;
+                for crash in 1..=count {
+                    let (_, missing, _) = crash_transaction(fallback, rollback, crash, false);
+                    missing_target_crashes += usize::from(missing);
+                }
+                if fallback {
+                    assert!(
+                        missing_target_crashes > 0,
+                        "must exercise missing-target recovery"
+                    );
+                }
+                eprintln!("fallback={fallback}, rollback={rollback}: {count} crash boundaries, {missing_target_crashes} missing targets restored");
+            }
+        }
+    }
+
+    #[test]
+    fn fallback_delete_then_crash_recovers_on_restart() {
+        let (count, _, _) = crash_transaction(true, true, usize::MAX, false);
+        assert!(
+            (1..=count).any(|crash| crash_transaction(true, true, crash, false).2),
+            "must crash between deleting the replacement and restoring the old backup"
+        );
+    }
+
+    #[test]
+    fn fallback_delete_then_rename_failure_recovers_on_restart() {
+        crash_transaction(true, true, usize::MAX, true);
+    }
+
+    #[test]
+    fn rolling_back_recovers_despite_legacy_terminal_but_requires_binding() {
+        for staging in [false, true] {
+            for valid_binding in [false, true] {
+                let fs = FakeFilesystem::new();
+                let parent = Path::new(USER_APPLICATIONS);
+                let target = parent.join("Codex.app");
+                let backup = transaction_path(&target, &transaction_id(), staging).unwrap();
+                add_bundle(&fs, &backup);
+                let identity = fs.identity(&backup).unwrap();
+                let mut record = UpdateRecord::new(&target, &backup, identity).unwrap();
+                record.save(&fs).unwrap();
+                record.retire(&fs).unwrap();
+                record.advance(&fs, UpdatePhase::RollingBack).unwrap();
+                if !valid_binding {
+                    fs.remove_record(&record.auxiliary_path("binding")).unwrap();
+                }
+                let runner = FakeRunner::new();
+                if valid_binding {
+                    queue_read_and_validate(&runner, "1");
+                    super::super::signature::tests::queue_valid_signature(&runner);
+                }
+                let host = host();
+                recover_interrupted_updates(
+                    &runner,
+                    &fs,
+                    &BundleTransactionPolicy::Codex { host: &host },
+                    parent,
+                )
+                .unwrap();
+                assert_eq!(fs.contains(&target), valid_binding);
+                assert_eq!(fs.contains(&backup), !valid_binding);
+                if valid_binding {
+                    assert_eq!(fs.identity(&target).unwrap(), identity);
+                }
+                runner.assert_drained();
+            }
+        }
+    }
+
+    #[test]
+    fn rollback_state_or_terminal_revocation_failure_preserves_both_apps() {
+        for staging in [false, true] {
+            for operation in ["write_record", "rename_record", "remove_record"] {
+                let fs = FakeFilesystem::new();
+                let parent = Path::new(USER_APPLICATIONS);
+                let target = parent.join("Codex.app");
+                let backup = transaction_path(&target, &transaction_id(), staging).unwrap();
+                add_bundle(&fs, &target);
+                add_bundle(&fs, &backup);
+                let runner = FakeRunner::new();
+                let host = host();
+                let policy = BundleTransactionPolicy::Codex { host: &host };
+                queue_read_and_validate(&runner, "2");
+                let replacement = policy.inspect_source(&runner, &fs, &target).unwrap();
+                queue_read_and_validate(&runner, "1");
+                let old = policy.inspect_source(&runner, &fs, &backup).unwrap();
+                let mut record = UpdateRecord::new(&target, &backup, old.identity).unwrap();
+                record.save(&fs).unwrap();
+                record.retire(&fs).unwrap();
+                fs.fail_operation(operation, MacosFilesystemErrorKind::Other);
+                queue_read_and_validate(&runner, "1");
+                super::super::signature::tests::queue_valid_signature(&runner);
+                queue_read_and_validate(&runner, "2");
+                super::super::signature::tests::queue_valid_signature(&runner);
+                assert!(restore_backup(
+                    &runner,
+                    &fs,
+                    &policy,
+                    RestoreRequest {
+                        parent,
+                        target: &target,
+                        backup: &backup,
+                        expected_replacement: &replacement,
+                        expected_backup: &old,
+                        record: &mut record,
+                    }
+                )
+                .is_err());
+                assert_eq!(fs.identity(&target).unwrap(), replacement.identity);
+                assert_eq!(fs.identity(&backup).unwrap(), old.identity);
+                assert!(fs.contains(record.auxiliary_path("terminal")));
+                runner.assert_drained();
+            }
         }
     }
 }

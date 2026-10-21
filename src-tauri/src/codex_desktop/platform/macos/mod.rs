@@ -1086,6 +1086,8 @@ pub(super) mod test_support {
     struct FakeFilesystemState {
         entries: BTreeMap<PathBuf, FakeEntry>,
         create_dir_failures: HashMap<PathBuf, MacosFilesystemErrorKind>,
+        crash_after: Option<usize>,
+        completed_operations: usize,
         operation_failures: VecDeque<(&'static str, usize, MacosFilesystemErrorKind)>,
     }
 
@@ -1158,6 +1160,16 @@ pub(super) mod test_support {
                 .insert(path.as_ref().to_path_buf(), kind);
         }
 
+        pub fn crash_after_operation(&self, count: usize) {
+            let mut state = self.lock();
+            state.completed_operations = 0;
+            state.crash_after = Some(count);
+        }
+
+        pub fn completed_operations(&self) -> usize {
+            self.lock().completed_operations
+        }
+
         pub fn fail_operation(&self, operation: &'static str, kind: MacosFilesystemErrorKind) {
             self.fail_operation_after(operation, 0, kind);
         }
@@ -1182,7 +1194,9 @@ pub(super) mod test_support {
             let source = source.as_ref();
             let destination = destination.as_ref();
             let mut state = self.lock();
-            copy_tree(&mut state.entries, source, destination)
+            copy_tree(&mut state.entries, source, destination)?;
+            completed_operation(&mut state);
+            Ok(())
         }
 
         fn lock(&self) -> std::sync::MutexGuard<'_, FakeFilesystemState> {
@@ -1204,47 +1218,61 @@ pub(super) mod test_support {
                 fail_operation(&mut state, "rename_record")?;
             }
             self.add_file_with_contents(path, data.to_vec());
+            completed_operation(&mut self.lock());
             Ok(())
         }
         fn remove_record(&self, path: &Path) -> Result<(), MacosFilesystemError> {
             let mut state = self.lock();
             fail_operation(&mut state, "remove_record")?;
             state.entries.remove(path);
+            completed_operation(&mut state);
             Ok(())
         }
 
         fn identity(&self, path: &Path) -> Result<super::FileIdentity, MacosFilesystemError> {
-            self.lock()
-                .entries
-                .get(path)
-                .filter(|entry| entry.kind == MacosFileKind::Directory)
-                .map(|entry| entry.identity)
-                .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::Invalid))
+            let result = {
+                self.lock()
+                    .entries
+                    .get(path)
+                    .filter(|entry| entry.kind == MacosFileKind::Directory)
+                    .map(|entry| entry.identity)
+                    .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::Invalid))
+            };
+            completed_operation(&mut self.lock());
+            result
         }
 
         fn directory_writable(&self, path: &Path) -> bool {
-            !self
-                .lock()
-                .create_dir_failures
-                .keys()
-                .any(|root| path.starts_with(root))
+            let result = {
+                !self
+                    .lock()
+                    .create_dir_failures
+                    .keys()
+                    .any(|root| path.starts_with(root))
+            };
+            completed_operation(&mut self.lock());
+            result
         }
         fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, MacosFilesystemError> {
-            let state = self.lock();
-            match state.entries.get(path) {
-                Some(FakeEntry {
-                    kind: MacosFileKind::Directory,
-                    ..
-                }) => {}
-                Some(_) => return Err(filesystem_error(MacosFilesystemErrorKind::Invalid)),
-                None => return Err(filesystem_error(MacosFilesystemErrorKind::NotFound)),
-            }
-            Ok(state
-                .entries
-                .keys()
-                .filter(|candidate| candidate.parent() == Some(path))
-                .cloned()
-                .collect())
+            let result = (|| {
+                let state = self.lock();
+                match state.entries.get(path) {
+                    Some(FakeEntry {
+                        kind: MacosFileKind::Directory,
+                        ..
+                    }) => {}
+                    Some(_) => return Err(filesystem_error(MacosFilesystemErrorKind::Invalid)),
+                    None => return Err(filesystem_error(MacosFilesystemErrorKind::NotFound)),
+                }
+                Ok(state
+                    .entries
+                    .keys()
+                    .filter(|candidate| candidate.parent() == Some(path))
+                    .cloned()
+                    .collect())
+            })();
+            completed_operation(&mut self.lock());
+            result
         }
 
         fn read_file_bounded(
@@ -1252,31 +1280,43 @@ pub(super) mod test_support {
             path: &Path,
             max_bytes: u64,
         ) -> Result<Vec<u8>, MacosFilesystemError> {
-            let state = self.lock();
-            let entry = state
-                .entries
-                .get(path)
-                .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))?;
-            if entry.kind != MacosFileKind::File || entry.contents.len() as u64 > max_bytes {
-                return Err(filesystem_error(MacosFilesystemErrorKind::Invalid));
-            }
-            Ok(entry.contents.clone())
+            let result = (|| {
+                let state = self.lock();
+                let entry = state
+                    .entries
+                    .get(path)
+                    .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))?;
+                if entry.kind != MacosFileKind::File || entry.contents.len() as u64 > max_bytes {
+                    return Err(filesystem_error(MacosFilesystemErrorKind::Invalid));
+                }
+                Ok(entry.contents.clone())
+            })();
+            completed_operation(&mut self.lock());
+            result
         }
 
         fn canonicalize(&self, path: &Path) -> Result<PathBuf, MacosFilesystemError> {
-            self.lock()
-                .entries
-                .get(path)
-                .map(|entry| entry.canonical.clone())
-                .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))
+            let result = {
+                self.lock()
+                    .entries
+                    .get(path)
+                    .map(|entry| entry.canonical.clone())
+                    .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))
+            };
+            completed_operation(&mut self.lock());
+            result
         }
 
         fn file_kind(&self, path: &Path) -> Result<MacosFileKind, MacosFilesystemError> {
-            self.lock()
-                .entries
-                .get(path)
-                .map(|entry| entry.kind)
-                .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))
+            let result = {
+                self.lock()
+                    .entries
+                    .get(path)
+                    .map(|entry| entry.kind)
+                    .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))
+            };
+            completed_operation(&mut self.lock());
+            result
         }
 
         fn create_dir_all(&self, path: &Path) -> Result<(), MacosFilesystemError> {
@@ -1289,13 +1329,16 @@ pub(super) mod test_support {
                 return Err(filesystem_error(kind));
             }
             insert_directory_and_ancestors(&mut state.entries, path);
+            completed_operation(&mut state);
             Ok(())
         }
 
         fn rename(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError> {
             let mut state = self.lock();
             fail_operation(&mut state, "rename")?;
-            move_tree(&mut state.entries, source, destination)
+            move_tree(&mut state.entries, source, destination)?;
+            completed_operation(&mut state);
+            Ok(())
         }
 
         fn rename_exclusive(
@@ -1316,6 +1359,7 @@ pub(super) mod test_support {
             move_tree(&mut entries, destination, source)?;
             move_tree(&mut entries, temporary, destination)?;
             state.entries = entries;
+            completed_operation(&mut state);
             Ok(())
         }
 
@@ -1334,7 +1378,16 @@ pub(super) mod test_support {
             for path in paths {
                 state.entries.remove(&path);
             }
+            completed_operation(&mut state);
             Ok(())
+        }
+    }
+
+    fn completed_operation(state: &mut FakeFilesystemState) {
+        state.completed_operations += 1;
+        if state.crash_after == Some(state.completed_operations) {
+            state.crash_after = None;
+            std::panic::panic_any("simulated filesystem crash");
         }
     }
 
