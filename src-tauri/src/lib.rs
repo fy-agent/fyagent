@@ -2093,6 +2093,7 @@ pub fn run() {
             commands::managed_auth_get_overview,
             commands::managed_auth_get_account_quota,
             commands::managed_auth_get_openai_models,
+            commands::managed_auth_get_codex_native_models,
 
             commands::managed_auth_start_login,
             commands::managed_auth_get_login_session,

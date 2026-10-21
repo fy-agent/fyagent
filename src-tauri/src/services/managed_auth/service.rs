@@ -474,6 +474,83 @@ where
         })
     }
 
+    pub(crate) async fn get_codex_native_models(
+        &self,
+        account_id: &str,
+    ) -> Result<super::ManagedAuthCodexNativeModels, ManagedAuthErrorDto> {
+        let cli_home = crate::config::get_home_dir().join(".codex");
+        let cli_reads_managed_home =
+            super::codex_native_models::same_codex_home(&self.codex_home(), &cli_home);
+        self.get_codex_native_models_with(
+            account_id,
+            cli_reads_managed_home,
+            super::codex_native_models::read_codex_catalog,
+        )
+        .await
+    }
+
+    /// Attributes before reading and re-observes after: a Codex login or
+    /// config change during the read voids the catalog instead of labelling
+    /// another account's models with this one.
+    pub(crate) async fn get_codex_native_models_with<F, Fut>(
+        &self,
+        account_id: &str,
+        cli_reads_managed_home: bool,
+        read: F,
+    ) -> Result<super::ManagedAuthCodexNativeModels, ManagedAuthErrorDto>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<
+            Output = Result<
+                fyagent_user_helper::CodexModelCatalog,
+                super::CodexNativeCatalogFailure,
+            >,
+        >,
+    {
+        use super::codex_native_models::{attribute, CodexNativeAccountBinding};
+        use super::consumers::codex::observe_codex_home;
+
+        let unavailable =
+            || ManagedAuthErrorDto::with_reason(ManagedAuthReasonCode::ConnectionUnavailable);
+        let selected_subject = self
+            .credentials_for_account(account_id)
+            .map_err(|_| unavailable())?
+            .into_iter()
+            .find(|row| row.identity.provider == ManagedAuthProvider::Openai)
+            .map(|row| row.identity.provider_subject)
+            .ok_or_else(unavailable)?;
+        let accounts = self
+            .repository
+            .list_all_credentials()
+            .map_err(ManagedAuthErrorDto::from_core)?;
+        let codex_home = self.codex_home();
+        let before = observe_codex_home(&codex_home);
+        let revision = before.connection_revision();
+        let attribution = attribute(
+            &selected_subject,
+            &accounts,
+            &before.auth_state,
+            cli_reads_managed_home,
+        );
+        let matched = attribution.binding == CodexNativeAccountBinding::Matched;
+        let result = super::ManagedAuthCodexNativeModels::not_read(
+            account_id,
+            attribution,
+            revision.clone(),
+            now_timestamp(),
+        );
+        if !matched {
+            return Ok(result);
+        }
+        let read = read().await;
+        let read = if observe_codex_home(&codex_home).connection_revision() == revision {
+            read
+        } else {
+            Err(super::CodexNativeCatalogFailure::ChangedDuringRead)
+        };
+        Ok(result.settle(read, now_timestamp()))
+    }
+
     pub(crate) async fn get_account_quota(
         &self,
         account_id: &str,

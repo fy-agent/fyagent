@@ -42,6 +42,7 @@ commands.allow = [
   "managed_auth_get_overview",
   "managed_auth_get_account_quota",
   "managed_auth_get_openai_models",
+  "managed_auth_get_codex_native_models",
   "managed_auth_start_login",
   "managed_auth_get_login_session",
   "managed_auth_cancel_login",

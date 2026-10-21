@@ -21,8 +21,8 @@ use std::{
 
 use fyagent_user_helper::{
     admission_event_name, cancel_event_name, decode_frame, encode_plan_control, layout::pipe_name,
-    AgentInstallerProduct, CanonicalJobId, GrokNpmInstallPlan, GrokOwner, GrokToolAction,
-    HelperErrorCode, HelperMessage, HelperProtocolAction, HelperProtocolSequence,
+    AgentInstallerProduct, CanonicalJobId, CodexModelCatalog, GrokNpmInstallPlan, GrokOwner,
+    GrokToolAction, HelperErrorCode, HelperMessage, HelperProtocolAction, HelperProtocolSequence,
     HelperProtocolTerminal, PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity,
     PipeNonce, ProtocolError, ToolOperationResult, UserHelperAction, BRIDGE_CONTROL_BYTES,
     MAX_FRAME_BYTES, TOOL_OPERATION_STARTED_IDENTITY,
@@ -191,7 +191,7 @@ pub(crate) fn run_grok_tool_operation(
 ) -> Result<ToolOperationResult, InstallerError> {
     let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
         .map_err(|_| helper_identity_error())?;
-    run_unpinned_tool_helper(
+    run_unpinned_helper(
         context,
         UserHelperAction::GrokTool {
             action,
@@ -202,6 +202,7 @@ pub(crate) fn run_grok_tool_operation(
         Arc::new(|_: JobProgress| {}),
         WindowsHelperDeadlines::GROK_TOOL,
     )
+    .and_then(protocol_tool_result)
 }
 
 pub(crate) fn run_claude_tool_operation(
@@ -211,7 +212,7 @@ pub(crate) fn run_claude_tool_operation(
 ) -> Result<ToolOperationResult, InstallerError> {
     let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
         .map_err(|_| helper_identity_error())?;
-    run_unpinned_tool_helper(
+    run_unpinned_helper(
         context,
         UserHelperAction::ClaudeTool { action },
         &job_id,
@@ -219,16 +220,36 @@ pub(crate) fn run_claude_tool_operation(
         Arc::new(|_: JobProgress| {}),
         WindowsHelperDeadlines::GROK_TOOL,
     )
+    .and_then(protocol_tool_result)
 }
 
-fn run_unpinned_tool_helper(
+/// Reads the model catalog of the current user's own Codex CLI through the
+/// ordinary-user helper. Which account that CLI is signed in to is not part
+/// of the result; callers establish it separately.
+pub(crate) fn run_codex_models(
+    context: &InteractiveUserContext,
+) -> Result<CodexModelCatalog, InstallerError> {
+    let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
+        .map_err(|_| helper_identity_error())?;
+    run_unpinned_helper(
+        context,
+        UserHelperAction::CodexModels,
+        &job_id,
+        None,
+        Arc::new(|_: JobProgress| {}),
+        WindowsHelperDeadlines::CODEX_MODELS,
+    )
+    .and_then(protocol_codex_catalog)
+}
+
+fn run_unpinned_helper(
     context: &InteractiveUserContext,
     action: UserHelperAction,
     job_id: &CanonicalJobId,
     npm_plan: Option<GrokNpmInstallPlan>,
     progress: PlatformProgressSink,
     deadlines: WindowsHelperDeadlines,
-) -> Result<ToolOperationResult, InstallerError> {
+) -> Result<HelperProtocolTerminal, InstallerError> {
     if action.requires_package_bridge() {
         return Err(helper_pipe_error(
             "the user-helper tool action required a package bridge",
@@ -373,7 +394,7 @@ fn run_unpinned_tool_helper(
             ) {
                 return fail_before_admission(gate, lifetime, error).map(|_| unreachable!());
             }
-            return finish_settled_tool(gate, lifetime, terminal);
+            return finish_settled_unpinned(gate, lifetime, terminal);
         }
         _ => {
             return fail_before_admission(
@@ -414,7 +435,7 @@ fn run_unpinned_tool_helper(
         operation_deadline,
         deadlines.terminal_close,
     ) {
-        Ok(terminal) => finish_settled_tool(gate, lifetime, terminal),
+        Ok(terminal) => finish_settled_unpinned(gate, lifetime, terminal),
         Err(error) => cancel_and_quarantine(gate, lifetime, error),
     }
 }
@@ -1418,16 +1439,27 @@ fn bridge_identity_matches(
     helper_identity == bridge_identity
 }
 
-fn finish_settled_tool(
+fn finish_settled_unpinned(
     gate: HelperGateLease,
     mut lifetime: HelperLifetime,
     terminal: HelperProtocolTerminal,
-) -> Result<ToolOperationResult, InstallerError> {
+) -> Result<HelperProtocolTerminal, InstallerError> {
     lifetime.mark_settled();
-    let result = protocol_tool_result(terminal);
     lifetime.cleanup_bridge();
     gate.finish();
-    result
+    Ok(terminal)
+}
+
+fn protocol_codex_catalog(
+    terminal: HelperProtocolTerminal,
+) -> Result<CodexModelCatalog, InstallerError> {
+    match terminal {
+        HelperProtocolTerminal::CodexModels(catalog) => Ok(catalog),
+        HelperProtocolTerminal::Success | HelperProtocolTerminal::ToolSuccess(_) => Err(
+            helper_pipe_error("the user-helper omitted the Codex model catalog"),
+        ),
+        HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
+    }
 }
 
 fn protocol_terminal_result(terminal: HelperProtocolTerminal) -> Result<(), InstallerError> {
@@ -2112,7 +2144,17 @@ mod tests {
         let terminal =
             HelperProtocolTerminal::CodexModels(fyagent_user_helper::CodexModelCatalog::default());
         assert!(protocol_terminal_result(terminal.clone()).is_err());
-        assert!(protocol_tool_result(terminal).is_err());
+        assert!(protocol_tool_result(terminal.clone()).is_err());
+        assert_eq!(
+            protocol_codex_catalog(terminal).unwrap(),
+            fyagent_user_helper::CodexModelCatalog::default()
+        );
+        for other in [
+            HelperProtocolTerminal::Success,
+            HelperProtocolTerminal::ToolSuccess(ToolOperationResult::observed(false, None, None)),
+        ] {
+            assert!(protocol_codex_catalog(other).is_err());
+        }
         for code in [
             HelperErrorCode::CodexCliMissing,
             HelperErrorCode::CodexAppServerFailed,

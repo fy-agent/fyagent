@@ -8,6 +8,7 @@
 
 use std::collections::HashSet;
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
@@ -30,6 +31,46 @@ pub const MAX_CODEX_RPC_SKIPPED_LINES: usize = 256;
 
 pub const CODEX_INITIALIZE_REQUEST_ID: u64 = 1;
 const METHOD_NOT_FOUND: i64 = -32601;
+
+/// Launchers tried in each directory, in order. The extensionless npm shim is
+/// a POSIX script and cannot be started directly on Windows.
+pub const CODEX_WINDOWS_EXECUTABLE_NAMES: [&str; 2] = ["codex.cmd", "codex.exe"];
+/// Per-user installer locations under the profile, after the user's PATH.
+const CODEX_PROFILE_BIN_SEGMENTS: [[&str; 2]; 3] =
+    [[".local", "bin"], [".npm-global", "bin"], [".codex", "bin"]];
+
+/// Directories searched for the user's Codex CLI, in the same order as the
+/// parent's provider CLI lookup: PATH first, then per-user installer
+/// locations. Relative PATH entries depend on the working directory and are
+/// dropped, as are app execution alias directories, matching the other
+/// ordinary-user tool lookups.
+pub fn codex_cli_search_directories(path: &[PathBuf], profile: &Path) -> Vec<PathBuf> {
+    let mut directories: Vec<PathBuf> = path
+        .iter()
+        .filter(|directory| directory.is_absolute())
+        .filter(|directory| {
+            !directory
+                .to_string_lossy()
+                .to_ascii_lowercase()
+                .contains("windowsapps")
+        })
+        .cloned()
+        .collect();
+    for segments in CODEX_PROFILE_BIN_SEGMENTS {
+        directories.push(
+            segments
+                .iter()
+                .fold(profile.to_path_buf(), |path, segment| path.join(segment)),
+        );
+    }
+    let mut unique = Vec::with_capacity(directories.len());
+    for directory in directories {
+        if !unique.contains(&directory) {
+            unique.push(directory);
+        }
+    }
+    unique
+}
 
 const _: () = assert!(MAX_CODEX_MODEL_PAGES * CODEX_MODEL_PAGE_SIZE as usize >= MAX_CODEX_MODELS);
 const _: () = assert!(MAX_CODEX_MODELS <= u8::MAX as usize);
@@ -134,7 +175,10 @@ pub fn classify_response_line(line: &[u8], expected_id: u64) -> Result<RpcLine, 
     let Ok(message) = serde_json::from_slice::<Value>(line) else {
         return Ok(RpcLine::Unrelated);
     };
-    if message.get("id").and_then(Value::as_u64) != Some(expected_id) {
+    // Server-initiated requests carry their own ID space next to a method.
+    if message.get("method").is_some()
+        || message.get("id").and_then(Value::as_u64) != Some(expected_id)
+    {
         return Ok(RpcLine::Unrelated);
     }
     if let Some(error) = message.get("error") {
@@ -393,6 +437,11 @@ mod tests {
             RpcLine::Unrelated
         );
         assert_eq!(
+            classify_response_line(br#"{"id":2,"method":"item/tool/call","params":{}}"#, 2)
+                .unwrap(),
+            RpcLine::Unrelated
+        );
+        assert_eq!(
             classify_response_line(br#"{"id":2,"result":{"data":[]}}"#, 2).unwrap(),
             RpcLine::Result(json!({"data":[]}))
         );
@@ -594,6 +643,31 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    #[test]
+    fn cli_search_keeps_path_order_then_profile_installers() {
+        let profile = std::env::temp_dir().join("me");
+        let npm = profile.join("AppData").join("Roaming").join("npm");
+        let local_bin = profile.join(".local").join("bin");
+        let tools = std::env::temp_dir().join("Tools");
+        let path = [
+            npm.clone(),
+            PathBuf::from("relative"),
+            profile.join("Microsoft").join("WindowsApps"),
+            local_bin.clone(),
+            tools.clone(),
+        ];
+        assert_eq!(
+            codex_cli_search_directories(&path, &profile),
+            [
+                npm,
+                local_bin,
+                tools,
+                profile.join(".npm-global").join("bin"),
+                profile.join(".codex").join("bin"),
+            ]
+        );
     }
 
     #[test]
