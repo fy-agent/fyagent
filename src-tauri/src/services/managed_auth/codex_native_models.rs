@@ -10,7 +10,7 @@ use std::path::Path;
 use fyagent_user_helper::CodexModelCatalog;
 use serde::Serialize;
 
-use super::consumers::codex::{live_chatgpt_account_id, CodexNativeAuthState};
+use super::consumers::codex::{live_chatgpt_account_id, CodexNativeAuthState, CodexProviderRoute};
 use super::{CredentialWithIdentity, ManagedAuthProvider, MANAGED_AUTH_CONTRACT_VERSION};
 
 pub const CODEX_NATIVE_MODELS_SOURCE: &str = "codex_app_server";
@@ -35,6 +35,27 @@ pub enum CodexNativeBindingDetail {
     CustomCodexHome,
     /// The active store does not establish the CLI login from `auth.json`.
     UnsupportedCredentialStore,
+}
+
+/// Where Codex sends model requests per its `config.toml`. A ChatGPT login
+/// alone does not make the catalog official while a custom provider routes
+/// the requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexNativeProviderRoute {
+    Official,
+    Custom,
+    Unknown,
+}
+
+impl From<CodexProviderRoute> for CodexNativeProviderRoute {
+    fn from(route: CodexProviderRoute) -> Self {
+        match route {
+            CodexProviderRoute::Official => Self::Official,
+            CodexProviderRoute::ThirdParty => Self::Custom,
+            CodexProviderRoute::Unknown | CodexProviderRoute::Invalid => Self::Unknown,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -81,6 +102,7 @@ pub struct ManagedAuthCodexNativeModels {
     pub binding_detail: Option<CodexNativeBindingDetail>,
     /// The saved FyAgent account the live Codex login belongs to, if any.
     pub native_account_id: Option<String>,
+    pub provider_route: CodexNativeProviderRoute,
     /// Codex connection revision the result was observed under.
     pub revision: String,
     pub checked_at: String,
@@ -207,6 +229,7 @@ impl ManagedAuthCodexNativeModels {
     pub(crate) fn not_read(
         account_id: &str,
         attribution: CodexNativeAttribution,
+        provider_route: CodexNativeProviderRoute,
         revision: String,
         checked_at: String,
     ) -> Self {
@@ -217,6 +240,7 @@ impl ManagedAuthCodexNativeModels {
             account_binding: attribution.binding,
             binding_detail: attribution.detail,
             native_account_id: attribution.native_account_id,
+            provider_route,
             revision,
             checked_at,
             catalog_status: CodexNativeCatalogStatus::NotRead,

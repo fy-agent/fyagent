@@ -346,6 +346,14 @@ export const CODEX_NATIVE_BINDING_DETAILS = [
 export type CodexNativeBindingDetail =
   (typeof CODEX_NATIVE_BINDING_DETAILS)[number];
 
+export const CODEX_NATIVE_PROVIDER_ROUTES = [
+  "official",
+  "custom",
+  "unknown",
+] as const;
+export type CodexNativeProviderRoute =
+  (typeof CODEX_NATIVE_PROVIDER_ROUTES)[number];
+
 export const CODEX_NATIVE_CATALOG_STATUSES = [
   "ready",
   "not_read",
@@ -386,6 +394,8 @@ export interface ManagedAuthCodexNativeModels {
   accountBinding: CodexNativeAccountBinding;
   bindingDetail: CodexNativeBindingDetail | null;
   nativeAccountId: string | null;
+  /** Where Codex sends model requests; only `official` backs an official label. */
+  providerRoute: CodexNativeProviderRoute;
   revision: string;
   checkedAt: string;
   catalogStatus: CodexNativeCatalogStatus;
@@ -1234,6 +1244,7 @@ export function parseManagedAuthCodexNativeModels(
       "accountBinding",
       "bindingDetail",
       "nativeAccountId",
+      "providerRoute",
       "revision",
       "checkedAt",
       "catalogStatus",
@@ -1249,6 +1260,7 @@ export function parseManagedAuthCodexNativeModels(
     (value.accountBinding === "unknown"
       ? !isOneOf(value.bindingDetail, CODEX_NATIVE_BINDING_DETAILS)
       : value.bindingDetail !== null) ||
+    !isOneOf(value.providerRoute, CODEX_NATIVE_PROVIDER_ROUTES) ||
     !isIsoTimestamp(value.checkedAt) ||
     !isOneOf(value.catalogStatus, CODEX_NATIVE_CATALOG_STATUSES) ||
     // A catalog is read, and so can succeed or fail, only for a match.
@@ -1285,6 +1297,7 @@ export function parseManagedAuthCodexNativeModels(
       value.nativeAccountId === null
         ? null
         : parseAccountId(value.nativeAccountId),
+    providerRoute: value.providerRoute,
     revision: parseRevision(value.revision),
     checkedAt: value.checkedAt,
     catalogStatus: value.catalogStatus,

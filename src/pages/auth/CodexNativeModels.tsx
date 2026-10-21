@@ -53,12 +53,24 @@ function CatalogResult({
       </InlineNotice>
     );
   }
+  const official = result.providerRoute === "official";
   return (
     <>
       <p className="fy-auth-native-models-meta">
-        来源：本机 Codex 原生官方目录 · Codex CLI{" "}
-        {result.cliVersion ?? "版本未知"} · 读取于 {readAt(result.checkedAt)}
+        来源：
+        {official
+          ? "本机 Codex 原生官方目录"
+          : "本机 Codex app-server 返回的目录"}{" "}
+        · Codex CLI {result.cliVersion ?? "版本未知"} · 读取于{" "}
+        {readAt(result.checkedAt)}
       </p>
+      {official ? null : (
+        <InlineNotice tone="warning">
+          {result.providerRoute === "custom"
+            ? "Codex 当前把模型请求发给自定义模型服务（config.toml 的 model_provider），未确认这些模型对应此 ChatGPT 账号的官方可用模型。"
+            : "无法确认 Codex 当前的模型请求路由，未确认这些模型对应此 ChatGPT 账号的官方可用模型。"}
+        </InlineNotice>
+      )}
       {result.models.length === 0 ? (
         <InlineNotice tone="warning">
           本机 Codex 没有返回可选模型。可以在 Codex 模型配置中手动填写。

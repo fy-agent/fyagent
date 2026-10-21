@@ -613,6 +613,49 @@ fn write_codex_login(service: &ManagedAuthService<MemorySecretBackend>, subject:
     std::fs::write(home.join("auth.json"), auth).unwrap();
 }
 
+fn value_of(
+    result: &crate::services::managed_auth::ManagedAuthCodexNativeModels,
+    key: &str,
+) -> serde_json::Value {
+    serde_json::to_value(result).unwrap()[key].clone()
+}
+
+#[test]
+fn codex_native_models_report_a_custom_request_route() {
+    let (service, _dir) = service();
+    let selected = seed_proxy(
+        &service,
+        "native-selected",
+        "acct-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    write_codex_login(&service, "acct-selected");
+    std::fs::write(
+        service.codex_home().join("config.toml"),
+        "model_provider = \"deepseek\"\n[model_providers.deepseek]\nbase_url = \"https://example.test/v1\"\n",
+    )
+    .unwrap();
+    let run = |cli_reads_managed_home| {
+        runtime()
+            .block_on(service.get_codex_native_models_with(
+                &selected.identity_id,
+                cli_reads_managed_home,
+                || async { Ok(native_catalog()) },
+            ))
+            .expect("catalog")
+    };
+
+    let custom = run(true);
+    assert_eq!(value_of(&custom, "accountBinding"), "matched");
+    assert_eq!(value_of(&custom, "catalogStatus"), "ready");
+    assert_eq!(value_of(&custom, "providerRoute"), "custom");
+
+    let elsewhere = run(false);
+    assert_eq!(value_of(&elsewhere, "catalogStatus"), "not_read");
+    assert_eq!(value_of(&elsewhere, "providerRoute"), "unknown");
+}
+
 fn native_catalog() -> fyagent_user_helper::CodexModelCatalog {
     fyagent_user_helper::CodexModelCatalog {
         cli_version: Some("0.160.1".into()),
@@ -663,6 +706,7 @@ fn codex_native_models_are_read_only_for_the_live_matching_login() {
     assert_eq!(result.catalog_status, CodexNativeCatalogStatus::Ready);
     assert_eq!(result.cli_version.as_deref(), Some("0.160.1"));
     assert_eq!(result.source, "codex_app_server");
+    assert_eq!(value_of(&result, "providerRoute"), "official");
     assert_eq!(
         result.revision,
         crate::services::managed_auth::consumers::codex::observe_codex_home(&service.codex_home())
@@ -691,6 +735,7 @@ fn codex_native_models_are_read_only_for_the_live_matching_login() {
             "failure",
             "models",
             "nativeAccountId",
+            "providerRoute",
             "revision",
             "source",
             "truncated",

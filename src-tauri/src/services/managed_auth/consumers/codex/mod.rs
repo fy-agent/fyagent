@@ -9,7 +9,7 @@ mod swap;
 pub(crate) use auth_document::{CodexChatGptAuthDocument, CodexNativeAuthState};
 pub(crate) use observation::{
     auth_matches_account, live_chatgpt_account_id, observe_managed_auth,
-    CodexManagedAuthObservation,
+    CodexManagedAuthObservation, CodexProviderRoute,
 };
 pub(crate) use project::{
     live_codex_requires_restart_for_app, materialize_from_bundle, project_codex_official_account,

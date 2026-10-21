@@ -63,6 +63,7 @@ describe("Tauri managed auth port", () => {
       accountBinding: "matched",
       bindingDetail: null,
       nativeAccountId: OPENAI_ACCOUNT_ID,
+      providerRoute: "official",
       revision: CONNECTION_REVISION,
       checkedAt: "2026-10-22T04:30:00Z",
       catalogStatus: "ready",
@@ -125,6 +126,8 @@ describe("Tauri managed auth port", () => {
       { ...ready, token: "leak" },
       { ...ready, source: "chatgpt_backend" },
       { ...ready, revision: "r1" },
+      { ...ready, providerRoute: "deepseek" },
+      { ...ready, providerRoute: null },
       // Models only exist for a matched login.
       { ...ready, accountBinding: "mismatch" },
       { ...notRead, models: ready.models },

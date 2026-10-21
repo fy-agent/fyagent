@@ -446,9 +446,13 @@ test("reads the native Codex catalog only on request and labels its source", asy
   expect(await nativeCalls()).toEqual([]);
 
   await catalog.getByRole("button", { name: "获取模型", exact: true }).click();
+  // The fixture's Codex requests go to a custom provider, so a matched
+  // ChatGPT login alone must not earn the official label.
   await expect(catalog).toContainText(
-    "本机 Codex 原生官方目录 · Codex CLI 0.0.0-fixture",
+    "本机 Codex app-server 返回的目录 · Codex CLI 0.0.0-fixture",
   );
+  await expect(catalog).not.toContainText("原生官方");
+  await expect(catalog).toContainText("未确认这些模型对应此 ChatGPT 账号");
   const models = catalog.getByRole("list");
   await expect(models.getByRole("listitem")).toHaveCount(2);
   await expect(models).toContainText("Fixture Codex");

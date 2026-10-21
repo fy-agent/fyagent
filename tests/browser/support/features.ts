@@ -1344,6 +1344,7 @@ export async function installRichTauriFeatureFixture(
                 consumer: string;
                 accountId: string | null;
                 revision: string;
+                requestMode: string;
               }>
             ).find((item) => item.consumer === "codex");
             if (!connection || connection.accountId !== accountId)
@@ -1372,6 +1373,12 @@ export async function installRichTauriFeatureFixture(
                 : scenario === "other_account"
                   ? `ma1:${"9".repeat(32)}`
                   : null,
+              providerRoute:
+                connection.requestMode === "official_subscription"
+                  ? "official"
+                  : connection.requestMode === "third_party_api"
+                    ? "custom"
+                    : "unknown",
               revision: connection.revision,
               checkedAt: "2026-10-22T04:30:00Z",
               catalogStatus: readable ? "ready" : "not_read",

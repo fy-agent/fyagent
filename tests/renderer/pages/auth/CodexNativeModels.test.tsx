@@ -21,6 +21,7 @@ const ready: ManagedAuthCodexNativeModels = {
   accountBinding: "matched",
   bindingDetail: null,
   nativeAccountId: OPENAI_ACCOUNT_ID,
+  providerRoute: "official",
   revision: CONNECTION_REVISION,
   checkedAt: "2026-10-22T04:30:00Z",
   catalogStatus: "ready",
@@ -101,6 +102,23 @@ describe("CodexNativeModels", () => {
     expect(list).toHaveTextContent("gpt-5.5");
     expect(screen.getByRole("button", { name: "重新获取模型" })).toBeEnabled();
   });
+
+  it.each([
+    ["custom", /自定义模型服务/u],
+    ["unknown", /无法确认 Codex 当前的模型请求路由/u],
+  ] as const)(
+    "does not call a %s-route catalog official",
+    async (providerRoute, notice) => {
+      setup(async () => ({ ...ready, providerRoute }));
+      fireEvent.click(screen.getByRole("button", { name: "获取模型" }));
+      expect(
+        await screen.findByText(/本机 Codex app-server 返回的目录/u),
+      ).toBeVisible();
+      expect(screen.getByText(notice)).toBeVisible();
+      expect(screen.queryByText(/原生官方/u)).toBeNull();
+      expect(screen.getByRole("list")).toHaveTextContent("gpt-6-sol");
+    },
+  );
 
   it("names the other login on a mismatch and lists nothing", async () => {
     setup(async () => ({
