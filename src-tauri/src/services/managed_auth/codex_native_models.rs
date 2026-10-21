@@ -157,9 +157,12 @@ pub(crate) fn same_codex_home(managed: &Path, cli: &Path) -> bool {
     fn normalized(path: &Path) -> String {
         let text = path.to_string_lossy();
         let trimmed = text.trim_end_matches(['/', '\\']);
-        if cfg!(windows) {
+        #[cfg(target_os = "windows")]
+        {
             trimmed.replace('/', "\\").to_lowercase()
-        } else {
+        }
+        #[cfg(target_os = "macos")]
+        {
             trimmed.to_owned()
         }
     }
@@ -180,14 +183,14 @@ pub(crate) async fn read_codex_catalog() -> Result<CodexModelCatalog, CodexNativ
     .map_err(|_| CodexNativeCatalogFailure::HelperUnavailable)?
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 pub(crate) async fn read_codex_catalog() -> Result<CodexModelCatalog, CodexNativeCatalogFailure> {
     Err(CodexNativeCatalogFailure::PlatformUnsupported)
 }
 
 /// Maps the helper's redacted platform code; anything else means the helper
 /// itself did not complete the exchange.
-#[cfg_attr(not(any(target_os = "windows", test)), allow(dead_code))]
+#[cfg(any(target_os = "windows", test))]
 pub(crate) fn failure_from_platform_code(code: Option<&str>) -> CodexNativeCatalogFailure {
     match code {
         Some("codex_cli_missing") => CodexNativeCatalogFailure::CliMissing,

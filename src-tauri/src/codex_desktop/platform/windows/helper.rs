@@ -228,7 +228,7 @@ pub(crate) fn run_omp_cli_probe(
 ) -> Result<OmpProbeResult, InstallerError> {
     let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
         .map_err(|_| helper_identity_error())?;
-    run_unpinned_tool_helper(
+    run_unpinned_helper(
         context,
         UserHelperAction::OmpProbe,
         &job_id,

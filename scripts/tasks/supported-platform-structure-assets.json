@@ -135,7 +135,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
-      "bb8e1a87c65f5ec0ceee56f7a893731c4fe9af908691ab5a872bc8157bf2a203"
+      "29333c4731dc529fbad5dc4f967bb61e561a87d67f4304b4edee9a64f561c7cf"
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "252454eeda329048c500a350a6194c9147f8e585b17181fc9f0c5792685e9ef3"
+      "5d5f69ed04c115be3a589c30f56b8f6f28711d3fb32ca3b5197eff87f0ae71a6"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -223,7 +223,7 @@
     ],
     [
       "src-tauri/src/omp_config/mod.rs",
-      "f0459026fbb5eb00432336b891b9dae16306579d00e6dab3f7cc7bbaa26bf4b9"
+      "ef46193377874922780d43c368d28a7bf8eee771b2edd11d6dc3427dcec18526"
     ],
     [
       "src-tauri/src/opencode_config.rs",
@@ -282,6 +282,10 @@
       "0fe4bdf4d48e69c43950b8ddfdf8bd8f8df7124dbfae5f32b9fb88057dbc126a"
     ],
     [
+      "src-tauri/src/services/managed_auth/codex_native_models.rs",
+      "34c4df9949e19f1e504872e92d5f72cbc69633eaabf2a7bfea1606713456ce93"
+    ],
+    [
       "src-tauri/src/services/managed_auth/consumers/grok.rs",
       "599c68898d43eb587d32ade0f430c48d4d21ecbc58b64a504e148d060fcbfbb9"
     ],
@@ -299,7 +303,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/service.rs",
-      "2b3768a8010376bc244a49f71107840e3168d6f4e636b5e8eb7f5e9389e58c9e"
+      "9c752a351b820b4fd752b07ea86fe1da80d57f519578d3aab32b21421e97f3a9"
     ],
     [
       "src-tauri/src/services/managed_auth/subscription_tests.rs",
@@ -539,11 +543,11 @@
     ],
     [
       "src-tauri/user-helper/Cargo.toml",
-      "b35f02ecde55b82598a22677ceb70e59f5e9b856a037f0904d2d6c591b22627e"
+      "0d01d8633895922d53d5836ef2b59652c0b84a15098e0526ab57bd12e05a37c0"
     ],
     [
       "src-tauri/user-helper/src/cli.rs",
-      "eceb6a1a9a9cfb39261b5b95a2a00fe8e126f0739358be744efea3bfd71c556a"
+      "b08aea29dbf4a5bb4df4b24acd088895fbcab78de14b81f2922ebace06245ca8"
     ],
     [
       "src-tauri/user-helper/src/closed_dep.rs",
@@ -559,7 +563,7 @@
     ],
     [
       "src-tauri/user-helper/src/main.rs",
-      "42128702a4acbf21de0b95663a0a95ed416e56fcc2e2a6049507358ae3326982"
+      "a8f7e0a11e2355efa1b34496fbd27a08bbe235b42520dea0668a7ac6c84dd7ef"
     ],
     [
       "src-tauri/user-helper/src/omp.rs",

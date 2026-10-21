@@ -19,7 +19,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::sync::{LazyLock, Mutex, MutexGuard, OnceLock};
-use std::time::{Duration, Instant};
+#[cfg(target_os = "macos")]
+use std::time::Duration;
+use std::time::Instant;
 use url::Url;
 use uuid::Uuid;
 use yaml_edit::{Mapping, ScalarValue, Sequence, YamlFile};
