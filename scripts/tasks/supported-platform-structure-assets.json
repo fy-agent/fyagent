@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "0f987a65caec6843921548368aec36caf1348686666d04605ad70b4ceeac19da"
+      "7d17ecb8397c25454168970ca72e05a2185b96f7a5c6d791f0701f4e6c9ff672"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -134,12 +134,16 @@
       "df3ca19080eaf0abd992d0c6e2612631bb74714b672c33d1d0a7f7c5b9a7f265"
     ],
     [
+      "src-tauri/src/codex_desktop/platform/windows/command.rs",
+      "693eee392c674f236e0ad4f1e6ad0ff31bdadef5ab54027051534438e6b5711c"
+    ],
+    [
       "src-tauri/src/codex_desktop/platform/windows/deployment.rs",
       "4b2b6f12e81c6af0701f5def6c51f5b66152439e45dcf98284822c559eaa97e4"
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
-      "acdddcc1ed372213201fb4d58e6af151c55b08ac0fb00c1f8f61ba8254ab1e86"
+      "e0af17bdb6dfc52aeb84684635484f3653028b02ad3aa927fdb8fd5e3b897f2f"
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
