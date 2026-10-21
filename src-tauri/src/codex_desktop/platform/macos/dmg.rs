@@ -1290,8 +1290,8 @@ impl UpdateRecord {
     }
 
     // This independent tombstone is persisted only AFTER all replacement and
-    // inventory verification succeeds. It blocks Staged/Swapped recovery; an
-    // explicitly persisted RollingBack phase retains bound recovery authority.
+    // inventory verification succeeds. Only an independent rollback authorization
+    // can override it; JSON phase changes never grant that authority.
     // If persistence fails we must roll back, never report a committed install.
     fn retire(&self, fs: &dyn MacosFilesystem) -> Result<(), InstallerError> {
         self.validate_paths()?;
@@ -1304,10 +1304,37 @@ impl UpdateRecord {
             })
     }
 
+    fn rollback_authorization(&self) -> Result<Vec<u8>, InstallerError> {
+        self.validate_paths()?;
+        // This witness is independent of the editable transaction JSON. The
+        // phase is fixed by the rollback path, never copied from that JSON.
+        // Like binding, its checksum is integrity evidence, not a secret MAC.
+        let payload = serde_json::to_vec(&(
+            "fyagent-rollback-v1",
+            &self.transaction_id,
+            &self.target,
+            &self.backup,
+            self.binding()?,
+            UpdatePhase::RollingBack,
+        ))
+        .map_err(|_| identity_conflict(&self.target, &self.backup))?;
+        serde_json::to_vec(&(&payload, Sha256::digest(&payload).to_vec()))
+            .map_err(|_| identity_conflict(&self.target, &self.backup))
+    }
+
     fn begin_rollback(&mut self, fs: &dyn MacosFilesystem) -> Result<(), InstallerError> {
-        // Persist recovery authority before revoking any legacy terminal marker
-        // or touching either application. A crash here must remain recoverable.
-        self.advance(fs, UpdatePhase::RollingBack)?;
+        // Persist independent authority BEFORE revoking terminal or changing
+        // JSON. A crash between these steps must not require trusting its phase.
+        fs.write_record_atomic(
+            &self.auxiliary_path("rollback-authorization"),
+            &self.rollback_authorization()?,
+        )
+        .map_err(|_| {
+            error(
+                InstallerErrorCode::MacCopyFailed,
+                "回滚授权凭据写入失败，已保留新版与旧版备份，未执行破坏性回滚",
+            )
+        })?;
         if let Err(reason) = fs.remove_record(&self.auxiliary_path("terminal")) {
             if !is_not_found(reason) {
                 return Err(error(
@@ -1316,15 +1343,38 @@ impl UpdateRecord {
                 ));
             }
         }
-        Ok(())
+        self.advance(fs, UpdatePhase::RollingBack)
     }
 
     fn permits_recovery(&self, fs: &dyn MacosFilesystem) -> bool {
-        matches!(self.phase, UpdatePhase::RollingBack)
-            || (matches!(self.phase, UpdatePhase::Staged | UpdatePhase::Swapped)
-                && fs
-                    .file_kind(&self.auxiliary_path("terminal"))
-                    .is_err_and(is_not_found))
+        let authorization =
+            match fs.read_file_bounded(&self.auxiliary_path("rollback-authorization"), 16 * 1024) {
+                Ok(bytes) => {
+                    if self.rollback_authorization().ok().as_ref() != Some(&bytes) {
+                        return false;
+                    }
+                    true
+                }
+                Err(reason) if is_not_found(reason) => false,
+                Err(_) => return false,
+            };
+        let terminal_absent = match fs.file_kind(&self.auxiliary_path("terminal")) {
+            Ok(_) => false,
+            Err(reason) if is_not_found(reason) => true,
+            Err(_) => return false,
+        };
+        if !terminal_absent && !authorization {
+            log::warn!(
+                "更新已到终态且缺少匹配的回滚授权凭据，已保留备份、拒绝恢复：{}",
+                self.backup.display()
+            );
+            return false;
+        }
+        match self.phase {
+            UpdatePhase::Staged | UpdatePhase::Swapped => true,
+            UpdatePhase::RollingBack => authorization,
+            UpdatePhase::Committed | UpdatePhase::RolledBack => false,
+        }
     }
 
     fn advance(
@@ -1342,6 +1392,7 @@ impl UpdateRecord {
         for path in [
             &self.record_file,
             &self.auxiliary_path("binding"),
+            &self.auxiliary_path("rollback-authorization"),
             &self.auxiliary_path("terminal"),
         ] {
             if let Err(reason) = fs.remove_record(path) {
@@ -4694,7 +4745,7 @@ mod tests {
                 "committed" => 4,
                 "cleanup" => {
                     if fallback {
-                        3
+                        4
                     } else {
                         0
                     }
@@ -4795,12 +4846,23 @@ mod tests {
             let mut record = read_record(&*fs, &entry).unwrap();
             assert!(matches!(record.phase, UpdatePhase::Swapped));
             assert!(fs.contains(record.auxiliary_path("terminal")));
-            record.phase = UpdatePhase::Swapped;
-            fs.add_file_with_contents(&record.record_file, serde_json::to_vec(&record).unwrap());
             fs.remove_dir_all(&target_path).unwrap(); // User uninstalls the accepted replacement.
-            recover_interrupted_updates(&*runner, &*fs, &policy, parent).unwrap();
-            assert!(!fs.contains(&target_path));
-            assert!(fs.contains(&entry));
+            for phase in [
+                UpdatePhase::Staged,
+                UpdatePhase::Swapped,
+                UpdatePhase::RollingBack,
+                UpdatePhase::Committed,
+                UpdatePhase::RolledBack,
+            ] {
+                record.phase = phase;
+                fs.add_file_with_contents(
+                    &record.record_file,
+                    serde_json::to_vec(&record).unwrap(),
+                );
+                recover_interrupted_updates(&*runner, &*fs, &policy, parent).unwrap();
+                assert!(!fs.contains(&target_path), "{phase:?}");
+                assert!(fs.contains(&entry));
+            }
         }
         runner.assert_drained();
     }
@@ -4817,7 +4879,7 @@ mod tests {
     }
 
     #[test]
-    fn committed_record_write_and_rename_failures_cannot_restore_after_uninstall() {
+    fn committed_record_failure_and_uninstall_reject_all_five_json_phases() {
         for fallback in [false, true] {
             for operation in ["write_record", "rename_record"] {
                 record_failure_transaction(fallback, operation, "committed");
@@ -5094,7 +5156,7 @@ mod tests {
     }
 
     #[test]
-    fn rolling_back_recovers_despite_legacy_terminal_but_requires_binding() {
+    fn rollback_authorization_overrides_terminal_only_with_matching_binding() {
         for staging in [false, true] {
             for valid_binding in [false, true] {
                 let fs = FakeFilesystem::new();
@@ -5106,7 +5168,8 @@ mod tests {
                 let mut record = UpdateRecord::new(&target, &backup, identity).unwrap();
                 record.save(&fs).unwrap();
                 record.retire(&fs).unwrap();
-                record.advance(&fs, UpdatePhase::RollingBack).unwrap();
+                record.begin_rollback(&fs).unwrap();
+                record.retire(&fs).unwrap(); // Simulate terminal revocation not completing.
                 if !valid_binding {
                     fs.remove_record(&record.auxiliary_path("binding")).unwrap();
                 }
@@ -5134,9 +5197,120 @@ mod tests {
     }
 
     #[test]
+    fn recovery_rejects_forged_or_mismatched_rollback_authorization() {
+        for staging in [false, true] {
+            for terminal in [false, true] {
+                for mutation in [
+                    "missing", "garbage", "checksum", "id", "target", "backup", "identity", "phase",
+                ] {
+                    let fs = FakeFilesystem::new();
+                    let parent = Path::new(USER_APPLICATIONS);
+                    let target = parent.join("Codex.app");
+                    let backup = transaction_path(&target, &transaction_id(), staging).unwrap();
+                    add_bundle(&fs, &backup);
+                    let mut record =
+                        UpdateRecord::new(&target, &backup, fs.identity(&backup).unwrap()).unwrap();
+                    record.save(&fs).unwrap();
+                    record.begin_rollback(&fs).unwrap();
+                    if terminal {
+                        record.retire(&fs).unwrap();
+                    }
+                    let path = record.auxiliary_path("rollback-authorization");
+                    let bytes = fs.read_file_bounded(&path, 16 * 1024).unwrap();
+                    let (mut payload, mut checksum): (Vec<u8>, Vec<u8>) =
+                        serde_json::from_slice(&bytes).unwrap();
+                    match mutation {
+                        "missing" => {
+                            fs.remove_record(&path).unwrap();
+                        }
+                        "garbage" => fs.add_file_with_contents(&path, b"forged".to_vec()),
+                        "checksum" => {
+                            checksum[0] ^= 1;
+                            fs.add_file_with_contents(
+                                &path,
+                                serde_json::to_vec(&(&payload, checksum)).unwrap(),
+                            );
+                        }
+                        _ => {
+                            let mut fields: serde_json::Value =
+                                serde_json::from_slice(&payload).unwrap();
+                            let index = match mutation {
+                                "id" => 1,
+                                "target" => 2,
+                                "backup" => 3,
+                                "identity" => 4,
+                                "phase" => 5,
+                                _ => unreachable!(),
+                            };
+                            fields[index] = serde_json::json!("mismatched");
+                            payload = serde_json::to_vec(&fields).unwrap();
+                            // Even a recomputed checksum cannot bind different fields.
+                            checksum = Sha256::digest(&payload).to_vec();
+                            fs.add_file_with_contents(
+                                &path,
+                                serde_json::to_vec(&(&payload, checksum)).unwrap(),
+                            );
+                        }
+                    }
+                    let runner = FakeRunner::new();
+                    let host = host();
+                    recover_interrupted_updates(
+                        &runner,
+                        &fs,
+                        &BundleTransactionPolicy::Codex { host: &host },
+                        parent,
+                    )
+                    .unwrap();
+                    assert!(!fs.contains(&target), "{staging} {terminal} {mutation}");
+                    assert!(fs.contains(&backup));
+                    runner.assert_drained();
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rollback_authorization_survives_crash_before_terminal_revocation_and_phase_write() {
+        for phase in [UpdatePhase::Staged, UpdatePhase::Swapped] {
+            let fs = FakeFilesystem::new();
+            let target = Path::new(USER_APPLICATIONS).join("Codex.app");
+            let backup = transaction_path(&target, &transaction_id(), false).unwrap();
+            add_bundle(&fs, &backup);
+            let mut record =
+                UpdateRecord::new(&target, &backup, fs.identity(&backup).unwrap()).unwrap();
+            record.save(&fs).unwrap();
+            record.advance(&fs, phase).unwrap();
+            record.retire(&fs).unwrap();
+            fs.fail_operation("remove_record", MacosFilesystemErrorKind::Other);
+            assert!(record.begin_rollback(&fs).is_err());
+            let runner = FakeRunner::new();
+            queue_read_and_validate(&runner, "1");
+            super::super::signature::tests::queue_valid_signature(&runner);
+            let host = host();
+            recover_interrupted_updates(
+                &runner,
+                &fs,
+                &BundleTransactionPolicy::Codex { host: &host },
+                Path::new(USER_APPLICATIONS),
+            )
+            .unwrap();
+            assert!(fs.contains(&target));
+            assert!(!fs.contains(&backup));
+            assert!(!fs.contains(record.auxiliary_path("rollback-authorization")));
+            runner.assert_drained();
+        }
+    }
+
+    #[test]
     fn rollback_state_or_terminal_revocation_failure_preserves_both_apps() {
         for staging in [false, true] {
-            for operation in ["write_record", "rename_record", "remove_record"] {
+            for (operation, skip) in [
+                ("write_record", 0),
+                ("rename_record", 0),
+                ("remove_record", 0),
+                ("write_record", 1),
+                ("rename_record", 1),
+            ] {
                 let fs = FakeFilesystem::new();
                 let parent = Path::new(USER_APPLICATIONS);
                 let target = parent.join("Codex.app");
@@ -5153,7 +5327,7 @@ mod tests {
                 let mut record = UpdateRecord::new(&target, &backup, old.identity).unwrap();
                 record.save(&fs).unwrap();
                 record.retire(&fs).unwrap();
-                fs.fail_operation(operation, MacosFilesystemErrorKind::Other);
+                fs.fail_operation_after(operation, skip, MacosFilesystemErrorKind::Other);
                 queue_read_and_validate(&runner, "1");
                 super::super::signature::tests::queue_valid_signature(&runner);
                 queue_read_and_validate(&runner, "2");
@@ -5174,7 +5348,7 @@ mod tests {
                 .is_err());
                 assert_eq!(fs.identity(&target).unwrap(), replacement.identity);
                 assert_eq!(fs.identity(&backup).unwrap(), old.identity);
-                assert!(fs.contains(record.auxiliary_path("terminal")));
+                assert_eq!(fs.contains(record.auxiliary_path("terminal")), skip == 0);
                 runner.assert_drained();
             }
         }
