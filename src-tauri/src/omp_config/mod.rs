@@ -420,7 +420,7 @@ fn parse_providers_from_yaml(bytes: &[u8]) -> Result<Vec<OmpProviderSummary>, Ap
         return Ok(output);
     };
     let Some(providers) = root
-        .get(&YamlValueSerde::String("providers".to_string()))
+        .get(YamlValueSerde::String("providers".to_string()))
         .and_then(as_mapping)
     else {
         return Ok(output);
@@ -434,10 +434,10 @@ fn parse_providers_from_yaml(bytes: &[u8]) -> Result<Vec<OmpProviderSummary>, Ap
             continue;
         };
         let api_key = provider
-            .get(&YamlValueSerde::String("apiKey".to_string()))
+            .get(YamlValueSerde::String("apiKey".to_string()))
             .and_then(scalar_string_or_tag);
         let models = provider
-            .get(&YamlValueSerde::String("models".to_string()))
+            .get(YamlValueSerde::String("models".to_string()))
             .and_then(as_sequence)
             .map(|items| {
                 items
@@ -445,10 +445,10 @@ fn parse_providers_from_yaml(bytes: &[u8]) -> Result<Vec<OmpProviderSummary>, Ap
                     .filter_map(|item| {
                         let model = as_mapping(item)?;
                         let id = model
-                            .get(&YamlValueSerde::String("id".to_string()))
+                            .get(YamlValueSerde::String("id".to_string()))
                             .and_then(scalar_string)?;
                         let name = model
-                            .get(&YamlValueSerde::String("name".to_string()))
+                            .get(YamlValueSerde::String("name".to_string()))
                             .and_then(scalar_string);
                         Some(OmpModelSummary { id, name })
                     })
@@ -459,13 +459,13 @@ fn parse_providers_from_yaml(bytes: &[u8]) -> Result<Vec<OmpProviderSummary>, Ap
         output.push(OmpProviderSummary {
             id,
             base_url: provider
-                .get(&YamlValueSerde::String("baseUrl".to_string()))
+                .get(YamlValueSerde::String("baseUrl".to_string()))
                 .and_then(scalar_string),
             api: provider
-                .get(&YamlValueSerde::String("api".to_string()))
+                .get(YamlValueSerde::String("api".to_string()))
                 .and_then(scalar_string),
             auth: provider
-                .get(&YamlValueSerde::String("auth".to_string()))
+                .get(YamlValueSerde::String("auth".to_string()))
                 .and_then(scalar_string),
             has_api_key: api_key
                 .as_deref()
@@ -485,9 +485,9 @@ fn parse_default_model_from_bytes(bytes: &[u8]) -> Result<Option<String>, AppErr
     let value: YamlValueSerde = serde_yaml::from_str(content)
         .map_err(|e| AppError::Config(format!("omp config YAML parse failed: {e}")))?;
     Ok(as_mapping(&value)
-        .and_then(|root| root.get(&YamlValueSerde::String("modelRoles".to_string())))
+        .and_then(|root| root.get(YamlValueSerde::String("modelRoles".to_string())))
         .and_then(as_mapping)
-        .and_then(|roles| roles.get(&YamlValueSerde::String("default".to_string())))
+        .and_then(|roles| roles.get(YamlValueSerde::String("default".to_string())))
         .and_then(scalar_string))
 }
 
