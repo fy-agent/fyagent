@@ -271,6 +271,97 @@
   border-top: 1px solid var(--fy-divider);
 }
 
+.fy-auth-results {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-width: 0;
+  max-height: 38vh;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  overflow-y: auto;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-item);
+  background: var(--fy-surface-inset);
+}
+
+.fy-auth-results-bar,
+.fy-auth-result-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.fy-auth-results-bar h2,
+.fy-auth-result-item h3 {
+  margin: 0;
+  font-size: 12px;
+}
+
+.fy-auth-results-bar > span {
+  flex: 1 1 160px;
+  min-width: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-auth-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fy-auth-result-actions .fy-control-button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.fy-auth-results-note {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.fy-auth-results-completed {
+  display: grid;
+  gap: 6px;
+}
+
+.fy-auth-results-completed[hidden] {
+  display: none;
+}
+
+.fy-auth-result-item {
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: var(--fy-radius-control);
+  background: var(--fy-surface-soft);
+}
+
+.fy-auth-result-copy {
+  display: flex;
+  flex: 1 1 220px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.fy-auth-result-copy p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.fy-auth-result-item[data-tone="warning"] p {
+  color: var(--fy-warning-text);
+}
+
 .fy-auth-section-heading,
 .fy-auth-connection-card-heading {
   display: flex;

@@ -11,6 +11,8 @@ export interface FeatureFixtureCall {
 
 export interface RichFeatureFixtureOptions {
   authSummaryScenario?: "mixed";
+  /** Consumers whose first connection apply fails with an external change. */
+  authConnectionFailOnce?: string[];
   firstUseGuideState?: "pending" | "dismissed";
   catalogFailure?: boolean;
   observationFailure?: "workbuddy" | "codex" | "claude";
@@ -1089,6 +1091,7 @@ export async function installRichTauriFeatureFixture(
       string,
       { snapshot: Record<string, unknown>; polls: number }
     >();
+    let connectionPreviewCount = 0;
     const managedMutation = () => ({
       contractVersion: 1,
       operationId: crypto.randomUUID(),
@@ -1352,8 +1355,25 @@ export async function installRichTauriFeatureFixture(
             return structuredClone(record.snapshot);
           }
           case "managed_auth_set_default_account":
-          case "managed_auth_apply_connection_action":
             return managedMutation();
+          case "managed_auth_apply_connection_action": {
+            const connectionId = (payload.request as { connectionId: string })
+              .connectionId;
+            const consumer = managedAuthOverview.connections.find(
+              (item) => item.connectionId === connectionId,
+            )?.consumer;
+            const failOnce = fixtureOptions.authConnectionFailOnce ?? [];
+            if (consumer && failOnce.includes(consumer)) {
+              fixtureOptions.authConnectionFailOnce = failOnce.filter(
+                (item) => item !== consumer,
+              );
+              throw {
+                contractVersion: 1,
+                reasonCode: "external_change_detected",
+              };
+            }
+            return managedMutation();
+          }
           case "managed_auth_preview_connection_action": {
             const request = payload.request as {
               connectionId: string;
@@ -1363,7 +1383,7 @@ export async function installRichTauriFeatureFixture(
             };
             return {
               contractVersion: 1,
-              previewId: "323e4567-e89b-42d3-a456-426614174000",
+              previewId: `323e4567-e89b-42d3-a456-${426614174000 + connectionPreviewCount++}`,
               ...request,
               writeTargets: [
                 {

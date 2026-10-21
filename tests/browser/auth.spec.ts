@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 import {
   expectHealthyPage,
@@ -11,6 +11,9 @@ import {
   installRichTauriFeatureFixture,
 } from "./support/features";
 
+const CONNECTION_RESULTS_TEST =
+  "keeps connection results compact and account actions on the first screen";
+
 test.beforeEach(async ({ page }, testInfo) => {
   await installRichTauriFeatureFixture(page, {
     authSummaryScenario:
@@ -18,6 +21,8 @@ test.beforeEach(async ({ page }, testInfo) => {
       "summarizes mixed connection states at compact desktop width"
         ? "mixed"
         : undefined,
+    authConnectionFailOnce:
+      testInfo.title === CONNECTION_RESULTS_TEST ? ["opencode"] : undefined,
   });
 });
 
@@ -186,5 +191,135 @@ test("summarizes mixed connection states at compact desktop width", async ({
   await page.screenshot({
     path: testInfo.outputPath("i18-mixed-summary-900x600.png"),
   });
+  await expectHealthyPage(page, health);
+});
+
+test(CONNECTION_RESULTS_TEST, async ({ page }, testInfo) => {
+  const health = monitorPageHealth(page);
+  await openRendererPage(page, "/auth?view=connections&consumer=opencode");
+
+  const viewports = [
+    { width: 900, height: 600 },
+    { width: 1232, height: 700 },
+  ];
+  const results = page.getByRole("region", { name: "软件连接操作结果" });
+  const detail = page.getByRole("region", {
+    name: "OpenCode Desktop 连接详情",
+  });
+  const detailHeading = detail.getByRole("heading", {
+    name: "OpenCode Desktop",
+  });
+  const detailAction = detail.getByRole("button", {
+    name: "断开",
+    exact: true,
+  });
+  const listItems = [
+    page.getByTestId("managed-auth-consumer-codex"),
+    page.getByTestId("managed-auth-consumer-opencode"),
+  ];
+  const expectReachable = async (control: Locator) => {
+    await expect(control).toBeInViewport({ ratio: 0.95 });
+    await control.click({ trial: true });
+  };
+  const expectFirstScreen = async ({ expanded = false } = {}) => {
+    await detailHeading.scrollIntoViewIfNeeded();
+    await listItems[0].scrollIntoViewIfNeeded();
+    for (const control of [
+      page.getByRole("button", { name: "添加账号" }).first(),
+      page.getByRole("tab", { selected: true }),
+      page.getByRole("heading", { name: "软件连接", exact: true }),
+      detailHeading,
+      ...(expanded ? [] : listItems),
+    ])
+      await expectReachable(control);
+    // Expanded details cap their own height; the panes below scroll
+    // independently instead of the page.
+    const pageHeading = page.getByRole("heading", { name: "账号与认证" });
+    const headingTop = (await pageHeading.boundingBox())!.y;
+    for (const control of [...listItems, detailAction]) {
+      await control.scrollIntoViewIfNeeded();
+      await expectReachable(control);
+    }
+    expect((await pageHeading.boundingBox())!.y).toBe(headingTop);
+    await expectNoHorizontalOverflow(page);
+    await detailHeading.scrollIntoViewIfNeeded();
+    await page
+      .getByRole("heading", { name: "软件连接", exact: true })
+      .scrollIntoViewIfNeeded();
+  };
+  const confirmDisconnect = async () => {
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "断开", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+  };
+  const disconnect = async (consumer: string, label: string) => {
+    await page.getByTestId(`managed-auth-consumer-${consumer}`).click();
+    await page
+      .getByRole("region", { name: `${label} 连接详情` })
+      .getByRole("button", { name: "断开", exact: true })
+      .click();
+    await confirmDisconnect();
+  };
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await expectFirstScreen();
+    await page.screenshot({
+      path: testInfo.outputPath(
+        `connection-results-before-${viewport.width}x${viewport.height}.png`,
+      ),
+    });
+  }
+
+  await disconnect("codex", "Codex");
+  await disconnect("opencode", "OpenCode Desktop");
+  const failed = page.getByRole("article", {
+    name: /^OpenCode Desktop · .+ 操作结果$/u,
+  });
+  const completed = page.getByRole("article", {
+    name: "Codex · OpenAI 操作结果",
+  });
+  const toggle = results.getByRole("button", {
+    name: /查看已完成|收起已完成/u,
+  });
+  await expect(results).toContainText("1 个需要处理，1 个已完成");
+  await expect(failed).toContainText("检测到软件在 FyAgent 外部修改了登录信息");
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    const size = `${viewport.width}x${viewport.height}`;
+
+    await expect(completed).toBeHidden();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(
+      failed.getByRole("button", { name: "重试此连接" }),
+    ).toBeInViewport({ ratio: 1 });
+    await expectFirstScreen();
+    await page.screenshot({
+      path: testInfo.outputPath(`connection-results-collapsed-${size}.png`),
+    });
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(completed).toContainText("此连接操作已完成并回读。");
+    const box = await results.boundingBox();
+    expect(box!.height).toBeLessThanOrEqual(viewport.height * 0.38 + 1);
+    await expectFirstScreen({ expanded: true });
+    await page.screenshot({
+      path: testInfo.outputPath(`connection-results-expanded-${size}.png`),
+    });
+    await toggle.click();
+    await expect(toggle).toBeFocused();
+  }
+
+  await results.getByRole("button", { name: "关闭已完成" }).click();
+  await expect(completed).toHaveCount(0);
+  await expect(failed).toBeVisible();
+  await expect(page.getByRole("tab", { selected: true })).toBeFocused();
+
+  await failed.getByRole("button", { name: "重试此连接" }).click();
+  await confirmDisconnect();
+  await expect(results).toContainText("1 个已完成");
+  await expect(failed).toBeHidden();
   await expectHealthyPage(page, health);
 });

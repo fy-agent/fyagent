@@ -76,6 +76,7 @@ function consumerForAgent(value: string | null): ManagedAuthConsumer | null {
 
 export function AuthPage() {
   const dialogOriginRef = useRef<HTMLElement | null>(null);
+  const overviewStripRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { ports, notify } = useFeatures();
   const { visible, searchParams, setSearchParams } =
@@ -266,7 +267,7 @@ export function AuthPage() {
       return result;
     } catch (cause) {
       const message = managedAuthCommandErrorCopy(cause);
-      setMutationError(message);
+      if (!target) setMutationError(message);
       record("failed", message);
       notify({ tone: "error", title: "账号操作未完成", description: message });
       if (target) await refetchOverview();
@@ -472,7 +473,7 @@ export function AuthPage() {
         </div>
       </header>
 
-      <div className="fy-auth-overview-strip">
+      <div className="fy-auth-overview-strip" ref={overviewStripRef}>
         <FeatureTabs
           id="managed-auth-views"
           label="账号与认证视图"
@@ -532,6 +533,19 @@ export function AuthPage() {
         onRefresh={async () => {
           await refreshSourceOverview();
           invalidateRequestSources();
+        }}
+        onDismissCompleted={(connectionIds) => {
+          setConnectionResults((current) => {
+            const next = { ...current };
+            for (const id of connectionIds) delete next[id];
+            return next;
+          });
+          // The dismiss button unmounts with the completed list.
+          requestAnimationFrame(() =>
+            overviewStripRef.current
+              ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+              ?.focus(),
+          );
         }}
       />
       {overview.reasonCodes.length > 0 ? (
