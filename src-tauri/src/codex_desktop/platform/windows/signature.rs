@@ -243,12 +243,21 @@ struct SignatureEvidence {
     signer: String,
     chain_valid: bool,
     chain_status: Vec<String>,
+    policy: ChainPolicyEvidence,
     // Required, strictly typed metadata only. Status=Valid owns timestamp trust;
     // a timestamp is not required for a currently valid, untimestamped signer.
     #[serde(rename = "timestamped")]
     _timestamped: bool,
     root_subject: String,
     root_thumbprint: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChainPolicyEvidence {
+    revocation_mode: String,
+    revocation_flag: String,
+    verification_flags: String,
 }
 
 fn verify_authenticode(
@@ -290,8 +299,11 @@ fn verify_authenticode(
         // Valid result. Never let chain_valid or timestamp presence mask a
         // revoked, unavailable, unknown or otherwise invalid chain status.
         || evidence.chain_status.iter().any(|status| {
-            !matches!(status.as_str(), "NotTimeValid" | "NotTimeNested")
+            status != "NotTimeValid"
         })
+        || evidence.policy.revocation_mode != "Online"
+        || evidence.policy.revocation_flag != "ExcludeRoot"
+        || evidence.policy.verification_flags != "IgnoreNotTimeValid"
         || evidence.root_subject != ROOT_SUBJECT
         || evidence.root_thumbprint != ROOT_THUMBPRINT
     {
@@ -315,7 +327,7 @@ pub(super) mod tests {
         }
     }
     fn evidence() -> serde_json::Value {
-        serde_json::json!({"status":"Valid", "signer":PUBLISHER, "chain_valid":true, "chain_status":[], "timestamped":false, "root_subject":ROOT_SUBJECT, "root_thumbprint":ROOT_THUMBPRINT})
+        serde_json::json!({"status":"Valid", "signer":PUBLISHER, "chain_valid":true, "chain_status":[], "policy":{"revocation_mode":"Online","revocation_flag":"ExcludeRoot","verification_flags":"IgnoreNotTimeValid"}, "timestamped":false, "root_subject":ROOT_SUBJECT, "root_thumbprint":ROOT_THUMBPRINT})
     }
     fn runner(evidence: serde_json::Value) -> FakeRunner {
         FakeRunner(
@@ -740,7 +752,7 @@ pub(super) mod tests {
         // Certificate-time semantics themselves require Windows runtime evidence.
         let mut valid = evidence();
         valid["timestamped"] = true.into();
-        valid["chain_status"] = serde_json::json!(["NotTimeValid", "NotTimeNested"]);
+        valid["chain_status"] = serde_json::json!(["NotTimeValid"]);
         verify_authenticode(
             &runner(valid.clone()),
             Path::new(POWERSHELL),
@@ -816,6 +828,203 @@ pub(super) mod tests {
         ] {
             assert_chain_status_rejected(&[status]);
         }
+    }
+
+    #[test]
+    fn nested_and_ctl_time_statuses_are_rejected() {
+        for status in ["NotTimeNested", "CtlNotTimeValid"] {
+            assert_chain_status_rejected(&[status]);
+        }
+    }
+
+    #[test]
+    fn chain_status_matching_is_case_sensitive() {
+        for status in ["nottimevalid", "NOTTIMEVALID", "NotTimevalid"] {
+            assert_chain_status_rejected(&[status]);
+        }
+    }
+
+    #[test]
+    fn invalid_chain_status_at_every_array_position_is_rejected() {
+        for position in 0..3 {
+            let mut statuses = ["NotTimeValid"; 3];
+            statuses[position] = "Revoked";
+            assert_chain_status_rejected(&statuses);
+        }
+    }
+
+    #[test]
+    fn mixed_non_string_chain_status_at_every_position_is_rejected() {
+        for value in [
+            serde_json::json!(1),
+            serde_json::json!(null),
+            serde_json::json!(true),
+            serde_json::json!({}),
+        ] {
+            for position in 0..3 {
+                let mut invalid = evidence();
+                let mut statuses = vec![serde_json::json!("NotTimeValid"); 3];
+                statuses[position] = value.clone();
+                invalid["chain_status"] = statuses.into();
+                assert!(verify_authenticode(
+                    &runner(invalid),
+                    Path::new(POWERSHELL),
+                    Path::new("package.msix")
+                )
+                .is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn chain_policy_evidence_requires_exact_online_policy() {
+        for (field, wrong) in [
+            ("revocation_mode", "NoCheck"),
+            ("revocation_mode", "Offline"),
+            ("revocation_flag", "EndCertificateOnly"),
+            ("verification_flags", "IgnoreNotTimeNested"),
+        ] {
+            let mut invalid = evidence();
+            invalid["policy"][field] = wrong.into();
+            assert!(verify_authenticode(
+                &runner(invalid),
+                Path::new(POWERSHELL),
+                Path::new("package.msix")
+            )
+            .is_err());
+        }
+    }
+
+    // Only this cfg(test) module constructs a fixture driver. Production always
+    // executes SCRIPT verbatim, with no switch/environment branch into fixtures.
+    #[cfg(target_os = "windows")]
+    fn execute_script_fixture(
+        script: &str,
+        built: bool,
+        statuses: &[&str],
+        element_count: usize,
+    ) -> CommandOutput {
+        let (functions, _) = script.split_once("# Production entry point:").unwrap();
+        let driver = r#"
+Import-Module -Name "$PSHOME\Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1" -ErrorAction Stop
+$fixture = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $env:FYAGENT_CODEX_SIGNATURE_PATH
+$policy = [System.Security.Cryptography.X509Certificates.X509ChainPolicy]::new()
+Set-ChainPolicy $policy
+$chain = [pscustomobject]@{
+    ChainPolicy = $policy
+    ChainStatus = @(foreach ($status in $fixture.statuses) { [pscustomobject]@{ Status = $status } })
+    ChainElements = @(for ($i = 0; $i -lt $fixture.element_count; $i++) {
+        [pscustomobject]@{ Certificate = [pscustomobject]@{ Subject = $fixture.root_subject; Thumbprint = $fixture.root_thumbprint } }
+    })
+}
+$signature = [pscustomobject]@{
+    Status = 'Valid'
+    SignerCertificate = [pscustomobject]@{ Subject = $fixture.signer }
+    TimeStamperCertificate = $null
+}
+Write-SignatureEvidence $signature $chain $fixture.built
+"#;
+        super::super::command::SystemCommandRunner.run(&CommandInvocation {
+            program: POWERSHELL.into(),
+            arguments: ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", &format!("{functions}\n{driver}")].into_iter().map(Into::into).collect(),
+            package_path: serde_json::json!({
+                "built": built, "statuses": statuses, "element_count": element_count,
+                "signer": PUBLISHER, "root_subject": ROOT_SUBJECT, "root_thumbprint": ROOT_THUMBPRINT,
+            }).to_string().into(),
+        }).expect("native Windows PowerShell fixture execution")
+    }
+
+    #[cfg(target_os = "windows")]
+    fn assert_script_fixture(
+        script: &str,
+        built: bool,
+        statuses: &[&str],
+        count: usize,
+        expected: bool,
+    ) {
+        let output = execute_script_fixture(script, built, statuses, count);
+        assert_eq!(output.status, Some(0));
+        assert!(
+            output.stderr.is_empty(),
+            "{:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!output.truncated);
+        let parsed: SignatureEvidence = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            parsed.chain_valid, expected,
+            "built={built}, statuses={statuses:?}, count={count}"
+        );
+        assert_eq!(parsed.policy.revocation_mode, "Online");
+        assert_eq!(parsed.policy.revocation_flag, "ExcludeRoot");
+        assert_eq!(parsed.policy.verification_flags, "IgnoreNotTimeValid");
+        let normalized: Vec<_> = statuses
+            .iter()
+            .flat_map(|status| status.split(", "))
+            .collect();
+        assert_eq!(parsed.chain_status, normalized);
+        let fake = FakeRunner(Mutex::new(Some(output)), Mutex::new(vec![]));
+        assert_eq!(
+            verify_authenticode(&fake, Path::new(POWERSHELL), Path::new("package.msix")).is_ok(),
+            expected
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn native_script_build_status_matrix_and_json_admission() {
+        for built in [false, true] {
+            for (statuses, expected) in [
+                (vec![], built),
+                (vec!["NotTimeValid"], true),
+                (vec!["NotTimeNested"], false),
+                (vec!["CtlNotTimeValid"], false),
+                (vec!["nottimevalid"], false),
+                (vec!["Revoked"], false),
+                (vec!["OfflineRevocation"], false),
+                (vec!["RevocationStatusUnknown"], false),
+            ] {
+                assert_script_fixture(SCRIPT, built, &statuses, 1, expected);
+                assert_script_fixture(SCRIPT, built, &statuses, 0, false);
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn native_script_splits_combined_flags_and_rejects_invalid_positions() {
+        for built in [false, true] {
+            assert_script_fixture(SCRIPT, built, &["NotTimeValid, NotTimeValid"], 1, true);
+            for statuses in [
+                vec!["NotTimeValid, Revoked"],
+                vec!["RevocationStatusUnknown, OfflineRevocation"],
+                vec!["NotTimeValid, NotTimeNested"],
+                vec!["Revoked", "NotTimeValid", "NotTimeValid"],
+                vec!["NotTimeValid", "Revoked", "NotTimeValid"],
+                vec!["NotTimeValid", "NotTimeValid", "Revoked"],
+            ] {
+                assert_script_fixture(SCRIPT, built, &statuses, 1, false);
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn native_script_nocheck_mutation_is_rejected_by_rust() {
+        let weakened = SCRIPT.replace(
+            "X509RevocationMode]::Online",
+            "X509RevocationMode]::NoCheck",
+        );
+        assert_ne!(weakened, SCRIPT);
+        let output = execute_script_fixture(&weakened, true, &[], 1);
+        assert_eq!(output.status, Some(0));
+        assert!(output.stderr.is_empty());
+        let parsed: SignatureEvidence = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(parsed.policy.revocation_mode, "NoCheck");
+        let fake = FakeRunner(Mutex::new(Some(output)), Mutex::new(vec![]));
+        assert!(
+            verify_authenticode(&fake, Path::new(POWERSHELL), Path::new("package.msix")).is_err()
+        );
     }
 
     fn assert_chain_status_rejected(statuses: &[&str]) {
