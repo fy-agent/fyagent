@@ -833,6 +833,113 @@ fn codex_native_models_drop_a_catalog_read_across_a_login_change() {
 }
 
 #[test]
+fn codex_native_models_require_a_file_store_for_auth_json_attribution() {
+    use super::super::codex_native_models::{
+        CodexNativeAccountBinding, CodexNativeBindingDetail, CodexNativeCatalogStatus,
+    };
+
+    for store in ["file", "keyring", "auto", "ephemeral", "future-store"] {
+        let (service, _dir) = service();
+        let selected = seed_proxy(
+            &service,
+            "native-selected",
+            "acct-selected",
+            ManagedAuthProvider::Openai,
+            false,
+        );
+        write_codex_login(&service, "acct-selected");
+        std::fs::write(
+            service.codex_home().join("config.toml"),
+            format!("cli_auth_credentials_store = \"{store}\"\n"),
+        )
+        .unwrap();
+        let read_count = Arc::new(Mutex::new(0));
+        let calls = read_count.clone();
+        let result = runtime()
+            .block_on(service.get_codex_native_models_with(
+                &selected.identity_id,
+                true,
+                move || {
+                    *calls.lock().unwrap() += 1;
+                    async { Ok(native_catalog()) }
+                },
+            ))
+            .expect("attribution");
+
+        if store == "file" {
+            assert_eq!(result.account_binding, CodexNativeAccountBinding::Matched);
+            assert_eq!(result.catalog_status, CodexNativeCatalogStatus::Ready);
+            assert_eq!(*read_count.lock().unwrap(), 1);
+        } else {
+            assert_eq!(result.account_binding, CodexNativeAccountBinding::Unknown);
+            assert_eq!(
+                result.binding_detail,
+                Some(CodexNativeBindingDetail::UnsupportedCredentialStore),
+                "{store}"
+            );
+            assert_eq!(result.catalog_status, CodexNativeCatalogStatus::NotRead);
+            assert!(result.native_account_id.is_none());
+            assert!(result.models.is_empty());
+            assert_eq!(*read_count.lock().unwrap(), 0);
+            assert_eq!(
+                serde_json::to_value(&result).unwrap()["bindingDetail"],
+                "unsupported_credential_store"
+            );
+        }
+    }
+}
+
+#[test]
+fn codex_native_models_drop_a_catalog_when_the_saved_account_is_removed() {
+    use crate::services::managed_auth::consumers::codex::observe_codex_home;
+
+    let (service, _dir) = service();
+    let selected = seed_proxy(
+        &service,
+        "native-selected",
+        "acct-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    write_codex_login(&service, "acct-selected");
+    let before = observe_codex_home(&service.codex_home()).connection_revision();
+    let saved = service
+        .credentials_for_account(&selected.identity_id)
+        .unwrap();
+    let preview = service
+        .preview_account_removal(&selected.identity_id, &account_revision(&saved[0]))
+        .unwrap();
+
+    let error = runtime()
+        .block_on(
+            service.get_codex_native_models_with(&selected.identity_id, true, || async {
+                service
+                    .remove_account(
+                        &preview.preview_id,
+                        &selected.identity_id,
+                        &preview.expected_revision,
+                    )
+                    .unwrap();
+                Ok(native_catalog())
+            }),
+        )
+        .expect_err("the selected account was removed while reading");
+
+    assert_eq!(
+        error.reason_code,
+        ManagedAuthReasonCode::ConnectionUnavailable
+    );
+    assert_eq!(
+        observe_codex_home(&service.codex_home()).connection_revision(),
+        before,
+        "removing the saved account leaves the native files unchanged"
+    );
+    assert!(service
+        .credentials_for_account(&selected.identity_id)
+        .is_err());
+}
+
+#[test]
 fn codex_native_models_refuse_other_providers_and_unknown_accounts() {
     let (service, _dir) = service();
     let xai = seed_proxy(

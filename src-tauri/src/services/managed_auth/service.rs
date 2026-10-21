@@ -531,6 +531,7 @@ where
             &accounts,
             &before.auth_state,
             cli_reads_managed_home,
+            before.effective_store.allows_native_file_projection(),
         );
         let matched = attribution.binding == CodexNativeAccountBinding::Matched;
         let result = super::ManagedAuthCodexNativeModels::not_read(
@@ -543,6 +544,17 @@ where
             return Ok(result);
         }
         let read = read().await;
+        let account_still_saved = self
+            .credentials_for_account(account_id)
+            .map_err(|_| unavailable())?
+            .into_iter()
+            .any(|row| {
+                row.identity.provider == ManagedAuthProvider::Openai
+                    && row.identity.provider_subject == selected_subject
+            });
+        if !account_still_saved {
+            return Err(unavailable());
+        }
         let read = if observe_codex_home(&codex_home).connection_revision() == revision {
             read
         } else {

@@ -33,6 +33,8 @@ pub enum CodexNativeBindingDetail {
     Unreadable,
     /// FyAgent manages a Codex home other than the CLI's `~/.codex`.
     CustomCodexHome,
+    /// The active store does not establish the CLI login from `auth.json`.
+    UnsupportedCredentialStore,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -103,6 +105,7 @@ pub(crate) fn attribute(
     accounts: &[CredentialWithIdentity],
     auth_state: &CodexNativeAuthState,
     cli_reads_managed_home: bool,
+    cli_uses_auth_file: bool,
 ) -> CodexNativeAttribution {
     let unknown = |detail| CodexNativeAttribution {
         binding: CodexNativeAccountBinding::Unknown,
@@ -111,6 +114,9 @@ pub(crate) fn attribute(
     };
     if !cli_reads_managed_home {
         return unknown(CodexNativeBindingDetail::CustomCodexHome);
+    }
+    if !cli_uses_auth_file {
+        return unknown(CodexNativeBindingDetail::UnsupportedCredentialStore);
     }
     if let Some(live) = live_chatgpt_account_id(auth_state) {
         let native_account_id = accounts
