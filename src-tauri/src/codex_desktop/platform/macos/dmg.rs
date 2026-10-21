@@ -752,6 +752,27 @@ fn discover_single_bundle(
 struct VerifiedBundle {
     info: BundleInfo,
     comparison_version: String,
+    identity: super::FileIdentity,
+}
+
+fn bundle_identity(
+    filesystem: &dyn MacosFilesystem,
+    path: &Path,
+) -> Result<super::FileIdentity, InstallerError> {
+    filesystem.identity(path).map_err(|_| {
+        error(
+            InstallerErrorCode::MacTargetPathConflict,
+            "无法读取应用文件系统身份，已保留应用",
+        )
+    })
+}
+
+fn identity_conflict(first: &Path, second: &Path) -> InstallerError {
+    InstallerError::new(InstallerErrorCode::MacTargetPathConflict).with_diagnostic_message(format!(
+        "应用身份冲突，已停止删除并保留两份应用，请人工检查：{}；{}",
+        first.display(),
+        second.display()
+    ))
 }
 
 enum BundleTransactionPolicy<'a> {
@@ -777,6 +798,7 @@ impl BundleTransactionPolicy<'_> {
     ) -> Result<VerifiedBundle, InstallerError> {
         match self {
             Self::Codex { .. } => Ok(VerifiedBundle {
+                identity: bundle_identity(filesystem, info.bundle_path())?,
                 comparison_version: info.platform_version().canonical(),
                 info,
             }),
@@ -819,6 +841,8 @@ impl BundleTransactionPolicy<'_> {
             return false;
         }
         expected.comparison_version == actual.comparison_version
+            && expected.info.bundle_version() == actual.info.bundle_version()
+            && expected.info.display_version() == actual.info.display_version()
     }
 
     fn matches_release(&self, source: &VerifiedBundle, expected_release_version: &str) -> bool {
@@ -871,6 +895,7 @@ fn inspect_managed_bundle(
         ));
     }
     Ok(VerifiedBundle {
+        identity: bundle_identity(filesystem, info.bundle_path())?,
         info,
         comparison_version: version,
     })
@@ -1041,26 +1066,62 @@ pub(super) fn is_transaction_staging(path: &Path) -> bool {
         .and_then(|name| name.to_str())
         .and_then(|name| name.strip_prefix(STAGING_PREFIX))
         .and_then(|name| name.strip_suffix(STAGING_SUFFIX))
-        .is_some_and(|id| Uuid::parse_str(id).is_ok())
+        .is_some_and(|id| {
+            Uuid::parse_str(id).is_ok()
+                || id.split_once('-').is_some_and(|(time, uuid)| {
+                    time.parse::<u128>().is_ok() && Uuid::parse_str(uuid).is_ok()
+                })
+        })
 }
 
-/// Deterministic, installer-owned name binds a fallback backup to its exact
-/// original basename, including renamed installations. UUID-only legacy names
-/// cannot safely identify a destination and are never guessed or deleted.
+fn transaction_id() -> String {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{timestamp:020}-{}", Uuid::new_v4())
+}
+
 fn recovery_backup_path(target: &Path) -> Result<PathBuf, InstallerError> {
     let name = target
         .file_name()
         .and_then(|name| name.to_str())
-        .filter(|name| {
-            name.ends_with(".app") && !name.starts_with('.') && !name.contains(['/', '\\', '\0'])
-        })
+        .filter(|name| valid_recovery_basename(name))
         .ok_or_else(|| {
             error(
                 InstallerErrorCode::MacTargetPathConflict,
                 "invalid application recovery basename",
             )
         })?;
-    Ok(target.with_file_name(format!("{BACKUP_PREFIX}{name}{BACKUP_SUFFIX}")))
+    Ok(target.with_file_name(format!(
+        "{BACKUP_PREFIX}{name}--{}{BACKUP_SUFFIX}",
+        transaction_id()
+    )))
+}
+
+fn valid_recovery_basename(name: &str) -> bool {
+    name.ends_with(".app") && !name.starts_with('.') && !name.contains(['/', '\\', '\0'])
+}
+
+fn recovery_candidate(path: &Path) -> Option<(&str, u128)> {
+    let name = path
+        .file_name()?
+        .to_str()?
+        .strip_prefix(BACKUP_PREFIX)?
+        .strip_suffix(BACKUP_SUFFIX)?;
+    if let Some((name, id)) = name.rsplit_once("--") {
+        let (timestamp, uuid) = id.split_once('-')?;
+        if valid_recovery_basename(name) && Uuid::parse_str(uuid).is_ok() {
+            return Some((name, timestamp.parse().ok()?));
+        }
+        return None;
+    }
+    // Older deterministic backups sort before timestamped transactions.
+    valid_recovery_basename(name).then_some((name, 0))
+}
+
+pub(super) fn is_transaction_backup(path: &Path) -> bool {
+    recovery_candidate(path).is_some()
 }
 
 fn recover_interrupted_updates(
@@ -1085,55 +1146,47 @@ fn recover_interrupted_updates(
             "recovery directory could not be canonicalized",
         )
     })?;
-    for entry in entries {
-        let Some(name) = entry
-            .file_name()
-            .and_then(|name| name.to_str())
-            .and_then(|name| name.strip_prefix(BACKUP_PREFIX))
-            .and_then(|name| name.strip_suffix(BACKUP_SUFFIX))
-        else {
-            continue;
-        };
-        let target = parent.join(name);
-        if recovery_backup_path(&target).ok().as_deref() != Some(entry.as_path()) {
-            continue;
-        }
+    let mut candidates = entries
+        .into_iter()
+        .filter_map(|entry| {
+            let (name, timestamp) = recovery_candidate(&entry)?;
+            Some((timestamp, parent.join(name), entry))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.2.cmp(&a.2)));
+    for (_, target, entry) in candidates {
         match filesystem.file_kind(&target) {
             Err(error) if is_not_found(error) => {}
-            Ok(_) => continue, // Never overwrite an existing target during recovery.
-            Err(_) => {
-                return Err(error(
-                    InstallerErrorCode::MacCopyFailed,
-                    "recovery target could not be inspected",
-                ))
+            Ok(_) => continue,
+            Err(_) => return Err(identity_conflict(&target, &entry)),
+        }
+        let verified = (|| {
+            ensure_generated_path(filesystem, &parent, &entry, BACKUP_PREFIX, BACKUP_SUFFIX)?;
+            verify_transaction_bundle(runner, filesystem, policy, &entry)
+        })();
+        let verified = match verified {
+            Ok(verified) => verified,
+            Err(reason) => {
+                log::warn!(
+                    "中断更新备份验证失败，已保留、不恢复：{}；原因：{:?}",
+                    entry.display(),
+                    reason
+                );
+                continue;
             }
+        };
+        // Recheck both paths after external verification commands.
+        if filesystem.file_kind(&target).is_ok() {
+            continue;
         }
-        ensure_generated_path(filesystem, &parent, &entry, BACKUP_PREFIX, BACKUP_SUFFIX)?;
-        if filesystem.canonicalize(&entry).ok().as_deref() != Some(entry.as_path()) {
-            return Err(error(
-                InstallerErrorCode::MacTargetPathConflict,
-                "recovery backup escaped its parent",
-            ));
+        target_is_available(filesystem, &target)?;
+        if filesystem.identity(&entry).ok() != Some(verified.identity) {
+            log::warn!("中断更新备份身份变化，已保留：{}", entry.display());
+            continue;
         }
-        // The .backup suffix is intentionally not discoverable as an app.
-        // Restore the exact basename before reading bundle metadata; on a
-        // failed readback keep the backup and report recovery as incomplete.
-        filesystem.rename(&entry, &target).map_err(|_| {
-            error(
-                InstallerErrorCode::MacCopyFailed,
-                "interrupted update backup could not be restored",
-            )
-        })?;
-        if policy
-            .inspect_existing(runner, filesystem, &target)
-            .is_err()
-        {
-            let _ = filesystem.rename(&target, &entry);
-            return Err(error(
-                InstallerErrorCode::InstallationVerifyFailed,
-                "restored backup could not be verified",
-            ));
-        }
+        filesystem
+            .rename_exclusive(&entry, &target)
+            .map_err(|_| identity_conflict(&target, &entry))?;
     }
     Ok(())
 }
@@ -1284,7 +1337,7 @@ where
         target_is_available(filesystem, &target_path).map_err(TransactionFailure::terminal)?;
     }
 
-    let transaction_id = Uuid::new_v4().hyphenated().to_string();
+    let transaction_id = transaction_id();
     let staging = parent.join(format!("{STAGING_PREFIX}{transaction_id}{STAGING_SUFFIX}"));
     let backup = recovery_backup_path(&target_path).map_err(TransactionFailure::terminal)?;
     ensure_generated_path_absent(
@@ -1487,14 +1540,14 @@ where
                     InstallerErrorCode::MacCopyFailed,
                     "new Stable application could not replace the existing bundle",
                 );
-                return Err(if restored.is_ok() {
+                return Err(if let Err(conflict) = restored {
+                    TransactionFailure::RecoveryRequired(conflict)
+                } else {
                     if is_permission_denied(filesystem_error) {
                         TransactionFailure::permission_denied(replacement_error)
                     } else {
                         TransactionFailure::Restored(replacement_error)
                     }
-                } else {
-                    TransactionFailure::RecoveryRequired(replacement_error)
                 });
             }
         }
@@ -1527,15 +1580,12 @@ where
                         expected_backup,
                     },
                 );
-                return Err(if restored.is_ok() {
+                return Err(if let Err(conflict) = restored {
+                    TransactionFailure::RecoveryRequired(conflict)
+                } else {
                     TransactionFailure::Restored(error(
                         InstallerErrorCode::InstallationVerifyFailed,
                         "replacement Stable application could not be verified and was restored",
-                    ))
-                } else {
-                    TransactionFailure::RecoveryRequired(error(
-                        InstallerErrorCode::InstallationVerifyFailed,
-                        "replacement Stable application could not be verified or safely restored",
                     ))
                 });
             }
@@ -1549,19 +1599,16 @@ where
                     parent: &parent,
                     target: &target_path,
                     backup: &backup,
-                    expected_replacement: &installed_bundle,
+                    expected_replacement: &staging_bundle,
                     expected_backup,
                 },
             );
-            return Err(if restored.is_ok() {
+            return Err(if let Err(conflict) = restored {
+                TransactionFailure::RecoveryRequired(conflict)
+            } else {
                 TransactionFailure::Restored(error(
                     InstallerErrorCode::InstallationVerifyFailed,
                     "post-install inventory verification failed and the previous application was restored",
-                ))
-            } else {
-                TransactionFailure::RecoveryRequired(error(
-                    InstallerErrorCode::InstallationVerifyFailed,
-                    "post-install inventory verification failed and recovery could not be completed",
                 ))
             });
         }
@@ -1572,6 +1619,15 @@ where
         };
         // Cleanup can fail partway through a recursive removal. Do not swap a
         // possibly damaged backup over the verified new application on error.
+        require_expected_identity(
+            runner,
+            filesystem,
+            policy,
+            &backup,
+            &target_path,
+            expected_backup,
+        )
+        .map_err(TransactionFailure::RecoveryRequired)?;
         remove_generated_path(filesystem, &parent, &backup, prefix, suffix)
             .map_err(TransactionFailure::RecoveryRequired)?;
         Ok(installed_bundle)
@@ -1603,7 +1659,7 @@ where
         let installed_bundle =
             verify_installed_replacement(runner, filesystem, policy, &target_path, &staging_bundle)
                 .map_err(|_| {
-                    let _ = remove_expected_replacement(
+                    let removed = remove_expected_replacement(
                         runner,
                         filesystem,
                         policy,
@@ -1611,10 +1667,13 @@ where
                         &target_path,
                         &staging_bundle,
                     );
-                    TransactionFailure::Restored(error(
-                        InstallerErrorCode::InstallationVerifyFailed,
-                        "new application could not be verified after installation",
-                    ))
+                    match removed {
+                        Ok(()) => TransactionFailure::Restored(error(
+                            InstallerErrorCode::InstallationVerifyFailed,
+                            "new application could not be verified after installation",
+                        )),
+                        Err(conflict) => TransactionFailure::RecoveryRequired(conflict),
+                    }
                 })?;
         if post_commit_verify(&installed_bundle).is_err() {
             let removed = remove_expected_replacement(
@@ -1625,15 +1684,12 @@ where
                 &target_path,
                 &installed_bundle,
             );
-            return Err(if removed.is_ok() {
+            return Err(if let Err(conflict) = removed {
+                TransactionFailure::RecoveryRequired(conflict)
+            } else {
                 TransactionFailure::Restored(error(
                     InstallerErrorCode::InstallationVerifyFailed,
                     "post-install inventory verification failed and the new application was removed",
-                ))
-            } else {
-                TransactionFailure::RecoveryRequired(error(
-                    InstallerErrorCode::InstallationVerifyFailed,
-                    "post-install inventory verification failed and the new application could not be removed safely",
                 ))
             });
         }
@@ -1700,7 +1756,9 @@ fn verify_installed_replacement(
     expected_source: &VerifiedBundle,
 ) -> Result<VerifiedBundle, InstallerError> {
     let installed = policy.inspect_source(runner, filesystem, target)?;
-    if !policy.copies_are_equivalent(expected_source, &installed) {
+    if expected_source.identity != installed.identity
+        || !policy.copies_are_equivalent(expected_source, &installed)
+    {
         return Err(error(
             InstallerErrorCode::InstallationVerifyFailed,
             "installed application differs from the staged bundle",
@@ -1715,6 +1773,24 @@ fn restore_backup(
     policy: &BundleTransactionPolicy<'_>,
     request: RestoreRequest<'_>,
 ) -> Result<(), InstallerError> {
+    require_expected_identity(
+        runner,
+        filesystem,
+        policy,
+        request.backup,
+        request.target,
+        request.expected_backup,
+    )?;
+    if filesystem.file_kind(request.target).is_ok() {
+        require_expected_identity(
+            runner,
+            filesystem,
+            policy,
+            request.target,
+            request.backup,
+            request.expected_replacement,
+        )?;
+    }
     if request
         .backup
         .file_name()
@@ -1737,12 +1813,22 @@ fn restore_backup(
                 )
             })?;
         let restored = policy.inspect_existing(runner, filesystem, request.target)?;
-        if !policy.copies_are_equivalent(request.expected_backup, &restored) {
+        if request.expected_backup.identity != restored.identity
+            || !policy.copies_are_equivalent(request.expected_backup, &restored)
+        {
             return Err(error(
                 InstallerErrorCode::InstallationVerifyFailed,
                 "restored application identity changed",
             ));
         }
+        require_expected_identity(
+            runner,
+            filesystem,
+            policy,
+            request.backup,
+            request.target,
+            request.expected_replacement,
+        )?;
         // The failed replacement is now in our generated staging directory.
         remove_generated_path(
             filesystem,
@@ -1788,11 +1874,55 @@ fn restore_backup(
             )
         })?;
     let restored = policy.inspect_source(runner, filesystem, request.target)?;
-    if !policy.copies_are_equivalent(request.expected_backup, &restored) {
+    if request.expected_backup.identity != restored.identity
+        || !policy.copies_are_equivalent(request.expected_backup, &restored)
+    {
         return Err(error(
             InstallerErrorCode::InstallationVerifyFailed,
             "restored application did not match the verified backup identity",
         ));
+    }
+    Ok(())
+}
+
+fn verify_transaction_bundle(
+    runner: &dyn CommandRunner,
+    filesystem: &dyn MacosFilesystem,
+    policy: &BundleTransactionPolicy<'_>,
+    path: &Path,
+) -> Result<VerifiedBundle, InstallerError> {
+    let before = bundle_identity(filesystem, path)?;
+    if filesystem.canonicalize(path).ok().as_deref() != Some(path) {
+        return Err(identity_conflict(path, path));
+    }
+    let current = policy.inspect_source(runner, filesystem, path)?;
+    if matches!(policy, BundleTransactionPolicy::Codex { .. }) {
+        if current.info.bundle_identifier() != super::stable_bundle_id() {
+            return Err(identity_conflict(path, path));
+        }
+        super::signature::verify_bundle_signature(runner, path)?;
+    }
+    if before != current.identity || filesystem.identity(path).ok() != Some(before) {
+        return Err(identity_conflict(path, path));
+    }
+    Ok(current)
+}
+
+fn require_expected_identity(
+    runner: &dyn CommandRunner,
+    filesystem: &dyn MacosFilesystem,
+    policy: &BundleTransactionPolicy<'_>,
+    path: &Path,
+    other: &Path,
+    expected: &VerifiedBundle,
+) -> Result<(), InstallerError> {
+    if filesystem.identity(path).ok() != Some(expected.identity) {
+        return Err(identity_conflict(path, other));
+    }
+    let current = verify_transaction_bundle(runner, filesystem, policy, path)
+        .map_err(|_| identity_conflict(path, other))?;
+    if current.identity != expected.identity || !policy.copies_are_equivalent(expected, &current) {
+        return Err(identity_conflict(path, other));
     }
     Ok(())
 }
@@ -1805,13 +1935,14 @@ fn remove_expected_replacement(
     target: &Path,
     expected: &VerifiedBundle,
 ) -> Result<(), InstallerError> {
-    let current = policy.inspect_source(runner, filesystem, target)?;
-    if !policy.copies_are_equivalent(expected, &current) {
-        return Err(error(
-            InstallerErrorCode::InstallationVerifyFailed,
-            "cleanup refused an application that differs from the staged replacement",
-        ));
-    }
+    require_expected_identity(
+        runner,
+        filesystem,
+        policy,
+        target,
+        expected.info.bundle_path(),
+        expected,
+    )?;
     remove_known_child(filesystem, parent, target)
 }
 
@@ -2329,14 +2460,32 @@ mod tests {
                 } else {
                     queue_read_and_validate(&runner, "2");
                 }
-                if rollback && case != "swap_rollback_error" {
-                    if fallback {
-                        queue_read_and_validate(&runner, "2");
+                if rollback {
+                    queue_read_and_validate(&runner, "1"); // backup identity
+                    super::super::signature::tests::queue_valid_signature(&runner);
+                    queue_read_and_validate(&runner, "2"); // replacement before rollback
+                    super::super::signature::tests::queue_valid_signature(&runner);
+                    if case != "swap_rollback_error" {
+                        if fallback {
+                            queue_read_and_validate(&runner, "2"); // delete replacement
+                            super::super::signature::tests::queue_valid_signature(&runner);
+                            queue_read_and_validate(&runner, "1"); // restored
+                        } else {
+                            queue_read_and_validate(&runner, "1"); // restored
+                            queue_read_and_validate(&runner, "2"); // swapped out replacement
+                            super::super::signature::tests::queue_valid_signature(&runner);
+                        }
                     }
+                } else {
+                    queue_read_and_validate(&runner, "1"); // old backup cleanup
+                    super::super::signature::tests::queue_valid_signature(&runner);
+                }
+            } else if matches!(case, "fallback_second_error" | "fallback_restore_error") {
+                queue_read_and_validate(&runner, "1");
+                super::super::signature::tests::queue_valid_signature(&runner);
+                if case == "fallback_second_error" {
                     queue_read_and_validate(&runner, "1");
                 }
-            } else if case == "fallback_second_error" {
-                queue_read_and_validate(&runner, "1");
             }
             let result = install_at_target(
                 &*runner,
@@ -2368,7 +2517,12 @@ mod tests {
                     .arguments()[1]
                     .clone(),
             );
-            let backup = recovery_backup_path(&target_path).unwrap();
+            let backup = filesystem
+                .read_dir(Path::new(USER_APPLICATIONS))
+                .unwrap()
+                .into_iter()
+                .find(|path| is_transaction_backup(path))
+                .unwrap_or_else(|| recovery_backup_path(&target_path).unwrap());
             if case.ends_with("_ok") {
                 assert!(result.is_ok(), "{case}");
                 assert!(
@@ -2401,6 +2555,7 @@ mod tests {
                     assert!(filesystem.contains(backup.join("old-marker")));
                     // Simulate the next installation after a failed/crashed rollback.
                     queue_read_and_validate(&runner, "1");
+                    super::super::signature::tests::queue_valid_signature(&runner);
                     recover_interrupted_updates(
                         &*runner,
                         &*filesystem,
@@ -2461,16 +2616,17 @@ mod tests {
                 "symlink" => filesystem.add_symlink(&backup, "/outside"),
                 "invalid" => runner.queue_failure("/usr/bin/plutil", Some(1), "broken"),
                 "rename_error" => {
+                    queue_read_and_validate(&runner, "1");
+                    super::super::signature::tests::queue_valid_signature(&runner);
                     filesystem.fail_operation("rename", MacosFilesystemErrorKind::PermissionDenied)
                 }
-                _ => queue_read_and_validate(&runner, "1"),
+                _ => {
+                    queue_read_and_validate(&runner, "1");
+                    super::super::signature::tests::queue_valid_signature(&runner);
+                }
             }
             let result = recover_interrupted_updates(&runner, &filesystem, &policy, parent);
-            assert_eq!(
-                result.is_ok(),
-                matches!(scenario, "missing" | "occupied"),
-                "{scenario}"
-            );
+            assert_eq!(result.is_ok(), scenario != "rename_error", "{scenario}");
             if scenario == "missing" {
                 assert!(filesystem.contains(target.join("old-marker")));
                 assert!(!filesystem.contains(&backup));
@@ -3330,6 +3486,7 @@ mod tests {
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "36200000", "5.3.13");
         runner.queue_success("/usr/bin/osascript", b"not_running\n".to_vec());
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "36279234", "5.3.14");
+        queue_managed_read(runner.as_ref(), BUNDLE_ID, "36200000", "5.3.13");
         runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let commits = Arc::new(Mutex::new(0_u8));
         let commits_for_gate = commits.clone();
@@ -3441,6 +3598,9 @@ mod tests {
         runner.queue_success("/usr/bin/osascript", b"not_running\n".to_vec());
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.15", "0.9.15");
         queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.12", "0.9.12");
+        queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.15", "0.9.15"); // replacement before swap
+        queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.12", "0.9.12"); // restored
+        queue_managed_read(runner.as_ref(), BUNDLE_ID, "0.9.15", "0.9.15"); // delete swapped replacement
         runner.queue_success("/usr/bin/hdiutil", Vec::<u8>::new());
         let policy = managed_policy(
             BUNDLE_ID,
@@ -3578,7 +3738,6 @@ mod tests {
         let expected = policy
             .inspect_source(&runner, &filesystem, &target)
             .unwrap();
-        runner.queue_success("/usr/bin/plutil", plist("com.example.changed", "5848"));
 
         assert_eq!(
             restore_backup(
@@ -3595,10 +3754,257 @@ mod tests {
             )
             .unwrap_err()
             .code(),
-            InstallerErrorCode::InstallationVerifyFailed
+            InstallerErrorCode::MacTargetPathConflict
         );
         assert!(filesystem.contains(&target));
         assert!(filesystem.contains(&backup));
+        runner.assert_drained();
+    }
+    #[test]
+    fn cleanup_requires_signature_versions_and_filesystem_identity() {
+        for changed in [
+            "inode",
+            "dev",
+            "bundle_id",
+            "team",
+            "short_version",
+            "build_version",
+            "normalized_build_version",
+            "valid",
+        ] {
+            let fs = FakeFilesystem::new();
+            let parent = Path::new(USER_APPLICATIONS);
+            let path = parent.join("Codex.app");
+            add_bundle(&fs, &path);
+            let runner = FakeRunner::new();
+            let host = host();
+            let policy = BundleTransactionPolicy::Codex { host: &host };
+            queue_read_and_validate(&runner, "1");
+            let mut expected = policy.inspect_source(&runner, &fs, &path).unwrap();
+            match changed {
+                "inode" => expected.identity.inode += 1,
+                "dev" => expected.identity.dev += 1,
+                _ => {
+                    let mut raw: serde_json::Value =
+                        serde_json::from_slice(&plist(stable_bundle_id(), "1")).unwrap();
+                    match changed {
+                        "bundle_id" => raw["CFBundleIdentifier"] = "com.example.other".into(),
+                        "short_version" => raw["CFBundleShortVersionString"] = "changed".into(),
+                        "build_version" => raw["CFBundleVersion"] = "2".into(),
+                        "normalized_build_version" => raw["CFBundleVersion"] = "1.0.0.99".into(),
+                        _ => {}
+                    }
+                    runner.queue_success("/usr/bin/plutil", raw.to_string());
+                    if changed == "team" {
+                        runner.queue_success_stderr(
+                            "/usr/bin/codesign",
+                            "Identifier=com.openai.codex\nTeamIdentifier=WRONG\n",
+                        );
+                    } else if changed != "bundle_id" {
+                        super::super::signature::tests::queue_valid_signature(&runner);
+                    }
+                }
+            }
+            let result =
+                remove_expected_replacement(&runner, &fs, &policy, parent, &path, &expected);
+            assert_eq!(result.is_ok(), changed == "valid", "{changed}");
+            assert_eq!(fs.contains(&path), changed != "valid", "{changed}");
+            if let Err(reason) = result {
+                assert_eq!(reason.code(), InstallerErrorCode::MacTargetPathConflict);
+            }
+            runner.assert_drained();
+        }
+    }
+
+    #[test]
+    fn rollback_preserves_both_apps_when_target_changes_before_or_after_swap() {
+        for after_swap in [false, true] {
+            let fs = Arc::new(FakeFilesystem::new());
+            let parent = Path::new(USER_APPLICATIONS);
+            let target = parent.join("Codex.app");
+            let backup = parent.join(format!(
+                "{STAGING_PREFIX}{}{STAGING_SUFFIX}",
+                transaction_id()
+            ));
+            add_bundle(&fs, &target);
+            add_bundle(&fs, &backup);
+            let runner = FakeRunner::new();
+            let host = host();
+            let policy = BundleTransactionPolicy::Codex { host: &host };
+            queue_read_and_validate(&runner, "2");
+            let replacement = policy.inspect_source(&runner, &*fs, &target).unwrap();
+            queue_read_and_validate(&runner, "1");
+            let old = policy.inspect_source(&runner, &*fs, &backup).unwrap();
+            queue_read_and_validate(&runner, "1");
+            super::super::signature::tests::queue_valid_signature(&runner);
+            if after_swap {
+                queue_read_and_validate(&runner, "2");
+                super::super::signature::tests::queue_valid_signature(&runner);
+                queue_read_and_validate(&runner, "1");
+                let fs = fs.clone();
+                let backup = backup.clone();
+                let reads = std::sync::atomic::AtomicUsize::new(0);
+                runner.set_hook(Arc::new(move |call| {
+                    if call.program() == "/usr/bin/plutil"
+                        && reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 2
+                    {
+                        fs.remove_dir_all(&backup).unwrap();
+                        add_bundle(&fs, &backup);
+                    }
+                }));
+            } else {
+                fs.remove_dir_all(&target).unwrap();
+                add_bundle(&fs, &target);
+            }
+            let reason = restore_backup(
+                &runner,
+                &*fs,
+                &policy,
+                RestoreRequest {
+                    parent,
+                    target: &target,
+                    backup: &backup,
+                    expected_replacement: &replacement,
+                    expected_backup: &old,
+                },
+            )
+            .unwrap_err();
+            assert_eq!(reason.code(), InstallerErrorCode::MacTargetPathConflict);
+            let message = reason.to_dto().details.redacted_message.unwrap();
+            assert!(message.contains("Codex.app") && message.contains(STAGING_PREFIX));
+            assert!(fs.contains(&target) && fs.contains(&backup));
+            runner.assert_drained();
+        }
+    }
+
+    #[test]
+    fn unique_transaction_names_do_not_collide_with_crash_leftovers() {
+        let fs = FakeFilesystem::new();
+        let target = Path::new(USER_APPLICATIONS).join("Codex.app");
+        let first = recovery_backup_path(&target).unwrap();
+        fs.add_dir(&first);
+        let second = recovery_backup_path(&target).unwrap();
+        assert_ne!(first, second);
+        assert!(recovery_candidate(&second).unwrap().1 > 0);
+        ensure_generated_path_absent(
+            &fs,
+            target.parent().unwrap(),
+            &second,
+            BACKUP_PREFIX,
+            BACKUP_SUFFIX,
+        )
+        .unwrap();
+        let staging = target.with_file_name(format!(
+            "{STAGING_PREFIX}{}{STAGING_SUFFIX}",
+            transaction_id()
+        ));
+        assert!(is_transaction_staging(&staging));
+    }
+
+    #[test]
+    fn recovery_selects_newest_verified_complete_backup_and_keeps_rejected_candidates() {
+        for rejected in [
+            "team",
+            "signature",
+            "spctl",
+            "bundle_id",
+            "plist",
+            "executable",
+        ] {
+            let fs = FakeFilesystem::new();
+            let parent = Path::new(USER_APPLICATIONS);
+            let target = parent.join("Codex.app");
+            let candidate = |time| {
+                parent.join(format!(
+                    "{BACKUP_PREFIX}Codex.app--{time}-{}{BACKUP_SUFFIX}",
+                    Uuid::new_v4()
+                ))
+            };
+            let oldest = candidate(1);
+            let good = candidate(2);
+            let bad = candidate(3);
+            for path in [&oldest, &good, &bad] {
+                add_bundle(&fs, path);
+            }
+            fs.add_file(good.join("chosen"));
+            let runner = FakeRunner::new();
+            if rejected == "plist" {
+                runner.queue_failure("/usr/bin/plutil", Some(1), "unreadable");
+            } else {
+                let mut raw: serde_json::Value =
+                    serde_json::from_slice(&plist(stable_bundle_id(), "1")).unwrap();
+                if rejected == "bundle_id" {
+                    raw["CFBundleIdentifier"] = "other".into();
+                }
+                if rejected == "executable" {
+                    raw["CFBundleExecutable"] = "missing".into();
+                }
+                runner.queue_success("/usr/bin/plutil", raw.to_string());
+                match rejected {
+                    "team" => runner.queue_success_stderr(
+                        "/usr/bin/codesign",
+                        "Identifier=com.openai.codex\nTeamIdentifier=WRONG\n",
+                    ),
+                    "signature" | "spctl" => {
+                        runner.queue_success_stderr(
+                            "/usr/bin/codesign",
+                            "Identifier=com.openai.codex\nTeamIdentifier=2DC432GLL2\n",
+                        );
+                        if rejected == "signature" {
+                            runner.queue_failure("/usr/bin/codesign", Some(1), "bad signature");
+                        } else {
+                            runner.queue_success("/usr/bin/codesign", vec![]);
+                            runner.queue_failure("/usr/sbin/spctl", Some(1), "rejected");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            queue_read_and_validate(&runner, "1");
+            super::super::signature::tests::queue_valid_signature(&runner);
+            let host = host();
+            recover_interrupted_updates(
+                &runner,
+                &fs,
+                &BundleTransactionPolicy::Codex { host: &host },
+                parent,
+            )
+            .unwrap();
+            assert!(fs.contains(target.join("chosen")), "{rejected}");
+            assert!(fs.contains(&oldest) && fs.contains(&bad));
+            assert!(!fs.contains(&good));
+            runner.assert_drained();
+        }
+    }
+    #[test]
+    fn recovery_preserves_target_created_during_verification() {
+        let fs = Arc::new(FakeFilesystem::new());
+        let parent = Path::new(USER_APPLICATIONS);
+        let target = parent.join("Codex.app");
+        let backup = recovery_backup_path(&target).unwrap();
+        add_bundle(&fs, &backup);
+        let runner = FakeRunner::new();
+        queue_read_and_validate(&runner, "1");
+        super::super::signature::tests::queue_valid_signature(&runner);
+        let hook_fs = fs.clone();
+        let hook_target = target.clone();
+        runner.set_hook(Arc::new(move |call| {
+            if call.program() == "/usr/sbin/spctl" {
+                add_bundle(&hook_fs, &hook_target);
+                hook_fs.add_file(hook_target.join("concurrent-app"));
+            }
+        }));
+        let host = host();
+        recover_interrupted_updates(
+            &runner,
+            &*fs,
+            &BundleTransactionPolicy::Codex { host: &host },
+            parent,
+        )
+        .unwrap();
+        assert!(fs.contains(target.join("concurrent-app")) && fs.contains(&backup));
+        assert!(fs.rename_exclusive(&backup, &target).is_err());
+        assert!(fs.contains(target.join("concurrent-app")) && fs.contains(&backup));
         runner.assert_drained();
     }
 }

@@ -58,7 +58,7 @@ impl CommandInvocation {
         arguments: impl IntoIterator<Item = OsString>,
         timeout: Duration,
     ) -> Self {
-        debug_assert!(
+        assert!(
             program.starts_with('/'),
             "macOS commands require absolute paths"
         );
@@ -165,6 +165,11 @@ pub struct SystemCommandRunner;
 
 impl CommandRunner for SystemCommandRunner {
     fn run(&self, invocation: &CommandInvocation) -> Result<CommandOutput, CommandRunnerError> {
+        if !invocation.program.starts_with('/') {
+            return Err(CommandRunnerError {
+                kind: CommandRunnerErrorKind::Io,
+            });
+        }
         let mut child = Command::new(invocation.program)
             .args(&invocation.arguments)
             .stdin(Stdio::null())
@@ -198,7 +203,8 @@ impl CommandRunner for SystemCommandRunner {
                 None => thread::sleep(Duration::from_millis(10)),
             }
         };
-        let join_output = |handle: Option<thread::JoinHandle<std::io::Result<(Vec<u8>, bool)>>>| {
+        type OutputReader = thread::JoinHandle<std::io::Result<(Vec<u8>, bool)>>;
+        let join_output = |handle: Option<OutputReader>| {
             handle
                 .ok_or(CommandRunnerError {
                     kind: CommandRunnerErrorKind::Io,
@@ -289,7 +295,15 @@ impl MacosFilesystemError {
 /// Filesystem operations required by the macOS adapter. The implementation
 /// deliberately has no generic arbitrary-path deletion API: all removal is
 /// guarded by the DMG transaction code before it reaches this boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileIdentity {
+    dev: u64,
+    inode: u64,
+}
+
 pub trait MacosFilesystem: Send + Sync {
+    fn identity(&self, path: &Path) -> Result<FileIdentity, MacosFilesystemError>;
+
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, MacosFilesystemError>;
 
     fn read_file_bounded(
@@ -308,6 +322,13 @@ pub trait MacosFilesystem: Send + Sync {
 
     fn rename(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError>;
 
+    /// Recovery must never replace a target created while verification runs.
+    fn rename_exclusive(
+        &self,
+        source: &Path,
+        destination: &Path,
+    ) -> Result<(), MacosFilesystemError>;
+
     /// Atomically exchange two existing same-volume directories. Only an
     /// explicit Unsupported result permits the recoverable rename fallback.
     fn swap(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError>;
@@ -321,6 +342,30 @@ pub trait MacosFilesystem: Send + Sync {
 pub struct StdMacosFilesystem;
 
 impl MacosFilesystem for StdMacosFilesystem {
+    fn identity(&self, path: &Path) -> Result<FileIdentity, MacosFilesystemError> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let metadata = fs::symlink_metadata(path).map_err(macos_filesystem_error_from_io)?;
+            if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                return Err(MacosFilesystemError {
+                    kind: MacosFilesystemErrorKind::Invalid,
+                });
+            }
+            Ok(FileIdentity {
+                dev: metadata.dev(),
+                inode: metadata.ino(),
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = path;
+            Err(MacosFilesystemError {
+                kind: MacosFilesystemErrorKind::Unsupported,
+            })
+        }
+    }
+
     fn directory_writable(&self, path: &Path) -> bool {
         #[cfg(target_os = "macos")]
         {
@@ -384,6 +429,40 @@ impl MacosFilesystem for StdMacosFilesystem {
 
     fn rename(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError> {
         fs::rename(source, destination).map_err(macos_filesystem_error_from_io)
+    }
+
+    fn rename_exclusive(
+        &self,
+        source: &Path,
+        destination: &Path,
+    ) -> Result<(), MacosFilesystemError> {
+        #[cfg(target_os = "macos")]
+        {
+            use std::{ffi::CString, os::unix::ffi::OsStrExt};
+            let path = |p: &Path| {
+                CString::new(p.as_os_str().as_bytes()).map_err(|_| MacosFilesystemError {
+                    kind: MacosFilesystemErrorKind::Invalid,
+                })
+            };
+            let source = path(source)?;
+            let destination = path(destination)?;
+            if unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL) }
+                == 0
+            {
+                Ok(())
+            } else {
+                Err(macos_filesystem_error_from_io(
+                    std::io::Error::last_os_error(),
+                ))
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (source, destination);
+            Err(MacosFilesystemError {
+                kind: MacosFilesystemErrorKind::Unsupported,
+            })
+        }
     }
 
     fn swap(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError> {
@@ -956,8 +1035,17 @@ pub(super) mod test_support {
         MacosFilesystem, MacosFilesystemError, MacosFilesystemErrorKind,
     };
 
+    fn next_identity() -> super::FileIdentity {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        super::FileIdentity {
+            dev: 1,
+            inode: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+
     #[derive(Clone)]
     struct FakeEntry {
+        identity: super::FileIdentity,
         kind: MacosFileKind,
         canonical: PathBuf,
         contents: Vec<u8>,
@@ -1000,6 +1088,7 @@ pub(super) mod test_support {
             state.entries.insert(
                 path.clone(),
                 FakeEntry {
+                    identity: next_identity(),
                     kind: MacosFileKind::File,
                     canonical: path,
                     contents: contents.into(),
@@ -1016,6 +1105,7 @@ pub(super) mod test_support {
             state.entries.insert(
                 path,
                 FakeEntry {
+                    identity: next_identity(),
                     kind: MacosFileKind::Symlink,
                     canonical: canonical_target.as_ref().to_path_buf(),
                     contents: Vec::new(),
@@ -1072,6 +1162,15 @@ pub(super) mod test_support {
     }
 
     impl MacosFilesystem for FakeFilesystem {
+        fn identity(&self, path: &Path) -> Result<super::FileIdentity, MacosFilesystemError> {
+            self.lock()
+                .entries
+                .get(path)
+                .filter(|entry| entry.kind == MacosFileKind::Directory)
+                .map(|entry| entry.identity)
+                .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::Invalid))
+        }
+
         fn directory_writable(&self, path: &Path) -> bool {
             !self
                 .lock()
@@ -1148,6 +1247,15 @@ pub(super) mod test_support {
             move_tree(&mut state.entries, source, destination)
         }
 
+        fn rename_exclusive(
+            &self,
+            source: &Path,
+            destination: &Path,
+        ) -> Result<(), MacosFilesystemError> {
+            // move_tree checks destination absence under the same mutex.
+            self.rename(source, destination)
+        }
+
         fn swap(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError> {
             let mut state = self.lock();
             fail_operation(&mut state, "swap")?;
@@ -1207,6 +1315,7 @@ pub(super) mod test_support {
             entries
                 .entry(ancestor.to_path_buf())
                 .or_insert_with(|| FakeEntry {
+                    identity: next_identity(),
                     kind: MacosFileKind::Directory,
                     canonical: ancestor.to_path_buf(),
                     contents: Vec::new(),
@@ -1231,6 +1340,7 @@ pub(super) mod test_support {
             .map(|(path, entry)| (path.clone(), entry.clone()))
             .collect::<Vec<_>>();
         for (path, mut entry) in copied {
+            entry.identity = next_identity();
             let suffix = path
                 .strip_prefix(source)
                 .expect("copied source path remains below source root");
@@ -1449,25 +1559,65 @@ mod tests {
         );
     }
 
-    #[test]
-    fn macos_command_literals_are_absolute() {
+    // Scan all known command-name literals, regardless of whether they appear
+    // in a call, variable or constant. Runtime checks cover arbitrary names.
+    fn has_bare_command(source: &str) -> bool {
+        let literals = regex::Regex::new(
+            r#""(?:codesign|spctl|osascript|df|sw_vers|open|ditto|hdiutil|plutil|ps|lipo|pgrep)""#,
+        )
+        .unwrap();
         let calls =
             regex::Regex::new(r#"(?:command|Command::new|CommandInvocation::new)\(\s*"([^"]+)""#)
                 .unwrap();
+        literals.is_match(source) || calls.captures_iter(source).any(|c| !c[1].starts_with('/'))
+    }
+
+    #[test]
+    fn macos_command_literals_are_absolute() {
         for source in [
             include_str!("mod.rs"),
             include_str!("bundle.rs"),
             include_str!("dmg.rs"),
             include_str!("signature.rs"),
         ] {
-            for call in calls.captures_iter(source) {
-                assert!(
-                    call[1].starts_with('/'),
-                    "relative macOS command: {}",
-                    &call[1]
-                );
-            }
+            assert!(!has_bare_command(
+                source.split("#[cfg(test)]").next().unwrap()
+            ));
         }
+    }
+
+    #[test]
+    fn command_scan_catches_variables_constants_comments_and_other_runners() {
+        for source in [
+            r#"let cmd = "codesign"; command(cmd, []);"#,
+            r#"const CMD: &str = "spctl"; runner.run(CMD);"#,
+            r#"run_check(runner, bundle, "codesign", args);"#,
+            r#"command(/* comment */ "osascript", []);"#,
+            r#"runner.run("sw_vers");"#,
+            r#"Command::new("arbitrary-relative");"#,
+        ] {
+            assert!(has_bare_command(source), "{source}");
+        }
+        assert!(!has_bare_command(
+            r#"let cmd = "/usr/bin/codesign"; command(cmd, []);"#
+        ));
+    }
+
+    #[test]
+    fn system_runner_rejects_relative_invocation_before_spawn() {
+        use super::CommandRunner;
+        let invocation = super::CommandInvocation {
+            program: "codesign",
+            arguments: vec![],
+            timeout: super::COMMAND_TIMEOUT,
+        };
+        assert_eq!(
+            super::SystemCommandRunner
+                .run(&invocation)
+                .unwrap_err()
+                .kind(),
+            super::CommandRunnerErrorKind::Io
+        );
     }
 
     #[test]

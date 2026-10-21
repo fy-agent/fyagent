@@ -107,11 +107,16 @@ pub(crate) struct BundleInfo {
     bundle_identifier: String,
     executable: String,
     platform_version: PlatformVersion,
+    bundle_version: String,
     display_version: Option<String>,
     display_name: Option<String>,
 }
 
 impl BundleInfo {
+    pub(crate) fn bundle_version(&self) -> &str {
+        &self.bundle_version
+    }
+
     pub(crate) fn bundle_path(&self) -> &Path {
         &self.bundle_path
     }
@@ -398,7 +403,9 @@ pub(crate) fn read_bundle_info(
     }
     let bundle_name = canonical_bundle_path
         .file_name()
-        .filter(|name| has_app_extension(Path::new(name)))
+        .filter(|name| {
+            has_app_extension(Path::new(name)) || super::dmg::is_transaction_backup(Path::new(name))
+        })
         .map(OsStr::to_os_string)
         .ok_or_else(|| {
             error(
@@ -414,12 +421,13 @@ pub(crate) fn read_bundle_info(
     let executable = required_plist_string(raw.executable, "bundle executable")?;
     validate_executable_name(&executable)?;
     let display_name = optional_plist_string(raw.display_name.or(raw.bundle_name), "display name")?;
-    let platform_version = PlatformVersion::parse_mac_bundle(bundle_version).map_err(|_| {
-        error(
-            InstallerErrorCode::PackageParseFailed,
-            "application bundle version is invalid",
-        )
-    })?;
+    let platform_version =
+        PlatformVersion::parse_mac_bundle(bundle_version.clone()).map_err(|_| {
+            error(
+                InstallerErrorCode::PackageParseFailed,
+                "application bundle version is invalid",
+            )
+        })?;
     let executable_path = canonical_bundle_path
         .join("Contents")
         .join("MacOS")
@@ -449,6 +457,7 @@ pub(crate) fn read_bundle_info(
         bundle_identifier,
         executable,
         platform_version,
+        bundle_version,
         display_version: short_version,
         display_name,
     })
