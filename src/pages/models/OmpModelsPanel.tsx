@@ -977,7 +977,7 @@ export function OmpModelsPanel({
         originRef={saveButtonRef}
         size="comfortable"
         title="保存前确认"
-        description="以下内容来自刚才的零写入预览。确认后才会写入，写入前会在同目录保留备份。"
+        description="以下是即将写入的变更。确认后才会写入，写入前会在同目录保留备份。"
         onOpenChange={(open) => {
           if (!open) setPending(null);
         }}

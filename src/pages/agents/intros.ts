@@ -43,7 +43,7 @@ const INTROS: Partial<Record<AgentCatalogId, AgentIntro>> = {
   },
   omp: {
     paragraphs: [
-      "Oh My Pi（omp）是开源终端编码工具，可阅读代码库、编辑文件和运行命令。安装方式见官方页面；FyAgent 只检测已安装的 omp 和版本，不代为安装或启动。",
+      "Oh My Pi（omp）是开源终端编码工具，可阅读代码库、编辑文件和运行命令。请按官方页面安装；这里只检测已安装的 omp 和版本，不代为安装或启动。",
       "内置供应商的账号登录在 omp 中执行 /login。自定义 API 供应商和默认模型可在模型管理中预览后保存，保存后需重新启动当前 omp 会话。",
     ],
   },
