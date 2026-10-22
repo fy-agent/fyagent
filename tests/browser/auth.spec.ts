@@ -200,8 +200,13 @@ test("summarizes mixed connection states at compact desktop width", async ({
   await expectHealthyPage(page, health);
 });
 
-test(CONNECTION_RESULTS_TEST, async ({ page }, testInfo) => {
+test(CONNECTION_RESULTS_TEST, async ({ page, browserName }, testInfo) => {
+  test.slow(
+    browserName === "webkit",
+    "Two viewports with collapsed and expanded checks take about 35s in WebKit",
+  );
   const health = monitorPageHealth(page);
+  const tabKey = browserName === "webkit" ? "Alt+Tab" : "Tab";
   await openRendererPage(page, "/auth?view=connections&consumer=opencode");
 
   const viewports = [
@@ -314,8 +319,20 @@ test(CONNECTION_RESULTS_TEST, async ({ page }, testInfo) => {
     await page.screenshot({
       path: testInfo.outputPath(`connection-results-expanded-${size}.png`),
     });
-    await toggle.click();
+    // Mouse clicks do not focus buttons in WebKit, so focus retention is
+    // checked on the keyboard path: reach the toggle from the results heading,
+    // collapse with Enter, then continue to the next control.
+    await results.getByRole("heading", { name: "软件连接操作结果" }).click();
+    await page.keyboard.press(tabKey);
     await expect(toggle).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(completed).toBeHidden();
+    await expect(toggle).toBeFocused();
+    await page.keyboard.press(tabKey);
+    await expect(
+      results.getByRole("button", { name: "关闭已完成" }),
+    ).toBeFocused();
   }
 
   await results.getByRole("button", { name: "关闭已完成" }).click();
