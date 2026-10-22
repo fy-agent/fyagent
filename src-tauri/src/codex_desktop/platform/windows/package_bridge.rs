@@ -379,6 +379,38 @@ impl ProtectedPackageBridge {
         Ok(bridge)
     }
 
+    /// Resolve the sealed leaf from its retained handle, never from a caller
+    /// path. The original FILE_SHARE_READ handle remains open until settlement.
+    pub(super) fn verify_codex_signature(&self) -> Result<(), InstallerError> {
+        use super::{command, signature};
+        use windows::Win32::Storage::FileSystem::{
+            GetFinalPathNameByHandleW, FILE_NAME_NORMALIZED,
+        };
+        self.recheck()?;
+        let file = self
+            .final_file
+            .as_ref()
+            .ok_or_else(|| bridge_error("暂存包句柄缺失，已拒绝安装"))?;
+        let mut buffer = vec![0u16; 32768];
+        let length = unsafe {
+            GetFinalPathNameByHandleW(
+                HANDLE(file.as_raw_handle()),
+                &mut buffer,
+                FILE_NAME_NORMALIZED,
+            )
+        } as usize;
+        if length == 0 || length >= buffer.len() || buffer[..length].contains(&0) {
+            return Err(bridge_error("无法确认暂存包路径，已拒绝安装"));
+        }
+        let path = PathBuf::from(OsString::from_wide(&buffer[..length]));
+        let program = command::powershell_path().map_err(|_| {
+            InstallerError::new(InstallerErrorCode::PackageSignatureInvalid)
+                .with_diagnostic_message("无法定位系统签名校验工具，已拒绝安装")
+        })?;
+        signature::verify_package(&command::SystemCommandRunner, &program, file, &path)?;
+        self.recheck()
+    }
+
     pub(super) const fn control(&self) -> PackageBridgeControl {
         self.control
     }

@@ -5,6 +5,8 @@
 //! still be named `Codex.app`; the fixed bundle ID is used only to find an
 //! already installed Stable application, not to admit downloaded content.
 
+#![cfg_attr(target_os = "windows", allow(dead_code))]
+
 #[cfg(target_os = "macos")]
 use std::process::Command;
 use std::{
@@ -107,11 +109,16 @@ pub(crate) struct BundleInfo {
     bundle_identifier: String,
     executable: String,
     platform_version: PlatformVersion,
+    bundle_version: String,
     display_version: Option<String>,
     display_name: Option<String>,
 }
 
 impl BundleInfo {
+    pub(crate) fn bundle_version(&self) -> &str {
+        &self.bundle_version
+    }
+
     pub(crate) fn bundle_path(&self) -> &Path {
         &self.bundle_path
     }
@@ -188,7 +195,7 @@ fn read_structured_bundle_plist_on_macos(bundle_path: &Path) -> Option<RawInfoPl
     if meta.len() == 0 || meta.len() > MAX_STRUCTURED_PLIST_JSON_BYTES as u64 * 4 {
         return None;
     }
-    let output = Command::new("plutil")
+    let output = Command::new("/usr/bin/plutil")
         .args(["-convert", "json", "-o", "-", "--"])
         .arg(&info_plist)
         .output()
@@ -288,6 +295,11 @@ pub(crate) fn scan_stable_bundles(
                 "a standard Applications directory could not be enumerated",
             )
         })? {
+            // A crash after an atomic swap can leave the old application in
+            // its UUID staging slot. It is a backup, not a second installation.
+            if super::dmg::is_transaction_staging(&entry) {
+                continue;
+            }
             // Local discovery must not follow an escaped alias just to learn
             // its identity. Downloaded package discovery uses the strict
             // wrapper below and continues to reject the same path shape.
@@ -393,7 +405,9 @@ pub(crate) fn read_bundle_info(
     }
     let bundle_name = canonical_bundle_path
         .file_name()
-        .filter(|name| has_app_extension(Path::new(name)))
+        .filter(|name| {
+            has_app_extension(Path::new(name)) || super::dmg::is_transaction_backup(Path::new(name))
+        })
         .map(OsStr::to_os_string)
         .ok_or_else(|| {
             error(
@@ -409,12 +423,13 @@ pub(crate) fn read_bundle_info(
     let executable = required_plist_string(raw.executable, "bundle executable")?;
     validate_executable_name(&executable)?;
     let display_name = optional_plist_string(raw.display_name.or(raw.bundle_name), "display name")?;
-    let platform_version = PlatformVersion::parse_mac_bundle(bundle_version).map_err(|_| {
-        error(
-            InstallerErrorCode::PackageParseFailed,
-            "application bundle version is invalid",
-        )
-    })?;
+    let platform_version =
+        PlatformVersion::parse_mac_bundle(bundle_version.clone()).map_err(|_| {
+            error(
+                InstallerErrorCode::PackageParseFailed,
+                "application bundle version is invalid",
+            )
+        })?;
     let executable_path = canonical_bundle_path
         .join("Contents")
         .join("MacOS")
@@ -444,6 +459,7 @@ pub(crate) fn read_bundle_info(
         bundle_identifier,
         executable,
         platform_version,
+        bundle_version,
         display_version: short_version,
         display_name,
     })
@@ -472,7 +488,7 @@ fn probe_bundle_identifier(
 
     let output = runner
         .run(&command(
-            "plutil",
+            "/usr/bin/plutil",
             vec![
                 OsString::from("-convert"),
                 OsString::from(PLUTIL_OUTPUT_FORMAT),
@@ -513,7 +529,7 @@ fn read_raw_info_plist(
 
     let output = runner
         .run(&command(
-            "plutil",
+            "/usr/bin/plutil",
             vec![
                 OsString::from("-convert"),
                 OsString::from(PLUTIL_OUTPUT_FORMAT),
@@ -544,9 +560,10 @@ fn read_raw_info_plist(
 }
 
 /// Confirms that an already discovered local Stable bundle is still the same
-/// operational identity. Publisher, signature, Team ID, architecture and
-/// minimum-OS policy remain the responsibility of macOS and are not FyAgent
-/// installer admission checks.
+/// operational identity. The DMG installer separately checks the downloaded
+/// bundle's exact signing identifier and Team ID before copying it, then asks
+/// codesign and Gatekeeper to verify integrity and system trust. Authority names
+/// are not pinned; architecture and minimum-OS policy remain macOS concerns.
 pub(crate) fn validate_stable_bundle(
     _runner: &dyn CommandRunner,
     _filesystem: &dyn MacosFilesystem,
@@ -771,7 +788,7 @@ fn running_applications(
 ) -> Result<Vec<RunningApplication>, InstallerError> {
     let output = runner
         .run(&command(
-            "osascript",
+            "/usr/bin/osascript",
             vec![
                 OsString::from("-l"),
                 OsString::from("JavaScript"),
@@ -833,7 +850,7 @@ fn terminate_runtime(
     };
     let output = runner
         .run(&command(
-            "osascript",
+            "/usr/bin/osascript",
             vec![
                 OsString::from("-l"),
                 OsString::from("JavaScript"),
@@ -932,7 +949,10 @@ pub(crate) fn launch_verified(
     #[cfg(any(not(target_os = "macos"), test))]
     {
         let output = runner
-            .run(&command("open", vec![requested_path.into_os_string()]))
+            .run(&command(
+                "/usr/bin/open",
+                vec![requested_path.into_os_string()],
+            ))
             .map_err(|_| {
                 error(
                     InstallerErrorCode::LaunchFailed,
@@ -1080,7 +1100,7 @@ mod tests {
     }
 
     fn queue_bundle_read(runner: &FakeRunner, plist: Vec<u8>) {
-        runner.queue_success("plutil", plist);
+        runner.queue_success("/usr/bin/plutil", plist);
     }
 
     fn queue_stable_bundle_scan(runner: &FakeRunner, bundle_version: &str) {
@@ -1110,7 +1130,7 @@ mod tests {
         runner.assert_drained();
 
         let invocations = runner.invocations();
-        assert_eq!(invocations[0].program(), "plutil");
+        assert_eq!(invocations[0].program(), "/usr/bin/plutil");
         assert_eq!(invocations[0].arguments()[0], "-convert");
         assert_eq!(invocations[0].arguments()[1], "json");
         assert_eq!(invocations.len(), 1);
@@ -1163,7 +1183,7 @@ mod tests {
         assert!(runner
             .invocations()
             .iter()
-            .all(|invocation| invocation.program() == "plutil"));
+            .all(|invocation| invocation.program() == "/usr/bin/plutil"));
         runner.assert_drained();
     }
 
@@ -1176,7 +1196,7 @@ mod tests {
         add_bundle(&filesystem, &stable);
         let runner = FakeRunner::new();
         runner.queue_success(
-            "plutil",
+            "/usr/bin/plutil",
             br#"{"CFBundleIdentifier":"com.example.unrelated"}"#.to_vec(),
         );
         queue_stable_bundle_scan(&runner, "5848");
@@ -1220,7 +1240,7 @@ mod tests {
             runner
                 .invocations()
                 .iter()
-                .filter(|invocation| invocation.program() == "plutil")
+                .filter(|invocation| invocation.program() == "/usr/bin/plutil")
                 .count(),
             2
         );
@@ -1251,7 +1271,7 @@ mod tests {
         let malformed = Path::new(SYSTEM_APPLICATIONS).join("Archive.app");
         add_bundle(&filesystem, &malformed);
         let runner = FakeRunner::new();
-        runner.queue_success("plutil", b"not-json".to_vec());
+        runner.queue_success("/usr/bin/plutil", b"not-json".to_vec());
 
         assert!(matches!(
             inspect_local(&runner, &filesystem, &host()).unwrap(),
@@ -1274,8 +1294,8 @@ mod tests {
             stable_bundle_id()
         )
         .into_bytes();
-        runner.queue_success("plutil", stable_identity_only.clone());
-        runner.queue_success("plutil", stable_identity_only);
+        runner.queue_success("/usr/bin/plutil", stable_identity_only.clone());
+        runner.queue_success("/usr/bin/plutil", stable_identity_only);
 
         assert_eq!(
             inspect_local(&runner, &filesystem, &host())
@@ -1320,7 +1340,7 @@ mod tests {
         assert!(runner
             .invocations()
             .iter()
-            .all(|invocation| invocation.program() == "plutil"));
+            .all(|invocation| invocation.program() == "/usr/bin/plutil"));
         runner.assert_drained();
     }
 
@@ -1330,7 +1350,7 @@ mod tests {
         let bundle_path = Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app");
         add_bundle(&filesystem, &bundle_path);
         let runner = FakeRunner::new();
-        runner.queue_success("plutil", b"not-json".to_vec());
+        runner.queue_success("/usr/bin/plutil", b"not-json".to_vec());
 
         assert_eq!(
             read_bundle_info(&runner, &filesystem, &bundle_path)
@@ -1356,7 +1376,7 @@ mod tests {
         filesystem.add_dir(&bundle_path);
         let runner = FakeRunner::new();
         runner.queue_success(
-            "osascript",
+            "/usr/bin/osascript",
             format!(
                 "[{{\"bundleIdentifier\":\"{}\",\"bundlePath\":\"{}\"}}]",
                 stable_bundle_id(),
@@ -1372,7 +1392,7 @@ mod tests {
             InstallerErrorCode::MacAppRunning
         );
         let invocation = runner.invocations().pop().unwrap();
-        assert_eq!(invocation.program(), "osascript");
+        assert_eq!(invocation.program(), "/usr/bin/osascript");
         assert_eq!(invocation.arguments()[0], "-l");
         assert_eq!(invocation.arguments()[1], "JavaScript");
         assert_eq!(invocation.arguments()[2], "-e");
@@ -1398,7 +1418,7 @@ mod tests {
 
         for is_finished_launching in [false, true] {
             runner.queue_success(
-                "osascript",
+                "/usr/bin/osascript",
                 serde_json::json!([{
                     "bundleIdentifier": stable_bundle_id(),
                     "bundlePath": bundle_path.to_string_lossy(),
@@ -1423,7 +1443,7 @@ mod tests {
 
         let invocations = runner.invocations();
         assert!(invocations.iter().all(|invocation| {
-            invocation.program() == "osascript"
+            invocation.program() == "/usr/bin/osascript"
                 && invocation.arguments()[3]
                     .to_string_lossy()
                     .contains("isFinishedLaunching")
@@ -1439,7 +1459,7 @@ mod tests {
         filesystem.add_dir(USER_APPLICATIONS);
         let runner = FakeRunner::new();
         queue_stable_bundle_scan(&runner, "5848");
-        runner.queue_success("open", Vec::<u8>::new());
+        runner.queue_success("/usr/bin/open", Vec::<u8>::new());
         let installed = InstalledApplication {
             stable_identity: stable_bundle_id().to_owned(),
             display_name: Some("Codex".to_owned()),
@@ -1452,7 +1472,7 @@ mod tests {
 
         launch_verified(&runner, filesystem.as_ref(), &host(), &installed).unwrap();
         let invocation = runner.invocations().pop().unwrap();
-        assert_eq!(invocation.program(), "open");
+        assert_eq!(invocation.program(), "/usr/bin/open");
         assert_eq!(invocation.arguments(), [bundle_path.as_os_str()]);
         runner.assert_drained();
     }

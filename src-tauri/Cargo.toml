@@ -76,6 +76,7 @@ rquickjs = { version = "0.8", features = ["array-buffer", "classes"] }
 thiserror = "2.0"
 anyhow = "1.0"
 zip = "2.2"
+quick-xml = "=0.41.0"
 serde_yaml = "0.9"
 tempfile = "3"
 url = "2.5"

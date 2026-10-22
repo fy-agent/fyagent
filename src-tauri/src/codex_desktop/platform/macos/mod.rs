@@ -7,6 +7,7 @@
 
 pub(crate) mod bundle;
 pub(crate) mod dmg;
+mod signature;
 
 use std::{
     collections::HashMap,
@@ -57,6 +58,10 @@ impl CommandInvocation {
         arguments: impl IntoIterator<Item = OsString>,
         timeout: Duration,
     ) -> Self {
+        assert!(
+            program.starts_with('/'),
+            "macOS commands require absolute paths"
+        );
         Self {
             program,
             arguments: arguments.into_iter().collect(),
@@ -84,23 +89,35 @@ pub struct CommandOutput {
     status_code: Option<i32>,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
 }
 
 impl CommandOutput {
     pub fn success(stdout: impl Into<Vec<u8>>) -> Self {
-        Self {
-            status_code: Some(0),
-            stdout: bounded_output(stdout.into()),
-            stderr: Vec::new(),
-        }
+        Self::new(Some(0), stdout.into(), Vec::new())
     }
 
     pub fn failure(status_code: Option<i32>, stderr: impl Into<Vec<u8>>) -> Self {
+        Self::new(status_code, Vec::new(), stderr.into())
+    }
+
+    fn new(status_code: Option<i32>, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
             status_code,
-            stdout: Vec::new(),
-            stderr: bounded_output(stderr.into()),
+            stdout_truncated: stdout.len() > MAX_COMMAND_OUTPUT_BYTES,
+            stderr_truncated: stderr.len() > MAX_COMMAND_OUTPUT_BYTES,
+            stdout: bounded_output(stdout),
+            stderr: bounded_output(stderr),
         }
+    }
+
+    pub fn stdout_truncated(&self) -> bool {
+        self.stdout_truncated
+    }
+
+    pub fn stderr_truncated(&self) -> bool {
+        self.stderr_truncated
     }
 
     pub fn is_success(&self) -> bool {
@@ -148,6 +165,11 @@ pub struct SystemCommandRunner;
 
 impl CommandRunner for SystemCommandRunner {
     fn run(&self, invocation: &CommandInvocation) -> Result<CommandOutput, CommandRunnerError> {
+        if !invocation.program.starts_with('/') {
+            return Err(CommandRunnerError {
+                kind: CommandRunnerErrorKind::Io,
+            });
+        }
         let mut child = Command::new(invocation.program)
             .args(&invocation.arguments)
             .stdin(Stdio::null())
@@ -155,26 +177,16 @@ impl CommandRunner for SystemCommandRunner {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(command_runner_error_from_io)?;
-        // Drain stdout/stderr on side threads while waiting. The previous
-        // try_wait loop only called wait_with_output after exit, which deadlocks
-        // once the OS pipe buffer fills (this host: Xcode Info.plist JSON is
-        // 74 KiB). Same drain-while-wait shape as
-        // services::tooling::wait_child_output_with_limit; overflow still
-        // truncates via bounded_output rather than failing the scan.
-        let stdout_handle = child.stdout.take().map(|mut pipe| {
-            thread::spawn(move || {
-                let mut bytes = Vec::new();
-                let _ = pipe.read_to_end(&mut bytes);
-                bytes
-            })
-        });
-        let stderr_handle = child.stderr.take().map(|mut pipe| {
-            thread::spawn(move || {
-                let mut bytes = Vec::new();
-                let _ = pipe.read_to_end(&mut bytes);
-                bytes
-            })
-        });
+        // Keep only the bounded prefix while draining both pipes to EOF so a
+        // verbose child cannot exhaust memory or block on a full pipe.
+        let stdout_handle = child
+            .stdout
+            .take()
+            .map(|pipe| thread::spawn(move || read_command_output(pipe)));
+        let stderr_handle = child
+            .stderr
+            .take()
+            .map(|pipe| thread::spawn(move || read_command_output(pipe)));
         let deadline = Instant::now() + invocation.timeout;
         let status_code = loop {
             match child.try_wait().map_err(command_runner_error_from_io)? {
@@ -191,17 +203,49 @@ impl CommandRunner for SystemCommandRunner {
                 None => thread::sleep(Duration::from_millis(10)),
             }
         };
-        let stdout = stdout_handle
-            .map(|handle| handle.join().unwrap_or_default())
-            .unwrap_or_default();
-        let stderr = stderr_handle
-            .map(|handle| handle.join().unwrap_or_default())
-            .unwrap_or_default();
+        type OutputReader = thread::JoinHandle<std::io::Result<(Vec<u8>, bool)>>;
+        let join_output = |handle: Option<OutputReader>| {
+            handle
+                .ok_or(CommandRunnerError {
+                    kind: CommandRunnerErrorKind::Io,
+                })?
+                .join()
+                .map_err(|_| CommandRunnerError {
+                    kind: CommandRunnerErrorKind::Io,
+                })?
+                .map_err(|_| CommandRunnerError {
+                    kind: CommandRunnerErrorKind::Io,
+                })
+        };
+        // Join both readers even when one reports an error.
+        let stdout = join_output(stdout_handle);
+        let stderr = join_output(stderr_handle);
+        let (stdout, stdout_truncated) = stdout?;
+        let (stderr, stderr_truncated) = stderr?;
         Ok(CommandOutput {
             status_code,
-            stdout: bounded_output(stdout),
-            stderr: bounded_output(stderr),
+            stdout,
+            stderr,
+            stdout_truncated,
+            stderr_truncated,
         })
+    }
+}
+
+fn read_command_output<R: Read>(mut reader: R) -> std::io::Result<(Vec<u8>, bool)> {
+    let mut output = Vec::with_capacity(MAX_COMMAND_OUTPUT_BYTES);
+    let mut buffer = [0u8; 4096];
+    let mut truncated = false;
+    loop {
+        let count = match reader.read(&mut buffer) {
+            Ok(0) => return Ok((output, truncated)),
+            Ok(count) => count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        let keep = count.min(MAX_COMMAND_OUTPUT_BYTES - output.len());
+        output.extend_from_slice(&buffer[..keep]);
+        truncated |= keep < count;
     }
 }
 
@@ -232,6 +276,7 @@ pub enum MacosFilesystemErrorKind {
     NotFound,
     PermissionDenied,
     AlreadyExists,
+    Unsupported,
     Invalid,
     Other,
 }
@@ -250,7 +295,18 @@ impl MacosFilesystemError {
 /// Filesystem operations required by the macOS adapter. The implementation
 /// deliberately has no generic arbitrary-path deletion API: all removal is
 /// guarded by the DMG transaction code before it reaches this boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileIdentity {
+    dev: u64,
+    inode: u64,
+}
+
 pub trait MacosFilesystem: Send + Sync {
+    fn write_record_atomic(&self, path: &Path, data: &[u8]) -> Result<(), MacosFilesystemError>;
+    fn remove_record(&self, path: &Path) -> Result<(), MacosFilesystemError>;
+
+    fn identity(&self, path: &Path) -> Result<FileIdentity, MacosFilesystemError>;
+
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, MacosFilesystemError>;
 
     fn read_file_bounded(
@@ -269,6 +325,17 @@ pub trait MacosFilesystem: Send + Sync {
 
     fn rename(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError>;
 
+    /// Recovery must never replace a target created while verification runs.
+    fn rename_exclusive(
+        &self,
+        source: &Path,
+        destination: &Path,
+    ) -> Result<(), MacosFilesystemError>;
+
+    /// Atomically exchange two existing same-volume directories. Only an
+    /// explicit Unsupported result permits the recoverable rename fallback.
+    fn swap(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError>;
+
     fn remove_dir_all(&self, path: &Path) -> Result<(), MacosFilesystemError>;
 }
 
@@ -278,6 +345,58 @@ pub trait MacosFilesystem: Send + Sync {
 pub struct StdMacosFilesystem;
 
 impl MacosFilesystem for StdMacosFilesystem {
+    fn write_record_atomic(&self, path: &Path, data: &[u8]) -> Result<(), MacosFilesystemError> {
+        use std::io::Write;
+        let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+        let Some(parent) = parent.filter(|_| path.file_name().is_some()) else {
+            return Err(MacosFilesystemError {
+                kind: MacosFilesystemErrorKind::Invalid,
+            });
+        };
+        let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+        let result = (|| {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary)?;
+            file.write_all(data)?;
+            file.sync_all()?;
+            fs::rename(&temporary, path)?;
+            fs::File::open(parent)?.sync_all()
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result.map_err(macos_filesystem_error_from_io)
+    }
+    fn remove_record(&self, path: &Path) -> Result<(), MacosFilesystemError> {
+        fs::remove_file(path).map_err(macos_filesystem_error_from_io)
+    }
+
+    fn identity(&self, path: &Path) -> Result<FileIdentity, MacosFilesystemError> {
+        #[cfg(target_os = "macos")]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let metadata = fs::symlink_metadata(path).map_err(macos_filesystem_error_from_io)?;
+            if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                return Err(MacosFilesystemError {
+                    kind: MacosFilesystemErrorKind::Invalid,
+                });
+            }
+            return Ok(FileIdentity {
+                dev: metadata.dev(),
+                inode: metadata.ino(),
+            });
+        }
+        #[allow(unreachable_code)]
+        {
+            let _ = path;
+            Err(MacosFilesystemError {
+                kind: MacosFilesystemErrorKind::Unsupported,
+            })
+        }
+    }
+
     fn directory_writable(&self, path: &Path) -> bool {
         #[cfg(target_os = "macos")]
         {
@@ -343,6 +462,79 @@ impl MacosFilesystem for StdMacosFilesystem {
         fs::rename(source, destination).map_err(macos_filesystem_error_from_io)
     }
 
+    fn rename_exclusive(
+        &self,
+        source: &Path,
+        destination: &Path,
+    ) -> Result<(), MacosFilesystemError> {
+        #[cfg(target_os = "macos")]
+        {
+            use std::{ffi::CString, os::unix::ffi::OsStrExt};
+            let path = |p: &Path| {
+                CString::new(p.as_os_str().as_bytes()).map_err(|_| MacosFilesystemError {
+                    kind: MacosFilesystemErrorKind::Invalid,
+                })
+            };
+            let source = path(source)?;
+            let destination = path(destination)?;
+            return if unsafe {
+                libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL)
+            } == 0
+            {
+                Ok(())
+            } else {
+                Err(macos_filesystem_error_from_io(
+                    std::io::Error::last_os_error(),
+                ))
+            };
+        }
+        #[allow(unreachable_code)]
+        {
+            let _ = (source, destination);
+            Err(MacosFilesystemError {
+                kind: MacosFilesystemErrorKind::Unsupported,
+            })
+        }
+    }
+
+    fn swap(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError> {
+        #[cfg(target_os = "macos")]
+        {
+            use std::{ffi::CString, os::unix::ffi::OsStrExt};
+            let path = |p: &Path| {
+                CString::new(p.as_os_str().as_bytes()).map_err(|_| MacosFilesystemError {
+                    kind: MacosFilesystemErrorKind::Invalid,
+                })
+            };
+            let source = path(source)?;
+            let destination = path(destination)?;
+            // Both C strings remain alive for the call; RENAME_SWAP never
+            // exposes an interval in which the target name is missing.
+            if unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_SWAP) }
+                == 0
+            {
+                return Ok(());
+            }
+            let error = std::io::Error::last_os_error();
+            if matches!(
+                error.raw_os_error(),
+                Some(libc::ENOTSUP | libc::EOPNOTSUPP | libc::EINVAL | libc::ENOSYS)
+            ) {
+                return Err(MacosFilesystemError {
+                    kind: MacosFilesystemErrorKind::Unsupported,
+                });
+            }
+            return Err(macos_filesystem_error_from_io(error));
+        }
+        #[allow(unreachable_code)]
+        {
+            let _ = (source, destination);
+            Err(MacosFilesystemError {
+                kind: MacosFilesystemErrorKind::Unsupported,
+            })
+        }
+    }
+
     fn remove_dir_all(&self, path: &Path) -> Result<(), MacosFilesystemError> {
         fs::remove_dir_all(path).map_err(macos_filesystem_error_from_io)
     }
@@ -388,7 +580,7 @@ impl DiskSpaceProbe for MacosDiskSpaceProbe {
         let output = self
             .runner
             .run(&command(
-                "df",
+                "/bin/df",
                 vec![OsString::from("-Pk"), path.to_path_buf().into_os_string()],
             ))
             .map_err(|_| DiskSpaceProbeError::Unavailable)?;
@@ -511,7 +703,10 @@ impl MacosHost {
     #[cfg(target_os = "macos")]
     pub fn for_current_host() -> Result<Self, InstallerError> {
         let output = SystemCommandRunner
-            .run(&command("sw_vers", vec![OsString::from("-productVersion")]))
+            .run(&command(
+                "/usr/bin/sw_vers",
+                vec![OsString::from("-productVersion")],
+            ))
             .map_err(|_| {
                 InstallerError::new(InstallerErrorCode::PlatformUnsupported)
                     .with_diagnostic_message("macOS version could not be detected")
@@ -872,8 +1067,17 @@ pub(super) mod test_support {
         MacosFilesystem, MacosFilesystemError, MacosFilesystemErrorKind,
     };
 
+    fn next_identity() -> super::FileIdentity {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        super::FileIdentity {
+            dev: 1,
+            inode: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+
     #[derive(Clone)]
     struct FakeEntry {
+        identity: super::FileIdentity,
         kind: MacosFileKind,
         canonical: PathBuf,
         contents: Vec<u8>,
@@ -883,6 +1087,9 @@ pub(super) mod test_support {
     struct FakeFilesystemState {
         entries: BTreeMap<PathBuf, FakeEntry>,
         create_dir_failures: HashMap<PathBuf, MacosFilesystemErrorKind>,
+        crash_after: Option<usize>,
+        completed_operations: usize,
+        operation_failures: VecDeque<(&'static str, usize, MacosFilesystemErrorKind)>,
     }
 
     /// An in-memory filesystem with component-aware directory moves. Tests
@@ -892,6 +1099,7 @@ pub(super) mod test_support {
         state: Arc<Mutex<FakeFilesystemState>>,
     }
 
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     impl FakeFilesystem {
         pub fn new() -> Self {
             Self::default()
@@ -915,6 +1123,7 @@ pub(super) mod test_support {
             state.entries.insert(
                 path.clone(),
                 FakeEntry {
+                    identity: next_identity(),
                     kind: MacosFileKind::File,
                     canonical: path,
                     contents: contents.into(),
@@ -931,6 +1140,7 @@ pub(super) mod test_support {
             state.entries.insert(
                 path,
                 FakeEntry {
+                    identity: next_identity(),
                     kind: MacosFileKind::Symlink,
                     canonical: canonical_target.as_ref().to_path_buf(),
                     contents: Vec::new(),
@@ -952,6 +1162,31 @@ pub(super) mod test_support {
                 .insert(path.as_ref().to_path_buf(), kind);
         }
 
+        pub fn crash_after_operation(&self, count: usize) {
+            let mut state = self.lock();
+            state.completed_operations = 0;
+            state.crash_after = Some(count);
+        }
+
+        pub fn completed_operations(&self) -> usize {
+            self.lock().completed_operations
+        }
+
+        pub fn fail_operation(&self, operation: &'static str, kind: MacosFilesystemErrorKind) {
+            self.fail_operation_after(operation, 0, kind);
+        }
+
+        pub fn fail_operation_after(
+            &self,
+            operation: &'static str,
+            skip: usize,
+            kind: MacosFilesystemErrorKind,
+        ) {
+            self.lock()
+                .operation_failures
+                .push_back((operation, skip, kind));
+        }
+
         /// Model a successful `ditto` without involving the host filesystem.
         pub fn copy_tree(
             &self,
@@ -961,7 +1196,9 @@ pub(super) mod test_support {
             let source = source.as_ref();
             let destination = destination.as_ref();
             let mut state = self.lock();
-            copy_tree(&mut state.entries, source, destination)
+            copy_tree(&mut state.entries, source, destination)?;
+            completed_operation(&mut state);
+            Ok(())
         }
 
         fn lock(&self) -> std::sync::MutexGuard<'_, FakeFilesystemState> {
@@ -972,29 +1209,72 @@ pub(super) mod test_support {
     }
 
     impl MacosFilesystem for FakeFilesystem {
+        fn write_record_atomic(
+            &self,
+            path: &Path,
+            data: &[u8],
+        ) -> Result<(), MacosFilesystemError> {
+            {
+                let mut state = self.lock();
+                fail_operation(&mut state, "write_record")?;
+                fail_operation(&mut state, "rename_record")?;
+            }
+            self.add_file_with_contents(path, data.to_vec());
+            completed_operation(&mut self.lock());
+            Ok(())
+        }
+        fn remove_record(&self, path: &Path) -> Result<(), MacosFilesystemError> {
+            let mut state = self.lock();
+            fail_operation(&mut state, "remove_record")?;
+            state.entries.remove(path);
+            completed_operation(&mut state);
+            Ok(())
+        }
+
+        fn identity(&self, path: &Path) -> Result<super::FileIdentity, MacosFilesystemError> {
+            let result = {
+                self.lock()
+                    .entries
+                    .get(path)
+                    .filter(|entry| entry.kind == MacosFileKind::Directory)
+                    .map(|entry| entry.identity)
+                    .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::Invalid))
+            };
+            completed_operation(&mut self.lock());
+            result
+        }
+
         fn directory_writable(&self, path: &Path) -> bool {
-            !self
-                .lock()
-                .create_dir_failures
-                .keys()
-                .any(|root| path.starts_with(root))
+            let result = {
+                !self
+                    .lock()
+                    .create_dir_failures
+                    .keys()
+                    .any(|root| path.starts_with(root))
+            };
+            completed_operation(&mut self.lock());
+            result
         }
         fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, MacosFilesystemError> {
-            let state = self.lock();
-            match state.entries.get(path) {
-                Some(FakeEntry {
-                    kind: MacosFileKind::Directory,
-                    ..
-                }) => {}
-                Some(_) => return Err(filesystem_error(MacosFilesystemErrorKind::Invalid)),
-                None => return Err(filesystem_error(MacosFilesystemErrorKind::NotFound)),
-            }
-            Ok(state
-                .entries
-                .keys()
-                .filter(|candidate| candidate.parent() == Some(path))
-                .cloned()
-                .collect())
+            let result = (|| {
+                let state = self.lock();
+                match state.entries.get(path) {
+                    Some(FakeEntry {
+                        kind: MacosFileKind::Directory,
+                        ..
+                    }) => {}
+                    Some(_) => return Err(filesystem_error(MacosFilesystemErrorKind::Invalid)),
+                    None => return Err(filesystem_error(MacosFilesystemErrorKind::NotFound)),
+                }
+                Ok(state
+                    .entries
+                    .keys()
+                    .filter(|candidate| candidate.parent() == Some(path))
+                    .cloned()
+                    .collect())
+            })();
+            completed_operation(&mut self.lock());
+            result
         }
 
         fn read_file_bounded(
@@ -1002,31 +1282,43 @@ pub(super) mod test_support {
             path: &Path,
             max_bytes: u64,
         ) -> Result<Vec<u8>, MacosFilesystemError> {
-            let state = self.lock();
-            let entry = state
-                .entries
-                .get(path)
-                .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))?;
-            if entry.kind != MacosFileKind::File || entry.contents.len() as u64 > max_bytes {
-                return Err(filesystem_error(MacosFilesystemErrorKind::Invalid));
-            }
-            Ok(entry.contents.clone())
+            let result = (|| {
+                let state = self.lock();
+                let entry = state
+                    .entries
+                    .get(path)
+                    .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))?;
+                if entry.kind != MacosFileKind::File || entry.contents.len() as u64 > max_bytes {
+                    return Err(filesystem_error(MacosFilesystemErrorKind::Invalid));
+                }
+                Ok(entry.contents.clone())
+            })();
+            completed_operation(&mut self.lock());
+            result
         }
 
         fn canonicalize(&self, path: &Path) -> Result<PathBuf, MacosFilesystemError> {
-            self.lock()
-                .entries
-                .get(path)
-                .map(|entry| entry.canonical.clone())
-                .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))
+            let result = {
+                self.lock()
+                    .entries
+                    .get(path)
+                    .map(|entry| entry.canonical.clone())
+                    .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))
+            };
+            completed_operation(&mut self.lock());
+            result
         }
 
         fn file_kind(&self, path: &Path) -> Result<MacosFileKind, MacosFilesystemError> {
-            self.lock()
-                .entries
-                .get(path)
-                .map(|entry| entry.kind)
-                .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))
+            let result = {
+                self.lock()
+                    .entries
+                    .get(path)
+                    .map(|entry| entry.kind)
+                    .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))
+            };
+            completed_operation(&mut self.lock());
+            result
         }
 
         fn create_dir_all(&self, path: &Path) -> Result<(), MacosFilesystemError> {
@@ -1039,16 +1331,43 @@ pub(super) mod test_support {
                 return Err(filesystem_error(kind));
             }
             insert_directory_and_ancestors(&mut state.entries, path);
+            completed_operation(&mut state);
             Ok(())
         }
 
         fn rename(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError> {
             let mut state = self.lock();
-            move_tree(&mut state.entries, source, destination)
+            fail_operation(&mut state, "rename")?;
+            move_tree(&mut state.entries, source, destination)?;
+            completed_operation(&mut state);
+            Ok(())
+        }
+
+        fn rename_exclusive(
+            &self,
+            source: &Path,
+            destination: &Path,
+        ) -> Result<(), MacosFilesystemError> {
+            // move_tree checks destination absence under the same mutex.
+            self.rename(source, destination)
+        }
+
+        fn swap(&self, source: &Path, destination: &Path) -> Result<(), MacosFilesystemError> {
+            let mut state = self.lock();
+            fail_operation(&mut state, "swap")?;
+            let mut entries = state.entries.clone();
+            let temporary = Path::new("/__fake_swap_temporary__");
+            move_tree(&mut entries, source, temporary)?;
+            move_tree(&mut entries, destination, source)?;
+            move_tree(&mut entries, temporary, destination)?;
+            state.entries = entries;
+            completed_operation(&mut state);
+            Ok(())
         }
 
         fn remove_dir_all(&self, path: &Path) -> Result<(), MacosFilesystemError> {
             let mut state = self.lock();
+            fail_operation(&mut state, "remove")?;
             if state.entries.get(path).map(|entry| entry.kind) != Some(MacosFileKind::Directory) {
                 return Err(filesystem_error(MacosFilesystemErrorKind::NotFound));
             }
@@ -1061,8 +1380,35 @@ pub(super) mod test_support {
             for path in paths {
                 state.entries.remove(&path);
             }
+            completed_operation(&mut state);
             Ok(())
         }
+    }
+
+    fn completed_operation(state: &mut FakeFilesystemState) {
+        state.completed_operations += 1;
+        if state.crash_after == Some(state.completed_operations) {
+            state.crash_after = None;
+            std::panic::panic_any("simulated filesystem crash");
+        }
+    }
+
+    fn fail_operation(
+        state: &mut FakeFilesystemState,
+        operation: &str,
+    ) -> Result<(), MacosFilesystemError> {
+        if let Some((name, skip, _)) = state.operation_failures.front_mut() {
+            if *name == operation {
+                if *skip > 0 {
+                    *skip -= 1;
+                } else {
+                    return Err(filesystem_error(
+                        state.operation_failures.pop_front().unwrap().2,
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn insert_directory_and_ancestors(entries: &mut BTreeMap<PathBuf, FakeEntry>, path: &Path) {
@@ -1075,6 +1421,7 @@ pub(super) mod test_support {
             entries
                 .entry(ancestor.to_path_buf())
                 .or_insert_with(|| FakeEntry {
+                    identity: next_identity(),
                     kind: MacosFileKind::Directory,
                     canonical: ancestor.to_path_buf(),
                     contents: Vec::new(),
@@ -1082,6 +1429,7 @@ pub(super) mod test_support {
         }
     }
 
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     fn copy_tree(
         entries: &mut BTreeMap<PathBuf, FakeEntry>,
         source: &Path,
@@ -1099,6 +1447,7 @@ pub(super) mod test_support {
             .map(|(path, entry)| (path.clone(), entry.clone()))
             .collect::<Vec<_>>();
         for (path, mut entry) in copied {
+            entry.identity = next_identity();
             let suffix = path
                 .strip_prefix(source)
                 .expect("copied source path remains below source root");
@@ -1181,6 +1530,13 @@ pub(super) mod test_support {
             self.queue(program, CommandOutput::success(stdout));
         }
 
+        pub fn queue_success_stderr(&self, program: &'static str, stderr: impl Into<Vec<u8>>) {
+            self.queue(
+                program,
+                CommandOutput::new(Some(0), Vec::new(), stderr.into()),
+            );
+        }
+
         pub fn queue_failure(
             &self,
             program: &'static str,
@@ -1190,6 +1546,7 @@ pub(super) mod test_support {
             self.queue(program, CommandOutput::failure(status_code, stderr));
         }
 
+        #[cfg_attr(target_os = "windows", allow(dead_code))]
         pub fn set_hook(&self, hook: CommandHook) {
             *self
                 .hook
@@ -1260,6 +1617,125 @@ mod tests {
     use crate::codex_desktop::platform::CodexDesktopPlatform;
 
     #[test]
+    fn output_reader_bounds_storage_but_drains_to_eof() {
+        for size in [
+            0,
+            MAX_COMMAND_OUTPUT_BYTES,
+            MAX_COMMAND_OUTPUT_BYTES + 1,
+            8 * 1024 * 1024,
+        ] {
+            let mut reader = std::io::Cursor::new(vec![b'x'; size]);
+            let (bytes, truncated) = super::read_command_output(&mut reader).unwrap();
+            assert_eq!(bytes, vec![b'x'; size.min(MAX_COMMAND_OUTPUT_BYTES)]);
+            assert_eq!(truncated, size > MAX_COMMAND_OUTPUT_BYTES);
+            assert_eq!(reader.position(), size as u64);
+            assert!(bytes.capacity() <= MAX_COMMAND_OUTPUT_BYTES);
+        }
+    }
+
+    #[test]
+    fn output_reader_propagates_errors_even_after_truncation() {
+        struct Broken;
+        impl std::io::Read for Broken {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("broken pipe"))
+            }
+        }
+        use std::io::Read;
+        let reader = std::io::Cursor::new(vec![0; MAX_COMMAND_OUTPUT_BYTES + 1]).chain(Broken);
+        assert_eq!(
+            super::read_command_output(reader).unwrap_err().kind(),
+            std::io::ErrorKind::Other
+        );
+    }
+
+    #[test]
+    fn output_reader_retries_interrupted_reads() {
+        struct InterruptedOnce(bool);
+        impl std::io::Read for InterruptedOnce {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                if std::mem::replace(&mut self.0, false) {
+                    Err(std::io::ErrorKind::Interrupted.into())
+                } else {
+                    Ok(0)
+                }
+            }
+        }
+        assert_eq!(
+            super::read_command_output(InterruptedOnce(true)).unwrap(),
+            (vec![], false)
+        );
+    }
+
+    // Scan all known command-name literals, regardless of whether they appear
+    // in a call, variable or constant. Runtime checks cover arbitrary names.
+    fn has_bare_command(source: &str) -> bool {
+        let literals = regex::Regex::new(
+            r#""(?:codesign|spctl|osascript|df|sw_vers|open|ditto|hdiutil|plutil|ps|lipo|pgrep)""#,
+        )
+        .unwrap();
+        let calls =
+            regex::Regex::new(r#"(?:command|Command::new|CommandInvocation::new)\(\s*"([^"]+)""#)
+                .unwrap();
+        literals.is_match(source) || calls.captures_iter(source).any(|c| !c[1].starts_with('/'))
+    }
+
+    #[test]
+    fn macos_command_literals_are_absolute() {
+        for source in [
+            include_str!("mod.rs"),
+            include_str!("bundle.rs"),
+            include_str!("dmg.rs"),
+            include_str!("signature.rs"),
+        ] {
+            assert!(!has_bare_command(
+                source.split("#[cfg(test)]").next().unwrap()
+            ));
+        }
+    }
+
+    #[test]
+    fn command_scan_catches_variables_constants_comments_and_other_runners() {
+        for source in [
+            r#"let cmd = "codesign"; command(cmd, []);"#,
+            r#"const CMD: &str = "spctl"; runner.run(CMD);"#,
+            r#"run_check(runner, bundle, "codesign", args);"#,
+            r#"command(/* comment */ "osascript", []);"#,
+            r#"runner.run("sw_vers");"#,
+            r#"Command::new("arbitrary-relative");"#,
+        ] {
+            assert!(has_bare_command(source), "{source}");
+        }
+        assert!(!has_bare_command(
+            r#"let cmd = "/usr/bin/codesign"; command(cmd, []);"#
+        ));
+    }
+
+    #[test]
+    fn system_runner_rejects_relative_invocation_before_spawn() {
+        use super::CommandRunner;
+        let invocation = super::CommandInvocation {
+            program: "codesign",
+            arguments: vec![],
+            timeout: super::COMMAND_TIMEOUT,
+        };
+        assert_eq!(
+            super::SystemCommandRunner
+                .run(&invocation)
+                .unwrap_err()
+                .kind(),
+            super::CommandRunnerErrorKind::Io
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "macOS commands require absolute paths")]
+    fn command_rejects_path_lookup() {
+        let relative_program = "relative-program";
+        super::command(relative_program, Vec::new());
+    }
+
+    #[test]
     fn version_parsing_uses_numeric_components() {
         assert!(MacosVersion::parse("14").unwrap() < MacosVersion::parse("14.1").unwrap());
         assert!(MacosVersion::parse("14.1.9").unwrap() < MacosVersion::parse("14.2").unwrap());
@@ -1275,13 +1751,21 @@ mod tests {
     fn command_output_is_bounded_before_test_diagnostics_can_observe_it() {
         let output = CommandOutput::success(vec![b'x'; MAX_COMMAND_OUTPUT_BYTES + 1024]);
         assert_eq!(output.stdout().len(), MAX_COMMAND_OUTPUT_BYTES);
+        assert!(output.is_success());
+        assert!(output.stdout_truncated());
+        assert!(!output.stderr_truncated());
+        let exact = CommandOutput::success(vec![b'x'; MAX_COMMAND_OUTPUT_BYTES]);
+        assert!(!exact.stdout_truncated());
+        let failure = CommandOutput::failure(Some(1), vec![b'x'; MAX_COMMAND_OUTPUT_BYTES + 1]);
+        assert!(failure.stderr_truncated());
+        assert!(!failure.stdout_truncated());
     }
 
     #[test]
     fn disk_space_probe_uses_fixed_df_arguments_and_caches_the_snapshot() {
         let runner = Arc::new(FakeRunner::new());
         runner.queue_success(
-            "df",
+            "/bin/df",
             b"Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/disk3s1 1000 1 999 1% /\n"
                 .to_vec(),
         );
@@ -1292,7 +1776,7 @@ mod tests {
         runner.assert_drained();
 
         let invocation = runner.invocations().pop().unwrap();
-        assert_eq!(invocation.program(), "df");
+        assert_eq!(invocation.program(), "/bin/df");
         assert_eq!(invocation.arguments()[0], "-Pk");
         assert_eq!(invocation.arguments()[1], "/Applications");
     }
