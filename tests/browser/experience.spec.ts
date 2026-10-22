@@ -30,6 +30,44 @@ test("keeps saved-source switching in Auth and preserves the Agent return route"
   );
 });
 
+test("returns from Codex models to the Auth source view and then to the originating Agent section", async ({
+  page,
+}) => {
+  await installRichTauriFeatureFixture(page);
+  await openRendererPage(
+    page,
+    "/auth?consumer=codex&view=connections&agentReturn=codex&agentSection=models",
+  );
+  const sourceRegion = page.getByRole("region", { name: "切换已保存配置" });
+  await expect(sourceRegion).toBeVisible();
+
+  await page.getByRole("button", { name: "编辑 Codex 模型配置" }).click();
+  await expect(page).toHaveURL(
+    /#\/models\?target=codex&agentReturn=codex&agentSection=models$/,
+  );
+  await expect(page.getByTestId("models-page")).toBeVisible();
+
+  await page.getByRole("button", { name: "管理 Codex 账号与来源" }).click();
+  await expect(page).toHaveURL(
+    /#\/auth\?consumer=codex&view=connections&agentReturn=codex&agentSection=models$/,
+  );
+  await expect(sourceRegion).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "编辑 Codex 模型配置" }),
+  ).toBeVisible();
+
+  const agentsLink = page.getByRole("link", {
+    name: "AI软件配置",
+    exact: true,
+  });
+  await expect(agentsLink).toHaveAttribute(
+    "href",
+    "#/agents?target=codex&section=models",
+  );
+  await agentsLink.click();
+  await expect(page).toHaveURL(/#\/agents\?target=codex&section=models$/);
+});
+
 test("keeps shared hierarchy, rounded navigation and account dialog geometry consistent", async ({
   page,
 }, info) => {
