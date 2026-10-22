@@ -17,7 +17,7 @@ export const GUIDE_PURPOSES: readonly {
 
 const recommendedIds: Record<GuidePurpose, readonly AgentCatalogId[]> = {
   office: ["qoderwork", "trae-work", "workbuddy"],
-  coding: ["grokbuild", "codex", "claude-code", "opencode"],
+  coding: ["grokbuild", "codex", "claude-code", "opencode", "omp"],
   both: ["workbuddy", "codex"],
 };
 
@@ -29,6 +29,7 @@ const reasons: Record<AgentCatalogId, string> = {
   codex: "开发功能、修复问题与检查代码",
   "claude-code": "在终端中理解、修改和测试代码",
   opencode: "在桌面或终端中编写代码",
+  omp: "在终端中使用自定义模型供应商",
 };
 
 import {
@@ -45,7 +46,7 @@ export interface StartingInstructionPreset {
 
 const AGENT_PRESET_ID_MAP: Record<
   GuidePurpose,
-  Record<AgentCatalogId, string>
+  Partial<Record<AgentCatalogId, string>>
 > = {
   office: {
     qoderwork: "fde-knowledge",

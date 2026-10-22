@@ -57,6 +57,15 @@ export const PRODUCT_DIRECTORY = [
     displayName: "OpenCode",
     directoryPriority: "standard",
   },
+  {
+    // Model-provider configuration only: no Skills/MCP/Supported Apps target.
+    agentId: "omp",
+    assignmentId: null,
+    modelTarget: "omp",
+    promptAppId: null,
+    displayName: "Oh My Pi (omp)",
+    directoryPriority: "standard",
+  },
 ] as const;
 
 export const PROMPT_ONLY_DIRECTORY = [
@@ -73,6 +82,7 @@ export const AGENT_CATALOG_IDS = [
   "codex",
   "claude-code",
   "opencode",
+  "omp",
 ] as const;
 
 export const MCP_TARGET_IDS = [
@@ -93,6 +103,7 @@ export const MODEL_DIRECTORY_IDS = [
   "codex",
   "claude",
   "opencode",
+  "omp",
 ] as const;
 
 export const PROMPT_APP_IDS = [
@@ -106,6 +117,15 @@ export const PROMPT_APP_IDS = [
 ] as const;
 
 export type ProductDirectoryEntry = (typeof PRODUCT_DIRECTORY)[number];
+export type AssignableProductDirectoryEntry = Extract<
+  ProductDirectoryEntry,
+  { assignmentId: string }
+>;
+export function isAssignableProductEntry(
+  entry: ProductDirectoryEntry,
+): entry is AssignableProductDirectoryEntry {
+  return entry.assignmentId !== null;
+}
 export type AgentCatalogId = (typeof AGENT_CATALOG_IDS)[number];
 
 export function agentDirectoryPriority(
@@ -126,7 +146,7 @@ export const SUPPORTED_APP_IDS = MCP_TARGET_IDS;
 export const MCP_TARGETS: ReadonlyArray<{
   id: McpTargetId;
   label: string;
-}> = PRODUCT_DIRECTORY.map((entry) => ({
+}> = PRODUCT_DIRECTORY.filter(isAssignableProductEntry).map((entry) => ({
   id: entry.assignmentId,
   label: entry.displayName,
 }));
@@ -142,6 +162,7 @@ export const AGENT_VARIANT_IDS = [
   "codex",
   "claude-code",
   "opencode",
+  "omp",
 ] as const;
 
 export type AgentVariantId = (typeof AGENT_VARIANT_IDS)[number];

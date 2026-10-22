@@ -35,11 +35,14 @@ import {
   loginRequiredConnectionsForAccount,
   formatAuthenticatedAt,
   formatManagedAuthQuotaWindow,
+  isSubscriptionForwardingLabel,
   managedAuthConsumerLabel,
   managedAuthManagerLabel,
   managedAuthProviderLabel,
   requestModeLabel,
   sortManagedAuthAccounts,
+  splitConnectionActions,
+  SUBSCRIPTION_FORWARDING_NOTE,
 } from "./presentation";
 import { summarizeConnections } from "./summary";
 
@@ -102,6 +105,17 @@ function AccountConnection({
   );
   const consumerLabel = managedAuthConsumerLabel(connection.consumer);
   const targetLabel = connection.targetLabel?.trim();
+  const { primary, secondary } = splitConnectionActions(actions);
+  const actionButton = (action: ManagedAuthConnectionAction) => (
+    <Button
+      key={action}
+      dialogOriginRef={originRef}
+      disabled={mutationBusy}
+      onClick={() => onAction(connection, action)}
+    >
+      {accountPageConnectionActionLabel(action, connection)}
+    </Button>
+  );
   return (
     <article className="fy-auth-connection-card">
       <div className="fy-auth-connection-card-heading">
@@ -113,6 +127,20 @@ function AccountConnection({
         </div>
         <StatusBadge {...status} />
       </div>
+      {primary.length > 0 || loginConnectLabel ? (
+        <div className="fy-feature-actions">
+          {primary.map(actionButton)}
+          {loginConnectLabel ? (
+            <Button
+              dialogOriginRef={originRef}
+              disabled={mutationBusy}
+              onClick={onLoginConnect}
+            >
+              {loginConnectLabel}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       <dl className="fy-feature-definition">
         <DefinitionRow label="当前请求">
           {requestModeLabel(
@@ -131,29 +159,12 @@ function AccountConnection({
           {managedAuthManagerLabel(connection.credentialManager)}
         </DefinitionRow>
       </dl>
+      {isSubscriptionForwardingLabel(connection.requestProviderLabel) ? (
+        <InlineNotice tone="info">{SUBSCRIPTION_FORWARDING_NOTE}</InlineNotice>
+      ) : null}
       <ReasonList reasons={connection.reasonCodes} />
-      {actions.length > 0 || loginConnectLabel ? (
-        <div className="fy-feature-actions">
-          {actions.map((action) => (
-            <Button
-              key={action}
-              dialogOriginRef={originRef}
-              disabled={mutationBusy}
-              onClick={() => onAction(connection, action)}
-            >
-              {accountPageConnectionActionLabel(action, connection)}
-            </Button>
-          ))}
-          {loginConnectLabel ? (
-            <Button
-              dialogOriginRef={originRef}
-              disabled={mutationBusy}
-              onClick={onLoginConnect}
-            >
-              {loginConnectLabel}
-            </Button>
-          ) : null}
-        </div>
+      {secondary.length > 0 ? (
+        <div className="fy-feature-actions">{secondary.map(actionButton)}</div>
       ) : null}
     </article>
   );
@@ -212,6 +223,7 @@ function AccountDetail({
     <CatalogDetail
       ariaLabel={`${account.login} 账号详情`}
       className="fy-auth-detail"
+      scrollKey={account.accountId}
     >
       <Button className="fy-auth-mobile-back" onClick={onBack}>
         返回账号列表
@@ -234,6 +246,48 @@ function AccountDetail({
       </header>
 
       <ReasonList reasons={account.reasonCodes} />
+
+      {connectableConnections.length > 0 ||
+      loginRequiredConnections.length > 0 ? (
+        <section
+          className="fy-auth-section"
+          aria-labelledby="fy-auth-account-connect"
+        >
+          <div className="fy-auth-section-heading">
+            <div>
+              <h3 id="fy-auth-account-connect">连接到软件</h3>
+              <p>登录不会自动连接软件。</p>
+            </div>
+          </div>
+          <div className="fy-auth-connection-grid">
+            {connectableConnections.map((connection) => (
+              <AccountConnection
+                key={connection.connectionId}
+                connection={connection}
+                mutationBusy={mutationBusy}
+                actions={accountPageConnectionActions(
+                  connection,
+                  account.accountId,
+                )}
+                onAction={onConnectionAction}
+                originRef={originRef}
+              />
+            ))}
+            {loginRequiredConnections.map((connection) => (
+              <AccountConnection
+                key={connection.connectionId}
+                connection={connection}
+                mutationBusy={mutationBusy}
+                actions={[]}
+                onAction={onConnectionAction}
+                loginConnectLabel={`连接 ${managedAuthConsumerLabel(connection.consumer)}`}
+                originRef={originRef}
+                onLoginConnect={() => onConnectViaLogin(connection)}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section
         className="fy-auth-section"
@@ -320,48 +374,6 @@ function AccountDetail({
           </div>
         )}
       </section>
-
-      {connectableConnections.length > 0 ||
-      loginRequiredConnections.length > 0 ? (
-        <section
-          className="fy-auth-section"
-          aria-labelledby="fy-auth-account-connect"
-        >
-          <div className="fy-auth-section-heading">
-            <div>
-              <h3 id="fy-auth-account-connect">连接到软件</h3>
-              <p>登录不会自动连接软件。</p>
-            </div>
-          </div>
-          <div className="fy-auth-connection-grid">
-            {connectableConnections.map((connection) => (
-              <AccountConnection
-                key={connection.connectionId}
-                connection={connection}
-                mutationBusy={mutationBusy}
-                actions={accountPageConnectionActions(
-                  connection,
-                  account.accountId,
-                )}
-                onAction={onConnectionAction}
-                originRef={originRef}
-              />
-            ))}
-            {loginRequiredConnections.map((connection) => (
-              <AccountConnection
-                key={connection.connectionId}
-                connection={connection}
-                mutationBusy={mutationBusy}
-                actions={[]}
-                onAction={onConnectionAction}
-                loginConnectLabel={`连接 ${managedAuthConsumerLabel(connection.consumer)}`}
-                originRef={originRef}
-                onLoginConnect={() => onConnectViaLogin(connection)}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       {canRemove ? (
         <div className="fy-feature-actions">

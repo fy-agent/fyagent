@@ -31,6 +31,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     managedAuth: {
       getOverview: rejectNativeOnly,
       getAccountQuota: rejectNativeOnly,
+      getOpenAiModels: rejectNativeOnly,
+      getCodexNativeModels: rejectNativeOnly,
       startLogin: rejectNativeOnly,
       getLoginSession: rejectNativeOnly,
       cancelLogin: rejectNativeOnly,
@@ -166,6 +168,12 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       checkModel: rejectNativeOnly,
       getModelProbeStatus: rejectNativeOnly,
       cancelModelProbe: rejectNativeOnly,
+    },
+    ompModels: {
+      readConfig: rejectNativeOnly,
+      discoverCli: rejectNativeOnly,
+      previewSave: rejectNativeOnly,
+      applySave: rejectNativeOnly,
     },
     skills: {
       getInstalled: async () => [],

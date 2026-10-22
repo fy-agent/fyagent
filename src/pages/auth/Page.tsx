@@ -76,6 +76,7 @@ function consumerForAgent(value: string | null): ManagedAuthConsumer | null {
 
 export function AuthPage() {
   const dialogOriginRef = useRef<HTMLElement | null>(null);
+  const overviewStripRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { ports, notify } = useFeatures();
   const { visible, searchParams, setSearchParams } =
@@ -202,13 +203,18 @@ export function AuthPage() {
   );
 
   const commitMutationResult = useCallback(
-    (result: ManagedAuthMutationResult, successTitle: string) => {
+    (
+      result: ManagedAuthMutationResult,
+      successTitle: string,
+      announce: boolean,
+    ) => {
       queryClient.setQueryData(
         featureKeys.managedAuthOverview,
         result.overview,
       );
       invalidateRequestSources();
       setMutationError(null);
+      if (!announce) return;
       notify({
         tone: result.outcome === "completed" ? "success" : "info",
         title: successTitle,
@@ -248,7 +254,9 @@ export function AuthPage() {
     record("pending", "正在处理此连接并读取结果…");
     try {
       const result = await action();
-      commitMutationResult(result, successTitle);
+      // Connection actions report in the page results region; a second,
+      // global toast would cover the next action's entry on small windows.
+      commitMutationResult(result, successTitle, !target);
       const connection = result.overview.connections.find(
         (item) => item.connectionId === target?.connection.connectionId,
       );
@@ -257,19 +265,24 @@ export function AuthPage() {
         result.outcome === "completed"
           ? connection?.pendingRestart
             ? "此连接已保存并回读，需要重新启动软件后使用。"
-            : target?.action === "refresh"
-              ? "已重新读取此连接的状态。"
-              : "此连接操作已完成并回读。"
+            : "此连接操作已完成并回读。"
           : (managedAuthReasonCopy(result.reasonCode) ??
               "此连接尚未确认完成，请检查当前状态后重试。"),
       );
       return result;
     } catch (cause) {
       const message = managedAuthCommandErrorCopy(cause);
-      setMutationError(message);
       record("failed", message);
-      notify({ tone: "error", title: "账号操作未完成", description: message });
-      if (target) await refetchOverview();
+      if (target) {
+        await refetchOverview();
+      } else {
+        setMutationError(message);
+        notify({
+          tone: "error",
+          title: "账号操作未完成",
+          description: message,
+        });
+      }
       return null;
     } finally {
       mutationBusyRef.current = false;
@@ -472,7 +485,7 @@ export function AuthPage() {
         </div>
       </header>
 
-      <div className="fy-auth-overview-strip">
+      <div className="fy-auth-overview-strip" ref={overviewStripRef}>
         <FeatureTabs
           id="managed-auth-views"
           label="账号与认证视图"
@@ -532,6 +545,19 @@ export function AuthPage() {
         onRefresh={async () => {
           await refreshSourceOverview();
           invalidateRequestSources();
+        }}
+        onDismissCompleted={(connectionIds) => {
+          setConnectionResults((current) => {
+            const next = { ...current };
+            for (const id of connectionIds) delete next[id];
+            return next;
+          });
+          // The dismiss button unmounts with the completed list.
+          requestAnimationFrame(() =>
+            overviewStripRef.current
+              ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+              ?.focus(),
+          );
         }}
       />
       {overview.reasonCodes.length > 0 ? (

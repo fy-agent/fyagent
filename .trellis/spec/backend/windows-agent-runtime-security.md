@@ -110,6 +110,31 @@ No generic command/path helper exists. Public invalid-EXE errors map to
 - Closed desktop Agent EXE install uses its own protected package bridge.
   Trusted desktop launch is not an install bypass.
 
+### Closed Codex model-catalog process lifetime
+
+- The ordinary-user `codex-models` action owns one anonymous, non-inheritable
+  kill-on-close Job Object for its fixed `app-server` invocation. The helper
+  itself remains outside this job.
+- Launch the resolved absolute application suspended, allow inheritance only
+  of the three explicit stdio handles, assign the process to the job, and only
+  then resume its primary thread. Assignment or resume failure is terminal;
+  no uncontained fallback or breakaway is allowed.
+- Preserve account attribution by setting `CODEX_HOME` to the observed
+  ordinary-user profile's `.codex` directory. Never mutate process-wide
+  environment to achieve this per-child override.
+- Closing stdin grants only the bounded EOF grace. Every settlement closes
+  the job even if the outer `.cmd` shim has exited, so descendants cannot
+  retain a live app-server or inherited pipe. Never terminate by process name.
+- A `.cmd`/`.bat` candidate must be an ordinary absolute DOS path without
+  controls, quotes or `% ! ^ & | < >`; quoted paths with spaces remain valid.
+  Quoting alone does not stop cmd's environment expansion and CALL's second
+  parse. The runtime cannot substitute another discovered target after a
+  rejected selected path.
+- Native fixture tests must demonstrate successful and timed-out catalog
+  settlement kills the owned child/grandchild while a separately launched
+  sentinel survives. This does not establish packaged-helper identity or
+  real-account model-directory acceptance.
+
 ### Read-only installation preflight
 
 The closed Grok/Claude `preflight` action uses the same pinned helper, frozen

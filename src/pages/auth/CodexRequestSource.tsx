@@ -9,6 +9,10 @@ import {
 } from "../../shared/features/agent-navigation";
 import { Button } from "../../shared/ui/Button";
 import { InlineNotice, Spinner } from "../../shared/ui/primitives";
+import { SUBSCRIPTION_FORWARDING_NOTE } from "./presentation";
+
+/** Provider ids minted by FyAgent's ChatGPT subscription forwarding for Codex. */
+const CHATGPT_FORWARDING_PROVIDER_PREFIX = "fyagent-openai-codex-";
 
 /** Account management owns source selection; Models still owns configuration editing. */
 export function CodexRequestSource({
@@ -45,6 +49,11 @@ export function CodexRequestSource({
           无法读取 Codex 已保存配置。
           <Button onClick={() => void summary.refetch()}>重试读取配置</Button>
         </InlineNotice>
+      ) : null}
+      {summary.data?.currentId?.startsWith(
+        CHATGPT_FORWARDING_PROVIDER_PREFIX,
+      ) ? (
+        <InlineNotice tone="info">{SUBSCRIPTION_FORWARDING_NOTE}</InlineNotice>
       ) : null}
       {summary.data ? (
         <ChangePlanWorkspace

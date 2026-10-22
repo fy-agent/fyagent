@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-import type { ProductDirectoryEntry } from "../../shared/features/directory";
+import type { AssignableProductDirectoryEntry } from "../../shared/features/directory";
 import {
   buildMcpSearchText,
   buildSkillSearchText,
@@ -60,7 +60,7 @@ export function AgentSkillsSection({
   entry,
   onOpenManagement,
 }: {
-  entry: ProductDirectoryEntry;
+  entry: AssignableProductDirectoryEntry;
   onOpenManagement: () => void;
 }) {
   const { ports } = useFeatures();
@@ -214,7 +214,7 @@ export function AgentMcpSection({
   entry,
   onOpenManagement,
 }: {
-  entry: ProductDirectoryEntry;
+  entry: AssignableProductDirectoryEntry;
   onOpenManagement: () => void;
 }) {
   const { ports } = useFeatures();

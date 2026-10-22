@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "0f987a65caec6843921548368aec36caf1348686666d04605ad70b4ceeac19da"
+      "54de27c23ef27ba2e3423ddb917c7d1ac2c9837a42c2b853e4e0cb254f3ce63c"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "8670bda5e47fa4d9ebd1fd439935c9a2544b829bc3510a4b0e1178ae09058b1f"
+      "8da056f42f80f057d775a8a165e60dc5bc775475249682a9e6b9236935da8aea"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "a033fcb1c341851dc19c6d410a2d54b7171241976b59c5c81d184aca2e5803fe"
+      "b98241364167e9258b71c2a52b052e2313019ea4526ed4b1710468c2ecf6a5c5"
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
@@ -135,7 +135,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
-      "acdddcc1ed372213201fb4d58e6af151c55b08ac0fb00c1f8f61ba8254ab1e86"
+      "29333c4731dc529fbad5dc4f967bb61e561a87d67f4304b4edee9a64f561c7cf"
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "8981762f1d0dc0705fb2f5383bd4a94e1890c4aeda365bbfe2d6bb0cd6d7e75e"
+      "5d5f69ed04c115be3a589c30f56b8f6f28711d3fb32ca3b5197eff87f0ae71a6"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -220,6 +220,10 @@
     [
       "src-tauri/src/mode/state.rs",
       "f68cb1883c91dcab2cdc2dfe0fe1cb66c4fa469596b1f9252709e331ecd1af06"
+    ],
+    [
+      "src-tauri/src/omp_config/mod.rs",
+      "b158f63ff46438dd9272ddf10adc3479bf2c6933405dc0d4d2102d39ce69b8d3"
     ],
     [
       "src-tauri/src/opencode_config.rs",
@@ -278,6 +282,10 @@
       "0fe4bdf4d48e69c43950b8ddfdf8bd8f8df7124dbfae5f32b9fb88057dbc126a"
     ],
     [
+      "src-tauri/src/services/managed_auth/codex_native_models.rs",
+      "c86a19e6f87eb232cdccf7814f995a5fb32602b76766c5db8baf0b457ba9cfe5"
+    ],
+    [
       "src-tauri/src/services/managed_auth/consumers/grok.rs",
       "599c68898d43eb587d32ade0f430c48d4d21ecbc58b64a504e148d060fcbfbb9"
     ],
@@ -295,7 +303,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/service.rs",
-      "2b3768a8010376bc244a49f71107840e3168d6f4e636b5e8eb7f5e9389e58c9e"
+      "b680a5eab25fa6d3431cb70907648e5567bd021876b2e9d730d32c2126867cc6"
     ],
     [
       "src-tauri/src/services/managed_auth/subscription_tests.rs",
@@ -375,7 +383,7 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "f3cf8fa9ba0ca67a99ac79135b6d6bb05c945f7cf8a8548a32b34d47a477e855"
+      "2950d80fb21b137fb93c78493de72c69556afd9fc9ed797c16a15a8e25e9733d"
     ],
     [
       "src-tauri/src/services/tooling/claude.rs",
@@ -535,11 +543,11 @@
     ],
     [
       "src-tauri/user-helper/Cargo.toml",
-      "b35f02ecde55b82598a22677ceb70e59f5e9b856a037f0904d2d6c591b22627e"
+      "0d01d8633895922d53d5836ef2b59652c0b84a15098e0526ab57bd12e05a37c0"
     ],
     [
       "src-tauri/user-helper/src/cli.rs",
-      "957b9200610a03d8a856dfe1ac502d8613273c008b582b63955bcba58301c3c4"
+      "b08aea29dbf4a5bb4df4b24acd088895fbcab78de14b81f2922ebace06245ca8"
     ],
     [
       "src-tauri/user-helper/src/closed_dep.rs",
@@ -555,15 +563,19 @@
     ],
     [
       "src-tauri/user-helper/src/main.rs",
-      "db936818fd317eba4c13cb0ef82d8ee5bc2da54b29c58b7775bf2268176ac63a"
+      "a8f7e0a11e2355efa1b34496fbd27a08bbe235b42520dea0668a7ac6c84dd7ef"
+    ],
+    [
+      "src-tauri/user-helper/src/omp.rs",
+      "aaf4e8e042fcf343f3dec0c3fd742ca848b6122c9e73860708153890f1de7e86"
     ],
     [
       "tests/architecture/rustModuleBoundaries.test.ts",
-      "ae213a00ccbf36082be9e90ca3dd507d3f44c93e461cf210cc02908cbc9311c1"
+      "96a1cefb897a743d314a7c4578fcb766386c0bedccecbca96bb6cd8a4ceeaef6"
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "a4c6ec2291051988b741017a3dcb2aad48b07053f7334646689e8508d0f8a856"
+      "6e507a608d27dacf59925568c9871d4f2adddf60fb47d2dd6ab4da23254848f7"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",

@@ -38,6 +38,90 @@ pub async fn fetch_models_with_token(
     Ok(parse_models(value))
 }
 
+/// Upper bound on picker rows accepted from one catalog response.
+const MAX_LISTED_MODELS: usize = 500;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ListedModelsError {
+    /// The account token was rejected; the user has to log in again.
+    Unauthorized,
+    /// Network, redirect or non-success status.
+    Unavailable,
+    /// The body is not the Codex `{ "models": [...] }` catalog.
+    InvalidResponse,
+}
+
+/// The account's own Codex picker: the rows the official client lists.
+/// Rows marked `visibility: hide|none` stay out, as they do in Codex.
+pub(crate) async fn fetch_listed_models_with_token(
+    token: &str,
+    account_id: &str,
+) -> Result<Vec<String>, ListedModelsError> {
+    let client = crate::proxy::http_client::get();
+    let response = build_models_request(&client, token, account_id)
+        .send()
+        .await
+        .map_err(|_| ListedModelsError::Unavailable)?;
+    if response.url().host_str() != Some("chatgpt.com") {
+        return Err(ListedModelsError::Unavailable);
+    }
+    let status = response.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(ListedModelsError::Unauthorized);
+    }
+    if !status.is_success() {
+        return Err(ListedModelsError::Unavailable);
+    }
+    let value: Value = response
+        .json()
+        .await
+        .map_err(|_| ListedModelsError::InvalidResponse)?;
+    parse_listed_models(&value)
+}
+
+fn parse_listed_models(value: &Value) -> Result<Vec<String>, ListedModelsError> {
+    let entries = value
+        .get("models")
+        .and_then(Value::as_array)
+        .ok_or(ListedModelsError::InvalidResponse)?;
+    let mut ids: Vec<String> = Vec::new();
+    for entry in entries {
+        let obj = entry
+            .as_object()
+            .ok_or(ListedModelsError::InvalidResponse)?;
+        if matches!(
+            obj.get("visibility").and_then(Value::as_str),
+            Some("hide" | "none")
+        ) {
+            continue;
+        }
+        let Some(id) = obj
+            .get("slug")
+            .and_then(Value::as_str)
+            .filter(|id| is_picker_model_id(id))
+        else {
+            continue;
+        };
+        if !ids.iter().any(|known| known == id) {
+            ids.push(id.to_string());
+        }
+    }
+    if ids.len() > MAX_LISTED_MODELS {
+        return Err(ListedModelsError::InvalidResponse);
+    }
+    Ok(ids)
+}
+
+/// Same admission as the subscription bind request's model ID.
+fn is_picker_model_id(id: &str) -> bool {
+    let bytes = id.as_bytes();
+    (1..=128).contains(&bytes.len())
+        && bytes[0].is_ascii_alphanumeric()
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b':'))
+}
+
 fn build_models_request(
     client: &reqwest::Client,
     token: &str,
@@ -215,6 +299,45 @@ mod tests {
 
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].id, "gpt-5.4");
+    }
+
+    #[test]
+    fn listed_models_keep_picker_rows_in_server_order() {
+        let models = parse_listed_models(&json!({"models": [
+            {"slug": "gpt-6-sol", "visibility": "list"},
+            {"slug": "codex-auto-review", "visibility": "hide"},
+            {"slug": "internal-row", "visibility": "none"},
+            {"slug": "gpt-5.5"},
+            {"slug": "gpt-6-sol", "visibility": "list"},
+            {"slug": "bad id with spaces"},
+            {"display_name": "no slug"}
+        ]}))
+        .unwrap();
+        assert_eq!(models, vec!["gpt-6-sol".to_string(), "gpt-5.5".to_string()]);
+    }
+
+    #[test]
+    fn listed_models_reject_non_catalog_shapes() {
+        for body in [
+            json!({"data": [{"id": "gpt-5.5"}]}),
+            json!({"models": {"gpt-5.5": {}}}),
+            json!({"models": ["gpt-5.5"]}),
+            json!([]),
+        ] {
+            assert_eq!(
+                parse_listed_models(&body),
+                Err(ListedModelsError::InvalidResponse),
+                "{body}"
+            );
+        }
+        let too_many: Vec<Value> = (0..=MAX_LISTED_MODELS)
+            .map(|index| json!({"slug": format!("m-{index}")}))
+            .collect();
+        assert_eq!(
+            parse_listed_models(&json!({ "models": too_many })),
+            Err(ListedModelsError::InvalidResponse)
+        );
+        assert_eq!(parse_listed_models(&json!({"models": []})), Ok(Vec::new()));
     }
 
     #[test]

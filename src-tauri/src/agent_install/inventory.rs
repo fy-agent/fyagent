@@ -13,7 +13,7 @@ use std::{
 use sha2::{Digest, Sha256};
 
 use super::{
-    cli::{observe_cli, tooling_id_for},
+    cli::{observe_cli, observe_omp_cli, tooling_id_for},
     desktop::{
         discover_desktop_installation_inventory, discovered_update_eligible,
         DesktopInstallationDiscovery,
@@ -681,6 +681,7 @@ async fn probe_inventory(
         (AgentCatalogId::GrokBuild | AgentCatalogId::ClaudeCode, AgentSurface::Cli) => {
             probe_cli(agent_id).await
         }
+        (AgentCatalogId::Omp, AgentSurface::Cli) => probe_omp_cli().await,
         (AgentCatalogId::Codex, AgentSurface::Desktop) => probe_codex(state).await,
         _ => InventoryProbe {
             state_override: Some(InstallationInventoryState::Unsupported),
@@ -966,6 +967,71 @@ async fn probe_cli(agent_id: AgentCatalogId) -> InventoryProbe {
     }
 }
 
+async fn probe_omp_cli() -> InventoryProbe {
+    project_omp_cli_observation(observe_omp_cli().await)
+}
+
+fn project_omp_cli_observation(observation: Option<super::cli::CliObservation>) -> InventoryProbe {
+    let Some(observation) = observation else {
+        return InventoryProbe {
+            state_override: Some(InstallationInventoryState::Unknown),
+            candidates: Vec::new(),
+            destinations: Vec::new(),
+            reason_codes: vec![AgentReasonCode::RefreshRequired],
+        };
+    };
+    if observation.unavailable {
+        return InventoryProbe {
+            state_override: Some(InstallationInventoryState::Unknown),
+            candidates: Vec::new(),
+            destinations: Vec::new(),
+            reason_codes: vec![AgentReasonCode::InteractiveUserUnavailable],
+        };
+    }
+    if !observation.detected {
+        return InventoryProbe {
+            state_override: Some(InstallationInventoryState::NotObserved),
+            candidates: Vec::new(),
+            destinations: Vec::new(),
+            reason_codes: Vec::new(),
+        };
+    }
+
+    let stable_key = "cli:omp".to_string();
+    InventoryProbe {
+        state_override: None,
+        candidates: vec![ProbeCandidate {
+            revision: revision_for(&[
+                &stable_key,
+                observation.local_version.as_deref().unwrap_or(""),
+                if observation.runnable {
+                    "runnable"
+                } else {
+                    "not-runnable"
+                },
+            ]),
+            stable_key,
+            scope: InstallationScope::CurrentUser,
+            owner: InstallationOwner::Unknown,
+            package_kind: InstallationPackageKind::Unknown,
+            local_version: observation.local_version,
+            launch_eligible: observation.runnable,
+            install_eligible: false,
+            update_eligible: false,
+            reason_codes: if observation.runnable {
+                Vec::new()
+            } else {
+                vec![AgentReasonCode::InstalledNotRunnable]
+            },
+            evidence_codes: vec![InstallationEvidenceCode::KnownPath],
+            location_label: "Oh My Pi CLI".to_string(),
+            capability: InstallationTargetCapability::Cli,
+        }],
+        destinations: Vec::new(),
+        reason_codes: Vec::new(),
+    }
+}
+
 async fn probe_codex(state: &AppState) -> InventoryProbe {
     match state.codex_desktop_service.get_local_status().await {
         Ok(LocalInstallStatus::Installed { application }) => {
@@ -1205,6 +1271,7 @@ fn agent_display_name(agent_id: AgentCatalogId) -> &'static str {
         AgentCatalogId::Codex => "Codex",
         AgentCatalogId::ClaudeCode => "Claude Code",
         AgentCatalogId::OpenCode => "OpenCode",
+        AgentCatalogId::Omp => "Oh My Pi",
     }
 }
 
@@ -1571,6 +1638,60 @@ mod tests {
                     .contains(&AgentReasonCode::NativeProjectionUnavailable)
                 && validate_opaque_target_revision(&destination.revision)
         }));
+    }
+
+    #[test]
+    fn omp_cli_inventory_projects_detected_absent_and_probe_failure_without_destinations() {
+        let detected = project_omp_cli_observation(Some(super::super::cli::CliObservation {
+            detected: true,
+            runnable: true,
+            local_version: None,
+            latest_version: None,
+            unavailable: false,
+            unconfirmed: false,
+            update_supported: false,
+        }));
+        assert_eq!(detected.state(), InstallationInventoryState::Single);
+        assert_eq!(detected.candidates.len(), 1);
+        assert!(detected.destinations.is_empty());
+        assert_eq!(detected.candidates[0].local_version, None);
+        assert_eq!(detected.candidates[0].owner, InstallationOwner::Unknown);
+        assert_eq!(
+            detected.candidates[0].package_kind,
+            InstallationPackageKind::Unknown
+        );
+        assert!(detected.candidates[0].launch_eligible);
+        assert!(!detected.candidates[0].install_eligible);
+        assert!(!detected.candidates[0].update_eligible);
+        assert_eq!(detected.candidates[0].location_label, "Oh My Pi CLI");
+
+        let store = AgentInstallationInventoryStore::new();
+        let dto = project_and_store(AgentCatalogId::Omp, AgentSurface::Cli, detected, &store);
+        assert_eq!(dto.state, InstallationInventoryState::Single);
+        assert_eq!(dto.candidates.len(), 1);
+        assert!(dto.fresh_destinations.is_empty());
+        assert!(!dto.candidates[0].launch_eligible);
+        assert!(!dto.candidates[0].install_eligible);
+        assert!(!dto.candidates[0].update_eligible);
+
+        let absent = project_omp_cli_observation(Some(super::super::cli::CliObservation {
+            detected: false,
+            runnable: false,
+            local_version: Some("18.12.5".to_string()),
+            latest_version: None,
+            unavailable: false,
+            unconfirmed: false,
+            update_supported: false,
+        }));
+        assert_eq!(absent.state(), InstallationInventoryState::NotObserved);
+        assert!(absent.candidates.is_empty());
+        assert!(absent.destinations.is_empty());
+
+        let failed = project_omp_cli_observation(None);
+        assert_eq!(failed.state(), InstallationInventoryState::Unknown);
+        assert_eq!(failed.reason_codes, vec![AgentReasonCode::RefreshRequired]);
+        assert!(failed.candidates.is_empty());
+        assert!(failed.destinations.is_empty());
     }
 
     #[test]

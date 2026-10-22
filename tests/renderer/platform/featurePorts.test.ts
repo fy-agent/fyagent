@@ -118,6 +118,7 @@ const agentVariantById = {
   codex: "codex",
   "claude-code": "claude-code",
   opencode: "opencode",
+  omp: "omp",
 } as const;
 
 function catalogEntry(
@@ -287,6 +288,28 @@ function catalogFixture(): AgentCatalogResult {
           id: "terms",
           label: "OpenCode 服务条款",
           url: "https://opencode.ai/legal/terms-of-service",
+        },
+      ]),
+      catalogEntry("omp", "Oh My Pi (omp)", [
+        {
+          id: "product",
+          label: "打开 Oh My Pi 官方页面",
+          url: "https://omp.sh/",
+        },
+        {
+          id: "docs",
+          label: "打开 Oh My Pi 模型配置文档",
+          url: "https://github.com/can1357/oh-my-pi/blob/main/docs/models.md",
+        },
+        {
+          id: "download",
+          label: "打开 Oh My Pi 发布页面",
+          url: "https://github.com/can1357/oh-my-pi/releases",
+        },
+        {
+          id: "license",
+          label: "Oh My Pi 源码与许可证",
+          url: "https://github.com/can1357/oh-my-pi/blob/main/LICENSE",
         },
       ]),
     ],
@@ -2075,13 +2098,11 @@ describe("WorkBuddy subscription source contract", () => {
     const { createTauriFeaturePorts } = await import(
       "@/shared/platform/tauri/features"
     );
-    invoke
-      .mockResolvedValueOnce(result)
-      .mockResolvedValueOnce({
-        revision: null,
-        bindingVersion: null,
-        source: null,
-      });
+    invoke.mockResolvedValueOnce(result).mockResolvedValueOnce({
+      revision: null,
+      bindingVersion: null,
+      source: null,
+    });
     const port = createTauriFeaturePorts().workbuddy;
     expect(await port.getSubscriptionSource()).toEqual(result);
     expect(await port.getSubscriptionSource()).toEqual({

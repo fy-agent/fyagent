@@ -21,11 +21,11 @@ use std::{
 
 use fyagent_user_helper::{
     admission_event_name, cancel_event_name, decode_frame, encode_plan_control, layout::pipe_name,
-    AgentInstallerProduct, CanonicalJobId, GrokNpmInstallPlan, GrokOwner, GrokToolAction,
-    HelperErrorCode, HelperMessage, HelperProtocolAction, HelperProtocolSequence,
-    HelperProtocolTerminal, PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity,
-    PipeNonce, ToolOperationResult, UserHelperAction, BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES,
-    TOOL_OPERATION_STARTED_IDENTITY,
+    AgentInstallerProduct, CanonicalJobId, CodexModelCatalog, GrokNpmInstallPlan, GrokOwner,
+    GrokToolAction, HelperErrorCode, HelperMessage, HelperProtocolAction, HelperProtocolSequence,
+    HelperProtocolTerminal, OmpProbeResult, PackageBridgeArtifactKind, PackageBridgeControl,
+    PinnedPackageIdentity, PipeNonce, ProtocolError, ToolOperationResult, UserHelperAction,
+    BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES, TOOL_OPERATION_STARTED_IDENTITY,
 };
 use windows::{
     core::{HRESULT, PCWSTR, PWSTR},
@@ -191,7 +191,7 @@ pub(crate) fn run_grok_tool_operation(
 ) -> Result<ToolOperationResult, InstallerError> {
     let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
         .map_err(|_| helper_identity_error())?;
-    run_unpinned_tool_helper(
+    run_unpinned_helper(
         context,
         UserHelperAction::GrokTool {
             action,
@@ -202,6 +202,7 @@ pub(crate) fn run_grok_tool_operation(
         Arc::new(|_: JobProgress| {}),
         WindowsHelperDeadlines::GROK_TOOL,
     )
+    .and_then(protocol_tool_result)
 }
 
 pub(crate) fn run_claude_tool_operation(
@@ -211,7 +212,7 @@ pub(crate) fn run_claude_tool_operation(
 ) -> Result<ToolOperationResult, InstallerError> {
     let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
         .map_err(|_| helper_identity_error())?;
-    run_unpinned_tool_helper(
+    run_unpinned_helper(
         context,
         UserHelperAction::ClaudeTool { action },
         &job_id,
@@ -219,16 +220,52 @@ pub(crate) fn run_claude_tool_operation(
         Arc::new(|_: JobProgress| {}),
         WindowsHelperDeadlines::GROK_TOOL,
     )
+    .and_then(protocol_tool_result)
 }
 
-fn run_unpinned_tool_helper(
+pub(crate) fn run_omp_cli_probe(
+    context: &InteractiveUserContext,
+) -> Result<OmpProbeResult, InstallerError> {
+    let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
+        .map_err(|_| helper_identity_error())?;
+    run_unpinned_helper(
+        context,
+        UserHelperAction::OmpProbe,
+        &job_id,
+        None,
+        Arc::new(|_: JobProgress| {}),
+        WindowsHelperDeadlines::OMP_PROBE,
+    )
+    .and_then(protocol_omp_probe_result)
+}
+
+/// Reads the model catalog of the current user's own Codex CLI through the
+/// ordinary-user helper. Which account that CLI is signed in to is not part
+/// of the result; callers establish it separately.
+pub(crate) fn run_codex_models(
+    context: &InteractiveUserContext,
+) -> Result<CodexModelCatalog, InstallerError> {
+    let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
+        .map_err(|_| helper_identity_error())?;
+    run_unpinned_helper(
+        context,
+        UserHelperAction::CodexModels,
+        &job_id,
+        None,
+        Arc::new(|_: JobProgress| {}),
+        WindowsHelperDeadlines::CODEX_MODELS,
+    )
+    .and_then(protocol_codex_catalog)
+}
+
+fn run_unpinned_helper(
     context: &InteractiveUserContext,
     action: UserHelperAction,
     job_id: &CanonicalJobId,
     npm_plan: Option<GrokNpmInstallPlan>,
     progress: PlatformProgressSink,
     deadlines: WindowsHelperDeadlines,
-) -> Result<ToolOperationResult, InstallerError> {
+) -> Result<HelperProtocolTerminal, InstallerError> {
     if action.requires_package_bridge() {
         return Err(helper_pipe_error(
             "the user-helper tool action required a package bridge",
@@ -373,7 +410,7 @@ fn run_unpinned_tool_helper(
             ) {
                 return fail_before_admission(gate, lifetime, error).map(|_| unreachable!());
             }
-            return finish_settled_tool(gate, lifetime, terminal);
+            return finish_settled_unpinned(gate, lifetime, terminal);
         }
         _ => {
             return fail_before_admission(
@@ -414,7 +451,7 @@ fn run_unpinned_tool_helper(
         operation_deadline,
         deadlines.terminal_close,
     ) {
-        Ok(terminal) => finish_settled_tool(gate, lifetime, terminal),
+        Ok(terminal) => finish_settled_unpinned(gate, lifetime, terminal),
         Err(error) => cancel_and_quarantine(gate, lifetime, error),
     }
 }
@@ -1129,12 +1166,12 @@ impl OneShotPipeServer {
             hEvent: event.raw(),
             ..Default::default()
         };
-        let mut frame = [0_u8; MAX_FRAME_BYTES];
+        let mut frame = vec![0_u8; MAX_FRAME_BYTES];
         let mut transferred = 0_u32;
         match unsafe {
             ReadFile(
                 self.raw(),
-                Some(&mut frame),
+                Some(frame.as_mut_slice()),
                 Some(&mut transferred),
                 Some(&mut overlapped),
             )
@@ -1292,6 +1329,12 @@ fn consume_protocol(
             HelperProtocolAction::ToolResult(result) => {
                 break HelperProtocolTerminal::ToolSuccess(result)
             }
+            HelperProtocolAction::CodexModels(catalog) => {
+                break HelperProtocolTerminal::CodexModels(catalog)
+            }
+            HelperProtocolAction::OmpProbeResult(result) => {
+                break HelperProtocolTerminal::OmpProbeSuccess(result)
+            }
             HelperProtocolAction::Failure(code) => break HelperProtocolTerminal::Failure(code),
         }
     };
@@ -1402,7 +1445,10 @@ fn remaining_until(deadline: Instant) -> Result<Duration, InstallerError> {
 }
 
 fn decode_protocol_frame(frame: &[u8]) -> Result<HelperMessage, InstallerError> {
-    decode_frame(frame).map_err(|_| helper_pipe_error("the user-helper message was invalid"))
+    decode_frame(frame).map_err(|error| match error {
+        ProtocolError::UnsupportedVersion => helper_version_mismatch_error(),
+        _ => helper_pipe_error("the user-helper message was invalid"),
+    })
 }
 
 fn bridge_identity_matches(
@@ -1412,22 +1458,37 @@ fn bridge_identity_matches(
     helper_identity == bridge_identity
 }
 
-fn finish_settled_tool(
+fn finish_settled_unpinned(
     gate: HelperGateLease,
     mut lifetime: HelperLifetime,
     terminal: HelperProtocolTerminal,
-) -> Result<ToolOperationResult, InstallerError> {
+) -> Result<HelperProtocolTerminal, InstallerError> {
     lifetime.mark_settled();
-    let result = protocol_tool_result(terminal);
     lifetime.cleanup_bridge();
     gate.finish();
-    result
+    Ok(terminal)
+}
+
+fn protocol_codex_catalog(
+    terminal: HelperProtocolTerminal,
+) -> Result<CodexModelCatalog, InstallerError> {
+    match terminal {
+        HelperProtocolTerminal::CodexModels(catalog) => Ok(catalog),
+        HelperProtocolTerminal::Success
+        | HelperProtocolTerminal::ToolSuccess(_)
+        | HelperProtocolTerminal::OmpProbeSuccess(_) => Err(helper_pipe_error(
+            "the user-helper omitted the Codex model catalog",
+        )),
+        HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
+    }
 }
 
 fn protocol_terminal_result(terminal: HelperProtocolTerminal) -> Result<(), InstallerError> {
     match terminal {
         HelperProtocolTerminal::Success => Ok(()),
-        HelperProtocolTerminal::ToolSuccess(_) => Err(helper_pipe_error(
+        HelperProtocolTerminal::ToolSuccess(_)
+        | HelperProtocolTerminal::CodexModels(_)
+        | HelperProtocolTerminal::OmpProbeSuccess(_) => Err(helper_pipe_error(
             "the user-helper sent a tool result on a package action",
         )),
         HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
@@ -1439,10 +1500,24 @@ fn protocol_tool_result(
 ) -> Result<ToolOperationResult, InstallerError> {
     match terminal {
         HelperProtocolTerminal::ToolSuccess(result) => Ok(result),
-        HelperProtocolTerminal::Success => {
+        HelperProtocolTerminal::Success
+        | HelperProtocolTerminal::CodexModels(_)
+        | HelperProtocolTerminal::OmpProbeSuccess(_) => {
             Err(helper_pipe_error("the user-helper omitted the tool result"))
         }
         HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
+    }
+}
+
+fn protocol_omp_probe_result(
+    terminal: HelperProtocolTerminal,
+) -> Result<OmpProbeResult, InstallerError> {
+    match terminal {
+        HelperProtocolTerminal::OmpProbeSuccess(result) => Ok(result),
+        HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
+        _ => Err(helper_pipe_error(
+            "the user-helper omitted the OMP probe result",
+        )),
     }
 }
 
@@ -1510,6 +1585,26 @@ fn map_helper_error(code: HelperErrorCode) -> InstallerError {
         HelperErrorCode::ToolTargetChanged => {
             return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
                 .with_platform_error_code("tool_target_changed")
+        }
+        HelperErrorCode::CodexCliMissing => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("codex_cli_missing")
+        }
+        HelperErrorCode::CodexAppServerFailed => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("codex_app_server_failed")
+        }
+        HelperErrorCode::CodexModelListUnsupported => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("codex_model_list_unsupported")
+        }
+        HelperErrorCode::CodexAppServerTimedOut => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("codex_app_server_timed_out")
+        }
+        HelperErrorCode::CodexCatalogInvalid => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("codex_catalog_invalid")
         }
         HelperErrorCode::InstallLayoutInvalid
         | HelperErrorCode::WinRtInitializationFailed
@@ -1950,6 +2045,18 @@ fn helper_pipe_error(message: &'static str) -> InstallerError {
         .with_diagnostic_message(message)
 }
 
+/// The sibling helper speaks another protocol version: the install is torn.
+/// Reinstalling or updating FyAgent restores the paired helper.
+const HELPER_VERSION_MISMATCH_PLATFORM_CODE: &str = "user_helper_version_mismatch";
+
+fn helper_version_mismatch_error() -> InstallerError {
+    InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+        .with_platform_error_code(HELPER_VERSION_MISMATCH_PLATFORM_CODE)
+        .with_diagnostic_message(
+            "the bundled current-user helper does not match this FyAgent build; reinstall FyAgent",
+        )
+}
+
 fn helper_identity_error() -> InstallerError {
     InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
         .with_diagnostic_message("the current-user package helper identity was rejected")
@@ -2028,6 +2135,78 @@ mod tests {
             HelperProtocolAction::Success
         ));
         assert!(sequence.accept(HelperMessage::Success).is_err());
+    }
+
+    #[test]
+    fn unpaired_helper_version_maps_to_a_recoverable_reinstall_error() {
+        for foreign_version in [4_u8, 6] {
+            let hello = [3, 0, 0, 0, foreign_version, 5, 1];
+            let error = decode_protocol_frame(&hello).unwrap_err().to_dto();
+            assert_eq!(
+                error.details.platform_error_code.as_deref(),
+                Some(HELPER_VERSION_MISMATCH_PLATFORM_CODE)
+            );
+        }
+        let malformed =
+            decode_protocol_frame(&[2, 0, 0, 0, fyagent_user_helper::PROTOCOL_VERSION, 99])
+                .unwrap_err()
+                .to_dto();
+        assert_ne!(
+            malformed.details.platform_error_code.as_deref(),
+            Some(HELPER_VERSION_MISMATCH_PLATFORM_CODE)
+        );
+        for action in [
+            UserHelperAction::CodexMsixInstall,
+            UserHelperAction::AgentExeInstall(AgentInstallerProduct::OpenCode),
+            UserHelperAction::GrokTool {
+                action: GrokToolAction::Observe,
+                expected_owner: None,
+            },
+            UserHelperAction::ClaudeTool {
+                action: GrokToolAction::Install,
+            },
+            UserHelperAction::CodexModels,
+        ] {
+            let frame =
+                fyagent_user_helper::encode_frame(&HelperMessage::Hello { action }).unwrap();
+            assert_eq!(
+                decode_protocol_frame(&frame).unwrap(),
+                HelperMessage::Hello { action }
+            );
+        }
+    }
+
+    #[test]
+    fn codex_catalog_terminal_never_satisfies_package_or_tool_actions() {
+        let terminal =
+            HelperProtocolTerminal::CodexModels(fyagent_user_helper::CodexModelCatalog::default());
+        assert!(protocol_terminal_result(terminal.clone()).is_err());
+        assert!(protocol_tool_result(terminal.clone()).is_err());
+        assert_eq!(
+            protocol_codex_catalog(terminal).unwrap(),
+            fyagent_user_helper::CodexModelCatalog::default()
+        );
+        for other in [
+            HelperProtocolTerminal::Success,
+            HelperProtocolTerminal::ToolSuccess(ToolOperationResult::observed(false, None, None)),
+        ] {
+            assert!(protocol_codex_catalog(other).is_err());
+        }
+        for code in [
+            HelperErrorCode::CodexCliMissing,
+            HelperErrorCode::CodexAppServerFailed,
+            HelperErrorCode::CodexModelListUnsupported,
+            HelperErrorCode::CodexAppServerTimedOut,
+            HelperErrorCode::CodexCatalogInvalid,
+        ] {
+            let platform = map_helper_error(code).to_dto().details.platform_error_code;
+            assert!(
+                platform
+                    .as_deref()
+                    .is_some_and(|value| value.starts_with("codex_")),
+                "{code:?}"
+            );
+        }
     }
 
     #[test]

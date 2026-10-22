@@ -21,7 +21,10 @@ test("OpenCode applies an existing ChatGPT subscription through its own revision
   await section
     .getByRole("radio", { name: "ChatGPT · Browser Fixture" })
     .check();
-  await section.getByLabel("订阅模型 ID").fill("chatgpt-fixture-model");
+  await expect(section.getByText("已读取 2 个 Codex 模型")).toBeVisible();
+  await section
+    .getByRole("button", { name: "chatgpt-fixture-model", exact: true })
+    .click();
   await section.getByRole("button", { name: "应用到 OpenCode" }).click();
   const dialog = page.getByRole("dialog", {
     name: "确认应用 OpenCode 订阅配置",
@@ -218,7 +221,9 @@ test("ChatGPT account can be bound to Grok Build through the existing model targ
   await section
     .getByRole("radio", { name: "ChatGPT · Browser Fixture" })
     .check();
-  await section.getByLabel("订阅模型 ID").fill("chatgpt-fixture-model");
+  await section
+    .getByRole("button", { name: "chatgpt-fixture-model", exact: true })
+    .click();
   await section.getByRole("button", { name: "应用到 Grok Build" }).click();
   const dialog = page.getByRole("dialog", {
     name: "确认应用 Grok Build 订阅配置",
@@ -251,6 +256,42 @@ test("ChatGPT account can be bound to Grok Build through the existing model targ
         call.command === "fetch_models_for_config",
     ),
   ).toEqual([]);
+  expect(
+    calls
+      .filter((call) => call.command === "managed_auth_get_openai_models")
+      .map((call) => call.payload),
+  ).toEqual([{ accountId: `ma1:${"1".repeat(32)}` }]);
+  await expectNoHorizontalOverflow(page);
+  await expectHealthyPage(page, health);
+});
+
+test("ChatGPT catalog failure names the reason and keeps manual entry and retry", async ({
+  page,
+}, testInfo) => {
+  await installRichTauriFeatureFixture(page, {
+    openAiModelsFailOnce: "requires_reauth",
+  });
+  const health = monitorPageHealth(page);
+  await openRendererPage(page, "/models?target=grokbuild");
+  const section = page
+    .getByRole("region", { name: "Grok Build 模型配置", exact: true })
+    .getByRole("region", { name: "账号订阅设置" });
+  await section
+    .getByRole("radio", { name: "ChatGPT · Browser Fixture" })
+    .check();
+  await expect(section.getByText("需要重新登录此 ChatGPT 账号")).toBeVisible();
+  await expect(section.getByLabel("订阅模型 ID")).toBeVisible();
+  await section.screenshot({
+    path: testInfo.outputPath("openai-catalog-requires-reauth.png"),
+  });
+  await section.getByRole("button", { name: "查看模型选项" }).click();
+  await expect(section.getByText("已读取 2 个 Codex 模型")).toBeVisible();
+  await expect(
+    section.getByRole("button", { name: "gpt-fixture-codex", exact: true }),
+  ).toBeVisible();
+  await section.screenshot({
+    path: testInfo.outputPath("openai-catalog-loaded.png"),
+  });
   await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);
 });
@@ -289,13 +330,9 @@ for (const source of [
       await section
         .getByRole("radio", { name: source.label, exact: true })
         .check();
-      if (source.provider === "xAI") {
-        await section
-          .getByRole("button", { name: source.modelId, exact: true })
-          .click();
-      } else {
-        await section.getByLabel("订阅模型 ID").fill(source.modelId);
-      }
+      await section
+        .getByRole("button", { name: source.modelId, exact: true })
+        .click();
       await section.getByRole("button", { name: action, exact: true }).click();
       await page
         .getByRole("dialog")

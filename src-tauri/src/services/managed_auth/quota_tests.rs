@@ -471,6 +471,599 @@ fn quota_dto_binds_requested_account_id() {
 }
 
 #[test]
+fn openai_models_use_exact_account_credential() {
+    use crate::services::codex_oauth_models::ListedModelsError;
+
+    let (service, _dir) = service();
+    let default_account = seed_proxy(
+        &service,
+        "models-default",
+        "models-subject-default",
+        ManagedAuthProvider::Openai,
+        true,
+    );
+    let selected = seed_proxy(
+        &service,
+        "models-selected",
+        "models-subject-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    let seen = Mutex::new(Vec::new());
+    let result = runtime()
+        .block_on(
+            service.fetch_openai_models_with(&selected.identity_id, |token, subject| {
+                seen.lock().unwrap().push((token.to_string(), subject));
+                async { Ok(vec!["gpt-6-sol".to_string(), "gpt-5.5".to_string()]) }
+            }),
+        )
+        .expect("models");
+    assert_eq!(
+        seen.into_inner().unwrap(),
+        vec![(
+            "quota-access-models-selected".to_string(),
+            "models-subject-selected".to_string()
+        )]
+    );
+    assert_eq!(result.account_id, selected.identity_id);
+    assert_ne!(result.account_id, default_account.identity_id);
+    assert_eq!(result.models, vec!["gpt-6-sol", "gpt-5.5"]);
+    let value = serde_json::to_value(&result).unwrap();
+    let keys: std::collections::BTreeSet<_> = value.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(
+        keys,
+        ["accountId", "contractVersion", "fetchedAt", "models"]
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    );
+    let text = value.to_string();
+    assert!(!text.contains("quota-access"));
+    assert!(!text.contains("quota-refresh"));
+
+    for (error, reason) in [
+        (
+            ListedModelsError::Unauthorized,
+            ManagedAuthReasonCode::RequiresReauth,
+        ),
+        (
+            ListedModelsError::Unavailable,
+            ManagedAuthReasonCode::ObserverUnavailable,
+        ),
+        (
+            ListedModelsError::InvalidResponse,
+            ManagedAuthReasonCode::InvalidResponse,
+        ),
+    ] {
+        let failure = runtime()
+            .block_on(
+                service.fetch_openai_models_with(&selected.identity_id, |_, _| async move {
+                    Err(error)
+                }),
+            )
+            .expect_err("mapped failure");
+        assert_eq!(failure.reason_code, reason);
+    }
+}
+
+#[test]
+fn openai_models_refuse_other_providers_and_unknown_accounts() {
+    let (service, _dir) = service();
+    let xai = seed_proxy(
+        &service,
+        "models-xai",
+        "models-subject-xai",
+        ManagedAuthProvider::Xai,
+        true,
+    );
+    let native_only = seed_native(
+        &service,
+        "models-native",
+        "models-subject-native",
+        ManagedAuthProvider::Openai,
+        (
+            CredentialPurpose::CodexNative,
+            ManagedAuthConsumer::Codex,
+            RefreshOwner::CodexNative,
+        ),
+        chrono::Utc::now().timestamp() + 3600,
+    );
+    let queried = Arc::new(Mutex::new(false));
+    for account in [
+        xai.identity_id.as_str(),
+        native_only.identity_id.as_str(),
+        "ma1:ffffffffffffffffffffffffffffffff",
+    ] {
+        let error = runtime()
+            .block_on(service.fetch_openai_models_with(account, |_, _| {
+                *queried.lock().unwrap() = true;
+                async { Ok(vec!["gpt-5.5".to_string()]) }
+            }))
+            .expect_err("refused");
+        assert_eq!(
+            error.reason_code,
+            ManagedAuthReasonCode::ConnectionUnavailable,
+            "{account}"
+        );
+    }
+    assert!(!*queried.lock().unwrap());
+}
+
+fn write_codex_login(service: &ManagedAuthService<MemorySecretBackend>, subject: &str) {
+    use crate::services::managed_auth::consumers::codex::CodexChatGptAuthDocument;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);
+    let payload = URL_SAFE_NO_PAD.encode(format!(
+        r#"{{"chatgpt_account_id":"{subject}","email":"fixture@example.test"}}"#
+    ));
+    let token = format!("{header}.{payload}.sig");
+    let auth = CodexChatGptAuthDocument::from_tokens(
+        &token,
+        &token,
+        "native-refresh-secret",
+        Some(subject),
+        Some(1_700_000_000),
+    )
+    .unwrap()
+    .serialize_bytes()
+    .unwrap();
+    let home = service.codex_home();
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("auth.json"), auth).unwrap();
+}
+
+fn value_of(
+    result: &crate::services::managed_auth::ManagedAuthCodexNativeModels,
+    key: &str,
+) -> serde_json::Value {
+    serde_json::to_value(result).unwrap()[key].clone()
+}
+
+#[test]
+fn codex_native_models_report_a_custom_request_route() {
+    let (service, _dir) = service();
+    let selected = seed_proxy(
+        &service,
+        "native-selected",
+        "acct-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    write_codex_login(&service, "acct-selected");
+    std::fs::write(
+        service.codex_home().join("config.toml"),
+        "model_provider = \"deepseek\"\n[model_providers.deepseek]\nbase_url = \"https://example.test/v1\"\n",
+    )
+    .unwrap();
+    let run = |cli_reads_managed_home| {
+        runtime()
+            .block_on(service.get_codex_native_models_with(
+                &selected.identity_id,
+                cli_reads_managed_home,
+                || async { Ok(native_catalog()) },
+            ))
+            .expect("catalog")
+    };
+
+    let custom = run(true);
+    assert_eq!(value_of(&custom, "accountBinding"), "matched");
+    assert_eq!(value_of(&custom, "catalogStatus"), "ready");
+    assert_eq!(value_of(&custom, "providerRoute"), "custom");
+
+    let elsewhere = run(false);
+    assert_eq!(value_of(&elsewhere, "catalogStatus"), "not_read");
+    assert_eq!(value_of(&elsewhere, "providerRoute"), "unknown");
+}
+
+fn native_catalog() -> fyagent_user_helper::CodexModelCatalog {
+    fyagent_user_helper::CodexModelCatalog {
+        cli_version: Some("0.160.1".into()),
+        models: vec![
+            fyagent_user_helper::CodexModelEntry {
+                id: "gpt-6-sol".into(),
+                display_name: Some("GPT-6 Sol".into()),
+                is_default: true,
+                reasoning_efforts: vec!["low".into(), "high".into()],
+            },
+            fyagent_user_helper::CodexModelEntry {
+                id: "gpt-5.5".into(),
+                display_name: None,
+                is_default: false,
+                reasoning_efforts: vec![],
+            },
+        ],
+        truncated: false,
+    }
+}
+
+#[test]
+fn codex_native_models_describe_config_overrides_without_claiming_official_entitlement() {
+    let (service, _dir) = service();
+    let selected = seed_proxy(
+        &service,
+        "native-selected",
+        "acct-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    write_codex_login(&service, "acct-selected");
+    for (config, route) in [
+        ("", "official"),
+        ("model_provider = \"openai\"\n", "official"),
+        ("model_provider = \"OpenAI\"\n", "custom"),
+        ("model_provider = \"ollama\"\n", "custom"),
+        ("model_provider = \"lmstudio\"\n", "custom"),
+        ("model_provider = \"amazon-bedrock\"\n", "custom"),
+        ("model_provider = \"amazon-bedrock-runtime\"\n", "custom"),
+        (
+            "openai_base_url = \"http://127.0.0.1:15721/v1\"\n",
+            "custom",
+        ),
+        (
+            "model_provider = \"openai\"\nopenai_base_url = \"https://example.test/v1\"\n",
+            "custom",
+        ),
+        (
+            "[model_providers.openai]\nbase_url = \"https://example.test/v1\"\n",
+            "custom",
+        ),
+        (
+            "profile = \"work\"\n[profiles.work]\nmodel_provider = \"custom\"\n",
+            "unknown",
+        ),
+        ("openai_base_url = 42\n", "unknown"),
+    ] {
+        std::fs::write(service.codex_home().join("config.toml"), config).unwrap();
+        let result = runtime()
+            .block_on(
+                service.get_codex_native_models_with(&selected.identity_id, true, || async {
+                    Ok(native_catalog())
+                }),
+            )
+            .expect("catalog");
+        assert_eq!(value_of(&result, "providerRoute"), route, "{config}");
+        assert_eq!(value_of(&result, "catalogStatus"), "ready");
+    }
+}
+
+#[test]
+fn codex_native_models_are_read_only_for_the_live_matching_login() {
+    use super::super::codex_native_models::{CodexNativeAccountBinding, CodexNativeCatalogStatus};
+
+    let (service, _dir) = service();
+    let selected = seed_proxy(
+        &service,
+        "native-selected",
+        "acct-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    write_codex_login(&service, "acct-selected");
+    let result = runtime()
+        .block_on(
+            service.get_codex_native_models_with(&selected.identity_id, true, || async {
+                Ok(native_catalog())
+            }),
+        )
+        .expect("catalog");
+    assert_eq!(result.account_id, selected.identity_id);
+    assert_eq!(result.account_binding, CodexNativeAccountBinding::Matched);
+    assert_eq!(
+        result.native_account_id.as_deref(),
+        Some(selected.identity_id.as_str())
+    );
+    assert_eq!(result.catalog_status, CodexNativeCatalogStatus::Ready);
+    assert_eq!(result.cli_version.as_deref(), Some("0.160.1"));
+    assert_eq!(result.source, "codex_app_server");
+    assert_eq!(value_of(&result, "providerRoute"), "official");
+    assert_eq!(
+        result.revision,
+        crate::services::managed_auth::consumers::codex::observe_codex_home(&service.codex_home())
+            .connection_revision()
+    );
+    assert_eq!(
+        result
+            .models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        ["gpt-6-sol", "gpt-5.5"]
+    );
+    let value = serde_json::to_value(&result).unwrap();
+    let keys: std::collections::BTreeSet<_> = value.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(
+        keys,
+        [
+            "accountBinding",
+            "accountId",
+            "bindingDetail",
+            "catalogStatus",
+            "checkedAt",
+            "cliVersion",
+            "contractVersion",
+            "failure",
+            "models",
+            "nativeAccountId",
+            "providerRoute",
+            "revision",
+            "source",
+            "truncated",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    );
+    assert_eq!(
+        value["models"][0],
+        serde_json::json!({
+            "id": "gpt-6-sol",
+            "displayName": "GPT-6 Sol",
+            "isDefault": true,
+            "reasoningEfforts": ["low", "high"],
+        })
+    );
+    let text = value.to_string();
+    assert!(!text.contains("native-refresh-secret"));
+    assert!(!text.contains("acct-selected"));
+}
+
+#[test]
+fn codex_native_models_never_read_for_another_or_undecided_login() {
+    use super::super::codex_native_models::{
+        CodexNativeAccountBinding, CodexNativeBindingDetail, CodexNativeCatalogStatus,
+    };
+
+    let (service, _dir) = service();
+    let selected = seed_proxy(
+        &service,
+        "native-selected",
+        "acct-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    let other = seed_proxy(
+        &service,
+        "native-other",
+        "acct-other",
+        ManagedAuthProvider::Openai,
+        true,
+    );
+    let read = Arc::new(Mutex::new(0));
+    let run = |cli_reads_managed_home: bool| {
+        let read = read.clone();
+        runtime()
+            .block_on(service.get_codex_native_models_with(
+                &selected.identity_id,
+                cli_reads_managed_home,
+                move || {
+                    *read.lock().unwrap() += 1;
+                    async { Ok(native_catalog()) }
+                },
+            ))
+            .expect("attribution")
+    };
+
+    let signed_out = run(true);
+    assert_eq!(
+        signed_out.account_binding,
+        CodexNativeAccountBinding::Unknown
+    );
+    assert_eq!(
+        signed_out.binding_detail,
+        Some(CodexNativeBindingDetail::SignedOut)
+    );
+
+    write_codex_login(&service, "acct-other");
+    let mismatch = run(true);
+    assert_eq!(
+        mismatch.account_binding,
+        CodexNativeAccountBinding::Mismatch
+    );
+    assert_eq!(
+        mismatch.native_account_id.as_deref(),
+        Some(other.identity_id.as_str())
+    );
+
+    write_codex_login(&service, "acct-selected");
+    let custom_home = run(false);
+    assert_eq!(
+        custom_home.account_binding,
+        CodexNativeAccountBinding::Unknown
+    );
+    assert_eq!(
+        custom_home.binding_detail,
+        Some(CodexNativeBindingDetail::CustomCodexHome)
+    );
+
+    for result in [signed_out, mismatch, custom_home] {
+        assert_eq!(result.catalog_status, CodexNativeCatalogStatus::NotRead);
+        assert!(result.models.is_empty());
+        assert_eq!(result.cli_version, None);
+    }
+    assert_eq!(*read.lock().unwrap(), 0);
+}
+
+#[test]
+fn codex_native_models_drop_a_catalog_read_across_a_login_change() {
+    use super::super::codex_native_models::{
+        CodexNativeAccountBinding, CodexNativeCatalogFailure, CodexNativeCatalogStatus,
+    };
+
+    let (service, _dir) = service();
+    let selected = seed_proxy(
+        &service,
+        "native-selected",
+        "acct-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    write_codex_login(&service, "acct-selected");
+    let changed = runtime()
+        .block_on(
+            service.get_codex_native_models_with(&selected.identity_id, true, || {
+                write_codex_login(&service, "acct-switched");
+                async { Ok(native_catalog()) }
+            }),
+        )
+        .expect("result");
+    assert_eq!(changed.account_binding, CodexNativeAccountBinding::Matched);
+    assert_eq!(changed.catalog_status, CodexNativeCatalogStatus::Failed);
+    assert_eq!(
+        changed.failure,
+        Some(CodexNativeCatalogFailure::ChangedDuringRead)
+    );
+    assert!(changed.models.is_empty());
+
+    write_codex_login(&service, "acct-selected");
+    let failed = runtime()
+        .block_on(
+            service.get_codex_native_models_with(&selected.identity_id, true, || async {
+                Err(CodexNativeCatalogFailure::TimedOut)
+            }),
+        )
+        .expect("result");
+    assert_eq!(failed.catalog_status, CodexNativeCatalogStatus::Failed);
+    assert_eq!(failed.failure, Some(CodexNativeCatalogFailure::TimedOut));
+}
+
+#[test]
+fn codex_native_models_require_a_file_store_for_auth_json_attribution() {
+    use super::super::codex_native_models::{
+        CodexNativeAccountBinding, CodexNativeBindingDetail, CodexNativeCatalogStatus,
+    };
+
+    for store in ["file", "keyring", "auto", "ephemeral", "future-store"] {
+        let (service, _dir) = service();
+        let selected = seed_proxy(
+            &service,
+            "native-selected",
+            "acct-selected",
+            ManagedAuthProvider::Openai,
+            false,
+        );
+        write_codex_login(&service, "acct-selected");
+        std::fs::write(
+            service.codex_home().join("config.toml"),
+            format!("cli_auth_credentials_store = \"{store}\"\n"),
+        )
+        .unwrap();
+        let read_count = Arc::new(Mutex::new(0));
+        let calls = read_count.clone();
+        let result = runtime()
+            .block_on(service.get_codex_native_models_with(
+                &selected.identity_id,
+                true,
+                move || {
+                    *calls.lock().unwrap() += 1;
+                    async { Ok(native_catalog()) }
+                },
+            ))
+            .expect("attribution");
+
+        if store == "file" {
+            assert_eq!(result.account_binding, CodexNativeAccountBinding::Matched);
+            assert_eq!(result.catalog_status, CodexNativeCatalogStatus::Ready);
+            assert_eq!(*read_count.lock().unwrap(), 1);
+        } else {
+            assert_eq!(result.account_binding, CodexNativeAccountBinding::Unknown);
+            assert_eq!(
+                result.binding_detail,
+                Some(CodexNativeBindingDetail::UnsupportedCredentialStore),
+                "{store}"
+            );
+            assert_eq!(result.catalog_status, CodexNativeCatalogStatus::NotRead);
+            assert!(result.native_account_id.is_none());
+            assert!(result.models.is_empty());
+            assert_eq!(*read_count.lock().unwrap(), 0);
+            assert_eq!(
+                serde_json::to_value(&result).unwrap()["bindingDetail"],
+                "unsupported_credential_store"
+            );
+        }
+    }
+}
+
+#[test]
+fn codex_native_models_drop_a_catalog_when_the_saved_account_is_removed() {
+    use crate::services::managed_auth::consumers::codex::observe_codex_home;
+
+    let (service, _dir) = service();
+    let selected = seed_proxy(
+        &service,
+        "native-selected",
+        "acct-selected",
+        ManagedAuthProvider::Openai,
+        false,
+    );
+    write_codex_login(&service, "acct-selected");
+    let before = observe_codex_home(&service.codex_home()).connection_revision();
+    let saved = service
+        .credentials_for_account(&selected.identity_id)
+        .unwrap();
+    let preview = service
+        .preview_account_removal(&selected.identity_id, &account_revision(&saved[0]))
+        .unwrap();
+
+    let error = runtime()
+        .block_on(
+            service.get_codex_native_models_with(&selected.identity_id, true, || async {
+                service
+                    .remove_account(
+                        &preview.preview_id,
+                        &selected.identity_id,
+                        &preview.expected_revision,
+                    )
+                    .unwrap();
+                Ok(native_catalog())
+            }),
+        )
+        .expect_err("the selected account was removed while reading");
+
+    assert_eq!(
+        error.reason_code,
+        ManagedAuthReasonCode::ConnectionUnavailable
+    );
+    assert_eq!(
+        observe_codex_home(&service.codex_home()).connection_revision(),
+        before,
+        "removing the saved account leaves the native files unchanged"
+    );
+    assert!(service
+        .credentials_for_account(&selected.identity_id)
+        .is_err());
+}
+
+#[test]
+fn codex_native_models_refuse_other_providers_and_unknown_accounts() {
+    let (service, _dir) = service();
+    let xai = seed_proxy(
+        &service,
+        "native-xai",
+        "acct-xai",
+        ManagedAuthProvider::Xai,
+        true,
+    );
+    write_codex_login(&service, "acct-xai");
+    for account in [
+        xai.identity_id.as_str(),
+        "ma1:ffffffffffffffffffffffffffffffff",
+    ] {
+        let error = runtime()
+            .block_on(
+                service
+                    .get_codex_native_models_with(account, true, || async { Ok(native_catalog()) }),
+            )
+            .expect_err("refused");
+        assert_eq!(
+            error.reason_code,
+            ManagedAuthReasonCode::ConnectionUnavailable,
+            "{account}"
+        );
+    }
+}
+
+#[test]
 fn quota_nonfinite_windows_are_not_success() {
     let mut quota = success_quota();
     quota.tiers[0].utilization = f64::NAN;

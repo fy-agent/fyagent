@@ -32,17 +32,24 @@ Routes:
 /agents?setup=<AgentCatalogId>
 ```
 
-The page accepts only the seven closed catalog IDs:
+The page accepts only the eight closed catalog IDs:
 
 ```text
 qoderwork | trae-work | workbuddy | grokbuild |
-codex | claude-code | opencode
+codex | claude-code | opencode | omp
 ```
+
+`omp` (Oh My Pi) is appended last; the first seven keep their order. Its
+`PRODUCT_DIRECTORY` entry has `assignmentId: null` and `promptAppId: null`, so
+`MCP_TARGETS`/`SKILL_TARGETS`/`SUPPORTED_APPS` filter it out and stay at seven
+entries. Agent configuration for omp mounts only the Models section;
+`AgentSkillsSection`/`AgentMcpSection` accept only
+`AssignableProductDirectoryEntry`.
 
 The platform adapter returns and strictly parses:
 
 ```text
-Agent catalog          contractVersion 5
+Agent catalog          contractVersion 6
 Install readiness      contractVersion 5
 Installation inventory contractVersion 1
 Action/job snapshots   contractVersion 4
@@ -83,12 +90,18 @@ or bypass flag.
   but an invalid target never supplies native action authority.
 - Catalog parse is all-or-nothing. Wrong version/order, duplicate IDs,
   unknown/excess keys, invalid capability mode/reason/evidence, or official
-  link ID/order drift against the native v5 table does not degrade to
-  partially trusted cards.
+  link ID/order drift against the native v6 table does not degrade to
+  partially trusted cards. v6 adds evidence IDs `omp_product` and
+  `omp_models`.
 - Official link IDs are closed and ordered: QoderWork/TRAE Work/WorkBuddy/Claude
   Code `product, download, terms`; Grok `product, docs, download, license`;
   Codex `product, desktop, download, terms`; OpenCode `product, desktop, license,
-terms`. Native catalog owns URLs; the platform parser owns the ID allowlist.
+terms`; omp `product, docs, download, license`. Native catalog owns URLs; the
+  platform parser owns the ID allowlist.
+- omp readiness is CLI tooling (`surfacesForAgent("omp") === ["cli"]`, no
+  `surfaces` array on the wire), directory update UI `none`, and no lifecycle
+  actions. Login is explained as `/login` inside omp; FyAgent never installs
+  or launches it.
   Directory cards and software details reuse `AgentSourceLinks` through the
   external-link adapter. License and vendor service terms remain distinct.
 - Pi is not an Agent product. It must not appear in types, filters, fixtures,
@@ -285,7 +298,7 @@ Do not send the user to the Models section to pick a filesystem destination.
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** catalog v5 drives the seven cards; inventory reports two apps; the
+- **Good:** catalog v6 drives the eight cards; inventory reports two apps; the
   user confirms a destination in the directory picker; the dialog returns to
   the originating control and the card shows transfer progress while the job
   runs.
@@ -315,8 +328,12 @@ mise run test:browser
 
 Required assertions:
 
-- exact seven-product catalog/version/order/capability parsing and no Pi;
-- official-link ID allowlist matches native v5 (Claude `product`, not Desktop);
+- exact eight-product catalog/version/order/capability parsing (omp last) and
+  no Pi;
+- official-link ID allowlist matches native v6 (Claude `product`, not Desktop;
+  omp `product, docs, download, license`);
+- omp is absent from MCP/Skills/Supported Apps/Prompt targets and its
+  configuration shows only the Models tab;
 - Claude Code and Grok Build share CLI `surfacesForAgent` and `cli_tooling`
   sourceKind; compact Claude `not_installed` + `install` parses; Claude
   `managed_desktop` / `desktop` and CLI `launch` fail closed;

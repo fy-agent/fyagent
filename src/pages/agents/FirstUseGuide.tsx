@@ -102,6 +102,14 @@ async function checkExistingAgentConfiguration(
           summary: `实际配置文件：已配置 ${snapshot.providers.length} 个模型提供商`,
         };
       }
+    } else if (agentId === "omp") {
+      const config = await ports.ompModels.readConfig();
+      if (config.providers.length > 0) {
+        return {
+          status: "configured",
+          summary: `实际配置文件：已配置 ${config.providers.length} 个模型提供商`,
+        };
+      }
     }
     return { status: "empty" };
   } catch {

@@ -38,7 +38,7 @@ test("production boots all eight primary routes without initialization errors", 
   page.on("pageerror", (error) => errors.push(error.message));
   await installRichTauriFeatureFixture(page);
   await page.goto("/#/agents");
-  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
   for (const route of routes) {
     await page.locator(`.fy-side-navigation a[href="#/${route}"]`).click();
     await expect(page.getByTestId(`${route}-page`)).toBeVisible();
@@ -87,10 +87,10 @@ test("production boots the first-use guide on demand and persists completion", a
     "Codex",
   ]);
   await page.getByRole("button", { name: "查看全部软件" }).click();
-  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
   scripts.length = 0;
   await page.reload();
-  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
   expect(scripts.some((url) => guideScripts.includes(url))).toBe(false);
   expect(errors).toEqual([]);
 });
@@ -103,7 +103,7 @@ for (const cpuRate of [1, 4]) {
     const session = await page.context().newCDPSession(page);
     await session.send("Emulation.setCPUThrottlingRate", { rate: cpuRate });
     await page.goto("/#/agents");
-    await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+    await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
     await page.evaluate(() => document.fonts.ready);
 
     const samples: {

@@ -30,6 +30,10 @@ export function createTauriFeaturePorts(): FeaturePorts {
     const { createModelFeaturePorts } = await import("./feature-ports/models");
     return createModelFeaturePorts();
   };
+  const ompModels = async () => {
+    const { createOmpModelsPort } = await import("./feature-ports/omp");
+    return createOmpModelsPort();
+  };
   const sessionMigration = async () => {
     const { createSessionMigrationPort } = await import(
       "./feature-ports/sessionMigration"
@@ -162,6 +166,12 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).opencodeModels.getModelProbeStatus(...args),
       cancelModelProbe: async (...args) =>
         (await models()).opencodeModels.cancelModelProbe(...args),
+    },
+    ompModels: {
+      readConfig: async () => (await ompModels()).readConfig(),
+      discoverCli: async () => (await ompModels()).discoverCli(),
+      previewSave: async (...args) => (await ompModels()).previewSave(...args),
+      applySave: async (...args) => (await ompModels()).applySave(...args),
     },
     ...createSimpleFeaturePorts(),
     ...createContentFeaturePorts(),

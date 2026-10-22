@@ -24,6 +24,8 @@ pub enum AgentCatalogId {
     ClaudeCode,
     #[serde(rename = "opencode")]
     OpenCode,
+    #[serde(rename = "omp")]
+    Omp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -42,6 +44,8 @@ pub enum AgentVariantId {
     ClaudeCode,
     #[serde(rename = "opencode")]
     OpenCode,
+    #[serde(rename = "omp")]
+    Omp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -120,6 +124,8 @@ pub enum AgentEvidenceId {
     OpencodeProduct,
     OpencodeModels,
     GrokbuildProduct,
+    OmpProduct,
+    OmpModels,
     P0Scope,
 }
 
@@ -234,7 +240,8 @@ const fn runtime_boundary(
         | AgentCatalogId::WorkBuddy
         | AgentCatalogId::GrokBuild
         | AgentCatalogId::ClaudeCode
-        | AgentCatalogId::OpenCode => (
+        | AgentCatalogId::OpenCode
+        | AgentCatalogId::Omp => (
             ExternalAgentRuntimeCapabilityState::Unverified,
             AgentCapabilityReasonCode::TrustedRuntimeIdentityUnavailable,
         ),
@@ -258,6 +265,7 @@ mod tests {
             AgentCatalogId::GrokBuild,
             AgentCatalogId::ClaudeCode,
             AgentCatalogId::OpenCode,
+            AgentCatalogId::Omp,
         ] {
             let status = ExternalAgentRuntimeService::get_status(agent_id);
 

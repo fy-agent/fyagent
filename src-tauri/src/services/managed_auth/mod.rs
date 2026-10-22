@@ -9,6 +9,7 @@ use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+mod codex_native_models;
 mod connection_actions;
 pub(crate) mod consumers;
 mod core;
@@ -25,6 +26,7 @@ mod subscription_tests;
 #[path = "subscription_workbuddy_tests.rs"]
 mod subscription_workbuddy_tests;
 
+pub use codex_native_models::{CodexNativeCatalogFailure, ManagedAuthCodexNativeModels};
 pub(crate) use core::{
     stable_connection_id, stable_credential_id, stable_identity_id, stable_revision,
     ConnectionRecord, ConnectionStatus, CredentialPurpose, CredentialRecord, CredentialStatus,
@@ -242,6 +244,17 @@ pub struct ManagedAuthAccountQuota {
     pub status: ManagedAuthQuotaStatus,
     pub reason_code: Option<ManagedAuthReasonCode>,
     pub windows: Vec<ManagedAuthQuotaWindow>,
+}
+
+/// The Codex picker catalog that OpenAI serves to one saved ChatGPT account,
+/// read with that account's own credential. Model IDs only.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedAuthOpenAiModels {
+    pub contract_version: u8,
+    pub account_id: String,
+    pub fetched_at: String,
+    pub models: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -350,7 +350,7 @@ describe("FyAgent primary route lifecycle", () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.catalog.get = vi.fn(async () => ({
-      contractVersion: 5 as const,
+      contractVersion: 6 as const,
       reviewedAt: "2026-08-18",
       agents: [
         {

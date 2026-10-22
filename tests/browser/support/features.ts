@@ -11,6 +11,17 @@ export interface FeatureFixtureCall {
 
 export interface RichFeatureFixtureOptions {
   authSummaryScenario?: "mixed";
+  /** Consumers whose first connection apply fails with an external change. */
+  authConnectionFailOnce?: string[];
+  /** Codex starts unbound so the OpenAI account offers "用此账号连接". */
+  authCodexConnectable?: boolean;
+  /** First OpenAI catalog read fails with this managed-auth reason. */
+  openAiModelsFailOnce?: string;
+  /** Account attribution returned by the native Codex catalog command. */
+  codexNativeModelsScenario?:
+    | "ready"
+    | "other_account"
+    | "unsupported_credential_store";
   firstUseGuideState?: "pending" | "dismissed";
   catalogFailure?: boolean;
   observationFailure?: "workbuddy" | "codex" | "claude";
@@ -36,6 +47,10 @@ export interface RichFeatureFixtureOptions {
     | "wrong_route"
     | "wrong_model";
   workBuddyWriteDelayMs?: number;
+  /** omp editor-only discovery; directory install readiness remains unchanged. */
+  ompCliDetected?: boolean;
+  /** Native parsing outcome, not a YAML parser inside the browser fixture. */
+  ompInvalidYaml?: "models" | "config";
 }
 
 declare global {
@@ -182,7 +197,7 @@ export async function installRichTauriFeatureFixture(
     // Mirror the reviewed IDs, order and URLs from commands/agent_catalog.rs.
     // The production platform parser deliberately rejects older partial lists.
     const catalog = {
-      contractVersion: 5,
+      contractVersion: 6,
       reviewedAt: "2026-08-31",
       agents: [
         {
@@ -370,7 +385,68 @@ export async function installRichTauriFeatureFixture(
           ],
           capabilities: catalogCapabilities(),
         },
+        {
+          id: "omp",
+          variantId: "omp",
+          displayName: "Oh My Pi (omp)",
+          description: "支持自定义 API Provider 的模型配置。",
+          officialLinks: [
+            {
+              id: "product",
+              label: "打开 Oh My Pi 官方页面",
+              url: "https://omp.sh/",
+            },
+            {
+              id: "docs",
+              label: "打开 Oh My Pi 模型配置文档",
+              url: "https://github.com/can1357/oh-my-pi/blob/main/docs/models.md",
+            },
+            {
+              id: "download",
+              label: "打开 Oh My Pi 发布页面",
+              url: "https://github.com/can1357/oh-my-pi/releases",
+            },
+            {
+              id: "license",
+              label: "Oh My Pi 源码与许可证",
+              url: "https://github.com/can1357/oh-my-pi/blob/main/LICENSE",
+            },
+          ],
+          capabilities: catalogCapabilities(),
+        },
       ],
+    };
+    type OmpFixtureProvider = {
+      id: string;
+      baseUrl: string;
+      api: string;
+      auth: string;
+      hasApiKey: boolean;
+      hasCommandKey: boolean;
+      models: { id: string; name: string | null }[];
+    };
+    const ompFixture: {
+      revision: number;
+      provider: OmpFixtureProvider;
+      defaultModel: string | null;
+      pending: {
+        provider: OmpFixtureProvider;
+        defaultModel: string | null;
+        configChanged: boolean;
+      } | null;
+    } = {
+      revision: 1,
+      provider: {
+        id: "fyagent-gateway",
+        baseUrl: "https://gateway.example/v1",
+        api: "openai-completions",
+        auth: "apiKey",
+        hasApiKey: true,
+        hasCommandKey: false,
+        models: [{ id: "vendor/model-a", name: "Model A" }],
+      },
+      defaultModel: "fyagent-gateway/vendor/model-a",
+      pending: null,
     };
     const quickSetupIds = {
       grokbuild: "fyagent-v2-quick-setup-grokbuild",
@@ -1085,10 +1161,29 @@ export async function installRichTauriFeatureFixture(
       managedAuthOverview.connections[3].authStatus = "unavailable";
       managedAuthOverview.connections[3].requestMode = "unknown";
     }
+    if (fixtureOptions.authCodexConnectable) {
+      const codex = managedAuthOverview.connections.find(
+        (item) => item.consumer === "codex",
+      )!;
+      Object.assign(codex, {
+        accountId: null,
+        authStatus: "disconnected",
+        requestMode: "none",
+        requestProviderLabel: null,
+        allowedActions: ["connect_account", "refresh"],
+      });
+      for (const account of managedAuthOverview.accounts)
+        account.connectedConsumerCount = new Set(
+          managedAuthOverview.connections
+            .filter((item) => item.accountId === account.accountId)
+            .map((item) => item.consumer),
+        ).size;
+    }
     const managedAuthSessions = new Map<
       string,
       { snapshot: Record<string, unknown>; polls: number }
     >();
+    let connectionPreviewCount = 0;
     const managedMutation = () => ({
       contractVersion: 1,
       operationId: crypto.randomUUID(),
@@ -1217,6 +1312,97 @@ export async function installRichTauriFeatureFixture(
             return [{ id: "gpt-fixture" }, { id: "gpt-fixture-second" }];
           case "managed_auth_get_overview":
             return structuredClone(managedAuthOverview);
+          case "managed_auth_get_openai_models": {
+            const accountId = String(payload.accountId);
+            const account = (
+              managedAuthOverview.accounts as Array<{
+                accountId: string;
+                provider: string;
+              }>
+            ).find((item) => item.accountId === accountId);
+            if (!account || account.provider !== "openai")
+              throw {
+                contractVersion: 1,
+                reasonCode: "connection_unavailable",
+              };
+            const failure = fixtureOptions.openAiModelsFailOnce;
+            if (failure) {
+              fixtureOptions.openAiModelsFailOnce = undefined;
+              throw { contractVersion: 1, reasonCode: failure };
+            }
+            return {
+              contractVersion: 1,
+              accountId,
+              fetchedAt: "2026-10-22T04:30:00Z",
+              models: ["chatgpt-fixture-model", "gpt-fixture-codex"],
+            };
+          }
+          case "managed_auth_get_codex_native_models": {
+            const accountId = String(payload.accountId);
+            const connection = (
+              managedAuthOverview.connections as Array<{
+                consumer: string;
+                accountId: string | null;
+                revision: string;
+                requestMode: string;
+              }>
+            ).find((item) => item.consumer === "codex");
+            if (!connection || connection.accountId !== accountId)
+              throw {
+                contractVersion: 1,
+                reasonCode: "connection_unavailable",
+              };
+            const scenario =
+              fixtureOptions.codexNativeModelsScenario ?? "ready";
+            const readable = scenario === "ready";
+            return {
+              contractVersion: 1,
+              accountId,
+              source: "codex_app_server",
+              accountBinding: readable
+                ? "matched"
+                : scenario === "other_account"
+                  ? "mismatch"
+                  : "unknown",
+              bindingDetail:
+                scenario === "unsupported_credential_store"
+                  ? "unsupported_credential_store"
+                  : null,
+              nativeAccountId: readable
+                ? accountId
+                : scenario === "other_account"
+                  ? `ma1:${"9".repeat(32)}`
+                  : null,
+              providerRoute:
+                connection.requestMode === "official_subscription"
+                  ? "official"
+                  : connection.requestMode === "third_party_api"
+                    ? "custom"
+                    : "unknown",
+              revision: connection.revision,
+              checkedAt: "2026-10-22T04:30:00Z",
+              catalogStatus: readable ? "ready" : "not_read",
+              failure: null,
+              cliVersion: readable ? "0.0.0-fixture" : null,
+              truncated: false,
+              models: readable
+                ? [
+                    {
+                      id: "gpt-fixture-codex",
+                      displayName: "Fixture Codex",
+                      isDefault: true,
+                      reasoningEfforts: ["low", "medium", "high"],
+                    },
+                    {
+                      id: "gpt-fixture-mini",
+                      displayName: null,
+                      isDefault: false,
+                      reasoningEfforts: [],
+                    },
+                  ]
+                : [],
+            };
+          }
           case "managed_auth_get_account_quota": {
             const accountId = String(payload.accountId);
             const account = (
@@ -1352,8 +1538,25 @@ export async function installRichTauriFeatureFixture(
             return structuredClone(record.snapshot);
           }
           case "managed_auth_set_default_account":
-          case "managed_auth_apply_connection_action":
             return managedMutation();
+          case "managed_auth_apply_connection_action": {
+            const connectionId = (payload.request as { connectionId: string })
+              .connectionId;
+            const consumer = managedAuthOverview.connections.find(
+              (item) => item.connectionId === connectionId,
+            )?.consumer;
+            const failOnce = fixtureOptions.authConnectionFailOnce ?? [];
+            if (consumer && failOnce.includes(consumer)) {
+              fixtureOptions.authConnectionFailOnce = failOnce.filter(
+                (item) => item !== consumer,
+              );
+              throw {
+                contractVersion: 1,
+                reasonCode: "external_change_detected",
+              };
+            }
+            return managedMutation();
+          }
           case "managed_auth_preview_connection_action": {
             const request = payload.request as {
               connectionId: string;
@@ -1363,7 +1566,7 @@ export async function installRichTauriFeatureFixture(
             };
             return {
               contractVersion: 1,
-              previewId: "323e4567-e89b-42d3-a456-426614174000",
+              previewId: `323e4567-e89b-42d3-a456-${426614174000 + connectionPreviewCount++}`,
               ...request,
               writeTargets: [
                 {
@@ -1510,6 +1713,110 @@ export async function installRichTauriFeatureFixture(
               revision: "fixture-trae-revision",
               truncated: false,
             };
+          case "discover_omp_cli":
+            if (fixtureOptions.ompCliDetected === false) {
+              return { detected: false, version: null, executablePath: null };
+            }
+            return {
+              detected: true,
+              version: "18.12.5",
+              executablePath: "C:\\Users\\fixture\\.omp\\bin\\omp.exe",
+            };
+          case "read_omp_config":
+            return {
+              profile: "default",
+              modelsPath: "~/.omp/agent/models.yml",
+              configPath: "~/.omp/agent/config.yml",
+              modelsRevision: `fixture-omp-models-${ompFixture.revision}`,
+              configRevision: `fixture-omp-config-${ompFixture.revision}`,
+              providers: [structuredClone(ompFixture.provider)],
+              defaultModel: ompFixture.defaultModel,
+              modelsFileStatus:
+                fixtureOptions.ompInvalidYaml === "models"
+                  ? "invalidYaml"
+                  : "ok",
+              configFileStatus:
+                fixtureOptions.ompInvalidYaml === "config"
+                  ? "invalidYaml"
+                  : "ok",
+            };
+          case "preview_omp_save": {
+            const request = payload.plan as {
+              provider: {
+                id: string;
+                baseUrl: string;
+                api: string;
+                auth?: string | null;
+                apiKey?: string | null;
+                models: { id: string; name?: string | null }[];
+              };
+              defaultModel?: string | null;
+            };
+            const models = new Map(
+              (request.provider.id === ompFixture.provider.id
+                ? ompFixture.provider.models
+                : []
+              ).map((model) => [model.id, model]),
+            );
+            for (const model of request.provider.models) {
+              models.set(model.id, { id: model.id, name: model.name ?? null });
+            }
+            const requestedDefault = request.defaultModel ?? null;
+            ompFixture.pending = {
+              provider: {
+                id: request.provider.id,
+                baseUrl: request.provider.baseUrl,
+                api: request.provider.api,
+                auth: request.provider.auth ?? "apiKey",
+                hasApiKey: true,
+                hasCommandKey: false,
+                models: [...models.values()],
+              },
+              defaultModel: requestedDefault ?? ompFixture.defaultModel,
+              configChanged: requestedDefault !== null,
+            };
+            return {
+              planId: "omp-plan:fixture",
+              planDigest: "fixture-omp-plan-digest",
+              profile: "default",
+              modelsPath: "~/.omp/agent/models.yml",
+              configPath: "~/.omp/agent/config.yml",
+              provider: structuredClone(ompFixture.pending.provider),
+              defaultModel: ompFixture.pending.defaultModel,
+              changedFiles: ompFixture.pending.configChanged
+                ? ["models", "config"]
+                : ["models"],
+              warnings: [],
+            };
+          }
+          case "apply_omp_save": {
+            const confirmation = payload.plan as {
+              planId: string;
+              planDigest: string;
+            };
+            const pending = ompFixture.pending;
+            if (
+              !pending ||
+              confirmation.planId !== "omp-plan:fixture" ||
+              confirmation.planDigest !== "fixture-omp-plan-digest"
+            ) {
+              throw "并发冲突: fixture omp plan is no longer current";
+            }
+            ompFixture.pending = null;
+            ompFixture.provider = pending.provider;
+            ompFixture.defaultModel = pending.defaultModel;
+            ompFixture.revision += 1;
+            return {
+              modelsPath: "~/.omp/agent/models.yml",
+              configPath: "~/.omp/agent/config.yml",
+              modelsRevision: `fixture-omp-models-${ompFixture.revision}`,
+              configRevision: `fixture-omp-config-${ompFixture.revision}`,
+              provider: structuredClone(pending.provider),
+              defaultModel: pending.defaultModel,
+              modelsWritten: true,
+              configWritten: pending.configChanged,
+            };
+          }
           case "get_opencode_model_snapshot":
             return {
               selectedModel: openCodeSubscription
@@ -2094,7 +2401,9 @@ export async function installRichTauriFeatureFixture(
           case "get_agent_install_readiness": {
             const agentId = String(payload.agentId);
             const grokCli =
-              agentId === "grokbuild" || agentId === "claude-code";
+              agentId === "grokbuild" ||
+              agentId === "claude-code" ||
+              agentId === "omp";
             return {
               contractVersion: 5,
               configurationEligibility: {
