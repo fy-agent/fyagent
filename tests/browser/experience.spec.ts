@@ -35,7 +35,7 @@ test("keeps shared hierarchy, rounded navigation and account dialog geometry con
 }, info) => {
   await installRichTauriFeatureFixture(page);
   await openRendererPage(page, "/agents");
-  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+  await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
   await expectNoHorizontalOverflow(page);
   const capture = async (name: string) => {
     await expect

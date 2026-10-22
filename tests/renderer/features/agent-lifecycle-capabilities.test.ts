@@ -40,7 +40,7 @@ function readiness(
 }
 
 describe("agent lifecycle capabilities", () => {
-  it("covers every catalog id and disables update chrome for the three domestic products", () => {
+  it("covers every catalog id and disables update chrome for the domestic products and omp", () => {
     expect(Object.keys(AGENT_DIRECTORY_UPDATE_UI).sort()).toEqual(
       [...AGENT_CATALOG_IDS].sort(),
     );
@@ -48,6 +48,7 @@ describe("agent lifecycle capabilities", () => {
       "qoderwork",
       "trae-work",
       "workbuddy",
+      "omp",
     ]);
     expect(AGENT_DIRECTORY_UPDATE_UI.codex).toBe("codex_desktop");
     expect(AGENT_DIRECTORY_UPDATE_UI.opencode).toBe("generic");

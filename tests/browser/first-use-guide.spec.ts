@@ -37,7 +37,7 @@ for (const choice of [
   { label: "日常办公", names: ["QoderWork CN", "TRAE Work CN", "WorkBuddy"] },
   {
     label: "编程开发",
-    names: ["Grok Build", "Codex", "Claude Code", "OpenCode"],
+    names: ["Grok Build", "Codex", "Claude Code", "OpenCode", "Oh My Pi (omp)"],
   },
   { label: "两者都用", names: ["WorkBuddy", "Codex"] },
 ]) {
@@ -104,7 +104,7 @@ for (const choice of [
     await expect(
       page.getByRole("heading", { name: "我的 AI 软件" }),
     ).toBeFocused();
-    await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+    await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
     const descriptions = await page
       .locator(".fy-agent-directory-description")
       .allTextContents();

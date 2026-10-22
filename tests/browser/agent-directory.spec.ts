@@ -192,7 +192,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
 
   const directory = page.getByRole("region", { name: "AI 软件目录" });
   await expect(directory).toBeVisible();
-  await expect(directory.getByRole("article")).toHaveCount(7);
+  await expect(directory.getByRole("article")).toHaveCount(8);
   const workbuddyCard = directory.locator('[data-agent-id="workbuddy"]');
   await workbuddyCard.getByText("官方资料与许可", { exact: true }).click();
   const officialSources = workbuddyCard.getByRole("region", {
@@ -231,7 +231,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
   const brandFrames = directory.locator(
     '.fy-agent-directory-card .fy-catalog-brand-frame[data-size="detail"]',
   );
-  await expect(brandFrames).toHaveCount(7);
+  await expect(brandFrames).toHaveCount(8);
   expect(
     await brandFrames.evaluateAll((frames) =>
       frames.map((frame) => ({
@@ -239,7 +239,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
         height: frame.getBoundingClientRect().height,
       })),
     ),
-  ).toEqual([0, 1, 2, 3, 4, 5, 6].map(() => ({ width: 64, height: 64 })));
+  ).toEqual([0, 1, 2, 3, 4, 5, 6, 7].map(() => ({ width: 64, height: 64 })));
 
   const configurable = ["workbuddy", "grokbuild", "codex", "claude-code"];
   const blocked = ["qoderwork", "trae-work", "opencode"];
