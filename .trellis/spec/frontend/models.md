@@ -68,7 +68,8 @@ qoderwork | trae | workbuddy | grokbuild | codex | claude | opencode
 
 The `target` search parameter accepts only those values. The persistent route
 keeps the last valid visible target; absent/invalid input defaults to
-`qoderwork`.
+`claude` (Claude Code). An explicit last visible target, including QoderWork,
+stays selected.
 
 ### Actual Port surface
 
@@ -518,7 +519,7 @@ shared lifecycle here.
 
 | Condition                                                                           | Required result                                                                                                                                                            |
 | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unknown/absent route target                                                         | Use the closed default `qoderwork`; do not mount an arbitrary panel.                                                                                                       |
+| Unknown/absent route target                                                         | Use the closed default `claude`; do not mount an arbitrary panel.                                                                                                          |
 | QoderWork selected                                                                  | Show unsupported guidance only; issue no model IPC.                                                                                                                        |
 | TRAE selected                                                                       | Read/display model IDs only; do not expose local save controls.                                                                                                            |
 | Base URL contains credentials/query/fragment or is not HTTP(S)                      | Reject before fetch, probe, plan, or write.                                                                                                                                |

@@ -22,8 +22,8 @@ describe("models quick setup helpers", () => {
     ]);
     expect(parseModelTarget("codex")).toBe("codex");
     expect(parseModelTarget("trae")).toBe("trae");
-    expect(parseModelTarget("unknown")).toBe("qoderwork");
-    expect(parseModelTarget(null)).toBe("qoderwork");
+    expect(parseModelTarget("unknown")).toBe("claude");
+    expect(parseModelTarget(null)).toBe("claude");
     expect(parseExplicitModelTarget("workbuddy")).toBe("workbuddy");
     expect(parseExplicitModelTarget("unknown")).toBeNull();
     expect(parseExplicitModelTarget(null)).toBeNull();

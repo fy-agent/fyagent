@@ -393,12 +393,12 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
       local: true,
     })),
   );
-  await expect(page.getByTestId("model-target-qoderwork")).toHaveAttribute(
+  await expect(page.getByTestId("model-target-claude")).toHaveAttribute(
     "aria-current",
     "true",
   );
   await expect(
-    page.getByRole("region", { name: "QoderWork CN 模型设置" }),
+    page.getByRole("region", { name: "Claude Code 模型配置" }),
   ).toBeVisible();
 
   await page.getByTestId("model-target-qoderwork").click();

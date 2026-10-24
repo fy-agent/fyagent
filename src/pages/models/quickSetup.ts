@@ -85,7 +85,7 @@ export function parseExplicitModelTarget(
 }
 
 export function parseModelTarget(value: string | null): ModelTarget {
-  return parseExplicitModelTarget(value) ?? "qoderwork";
+  return parseExplicitModelTarget(value) ?? "claude";
 }
 
 export function validateQuickSetup(
