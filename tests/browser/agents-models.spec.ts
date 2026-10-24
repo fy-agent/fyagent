@@ -393,13 +393,17 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
       local: true,
     })),
   );
-  await expect(page.getByTestId("model-target-qoderwork")).toHaveAttribute(
+  await expect(page.getByTestId("model-target-claude")).toHaveAttribute(
     "aria-current",
     "true",
   );
   await expect(
-    page.getByRole("region", { name: "QoderWork CN 模型设置" }),
+    page.getByRole("region", { name: "Claude Code 模型配置" }),
   ).toBeVisible();
+  const modeTabs = modelPage.getByRole("tablist", { name: "连接模式" });
+  await expect(modeTabs.getByRole("tab", { name: "直连" })).toBeVisible();
+  await expect(modeTabs.getByRole("tab", { name: "路由" })).toBeVisible();
+  await expect(modeTabs.getByRole("tab", { name: "聚合" })).toBeVisible();
 
   await page.getByTestId("model-target-qoderwork").click();
   await expect(modelPage).toContainText("官方不支持第三方模型配置");
