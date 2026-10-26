@@ -648,7 +648,7 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
   const apiKey = "browser-codex-secret";
   // Explicit target: cold-default is Claude Code; avoid competing 配置名称 fields.
   await openRendererPage(page, "/models?target=codex");
-  const codexPanel = page.getByRole("region", { name: "Codex 配置" });
+  const codexPanel = page.getByRole("region", { name: "Codex 模型配置" });
   await expect(page.getByTestId("model-target-codex")).toHaveAttribute(
     "aria-current",
     "true",
