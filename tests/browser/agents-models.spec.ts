@@ -646,16 +646,23 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
   });
   const health = monitorPageHealth(page);
   const apiKey = "browser-codex-secret";
-  await openRendererPage(page, "/models");
-  await page.getByTestId("model-target-codex").click();
+  // Explicit target: cold-default is Claude Code; avoid competing 配置名称 fields.
+  await openRendererPage(page, "/models?target=codex");
+  const codexPanel = page.getByRole("region", { name: "Codex 配置" });
+  await expect(page.getByTestId("model-target-codex")).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expect(codexPanel).toBeVisible();
 
-  await page.getByLabel("配置名称").fill("Browser Codex");
-  await page.getByLabel("服务地址").fill("https://codex.example.test/v1");
-  await page.getByLabel("API Key", { exact: true }).fill(apiKey);
-  await page.getByLabel("模型 ID", { exact: true }).fill("gpt-browser");
-  const submit = page.getByRole("button", { name: "保存并设为当前配置" });
+  await codexPanel.getByLabel("配置名称").fill("Browser Codex");
+  await expect(codexPanel.getByLabel("配置名称")).toHaveValue("Browser Codex");
+  await codexPanel.getByLabel("服务地址").fill("https://codex.example.test/v1");
+  await codexPanel.getByLabel("API Key", { exact: true }).fill(apiKey);
+  await codexPanel.getByLabel("模型 ID", { exact: true }).fill("gpt-browser");
+  const submit = codexPanel.getByRole("button", { name: "保存并设为当前配置" });
   await submit.click();
-  const busySubmit = page.getByRole("button", {
+  const busySubmit = codexPanel.getByRole("button", {
     name: "配置中…",
     includeHidden: true,
   });
@@ -675,7 +682,9 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
   });
   const confirm = saveWorkspace.getByRole("button", { name: "应用更改" });
   await expect(confirm).toBeEnabled();
-  await expect(page.getByLabel("API Key", { exact: true })).toHaveValue(apiKey);
+  await expect(codexPanel.getByLabel("API Key", { exact: true })).toHaveValue(
+    apiKey,
+  );
 
   await expect
     .poll(
