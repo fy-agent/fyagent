@@ -40,6 +40,9 @@ pub(crate) struct CodexManagedAuthObservation {
     pub auth_revision: Option<String>,
     pub effective_store: CodexCredentialStore,
     pub provider_route: CodexProviderRoute,
+    /// The route described by the same config snapshot for catalog display.
+    /// Kept separate from the existing account projection policy.
+    pub catalog_provider_route: CodexProviderRoute,
     pub request_mode: ManagedAuthRequestMode,
     pub request_provider_label: Option<String>,
     pub auth_state: CodexNativeAuthState,
@@ -67,6 +70,7 @@ impl Default for CodexManagedAuthObservation {
             auth_revision: None,
             effective_store: CodexCredentialStore::Unset,
             provider_route: CodexProviderRoute::Official,
+            catalog_provider_route: CodexProviderRoute::Official,
             request_mode: ManagedAuthRequestMode::OfficialSubscription,
             request_provider_label: Some("openai".to_string()),
             auth_state: CodexNativeAuthState::Missing,
@@ -91,6 +95,7 @@ pub(crate) fn observe_managed_auth(codex_home: &Path) -> CodexManagedAuthObserva
                 auth_revision: None,
                 effective_store: CodexCredentialStore::Unknown,
                 provider_route: CodexProviderRoute::Invalid,
+                catalog_provider_route: CodexProviderRoute::Unknown,
                 request_mode: ManagedAuthRequestMode::Unknown,
                 request_provider_label: None,
                 auth_state: observe_auth_file(&auth_path).1,
@@ -116,11 +121,49 @@ pub(crate) fn observe_managed_auth(codex_home: &Path) -> CodexManagedAuthObserva
         auth_revision,
         effective_store,
         provider_route,
+        catalog_provider_route: classify_catalog_provider_route(&config_text),
         request_mode,
         request_provider_label,
         auth_state,
         selector_commented: uncomment_top_level_model_provider(&config_text).is_some(),
         may_need_restart: false,
+    }
+}
+
+fn classify_catalog_provider_route(config_toml: &str) -> CodexProviderRoute {
+    let Ok(document) = config_toml.parse::<toml_edit::DocumentMut>() else {
+        return CodexProviderRoute::Unknown;
+    };
+    // Profiles can override the root selector. Describe an unresolved profile
+    // as unknown instead of treating the root defaults as its effective route.
+    if document.get("profile").is_some() {
+        return CodexProviderRoute::Unknown;
+    }
+    if let Some(endpoint) = document.get("openai_base_url") {
+        return match endpoint.as_str().filter(|value| !value.trim().is_empty()) {
+            Some(_) => CodexProviderRoute::ThirdParty,
+            None => CodexProviderRoute::Unknown,
+        };
+    }
+    let selected = match document.get("model_provider") {
+        None => "openai",
+        Some(item) => match item.as_str().filter(|value| !value.is_empty()) {
+            Some(id) => id,
+            None => return CodexProviderRoute::Unknown,
+        },
+    };
+    if document
+        .get("model_providers")
+        .and_then(Item::as_table_like)
+        .and_then(|providers| providers.get(selected))
+        .is_some()
+    {
+        return CodexProviderRoute::ThirdParty;
+    }
+    if selected == "openai" {
+        CodexProviderRoute::Official
+    } else {
+        CodexProviderRoute::ThirdParty
     }
 }
 

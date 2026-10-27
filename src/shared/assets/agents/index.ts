@@ -1,6 +1,7 @@
 import grokBuildIconUrl from "../apps/grokbuild.svg";
 import claudeCodeIconUrl from "./claude-code.svg";
 import codexIconUrl from "./codex.svg";
+import ompIconUrl from "./omp.svg";
 import openCodeIconUrl from "./opencode.svg";
 import qoderWorkIconUrl from "./qoderwork.png";
 import traeWorkIconUrl from "./trae-work.png";
@@ -14,6 +15,7 @@ export const agentIconIds = [
   "codex",
   "claude-code",
   "opencode",
+  "omp",
 ] as const;
 
 export type AgentIconId = (typeof agentIconIds)[number];
@@ -123,6 +125,19 @@ export const agentBrandById = {
       opticalScale: 0.9,
       background: "transparent",
       corner: "none",
+    },
+  },
+  omp: {
+    iconUrl: ompIconUrl,
+    list: {
+      opticalScale: 0.9,
+      background: "transparent",
+      corner: "rounded",
+    },
+    detail: {
+      opticalScale: 0.9,
+      background: "transparent",
+      corner: "rounded",
     },
   },
 } as const satisfies Readonly<Record<AgentIconId, AgentBrandAsset>>;

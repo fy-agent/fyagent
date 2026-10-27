@@ -48,6 +48,8 @@ function managedPorts(
   ports.managedAuth = {
     getOverview: vi.fn(async () => managedAuthOverviewFixture()),
     getAccountQuota: vi.fn(async (accountId) => accountQuotaFixture(accountId)),
+    getOpenAiModels: vi.fn(),
+    getCodexNativeModels: vi.fn(),
     startLogin: vi.fn(async () => deviceLoginSessionFixture()),
     getLoginSession: vi.fn(async () => deviceLoginSessionFixture()),
     cancelLogin: vi.fn(async () =>
@@ -187,7 +189,7 @@ describe("AuthPage", () => {
     expect(screen.getByRole("dialog")).not.toHaveTextContent("用于 Grok Build");
   });
 
-  it("preserves target A success when B fails and retries B with a fresh preview", async () => {
+  async function connectCodexThenFailOpenCode() {
     const user = userEvent.setup();
     let overview = managedAuthOverviewFixture();
     overview.connections = overview.connections
@@ -260,24 +262,53 @@ describe("AuthPage", () => {
     };
     await connect("Codex");
     await connect("OpenCode Desktop");
-    const a = screen.getByRole("article", { name: "Codex · OpenAI 操作结果" });
+    const results = screen.getByRole("region", { name: "软件连接操作结果" });
+    const retryOpenCode = async () => {
+      const b = screen.getByRole("article", {
+        name: "OpenCode Desktop · OpenAI 操作结果",
+      });
+      await user.click(within(b).getByRole("button", { name: "重试此连接" }));
+      const retry = screen.getByRole("dialog");
+      await waitFor(() =>
+        expect(
+          within(retry).getByRole("button", { name: "确认" }),
+        ).toBeEnabled(),
+      );
+      await user.click(within(retry).getByRole("button", { name: "确认" }));
+    };
+    return { user, applyConnectionAction, results, retryOpenCode };
+  }
+
+  it("preserves target A success when B fails and retries B with a fresh preview", async () => {
+    const { user, applyConnectionAction, results, retryOpenCode } =
+      await connectCodexThenFailOpenCode();
+    expect(results).toHaveTextContent("1 个需要处理，1 个已完成");
+    expect(document.querySelector(".fy-toast-host .fy-toast")).toBeNull();
+    expect(
+      screen.queryByRole("article", { name: "Codex · OpenAI 操作结果" }),
+    ).not.toBeInTheDocument();
     const b = screen.getByRole("article", {
       name: "OpenCode Desktop · OpenAI 操作结果",
     });
-    expect(a).toHaveTextContent("此连接操作已完成并回读。");
     expect(b).toHaveTextContent("检测到软件在 FyAgent 外部修改了登录信息");
+    const toggle = within(results).getByRole("button", {
+      name: "查看已完成（1）",
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const a = screen.getByRole("article", { name: "Codex · OpenAI 操作结果" });
+    expect(a).toHaveTextContent("此连接操作已完成并回读。");
     const firstB = applyConnectionAction.mock.calls.find(
       ([request]) => request.connectionId === OPENCODE_CONNECTION_ID,
     )![1];
-    await user.click(within(b).getByRole("button", { name: "重试此连接" }));
-    const retry = screen.getByRole("dialog");
-    await waitFor(() =>
-      expect(within(retry).getByRole("button", { name: "确认" })).toBeEnabled(),
-    );
-    await user.click(within(retry).getByRole("button", { name: "确认" }));
-    await waitFor(() =>
-      expect(b).toHaveTextContent("此连接操作已完成并回读。"),
-    );
+    await retryOpenCode();
+    await waitFor(() => expect(results).toHaveTextContent("2 个已完成"));
+    expect(
+      screen.getByRole("article", {
+        name: "OpenCode Desktop · OpenAI 操作结果",
+      }),
+    ).toHaveTextContent("此连接操作已完成并回读。");
     expect(
       applyConnectionAction.mock.calls.filter(
         ([request]) => request.connectionId === CODEX_CONNECTION_ID,
@@ -289,6 +320,126 @@ describe("AuthPage", () => {
     expect(bCalls).toHaveLength(2);
     expect(bCalls[1][1]).not.toBe(firstB);
     expect(a).toHaveTextContent("此连接操作已完成并回读。");
+    await user.click(
+      within(results).getByRole("button", { name: "关闭已完成" }),
+    );
+    expect(
+      screen.queryByRole("region", { name: "软件连接操作结果" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { selected: true })).toHaveFocus(),
+    );
+  });
+
+  it("folds the next success after completed results were expanded and dismissed", async () => {
+    const { user, results, retryOpenCode } =
+      await connectCodexThenFailOpenCode();
+    await user.click(
+      within(results).getByRole("button", { name: "查看已完成（1）" }),
+    );
+    await user.click(
+      within(results).getByRole("button", { name: "关闭已完成" }),
+    );
+    expect(results).toHaveTextContent("1 个需要处理");
+    await retryOpenCode();
+    await waitFor(() => expect(results).toHaveTextContent("1 个已完成"));
+    expect(
+      within(results).getByRole("button", { name: "查看已完成（1）" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("article", {
+        name: "OpenCode Desktop · OpenAI 操作结果",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports targeted connection actions only in the results region while untargeted ones keep their toast", async () => {
+    const { user, results } = await connectCodexThenFailOpenCode();
+    const failed = screen.getByRole("article", {
+      name: "OpenCode Desktop · OpenAI 操作结果",
+    });
+    expect(within(failed).getByRole("status")).toHaveTextContent(
+      "检测到软件在 FyAgent 外部修改了登录信息",
+    );
+    expect(
+      within(failed).getByRole("button", { name: "重试此连接" }),
+    ).toBeVisible();
+    expect(results).toHaveTextContent("1 个需要处理，1 个已完成");
+    expect(document.querySelector(".fy-toast")).toBeNull();
+    expect(screen.queryByText("账号操作未完成")).not.toBeInTheDocument();
+    expect(screen.queryByText("Codex 状态已更新")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /^软件连接/u }));
+    await user.click(await screen.findByTestId("managed-auth-consumer-codex"));
+    const codex = await screen.findByRole("region", { name: "Codex 连接详情" });
+    await user.click(within(codex).getByRole("button", { name: "刷新状态" }));
+    expect(await screen.findByText("Codex 状态已更新")).toBeVisible();
+    expect(document.querySelectorAll(".fy-toast")).toHaveLength(1);
+  });
+
+  it("keeps a pending-restart connection result visible while completed results fold", async () => {
+    const user = userEvent.setup();
+    let overview = managedAuthOverviewFixture();
+    overview.connections = overview.connections
+      .filter((item) => item.connectionId === CODEX_CONNECTION_ID)
+      .map((item) => ({
+        ...item,
+        provider: "openai",
+        accountId: null,
+        authStatus: "disconnected",
+        allowedActions: ["connect_account", "refresh"],
+        reasonCodes: [],
+      }));
+    const applyConnectionAction = vi.fn<
+      FeaturePorts["managedAuth"]["applyConnectionAction"]
+    >(async (request) => {
+      overview = {
+        ...overview,
+        connections: overview.connections.map((connection) =>
+          connection.connectionId === request.connectionId
+            ? {
+                ...connection,
+                accountId: OPENAI_ACCOUNT_ID,
+                authStatus: "pending_restart",
+                pendingRestart: true,
+                allowedActions: ["refresh"],
+              }
+            : connection,
+        ),
+      };
+      return mutationResultFixture(overview);
+    });
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => overview),
+        applyConnectionAction,
+      }),
+    );
+    const card = (
+      await screen.findByRole("heading", { name: "Codex" })
+    ).closest("article")!;
+    await user.click(
+      within(card).getByRole("button", { name: "用此账号连接" }),
+    );
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole("button", { name: "确认" }),
+      ).toBeEnabled(),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+    const results = await screen.findByRole("region", {
+      name: "软件连接操作结果",
+    });
+    await waitFor(() =>
+      expect(results).toHaveTextContent("1 个需重新启动软件"),
+    );
+    expect(
+      screen.getByRole("article", { name: "Codex · OpenAI 操作结果" }),
+    ).toHaveTextContent("此连接已保存并回读，需要重新启动软件后使用。");
+    expect(
+      within(results).queryByRole("button", { name: "关闭已完成" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps account identity, software connection and current request source visually separate", async () => {
@@ -391,6 +542,39 @@ describe("AuthPage", () => {
       "323e4567-e89b-42d3-a456-426614174000",
     );
   });
+
+  it.each([
+    {
+      requestMode: "third_party_api" as const,
+      requestProviderLabel: "fyagent_chatgpt",
+      label: "ChatGPT 订阅转发（本机 custom provider）",
+      note: true,
+    },
+    {
+      requestMode: "official_subscription" as const,
+      requestProviderLabel: "openai",
+      label: "ChatGPT 官方登录",
+      note: false,
+    },
+  ])(
+    "names the Codex request source as $label",
+    async ({ requestMode, requestProviderLabel, label, note }) => {
+      const overview = managedAuthOverviewFixture();
+      overview.connections[0] = {
+        ...overview.connections[0],
+        accountId: OPENAI_ACCOUNT_ID,
+        authStatus: "connected",
+        requestMode,
+        requestProviderLabel,
+      };
+      renderPage(managedPorts({ getOverview: vi.fn(async () => overview) }));
+      expect((await screen.findAllByText(label)).length).toBeGreaterThan(0);
+      expect(screen.queryByText("fyagent_chatgpt")).toBeNull();
+      expect(screen.queryAllByText(/会显示为 custom provider/).length > 0).toBe(
+        note,
+      );
+    },
+  );
 
   it("lets a saved-only Codex account connect even when the card still names that account", async () => {
     const user = userEvent.setup();

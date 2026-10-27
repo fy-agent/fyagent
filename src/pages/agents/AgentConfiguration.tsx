@@ -5,7 +5,10 @@ import {
   appendAgentReturnToPath,
   type AgentReturnDescriptor,
 } from "../../shared/features/agent-navigation";
-import type { ProductDirectoryEntry } from "../../shared/features/directory";
+import {
+  isAssignableProductEntry,
+  type ProductDirectoryEntry,
+} from "../../shared/features/directory";
 import type { AgentCatalogEntry } from "../../shared/features/types";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { BrandIconFrame } from "../../shared/ui/catalog";
@@ -25,11 +28,14 @@ const sectionOptions: ReadonlyArray<{ id: AgentSection; label: string }> = [
   { id: "mcp", label: "MCP" },
   { id: "prompts", label: "提示词" },
 ];
+const modelOnlySectionOptions = sectionOptions.filter(
+  (option) => option.id === "models",
+);
 
 export function AgentConfiguration({
   entry,
   catalogEntry,
-  section,
+  section: requested,
   onSectionChange,
   onBack,
   keepingCurrent = false,
@@ -42,6 +48,13 @@ export function AgentConfiguration({
   keepingCurrent?: boolean;
 }) {
   const navigate = useNavigate();
+  const assignable = isAssignableProductEntry(entry) ? entry : null;
+  const availableSections = assignable
+    ? sectionOptions
+    : modelOnlySectionOptions;
+  const section = availableSections.some((option) => option.id === requested)
+    ? requested
+    : "models";
   const openManagement = () => {
     const returnDescriptor = {
       agentId: entry.agentId,
@@ -102,7 +115,7 @@ export function AgentConfiguration({
         id="agent-configuration-sections"
         label={`${entry.displayName} 配置分段`}
         value={section}
-        options={sectionOptions}
+        options={availableSections}
         onChange={onSectionChange}
         className="fy-agent-config-tabs"
       />
@@ -123,10 +136,16 @@ export function AgentConfiguration({
               onOpenManagement={openManagement}
             />
           </>
-        ) : section === "skills" ? (
-          <AgentSkillsSection entry={entry} onOpenManagement={openManagement} />
-        ) : section === "mcp" ? (
-          <AgentMcpSection entry={entry} onOpenManagement={openManagement} />
+        ) : assignable && section === "skills" ? (
+          <AgentSkillsSection
+            entry={assignable}
+            onOpenManagement={openManagement}
+          />
+        ) : assignable && section === "mcp" ? (
+          <AgentMcpSection
+            entry={assignable}
+            onOpenManagement={openManagement}
+          />
         ) : (
           <AgentPromptsSection
             entry={entry}

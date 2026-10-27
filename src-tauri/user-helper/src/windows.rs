@@ -196,11 +196,17 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
     let channel = PipeChannel::connect(&pipe_name(request.pipe_nonce()))?;
     let channel = Arc::new(channel);
     channel.send_hello(action)?;
+    if action == UserHelperAction::OmpProbe {
+        return omp::run_session(&controls, channel);
+    }
     if matches!(
         action,
         UserHelperAction::GrokTool { .. } | UserHelperAction::ClaudeTool { .. }
     ) {
         return run_cli_tool_session(&controls, channel, action);
+    }
+    if action == UserHelperAction::CodexModels {
+        return run_codex_models_session(&controls, &channel);
     }
 
     let bridge_control = match channel.read_bridge_control(ADMISSION_TIMEOUT) {
@@ -243,9 +249,12 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
         UserHelperAction::AgentExeInstall(product) => {
             run_verified_exe_installer(&package_pin, product, &channel)
         }
-        UserHelperAction::GrokTool { .. } | UserHelperAction::ClaudeTool { .. } => Err(
-            DeploymentFailure::Operation(HelperErrorCode::InstallLayoutInvalid),
-        ),
+        UserHelperAction::GrokTool { .. }
+        | UserHelperAction::ClaudeTool { .. }
+        | UserHelperAction::CodexModels
+        | UserHelperAction::OmpProbe => Err(DeploymentFailure::Operation(
+            HelperErrorCode::InstallLayoutInvalid,
+        )),
     };
 
     match result {
@@ -262,6 +271,39 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
 }
 
 mod claude;
+mod codex_models;
+
+/// Shares the unpinned tool handshake; the parent never sends a plan here.
+fn run_codex_models_session(
+    controls: &ParentControls,
+    channel: &PipeChannel,
+) -> Result<(), HelperRunError> {
+    match channel.read_grok_npm_plan() {
+        Ok(None) => {}
+        Ok(Some(_)) => {
+            let _ = channel.send_prestart_error(HelperErrorCode::ParentAdmissionFailed);
+            return Err(parent_admission_error());
+        }
+        Err(error) => {
+            let _ = channel.send_prestart_error(HelperErrorCode::ParentAdmissionFailed);
+            return Err(error);
+        }
+    }
+    channel.send_started(TOOL_OPERATION_STARTED_IDENTITY)?;
+    if let Err(code) = controls.wait_for_admission(ADMISSION_TIMEOUT) {
+        channel.send_terminal(HelperMessage::error(code))?;
+        return Err(HelperRunError::OperationFailed(code));
+    }
+    channel.mark_admitted()?;
+    match codex_models::execute() {
+        Ok(catalog) => channel.send_terminal(HelperMessage::CodexModels(catalog)),
+        Err(code) => {
+            channel.send_terminal(HelperMessage::error(code))?;
+            Err(HelperRunError::OperationFailed(code))
+        }
+    }
+}
+mod omp;
 
 fn run_cli_tool_session(
     controls: &ParentControls,
@@ -2641,7 +2683,11 @@ impl PipeChannel {
     fn send_terminal(&self, message: HelperMessage) -> Result<(), HelperRunError> {
         if !matches!(
             message,
-            HelperMessage::Success | HelperMessage::ToolResult(_) | HelperMessage::Error { .. }
+            HelperMessage::Success
+                | HelperMessage::ToolResult(_)
+                | HelperMessage::CodexModels(_)
+                | HelperMessage::OmpProbeResult(_)
+                | HelperMessage::Error { .. }
         ) {
             return self.fail_write();
         }

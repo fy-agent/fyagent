@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/models.md","reason":"Models UI, draft and native save contract"}
+{"file":".trellis/spec/frontend/agent-directory.md","reason":"Software catalog, installation and capabilities"}
+{"file":".trellis/spec/backend/workbuddy-configuration.md","reason":"Existing native storage, revision and redaction patterns"}
+{"file":".trellis/spec/backend/external-agent-catalog-runtime.md","reason":"Native catalog and discovery boundaries"}

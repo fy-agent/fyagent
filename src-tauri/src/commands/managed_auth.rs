@@ -7,8 +7,9 @@ use tauri::State;
 use crate::services::managed_auth::{
     validate_account_id, validate_session_id, ManagedAuthAccountMutationRequest,
     ManagedAuthAccountQuota, ManagedAuthAccountRemovalPreview, ManagedAuthAccountRemovalRequest,
-    ManagedAuthConnectionActionPreview, ManagedAuthConnectionActionRequest, ManagedAuthErrorDto,
-    ManagedAuthLoginMethod, ManagedAuthLoginSessionSnapshot, ManagedAuthMutationResult,
+    ManagedAuthCodexNativeModels, ManagedAuthConnectionActionPreview,
+    ManagedAuthConnectionActionRequest, ManagedAuthErrorDto, ManagedAuthLoginMethod,
+    ManagedAuthLoginSessionSnapshot, ManagedAuthMutationResult, ManagedAuthOpenAiModels,
     ManagedAuthOverview, ManagedAuthReasonCode, NativeManagedAuthService,
     StartManagedAuthLoginRequest,
 };
@@ -27,6 +28,24 @@ pub async fn managed_auth_get_account_quota(
 ) -> Result<ManagedAuthAccountQuota, ManagedAuthErrorDto> {
     validate_account_id(&account_id)?;
     state.0.get_account_quota(&account_id).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn managed_auth_get_openai_models(
+    account_id: String,
+    state: State<'_, ManagedAuthState>,
+) -> Result<ManagedAuthOpenAiModels, ManagedAuthErrorDto> {
+    validate_account_id(&account_id)?;
+    state.0.fetch_openai_models(&account_id).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn managed_auth_get_codex_native_models(
+    account_id: String,
+    state: State<'_, ManagedAuthState>,
+) -> Result<ManagedAuthCodexNativeModels, ManagedAuthErrorDto> {
+    validate_account_id(&account_id)?;
+    state.0.get_codex_native_models(&account_id).await
 }
 
 #[tauri::command(rename_all = "camelCase")]

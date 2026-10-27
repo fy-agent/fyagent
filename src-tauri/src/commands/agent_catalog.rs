@@ -6,8 +6,8 @@ use crate::services::external_agents::{
     ExternalAgentRuntimeService, ExternalAgentRuntimeStatus,
 };
 
-const AGENT_CATALOG_CONTRACT_VERSION: u16 = 5;
-const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-31";
+const AGENT_CATALOG_CONTRACT_VERSION: u16 = 6;
+const AGENT_CATALOG_REVIEWED_AT: &str = "2026-10-22";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -220,6 +220,29 @@ const OPENCODE_OFFICIAL_LINKS: [AgentOfficialLink; 4] = [
     ),
 ];
 
+const OMP_OFFICIAL_LINKS: [AgentOfficialLink; 4] = [
+    official_link(
+        AgentOfficialLinkId::Product,
+        "打开 Oh My Pi 官方页面",
+        "https://omp.sh/",
+    ),
+    official_link(
+        AgentOfficialLinkId::Docs,
+        "打开 Oh My Pi 模型配置文档",
+        "https://github.com/can1357/oh-my-pi/blob/main/docs/models.md",
+    ),
+    official_link(
+        AgentOfficialLinkId::Download,
+        "打开 Oh My Pi 发布页面",
+        "https://github.com/can1357/oh-my-pi/releases",
+    ),
+    official_link(
+        AgentOfficialLinkId::License,
+        "Oh My Pi 源码与许可证",
+        "https://github.com/can1357/oh-my-pi/blob/main/LICENSE",
+    ),
+];
+
 const QODER_PRODUCT_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::QoderworkProduct];
 const QODER_RUNTIME_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::QoderworkInstall];
 const QODER_SKILLS_EVIDENCE: &[AgentEvidenceId] = &[
@@ -256,6 +279,8 @@ const CLAUDE_LINK_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::ClaudeOffici
 const OPENCODE_PRODUCT_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::OpencodeProduct];
 const OPENCODE_MODELS_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::OpencodeModels];
 const GROKBUILD_PRODUCT_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::GrokbuildProduct];
+const OMP_PRODUCT_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::OmpProduct];
+const OMP_MODELS_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::OmpModels];
 const P0_SCOPE_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::P0Scope];
 
 const QODERWORK_CAPABILITIES: [DeclaredAgentCapability; 11] = [
@@ -741,7 +766,76 @@ const OPENCODE_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     ),
 ];
 
-const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
+const OMP_CAPABILITIES: [DeclaredAgentCapability; 11] = [
+    capability(
+        AgentCapabilityId::ProductOpen,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::OfficialLinkReviewed,
+        OMP_PRODUCT_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::AppDetect,
+        AgentCapabilityMode::Unverified,
+        AgentCapabilityReasonCode::TrustedRuntimeIdentityUnavailable,
+        OMP_PRODUCT_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::AppLaunch,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::SkillsRead,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::SkillsWrite,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::HooksRead,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::HooksWrite,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::ModelsValidate,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentModelValidation,
+        OMP_MODELS_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::ModelsWrite,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::DedicatedNativeContract,
+        OMP_MODELS_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::McpValidate,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::McpWrite,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+];
+
+const AGENT_CATALOG: [AgentCatalogEntry; 8] = [
     AgentCatalogEntry {
         id: AgentCatalogId::QoderWork,
         variant_id: AgentVariantId::QoderWorkCn,
@@ -797,6 +891,14 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         description: "支持 Skills、模型配置与 MCP。",
         official_links: &OPENCODE_OFFICIAL_LINKS,
         capabilities: &OPENCODE_CAPABILITIES,
+    },
+    AgentCatalogEntry {
+        id: AgentCatalogId::Omp,
+        variant_id: AgentVariantId::Omp,
+        display_name: "Oh My Pi (omp)",
+        description: "支持自定义 API Provider 的模型配置。",
+        official_links: &OMP_OFFICIAL_LINKS,
+        capabilities: &OMP_CAPABILITIES,
     },
 ];
 
@@ -859,11 +961,11 @@ mod tests {
     }
 
     #[test]
-    fn agent_catalog_freezes_v5_order_variants_links_and_capability_matrix() {
+    fn agent_catalog_freezes_v6_order_variants_links_and_capability_matrix() {
         let catalog = get_agent_catalog();
 
-        assert_eq!(catalog.contract_version, 5);
-        assert_eq!(catalog.reviewed_at, "2026-08-31");
+        assert_eq!(catalog.contract_version, 6);
+        assert_eq!(catalog.reviewed_at, "2026-10-22");
         assert_eq!(
             catalog
                 .agents
@@ -902,6 +1004,7 @@ mod tests {
                     AgentVariantId::OpenCode,
                     "OpenCode",
                 ),
+                (AgentCatalogId::Omp, AgentVariantId::Omp, "Oh My Pi (omp)"),
             ]
         );
 
@@ -921,6 +1024,7 @@ mod tests {
         let grok = &catalog.agents[3];
         let codex = &catalog.agents[4];
         let opencode = &catalog.agents[6];
+        let omp = &catalog.agents[7];
         assert_eq!(
             qoder
                 .capabilities
@@ -1215,6 +1319,93 @@ mod tests {
                 ),
             ]
         );
+        assert_eq!(omp.id, AgentCatalogId::Omp);
+        assert_eq!(omp.variant_id, AgentVariantId::Omp);
+        assert_eq!(omp.display_name, "Oh My Pi (omp)");
+        assert!(omp.description.contains("自定义 API Provider"));
+        assert_eq!(
+            omp.official_links
+                .iter()
+                .map(|link| (link.id, link.label, link.url))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    AgentOfficialLinkId::Product,
+                    "打开 Oh My Pi 官方页面",
+                    "https://omp.sh/",
+                ),
+                (
+                    AgentOfficialLinkId::Docs,
+                    "打开 Oh My Pi 模型配置文档",
+                    "https://github.com/can1357/oh-my-pi/blob/main/docs/models.md",
+                ),
+                (
+                    AgentOfficialLinkId::Download,
+                    "打开 Oh My Pi 发布页面",
+                    "https://github.com/can1357/oh-my-pi/releases",
+                ),
+                (
+                    AgentOfficialLinkId::License,
+                    "Oh My Pi 源码与许可证",
+                    "https://github.com/can1357/oh-my-pi/blob/main/LICENSE",
+                ),
+            ]
+        );
+        assert_eq!(
+            omp.capabilities
+                .iter()
+                .map(|capability| capability.mode)
+                .collect::<Vec<_>>(),
+            [
+                AgentCapabilityMode::Direct,
+                AgentCapabilityMode::Unverified,
+                AgentCapabilityMode::Unsupported,
+                AgentCapabilityMode::Unsupported,
+                AgentCapabilityMode::Unsupported,
+                AgentCapabilityMode::Unsupported,
+                AgentCapabilityMode::Unsupported,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityMode::Unsupported,
+                AgentCapabilityMode::Unsupported,
+            ]
+        );
+        assert_eq!(
+            omp.capabilities[7],
+            capability(
+                AgentCapabilityId::ModelsValidate,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityReasonCode::FyagentModelValidation,
+                OMP_MODELS_EVIDENCE,
+            )
+        );
+        assert_eq!(
+            omp.capabilities[8],
+            capability(
+                AgentCapabilityId::ModelsWrite,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityReasonCode::DedicatedNativeContract,
+                OMP_MODELS_EVIDENCE,
+            )
+        );
+        assert_eq!(
+            omp.capabilities[9],
+            capability(
+                AgentCapabilityId::McpValidate,
+                AgentCapabilityMode::Unsupported,
+                AgentCapabilityReasonCode::CapabilityNotApplicable,
+                P0_SCOPE_EVIDENCE,
+            )
+        );
+        assert_eq!(
+            omp.capabilities[10],
+            capability(
+                AgentCapabilityId::McpWrite,
+                AgentCapabilityMode::Unsupported,
+                AgentCapabilityReasonCode::CapabilityNotApplicable,
+                P0_SCOPE_EVIDENCE,
+            )
+        );
         for entry in &catalog.agents {
             assert!(
                 entry
@@ -1260,11 +1451,11 @@ mod tests {
     }
 
     #[test]
-    fn agent_catalog_wire_is_exact_v5_and_contains_no_legacy_or_sensitive_fields() {
+    fn agent_catalog_wire_is_exact_v6_and_contains_no_legacy_or_sensitive_fields() {
         let value = serde_json::to_value(get_agent_catalog()).expect("catalog serializes");
 
-        assert_eq!(value["contractVersion"], 5);
-        assert_eq!(value["reviewedAt"], "2026-08-31");
+        assert_eq!(value["contractVersion"], 6);
+        assert_eq!(value["reviewedAt"], "2026-10-22");
         assert_eq!(
             sorted_object_keys(&value),
             ["agents", "contractVersion", "reviewedAt"]
@@ -1447,7 +1638,20 @@ mod tests {
         assert!(!registered.contains("get_agent_health"));
         assert!(registered.contains("get_first_use_guide_state"));
         assert!(registered.contains("dismiss_first_use_guide"));
-        assert_eq!(registered.len(), 402, "review intentional handler changes");
-        assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
+        for command in [
+            "read_omp_config",
+            "preview_omp_save",
+            "apply_omp_save",
+            "discover_omp_cli",
+        ] {
+            assert!(registered.contains(command));
+        }
+        assert!(registered.contains("managed_auth_get_openai_models"));
+        assert!(registered.contains("managed_auth_get_codex_native_models"));
+        assert_eq!(registered.len(), 408, "review intentional handler changes");
+        assert_eq!(
+            allowed, registered,
+            "every registered application command must be granted exactly once while an app ACL manifest exists"
+        );
     }
 }

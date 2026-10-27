@@ -96,10 +96,24 @@ target. The renderer never submits paths as restore instructions.
   A failed/empty options read exposes manual input. Model IDs are 1–128 ASCII
   characters, start with an alphanumeric character and otherwise admit only
   alphanumeric, `.`, `_`, `-` and `:`. Discovery is not entitlement/use proof.
-- OpenAI selection offers explicit manual model ID input. Do not guess a
+- OpenAI selection reads `ManagedAuthPort.getOpenAiModels(accountId)` /
+  `managed_auth_get_openai_models({accountId})`. Native resolves only that
+  ma1 identity's OpenAI proxy credential (not a native-only Codex login, an
+  xAI account or a default account) and reads the ChatGPT Codex catalog with
+  that account's own token and ChatGPT account subject. The result has exactly
+  `{contractVersion, accountId, fetchedAt, models}`; the parser rejects another
+  `accountId`, extra keys, invalid/duplicate IDs and more than 500 rows. The UI
+  names the account and read time. `requires_reauth`, `connection_unavailable`
+  and other failures each have their own copy, keep retry available and open
+  manual input; an empty catalog warns and opens manual input. A selection
+  change while the read is pending discards the late result. Do not guess a
   model, reuse another account's options, or send subscription credentials to
-  an API-key catalog. Account labels distinguish ChatGPT from Grok; changing
-  accounts or targets clears stale model selection.
+  an API-key catalog. Windows elevated builds cannot spawn the user's Codex CLI,
+  so this catalog does not use `codex app-server`. Account labels distinguish
+  ChatGPT from Grok; changing accounts or targets clears stale model selection.
+- Auth names Codex's `model_provider = "fyagent_chatgpt"` route as ChatGPT
+  subscription forwarding and explains why Codex shows it as a custom provider;
+  the official `openai` route is named as ChatGPT official login.
 - Codex model counts and editors share `publishedModels`. If there are no valid
   nonblank `modelCatalog.models` entries, read the explicit top-level TOML
   `config.model`, matching native stack semantics. A valid catalog remains
@@ -196,7 +210,7 @@ These focused cases extend the general write, secret and lifecycle matrix in
 | Native cannot confirm restoration, or either post-bind owner read fails                  | Block further target writes; no optimistic success or automatic write retry.               |
 | Codex draft is saved                                                                     | State that it is a draft and expose the existing Auth source-plan continuation.            |
 | Claude Code picker is open                                                               | Offer only its own target; do not save a Desktop source then read the Claude Code summary. |
-| WorkBuddy is selected                                                                    | Keep API-key mode separate; subscription mode uses its own preview/apply/readback.                |
+| WorkBuddy is selected                                                                    | Keep API-key mode separate; subscription mode uses its own preview/apply/readback.         |
 
 ## 5. Good / Base / Bad Cases
 
@@ -231,8 +245,8 @@ isolation, live/overview readback failure and independent recovery retry. These
 fixture tests are separate from native owned-file recovery evidence.
 
 `tests/browser/xai-subscription.spec.ts` covers the real renderer's Claude/Grok/OpenCode
-confirmation, OpenAI manual selection and Codex source preview/apply using
-synthetic IPC fixtures.
+confirmation, OpenAI account-catalog selection, catalog failure with manual
+fallback and retry, and Codex source preview/apply using synthetic IPC fixtures.
 These are not native-file, live-subscription or Windows evidence.
 
 ## 7. Wrong vs Correct

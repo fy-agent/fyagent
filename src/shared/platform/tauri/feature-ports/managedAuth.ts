@@ -9,8 +9,10 @@ import {
   assertManagedAuthSessionId,
   assertStartManagedAuthLoginRequest,
   parseManagedAuthAccountQuota,
+  parseManagedAuthCodexNativeModels,
   parseManagedAuthLoginSession,
   parseManagedAuthMutationResult,
+  parseManagedAuthOpenAiModels,
   parseManagedAuthOverview,
   parseManagedAuthRemovalPreview,
   parseManagedAuthConnectionPreview,
@@ -27,6 +29,24 @@ export function createManagedAuthPort(): ManagedAuthPort {
       const validated = assertManagedAuthAccountId(accountId);
       return parseManagedAuthAccountQuota(
         await invoke<unknown>("managed_auth_get_account_quota", {
+          accountId: validated,
+        }),
+        validated,
+      );
+    },
+    getOpenAiModels: async (accountId) => {
+      const validated = assertManagedAuthAccountId(accountId);
+      return parseManagedAuthOpenAiModels(
+        await invoke<unknown>("managed_auth_get_openai_models", {
+          accountId: validated,
+        }),
+        validated,
+      );
+    },
+    getCodexNativeModels: async (accountId) => {
+      const validated = assertManagedAuthAccountId(accountId);
+      return parseManagedAuthCodexNativeModels(
+        await invoke<unknown>("managed_auth_get_codex_native_models", {
           accountId: validated,
         }),
         validated,

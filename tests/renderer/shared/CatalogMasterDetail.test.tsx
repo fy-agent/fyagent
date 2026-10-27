@@ -91,4 +91,26 @@ describe("CatalogMasterDetail", () => {
       document.querySelectorAll(".fy-catalog-master-detail [data-panel]"),
     ).toHaveLength(2);
   });
+
+  it("returns the shared pane to the top only when the detail scroll key changes", () => {
+    const detail = (scrollKey: string, label: string) => (
+      <CatalogMasterDetail>
+        <CatalogRail ariaLabel="目录" title="目录">
+          <CatalogList>{null}</CatalogList>
+        </CatalogRail>
+        <CatalogDetail ariaLabel={label} scrollKey={scrollKey}>
+          <h2>{label}</h2>
+        </CatalogDetail>
+      </CatalogMasterDetail>
+    );
+    const { rerender } = render(detail("a", "甲"));
+    const pane = document.querySelector<HTMLElement>(".fy-catalog-pane")!;
+
+    pane.scrollTop = 240;
+    rerender(detail("a", "甲（已刷新）"));
+    expect(pane.scrollTop).toBe(240);
+
+    rerender(detail("b", "乙"));
+    expect(pane.scrollTop).toBe(0);
+  });
 });

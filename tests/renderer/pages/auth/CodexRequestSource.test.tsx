@@ -184,6 +184,30 @@ describe("central Codex request source", () => {
     );
   });
 
+  it("explains the custom provider only while ChatGPT subscription forwarding is current", async () => {
+    const { ports, getSummary, renderSource } = setup();
+    const summary = await getSummary();
+    const forwardingId = `fyagent-openai-codex-${"a".repeat(24)}`;
+    ports.providers.getSummary = vi.fn(async () => ({
+      ...summary,
+      currentId: forwardingId,
+      providers: {
+        ...summary.providers,
+        [forwardingId]: { id: forwardingId, name: "ChatGPT subscription" },
+      },
+    }));
+    const view = render(renderSource());
+    expect(
+      await screen.findByText(/会显示为 custom provider。能否调用及额度以服务/),
+    ).toBeVisible();
+    view.unmount();
+
+    const plain = setup();
+    render(plain.renderSource());
+    await screen.findByRole("combobox", { name: "切换到" });
+    expect(screen.queryByText(/会显示为 custom provider/)).toBeNull();
+  });
+
   it("fails closed when apply admission is unknown rather than offering another write", async () => {
     const { ports, onBusyChange, renderSource } = setup();
     ports.changePlans.applyChangePlan = vi

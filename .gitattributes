@@ -11,6 +11,9 @@
 *.txt text eol=lf
 mise.lock text eol=lf
 
+# This synthetic key fixture is admitted by an exact byte digest.
+src-tauri/src/services/skill/update/fixtures/server-key.pem text eol=lf
+
 # TypeScript/JavaScript files
 *.ts text eol=lf
 *.tsx text eol=lf

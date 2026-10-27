@@ -66,6 +66,7 @@ const variantById = {
   codex: "codex",
   "claude-code": "claude-code",
   opencode: "opencode",
+  omp: "omp",
 } as const;
 
 function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
@@ -153,6 +154,7 @@ function catalog(): AgentCatalogResult {
       entry("codex", "Codex"),
       entry("claude-code", "Claude Code"),
       entry("opencode", "OpenCode"),
+      entry("omp", "Oh My Pi (omp)"),
     ],
   };
 }
@@ -559,7 +561,10 @@ describe("first-use software guide", () => {
 
   it.each([
     ["日常办公", ["QoderWork CN", "TRAE Work CN", "WorkBuddy"]],
-    ["编程开发", ["Grok Build", "Codex", "Claude Code", "OpenCode"]],
+    [
+      "编程开发",
+      ["Grok Build", "Codex", "Claude Code", "OpenCode", "Oh My Pi (omp)"],
+    ],
     ["两者都用", ["WorkBuddy", "Codex"]],
   ])(
     "recommends catalog entries for %s without side effects",
@@ -636,7 +641,7 @@ describe("first-use software guide", () => {
       await screen.findByText("暂时无法保存引导状态，请重试。"),
     ).toBeVisible();
     expect(screen.queryByText("private native path")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(4);
+    expect(screen.getAllByRole("article")).toHaveLength(5);
     expect(ports.agentInstallReadiness.get).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "查看全部软件" }));
     await screen.findByRole("heading", { name: "我的 AI 软件" });
@@ -812,6 +817,7 @@ const CATALOG_NAMES = [
   "Codex",
   "Claude Code",
   "OpenCode",
+  "Oh My Pi (omp)",
 ] as const;
 
 function directoryArticle(name: (typeof CATALOG_NAMES)[number]) {
@@ -935,7 +941,7 @@ describe("V3 Agent directory and configuration shell", () => {
       "directory",
     );
     const articles = await screen.findAllByRole("article");
-    expect(articles).toHaveLength(7);
+    expect(articles).toHaveLength(8);
     expect(
       articles.map(
         (item) => within(item).getByRole("heading", { level: 2 }).textContent,
@@ -976,7 +982,7 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(
       await screen.findByRole("button", { name: "重新扫描" }),
     ).toBeEnabled();
-    expect(screen.getAllByRole("article")).toHaveLength(7);
+    expect(screen.getAllByRole("article")).toHaveLength(8);
     expect(configureButton("QoderWork CN")).toBeEnabled();
     expect(configureButton("WorkBuddy")).toBeEnabled();
     expect(configureButton("TRAE Work CN")).toBeDisabled();
@@ -998,7 +1004,7 @@ describe("V3 Agent directory and configuration shell", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/上次扫描：/)).not.toBeInTheDocument();
     expect(screen.queryByText("查看完整介绍")).not.toBeInTheDocument();
-    expect(ports.agentInstallReadiness.get).toHaveBeenCalledTimes(7);
+    expect(ports.agentInstallReadiness.get).toHaveBeenCalledTimes(8);
   });
 
   it("keeps all rows after a complete not-installed scan and retains results when a rescan fails", async () => {
@@ -1009,7 +1015,7 @@ describe("V3 Agent directory and configuration shell", () => {
     );
     renderPage(ports);
 
-    expect(await screen.findAllByRole("article")).toHaveLength(7);
+    expect(await screen.findAllByRole("article")).toHaveLength(8);
     expect(
       await screen.findByRole("button", { name: "重新扫描" }),
     ).toBeEnabled();
@@ -1025,7 +1031,7 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(
       await screen.findByText(/本次扫描未能读取任何软件状态/),
     ).toHaveTextContent("已保留上次成功结果");
-    expect(screen.getAllByRole("article")).toHaveLength(7);
+    expect(screen.getAllByRole("article")).toHaveLength(8);
     expect(configureButton("QoderWork CN")).toBeDisabled();
     expect(
       within(directoryArticle("QoderWork CN")).getByText("读取失败"),
@@ -1861,6 +1867,70 @@ describe("V3 Agent directory and configuration shell", () => {
     await user.click(await screen.findByRole("button", { name: "管理 MCP" }));
     expect(screen.getByTestId("location")).toHaveTextContent(
       /^\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
+    );
+  });
+
+  it("limits Oh My Pi to the models section and lists its saved models", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    ports.ompModels.readConfig = vi.fn(async () => ({
+      profile: "default",
+      modelsPath: "~/.omp/agent/models.yml",
+      configPath: "~/.omp/agent/config.yml",
+      modelsRevision: "models-rev",
+      configRevision: "config-rev",
+      providers: [
+        {
+          id: "fyagent-gateway",
+          baseUrl: "https://gateway.example/v1",
+          api: "openai-completions",
+          auth: null,
+          hasApiKey: true,
+          hasCommandKey: false,
+          models: [
+            { id: "vendor/model-a", name: "Model A" },
+            { id: "model-b", name: null },
+          ],
+        },
+      ],
+      defaultModel: "fyagent-gateway/vendor/model-a",
+      modelsFileStatus: "ok" as const,
+      configFileStatus: "ok" as const,
+    }));
+    render(
+      <MemoryRouter initialEntries={["/agents?target=omp&section=skills"]}>
+        <FeatureProvider ports={ports}>
+          <Routes>
+            <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/models" element={null} />
+          </Routes>
+          <LocationProbe />
+        </FeatureProvider>
+      </MemoryRouter>,
+    );
+
+    const configuration = await screen.findByRole("region", {
+      name: "Oh My Pi (omp) 配置",
+    });
+    expect(
+      within(configuration)
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["模型"]);
+    expect(
+      within(configuration).getByRole("tab", { name: "模型" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(await within(configuration).findByText("Model A")).toBeVisible();
+    expect(
+      within(configuration).getByText("omp 默认模型 · fyagent-gateway"),
+    ).toBeVisible();
+    expect(within(configuration).getByText("model-b")).toBeVisible();
+
+    await user.click(
+      within(configuration).getByRole("button", { name: "管理模型" }),
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      /^\/models\?target=omp&agentReturn=omp&agentSection=models$/,
     );
   });
 

@@ -53,7 +53,8 @@ pub use deployment::SystemWindowsPackageManager;
 #[cfg(target_os = "windows")]
 #[cfg_attr(test, allow(unused_imports))]
 pub(crate) use helper::{
-    run_claude_tool_operation, run_grok_tool_operation, run_verified_agent_exe_installer,
+    run_claude_tool_operation, run_codex_models, run_grok_tool_operation, run_omp_cli_probe,
+    run_verified_agent_exe_installer,
 };
 
 trait WindowsVerifiedFilePin: Send {
@@ -101,6 +102,11 @@ struct WindowsHelperDeadlines {
 }
 
 impl WindowsHelperDeadlines {
+    const OMP_PROBE: Self = Self {
+        connect: Duration::from_secs(15),
+        operation: Duration::from_secs(30),
+        terminal_close: Duration::from_secs(5),
+    };
     const PRODUCTION: Self = Self {
         connect: Duration::from_secs(30),
         operation: Duration::from_secs(10 * 60),
@@ -116,6 +122,14 @@ impl WindowsHelperDeadlines {
     const GROK_TOOL: Self = Self {
         connect: Duration::from_secs(30),
         operation: Duration::from_secs(6 * 60),
+        terminal_close: Duration::from_secs(5),
+    };
+
+    /// Well above the helper's own 45-second app-server limit, so a stalled
+    /// CLI ends with a terminal frame rather than a quarantined helper gate.
+    const CODEX_MODELS: Self = Self {
+        connect: Duration::from_secs(30),
+        operation: Duration::from_secs(2 * 60),
         terminal_close: Duration::from_secs(5),
     };
 }

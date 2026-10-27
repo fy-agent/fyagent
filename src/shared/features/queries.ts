@@ -36,6 +36,14 @@ export const featureKeys = {
   managedAuthOverview: [scope, "managed-auth", "overview"] as const,
   managedAuthAccountQuota: (accountId: string, revision: string) =>
     [scope, "managed-auth", "account-quota", accountId, revision] as const,
+  codexNativeModels: (accountId: string, revision: string) =>
+    [
+      scope,
+      "managed-auth",
+      "codex-native-models",
+      accountId,
+      revision,
+    ] as const,
   managedAuthConnectionPreview: (request: ManagedAuthConnectionActionRequest) =>
     [scope, "managed-auth", "connection-preview", request] as const,
   agentAuthObservation: (agentId: AgentCatalogId) =>
@@ -60,6 +68,8 @@ export const featureKeys = {
   workbuddyModelIds: [scope, "workbuddy", "model-ids"] as const,
   traeWorkModelIds: [scope, "trae-work", "model-ids"] as const,
   openCodeModelSnapshot: [scope, "opencode", "model-snapshot"] as const,
+  ompConfig: [scope, "omp", "config"] as const,
+  ompCli: [scope, "omp", "cli"] as const,
   skills: [scope, "skills", "installed"] as const,
   skillBackups: [scope, "skills", "backups"] as const,
   skillDiscovery: [scope, "skills", "discovery"] as const,
@@ -119,6 +129,21 @@ export function useManagedAuthAccountQuota(
     enabled: useVisibleEnabled(
       enabled && accountId !== null && revision !== null,
     ),
+    retry: false,
+    gcTime: 0,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}
+
+/** Never runs on its own: every read starts the user's Codex CLI. */
+export function useCodexNativeModels(accountId: string, revision: string) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.codexNativeModels(accountId, revision),
+    queryFn: () => ports.managedAuth.getCodexNativeModels(accountId),
+    enabled: false,
     retry: false,
     gcTime: 0,
     staleTime: Infinity,
@@ -240,6 +265,29 @@ export function useOpenCodeModelSnapshot(enabled = true) {
     queryKey: featureKeys.openCodeModelSnapshot,
     queryFn: ports.opencodeModels.getSnapshot,
     enabled: useVisibleEnabled(enabled),
+  });
+}
+
+export function useOmpConfig(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.ompConfig,
+    queryFn: ports.ompModels.readConfig,
+    enabled: useVisibleEnabled(enabled),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useOmpCliDiscovery(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.ompCli,
+    queryFn: ports.ompModels.discoverCli,
+    enabled: useVisibleEnabled(enabled),
+    retry: false,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 

@@ -110,7 +110,9 @@ export const AGENT_SURFACES = ["cli", "desktop"] as const;
 export type AgentSurface = (typeof AGENT_SURFACES)[number];
 
 function isCliToolingAgent(agentId: AgentCatalogId): boolean {
-  return agentId === "grokbuild" || agentId === "claude-code";
+  return (
+    agentId === "grokbuild" || agentId === "claude-code" || agentId === "omp"
+  );
 }
 
 export function surfacesForAgent(agentId: AgentCatalogId): AgentSurface[] {

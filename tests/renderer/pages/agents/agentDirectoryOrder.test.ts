@@ -244,6 +244,7 @@ describe("orderAgentDirectoryEntries", () => {
       "qoderwork",
       "workbuddy",
       "claude-code",
+      "omp",
     ]);
   });
 
@@ -265,6 +266,7 @@ describe("orderAgentDirectoryEntries", () => {
       "workbuddy",
       "claude-code",
       "opencode",
+      "omp",
     ]);
   });
 
@@ -286,6 +288,7 @@ describe("orderAgentDirectoryEntries", () => {
       "grokbuild",
       "claude-code",
       "codex",
+      "omp",
     ]);
   });
 
@@ -348,6 +351,7 @@ describe("orderAgentDirectoryEntries", () => {
       "grokbuild",
       "claude-code",
       "opencode",
+      "omp",
     ]);
   });
 
@@ -372,6 +376,7 @@ describe("orderAgentDirectoryEntries", () => {
       "codex",
       "claude-code",
       "opencode",
+      "omp",
     ]);
   });
 });
@@ -424,6 +429,7 @@ describe("committed directory order lifecycle", () => {
       "codex",
       "claude-code",
       "opencode",
+      "omp",
     ]);
   });
 
@@ -474,6 +480,7 @@ describe("committed directory order lifecycle", () => {
       "codex",
       "claude-code",
       "opencode",
+      "omp",
     ]);
   });
 
@@ -490,6 +497,7 @@ describe("committed directory order lifecycle", () => {
       "codex",
       "claude-code",
       "opencode",
+      "omp",
     ]);
 
     state = scanReducer(state, {
@@ -506,6 +514,7 @@ describe("committed directory order lifecycle", () => {
       "codex",
       "claude-code",
       "opencode",
+      "omp",
     ]);
   });
 
@@ -528,6 +537,7 @@ describe("committed directory order lifecycle", () => {
       "codex",
       "claude-code",
       "opencode",
+      "omp",
     ]);
   });
 });
@@ -575,6 +585,7 @@ describe("scanReducer committed order", () => {
       "codex",
       "claude-code",
       "opencode",
+      "omp",
     ]);
   });
 });

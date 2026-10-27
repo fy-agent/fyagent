@@ -15,7 +15,9 @@ const USAGE: &str = concat!(
     "usage: fyagent-user-helper.exe codex-msix-install --job-id <lowercase-uuid> --pipe <64-lowercase-hex>\n",
     "       fyagent-user-helper.exe agent-exe-install --product <qoderwork|trae-work|workbuddy|opencode> --job-id <lowercase-uuid> --pipe <64-lowercase-hex>\n",
     "       fyagent-user-helper.exe grok-tool --action <observe|install|update> [--owner <none|native|npm>] --job-id <lowercase-uuid> --pipe <64-lowercase-hex>\n",
-    "       fyagent-user-helper.exe claude-tool --action <observe|install|update> --job-id <lowercase-uuid> --pipe <64-lowercase-hex>",
+    "       fyagent-user-helper.exe claude-tool --action <observe|install|update> --job-id <lowercase-uuid> --pipe <64-lowercase-hex>\n",
+    "       fyagent-user-helper.exe codex-models --job-id <lowercase-uuid> --pipe <64-lowercase-hex>",
+    "       fyagent-user-helper.exe omp-probe --job-id <lowercase-uuid> --pipe <64-lowercase-hex>",
 );
 
 fn main() -> ExitCode {

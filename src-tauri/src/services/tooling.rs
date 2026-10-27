@@ -10,6 +10,10 @@ pub(crate) mod grok_npm;
 mod install_preflight;
 pub(crate) use install_preflight::CliInstallPreflight;
 mod lifecycle;
+#[cfg(target_os = "windows")]
+mod omp;
+#[cfg(target_os = "windows")]
+pub(crate) use omp::probe_omp_cli_as_user;
 #[cfg(target_os = "macos")]
 mod npm_runtime;
 mod terminal;

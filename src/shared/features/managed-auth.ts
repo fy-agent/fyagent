@@ -320,9 +320,98 @@ export interface ManagedAuthMutationResult {
   reasonCode: ManagedAuthReasonCode | null;
 }
 
+/** The Codex picker catalog OpenAI serves to this exact saved account. */
+export interface ManagedAuthOpenAiModels {
+  contractVersion: typeof MANAGED_AUTH_CONTRACT_VERSION;
+  accountId: string;
+  fetchedAt: string;
+  models: string[];
+}
+
+export const CODEX_NATIVE_ACCOUNT_BINDINGS = [
+  "matched",
+  "mismatch",
+  "unknown",
+] as const;
+export type CodexNativeAccountBinding =
+  (typeof CODEX_NATIVE_ACCOUNT_BINDINGS)[number];
+
+export const CODEX_NATIVE_BINDING_DETAILS = [
+  "signed_out",
+  "other_login",
+  "unreadable",
+  "custom_codex_home",
+  "unsupported_credential_store",
+] as const;
+export type CodexNativeBindingDetail =
+  (typeof CODEX_NATIVE_BINDING_DETAILS)[number];
+
+export const CODEX_NATIVE_PROVIDER_ROUTES = [
+  "official",
+  "custom",
+  "unknown",
+] as const;
+export type CodexNativeProviderRoute =
+  (typeof CODEX_NATIVE_PROVIDER_ROUTES)[number];
+
+export const CODEX_NATIVE_CATALOG_STATUSES = [
+  "ready",
+  "not_read",
+  "failed",
+] as const;
+export type CodexNativeCatalogStatus =
+  (typeof CODEX_NATIVE_CATALOG_STATUSES)[number];
+
+export const CODEX_NATIVE_CATALOG_FAILURES = [
+  "platform_unsupported",
+  "helper_unavailable",
+  "helper_outdated",
+  "cli_missing",
+  "app_server_failed",
+  "timed_out",
+  "model_list_unsupported",
+  "invalid_response",
+  "changed_during_read",
+] as const;
+export type CodexNativeCatalogFailure =
+  (typeof CODEX_NATIVE_CATALOG_FAILURES)[number];
+
+export interface CodexNativeModel {
+  id: string;
+  displayName: string | null;
+  isDefault: boolean;
+  reasoningEfforts: string[];
+}
+
+/**
+ * The catalog of the user's own Codex CLI (`codex app-server` `model/list`).
+ * Models are present only when the live Codex login is this account.
+ */
+export interface ManagedAuthCodexNativeModels {
+  contractVersion: typeof MANAGED_AUTH_CONTRACT_VERSION;
+  accountId: string;
+  source: "codex_app_server";
+  accountBinding: CodexNativeAccountBinding;
+  bindingDetail: CodexNativeBindingDetail | null;
+  nativeAccountId: string | null;
+  /** Where Codex sends model requests; only `official` backs an official label. */
+  providerRoute: CodexNativeProviderRoute;
+  revision: string;
+  checkedAt: string;
+  catalogStatus: CodexNativeCatalogStatus;
+  failure: CodexNativeCatalogFailure | null;
+  cliVersion: string | null;
+  truncated: boolean;
+  models: CodexNativeModel[];
+}
+
 export interface ManagedAuthPort {
   getOverview(): Promise<ManagedAuthOverview>;
   getAccountQuota(accountId: string): Promise<ManagedAuthAccountQuota>;
+  getOpenAiModels(accountId: string): Promise<ManagedAuthOpenAiModels>;
+  getCodexNativeModels(
+    accountId: string,
+  ): Promise<ManagedAuthCodexNativeModels>;
   startLogin(
     request: StartManagedAuthLoginRequest,
   ): Promise<ManagedAuthLoginSessionSnapshot>;
@@ -1066,6 +1155,156 @@ function parseQuotaWindow(value: unknown): ManagedAuthQuotaWindow {
     windowId: parseQuotaWindowId(value.windowId),
     remainingPercent: value.remainingPercent,
     resetsAt: parseNullableTimestamp(value.resetsAt),
+  };
+}
+
+const OPENAI_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+
+export function parseManagedAuthOpenAiModels(
+  value: unknown,
+  accountId: string,
+): ManagedAuthOpenAiModels {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "contractVersion",
+      "accountId",
+      "fetchedAt",
+      "models",
+    ]) ||
+    value.contractVersion !== MANAGED_AUTH_CONTRACT_VERSION ||
+    value.accountId !== accountId ||
+    !isIsoTimestamp(value.fetchedAt) ||
+    !Array.isArray(value.models) ||
+    value.models.length > 500 ||
+    value.models.some(
+      (id) => typeof id !== "string" || !OPENAI_MODEL_ID.test(id),
+    ) ||
+    new Set(value.models).size !== value.models.length
+  ) {
+    dataError();
+  }
+  return {
+    contractVersion: MANAGED_AUTH_CONTRACT_VERSION,
+    accountId: parseAccountId(value.accountId),
+    fetchedAt: value.fetchedAt,
+    models: [...(value.models as string[])],
+  };
+}
+
+const CODEX_NATIVE_MODEL_ID = /^[A-Za-z0-9._:/-]{1,96}$/u;
+const CODEX_REASONING_EFFORT = /^[a-z0-9_-]{1,16}$/u;
+const CODEX_CLI_VERSION = /^[0-9][A-Za-z0-9.+-]{0,63}$/u;
+const MAX_CODEX_NATIVE_MODELS = 64;
+
+function parseCodexNativeModel(value: unknown): CodexNativeModel {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "id",
+      "displayName",
+      "isDefault",
+      "reasoningEfforts",
+    ]) ||
+    typeof value.id !== "string" ||
+    !CODEX_NATIVE_MODEL_ID.test(value.id) ||
+    (value.displayName !== null &&
+      (typeof value.displayName !== "string" ||
+        value.displayName.trim() === "" ||
+        value.displayName.length > 96)) ||
+    typeof value.isDefault !== "boolean" ||
+    !Array.isArray(value.reasoningEfforts) ||
+    value.reasoningEfforts.length > 8 ||
+    value.reasoningEfforts.some(
+      (effort) =>
+        typeof effort !== "string" || !CODEX_REASONING_EFFORT.test(effort),
+    ) ||
+    new Set(value.reasoningEfforts).size !== value.reasoningEfforts.length
+  ) {
+    dataError();
+  }
+  return {
+    id: value.id,
+    displayName: value.displayName,
+    isDefault: value.isDefault,
+    reasoningEfforts: [...(value.reasoningEfforts as string[])],
+  };
+}
+
+export function parseManagedAuthCodexNativeModels(
+  value: unknown,
+  accountId: string,
+): ManagedAuthCodexNativeModels {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "contractVersion",
+      "accountId",
+      "source",
+      "accountBinding",
+      "bindingDetail",
+      "nativeAccountId",
+      "providerRoute",
+      "revision",
+      "checkedAt",
+      "catalogStatus",
+      "failure",
+      "cliVersion",
+      "truncated",
+      "models",
+    ]) ||
+    value.contractVersion !== MANAGED_AUTH_CONTRACT_VERSION ||
+    value.accountId !== accountId ||
+    value.source !== "codex_app_server" ||
+    !isOneOf(value.accountBinding, CODEX_NATIVE_ACCOUNT_BINDINGS) ||
+    (value.accountBinding === "unknown"
+      ? !isOneOf(value.bindingDetail, CODEX_NATIVE_BINDING_DETAILS)
+      : value.bindingDetail !== null) ||
+    !isOneOf(value.providerRoute, CODEX_NATIVE_PROVIDER_ROUTES) ||
+    !isIsoTimestamp(value.checkedAt) ||
+    !isOneOf(value.catalogStatus, CODEX_NATIVE_CATALOG_STATUSES) ||
+    // A catalog is read, and so can succeed or fail, only for a match.
+    (value.accountBinding === "matched") ===
+      (value.catalogStatus === "not_read") ||
+    (value.catalogStatus === "failed"
+      ? !isOneOf(value.failure, CODEX_NATIVE_CATALOG_FAILURES)
+      : value.failure !== null) ||
+    (value.cliVersion !== null &&
+      (typeof value.cliVersion !== "string" ||
+        !CODEX_CLI_VERSION.test(value.cliVersion))) ||
+    typeof value.truncated !== "boolean" ||
+    !Array.isArray(value.models) ||
+    value.models.length > MAX_CODEX_NATIVE_MODELS ||
+    (value.catalogStatus !== "ready" &&
+      (value.models.length > 0 || value.cliVersion !== null || value.truncated))
+  ) {
+    dataError();
+  }
+  const models = value.models.map(parseCodexNativeModel);
+  if (
+    new Set(models.map((model) => model.id)).size !== models.length ||
+    models.filter((model) => model.isDefault).length > 1
+  ) {
+    dataError();
+  }
+  return {
+    contractVersion: MANAGED_AUTH_CONTRACT_VERSION,
+    accountId: parseAccountId(value.accountId),
+    source: "codex_app_server",
+    accountBinding: value.accountBinding,
+    bindingDetail: value.bindingDetail as CodexNativeBindingDetail | null,
+    nativeAccountId:
+      value.nativeAccountId === null
+        ? null
+        : parseAccountId(value.nativeAccountId),
+    providerRoute: value.providerRoute,
+    revision: parseRevision(value.revision),
+    checkedAt: value.checkedAt,
+    catalogStatus: value.catalogStatus,
+    failure: value.failure as CodexNativeCatalogFailure | null,
+    cliVersion: value.cliVersion as string | null,
+    truncated: value.truncated,
+    models,
   };
 }
 

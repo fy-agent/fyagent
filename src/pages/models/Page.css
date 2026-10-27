@@ -215,6 +215,57 @@
   font-size: 12px;
 }
 
+.fy-models-omp-files {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.fy-models-omp-files > div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.fy-models-omp-files dt {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-models-omp-files dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.fy-models-omp-files dd span {
+  color: var(--fy-text-secondary);
+}
+
+.fy-models-omp-preview {
+  display: grid;
+  gap: 10px;
+}
+
+.fy-models-omp-preview ul,
+.fy-models-omp-result {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.fy-models-omp-preview li {
+  display: grid;
+  gap: 2px;
+}
+
 .fy-models-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));

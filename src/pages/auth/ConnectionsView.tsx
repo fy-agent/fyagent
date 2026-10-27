@@ -14,8 +14,9 @@ import {
 } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/Button";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
-import { EmptyState } from "../../shared/ui/primitives";
+import { EmptyState, InlineNotice } from "../../shared/ui/primitives";
 import { PersistentSurface } from "../../shared/ui/PersistentSurface";
+import { CodexNativeModels } from "./CodexNativeModels";
 import { connectionPresentation, summarizeConnections } from "./summary";
 import { GrokOfficialLogin } from "./GrokOfficialLogin";
 import {
@@ -27,10 +28,13 @@ import {
 } from "./common";
 import {
   connectionActionLabel,
+  isSubscriptionForwardingLabel,
   managedAuthConsumerLabel,
   managedAuthManagerLabel,
   managedAuthProviderLabel,
   requestModeLabel,
+  splitConnectionActions,
+  SUBSCRIPTION_FORWARDING_NOTE,
 } from "./presentation";
 
 function ConnectionCard({
@@ -55,6 +59,22 @@ function ConnectionCard({
       )
     : null;
   const status = connectionPresentation(connection);
+  const { primary, secondary } = splitConnectionActions(
+    connection.allowedActions,
+  );
+  const actionButton = (action: ManagedAuthConnectionAction) => (
+    <Button
+      key={action}
+      dialogOriginRef={originRef}
+      className={
+        action === "disconnect" ? "fy-control-button-danger-subtle" : undefined
+      }
+      disabled={mutationBusy}
+      onClick={() => onAction(connection, action)}
+    >
+      {connectionActionLabel(action, connection)}
+    </Button>
+  );
   return (
     <article className="fy-auth-consumer-connection">
       <div className="fy-auth-connection-card-heading">
@@ -73,6 +93,10 @@ function ConnectionCard({
         </div>
         <StatusBadge {...status} />
       </div>
+
+      {primary.length > 0 ? (
+        <div className="fy-feature-actions">{primary.map(actionButton)}</div>
+      ) : null}
 
       <dl className="fy-feature-definition fy-auth-definition">
         <DefinitionRow label="受管账号绑定">
@@ -96,26 +120,25 @@ function ConnectionCard({
         </DefinitionRow>
       </dl>
 
+      {isSubscriptionForwardingLabel(connection.requestProviderLabel) ? (
+        <InlineNotice tone="info">{SUBSCRIPTION_FORWARDING_NOTE}</InlineNotice>
+      ) : null}
+
       <ReasonList reasons={connection.reasonCodes} />
 
-      {connection.allowedActions.length > 0 ? (
-        <div className="fy-feature-actions">
-          {connection.allowedActions.map((action) => (
-            <Button
-              key={action}
-              dialogOriginRef={originRef}
-              className={
-                action === "disconnect"
-                  ? "fy-control-button-danger-subtle"
-                  : undefined
-              }
-              disabled={mutationBusy}
-              onClick={() => onAction(connection, action)}
-            >
-              {connectionActionLabel(action, connection)}
-            </Button>
-          ))}
-        </div>
+      {connection.consumer === "codex" &&
+      connection.provider === "openai" &&
+      connection.accountId ? (
+        <CodexNativeModels
+          accountId={connection.accountId}
+          revision={connection.revision}
+          accounts={overview.accounts}
+          disabled={mutationBusy}
+        />
+      ) : null}
+
+      {secondary.length > 0 ? (
+        <div className="fy-feature-actions">{secondary.map(actionButton)}</div>
       ) : null}
     </article>
   );
@@ -190,6 +213,7 @@ export function ConnectionsView({
             : "软件连接详情"
         }
         className="fy-auth-detail"
+        scrollKey={selectedConsumer ?? null}
       >
         {selectedConsumer ? (
           <>

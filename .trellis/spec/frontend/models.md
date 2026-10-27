@@ -63,7 +63,7 @@ focused Ports already present in `FeaturePorts`.
 `MODEL_TARGETS` is derived from `MODEL_DIRECTORY_IDS` and has this exact order:
 
 ```text
-qoderwork | trae | workbuddy | grokbuild | codex | claude | opencode
+qoderwork | trae | workbuddy | grokbuild | codex | claude | opencode | omp
 ```
 
 The `target` search parameter accepts only those values. The persistent route
@@ -147,6 +147,15 @@ interface TraeWorkPort {
   ): Promise<TraeModelProbeResult>;
   cancelModelEndpoint(requestId: string): Promise<CancelTraeModelProbeResult>;
   getModelIds(): Promise<TraeWorkModelIdsResult>;
+}
+
+// FeaturePorts.ompModels; IPC read_omp_config / discover_omp_cli /
+// preview_omp_save { plan: request } / apply_omp_save { plan: { planId, planDigest } }
+interface OmpModelsPort {
+  readConfig(): Promise<OmpConfigRead>;
+  discoverCli(): Promise<OmpCliDiscovery>;
+  previewSave(request: OmpSaveRequest): Promise<OmpSavePreview>;
+  applySave(confirmation: OmpApplyConfirmation): Promise<OmpSaveResult>;
 }
 
 interface ChangePlansPort {
@@ -434,6 +443,30 @@ shared lifecycle here.
 - Every terminal direct write performs authoritative snapshot reread when the
   operation semantics permit it. The saved result alone is not a replacement
   for current revision/path/provider state.
+
+### Oh My Pi (omp) flow
+
+- `OmpModelsPanel` reads `OmpConfigRead` (profile, models/config paths and
+  revisions, redacted providers, default model, per-file status) and shows the
+  CLI version and read-only `executablePath` from `discoverCli()`. A missing
+  CLI shows the official install command and the reviewed `https://omp.sh/`
+  link; FyAgent never runs it. Provider login is `/login` inside omp.
+- Only `openai-completions` and `openai-responses` are editable; other
+  protocols stay read-only. `legacyJsonOnly` or any `invalidYaml` status
+  locks editing and offers 「重新读取」.
+- `previewSave(request)` is zero-write. `apiKey` absent/null keeps the file
+  value; new providers choose an environment variable or `!command`
+  reference. `models` merge by ID (current names are resent unchanged);
+  `defaultModel` is an explicit opt-in. `fyagent-` is only the suggested
+  default ID; validation enforces the ID pattern and no collision.
+- The preview is bound to the request (provider id/baseUrl/api, requested
+  model IDs, requested default) and shows `changedFiles` and `warnings`.
+  Confirm sends only `{ planId, planDigest }`; the key intent stays in
+  component state and never enters query cache, preview or apply payloads.
+- After apply the panel rereads, compares the readback with the request and
+  shows 「重新启动当前 omp 会话」 guidance. Native `AppError` prefixes map to
+  closed codes (`并发冲突:` stale → reread, `无效输入:`, `配置错误:`); any other
+  apply failure blocks further writes until the page reopens.
 
 ### Runtime parsing boundary
 

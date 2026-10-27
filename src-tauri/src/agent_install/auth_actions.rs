@@ -62,6 +62,11 @@ pub async fn observe_agent_auth(agent_id: AgentCatalogId) -> AgentAuthObservatio
         AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy => {
             handoff_only_observation(agent_id, vec![AgentAuthIntent::Login])
         }
+        AgentCatalogId::Omp => unavailable_observation(
+            agent_id,
+            AgentAuthOwnership::AgentOwned,
+            AgentAuthReasonCode::AuthObserverUnavailable,
+        ),
         AgentCatalogId::GrokBuild => {
             let available = tokio::task::spawn_blocking(|| ensure_tool_available(GROK_TOOL_ID))
                 .await
@@ -122,7 +127,8 @@ pub fn observe_auth_state(
         | AgentCatalogId::QoderWork
         | AgentCatalogId::TraeWork
         | AgentCatalogId::WorkBuddy
-        | AgentCatalogId::Codex => AgentAuthState::Unknown,
+        | AgentCatalogId::Codex
+        | AgentCatalogId::Omp => AgentAuthState::Unknown,
     }
 }
 
@@ -190,7 +196,7 @@ fn observe_claude_account() -> AgentAuthObservationDto {
                 AgentCatalogId::ClaudeCode,
                 AgentAuthOwnership::AgentOwned,
                 reason,
-            )
+            );
         }
     };
     match parse_claude_status_output(output.status.code(), &output.stdout) {

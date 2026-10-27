@@ -1,4 +1,10 @@
-import { Children, useRef, type CSSProperties, type ReactNode } from "react";
+import {
+  Children,
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { usePressFeedback } from "../usePressFeedback";
 import type { DialogOriginRef } from "../dialogOrigin";
 
@@ -195,15 +201,25 @@ interface CatalogDetailProps {
   ariaLabel: string;
   children: ReactNode;
   className?: string;
+  /** Changing this resets the shared pane to the top of the new item. */
+  scrollKey?: string | null;
 }
 
 export function CatalogDetail({
   ariaLabel,
   children,
   className,
+  scrollKey,
 }: CatalogDetailProps) {
+  const ref = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (scrollKey === undefined) return;
+    const pane = ref.current?.closest<HTMLElement>(".fy-catalog-pane");
+    if (pane) pane.scrollTop = 0;
+  }, [scrollKey]);
   return (
     <section
+      ref={ref}
       className={classNames("fy-feature-panel", "fy-catalog-detail", className)}
       aria-label={ariaLabel}
     >

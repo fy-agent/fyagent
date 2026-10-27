@@ -482,14 +482,20 @@ describe("Managed subscription selection and application", () => {
     async (app) => {
       const user = userEvent.setup();
       const ports = configuredPorts();
+      ports.managedAuth.getOpenAiModels = vi.fn(async () => {
+        throw { contractVersion: 1, reasonCode: "observer_unavailable" };
+      });
       renderSection(ports, app);
       await user.click(
         await screen.findByRole("radio", { name: "ChatGPT · Personal" }),
       );
+      expect(
+        await screen.findByText("暂时无法读取 Codex 模型目录"),
+      ).toBeVisible();
       expect(ports.providers.fetchXaiManagedModels).not.toHaveBeenCalled();
       expect(
         screen.getByRole("button", { name: "查看模型选项" }),
-      ).toBeDisabled();
+      ).toBeEnabled();
       await user.type(
         await screen.findByLabelText("订阅模型 ID"),
         "chatgpt-fixture-model",
@@ -524,6 +530,147 @@ describe("Managed subscription selection and application", () => {
       expect(ports.providers.fetchXaiManagedModels).not.toHaveBeenCalled();
     },
   );
+
+  it("reads the selected ChatGPT account's own Codex catalog and binds a listed model", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    ports.managedAuth.getOpenAiModels = vi.fn(async (accountId: string) => ({
+      contractVersion: 1 as const,
+      accountId,
+      fetchedAt: "2026-10-22T04:30:00Z",
+      models: ["gpt-6-sol", "gpt-5.5"],
+    }));
+    renderSection(ports, "claude");
+    await user.click(
+      await screen.findByRole("radio", { name: "ChatGPT · Personal" }),
+    );
+    expect(await screen.findByText("已读取 2 个 Codex 模型")).toBeVisible();
+    expect(
+      screen.getByText(
+        /来自 OpenAI 为「Personal」提供的 Codex 模型目录，读取于 /u,
+      ),
+    ).toBeVisible();
+    expect(ports.managedAuth.getOpenAiModels).toHaveBeenCalledExactlyOnceWith(
+      OPENAI_ACCOUNT_ID,
+    );
+    expect(ports.providers.fetchXaiManagedModels).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "手动填写模型 ID" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("button", { name: "gpt-5.5" }));
+    await user.click(
+      screen.getByRole("button", { name: "应用到 Claude Code" }),
+    );
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "确认应用",
+      }),
+    );
+    await waitFor(() =>
+      expect(ports.providers.bindManagedProxy).toHaveBeenCalledExactlyOnceWith({
+        app: "claude",
+        accountId: OPENAI_ACCOUNT_ID,
+        modelId: "gpt-5.5",
+      }),
+    );
+  });
+
+  it.each([
+    [
+      "requires_reauth",
+      "需要重新登录此 ChatGPT 账号",
+      "登录已过期或被拒绝。请在账号与认证中重新登录后重试，也可以手动填写模型 ID。",
+    ],
+    [
+      "connection_unavailable",
+      "此账号暂时不能用于订阅转发",
+      "请到账号与认证检查此账号的登录状态，必要时重新登录；也可以手动填写模型 ID。",
+    ],
+    [
+      "invalid_response",
+      "暂时无法读取 Codex 模型目录",
+      "请检查网络后点「查看模型选项」重试，或手动填写订阅支持的模型 ID。",
+    ],
+  ])(
+    "explains a %s catalog failure and keeps retry and manual input",
+    async (reasonCode, title, description) => {
+      const user = userEvent.setup();
+      const ports = configuredPorts();
+      let fail = true;
+      ports.managedAuth.getOpenAiModels = vi.fn(async (accountId: string) => {
+        if (fail) throw { contractVersion: 1, reasonCode };
+        return {
+          contractVersion: 1 as const,
+          accountId,
+          fetchedAt: "2026-10-22T04:30:00Z",
+          models: ["gpt-5.5"],
+        };
+      });
+      renderSection(ports, "codex");
+      await user.click(
+        await screen.findByRole("radio", { name: "ChatGPT · Personal" }),
+      );
+      expect(await screen.findByText(title)).toBeVisible();
+      expect(screen.getByText(description)).toBeVisible();
+      expect(screen.getByLabelText("订阅模型 ID")).toBeEnabled();
+      expect(
+        screen.queryByRole("button", { name: "gpt-5.5" }),
+      ).not.toBeInTheDocument();
+
+      fail = false;
+      await user.click(screen.getByRole("button", { name: "查看模型选项" }));
+      expect(await screen.findByText("已读取 1 个 Codex 模型")).toBeVisible();
+      expect(screen.getByRole("button", { name: "gpt-5.5" })).toBeVisible();
+      expect(ports.managedAuth.getOpenAiModels).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("treats an empty ChatGPT catalog as a warning with manual input", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    ports.managedAuth.getOpenAiModels = vi.fn(async (accountId: string) => ({
+      contractVersion: 1 as const,
+      accountId,
+      fetchedAt: "2026-10-22T04:30:00Z",
+      models: [],
+    }));
+    renderSection(ports, "codex");
+    await user.click(
+      await screen.findByRole("radio", { name: "ChatGPT · Personal" }),
+    );
+    expect(
+      await screen.findByText("该账号的 Codex 模型目录为空"),
+    ).toBeVisible();
+    expect(screen.getByLabelText("订阅模型 ID")).toBeEnabled();
+  });
+
+  it("drops the ChatGPT catalog when switching to an xAI account", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    ports.managedAuth.getOpenAiModels = vi.fn(async (accountId: string) => ({
+      contractVersion: 1 as const,
+      accountId,
+      fetchedAt: "2026-10-22T04:30:00Z",
+      models: ["gpt-5.5"],
+    }));
+    renderSection(ports, "claude");
+    await user.click(
+      await screen.findByRole("radio", { name: "ChatGPT · Personal" }),
+    );
+    await user.click(await screen.findByRole("button", { name: "gpt-5.5" }));
+    expect(screen.getByText("已选模型：gpt-5.5")).toBeVisible();
+    await user.click(
+      screen.getAllByRole("radio", { name: /^xAI 设备码 · / })[0],
+    );
+    await screen.findByRole("button", { name: modelIds[0] });
+    expect(
+      screen.queryByRole("button", { name: "gpt-5.5" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("已选模型：gpt-5.5")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("已读取 1 个 Codex 模型"),
+    ).not.toBeInTheDocument();
+  });
 
   it("checks Grok Build's current source rather than treating a saved row as activation", async () => {
     const user = userEvent.setup();
