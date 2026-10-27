@@ -515,7 +515,7 @@ describe("Models page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the exact selector order, local decorative icons, and QoderWork default", () => {
+  it("renders the exact selector order, local decorative icons, and Claude Code default", () => {
     const ports = createBrowserFeaturePorts();
     renderPage(ports);
 
@@ -549,6 +549,15 @@ describe("Models page", () => {
       expect(icon).toHaveAttribute("aria-hidden", "true");
       expect(button.querySelector('[data-size="list"]')).toBeInTheDocument();
     });
+    expect(screen.getByTestId("model-target-claude")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(
+      screen.getByRole("region", { name: "Claude Code 模型配置" }),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByTestId("model-target-qoderwork"));
     expect(screen.getByTestId("model-target-qoderwork")).toHaveAttribute(
       "aria-current",
       "true",

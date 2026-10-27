@@ -2256,7 +2256,7 @@ export function ModelsPage() {
   const target = useStickyVisibleValue(
     visible,
     parseExplicitModelTarget(rawTarget),
-    "qoderwork",
+    "claude",
   );
   const targets = useMemo(() => MODEL_TARGETS, []);
 
