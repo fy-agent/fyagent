@@ -74,6 +74,9 @@ const layout = productionRust(`${HELPER_ROOT}/src/layout.rs`);
 const bridgeControl = productionRust(`${HELPER_ROOT}/src/bridge_control.rs`);
 const protocol = productionRust(`${HELPER_ROOT}/src/protocol.rs`);
 const runtime = productionRust(`${HELPER_ROOT}/src/windows.rs`);
+const packageStream = productionRust(
+  `${HELPER_ROOT}/src/windows/package_stream.rs`,
+);
 const helperLibrary = productionRust(`${HELPER_ROOT}/src/lib.rs`);
 const main = read(`${HELPER_ROOT}/src/main.rs`);
 const helperBuild = read(`${HELPER_ROOT}/build.rs`);
@@ -566,8 +569,8 @@ describe("Codex current-user helper static contract", () => {
     expect(packagePin).toContain("BRIDGE_DIRECTORY_DANGEROUS_ACCESS");
     expect(packagePin).toContain("BRIDGE_FILE_DANGEROUS_ACCESS");
     expect(packagePin).toContain("native_identity(control.package())");
-    expect(packagePin).toContain("uri_reopen");
-    expect(packagePin).toContain("artifact_kind: PackageBridgeArtifactKind");
+    expect(packagePin).toContain("operation_id: BridgeOperationId");
+    expect(packagePin).toContain("start_package_server");
     expect(packagePin).toContain("exact_leaf_acl(artifact_kind)");
     expect(packagePin).toContain(
       "self.artifact_kind != PackageBridgeArtifactKind::Msix",
@@ -612,25 +615,27 @@ describe("Codex current-user helper static contract", () => {
     expect(runtime).not.toMatch(/SetSecurityInfo|SetKernelObjectSecurity/u);
   });
 
-  it("keeps PackageManager on MSIX and ShellExecuteEx on the closed EXE action", () => {
-    const uriRoundtrip = section(
-      runtime,
-      "fn local_file_uri_roundtrip",
-      "\nfn has_local_file_uri_shape",
-    );
-    expectInOrder(
-      uriRoundtrip,
-      ["UrlCreateFromPathW", "PathCreateFromUrlW", "roundtrip_length"],
-      "DOS file URI round trip",
-    );
-    expect(uriRoundtrip).toContain(
-      "roundtrip[..roundtrip_length] != *original",
-    );
+  it("streams the pinned MSIX over a capability-bound loopback URI", () => {
+    const packageServer = packageStream;
+    for (const boundary of [
+      "TcpListener::bind((Ipv4Addr::LOCALHOST, 0))",
+      "operation_id.directory_name()",
+      "native_file_identity(package_file",
+      "package_file.seek_read",
+      "parse_package_range",
+      'scheme != "http"',
+      'host != "127.0.0.1"',
+      "const WORKER_COUNT: usize = 4",
+      "let deadline = Instant::now() + HEADER_TIMEOUT",
+      "saturating_duration_since(Instant::now())",
+      "set_read_timeout(Some(remaining))",
+      "stop.load(Ordering::Acquire)",
+    ]) {
+      expect(packageServer, boundary).toContain(boundary);
+    }
     expect(runtime).toContain("validate_ordinary_dos_path");
-    expect(runtime).toContain('scheme != "file"');
-    expect(runtime).toMatch(
-      /!host\.is_empty\(\)[\s\S]+?!query\.is_empty\(\)[\s\S]+?!fragment\.is_empty\(\)/u,
-    );
+    expect(runtime).not.toContain("UrlCreateFromPathW");
+    expect(runtime).not.toContain("PathCreateFromUrlW");
     expect(runtime.match(/\.AddPackageByUriAsync\s*\(/gu)).toHaveLength(1);
     expect(runtime.match(/ShellExecuteExW\s*\(/gu)).toHaveLength(1);
     const exeRunner = section(
@@ -673,17 +678,9 @@ describe("Codex current-user helper static contract", () => {
     const helperBridgeSource = `${runtime}\n${helperLibrary}`;
     for (const retiredSource of [
       "FYAHHTTP",
-      "127.0.0.1",
       "PackageSourceControl",
       "SOURCE_CONTROL_BYTES",
       "source_control",
-      "loopback_http",
-      "TcpListener",
-      "WinSock",
-      "Accept-Ranges",
-      "Content-Range",
-      '"GET"',
-      '"HEAD"',
     ]) {
       expect(helperBridgeSource, retiredSource).not.toContain(retiredSource);
     }
@@ -774,24 +771,85 @@ describe("Codex current-user helper static contract", () => {
       ],
       "real Alice access-check token",
     );
-    const dangerousRights = section(
+    const replacementRights = section(
       packageBridge,
-      "let dangerous = FILE_DELETE_CHILD.0",
-      "if ancestor_mutation_rejected",
+      "const ANCESTOR_REPLACEMENT_ACCESS",
+      "const PATH_ANCESTOR_DANGEROUS_ACCESS",
     );
     for (const right of [
       "FILE_DELETE_CHILD",
       "DELETE",
       "WRITE_DAC",
       "WRITE_OWNER",
-      "FILE_WRITE_EA",
-      "FILE_WRITE_ATTRIBUTES",
     ]) {
-      expect(dangerousRights).toContain(right);
+      expect(replacementRights).toContain(right);
     }
+    expect(replacementRights).not.toContain("FILE_WRITE_EA");
+    expect(replacementRights).not.toContain("FILE_WRITE_ATTRIBUTES");
     expect(packageBridge).toContain("CheckTokenMembership");
     expect(packageBridge).toContain("token_is_local_administrator");
     expect(packageBridge).toContain("ancestor_mutation_rejected");
+  });
+
+  it("binds PackageManager consumption to the pinned file object across the async handoff", () => {
+    const parentReplacementMask = section(
+      packageBridge,
+      "const ANCESTOR_REPLACEMENT_ACCESS",
+      "const PATH_ANCESTOR_DANGEROUS_ACCESS",
+    );
+    const helperReplacementMask = section(
+      runtime,
+      "const ANCESTOR_REPLACEMENT_ACCESS",
+      "const PATH_ANCESTOR_DANGEROUS_ACCESS",
+    );
+    for (const mask of [parentReplacementMask, helperReplacementMask]) {
+      expect(mask).toContain("DELETE");
+      expect(mask).toContain("FILE_DELETE_CHILD");
+      expect(mask).toContain("WRITE_DAC");
+      expect(mask).toContain("WRITE_OWNER");
+      expect(mask).not.toContain("FILE_WRITE_ATTRIBUTES");
+      expect(mask).not.toContain("FILE_WRITE_EA");
+    }
+    for (const source of [packageBridge, runtime]) {
+      const pathMask = section(
+        source,
+        "const PATH_ANCESTOR_DANGEROUS_ACCESS",
+        source === packageBridge
+          ? "const COPY_BUFFER_BYTES"
+          : "const BRIDGE_DIRECTORY_DANGEROUS_ACCESS",
+      );
+      expect(pathMask).toContain("ANCESTOR_REPLACEMENT_ACCESS");
+      expect(pathMask).toContain("FILE_WRITE_ATTRIBUTES");
+      expect(pathMask).toContain("FILE_WRITE_EA");
+    }
+
+    const helperOpen = section(
+      runtime,
+      "impl PinnedPackageFile",
+      "fn native_identity",
+    );
+    expectInOrder(
+      helperOpen,
+      [
+        "open_relative_no_follow",
+        "native_identity(control.package())",
+        "operation_id: control.operation_id()",
+        "package.recheck_for_helper()",
+        "PackageStreamServer::start(&self.package_file",
+      ],
+      "helper object admission",
+    );
+    const deployment = section(runtime, "fn deploy_fixed_package", "\nfn ");
+    expectInOrder(
+      deployment,
+      [
+        "package_pin.recheck()",
+        "package_pin.start_package_server()",
+        "package_server.package_uri()",
+        "AddPackageByUriAsync",
+      ],
+      "identity-bound PackageManager handoff",
+    );
   });
 
   it("copies, hashes, flushes, renames without replacement, and reopens the final leaf", () => {

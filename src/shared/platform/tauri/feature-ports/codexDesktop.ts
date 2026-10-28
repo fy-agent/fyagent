@@ -4,7 +4,9 @@ import { listen } from "@tauri-apps/api/event";
 import {
   assertExpectedReleaseId,
   assertInstallConfirmationId,
+  assertStagingCapabilityId,
   parseCodexInstallPreflight,
+  parseCodexStagingSelection,
   parseJobSnapshot,
   parseLocalInstallStatus,
   parseOptionalJobSnapshot,
@@ -36,15 +38,28 @@ export function createCodexDesktopPort(): FeaturePorts["codexDesktop"] {
     },
     getJob: async () =>
       parseOptionalJobSnapshot(await invoke<unknown>("codex_desktop_get_job")),
-    prepareInstall: async (expectedReleaseId) =>
+    pickStagingDirectory: async () =>
+      parseCodexStagingSelection(
+        await invoke<unknown>("codex_desktop_pick_staging_directory"),
+      ),
+    prepareInstall: async (expectedReleaseId, stagingCapabilityId) =>
       parseCodexInstallPreflight(
         await invoke<unknown>("codex_desktop_prepare_install", {
           request: {
             expectedReleaseId: assertExpectedReleaseId(expectedReleaseId),
+            stagingCapabilityId:
+              stagingCapabilityId === undefined
+                ? null
+                : assertStagingCapabilityId(stagingCapabilityId),
           },
         }),
         expectedReleaseId,
       ),
+    discardInstallConfirmation: async (confirmationId) => {
+      await invoke("codex_desktop_discard_install_confirmation", {
+        confirmationId: assertInstallConfirmationId(confirmationId),
+      });
+    },
     startInstall: async (expectedReleaseId, confirmationId) =>
       parseJobSnapshot(
         await invoke<unknown>("codex_desktop_start_install", {

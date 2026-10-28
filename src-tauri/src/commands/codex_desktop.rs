@@ -4,17 +4,22 @@
 //! `services::codex_desktop`; these commands only obtain the one application
 //! service instance and map its stable error object into the IPC DTO.
 
-use tauri::State;
+use tauri::{AppHandle, State};
+#[cfg(target_os = "windows")]
+use tauri_plugin_dialog::DialogExt;
 
 use crate::{
     codex_desktop::{
         error::{InstallerError, InstallerErrorDto},
         types::{
             CodexDesktopRestartOutcome, CodexDesktopRuntimeStatus, JobSnapshot, LocalInstallStatus,
-            RemoteReleaseStatus, StartInstallRequest,
+            RemoteReleaseStatus,
         },
     },
-    services::codex_desktop::{CodexInstallPreflight, ConfirmedStartInstallRequest},
+    services::codex_desktop::{
+        CodexInstallPreflight, CodexStagingSelection, ConfirmedStartInstallRequest,
+        PrepareInstallRequest,
+    },
     store::AppState,
 };
 
@@ -117,7 +122,7 @@ pub async fn codex_desktop_start_install(
 
 #[tauri::command]
 pub async fn codex_desktop_prepare_install(
-    request: StartInstallRequest,
+    request: PrepareInstallRequest,
     state: State<'_, AppState>,
 ) -> Result<CodexInstallPreflight, InstallerErrorDto> {
     state
@@ -125,6 +130,61 @@ pub async fn codex_desktop_prepare_install(
         .prepare_install(request)
         .await
         .map_err(to_ipc_error)
+}
+
+#[tauri::command]
+pub async fn codex_desktop_discard_install_confirmation(
+    confirmation_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), InstallerErrorDto> {
+    state
+        .codex_desktop_service
+        .discard_install_confirmation(&confirmation_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn codex_desktop_pick_staging_directory(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<CodexStagingSelection>, InstallerErrorDto> {
+    #[cfg(target_os = "windows")]
+    {
+        let selected = tauri::async_runtime::spawn_blocking(move || {
+            app.dialog().file().blocking_pick_folder()
+        })
+        .await
+        .map_err(|_| {
+            to_ipc_error(
+                InstallerError::new(crate::codex_desktop::error::InstallerErrorCode::InternalError)
+                    .with_diagnostic_message("the staging directory picker failed"),
+            )
+        })?;
+        let Some(selected) = selected else {
+            return Ok(None);
+        };
+        let path = selected.simplified().into_path().map_err(|_| {
+            to_ipc_error(
+                InstallerError::new(crate::codex_desktop::error::InstallerErrorCode::InternalError)
+                    .with_diagnostic_message("the selected staging directory was invalid"),
+            )
+        })?;
+        state
+            .codex_desktop_service
+            .select_staging_directory(&path)
+            .map(Some)
+            .map_err(to_ipc_error)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, state);
+        Err(to_ipc_error(
+            InstallerError::new(
+                crate::codex_desktop::error::InstallerErrorCode::PlatformUnsupported,
+            )
+            .with_diagnostic_message("custom staging selection is unavailable on this platform"),
+        ))
+    }
 }
 
 #[tauri::command]
@@ -158,5 +218,10 @@ pub async fn codex_desktop_open_log_directory(
 }
 
 fn to_ipc_error(error: InstallerError) -> InstallerErrorDto {
-    error.to_dto()
+    let diagnostic = error.to_dto();
+    log::warn!(
+        "Codex desktop request failed: stage={:?} code={:?} platform_error_code={:?} diagnostic={:?}",
+        diagnostic.stage, diagnostic.code, diagnostic.details.platform_error_code, diagnostic.details.redacted_message
+    );
+    diagnostic
 }

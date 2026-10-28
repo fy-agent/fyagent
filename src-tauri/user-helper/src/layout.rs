@@ -51,6 +51,12 @@ impl PackageBridgeArtifactKind {
             Self::Exe => AGENT_PACKAGE_BRIDGE_PART_FILE_NAME,
         }
     }
+
+    /// Path consumers need ancestor metadata stability; handle-streamed MSIX
+    /// bytes do not reopen the namespace after admission.
+    pub const fn consumes_through_path(self) -> bool {
+        matches!(self, Self::Exe)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

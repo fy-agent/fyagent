@@ -2518,6 +2518,8 @@ pub fn run() {
             commands::codex_desktop_get_job,
             commands::codex_desktop_start_install,
             commands::codex_desktop_prepare_install,
+            commands::codex_desktop_discard_install_confirmation,
+            commands::codex_desktop_pick_staging_directory,
             commands::codex_desktop_cancel_install,
             commands::codex_desktop_launch,
             commands::codex_desktop_open_log_directory,
@@ -4147,13 +4149,15 @@ mod tests {
     }
 
     #[test]
-    fn codex_desktop_ipc_keeps_seven_ordinary_commands_and_four_trusted_restart_commands() {
-        const ORDINARY_COMMANDS: [&str; 8] = [
+    fn codex_desktop_ipc_keeps_ten_ordinary_commands_and_four_trusted_restart_commands() {
+        const ORDINARY_COMMANDS: [&str; 10] = [
             "codex_desktop_get_local_status",
             "codex_desktop_check_latest",
             "codex_desktop_get_job",
             "codex_desktop_start_install",
             "codex_desktop_prepare_install",
+            "codex_desktop_discard_install_confirmation",
+            "codex_desktop_pick_staging_directory",
             "codex_desktop_cancel_install",
             "codex_desktop_launch",
             "codex_desktop_open_log_directory",

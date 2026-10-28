@@ -489,6 +489,8 @@ fn run_pinned_user_helper(
     );
     drop(source_file);
     let bridge = bridge?;
+    // The MSIX signature was checked against the protected source handle and
+    // the sealed bridge copy is bound to it by hash-while-copy.
 
     let setup = (|| {
         let nonce = generate_nonce()?;

@@ -45,7 +45,8 @@ export interface CodexDesktopInstallerViewModel {
   runPrimaryAction: () => Promise<void>;
   preflight: CodexInstallPreflight | null;
   confirmInstall: () => Promise<void>;
-  dismissPreflight: () => void;
+  dismissPreflight: () => Promise<void>;
+  selectStagingDirectory: () => Promise<void>;
   cancel: () => Promise<void>;
   openLogs: () => Promise<void>;
 }
@@ -99,6 +100,42 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   const [actionFailure, setActionFailure] = useState<unknown>(null);
   const [operationFailed, setOperationFailed] = useState(false);
   const [isActing, setIsActing] = useState(false);
+  const releaseConfirmation = useCallback(
+    (
+      mode: "consumed" | "discard" | "best-effort-discard",
+    ): {
+      pending: CodexInstallPreflight | null;
+      released: Promise<void>;
+    } => {
+      const pending = confirmationRef.current;
+      confirmationRef.current = null;
+      if (aliveRef.current) setPreflight(null);
+      if (!pending || mode === "consumed") {
+        return { pending, released: Promise.resolve() };
+      }
+
+      const release = port.discardInstallConfirmation(pending.confirmationId);
+      const released =
+        mode === "best-effort-discard"
+          ? release.catch(() => undefined)
+          : release;
+      return { pending, released };
+    },
+    [port],
+  );
+  const publishConfirmation = useCallback(
+    async (checked: CodexInstallPreflight): Promise<void> => {
+      if (aliveRef.current) {
+        confirmationRef.current = checked;
+        setPreflight(checked);
+        return;
+      }
+      await port
+        .discardInstallConfirmation(checked.confirmationId)
+        .catch(() => undefined);
+    },
+    [port],
+  );
 
   useEffect(() => {
     aliveRef.current = true;
@@ -106,6 +143,13 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
       aliveRef.current = false;
     };
   }, []);
+
+  useEffect(
+    () => () => {
+      void releaseConfirmation("best-effort-discard").released;
+    },
+    [releaseConfirmation],
+  );
 
   const acceptSnapshot = useCallback((incoming: JobSnapshot): boolean => {
     const accepted = shouldAcceptJobSnapshot(acceptedJobRef.current, incoming);
@@ -342,10 +386,7 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
             return;
           }
           const checked = await port.prepareInstall(remote.releaseId);
-          if (aliveRef.current) {
-            confirmationRef.current = checked;
-            setPreflight(checked);
-          }
+          await publishConfirmation(checked);
           return;
         }
         case "launch":
@@ -360,10 +401,7 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
         case "retry":
           if (state === "failed" && remote) {
             const checked = await port.prepareInstall(remote.releaseId);
-            if (aliveRef.current) {
-              confirmationRef.current = checked;
-              setPreflight(checked);
-            }
+            await publishConfirmation(checked);
           } else {
             await readRemote(true);
           }
@@ -381,27 +419,55 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     readLocal,
     remote,
     state,
+    publishConfirmation,
   ]);
 
-  const dismissPreflight = useCallback(() => {
-    confirmationRef.current = null;
-    setPreflight(null);
-  }, []);
+  const dismissPreflight = useCallback(
+    async () =>
+      performLocked(async () => {
+        await releaseConfirmation("discard").released;
+      }),
+    [performLocked, releaseConfirmation],
+  );
 
   const confirmInstall = useCallback(
     async () =>
       performLocked(async () => {
-        const checked = confirmationRef.current;
+        const { pending: checked } = releaseConfirmation("consumed");
         if (!checked) return;
-        confirmationRef.current = null;
-        setPreflight(null);
         const snapshot = await port.startInstall(
           checked.expectedReleaseId,
           checked.confirmationId,
         );
         acceptSnapshot(snapshot);
       }),
-    [acceptSnapshot, performLocked, port],
+    [acceptSnapshot, performLocked, port, releaseConfirmation],
+  );
+
+  const selectStagingDirectory = useCallback(
+    async () =>
+      performLocked(async () => {
+        const current = confirmationRef.current;
+        if (current && current.platform !== "windows") return;
+        const expectedReleaseId =
+          current?.expectedReleaseId ?? remote?.releaseId;
+        if (!expectedReleaseId) return;
+        let selection;
+        try {
+          selection = await port.pickStagingDirectory();
+        } catch (error) {
+          await releaseConfirmation("discard").released;
+          throw error;
+        }
+        if (!selection) return;
+        await releaseConfirmation("discard").released;
+        const checked = await port.prepareInstall(
+          expectedReleaseId,
+          selection.capabilityId,
+        );
+        await publishConfirmation(checked);
+      }),
+    [performLocked, port, publishConfirmation, releaseConfirmation, remote],
   );
 
   const cancel = useCallback(
@@ -440,6 +506,7 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     preflight,
     confirmInstall,
     dismissPreflight,
+    selectStagingDirectory,
     cancel,
     openLogs,
   };

@@ -44,11 +44,18 @@ static CURRENT_EXECUTABLE_INSTALL_ROOT: OnceLock<Result<FrozenInstallRoot, Insta
 /// perform filesystem work. Every service clone shares the process-wide
 /// frozen Windows executable/install-root identity above.
 #[derive(Clone)]
-pub(crate) enum JobTempRoot {
+pub(crate) struct JobTempRoot {
+    kind: JobTempRootKind,
+}
+
+#[derive(Clone)]
+enum JobTempRootKind {
     #[cfg(any(target_os = "macos", test))]
     Explicit(PathBuf),
     #[cfg(target_os = "windows")]
     CurrentExecutableInstallRoot,
+    #[cfg(target_os = "windows")]
+    Selected(Vec<TrustedDirectory>),
 }
 
 impl fmt::Debug for JobTempRoot {
@@ -60,7 +67,9 @@ impl fmt::Debug for JobTempRoot {
 #[cfg(any(target_os = "macos", test))]
 impl From<PathBuf> for JobTempRoot {
     fn from(root: PathBuf) -> Self {
-        Self::Explicit(root)
+        Self {
+            kind: JobTempRootKind::Explicit(root),
+        }
     }
 }
 
@@ -70,21 +79,54 @@ impl JobTempRoot {
     pub(crate) fn for_current_process() -> Self {
         #[cfg(target_os = "windows")]
         {
-            Self::CurrentExecutableInstallRoot
+            Self {
+                kind: JobTempRootKind::CurrentExecutableInstallRoot,
+            }
         }
         #[cfg(target_os = "macos")]
         {
-            Self::Explicit(JobTempDir::system_root())
+            Self {
+                kind: JobTempRootKind::Explicit(JobTempDir::system_root()),
+            }
         }
     }
 
     pub(crate) fn create_job(&self, job_id: &str) -> Result<JobTempDir, InstallerError> {
-        match self {
+        match &self.kind {
             #[cfg(any(target_os = "macos", test))]
-            Self::Explicit(root) => JobTempDir::create(root, job_id),
+            JobTempRootKind::Explicit(root) => JobTempDir::create(root, job_id),
             #[cfg(target_os = "windows")]
-            Self::CurrentExecutableInstallRoot => create_current_executable_job(job_id),
+            JobTempRootKind::CurrentExecutableInstallRoot => create_current_executable_job(job_id),
+            #[cfg(target_os = "windows")]
+            JobTempRootKind::Selected(ancestors) => JobTempDir::create_with_ancestors(
+                ancestors.clone(),
+                &canonical_job_id(job_id)?,
+                ArtifactPolicy::WindowsInstaller,
+            ),
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn from_selected_directory(path: &Path) -> Result<Self, InstallerError> {
+        let canonical = fs::canonicalize(path)
+            .map_err(|_| temp_error("selected staging directory could not be canonicalized"))?;
+        if !canonical.is_absolute() || !canonical.is_dir() {
+            return Err(temp_error("selected staging directory is unavailable"));
+        }
+        let mut paths = canonical
+            .ancestors()
+            .filter(|ancestor| !ancestor.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+            .collect::<Vec<_>>();
+        paths.reverse();
+        let ancestors = paths
+            .iter()
+            .map(|ancestor| TrustedDirectory::capture_selected_windows(ancestor))
+            .collect::<Result<Vec<_>, _>>()?;
+        validate_directory_chain(&ancestors)?;
+        Ok(Self {
+            kind: JobTempRootKind::Selected(ancestors),
+        })
     }
 }
 
@@ -116,6 +158,12 @@ impl TrustedDirectory {
             let identity = filesystem_identity(path, FilesystemObjectKind::Directory)?;
             Self::capture_with_identity(path, identity)
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn capture_selected_windows(path: &Path) -> Result<Self, InstallerError> {
+        let handle = open_windows_selected_directory_path(path)?;
+        Self::capture_windows_handle(path, handle, false)
     }
 
     #[cfg(target_os = "macos")]
@@ -855,7 +903,6 @@ fn ensure_path_absent_for_temp(path: &Path) -> Result<(), InstallerError> {
     }
 }
 
-#[cfg(any(target_os = "macos", test))]
 fn canonical_job_id(value: &str) -> Result<String, InstallerError> {
     if !is_canonical_job_id(value) {
         return Err(temp_error("installer job ID is not a canonical UUID"));
@@ -1065,7 +1112,7 @@ fn validate_executable_path_shape(path: &Path) -> Result<(), InstallerError> {
     Ok(())
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum FilesystemObjectKind {
     Directory,
     #[cfg(target_os = "windows")]
@@ -1073,9 +1120,17 @@ enum FilesystemObjectKind {
 }
 
 #[cfg(target_os = "windows")]
-fn open_windows_filesystem_object(
+#[derive(Clone, Copy)]
+enum WindowsDirectorySharePolicy {
+    RetainIdentity,
+    SelectedAncestor,
+    ValidationAllowDelete,
+}
+
+#[cfg(target_os = "windows")]
+fn open_windows_directory_with_policy(
     path: &Path,
-    expected_kind: FilesystemObjectKind,
+    policy: WindowsDirectorySharePolicy,
 ) -> Result<fs::File, InstallerError> {
     use std::os::windows::fs::OpenOptionsExt;
 
@@ -1084,33 +1139,57 @@ fn open_windows_filesystem_object(
         FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE,
     };
 
-    let flags = FILE_FLAG_OPEN_REPARSE_POINT
-        | match expected_kind {
-            FilesystemObjectKind::Directory => FILE_FLAG_BACKUP_SEMANTICS,
-            FilesystemObjectKind::RegularFile => Default::default(),
-        };
+    let share_mode = match policy {
+        WindowsDirectorySharePolicy::RetainIdentity => FILE_SHARE_READ,
+        WindowsDirectorySharePolicy::SelectedAncestor => FILE_SHARE_READ | FILE_SHARE_WRITE,
+        WindowsDirectorySharePolicy::ValidationAllowDelete => FILE_SHARE_READ | FILE_SHARE_DELETE,
+    };
     let mut options = fs::OpenOptions::new();
-    match expected_kind {
-        FilesystemObjectKind::Directory => {
-            options
-                .access_mode((FILE_READ_ATTRIBUTES | FILE_TRAVERSE).0)
-                .share_mode(FILE_SHARE_READ.0);
-        }
-        FilesystemObjectKind::RegularFile => {
-            options
-                .access_mode(FILE_READ_ATTRIBUTES.0)
-                .share_mode((FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE).0);
-        }
-    }
-    options.custom_flags(flags.0);
+    options
+        .access_mode((FILE_READ_ATTRIBUTES | FILE_TRAVERSE).0)
+        .share_mode(share_mode.0)
+        .custom_flags((FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT).0);
     options
         .open(path)
-        .map_err(|_| temp_error("installer staging object could not be opened without follow"))
+        .map_err(|_| temp_error("installer staging directory could not be opened without follow"))
+}
+
+#[cfg(target_os = "windows")]
+fn open_windows_filesystem_object(
+    path: &Path,
+    expected_kind: FilesystemObjectKind,
+) -> Result<fs::File, InstallerError> {
+    if expected_kind == FilesystemObjectKind::Directory {
+        return open_windows_directory_with_policy(
+            path,
+            WindowsDirectorySharePolicy::RetainIdentity,
+        );
+    }
+
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows::Win32::Storage::FileSystem::{
+        FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ,
+        FILE_SHARE_WRITE,
+    };
+
+    let mut options = fs::OpenOptions::new();
+    options
+        .access_mode(FILE_READ_ATTRIBUTES.0)
+        .share_mode((FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE).0)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0);
+    options
+        .open(path)
+        .map_err(|_| temp_error("installer staging file could not be opened without follow"))
 }
 
 #[cfg(target_os = "windows")]
 fn open_windows_directory_path(path: &Path) -> Result<fs::File, InstallerError> {
-    open_windows_filesystem_object(path, FilesystemObjectKind::Directory)
+    open_windows_directory_with_policy(path, WindowsDirectorySharePolicy::RetainIdentity)
+}
+
+#[cfg(target_os = "windows")]
+fn open_windows_selected_directory_path(path: &Path) -> Result<fs::File, InstallerError> {
+    open_windows_directory_with_policy(path, WindowsDirectorySharePolicy::SelectedAncestor)
 }
 
 #[cfg(target_os = "windows")]
@@ -1118,25 +1197,12 @@ fn open_windows_directory_path_for_validation(
     path: &Path,
     share_delete: bool,
 ) -> Result<fs::File, InstallerError> {
-    if !share_delete {
-        return open_windows_directory_path(path);
-    }
-
-    use std::os::windows::fs::OpenOptionsExt;
-
-    use windows::Win32::Storage::FileSystem::{
-        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
-        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_TRAVERSE,
+    let policy = if share_delete {
+        WindowsDirectorySharePolicy::ValidationAllowDelete
+    } else {
+        WindowsDirectorySharePolicy::RetainIdentity
     };
-
-    let mut options = fs::OpenOptions::new();
-    options
-        .access_mode((FILE_READ_ATTRIBUTES | FILE_TRAVERSE).0)
-        .share_mode((FILE_SHARE_READ | FILE_SHARE_DELETE).0)
-        .custom_flags((FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT).0);
-    options
-        .open(path)
-        .map_err(|_| temp_error("installer staging path could not be reopened for validation"))
+    open_windows_directory_with_policy(path, policy)
 }
 
 #[cfg(target_os = "windows")]
@@ -1925,6 +1991,38 @@ mod tests {
             SystemTime::now(),
             STALE_JOB_DIRECTORY_AGE,
         ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn selected_staging_root_drives_real_artifact_lifecycle_through_held_handles() {
+        let container = tempfile::tempdir().unwrap();
+        let selected = container.path().join("selected-staging");
+        fs::create_dir(&selected).unwrap();
+        let selected_canonical = fs::canonicalize(&selected).unwrap();
+        let root = JobTempRoot::from_selected_directory(&selected).unwrap();
+        let job_id = Uuid::new_v4().hyphenated().to_string();
+        let job_directory = root.create_job(&job_id).unwrap();
+        assert_eq!(
+            job_directory.path().parent(),
+            Some(selected_canonical.as_path())
+        );
+
+        let mut part = job_directory.create_part_file(ArtifactKind::Msix).unwrap();
+        std::io::Write::write_all(&mut part, b"signed package fixture").unwrap();
+        job_directory
+            .finalize_part_file(ArtifactKind::Msix, part)
+            .unwrap();
+        assert_eq!(
+            fs::read(job_directory.final_path(ArtifactKind::Msix)).unwrap(),
+            b"signed package fixture"
+        );
+
+        let job_path = job_directory.path().to_path_buf();
+        job_directory.cleanup().unwrap();
+        drop(job_directory);
+        assert!(!job_path.exists());
+        assert!(selected.exists());
     }
 
     #[cfg(target_os = "windows")]

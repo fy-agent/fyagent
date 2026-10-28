@@ -13,6 +13,7 @@ import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
+  CodexInstallPreflight,
   InstallerErrorDto,
   JobSnapshot,
   JobStage,
@@ -84,7 +85,9 @@ function createInstallerPort(
     getLocalStatus: vi.fn(async () => notInstalled),
     checkLatest: vi.fn(async () => release),
     getJob: vi.fn(async () => null),
+    pickStagingDirectory: vi.fn(async () => null),
     prepareInstall: vi.fn(async (id) => codexInstallPreflightFixture(id)),
+    discardInstallConfirmation: vi.fn(async () => undefined),
     startInstall: vi.fn(async () =>
       snapshot({ sequence: 1, stage: "checking" }),
     ),
@@ -123,8 +126,37 @@ describe("Codex Desktop installer panel", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
+    expect(port.discardInstallConfirmation).toHaveBeenCalledWith(
+      confirmationId,
+    );
     expect(port.startInstall).not.toHaveBeenCalled();
     expect(port.cancelInstall).not.toHaveBeenCalled();
+  });
+
+  it("discards a confirmation that resolves after unmount", async () => {
+    let resolvePrepare!: (value: CodexInstallPreflight) => void;
+    const pendingPrepare = new Promise<CodexInstallPreflight>((resolve) => {
+      resolvePrepare = resolve;
+    });
+    const port = createInstallerPort({
+      prepareInstall: vi.fn(() => pendingPrepare),
+    });
+    const panel = renderPanel(port);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "安装 Codex Desktop" }),
+    );
+    await waitFor(() => expect(port.prepareInstall).toHaveBeenCalledTimes(1));
+    panel.unmount();
+
+    await act(async () => {
+      resolvePrepare(codexInstallPreflightFixture(release.releaseId));
+      await pendingPrepare;
+    });
+    await waitFor(() =>
+      expect(port.discardInstallConfirmation).toHaveBeenCalledWith(
+        confirmationId,
+      ),
+    );
   });
 
   it("preflights without installing, then consumes the exact confirmation once", async () => {
@@ -167,6 +199,101 @@ describe("Codex Desktop installer panel", () => {
       resolveStart(snapshot({ sequence: 1, stage: "checking" }));
       await pendingStart;
     });
+  });
+
+  it("uses an opaque native staging capability for the refreshed preflight", async () => {
+    const capabilityId = `s1:${"d".repeat(32)}`;
+    const port = createInstallerPort({
+      pickStagingDirectory: vi.fn(async () => ({
+        contractVersion: 1 as const,
+        capabilityId,
+        label: "用户选择的下载临时目录",
+        availableBytes: 8 * 1024 ** 3,
+      })),
+      prepareInstall: vi.fn(async (id, selected) => ({
+        ...codexInstallPreflightFixture(id),
+        stagingLabel: selected
+          ? "用户选择的下载临时目录"
+          : "FyAgent 安全下载临时目录",
+        customStaging: Boolean(selected),
+      })),
+    });
+    renderPanel(port);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "安装 Codex Desktop" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "选择下载临时目录" }),
+    );
+    await waitFor(() =>
+      expect(port.prepareInstall).toHaveBeenLastCalledWith(
+        release.releaseId,
+        capabilityId,
+      ),
+    );
+    expect(await screen.findByText(/用户选择的下载临时目录/)).toBeVisible();
+    expect(
+      JSON.stringify(vi.mocked(port.prepareInstall).mock.calls),
+    ).not.toMatch(/[A-Z]:\\\\|\/Users\//u);
+  });
+
+  it("releases the old confirmation and surfaces native picker failures", async () => {
+    const permissionError: InstallerErrorDto = {
+      code: "INTERNAL_ERROR",
+      stage: "checking",
+      messageKey: "installer.staging.permission",
+      retryable: true,
+      suggestedAction: "retry",
+      details: {
+        endpointKind: null,
+        attempt: null,
+        maxAttempts: null,
+        httpStatus: null,
+        platformErrorCode: "staging_permission_denied",
+        redactedMessage: "selected staging directory rejected",
+        context: {},
+      },
+    };
+    const retryCapabilityId = `s1:${"e".repeat(32)}`;
+    const port = createInstallerPort({
+      pickStagingDirectory: vi
+        .fn()
+        .mockRejectedValueOnce(permissionError)
+        .mockResolvedValueOnce({
+          contractVersion: 1 as const,
+          capabilityId: retryCapabilityId,
+          label: "用户选择的下载临时目录",
+          availableBytes: 8 * 1024 ** 3,
+        }),
+    });
+    renderPanel(port);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "安装 Codex Desktop" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "选择下载临时目录" }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", {
+        name: "下载临时目录不可用",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "开始安装" }),
+    ).not.toBeInTheDocument();
+    expect(port.discardInstallConfirmation).toHaveBeenCalledWith(
+      confirmationId,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "重新选择下载临时目录" }),
+    );
+    await waitFor(() =>
+      expect(port.prepareInstall).toHaveBeenLastCalledWith(
+        release.releaseId,
+        retryCapabilityId,
+      ),
+    );
   });
 
   it("rejects stale snapshots and labels bytes and speed only while downloading", async () => {

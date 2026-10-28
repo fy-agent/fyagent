@@ -19,8 +19,7 @@ use std::{
 };
 
 use windows::{
-    core::{BOOL, HRESULT, HSTRING, PCWSTR, PWSTR},
-    Foundation::Uri,
+    core::{BOOL, HRESULT, PCWSTR, PWSTR},
     Management::Deployment::{
         AddPackageOptions, DeploymentProgress, DeploymentResult, PackageManager,
     },
@@ -82,9 +81,8 @@ use windows::{
         },
         UI::Shell::{
             FOLDERID_LocalAppData, FOLDERID_Profile, FOLDERID_ProgramData, FOLDERID_RoamingAppData,
-            FOLDERID_System, PathCreateFromUrlW, SHGetKnownFolderPath, ShellExecuteExW,
-            UrlCreateFromPathW, KF_FLAG_DEFAULT, SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NO_CONSOLE,
-            SHELLEXECUTEINFOW,
+            FOLDERID_System, SHGetKnownFolderPath, ShellExecuteExW, KF_FLAG_DEFAULT,
+            SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NO_CONSOLE, SHELLEXECUTEINFOW,
         },
         UI::WindowsAndMessaging::SW_SHOWNORMAL,
     },
@@ -133,13 +131,13 @@ const DIRECTORY_READ_MASK: u32 = 0x0012_00a9;
 const DIRECTORY_TRAVERSE_MASK: u32 = 0x0012_00a0;
 const FILE_READ_MASK: u32 = 0x0012_0089;
 const FILE_READ_EXECUTE_MASK: u32 = 0x0012_00a9;
-const ANCESTOR_DANGEROUS_ACCESS: u32 = DELETE.0
-    | FILE_DELETE_CHILD.0
-    | FILE_WRITE_EA.0
-    | FILE_WRITE_ATTRIBUTES.0
-    | WRITE_DAC.0
-    | WRITE_OWNER.0;
-const BRIDGE_DIRECTORY_DANGEROUS_ACCESS: u32 = ANCESTOR_DANGEROUS_ACCESS
+// PackageManager consumes MSIX bytes through an identity-bound handle server;
+// vendor EXEs retain the stricter pathname ancestor policy.
+const ANCESTOR_REPLACEMENT_ACCESS: u32 =
+    DELETE.0 | FILE_DELETE_CHILD.0 | WRITE_DAC.0 | WRITE_OWNER.0;
+const PATH_ANCESTOR_DANGEROUS_ACCESS: u32 =
+    ANCESTOR_REPLACEMENT_ACCESS | FILE_WRITE_EA.0 | FILE_WRITE_ATTRIBUTES.0;
+const BRIDGE_DIRECTORY_DANGEROUS_ACCESS: u32 = ANCESTOR_REPLACEMENT_ACCESS
     | FILE_ADD_FILE.0
     | FILE_ADD_SUBDIRECTORY.0
     | FILE_WRITE_EA.0
@@ -153,6 +151,15 @@ const BRIDGE_FILE_DANGEROUS_ACCESS: u32 = DELETE.0
     | WRITE_OWNER.0;
 const MAX_DOS_PATH_U16: usize = 32_768;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+const fn ancestor_dangerous_access(artifact_kind: PackageBridgeArtifactKind) -> u32 {
+    if artifact_kind.consumes_through_path() {
+        PATH_ANCESTOR_DANGEROUS_ACCESS
+    } else {
+        ANCESTOR_REPLACEMENT_ACCESS
+    }
+}
+
 const GROK_CONFIG_MAX_BYTES: usize = 256 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -262,6 +269,8 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
 }
 
 mod claude;
+mod package_stream;
+use package_stream::PackageStreamServer;
 
 fn run_cli_tool_session(
     controls: &ParentControls,
@@ -1089,23 +1098,23 @@ fn deploy_fixed_package(
     controls: &ParentControls,
 ) -> Result<(), DeploymentFailure> {
     let _apartment = WinRtApartment::initialize()?;
-    let uri = package_pin.package_uri()?;
+    package_pin.recheck()?;
+    let package_server = package_pin.start_package_server()?;
+    let uri = package_server.package_uri()?;
     let package_manager = PackageManager::new()
         .map_err(|_| DeploymentFailure::Operation(HelperErrorCode::PackageManagerUnavailable))?;
     // Defaults deliberately retain Windows signature enforcement and leave
     // force-shutdown/developer options disabled.
     let options = AddPackageOptions::new()
         .map_err(|_| DeploymentFailure::Operation(HelperErrorCode::PackageManagerUnavailable))?;
-    package_pin.recheck()?;
     let operation = match package_manager.AddPackageByUriAsync(&uri, &options) {
         Ok(operation) => operation,
         // The call has crossed the PackageManager service boundary. A
         // synchronous HRESULT does not prove that the service rejected the
         // request before accepting it, and there is no operation object whose
-        // Status we can observe or Cancel. Keep the complete package ancestry
-        // and leaf pin alive; the parent will likewise quarantine its pin
-        // because no authenticated terminal frame can be sent.
-        Err(_) => hold_ambiguous_submission(package_pin),
+        // Status we can observe or Cancel. Keep the package handle and its
+        // identity-bound byte server alive; the parent likewise quarantines.
+        Err(_) => hold_ambiguous_submission(package_pin, &package_server),
     };
 
     let completion = match CompletionSignal::new() {
@@ -1397,7 +1406,10 @@ fn duration_millis(duration: Duration) -> u32 {
     duration.as_millis().clamp(1, u32::MAX as u128) as u32
 }
 
-fn hold_ambiguous_submission(_package_pin: &PinnedPackageFile) -> ! {
+fn hold_ambiguous_submission(
+    _package_pin: &PinnedPackageFile,
+    _package_server: &PackageStreamServer,
+) -> ! {
     // No PackageManager operation object exists, so neither cancellation nor
     // a true terminal Status can be proved. Deliberately keep this helper and
     // its package/ancestry handles alive until a trusted administrator or the
@@ -1424,13 +1436,13 @@ enum NativeObjectKind {
 struct PinnedPackageFile {
     directories: Vec<File>,
     package_file: File,
-    uri_reopen: File,
     identity: NativeFileIdentity,
+    operation_id: BridgeOperationId,
     artifact_kind: PackageBridgeArtifactKind,
     package_path: PathBuf,
-    package_uri: String,
     user: FrozenUser,
     program_data_directory_count: usize,
+    ancestor_dangerous_access: u32,
 }
 
 impl PinnedPackageFile {
@@ -1444,7 +1456,8 @@ impl PinnedPackageFile {
         let (volume_root, volume_serial) = validate_fixed_ntfs_volume(&program_data)?;
         let root = open_volume_root_no_follow(&volume_root)?;
         require_volume(&root, NativeObjectKind::Directory, volume_serial)?;
-        verify_effective_access(&root, &user, ANCESTOR_DANGEROUS_ACCESS)?;
+        let ancestor_dangerous_access = ancestor_dangerous_access(artifact_kind);
+        verify_effective_access(&root, &user, ancestor_dangerous_access)?;
 
         let relative_program_data = program_data
             .strip_prefix(&volume_root)
@@ -1463,7 +1476,7 @@ impl PinnedPackageFile {
                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             )?;
             require_volume(&child, NativeObjectKind::Directory, volume_serial)?;
-            verify_effective_access(&child, &user, ANCESTOR_DANGEROUS_ACCESS)?;
+            verify_effective_access(&child, &user, ancestor_dangerous_access)?;
             directories.push(child);
         }
         let program_data_directory_count = directories.len();
@@ -1510,32 +1523,20 @@ impl PinnedPackageFile {
             return Err(package_pin_error());
         }
 
-        let dos_path =
+        let package_path =
             bridge_path_for_program_data(&program_data, control.operation_id(), artifact_kind);
-        validate_ordinary_dos_path(&dos_path)?;
-        let package_uri = local_file_uri_roundtrip(&dos_path)?;
-        let uri_reopen = open_relative_no_follow(
-            operation_directory,
-            OsStr::new(artifact_kind.final_file_name()),
-            NativeObjectKind::RegularFile,
-            FILE_SHARE_READ,
-        )?;
-        if native_file_identity(&uri_reopen, NativeObjectKind::RegularFile)? != identity {
-            return Err(package_pin_error());
-        }
-        verify_exact_bridge_acl(&uri_reopen, &user, exact_leaf_acl(artifact_kind))?;
-        verify_effective_access(&uri_reopen, &user, BRIDGE_FILE_DANGEROUS_ACCESS)?;
+        validate_ordinary_dos_path(&package_path)?;
 
         let package = Self {
             directories,
             package_file,
-            uri_reopen,
             identity,
+            operation_id: control.operation_id(),
             artifact_kind,
-            package_path: dos_path,
-            package_uri,
+            package_path,
             user,
             program_data_directory_count,
+            ancestor_dangerous_access,
         };
         package.recheck_for_helper()?;
         Ok(package)
@@ -1552,7 +1553,7 @@ impl PinnedPackageFile {
     fn recheck_for_helper(&self) -> Result<(), HelperRunError> {
         for directory in &self.directories[..self.program_data_directory_count] {
             native_file_identity(directory, NativeObjectKind::Directory)?;
-            verify_effective_access(directory, &self.user, ANCESTOR_DANGEROUS_ACCESS)?;
+            verify_effective_access(directory, &self.user, self.ancestor_dangerous_access)?;
         }
         for (offset, acl) in [
             ExactBridgeAcl::StableDirectory,
@@ -1567,14 +1568,16 @@ impl PinnedPackageFile {
             verify_exact_bridge_acl(directory, &self.user, acl)?;
             verify_effective_access(directory, &self.user, BRIDGE_DIRECTORY_DANGEROUS_ACCESS)?;
         }
-        for file in [&self.package_file, &self.uri_reopen] {
-            let identity = native_file_identity(file, NativeObjectKind::RegularFile)?;
-            if identity != self.identity {
-                return Err(package_pin_error());
-            }
-            verify_exact_bridge_acl(file, &self.user, exact_leaf_acl(self.artifact_kind))?;
-            verify_effective_access(file, &self.user, BRIDGE_FILE_DANGEROUS_ACCESS)?;
+        let identity = native_file_identity(&self.package_file, NativeObjectKind::RegularFile)?;
+        if identity != self.identity {
+            return Err(package_pin_error());
         }
+        verify_exact_bridge_acl(
+            &self.package_file,
+            &self.user,
+            exact_leaf_acl(self.artifact_kind),
+        )?;
+        verify_effective_access(&self.package_file, &self.user, BRIDGE_FILE_DANGEROUS_ACCESS)?;
         Ok(())
     }
 
@@ -1583,37 +1586,14 @@ impl PinnedPackageFile {
             .map_err(|_| DeploymentFailure::Operation(HelperErrorCode::PackageInvalid))
     }
 
-    fn package_uri(&self) -> Result<Uri, DeploymentFailure> {
+    fn start_package_server(&self) -> Result<PackageStreamServer, DeploymentFailure> {
         if self.artifact_kind != PackageBridgeArtifactKind::Msix {
             return Err(DeploymentFailure::Operation(
                 HelperErrorCode::PackageUriInvalid,
             ));
         }
-        if !has_local_file_uri_shape(&self.package_uri.encode_utf16().collect::<Vec<_>>()) {
-            return Err(DeploymentFailure::Operation(
-                HelperErrorCode::PackageUriInvalid,
-            ));
-        }
-        let uri = Uri::CreateUri(&HSTRING::from(self.package_uri.as_str()))
-            .map_err(|_| DeploymentFailure::Operation(HelperErrorCode::PackageUriInvalid))?;
-        let scheme = uri
-            .SchemeName()
-            .map_err(|_| DeploymentFailure::Operation(HelperErrorCode::PackageUriInvalid))?;
-        let host = uri
-            .Host()
-            .map_err(|_| DeploymentFailure::Operation(HelperErrorCode::PackageUriInvalid))?;
-        let query = uri
-            .Query()
-            .map_err(|_| DeploymentFailure::Operation(HelperErrorCode::PackageUriInvalid))?;
-        let fragment = uri
-            .Fragment()
-            .map_err(|_| DeploymentFailure::Operation(HelperErrorCode::PackageUriInvalid))?;
-        if scheme != "file" || !host.is_empty() || !query.is_empty() || !fragment.is_empty() {
-            return Err(DeploymentFailure::Operation(
-                HelperErrorCode::PackageUriInvalid,
-            ));
-        }
-        Ok(uri)
+        self.recheck()?;
+        PackageStreamServer::start(&self.package_file, self.identity, self.operation_id)
     }
 
     fn executable_path(&self) -> Result<&Path, DeploymentFailure> {
@@ -1743,68 +1723,6 @@ fn validate_fixed_ntfs_volume(path: &Path) -> Result<(PathBuf, u64), HelperRunEr
         return Err(package_pin_error());
     }
     Ok((volume_root, u64::from(serial)))
-}
-
-fn local_file_uri_roundtrip(path: &Path) -> Result<String, HelperRunError> {
-    let path_wide = wide_null(path.as_os_str())?;
-    let mut uri_buffer = [0_u16; MAX_DOS_PATH_U16];
-    let mut uri_length = u32::try_from(uri_buffer.len()).map_err(|_| package_pin_error())?;
-    unsafe {
-        UrlCreateFromPathW(
-            PCWSTR(path_wide.as_ptr()),
-            PWSTR(uri_buffer.as_mut_ptr()),
-            &mut uri_length,
-            0,
-        )
-    }
-    .map_err(|_| package_pin_error())?;
-    let uri_length = usize::try_from(uri_length).map_err(|_| package_pin_error())?;
-    if uri_length == 0
-        || uri_length >= uri_buffer.len()
-        || uri_buffer[uri_length] != 0
-        || uri_buffer[..uri_length].contains(&0)
-        || !has_local_file_uri_shape(&uri_buffer[..uri_length])
-    {
-        return Err(package_pin_error());
-    }
-
-    let mut roundtrip = [0_u16; MAX_DOS_PATH_U16];
-    let mut roundtrip_length = u32::try_from(roundtrip.len()).map_err(|_| package_pin_error())?;
-    unsafe {
-        PathCreateFromUrlW(
-            PCWSTR(uri_buffer.as_ptr()),
-            PWSTR(roundtrip.as_mut_ptr()),
-            &mut roundtrip_length,
-            0,
-        )
-    }
-    .map_err(|_| package_pin_error())?;
-    let roundtrip_length = usize::try_from(roundtrip_length).map_err(|_| package_pin_error())?;
-    let original = &path_wide[..path_wide.len() - 1];
-    if roundtrip_length != original.len()
-        || roundtrip_length >= roundtrip.len()
-        || roundtrip[roundtrip_length] != 0
-        || roundtrip[..roundtrip_length] != *original
-    {
-        return Err(package_pin_error());
-    }
-    String::from_utf16(&uri_buffer[..uri_length]).map_err(|_| package_pin_error())
-}
-
-fn has_local_file_uri_shape(uri: &[u16]) -> bool {
-    const PREFIX: &[u16] = &[
-        b'f' as u16,
-        b'i' as u16,
-        b'l' as u16,
-        b'e' as u16,
-        b':' as u16,
-        b'/' as u16,
-        b'/' as u16,
-        b'/' as u16,
-    ];
-    uri.starts_with(PREFIX)
-        && uri.len() > PREFIX.len()
-        && !uri.iter().any(|value| matches!(*value, value if value == b'?' as u16 || value == b'#' as u16 || value == b'\\' as u16 || value == 0))
 }
 
 fn wide_null(value: &OsStr) -> Result<Vec<u16>, HelperRunError> {
@@ -2379,9 +2297,7 @@ fn open_sync_event(name: &str) -> Result<OwnedKernelHandle, HelperRunError> {
     let handle = unsafe { OpenEventW(access, false, PCWSTR(name.as_ptr())) }
         .map_err(|_| HelperRunError::PipeUnavailable)?;
     let handle = OwnedKernelHandle::new(handle).map_err(|_| HelperRunError::PipeUnavailable)?;
-    if let Err(error) = verify_builtin_administrators_owner(handle.raw()) {
-        return Err(error);
-    }
+    verify_builtin_administrators_owner(handle.raw())?;
     Ok(handle)
 }
 
@@ -2508,9 +2424,7 @@ impl PipeChannel {
         .map_err(|_| HelperRunError::PipeUnavailable)?;
 
         let owned = unsafe { OwnedHandle::from_raw_handle(handle.0) };
-        if let Err(error) = verify_builtin_administrators_owner(HANDLE(owned.as_raw_handle())) {
-            return Err(error);
-        }
+        verify_builtin_administrators_owner(HANDLE(owned.as_raw_handle()))?;
         Ok(Self {
             state: Mutex::new(PipeState {
                 handle: owned,
@@ -2810,29 +2724,23 @@ mod tests {
     }
 
     #[test]
-    fn file_uri_shape_accepts_only_local_file_authority() {
-        assert!(has_local_file_uri_shape(&wide(
-            "file:///C:/ProgramData/package.msix"
-        )));
-        for rejected in [
-            "fyagent:///C:/ProgramData/package.msix",
-            "file://host/C:/ProgramData/package.msix",
-            "file:///C:/ProgramData/package.msix?query",
-            "file:///C:/ProgramData/package.msix#fragment",
-            "file:/C:/ProgramData/package.msix",
-        ] {
-            assert!(!has_local_file_uri_shape(&wide(rejected)), "{rejected}");
+    fn access_check_masks_separate_handle_and_path_consumers() {
+        let msix = ancestor_dangerous_access(PackageBridgeArtifactKind::Msix);
+        let executable = ancestor_dangerous_access(PackageBridgeArtifactKind::Exe);
+        assert_eq!(msix & (FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY).0, 0);
+        for right in [FILE_DELETE_CHILD.0, DELETE.0, WRITE_DAC.0, WRITE_OWNER.0] {
+            assert_ne!(msix & right, 0);
+            assert_ne!(executable & right, 0);
+            assert!(forbidden_access_rejected(right, msix, false));
+            assert!(!forbidden_access_rejected(right, msix, true));
         }
-    }
-
-    #[test]
-    fn access_check_masks_separate_ancestor_replacement_from_bridge_writes() {
-        assert_eq!(
-            ANCESTOR_DANGEROUS_ACCESS & (FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY).0,
-            0
-        );
-        assert_ne!(ANCESTOR_DANGEROUS_ACCESS & FILE_DELETE_CHILD.0, 0);
-        assert_ne!(ANCESTOR_DANGEROUS_ACCESS & FILE_WRITE_EA.0, 0);
+        let metadata = (FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES).0;
+        assert_eq!(msix & metadata, 0);
+        assert_eq!(executable & metadata, metadata);
+        for right in [FILE_WRITE_EA.0, FILE_WRITE_ATTRIBUTES.0] {
+            assert_ne!(BRIDGE_DIRECTORY_DANGEROUS_ACCESS & right, 0);
+            assert_ne!(BRIDGE_FILE_DANGEROUS_ACCESS & right, 0);
+        }
         assert_ne!(BRIDGE_DIRECTORY_DANGEROUS_ACCESS & FILE_ADD_FILE.0, 0);
         assert_ne!(
             BRIDGE_DIRECTORY_DANGEROUS_ACCESS & FILE_ADD_SUBDIRECTORY.0,
@@ -2844,21 +2752,10 @@ mod tests {
 
     #[test]
     fn privileged_helper_token_may_hold_os_owned_ancestors() {
-        assert!(forbidden_access_rejected(
-            ANCESTOR_DANGEROUS_ACCESS,
-            ANCESTOR_DANGEROUS_ACCESS,
-            false
-        ));
-        assert!(!forbidden_access_rejected(
-            ANCESTOR_DANGEROUS_ACCESS,
-            ANCESTOR_DANGEROUS_ACCESS,
-            true
-        ));
-        assert!(!forbidden_access_rejected(
-            0,
-            ANCESTOR_DANGEROUS_ACCESS,
-            false
-        ));
+        let forbidden = ancestor_dangerous_access(PackageBridgeArtifactKind::Msix);
+        assert!(forbidden_access_rejected(forbidden, forbidden, false));
+        assert!(!forbidden_access_rejected(forbidden, forbidden, true));
+        assert!(!forbidden_access_rejected(0, forbidden, false));
     }
 
     #[test]
@@ -2875,9 +2772,5 @@ mod tests {
             &["i", "-g", "@anthropic-ai/claude-code@2.1.261"],
         )
         .contains(r#"\""#));
-    }
-
-    fn wide(value: &str) -> Vec<u16> {
-        value.encode_utf16().collect()
     }
 }

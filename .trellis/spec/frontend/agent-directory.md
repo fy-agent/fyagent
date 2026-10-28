@@ -205,6 +205,24 @@ closes so the card can show transfer progress.
 Do not keep the picker open until the job finishes, and do not unmount the
 return anchor when the slot switches to busy status.
 Do not send the user to the Models section to pick a filesystem destination.
+Permission denial, insufficient space, and unavailable capacity checks open a
+modal with distinct explanations and a fresh preflight retry. A change-location
+action is offered only when inventory exposes multiple eligible targets; retry
+rebinds the previously selected target to fresh inventory, never substitutes
+Vendor wizards control the final Windows installation directory: preflight
+covers only FyAgent-owned temporary and current-user application volumes, not
+an arbitrary final volume subsequently selected in the wizard. CLI locations
+are owned by the detected tooling, not a FyAgent directory picker. Codex
+Windows MSIX placement is managed by Windows and is not selectable in FyAgent.
+Its confirmation keeps that final target separate from a Windows-only
+“下载临时目录” control. That control opens the native backend picker and
+refreshes preflight with only an opaque one-use capability; no selected path is
+rendered, retained in frontend state, or sent through renderer IPC. Picker or
+selected-directory preflight failure replaces the stale confirmation and opens
+the existing permission/space error modal. Cancel preserves the confirmation.
+Dismissal and navigation send the pending opaque confirmation ID to the discard
+command so backend handles release without starting work. macOS does not show
+the control until its destination transaction can safely honor it.
 
 - “Open product” calls the closed native launch destination; it never sends a
   path/URL or shells out from the renderer.

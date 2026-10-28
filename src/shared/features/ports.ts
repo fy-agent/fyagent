@@ -14,6 +14,7 @@ import type { FirstUseGuideState } from "./first-use-guide";
 import type { McpImportReport, McpImportSourceId } from "./mcp";
 import type {
   CodexInstallPreflight,
+  CodexStagingSelection,
   JobSnapshot,
   LocalInstallStatus,
   RemoteReleaseStatus,
@@ -136,7 +137,12 @@ export interface CodexDesktopPort {
   getLocalStatus(): Promise<LocalInstallStatus>;
   checkLatest(force: boolean): Promise<RemoteReleaseStatus>;
   getJob(): Promise<JobSnapshot | null>;
-  prepareInstall(expectedReleaseId: string): Promise<CodexInstallPreflight>;
+  pickStagingDirectory(): Promise<CodexStagingSelection | null>;
+  prepareInstall(
+    expectedReleaseId: string,
+    stagingCapabilityId?: string,
+  ): Promise<CodexInstallPreflight>;
+  discardInstallConfirmation(confirmationId: string): Promise<void>;
   startInstall(
     expectedReleaseId: string,
     confirmationId: string,
