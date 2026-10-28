@@ -189,9 +189,7 @@ fn execute_inner(
         .with_npm_destination(destination));
     }
     let plan = plan.ok_or(HelperErrorCode::ToolExecutionFailed)?;
-    if let Err(code) = execute_npm_plan(&npm, OfficialNpmTool::Claude, &plan) {
-        return Err(code);
-    }
+    execute_npm_plan(&npm, OfficialNpmTool::Claude, &plan)?;
     // Inspect the admitted npm prefix even when a newly installed launcher has
     // not yet appeared on a reopened terminal's PATH.
     let binary = prefix

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentInstallConfirmation } from "@/pages/agents/AgentInstallConfirmation";
@@ -106,5 +106,34 @@ describe("Agent install space confirmation", () => {
     expect(
       screen.getByText(/按已核实 npm 包及依赖大小的 3 倍预留 FyAgent 保守预算/),
     ).toHaveTextContent("这是预留空间，不是厂商保证的完整峰值");
+  });
+
+  it.each([
+    ["permission_denied", "安装权限不足"],
+    ["insufficient_disk_space", "磁盘空间不足"],
+    ["disk_space_unavailable", "无法检查磁盘空间"],
+  ] as const)("offers retry and supported target selection for %s", async (reasonCode, title) => {
+    const retry = vi.fn();
+    const changeTarget = vi.fn();
+    render(
+      <AgentInstallConfirmation
+        name="QoderWork"
+        onChangeTarget={changeTarget}
+        lifecycle={{
+          preflight: null,
+          busy: false,
+          error: "检查失败",
+          reasonCode,
+          retry,
+        } as unknown as AgentLifecycleActionView}
+      />,
+    );
+    expect(screen.getByRole("dialog", { name: title })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
+    expect(retry).toHaveBeenCalledOnce();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "更改安装位置" }));
+    });
+    expect(changeTarget).toHaveBeenCalledOnce();
   });
 });

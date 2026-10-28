@@ -14,6 +14,8 @@ export function codexInstallPreflightFixture(
     displayVersion: "1.2.3.4",
     downloadUrl: "https://codexapp.agentsmirror.com/latest/win-x64",
     targetLabel: "当前桌面用户的 Windows 应用目录（由系统管理）",
+    stagingLabel: "FyAgent 安全下载临时目录",
+    customStaging: false,
     updating: false,
     availableBytes: 10 * 1024 ** 3,
     downloadSizeHint: 4096,

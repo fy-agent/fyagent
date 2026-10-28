@@ -124,7 +124,7 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(163);
+    expect(renderer.commands.size).toBe(165);
     for (const command of [
       "get_global_proxy_config",
       "update_global_proxy_config",
@@ -195,6 +195,8 @@ describe("Native ACL contract", () => {
       "get_agent_install_preflight",
       "get_proxy_restore_preview",
       "codex_desktop_prepare_install",
+      "codex_desktop_discard_install_confirmation",
+      "codex_desktop_pick_staging_directory",
       "start_agent_action",
       "cancel_agent_action",
       "get_agent_action_job",

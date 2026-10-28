@@ -66,8 +66,12 @@ export function createTauriFeaturePorts(): FeaturePorts {
       checkLatest: async (...args) =>
         (await codexDesktop()).checkLatest(...args),
       getJob: async (...args) => (await codexDesktop()).getJob(...args),
+      pickStagingDirectory: async (...args) =>
+        (await codexDesktop()).pickStagingDirectory(...args),
       prepareInstall: async (...args) =>
         (await codexDesktop()).prepareInstall(...args),
+      discardInstallConfirmation: async (...args) =>
+        (await codexDesktop()).discardInstallConfirmation(...args),
       startInstall: async (...args) =>
         (await codexDesktop()).startInstall(...args),
       cancelInstall: async (...args) =>

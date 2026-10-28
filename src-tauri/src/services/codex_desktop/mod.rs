@@ -7,8 +7,11 @@
 
 mod install_confirmation;
 mod restart_plan;
-use install_confirmation::PendingInstallConfirmation;
-pub use install_confirmation::{CodexInstallPreflight, ConfirmedStartInstallRequest};
+pub use install_confirmation::{
+    CodexInstallPreflight, CodexStagingSelection, ConfirmedStartInstallRequest,
+    PrepareInstallRequest,
+};
+use install_confirmation::{ExpiringCapabilitySlot, PendingInstallConfirmation};
 
 use std::{
     collections::HashMap,
@@ -44,6 +47,9 @@ use crate::codex_desktop::{
     },
     verify::{ensure_required_disk_space, DiskSpaceProbe},
 };
+
+#[cfg(target_os = "windows")]
+use crate::codex_desktop::verify::ArtifactKind;
 
 #[cfg(test)]
 use crate::codex_desktop::platform::TrustedRuntimeInstance;
@@ -216,7 +222,8 @@ pub struct CodexDesktopService {
     clock: Arc<dyn InstallerClock>,
     job_store: JobStore,
     checked_release: Arc<Mutex<Option<CheckedRelease>>>,
-    install_confirmation: Arc<Mutex<Option<PendingInstallConfirmation>>>,
+    install_confirmation: ExpiringCapabilitySlot<PendingInstallConfirmation>,
+    staging_selection: ExpiringCapabilitySlot<JobTempRoot>,
     event_sink: Arc<ForwardingJobEventSink>,
     log_directory_opener: Arc<Mutex<Option<Arc<dyn LogDirectoryOpener>>>>,
     restart_timing: RestartTiming,
@@ -299,7 +306,8 @@ impl CodexDesktopService {
             clock,
             job_store,
             checked_release: Arc::new(Mutex::new(None)),
-            install_confirmation: Arc::new(Mutex::new(None)),
+            install_confirmation: ExpiringCapabilitySlot::default(),
+            staging_selection: ExpiringCapabilitySlot::default(),
             event_sink,
             log_directory_opener: Arc::new(Mutex::new(None)),
             restart_timing: RestartTiming::default(),
@@ -774,13 +782,14 @@ impl CodexDesktopService {
         &self,
         request: StartInstallRequest,
     ) -> Result<JobSnapshot, InstallerError> {
-        self.start_install_with_target(request, None)
+        self.start_install_with_target(request, None, self.temp_root.clone())
     }
 
     fn start_install_with_target(
         &self,
         request: StartInstallRequest,
         confirmed_target: Option<crate::codex_desktop::platform::ConfirmedInstallTarget>,
+        temp_root: JobTempRoot,
     ) -> Result<JobSnapshot, InstallerError> {
         request.validate()?;
 
@@ -803,7 +812,13 @@ impl CodexDesktopService {
 
         tokio::spawn(async move {
             service
-                .run_job(job_id, expected_release_id, cancellation, confirmed_target)
+                .run_job(
+                    job_id,
+                    expected_release_id,
+                    cancellation,
+                    confirmed_target,
+                    temp_root,
+                )
                 .await;
         });
 
@@ -856,6 +871,7 @@ impl CodexDesktopService {
         expected_release_id: String,
         cancellation: JobCancellation,
         confirmed_target: Option<crate::codex_desktop::platform::ConfirmedInstallTarget>,
+        temp_root: JobTempRoot,
     ) {
         let mut temporary_directory = None;
         let outcome = AssertUnwindSafe(self.run_install_flow(
@@ -864,6 +880,7 @@ impl CodexDesktopService {
             &cancellation,
             &mut temporary_directory,
             confirmed_target.as_ref(),
+            &temp_root,
         ))
         .catch_unwind()
         .await;
@@ -924,6 +941,7 @@ impl CodexDesktopService {
         cancellation: &JobCancellation,
         temporary_directory: &mut Option<JobTempDir>,
         confirmed_target: Option<&crate::codex_desktop::platform::ConfirmedInstallTarget>,
+        temp_root: &JobTempRoot,
     ) -> Result<InstallFlowOutcome, InstallerError> {
         let release = self
             .resolve_latest(CacheMode::ForceRefresh, cancellation)
@@ -963,7 +981,7 @@ impl CodexDesktopService {
         self.ensure_not_cancelled(cancellation)?;
 
         self.transition_to(job_id, JobStage::Preflight, cancellation)?;
-        *temporary_directory = Some(self.temp_root.create_job(job_id)?);
+        *temporary_directory = Some(temp_root.create_job(job_id)?);
         let plan = self
             .platform
             .preflight(
@@ -1212,6 +1230,21 @@ impl CodexDesktopService {
     }
 
     fn settle_failure(&self, job_id: &str, error: InstallerError) {
+        let diagnostic = error.to_dto();
+        let stage = self
+            .job_store
+            .get()
+            .ok()
+            .flatten()
+            .filter(|snapshot| snapshot.job_id == job_id)
+            .map(|snapshot| snapshot.stage);
+        log::warn!(
+            "Codex desktop installation failed: stage={:?} code={:?} platform_error_code={:?} diagnostic={:?}",
+            stage,
+            diagnostic.code,
+            diagnostic.details.platform_error_code,
+            diagnostic.details.redacted_message
+        );
         if let Err(settlement_error) = self.job_store.fail(job_id, error, self.clock.now_rfc3339())
         {
             if settlement_error.code() != InstallerErrorCode::JobNotFound {
@@ -2217,8 +2250,9 @@ mod tests {
         let release = harness.service.check_latest(false).await.unwrap();
         let prepared = harness
             .service
-            .prepare_install(StartInstallRequest {
+            .prepare_install(PrepareInstallRequest {
                 expected_release_id: release.release_id.clone(),
+                staging_capability_id: None,
             })
             .await
             .unwrap();
@@ -2253,6 +2287,122 @@ mod tests {
         assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 1);
     }
 
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn selected_staging_capability_is_opaque_single_use_and_drives_the_job_root() {
+        let artifact = b"fixture installer package".to_vec();
+        let harness = harness(release_for(&artifact, "1.2.3.4"), artifact, None);
+        let selected = harness.temporary_parent.path().join("selected-staging");
+        std::fs::create_dir(&selected).unwrap();
+        let selected_canonical = std::fs::canonicalize(&selected).unwrap();
+        let release = harness.service.check_latest(false).await.unwrap();
+        let selection = harness.service.select_staging_directory(&selected).unwrap();
+        let response = serde_json::to_value(&selection).unwrap();
+        assert_eq!(response["label"], "用户选择的下载临时目录");
+        assert!(response.get("path").is_none());
+        assert!(!response.to_string().contains(selected.to_str().unwrap()));
+
+        let prepared = harness
+            .service
+            .prepare_install(PrepareInstallRequest {
+                expected_release_id: release.release_id.clone(),
+                staging_capability_id: Some(selection.capability_id.clone()),
+            })
+            .await
+            .unwrap();
+        assert!(prepared.custom_staging);
+        assert_eq!(prepared.staging_label, "用户选择的下载临时目录");
+        assert!(harness
+            .service
+            .prepare_install(PrepareInstallRequest {
+                expected_release_id: release.release_id.clone(),
+                staging_capability_id: Some(selection.capability_id),
+            })
+            .await
+            .is_err());
+
+        let started = harness
+            .service
+            .start_confirmed_install(ConfirmedStartInstallRequest {
+                expected_release_id: release.release_id,
+                confirmation_id: prepared.confirmation_id,
+            })
+            .unwrap();
+        let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
+        assert_eq!(terminal.stage, JobStage::Succeeded);
+        assert!(harness
+            .disk_probe
+            .paths()
+            .iter()
+            .any(|path| path.starts_with(&selected_canonical)));
+        assert!(std::fs::read_dir(&selected).unwrap().next().is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn staging_and_confirmation_handles_release_on_expiry_and_dismissal() {
+        let artifact = b"fixture installer package".to_vec();
+        let harness = harness(release_for(&artifact, "1.2.3.4"), artifact, None);
+        let selected = harness.temporary_parent.path().join("selected-lifetime");
+        let moved = harness.temporary_parent.path().join("moved-lifetime");
+        std::fs::create_dir(&selected).unwrap();
+        let release = harness.service.check_latest(false).await.unwrap();
+
+        let expired_selection = harness.service.select_staging_directory(&selected).unwrap();
+        assert!(std::fs::rename(&selected, &moved).is_err());
+        harness
+            .service
+            .backdate_staging_selection(Duration::from_secs(301));
+        assert!(harness
+            .service
+            .prepare_install(PrepareInstallRequest {
+                expected_release_id: release.release_id.clone(),
+                staging_capability_id: Some(expired_selection.capability_id),
+            })
+            .await
+            .is_err());
+        std::fs::rename(&selected, &moved).unwrap();
+        std::fs::rename(&moved, &selected).unwrap();
+
+        let selection = harness.service.select_staging_directory(&selected).unwrap();
+        let prepared = harness
+            .service
+            .prepare_install(PrepareInstallRequest {
+                expected_release_id: release.release_id.clone(),
+                staging_capability_id: Some(selection.capability_id),
+            })
+            .await
+            .unwrap();
+        assert!(std::fs::rename(&selected, &moved).is_err());
+        harness
+            .service
+            .discard_install_confirmation(&prepared.confirmation_id);
+        std::fs::rename(&selected, &moved).unwrap();
+        std::fs::rename(&moved, &selected).unwrap();
+
+        let selection = harness.service.select_staging_directory(&selected).unwrap();
+        let expired = harness
+            .service
+            .prepare_install(PrepareInstallRequest {
+                expected_release_id: release.release_id.clone(),
+                staging_capability_id: Some(selection.capability_id),
+            })
+            .await
+            .unwrap();
+        harness
+            .service
+            .backdate_install_confirmation(Duration::from_secs(301));
+        assert!(harness
+            .service
+            .start_confirmed_install(ConfirmedStartInstallRequest {
+                expected_release_id: release.release_id,
+                confirmation_id: expired.confirmation_id,
+            })
+            .is_err());
+        std::fs::rename(&selected, &moved).unwrap();
+        assert!(moved.exists());
+    }
+
     #[tokio::test]
     async fn confirmation_rejects_local_target_changes_before_downloading() {
         let artifact = b"fixture installer package".to_vec();
@@ -2260,8 +2410,9 @@ mod tests {
         let release = harness.service.check_latest(false).await.unwrap();
         let prepared = harness
             .service
-            .prepare_install(StartInstallRequest {
+            .prepare_install(PrepareInstallRequest {
                 expected_release_id: release.release_id.clone(),
+                staging_capability_id: None,
             })
             .await
             .unwrap();
@@ -2302,8 +2453,9 @@ mod tests {
         let release = harness.service.check_latest(false).await.unwrap();
         let error = harness
             .service
-            .prepare_install(StartInstallRequest {
+            .prepare_install(PrepareInstallRequest {
                 expected_release_id: release.release_id,
+                staging_capability_id: None,
             })
             .await
             .unwrap_err();

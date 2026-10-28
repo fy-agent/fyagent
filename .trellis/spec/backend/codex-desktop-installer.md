@@ -89,33 +89,84 @@ install scope, or validation-bypass switch.
 
 ### Installation confirmation
 
-`codex_desktop_prepare_install` accepts only `expectedReleaseId` and returns a
-v1 summary with a five-minute opaque `confirmationId`, the same release ID,
-platform/architecture, display version, redacted target, install/update kind,
-available bytes, optional size hint and the actual closed download endpoint URL.
-The source disclosure shows that endpoint verbatim (including the configured
-mirror); it does not relabel it as the official homepage or imply artifact
-verification before download. It uses existing platform preflight,
-temporary-directory ownership and disk probes; it does not create an install job
-or download the package. `codex_desktop_start_install` now requires both IDs and
-consumes the confirmation once. Local installation identity and the chosen root
+`codex_desktop_prepare_install` accepts `expectedReleaseId` and an optional
+opaque `stagingCapabilityId`. It returns a v1 summary with a five-minute opaque
+`confirmationId`, the same release ID, platform/architecture, display version,
+redacted final target and staging labels, install/update kind, available bytes,
+optional size hint and the actual closed download endpoint URL. The source
+disclosure shows that endpoint verbatim (including the configured mirror); it
+does not relabel it as the official homepage or imply artifact verification
+before download. It uses existing platform preflight, temporary-directory
+ownership and disk probes; it does not create an install job or download the
+package. `codex_desktop_start_install` requires both IDs and consumes the
+confirmation once. Local installation identity and the selected temporary root
 are rechecked before download and immediately before platform install.
 
 Fresh macOS installs confirm `~/Applications`; updates keep the exact existing
 bundle path. The transaction filters its candidates to the confirmed root and
 never changes roots on permission failure. A non-writable target fails before
-download with a bounded permission reason. Windows retains the frozen interactive
-user's system-managed MSIX destination and existing helper/deployment boundary.
+download with a bounded permission reason. Arbitrary macOS destinations remain
+unsupported because discovery scans only the standard Applications roots and
+the DMG transaction still uses pathname-based `ditto`, rename and cleanup.
+
+Windows MSIX final placement remains Windows-managed and is never presented as
+selectable. Windows vendor EXE installers may offer their own final-location
+choice; that choice and its checks belong to the vendor window. FyAgent does own
+the Windows download-staging directory, so the confirmation offers a separate
+native folder picker for that temporary location. The selected path never
+crosses renderer IPC. The backend canonicalizes and admits the existing
+directory, captures a retained no-follow handle and identity for every ancestor,
+and runs the real artifact lifecycle in a UUID probe child: create/write/flush,
+handle-relative finalize, reopen/read, file removal, and directory cleanup. It
+then checks the selected volume and returns only a random `s1:` capability,
+bounded label, and the measured capacity. Zero capacity is rejected immediately;
+capacity is recomputed during prepare and is not retained as capability
+authority. Issuance schedules autonomous five-minute eviction; the capability is
+also consumed once by prepare, and failed consumption evicts already-expired
+state before remote work. Dismissing or abandoning the confirmation calls the
+identifier-only discard command, immediately dropping its retained handles. The
+resulting confirmation stores the selected root so the real download,
+finalization, verification, install, failure cleanup, and success cleanup use
+the same held directory chain. Handle sharing prevents ancestor rename/deletion
+during that lifetime; every relative create/open/rename/cleanup revalidates the
+chain and fails closed on identity or reparse drift. Admission distinguishes
+`staging_directory_unavailable`, `staging_permission_denied`,
+`staging_space_unavailable`, and `staging_insufficient_space`; renderer recovery
+copy and re-selection act on those staging conditions rather than describing a
+macOS application target. Staging has no later discovery contract because every
+terminal path removes the owned UUID child while leaving the selected directory
+itself untouched.
+
+Any future final-destination picker must use the same backend-owned, expiring,
+one-use capability model, never accept a renderer-provided path as authority,
+and bind permission/capacity checks to every write, replacement, rollback,
+cleanup, later discovery, update, and launch. It must prevent ancestor
+substitution through the actual pathname-consuming operations rather than
+snapshot comparisons and fail closed without switching roots. A picker must not
+be exposed until that platform transaction can enforce the contract end to end.
 
 ## 2. Signatures
 
-Renderer input remains only:
+Renderer input remains identifier-only:
 
 ```ts
-type StartInstallRequest = {
+type PrepareInstallRequest = {
   expectedReleaseId: string;
+  stagingCapabilityId: string | null;
+};
+
+type ConfirmedStartInstallRequest = {
+  expectedReleaseId: string;
+  confirmationId: string;
 };
 ```
+
+`codex_desktop_discard_install_confirmation` accepts only the opaque
+`confirmationId`; a matching pending confirmation is dropped without starting
+work. Unknown IDs are inert.
+
+The native staging picker accepts no renderer path. Its response is limited to
+the opaque `s1:` capability, a bounded non-path label, and available bytes.
 
 The release status exposes operational display data and an optional hint:
 
@@ -238,13 +289,49 @@ Only an authenticated valid terminal status, its matching valid terminal frame,
 and a clean pipe close permit cleanup.
 
 PackageBridge continues to copy from the duplicated pinned source handle into a
-fixed ProgramData hierarchy. Protected ACLs, local-fixed-NTFS checks, exact
-frozen-SID access, file identity/link/reparse/placeholder checks, hash-while-copy
-against the download-stream digest, flush/finalize/reopen, stable ancestor
-handles, and known-only cleanup remain required. PackageBridge MUST NOT add a
-second full-file SHA pass after copy. ProgramData-parent effective-access
-fail-closed applies to a non-administrator Shell token; an Administrators-enabled
-Explorer token is not rejected for OS-owned ancestor rights it already holds.
+fixed ProgramData hierarchy. Before that copy, Codex signature admission is
+repeated against the protected downloader source handle; hash-while-copy binds
+the bridge leaf to those exact bytes. Protected ACLs, local-fixed-NTFS checks,
+exact frozen-SID access, file identity/link/reparse/placeholder checks,
+flush/finalize/reopen, stable ancestor handles, and known-only cleanup remain
+required. PackageBridge MUST NOT add a second full-file SHA pass after copy.
+An Administrators-enabled Explorer token is not rejected for OS-owned ancestor
+rights it already holds.
+
+MSIX and EXE consumption deliberately diverge after the helper pins the exact
+bridge leaf:
+
+- For Codex MSIX, both parent and helper reject effective `DELETE`,
+  `FILE_DELETE_CHILD`, `WRITE_DAC`, and `WRITE_OWNER` on every
+  volume-root-to-ProgramData ancestor. Standard `FILE_WRITE_EA` and
+  `FILE_WRITE_ATTRIBUTES` rights on those OS-owned ancestors are admitted.
+  The exact protected bridge directories and leaf still reject metadata writes,
+  creation, deletion, DACL/owner changes, and file content mutation.
+- The helper opens every fixed component relative to retained no-follow handles,
+  verifies the final leaf against the parent-supplied volume/file-ID/size, and
+  retains that file handle. A race while resolving ProgramData can therefore
+  cause rejection but cannot substitute accepted package bytes.
+- The helper binds a server to an ephemeral IPv4 loopback port and exposes only
+  one unguessable, operation-ID path. A fixed four-worker set prevents a slow
+  client from serializing all requests. Each accepted socket has one absolute,
+  monotonic 500 ms deadline for the complete header (not a per-read timeout),
+  checks shutdown between reads, and has a bounded write deadline. Each worker
+  reuses fixed request/transfer buffers. The server accepts only bounded
+  `HEAD`/`GET` and one range, using positional reads from the retained file
+  handle. PackageManager receives this `http://127.0.0.1` capability, never a
+  ProgramData file URI, so its asynchronous fetch remains bound to the accepted
+  file object even if the filesystem namespace later changes. The bounded
+  workers, server, and file pin live through PackageManager terminal proof or
+  process quarantine.
+- Vendor EXE actions still use `ShellExecuteExW` on the fixed bridge pathname.
+  Their parent and helper ancestor masks therefore continue to reject
+  `FILE_WRITE_EA` and `FILE_WRITE_ATTRIBUTES` in addition to deletion and
+  DACL/owner changes.
+
+This object-backed MSIX handoff is the compatibility bridge for standard
+ProgramData ACLs. It does not infer safety from a snapshot recheck or from NTFS
+nonempty-directory behavior, and it does not weaken the pathname policy for
+vendor EXEs.
 
 A held ancestor or bridge directory is rebound only when its volume serial or
 file ID changes. NTFS reports a directory's index allocation as its size, which
@@ -542,6 +629,9 @@ Tests must prove:
   one dynamic delta succeeds and multiple deltas fail;
 - helper authentication, action-bound Hello v3, ACL, no-follow, file-ID,
   PackageBridge, terminal, quarantine, and cleanup protections remain covered;
+- helper runtime tests exercise the actual loopback byte server, including the
+  opaque capability path, pinned-handle range reads, rejection of a wrong path,
+  and MSIX-versus-EXE ancestor permission masks;
 - Agent EXE tests cover signer-leaf resolution, wrong signer/product/arch,
   PE32 i386 NSIS stub admitted only as a vendor installer, Qoder current-user
   versus TRAE/WorkBuddy vendor-choice policy, UAC cancel, no-wait handoff,
@@ -571,12 +661,12 @@ PackageManager, ACL/effective access, WinVerifyTrust/signer lookup, UAC/Shell-us
 vendor EXE process semantics, `hdiutil`, `ditto`, launch, rollback, Gatekeeper,
 and real runnable behavior as unverified residual risk.
 
-This task does not run native HIL locally or in GitHub Actions. Its evidence is
-limited to static contract tests, scoped Windows-target compilation checks, and
-code/security review. Real Windows 10/11, x64/ARM64, elevated-Bob/standard-Alice
-Shell identity, PackageManager, protected file URI, ACL, and cleanup behavior
-remain an explicit, unverified residual risk. These gaps prohibit claiming
-native compatibility or native runtime verification.
+Native HIL evidence is recorded only when actually run. Without a disposable,
+signed Codex package and an authorized test-user installation, real
+PackageManager deployment, elevated-Bob/standard-Alice identity, UAC, and
+post-install inventory remain externally constrained and must be reported as
+unverified. The helper loopback smoke test proves real socket/file-handle
+streaming on Windows but does not substitute for PackageManager consumption.
 
 ## 7. Wrong vs Correct
 

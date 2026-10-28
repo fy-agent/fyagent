@@ -220,22 +220,6 @@ pub(super) fn verify_package(
     verify_authenticode(runner, program, path)
 }
 
-/// Shared by the native bridge handoff and portable flow tests. Ownership is
-/// returned only after the full check; rejection consumes exactly this stage.
-pub(super) fn admit_staged<T>(
-    staged: T,
-    verify: impl FnOnce(&T) -> Result<(), InstallerError>,
-    cleanup: impl FnOnce(T) -> Result<(), InstallerError>,
-) -> Result<T, InstallerError> {
-    if let Err(error) = verify(&staged) {
-        // Cleanup is capability-based. A changed identity must be retained rather
-        // than falling back to deleting a path that might belong to someone else.
-        cleanup(staged).map_err(|_| rejected("签名校验失败，暂存清理未完成，已拒绝安装"))?;
-        return Err(error);
-    }
-    Ok(staged)
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SignatureEvidence {
@@ -428,132 +412,6 @@ pub(super) mod tests {
             assert_eq!(error.code(), InstallerErrorCode::PackageParseFailed);
             assert!(runner.1.lock().unwrap().is_empty());
         }
-    }
-    #[test]
-    fn bridge_reverification_failure_cleans_only_stage_and_never_installs() {
-        use std::{
-            fs,
-            sync::atomic::{AtomicBool, Ordering},
-        };
-        // This is the same admission/ownership boundary used by the native helper
-        // after its protected, hash-checked bridge copy and before helper launch.
-        for failure in ["manifest", "signature", "root", "truncated", "json"] {
-            let root = tempfile::tempdir().unwrap();
-            let source = root.path().join("download.msix");
-            let installed = root.path().join("installed-Codex");
-            fs::write(&source, valid_package(false)).unwrap();
-            fs::write(&installed, b"old application").unwrap();
-            verify_package(
-                &valid_runner(),
-                Path::new(POWERSHELL),
-                fs::File::open(&source).unwrap(),
-                &source,
-            )
-            .unwrap();
-            let stage = tempfile::tempdir_in(root.path()).unwrap();
-            let staged_path = stage.path().join("installer.msix");
-            fs::copy(&source, &staged_path).unwrap();
-            assert_eq!(
-                Sha256::digest(fs::read(&source).unwrap()),
-                Sha256::digest(fs::read(&staged_path).unwrap())
-            );
-            let runner = runner(evidence());
-            match failure {
-                "manifest" => fs::write(
-                    &staged_path,
-                    package_with_identity(false, "OpenAI.Other", PUBLISHER),
-                )
-                .unwrap(),
-                "signature" | "root" => {
-                    let mut bad = evidence();
-                    bad[if failure == "signature" {
-                        "status"
-                    } else {
-                        "root_subject"
-                    }] = "wrong".into();
-                    runner.0.lock().unwrap().as_mut().unwrap().stdout =
-                        serde_json::to_vec(&bad).unwrap();
-                }
-                "truncated" => runner.0.lock().unwrap().as_mut().unwrap().truncated = true,
-                _ => runner.0.lock().unwrap().as_mut().unwrap().stdout = b"bad json".to_vec(),
-            }
-            let stage_path = stage.path().to_path_buf();
-            let installed_called = AtomicBool::new(false);
-            let result = admit_staged(
-                stage,
-                |_| {
-                    verify_package(
-                        &runner,
-                        Path::new(POWERSHELL),
-                        fs::File::open(&staged_path).unwrap(),
-                        &staged_path,
-                    )
-                },
-                |stage| stage.close().map_err(|_| rejected("暂存清理失败")),
-            )
-            .inspect(|_| {
-                installed_called.store(true, Ordering::SeqCst);
-            });
-            assert!(result.is_err(), "{failure}");
-            assert!(!installed_called.load(Ordering::SeqCst));
-            assert!(!stage_path.exists());
-            assert!(source.exists());
-            assert_eq!(fs::read(installed).unwrap(), b"old application");
-        }
-    }
-    #[test]
-    fn successful_bridge_reverification_returns_stage_for_installation() {
-        let stage = tempfile::tempdir().unwrap();
-        let path = stage.path().join("installer.msix");
-        std::fs::write(&path, valid_package(true)).unwrap();
-        let stage = admit_staged(
-            stage,
-            |_| {
-                verify_package(
-                    &valid_runner(),
-                    Path::new(POWERSHELL),
-                    std::fs::File::open(&path).unwrap(),
-                    &path,
-                )
-            },
-            |_| panic!("successful verification must retain the stage"),
-        )
-        .unwrap();
-        assert!(path.exists());
-        stage.close().unwrap();
-    }
-    #[test]
-    fn native_handoff_and_download_preparation_are_wired_to_full_admission() {
-        let helper = include_str!("helper.rs");
-        let copy = helper
-            .find("let bridge = ProtectedPackageBridge::create(")
-            .unwrap();
-        let verify = helper[copy..]
-            .find("super::signature::admit_staged(")
-            .unwrap()
-            + copy;
-        let launch = helper[verify..]
-            .find("match launch_fyagent_user_helper_as_user(")
-            .unwrap()
-            + verify;
-        assert!(copy < verify && verify < launch);
-        let admission = &helper[verify..launch];
-        assert!(admission.contains("ProtectedPackageBridge::verify_codex_signature"));
-        assert!(admission.contains("ProtectedPackageBridge::cleanup"));
-        let adapter = include_str!("mod.rs");
-        let prepare = adapter.find("fn prepare_install_package<'a>").unwrap();
-        let prepare = &adapter[prepare
-            ..adapter[prepare..]
-                .find("fn install_current_user<'a>")
-                .unwrap()
-                + prepare];
-        assert!(prepare.contains("signature::verify_package("));
-        assert!(
-            prepare.find("signature::verify_package(").unwrap()
-                < prepare
-                    .find("PreparedInstallPackage::from_prepared_artifact")
-                    .unwrap()
-        );
     }
     #[test]
     fn command_scan_has_no_bare_executable_or_path_interpolation() {
@@ -1232,18 +1090,6 @@ Write-SignatureEvidence $signature $chain $fixture.built
             .unwrap();
         bytes[start + 28..start + 30].copy_from_slice(&u16::MAX.to_le_bytes());
         assert!(read_manifest(std::io::Cursor::new(bytes)).is_err());
-    }
-    #[test]
-    fn cleanup_failure_remains_rejection_and_never_returns_stage() {
-        let result = admit_staged(
-            (),
-            |_| Err(rejected("签名无效")),
-            |_| Err(rejected("暂存身份改变")),
-        );
-        assert_eq!(
-            result.unwrap_err().code(),
-            InstallerErrorCode::PackageSignatureInvalid
-        );
     }
     #[test]
     fn missing_ambiguous_oversized_and_broken_archives_reject() {

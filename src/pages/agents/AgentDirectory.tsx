@@ -395,6 +395,7 @@ function GenericDirectoryCard({
       <AgentInstallConfirmation
         name={entry.displayName}
         lifecycle={lifecycle}
+        onChangeTarget={eligibleTargets.length > 1 ? openTargetPicker : undefined}
       />
     </>
   );

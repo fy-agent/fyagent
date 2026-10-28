@@ -489,17 +489,8 @@ fn run_pinned_user_helper(
     );
     drop(source_file);
     let bridge = bridge?;
-    // Hash-checked copy is now sealed. Admit the exact bridge bytes before
-    // launching the helper or allowing package deployment to become reachable.
-    let bridge = if matches!(action, UserHelperAction::CodexMsixInstall) {
-        super::signature::admit_staged(
-            bridge,
-            ProtectedPackageBridge::verify_codex_signature,
-            ProtectedPackageBridge::cleanup,
-        )?
-    } else {
-        bridge
-    };
+    // The MSIX signature was checked against the protected source handle and
+    // the sealed bridge copy is bound to it by hash-while-copy.
 
     let setup = (|| {
         let nonce = generate_nonce()?;

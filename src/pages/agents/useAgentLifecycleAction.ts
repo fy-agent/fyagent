@@ -201,7 +201,7 @@ export function reasonCopy(code: AgentReasonCode): string | null {
     case "authorization_required":
       return "系统应用程序文件夹目前不支持此安装操作。请使用当前用户的应用程序目录，不会改装到其他目录。";
     case "permission_denied":
-      return "没有权限写入所选位置。请调整该目录的写入权限，或重新选择可写的安装位置。";
+      return "没有权限写入安装所需的位置。请检查目录权限后重新检查。";
     case "application_running":
       return "应用仍在运行。请先完全退出，再重新执行。";
     case "installer_artifact_unavailable":
@@ -375,6 +375,7 @@ export function useAgentLifecycleAction({
   const runningRef = useRef(false);
   const lastActionRef = useRef<AgentActionId | null>(null);
   const lastSurfaceRef = useRef<AgentSurface | undefined>(undefined);
+  const lastTargetRef = useRef<AgentInstallationTarget | null>(null);
   const admitRetryRef = useRef(false);
   const vendorHandoffRef = useRef(false);
   const speedRef = useRef(createDownloadSpeedState());
@@ -661,6 +662,9 @@ export function useAgentLifecycleAction({
         return;
       }
       if (runningRef.current || !readinessRef.current) return;
+      lastActionRef.current = action;
+      lastSurfaceRef.current = nextSurface ?? surfaceRef.current;
+      lastTargetRef.current = targetOverride ?? targetRef.current ?? null;
       const generation = ++generationRef.current;
       runningRef.current = true;
       setBusy(true);
@@ -759,7 +763,7 @@ export function useAgentLifecycleAction({
       return;
     }
     admitRetryRef.current = true;
-    await prepare(last, undefined, lastSurface);
+    await prepare(last, lastTargetRef.current, lastSurface);
   }, [reread, prepare, runPrimary]);
 
   const cancel = useCallback(async () => {

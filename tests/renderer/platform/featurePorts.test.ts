@@ -1353,8 +1353,17 @@ describe("Renderer feature ports", () => {
           return installerRemote;
         case "codex_desktop_get_job":
           return null;
+        case "codex_desktop_pick_staging_directory":
+          return {
+            contractVersion: 1,
+            capabilityId: `s1:${"d".repeat(32)}`,
+            label: "用户选择的下载临时目录",
+            availableBytes: 8 * 1024 ** 3,
+          };
         case "codex_desktop_prepare_install":
           return codexInstallPreflightFixture(installerReleaseId);
+        case "codex_desktop_discard_install_confirmation":
+          return undefined;
         case "codex_desktop_start_install":
           return installerJob("checking", 1);
         case "codex_desktop_cancel_install":
@@ -1378,9 +1387,17 @@ describe("Renderer feature ports", () => {
       installerRemote,
     );
     await expect(ports.codexDesktop.getJob()).resolves.toBeNull();
+    const staging = await ports.codexDesktop.pickStagingDirectory();
+    expect(staging?.capabilityId).toBe(`s1:${"d".repeat(32)}`);
     await expect(
-      ports.codexDesktop.prepareInstall(installerReleaseId),
+      ports.codexDesktop.prepareInstall(
+        installerReleaseId,
+        staging?.capabilityId,
+      ),
     ).resolves.toEqual(codexInstallPreflightFixture(installerReleaseId));
+    await expect(
+      ports.codexDesktop.discardInstallConfirmation(confirmationId),
+    ).resolves.toBeUndefined();
     await expect(
       ports.codexDesktop.startInstall(installerReleaseId, confirmationId),
     ).resolves.toEqual(installerJob("checking", 1));
@@ -1396,10 +1413,17 @@ describe("Renderer feature ports", () => {
       ["codex_desktop_get_local_status"],
       ["codex_desktop_check_latest", { force: true }],
       ["codex_desktop_get_job"],
+      ["codex_desktop_pick_staging_directory"],
       [
         "codex_desktop_prepare_install",
-        { request: { expectedReleaseId: installerReleaseId } },
+        {
+          request: {
+            expectedReleaseId: installerReleaseId,
+            stagingCapabilityId: `s1:${"d".repeat(32)}`,
+          },
+        },
       ],
+      ["codex_desktop_discard_install_confirmation", { confirmationId }],
       [
         "codex_desktop_start_install",
         { request: { expectedReleaseId: installerReleaseId, confirmationId } },
@@ -2075,13 +2099,11 @@ describe("WorkBuddy subscription source contract", () => {
     const { createTauriFeaturePorts } = await import(
       "@/shared/platform/tauri/features"
     );
-    invoke
-      .mockResolvedValueOnce(result)
-      .mockResolvedValueOnce({
-        revision: null,
-        bindingVersion: null,
-        source: null,
-      });
+    invoke.mockResolvedValueOnce(result).mockResolvedValueOnce({
+      revision: null,
+      bindingVersion: null,
+      source: null,
+    });
     const port = createTauriFeaturePorts().workbuddy;
     expect(await port.getSubscriptionSource()).toEqual(result);
     expect(await port.getSubscriptionSource()).toEqual({

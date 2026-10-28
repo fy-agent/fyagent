@@ -100,6 +100,10 @@ const ACCESS_ALLOWED_ACE_TYPE_VALUE: u8 = 0;
 const SECURITY_DESCRIPTOR_REVISION_VALUE: u32 = 1;
 const FILE_PERSISTENT_ACLS_FLAG: u32 = 0x0000_0008;
 const MAXIMUM_ALLOWED_MASK: u32 = 0x0200_0000;
+const ANCESTOR_REPLACEMENT_ACCESS: u32 =
+    FILE_DELETE_CHILD.0 | DELETE.0 | WRITE_DAC.0 | WRITE_OWNER.0;
+const PATH_ANCESTOR_DANGEROUS_ACCESS: u32 =
+    ANCESTOR_REPLACEMENT_ACCESS | FILE_WRITE_EA.0 | FILE_WRITE_ATTRIBUTES.0;
 const COPY_BUFFER_BYTES: usize = 128 * 1024;
 const ACCESS_CHECK_BUFFER_BYTES: usize = 4 * 1024;
 const DIRECTORY_ENUMERATION_BUFFER_BYTES: usize = 64 * 1024;
@@ -208,6 +212,14 @@ fn leaf_descriptor_kind(artifact_kind: PackageBridgeArtifactKind) -> DescriptorK
     }
 }
 
+const fn ancestor_dangerous_access(artifact_kind: PackageBridgeArtifactKind) -> u32 {
+    if artifact_kind.consumes_through_path() {
+        PATH_ANCESTOR_DANGEROUS_ACCESS
+    } else {
+        ANCESTOR_REPLACEMENT_ACCESS
+    }
+}
+
 /// Returns the real CommonApplicationData directory used for bridge-volume
 /// capacity probing. There is deliberately no environment or drive fallback.
 pub(super) fn program_data_bridge_probe_path() -> Result<PathBuf, InstallerError> {
@@ -229,6 +241,36 @@ pub(super) struct ProtectedPackageBridge {
     final_identity: NativeFileIdentity,
     control: PackageBridgeControl,
     artifact_kind: PackageBridgeArtifactKind,
+}
+
+fn verify_pinned_codex_source(file: &File) -> Result<(), InstallerError> {
+    use super::{command, signature};
+    use windows::Win32::Storage::FileSystem::{GetFinalPathNameByHandleW, FILE_NAME_NORMALIZED};
+
+    let before = native_file_identity(file, NativeObjectKind::RegularFile)?;
+    let mut buffer = vec![0_u16; 32_768];
+    let length = unsafe {
+        GetFinalPathNameByHandleW(
+            HANDLE(file.as_raw_handle()),
+            &mut buffer,
+            FILE_NAME_NORMALIZED,
+        )
+    } as usize;
+    if length == 0 || length >= buffer.len() || buffer[..length].contains(&0) {
+        return Err(bridge_error("无法确认下载包路径，已拒绝安装"));
+    }
+    let path = PathBuf::from(OsString::from_wide(&buffer[..length]));
+    let program = command::powershell_path().map_err(|_| {
+        InstallerError::new(InstallerErrorCode::PackageSignatureInvalid)
+            .with_diagnostic_message("无法定位系统签名校验工具，已拒绝安装")
+    })?;
+    signature::verify_package(&command::SystemCommandRunner, &program, file, &path)?;
+    if native_file_identity(file, NativeObjectKind::RegularFile)? != before {
+        return Err(bridge_integrity_error(
+            "the verified package source identity changed during signature verification",
+        ));
+    }
+    Ok(())
 }
 
 impl ProtectedPackageBridge {
@@ -255,8 +297,14 @@ impl ProtectedPackageBridge {
                 "the verified package source size changed before bridging",
             ));
         }
+        if artifact_kind == PackageBridgeArtifactKind::Msix {
+            // Verify the protected downloader object before entering ProgramData;
+            // hash-while-copy then binds the bridged bytes to this exact source.
+            verify_pinned_codex_source(source_file)?;
+        }
 
-        let anchor = ProgramDataAnchor::open(shell_sid_binary.as_sid(), expected_size)?;
+        let anchor =
+            ProgramDataAnchor::open(shell_sid_binary.as_sid(), expected_size, artifact_kind)?;
         let stable_descriptor =
             OwnedSecurityDescriptor::for_kind(DescriptorKind::StableDirectory, shell_sid)?;
         let operation_descriptor =
@@ -377,38 +425,6 @@ impl ProtectedPackageBridge {
         };
         bridge.recheck()?;
         Ok(bridge)
-    }
-
-    /// Resolve the sealed leaf from its retained handle, never from a caller
-    /// path. The original FILE_SHARE_READ handle remains open until settlement.
-    pub(super) fn verify_codex_signature(&self) -> Result<(), InstallerError> {
-        use super::{command, signature};
-        use windows::Win32::Storage::FileSystem::{
-            GetFinalPathNameByHandleW, FILE_NAME_NORMALIZED,
-        };
-        self.recheck()?;
-        let file = self
-            .final_file
-            .as_ref()
-            .ok_or_else(|| bridge_error("暂存包句柄缺失，已拒绝安装"))?;
-        let mut buffer = vec![0u16; 32768];
-        let length = unsafe {
-            GetFinalPathNameByHandleW(
-                HANDLE(file.as_raw_handle()),
-                &mut buffer,
-                FILE_NAME_NORMALIZED,
-            )
-        } as usize;
-        if length == 0 || length >= buffer.len() || buffer[..length].contains(&0) {
-            return Err(bridge_error("无法确认暂存包路径，已拒绝安装"));
-        }
-        let path = PathBuf::from(OsString::from_wide(&buffer[..length]));
-        let program = command::powershell_path().map_err(|_| {
-            InstallerError::new(InstallerErrorCode::PackageSignatureInvalid)
-                .with_diagnostic_message("无法定位系统签名校验工具，已拒绝安装")
-        })?;
-        signature::verify_package(&command::SystemCommandRunner, &program, file, &path)?;
-        self.recheck()
     }
 
     pub(super) const fn control(&self) -> PackageBridgeControl {
@@ -607,10 +623,15 @@ impl HeldObject {
 struct ProgramDataAnchor {
     held_directories: Vec<HeldObject>,
     volume_serial: u64,
+    dangerous_access: u32,
 }
 
 impl ProgramDataAnchor {
-    fn open(shell_sid: PSID, expected_size: u64) -> Result<Self, InstallerError> {
+    fn open(
+        shell_sid: PSID,
+        expected_size: u64,
+        artifact_kind: PackageBridgeArtifactKind,
+    ) -> Result<Self, InstallerError> {
         let program_data = resolve_program_data_path()?;
         let volume = probe_program_data_volume(&program_data)?;
         ensure_program_data_capacity(&program_data, expected_size)?;
@@ -664,6 +685,7 @@ impl ProgramDataAnchor {
         let anchor = Self {
             held_directories,
             volume_serial: volume.serial,
+            dangerous_access: ancestor_dangerous_access(artifact_kind),
         };
         anchor.recheck(shell_sid)?;
         Ok(anchor)
@@ -679,7 +701,8 @@ impl ProgramDataAnchor {
 
     fn recheck(&self, shell_sid: PSID) -> Result<(), InstallerError> {
         let token = shell_access_check_token(shell_sid)?;
-        for held in &self.held_directories {
+        let shell_is_administrator = token_is_local_administrator(token.raw())?;
+        for (index, held) in self.held_directories.iter().enumerate() {
             held.recheck()?;
             if held.identity.volume_serial != self.volume_serial {
                 return Err(bridge_integrity_error(
@@ -688,28 +711,27 @@ impl ProgramDataAnchor {
             }
 
             let granted = effective_file_access(&held.file, token.raw())?;
-            // Creating unrelated ProgramData siblings is a normal Windows
-            // capability and cannot rebind an exact existing child. Deleting
-            // a fixed child, deleting/mutating the held component itself, or
-            // rewriting its descriptor/owner would invalidate the namespace.
-            let dangerous = FILE_DELETE_CHILD.0
-                | DELETE.0
-                | WRITE_DAC.0
-                | WRITE_OWNER.0
-                | FILE_WRITE_EA.0
-                | FILE_WRITE_ATTRIBUTES.0;
-            let granted_dangerous = granted & dangerous;
+            let granted_dangerous = granted & self.dangerous_access;
             // A non-administrator Alice must not be able to delete or re-ACL
-            // C:\ or ProgramData. Built-in Administrator / UAC-disabled Explorer
-            // tokens already have those OS rights; fail-closed would block install
-            // without reducing capability. Exact child ACLs still apply.
-            if ancestor_mutation_rejected(
-                granted_dangerous,
-                token_is_local_administrator(token.raw())?,
-            ) {
+            // C:\ or ProgramData. Path consumers additionally reject metadata
+            // writes; the MSIX byte server never reopens this namespace.
+            // Built-in Administrator / UAC-disabled Explorer tokens already
+            // have those OS rights; exact child ACLs still apply.
+            if ancestor_mutation_rejected(granted_dangerous, shell_is_administrator) {
+                log::warn!(
+                    "Codex ProgramData ancestor permission rejection: ancestor_index={} granted=0x{:08X} dangerous=0x{:08X} DELETE_CHILD={} DELETE={} WRITE_DAC={} WRITE_OWNER={}",
+                    index,
+                    granted,
+                    granted_dangerous,
+                    granted_dangerous & FILE_DELETE_CHILD.0 != 0,
+                    granted_dangerous & DELETE.0 != 0,
+                    granted_dangerous & WRITE_DAC.0 != 0,
+                    granted_dangerous & WRITE_OWNER.0 != 0,
+                );
                 return Err(bridge_integrity_error(
                     "the Shell user could mutate a ProgramData bridge ancestor",
-                ));
+                )
+                .with_platform_error_code("programdata_ancestor_permissions"));
             }
         }
         Ok(())
@@ -2048,16 +2070,25 @@ mod tests {
     }
 
     #[test]
-    fn os_owned_ancestors_fail_closed_only_for_a_non_administrator_shell() {
-        let dangerous = FILE_DELETE_CHILD.0
-            | DELETE.0
-            | WRITE_DAC.0
-            | WRITE_OWNER.0
-            | FILE_WRITE_EA.0
-            | FILE_WRITE_ATTRIBUTES.0;
-        assert!(ancestor_mutation_rejected(dangerous, false));
-        assert!(!ancestor_mutation_rejected(dangerous, true));
+    fn msix_ancestors_admit_metadata_rights_but_path_consumers_do_not() {
+        let msix = ancestor_dangerous_access(PackageBridgeArtifactKind::Msix);
+        let executable = ancestor_dangerous_access(PackageBridgeArtifactKind::Exe);
+        for right in [FILE_DELETE_CHILD.0, DELETE.0, WRITE_DAC.0, WRITE_OWNER.0] {
+            assert_ne!(msix & right, 0);
+            assert_ne!(executable & right, 0);
+            assert!(ancestor_mutation_rejected(msix & right, false));
+            assert!(!ancestor_mutation_rejected(msix & right, true));
+        }
+        let metadata = (FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES).0;
+        assert_eq!(msix & metadata, 0);
+        assert_eq!(executable & metadata, metadata);
         assert!(!ancestor_mutation_rejected(0, false));
         assert!(!ancestor_mutation_rejected(0, true));
+        assert_eq!(
+            msix & (windows::Win32::Storage::FileSystem::FILE_ADD_FILE
+                | windows::Win32::Storage::FileSystem::FILE_ADD_SUBDIRECTORY)
+                .0,
+            0
+        );
     }
 }

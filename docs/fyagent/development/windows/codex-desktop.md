@@ -19,12 +19,13 @@ process start
   -> freeze Shell session, canonical SID, Profile, LocalAppData, RoamingAppData
   -> initialize WebView/config/log/database/state on those paths
   -> explicit-SID Codex package discovery
-  -> bind the fixed downloaded MSIX to a local hash/size and hold its file identity open
-  -> parent seals one protected ProgramData PackageBridge copy from that handle
+  -> recheck the fixed downloaded MSIX and repeat signature admission on its held file
+  -> parent seals one protected ProgramData copy by hash-while-copy
   -> launch the fixed current-user helper through Explorer
   -> `Hello`, authenticate helper, send bridge control, verify `Started`, admit
-  -> observe true WinRT terminal state and clean pipe close
-  -> application-owned normal cleanup or immutable known-only orphan retention
+  -> helper serves the pinned leaf on an opaque ephemeral loopback capability
+  -> PackageManager fetches those handle-bound bytes and reaches true terminal state
+  -> clean pipe close permits application-owned known-only cleanup
   -> post-verification and launch for the same frozen context
 ```
 
@@ -55,6 +56,34 @@ required containment for that accepted residual dependency risk.
 Official Codex Desktop packages on Windows are MSIX packages. That package
 format belongs to the software FyAgent manages and is independent of the NSIS
 format used to install FyAgent itself.
+
+## Download staging versus final placement
+
+Windows chooses the final MSIX location. FyAgent neither fakes nor exposes a
+final-destination picker. The confirmation can instead change the separate
+download-staging directory that FyAgent actually owns. The renderer asks the
+backend to open the native folder picker and receives only a bounded label,
+capacity, and random five-minute one-use capability; the selected path never
+crosses renderer IPC.
+
+Selection admission canonicalizes the existing directory and retains no-follow
+handles and identities for its complete ancestor chain. In a real UUID probe
+child it creates, writes, flushes, finalizes, reopens and reads an MSIX-shaped
+artifact, removes that file and child, then checks the selected volume. Zero
+capacity is rejected immediately and prepare recomputes capacity instead of
+trusting a stale capability value. Prepare consumes the capability and binds the
+same handle chain into its confirmation. Issuance schedules autonomous
+five-minute expiry; dismissing or navigating away sends an identifier-only
+discard so retained no-delete-share handles release immediately. Unsafe or
+unavailable admission, write/cleanup permission denial, capacity-probe failure,
+and insufficient space have distinct staging platform codes and offer native
+directory re-selection. Download creation, partial-file finalization, signature
+verification, install handoff, failure recovery, cancellation, and success
+cleanup all use that bound staging root and fail closed on identity/reparse
+drift. Directory sharing prevents an ancestor rename or deletion until the
+operation releases the capability. The owned UUID job directory is removed at
+terminal cleanup; the user-selected directory remains. Vendor EXE final-location
+choices, if any, remain inside the vendor UI.
 
 ## Current-user helper boundary
 
@@ -123,56 +152,64 @@ and a clean pipe close permit cleanup.
 
 ## Protected package bridge and process lifetime
 
-The production path stages only under the install-root cache and opens the
-current job's fixed MSIX with `GENERIC_READ + FILE_SHARE_READ`. After rechecking SHA-256,
-volume serial, file index, and size, the elevated application bridge module
-copies only from that handle into:
+The production path stages under the install-root cache and opens the current
+job's fixed MSIX with `GENERIC_READ + FILE_SHARE_READ`. The elevated parent
+repeats local signature admission against that protected source handle, then
+copies and hashes the same object into:
 
 ```text
 <FOLDERID_ProgramData>\FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}\v1\<64-lowercase-hex-operation-id>\installer.msix
 ```
 
 The fixed root and `v1` use one stable BA-owned/grouped protected ACL independent
-of Alice: BA manages it, SYSTEM has required read/traverse, and Authenticated
-Users (`AU`) has stable directory `FILE_GENERIC_EXECUTE` semantics—traverse,
-read attributes, `READ_CONTROL`, and synchronize—never list/create/write/delete/
-delete-child. Every create-new operation directory and `.part`/final file has a
+of Alice. Every create-new operation directory and `.part`/final file has a
 separate protected ACL granting only BA management, minimum SYSTEM read/traverse,
-and minimum read/traverse for the exact frozen Alice SID. ProgramData-parent
-effective access is checked so a non-administrator Alice cannot invalidate the
-root through `DELETE_CHILD`. A privileged Explorer token (Administrators group
-enabled, including the built-in Administrator account) already has those rights
-on OS-owned ancestors and on BA-owned bridge objects; that case does not fail
-closed. Exact protected ACLs, held ancestor handles, and identity rechecks
-remain required. Incompatible existing objects are rejected, not repaired.
+and minimum read/traverse for the exact frozen Alice SID. Exact bridge objects
+reject creation, content/metadata mutation, deletion, and DACL/owner changes.
+Incompatible existing objects are rejected, not repaired.
+
+For Codex MSIX, OS-owned ancestors from the volume root through ProgramData
+reject effective `DELETE_CHILD`, `DELETE`, `WRITE_DAC`, and `WRITE_OWNER` for a
+non-administrator Alice. Standard ProgramData ACLs may grant `FILE_WRITE_EA` or
+`FILE_WRITE_ATTRIBUTES`; those metadata rights are accepted only because no
+asynchronous consumer later reopens the MSIX through that namespace. Vendor EXE
+actions still use `ShellExecuteExW` and therefore retain the stricter ancestor
+metadata rejection.
+
+The helper resolves every fixed bridge component relative to retained no-follow
+handles, verifies the final volume serial/file index/size from the authenticated
+control, and keeps that exact file open. It then binds an ephemeral IPv4
+loopback listener and derives one unguessable request path from the 256-bit
+operation ID. A fixed four-worker set prevents slow-drip local clients from
+occupying PackageManager's stream indefinitely. Each accepted socket has one
+absolute, monotonic 500 ms deadline for the complete header, checks shutdown
+between reads, and has a bounded write deadline. Each worker reuses fixed
+request and transfer buffers. Only bounded `HEAD`, `GET`, and one-range requests
+for the capability path are served, using positional reads from the pinned
+handle. PackageManager receives this fixed
+`http://127.0.0.1` capability instead of a ProgramData file URI. A namespace
+race can make initial helper admission fail, but cannot change the bytes
+consumed after admission.
 
 The ProgramData volume must be local fixed NTFS and have enough space for the
-accepted extra full copy. The parent handles short reads/writes while hashing,
-flushes `.part`, renames without replacement, reopens the final leaf no-follow,
-and proves exact SHA/size/source-object, file-ID, link/reparse/placeholder,
-owner/group, and DACL continuity. These SHA/size values are computed from the
-file downloaded by the current job and exist only to prove same-file handoff;
-they are never compared with mirror or upstream publication fields.
-PackageManager remains the native MSIX signature-chain authority.
-
-The helper converts only the protected ordinary DOS path with
-`UrlCreateFromPathW`, round-trips it through `PathCreateFromUrlW`, rejects
-UNC/host, query/fragment, extended/overlong, or encoding ambiguity, and reopens
-no-follow to prove the same identity. There is no HTTP fallback and no proxy,
-network, Temp, cwd, or install-root package fallback.
+extra full copy. The parent handles short reads/writes while hashing, flushes
+`.part`, renames without replacement, reopens the final leaf no-follow, and
+proves exact SHA/size/source-object, file-ID, link/reparse/placeholder,
+owner/group, and DACL continuity. These SHA/size values come from the current
+download and prove same-file handoff only; they are never compared with mirror
+or upstream publication fields. Windows remains authoritative for native MSIX
+deployment and trust.
 
 The parent keeps the source pin, bridge ancestors/file, helper-image pin,
-control events, duplex pipe, and admitted process in one lifetime. Normal
-cleanup occurs only after the helper observes a non-`Started` WinRT terminal
-status, sends the matching valid terminal result, and closes the pipe cleanly.
-Timeout, protocol loss, progress-write failure, handler-registration failure,
-an ambiguous synchronous AddPackage error, crash, or termination leaves an
-immutable operation orphan. A helper exit code is never sufficient terminal
-proof. The next elevated bridge creation may perform bounded known-only cleanup
-through held handles; unknown, reparse, ACL-drifted, inaccessible, nonempty, or
-changing objects survive, and operation IDs are never reused. NSIS never owns,
-repairs, enumerates, or removes PackageBridge, which is strictly separate from
-the retired `%ProgramData%\FyAgent\runtime` tree.
+control events, duplex pipe, and admitted process in one lifetime. The helper
+keeps its package handle and loopback server until a non-`Started` WinRT
+terminal status. Normal cleanup requires the matching authenticated terminal
+frame and clean pipe close. Timeout, protocol loss, progress-write failure,
+handler-registration failure, ambiguous synchronous AddPackage error, crash,
+or termination leaves an immutable operation orphan. The next elevated bridge
+creation may perform bounded known-only cleanup through held handles; unknown,
+reparse, ACL-drifted, inaccessible, nonempty, or changing objects survive.
+NSIS never owns, repairs, enumerates, or removes PackageBridge.
 
 Normal renderer exit/restart paths use the fixed `exit_app`/`restart_app`
 commands. Their process-lifetime claim shares one mutex with installer start,
@@ -190,20 +227,25 @@ Finally, NSIS asks a running FyAgent/helper to close normally and never
 force-terminates it, but the last process lookup is only a point-in-time check
 rather than an atomic launch interlock.
 
-This delivery intentionally does not run HIL, locally or in GitHub Actions. Its
-present A1 evidence is limited to static contract tests, scoped Windows-target
-compilation checks, and code/security review. Real Windows 10 and Windows 11,
-x64/ARM64,
-Bob-elevated/Alice-standard-Explorer-Shell, protected DOS file-URI/
-PackageManager, effective ACL/mutation-denial, and terminal/orphan/cleanup
-behaviors therefore remain explicit, unverified residual risks. The present
-evidence must not be described as proof of native compatibility or native
-runtime verification.
+The helper tests exercise the real Windows loopback/file-handle path, including
+range reads and rejection of the wrong capability path. A real PackageManager
+deployment still requires a disposable signed Codex package and authorization
+to change the interactive user's installed apps. Unless that HIL path is
+actually run, Bob-elevated/Alice-standard identity, PackageManager consumption,
+UAC, post-install inventory, and native compatibility remain explicitly
+unverified; the socket smoke test does not substitute for installation proof.
 Native deployment and post-install checks still surface unsupported operating
 systems or packages. FyAgent does not maintain a duplicate package `MinVersion`
 allowlist before helper launch. A2 requires future independent native validation
 plus an explicit, separately authorized design decision; it is never a runtime fallback.
 The minimum supported Windows version does not change under this policy.
+
+Installation failures and rejected installer requests are recorded in the
+application log with the error code, stage when available, platform error code,
+and redacted diagnostic message. A rejected ProgramData ancestor also logs its
+directory path and effective access mask and the specific rejected rights. This
+local diagnostic can reveal a customized ProgramData location; review it before
+sharing logs.
 
 ## Testing boundary
 
