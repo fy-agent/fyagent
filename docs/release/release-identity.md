@@ -17,12 +17,20 @@ Windows 正式签名路径是 **Certum／SimplySign**，沿用现有 adapter 边
 ## 身份表
 
 两行必须使用同一张 Certum 代码签名证书。聚合步骤会拒绝 x64 与 arm64 的 publisher 或证书不一致。
-下表人名、发布者、日期都还没有填写，因此不能打开 provider 模式。
+发布者／证书到期已填；恢复人仍缺第二人，因此仍不能打开 provider 模式。
 
 | platform | publisher | accountOwner | maintainer | approver | recoveryContact | expiresAt | rotateBefore | revocationStatus |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| windows-x64 | （未填写） | （未填写） | （未填写） | （未填写） | （未填写） | （未填写） | （未填写） | unknown |
-| windows-arm64 | （未填写） | （未填写） | （未填写） | （未填写） | （未填写） | （未填写） | （未填写） | unknown |
+| windows-x64 | Hangzhou Fuyu Talent Service Co., Ltd. | William Wang（Certum／SimplySign 账户 wq24100@qq.com；PIN／OTP 不入库） | 项目经理席（仓库 adapter／身份表／流水线） | William Wang | 待补第二恢复人（禁止与 approver 单点相同后仍未双人） | 2027-11-02T23:59:59Z | 2027-08-02T00:00:00Z | good |
+| windows-arm64 | Hangzhou Fuyu Talent Service Co., Ltd. | William Wang（Certum／SimplySign 账户 wq24100@qq.com；PIN／OTP 不入库） | 项目经理席（仓库 adapter／身份表／流水线） | William Wang | 待补第二恢复人（禁止与 approver 单点相同后仍未双人） | 2027-11-02T23:59:59Z | 2027-08-02T00:00:00Z | good |
+
+公开证书指纹（仅选择／核对用，不是私钥）：
+
+- Thumbprint SHA-1（`certificateSha1`／signtool `/sha1`）：`4166b014a2bac1fd2a286127dcd4b4e34695a598`
+- Issuer：Certum Code Signing 2021 CA
+- EKU：代码签名
+- 本机 AIMaster 已 Connect 验证过；**仍不等于** CI／干净机正式证据。
+- `recoveryContact` 仍标「待补第二恢复人」→ **checklist 第 3 条未齐，禁止把 `FYAGENT_WINDOWS_SIGNING_MODE` 改成 `provider`**。
 
 字段含义：
 
