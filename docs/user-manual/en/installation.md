@@ -11,7 +11,23 @@ On Windows, run the machine-wide installer and finish the wizard. If a trust pro
 
 On macOS, open the DMG, drag `FyAgent.app` into Applications, and launch it there. If macOS blocks it, verify the download and release evidence, then follow System Settings → Privacy & Security → Open Anyway. Keep Gatekeeper and download quarantine protection enabled.
 
-On first launch, choose a purpose for recommendations or select 「跳过引导」 (Skip guide). Follow [AI software configuration](agents.md) to scan and install software. MCP installation identifies required runtimes such as Node.js / npx or uv / uvx; prepare those before proceeding.
+On first launch, choose a purpose for recommendations or select 「跳过引导」 (Skip guide). The same page states what each first-install step asks and what it installs. Follow [AI software configuration](agents.md) to scan and install software. MCP installation identifies required runtimes such as Node.js / npx or uv / uvx; prepare those before proceeding.
+
+## What the first install asks
+
+1. It asks what you mainly want to do with AI: everyday work, programming, or both. This step installs nothing. You can skip it.
+2. It asks you to pick one recommended application. 「开始配置」 still installs nothing.
+3. If a configuration already exists, it asks whether to keep or replace it. An unreadable configuration can be retried or opened in the software details. This step installs nothing and does not test a connection.
+4. The pre-install check asks for a location, a version, and what will change. The recommended location is the current user. Administrator approval is requested only for a system folder. An overlay install keeps existing settings. Installation starts only after an explicit start action.
+5. The extra questions inside the Windows vendor wizard were not recorded line by line and stay marked pending. An open wizard is not an installed application. Unrecorded questions from external installers stay pending too.
+
+zen-gate 1.8.0 removed its own free lane. The guide no longer offers that entry. There is no free lane here. This note covers only that zen-gate deletion.
+
+OpenCode no longer installs updates by itself. To update, type `/update` in OpenCode. Moving to OpenCode 2 is a separate step. From qwen-code 0.25.1, `QWEN.md` and `AGENTS.md` in the parent directory of a repository are no longer read; move shared rules into the repository. Those rules are not treated as still in effect.
+
+On Windows, if a login window keeps spinning, wait in the official window that is already open, then refresh status here. If the window is gone and the spinner remains, stop waiting and sign in once more. If a terminal cannot find a command after installation, quit and reopen the terminal or FyAgent; the old window may still have the environment from before installation.
+
+Builds marked alpha, beta, preview, nightly, or rc do not enter the recommended install list.
 
 To update FyAgent, download a matching package from the same Releases page and follow its instructions. To uninstall, use Windows Settings → Apps or move the macOS application to Trash. Personal data defaults to `~/.fyagent/`; back up anything you want to keep before changing those files.
 

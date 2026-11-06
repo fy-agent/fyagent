@@ -1,0 +1,44 @@
+.fy-first-install-path {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--fy-border);
+  color: var(--fy-text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.fy-first-install-path h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.fy-first-install-path p,
+.fy-first-install-path li {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fy-first-install-path ol,
+.fy-first-install-path ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.fy-first-install-path li p + p {
+  margin-top: 2px;
+}
+
+.fy-first-install-pending {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-compact);
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}

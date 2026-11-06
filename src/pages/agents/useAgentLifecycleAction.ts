@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { WINDOWS_ENV_HINT } from "../../domain/first-install-path";
 import {
   AGENT_REASON_CODES,
   installationTargetsForAction,
@@ -170,7 +171,7 @@ export function reasonCopy(code: AgentReasonCode): string | null {
     case "source_not_verified":
       return "暂时无法访问官方下载来源。请打开产品官网下载安装。";
     case "tool_host_missing":
-      return "请检查当前用户的 Node.js、npm 和全局安装目录权限。Claude Code 需要 Node.js 22 或更高版本。";
+      return `请检查当前用户的 Node.js、npm 和全局安装目录权限。Claude Code 需要 Node.js 22 或更高版本。${WINDOWS_ENV_HINT}`;
     case "insufficient_disk_space":
       return "安装所需的磁盘空间不足。请释放下载目录和目标目录所在磁盘的空间后重新检查。";
     case "disk_space_unavailable":

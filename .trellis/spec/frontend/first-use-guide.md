@@ -83,6 +83,22 @@ rejects native-only dismissal instead of pretending to save.
   with an Agent return descriptor. Back returns to the guide until it is dismissed.
 - Starting instructions reuse the current prompt preset definitions in the lazy
   guide chunk; they do not introduce a second preset or Agent URL authority.
+- Below the existing actions, `FirstInstallPathPanel` states what each product
+  step asks and what it installs. Unrecorded external-installer and Windows
+  vendor-wizard questions stay marked 待补证. The panel does not start an
+  install, does not insert a tab stop ahead of the purpose, configure,
+  reselect, or completion controls, and does not add a level-2 heading.
+- Free-lane copy says zen-gate 1.8.0 removed its own free lane and that this
+  guide has no free lane. It does not claim OpenCode as a whole removed free
+  models, and it does not link a removed endpoint.
+- OpenCode manual `/update` and qwen-code parent-directory `QWEN.md` /
+  `AGENTS.md` are described as no longer in effect. The prompts page repeats
+  the parent-directory limit beside the current application's own prompt file.
+- Windows login-wait shows the closed spinning-window hint. A missing Node/npm
+  host includes the closed environment-variable hint. Labels containing
+  alpha, beta, preview, nightly, or rc are excluded from
+  `recommendedInstallLabels` and from npm `latest` selection. A prerelease
+  confirmation names the version and says it is outside the recommended list.
 
 ### Completion and lifecycle
 

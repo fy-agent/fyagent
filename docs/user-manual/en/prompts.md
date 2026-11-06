@@ -13,4 +13,6 @@ Disable a prompt before deleting it. Switching applications, selecting another e
 
 If a write completes but refreshing fails, reload the current content before deciding whether another write is needed.
 
+From qwen-code 0.25.1, `QWEN.md` and `AGENTS.md` in the parent directory of a repository are no longer read. Move shared rules into the repository. This page uses only the selected application's own prompt file. Parent-directory rule files are not treated as still in effect.
+
 [Back to manual](README.md)

@@ -132,6 +132,26 @@ pub(super) fn compare_semver(a: &str, b: &str) -> Option<std::cmp::Ordering> {
     Some(a.cmp_precedence(&b))
 }
 
+/// Alpha, beta, preview, nightly and rc labels are not a recommended install.
+/// A normal semver on the `next` dist-tag can still align with a local build
+/// that is already ahead of `latest`.
+pub(super) fn is_prerelease_install_label(value: &str) -> bool {
+    static MARKER: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(r"(?i)(?:^|[^0-9A-Za-z])(?:alpha|beta|preview|nightly|rc)(?:[^0-9A-Za-z]|$)")
+            .expect("prerelease marker")
+    });
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if let Ok(version) = semver::Version::parse(trimmed.trim_start_matches('v')) {
+        if !version.pre.is_empty() {
+            return true;
+        }
+    }
+    MARKER.is_match(trimmed)
+}
+
 pub(super) fn pick_latest_version(
     dist_tags: &serde_json::Map<String, serde_json::Value>,
     prerelease_tags: &[&str],
@@ -139,6 +159,9 @@ pub(super) fn pick_latest_version(
 ) -> Option<String> {
     use std::cmp::Ordering;
     let latest = dist_tags.get("latest").and_then(|v| v.as_str())?;
+    if is_prerelease_install_label(latest) {
+        return None;
+    }
     let local_ahead = local_version
         .and_then(|local| compare_semver(local, latest))
         .map(|ord| ord == Ordering::Greater)
@@ -150,6 +173,9 @@ pub(super) fn pick_latest_version(
     let mut best = latest.to_string();
     for tag in prerelease_tags {
         if let Some(candidate) = dist_tags.get(*tag).and_then(|v| v.as_str()) {
+            if is_prerelease_install_label(candidate) {
+                continue;
+            }
             if compare_semver(candidate, &best) == Some(Ordering::Greater) {
                 best = candidate.to_string();
             }
@@ -695,6 +721,54 @@ version = "0.21.5"
         assert_eq!(opencode_cli_line(Some("3.0.0-beta.1")), OpenCodeCliLine::V2);
         assert_eq!(OPENCODE_LEGACY_NPM_PACKAGE, "opencode-ai");
         assert_eq!(OPENCODE_V2_NPM_PACKAGE, "@opencode/cli");
+    }
+
+    #[test]
+    fn recommended_latest_skips_prerelease_labels() {
+        for label in [
+            "1.2.3-alpha.1",
+            "1.2.3-beta.1",
+            "0.45.0-nightly.1",
+            "2.0.0-preview.2",
+            "2.0.0-rc.1",
+            "v1.8.0-alpha",
+            "nightly",
+            "preview",
+            "OpenCode 1.18.27-beta",
+        ] {
+            assert!(is_prerelease_install_label(label), "{label}");
+        }
+        for label in [
+            "2.0.20",
+            "1.2.4",
+            "5.3.14.36279234",
+            "官方最新渠道",
+            "stable",
+        ] {
+            assert!(!is_prerelease_install_label(label), "{label}");
+        }
+
+        let nightly_latest = serde_json::json!({
+            "latest": "0.45.0-nightly.1",
+            "next": "0.46.0"
+        });
+        assert_eq!(
+            pick_latest_version(nightly_latest.as_object().unwrap(), &["next"], None),
+            None
+        );
+
+        let stable_latest = serde_json::json!({
+            "latest": "2.1.154",
+            "next": "2.1.160-nightly.1"
+        });
+        assert_eq!(
+            pick_latest_version(
+                stable_latest.as_object().unwrap(),
+                &["next"],
+                Some("2.1.170")
+            ),
+            Some("2.1.154".to_string())
+        );
     }
 
     mod bounded_metadata {
