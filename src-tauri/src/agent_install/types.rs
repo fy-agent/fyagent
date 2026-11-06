@@ -394,6 +394,12 @@ pub enum AgentReasonCode {
     DiskSpaceUnavailable,
     ApplicationRunning,
     InstallerArtifactUnavailable,
+    DownloadFailed,
+    DownloadTimeout,
+    ChecksumMismatch,
+    PackageParseFailed,
+    PackageIdentityMismatch,
+    PathNotWritable,
     InstallationVerificationFailed,
     InstallerUserCancelled,
     InstallerProcessUnobservable,
@@ -1011,6 +1017,15 @@ mod tests {
                 AgentReasonCode::HelperRemovalFailed,
                 "helper_removal_failed",
             ),
+            (AgentReasonCode::DownloadFailed, "download_failed"),
+            (AgentReasonCode::DownloadTimeout, "download_timeout"),
+            (AgentReasonCode::ChecksumMismatch, "checksum_mismatch"),
+            (AgentReasonCode::PackageParseFailed, "package_parse_failed"),
+            (
+                AgentReasonCode::PackageIdentityMismatch,
+                "package_identity_mismatch",
+            ),
+            (AgentReasonCode::PathNotWritable, "path_not_writable"),
         ];
         for (code, expected) in cases {
             assert_eq!(serde_json::to_value(code).unwrap(), json!(expected));

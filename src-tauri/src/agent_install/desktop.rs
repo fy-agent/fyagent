@@ -283,6 +283,7 @@ pub async fn download_windows_exe_to_job(
         ArtifactKind::Exe,
         cancellation,
         progress,
+        source.product,
     )
     .await
 }

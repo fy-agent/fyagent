@@ -6,19 +6,25 @@
 use futures::StreamExt;
 use url::Url;
 
+use super::diagnostics::{
+    agent_reason_for_package_preparation, diagnostic_from_installer, diagnostic_from_reason,
+    log_install_diagnostic,
+};
 use super::sources::{
     https_url_on_allowlist, AgentPlatform, PackageFormat, ResolvedDesktopSource,
     SourceResolveError, MAX_SOURCE_METADATA_BYTES, OPENCODE_DOWNLOAD_HOSTS,
     QODERWORK_REDIRECT_HOSTS, TRAEWORK_DOWNLOAD_HOSTS, WORKBUDDY_DOWNLOAD_HOSTS,
 };
-use super::types::AgentReasonCode;
+use super::types::{AgentActionJobStage, AgentReasonCode};
+use crate::codex_desktop::error::InstallerError;
 use crate::codex_desktop::{
     cancellation::{race_with_cancellation, Cancellation, NeverCancelled},
     download::{
         persist_transport_response, prepare_transport_download, resolve_redirect,
         DownloadProgressSink, DownloadedArtifact, HttpTransport, PersistDownloadError,
-        TransportResponse, MAX_REDIRECTS,
+        TransportError, TransportResponse, MAX_REDIRECTS,
     },
+    error::InstallerErrorCode,
     runtime::{InstallerTransportPurpose, RuntimeInstallerTransport},
     temp::JobTempDir,
     verify::ArtifactKind,
@@ -98,6 +104,7 @@ pub async fn download_macos_dmg_to_job(
         ArtifactKind::Dmg,
         cancellation,
         progress,
+        source.product,
     )
     .await
 }
@@ -109,6 +116,7 @@ pub async fn fetch_artifact_to_job(
     artifact_kind: ArtifactKind,
     cancellation: &dyn Cancellation,
     progress: &dyn DownloadProgressSink,
+    agent: crate::services::external_agents::AgentCatalogId,
 ) -> Result<DownloadedArtifact, AgentReasonCode> {
     let transport = RuntimeInstallerTransport::new(InstallerTransportPurpose::Download, USER_AGENT);
     fetch_artifact_to_job_with(
@@ -119,6 +127,7 @@ pub async fn fetch_artifact_to_job(
         artifact_kind,
         cancellation,
         progress,
+        agent,
     )
     .await
 }
@@ -131,17 +140,32 @@ async fn fetch_artifact_to_job_with(
     artifact_kind: ArtifactKind,
     cancellation: &dyn Cancellation,
     progress: &dyn DownloadProgressSink,
+    agent: crate::services::external_agents::AgentCatalogId,
 ) -> Result<DownloadedArtifact, AgentReasonCode> {
     https_url_on_allowlist(&url, hosts).map_err(download_source_reason)?;
-    let output = prepare_transport_download(job_directory, artifact_kind)
-        .map_err(|_| AgentReasonCode::InstallerArtifactUnavailable)?;
+    let output = match prepare_transport_download(job_directory, artifact_kind) {
+        Ok(output) => output,
+        Err(error) => {
+            log_package_installer_error(agent, job_directory, &error);
+            return Err(agent_reason_for_package_preparation(&error));
+        }
+    };
     let response = match get_allowlisted(transport, url, hosts, cancellation).await {
         Ok(response) => response,
         Err(error) => {
             drop(output);
             let _ =
                 job_directory.remove_artifact_if_present(&job_directory.part_path(artifact_kind));
-            return Err(download_source_reason(error));
+            let reason = download_source_reason(error);
+            log_install_diagnostic(&diagnostic_from_reason(
+                agent,
+                AgentActionJobStage::Downloading,
+                reason,
+                Some(job_directory.path()),
+                None,
+                Some("download request was rejected before the body"),
+            ));
+            return Err(reason);
         }
     };
     let result = persist_transport_response(
@@ -166,11 +190,42 @@ async fn fetch_artifact_to_job_with(
                 job_directory.remove_artifact_if_present(&job_directory.final_path(artifact_kind));
             Err(match error {
                 PersistDownloadError::Cancelled => AgentReasonCode::Cancelled,
-                PersistDownloadError::Transport(_) => AgentReasonCode::SourceNotVerified,
-                PersistDownloadError::Installer(_) => AgentReasonCode::InstallerArtifactUnavailable,
+                PersistDownloadError::Transport(error) => {
+                    let installer = installer_from_transport(&error);
+                    log_package_installer_error(agent, job_directory, &installer);
+                    agent_reason_for_package_preparation(&installer)
+                }
+                PersistDownloadError::Installer(error) => {
+                    log_package_installer_error(agent, job_directory, &error);
+                    agent_reason_for_package_preparation(&error)
+                }
             })
         }
     }
+}
+
+fn log_package_installer_error(
+    agent: crate::services::external_agents::AgentCatalogId,
+    job_directory: &JobTempDir,
+    error: &InstallerError,
+) {
+    log_install_diagnostic(&diagnostic_from_installer(
+        agent,
+        AgentActionJobStage::Downloading,
+        error,
+        Some(job_directory.path()),
+    ));
+}
+
+fn installer_from_transport(error: &TransportError) -> InstallerError {
+    let code = if error.is_timeout() {
+        InstallerErrorCode::DownloadTimeout
+    } else if error.is_redirect_rejected() {
+        InstallerErrorCode::RedirectRejected
+    } else {
+        InstallerErrorCode::DownloadFailed
+    };
+    InstallerError::new(code).with_diagnostic_message(error.diagnostic())
 }
 
 fn download_source_reason(error: SourceResolveError) -> AgentReasonCode {
@@ -451,6 +506,7 @@ mod tests {
             ArtifactKind::Dmg,
             &NeverCancelled,
             &progress,
+            AgentCatalogId::QoderWork,
         )
         .await
         .unwrap();
@@ -489,6 +545,7 @@ mod tests {
             ArtifactKind::Dmg,
             &NeverCancelled,
             &progress,
+            AgentCatalogId::QoderWork,
         )
         .await
         .unwrap();
