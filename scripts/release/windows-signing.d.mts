@@ -62,6 +62,15 @@ export interface SignerConfiguration {
   expectedCertificateSha256: string;
 }
 
+export interface CertumSimplySignCredential {
+  provider: "certum-simplysign";
+  timestampUrl: "http://time.certum.pl";
+  certificateSha1: string;
+  signtoolPath: string | null;
+  fileDigest: "sha256";
+  timestampDigest: "sha256";
+}
+
 export const WINDOWS_SIGNING_ASSET_SCHEMA: "fyagent-windows-signing-asset/v1";
 export const WINDOWS_SIGNING_STATUS_SCHEMA: "fyagent-windows-signing-status/v1";
 export const WINDOWS_SIGNING_STATUS_NAME: "signing-status.json";
@@ -75,6 +84,14 @@ export function expectedWindowsInstallerName(
 export function resolveSignerConfiguration(
   environment: Record<string, string | undefined>,
 ): SignerConfiguration | null;
+
+export const CERTUM_SIMPLYSIGN_ADAPTER_NAME: "windows-signer-certum-simplysign.ps1";
+export const CERTUM_SIMPLYSIGN_PROVIDER: "certum-simplysign";
+export const CERTUM_SIMPLYSIGN_TIMESTAMP_URL: "http://time.certum.pl";
+
+export function parseCertumSimplySignCredential(
+  value: string | undefined | null,
+): CertumSimplySignCredential;
 
 export function parsePeImage(buffer: Buffer): {
   machine: number;

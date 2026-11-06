@@ -25,6 +25,18 @@ const SIGNER_REQUIRED_CONFIGURATION_NAMES = Object.freeze([
   "FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256",
 ]);
 const SIGNER_CREDENTIAL_NAME = "FYAGENT_WINDOWS_SIGNER_CREDENTIAL";
+export const CERTUM_SIMPLYSIGN_ADAPTER_NAME =
+  "windows-signer-certum-simplysign.ps1";
+export const CERTUM_SIMPLYSIGN_PROVIDER = "certum-simplysign";
+export const CERTUM_SIMPLYSIGN_TIMESTAMP_URL = "http://time.certum.pl";
+const CERTUM_CREDENTIAL_MAX_LENGTH = 8192;
+const CERTUM_THUMBPRINT_PATTERN = /^[0-9a-f]{40}$/;
+const CERTUM_REQUIRED_CREDENTIAL_KEYS = Object.freeze([
+  "certificateSha1",
+  "provider",
+  "timestampUrl",
+]);
+const CERTUM_OPTIONAL_CREDENTIAL_KEYS = Object.freeze(["signtoolPath"]);
 const SIGNER_CONFIGURATION_NAMES = Object.freeze([
   ...SIGNER_REQUIRED_CONFIGURATION_NAMES,
   SIGNER_CREDENTIAL_NAME,
@@ -213,6 +225,115 @@ export function resolveSignerConfiguration(environment) {
     expectedPublisher,
     expectedCertificateSha256,
   };
+}
+
+function windowsAbsoluteSigntoolPath(value) {
+  if (typeof value !== "string") return false;
+  const drive = /^[A-Za-z]:[\\/]/.test(value);
+  const unc = /^\\\\[^\\]+\\/.test(value);
+  const segments = value.split(/[\\/]/);
+  return (
+    (drive || unc) &&
+    !segments.includes("..") &&
+    path.win32.basename(value).toLowerCase() === "signtool.exe"
+  );
+}
+
+export function parseCertumSimplySignCredential(value) {
+  if (value === undefined || value === null || value === "") {
+    throw new Error(
+      "FYAGENT_WINDOWS_SIGNER_CREDENTIAL is required; refusing to leave the artifact unsigned",
+    );
+  }
+  assertSafeText(
+    value,
+    "FYAGENT_WINDOWS_SIGNER_CREDENTIAL",
+    CERTUM_CREDENTIAL_MAX_LENGTH,
+  );
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error(
+      "FYAGENT_WINDOWS_SIGNER_CREDENTIAL must be a JSON object",
+    );
+  }
+  assert(
+    parsed !== null && typeof parsed === "object" && !Array.isArray(parsed),
+    "FYAGENT_WINDOWS_SIGNER_CREDENTIAL must be a JSON object",
+  );
+  for (const key of Object.keys(parsed)) {
+    if (
+      !CERTUM_REQUIRED_CREDENTIAL_KEYS.includes(key) &&
+      !CERTUM_OPTIONAL_CREDENTIAL_KEYS.includes(key)
+    ) {
+      throw new Error(
+        `FYAGENT_WINDOWS_SIGNER_CREDENTIAL contains an unexpected field: ${key}`,
+      );
+    }
+  }
+  for (const key of CERTUM_REQUIRED_CREDENTIAL_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(parsed, key)) {
+      throw new Error(
+        `FYAGENT_WINDOWS_SIGNER_CREDENTIAL is missing ${key}`,
+      );
+    }
+  }
+  assert(
+    parsed.provider === CERTUM_SIMPLYSIGN_PROVIDER,
+    "FYAGENT_WINDOWS_SIGNER_CREDENTIAL provider must be certum-simplysign",
+  );
+  assert(
+    parsed.timestampUrl === CERTUM_SIMPLYSIGN_TIMESTAMP_URL,
+    "FYAGENT_WINDOWS_SIGNER_CREDENTIAL timestampUrl must be the Certum RFC 3161 endpoint http://time.certum.pl",
+  );
+  assert(
+    typeof parsed.certificateSha1 === "string" &&
+      CERTUM_THUMBPRINT_PATTERN.test(parsed.certificateSha1),
+    "FYAGENT_WINDOWS_SIGNER_CREDENTIAL certificateSha1 must be a 40-character SHA-1 thumbprint",
+  );
+  let signtoolPath = null;
+  if (Object.prototype.hasOwnProperty.call(parsed, "signtoolPath")) {
+    assert(
+      windowsAbsoluteSigntoolPath(parsed.signtoolPath),
+      "FYAGENT_WINDOWS_SIGNER_CREDENTIAL signtoolPath must be an absolute path to signtool.exe",
+    );
+    signtoolPath = parsed.signtoolPath;
+  }
+  return {
+    provider: CERTUM_SIMPLYSIGN_PROVIDER,
+    timestampUrl: CERTUM_SIMPLYSIGN_TIMESTAMP_URL,
+    certificateSha1: parsed.certificateSha1,
+    signtoolPath,
+    fileDigest: "sha256",
+    timestampDigest: "sha256",
+  };
+}
+
+function adapterSelectsCertumSimplySign(adapterPath) {
+  let bytes;
+  try {
+    bytes = readFileSync(adapterPath);
+  } catch (error) {
+    if (error && error.code === "ENOENT") return false;
+    throw error;
+  }
+  const baseName = path.win32.basename(adapterPath).toLowerCase();
+  if (baseName === CERTUM_SIMPLYSIGN_ADAPTER_NAME) return true;
+  return bytes.equals(
+    readFileSync(path.join(scriptDirectory, CERTUM_SIMPLYSIGN_ADAPTER_NAME)),
+  );
+}
+
+function assertCertumAdapterCredential(adapterPath, environment) {
+  if (!adapterSelectsCertumSimplySign(adapterPath)) return;
+  const credential = Object.prototype.hasOwnProperty.call(
+    environment,
+    SIGNER_CREDENTIAL_NAME,
+  )
+    ? environment[SIGNER_CREDENTIAL_NAME]
+    : undefined;
+  parseCertumSimplySignCredential(credential);
 }
 
 export function parsePeImage(buffer) {
@@ -551,6 +672,12 @@ function runAuthenticodeProbe(assetPath) {
   return evidence;
 }
 
+// The in-repo Certum / SimplySign adapter is
+// scripts/release/windows-signer-certum-simplysign.ps1. CI does not execute
+// that checkout path: sign-windows-formal base64-decodes the adapter secret
+// onto a temporary absolute .ps1 and sets FYAGENT_WINDOWS_SIGNER_ADAPTER.
+// Repository variable FYAGENT_WINDOWS_SIGNING_MODE stays unsigned until
+// docs/release/release-identity.md is filled in.
 function runSignerAdapter({ adapterPath, assetPath, architecture }) {
   assert(
     process.platform === "win32",
@@ -602,6 +729,12 @@ export function createAssetSigningRecord(
     `Windows installer name must be ${expectedName}`,
   );
   const signerConfiguration = resolveSignerConfiguration(environment);
+  if (signerConfiguration !== null) {
+    assertCertumAdapterCredential(
+      signerConfiguration.adapterPath,
+      environment,
+    );
+  }
   const probeAuthenticode =
     dependencies.probeAuthenticode ?? runAuthenticodeProbe;
   const invokeSigner = dependencies.invokeSigner ?? runSignerAdapter;
@@ -677,6 +810,12 @@ export function transformWindowsCandidate(
     `Windows installer name must be ${expectedName}`,
   );
   const signerConfiguration = resolveSignerConfiguration(environment);
+  if (signerConfiguration !== null) {
+    assertCertumAdapterCredential(
+      signerConfiguration.adapterPath,
+      environment,
+    );
+  }
   const probeAuthenticode =
     dependencies.probeAuthenticode ?? runAuthenticodeProbe;
   const invokeSigner = dependencies.invokeSigner ?? runSignerAdapter;

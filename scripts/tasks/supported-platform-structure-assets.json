@@ -15,7 +15,7 @@
     ],
     [
       "scripts/release/windows-signing.mjs",
-      "d2115d6042fa83844b221766819c087a95e8dc547f729011bb6f571d96db4a3b"
+      "fdd6d0590efb8e4eeb1f87f33c45d4057a9e8bab5d5ff82616a321c677d06a3a"
     ],
     [
       "scripts/tasks/host-native.mjs",
