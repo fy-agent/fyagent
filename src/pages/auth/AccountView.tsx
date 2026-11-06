@@ -31,6 +31,7 @@ import {
   accountPageConnectionActions,
   connectableConnectionsForAccount,
   linkedConnectionsForAccount,
+  connectionPhaseCopy,
   connectionStatusPresentation,
   loginRequiredConnectionsForAccount,
   formatAuthenticatedAt,
@@ -100,6 +101,7 @@ function AccountConnection({
     connection.authStatus,
     connection.reasonCodes,
   );
+  const phase = connectionPhaseCopy(connection);
   const consumerLabel = managedAuthConsumerLabel(connection.consumer);
   const targetLabel = connection.targetLabel?.trim();
   return (
@@ -113,6 +115,10 @@ function AccountConnection({
         </div>
         <StatusBadge {...status} />
       </div>
+      <p className="fy-auth-phase">
+        <strong>{phase.title}</strong>
+        {phase.next}
+      </p>
       <dl className="fy-feature-definition">
         <DefinitionRow label="当前请求">
           {requestModeLabel(
@@ -301,7 +307,12 @@ function AccountDetail({
           </div>
         </div>
         {linkedConnections.length === 0 ? (
-          <InlineNotice>此账号尚未连接任何软件。</InlineNotice>
+          <InlineNotice>
+            <span>此账号尚未连接任何软件。</span>
+            <span>
+              账号已登录。下一步：在下方选择软件并连接。登录不会自动连接。
+            </span>
+          </InlineNotice>
         ) : (
           <div className="fy-auth-connection-grid">
             {linkedConnections.map((connection) => (
@@ -532,9 +543,15 @@ export function AccountView({
                     account.health === "ready"
                       ? consumers.length > 0
                         ? `已连接：${[...new Set(consumers)].join("、")}`
-                        : linkedConnections.length > 0
-                          ? summarizeConnections(linkedConnections).label
-                          : "尚未连接软件"
+                        : linkedConnections.some(
+                              (connection) =>
+                                connection.pendingRestart ||
+                                connection.authStatus === "pending_restart",
+                            )
+                          ? "配置已写入，等待重启"
+                          : linkedConnections.length > 0
+                            ? summarizeConnections(linkedConnections).label
+                            : "账号已登录，尚未连接软件"
                       : health.label
                   }
                   trailing={
