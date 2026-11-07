@@ -142,7 +142,7 @@ type Input = ReturnType<typeof pair>;
 function admit(
   input: Input,
   change: {
-    manifest?: Input["manifest"];
+    manifest?: object;
     run?: ReturnType<typeof releaseRun>;
     treePaths?: string[];
     rawX64?: Buffer;
