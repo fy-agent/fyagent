@@ -844,6 +844,14 @@ jobs:
           }
           "FYAGENT_WINDOWS_CANDIDATE=$assetPath" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
+      # Certum / SimplySign adapter: scripts/release/windows-signer-certum-simplysign.ps1
+      # Enable provider only after docs/release/release-identity.md has no placeholders.
+      # Store that script's exact bytes in the adapter secret. This job writes them
+      # to a temporary absolute .ps1 and assigns FYAGENT_WINDOWS_SIGNER_ADAPTER.
+      # The adapter requires FYAGENT_WINDOWS_SIGNER_CREDENTIAL and an RFC 3161
+      # timestamp; a missing credential fails closed. The repository signing mode
+      # stays unsigned until that checklist is complete. Do not add a parallel
+      # Azure Trusted Signing workflow.
       - name: Produce untrusted formal Windows candidate
         shell: pwsh
         env:
