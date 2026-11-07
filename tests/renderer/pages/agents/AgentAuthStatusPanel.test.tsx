@@ -271,6 +271,24 @@ describe("AgentAuthStatusPanel", () => {
     expect(getSession).toHaveBeenCalledWith(SESSION_ID);
   });
 
+  it("explains a spinning official login window while waiting", async () => {
+    const before = account("logged_out");
+    const waiting = session(before, {
+      stage: "awaiting_user",
+      canStopWaiting: true,
+    });
+    renderPanel("claude-code", {
+      getObservation: vi.fn(async () => before),
+      getActiveSession: vi.fn(async () => waiting),
+      startSession: vi.fn(),
+      getSession: vi.fn(async () => waiting),
+      stopWaiting: vi.fn(),
+    });
+
+    expect(await screen.findByText("等待你完成官方认证")).toBeVisible();
+    expect(screen.getByText(/一直转圈/)).toBeVisible();
+  });
+
   it("starts recovery when directory authority becomes enabled", async () => {
     const before = account("logged_out");
     const getActiveSession = vi.fn(async () => null);

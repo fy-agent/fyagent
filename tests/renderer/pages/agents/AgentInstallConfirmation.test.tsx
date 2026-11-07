@@ -107,4 +107,27 @@ describe("Agent install space confirmation", () => {
       screen.getByText(/按已核实 npm 包及依赖大小的 3 倍预留 FyAgent 保守预算/),
     ).toHaveTextContent("这是预留空间，不是厂商保证的完整峰值");
   });
+
+  it("keeps a prerelease out of the recommended install label", () => {
+    show({
+      ...installPreflightFixture({ agentId: "opencode", action: "install" }),
+      versionOrChannel: "2.0.20-nightly.1",
+      platform: "windows",
+    });
+    expect(
+      screen.getByText(
+        /QoderWork · 2\.0\.20-nightly\.1（预发版，不在推荐安装名单）/,
+      ),
+    ).toBeVisible();
+    expect(screen.getByText(/环境变量/)).toBeVisible();
+  });
+
+  it("keeps a stable version on the recommended install label", () => {
+    show({
+      ...installPreflightFixture({ agentId: "opencode", action: "install" }),
+      versionOrChannel: "2.0.20",
+    });
+    expect(screen.getByText(/· 2\.0\.20/)).toBeVisible();
+    expect(screen.queryByText(/不在推荐安装名单/)).not.toBeInTheDocument();
+  });
 });

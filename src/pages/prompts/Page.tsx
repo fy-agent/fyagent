@@ -69,6 +69,8 @@ import {
   usePersistentSearchParams,
   useStickyVisibleValue,
 } from "../../shared/ui/usePersistentSearchParams";
+import { PARENT_RULE_NOTICE } from "../../domain/first-install-path";
+
 import { PresetBrowser } from "./PresetBrowser";
 import { FDE_PROMPT_PRESETS, type PromptPreset } from "./presets";
 
@@ -708,6 +710,7 @@ function PromptsWorkspace({
           </div>
         )}
       </header>
+      <InlineNotice tone="info">{PARENT_RULE_NOTICE}</InlineNotice>
 
       {writeError && <InlineNotice tone="error">{writeError}</InlineNotice>}
       {refreshWarning && (

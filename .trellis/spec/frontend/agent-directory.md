@@ -197,7 +197,10 @@ and must not describe nonzero free capacity as sufficient. The parser rejects
 unsafe/negative/mismatched budgets, insufficient available bytes, and wrong
 runtime/basis combinations. Confirmation repeats the native space check. A
 separate confirmation shows software/version or channel, actual target, planned
-change, necessary runtime and available space. Single-target installs use this
+change, necessary runtime and available space. A version label containing
+alpha, beta, preview, nightly, or rc is named and marked outside the
+recommended install list. Windows confirmation includes the closed
+login-spinner and stale-environment hints. Single-target installs use this
 same confirmation. Dismissing it never starts a job. Confirm forwards the exact
 preflight request without rereading or silently replacing the target. A changed
 revision requires a new selection and preflight. After confirmation the dialog

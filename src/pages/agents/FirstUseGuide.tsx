@@ -22,6 +22,7 @@ import {
   type GuidePurpose,
   startingPresetForAgent,
 } from "./firstUseRecommendations";
+import { FirstInstallPathPanel } from "./FirstInstallPathPanel";
 import "./FirstUseGuide.css";
 
 export type AgentConfigIntent = "keep" | "replace" | "inspect";
@@ -364,6 +365,7 @@ export function FirstUseGuide({ entries, onConfigure }: FirstUseGuideProps) {
           </Button>
         )}
       </footer>
+      <FirstInstallPathPanel />
 
       <Dialog
         open={existingConfigState !== null}
