@@ -64,6 +64,53 @@
   font-weight: 650;
 }
 
+.fy-auth-results {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.fy-auth-results-note,
+.fy-auth-phase,
+.fy-auth-result-line,
+.fy-auth-result-detail {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.fy-auth-phase strong,
+.fy-auth-result-line strong {
+  margin-right: 6px;
+  color: var(--fy-text);
+  font-weight: 650;
+}
+
+.fy-auth-result {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--fy-border);
+  border-radius: var(--fy-radius-control);
+  background: var(--fy-surface-inset);
+}
+
+.fy-auth-result-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.fy-auth-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .fy-auth-session-banner {
   display: flex;
   align-items: center;

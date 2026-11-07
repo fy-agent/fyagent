@@ -139,12 +139,7 @@ export function XaiSubscriptionSection(props: Props) {
       ) {
         setModelIds([]);
         setManualModel(true);
-        setNotice({
-          tone: "info",
-          title: "填写订阅模型 ID",
-          description:
-            "填写该 ChatGPT 账号在 Codex 中可用的模型 ID，实际可用性以服务返回为准。",
-        });
+        setNotice(null);
         return;
       }
       const result =
@@ -160,13 +155,24 @@ export function XaiSubscriptionSection(props: Props) {
         description:
           "这些选项来自 Grok CLI 官方示例，并非你的账号模型名单。请选择一个，或手动填写订阅支持的模型 ID；实际可用性以服务返回为准。",
       });
-    } catch {
+    } catch (error) {
       if (mounted.current) {
         setManualModel(true);
+        const raw = error instanceof Error ? error.message.toLowerCase() : "";
+        const unavailable = raw.includes("unavailable");
+        const invalid = raw.includes("invalid");
         setNotice({
           tone: "error",
-          title: "无法加载模型选项",
-          description: "请检查账号登录状态。也可以手动填写订阅支持的模型 ID。",
+          title: unavailable
+            ? "这个订阅账号当前不可用"
+            : invalid
+              ? "模型请求无效"
+              : "无法加载模型选项",
+          description: unavailable
+            ? "下一步：到账号与认证检查登录状态，或在下方手动填写模型 ID。"
+            : invalid
+              ? "下一步：在下方手动填写订阅支持的模型 ID。实际可用性以服务返回为准。"
+              : "请检查账号登录状态。也可以手动填写订阅支持的模型 ID。",
         });
       }
     } finally {
@@ -312,8 +318,11 @@ export function XaiSubscriptionSection(props: Props) {
   return (
     <ModelsSection title="使用账号订阅（实验性）" ariaLabel="账号订阅设置">
       <p className="fy-models-muted">
-        使用订阅时，请保持 FyAgent
-        在后台运行；完全退出后会停止转发。账号是否支持调用及额度使用，以服务返回为准。
+        这里是账号订阅的本机转发，不是 Codex 原生官方登录。客户端可能仍显示 API
+        或 custom。使用订阅时，请保持 FyAgent
+        在后台运行；完全退出后会停止转发。若要让 Codex
+        使用官方账号，请到账号与认证连接，并完全退出后重新打开
+        Codex。账号是否支持调用及额度使用，以服务返回为准。
       </p>
       {props.app !== "opencode" ? (
         <ProviderSubscriptionRestore
@@ -389,6 +398,13 @@ export function XaiSubscriptionSection(props: Props) {
           ))}
         </fieldset>
       ) : null}
+      {selected?.provider === "openai" ? (
+        <InlineNotice tone="info">
+          ChatGPT
+          官方账号不能自动获取模型列表。下一步：填写该账号在目标软件里可用的模型
+          ID。这不会向模型目录发送登录凭据。
+        </InlineNotice>
+      ) : null}
       <div className="fy-models-inline-fields">
         <Button disabled={locked} onClick={() => openAuth()}>
           管理订阅账号
@@ -400,7 +416,7 @@ export function XaiSubscriptionSection(props: Props) {
           刷新订阅账号
         </Button>
         <Button
-          disabled={locked || !accountReady || selected?.provider !== "xai"}
+          disabled={locked || !accountReady}
           onClick={() => void fetchModels()}
         >
           {busy === "fetch" ? "加载中…" : "查看模型选项"}

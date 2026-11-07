@@ -362,7 +362,34 @@ describe("Windows external-installer state copy", () => {
     );
     expect(jobStageCopy("incomplete")).toBe("安装结果待检查");
     expect(reasonCopy("installer_user_cancelled")).toContain("取消");
-    expect(reasonCopy("installer_artifact_unavailable")).toContain("磁盘空间");
+    expect(reasonCopy("installer_artifact_unavailable")).toContain(
+      "fyagent.log",
+    );
+    expect(reasonCopy("installer_artifact_unavailable")).not.toContain(
+      "请检查磁盘空间和文件权限",
+    );
+    expect(reasonCopy("download_failed")).toContain("下载失败");
+    expect(reasonCopy("download_timeout")).toContain("下载超时");
+    expect(reasonCopy("insufficient_disk_space")).toContain("磁盘空间不足");
+    expect(reasonCopy("permission_denied")).toContain("没有权限");
+    expect(reasonCopy("path_not_writable")).toContain("不可写");
+    expect(reasonCopy("checksum_mismatch")).toContain("校验失败");
+    expect(reasonCopy("package_parse_failed")).toContain("无法解析");
+    expect(reasonCopy("package_identity_mismatch")).toContain("身份");
+    for (const code of [
+      "download_failed",
+      "download_timeout",
+      "insufficient_disk_space",
+      "permission_denied",
+      "path_not_writable",
+      "checksum_mismatch",
+      "package_parse_failed",
+      "package_identity_mismatch",
+      "installer_artifact_unavailable",
+    ] as const) {
+      expect(reasonCopy(code)).toContain("fyagent.log");
+      expect(reasonCopy(code)).not.toMatch(/[A-Za-z]:\\Users\\/u);
+    }
     expect(reasonCopy("installer_process_unobservable")).toContain(
       "无法读取其进度",
     );

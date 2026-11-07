@@ -5,6 +5,7 @@ mod auth_actions;
 mod auth_sessions;
 mod cli;
 mod desktop;
+mod diagnostics;
 mod fetch;
 mod inventory;
 mod jobs;
@@ -735,7 +736,14 @@ async fn run_desktop_install_job(
     }
     let job_directory = match JobTempRoot::for_current_process().create_job(&job_id) {
         Ok(directory) => directory,
-        Err(_) => {
+        Err(error) => {
+            // Log before any temp cleanup. This failure has no job directory yet.
+            diagnostics::log_install_diagnostic(&diagnostics::diagnostic_from_installer(
+                source.product,
+                AgentActionJobStage::Checking,
+                &error,
+                None,
+            ));
             let _ = jobs.transition(
                 &job_id,
                 AgentActionJobStage::Failed,
@@ -783,6 +791,7 @@ async fn run_desktop_install_job(
             return;
         }
         Err(reason) => {
+            // fetch_artifact_to_job already wrote the diagnostic line.
             let _ = job_directory.cleanup();
             let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
             return;
@@ -839,6 +848,15 @@ async fn run_desktop_install_job(
         )
     })
     .await;
+    if let Some(reason) = desktop_install_failure_reason(&deployment) {
+        log_agent_prepare_failure(
+            product,
+            AgentActionJobStage::Installing,
+            reason,
+            Some(job_directory.path()),
+            "desktop install did not finish",
+        );
+    }
     let cleanup_failed = job_directory.cleanup().is_err();
     match deployment {
         Ok(Ok(_)) if cleanup_failed => {
@@ -894,11 +912,25 @@ async fn run_windows_desktop_install_job(
     cancel: Arc<AtomicBool>,
 ) {
     if let Err(reason) = windows_deployment_expectation(target) {
+        log_agent_prepare_failure(
+            source.product,
+            AgentActionJobStage::Checking,
+            reason,
+            None,
+            "windows deployment target rejected",
+        );
         let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
         return;
     }
     let baseline = capture_desktop_installation_baseline(source.product);
     if !baseline.complete() {
+        log_agent_prepare_failure(
+            source.product,
+            AgentActionJobStage::Checking,
+            AgentReasonCode::NativeProjectionUnavailable,
+            None,
+            "windows installation baseline incomplete",
+        );
         let _ = jobs.transition(
             &job_id,
             AgentActionJobStage::Failed,
@@ -908,7 +940,13 @@ async fn run_windows_desktop_install_job(
     }
     let job_directory = match JobTempRoot::for_current_process().create_job(&job_id) {
         Ok(directory) => directory,
-        Err(_) => {
+        Err(error) => {
+            diagnostics::log_install_diagnostic(&diagnostics::diagnostic_from_installer(
+                source.product,
+                AgentActionJobStage::Checking,
+                &error,
+                None,
+            ));
             let _ = jobs.transition(
                 &job_id,
                 AgentActionJobStage::Failed,
@@ -948,6 +986,7 @@ async fn run_windows_desktop_install_job(
             return;
         }
         Err(reason) => {
+            // The download owner already logged code, message_key, and job_stage.
             let _ = job_directory.cleanup();
             let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
             return;
@@ -958,6 +997,13 @@ async fn run_windows_desktop_install_job(
     let helper_product = match agent_helper_product(source.product) {
         Ok(product) => product,
         Err(reason) => {
+            log_agent_prepare_failure(
+                source.product,
+                AgentActionJobStage::Staging,
+                reason,
+                Some(artifact.path()),
+                "windows installer product rejected",
+            );
             drop(artifact);
             let _ = job_directory.cleanup();
             let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
@@ -970,6 +1016,13 @@ async fn run_windows_desktop_install_job(
     let cancel_for_install = Arc::clone(&cancel);
     let outcome = tokio::task::spawn_blocking(move || {
         if let Err(reason) = verify_windows_exe_source(&source_for_install, &artifact) {
+            log_agent_prepare_failure(
+                source_for_install.product,
+                AgentActionJobStage::Staging,
+                reason,
+                Some(artifact.path()),
+                "windows installer verification failed",
+            );
             return WindowsInstallerOutcome::Rejected(reason);
         }
         if jobs_for_install.is_cancelled(&cancel_for_install) {
@@ -1002,7 +1055,15 @@ async fn run_windows_desktop_install_job(
                 &artifact,
                 progress,
             )
-            .map_err(map_windows_installer_error),
+            .map_err(|error| {
+                diagnostics::log_install_diagnostic(&diagnostics::diagnostic_from_installer(
+                    source_for_install.product,
+                    AgentActionJobStage::Installing,
+                    &error,
+                    Some(artifact.path()),
+                ));
+                map_windows_installer_error(error)
+            }),
         )
     })
     .await;
@@ -1010,6 +1071,13 @@ async fn run_windows_desktop_install_job(
     let outcome = match outcome {
         Ok(outcome) => outcome,
         Err(_) => {
+            log_agent_prepare_failure(
+                source.product,
+                AgentActionJobStage::Installing,
+                AgentReasonCode::RecoveryRequired,
+                Some(job_directory.path()),
+                "windows installer task stopped before completion",
+            );
             let _ = job_directory.cleanup();
             let _ = jobs.transition(
                 &job_id,
@@ -1020,6 +1088,13 @@ async fn run_windows_desktop_install_job(
         }
     };
     if job_directory.cleanup().is_err() {
+        log_agent_prepare_failure(
+            source.product,
+            AgentActionJobStage::Installing,
+            AgentReasonCode::RecoveryRequired,
+            None,
+            "installer temp cleanup failed after the attempt",
+        );
         let stage = if matches!(&outcome, WindowsInstallerOutcome::Invoked(_)) {
             AgentActionJobStage::Incomplete
         } else {
@@ -1079,6 +1154,33 @@ fn agent_helper_product(
     }
 }
 
+fn desktop_install_failure_reason<T>(
+    deployment: &Result<Result<T, AgentReasonCode>, tokio::task::JoinError>,
+) -> Option<AgentReasonCode> {
+    match deployment {
+        Ok(Err(reason)) if !matches!(reason, AgentReasonCode::Cancelled) => Some(*reason),
+        Err(_) => Some(AgentReasonCode::RecoveryRequired),
+        _ => None,
+    }
+}
+
+fn log_agent_prepare_failure(
+    agent: AgentCatalogId,
+    job_stage: AgentActionJobStage,
+    reason: AgentReasonCode,
+    target: Option<&std::path::Path>,
+    detail: &str,
+) {
+    diagnostics::log_install_diagnostic(&diagnostics::diagnostic_from_reason(
+        agent,
+        job_stage,
+        reason,
+        target,
+        None,
+        Some(detail),
+    ));
+}
+
 #[cfg(target_os = "windows")]
 fn map_windows_installer_error(
     error: crate::codex_desktop::error::InstallerError,
@@ -1092,49 +1194,7 @@ fn map_windows_installer_error_parts(
     code: InstallerErrorCode,
     platform_error_code: Option<&str>,
 ) -> AgentReasonCode {
-    match platform_error_code {
-        Some("agent_installer_user_cancelled") => return AgentReasonCode::InstallerUserCancelled,
-        Some("agent_installer_process_unobservable") => {
-            return AgentReasonCode::InstallerProcessUnobservable
-        }
-        Some("agent_installer_timed_out") => return AgentReasonCode::InstallerTimedOut,
-        Some("agent_installer_exited_nonzero") => return AgentReasonCode::InstallerExitedNonzero,
-        Some("insufficient_disk_space") => return AgentReasonCode::InsufficientDiskSpace,
-        Some("tool_candidate_conflict") => return AgentReasonCode::CandidateConflict,
-        Some("tool_target_changed") => return AgentReasonCode::TargetChanged,
-        _ => {}
-    }
-    match code {
-        InstallerErrorCode::DownloadCancelled => AgentReasonCode::Cancelled,
-        InstallerErrorCode::DownloadFailed
-        | InstallerErrorCode::DownloadTimeout
-        | InstallerErrorCode::InsufficientDiskSpace
-        | InstallerErrorCode::PackageParseFailed
-        | InstallerErrorCode::PackageIdentityMismatch
-        | InstallerErrorCode::ChecksumMismatch => AgentReasonCode::InstallerArtifactUnavailable,
-        InstallerErrorCode::PackageArchitectureMismatch
-        | InstallerErrorCode::ArchitectureUnsupported => AgentReasonCode::PlatformUnsupported,
-        InstallerErrorCode::SourceUnavailable
-        | InstallerErrorCode::ReleaseMetadataInvalid
-        | InstallerErrorCode::ReleaseNotAvailable
-        | InstallerErrorCode::RedirectRejected
-        | InstallerErrorCode::PackageSignatureInvalid => AgentReasonCode::SourceNotVerified,
-        InstallerErrorCode::MetadataChanged => AgentReasonCode::RefreshRequired,
-        InstallerErrorCode::WindowsPackageInUse => AgentReasonCode::ApplicationRunning,
-        InstallerErrorCode::WindowsDeploymentBlocked
-        | InstallerErrorCode::WindowsDependencyMissing => AgentReasonCode::AuthorizationRequired,
-        InstallerErrorCode::WindowsDeploymentFailed
-        | InstallerErrorCode::LaunchFailed
-        | InstallerErrorCode::InternalError => AgentReasonCode::InteractiveUserUnavailable,
-        InstallerErrorCode::MultipleInstallations
-        | InstallerErrorCode::InstallationVerifyFailed => {
-            AgentReasonCode::InstallationVerificationFailed
-        }
-        InstallerErrorCode::JobAlreadyRunning | InstallerErrorCode::JobNotFound => {
-            AgentReasonCode::OperationConflict
-        }
-        _ => AgentReasonCode::ExecutorNotImplemented,
-    }
+    diagnostics::agent_reason_from_installer_parts(code, platform_error_code)
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -1496,7 +1556,11 @@ mod tests {
         );
         assert_eq!(
             map_windows_installer_error_parts(InstallerErrorCode::DownloadFailed, None),
-            AgentReasonCode::InstallerArtifactUnavailable
+            AgentReasonCode::DownloadFailed
+        );
+        assert_eq!(
+            map_windows_installer_error_parts(InstallerErrorCode::ChecksumMismatch, None),
+            AgentReasonCode::ChecksumMismatch
         );
         assert_eq!(
             map_windows_installer_error_parts(InstallerErrorCode::InstallationVerifyFailed, None,),
