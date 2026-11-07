@@ -14,6 +14,7 @@ const CI_SAFE_TESTS = Object.freeze([
   "tests/downloadManifest.test.ts",
   "tests/releaseAssets.test.ts",
   "tests/windowsNsisContract.test.ts",
+  "tests/windowsOfflineHandoff.test.ts",
   "tests/windowsSetupIcon.test.ts",
   "tests/windowsSigningAdapter.test.ts",
   "tests/writePlatformMetadata.test.ts",

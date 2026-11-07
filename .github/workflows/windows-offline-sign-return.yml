@@ -1,0 +1,186 @@
+name: Windows offline sign return
+
+# Trusted-main dispatch only. AIMaster signs the raw installers already
+# uploaded by one completed Release run, then this workflow re-downloads those
+# artifacts and runs the existing seal. It does not publish and it does not
+# read GitHub Release attachments or signer credentials.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed Release run id that uploaded raw-windows-x64 and raw-windows-arm64
+        required: true
+        type: string
+      source_run_attempt:
+        description: Attempt number of that Release run
+        required: true
+        type: string
+      source_sha:
+        description: Lowercase commit SHA of that Release run
+        required: true
+        type: string
+      return_sha:
+        description: Separate commit whose tree is only signing-return.json and the two signed installers
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: windows-offline-sign-return-${{ inputs.source_run_id }}-${{ inputs.source_run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  seal-offline-windows:
+    name: Seal offline Windows signatures
+    if: github.ref == 'refs/heads/main' && github.repository == 'fy-agent/fyagent'
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout trusted main workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: main
+
+      - name: Setup exact Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Validate offline dispatch
+        id: dispatch
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          RETURN_SHA: ${{ inputs.return_sha }}
+        run: |
+          set -euo pipefail
+          [ "$GITHUB_REF" = "refs/heads/main" ]
+          [ "$GITHUB_REPOSITORY" = "fy-agent/fyagent" ]
+          [ "$GITHUB_WORKFLOW" = "Windows offline sign return" ]
+          node scripts/release/windows-offline-handoff.mjs validate-dispatch \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Checkout signed return tree
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ steps.dispatch.outputs.return_sha }}
+          path: return-tree
+
+      - name: Download raw x64 installer from the Release run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: raw-windows-x64
+          path: raw/x64
+          run-id: ${{ steps.dispatch.outputs.source_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download raw arm64 installer from the Release run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: raw-windows-arm64
+          path: raw/arm64
+          run-id: ${{ steps.dispatch.outputs.source_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Read the source Release run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ steps.dispatch.outputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/fy-agent/fyagent/actions/runs/${SOURCE_RUN_ID}" > source-run.json
+
+      - name: Admit the bound offline return
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.dispatch.outputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.dispatch.outputs.source_run_attempt }}
+          SOURCE_SHA: ${{ steps.dispatch.outputs.source_sha }}
+          APP_VERSION: ""
+        run: |
+          set -euo pipefail
+          APP_VERSION="$(node scripts/version.mjs get)"
+          git -C return-tree ls-tree -r --name-only HEAD > return-tree.txt
+          raw_x64="$(find raw/x64 -type f -name 'FyAgent-*-Windows-x64-setup.exe' -print)"
+          raw_arm64="$(find raw/arm64 -type f -name 'FyAgent-*-Windows-arm64-setup.exe' -print)"
+          signed_x64="return-tree/FyAgent-${APP_VERSION}-Windows-x64-setup.exe"
+          signed_arm64="return-tree/FyAgent-${APP_VERSION}-Windows-arm64-setup.exe"
+          [ "$(printf '%s\n' "$raw_x64" | wc -l)" -eq 1 ]
+          [ "$(printf '%s\n' "$raw_arm64" | wc -l)" -eq 1 ]
+          node scripts/release/windows-offline-handoff.mjs admit \
+            --policy docs/release/windows-offline-signing-policy.json \
+            --return return-tree/signing-return.json \
+            --tree return-tree.txt \
+            --run source-run.json \
+            --raw-x64 "$raw_x64" \
+            --raw-arm64 "$raw_arm64" \
+            --signed-x64 "$signed_x64" \
+            --signed-arm64 "$signed_arm64" \
+            --version "$APP_VERSION" \
+            --source-sha "$SOURCE_SHA" \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --output offline-binding.json
+
+      - name: Independently seal both signed installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p 'JSON.parse(require("fs").readFileSync("offline-binding.json","utf8")).version')"
+          source_sha="$(node -p 'JSON.parse(require("fs").readFileSync("offline-binding.json","utf8")).sourceSha')"
+          publisher="$(node -p 'JSON.parse(require("fs").readFileSync("offline-binding.json","utf8")).publisher')"
+          certificate="$(node -p 'JSON.parse(require("fs").readFileSync("offline-binding.json","utf8")).certificateSha256')"
+          mkdir -p sealed-assets status
+          cp "return-tree/FyAgent-${version}-Windows-x64-setup.exe" sealed-assets/
+          cp "return-tree/FyAgent-${version}-Windows-arm64-setup.exe" sealed-assets/
+          node scripts/release/windows-signing.mjs verify-sealed \
+            --raw "$(find raw/x64 -type f -name 'FyAgent-*-Windows-x64-setup.exe' -print)" \
+            --candidate "sealed-assets/FyAgent-${version}-Windows-x64-setup.exe" \
+            --architecture x64 \
+            --version "$version" \
+            --source-sha "$source_sha" \
+            --mode provider \
+            --expected-publisher "$publisher" \
+            --expected-certificate-sha256 "$certificate" \
+            --output status/windows-signing-x64.json
+          node scripts/release/windows-signing.mjs verify-sealed \
+            --raw "$(find raw/arm64 -type f -name 'FyAgent-*-Windows-arm64-setup.exe' -print)" \
+            --candidate "sealed-assets/FyAgent-${version}-Windows-arm64-setup.exe" \
+            --architecture arm64 \
+            --version "$version" \
+            --source-sha "$source_sha" \
+            --mode provider \
+            --expected-publisher "$publisher" \
+            --expected-certificate-sha256 "$certificate" \
+            --output status/windows-signing-arm64.json
+          node scripts/release/windows-signing.mjs aggregate \
+            --x64-status status/windows-signing-x64.json \
+            --arm64-status status/windows-signing-arm64.json \
+            --assets-directory sealed-assets \
+            --version "$version" \
+            --source-sha "$source_sha" \
+            --output sealed-assets/signing-status.json
+          node scripts/release/windows-offline-handoff.mjs assert-status \
+            --status sealed-assets/signing-status.json \
+            --binding offline-binding.json
+
+      - name: Upload sealed offline Windows candidates
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: offline-sealed-windows
+          path: |
+            sealed-assets/*
+            offline-binding.json
+          if-no-files-found: error
+          retention-days: 7

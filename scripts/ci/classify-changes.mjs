@@ -64,6 +64,7 @@ const CI_POLICY_FILES = new Set([
 
 const RELEASE_CONTROL_FILES = new Set([
   ".github/workflows/release.yml",
+  ".github/workflows/windows-offline-sign-return.yml",
   "scripts/generate-download-manifest.mjs",
   "scripts/tasks/release-check.mjs",
   "scripts/version.mjs",

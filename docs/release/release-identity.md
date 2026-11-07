@@ -82,6 +82,22 @@ Windows 正式签名路径是 **Certum／SimplySign**，沿用现有 adapter 边
 8. 干净 Windows x64 与 arm64 机器上，对两个安装包执行 `signtool verify /pa /all /v /tw`，退出码都是 0。本机 AIMaster 的结果不能代替这一步。
 9. 然后才把仓库变量 `FYAGENT_WINDOWS_SIGNING_MODE` 设为 `provider`。
 
+## 离线签名交接
+
+AIMaster 不需要注册成 runner，签名凭据也不进入 GitHub。正式 Release 运行上传的
+`raw-windows-x64` 和 `raw-windows-arm64` 是唯一原始包。本机用
+`scripts/release/windows-signer-certum-simplysign.ps1` 签名后，把
+`signing-return.json` 和两个已签名安装包做成一个不含其他文件的提交，再从
+`main` 触发 `.github/workflows/windows-offline-sign-return.yml`。
+
+该工作流重新下载那一次 Release run 的原始包，核对 run id、attempt、commit、
+架构和原始包 SHA-256，然后调用现有 `verify-sealed`。公开策略在
+`docs/release/windows-offline-signing-policy.json`：publisher 为
+`Hangzhou Fuyu Talent Service Co., Ltd.`，证书 RawData SHA-256 为
+`df97c8316288564fa123a9be0c239dd3510ff23c59699b7807aa8ac7861ddb53`。
+未签名候选失败。这个工作流不创建 GitHub Release，也不读取 Release 附件。
+它不代替上面的清单，也不把 `FYAGENT_WINDOWS_SIGNING_MODE` 改成 `provider`。
+
 ## 轮换步骤
 
 1. approver 在 `rotateBefore` 之前安排轮换。
