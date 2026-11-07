@@ -178,7 +178,22 @@ pub(super) fn verify_windows_installer(
 ) -> Result<Option<String>, AgentReasonCode> {
     native::verify_installer(path, &product_policy(product), architecture)
         .map(|inspection| inspection.product_version)
-        .map_err(inspection_reason)
+        .map_err(install_inspection_reason)
+}
+
+#[cfg(target_os = "windows")]
+fn install_inspection_reason(failure: WindowsInspectionFailure) -> AgentReasonCode {
+    match failure {
+        WindowsInspectionFailure::Missing => AgentReasonCode::TargetNotExecutable,
+        WindowsInspectionFailure::UnsafeFileShape => AgentReasonCode::PackageParseFailed,
+        WindowsInspectionFailure::ProductIdentityMismatch
+        | WindowsInspectionFailure::IdentityChanged => AgentReasonCode::PackageIdentityMismatch,
+        WindowsInspectionFailure::SignatureInvalid | WindowsInspectionFailure::SignerMismatch => {
+            AgentReasonCode::ChecksumMismatch
+        }
+        WindowsInspectionFailure::ArchitectureUnsupported => AgentReasonCode::PlatformUnsupported,
+        WindowsInspectionFailure::Unavailable => AgentReasonCode::SourceNotVerified,
+    }
 }
 
 #[cfg(any(target_os = "windows", test))]

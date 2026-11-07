@@ -172,7 +172,7 @@ export function reasonCopy(code: AgentReasonCode): string | null {
     case "tool_host_missing":
       return "请检查当前用户的 Node.js、npm 和全局安装目录权限。Claude Code 需要 Node.js 22 或更高版本。";
     case "insufficient_disk_space":
-      return "安装所需的磁盘空间不足。请释放下载目录和目标目录所在磁盘的空间后重新检查。";
+      return "安装所需的磁盘空间不足。请释放下载目录和目标目录所在磁盘的空间后重新检查。详情写在 %USERPROFILE%\\.fyagent\\logs\\fyagent.log。";
     case "disk_space_unavailable":
       return "无法读取安装所需的磁盘空间。请确认下载目录和目标目录可访问后重新检查。";
     case "tool_owner_unsupported":
@@ -201,11 +201,23 @@ export function reasonCopy(code: AgentReasonCode): string | null {
     case "authorization_required":
       return "系统应用程序文件夹目前不支持此安装操作。请使用当前用户的应用程序目录，不会改装到其他目录。";
     case "permission_denied":
-      return "没有权限写入所选位置。请调整该目录的写入权限，或重新选择可写的安装位置。";
+      return "没有权限写入所选位置。请调整该目录的写入权限，或重新选择可写的安装位置。详情写在 %USERPROFILE%\\.fyagent\\logs\\fyagent.log。";
     case "application_running":
       return "应用仍在运行。请先完全退出，再重新执行。";
     case "installer_artifact_unavailable":
-      return "安装包准备失败。请检查磁盘空间和文件权限后重试。";
+      return "安装包准备失败。这次不能只归因为磁盘或权限。请查看日志中的 code、job_stage 和 os_error。详情写在 %USERPROFILE%\\.fyagent\\logs\\fyagent.log。";
+    case "download_failed":
+      return "安装包下载失败。请检查网络后重试。详情写在 %USERPROFILE%\\.fyagent\\logs\\fyagent.log。";
+    case "download_timeout":
+      return "安装包下载超时。请检查网络后重试。详情写在 %USERPROFILE%\\.fyagent\\logs\\fyagent.log。";
+    case "checksum_mismatch":
+      return "安装包校验失败。文件内容或签名未通过，请重新下载。详情写在 %USERPROFILE%\\.fyagent\\logs\\fyagent.log。";
+    case "package_parse_failed":
+      return "安装包无法解析。文件可能不完整或已损坏，请重新下载。详情写在 %USERPROFILE%\\.fyagent\\logs\\fyagent.log。";
+    case "package_identity_mismatch":
+      return "安装包身份与官方包不一致，已停止安装。详情写在 %USERPROFILE%\\.fyagent\\logs\\fyagent.log。";
+    case "path_not_writable":
+      return "目标路径不可写。请确认目录存在、不是只读磁盘，或改到可写位置后重试。详情写在 %USERPROFILE%\\.fyagent\\logs\\fyagent.log。";
     case "installation_verification_failed":
       return "无法确认新版本已正确安装。请检查安装位置。";
     case "installer_user_cancelled":

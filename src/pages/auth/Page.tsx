@@ -256,7 +256,7 @@ export function AuthPage() {
         result.outcome,
         result.outcome === "completed"
           ? connection?.pendingRestart
-            ? "此连接已保存并回读，需要重新启动软件后使用。"
+            ? "配置已写入，等待重启。下一步：完全退出并重新打开该软件。重启完成前尚未生效。"
             : target?.action === "refresh"
               ? "已重新读取此连接的状态。"
               : "此连接操作已完成并回读。"
@@ -533,6 +533,13 @@ export function AuthPage() {
           await refreshSourceOverview();
           invalidateRequestSources();
         }}
+        onDismiss={(connectionId) =>
+          setConnectionResults((current) => {
+            const next = { ...current };
+            delete next[connectionId];
+            return next;
+          })
+        }
       />
       {overview.reasonCodes.length > 0 ? (
         <InlineNotice tone="warning">

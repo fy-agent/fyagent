@@ -329,6 +329,95 @@ export function loginStagePresentation(stage: ManagedAuthLoginStage): {
   }
 }
 
+export function connectionPhaseCopy(connection: ManagedAuthConnectionSummary): {
+  title: string;
+  next: string;
+} {
+  const name = managedAuthConsumerLabel(connection.consumer);
+  const nativeOfficial = connection.requestMode === "official_subscription";
+  const forwarded =
+    connection.requestMode === "third_party_api" ||
+    connection.requestMode === "provider_connections";
+  const source = connection.requestProviderLabel ?? "第三方 API";
+  if (connection.reasonCodes.includes("native_projection_unavailable")) {
+    return {
+      title: "账号已登录，尚未连接",
+      next: `${name} 不能由这里改写本地登录。请使用该软件自己的官方登录。账号已保存不等于已经连接。`,
+    };
+  }
+  if (
+    connection.pendingRestart ||
+    connection.authStatus === "pending_restart"
+  ) {
+    if (connection.consumer === "codex" && nativeOfficial) {
+      return {
+        title: "配置已写入，等待重启",
+        next: "下一步：完全退出并重新打开 Codex。重启后应使用此官方账号，而不是原来的 API 配置。重启完成前尚未生效。",
+      };
+    }
+    if (connection.consumer === "codex" && forwarded) {
+      return {
+        title: "配置已写入，等待重启",
+        next: "这是第三方 API 或账号订阅转发，不是 Codex 原生官方登录。重启后客户端可能仍显示 API 或 custom。下一步：完全退出并重新打开 Codex。",
+      };
+    }
+    return {
+      title: "配置已写入，等待重启",
+      next: `下一步：完全退出并重新打开 ${name}。重启完成前尚未生效。`,
+    };
+  }
+  if (connection.authStatus === "connected") {
+    if (connection.consumer === "codex" && nativeOfficial) {
+      return {
+        title: "已生效",
+        next: "Codex 原生官方认证已对上此账号。若客户端仍显示旧的 API 或 custom，请再完全退出后重新打开 Codex。",
+      };
+    }
+    if (connection.consumer === "codex" && forwarded) {
+      return {
+        title: "账号已登录，当前不是原生官方账号",
+        next: connection.officialSessionPreserved
+          ? `官方登录已保留，但 Codex 当前请求来源是「${source}」。客户端可能仍显示 API 或 custom。这和原生官方登录不同。下一步：使用「切回官方」，然后重新打开 Codex。`
+          : `Codex 当前走的是 API 或转发配置（${source}）。客户端可能仍显示 API 或 custom。要改用官方账号，请用此账号连接 Codex 并重新打开。`,
+      };
+    }
+    if (connection.consumer === "fyagent_proxy") {
+      return {
+        title: "本机转发已接通",
+        next: "账号订阅通过 FyAgent 转发。使用这份订阅的客户端可能仍显示 API 或 custom，这不是 Codex 原生官方登录。",
+      };
+    }
+    return {
+      title: "已生效",
+      next: `${name} 已使用此账号。若刚刚写过配置，请确认软件已经重新打开。`,
+    };
+  }
+  if (connection.authStatus === "disconnected") {
+    return {
+      title: connection.accountId ? "账号已登录，尚未连接" : "尚未连接",
+      next: connection.accountId
+        ? `下一步：用此账号连接 ${name}，并在预览后确认。登录不会自动连接。`
+        : `下一步：先登录官方账号，再连接 ${name}。登录不会自动连接。`,
+    };
+  }
+  if (connection.authStatus === "requires_reauth") {
+    return {
+      title: "需要重新登录",
+      next: "下一步：重新登录此账号，然后再连接软件。",
+    };
+  }
+  if (connection.authStatus === "checking") {
+    return {
+      title: "正在读取连接",
+      next: "请等待读取完成，先不要重复连接。",
+    };
+  }
+  return {
+    title: "状态不可用",
+    next: "下一步：刷新状态。现在还不能判断配置是否已经生效。",
+  };
+}
+
 export function connectionActionLabel(
   action: ManagedAuthConnectionAction,
   connection?: Pick<ManagedAuthConnectionSummary, "authStatus">,

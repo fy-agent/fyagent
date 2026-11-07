@@ -311,6 +311,65 @@ static SENSITIVE_HEADER_RE: Lazy<Regex> = Lazy::new(|| {
         .expect("installer sensitive header redaction regex is valid")
 });
 
+pub(crate) fn classify_artifact_io(
+    kind: std::io::ErrorKind,
+    raw: Option<i32>,
+) -> (InstallerErrorCode, Option<&'static str>) {
+    const ACCESS_DENIED: i32 = 5;
+    const DISK_FULL: i32 = 112;
+    const HANDLE_DISK_FULL: i32 = 39;
+    const WRITE_PROTECT: i32 = 19;
+    const PATH_NOT_FOUND: i32 = 3;
+    const INVALID_NAME: i32 = 123;
+    const ENOSPC: i32 = 28;
+    const EROFS: i32 = 30;
+    const EACCES: i32 = 13;
+    const EPERM: i32 = 1;
+    const ENOENT: i32 = 2;
+    const ENOTDIR: i32 = 20;
+
+    if kind == std::io::ErrorKind::PermissionDenied
+        || matches!(raw, Some(ACCESS_DENIED | EACCES | EPERM))
+    {
+        return (
+            InstallerErrorCode::DownloadFailed,
+            Some("target_permission_denied"),
+        );
+    }
+    if kind == std::io::ErrorKind::StorageFull
+        || matches!(raw, Some(DISK_FULL | HANDLE_DISK_FULL | ENOSPC))
+    {
+        return (
+            InstallerErrorCode::InsufficientDiskSpace,
+            Some("insufficient_disk_space"),
+        );
+    }
+    if kind == std::io::ErrorKind::ReadOnlyFilesystem
+        || kind == std::io::ErrorKind::NotFound
+        || matches!(
+            raw,
+            Some(WRITE_PROTECT | PATH_NOT_FOUND | INVALID_NAME | ENOENT | ENOTDIR | EROFS)
+        )
+    {
+        return (
+            InstallerErrorCode::DownloadFailed,
+            Some("target_not_writable"),
+        );
+    }
+    (InstallerErrorCode::DownloadFailed, None)
+}
+
+pub(crate) fn artifact_io_error(error: &std::io::Error, action: &str) -> InstallerError {
+    let (code, platform) = classify_artifact_io(error.kind(), error.raw_os_error());
+    let mut installer = InstallerError::new(code).with_diagnostic_message(action);
+    if let Some(platform) = platform {
+        installer = installer.with_platform_error_code(platform);
+    } else if let Some(raw) = error.raw_os_error() {
+        installer = installer.with_platform_error_code(raw.to_string());
+    }
+    installer
+}
+
 pub(crate) fn redact_diagnostic_text(value: &str) -> String {
     const MAX_DIAGNOSTIC_CHARS: usize = 2_048;
 

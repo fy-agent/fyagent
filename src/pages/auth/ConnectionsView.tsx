@@ -27,6 +27,7 @@ import {
 } from "./common";
 import {
   connectionActionLabel,
+  connectionPhaseCopy,
   managedAuthConsumerLabel,
   managedAuthManagerLabel,
   managedAuthProviderLabel,
@@ -55,6 +56,7 @@ function ConnectionCard({
       )
     : null;
   const status = connectionPresentation(connection);
+  const phase = connectionPhaseCopy(connection);
   return (
     <article className="fy-auth-consumer-connection">
       <div className="fy-auth-connection-card-heading">
@@ -73,6 +75,10 @@ function ConnectionCard({
         </div>
         <StatusBadge {...status} />
       </div>
+      <p className="fy-auth-phase">
+        <strong>{phase.title}</strong>
+        {phase.next}
+      </p>
 
       <dl className="fy-feature-definition fy-auth-definition">
         <DefinitionRow label="受管账号绑定">

@@ -678,11 +678,11 @@ pub(crate) async fn persist_transport_response(
             ));
         }
 
-        output.write_all(&chunk).map_err(|_| {
-            PersistDownloadError::Installer(
-                InstallerError::new(InstallerErrorCode::DownloadFailed)
-                    .with_diagnostic_message("installer partial file could not be written"),
-            )
+        output.write_all(&chunk).map_err(|error| {
+            PersistDownloadError::Installer(super::error::artifact_io_error(
+                &error,
+                "installer partial file could not be written",
+            ))
         })?;
         hasher.update(&chunk);
 
@@ -713,17 +713,17 @@ pub(crate) async fn persist_transport_response(
         ));
     }
 
-    output.flush().map_err(|_| {
-        PersistDownloadError::Installer(
-            InstallerError::new(InstallerErrorCode::DownloadFailed)
-                .with_diagnostic_message("installer partial file could not be flushed"),
-        )
+    output.flush().map_err(|error| {
+        PersistDownloadError::Installer(super::error::artifact_io_error(
+            &error,
+            "installer partial file could not be flushed",
+        ))
     })?;
-    output.sync_all().map_err(|_| {
-        PersistDownloadError::Installer(
-            InstallerError::new(InstallerErrorCode::DownloadFailed)
-                .with_diagnostic_message("installer partial file could not be synchronized"),
-        )
+    output.sync_all().map_err(|error| {
+        PersistDownloadError::Installer(super::error::artifact_io_error(
+            &error,
+            "installer partial file could not be synchronized",
+        ))
     })?;
     job_directory
         .validate_artifact_path(&part_path)

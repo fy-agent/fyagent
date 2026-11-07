@@ -289,6 +289,13 @@ describe("AuthPage", () => {
     expect(bCalls).toHaveLength(2);
     expect(bCalls[1][1]).not.toBe(firstB);
     expect(a).toHaveTextContent("此连接操作已完成并回读。");
+    await user.click(
+      within(a).getByRole("button", { name: "关闭Codex · OpenAI结果" }),
+    );
+    expect(
+      screen.queryByRole("article", { name: "Codex · OpenAI 操作结果" }),
+    ).not.toBeInTheDocument();
+    expect(b).toBeInTheDocument();
   });
 
   it("keeps account identity, software connection and current request source visually separate", async () => {
@@ -316,6 +323,16 @@ describe("AuthPage", () => {
     ).toHaveLength(1);
     expect(within(connectedSection!).getByText("DeepSeek API")).toBeVisible();
     expect(within(connectedSection!).getByText("已保留")).toBeVisible();
+    const codexCard = within(connectedSection!)
+      .getByRole("heading", { name: "Codex" })
+      .closest("article");
+    expect(codexCard).not.toBeNull();
+    expect(
+      within(codexCard!).getByText("账号已登录，当前不是原生官方账号"),
+    ).toBeVisible();
+    expect(
+      within(codexCard!).getByText(/可能仍显示 API 或 custom/),
+    ).toBeVisible();
     expect(
       within(connectedSection!).getByText("由 Codex 自动续期"),
     ).toBeVisible();
@@ -923,9 +940,9 @@ describe("AuthPage", () => {
   });
 
   it.each([
-    ["disconnected", "尚未连接软件"],
-    ["pending_restart", "等待重启"],
-    ["native_projection_unavailable", "尚未连接软件"],
+    ["disconnected", "账号已登录，尚未连接软件"],
+    ["pending_restart", "配置已写入，等待重启"],
+    ["native_projection_unavailable", "账号已登录，尚未连接软件"],
     ["connected", "已连接：Codex"],
   ] as const)(
     "shows %s accurately in the account list",
@@ -1096,12 +1113,80 @@ describe("AuthPage", () => {
       expect(within(detail).getByText("DeepSeek API")).toBeVisible();
       expect(within(detail).getByText("已保留")).toBeVisible();
       expect(within(detail).queryByText("已连接")).not.toBeInTheDocument();
+      if (state === "pending_restart") {
+        expect(within(detail).getByText("配置已写入，等待重启")).toBeVisible();
+        expect(
+          within(detail).getByText(/不是 Codex 原生官方登录/),
+        ).toBeVisible();
+        expect(
+          within(detail).getByText(/可能仍显示 API 或 custom/),
+        ).toBeVisible();
+      }
+      if (state === "saved") {
+        expect(within(detail).getByText("账号已登录，尚未连接")).toBeVisible();
+        expect(
+          within(detail).getByText(/账号已保存不等于已经连接/),
+        ).toBeVisible();
+      }
       expect(
         screen.getByTestId("managed-auth-overview-summary"),
       ).toHaveTextContent(label);
       expect(screen.getByRole("tab", { name: "软件连接 3/4" })).toBeVisible();
     },
   );
+
+  it("states the next step after a native official Codex save", async () => {
+    const pending = managedAuthOverviewFixture();
+    Object.assign(pending.connections[0], {
+      authStatus: "pending_restart",
+      pendingRestart: true,
+      requestMode: "official_subscription",
+      requestProviderLabel: "OpenAI / Codex 订阅",
+      officialSessionPreserved: true,
+      reasonCodes: ["pending_restart"],
+      allowedActions: ["refresh"],
+    });
+    const pendingView = renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => parseManagedAuthOverview(pending)),
+      }),
+      "/auth?view=connections&consumer=codex",
+    );
+    const pendingDetail = await screen.findByRole("region", {
+      name: "Codex 连接详情",
+    });
+    expect(
+      within(pendingDetail).getByText("配置已写入，等待重启"),
+    ).toBeVisible();
+    expect(within(pendingDetail).getByText(/应使用此官方账号/)).toBeVisible();
+    expect(within(pendingDetail).getByText(/重启完成前尚未生效/)).toBeVisible();
+    expect(within(pendingDetail).queryByText("已生效")).not.toBeInTheDocument();
+    pendingView.unmount();
+
+    const live = managedAuthOverviewFixture();
+    Object.assign(live.connections[0], {
+      authStatus: "connected",
+      pendingRestart: false,
+      requestMode: "official_subscription",
+      requestProviderLabel: "OpenAI / Codex 订阅",
+      officialSessionPreserved: true,
+      reasonCodes: [],
+      allowedActions: ["refresh"],
+    });
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => parseManagedAuthOverview(live)),
+      }),
+      "/auth?view=connections&consumer=codex",
+    );
+    const liveDetail = await screen.findByRole("region", {
+      name: "Codex 连接详情",
+    });
+    expect(within(liveDetail).getByText("已生效")).toBeVisible();
+    expect(
+      within(liveDetail).getByText(/Codex 原生官方认证已对上此账号/),
+    ).toBeVisible();
+  });
 
   it("reads quota for the selected account and refreshes without keeping a failed snapshot", async () => {
     const user = userEvent.setup();

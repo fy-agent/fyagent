@@ -364,6 +364,30 @@ describe("Managed subscription selection and application", () => {
     expect(ports.providers.bindManagedProxy).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["Grok subscription account is unavailable", "这个订阅账号当前不可用"],
+    ["xAI account selection is invalid", "模型请求无效"],
+  ])(
+    "explains %s and opens manual model entry without echoing the raw error",
+    async (message, title) => {
+      const user = userEvent.setup();
+      const ports = configuredPorts();
+      ports.providers.fetchXaiManagedModels = vi.fn(async () => {
+        throw new Error(`${message} SENTINEL-SECRET`);
+      });
+      renderSection(ports);
+      await user.click(
+        await screen.findByRole("radio", {
+          name: "xAI 设备码 · xai@example.com",
+        }),
+      );
+      expect(await screen.findByText(title)).toBeVisible();
+      expect(screen.getByLabelText("订阅模型 ID")).toBeVisible();
+      expect(screen.queryByText(/SENTINEL-SECRET/)).not.toBeInTheDocument();
+      expect(ports.providers.fetchXaiManagedModels).toHaveBeenCalledOnce();
+    },
+  );
+
   it("offers explicit manual input after discovery failure without replacing the selected account", async () => {
     const user = userEvent.setup();
     const ports = configuredPorts();
@@ -488,8 +512,13 @@ describe("Managed subscription selection and application", () => {
       );
       expect(ports.providers.fetchXaiManagedModels).not.toHaveBeenCalled();
       expect(
-        screen.getByRole("button", { name: "查看模型选项" }),
-      ).toBeDisabled();
+        await screen.findByText(/ChatGPT 官方账号不能自动获取模型列表/),
+      ).toBeVisible();
+      expect(screen.getByText(/不是 Codex 原生官方登录/)).toBeVisible();
+      const modelOptions = screen.getByRole("button", { name: "查看模型选项" });
+      expect(modelOptions).toBeEnabled();
+      await user.click(modelOptions);
+      expect(ports.providers.fetchXaiManagedModels).not.toHaveBeenCalled();
       await user.type(
         await screen.findByLabelText("订阅模型 ID"),
         "chatgpt-fixture-model",

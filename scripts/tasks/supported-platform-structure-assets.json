@@ -59,7 +59,7 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "84f38a19e97c95d93dd1379cf996a2fb40f104d3f1ec9508bb56c78ba8210756"
+      "b6ca9077b9685d7e8cc7419f3ca34d8339af91df64318131cb1785fd5140a26d"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "a033fcb1c341851dc19c6d410a2d54b7171241976b59c5c81d184aca2e5803fe"
+      "35ee608653bfb5c69ccf74519fec1196d70e6f1365ccce64e8b427f0caa60ec6"
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
@@ -83,7 +83,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "2f16d59b4f7c196c8b1f597d268ee8b17bd8261652a15716e3cfe52137ce31d3"
+      "89c2a304a07c26d3945720329e0c969bf59775d0502760d4125fccd9e3f174d0"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -115,7 +115,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/download.rs",
-      "84730bc1a83a839ceec9885ab55df6e73da1f3a642cf91bf24cba5178b960476"
+      "c24bcc8cfe553c7ec1326a452d116be11fc4a6c26f9294f596a0688dbb8420e7"
     ],
     [
       "src-tauri/src/codex_desktop/platform.rs",
