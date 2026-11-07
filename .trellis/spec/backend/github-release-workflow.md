@@ -66,8 +66,20 @@ mode=formal` or the equivalent Actions API request); dispatching the current
   rulesets, merge settings or a separate provenance workflow. Mainline merge
   protection is independently owned by [Merge Governance](./github-merge-governance.md);
   those controls are not formal tag-release eligibility evidence.
-- no branch push, manual signed mode, partial target mode, cross-architecture
-  substitute, local publish path, or published update-in-place path exists.
+- no branch push, partial target mode, cross-architecture substitute, local
+  publish path, or published update-in-place path exists. A tag push or formal
+  dispatch still does not accept a GitHub Release attachment as a Windows
+  candidate.
+- The only offline Windows intake is
+  `.github/workflows/windows-offline-sign-return.yml`, dispatched from
+  trusted `main`. It re-downloads `raw-windows-x64` and `raw-windows-arm64`
+  from one completed Release run, requires the return commit to contain only
+  `signing-return.json` and those two signed installers, and binds run id,
+  attempt, source SHA, architecture, and raw SHA-256. It then runs the
+  existing `verify-sealed` provider checks for an Authenticode-only change,
+  publisher, certificate SHA-256, Code Signing EKU, and timestamp. Unsigned
+  candidates fail. The workflow does not publish, does not receive signer
+  credentials, and does not read Release assets.
 
 Concurrency is identity-based rather than event-based. Both a tag push and a
 formal dispatch for `vX.Y.Z` join `release-formal-vX.Y.Z` with
