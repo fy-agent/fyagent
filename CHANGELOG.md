@@ -8,6 +8,41 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.15] - 2026-11-08
+
+Prepared on main. This entry does not publish a GitHub Release and does not
+claim an Authenticode signature.
+
+### Added
+
+- Describe the beginner install path: what each step asks, what it installs,
+  and which external installer prompts are still unrecorded (#392, #406).
+- Bind WorkBuddy to its own subscription and internal chat route, and keep
+  the binding fail-closed when the account is unavailable (#375, #378).
+
+### Changed
+
+- Open the Models page on Claude Code when there is no previous visible
+  target. A still-visible previous target stays selected (#390).
+- Keep prerelease labels out of the recommended install list (#392, #406).
+- Tell the user that zen-gate 1.8.0 removed its free lane, that OpenCode
+  updates with `/update`, and that parent-directory `QWEN.md` / `AGENTS.md`
+  are no longer read (#392, #406).
+
+### Fixed
+
+- Separate a saved official login from a connected app, a required restart,
+  and a missing official model list. Keep the auth result area from pushing
+  the account controls down (#377, #407).
+- Record install-package preparation failures by stage, and stop describing
+  every failure as low disk or permissions (#397, #407).
+
+### Documentation
+
+- Add the Certum SimplySign adapter and the public Windows release-identity
+  draft. Provider mode stays off until that checklist is complete (#67, #68,
+  #405).
+
 ## [0.4.14] - 2026-10-16
 
 Transitional pre-release following 0.4.12 and the 0.4.13 pre-release.
