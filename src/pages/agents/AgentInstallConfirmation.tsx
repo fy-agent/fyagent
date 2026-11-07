@@ -1,3 +1,8 @@
+import {
+  recommendedInstallLabels,
+  WINDOWS_ENV_HINT,
+  WINDOWS_LOGIN_SPIN_HINT,
+} from "../../domain/first-install-path";
 import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
 import { InlineNotice } from "../../shared/ui/primitives";
@@ -12,6 +17,9 @@ export function AgentInstallConfirmation({
 }) {
   const checked = lifecycle.preflight;
   const updating = checked?.request.action === "update";
+  const recommendedVersion = checked
+    ? recommendedInstallLabels([checked.versionOrChannel])[0]
+    : undefined;
   const startLabel =
     checked?.execution === "vendor_wizard"
       ? "下载并打开安装窗口"
@@ -49,8 +57,16 @@ export function AgentInstallConfirmation({
         <div className="fy-agent-install-readiness">
           <p>
             <strong>软件：</strong>
-            {name} · {checked.versionOrChannel}
+            {name}
+            {recommendedVersion
+              ? ` · ${recommendedVersion}`
+              : ` · ${checked.versionOrChannel}（预发版，不在推荐安装名单）`}
           </p>
+          {recommendedVersion ? null : (
+            <InlineNotice tone="warning">
+              这个版本带有预发标记，不在推荐安装名单里。要装稳定版时，返回后重新检查来源。
+            </InlineNotice>
+          )}
           <p>
             <strong>位置：</strong>
             {checked.targetLabel}
@@ -119,6 +135,12 @@ export function AgentInstallConfirmation({
             <InlineNotice tone="info">
               请在官方窗口完成安装，需要时由 Windows
               请求授权。打开窗口后，FyAgent 不会中止它；完成后请刷新安装状态。
+            </InlineNotice>
+          ) : null}
+          {checked.platform === "windows" ? (
+            <InlineNotice tone="info">
+              {WINDOWS_LOGIN_SPIN_HINT}
+              {WINDOWS_ENV_HINT}
             </InlineNotice>
           ) : null}
         </div>

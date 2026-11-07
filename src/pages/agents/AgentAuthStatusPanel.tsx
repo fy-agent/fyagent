@@ -22,6 +22,7 @@ import {
 } from "../../shared/features/agent-navigation";
 import type { ManagedAuthConsumer } from "../../shared/features/managed-auth";
 import type { AgentCatalogId } from "../../shared/features/types";
+import { WINDOWS_LOGIN_SPIN_HINT } from "../../domain/first-install-path";
 import { LifecycleTargetPicker } from "../../shared/ui/LifecycleTargetPicker";
 import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -153,7 +154,7 @@ function reasonCopy(reason: AgentAuthReasonCode | null): string | null {
     case "monitoring_stopped":
       return "已停止等待；已打开的登录窗口仍会保留。";
     case "timed_out":
-      return "等待登录结果超时。完成登录后请刷新状态。";
+      return `等待登录结果超时。完成登录后请刷新状态。${WINDOWS_LOGIN_SPIN_HINT}`;
     case "handoff_only":
       return "登录入口已打开。完成后请刷新状态。";
     case "managed_by_auth_center":
@@ -445,6 +446,9 @@ function AgentAuthStatusPanelInner({
               {stageCopy(session.snapshot)}
             </span>
           </InlineNotice>
+        ) : null}
+        {session.snapshot?.stage === "awaiting_user" ? (
+          <p className="fy-agent-auth-reason">{WINDOWS_LOGIN_SPIN_HINT}</p>
         ) : null}
         {session.snapshot?.canStopWaiting ? (
           <Button

@@ -367,6 +367,10 @@ describe("Windows external-installer state copy", () => {
       "无法读取其进度",
     );
     expect(reasonCopy("installer_timed_out")).toContain("完成或关闭向导");
+    expect(reasonCopy("tool_host_missing")).toContain(
+      "Claude Code 需要 Node.js 22 或更高版本。",
+    );
+    expect(reasonCopy("tool_host_missing")).toContain("环境变量");
     expect(reasonCopy("installer_exited_nonzero")).toContain("未能完成");
     expect(
       agentLifecycleFailureCopy("installer_exited_nonzero", "cli_tooling"),

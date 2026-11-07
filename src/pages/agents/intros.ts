@@ -39,6 +39,7 @@ const INTROS: Partial<Record<AgentCatalogId, AgentIntro>> = {
     paragraphs: [
       "OpenCode 是开源编码工具，可在终端 TUI、桌面应用、网页和 IDE 中使用，也可通过本地 server 与 SDK 接入其他工具。",
       "OpenCode 分别连接各个模型 Provider。连接和模型可在此查看，相关配置可在对应页面维护。OpenCode 的权限规则控制文件与命令操作；需要进程隔离时，仍应使用容器或虚拟机。",
+      "OpenCode 不再自动安装更新。要更新时，在 OpenCode 里输入 /update。升到 OpenCode 2 要另作处理。",
     ],
   },
 };
