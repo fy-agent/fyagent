@@ -132,6 +132,7 @@ pub async fn fetch_artifact_to_job(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fetch_artifact_to_job_with(
     transport: &dyn HttpTransport,
     url: Url,

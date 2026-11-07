@@ -95,6 +95,8 @@ pub(crate) fn agent_reason_for_package_preparation(error: &InstallerError) -> Ag
     }
 }
 
+// Windows installer mapping is the production caller. macOS lib builds do not compile it.
+#[allow(dead_code)]
 pub(crate) fn agent_reason_from_installer_parts(
     code: InstallerErrorCode,
     platform_error_code: Option<&str>,
