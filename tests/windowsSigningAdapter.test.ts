@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -593,43 +593,49 @@ describe("Certum SimplySign adapter", () => {
     expect(signedInvoked).toBe(1);
   });
 
-  it("runs the adapter itself when pwsh is installed and otherwise locks the same guard", () => {
-    const probe = spawnSync(
-      "pwsh",
-      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "exit 0"],
-      { encoding: "utf8" },
+  it("locks the Certum adapter guard without launching pwsh", () => {
+    const adapter = readFileSync(certumAdapterPath, "utf8");
+    const credentialGuard = adapter.indexOf("Read-CertumSimplySignCredential");
+    const openInstaller = adapter.indexOf("Resolve-InstallerFile");
+    expect(credentialGuard).toBeGreaterThan(0);
+    expect(openInstaller).toBeGreaterThan(credentialGuard);
+    expect(adapter).toContain(
+      "FYAGENT_WINDOWS_SIGNER_CREDENTIAL is required; refusing to leave the artifact unsigned",
     );
-    if (probe.error && (probe.error as NodeJS.ErrnoException).code === "ENOENT") {
-      expect(readFileSync(certumAdapterPath, "utf8")).toContain(
-        "refusing to leave the artifact unsigned",
-      );
-      return;
-    }
-    expect(probe.status).toBe(0);
+    const signer = readFileSync(signingScript, "utf8");
+    expect(signer).toContain('"-NoLogo"');
+    expect(signer).toContain('"-NoProfile"');
+    expect(signer).toContain('"-NonInteractive"');
+    expect(signer).toContain('"-File"');
+
+    expect(() => parseCertumSimplySignCredential(undefined)).toThrow(
+      /FYAGENT_WINDOWS_SIGNER_CREDENTIAL is required/,
+    );
+
     const directory = temporaryDirectory();
     const assetPath = writeAsset(directory, "x64");
     const before = readFileSync(assetPath);
-    const env = { ...process.env };
-    delete env.FYAGENT_WINDOWS_SIGNER_CREDENTIAL;
-    const result = spawnSync(
-      "pwsh",
-      [
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-File",
-        certumAdapterPath,
-        "-ArtifactPath",
-        assetPath,
-        "-Architecture",
-        "x64",
-      ],
-      { encoding: "utf8", env },
-    );
-    expect(result.status).not.toBe(0);
-    expect(`${result.stdout}\n${result.stderr}`).toContain(
-      "FYAGENT_WINDOWS_SIGNER_CREDENTIAL is required",
-    );
+    let invoked = false;
+    expect(() =>
+      transformWindowsCandidate(
+        {
+          assetPath,
+          architecture: "x64",
+          version,
+          sourceSha,
+          environment: signerEnvironment({
+            FYAGENT_WINDOWS_SIGNER_ADAPTER: certumAdapterPath,
+          }),
+        },
+        {
+          probeAuthenticode: () => unsignedEvidence(),
+          invokeSigner: () => {
+            invoked = true;
+          },
+        },
+      ),
+    ).toThrow(/is required/);
+    expect(invoked).toBe(false);
     expect(readFileSync(assetPath)).toEqual(before);
   });
 });
