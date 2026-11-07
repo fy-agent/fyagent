@@ -271,6 +271,7 @@ describe("repository change classifier", () => {
       "release authority",
       [
         ".github/workflows/release.yml",
+        ".github/workflows/windows-offline-sign-return.yml",
         "scripts/release/release-contract.mjs",
         "scripts/tasks/release-check.mjs",
         "tests/releaseWorkflow.test.ts",
