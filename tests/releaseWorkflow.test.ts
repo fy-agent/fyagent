@@ -341,7 +341,7 @@ const WINDOWS_RELEASE_MATRIX_CONTRACTS = [
   },
   {
     job: "seal-windows-formal",
-    nextJob: "build-macos",
+    nextJob: "admit-offline-windows-formal",
     rows: [
       {
         runner: "windows-2025",
@@ -428,6 +428,7 @@ const EXPECTED_RELEASE_JOB_IDS = [
   "prove-windows-preflight",
   "sign-windows-formal",
   "seal-windows-formal",
+  "admit-offline-windows-formal",
   "build-macos",
   "pin-release-build-inputs",
   "verify-assets",
@@ -2266,7 +2267,7 @@ describe("FyAgent release workflow", () => {
     );
     expectExactLine(
       formal,
-      "    if: needs.eligibility.outputs.release_mode == 'formal' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+      "    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
     );
     expectExactLine(
       formal,
@@ -2338,11 +2339,11 @@ describe("FyAgent release workflow", () => {
     const sealer = workflowJobBlock(
       source,
       "seal-windows-formal",
-      "build-macos",
+      "admit-offline-windows-formal",
     );
     expectExactLine(
       sealer,
-      "    if: needs.eligibility.outputs.release_mode == 'formal' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+      "    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
     );
     expectExactLine(
       sealer,
@@ -2395,10 +2396,10 @@ describe("FyAgent release workflow", () => {
     const verify = workflowJobBlock(source, "verify-assets", "attest");
     expectExactLine(
       verify,
-      "    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}",
+      "    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'offline-sealed' && needs['build-windows'].result == 'skipped' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'success')) }}",
     );
     expect(verify).toContain(
-      "    needs:\n      [\n        eligibility,\n        build-windows,\n        build-macos,\n        pin-release-build-inputs,\n        prove-windows-preflight,\n        sign-windows-formal,\n        seal-windows-formal,\n      ]",
+      "    needs:\n      [\n        eligibility,\n        build-windows,\n        build-macos,\n        pin-release-build-inputs,\n        prove-windows-preflight,\n        sign-windows-formal,\n        seal-windows-formal,\n        admit-offline-windows-formal,\n      ]",
     );
     expect(verify).toContain(
       "artifact-ids: ${{ needs['pin-release-build-inputs'].outputs.artifact_id }}",
@@ -2575,7 +2576,7 @@ jobs:
     );
     expectExactLine(
       pin,
-      "    needs: [eligibility, build-windows, build-macos]",
+      "    needs: [eligibility, build-windows, build-macos, admit-offline-windows-formal]",
     );
     expectExactLine(pin, "    runs-on: ubuntu-24.04");
     expect(pin).toContain(

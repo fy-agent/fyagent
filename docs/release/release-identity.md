@@ -98,6 +98,20 @@ AIMaster 不需要注册成 runner，签名凭据也不进入 GitHub。正式 Re
 未签名候选失败。这个工作流不创建 GitHub Release，也不读取 Release 附件。
 它不代替上面的清单，也不把 `FYAGENT_WINDOWS_SIGNING_MODE` 改成 `provider`。
 
+## 正式发布收回已密封的离线包
+
+当发布提交包含 `docs/release/windows-formal-offline-admission.json`，且其中 `version` 等于该提交的稳定版本时，正式 tag 运行必须收回清单点名的那一对已密封 Windows 安装包。预检仍重新构建未签名包，不发布。清单缺失时，正式发布仍走原来的 `rebuild` 路径。
+
+收回时全部成立才继续，任何一条失败都停止，不会改发未签名 Windows，也不会 `make_latest`：
+
+- 正式 tag 指向含有这条门禁的提交。GitHub 从 tag 提交读取 workflow，不能在只含旧 workflow 的 artifact 源提交上打 tag 来执行新门禁。
+- artifact 源提交是正式提交的祖先。两边去掉 workflow 允许清单之后的 git 树哈希一致，差异路径都在允许清单内。
+- `build-windows`、`prove-windows-preflight`、`sign-windows-formal`、`seal-windows-formal`、`build-macos` 除准入闸门外保持原样，macOS 签名和公证步骤不改。
+- 重新下载清单中的 preflight attempt 与 offline-sign-return attempt。最新 attempt 必须仍是清单里的 attempt。原始包、已签包、publisher、证书 SHA-256 与 `windows-offline-signing-policy.json` 一致，并再次执行 `verify-sealed`。未签名、缺文件、错 run、错 attempt、错 SHA、错哈希都拒绝。
+- 这条路径不读取 signer secret，不把 `FYAGENT_WINDOWS_SIGNING_MODE` 改成 `provider`。
+
+v0.4.15 的清单绑定 preflight `42421033643` attempt 1 与 offline-sign-return `42424610543` attempt 1，artifact 源为 `4f5e0543bae400e0c4447c10c164cd7e285f01df`。正式 tag 打在合入本门禁之后的提交上。原始包在 2026-11-15 06:50（Asia/Shanghai）过期，sealed 包在同日 07:18 过期；过期后这次收回失败，不能改走未签名发布。没有 GitHub Release 时，现有合同仍允许把 tag 指到新的合格提交后重跑。已发布的 Release 不删除、不改附件。
+
 ## 轮换步骤
 
 1. approver 在 `rotateBefore` 之前安排轮换。
