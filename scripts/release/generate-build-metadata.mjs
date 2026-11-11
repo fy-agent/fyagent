@@ -80,6 +80,7 @@ try {
   let offlineAdmission;
   if (proofPath) {
     const proof = JSON.parse(readFileSync(proofPath, "utf8"));
+    // This directory already exists and is empty. The stager accepts that slot.
     const staged = mkdtempSync(path.join(tmpdir(), "fyagent-admitted-metadata-"));
     stageMetadataForAggregate({
       sourceDirectory: metadataDirectory,
