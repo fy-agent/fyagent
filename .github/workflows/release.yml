@@ -2171,6 +2171,14 @@ jobs:
       GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Checkout immutable formal source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
       - name: Checkout repair eligibility scripts
         if: needs.eligibility.outputs.repair == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2180,14 +2188,6 @@ jobs:
           persist-credentials: false
           path: repair-workflow
           ref: ${{ needs.eligibility.outputs.workflow_sha }}
-
-      - name: Checkout immutable formal source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          persist-credentials: false
-          ref: ${{ needs.eligibility.outputs.source_sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

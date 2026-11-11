@@ -593,6 +593,20 @@ Workflow default permission is `contents: read`.
 The publish job has an explicit formal-mode condition. A stable tag push and a
 `workflow_dispatch(mode=formal)` run whose workflow ref is that same tag are
 equivalent publication entry events; preflight dispatch evaluates to false.
+Formal repair checks out two commits before that transaction. The immutable
+formal source is checked out at the workspace root first: `ref` is the frozen
+source SHA, `fetch-depth: 0`, `fetch-tags: true`, `persist-credentials: false`,
+and no `path`. Only when `repair` is true, the trusted workflow is then
+checked out into `path: repair-workflow` with those same fetch settings and
+`ref` equal to the trusted workflow SHA. The root checkout must come first.
+`actions/checkout` cleans its target by default, so checking `repair-workflow`
+out first and then checking the source into the workspace root deletes
+`repair-workflow`. Do not keep the directory with `clean: false`, and do not
+move the source checkout into a subdirectory. Later steps require root `HEAD`
+to equal the source SHA, read admission scripts and signing policy from that
+root tree, and require `git -C repair-workflow rev-parse HEAD` to equal the
+trusted workflow SHA. Non-repair formal publication still requires the
+workflow SHA and the source SHA to be equal and fails closed when they differ.
 It performs this transaction:
 
 1. re-evaluate live remote eligibility against the frozen identity;
@@ -691,6 +705,7 @@ until the Release is again provably an owned private draft.
 | Candidate/version/tag/event/workflow SHA differs                                                                        | Fail before native builds. Tag formal still rejects a workflow SHA that differs from the source.    |
 | Formal repair is not from `refs/heads/main`, is not a descendant of `v0.4.15`, peels the tag to another commit, or names another version | Fail before native builds. Do not publish.                                                           |
 | Formal repair diff leaves the repair path table, changes the admission manifest, or changes a product job body | Fail before native builds. Compare the executing workflow file with the tag file.                    |
+| Publish checks `repair-workflow` out before the root source checkout, or sets `clean: false` to retain it | Fail the workflow contract. Check the immutable source out at the root first.                        |
 | Formal repair reaches an already published `v0.4.15` Release                                                            | Fail; the published version stays immutable.                                                         |
 | Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                  | Fail before native builds; require exact `fy-agent/fyagent`.                                         |
 | Formal tag points elsewhere or changes after freeze                                                                     | Fail; never repair or move the tag from the workflow.                                                |
