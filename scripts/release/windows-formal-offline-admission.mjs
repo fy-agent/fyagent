@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -658,6 +658,30 @@ export function assertAdmittedWindowsMetadata(sourceDirectory, proof) {
   }
 }
 
+function assertPrivateStagingDirectory(destinationDirectory) {
+  // mkdtempSync creates an empty directory. That private slot is usable.
+  // cpSync would otherwise merge into a directory that already has files.
+  let stats;
+  try {
+    stats = lstatSync(destinationDirectory);
+  } catch (error) {
+    if (error?.code === "ENOENT") return;
+    fail("Staged metadata directory already exists");
+  }
+  let names = null;
+  if (stats.isDirectory()) {
+    try {
+      names = readdirSync(destinationDirectory);
+    } catch {
+      names = null;
+    }
+  }
+  assert(
+    names !== null && names.length === 0,
+    "Staged metadata directory already exists",
+  );
+}
+
 export function stageMetadataForAggregate({
   sourceDirectory,
   destinationDirectory,
@@ -673,10 +697,7 @@ export function stageMetadataForAggregate({
     "Formal release identity does not match the offline admission proof",
   );
   assertAdmittedWindowsMetadata(sourceDirectory, proof);
-  assert(
-    !existsSync(destinationDirectory),
-    "Staged metadata directory already exists",
-  );
+  assertPrivateStagingDirectory(destinationDirectory);
   cpSync(sourceDirectory, destinationDirectory, {
     recursive: true,
     dereference: false,

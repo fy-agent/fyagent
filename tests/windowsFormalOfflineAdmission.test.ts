@@ -1,6 +1,13 @@
 import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +16,7 @@ import {
   EXPECTED_REPOSITORY_ID,
   EXPECTED_TARGETS,
   buildBuildMetadata,
+  type ReleaseIdentity,
 } from "../scripts/release/release-contract.mjs";
 import {
   WORKFLOW_ONLY_PATHS,
@@ -22,6 +30,7 @@ import {
   proveFormalOfflineAdmission,
   readFormalOfflineAdmissionManifest,
   type FormalOfflineAdmissionInput,
+  type FormalOfflineAdmissionProof,
   stageMetadataForAggregate,
 } from "../scripts/release/windows-formal-offline-admission.mjs";
 
@@ -173,6 +182,83 @@ function prove(change: (input: FormalOfflineAdmissionInput) => void = () => {}) 
   const { input } = fixture();
   change(input);
   return proveFormalOfflineAdmission(input);
+}
+
+function formalReleaseIdentity(proof: FormalOfflineAdmissionProof): ReleaseIdentity {
+  return {
+    productVersion: proof.version,
+    tag: `v${proof.version}`,
+    sourceSha: proof.releaseSha,
+    repository: "fy-agent/fyagent",
+    repositoryId: EXPECTED_REPOSITORY_ID,
+    workflowPath: ".github/workflows/release.yml",
+    workflowRef:
+      `fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v${proof.version}`,
+    workflowSha: proof.releaseSha,
+    runId: "99",
+    runAttempt: "1",
+    event: "push",
+    mode: "formal",
+    ciWorkflowPath: ".github/workflows/ci.yml",
+    ciRunId: null,
+    ciRunAttempt: null,
+  };
+}
+
+function writeAdmittedPlatformMetadata(
+  directory: string,
+  proof: FormalOfflineAdmissionProof,
+  releaseIdentity: ReleaseIdentity,
+) {
+  for (const target of EXPECTED_TARGETS) {
+    const identity =
+      target.platform === "windows"
+        ? {
+            productVersion: proof.version,
+            tag: `v${proof.version}`,
+            sourceSha: proof.artifactSourceSha,
+            repository: "fy-agent/fyagent",
+            repositoryId: EXPECTED_REPOSITORY_ID,
+            workflowPath: ".github/workflows/release.yml",
+            workflowRef:
+              "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+            workflowSha: proof.artifactSourceSha,
+            runId: proof.preflightRunId,
+            runAttempt: proof.preflightRunAttempt,
+            event: "workflow_dispatch",
+            mode: "preflight",
+            ciWorkflowPath: ".github/workflows/ci.yml",
+            ciRunId: null,
+            ciRunAttempt: null,
+          }
+        : releaseIdentity;
+    writeFileSync(
+      path.join(directory, `${target.targetGroup}.json`),
+      `${JSON.stringify({
+        schema: "fyagent-platform-build/v3",
+        targetGroup: target.targetGroup,
+        platform: target.platform,
+        architecture: target.architecture,
+        runner: {
+          requestedLabel: target.requestedRunnerLabel,
+          context: {
+            os: target.expectedRunnerOs,
+            arch: target.expectedRunnerArch,
+          },
+        },
+        toolchain: {
+          node: "v24.19.0",
+          pnpm: "10.12.3",
+          rustc: "rustc 1.97.1 (fixture)",
+        },
+        nativeToolchain:
+          target.platform === "windows"
+            ? { visualStudio: "18.11.12328.437", msvc: "14.51.36231" }
+            : null,
+        identity,
+      })}\n`,
+    );
+  }
 }
 
 describe("formal offline Windows admission", () => {
@@ -386,79 +472,14 @@ describe("formal offline Windows admission", () => {
 
   it("keeps preflight Windows metadata bound to the artifact run", () => {
     const proof = prove();
-    const releaseIdentity = {
-      productVersion: proof.version,
-      tag: `v${proof.version}`,
-      sourceSha: proof.releaseSha,
-      repository: "fy-agent/fyagent",
-      repositoryId: EXPECTED_REPOSITORY_ID,
-      workflowPath: ".github/workflows/release.yml",
-      workflowRef:
-        "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v0.4.15",
-      workflowSha: proof.releaseSha,
-      runId: "99",
-      runAttempt: "1",
-      event: "push",
-      mode: "formal",
-      ciWorkflowPath: ".github/workflows/ci.yml",
-      ciRunId: null,
-      ciRunAttempt: null,
-    };
+    const releaseIdentity = formalReleaseIdentity(proof);
     const directory = mkdtempSync(path.join(tmpdir(), "fyagent-admission-"));
     const staged = path.join(
       tmpdir(),
       `fyagent-admission-staged-${process.pid}-${Date.now()}`,
     );
     try {
-      for (const target of EXPECTED_TARGETS) {
-        const identity =
-          target.platform === "windows"
-            ? {
-                productVersion: proof.version,
-                tag: `v${proof.version}`,
-                sourceSha: proof.artifactSourceSha,
-                repository: "fy-agent/fyagent",
-                repositoryId: EXPECTED_REPOSITORY_ID,
-                workflowPath: ".github/workflows/release.yml",
-                workflowRef:
-                  "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
-                workflowSha: proof.artifactSourceSha,
-                runId: proof.preflightRunId,
-                runAttempt: proof.preflightRunAttempt,
-                event: "workflow_dispatch",
-                mode: "preflight",
-                ciWorkflowPath: ".github/workflows/ci.yml",
-                ciRunId: null,
-                ciRunAttempt: null,
-              }
-            : releaseIdentity;
-        writeFileSync(
-          path.join(directory, `${target.targetGroup}.json`),
-          `${JSON.stringify({
-            schema: "fyagent-platform-build/v3",
-            targetGroup: target.targetGroup,
-            platform: target.platform,
-            architecture: target.architecture,
-            runner: {
-              requestedLabel: target.requestedRunnerLabel,
-              context: {
-                os: target.expectedRunnerOs,
-                arch: target.expectedRunnerArch,
-              },
-            },
-            toolchain: {
-              node: "v24.19.0",
-              pnpm: "10.12.3",
-              rustc: "rustc 1.97.1 (fixture)",
-            },
-            nativeToolchain:
-              target.platform === "windows"
-                ? { visualStudio: "18.11.12328.437", msvc: "14.51.36231" }
-                : null,
-            identity,
-          })}\n`,
-        );
-      }
+      writeAdmittedPlatformMetadata(directory, proof, releaseIdentity);
       assertAdmittedWindowsMetadata(directory, proof);
       stageMetadataForAggregate({
         sourceDirectory: directory,
@@ -483,6 +504,142 @@ describe("formal offline Windows admission", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
       rmSync(staged, { recursive: true, force: true });
+    }
+  });
+
+  it("stages admitted metadata into the empty directory mkdtemp creates", () => {
+    const proof = prove();
+    const releaseIdentity = formalReleaseIdentity(proof);
+    const root = mkdtempSync(path.join(tmpdir(), "fyagent-admitted-aggregate-"));
+    const directory = path.join(root, "platform-metadata");
+    const proofPath = path.join(root, "admission-proof.json");
+    const output = path.join(root, "build-metadata.json");
+    const staged = mkdtempSync(path.join(tmpdir(), "fyagent-admitted-metadata-"));
+    try {
+      mkdirSync(directory);
+      writeAdmittedPlatformMetadata(directory, proof, releaseIdentity);
+      writeFileSync(proofPath, `${JSON.stringify(proof)}\n`);
+      stageMetadataForAggregate({
+        sourceDirectory: directory,
+        destinationDirectory: staged,
+        proof,
+        releaseIdentity,
+      });
+      expect(readdirSync(staged).sort()).toEqual([
+        "macos-universal.json",
+        "windows-arm64.json",
+        "windows-x64.json",
+      ]);
+      const stagedWindows = JSON.parse(
+        readFileSync(path.join(staged, "windows-x64.json"), "utf8"),
+      );
+      expect(stagedWindows.identity).toEqual(releaseIdentity);
+      const sourceWindows = JSON.parse(
+        readFileSync(path.join(directory, "windows-x64.json"), "utf8"),
+      );
+      expect(sourceWindows.identity.sourceSha).toBe(proof.artifactSourceSha);
+      expect(sourceWindows.identity.mode).toBe("preflight");
+      const metadata = buildBuildMetadata({
+        metadataDirectory: staged,
+        identity: releaseIdentity,
+        generatedAt: "2026-11-11T08:57:00.000Z",
+      });
+      expect(metadata.sourceSha).toBe(proof.releaseSha);
+      execFileSync(
+        process.execPath,
+        [
+          path.join(ROOT, "scripts/release/generate-build-metadata.mjs"),
+          directory,
+          releaseIdentity.productVersion,
+          releaseIdentity.tag,
+          releaseIdentity.sourceSha,
+          releaseIdentity.repository,
+          releaseIdentity.repositoryId,
+          releaseIdentity.runId,
+          releaseIdentity.runAttempt,
+          releaseIdentity.event,
+          releaseIdentity.mode,
+          releaseIdentity.workflowRef,
+          releaseIdentity.workflowSha,
+          "",
+          "",
+          "2026-11-11T08:57:00.000Z",
+          output,
+        ],
+        {
+          env: {
+            ...process.env,
+            FYAGENT_WINDOWS_OFFLINE_PROOF: proofPath,
+          },
+          encoding: "utf8",
+        },
+      );
+      const aggregate = JSON.parse(readFileSync(output, "utf8"));
+      expect(aggregate.schema).toBe("fyagent-build-metadata/v2");
+      expect(aggregate.sourceSha).toBe(proof.releaseSha);
+      expect(aggregate.offlineAdmission).toEqual(proof);
+      expect(aggregate.targets).toHaveLength(3);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(staged, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a non-empty staging directory without changing its files", () => {
+    const proof = prove();
+    const releaseIdentity = formalReleaseIdentity(proof);
+    const directory = mkdtempSync(path.join(tmpdir(), "fyagent-admission-"));
+    const staged = mkdtempSync(path.join(tmpdir(), "fyagent-admitted-metadata-"));
+    const occupied = path.join(staged, "windows-x64.json");
+    const occupiedBytes = Buffer.from('{"keep":true}\n');
+    try {
+      writeAdmittedPlatformMetadata(directory, proof, releaseIdentity);
+      writeFileSync(occupied, occupiedBytes);
+      writeFileSync(path.join(staged, "extra.txt"), "extra");
+      expect(() =>
+        stageMetadataForAggregate({
+          sourceDirectory: directory,
+          destinationDirectory: staged,
+          proof,
+          releaseIdentity,
+        }),
+      ).toThrow(/Staged metadata directory already exists/);
+      expect(readFileSync(occupied)).toEqual(occupiedBytes);
+      expect(readFileSync(path.join(staged, "extra.txt"), "utf8")).toBe("extra");
+      expect(readdirSync(staged).sort()).toEqual(["extra.txt", "windows-x64.json"]);
+      const sourceWindows = JSON.parse(
+        readFileSync(path.join(directory, "windows-x64.json"), "utf8"),
+      );
+      expect(sourceWindows.identity.mode).toBe("preflight");
+      expect(sourceWindows.identity.sourceSha).toBe(proof.artifactSourceSha);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+      rmSync(staged, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a staging path that is already a file", () => {
+    const proof = prove();
+    const releaseIdentity = formalReleaseIdentity(proof);
+    const directory = mkdtempSync(path.join(tmpdir(), "fyagent-admission-"));
+    const root = mkdtempSync(path.join(tmpdir(), "fyagent-admitted-metadata-"));
+    const staged = path.join(root, "occupied");
+    const occupiedBytes = Buffer.from("not-a-directory");
+    try {
+      writeAdmittedPlatformMetadata(directory, proof, releaseIdentity);
+      writeFileSync(staged, occupiedBytes);
+      expect(() =>
+        stageMetadataForAggregate({
+          sourceDirectory: directory,
+          destinationDirectory: staged,
+          proof,
+          releaseIdentity,
+        }),
+      ).toThrow(/Staged metadata directory already exists/);
+      expect(readFileSync(staged)).toEqual(occupiedBytes);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
     }
   });
 

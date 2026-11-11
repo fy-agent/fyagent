@@ -482,6 +482,15 @@ schema `fyagent-build-metadata/v2` reconstructs those records through exact key
 allowlists and emits `requiredCi` as null when frozen eligibility has no CI
 run.
 
+Formal offline admission copies the three platform records into a private
+staging directory before writing `build-metadata.json`. That destination may
+be missing or empty. `generate-build-metadata.mjs` passes the empty directory
+`mkdtemp` creates, and the copy rewrites only the staged Windows identities
+onto the formal release identity. A destination that already contains an
+entry, or that is not a directory, fails before any byte is written there.
+`tests/windowsFormalOfflineAdmission.test.ts` covers the empty `mkdtemp` slot
+and a non-empty directory.
+
 The two private Windows fragments are normalized into public
 `signing-status.json`. Release notes generate their Windows table only from
 that verified metadata. Unsigned assets must explicitly say both architectures
@@ -618,6 +627,7 @@ until the Release is again provably an owned private draft.
 | Formal `sign-app` is missing the nested helper, the client dylib, or structure-only helper verification                 | Fail before Developer ID; do not sign an app-only bundle.                                            |
 | Signer configuration is partial/invalid, Apple notarization is denied, or fresh signature proof fails                   | Fail; do not downgrade to unsigned.                                                                  |
 | Formal offline admission manifest is present but the run, attempt, source, product tree, workflow job, hash, signature, or artifact is wrong or missing | Fail; do not publish unsigned Windows or move Latest.                                                |
+| Formal offline metadata staging destination already contains an entry, or is not a directory | Fail before writing; leave existing bytes unchanged. An absent or empty directory, including one from `mkdtemp`, is the private slot. |
 | `notarytool wait --timeout` exits 124 or writes JSON only to stderr                                                     | Must not fail the job; poll `notarytool info` on the same submission id.                             |
 | Apple status remains `In Progress` / `UNKNOWN` inside `FYAGENT_NOTARY_WAIT_SECONDS`                                     | Continue polling; log at least every `FYAGENT_NOTARY_HEARTBEAT_SECONDS`.                             |
 | Apple status is `Invalid` or `Rejected`                                                                                 | Fetch `notarytool log` and fail; do not staple.                                                      |
@@ -648,7 +658,8 @@ publication, formal push/dispatch concurrency identity, both preflight/formal
 tail-job truth tables, owned-draft source/marker/run/workflow/job/step proof,
 published/foreign draft rejection, bounded deletion confirmation, mutation of
 explicit status conditions or direct-need assertions, asset loss/extra, signer
-policy, transaction failure, one reusable `notarytool submit` implementation
+policy, empty and occupied offline metadata staging directories, transaction
+failure, one reusable `notarytool submit` implementation
 used for the app archive and final DMG, `notarytool info`
 polling, no `xcrun notarytool wait` invocation, `notarytool log` on a denied
 submission, `FYAGENT_NOTARY_WAIT_SECONDS`, `build-macos`
