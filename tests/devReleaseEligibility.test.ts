@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
@@ -473,6 +473,46 @@ function repairInput(): MutableRecord {
   };
 }
 
+function gitSucceeds(args: string[]) {
+  try {
+    execFileSync("git", args, {
+      stdio: "ignore",
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function gitFetch(args: string[]) {
+  execFileSync(
+    "git",
+    ["-c", "protocol.version=2", "fetch", "--no-tags", ...args],
+    {
+      stdio: "pipe",
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    },
+  );
+}
+
+function ensureRepairTagHistory(sha: string) {
+  if (!gitSucceeds(["cat-file", "-e", `${sha}^{commit}`])) {
+    gitFetch(["--depth=1", "origin", sha]);
+  }
+  if (gitSucceeds(["merge-base", "--is-ancestor", sha, "HEAD"])) return;
+  const shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], {
+    encoding: "utf8",
+  }).trim();
+  if (shallow !== "true") {
+    throw new Error(`${sha} is not an ancestor of HEAD`);
+  }
+  gitFetch(["--deepen=128"]);
+  execFileSync("git", ["merge-base", "--is-ancestor", sha, "HEAD"], {
+    stdio: "ignore",
+  });
+}
+
 describe("v0.4.15 formal repair", () => {
   it("keeps ordinary formal closed when the workflow SHA splits from the tag", () => {
     const input = mutableInput("formal");
@@ -590,14 +630,8 @@ describe("v0.4.15 formal repair", () => {
     ).toThrow(/Product build job build-macos changed/);
   });
 
-  it("accepts exactly the repair path table when this clone contains the v0.4.15 tag", () => {
-    try {
-      execSync(`git cat-file -e ${FORMAL_REPAIR_SOURCE_SHA}^{commit}`, {
-        stdio: "ignore",
-      });
-    } catch {
-      return;
-    }
+  it("accepts exactly the repair path table for the v0.4.15 tag", () => {
+    ensureRepairTagHistory(FORMAL_REPAIR_SOURCE_SHA);
     const diffStatus = execSync(
       `git -c core.quotePath=false diff --name-status --find-renames ${FORMAL_REPAIR_SOURCE_SHA}`,
       { encoding: "utf8" },
