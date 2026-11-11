@@ -1,4 +1,5 @@
 export type DevReleaseMode = "preflight" | "formal";
+export type DevReleaseDispatchMode = "preflight" | "formal" | "formal-repair";
 
 export interface RepositoryIdentity {
   readonly nameWithOwner: string;
@@ -6,7 +7,7 @@ export interface RepositoryIdentity {
 }
 
 export interface ReleaseEventIdentity {
-  readonly dispatchMode: DevReleaseMode | null;
+  readonly dispatchMode: DevReleaseDispatchMode | null;
   readonly dispatchSourceSha: string | null;
   readonly name: "workflow_dispatch" | "push" | string;
   readonly ref: string;
@@ -68,6 +69,7 @@ export interface DevReleaseEligibilityOutput {
   readonly ciRunId: string | null;
   readonly ciRunAttempt: string | null;
   readonly mode: DevReleaseMode;
+  readonly repair: boolean;
 }
 
 export const DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA: "fyagent-dev-release-eligibility-input/v2";
@@ -82,6 +84,18 @@ export const PREFLIGHT_WORKFLOW_REF: "refs/heads/main";
 export const FORMAL_BRANCH: "main";
 export const FORMAL_REF: "refs/heads/main";
 export const REQUIRED_JOB_NAME: "CI / Required";
+export const FORMAL_REPAIR_RELEASE_TAG: "v0.4.15";
+export const FORMAL_REPAIR_SOURCE_SHA: "b581222135e3db66e0e6e3fdba908662bc60dcda";
+export const FORMAL_REPAIR_PATHS: readonly string[];
+
+export function assertFormalRepairDifference(input: {
+  sourceSha: string;
+  workflowSha: string;
+  ancestor: boolean;
+  diffStatus: string;
+  tagWorkflow: string;
+  executingWorkflow: string;
+}): void;
 
 export function evaluateDevReleaseEligibility(
   input: DevReleaseEligibilityInput,

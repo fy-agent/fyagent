@@ -184,7 +184,8 @@ function authorityBranchForEvent(eventName, dispatchMode) {
   }
   if (
     eventName === "push" ||
-    (eventName === "workflow_dispatch" && dispatchMode === "formal")
+    (eventName === "workflow_dispatch" &&
+      (dispatchMode === "formal" || dispatchMode === "formal-repair"))
   ) {
     return { branch: FORMAL_BRANCH, ref: FORMAL_REF };
   }
@@ -288,9 +289,14 @@ function createEventAndCandidate(context) {
           "context.dispatchSourceSha must be empty for formal workflow_dispatch",
         );
       }
+    } else if (dispatchMode === "formal-repair") {
+      dispatchSourceSha = expectSha(
+        rawDispatchSourceSha,
+        "context.dispatchSourceSha",
+      );
     } else {
       fail(
-        `context.dispatchMode must be \"preflight\" or \"formal\" for workflow_dispatch; received ${JSON.stringify(dispatchMode)}`,
+        `context.dispatchMode must be \"preflight\", \"formal\", or \"formal-repair\" for workflow_dispatch; received ${JSON.stringify(dispatchMode)}`,
       );
     }
   } else {
@@ -365,7 +371,9 @@ export async function collectDevReleaseRemoteEvidence(
   const remoteTag = await collectRemoteTag(
     client,
     repoPath,
-    identity.event.name === "push" || identity.event.dispatchMode === "formal",
+    identity.event.name === "push" ||
+      identity.event.dispatchMode === "formal" ||
+      identity.event.dispatchMode === "formal-repair",
     identity.candidate,
   );
   const remoteDev = await collectRemoteDev(client, repoPath, authority);

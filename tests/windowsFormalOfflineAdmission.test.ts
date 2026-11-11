@@ -39,6 +39,7 @@ const ROOT = path.resolve(
   "..",
 );
 const ARTIFACT_SOURCE = "4f5e0543bae400e0c4447c10c164cd7e285f01df";
+const TAGGED_RELEASE = "b581222135e3db66e0e6e3fdba908662bc60dcda";
 const RELEASE_SOURCE = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const PRODUCT_JOB_FINGERPRINT =
   "e425a5d64add60e956a7264fc7569a85c0beced4b229d8e1f23070af8dd27dd4";
@@ -281,12 +282,15 @@ describe("formal offline Windows admission", () => {
       "c5c798c36e5e947f9c5a950d604c9f3504f0f0be62e2e0c0d6bfb620116e1507",
       "62481dc757706e748c26e716dc5c3ac1fd69b7af5e136087c08db2db68ace843",
     ]);
-    const headTree = execSync("git -c core.quotePath=false ls-tree -r HEAD", {
-      cwd: ROOT,
-      encoding: "utf8",
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    expect(productTreeHash(headTree)).toBe(manifest.productTreeHash);
+    const releaseTree = execSync(
+      `git -c core.quotePath=false ls-tree -r ${TAGGED_RELEASE}`,
+      {
+        cwd: ROOT,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+      },
+    );
+    expect(productTreeHash(releaseTree)).toBe(manifest.productTreeHash);
     const quotedTree = execSync("git -c core.quotePath=true ls-tree -r HEAD", {
       cwd: ROOT,
       encoding: "utf8",
@@ -323,10 +327,15 @@ describe("formal offline Windows admission", () => {
         cwd: ROOT,
         stdio: "ignore",
       });
-      changed = execSync(`git diff --name-only ${ARTIFACT_SOURCE}`, {
-        cwd: ROOT,
-        encoding: "utf8",
-      }).split("\n").filter(Boolean);
+      changed = execSync(
+        `git diff --name-only ${ARTIFACT_SOURCE} ${TAGGED_RELEASE}`,
+        {
+          cwd: ROOT,
+          encoding: "utf8",
+        },
+      )
+        .split("\n")
+        .filter(Boolean);
     } catch {
       changed = [];
     }
@@ -339,6 +348,12 @@ describe("formal offline Windows admission", () => {
     }
     expect(WORKFLOW_ONLY_PATHS).not.toContain("src-tauri/Cargo.toml");
     expect(WORKFLOW_ONLY_PATHS).not.toContain("scripts/release/windows-signing.mjs");
+    expect(WORKFLOW_ONLY_PATHS).not.toContain(
+      "scripts/release/dev-release-eligibility.mjs",
+    );
+    expect(WORKFLOW_ONLY_PATHS).not.toContain(
+      "scripts/release/release-contract.mjs",
+    );
   });
 
   it("admits matching sealed bytes and preserves product build jobs", () => {
@@ -579,6 +594,183 @@ describe("formal offline Windows admission", () => {
       expect(aggregate.sourceSha).toBe(proof.releaseSha);
       expect(aggregate.offlineAdmission).toEqual(proof);
       expect(aggregate.targets).toHaveLength(3);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(staged, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps assert-publish fail-closed on the original proof and installer hashes for a repair SHA split", () => {
+    const proof = prove();
+    const releaseIdentity: ReleaseIdentity = {
+      ...formalReleaseIdentity(proof),
+      event: "workflow_dispatch",
+      workflowRef:
+        "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+      workflowSha: "e".repeat(40),
+    };
+    const root = mkdtempSync(path.join(tmpdir(), "fyagent-repair-aggregate-"));
+    const directory = path.join(root, "platform-metadata");
+    const proofPath = path.join(root, "admission-proof.json");
+    const output = path.join(root, "build-metadata.json");
+    const staged = mkdtempSync(path.join(tmpdir(), "fyagent-repair-staged-"));
+    const signedBytesByArchitecture = fixture().input.signedBytesByArchitecture;
+    try {
+      mkdirSync(directory);
+      writeAdmittedPlatformMetadata(directory, proof, releaseIdentity);
+      writeFileSync(proofPath, `${JSON.stringify(proof)}\n`);
+      expect(() =>
+        buildBuildMetadata({
+          metadataDirectory: directory,
+          identity: releaseIdentity,
+          generatedAt: "2026-11-11T08:57:00.000Z",
+        }),
+      ).toThrow(/Formal trusted workflow SHA must equal the release source/);
+      stageMetadataForAggregate({
+        sourceDirectory: directory,
+        destinationDirectory: staged,
+        proof,
+        releaseIdentity,
+      });
+      const metadata = buildBuildMetadata({
+        metadataDirectory: staged,
+        identity: releaseIdentity,
+        generatedAt: "2026-11-11T08:57:00.000Z",
+        repair: true,
+      });
+      expect(metadata.sourceSha).toBe(proof.releaseSha);
+      expect(metadata.workflow.sha).toBe(releaseIdentity.workflowSha);
+      expect(metadata.workflow.ref).toBe(releaseIdentity.workflowRef);
+      expect(metadata.workflow.mode).toBe("formal");
+      expect(() =>
+        execFileSync(
+          process.execPath,
+          [
+            path.join(ROOT, "scripts/release/generate-build-metadata.mjs"),
+            directory,
+            releaseIdentity.productVersion,
+            releaseIdentity.tag,
+            releaseIdentity.sourceSha,
+            releaseIdentity.repository,
+            releaseIdentity.repositoryId,
+            releaseIdentity.runId,
+            releaseIdentity.runAttempt,
+            releaseIdentity.event,
+            releaseIdentity.mode,
+            releaseIdentity.workflowRef,
+            releaseIdentity.workflowSha,
+            "",
+            "",
+            "2026-11-11T08:57:00.000Z",
+            output,
+          ],
+          {
+            env: { ...process.env, FYAGENT_WINDOWS_OFFLINE_PROOF: proofPath },
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        ),
+      ).toThrow();
+      execFileSync(
+        process.execPath,
+        [
+          path.join(ROOT, "scripts/release/generate-build-metadata.mjs"),
+          directory,
+          releaseIdentity.productVersion,
+          releaseIdentity.tag,
+          releaseIdentity.sourceSha,
+          releaseIdentity.repository,
+          releaseIdentity.repositoryId,
+          releaseIdentity.runId,
+          releaseIdentity.runAttempt,
+          releaseIdentity.event,
+          releaseIdentity.mode,
+          releaseIdentity.workflowRef,
+          releaseIdentity.workflowSha,
+          "",
+          "",
+          "2026-11-11T08:57:00.000Z",
+          output,
+        ],
+        {
+          env: {
+            ...process.env,
+            FYAGENT_WINDOWS_OFFLINE_PROOF: proofPath,
+            FYAGENT_FORMAL_REPAIR: "true",
+          },
+          encoding: "utf8",
+        },
+      );
+      const aggregate = JSON.parse(readFileSync(output, "utf8"));
+      expect(aggregate.sourceSha).toBe(proof.releaseSha);
+      expect(aggregate.workflow.sha).toBe(releaseIdentity.workflowSha);
+      expect(aggregate.workflow.ref).toContain("@refs/heads/main");
+      expect(aggregate.workflow.ref).not.toContain("refs/tags/");
+      expect(aggregate.offlineAdmission).toEqual(proof);
+      expect(aggregate.offlineAdmission.releaseSha).not.toBe(
+        aggregate.workflow.sha,
+      );
+      const signed = {
+        schema: "fyagent-windows-signing-status/v1",
+        product: "FyAgent",
+        version: proof.version,
+        sourceSha: proof.artifactSourceSha,
+        mode: "unsigned",
+        assets: proof.assets.map((asset) => ({
+          ...asset,
+          sha256: asset.signedSha256,
+          sourceSha: proof.artifactSourceSha,
+          signature: { status: "NotSigned", publisher: null },
+        })),
+      };
+      const valid = bindFormalSigningStatus(
+        {
+          ...signed,
+          mode: "signed",
+          assets: signed.assets.map((asset) => ({
+            ...asset,
+            signature: {
+              status: "Valid",
+              publisher: proof.publisher,
+              signerCertificate: { sha256: proof.certificateSha256 },
+            },
+          })),
+        },
+        proof,
+      );
+      expect(
+        assertPublishedAdmission({
+          proof,
+          signingStatus: valid,
+          buildMetadata: aggregate,
+          signedBytesByArchitecture,
+        }),
+      ).toBe(true);
+      expect(() =>
+        assertPublishedAdmission({
+          proof,
+          signingStatus: valid,
+          buildMetadata: aggregate,
+          signedBytesByArchitecture: {
+            ...signedBytesByArchitecture,
+            x64: Buffer.from("swapped-repair-bytes"),
+          },
+        }),
+      ).toThrow(/x64 published installer SHA-256 does not match/);
+      expect(() =>
+        assertPublishedAdmission({
+          proof,
+          signingStatus: valid,
+          buildMetadata: {
+            ...aggregate,
+            offlineAdmission: {
+              ...proof,
+              releaseSha: releaseIdentity.workflowSha,
+            },
+          },
+          signedBytesByArchitecture,
+        }),
+      ).toThrow(/does not match the recomputed admission proof/);
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(staged, { recursive: true, force: true });

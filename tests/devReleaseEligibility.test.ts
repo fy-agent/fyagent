@@ -1,9 +1,15 @@
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA,
+  FORMAL_REPAIR_PATHS,
+  FORMAL_REPAIR_SOURCE_SHA,
+  assertFormalRepairDifference,
   evaluateDevReleaseEligibility,
   type DevReleaseEligibilityInput,
 } from "../scripts/release/dev-release-eligibility.mjs";
+import { WORKFLOW_ONLY_PATHS } from "../scripts/release/windows-formal-offline-admission.mjs";
 
 const SOURCE_SHA = "a".repeat(40);
 const OTHER_SHA = "c".repeat(40);
@@ -108,6 +114,7 @@ describe("split preflight and formal release identity", () => {
         ciRunId: null,
         ciRunAttempt: null,
         mode,
+        repair: false,
       });
       expect(Object.isFrozen(output)).toBe(true);
       expect(evaluateDevReleaseEligibility(validInput(mode), output)).toEqual(
@@ -414,5 +421,203 @@ describe("fail-closed input shape", () => {
     ],
   ])("rejects %s", (_label, mutate) => {
     expectRejected(mutate);
+  });
+});
+
+const REPAIR_WORKFLOW_SHA = "e".repeat(40);
+
+function productWorkflow(macosRunner: string) {
+  return [
+    "\n  build-windows:\n    runs-on: windows-2025\n",
+    "\n  prove-windows-preflight:\n    runs-on: windows-2025\n",
+    "\n  sign-windows-formal:\n    runs-on: windows-2025\n",
+    "\n  seal-windows-formal:\n    runs-on: windows-2025\n",
+    `\n  build-macos:\n    runs-on: ${macosRunner}\n`,
+  ].join("");
+}
+
+function repairInput(): MutableRecord {
+  return {
+    schema: DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA,
+    repository: { ...REPOSITORY },
+    event: {
+      dispatchMode: "formal-repair",
+      dispatchSourceSha: FORMAL_REPAIR_SOURCE_SHA,
+      name: "workflow_dispatch",
+      ref: "refs/heads/main",
+      refName: "main",
+      refType: "branch",
+      sha: REPAIR_WORKFLOW_SHA,
+    },
+    workflow: {
+      name: "Release",
+      path: ".github/workflows/release.yml",
+      ref: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+      sha: REPAIR_WORKFLOW_SHA,
+    },
+    candidate: {
+      canonicalVersion: "0.4.15",
+      releaseTag: "v0.4.15",
+      sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+    },
+    remoteDev: {
+      name: "main",
+      ref: "refs/heads/main",
+      headSha: REPAIR_WORKFLOW_SHA,
+    },
+    remoteTag: {
+      ref: "refs/tags/v0.4.15",
+      refObject: { type: "commit", sha: FORMAL_REPAIR_SOURCE_SHA },
+      tagObject: null,
+    },
+  };
+}
+
+describe("v0.4.15 formal repair", () => {
+  it("keeps ordinary formal closed when the workflow SHA splits from the tag", () => {
+    const input = mutableInput("formal");
+    input.event.sha = WORKFLOW_SHA;
+    input.workflow.sha = WORKFLOW_SHA;
+    expect(() =>
+      evaluateDevReleaseEligibility(input as DevReleaseEligibilityInput),
+    ).toThrow(/event\.sha must be "a{40}"/);
+    expect(WORKFLOW_ONLY_PATHS).not.toContain(
+      "scripts/release/dev-release-eligibility.mjs",
+    );
+    expect(WORKFLOW_ONLY_PATHS).not.toContain(
+      "scripts/release/release-contract.mjs",
+    );
+  });
+
+  it("accepts the narrow main repair and records it separately from formal mode", () => {
+    expect(
+      evaluateDevReleaseEligibility(repairInput() as DevReleaseEligibilityInput),
+    ).toEqual({
+      appVersion: "0.4.15",
+      releaseTag: "v0.4.15",
+      sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+      workflowSha: REPAIR_WORKFLOW_SHA,
+      ciRunId: null,
+      ciRunAttempt: null,
+      mode: "formal",
+      repair: true,
+    });
+  });
+
+  it("rejects a repair whose remote tag peels to another commit", () => {
+    const input = repairInput();
+    input.remoteTag.refObject.sha = OTHER_SHA;
+    expect(() =>
+      evaluateDevReleaseEligibility(input as DevReleaseEligibilityInput),
+    ).toThrow(/remoteTag\.refObject\.sha/);
+  });
+
+  it("rejects a repair that is not dispatched from main", () => {
+    const input = repairInput();
+    input.event.ref = "refs/heads/feature/repair";
+    input.event.refName = "feature/repair";
+    input.workflow.ref =
+      "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/feature/repair";
+    expect(() =>
+      evaluateDevReleaseEligibility(input as DevReleaseEligibilityInput),
+    ).toThrow(/event\.ref/);
+  });
+
+  it("rejects a repair that forges the workflow identity as the tag", () => {
+    const sameCommit = repairInput();
+    sameCommit.event.sha = FORMAL_REPAIR_SOURCE_SHA;
+    sameCommit.workflow.sha = FORMAL_REPAIR_SOURCE_SHA;
+    expect(() =>
+      evaluateDevReleaseEligibility(sameCommit as DevReleaseEligibilityInput),
+    ).toThrow(/workflow\.sha must differ from the tag commit/);
+    const forgedRef = repairInput();
+    forgedRef.workflow.ref =
+      "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v0.4.15";
+    expect(() =>
+      evaluateDevReleaseEligibility(forgedRef as DevReleaseEligibilityInput),
+    ).toThrow(/workflow\.ref/);
+  });
+
+  it("rejects a repair diff outside the path table, a forbidden admission manifest, or a non-descendant", () => {
+    const diff = FORMAL_REPAIR_PATHS.map((candidate) => `M\t${candidate}`).join(
+      "\n",
+    );
+    const workflows = "  build-windows:\n    runs-on: ubuntu-24.04\n";
+    expect(() =>
+      assertFormalRepairDifference({
+        sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+        workflowSha: REPAIR_WORKFLOW_SHA,
+        ancestor: true,
+        diffStatus: `${diff}\nM\tREADME.md\n`,
+        tagWorkflow: workflows,
+        executingWorkflow: workflows,
+      }),
+    ).toThrow(/outside the repair table: README.md/);
+    expect(() =>
+      assertFormalRepairDifference({
+        sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+        workflowSha: REPAIR_WORKFLOW_SHA,
+        ancestor: true,
+        diffStatus: `${diff}\nM\tdocs/release/windows-formal-offline-admission.json\n`,
+        tagWorkflow: workflows,
+        executingWorkflow: workflows,
+      }),
+    ).toThrow(/forbidden release input: docs\/release\/windows-formal-offline-admission.json/);
+    expect(() =>
+      assertFormalRepairDifference({
+        sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+        workflowSha: REPAIR_WORKFLOW_SHA,
+        ancestor: false,
+        diffStatus: `${diff}\n`,
+        tagWorkflow: workflows,
+        executingWorkflow: workflows,
+      }),
+    ).toThrow(/not a descendant of the tag commit/);
+  });
+
+  it("rejects a product-job body change in the executing workflow", () => {
+    const diff = `${FORMAL_REPAIR_PATHS.map((candidate) => `M\t${candidate}`).join("\n")}\n`;
+    const tagWorkflow = productWorkflow("macos-15");
+    expect(() =>
+      assertFormalRepairDifference({
+        sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+        workflowSha: REPAIR_WORKFLOW_SHA,
+        ancestor: true,
+        diffStatus: diff,
+        tagWorkflow,
+        executingWorkflow: productWorkflow("macos-14"),
+      }),
+    ).toThrow(/Product build job build-macos changed/);
+  });
+
+  it("accepts exactly the repair path table when this clone contains the v0.4.15 tag", () => {
+    try {
+      execSync(`git cat-file -e ${FORMAL_REPAIR_SOURCE_SHA}^{commit}`, {
+        stdio: "ignore",
+      });
+    } catch {
+      return;
+    }
+    const diffStatus = execSync(
+      `git -c core.quotePath=false diff --name-status --find-renames ${FORMAL_REPAIR_SOURCE_SHA}`,
+      { encoding: "utf8" },
+    );
+    execSync(`git merge-base --is-ancestor ${FORMAL_REPAIR_SOURCE_SHA} HEAD`);
+    const tagWorkflow = execSync(
+      `git show ${FORMAL_REPAIR_SOURCE_SHA}:.github/workflows/release.yml`,
+      { encoding: "utf8" },
+    );
+    const workflowSha = execSync("git rev-parse HEAD", {
+      encoding: "utf8",
+    }).trim();
+    assertFormalRepairDifference({
+      sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+      workflowSha,
+      ancestor: true,
+      diffStatus,
+      tagWorkflow,
+      executingWorkflow: readFileSync(".github/workflows/release.yml", "utf8"),
+    });
+    expect(workflowSha).not.toBe(FORMAL_REPAIR_SOURCE_SHA);
   });
 });

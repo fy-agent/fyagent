@@ -182,4 +182,5 @@ export function buildBuildMetadata(input: {
   metadataDirectory: string;
   identity: ReleaseIdentity;
   generatedAt: string;
+  repair?: boolean;
 }): BuildMetadata;
