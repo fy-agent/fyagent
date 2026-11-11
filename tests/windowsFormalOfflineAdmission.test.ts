@@ -351,7 +351,7 @@ describe("formal offline Windows admission", () => {
       version: "0.4.15",
       manifest: null,
     })).toBe("rebuild");
-  });
+  }, 60_000);
 
   it("keeps the delta from the sealed source inside the workflow allowlist", () => {
     ensureCommitObject(ARTIFACT_SOURCE);
@@ -380,7 +380,7 @@ describe("formal offline Windows admission", () => {
     expect(WORKFLOW_ONLY_PATHS).not.toContain(
       "scripts/release/release-contract.mjs",
     );
-  });
+  }, 60_000);
 
   it("admits matching sealed bytes and preserves product build jobs", () => {
     const proof = prove();

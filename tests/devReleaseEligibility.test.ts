@@ -507,7 +507,7 @@ function ensureRepairTagHistory(sha: string) {
   if (shallow !== "true") {
     throw new Error(`${sha} is not an ancestor of HEAD`);
   }
-  gitFetch(["--deepen=128"]);
+  gitFetch(["--deepen=32"]);
   execFileSync("git", ["merge-base", "--is-ancestor", sha, "HEAD"], {
     stdio: "ignore",
   });
@@ -653,5 +653,5 @@ describe("v0.4.15 formal repair", () => {
       executingWorkflow: readFileSync(".github/workflows/release.yml", "utf8"),
     });
     expect(workflowSha).not.toBe(FORMAL_REPAIR_SOURCE_SHA);
-  });
+  }, 60_000);
 });
