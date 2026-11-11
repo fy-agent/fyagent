@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-04",
+  "artifact": "v4-aligned-pages.html",
+  "evidence": "static_and_non_browser_state_logic",
+  "checks": [
+    {
+      "name": "JavaScript syntax",
+      "status": "pass"
+    },
+    {
+      "name": "No network / file / persistence APIs",
+      "status": "pass"
+    },
+    {
+      "name": "CSP denies connections",
+      "status": "pass"
+    },
+    {
+      "name": "Default mode view differs from active state",
+      "status": "pass"
+    },
+    {
+      "name": "Browsing modes leaves active connection unchanged",
+      "status": "pass"
+    },
+    {
+      "name": "Unknown mode is rejected",
+      "status": "pass"
+    },
+    {
+      "name": "Cannot remove aggregation default",
+      "status": "pass"
+    },
+    {
+      "name": "Cannot default to nonmember",
+      "status": "pass"
+    },
+    {
+      "name": "Member added independently of active mode",
+      "status": "pass"
+    },
+    {
+      "name": "Default change preserves members",
+      "status": "pass"
+    },
+    {
+      "name": "Initial provider page does not include advanced form fields",
+      "status": "pass"
+    },
+    {
+      "name": "Picker precedes custom form",
+      "status": "pass"
+    },
+    {
+      "name": "Model capabilities and advanced settings initially collapsed",
+      "status": "pass"
+    },
+    {
+      "name": "Display toggle changes visibility only",
+      "status": "pass"
+    },
+    {
+      "name": "Upgrade cancellation leaves version unchanged",
+      "status": "pass"
+    },
+    {
+      "name": "Upgrade confirmation changes only simulated version",
+      "status": "pass"
+    },
+    {
+      "name": "Apps page keeps duplicate install details collapsed",
+      "status": "pass"
+    }
+  ],
+  "passed": 17,
+  "browser_rendering": "not_verified",
+  "runtime_screenshot": "not_verified",
+  "pixel_diff": "not_verified",
+  "native_integration": "not_connected",
+  "limitation": "No browser or native UI pass is claimed. DOM stubs check state transitions only."
+}
