@@ -3386,6 +3386,67 @@ jobs:
     );
   });
 
+  it("checks out the immutable formal source at the publish root before the repair workflow directory", () => {
+    const publish = source.slice(source.indexOf("\n  publish:\n"));
+    const sourceStep = namedStepBlock(
+      publish,
+      "Checkout immutable formal source",
+    );
+    const repairStep = namedStepBlock(
+      publish,
+      "Checkout repair eligibility scripts",
+    );
+    const sourceAt = publish.indexOf(
+      "\n      - name: Checkout immutable formal source\n",
+    );
+    const repairAt = publish.indexOf(
+      "\n      - name: Checkout repair eligibility scripts\n",
+    );
+    const rootSourceRef = publish.indexOf(
+      "\n          ref: ${{ needs.eligibility.outputs.source_sha }}\n",
+    );
+    const repairPath = publish.indexOf("\n          path: repair-workflow\n");
+
+    expect(sourceAt).toBeGreaterThanOrEqual(0);
+    expect(repairAt).toBeGreaterThan(sourceAt);
+    expect(rootSourceRef).toBeGreaterThanOrEqual(0);
+    expect(repairPath).toBeGreaterThan(rootSourceRef);
+    expect(publish.slice(0, rootSourceRef)).not.toContain(
+      "path: repair-workflow",
+    );
+
+    expect(sourceStep).toContain("fetch-depth: 0");
+    expect(sourceStep).toContain("fetch-tags: true");
+    expect(sourceStep).toContain("persist-credentials: false");
+    expect(sourceStep).toContain(
+      "ref: ${{ needs.eligibility.outputs.source_sha }}",
+    );
+    expect(sourceStep).not.toMatch(/\n\s+path:/);
+    expect(sourceStep).not.toContain("clean:");
+
+    expect(repairStep).toContain(
+      "if: needs.eligibility.outputs.repair == 'true'",
+    );
+    expect(repairStep).toContain("fetch-depth: 0");
+    expect(repairStep).toContain("fetch-tags: true");
+    expect(repairStep).toContain("persist-credentials: false");
+    expect(repairStep).toContain("path: repair-workflow");
+    expect(repairStep).toContain(
+      "ref: ${{ needs.eligibility.outputs.workflow_sha }}",
+    );
+    expect(repairStep).not.toContain("clean:");
+
+    expect(publish).toContain(
+      '[ "$GITHUB_WORKFLOW_SHA" = "$SOURCE_SHA" ] && [ "$TRUSTED_WORKFLOW_SHA" = "$SOURCE_SHA" ]',
+    );
+    expect(publish).toContain('[ "$TRUSTED_WORKFLOW_SHA" != "$SOURCE_SHA" ]');
+    expect(publish).toContain('test "$(git rev-parse HEAD)" = "$SOURCE_SHA"');
+    expect(publish).toContain('[ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ]');
+    expect(publish).toContain(
+      'test "$(git -C repair-workflow rev-parse HEAD)" = "$TRUSTED_WORKFLOW_SHA"',
+    );
+  });
+
   it("rechecks the exact frozen remote eligibility before publication starts and immediately before the final PATCH", () => {
     const publish = source.slice(source.indexOf("\n  publish:\n"));
     expect(publish).toContain(PUBLISH_JOB_IF_LINE);
