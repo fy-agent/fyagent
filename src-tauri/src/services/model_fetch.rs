@@ -93,16 +93,49 @@ pub async fn fetch_models(
     let headers =
         build_model_fetch_headers(api_key, api_format, user_agent.as_ref(), request_headers)?;
     let client = crate::proxy::http_client::get();
-    let mut last_err: Option<String> = None;
     let mut known_secrets = vec![api_key.to_string()];
     if let Some(request_headers) = request_headers {
         known_secrets.extend(request_headers.values().cloned());
     }
 
-    for url in &candidates {
+    execute_model_fetch(&client, &candidates, &headers, &known_secrets).await
+}
+
+/// Saved native credentials must never follow even a same-origin redirect.
+/// Reuse the current proxy policy and the same endpoint/header/response owner.
+pub(crate) async fn fetch_models_without_redirects(
+    base_url: &str,
+    api_key: &str,
+    allow_no_api_key: bool,
+) -> Result<Vec<FetchedModel>, String> {
+    if api_key.is_empty() && !allow_no_api_key {
+        return Err("API Key is required to fetch models".into());
+    }
+    let candidates = build_models_url_candidates(base_url, false, None)?;
+    let headers = if api_key.is_empty() {
+        HeaderMap::new()
+    } else {
+        build_model_fetch_headers(api_key, None, None, None)?
+    };
+    let builder = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
+    let client = crate::proxy::http_client::apply_installer_proxy(builder)
+        .map_err(|_| "The configured proxy could not be used".to_string())?
+        .build()
+        .map_err(|_| "The model request client could not be created".to_string())?;
+    execute_model_fetch(&client, &candidates, &headers, &[api_key.to_owned()]).await
+}
+
+async fn execute_model_fetch(
+    client: &reqwest::Client,
+    candidates: &[String],
+    headers: &HeaderMap,
+    known_secrets: &[String],
+) -> Result<Vec<FetchedModel>, String> {
+    let mut last_err: Option<String> = None;
+    for url in candidates {
         log::debug!(
             "[ModelFetch] Trying endpoint: {}",
-            crate::url_for_log_with_secrets(url, &known_secrets)
+            crate::url_for_log_with_secrets(url, known_secrets)
         );
         let request = client
             .get(url)
@@ -144,16 +177,14 @@ pub async fn fetch_models(
         if status == StatusCode::NOT_FOUND || status == StatusCode::METHOD_NOT_ALLOWED {
             let body = redact_model_fetch_error_body(
                 response.text().await.unwrap_or_default(),
-                &known_secrets,
+                known_secrets,
             );
             last_err = Some(format!("HTTP {status}: {body}"));
             continue;
         }
 
-        let body = redact_model_fetch_error_body(
-            response.text().await.unwrap_or_default(),
-            &known_secrets,
-        );
+        let body =
+            redact_model_fetch_error_body(response.text().await.unwrap_or_default(), known_secrets);
         return Err(format!("HTTP {status}: {body}"));
     }
 

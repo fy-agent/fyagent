@@ -38,6 +38,8 @@ export function GroupedModelChips({
   removeDisabled = false,
   onRemove,
   selectedId,
+  selectedIds,
+  selectDisabled = false,
   onSelect,
   ownedByById,
   emptyLabel,
@@ -48,6 +50,8 @@ export function GroupedModelChips({
   onRemove?: (modelId: string) => void;
   removeOriginRef?: DialogOriginRef;
   selectedId?: string;
+  selectedIds?: readonly string[];
+  selectDisabled?: boolean;
   onSelect?: (modelId: string) => void;
   ownedByById?: Readonly<Record<string, string>>;
   emptyLabel: string;
@@ -102,7 +106,8 @@ export function GroupedModelChips({
               <CollapsibleContent open={!isCollapsed}>
                 <ul className="fy-models-chips">
                   {group.ids.map((modelId) => {
-                    const selected = selectedId === modelId;
+                    const selected =
+                      selectedIds?.includes(modelId) ?? selectedId === modelId;
                     const content = (
                       <>
                         <ModelVendorIcon
@@ -125,6 +130,7 @@ export function GroupedModelChips({
                             type="button"
                             className="fy-models-chip-select"
                             aria-pressed={selected}
+                            disabled={selectDisabled}
                             onClick={() => onSelect(modelId)}
                           >
                             {content}

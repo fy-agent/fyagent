@@ -270,6 +270,8 @@ export interface OpenCodeModelSnapshot {
 }
 
 export interface OpenCodeFetchModelsRequest {
+  providerId?: string | null;
+  expectedRevision?: string | null;
   baseUrl: string;
   apiKey: string;
   allowNoApiKey: boolean;

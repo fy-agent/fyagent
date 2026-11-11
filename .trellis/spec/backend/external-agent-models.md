@@ -41,7 +41,9 @@ OpenCode owns a dedicated model configuration port:
 get_opencode_model_snapshot()
   -> { providers, selectedModel, revision, path, backupPath, exists }
 
-fetch_opencode_provider_models(request)
+fetch_opencode_provider_models({
+  providerId?, expectedRevision?, baseUrl, apiKey, allowNoApiKey
+})
   -> { models, truncated }
 
 save_opencode_models(request)
@@ -131,6 +133,45 @@ an explicit nonempty npm, or with unsupported options/models shape, is read-only
 the native model writer rejects it before overwrite admission or backup/write.
 Only newly created providers receive the dedicated writer's default package.
 
+### Existing OpenCode connection refresh
+
+Fetch accepts optional `providerId` and `expectedRevision` while preserving
+explicit-input requests without a provider ID. For an existing target the native
+owner reads the fixed config under the shared lock and requires its exact current
+revision before resolving the connection. Missing/stale revisions return
+`OPENCODE_CONCURRENT_MODIFICATION` with no network request. The synchronous lock
+is released before awaiting the request; resolved values remain native-only.
+The scoped fetch client disables redirects, including same-origin path redirects,
+while reusing the current native proxy configuration and shared model parser.
+Explicit-input/new-provider requests retain their existing transport behavior.
+The renderer reloads the snapshot and starts a new selection after this error.
+
+An empty address/key draft reuses that exact provider's saved value. A nonempty
+address must be a credential-free HTTP(S) URL without query/fragment. Changing
+its destination requires a fresh key; `allowNoApiKey` cannot forward the saved
+key to a changed address. The flag permits a truly keyless connection only when
+neither an explicit nor saved key exists. A fresh key replaces the saved key for
+fetch only until the user selects models and saves.
+
+Missing IDs, managed projections, builtin/read-only declarations, malformed
+connection fields, and native-v2 declarations that supersede the legacy target
+fail closed. They never fall back to another provider. Saved `{env:...}` and
+`{file:...}` references have no reviewed resolver in this service: fetch returns
+`OPENCODE_INVALID_REQUEST` rather than sending the reference as a bearer token.
+Users can enter a fresh key. A model-only save preserves native reference strings
+unchanged and never materializes their values.
+
+Save uses the same effective connection validation, accepts empty drafts for
+existing connections, and leaves their saved fields unchanged. A changed address
+with no new key fails before backup/write. Selected additions and explicit
+removals preserve other models, the default model, neighboring providers and
+unknown fields. Existing one-use overwrite capability, revision and backup rules
+remain in force. JSONC reads reuse `JsoncDocument`; path selection and atomic
+writes reuse `opencode_config`, on both macOS and Windows. A successful save
+requires exact written-byte readback before returning a new revision. No saved
+address/key or reference enters the public DTO; fetched IDs and ownership strings
+that echo the effective key are rejected.
+
 Model-save `providerId` is an existing exact ID or null for explicit creation.
 An existing ID must still exist; display-name edits never change the target.
 Creation rejects a derived-ID collision, including builtin providers. There is no
@@ -154,7 +195,10 @@ an OpenClaw model editor or credential resolver to the renderer.
 | TRAE cache contains credentials/private fields                                  | Project only sanitized model IDs; fail on credential collision   |
 | Caller asks to save/fetch TRAE models                                           | No such native command; renderer stays guidance/observation only |
 | OpenCode snapshot/config is malformed                                           | Controlled failure; never replace with a minimal file            |
-| OpenCode expected revision is stale                                             | Conflict plus exact overwrite capability; no write               |
+| OpenCode expected revision is stale                                             | Save conflict / fetch concurrency error; no write or fetch        |
+| Existing OpenCode fetch has no exact provider or revision                        | Reject before credential dispatch                               |
+| Draft changes the saved endpoint with no fresh key                              | Reject fetch/save, including `allowNoApiKey`; no effects           |
+| Saved OpenCode key is an unresolved env/file reference                           | Reject fetch; preserve the reference on model-only save          |
 | OpenCode backup fails                                                           | Abort before primary mutation                                    |
 | OpenCode reread differs                                                         | Non-success/recovery result; do not claim applied                |
 | GET/query/log/error contains API key or auth header                             | Secret-safety test fails                                         |
@@ -183,6 +227,12 @@ an OpenClaw model editor or credential resolver to the renderer.
 - OpenCode tests cover sanitized snapshot, credential collision rejection,
   revision conflict, one-use overwrite capability, config lock, unknown-field
   preservation, rolling backup, atomic replacement, and authoritative reread.
+  Loopback fixtures prove saved connection refresh, correct native Authorization,
+  selection-only save, explicit keyless operation, fresh-key override, JSONC
+  preservation, and zero-network/zero-write rejection for stale/unknown targets,
+  unsupported shapes/references, and changed endpoints without a fresh key.
+  Test-home/settings guards restore state on drop and run under the shared serial
+  test lock; Windows initializes its frozen user context before the test override.
 - Command/ACL tests freeze the exact native command set and reject generic
   filesystem/network/process permission widening.
 - Renderer Models port/page tests prove TRAE is observation/vendor-guidance only,

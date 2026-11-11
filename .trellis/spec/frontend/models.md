@@ -663,3 +663,40 @@ available in builtin-only configurations. Save sends the selected exact
 `providerId`, or null only for explicit creation; display names do not choose
 the target. Switching with a pending draft requires discard confirmation, and
 cancel preserves the target, draft and transient key.
+
+### Saved OpenCode connection refresh
+
+`OpenCodeFetchModelsRequest` retains `baseUrl`, `apiKey`, and `allowNoApiKey`
+and admits only the optional `providerId?: string | null` and
+`expectedRevision?: string | null` identity fields. The native port rejects
+unknown fields and malformed optional members. Existing editable selections
+send their exact provider ID and snapshot revision; empty connection fields
+reuse the native saved values. Creation still requires an explicit valid
+connection. Public snapshots never expose saved URLs, keys or private options.
+An explicit replacement address in the existing-provider form requires a new
+key; probing continues to require explicit connection fields because the probe
+contract does not accept saved-provider identity.
+
+Fetch returns selectable candidates without selecting or saving them. Already
+saved IDs are excluded from candidates and remain unchanged when a candidate
+is deselected. Only explicit selections and manual IDs enter the save request.
+Repeated fetches preserve selections; switching providers discards candidates
+and accepted drafts under the existing discard confirmation. Async fetch
+results require the current mounted/active target, snapshot revision and draft
+revision; a changed draft cannot accept an older response. Fetch failures keep
+saved IDs and selections. `OPENCODE_CONCURRENT_MODIFICATION` triggers a safe
+notice and snapshot reread before retry; raw upstream/native errors are hidden.
+
+Existing saves send their exact provider ID/revision and allow blank connection
+fields. Success copy and draft clearing wait for the authoritative reread;
+unconfirmed rereads retain the draft and block further writes. The default model
+is never added to the save request or changed implicitly. Renderer behavior is
+shared by macOS and Windows; native/runtime evidence is separate.
+
+`OpenCodeModelsPanel.test.tsx` owns saved-connection refresh, explicit selection,
+manual preservation, repeated/failed/stale fetch, changed-draft rejection,
+provider isolation, replacement/new-connection validation and failed save reread.
+`featurePorts.test.ts` owns the optional identity mapping and rejection of extra
+authority/credential fields. Shared `GroupedModelChips` adds optional
+`selectedIds` and `selectDisabled`; existing `selectedId` callers keep their
+single-selection behavior.
