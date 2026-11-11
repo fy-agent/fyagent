@@ -535,6 +535,7 @@ export function buildBuildMetadata({
   metadataDirectory,
   identity,
   generatedAt,
+  repair = false,
 }) {
   assertExactKeys(identity, IDENTITY_KEYS, "release identity");
   assertReleaseIdentity({
@@ -576,7 +577,22 @@ export function buildBuildMetadata({
     "Trusted workflow SHA is invalid",
   );
   const workflowRefPrefix = `${EXPECTED_REPOSITORY}/${RELEASE_WORKFLOW_PATH}@`;
-  if (identity.mode === "formal") {
+  assert(repair === true || repair === false, "Formal repair flag must be boolean");
+  if (repair === true) {
+    assert(
+      identity.mode === "formal" && identity.event === "workflow_dispatch",
+      "Formal repair metadata must stay on the formal dispatch path",
+    );
+    assert(
+      identity.workflowSha !== identity.sourceSha,
+      "Formal repair must record the real workflow SHA split",
+    );
+    assert(
+      identity.workflowRef ===
+        `${workflowRefPrefix}refs/heads/${PREFLIGHT_WORKFLOW_BRANCH}`,
+      "Formal repair workflow ref must be the executing main workflow",
+    );
+  } else if (identity.mode === "formal") {
     assert(
       identity.workflowSha === identity.sourceSha,
       "Formal trusted workflow SHA must equal the release source",

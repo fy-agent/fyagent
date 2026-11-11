@@ -51,6 +51,36 @@ component, or leading zero.
   event SHA, checked-out source, canonical Cargo version, Release tag, and live
   remote tag target must collapse to the same release identity. This makes an
   exact tag/SHA retry possible without moving or pushing the tag again.
+  Neither entry is a script repair: both still require `workflowSha === sourceSha`.
+- `workflow_dispatch(mode=formal-repair)` is a separate, narrow entry for the
+  already-tagged `v0.4.15` only. It is not a third equivalent formal entry and
+  it is not a tag retry. GitHub must load the workflow from `refs/heads/main`.
+  `source_sha` is the input `b581222135e3db66e0e6e3fdba908662bc60dcda`, which is
+  the lightweight tag peel, the product source, `offlineAdmission.releaseSha`,
+  and the Publish source. `workflow_sha` is `github.workflow_sha` on that main
+  commit and must be a descendant of the tag commit. Downstream `release_mode`
+  stays `formal` so offline-sealed admission, verification, attestation, and
+  Publish still run. `repair: true` is a separate eligibility input and output
+  fact. The version is read from the tag commit's manifests and must be
+  `0.4.15`. The input tag, that version, and the remote tag must agree; the
+  remote tag is peeled to `source_sha` at eligibility, at Publish start, and
+  again immediately before the final PATCH. Metadata records the split honestly:
+  source is the tag commit and workflow ref/SHA are the executing main workflow.
+  Forging the workflow identity as `refs/tags/v0.4.15` fails. The repair diff
+  against the tag is exactly the repair path table below. Product jobs
+  `build-windows`, `prove-windows-preflight`, `sign-windows-formal`,
+  `seal-windows-formal`, and `build-macos` stay byte-identical under the
+  existing `assertProductJobsPreserved` rule, compared between the executing
+  workflow file and the tag's `release.yml`. Admission manifests, signing
+  policy, version manifests, release notes, installers, and signer
+  implementations are forbidden in that diff and are read from the tag commit.
+  `build-macos`, `admit-offline-windows-formal`, and `pin-release-build-inputs`
+  still check out `source_sha`. `verify-assets` and `attest` check out
+  `workflow_sha`. Publish rechecks eligibility with the repair commit's
+  scripts; release notes, the admission manifest, the tag peel, and installer
+  bytes still come from the tag commit and this run's attachments. Offline-sealed
+  Windows build, preflight seal, formal sign, and fresh seal stay skipped.
+  Repair joins `release-formal-v0.4.15` with `cancel-in-progress: false`.
 - The normal web Actions Run workflow branch picker is not formal-release
   authority. An operator retrying formal mode must dispatch the workflow at
   the tag ref (for example with `gh workflow run release.yml --ref vX.Y.Z -f
@@ -95,10 +125,12 @@ mode=formal` or the equivalent Actions API request); dispatching the current
   existing rebuild formal path. This path does not set
   `FYAGENT_WINDOWS_SIGNING_MODE=provider` and does not read signer secrets.
 
-Concurrency is identity-based rather than event-based. Both a tag push and a
-formal dispatch for `vX.Y.Z` join `release-formal-vX.Y.Z` with
-`cancel-in-progress: false`; preflight uses `release-preflight-<source SHA>`.
-This prevents two supported formal entry events from mutating the same Release
+Concurrency is identity-based rather than event-based. A tag push, a formal
+dispatch, and the v0.4.15 formal repair for `vX.Y.Z` join
+`release-formal-vX.Y.Z` with `cancel-in-progress: false`; preflight uses
+`release-preflight-<source SHA>`. Repair's group uses the dispatch tag input,
+which eligibility then proves against the candidate version and the remote tag.
+This prevents the supported formal entry events from mutating the same Release
 transaction concurrently.
 
 Creating/pushing the tag and invoking the remote preflight are parent-task
@@ -111,9 +143,10 @@ Eligibility is the sole producer of these values:
 ```text
 app_version   = canonical Cargo stable version
 release_tag   = "v" + app_version
-source_sha    = explicit candidate commit (preflight) | tag target commit (formal)
-workflow_sha  = trusted main workflow/event commit (preflight) | source_sha (formal)
+source_sha    = explicit candidate commit (preflight) | tag target commit (formal and formal-repair)
+workflow_sha  = trusted main workflow/event commit (preflight and formal-repair) | source_sha (formal)
 release_mode  = preflight | formal
+repair        = false (preflight and formal) | true (formal-repair only)
 ci_run_id     = null
 ci_run_attempt = null
 ```
@@ -136,10 +169,11 @@ The frozen output has exact keys:
   "appVersion": "X.Y.Z",
   "releaseTag": "vX.Y.Z",
   "sourceSha": "<40 lowercase hex>",
-  "workflowSha": "<trusted workflow SHA; equals sourceSha only in formal mode>",
+  "workflowSha": "<trusted workflow SHA; equals sourceSha only when mode is formal and repair is false>",
   "ciRunId": null,
   "ciRunAttempt": null,
-  "mode": "preflight | formal"
+  "mode": "preflight | formal",
+  "repair": false
 }
 ```
 
@@ -164,14 +198,51 @@ Eligibility fails closed unless all of these facts agree:
    event SHA equals workflow SHA, the explicit `source_sha` input equals the
    frozen candidate source, candidate source may differ from workflow SHA, and
    remote tag evidence is absent;
-5. formal event SHA and workflow SHA both equal the frozen source;
+5. formal event SHA and workflow SHA both equal the frozen source, and `repair`
+   is false. This equality is not removed from tag push or tag-ref
+   `mode=formal`;
 6. formal is either a tag `push` or `workflow_dispatch(mode=formal)` with empty
    `source_sha`; event/ref/workflow ref are the same version tag, and the remote ref
    is either a Git `tag` object (annotated: exact name, target type `commit`,
    target SHA equals the frozen commit) or a Git `commit` object (lightweight:
    SHA equals the frozen commit and `tagObject` is null);
 7. live `main` HEAD is observed for remote repository evidence but is not
-   required to equal either the preflight candidate or a formal frozen source.
+   required to equal either the preflight candidate or a formal frozen source;
+8. formal repair is only `workflow_dispatch(mode=formal-repair)` from
+   `refs/heads/main`, with `repair: true`, `mode: formal`, candidate version
+   `0.4.15`, release tag `v0.4.15`, and source
+   `b581222135e3db66e0e6e3fdba908662bc60dcda`. Event SHA equals workflow SHA,
+   both differ from the source, and the workflow ref is
+   `fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main`. The remote
+   tag peels to that source at eligibility, Publish start, and immediately
+   before the final PATCH. The diff from the tag commit to the executing
+   workflow commit is exactly:
+
+   ```text
+   .github/workflows/release.yml
+   .trellis/spec/backend/github-release-workflow.md
+   scripts/release/dev-release-eligibility.d.mts
+   scripts/release/dev-release-eligibility.mjs
+   scripts/release/generate-build-metadata.mjs
+   scripts/release/release-contract.d.mts
+   scripts/release/release-contract.mjs
+   scripts/release/verify-dev-release-remote.d.mts
+   scripts/release/verify-dev-release-remote.mjs
+   scripts/release/windows-formal-offline-admission.mjs
+   scripts/tasks/supported-platform-structure-assets.json
+   tests/devReleaseEligibility.test.ts
+   tests/devReleaseRemote.test.ts
+   tests/releaseWorkflow.test.ts
+   tests/windowsFormalOfflineAdmission.test.ts
+   ```
+
+   `dev-release-eligibility.mjs` and `release-contract.mjs` are not added to
+   global `WORKFLOW_ONLY_PATHS`. The executing `release.yml` product jobs
+   `build-windows`, `prove-windows-preflight`, `sign-windows-formal`,
+   `seal-windows-formal`, and `build-macos` must match the tag file under
+   `assertProductJobsPreserved`. A published Release for the tag stays
+   immutable. Repair does not move, delete, or retag `v0.4.15`, and it does
+   not reuse another run's macOS DMG or skip attestation.
 
 Unknown keys, malformed IDs/SHA/statuses, HTTP errors, wrong
 repository/workflow/event/ref, a tag whose target is not the frozen commit,
@@ -617,7 +688,10 @@ until the Release is again provably an owned private draft.
 
 | Condition                                                                                                               | Required result                                                                                      |
 | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Candidate/version/tag/event/workflow SHA differs                                                                        | Fail before native builds.                                                                           |
+| Candidate/version/tag/event/workflow SHA differs                                                                        | Fail before native builds. Tag formal still rejects a workflow SHA that differs from the source.    |
+| Formal repair is not from `refs/heads/main`, is not a descendant of `v0.4.15`, peels the tag to another commit, or names another version | Fail before native builds. Do not publish.                                                           |
+| Formal repair diff leaves the repair path table, changes the admission manifest, or changes a product job body | Fail before native builds. Compare the executing workflow file with the tag file.                    |
+| Formal repair reaches an already published `v0.4.15` Release                                                            | Fail; the published version stays immutable.                                                         |
 | Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                  | Fail before native builds; require exact `fy-agent/fyagent`.                                         |
 | Formal tag points elsewhere or changes after freeze                                                                     | Fail; never repair or move the tag from the workflow.                                                |
 | Exact-source authority-branch CI is absent                                                                              | Continue; Release compile is the proof.                                                              |
@@ -682,7 +756,9 @@ evidence outside this Release closure. Closure requires, in order:
 2. one serialized formal build workflow for that tag succeeds—either the
    original tag push or a later formal dispatch at that exact tag ref—including
    matching native compiles, signing/notarization, exact assets, disclosure,
-   digests, metadata, and attestation;
+   digests, metadata, and attestation. The already-tagged `v0.4.15` script
+   repair is the separate `mode=formal-repair` dispatch from `main` described
+   above. It is not a tag retry and does not authorize moving the tag;
 3. a public, non-prerelease, Latest Release has those exact artifacts;
 4. any later optional bookkeeping push is a new `main` HEAD and must satisfy
    its own CI requirements; it is not part of the release transaction.
@@ -850,12 +926,13 @@ xcrun notarytool info "$id" --output-format json      # poll until Accepted
 
 ### 2. Signatures
 
-- `workflow_dispatch.inputs.mode = preflight | formal`
+- `workflow_dispatch.inputs.mode = preflight | formal | formal-repair`
 - `workflow_dispatch.inputs.source_sha = <sha> | ""`
+- `workflow_dispatch.inputs.release_tag = v0.4.15 | ""`
 - `evaluateDevReleaseEligibility({ event.dispatchMode, remoteTag, ... })`
 - `verifyRecoverableReleaseDraft(release, runAttempt, jobs, tag, sourceSha)`
 - Frozen output keys: `appVersion`, `releaseTag`, `sourceSha`, `workflowSha`,
-  `mode`, `ciRunId`, `ciRunAttempt`
+  `mode`, `repair`, `ciRunId`, `ciRunAttempt`
 
 ### 3. Contracts
 
@@ -864,6 +941,8 @@ xcrun notarytool info "$id" --output-format json      # poll until Accepted
 - Normal formal entry is a tag push. Manual formal retry is
   `workflow_dispatch(mode=formal)` at the **same tag ref** with empty
   `source_sha`; this is not a branch dispatch carrying an arbitrary tag input.
+  `mode=formal-repair` is the only main-branch dispatch that can publish, and
+  only for the pinned `v0.4.15` source. It does not relax `mode=formal`.
 - Response: `sourceSha = tag target commit`, `workflowSha = sourceSha`,
   `ciRunId = null`, `ciRunAttempt = null`.
 - Push and formal dispatch for the same tag share one

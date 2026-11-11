@@ -11,15 +11,20 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: diagnostic preflight from the trusted main workflow, or formal retry from an existing vX.Y.Z tag ref
+        description: preflight from trusted main, formal retry at an existing tag ref, or the narrow v0.4.15 formal repair from main
         required: true
         default: preflight
         type: choice
         options:
           - preflight
           - formal
+          - formal-repair
       source_sha:
-        description: Preflight-only immutable 40-character candidate commit SHA; leave empty for formal
+        description: Immutable 40-character candidate commit. Required for preflight and formal-repair. Leave empty for tag formal.
+        required: false
+        type: string
+      release_tag:
+        description: Formal-repair only. Stable tag that must match the candidate version and the remote tag. Leave empty otherwise.
         required: false
         type: string
 
@@ -27,7 +32,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event_name == 'push' && 'formal' || inputs.mode }}-${{ (github.event_name == 'push' || inputs.mode == 'formal') && github.ref_name || inputs.source_sha }}
+  # formal-repair joins release-formal-<tag>, the same lock as a tag push. cancel-in-progress stays false.
+  group: release-${{ github.event_name == 'push' && 'formal' || (inputs.mode == 'formal-repair' && 'formal' || inputs.mode) }}-${{ (github.event_name == 'push' || inputs.mode == 'formal') && github.ref_name || (inputs.mode == 'formal-repair' && inputs.release_tag || inputs.source_sha) }}
   cancel-in-progress: false
 
 jobs:
@@ -46,6 +52,7 @@ jobs:
       source_sha: ${{ steps.contract.outputs.source_sha }}
       workflow_sha: ${{ steps.contract.outputs.workflow_sha }}
       release_mode: ${{ steps.contract.outputs.release_mode }}
+      repair: ${{ steps.contract.outputs.repair }}
       windows_byte_source: ${{ steps.contract.outputs.windows_byte_source }}
       generated_at: ${{ steps.contract.outputs.generated_at }}
       ci_run_id: ${{ steps.remote.outputs.ci_run_id }}
@@ -57,6 +64,7 @@ jobs:
         env:
           DISPATCH_MODE: ${{ inputs.mode }}
           DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           expected_repository='fy-agent/fyagent'
@@ -75,6 +83,10 @@ jobs:
                     echo 'workflow_dispatch preflight source_sha must be a lowercase full 40-character commit SHA' >&2
                     exit 1
                   }
+                  [ -z "$DISPATCH_RELEASE_TAG" ] || {
+                    echo 'workflow_dispatch preflight release_tag must be empty' >&2
+                    exit 1
+                  }
                   if [ "$GITHUB_SHA" != "$GITHUB_WORKFLOW_SHA" ]; then
                     echo 'Preflight event and trusted workflow commit must agree' >&2
                     exit 1
@@ -85,10 +97,15 @@ jobs:
                   [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ]
                   requested_source_sha="$DISPATCH_SOURCE_SHA"
                   requested_mode='preflight'
+                  requested_repair='false'
                   ;;
                 formal)
                   [ -z "$DISPATCH_SOURCE_SHA" ] || {
                     echo 'workflow_dispatch formal source_sha must be empty; the selected tag ref is authoritative' >&2
+                    exit 1
+                  }
+                  [ -z "$DISPATCH_RELEASE_TAG" ] || {
+                    echo 'workflow_dispatch formal release_tag must be empty; the selected tag ref is authoritative' >&2
                     exit 1
                   }
                   [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -98,6 +115,28 @@ jobs:
                   [ "$GITHUB_SHA" = "$GITHUB_WORKFLOW_SHA" ]
                   requested_source_sha="$GITHUB_SHA"
                   requested_mode='formal'
+                  requested_repair='false'
+                  ;;
+                formal-repair)
+                  [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+                    echo 'workflow_dispatch formal-repair source_sha must be a lowercase full 40-character commit SHA' >&2
+                    exit 1
+                  }
+                  [[ "$DISPATCH_RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+                    echo 'workflow_dispatch formal-repair release_tag must be a stable vX.Y.Z tag' >&2
+                    exit 1
+                  }
+                  if [ "$GITHUB_SHA" != "$GITHUB_WORKFLOW_SHA" ]; then
+                    echo 'Formal repair event and trusted workflow commit must agree' >&2
+                    exit 1
+                  fi
+                  [ "$GITHUB_REF" = 'refs/heads/main' ]
+                  [ "$GITHUB_REF_TYPE" = 'branch' ]
+                  [ "$GITHUB_REF_NAME" = 'main' ]
+                  [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ]
+                  requested_source_sha="$DISPATCH_SOURCE_SHA"
+                  requested_mode='formal'
+                  requested_repair='true'
                   ;;
                 *)
                   echo "Unsupported workflow_dispatch mode: $DISPATCH_MODE" >&2
@@ -106,6 +145,10 @@ jobs:
               esac
               ;;
             push)
+              [ -z "$DISPATCH_RELEASE_TAG" ] || {
+                echo 'tag push release_tag input must be empty' >&2
+                exit 1
+              }
               [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
               [ "$GITHUB_REF_TYPE" = 'tag' ]
               [ "$GITHUB_REF" = "refs/tags/$GITHUB_REF_NAME" ]
@@ -113,6 +156,7 @@ jobs:
               [ "$GITHUB_SHA" = "$GITHUB_WORKFLOW_SHA" ]
               requested_source_sha="$GITHUB_SHA"
               requested_mode='formal'
+              requested_repair='false'
               ;;
             *)
               echo "Unsupported release event: $GITHUB_EVENT_NAME" >&2
@@ -122,11 +166,13 @@ jobs:
 
           printf 'requested_source_sha=%s\n' "$requested_source_sha" >> "$GITHUB_OUTPUT"
           printf 'requested_mode=%s\n' "$requested_mode" >> "$GITHUB_OUTPUT"
+          printf 'requested_repair=%s\n' "$requested_repair" >> "$GITHUB_OUTPUT"
 
       - name: Checkout trusted workflow definition
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
           ref: ${{ github.workflow_sha }}
 
@@ -148,7 +194,9 @@ jobs:
         env:
           DISPATCH_MODE: ${{ inputs.mode }}
           DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
           REQUESTED_MODE: ${{ steps.request.outputs.requested_mode }}
+          REQUESTED_REPAIR: ${{ steps.request.outputs.requested_repair }}
           REQUESTED_SOURCE_SHA: ${{ steps.request.outputs.requested_source_sha }}
         run: |
           set -euo pipefail
@@ -197,6 +245,7 @@ jobs:
               exit 1
             fi
             release_mode='formal'
+            repair='false'
           }
 
           case "$GITHUB_EVENT_NAME" in
@@ -223,14 +272,55 @@ jobs:
                     echo 'Preflight event is not the trusted main workflow branch' >&2
                     exit 1
                   fi
+                  [ -z "$DISPATCH_RELEASE_TAG" ] || {
+                    echo 'workflow_dispatch preflight release_tag must be empty' >&2
+                    exit 1
+                  }
                   release_mode='preflight'
+                  repair='false'
                   ;;
                 formal)
                   [ -z "$DISPATCH_SOURCE_SHA" ] || {
                     echo 'workflow_dispatch formal source_sha must be empty; the selected tag ref is authoritative' >&2
                     exit 1
                   }
+                  [ -z "$DISPATCH_RELEASE_TAG" ] || {
+                    echo 'workflow_dispatch formal release_tag must be empty; the selected tag ref is authoritative' >&2
+                    exit 1
+                  }
                   validate_formal_tag_contract
+                  ;;
+                formal-repair)
+                  [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+                    echo 'workflow_dispatch formal-repair source_sha must be a lowercase full 40-character commit SHA' >&2
+                    exit 1
+                  }
+                  [[ "$DISPATCH_RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+                    echo 'workflow_dispatch formal-repair release_tag must be a stable vX.Y.Z tag' >&2
+                    exit 1
+                  }
+                  [ "$GITHUB_REF" = 'refs/heads/main' ] || {
+                    echo "Formal repair must run from the trusted main workflow ref; received $GITHUB_REF" >&2
+                    exit 1
+                  }
+                  [ "$GITHUB_REF_TYPE" = 'branch' ] && [ "$GITHUB_REF_NAME" = 'main' ] || {
+                    echo 'Formal repair event is not the trusted main workflow branch' >&2
+                    exit 1
+                  }
+                  [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ] || {
+                    echo "Formal repair workflow ref is not trusted main: $GITHUB_WORKFLOW_REF" >&2
+                    exit 1
+                  }
+                  [ "$source_sha" = "$DISPATCH_SOURCE_SHA" ] || {
+                    echo "Formal repair input does not resolve to the exact candidate commit: $DISPATCH_SOURCE_SHA" >&2
+                    exit 1
+                  }
+                  [ "$source_sha" != "$workflow_commit" ] || {
+                    echo 'Formal repair workflow commit must differ from the tag commit' >&2
+                    exit 1
+                  }
+                  release_mode='formal'
+                  repair='true'
                   ;;
                 *)
                   echo "Unsupported workflow_dispatch mode after checkout: $DISPATCH_MODE" >&2
@@ -250,6 +340,10 @@ jobs:
             echo "Request mode changed after checkout: $REQUESTED_MODE -> $release_mode" >&2
             exit 1
           }
+          [ "$repair" = "$REQUESTED_REPAIR" ] || {
+            echo "Request repair flag changed after checkout: $REQUESTED_REPAIR -> $repair" >&2
+            exit 1
+          }
           [ "$source_sha" = "$(git -C candidate-source rev-parse "${REQUESTED_SOURCE_SHA}^{commit}")" ] || {
             echo 'Requested source changed during candidate checkout' >&2
             exit 1
@@ -260,6 +354,9 @@ jobs:
           mkdir -p "$candidate_contract_root/scripts" \
             "$candidate_contract_root/src-tauri/user-helper"
           cp scripts/version.mjs "$candidate_contract_root/scripts/version.mjs"
+          if [ "$repair" = true ]; then
+            cp candidate-source/scripts/version.mjs "$candidate_contract_root/scripts/version.mjs"
+          fi
           cp candidate-source/package.json "$candidate_contract_root/package.json"
           cp candidate-source/src-tauri/tauri.conf.json "$candidate_contract_root/src-tauri/tauri.conf.json"
           cp candidate-source/src-tauri/Cargo.toml "$candidate_contract_root/src-tauri/Cargo.toml"
@@ -267,7 +364,30 @@ jobs:
           cp candidate-source/src-tauri/Cargo.lock "$candidate_contract_root/src-tauri/Cargo.lock"
           app_version="$(node "$candidate_contract_root/scripts/version.mjs" get)"
           release_tag="v$app_version"
-          if [ "$release_mode" = 'formal' ] && [ "$release_tag" != "$GITHUB_REF_NAME" ]; then
+          if [ "$repair" = true ]; then
+            if [ "$release_tag" != "$DISPATCH_RELEASE_TAG" ]; then
+              echo "Formal repair tag $DISPATCH_RELEASE_TAG does not match canonical version $app_version" >&2
+              exit 1
+            fi
+            tag_commit="$(git rev-parse "refs/tags/${release_tag}^{commit}")"
+            if [ "$tag_commit" != "$source_sha" ]; then
+              echo "Formal repair tag ${release_tag} does not peel to the candidate source" >&2
+              exit 1
+            fi
+            if git merge-base --is-ancestor "$source_sha" "$workflow_commit"; then
+              repair_ancestor=true
+            else
+              repair_ancestor=false
+            fi
+            git -c core.quotePath=false diff --name-status --find-renames "$source_sha" "$workflow_commit" > "$RUNNER_TEMP/formal-repair.diff"
+            node scripts/release/dev-release-eligibility.mjs assert-repair-diff \
+              --source-sha "$source_sha" \
+              --workflow-sha "$workflow_commit" \
+              --ancestor "$repair_ancestor" \
+              --diff "$RUNNER_TEMP/formal-repair.diff" \
+              --tag-workflow candidate-source/.github/workflows/release.yml \
+              --executing-workflow .github/workflows/release.yml
+          elif [ "$release_mode" = 'formal' ] && [ "$release_tag" != "$GITHUB_REF_NAME" ]; then
             echo "Formal tag $GITHUB_REF_NAME does not match canonical version $app_version" >&2
             exit 1
           fi
@@ -293,6 +413,7 @@ jobs:
             printf 'source_sha=%s\n' "$source_sha"
             printf 'workflow_sha=%s\n' "$workflow_commit"
             printf 'release_mode=%s\n' "$release_mode"
+            printf 'repair=%s\n' "$repair"
             printf 'generated_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
           } >> "$GITHUB_OUTPUT"
 
@@ -308,7 +429,7 @@ jobs:
           RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
-          if [ '${{ steps.contract.outputs.release_mode }}' = 'formal' ]; then
+          if [ '${{ steps.contract.outputs.release_mode }}' = 'formal' ] && [ '${{ steps.contract.outputs.repair }}' != 'true' ]; then
             unset RELEASE_DISPATCH_SOURCE_SHA
           fi
           frozen_eligibility="$RUNNER_TEMP/fyagent-release-eligibility.json"
@@ -321,9 +442,10 @@ jobs:
             --arg source '${{ steps.contract.outputs.source_sha }}' \
             --arg workflow '${{ steps.contract.outputs.workflow_sha }}' \
             --arg mode '${{ steps.contract.outputs.release_mode }}' \
+            --argjson repair ${{ steps.contract.outputs.repair }} \
             '.appVersion == $version and .releaseTag == $tag and
              .sourceSha == $source and .workflowSha == $workflow and
-             .mode == $mode and
+             .mode == $mode and .repair == $repair and
              .ciRunId == null and .ciRunAttempt == null' \
             "$frozen_eligibility" >/dev/null
           printf 'ci_run_id=\n' >> "$GITHUB_OUTPUT"
@@ -1819,6 +1941,7 @@ jobs:
       EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
       EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
       WINDOWS_BYTE_SOURCE: ${{ needs.eligibility.outputs.windows_byte_source }}
+      FYAGENT_FORMAL_REPAIR: ${{ needs.eligibility.outputs.repair }}
     steps:
       - name: Checkout evidence generators
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1871,6 +1994,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ "$FYAGENT_FORMAL_REPAIR" = true ]; then
+            [ "$RELEASE_MODE" = formal ]
+            [ "$GITHUB_WORKFLOW_REF" = "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main" ]
+            [ "$TRUSTED_WORKFLOW_SHA" = "$GITHUB_WORKFLOW_SHA" ]
+            [ "$TRUSTED_WORKFLOW_SHA" != "$SOURCE_SHA" ]
+          elif [ "$RELEASE_MODE" = formal ]; then
+            [ "$GITHUB_WORKFLOW_REF" = "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/$RELEASE_TAG" ]
+            [ "$TRUSTED_WORKFLOW_SHA" = "$SOURCE_SHA" ]
+          fi
           node scripts/release/collect-workflow-artifacts.mjs \
             installers downloaded-installers installers "$APP_VERSION"
           node scripts/release/collect-workflow-artifacts.mjs \
@@ -2034,14 +2166,26 @@ jobs:
       RELEASE_DISPATCH_MODE: ${{ inputs.mode }}
       RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
       WINDOWS_BYTE_SOURCE: ${{ needs.eligibility.outputs.windows_byte_source }}
+      REPAIR: ${{ needs.eligibility.outputs.repair }}
       GITHUB_TOKEN: ${{ github.token }}
       GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Checkout repair eligibility scripts
+        if: needs.eligibility.outputs.repair == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          path: repair-workflow
+          ref: ${{ needs.eligibility.outputs.workflow_sha }}
+
       - name: Checkout immutable formal source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
           ref: ${{ needs.eligibility.outputs.source_sha }}
 
@@ -2057,21 +2201,51 @@ jobs:
           RELEASE_SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
         run: |
           set -euo pipefail
+          repair_json=false
+          if [ "$REPAIR" = true ]; then
+            repair_json=true
+            [ "$RELEASE_DISPATCH_MODE" = formal-repair ]
+            test "$(git -C repair-workflow rev-parse HEAD)" = "$TRUSTED_WORKFLOW_SHA"
+            if git -C repair-workflow merge-base --is-ancestor "$SOURCE_SHA" HEAD; then
+              repair_ancestor=true
+            else
+              repair_ancestor=false
+            fi
+            git -C repair-workflow -c core.quotePath=false diff --name-status --find-renames "$SOURCE_SHA" HEAD > "$RUNNER_TEMP/formal-repair.diff"
+            node repair-workflow/scripts/release/dev-release-eligibility.mjs assert-repair-diff \
+              --source-sha "$SOURCE_SHA" \
+              --workflow-sha "$TRUSTED_WORKFLOW_SHA" \
+              --ancestor "$repair_ancestor" \
+              --diff "$RUNNER_TEMP/formal-repair.diff" \
+              --tag-workflow .github/workflows/release.yml \
+              --executing-workflow repair-workflow/.github/workflows/release.yml
+          else
+            [ "$RELEASE_DISPATCH_MODE" != formal-repair ]
+          fi
           frozen_eligibility="$RUNNER_TEMP/fyagent-frozen-release-eligibility.json"
           jq -n \
             --arg appVersion "$APP_VERSION" \
             --arg releaseTag "$RELEASE_TAG" \
             --arg sourceSha "$SOURCE_SHA" \
             --arg workflowSha "$TRUSTED_WORKFLOW_SHA" \
+            --argjson repair "$repair_json" \
             '{appVersion:$appVersion,releaseTag:$releaseTag,sourceSha:$sourceSha,
               workflowSha:$workflowSha,ciRunId:null,
-              ciRunAttempt:null,mode:"formal"}' \
+              ciRunAttempt:null,mode:"formal",repair:$repair}' \
             > "$frozen_eligibility"
-          node scripts/release/verify-dev-release-remote.mjs \
-            --json \
-            --evidence "$RUNNER_TEMP/fyagent-publish-start-remote-evidence.json" \
-            --expected "$frozen_eligibility" \
-            > "$RUNNER_TEMP/fyagent-publish-start-eligibility.json"
+          if [ "$REPAIR" = true ]; then
+            node repair-workflow/scripts/release/verify-dev-release-remote.mjs \
+              --json \
+              --evidence "$RUNNER_TEMP/fyagent-publish-start-remote-evidence.json" \
+              --expected "$frozen_eligibility" \
+              > "$RUNNER_TEMP/fyagent-publish-start-eligibility.json"
+          else
+            node scripts/release/verify-dev-release-remote.mjs \
+              --json \
+              --evidence "$RUNNER_TEMP/fyagent-publish-start-remote-evidence.json" \
+              --expected "$frozen_eligibility" \
+              > "$RUNNER_TEMP/fyagent-publish-start-eligibility.json"
+          fi
 
       - name: Download complete Release transaction payload
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -2144,22 +2318,42 @@ jobs:
               exit 1
               ;;
           esac
-          case "$GITHUB_EVENT_NAME" in
-            push)
+          case "$REPAIR" in
+            false)
+              case "$GITHUB_EVENT_NAME" in
+                push)
+                  ;;
+                workflow_dispatch)
+                  [ "$RELEASE_DISPATCH_MODE" = formal ]
+                  [ -z "$RELEASE_DISPATCH_SOURCE_SHA" ]
+                  ;;
+                *)
+                  echo "Unsupported formal publication event: $GITHUB_EVENT_NAME" >&2
+                  exit 1
+                  ;;
+              esac
+              [ "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" ]
+              [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" = "$RELEASE_TAG" ]
+              [ "$GITHUB_WORKFLOW_REF" = "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/$RELEASE_TAG" ]
+              [ "$GITHUB_WORKFLOW_SHA" = "$SOURCE_SHA" ] && [ "$TRUSTED_WORKFLOW_SHA" = "$SOURCE_SHA" ]
               ;;
-            workflow_dispatch)
-              [ "$RELEASE_DISPATCH_MODE" = formal ]
-              [ -z "$RELEASE_DISPATCH_SOURCE_SHA" ]
+            true)
+              [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]
+              [ "$RELEASE_DISPATCH_MODE" = formal-repair ]
+              [ "$RELEASE_DISPATCH_SOURCE_SHA" = "$SOURCE_SHA" ]
+              [ "$GITHUB_REF" = refs/heads/main ]
+              [ "$GITHUB_REF_TYPE" = branch ] && [ "$GITHUB_REF_NAME" = main ]
+              [ "$GITHUB_WORKFLOW_REF" = "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main" ]
+              [ "$GITHUB_WORKFLOW_SHA" = "$TRUSTED_WORKFLOW_SHA" ]
+              [ "$GITHUB_WORKFLOW_SHA" != "$SOURCE_SHA" ]
+              [ "$TRUSTED_WORKFLOW_SHA" != "$SOURCE_SHA" ]
+              test "$(git -C repair-workflow rev-parse HEAD)" = "$TRUSTED_WORKFLOW_SHA"
               ;;
             *)
-              echo "Unsupported formal publication event: $GITHUB_EVENT_NAME" >&2
+              echo "Unsupported repair flag: $REPAIR" >&2
               exit 1
               ;;
           esac
-          [ "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" ]
-          [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" = "$RELEASE_TAG" ]
-          [ "$GITHUB_WORKFLOW_REF" = "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/$RELEASE_TAG" ]
-          [ "$GITHUB_WORKFLOW_SHA" = "$SOURCE_SHA" ] && [ "$TRUSTED_WORKFLOW_SHA" = "$SOURCE_SHA" ]
           [ "$RELEASE_TAG" = "v$APP_VERSION" ]
           [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ]
           [ "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA" ]
@@ -2529,11 +2723,19 @@ jobs:
             '{name:$name,body:$body,draft:false,prerelease:false,make_latest:"true"}' \
             > "$transaction_root/publish.json"
           published_json="$transaction_root/published.json"
-          node scripts/release/verify-dev-release-remote.mjs \
-            --json \
-            --evidence "$transaction_root/final-remote-evidence.json" \
-            --expected "$RUNNER_TEMP/fyagent-frozen-release-eligibility.json" \
-            > "$transaction_root/final-release-eligibility.json"
+          if [ "$REPAIR" = true ]; then
+            node repair-workflow/scripts/release/verify-dev-release-remote.mjs \
+              --json \
+              --evidence "$transaction_root/final-remote-evidence.json" \
+              --expected "$RUNNER_TEMP/fyagent-frozen-release-eligibility.json" \
+              > "$transaction_root/final-release-eligibility.json"
+          else
+            node scripts/release/verify-dev-release-remote.mjs \
+              --json \
+              --evidence "$transaction_root/final-remote-evidence.json" \
+              --expected "$RUNNER_TEMP/fyagent-frozen-release-eligibility.json" \
+              > "$transaction_root/final-release-eligibility.json"
+          fi
           publish_attempted=true
           publish_status="$(curl --silent --show-error \
             --request PATCH --output "$published_json" --write-out '%{http_code}' \

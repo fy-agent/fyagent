@@ -1582,9 +1582,11 @@ describe("FyAgent release workflow", () => {
     expect(trigger).toContain("default: preflight");
     expect(trigger).toContain("          - preflight");
     expect(trigger).toContain("          - formal");
+    expect(trigger).toContain("          - formal-repair");
     expect(trigger).toContain("source_sha:");
+    expect(trigger).toContain("release_tag:");
     expect(trigger).toContain(
-      "Preflight-only immutable 40-character candidate commit SHA",
+      "Immutable 40-character candidate commit. Required for preflight and formal-repair. Leave empty for tag formal.",
     );
     expect(trigger).toContain("        required: false");
     expect(source).toContain("release_mode='preflight'");
@@ -1598,7 +1600,7 @@ describe("FyAgent release workflow", () => {
       '[ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/$GITHUB_REF_NAME" ]',
     );
     expect(source).toContain(
-      "group: release-${{ github.event_name == 'push' && 'formal' || inputs.mode }}-${{ (github.event_name == 'push' || inputs.mode == 'formal') && github.ref_name || inputs.source_sha }}",
+      "group: release-${{ github.event_name == 'push' && 'formal' || (inputs.mode == 'formal-repair' && 'formal' || inputs.mode) }}-${{ (github.event_name == 'push' || inputs.mode == 'formal') && github.ref_name || (inputs.mode == 'formal-repair' && inputs.release_tag || inputs.source_sha) }}",
     );
     expect(source).not.toContain("gh release create");
     expect(source).toContain("draft:true,prerelease:false");
@@ -2018,7 +2020,17 @@ describe("FyAgent release workflow", () => {
       "ci_run_attempt: ${{ steps.remote.outputs.ci_run_attempt }}",
     );
     expect(eligibility).toContain("checks: read");
-    expect(eligibility).not.toContain("merge-base --is-ancestor");
+    expect(eligibility).toContain(
+      'git merge-base --is-ancestor "$source_sha" "$workflow_commit"',
+    );
+    const tagFormalStart = eligibility.indexOf(
+      "validate_formal_tag_contract() {",
+    );
+    const tagFormalContract = eligibility.slice(
+      tagFormalStart,
+      eligibility.indexOf('case "$GITHUB_EVENT_NAME" in', tagFormalStart),
+    );
+    expect(tagFormalContract).not.toContain("merge-base --is-ancestor");
     expect(eligibility).not.toContain("refs/remotes/origin/main");
     expect(eligibility).not.toContain("branch=main");
     expect(
@@ -3303,6 +3315,17 @@ jobs:
     expect(publish).toContain(
       "A published Release already exists for $RELEASE_TAG; published versions are immutable",
     );
+    const repairIdentity = publish.indexOf(
+      '[ "$RELEASE_DISPATCH_MODE" = formal-repair ]',
+    );
+    const immutableRelease = publish.indexOf(
+      "A published Release already exists for $RELEASE_TAG; published versions are immutable",
+    );
+    expect(repairIdentity).toBeGreaterThan(0);
+    expect(immutableRelease).toBeGreaterThan(repairIdentity);
+    expect(publish).toContain(
+      '[ "$GITHUB_WORKFLOW_SHA" = "$SOURCE_SHA" ] && [ "$TRUSTED_WORKFLOW_SHA" = "$SOURCE_SHA" ]',
+    );
     expect(publish).toContain("verify-release-draft-ownership.mjs inspect");
     expect(publish).toContain("verify-release-draft-ownership.mjs verify");
     expect(publish).toContain(
@@ -3378,7 +3401,12 @@ jobs:
     expect(
       publish.match(/node scripts\/release\/verify-dev-release-remote\.mjs/gu),
     ).toHaveLength(2);
-    expect(publish.match(/--expected /gu)).toHaveLength(2);
+    expect(
+      publish.match(
+        /node repair-workflow\/scripts\/release\/verify-dev-release-remote\.mjs/gu,
+      ),
+    ).toHaveLength(2);
+    expect(publish.match(/--expected /gu)).toHaveLength(4);
     expect(publish).toContain('--expected "$frozen_eligibility"');
     expect(publish).toContain(
       '--expected "$RUNNER_TEMP/fyagent-frozen-release-eligibility.json"',

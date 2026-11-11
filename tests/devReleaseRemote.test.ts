@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FORMAL_REPAIR_SOURCE_SHA } from "../scripts/release/dev-release-eligibility.mjs";
 import {
   collectDevReleaseRemoteEvidence,
   contextFromEnvironment,
@@ -141,6 +142,7 @@ describe("dev release remote evidence", () => {
       ciRunId: null,
       ciRunAttempt: null,
       mode: "preflight",
+      repair: false,
     });
     expect(evidence).not.toHaveProperty("ciRuns");
     expect(evidence).not.toHaveProperty("ciEvidence");
@@ -239,6 +241,7 @@ describe("dev release remote evidence", () => {
       ciRunId: null,
       ciRunAttempt: "1",
       mode: "preflight" as const,
+      repair: false,
     };
 
     await expect(
@@ -377,5 +380,139 @@ describe("remote verifier environment", () => {
         GITHUB_API_URL: "https://example.com",
       }),
     ).toThrow(/GITHUB_API_URL/);
+  });
+
+  it("collects a lightweight v0.4.15 repair from main without forging the tag workflow", async () => {
+    const requests: string[] = [];
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = new URL(String(input));
+      const path = decodeURIComponent(url.pathname);
+      requests.push(path);
+      if (path === "/repos/fy-agent/fyagent") return jsonResponse(REPOSITORY);
+      if (path === "/repos/fy-agent/fyagent/git/ref/heads/main") {
+        return jsonResponse({
+          ref: "refs/heads/main",
+          object: { type: "commit", sha: WORKFLOW_SHA },
+        });
+      }
+      if (path === "/repos/fy-agent/fyagent/git/ref/tags/v0.4.15") {
+        return jsonResponse({
+          ref: "refs/tags/v0.4.15",
+          object: { type: "commit", sha: FORMAL_REPAIR_SOURCE_SHA },
+        });
+      }
+      throw new Error(`Unexpected fixture request: ${path}`);
+    };
+    const { evidence, result } = await verifyDevReleaseRemote(
+      {
+        ...context(),
+        eventName: "workflow_dispatch",
+        ref: "refs/heads/main",
+        refName: "main",
+        refType: "branch",
+        eventSha: WORKFLOW_SHA,
+        workflowRef:
+          "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+        workflowSha: WORKFLOW_SHA,
+        appVersion: "0.4.15",
+        releaseTag: "v0.4.15",
+        sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+        dispatchMode: "formal-repair",
+        dispatchSourceSha: FORMAL_REPAIR_SOURCE_SHA,
+      },
+      { fetchImpl },
+    );
+
+    expect(result).toMatchObject({
+      appVersion: "0.4.15",
+      releaseTag: "v0.4.15",
+      sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+      workflowSha: WORKFLOW_SHA,
+      mode: "formal",
+      repair: true,
+    });
+    expect(evidence.event.dispatchSourceSha).toBe(FORMAL_REPAIR_SOURCE_SHA);
+    expect(evidence.workflow.ref).toBe(
+      "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+    );
+    expect(evidence.remoteTag).toEqual({
+      ref: "refs/tags/v0.4.15",
+      refObject: { type: "commit", sha: FORMAL_REPAIR_SOURCE_SHA },
+      tagObject: null,
+    });
+    expect(requests.some((path) => path.includes("/git/tags/"))).toBe(false);
+  });
+
+  it("rejects a formal repair whose remote tag peels to another commit", async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const path = decodeURIComponent(new URL(String(input)).pathname);
+      if (path === "/repos/fy-agent/fyagent") return jsonResponse(REPOSITORY);
+      if (path === "/repos/fy-agent/fyagent/git/ref/heads/main") {
+        return jsonResponse({
+          ref: "refs/heads/main",
+          object: { type: "commit", sha: WORKFLOW_SHA },
+        });
+      }
+      if (path === "/repos/fy-agent/fyagent/git/ref/tags/v0.4.15") {
+        return jsonResponse({
+          ref: "refs/tags/v0.4.15",
+          object: { type: "commit", sha: OTHER_SHA },
+        });
+      }
+      throw new Error(`Unexpected fixture request: ${path}`);
+    };
+
+    await expect(
+      verifyDevReleaseRemote(
+        {
+          ...context(),
+          appVersion: "0.4.15",
+          releaseTag: "v0.4.15",
+          sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+          dispatchMode: "formal-repair",
+          dispatchSourceSha: FORMAL_REPAIR_SOURCE_SHA,
+        },
+        { fetchImpl },
+      ),
+    ).rejects.toThrow(/remoteTag\.refObject\.sha/);
+  });
+
+  it("rejects a formal repair that is not dispatched from main", async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const path = decodeURIComponent(new URL(String(input)).pathname);
+      if (path === "/repos/fy-agent/fyagent") return jsonResponse(REPOSITORY);
+      if (path === "/repos/fy-agent/fyagent/git/ref/heads/main") {
+        return jsonResponse({
+          ref: "refs/heads/main",
+          object: { type: "commit", sha: WORKFLOW_SHA },
+        });
+      }
+      if (path === "/repos/fy-agent/fyagent/git/ref/tags/v0.4.15") {
+        return jsonResponse({
+          ref: "refs/tags/v0.4.15",
+          object: { type: "commit", sha: FORMAL_REPAIR_SOURCE_SHA },
+        });
+      }
+      throw new Error(`Unexpected fixture request: ${path}`);
+    };
+
+    await expect(
+      verifyDevReleaseRemote(
+        {
+          ...context(),
+          ref: "refs/heads/feature/repair",
+          refName: "feature/repair",
+          refType: "branch",
+          workflowRef:
+            "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/feature/repair",
+          appVersion: "0.4.15",
+          releaseTag: "v0.4.15",
+          sourceSha: FORMAL_REPAIR_SOURCE_SHA,
+          dispatchMode: "formal-repair",
+          dispatchSourceSha: FORMAL_REPAIR_SOURCE_SHA,
+        },
+        { fetchImpl },
+      ),
+    ).rejects.toThrow(/event\.ref/);
   });
 });

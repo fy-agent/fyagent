@@ -57,6 +57,14 @@ function optionalCiId(value) {
   return value;
 }
 
+function formalRepairRequested() {
+  const value = process.env.FYAGENT_FORMAL_REPAIR;
+  if (value === undefined) return false;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error('FYAGENT_FORMAL_REPAIR must be "true" or "false"');
+}
+
 try {
   const identity = {
     productVersion: version,
@@ -96,6 +104,7 @@ try {
       metadataDirectory: aggregateDirectory,
       identity,
       generatedAt,
+      repair: formalRepairRequested(),
     }),
     ...(offlineAdmission ? { offlineAdmission } : {}),
   };

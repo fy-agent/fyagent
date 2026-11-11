@@ -19,7 +19,12 @@ export interface DevReleaseRemoteContext {
   readonly appVersion: string;
   readonly releaseTag: string;
   readonly sourceSha: string;
-  readonly dispatchMode?: "preflight" | "formal" | string | null;
+  readonly dispatchMode?:
+    | "preflight"
+    | "formal"
+    | "formal-repair"
+    | string
+    | null;
   readonly dispatchSourceSha?: string | null;
 }
 
