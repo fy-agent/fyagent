@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   CI_WORKFLOW_PATH,
   RELEASE_WORKFLOW_PATH,
   buildBuildMetadata,
 } from "./release-contract.mjs";
+import { stageMetadataForAggregate } from "./windows-formal-offline-admission.mjs";
 
 const [
   metadataDirectory,
@@ -55,27 +58,46 @@ function optionalCiId(value) {
 }
 
 try {
-  const metadata = buildBuildMetadata({
-    metadataDirectory,
-    identity: {
-      productVersion: version,
-      tag,
-      sourceSha,
-      repository,
-      repositoryId,
-      workflowPath: RELEASE_WORKFLOW_PATH,
-      workflowRef,
-      workflowSha,
-      runId,
-      runAttempt,
-      event,
-      mode,
-      ciWorkflowPath: CI_WORKFLOW_PATH,
-      ciRunId: optionalCiId(ciRunId),
-      ciRunAttempt: optionalCiId(ciRunAttempt),
-    },
-    generatedAt,
-  });
+  const identity = {
+    productVersion: version,
+    tag,
+    sourceSha,
+    repository,
+    repositoryId,
+    workflowPath: RELEASE_WORKFLOW_PATH,
+    workflowRef,
+    workflowSha,
+    runId,
+    runAttempt,
+    event,
+    mode,
+    ciWorkflowPath: CI_WORKFLOW_PATH,
+    ciRunId: optionalCiId(ciRunId),
+    ciRunAttempt: optionalCiId(ciRunAttempt),
+  };
+  const proofPath = process.env.FYAGENT_WINDOWS_OFFLINE_PROOF;
+  let aggregateDirectory = metadataDirectory;
+  let offlineAdmission;
+  if (proofPath) {
+    const proof = JSON.parse(readFileSync(proofPath, "utf8"));
+    const staged = mkdtempSync(path.join(tmpdir(), "fyagent-admitted-metadata-"));
+    stageMetadataForAggregate({
+      sourceDirectory: metadataDirectory,
+      destinationDirectory: staged,
+      proof,
+      releaseIdentity: identity,
+    });
+    aggregateDirectory = staged;
+    offlineAdmission = proof;
+  }
+  const metadata = {
+    ...buildBuildMetadata({
+      metadataDirectory: aggregateDirectory,
+      identity,
+      generatedAt,
+    }),
+    ...(offlineAdmission ? { offlineAdmission } : {}),
+  };
   writeFileSync(output, `${JSON.stringify(metadata, null, 2)}\n`, {
     flag: "wx",
   });

@@ -80,6 +80,20 @@ mode=formal` or the equivalent Actions API request); dispatching the current
   publisher, certificate SHA-256, Code Signing EKU, and timestamp. Unsigned
   candidates fail. The workflow does not publish, does not receive signer
   credentials, and does not read Release assets.
+- A formal tag may publish those already sealed bytes only when
+  `docs/release/windows-formal-offline-admission.json` is in the tagged
+  commit and its `version` equals the canonical release version. The tag
+  commit is the workflow ref; tagging the older artifact source does not
+  execute this gate. Admission requires the artifact source to be an ancestor,
+  an identical product-tree hash outside the workflow-only allowlist, unchanged
+  product build jobs except the admission `if`, the pinned preflight and
+  offline-sign-return run attempts, and a fresh `verify-sealed` result of
+  `signed`. Tree and diff listings use `core.quotePath=false` so a quoted
+  non-ASCII path cannot change the product-tree hash of identical blobs.
+  Failure does not fall back to unsigned Windows or `make_latest`.
+  Preflight ignores the manifest and still rebuilds. Absent manifest keeps the
+  existing rebuild formal path. This path does not set
+  `FYAGENT_WINDOWS_SIGNING_MODE=provider` and does not read signer secrets.
 
 Concurrency is identity-based rather than event-based. Both a tag push and a
 formal dispatch for `vX.Y.Z` join `release-formal-vX.Y.Z` with
@@ -603,6 +617,7 @@ until the Release is again provably an owned private draft.
 | Pinned build input ID/digest/manifest/file set drifts                                                                   | Fail before provider or trusted consumption.                                                         |
 | Formal `sign-app` is missing the nested helper, the client dylib, or structure-only helper verification                 | Fail before Developer ID; do not sign an app-only bundle.                                            |
 | Signer configuration is partial/invalid, Apple notarization is denied, or fresh signature proof fails                   | Fail; do not downgrade to unsigned.                                                                  |
+| Formal offline admission manifest is present but the run, attempt, source, product tree, workflow job, hash, signature, or artifact is wrong or missing | Fail; do not publish unsigned Windows or move Latest.                                                |
 | `notarytool wait --timeout` exits 124 or writes JSON only to stderr                                                     | Must not fail the job; poll `notarytool info` on the same submission id.                             |
 | Apple status remains `In Progress` / `UNKNOWN` inside `FYAGENT_NOTARY_WAIT_SECONDS`                                     | Continue polling; log at least every `FYAGENT_NOTARY_HEARTBEAT_SECONDS`.                             |
 | Apple status is `Invalid` or `Rejected`                                                                                 | Fetch `notarytool log` and fail; do not staple.                                                      |

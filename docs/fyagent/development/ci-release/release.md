@@ -32,7 +32,11 @@ may force-update `vX.Y.Z` when no GitHub Release exists for that tag.
 
 Platform acceptance is successful build and packaging on each matching native
 runner. Windows additionally requires strict unsigned/signing proof and the
-fresh formal sealing boundary before exact-asset verification. macOS
+fresh formal sealing boundary before exact-asset verification. When the tagged
+commit carries `docs/release/windows-formal-offline-admission.json` for that
+version, formal Windows instead re-verifies the pinned offline-sealed
+installers and fails closed on any mismatch; it does not publish an unsigned
+fallback. macOS
 additionally requires Developer ID signing, one Apple notarization of the
 signed DMG, a stapled DMG ticket, and a stapled ticket on the original app.
 The published macOS installer is that DMG, with `FyAgent.app` and an

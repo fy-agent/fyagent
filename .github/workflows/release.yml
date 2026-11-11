@@ -46,6 +46,7 @@ jobs:
       source_sha: ${{ steps.contract.outputs.source_sha }}
       workflow_sha: ${{ steps.contract.outputs.workflow_sha }}
       release_mode: ${{ steps.contract.outputs.release_mode }}
+      windows_byte_source: ${{ steps.contract.outputs.windows_byte_source }}
       generated_at: ${{ steps.contract.outputs.generated_at }}
       ci_run_id: ${{ steps.remote.outputs.ci_run_id }}
       ci_run_attempt: ${{ steps.remote.outputs.ci_run_attempt }}
@@ -271,6 +272,20 @@ jobs:
             exit 1
           fi
           node "$candidate_contract_root/scripts/version.mjs" check --tag "$release_tag"
+          admission_manifest='candidate-source/docs/release/windows-formal-offline-admission.json'
+          if [ -f "$admission_manifest" ]; then
+            node scripts/release/windows-formal-offline-admission.mjs classify \
+              --manifest "$admission_manifest" \
+              --version "$app_version" \
+              --mode "$release_mode" \
+              --github-output "$GITHUB_OUTPUT"
+          else
+            node scripts/release/windows-formal-offline-admission.mjs classify \
+              --manifest-absent yes \
+              --version "$app_version" \
+              --mode "$release_mode" \
+              --github-output "$GITHUB_OUTPUT"
+          fi
 
           {
             printf 'app_version=%s\n' "$app_version"
@@ -316,6 +331,7 @@ jobs:
 
   build-windows:
     name: Windows ${{ matrix.architecture }} NSIS installer
+    if: needs.eligibility.outputs.windows_byte_source != 'offline-sealed'
     needs: eligibility
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -748,7 +764,7 @@ jobs:
 
   sign-windows-formal:
     name: Windows ${{ matrix.architecture }} formal signing
-    if: needs.eligibility.outputs.release_mode == 'formal' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [eligibility, pin-release-build-inputs]
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -988,7 +1004,7 @@ jobs:
 
   seal-windows-formal:
     name: Windows ${{ matrix.architecture }} fresh formal verification and sealing
-    if: needs.eligibility.outputs.release_mode == 'formal' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [eligibility, pin-release-build-inputs, sign-windows-formal]
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -1141,6 +1157,274 @@ jobs:
         with:
           name: signing-${{ matrix.target_group }}
           path: signing-fragments/*
+          if-no-files-found: error
+          retention-days: 7
+
+  admit-offline-windows-formal:
+    name: Admit sealed offline Windows installers
+    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [eligibility]
+    runs-on: windows-2025
+    permissions:
+      actions: read
+      contents: read
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+    steps:
+      - name: Checkout formal release with artifact history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
+      - name: Setup exact admission Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Read the pinned offline admission
+        id: admission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(node --version)" = "v$(tr -d '\r\n' < .node-version)"
+          node scripts/release/windows-formal-offline-admission.mjs print-dispatch \
+            --manifest docs/release/windows-formal-offline-admission.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Require pinned run attempts to still be current
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREFLIGHT_RUN_ID: ${{ steps.admission.outputs.preflight_run_id }}
+          PREFLIGHT_RUN_ATTEMPT: ${{ steps.admission.outputs.preflight_run_attempt }}
+          OFFLINE_RUN_ID: ${{ steps.admission.outputs.offline_run_id }}
+          OFFLINE_RUN_ATTEMPT: ${{ steps.admission.outputs.offline_run_attempt }}
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/fy-agent/fyagent/actions/runs/${PREFLIGHT_RUN_ID}" --jq .run_attempt)" = "$PREFLIGHT_RUN_ATTEMPT"
+          test "$(gh api "repos/fy-agent/fyagent/actions/runs/${OFFLINE_RUN_ID}" --jq .run_attempt)" = "$OFFLINE_RUN_ATTEMPT"
+
+      - name: Download admitted raw x64 installer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: raw-windows-x64
+          path: admitted-raw/x64
+          run-id: ${{ steps.admission.outputs.preflight_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download admitted raw arm64 installer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: raw-windows-arm64
+          path: admitted-raw/arm64
+          run-id: ${{ steps.admission.outputs.preflight_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download admitted x64 build metadata
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: metadata-windows-x64
+          path: admitted-metadata/x64
+          run-id: ${{ steps.admission.outputs.preflight_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download admitted arm64 build metadata
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: metadata-windows-arm64
+          path: admitted-metadata/arm64
+          run-id: ${{ steps.admission.outputs.preflight_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download sealed offline Windows installers
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: offline-sealed-windows
+          path: admitted-sealed
+          run-id: ${{ steps.admission.outputs.offline_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Prove the sealed bytes match this release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_SOURCE_SHA: ${{ steps.admission.outputs.artifact_source_sha }}
+          PREFLIGHT_RUN_ID: ${{ steps.admission.outputs.preflight_run_id }}
+          PREFLIGHT_RUN_ATTEMPT: ${{ steps.admission.outputs.preflight_run_attempt }}
+          OFFLINE_RUN_ID: ${{ steps.admission.outputs.offline_run_id }}
+          OFFLINE_RUN_ATTEMPT: ${{ steps.admission.outputs.offline_run_attempt }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          if git merge-base --is-ancestor "$ARTIFACT_SOURCE_SHA" HEAD; then
+            ancestor=true
+          else
+            ancestor=false
+          fi
+          git -c core.quotePath=false ls-tree -r "$ARTIFACT_SOURCE_SHA" > artifact-tree.txt
+          git -c core.quotePath=false ls-tree -r HEAD > release-tree.txt
+          git -c core.quotePath=false diff --name-status --find-renames "$ARTIFACT_SOURCE_SHA" HEAD > release.diff
+          git show "$ARTIFACT_SOURCE_SHA:.github/workflows/release.yml" > artifact-workflow.yml
+          gh api "repos/fy-agent/fyagent/actions/runs/${PREFLIGHT_RUN_ID}/attempts/${PREFLIGHT_RUN_ATTEMPT}" > preflight-run.json
+          gh api "repos/fy-agent/fyagent/actions/runs/${OFFLINE_RUN_ID}/attempts/${OFFLINE_RUN_ATTEMPT}" > offline-run.json
+          raw_x64="admitted-raw/x64/FyAgent-${APP_VERSION}-Windows-x64-setup.exe"
+          raw_arm64="admitted-raw/arm64/FyAgent-${APP_VERSION}-Windows-arm64-setup.exe"
+          signed_x64="admitted-sealed/sealed-assets/FyAgent-${APP_VERSION}-Windows-x64-setup.exe"
+          signed_arm64="admitted-sealed/sealed-assets/FyAgent-${APP_VERSION}-Windows-arm64-setup.exe"
+          test -f "$raw_x64"
+          test -f "$raw_arm64"
+          test -f "$signed_x64"
+          test -f "$signed_arm64"
+          test -f admitted-sealed/offline-binding.json
+          test -f admitted-metadata/x64/windows-x64.json
+          test -f admitted-metadata/arm64/windows-arm64.json
+          mkdir -p admitted-metadata/pair
+          cp admitted-metadata/x64/windows-x64.json admitted-metadata/pair/windows-x64.json
+          cp admitted-metadata/arm64/windows-arm64.json admitted-metadata/pair/windows-arm64.json
+          node scripts/release/windows-formal-offline-admission.mjs prove \
+            --manifest docs/release/windows-formal-offline-admission.json \
+            --policy docs/release/windows-offline-signing-policy.json \
+            --release-sha "$SOURCE_SHA" \
+            --ancestor "$ancestor" \
+            --artifact-tree artifact-tree.txt \
+            --release-tree release-tree.txt \
+            --diff release.diff \
+            --artifact-workflow artifact-workflow.yml \
+            --release-workflow .github/workflows/release.yml \
+            --preflight-run preflight-run.json \
+            --offline-run offline-run.json \
+            --binding admitted-sealed/offline-binding.json \
+            --raw-x64 "$raw_x64" \
+            --raw-arm64 "$raw_arm64" \
+            --signed-x64 "$signed_x64" \
+            --signed-arm64 "$signed_arm64" \
+            --output admission-proof.json
+          node scripts/release/windows-formal-offline-admission.mjs assert-metadata \
+            --metadata admitted-metadata/pair \
+            --proof admission-proof.json
+          mkdir -p \
+            upload/raw-windows-x64 \
+            upload/raw-windows-arm64 \
+            upload/metadata-windows-x64 \
+            upload/metadata-windows-arm64 \
+            upload/installers-windows-x64 \
+            upload/installers-windows-arm64 \
+            upload/proof
+          cp "$raw_x64" upload/raw-windows-x64/
+          cp "$raw_arm64" upload/raw-windows-arm64/
+          cp admitted-metadata/pair/windows-x64.json upload/metadata-windows-x64/
+          cp admitted-metadata/pair/windows-arm64.json upload/metadata-windows-arm64/
+          cp "$signed_x64" upload/installers-windows-x64/
+          cp "$signed_arm64" upload/installers-windows-arm64/
+          cp admission-proof.json upload/proof/admission-proof.json
+
+      - name: Independently seal the admitted installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p 'JSON.parse(require("fs").readFileSync("admission-proof.json","utf8")).version')"
+          source_sha="$(node -p 'JSON.parse(require("fs").readFileSync("admission-proof.json","utf8")).artifactSourceSha')"
+          publisher="$(node -p 'JSON.parse(require("fs").readFileSync("admission-proof.json","utf8")).publisher')"
+          certificate="$(node -p 'JSON.parse(require("fs").readFileSync("admission-proof.json","utf8")).certificateSha256')"
+          mkdir -p signing-fragments
+          node scripts/release/windows-signing.mjs verify-sealed \
+            --raw "admitted-raw/x64/FyAgent-${version}-Windows-x64-setup.exe" \
+            --candidate "admitted-sealed/sealed-assets/FyAgent-${version}-Windows-x64-setup.exe" \
+            --architecture x64 \
+            --version "$version" \
+            --source-sha "$source_sha" \
+            --mode provider \
+            --expected-publisher "$publisher" \
+            --expected-certificate-sha256 "$certificate" \
+            --output signing-fragments/windows-signing-x64.json
+          node scripts/release/windows-signing.mjs verify-sealed \
+            --raw "admitted-raw/arm64/FyAgent-${version}-Windows-arm64-setup.exe" \
+            --candidate "admitted-sealed/sealed-assets/FyAgent-${version}-Windows-arm64-setup.exe" \
+            --architecture arm64 \
+            --version "$version" \
+            --source-sha "$source_sha" \
+            --mode provider \
+            --expected-publisher "$publisher" \
+            --expected-certificate-sha256 "$certificate" \
+            --output signing-fragments/windows-signing-arm64.json
+          mkdir -p upload/signing-windows-x64 upload/signing-windows-arm64
+          cp signing-fragments/windows-signing-x64.json upload/signing-windows-x64/
+          cp signing-fragments/windows-signing-arm64.json upload/signing-windows-arm64/
+
+      - name: Upload admitted raw x64 installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: raw-windows-x64
+          path: upload/raw-windows-x64/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload admitted raw arm64 installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: raw-windows-arm64
+          path: upload/raw-windows-arm64/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload admitted Windows metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: metadata-windows-x64
+          path: upload/metadata-windows-x64/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload admitted Windows arm64 metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: metadata-windows-arm64
+          path: upload/metadata-windows-arm64/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload admitted signed x64 installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installers-windows-x64
+          path: upload/installers-windows-x64/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload admitted signed arm64 installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installers-windows-arm64
+          path: upload/installers-windows-arm64/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload admitted Windows signing fragments
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signing-windows-x64
+          path: upload/signing-windows-x64/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload admitted Windows arm64 signing fragment
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signing-windows-arm64
+          path: upload/signing-windows-arm64/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload offline admission proof
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-offline-admission-proof
+          path: upload/proof/*
           if-no-files-found: error
           retention-days: 7
 
@@ -1446,7 +1730,8 @@ jobs:
 
   pin-release-build-inputs:
     name: Pin immutable pre-signer build inputs
-    needs: [eligibility, build-windows, build-macos]
+    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-macos'].result == 'success' && ((needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['admit-offline-windows-formal'].result == 'skipped') || (needs.eligibility.outputs.windows_byte_source == 'offline-sealed' && needs['build-windows'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'success')) }}
+    needs: [eligibility, build-windows, build-macos, admit-offline-windows-formal]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -1511,7 +1796,7 @@ jobs:
 
   verify-assets:
     name: Verify exact installers and generate evidence
-    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}
+    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'rebuild' && needs['build-windows'].result == 'success' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success' && needs['admit-offline-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source == 'offline-sealed' && needs['build-windows'].result == 'skipped' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped' && needs['admit-offline-windows-formal'].result == 'success')) }}
     needs:
       [
         eligibility,
@@ -1521,6 +1806,7 @@ jobs:
         prove-windows-preflight,
         sign-windows-formal,
         seal-windows-formal,
+        admit-offline-windows-formal,
       ]
     runs-on: ubuntu-24.04
     env:
@@ -1532,10 +1818,12 @@ jobs:
       GENERATED_AT: ${{ needs.eligibility.outputs.generated_at }}
       EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
       EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
+      WINDOWS_BYTE_SOURCE: ${{ needs.eligibility.outputs.windows_byte_source }}
     steps:
       - name: Checkout evidence generators
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ needs.eligibility.outputs.workflow_sha }}
 
@@ -1572,6 +1860,13 @@ jobs:
           pattern: signing-*
           path: downloaded-signing
 
+      - name: Download offline admission proof
+        if: needs.eligibility.outputs.windows_byte_source == 'offline-sealed'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-offline-admission-proof
+          path: admission-proof
+
       - name: Verify exact three installers and generate three machine-readable subjects
         shell: bash
         run: |
@@ -1587,24 +1882,55 @@ jobs:
           node scripts/release/verify-windows-setup-icon.mjs "installers/FyAgent-$APP_VERSION-Windows-arm64-setup.exe" src-tauri/icons/icon.ico
           mkdir verified-subjects
           cp installers/* verified-subjects/
-          node scripts/release/windows-signing.mjs aggregate \
-            --x64-status signing-fragments/windows-signing-x64.json \
-            --arm64-status signing-fragments/windows-signing-arm64.json \
-            --assets-directory installers \
-            --version "$APP_VERSION" \
-            --source-sha "$SOURCE_SHA" \
-            --output verified-subjects/signing-status.json
+          case "$WINDOWS_BYTE_SOURCE" in
+            rebuild)
+              node scripts/release/windows-signing.mjs aggregate \
+                --x64-status signing-fragments/windows-signing-x64.json \
+                --arm64-status signing-fragments/windows-signing-arm64.json \
+                --assets-directory installers \
+                --version "$APP_VERSION" \
+                --source-sha "$SOURCE_SHA" \
+                --output verified-subjects/signing-status.json
+              node scripts/release/generate-build-metadata.mjs \
+                platform-metadata "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
+                "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY_ID" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+                "$GITHUB_EVENT_NAME" "$RELEASE_MODE" "$GITHUB_WORKFLOW_REF" \
+                "$TRUSTED_WORKFLOW_SHA" \
+                "$EXPECTED_CI_RUN_ID" "$EXPECTED_CI_RUN_ATTEMPT" "$GENERATED_AT" \
+                verified-subjects/build-metadata.json
+              ;;
+            offline-sealed)
+              test -f admission-proof/admission-proof.json
+              artifact_source="$(node -p 'JSON.parse(require("fs").readFileSync("admission-proof/admission-proof.json","utf8")).artifactSourceSha')"
+              node scripts/release/windows-signing.mjs aggregate \
+                --x64-status signing-fragments/windows-signing-x64.json \
+                --arm64-status signing-fragments/windows-signing-arm64.json \
+                --assets-directory installers \
+                --version "$APP_VERSION" \
+                --source-sha "$artifact_source" \
+                --output artifact-signing-status.json
+              node scripts/release/windows-formal-offline-admission.mjs bind-status \
+                --status artifact-signing-status.json \
+                --proof admission-proof/admission-proof.json \
+                --output verified-subjects/signing-status.json
+              FYAGENT_WINDOWS_OFFLINE_PROOF=admission-proof/admission-proof.json \
+                node scripts/release/generate-build-metadata.mjs \
+                platform-metadata "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
+                "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY_ID" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+                "$GITHUB_EVENT_NAME" "$RELEASE_MODE" "$GITHUB_WORKFLOW_REF" \
+                "$TRUSTED_WORKFLOW_SHA" \
+                "$EXPECTED_CI_RUN_ID" "$EXPECTED_CI_RUN_ATTEMPT" "$GENERATED_AT" \
+                verified-subjects/build-metadata.json
+              ;;
+            *)
+              echo "Unsupported Windows byte source: $WINDOWS_BYTE_SOURCE" >&2
+              exit 1
+              ;;
+          esac
           node scripts/generate-download-manifest.mjs \
             installers "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
             'https://github.com/fy-agent/fyagent/releases/download' "$GENERATED_AT" \
             verified-subjects/download-manifest.json
-          node scripts/release/generate-build-metadata.mjs \
-            platform-metadata "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
-            "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY_ID" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
-            "$GITHUB_EVENT_NAME" "$RELEASE_MODE" "$GITHUB_WORKFLOW_REF" \
-            "$TRUSTED_WORKFLOW_SHA" \
-            "$EXPECTED_CI_RUN_ID" "$EXPECTED_CI_RUN_ATTEMPT" "$GENERATED_AT" \
-            verified-subjects/build-metadata.json
           node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"
 
       - name: Upload the exact six attestation subjects
@@ -1707,6 +2033,7 @@ jobs:
       EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
       RELEASE_DISPATCH_MODE: ${{ inputs.mode }}
       RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
+      WINDOWS_BYTE_SOURCE: ${{ needs.eligibility.outputs.windows_byte_source }}
       GITHUB_TOKEN: ${{ github.token }}
       GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
       GH_TOKEN: ${{ github.token }}
@@ -1752,10 +2079,71 @@ jobs:
           name: release-attachments
           path: release-attachments
 
+      - name: Reprove offline Windows admission before publication
+        if: needs.eligibility.outputs.windows_byte_source == 'offline-sealed'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          node scripts/release/windows-formal-offline-admission.mjs print-dispatch \
+            --manifest docs/release/windows-formal-offline-admission.json \
+            --github-output "$RUNNER_TEMP/admission-dispatch.txt"
+          artifact_source="$(sed -n 's/^artifact_source_sha=//p' "$RUNNER_TEMP/admission-dispatch.txt")"
+          preflight_run="$(sed -n 's/^preflight_run_id=//p' "$RUNNER_TEMP/admission-dispatch.txt")"
+          preflight_attempt="$(sed -n 's/^preflight_run_attempt=//p' "$RUNNER_TEMP/admission-dispatch.txt")"
+          offline_run="$(sed -n 's/^offline_run_id=//p' "$RUNNER_TEMP/admission-dispatch.txt")"
+          offline_attempt="$(sed -n 's/^offline_run_attempt=//p' "$RUNNER_TEMP/admission-dispatch.txt")"
+          if git merge-base --is-ancestor "$artifact_source" HEAD; then
+            ancestor=true
+          else
+            ancestor=false
+          fi
+          git -c core.quotePath=false ls-tree -r "$artifact_source" > "$RUNNER_TEMP/artifact-tree.txt"
+          git -c core.quotePath=false ls-tree -r HEAD > "$RUNNER_TEMP/release-tree.txt"
+          git -c core.quotePath=false diff --name-status --find-renames "$artifact_source" HEAD > "$RUNNER_TEMP/release.diff"
+          git show "$artifact_source:.github/workflows/release.yml" > "$RUNNER_TEMP/artifact-workflow.yml"
+          gh api "repos/fy-agent/fyagent/actions/runs/${preflight_run}/attempts/${preflight_attempt}" > "$RUNNER_TEMP/preflight-run.json"
+          gh api "repos/fy-agent/fyagent/actions/runs/${offline_run}/attempts/${offline_attempt}" > "$RUNNER_TEMP/offline-run.json"
+          test "$(gh api "repos/fy-agent/fyagent/actions/runs/${preflight_run}" --jq .run_attempt)" = "$preflight_attempt"
+          test "$(gh api "repos/fy-agent/fyagent/actions/runs/${offline_run}" --jq .run_attempt)" = "$offline_attempt"
+          mkdir -p "$RUNNER_TEMP/publish-raw/x64" "$RUNNER_TEMP/publish-raw/arm64" "$RUNNER_TEMP/publish-sealed"
+          gh run download "$preflight_run" -n raw-windows-x64 -D "$RUNNER_TEMP/publish-raw/x64"
+          gh run download "$preflight_run" -n raw-windows-arm64 -D "$RUNNER_TEMP/publish-raw/arm64"
+          gh run download "$offline_run" -n offline-sealed-windows -D "$RUNNER_TEMP/publish-sealed"
+          node scripts/release/windows-formal-offline-admission.mjs assert-publish \
+            --manifest docs/release/windows-formal-offline-admission.json \
+            --policy docs/release/windows-offline-signing-policy.json \
+            --release-sha "$SOURCE_SHA" \
+            --ancestor "$ancestor" \
+            --artifact-tree "$RUNNER_TEMP/artifact-tree.txt" \
+            --release-tree "$RUNNER_TEMP/release-tree.txt" \
+            --diff "$RUNNER_TEMP/release.diff" \
+            --artifact-workflow "$RUNNER_TEMP/artifact-workflow.yml" \
+            --release-workflow .github/workflows/release.yml \
+            --preflight-run "$RUNNER_TEMP/preflight-run.json" \
+            --offline-run "$RUNNER_TEMP/offline-run.json" \
+            --binding "$RUNNER_TEMP/publish-sealed/offline-binding.json" \
+            --raw-x64 "$RUNNER_TEMP/publish-raw/x64/FyAgent-${APP_VERSION}-Windows-x64-setup.exe" \
+            --raw-arm64 "$RUNNER_TEMP/publish-raw/arm64/FyAgent-${APP_VERSION}-Windows-arm64-setup.exe" \
+            --signed-x64 "release-attachments/FyAgent-${APP_VERSION}-Windows-x64-setup.exe" \
+            --signed-arm64 "release-attachments/FyAgent-${APP_VERSION}-Windows-arm64-setup.exe" \
+            --status release-attachments/signing-status.json \
+            --build-metadata release-attachments/build-metadata.json
+
       - name: Fail closed before the one-time publish
         shell: bash
         run: |
           set -euo pipefail
+          case "$WINDOWS_BYTE_SOURCE" in
+            rebuild|offline-sealed)
+              ;;
+            *)
+              echo "Unsupported Windows byte source: $WINDOWS_BYTE_SOURCE" >&2
+              exit 1
+              ;;
+          esac
           case "$GITHUB_EVENT_NAME" in
             push)
               ;;
@@ -1776,16 +2164,36 @@ jobs:
           [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ]
           [ "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA" ]
           node scripts/release/verify-release-files.mjs attachments release-attachments "$APP_VERSION"
-          jq -e --arg version "$APP_VERSION" --arg source "$SOURCE_SHA" '
-            .schema == "fyagent-windows-signing-status/v1" and
-            .product == "FyAgent" and .version == $version and .sourceSha == $source and
-            (.mode == "signed" or .mode == "unsigned") and
-            ([.assets[].architecture] | sort) == ["arm64", "x64"] and
-            ([.assets[].name] | sort) == ([
-              "FyAgent-" + $version + "-Windows-arm64-setup.exe",
-              "FyAgent-" + $version + "-Windows-x64-setup.exe"
-            ] | sort)
-          ' release-attachments/signing-status.json >/dev/null
+          case "$WINDOWS_BYTE_SOURCE" in
+            offline-sealed)
+              jq -e --arg version "$APP_VERSION" --arg source "$SOURCE_SHA" '
+                .schema == "fyagent-windows-signing-status/v1" and
+                .product == "FyAgent" and .version == $version and .sourceSha == $source and
+                .mode == "signed" and
+                .offlineAdmission.schema == "fyagent-windows-formal-offline-admission-proof/v1" and
+                .offlineAdmission.releaseSha == $source and
+                (([.assets[].signature.status] | unique) == ["Valid"]) and
+                (([.assets[].architecture] | sort) == ["arm64", "x64"]) and
+                (([.assets[].name] | sort) == ([
+                  "FyAgent-" + $version + "-Windows-arm64-setup.exe",
+                  "FyAgent-" + $version + "-Windows-x64-setup.exe"
+                ] | sort))
+              ' release-attachments/signing-status.json >/dev/null
+              ;;
+            rebuild)
+              jq -e --arg version "$APP_VERSION" --arg source "$SOURCE_SHA" '
+                .schema == "fyagent-windows-signing-status/v1" and
+                .product == "FyAgent" and .version == $version and .sourceSha == $source and
+                (.mode == "signed" or .mode == "unsigned") and
+                (has("offlineAdmission") | not) and
+                (([.assets[].architecture] | sort) == ["arm64", "x64"]) and
+                (([.assets[].name] | sort) == ([
+                  "FyAgent-" + $version + "-Windows-arm64-setup.exe",
+                  "FyAgent-" + $version + "-Windows-x64-setup.exe"
+                ] | sort))
+              ' release-attachments/signing-status.json >/dev/null
+              ;;
+          esac
           release_notes_path="docs/release-notes/${RELEASE_TAG}-en.md"
           [ -s "$release_notes_path" ] || {
             echo "English $RELEASE_TAG Release Notes are missing" >&2
@@ -1961,7 +2369,12 @@ jobs:
             [
               "## Windows installer signing status",
               "",
-              ("Mode: `" + .mode + "`; source: `" + .sourceSha + "`. The installer rows below are backed by the published `signing-status.json` and `artifact-attestation.sigstore.json` evidence."),
+              ("Mode: `" + .mode + "`; source: `" + .sourceSha + "`."
+                + (if .offlineAdmission then
+                    " Windows installer bytes were built at `" + .offlineAdmission.artifactSourceSha
+                    + "` and admitted only after the application tree matched that source."
+                  else "" end)
+                + " The installer rows below are backed by the published `signing-status.json` and `artifact-attestation.sigstore.json` evidence."),
               "",
               "| Architecture | Installer | Authenticode | Publisher | Timestamp | SHA-256 | Source SHA | Attestation |",
               "| --- | --- | --- | --- | --- | --- | --- | --- |"
