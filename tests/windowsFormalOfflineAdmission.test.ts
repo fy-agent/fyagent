@@ -49,6 +49,38 @@ function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function ensureCommitObject(sha: string) {
+  try {
+    execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], {
+      cwd: ROOT,
+      stdio: "ignore",
+    });
+    return;
+  } catch {
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "protocol.version=2",
+        "fetch",
+        "--no-tags",
+        "--depth=1",
+        "origin",
+        sha,
+      ],
+      {
+        cwd: ROOT,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        stdio: "pipe",
+      },
+    );
+  }
+  execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], {
+    cwd: ROOT,
+    stdio: "ignore",
+  });
+}
+
 function workflowYaml(releaseGate: boolean): string {
   const windowsIf = releaseGate
     ? "\n    if: needs.eligibility.outputs.windows_byte_source != 'offline-sealed'"
@@ -282,6 +314,7 @@ describe("formal offline Windows admission", () => {
       "c5c798c36e5e947f9c5a950d604c9f3504f0f0be62e2e0c0d6bfb620116e1507",
       "62481dc757706e748c26e716dc5c3ac1fd69b7af5e136087c08db2db68ace843",
     ]);
+    ensureCommitObject(TAGGED_RELEASE);
     const releaseTree = execSync(
       `git -c core.quotePath=false ls-tree -r ${TAGGED_RELEASE}`,
       {
@@ -321,24 +354,17 @@ describe("formal offline Windows admission", () => {
   });
 
   it("keeps the delta from the sealed source inside the workflow allowlist", () => {
-    let changed: string[] = [];
-    try {
-      execSync(`git cat-file -e ${ARTIFACT_SOURCE}^{commit}`, {
+    ensureCommitObject(ARTIFACT_SOURCE);
+    ensureCommitObject(TAGGED_RELEASE);
+    const changed = execSync(
+      `git diff --name-only ${ARTIFACT_SOURCE} ${TAGGED_RELEASE}`,
+      {
         cwd: ROOT,
-        stdio: "ignore",
-      });
-      changed = execSync(
-        `git diff --name-only ${ARTIFACT_SOURCE} ${TAGGED_RELEASE}`,
-        {
-          cwd: ROOT,
-          encoding: "utf8",
-        },
-      )
-        .split("\n")
-        .filter(Boolean);
-    } catch {
-      changed = [];
-    }
+        encoding: "utf8",
+      },
+    )
+      .split("\n")
+      .filter(Boolean);
     const untracked = execSync("git ls-files --others --exclude-standard", {
       cwd: ROOT,
       encoding: "utf8",
