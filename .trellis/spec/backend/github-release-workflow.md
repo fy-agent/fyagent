@@ -88,7 +88,9 @@ mode=formal` or the equivalent Actions API request); dispatching the current
   an identical product-tree hash outside the workflow-only allowlist, unchanged
   product build jobs except the admission `if`, the pinned preflight and
   offline-sign-return run attempts, and a fresh `verify-sealed` result of
-  `signed`. Failure does not fall back to unsigned Windows or `make_latest`.
+  `signed`. Tree and diff listings use `core.quotePath=false` so a quoted
+  non-ASCII path cannot change the product-tree hash of identical blobs.
+  Failure does not fall back to unsigned Windows or `make_latest`.
   Preflight ignores the manifest and still rebuilds. Absent manifest keeps the
   existing rebuild formal path. This path does not set
   `FYAGENT_WINDOWS_SIGNING_MODE=provider` and does not read signer secrets.

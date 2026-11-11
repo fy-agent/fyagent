@@ -21,6 +21,7 @@ import {
   productTreeHash,
   proveFormalOfflineAdmission,
   readFormalOfflineAdmissionManifest,
+  type FormalOfflineAdmissionInput,
   stageMetadataForAggregate,
 } from "../scripts/release/windows-formal-offline-admission.mjs";
 
@@ -158,10 +159,17 @@ function fixture() {
     rawBytesByArchitecture: { x64: rawX64, arm64: rawArm64 },
     signedBytesByArchitecture: { x64: signedX64, arm64: signedArm64 },
   };
-  return { input, rawX64, rawArm64, signedX64, signedArm64, policy };
+  return {
+    input: input satisfies FormalOfflineAdmissionInput,
+    rawX64,
+    rawArm64,
+    signedX64,
+    signedArm64,
+    policy,
+  };
 }
 
-function prove(change: (input: ReturnType<typeof fixture>["input"]) => void = () => {}) {
+function prove(change: (input: FormalOfflineAdmissionInput) => void = () => {}) {
   const { input } = fixture();
   change(input);
   return proveFormalOfflineAdmission(input);
@@ -187,11 +195,20 @@ describe("formal offline Windows admission", () => {
       "c5c798c36e5e947f9c5a950d604c9f3504f0f0be62e2e0c0d6bfb620116e1507",
       "62481dc757706e748c26e716dc5c3ac1fd69b7af5e136087c08db2db68ace843",
     ]);
-    const headTree = execSync("git ls-tree -r HEAD", {
+    const headTree = execSync("git -c core.quotePath=false ls-tree -r HEAD", {
       cwd: ROOT,
       encoding: "utf8",
+      maxBuffer: 8 * 1024 * 1024,
     });
     expect(productTreeHash(headTree)).toBe(manifest.productTreeHash);
+    const quotedTree = execSync("git -c core.quotePath=true ls-tree -r HEAD", {
+      cwd: ROOT,
+      encoding: "utf8",
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    expect(() => productTreeHash(quotedTree)).toThrow(
+      /git ls-tree path must be unquoted/,
+    );
     expect(productJobFingerprint(readFileSync(
       path.join(ROOT, ".github/workflows/release.yml"),
       "utf8",
@@ -247,7 +264,7 @@ describe("formal offline Windows admission", () => {
     assertProductJobsPreserved(workflowYaml(false), workflowYaml(true));
   });
 
-  it.each([
+  it.each<[string, (input: FormalOfflineAdmissionInput) => void, RegExp]>([
     ["missing raw bytes", (input) => {
       input.rawBytesByArchitecture.x64 = Buffer.alloc(0);
     }, /x64 raw installer must be non-empty bytes/],
@@ -287,7 +304,7 @@ describe("formal offline Windows admission", () => {
     ["missing sealed binding", (input) => {
       input.binding = { schema: "other" };
     }, /sealed binding keys must be exactly/],
-  ] as const)("rejects %s", (_label, change, error) => {
+  ])("rejects %s", (_label, change, error) => {
     expect(() => prove(change)).toThrow(error);
   });
 

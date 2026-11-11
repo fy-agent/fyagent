@@ -1266,9 +1266,9 @@ jobs:
           else
             ancestor=false
           fi
-          git ls-tree -r "$ARTIFACT_SOURCE_SHA" > artifact-tree.txt
-          git ls-tree -r HEAD > release-tree.txt
-          git diff --name-status --find-renames "$ARTIFACT_SOURCE_SHA" HEAD > release.diff
+          git -c core.quotePath=false ls-tree -r "$ARTIFACT_SOURCE_SHA" > artifact-tree.txt
+          git -c core.quotePath=false ls-tree -r HEAD > release-tree.txt
+          git -c core.quotePath=false diff --name-status --find-renames "$ARTIFACT_SOURCE_SHA" HEAD > release.diff
           git show "$ARTIFACT_SOURCE_SHA:.github/workflows/release.yml" > artifact-workflow.yml
           gh api "repos/fy-agent/fyagent/actions/runs/${PREFLIGHT_RUN_ID}/attempts/${PREFLIGHT_RUN_ATTEMPT}" > preflight-run.json
           gh api "repos/fy-agent/fyagent/actions/runs/${OFFLINE_RUN_ID}/attempts/${OFFLINE_RUN_ATTEMPT}" > offline-run.json
@@ -2100,9 +2100,9 @@ jobs:
           else
             ancestor=false
           fi
-          git ls-tree -r "$artifact_source" > "$RUNNER_TEMP/artifact-tree.txt"
-          git ls-tree -r HEAD > "$RUNNER_TEMP/release-tree.txt"
-          git diff --name-status --find-renames "$artifact_source" HEAD > "$RUNNER_TEMP/release.diff"
+          git -c core.quotePath=false ls-tree -r "$artifact_source" > "$RUNNER_TEMP/artifact-tree.txt"
+          git -c core.quotePath=false ls-tree -r HEAD > "$RUNNER_TEMP/release-tree.txt"
+          git -c core.quotePath=false diff --name-status --find-renames "$artifact_source" HEAD > "$RUNNER_TEMP/release.diff"
           git show "$artifact_source:.github/workflows/release.yml" > "$RUNNER_TEMP/artifact-workflow.yml"
           gh api "repos/fy-agent/fyagent/actions/runs/${preflight_run}/attempts/${preflight_attempt}" > "$RUNNER_TEMP/preflight-run.json"
           gh api "repos/fy-agent/fyagent/actions/runs/${offline_run}/attempts/${offline_attempt}" > "$RUNNER_TEMP/offline-run.json"

@@ -37,8 +37,10 @@ export const WORKFLOW_ONLY_PATHS = Object.freeze([
   "docs/release/release-identity.md",
   "docs/release/windows-formal-offline-admission.json",
   "scripts/release/generate-build-metadata.mjs",
+  "scripts/release/windows-formal-offline-admission.d.mts",
   "scripts/release/windows-formal-offline-admission.mjs",
   "scripts/tasks/release-check.mjs",
+  "scripts/tasks/supported-platform-structure-assets.json",
   "tests/releaseWorkflow.test.ts",
   "tests/windowsFormalOfflineAdmission.test.ts",
 ]);
@@ -284,6 +286,10 @@ export function productTreeHash(lsTreeText) {
     assert(tab > 0, "git ls-tree output is not canonical");
     const meta = line.slice(0, tab);
     const entryPath = line.slice(tab + 1);
+    assert(
+      !entryPath.startsWith('"') && !entryPath.includes("\\"),
+      "git ls-tree path must be unquoted; pass core.quotePath=false",
+    );
     const parts = meta.split(" ");
     assert(parts.length === 3, "git ls-tree output is not canonical");
     const [mode, type, oid] = parts;

@@ -105,7 +105,7 @@ AIMaster 不需要注册成 runner，签名凭据也不进入 GitHub。正式 Re
 收回时全部成立才继续，任何一条失败都停止，不会改发未签名 Windows，也不会 `make_latest`：
 
 - 正式 tag 指向含有这条门禁的提交。GitHub 从 tag 提交读取 workflow，不能在只含旧 workflow 的 artifact 源提交上打 tag 来执行新门禁。
-- artifact 源提交是正式提交的祖先。两边去掉 workflow 允许清单之后的 git 树哈希一致，差异路径都在允许清单内。
+- artifact 源提交是正式提交的祖先。两边去掉 workflow 允许清单之后的 git 树哈希一致，差异路径都在允许清单内。`git ls-tree` 和 `git diff` 必须使用 `core.quotePath=false`；带引号的路径不能当成另一棵树。
 - `build-windows`、`prove-windows-preflight`、`sign-windows-formal`、`seal-windows-formal`、`build-macos` 除准入闸门外保持原样，macOS 签名和公证步骤不改。
 - 重新下载清单中的 preflight attempt 与 offline-sign-return attempt。最新 attempt 必须仍是清单里的 attempt。原始包、已签包、publisher、证书 SHA-256 与 `windows-offline-signing-policy.json` 一致，并再次执行 `verify-sealed`。未签名、缺文件、错 run、错 attempt、错 SHA、错哈希都拒绝。
 - 这条路径不读取 signer secret，不把 `FYAGENT_WINDOWS_SIGNING_MODE` 改成 `provider`。
