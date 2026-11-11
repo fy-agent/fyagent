@@ -34,6 +34,7 @@ export const FORMAL_REPAIR_PATHS = Object.freeze([
   "scripts/release/verify-dev-release-remote.d.mts",
   "scripts/release/verify-dev-release-remote.mjs",
   "scripts/release/windows-formal-offline-admission.mjs",
+  "scripts/tasks/supported-platform-structure-assets.json",
   "tests/devReleaseEligibility.test.ts",
   "tests/devReleaseRemote.test.ts",
   "tests/releaseWorkflow.test.ts",

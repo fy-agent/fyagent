@@ -229,6 +229,7 @@ Eligibility fails closed unless all of these facts agree:
    scripts/release/verify-dev-release-remote.d.mts
    scripts/release/verify-dev-release-remote.mjs
    scripts/release/windows-formal-offline-admission.mjs
+   scripts/tasks/supported-platform-structure-assets.json
    tests/devReleaseEligibility.test.ts
    tests/devReleaseRemote.test.ts
    tests/releaseWorkflow.test.ts
