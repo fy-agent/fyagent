@@ -72,7 +72,7 @@ const BUILD_WINDOWS_SKIP_IF =
 const FORMAL_REBUILD_IF =
   "    if: needs.eligibility.outputs.release_mode == 'formal' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')\n";
 const FORMAL_REBUILD_IF_WITH_GATE =
-  "    if: !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')\n";
+  "    if: \"${{ !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}\"\n";
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const SOURCE_SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const RUN_ID_PATTERN = /^[1-9][0-9]{0,18}$/u;
