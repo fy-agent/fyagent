@@ -8,6 +8,24 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.16] - 2026-11-12
+
+### Fixed
+
+- Stop refusing Windows Codex installation because the logged-in user can
+  modify `C:\` or ProgramData, because a bridge ACL does not match a recorded
+  list, or because a file index changed. Copying still does not follow reparse
+  points, and the copied bytes are still checked against the download.
+- Leave the 2026-10-30 PackageBridge directory unused by writing a new bridge
+  directory.
+- Save WorkBuddy configuration without failing when a parent directory's file
+  index changes.
+- Install QoderWork, TraeWork, WorkBuddy, and OpenCode desktop packages without
+  requiring a stored signer company name. Windows still checks the signature.
+- Read OpenCode session data when the user points the storage directory at
+  another disk with a symlink. Writes and deletes stay inside the resolved
+  directory.
+
 ## [0.4.15] - 2026-11-08
 
 Prepared on main. This entry does not publish a GitHub Release and does not

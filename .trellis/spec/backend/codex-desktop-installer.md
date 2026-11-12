@@ -238,13 +238,15 @@ Only an authenticated valid terminal status, its matching valid terminal frame,
 and a clean pipe close permit cleanup.
 
 PackageBridge continues to copy from the duplicated pinned source handle into a
-fixed ProgramData hierarchy. Protected ACLs, local-fixed-NTFS checks, exact
-frozen-SID access, file identity/link/reparse/placeholder checks, hash-while-copy
-against the download-stream digest, flush/finalize/reopen, stable ancestor
-handles, and known-only cleanup remain required. PackageBridge MUST NOT add a
-second full-file SHA pass after copy. ProgramData-parent effective-access
-fail-closed applies to a non-administrator Shell token; an Administrators-enabled
-Explorer token is not rejected for OS-owned ancestor rights it already holds.
+fixed ProgramData hierarchy. Protected ACLs are still applied to directories
+FyAgent creates. Local-fixed-NTFS checks, no-reparse opens, hash-while-copy
+against the download-stream digest, flush/finalize/reopen, and known-only
+cleanup remain required. PackageBridge MUST NOT add a second full-file SHA
+pass after copy. The logged-in user's rights on `C:\` and ProgramData, a
+file-index change, or an ACL that does not match a previously recorded
+descriptor are not install failures. The bridge root name is
+`FyAgent.PackageBridge-{A244DC78-3F27-4FA8-90F9-BE5B39404D63}` so an older
+bridge directory is left unused.
 
 A held ancestor or bridge directory is rebound only when its volume serial or
 file ID changes. NTFS reports a directory's index allocation as its size, which

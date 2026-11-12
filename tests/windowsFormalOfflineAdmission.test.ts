@@ -11,7 +11,6 @@ import {
   buildBuildMetadata,
 } from "../scripts/release/release-contract.mjs";
 import {
-  WORKFLOW_ONLY_PATHS,
   assertAdmittedWindowsMetadata,
   assertProductJobsPreserved,
   assertPublishedAdmission,
@@ -176,31 +175,13 @@ function prove(change: (input: FormalOfflineAdmissionInput) => void = () => {}) 
 }
 
 describe("formal offline Windows admission", () => {
-  it("pins v0.4.15 to the sealed preflight and keeps the application tree", () => {
-    const manifest = readFormalOfflineAdmissionManifest(
-      JSON.parse(
-        readFileSync(
-          path.join(ROOT, "docs/release/windows-formal-offline-admission.json"),
-          "utf8",
-        ),
+  it("rebuilds Windows when this release has no sealed admission manifest", () => {
+    expect(() =>
+      readFileSync(
+        path.join(ROOT, "docs/release/windows-formal-offline-admission.json"),
+        "utf8",
       ),
-    );
-    expect(manifest.version).toBe("0.4.15");
-    expect(manifest.artifactSourceSha).toBe(ARTIFACT_SOURCE);
-    expect(manifest.preflightRunId).toBe("42421033643");
-    expect(manifest.preflightRunAttempt).toBe("1");
-    expect(manifest.offlineRunId).toBe("42424610543");
-    expect(manifest.offlineRunAttempt).toBe("1");
-    expect(manifest.assets.map((asset) => asset.signedSha256)).toEqual([
-      "c5c798c36e5e947f9c5a950d604c9f3504f0f0be62e2e0c0d6bfb620116e1507",
-      "62481dc757706e748c26e716dc5c3ac1fd69b7af5e136087c08db2db68ace843",
-    ]);
-    const headTree = execSync("git -c core.quotePath=false ls-tree -r HEAD", {
-      cwd: ROOT,
-      encoding: "utf8",
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    expect(productTreeHash(headTree)).toBe(manifest.productTreeHash);
+    ).toThrow();
     const quotedTree = execSync("git -c core.quotePath=true ls-tree -r HEAD", {
       cwd: ROOT,
       encoding: "utf8",
@@ -215,44 +196,14 @@ describe("formal offline Windows admission", () => {
     ))).toBe(PRODUCT_JOB_FINGERPRINT);
     expect(classifyWindowsByteSource({
       mode: "formal",
-      version: "0.4.15",
-      manifest,
-    })).toBe("offline-sealed");
-    expect(classifyWindowsByteSource({
-      mode: "preflight",
-      version: "0.4.15",
-      manifest,
-    })).toBe("rebuild");
-    expect(classifyWindowsByteSource({
-      mode: "formal",
-      version: "0.4.15",
+      version: "0.4.16",
       manifest: null,
     })).toBe("rebuild");
-  });
-
-  it("keeps the delta from the sealed source inside the workflow allowlist", () => {
-    let changed: string[] = [];
-    try {
-      execSync(`git cat-file -e ${ARTIFACT_SOURCE}^{commit}`, {
-        cwd: ROOT,
-        stdio: "ignore",
-      });
-      changed = execSync(`git diff --name-only ${ARTIFACT_SOURCE}`, {
-        cwd: ROOT,
-        encoding: "utf8",
-      }).split("\n").filter(Boolean);
-    } catch {
-      changed = [];
-    }
-    const untracked = execSync("git ls-files --others --exclude-standard", {
-      cwd: ROOT,
-      encoding: "utf8",
-    }).split("\n").filter(Boolean);
-    for (const candidate of [...changed, ...untracked]) {
-      expect(WORKFLOW_ONLY_PATHS, candidate).toContain(candidate);
-    }
-    expect(WORKFLOW_ONLY_PATHS).not.toContain("src-tauri/Cargo.toml");
-    expect(WORKFLOW_ONLY_PATHS).not.toContain("scripts/release/windows-signing.mjs");
+    expect(classifyWindowsByteSource({
+      mode: "preflight",
+      version: "0.4.16",
+      manifest: null,
+    })).toBe("rebuild");
   });
 
   it("admits matching sealed bytes and preserves product build jobs", () => {

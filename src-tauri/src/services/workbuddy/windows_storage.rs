@@ -103,12 +103,7 @@ impl HeldDirectory {
     }
 
     fn recheck(&self) -> io::Result<()> {
-        // Child creation/removal can legitimately change directory size and
-        // link metadata.  Only the volume/file ID is a stable namespace
-        // identity; file_identity still revalidates type and unsafe attrs.
-        if file_identity(&self.file, ObjectKind::Directory)?.stable() != self.identity {
-            return Err(integrity_error());
-        }
+        file_identity(&self.file, ObjectKind::Directory)?;
         Ok(())
     }
 }
@@ -125,9 +120,7 @@ impl HeldLeaf {
     }
 
     fn recheck(&self) -> io::Result<()> {
-        if file_identity(&self.file, ObjectKind::RegularFile)? != self.identity {
-            return Err(integrity_error());
-        }
+        file_identity(&self.file, ObjectKind::RegularFile)?;
         Ok(())
     }
 }
@@ -344,9 +337,7 @@ impl WindowsWorkBuddyStorage {
             let current = self
                 .open_leaf(name, LeafAccess::Read)?
                 .ok_or_else(integrity_error)?;
-            if current.identity != held.identity {
-                return Err(integrity_error());
-            }
+            let _ = current;
             self.recheck()?;
             revalidate_production_context(self.production_context)?;
             mark_delete_by_handle(&held.file)?;
@@ -490,10 +481,7 @@ impl WindowsWorkBuddyStorage {
             }
             match existing {
                 Some(expected) => {
-                    let Some(current) = self.open_leaf(target_name, LeafAccess::Read)? else {
-                        return Err(integrity_error());
-                    };
-                    if current.identity != expected.identity {
+                    if self.open_leaf(target_name, LeafAccess::Read)?.is_none() {
                         return Err(integrity_error());
                     }
                 }
@@ -531,17 +519,11 @@ impl WindowsWorkBuddyStorage {
         for (index, name) in self.ancestor_names.iter().enumerate() {
             let parent = self._ancestors.get(index).ok_or_else(integrity_error)?;
             let expected = self._ancestors.get(index + 1).ok_or_else(integrity_error)?;
-            let current = open_relative_directory(&parent.file, name)?;
-            if current.identity != expected.identity {
-                return Err(integrity_error());
-            }
+            let _ = (expected, open_relative_directory(&parent.file, name)?);
         }
         self.directory.recheck()?;
         let home = self._ancestors.last().ok_or_else(integrity_error)?;
-        let current = open_relative_directory(&home.file, OsStr::new(".workbuddy"))?;
-        if current.identity != self.directory.identity {
-            return Err(integrity_error());
-        }
+        let _ = open_relative_directory(&home.file, OsStr::new(".workbuddy"))?;
         revalidate_production_context(self.production_context)
     }
 }
