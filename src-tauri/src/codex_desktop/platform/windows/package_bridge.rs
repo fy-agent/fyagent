@@ -253,7 +253,7 @@ impl ProtectedPackageBridge {
             DescriptorKind::StableDirectory,
             shell_sid_binary.as_sid(),
         )?;
-        anchor.recheck(shell_sid_binary.as_sid())?;
+        anchor.recheck()?;
 
         let version = create_or_open_directory(
             &root.file,

@@ -480,7 +480,7 @@ impl WindowsWorkBuddyStorage {
                 copy_dacl(&existing.file, &temp.file)?;
             }
             match existing {
-                Some(expected) => {
+                Some(_) => {
                     if self.open_leaf(target_name, LeafAccess::Read)?.is_none() {
                         return Err(integrity_error());
                     }
