@@ -2,7 +2,7 @@ use std::{
     ffi::{OsStr, OsString},
     fs::File,
     io::Read,
-    mem::{offset_of, size_of},
+    mem::size_of,
     os::windows::{
         ffi::{OsStrExt, OsStringExt},
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
@@ -19,7 +19,7 @@ use std::{
 };
 
 use windows::{
-    core::{BOOL, HRESULT, HSTRING, PCWSTR, PWSTR},
+    core::{HRESULT, HSTRING, PCWSTR, PWSTR},
     Foundation::Uri,
     Management::Deployment::{
         AddPackageOptions, DeploymentProgress, DeploymentResult, PackageManager,
@@ -39,22 +39,21 @@ use windows::{
         },
         Security::{
             Authorization::{GetSecurityInfo, SE_KERNEL_OBJECT},
-            CheckTokenMembership, CopySid, CreateWellKnownSid, DuplicateToken, GetLengthSid,
-            GetTokenInformation, IsValidSid, IsWellKnownSid, SecurityImpersonation, TokenUser,
-            WinBuiltinAdministratorsSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
-            SECURITY_MAX_SID_SIZE, TOKEN_DUPLICATE, TOKEN_QUERY, TOKEN_USER,
+            CopySid, DuplicateToken, GetLengthSid, GetTokenInformation, IsValidSid, IsWellKnownSid,
+            SecurityImpersonation, TokenUser, WinBuiltinAdministratorsSid,
+            OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, TOKEN_DUPLICATE, TOKEN_QUERY,
+            TOKEN_USER,
         },
         Storage::FileSystem::{
             CreateFileW, FileAttributeTagInfo, FileStandardInfo, GetDiskFreeSpaceExW,
             GetDriveTypeW, GetFileInformationByHandle, GetFileInformationByHandleEx,
             GetVolumeInformationW, GetVolumePathNameW, ReadFile, WriteFile,
             BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ACCESS_RIGHTS, FILE_ADD_FILE,
-            FILE_ADD_SUBDIRECTORY, FILE_ALL_ACCESS, FILE_APPEND_DATA, FILE_ATTRIBUTE_DIRECTORY,
+            FILE_ADD_SUBDIRECTORY, FILE_APPEND_DATA, FILE_ATTRIBUTE_DIRECTORY,
             FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_OFFLINE, FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS,
             FILE_ATTRIBUTE_RECALL_ON_OPEN, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO,
             FILE_DELETE_CHILD, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_BACKUP_SEMANTICS,
-            FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_OVERLAPPED, FILE_GENERIC_EXECUTE,
-            FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_DELETE, FILE_SHARE_MODE,
+            FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_OVERLAPPED, FILE_SHARE_DELETE, FILE_SHARE_MODE,
             FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO, FILE_WRITE_ATTRIBUTES,
             FILE_WRITE_DATA, FILE_WRITE_EA, OPEN_EXISTING, SECURITY_EFFECTIVE_ONLY,
             SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT, WRITE_DAC, WRITE_OWNER,
@@ -122,11 +121,8 @@ const ADMISSION_TIMEOUT: Duration = Duration::from_secs(75);
 const DEPLOYMENT_TIMEOUT: Duration = Duration::from_secs(9 * 60);
 const WAIT_SLICE: Duration = Duration::from_millis(250);
 const PIPE_IO_TIMEOUT: Duration = Duration::from_secs(5);
-const BA_FULL_MASK: u32 = 0x001f_01ff;
-const DIRECTORY_READ_MASK: u32 = 0x0012_00a9;
 const DIRECTORY_TRAVERSE_MASK: u32 = 0x0012_00a0;
 const FILE_READ_MASK: u32 = 0x0012_0089;
-const FILE_READ_EXECUTE_MASK: u32 = 0x0012_00a9;
 // Bits that must stay off the bridge directories FyAgent creates. They are not
 // applied to C:\ or ProgramData: those rights belong to the logged-in user.
 const ANCESTOR_DANGEROUS_ACCESS: u32 = DELETE.0
@@ -1972,7 +1968,9 @@ fn native_file_identity(
 }
 
 struct FrozenUser {
+    #[allow(dead_code)]
     token: OwnedKernelHandle,
+    #[allow(dead_code)]
     sid_storage: Vec<usize>,
 }
 
@@ -2024,29 +2022,6 @@ impl FrozenUser {
         unsafe { CopySid(sid_length, sid, user.User.Sid) }.map_err(|_| package_pin_error())?;
         Ok(Self { token, sid_storage })
     }
-
-    fn sid(&self) -> PSID {
-        PSID(self.sid_storage.as_ptr().cast_mut().cast())
-    }
-
-    fn is_local_administrator(&self) -> Result<bool, HelperRunError> {
-        let mut administrators = aligned_words(SECURITY_MAX_SID_SIZE as usize);
-        let mut administrators_len = SECURITY_MAX_SID_SIZE;
-        let administrators_sid = PSID(administrators.as_mut_ptr().cast());
-        unsafe {
-            CreateWellKnownSid(
-                WinBuiltinAdministratorsSid,
-                None,
-                Some(administrators_sid),
-                &mut administrators_len,
-            )
-        }
-        .map_err(|_| package_pin_error())?;
-        let mut member = BOOL::default();
-        unsafe { CheckTokenMembership(Some(self.token.raw()), administrators_sid, &mut member) }
-            .map_err(|_| package_pin_error())?;
-        Ok(member.as_bool())
-    }
 }
 
 fn aligned_words(byte_length: usize) -> Vec<usize> {
@@ -2086,6 +2061,7 @@ fn verify_effective_access(
     Ok(())
 }
 
+#[cfg(test)]
 fn forbidden_access_rejected(granted: u32, forbidden: u32, token_is_administrator: bool) -> bool {
     granted & forbidden != 0 && !token_is_administrator
 }

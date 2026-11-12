@@ -991,6 +991,7 @@ mod native {
         status == 0
     }
 
+    #[allow(dead_code)]
     fn signer_subject(wide_path: &[u16]) -> Result<String, WindowsInspectionFailure> {
         let mut raw_store = HCERTSTORE::default();
         let mut raw_message = ptr::null_mut();
@@ -1045,6 +1046,7 @@ mod native {
         certificate_simple_name(signer.0)
     }
 
+    #[allow(dead_code)]
     fn certificate_simple_name(
         context: *const CERT_CONTEXT,
     ) -> Result<String, WindowsInspectionFailure> {

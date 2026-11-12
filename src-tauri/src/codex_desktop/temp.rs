@@ -186,6 +186,7 @@ impl TrustedDirectory {
 struct TrustedExecutable {
     source_path: PathBuf,
     canonical_path: PathBuf,
+    #[allow(dead_code)]
     identity: FilesystemIdentity,
 }
 
