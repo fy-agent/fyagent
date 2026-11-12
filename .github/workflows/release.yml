@@ -764,7 +764,7 @@ jobs:
 
   sign-windows-formal:
     name: Windows ${{ matrix.architecture }} formal signing
-    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [eligibility, pin-release-build-inputs]
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -1004,7 +1004,7 @@ jobs:
 
   seal-windows-formal:
     name: Windows ${{ matrix.architecture }} fresh formal verification and sealing
-    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [eligibility, pin-release-build-inputs, sign-windows-formal]
     runs-on: ${{ matrix.runner }}
     permissions:

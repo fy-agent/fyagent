@@ -2267,7 +2267,7 @@ describe("FyAgent release workflow", () => {
     );
     expectExactLine(
       formal,
-      "    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+      "    if: !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
     );
     expectExactLine(
       formal,
@@ -2343,7 +2343,7 @@ describe("FyAgent release workflow", () => {
     );
     expectExactLine(
       sealer,
-      "    if: needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+      "    if: !cancelled() && needs.eligibility.result == 'success' && needs['pin-release-build-inputs'].result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.eligibility.outputs.windows_byte_source != 'offline-sealed' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
     );
     expectExactLine(
       sealer,
