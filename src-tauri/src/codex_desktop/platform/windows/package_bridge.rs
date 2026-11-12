@@ -94,6 +94,7 @@ enum DescriptorKind {
     ExecutableLeaf,
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ExpectedPrincipal {
     Administrators,
@@ -102,12 +103,14 @@ enum ExpectedPrincipal {
     ShellUser,
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ExpectedAce {
     principal: ExpectedPrincipal,
     mask: u32,
 }
 
+#[cfg(test)]
 const STABLE_DIRECTORY_ACES: [ExpectedAce; 3] = [
     ExpectedAce {
         principal: ExpectedPrincipal::Administrators,
@@ -123,6 +126,7 @@ const STABLE_DIRECTORY_ACES: [ExpectedAce; 3] = [
     },
 ];
 
+#[cfg(test)]
 const OPERATION_DIRECTORY_ACES: [ExpectedAce; 3] = [
     ExpectedAce {
         principal: ExpectedPrincipal::Administrators,
@@ -138,6 +142,7 @@ const OPERATION_DIRECTORY_ACES: [ExpectedAce; 3] = [
     },
 ];
 
+#[cfg(test)]
 const PACKAGE_LEAF_ACES: [ExpectedAce; 3] = [
     ExpectedAce {
         principal: ExpectedPrincipal::Administrators,
@@ -153,6 +158,7 @@ const PACKAGE_LEAF_ACES: [ExpectedAce; 3] = [
     },
 ];
 
+#[cfg(test)]
 const EXECUTABLE_LEAF_ACES: [ExpectedAce; 3] = [
     ExpectedAce {
         principal: ExpectedPrincipal::Administrators,
@@ -168,6 +174,7 @@ const EXECUTABLE_LEAF_ACES: [ExpectedAce; 3] = [
     },
 ];
 
+#[cfg(test)]
 impl DescriptorKind {
     const fn expected_aces(self) -> &'static [ExpectedAce] {
         match self {
@@ -493,6 +500,7 @@ impl NativeFileIdentity {
     /// bridge root under ProgramData. Replacing a held directory changes its
     /// file ID, so size and link count add no rebinding protection there.
     /// Regular files keep the full comparison.
+    #[cfg(test)]
     fn same_object(&self, current: &Self, kind: NativeObjectKind) -> bool {
         match kind {
             NativeObjectKind::Directory => {

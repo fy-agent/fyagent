@@ -73,8 +73,10 @@ enum WindowsInspectionFailure {
     UnsafeFileShape,
     ProductIdentityMismatch,
     SignatureInvalid,
+    #[allow(dead_code)]
     SignerMismatch,
     ArchitectureUnsupported,
+    #[allow(dead_code)]
     IdentityChanged,
     Unavailable,
 }
