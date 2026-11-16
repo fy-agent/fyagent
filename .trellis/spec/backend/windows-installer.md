@@ -299,8 +299,11 @@ become a second public signing authority.
   setup must be `NotSigned`, have null publisher/signer/timestamp evidence, and
   have an empty PE security directory before it leaves the build runner.
 - The provider-neutral transform receives only the absolute candidate path and
-  architecture. Repository code never reads or serializes provider-specific
-  secret material. Workflow-private secret identifiers and provider syntax are
+  architecture. Both x64 and ARM64 packages are signed on the one x64
+  self-hosted runner labeled `fyagent-simplysign`. `signtool` selects the
+  SimplySign certificate by thumbprint and does not require the runner
+  architecture to match the package. Repository code never reads or serializes
+  provider-specific secret material. Workflow-private secret identifiers and provider syntax are
   not long-term interfaces in this spec. Temporary adapter bytes use a
   create-new random path and are deleted after the attempt.
 - A fresh matching-architecture sealer reopens the pinned raw and untrusted

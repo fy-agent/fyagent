@@ -10,6 +10,10 @@ Windows 正式签名路径是 **Certum／SimplySign**，沿用现有 adapter 边
 不另开 Azure Trusted Signing 或第二条流水线。adapter 文件是
 `scripts/release/windows-signer-certum-simplysign.ps1`。
 
+x64 与 arm64 两个安装包都在标签为 `fyagent-simplysign` 的同一台 x64 runner 上签名。
+这台机器保持 SimplySign 登录。`signtool` 按证书指纹选择证书，不要求 runner 架构和安装包架构相同。
+复核签名的 seal 作业仍在 GitHub 的 `windows-2025` 与 `windows-11-vs2026-arm` 上运行，不使用私钥。
+
 本机 AIMaster 上的 SimplySign／Certum 操作只作为参考。它不是 CI 正式证据。
 正式证据只来自 `fy-agent/fyagent` 的 Release 工作流：x64 与 arm64 各自签名、各自在干净 runner 上复验。
 验收命令是 `signtool verify /pa /all /v /tw`，只接受退出码 0。缺 publisher、证书 SHA-256、RFC 3161 时间戳、证书链或安装包 SHA-256 时，现有 seal 逻辑 fail-closed。
@@ -84,7 +88,7 @@ Windows 正式签名路径是 **Certum／SimplySign**，沿用现有 adapter 边
 
 ## 离线签名交接
 
-AIMaster 不需要注册成 runner，签名凭据也不进入 GitHub。正式 Release 运行上传的
+provider 模式把保持 SimplySign 登录的 AIMaster 注册为 `fyagent-simplysign`。Release 把 x64 和 arm64 的签名作业都派给它，不需要每次在这台电脑上手工下载和回传。离线交接仍然不把 PIN 放进 GitHub。正式 Release 运行上传的
 `raw-windows-x64` 和 `raw-windows-arm64` 是唯一原始包。本机用
 `scripts/release/windows-signer-certum-simplysign.ps1` 签名后，把
 `signing-return.json` 和两个已签名安装包做成一个不含其他文件的提交，再从

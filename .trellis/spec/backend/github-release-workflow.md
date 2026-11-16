@@ -317,8 +317,10 @@ compatibility and privilege review rather than an implicit cache-key change.
 Platform-neutral Release control-plane jobs—eligibility, immutable build-input
 pinning, exact asset/evidence aggregation, attestation, and publication—run on
 the pinned `ubuntu-24.04` hosted runner. They do not compile, execute, sign, or
-package a shipped target. Native build, Windows proof/sign/seal, and macOS
-Developer ID/notarization jobs remain on matching platform runners.
+package a shipped target. Native build, Windows proof/seal, and macOS
+Developer ID/notarization jobs remain on matching platform runners. Authenticode
+signing of both Windows packages runs on the x64 self-hosted runner
+`fyagent-simplysign`, where the SimplySign certificate stays logged in.
 
 | Target          | Runner/build environment                | Exact installer output              |
 | --------------- | --------------------------------------- | ----------------------------------- |

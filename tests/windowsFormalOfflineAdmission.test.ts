@@ -31,7 +31,7 @@ const ROOT = path.resolve(
 const ARTIFACT_SOURCE = "4f5e0543bae400e0c4447c10c164cd7e285f01df";
 const RELEASE_SOURCE = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const PRODUCT_JOB_FINGERPRINT =
-  "e425a5d64add60e956a7264fc7569a85c0beced4b229d8e1f23070af8dd27dd4";
+  "07dcad293ee63adeb07db1d91457b4e9ac11135f4c841271ed15ecc5eb4bbf1e";
 const BLOB = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function sha256(bytes: Buffer): string {
