@@ -230,13 +230,13 @@ impl ProtectedPackageBridge {
             ));
         }
         let expected_sha256 = decode_sha256(expected_sha256).ok_or_else(|| {
-            bridge_integrity_error("the package bridge checksum was not canonical")
+            bridge_checksum_error("the package bridge checksum was not canonical")
         })?;
         let shell_sid_binary = OwnedSid::parse(shell_sid)?;
 
         let source_before = native_file_identity(source_file, NativeObjectKind::RegularFile)?;
         if source_before.size != expected_size {
-            return Err(bridge_integrity_error(
+            return Err(bridge_checksum_error(
                 "the verified package source size changed before bridging",
             ));
         }
@@ -310,14 +310,14 @@ impl ProtectedPackageBridge {
 
         let part_identity = native_file_identity(&part, NativeObjectKind::RegularFile)?;
         if part_identity.size != expected_size || part_identity.number_of_links != 1 {
-            return Err(bridge_integrity_error(
+            return Err(bridge_checksum_error(
                 "the package bridge partial file identity was invalid",
             ));
         }
         rename_leaf_without_replacement(&part, artifact_kind.final_file_name())?;
         let renamed = native_file_identity(&part, NativeObjectKind::RegularFile)?;
         if renamed.size != part_identity.size {
-            return Err(bridge_integrity_error(
+            return Err(bridge_checksum_error(
                 "the package bridge file size changed during finalization",
             ));
         }
@@ -325,18 +325,21 @@ impl ProtectedPackageBridge {
 
         let final_file = open_final_package_leaf(&operation.file, artifact_kind)?;
         let final_identity = native_file_identity(&final_file, NativeObjectKind::RegularFile)?;
-        if final_identity.volume_serial != anchor.volume_serial
-            || final_identity.size != expected_size
-        {
+        if final_identity.size != expected_size {
+            return Err(bridge_checksum_error(
+                "the sealed package bridge file size was invalid",
+            ));
+        }
+        if final_identity.volume_serial != anchor.volume_serial {
             return Err(bridge_integrity_error(
-                "the sealed package bridge identity was invalid",
+                "the sealed package bridge volume was invalid",
             ));
         }
         verify_exact_descriptor(&final_file, leaf_kind, shell_sid_binary.as_sid())?;
 
         let source_after = native_file_identity(source_file, NativeObjectKind::RegularFile)?;
         if source_after.size != source_before.size {
-            return Err(bridge_integrity_error(
+            return Err(bridge_checksum_error(
                 "the verified package source size changed while bridging",
             ));
         }
@@ -1433,7 +1436,7 @@ fn bridge_error(message: &'static str) -> InstallerError {
 }
 
 fn bridge_integrity_error(message: &'static str) -> InstallerError {
-    InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+    InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
         .with_retryable(false)
         .with_diagnostic_message(message)
 }

@@ -357,12 +357,11 @@ impl DownloadedArtifact {
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn open_for_read(&self) -> Result<std::fs::File, InstallerError> {
         if self.job_directory.final_path(self.artifact_kind) != self.path {
-            return Err(
-                InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                    .with_diagnostic_message(
-                        "downloaded artifact path no longer matches the retained job capability",
-                    ),
-            );
+            return Err(InstallerError::new(InstallerErrorCode::DownloadFailed)
+                .with_platform_error_code("downloaded_file_moved")
+                .with_diagnostic_message(
+                    "downloaded artifact path no longer matches the retained job capability",
+                ));
         }
         self.job_directory
             .open_final_artifact_for_read(self.artifact_kind)
