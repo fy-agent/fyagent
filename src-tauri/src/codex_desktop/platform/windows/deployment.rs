@@ -282,6 +282,7 @@ pub(crate) fn launch_error(error: WindowsNativeError) -> InstallerError {
 /// Windows user proof. SID values are intentionally absent from diagnostics.
 pub(crate) fn interactive_context_error() -> InstallerError {
     InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+        .with_platform_error_code("interactive_user_unavailable")
         .with_diagnostic_message("the Windows interactive-user context is unavailable or changed")
 }
 

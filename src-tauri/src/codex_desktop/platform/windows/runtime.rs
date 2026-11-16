@@ -453,6 +453,7 @@ fn require_current_context(context: &InteractiveUserContext) -> Result<(), Insta
 
 fn runtime_identity_error() -> InstallerError {
     InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+        .with_platform_error_code("interactive_user_unavailable")
         .with_diagnostic_message("the Windows runtime could not be bound to the verified package")
 }
 

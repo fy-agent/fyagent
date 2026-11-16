@@ -68,7 +68,8 @@ describe("Codex install confirmation", () => {
       code: "PACKAGE_IDENTITY_MISMATCH",
       details: { ...base.details, platformErrorCode: null },
     });
-    expect(identity).toContain("请重试");
+    expect(identity).toContain("官方包");
+    expect(identity).not.toContain("目录");
     expect(identity).not.toContain("private");
   });
 });

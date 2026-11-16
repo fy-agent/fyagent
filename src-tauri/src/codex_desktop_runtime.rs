@@ -95,6 +95,7 @@ fn production_platform_dependencies() -> (Arc<dyn CodexDesktopPlatform>, Arc<dyn
             .map(Arc::new)
             .ok_or_else(|| {
                 InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                    .with_platform_error_code("interactive_user_unavailable")
                     .with_diagnostic_message(
                         "the Windows interactive-user context was not established at startup",
                     )
