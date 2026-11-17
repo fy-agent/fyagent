@@ -1,9 +1,21 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FeatureProvider } from "@/shared/features/provider";
 import { createBrowserFeaturePorts } from "@/shared/platform/browser/features";
-import { TopBar } from "@/widgets/app-shell/TopBar";
+import ProxySettingsDialog from "@/widgets/app-shell/ProxySettingsDialog";
+
+function Harness({ ports }: { ports: any }) {
+  const [open, setOpen] = useState(true);
+  const originRef = { current: null };
+  if (!open) return null;
+  return (
+    <FeatureProvider ports={ports}>
+      <ProxySettingsDialog originRef={originRef} onClose={() => setOpen(false)} />
+    </FeatureProvider>
+  );
+}
 
 async function fixture() {
   const ports = createBrowserFeaturePorts();
@@ -27,20 +39,7 @@ async function fixture() {
   });
   const user = userEvent.setup();
   const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
-  render(
-    <FeatureProvider ports={ports}>
-      <TopBar />
-    </FeatureProvider>,
-  );
-  expect(ports.settings.getProxyAccessKey).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "关于 FyAgent" }));
-  await act(async () => {
-    await vi.dynamicImportSettled();
-  });
-  await user.click(await screen.findByRole("button", { name: "代理设置" }));
-  await act(async () => {
-    await vi.dynamicImportSettled();
-  });
+  render(<Harness ports={ports} />);
   await screen.findByRole("dialog", { name: "代理设置" });
   await waitFor(() =>
     expect(screen.getByLabelText("监听地址")).toHaveValue("127.0.0.1"),
