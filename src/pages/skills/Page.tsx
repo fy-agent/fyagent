@@ -650,10 +650,6 @@ export function SkillsPage() {
           </PopoverPrimitive.Root>
         </div>
       </header>
-      <p className="fy-feature-note" role="note">
-        链接目录中的 Skills 可以读取；链接目录及其目标只读，不会写入或删除。
-        如需安装、更新或调整分配，请使用普通目录。
-      </p>
       {progress && (
         <>
           <div

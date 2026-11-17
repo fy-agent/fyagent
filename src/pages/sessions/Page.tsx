@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
 import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 import { UploadSimpleIcon } from "@phosphor-icons/react/dist/csr/UploadSimple";
@@ -814,33 +813,9 @@ export function SessionsPage() {
           <span>会话中心</span>
           <span>/</span>
           <span className="fy-crumb-current">跨设备会话恢复与浏览</span>
-          <span
-            style={{
-              marginLeft: "8px",
-              fontSize: "11px",
-              padding: "2px 8px",
-              borderRadius: "999px",
-              background: "var(--fy-surface-inset)",
-              color: "var(--fy-text-tertiary)",
-              border: "1px solid var(--fy-border)",
-            }}
-          >
-            按软件与版本检查
-          </span>
         </div>
 
         <div className="fy-sessions-top-actions">
-          {selectedSessionKey && (
-            <Button
-              className="fy-btn-back-mobile"
-              style={{ display: "none" }}
-              onClick={() => setSelectedSessionKey(null)}
-            >
-              <ArrowLeftIcon size={14} />
-              <span>返回列表</span>
-            </Button>
-          )}
-
           <Button
             dialogOriginRef={importOriginRef}
             onClick={() => setImportOpen(true)}

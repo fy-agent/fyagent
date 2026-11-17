@@ -49,7 +49,7 @@ describe("SideNavigation", () => {
         label: "AI软件配置",
         collapsible: false,
         items: [
-          { id: "agents", label: "AI软件配置" },
+          { id: "agents", label: "Agent目录" },
           { id: "auth", label: "账号与认证" },
         ],
       },
@@ -93,12 +93,12 @@ describe("SideNavigation", () => {
 
     expect(
       Array.from(topLevelControls, (control) => control.textContent?.trim()),
-    ).toEqual(["AI软件配置", "账号与认证", "配置管理", "会话中心"]);
+    ).toEqual(["Agent目录", "账号与认证", "配置管理", "会话中心"]);
     expect(
       within(navigation).queryByRole("link", { name: "客户项目" }),
     ).not.toBeInTheDocument();
     expect(
-      within(navigation).getByRole("link", { name: "AI软件配置" }),
+      within(navigation).getByRole("link", { name: "Agent目录" }),
     ).toHaveAttribute("href", "/agents");
     expect(
       within(navigation).getByRole("link", { name: "会话中心" }),
@@ -133,7 +133,7 @@ describe("SideNavigation", () => {
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     const agents = within(navigation).getByRole("link", {
-      name: "AI软件配置",
+      name: "Agent目录",
     });
     const models = within(navigation).getByRole("link", {
       name: "模型管理",
@@ -162,7 +162,7 @@ describe("SideNavigation", () => {
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     const agents = within(navigation).getByRole("link", {
-      name: "AI软件配置",
+      name: "Agent目录",
     });
 
     expect(agents).toHaveAttribute("href", "/agents");
@@ -214,7 +214,7 @@ describe("SideNavigation", () => {
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     const agents = within(navigation).getByRole("link", {
-      name: "AI软件配置",
+      name: "Agent目录",
     });
     const lens = within(navigation).getByTestId("selection-lens");
 
@@ -293,7 +293,7 @@ describe("SideNavigation", () => {
     const toggle = within(navigation).getByRole("button", { name: "配置管理" });
     const memory = within(navigation).getByRole("link", { name: "记忆模块" });
     const sessions = within(navigation).getByRole("link", { name: "会话中心" });
-    const agents = within(navigation).getByRole("link", { name: "AI软件配置" });
+    const agents = within(navigation).getByRole("link", { name: "Agent目录" });
     const auth = within(navigation).getByRole("link", { name: "账号与认证" });
 
     await user.click(toggle);

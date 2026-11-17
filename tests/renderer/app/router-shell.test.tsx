@@ -29,7 +29,7 @@ vi.mock("@samasante/liquid-glass", () => ({
 }));
 
 const navigationContract = [
-  { path: "/agents", label: "AI软件配置" },
+  { path: "/agents", label: "Agent目录" },
   { path: "/auth", label: "账号与认证" },
   { path: "/models", label: "模型管理" },
   { path: "/skills", label: "Skills 管理" },
@@ -92,7 +92,7 @@ describe("FyAgent routing", () => {
       await expectPath(router, "/agents");
       const navigation = screen.getByRole("navigation", { name: "主导航" });
       expect(
-        screen.getByRole("link", { name: "AI软件配置", current: "page" }),
+        screen.getByRole("link", { name: "Agent目录", current: "page" }),
       ).toHaveAttribute("href", "/agents");
       expect(screen.queryByTestId("liquid-glass-lens")).not.toBeInTheDocument();
       expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(
@@ -141,7 +141,7 @@ describe("FyAgent routing", () => {
       screen.queryByRole("link", { name: "客户项目" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "AI软件配置", current: "page" }),
+      screen.getByRole("link", { name: "Agent目录", current: "page" }),
     ).toBeVisible();
   });
 
@@ -153,7 +153,7 @@ describe("FyAgent routing", () => {
       screen.queryByRole("link", { name: "运行状态" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "AI软件配置", current: "page" }),
+      screen.getByRole("link", { name: "Agent目录", current: "page" }),
     ).toBeVisible();
   });
 
@@ -270,7 +270,7 @@ describe("FyAgent shell accessibility", () => {
     );
 
     expect(
-      within(navigation).getByText("AI软件配置", { exact: true }),
+      within(navigation).getByText("Agent目录", { exact: true }),
     ).toBeVisible();
     expect(
       within(navigation).getByText("记忆模块", { exact: true }),
@@ -281,7 +281,7 @@ describe("FyAgent shell accessibility", () => {
       ),
     ).toHaveLength(5);
     expect(
-      within(navigation).queryByRole("link", { name: "Agent 目录" }),
+      within(navigation).queryByRole("link", { name: "AI软件配置" }),
     ).not.toBeInTheDocument();
     expect(
       within(navigation).queryByRole("link", { name: /^记忆$/ }),
@@ -327,7 +327,7 @@ describe("FyAgent primary route lifecycle", () => {
 
     const url = await screen.findByLabelText("服务地址");
     await user.type(url, "https://keep.example/v1");
-    await user.click(screen.getByRole("link", { name: "AI软件配置" }));
+    await user.click(screen.getByRole("link", { name: "Agent目录" }));
     await expectPath(router, "/agents");
     const modelsPage = screen.getByTestId("models-page");
     expect(modelsPage).not.toBeVisible();
@@ -398,7 +398,7 @@ describe("FyAgent primary route lifecycle", () => {
       expect(agentsPage).not.toBeVisible();
       expect(agentsPage.closest("[hidden]")).not.toBeNull();
 
-      await user.click(screen.getByRole("link", { name: "AI软件配置" }));
+      await user.click(screen.getByRole("link", { name: "Agent目录" }));
       await expectPath(router, "/agents");
       expect(
         await screen.findByRole("heading", { name: "Claude Code" }),

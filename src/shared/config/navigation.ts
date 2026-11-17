@@ -38,7 +38,7 @@ export const navigationGroups = [
     label: "AI软件配置",
     collapsible: false,
     items: [
-      { id: "agents", path: "/agents", label: "AI软件配置" },
+      { id: "agents", path: "/agents", label: "Agent目录" },
       { id: "auth", path: "/auth", label: "账号与认证" },
     ],
   },
