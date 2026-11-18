@@ -1,28 +1,25 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+  type MouseEvent,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
+import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 import { UploadSimpleIcon } from "@phosphor-icons/react/dist/csr/UploadSimple";
-import { FolderSimpleIcon } from "@phosphor-icons/react/dist/csr/FolderSimple";
-import { InfoIcon } from "@phosphor-icons/react/dist/csr/Info";
-import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
-import { CheckSquareIcon } from "@phosphor-icons/react/dist/csr/CheckSquare";
-import { SquareIcon } from "@phosphor-icons/react/dist/csr/Square";
-import { BookOpenIcon } from "@phosphor-icons/react/dist/csr/BookOpen";
-import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
-import { ClockCounterClockwiseIcon } from "@phosphor-icons/react/dist/csr/ClockCounterClockwise";
-import { ChatsCircleIcon } from "@phosphor-icons/react/dist/csr/ChatsCircle";
 
 import { useFeatures } from "../../shared/features/provider";
 import { detectRuntime } from "../../shared/platform/runtime";
 import { Button } from "../../shared/ui/Button";
-import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { SplitPanes } from "../../shared/ui/split/SplitPanes";
 import { useDialogState } from "../../shared/ui/useDialogState";
 import { usePersistentVisibility } from "../../shared/ui/PersistentSurface";
 import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import type {
+  LocalProviderProbe,
   MigratableMessage,
   MigratableSession,
   RestoreAttempt,
@@ -30,30 +27,22 @@ import type {
   RestoreStage,
   SessionMessage,
   SessionMeta,
-  LocalProviderProbe,
 } from "../../shared/features/session-migration";
 import {
   classifyRestoreResults,
-  PROVIDER_LABELS,
-  RESTORE_STAGE_LABELS,
-  SUPPORTED_PROVIDER_IDS,
   getSessionStableKey,
   isProviderRestoreSupported,
   parseMigrationError,
+  RESTORE_STAGE_LABELS,
+  SUPPORTED_PROVIDER_IDS,
 } from "../../shared/features/session-migration";
 
-import { StatusBanners } from "./components/StatusBanners";
-import { SessionStages } from "./components/SessionStages";
-import { SessionEvidenceDetails } from "./components/SessionEvidenceDetails";
 import {
   readFailureFeedback,
   restoreAttemptFeedback,
   type SessionFailureFeedback,
 } from "./failure-feedback";
-import {
-  ConversationStream,
-  type ConversationTurn,
-} from "./components/ConversationStream";
+import type { ConversationTurn } from "./components/ConversationStream";
 import {
   ExportPreviewDialog,
   type ExportTargetItem,
@@ -62,10 +51,33 @@ import { ImportPackageDialog } from "./components/ImportPackageDialog";
 import { RemapWorkspaceDialog } from "./components/RemapWorkspaceDialog";
 import { StartupGuideDialog } from "./components/StartupGuideDialog";
 import { AttestationDialog } from "./components/AttestationDialog";
+import { SessionsDetailPane } from "./components/SessionsDetailPane";
+import { SessionsMasterPane } from "./components/SessionsMasterPane";
 
 import "./page.css";
 
 const EMPTY_MESSAGES: SessionMessage[] = [];
+
+function getAttemptSeverityRank(stage: RestoreStage): number {
+  switch (stage) {
+    case "needsReconciliation":
+      return 1;
+    case "failed":
+      return 2;
+    case "ambiguous":
+      return 3;
+    case "nativeWritePending":
+      return 4;
+    case "packageVerified":
+      return 5;
+    case "nativeWritten":
+      return 6;
+    case "nativeReadbackVerified":
+      return 7;
+    default:
+      return 99;
+  }
+}
 
 export function SessionsPage() {
   const { isNative } = detectRuntime();
@@ -74,7 +86,6 @@ export function SessionsPage() {
   const visible = usePersistentVisibility();
   const pageRef = useRef<HTMLDivElement>(null);
 
-  // Navigation & view mode
   const [viewMode, setViewMode] = useState<"sessions" | "attempts">("sessions");
   const [selectedSessionKey, setSelectedSessionKey] = useState<string | null>(
     null,
@@ -84,16 +95,11 @@ export function SessionsPage() {
   );
   const [providerFilter, setProviderFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-
-  // Multi-select for batch export
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-
-  // Per-session custom workspace mappings
   const [customWorkspaces, setCustomWorkspaces] = useState<
     Record<string, string>
   >({});
 
-  // ─── Queries ──────────────────────────────────────────────────────
   const {
     data: sessions = [],
     isLoading: loadingSessions,
@@ -117,7 +123,6 @@ export function SessionsPage() {
     enabled: isNative && visible,
   });
 
-  // Probe all 7 providers to get real runtime capability
   const { data: localProbes = {} } = useQuery<
     Record<string, LocalProviderProbe>
   >({
@@ -146,7 +151,6 @@ export function SessionsPage() {
     enabled: isNative && visible,
   });
 
-  // ─── Selected Session Resolution ──────────────────────────────────
   const selectedSession = useMemo<SessionMeta | null>(() => {
     if (sessions.length === 0 || !selectedSessionKey) return null;
     return (
@@ -160,7 +164,6 @@ export function SessionsPage() {
     ? getSessionStableKey(selectedSession)
     : null;
 
-  // Selected attempt resolution (when inspecting attempts list)
   const selectedAttempt = useMemo<RestoreAttempt | null>(() => {
     if (attempts.length === 0 || !selectedAttemptId) return null;
     return (
@@ -169,7 +172,6 @@ export function SessionsPage() {
     );
   }, [attempts, selectedAttemptId]);
 
-  // ─── Detail Query (with Structured Error preservation) ───────────
   const { data: sessionDetailData, isLoading: loadingDetail } = useQuery({
     queryKey: [
       "session-detail",
@@ -228,19 +230,16 @@ export function SessionsPage() {
   const migratableSession = sessionDetailData?.migratable ?? null;
   const structuredError = sessionDetailData?.error ?? null;
 
-  // Fallback workspace from existing sessions if no specific session is focused
   const defaultWorkspaceFallback = useMemo(() => {
     return sessions.find((s: SessionMeta) => s.projectDir)?.projectDir ?? "";
   }, [sessions]);
 
-  // Target workspace is scoped per session, with selectedSession.projectDir or fallback
   const targetWorkspace = activeStableKey
     ? (customWorkspaces[activeStableKey] ??
       selectedSession?.projectDir ??
       defaultWorkspaceFallback)
     : (customWorkspaces["default"] ?? defaultWorkspaceFallback);
 
-  // ─── Modals & Dialogs (useDialogState for lifecycle isolation) ────
   const [exportTargets, setExportTargets, exportSessionKey] =
     useDialogState<ExportTargetItem[]>();
   const [importOpen, setImportOpen] = useDialogState<boolean>();
@@ -269,12 +268,7 @@ export function SessionsPage() {
     ]);
   }, [queryClient]);
 
-  // Explicit operation readback must finish even when its page is hidden.
-  // Disabled query observers do not fetch in response to invalidation alone.
   const refreshRestoreAttempts = useCallback(async () => {
-    // fetchQuery reuses an in-flight read even with staleTime: 0. Retire
-    // only the old receipt read, keeping its cached preimage, before reading
-    // this operation's terminal state. Native operation Promises are untouched.
     await queryClient.cancelQueries(
       { queryKey: ["sessions-attempts"], exact: true },
       { revert: true },
@@ -286,7 +280,6 @@ export function SessionsPage() {
     });
   }, [ports.sessions, queryClient]);
 
-  // ─── Filtered Sessions ───────────────────────────────────────────
   const filteredSessions = useMemo(() => {
     return sessions.filter((s: SessionMeta) => {
       if (providerFilter !== "all" && s.providerId !== providerFilter) {
@@ -309,38 +302,12 @@ export function SessionsPage() {
     });
   }, [sessions, providerFilter, searchQuery]);
 
-  // ─── Active Attempt Matching (Strict Semantics) ───────────────────
-  // Prioritizes unresolved receipt stages over successful ones so issues are never masked
-  const getAttemptSeverityRank = (stage: RestoreStage): number => {
-    switch (stage) {
-      case "needsReconciliation":
-        return 1;
-      case "failed":
-        return 2;
-      case "ambiguous":
-        return 3;
-      case "nativeWritePending":
-        return 4;
-      case "packageVerified":
-        return 5;
-      case "nativeWritten":
-        return 6;
-      case "nativeReadbackVerified":
-        return 7;
-      default:
-        return 99;
-    }
-  };
-
-  // Origin side: exact originId + snapshotId + targetProviderId
-  // Target side: targetProviderId + targetNativeId matching selectedSession
   const activeAttempt = useMemo<RestoreAttempt | null>(() => {
     if (viewMode === "attempts") {
       return selectedAttempt;
     }
     if (!selectedSession) return null;
 
-    // First check target side: imported session matching targetNativeId
     const targetMatches = attempts.filter(
       (a: RestoreAttempt) =>
         a.targetProviderId === selectedSession.providerId &&
@@ -355,7 +322,6 @@ export function SessionsPage() {
         )[0];
     }
 
-    // Next check origin side: exported from this origin session
     if (migratableSession) {
       const originMatches = attempts.filter(
         (a: RestoreAttempt) =>
@@ -376,7 +342,6 @@ export function SessionsPage() {
     return null;
   }, [viewMode, selectedAttempt, selectedSession, attempts, migratableSession]);
 
-  // ─── Capability Verification from Local Probe ────────────────────
   const activeProviderId =
     viewMode === "attempts"
       ? selectedAttempt?.targetProviderId
@@ -401,7 +366,6 @@ export function SessionsPage() {
 
   const capabilityReason = restoreSupport.reason;
 
-  // ─── Turns Projection (No Dropped Messages & Real Roles) ─────────
   const conversationTurns = useMemo<ConversationTurn[]>(() => {
     if (!migratableSession) return [];
 
@@ -412,7 +376,6 @@ export function SessionsPage() {
     for (const msg of migratableSession.messages) {
       if (msg.kind === "userText") {
         if (pendingUserMsg) {
-          // Genuinely unanswered user message followed by another prompt: incomplete turn
           turns.push({
             turnNumber: currentTurn,
             userMessage: pendingUserMsg,
@@ -435,7 +398,6 @@ export function SessionsPage() {
       }
     }
 
-    // Trailing unclosed user message
     if (pendingUserMsg) {
       turns.push({
         turnNumber: currentTurn,
@@ -458,7 +420,6 @@ export function SessionsPage() {
     [conversationTurns],
   );
 
-  // ─── Export Dialog Controller ────────────────────────────────────
   const handleOpenExport = useCallback(() => {
     const chosenSessions =
       selectedKeys.size > 0
@@ -488,7 +449,6 @@ export function SessionsPage() {
     setExportTargets(targets);
   }, [selectedKeys, sessions, selectedSession, notify, setExportTargets]);
 
-  // ─── Keyboard Shortcuts ──────────────────────────────────────────
   const hasOpenDialog = Boolean(
     exportTargets || importOpen || remapOpen || guideOpen || attestationOpen,
   );
@@ -512,7 +472,6 @@ export function SessionsPage() {
       const page = pageRef.current;
       if (!page || page.closest("[hidden], [inert]")) return;
 
-      // Window/body events still belong to the focused input context.
       for (const context of [e.target, document.activeElement]) {
         if (
           context === null ||
@@ -533,7 +492,6 @@ export function SessionsPage() {
         }
       }
 
-      // Portaled dialogs can own the keyboard without being page descendants.
       const dialogs = document.querySelectorAll(
         '[role="dialog"], [role="alertdialog"]',
       );
@@ -559,8 +517,7 @@ export function SessionsPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [visible, hasOpenDialog, handleOpenExport, setImportOpen]);
 
-  // ─── Multi-Selection Helpers ─────────────────────────────────────
-  const toggleSelectSession = (stableKey: string, e: React.MouseEvent) => {
+  const toggleSelectSession = (stableKey: string, e: MouseEvent) => {
     e.stopPropagation();
     setSelectedKeys((prev) => {
       const next = new Set(prev);
@@ -583,7 +540,6 @@ export function SessionsPage() {
     setSelectedKeys(new Set());
   };
 
-  // ─── Action Handlers ─────────────────────────────────────────────
   const handleExport = async (
     itemsToExport: Array<{ providerId: string; sourcePath: string }>,
     targetPath: string,
@@ -626,9 +582,6 @@ export function SessionsPage() {
     try {
       res = await ports.sessions.restoreSessionPackage(request);
     } finally {
-      // A missing response may follow publication. Reread persisted receipts
-      // even when the transport rejects; never fabricate a write-free result.
-      // Query error state retains readback failure without replacing the restore result.
       await refreshRestoreAttempts().catch(() => undefined);
       void refreshSessions();
     }
@@ -784,7 +737,6 @@ export function SessionsPage() {
     }
   };
 
-  // ─── Browser Native-Only Fallback ────────────────────────────────
   if (!isNative) {
     return (
       <div
@@ -807,7 +759,6 @@ export function SessionsPage() {
 
   return (
     <div ref={pageRef} className="fy-sessions-page" data-testid="sessions-page">
-      {/* 顶部栏 */}
       <header className="fy-sessions-topbar">
         <div className="fy-sessions-breadcrumb">
           <span>会话中心</span>
@@ -847,7 +798,6 @@ export function SessionsPage() {
         </div>
       </header>
 
-      {/* 双栏工作台：复用 SplitPanes */}
       <SplitPanes
         className="fy-sessions-split-layout"
         minWidths={[280, 480]}
@@ -855,695 +805,89 @@ export function SessionsPage() {
         flexiblePane={1}
         separatorLabels={["调整会话列表与详情宽度"]}
       >
-        {/* 左栏：Master 列表与搜索筛选 */}
-        <aside className="fy-sessions-master-pane" aria-label="会话列表">
-          {/* 模式切换选项卡：本地会话 vs 恢复记录 */}
-          <div className="fy-sessions-mode-bar" role="tablist">
-            <button
-              type="button"
-              className={`fy-mode-tab ${viewMode === "sessions" ? "active" : ""}`}
-              onClick={() => setViewMode("sessions")}
-            >
-              <ChatsCircleIcon size={14} />
-              <span>本地会话 ({sessions.length})</span>
-            </button>
-            <button
-              type="button"
-              className={`fy-mode-tab ${viewMode === "attempts" ? "active" : ""}`}
-              onClick={() => setViewMode("attempts")}
-            >
-              <ClockCounterClockwiseIcon size={14} />
-              <span>恢复记录 ({attempts.length})</span>
-            </button>
-          </div>
+        <SessionsMasterPane
+          viewMode={viewMode}
+          onChangeViewMode={setViewMode}
+          sessions={sessions}
+          filteredSessions={filteredSessions}
+          loadingSessions={loadingSessions}
+          sessionsError={sessionsError}
+          sessionsLoadError={sessionsLoadError}
+          onRefetchSessions={() => void refetchSessions()}
+          providerFilter={providerFilter}
+          onChangeProviderFilter={setProviderFilter}
+          searchQuery={searchQuery}
+          onChangeSearchQuery={setSearchQuery}
+          activeStableKey={activeStableKey}
+          onSelectSessionKey={setSelectedSessionKey}
+          selectedKeys={selectedKeys}
+          onToggleSelectSession={toggleSelectSession}
+          onSelectAllFiltered={selectAllFiltered}
+          onClearSelection={clearSelection}
+          attempts={attempts}
+          attemptsError={attemptsError}
+          attemptsLoadError={attemptsLoadError}
+          onRefetchAttempts={() => void refetchAttempts()}
+          activeAttemptId={activeAttempt?.attemptId}
+          onSelectAttemptId={setSelectedAttemptId}
+        />
 
-          {viewMode === "sessions" ? (
-            <>
-              <div className="fy-sessions-master-header">
-                {/* 7 软件芯片过滤器 */}
-                <div
-                  className="fy-provider-chips-row"
-                  role="tablist"
-                  aria-label="按AI软件筛选"
-                >
-                  <button
-                    type="button"
-                    className={`fy-provider-chip ${providerFilter === "all" ? "active" : ""}`}
-                    onClick={() => setProviderFilter("all")}
-                  >
-                    全部 ({sessions.length})
-                  </button>
-                  {SUPPORTED_PROVIDER_IDS.map((pId: string) => {
-                    const count = sessions.filter(
-                      (s: SessionMeta) => s.providerId === pId,
-                    ).length;
-                    return (
-                      <button
-                        key={pId}
-                        type="button"
-                        className={`fy-provider-chip ${providerFilter === pId ? "active" : ""}`}
-                        onClick={() => setProviderFilter(pId)}
-                      >
-                        {PROVIDER_LABELS[pId] ?? pId}
-                        {count > 0 ? ` (${count})` : ""}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* 搜索框：复用 FeatureSearch 原件 */}
-                <FeatureSearch
-                  value={searchQuery}
-                  onValueChange={setSearchQuery}
-                  placeholder="搜索会话标题、摘要、源ID..."
-                  ariaLabel="搜索会话"
-                />
-
-                {/* 多选状态条 */}
-                {selectedKeys.size > 0 && (
-                  <div className="fy-selection-toolbar">
-                    <span>已选择 {selectedKeys.size} 个会话</span>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <button
-                        type="button"
-                        className="fy-link-btn"
-                        onClick={selectAllFiltered}
-                      >
-                        全选
-                      </button>
-                      <button
-                        type="button"
-                        className="fy-link-btn"
-                        onClick={clearSelection}
-                      >
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 会话列表项 */}
-              <div className="fy-sessions-list" role="list">
-                {sessionsError ? (
-                  <div
-                    style={{
-                      padding: "24px 16px",
-                      textAlign: "center",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: "10px",
-                    }}
-                    role="alert"
-                  >
-                    <strong
-                      style={{
-                        color: "var(--fy-danger-text)",
-                        fontSize: "13px",
-                      }}
-                    >
-                      本地会话扫描失败
-                    </strong>
-                    <span
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--fy-text-secondary)",
-                      }}
-                    >
-                      {parseMigrationError(sessionsLoadError).message}
-                    </span>
-                    <Button
-                      type="button"
-                      className="fy-btn-subtle"
-                      onClick={() => void refetchSessions()}
-                    >
-                      重新扫描
-                    </Button>
-                  </div>
-                ) : loadingSessions && sessions.length === 0 ? (
-                  <div
-                    style={{
-                      padding: "24px",
-                      textAlign: "center",
-                      color: "var(--fy-text-tertiary)",
-                      fontSize: "13px",
-                    }}
-                  >
-                    正在扫描本地会话…
-                  </div>
-                ) : filteredSessions.length === 0 ? (
-                  <div
-                    style={{
-                      padding: "24px",
-                      textAlign: "center",
-                      color: "var(--fy-text-tertiary)",
-                      fontSize: "13px",
-                    }}
-                  >
-                    {searchQuery ? "未找到匹配会话" : "暂无本地会话"}
-                  </div>
-                ) : (
-                  filteredSessions.map((s: SessionMeta) => {
-                    const stableKey = getSessionStableKey(s);
-                    const isSelected = stableKey === activeStableKey;
-                    const isChecked = selectedKeys.has(stableKey);
-                    return (
-                      <div
-                        key={stableKey}
-                        role="listitem"
-                        tabIndex={0}
-                        className={`fy-session-item-card ${isSelected ? "selected" : ""}`}
-                        onClick={() => setSelectedSessionKey(stableKey)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setSelectedSessionKey(stableKey);
-                          }
-                        }}
-                      >
-                        <div className="fy-session-item-top">
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "6px",
-                            }}
-                          >
-                            <button
-                              type="button"
-                              className="fy-checkbox-btn"
-                              aria-label={isChecked ? "取消勾选" : "勾选以导出"}
-                              onClick={(e) => toggleSelectSession(stableKey, e)}
-                            >
-                              {isChecked ? (
-                                <CheckSquareIcon
-                                  size={16}
-                                  weight="fill"
-                                  color="var(--fy-brand-blue)"
-                                />
-                              ) : (
-                                <SquareIcon size={16} />
-                              )}
-                            </button>
-                            <span className="fy-session-item-provider-tag">
-                              {PROVIDER_LABELS[s.providerId] ?? s.providerId}
-                            </span>
-                          </div>
-                          {s.lastActiveAt && (
-                            <span className="fy-session-item-time">
-                              {new Date(s.lastActiveAt).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          className="fy-session-item-title"
-                          title={s.title || s.sessionId}
-                        >
-                          {s.title || s.summary || "未命名会话"}
-                        </div>
-                        <div className="fy-session-item-meta">
-                          {s.projectDir && (
-                            <span
-                              title={s.projectDir}
-                              style={{
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              • {s.projectDir.split("/").pop()}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </>
-          ) : (
-            /* 恢复记录独立视图 (解决部分 scanner 尚未展示 native 新导入的问题) */
-            <div className="fy-attempts-view" role="list">
-              {attemptsError ? (
-                <div
-                  style={{
-                    padding: "32px 16px",
-                    textAlign: "center",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: "10px",
-                  }}
-                  role="alert"
-                >
-                  <strong
-                    style={{ color: "var(--fy-danger-text)", fontSize: "13px" }}
-                  >
-                    恢复记录加载失败
-                  </strong>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--fy-text-secondary)",
-                    }}
-                  >
-                    {parseMigrationError(attemptsLoadError).message}
-                  </span>
-                  <Button
-                    type="button"
-                    className="fy-btn-subtle"
-                    onClick={() => void refetchAttempts()}
-                  >
-                    重新加载
-                  </Button>
-                </div>
-              ) : attempts.length === 0 ? (
-                <div
-                  style={{
-                    padding: "32px 16px",
-                    textAlign: "center",
-                    color: "var(--fy-text-tertiary)",
-                    fontSize: "13px",
-                  }}
-                >
-                  暂无跨设备恢复记录。
-                  <br />
-                  使用顶部“导入会话包”恢复其他设备的会话。
-                </div>
-              ) : (
-                attempts.map((a: RestoreAttempt) => {
-                  const isSelected = a.attemptId === activeAttempt?.attemptId;
-                  return (
-                    <div
-                      key={a.attemptId}
-                      role="listitem"
-                      tabIndex={0}
-                      className={`fy-attempt-item-card ${isSelected ? "selected" : ""}`}
-                      onClick={() => setSelectedAttemptId(a.attemptId)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setSelectedAttemptId(a.attemptId);
-                        }
-                      }}
-                    >
-                      <div className="fy-attempt-item-top">
-                        <span className="fy-session-item-provider-tag">
-                          {PROVIDER_LABELS[a.targetProviderId] ??
-                            a.targetProviderId}
-                        </span>
-                        <span className="fy-attempt-stage-badge">
-                          {RESTORE_STAGE_LABELS[a.stage as RestoreStage] ??
-                            a.stage}
-                        </span>
-                      </div>
-                      <div className="fy-attempt-item-workspace">
-                        工作区: {a.targetWorkspace}
-                      </div>
-                      <div className="fy-attempt-item-time">
-                        {new Date(a.createdAt).toLocaleString()}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-
-          {/* 底部辅助入口：记忆模块跳转 */}
-          <div
-            style={{
-              padding: "10px 16px",
-              borderTop: "1px solid var(--fy-divider)",
-              background: "var(--fy-surface-soft)",
-              fontSize: "12px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                color: "var(--fy-text-secondary)",
-              }}
-            >
-              <BookOpenIcon size={16} />
-              <span>原各软件本地记忆文件</span>
-            </div>
-            <Link
-              to="/memory"
-              className="fy-sessions-memory-link"
-              style={{
-                fontWeight: 600,
-                textDecoration: "none",
-                fontSize: "12px",
-              }}
-            >
-              记忆模块 →
-            </Link>
-          </div>
-        </aside>
-
-        {/* 右栏：Detail 面板 */}
-        <main className="fy-sessions-detail-pane" aria-label="会话详情">
-          {viewMode === "attempts" && activeAttempt ? (
-            /* 恢复记录详情展示 */
-            <div className="fy-attempt-detail-view">
-              <div className="fy-sessions-detail-header">
-                <div className="fy-detail-top-row">
-                  <div className="fy-detail-title-group">
-                    <h1 className="fy-detail-title">
-                      恢复记录：
-                      {PROVIDER_LABELS[activeAttempt.targetProviderId] ??
-                        activeAttempt.targetProviderId}{" "}
-                    </h1>
-                    <div className="fy-detail-meta-tags">
-                      <span className="fy-session-item-provider-tag">
-                        {PROVIDER_LABELS[activeAttempt.targetProviderId] ??
-                          activeAttempt.targetProviderId}
-                      </span>
-                      <span>
-                        当前阶段:{" "}
-                        {RESTORE_STAGE_LABELS[
-                          activeAttempt.stage as RestoreStage
-                        ] ?? activeAttempt.stage}
-                      </span>
-                      <span>•</span>
-                      <span>
-                        创建于:{" "}
-                        {new Date(activeAttempt.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="fy-detail-actions">
-                    <Button
-                      className="fy-control-button-primary"
-                      disabled={!canOpenTarget}
-                      onClick={() => void handleResumeInTarget()}
-                    >
-                      <PlayIcon size={14} weight="fill" />
-                      <span>
-                        {activeAttempt ? "打开目标会话" : "查看目标启动说明"}
-                      </span>
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="fy-workspace-bar">
-                  <span
-                    style={{
-                      color: "var(--fy-text-tertiary)",
-                      fontWeight: 550,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    目标工作区路径:
-                  </span>
-                  <span className="fy-workspace-path">
-                    {activeAttempt.targetWorkspace}
-                  </span>
-                </div>
-              </div>
-
-              <div className="fy-sessions-stream-container">
-                <SessionStages
-                  probe={activeProviderProbe}
-                  attempt={activeAttempt}
-                />
-                <StatusBanners
-                  stage={activeAttempt.stage}
-                  activeAttempt={activeAttempt}
-                  failureFeedback={
-                    readbackError?.attemptId === activeAttempt.attemptId
-                      ? readbackError.feedback
-                      : undefined
-                  }
-                  onReviewRestore={() =>
-                    void handleReviewRestore().catch((error) =>
-                      setReadbackError({
-                        attemptId: activeAttempt.attemptId,
-                        feedback: {
-                          ...restoreAttemptFeedback(activeAttempt),
-                          phase: "恢复回执核对失败",
-                          message: parseMigrationError(error).message,
-                        },
-                      }),
-                    )
-                  }
-                  reviewingAttempts={reviewingAttempts}
-                  isCapabilityVerified={isCapabilityVerified}
-                  capabilityReason={capabilityReason}
-                  onVerifyReadback={() => void handleVerifyReadback()}
-                  verifyingReadback={verifyingReadback}
-                />
-              </div>
-
-              <footer className="fy-sessions-bottom-bar">
-                <div className="fy-bottom-info">
-                  <SessionEvidenceDetails attempt={activeAttempt} />
-                </div>
-                <div className="fy-bottom-actions">
-                  <Button
-                    className="fy-control-button-primary"
-                    dialogOriginRef={attestationOriginRef}
-                    onClick={() => setAttestationOpen(true)}
-                  >
-                    <CheckIcon size={16} weight="bold" />
-                    <span>标记：我已手动续聊</span>
-                  </Button>
-                </div>
-              </footer>
-            </div>
-          ) : selectedSession ? (
-            /* 本地会话详情展示 */
-            <>
-              {/* 详情头部 */}
-              <div className="fy-sessions-detail-header">
-                <div className="fy-detail-top-row">
-                  <div className="fy-detail-title-group">
-                    <h1 className="fy-detail-title">
-                      {selectedSession.title ||
-                        selectedSession.summary ||
-                        "未命名会话"}
-                    </h1>
-                    <div className="fy-detail-meta-tags">
-                      <span className="fy-session-item-provider-tag">
-                        {PROVIDER_LABELS[selectedSession.providerId] ??
-                          selectedSession.providerId}
-                      </span>
-                      <span>
-                        共{" "}
-                        {conversationTurns.length > 0
-                          ? `${conversationTurns.length} 轮问答`
-                          : `${rawMessages.length} 条原始消息`}
-                      </span>
-                      {selectedSession.lastActiveAt && (
-                        <>
-                          <span>•</span>
-                          <span>
-                            {new Date(
-                              selectedSession.lastActiveAt,
-                            ).toLocaleString()}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="fy-detail-actions">
-                    <Button
-                      dialogOriginRef={remapOriginRef}
-                      onClick={() => setRemapOpen(true)}
-                    >
-                      <FolderSimpleIcon size={16} />
-                      <span>绑定本机目录</span>
-                    </Button>
-                    <Button
-                      className="fy-control-button-primary"
-                      disabled={!canOpenTarget}
-                      onClick={() => void handleResumeInTarget()}
-                    >
-                      <PlayIcon size={14} weight="fill" />
-                      <span>
-                        {activeAttempt ? "打开目标会话" : "查看目标启动说明"}
-                      </span>
-                    </Button>
-                  </div>
-                </div>
-
-                {/* 目标工作区路径映射条 */}
-                <div className="fy-workspace-bar">
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: "var(--fy-text-tertiary)",
-                        fontWeight: 550,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      目标本地工作区:
-                    </span>
-                    <span className="fy-workspace-path">
-                      {targetWorkspace || "尚未指定本地工程目录"}
-                    </span>
-                  </div>
-                  {migratableSession?.workspaceLabel && (
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        padding: "1px 6px",
-                        borderRadius: "4px",
-                        background: "var(--fy-surface-inset)",
-                        color: "var(--fy-text-tertiary)",
-                      }}
-                    >
-                      原标签: {migratableSession.workspaceLabel}
-                    </span>
-                  )}
-                  <span className="fy-workspace-fidelity-hint">
-                    （对话正文内的历史路径与代码保持原文不变）
-                  </span>
-                </div>
-              </div>
-
-              {/* 消息滚动区 */}
-              <div className="fy-sessions-stream-container">
-                {/* 读取、导出、目标写入与系统确认各有自己的权威状态。 */}
-                <SessionStages
-                  sourceRead={sessionDetailData?.sourceRead ?? "pending"}
-                  extraction={
-                    loadingDetail
-                      ? "pending"
-                      : migratableSession
-                        ? "available"
-                        : "unavailable"
-                  }
-                  probe={activeProviderProbe}
-                  attempt={activeAttempt}
-                />
-                <StatusBanners
-                  stage={activeAttempt?.stage}
-                  isIndeterminate={hasIndeterminate}
-                  hasIncompleteTurn={hasIncomplete}
-                  isCapabilityVerified={isCapabilityVerified}
-                  capabilityReason={capabilityReason}
-                  activeAttempt={activeAttempt}
-                  structuredError={structuredError}
-                  onRetrySource={() =>
-                    void queryClient.invalidateQueries({
-                      queryKey: [
-                        "session-detail",
-                        selectedSession.providerId,
-                        selectedSession.sourcePath,
-                        selectedSession.sessionId,
-                      ],
-                    })
-                  }
-                  failureFeedback={
-                    readbackError?.attemptId === activeAttempt?.attemptId
-                      ? readbackError?.feedback
-                      : undefined
-                  }
-                  onReviewRestore={() =>
-                    void handleReviewRestore().catch((error) => {
-                      if (activeAttempt)
-                        setReadbackError({
-                          attemptId: activeAttempt.attemptId,
-                          feedback: {
-                            ...restoreAttemptFeedback(activeAttempt),
-                            phase: "恢复回执核对失败",
-                            message: parseMigrationError(error).message,
-                          },
-                        });
-                    })
-                  }
-                  reviewingAttempts={reviewingAttempts}
-                  onVerifyReadback={() => void handleVerifyReadback()}
-                  verifyingReadback={verifyingReadback}
-                />
-
-                {/* 问答流 */}
-                {loadingDetail ? (
-                  <div
-                    style={{
-                      padding: "32px",
-                      textAlign: "center",
-                      color: "var(--fy-text-tertiary)",
-                    }}
-                  >
-                    正在读取会话问答流…
-                  </div>
-                ) : (
-                  <ConversationStream
-                    turns={conversationTurns}
-                    rawMessages={rawMessages}
-                    isRawFallback={!migratableSession}
-                  />
-                )}
-              </div>
-
-              {/* 底部操作底栏 */}
-              <footer className="fy-sessions-bottom-bar">
-                <div className="fy-bottom-info">
-                  <div>
-                    <span>
-                      导出保留用户提问与最终答复原文，不包含工具日志、思考过程及工作区文件。
-                    </span>
-                    <SessionEvidenceDetails
-                      session={selectedSession}
-                      preview={migratableSession}
-                      attempt={activeAttempt}
-                    />
-                  </div>
-                </div>
-                <div className="fy-bottom-actions">
-                  <Button
-                    dialogOriginRef={guideOriginRef}
-                    onClick={() => setGuideOpen(true)}
-                  >
-                    <InfoIcon size={16} />
-                    <span>查看启动说明</span>
-                  </Button>
-                  <Button
-                    className="fy-control-button-primary"
-                    dialogOriginRef={attestationOriginRef}
-                    disabled={!activeAttempt}
-                    onClick={() => setAttestationOpen(true)}
-                  >
-                    <CheckIcon size={16} weight="bold" />
-                    <span>标记：我已手动续聊</span>
-                  </Button>
-                </div>
-              </footer>
-            </>
-          ) : (
-            <div
-              className="fy-sessions-empty-state"
-              style={{
-                margin: "auto",
-                textAlign: "center",
-              }}
-            >
-              请从左侧选择一个会话以查看内容与恢复状态
-            </div>
-          )}
-        </main>
+        <SessionsDetailPane
+          viewMode={viewMode}
+          selectedSession={selectedSession}
+          activeAttempt={activeAttempt}
+          activeProviderProbe={activeProviderProbe}
+          canOpenTarget={canOpenTarget}
+          isCapabilityVerified={isCapabilityVerified}
+          capabilityReason={capabilityReason}
+          targetWorkspace={targetWorkspace}
+          sourceRead={sessionDetailData?.sourceRead ?? "pending"}
+          loadingDetail={loadingDetail}
+          migratableSession={migratableSession}
+          structuredError={structuredError}
+          hasIndeterminate={hasIndeterminate}
+          hasIncomplete={hasIncomplete}
+          conversationTurns={conversationTurns}
+          rawMessages={rawMessages}
+          readbackError={readbackError}
+          reviewingAttempts={reviewingAttempts}
+          verifyingReadback={verifyingReadback}
+          remapOriginRef={remapOriginRef}
+          guideOriginRef={guideOriginRef}
+          attestationOriginRef={attestationOriginRef}
+          onOpenRemap={() => setRemapOpen(true)}
+          onOpenGuide={() => setGuideOpen(true)}
+          onOpenAttestation={() => setAttestationOpen(true)}
+          onResumeInTarget={() => void handleResumeInTarget()}
+          onRetrySource={() => {
+            if (!selectedSession) return;
+            void queryClient.invalidateQueries({
+              queryKey: [
+                "session-detail",
+                selectedSession.providerId,
+                selectedSession.sourcePath,
+                selectedSession.sessionId,
+              ],
+            });
+          }}
+          onReviewRestoreWithFeedback={(attempt) =>
+            void handleReviewRestore().catch((error) => {
+              if (attempt) {
+                setReadbackError({
+                  attemptId: attempt.attemptId,
+                  feedback: {
+                    ...restoreAttemptFeedback(attempt),
+                    phase: "恢复回执核对失败",
+                    message: parseMigrationError(error).message,
+                  },
+                });
+              }
+            })
+          }
+          onVerifyReadback={() => void handleVerifyReadback()}
+        />
       </SplitPanes>
 
-      {/* ─── 弹窗组件 (遵循 useDialogState 生命周期规范) ─────────────── */}
-      {/* 1. 导出预览弹窗 (支持批量导出，逐项严格合规校验) */}
       {exportTargets && (
         <ExportPreviewDialog
           key={exportSessionKey}
@@ -1559,32 +903,32 @@ export function SessionsPage() {
         />
       )}
 
-      {/* 2. 导入包与冲突处理弹窗 (重试幂等与本地探针门控) */}
-      <ImportPackageDialog
-        open={Boolean(importOpen)}
-        onOpenChange={(open) => {
-          if (!open) setImportOpen(null);
-        }}
-        onReadPackage={(path) => ports.sessions.readSessionPackage(path)}
-        onRestore={handleRestore}
-        onReviewRestore={handleReviewRestore}
-        onVerifyReadback={async (attemptId) => {
-          try {
-            return await ports.sessions.verifyNativeReadback(attemptId);
-          } finally {
-            await refreshRestoreAttempts().catch(() => undefined);
-            void refreshSessions();
-          }
-        }}
-        onPickPackageFile={() => ports.sessions.pickPackageFile()}
-        onPickDirectory={() => ports.sessions.pickDirectory()}
-        localProbes={localProbes}
-        initialTargetWorkspace={targetWorkspace}
-        originRef={importOriginRef}
-        onImportSuccess={() => void refreshSessions()}
-      />
+      {importOpen !== null && (
+        <ImportPackageDialog
+          open={Boolean(importOpen)}
+          onOpenChange={(open) => {
+            if (!open) setImportOpen(null);
+          }}
+          onReadPackage={(path) => ports.sessions.readSessionPackage(path)}
+          onRestore={handleRestore}
+          onReviewRestore={handleReviewRestore}
+          onVerifyReadback={async (attemptId) => {
+            try {
+              return await ports.sessions.verifyNativeReadback(attemptId);
+            } finally {
+              await refreshRestoreAttempts().catch(() => undefined);
+              void refreshSessions();
+            }
+          }}
+          onPickPackageFile={() => ports.sessions.pickPackageFile()}
+          onPickDirectory={() => ports.sessions.pickDirectory()}
+          localProbes={localProbes}
+          initialTargetWorkspace={targetWorkspace}
+          originRef={importOriginRef}
+          onImportSuccess={() => void refreshSessions()}
+        />
+      )}
 
-      {/* 3. 本地工作区重映射弹窗 */}
       {remapOpen && (
         <RemapWorkspaceDialog
           key={remapSessionKey}
@@ -1611,7 +955,6 @@ export function SessionsPage() {
         />
       )}
 
-      {/* 4. 目标软件启动说明弹窗 */}
       {guideOpen && (
         <StartupGuideDialog
           key={guideSessionKey}
@@ -1631,7 +974,6 @@ export function SessionsPage() {
         />
       )}
 
-      {/* 5. 用户手动自报记录弹窗 */}
       {attestationOpen && (
         <AttestationDialog
           key={attestationSessionKey}
@@ -1647,5 +989,3 @@ export function SessionsPage() {
     </div>
   );
 }
-
-export default SessionsPage;

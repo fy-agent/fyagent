@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SessionsPage } from "@/pages/sessions/Page";
 import type { AttestationDialogProps } from "@/pages/sessions/components/AttestationDialog";
@@ -123,9 +123,13 @@ const request: RestoreRequest = restoreRequestSchema.parse({
   requestKind: "defaultImport",
 });
 
-function importDelegates() {
-  if (!delegates.import) throw new Error("Page operation delegates missing");
-  const props = delegates.import;
+async function openImportDelegates() {
+  if (!delegates.import) {
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "导入会话包 (⌘I)" }));
+    await waitFor(() => expect(delegates.import).not.toBeNull());
+  }
+  const props = delegates.import!;
   if (!props.onReviewRestore || !props.onVerifyReadback)
     throw new Error("Page receipt readback delegates missing");
   return {
@@ -136,6 +140,10 @@ function importDelegates() {
 }
 
 describe("Sessions visibility query ownership", () => {
+  beforeEach(() => {
+    delegates.import = null;
+    delegates.attestation = null;
+  });
   it("defers hidden reads, stops stale observations, and resumes them with the same search draft", async () => {
     const user = userEvent.setup();
     const ports = pagePorts();
@@ -210,11 +218,11 @@ describe("Sessions visibility query ownership", () => {
         if (operation === "review-rejection") throw rejected;
         return [receipt];
       });
+      const callbacks = await openImportDelegates();
       let result: unknown;
       let error: unknown;
       let settled!: Promise<void>;
       await act(async () => {
-        const callbacks = importDelegates();
         const work =
           operation === "verify"
             ? callbacks.onVerifyReadback(receipt.attemptId)
@@ -305,6 +313,9 @@ describe("Sessions visibility query ownership", () => {
             screen.getByTestId("sessions-page").querySelector("footer")!,
           ).getByRole("button", { name: "标记：我已手动续聊" }),
         );
+        await waitFor(() =>
+          expect(delegates.attestation?.onRecord).toBeDefined(),
+        );
         const callback = delegates.attestation?.onRecord;
         if (!callback) throw new Error("Page attestation delegate missing");
         await act(async () => {
@@ -361,11 +372,11 @@ describe("Sessions visibility query ownership", () => {
       vi.mocked(ports.sessions.listRestoreAttempts).mockRejectedValue(
         readError,
       );
+      const callbacks = await openImportDelegates();
       view.visibility(false);
       let result: unknown;
       let error: unknown;
       await act(async () => {
-        const callbacks = importDelegates();
         try {
           result = operation.startsWith("verify")
             ? await callbacks.onVerifyReadback(receipt.attemptId)
@@ -431,9 +442,10 @@ describe("Sessions visibility query ownership", () => {
       await restoreGate;
       return [after];
     });
+    const callbacks = await openImportDelegates();
     let restored!: Promise<unknown>;
     await act(async () => {
-      restored = importDelegates().onRestore(request);
+      restored = callbacks.onRestore(request);
     });
     view.visibility(false);
     await act(async () => {
