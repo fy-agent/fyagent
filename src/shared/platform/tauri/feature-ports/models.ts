@@ -16,24 +16,28 @@ import { createOmpModelsPort } from "./ompModels";
 import { parseProviderLiveSummary } from "./providerLiveSummary";
 
 import type { FeaturePorts } from "../../../features/ports";
-import type {
-  BatchProviderApplyRequest,
-  BatchProviderApplyResult,
-  BatchProviderPreviewRequest,
-  BatchProviderPreviewResult,
-  FetchedModelList,
-  FetchedModelRef,
-  ModelProbeRequest,
-  ModelProbeResult,
-  ModelProbeSnapshot,
-  OpenCodeFetchModelsRequest,
-  OpenCodeModelSnapshot,
-  OpenCodeSaveModelsRequest,
-  ProviderAppId,
-  ProviderQuickSetupRequest,
-  ProviderSummaryQueryData,
-  ReachabilityResult,
-  WorkBuddySaveModelsResult,
+import {
+  BATCH_SETUP_TARGET_IDS,
+  SAVED_MODEL_PROBE_CATEGORIES,
+  type BatchProviderApplyRequest,
+  type BatchProviderApplyResult,
+  type BatchProviderPreviewRequest,
+  type BatchProviderPreviewResult,
+  type FetchedModelList,
+  type FetchedModelRef,
+  type ModelProbeRequest,
+  type ModelProbeResult,
+  type ModelProbeSnapshot,
+  type OpenCodeFetchModelsRequest,
+  type OpenCodeModelSnapshot,
+  type OpenCodeSaveModelsRequest,
+  type ProviderAppId,
+  type ProviderQuickSetupRequest,
+  type ProviderSummaryQueryData,
+  type ReachabilityResult,
+  type SavedModelProbeRequest,
+  type SavedModelProbeResult,
+  type WorkBuddySaveModelsResult,
 } from "../../../features/types";
 import {
   hasExactKeys,
@@ -692,6 +696,66 @@ function assertQuickSetupRequest(
   return request;
 }
 
+function assertSavedModelProbeRequest(
+  request: SavedModelProbeRequest,
+): SavedModelProbeRequest {
+  if (
+    !isRecord(request) ||
+    !hasRequiredAndOptionalKeys(
+      request,
+      ["target", "modelId"],
+      ["providerId"],
+    ) ||
+    !isOneOf(request.target, BATCH_SETUP_TARGET_IDS) ||
+    typeof request.modelId !== "string" ||
+    request.modelId.trim().length === 0 ||
+    (request.providerId !== undefined &&
+      request.providerId !== null &&
+      typeof request.providerId !== "string")
+  ) {
+    throw new Error("Saved model probe request is invalid");
+  }
+  return {
+    target: request.target,
+    modelId: request.modelId.trim(),
+    ...(request.providerId !== undefined
+      ? { providerId: request.providerId }
+      : {}),
+  };
+}
+
+function parseSavedModelProbeResult(value: unknown): SavedModelProbeResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "category",
+      "ok",
+      "latencyMs",
+      "httpStatus",
+      "message",
+    ]) ||
+    !isOneOf(value.category, SAVED_MODEL_PROBE_CATEGORIES) ||
+    typeof value.ok !== "boolean" ||
+    typeof value.message !== "string" ||
+    (value.latencyMs !== null &&
+      (typeof value.latencyMs !== "number" ||
+        !Number.isFinite(value.latencyMs) ||
+        value.latencyMs < 0)) ||
+    (value.httpStatus !== null &&
+      (typeof value.httpStatus !== "number" ||
+        !Number.isInteger(value.httpStatus)))
+  ) {
+    throw new Error("Saved model probe result is unavailable");
+  }
+  return {
+    category: value.category,
+    ok: value.ok,
+    latencyMs: value.latencyMs,
+    httpStatus: value.httpStatus,
+    message: value.message,
+  };
+}
+
 export function createModelFeaturePorts(): Pick<
   FeaturePorts,
   "providers" | "workbuddy" | "opencodeModels" | "ompModels"
@@ -720,6 +784,12 @@ export function createModelFeaturePorts(): Pick<
         invoke<BatchProviderApplyResult>("apply_batch_provider_setup", {
           request,
         }),
+      probeSavedModel: async (request: SavedModelProbeRequest) =>
+        parseSavedModelProbeResult(
+          await invoke<unknown>("probe_saved_model", {
+            request: assertSavedModelProbeRequest(request),
+          }),
+        ),
       getSummary: async (app) =>
         parseProviderSummary(
           await invoke("get_provider_summary", { app }),

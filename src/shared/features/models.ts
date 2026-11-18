@@ -364,3 +364,27 @@ export interface BatchTargetOutcome {
 export interface BatchProviderApplyResult {
   outcomes: BatchTargetOutcome[];
 }
+
+export const SAVED_MODEL_PROBE_CATEGORIES = [
+  "ok",
+  "invalid_key",
+  "quota_exhausted",
+  "endpoint_or_model_mismatch",
+  "network_unreachable",
+] as const;
+export type SavedModelProbeCategory =
+  (typeof SAVED_MODEL_PROBE_CATEGORIES)[number];
+
+export interface SavedModelProbeRequest {
+  target: BatchSetupTargetId;
+  providerId?: string | null;
+  modelId: string;
+}
+
+export interface SavedModelProbeResult {
+  category: SavedModelProbeCategory;
+  ok: boolean;
+  latencyMs: number | null;
+  httpStatus: number | null;
+  message: string;
+}

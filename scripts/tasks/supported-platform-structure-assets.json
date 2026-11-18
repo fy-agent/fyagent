@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "8670bda5e47fa4d9ebd1fd439935c9a2544b829bc3510a4b0e1178ae09058b1f"
+      "8da056f42f80f057d775a8a165e60dc5bc775475249682a9e6b9236935da8aea"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "35ee608653bfb5c69ccf74519fec1196d70e6f1365ccce64e8b427f0caa60ec6"
+      "11e73bcf67bee19c83ed43248bf52ba69e314266f30570dde8e208f0e0c92097"
     ],
     [
       "src-tauri/src/agent_install/preflight.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "8981762f1d0dc0705fb2f5383bd4a94e1890c4aeda365bbfe2d6bb0cd6d7e75e"
+      "784651ffcb2c1d0ee7ee720cc64542b548bd3053628edb064ea28643efd9f3b9"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -222,6 +222,10 @@
       "f68cb1883c91dcab2cdc2dfe0fe1cb66c4fa469596b1f9252709e331ecd1af06"
     ],
     [
+      "src-tauri/src/omp_config/mod.rs",
+      "313bd869357248ce6eff6fe0c1aeac3e5e86103000fb5f0a7cce8d8094e6b405"
+    ],
+    [
       "src-tauri/src/opencode_config.rs",
       "3efd1406387c1579ad490e1871b9604a1830cf02463a89a353591545a90f0242"
     ],
@@ -259,7 +263,7 @@
     ],
     [
       "src-tauri/src/services/change_plan/service.rs",
-      "a6f7be2baa89849123e51423166c691147d73bd810fe113d02a95716f877e7fe"
+      "e7e2fadffcb90dcdb8fd160feb13552f06b057e1c0bc45fb07167a53c2b8c716"
     ],
     [
       "src-tauri/src/services/config_pack/files.rs",
@@ -323,15 +327,15 @@
     ],
     [
       "src-tauri/src/services/provider/claude_write_projection.rs",
-      "3798cbb5c6fa0586aa863b7fe86db28e940f62a52eb643435250485b0a345a9b"
+      "5ed62122c35008aa3c208de0b14fef7a6852aa1e037e98c3ca3724c5f5fdefa0"
     ],
     [
       "src-tauri/src/services/provider/codex_client_catalog.rs",
-      "954d52df3afcb0cfc631726739fcdd36b212d8ba6a2a14b2cb40340c789ef6e5"
+      "fffcd9e61d80e42076a1f6b1f2a0f54431c5a1052045a51f71c4f68e02cb7129"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "7e64056a45282b1d390e4d1ea36f61649e19b873160cf11e845ef229c294ab9a"
+      "f6ec17029bdd764e40ad15dbd49a4ac51fc3c04b9f56dc5d5585fefa8e4cc063"
     ],
     [
       "src-tauri/src/services/provider/opencode_tests.rs",
@@ -563,7 +567,7 @@
     ],
     [
       "tests/architecture/rustModuleBoundaries.test.ts",
-      "ae213a00ccbf36082be9e90ca3dd507d3f44c93e461cf210cc02908cbc9311c1"
+      "96a1cefb897a743d314a7c4578fcb766386c0bedccecbca96bb6cd8a4ceeaef6"
     ],
     [
       "tests/codexUserHelperContract.test.ts",
@@ -583,7 +587,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "cdbd827a383d5c17e1e900fbab5d960531024039b3ee282ee72b8ba0e1c95363"
+      "dac51ce48415e77c32965f56985bb1ff1a273b76965a889cf6482d65ac795e09"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

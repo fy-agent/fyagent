@@ -33,6 +33,7 @@ export const RENDERER_BOOTSTRAP_DEFERRED_PORT_ENTRIES = Object.freeze([
 
 export const RENDERER_DEFERRED_SHELL_ENTRIES = Object.freeze([
   "widgets/app-shell/AboutDialog.tsx",
+  "widgets/app-shell/CodexReloadBanner.tsx",
   "shared/features/database-recovery-ui/DatabaseRecoveryDialog.tsx",
 ]);
 

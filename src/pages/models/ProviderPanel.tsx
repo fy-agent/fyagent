@@ -19,6 +19,7 @@ import {
   providerApiCredentialError,
   type ApiProtocol,
 } from "../../domain/configuration/providerApi";
+import { InlineModelProbeButton } from "../../shared/features/controls/InlineModelProbeButton";
 import {
   ProviderApiFields,
   type ProviderApiFormFill,
@@ -890,6 +891,22 @@ export function ProviderPanel({
               <span>当前配置</span>
               <strong>{currentId ? "已设置" : "尚未设置"}</strong>
             </div>
+            {providerExists &&
+            (summaryQuery.data?.providers[providerId]?.modelId ??
+              savedConnection?.modelId) ? (
+              <div className="fy-models-status-item">
+                <span>已保存模型快速测速</span>
+                <InlineModelProbeButton
+                  target={app}
+                  providerId={providerId}
+                  modelId={
+                    (summaryQuery.data?.providers[providerId]?.modelId ??
+                      savedConnection?.modelId)!
+                  }
+                  disabled={busy || fetchBusy || probeBusy}
+                />
+              </div>
+            ) : null}
           </div>
         )}
 

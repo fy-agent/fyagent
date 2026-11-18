@@ -96,6 +96,14 @@ pub fn stream_check_model_cancel(
     model_probe::cancel_probe(&request_id)
 }
 
+#[tauri::command]
+pub async fn probe_saved_model(
+    state: State<'_, AppState>,
+    request: crate::services::saved_model_probe::SavedModelProbeRequest,
+) -> Result<crate::services::saved_model_probe::SavedModelProbeResult, String> {
+    crate::services::saved_model_probe::probe_saved_model(state.inner(), request).await
+}
+
 /// 批量连通性检查
 #[tauri::command]
 pub async fn stream_check_all_providers(

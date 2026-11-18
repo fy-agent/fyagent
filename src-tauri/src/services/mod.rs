@@ -23,6 +23,7 @@ pub(crate) mod provider;
 pub(crate) mod provider_api;
 pub(crate) mod proxy;
 pub(crate) mod qoderwork;
+pub(crate) mod saved_model_probe;
 pub(crate) mod secret;
 pub(crate) mod session_usage;
 pub(crate) mod session_usage_codex;

@@ -57,6 +57,7 @@ const mode = z.object({
   routeProviderId: z.nullable(z.string()),
   directProviderId: z.nullable(z.string()),
 });
+const staleClients = z.object({ daemon: z.boolean(), others: z.boolean() });
 const stack = z.object({
   active: z.boolean(),
   members: z.array(
@@ -73,9 +74,7 @@ const stack = z.object({
       "officialModelsUnavailable",
     ]),
   ),
-  staleClients: z.optional(
-    z.object({ daemon: z.boolean(), others: z.boolean() }),
-  ),
+  staleClients: z.optional(staleClients),
 });
 
 export const providerAggregationPorts: Pick<
@@ -90,6 +89,7 @@ export const providerAggregationPorts: Pick<
   | "getStack"
   | "setStackMember"
   | "adoptCodexCatalog"
+  | "getCodexReloadStatus"
   | "restartCodexDaemon"
 > = {
   getAll: async (app) =>
@@ -132,6 +132,11 @@ export const providerAggregationPorts: Pick<
   setStackMember: (appType, providerId, enabled) =>
     invoke("set_proxy_stack_member", { appType, providerId, enabled }),
   adoptCodexCatalog: () => invoke("adopt_codex_stack_catalog"),
+  getCodexReloadStatus: async () =>
+    z.parse(
+      z.nullable(staleClients),
+      await invoke<unknown>("get_codex_reload_status"),
+    ),
   restartCodexDaemon: async () =>
     z.parse(
       z.enum(["restarted", "notRunning"]),

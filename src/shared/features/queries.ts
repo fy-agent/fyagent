@@ -25,6 +25,7 @@ const changeJobsKey = [scope, "change-plans", "job"] as const;
 const dailyMemorySearchKey = [scope, "memory", "daily", "search"] as const;
 
 export const featureKeys = {
+  codexReloadStatus: [scope, "codex", "reload-status"] as const,
   providerMode: (app: "claude" | "codex") =>
     ["fyagent", "provider-mode", app] as const,
   providerStack: (app: "claude" | "codex") =>

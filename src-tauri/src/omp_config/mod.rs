@@ -480,6 +480,69 @@ fn parse_providers_from_yaml(bytes: &[u8]) -> Result<Vec<OmpProviderSummary>, Ap
     Ok(output)
 }
 
+pub(crate) fn resolve_omp_provider_probe_target(
+    provider_id: &str,
+) -> Result<(String, String, Option<String>), AppError> {
+    let _guard = lock_omp_file()?;
+    let paths = resolve_omp_paths()?;
+    let snapshot = read_models_snapshot(&paths.models_path, &paths.legacy_json_path)?;
+    if !matches!(snapshot.status, OmpFileStatus::Ok) {
+        return Err(AppError::Config("omp models.yml 尚未就绪".to_string()));
+    }
+    let content = utf8(&snapshot.bytes, "omp models")?;
+    let value: YamlValueSerde = serde_yaml::from_str(content)
+        .map_err(|e| AppError::Config(format!("omp models YAML parse failed: {e}")))?;
+    let provider = as_mapping(&value)
+        .and_then(|root| root.get(YamlValueSerde::String("providers".to_string())))
+        .and_then(as_mapping)
+        .and_then(|providers| providers.get(YamlValueSerde::String(provider_id.to_string())))
+        .and_then(as_mapping)
+        .ok_or_else(|| AppError::InvalidInput(format!("未找到 omp 供应商 '{provider_id}'")))?;
+
+    let base_url = provider
+        .get(YamlValueSerde::String("baseUrl".to_string()))
+        .and_then(scalar_string)
+        .ok_or_else(|| AppError::InvalidInput("omp 供应商缺少 baseUrl".to_string()))?;
+    let api = provider
+        .get(YamlValueSerde::String("api".to_string()))
+        .and_then(scalar_string)
+        .unwrap_or_else(|| "openai-completions".to_string());
+    let auth = provider
+        .get(YamlValueSerde::String("auth".to_string()))
+        .and_then(scalar_string);
+    let raw_key = provider
+        .get(YamlValueSerde::String("apiKey".to_string()))
+        .and_then(scalar_string_or_tag);
+
+    let resolved_key = if auth.as_deref() == Some("none") {
+        None
+    } else if let Some(raw) = raw_key {
+        let trimmed = raw.trim();
+        if trimmed.starts_with('!') {
+            return Err(AppError::InvalidInput(
+                "omp 使用 !命令引用鉴权，请在 omp 终端内测试".to_string(),
+            ));
+        }
+        let is_env_name = !trimmed.is_empty()
+            && trimmed
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && trimmed
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if is_env_name {
+            std::env::var(trimmed).ok().or_else(|| Some(trimmed.to_string()))
+        } else {
+            Some(trimmed.to_string())
+        }
+    } else {
+        None
+    };
+
+    Ok((base_url, api, resolved_key))
+}
+
 fn parse_default_model_from_bytes(bytes: &[u8]) -> Result<Option<String>, AppError> {
     let content = utf8(bytes, "omp config")?;
     parse_yaml_strict(content, "omp config")?;

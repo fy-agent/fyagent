@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
+import { InlineModelProbeButton } from "../../shared/features/controls/InlineModelProbeButton";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import {
   useOmpConfig,
@@ -12,6 +13,7 @@ import {
 } from "../../shared/features/queries";
 import type {
   AgentCatalogEntry,
+  BatchSetupTargetId,
   ProviderAppId,
   ProviderSummaryQueryData,
 } from "../../shared/features/types";
@@ -24,9 +26,15 @@ type ModelObservation = {
   id: string;
   label: string;
   detail: string;
+  probe?: {
+    target: BatchSetupTargetId;
+    providerId?: string | null;
+    modelId: string;
+  };
 };
 
 function providerObservations(
+  target: "codex" | "claude" | "grokbuild",
   data: ProviderSummaryQueryData | undefined,
 ): ModelObservation[] {
   if (!data) return [];
@@ -36,14 +44,26 @@ function providerObservations(
       if (right.id === data.currentId) return 1;
       return left.name.localeCompare(right.name);
     })
-    .map((provider) => ({
-      id: provider.id,
-      label: provider.modelId ?? provider.name,
-      detail:
-        provider.id === data.currentId
-          ? `已选方案 · ${provider.name}`
-          : `已保存方案 · ${provider.name}`,
-    }));
+    .map((provider) => {
+      const resolvedModelId = provider.modelId ?? provider.connection?.modelId;
+      return {
+        id: provider.id,
+        label: resolvedModelId ?? provider.name,
+        detail:
+          provider.id === data.currentId
+            ? `已选方案 · ${provider.name}`
+            : `已保存方案 · ${provider.name}`,
+        ...(resolvedModelId
+          ? {
+              probe: {
+                target,
+                providerId: provider.id,
+                modelId: resolvedModelId,
+              },
+            }
+          : {}),
+      };
+    });
 }
 
 function ProviderLiveConfiguration({
@@ -155,22 +175,23 @@ export function AgentModelsSection({
         id: modelId,
         label: modelId,
         detail: "WorkBuddy 已配置模型",
+        probe: { target: "workbuddy", modelId },
       }));
       pending = workBuddyStatus.isPending || workBuddyModels.isPending;
       failed = workBuddyStatus.isError || workBuddyModels.isError;
       break;
     case "grokbuild":
-      observations = providerObservations(grokSummary.data);
+      observations = providerObservations("grokbuild", grokSummary.data);
       pending = grokSummary.isPending;
       failed = grokSummary.isError;
       break;
     case "codex":
-      observations = providerObservations(codexSummary.data);
+      observations = providerObservations("codex", codexSummary.data);
       pending = codexSummary.isPending;
       failed = codexSummary.isError;
       break;
     case "claude-code":
-      observations = providerObservations(claudeSummary.data);
+      observations = providerObservations("claude", claudeSummary.data);
       pending = claudeSummary.isPending;
       failed = claudeSummary.isError;
       break;
@@ -182,6 +203,11 @@ export function AgentModelsSection({
                 id: `${provider.id}:${modelId}`,
                 label: modelId,
                 detail: `OpenCode Provider · ${provider.name}`,
+                probe: {
+                  target: "opencode" as const,
+                  providerId: provider.id,
+                  modelId,
+                },
               }))
             : [
                 {
@@ -204,6 +230,11 @@ export function AgentModelsSection({
                 id: selector,
                 label: model.name ? `${model.name} (${model.id})` : model.id,
                 detail: `${isDefault ? "默认模型 · " : ""}omp Provider · ${provider.id}`,
+                probe: {
+                  target: "omp" as const,
+                  providerId: provider.id,
+                  modelId: model.id,
+                },
               };
             })
           : [
@@ -285,6 +316,13 @@ export function AgentModelsSection({
                 <h3>{item.label}</h3>
                 <p>{item.detail}</p>
               </div>
+              {item.probe ? (
+                <InlineModelProbeButton
+                  target={item.probe.target}
+                  providerId={item.probe.providerId}
+                  modelId={item.probe.modelId}
+                />
+              ) : null}
             </div>
           ))}
         </div>

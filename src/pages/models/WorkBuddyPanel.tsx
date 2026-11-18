@@ -30,6 +30,7 @@ import {
 } from "./feedback";
 import { isHttpUrl, parseManualModelIds } from "./quickSetup";
 import { GroupedModelChips, ModelSearchField } from "./modelChips";
+import { InlineModelProbeButton } from "../../shared/features/controls/InlineModelProbeButton";
 import { ModelConnectivityTest } from "./ModelConnectivityTest";
 import {
   ModelsPanelHeader,
@@ -641,6 +642,13 @@ export function WorkBuddyPanel({ active }: { active: boolean }) {
               if (busy !== null || writeLock.current) return;
               setPendingDeleteId(modelId);
             }}
+            renderTrailing={(modelId) => (
+              <InlineModelProbeButton
+                target="workbuddy"
+                modelId={modelId}
+                disabled={busy !== null || loading || readFailed}
+              />
+            )}
             emptyLabel={
               existingSearch.trim()
                 ? "没有匹配的模型 ID"

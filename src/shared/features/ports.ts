@@ -4,6 +4,7 @@ import type {
   AppModeView,
   ProxyStack,
   CodexDaemonRestartOutcome,
+  CodexStaleClients,
 } from "../../domain/configuration/types/proxy";
 import type {
   ClaudeQuickSetupPreview,
@@ -83,6 +84,8 @@ import type {
   ModelProbeResult,
   ModelProbeSnapshot,
   ReachabilityResult,
+  SavedModelProbeRequest,
+  SavedModelProbeResult,
   DailyMemoryFileInfo,
   DailyMemorySearchResult,
   HermesMemoryKind,
@@ -174,6 +177,7 @@ export interface ProvidersPort {
     enabled: boolean,
   ): Promise<string | null>;
   adoptCodexCatalog(): Promise<string | null>;
+  getCodexReloadStatus(): Promise<CodexStaleClients | null>;
   restartCodexDaemon(): Promise<CodexDaemonRestartOutcome>;
 
   previewClaudeQuickSetup(
@@ -188,6 +192,9 @@ export interface ProvidersPort {
   applyBatchSetup(
     request: BatchProviderApplyRequest,
   ): Promise<BatchProviderApplyResult>;
+  probeSavedModel(
+    request: SavedModelProbeRequest,
+  ): Promise<SavedModelProbeResult>;
   getSummary(app: ProviderAppId): Promise<ProviderSummaryQueryData>;
   getProxyRestorePreview(
     app: ProviderAppId,

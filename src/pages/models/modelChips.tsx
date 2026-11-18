@@ -1,6 +1,6 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { resolveModelVendorIcon } from "../../shared/assets/models";
 import { classNames } from "../../shared/design-system/classNames";
@@ -42,6 +42,7 @@ export function GroupedModelChips({
   selectDisabled = false,
   onSelect,
   ownedByById,
+  renderTrailing,
   emptyLabel,
 }: {
   ids: readonly string[];
@@ -54,6 +55,7 @@ export function GroupedModelChips({
   selectDisabled?: boolean;
   onSelect?: (modelId: string) => void;
   ownedByById?: Readonly<Record<string, string>>;
+  renderTrailing?: (modelId: string) => ReactNode;
   emptyLabel: string;
 }) {
   const groups = useMemo(() => groupModelIds(ids), [ids]);
@@ -138,6 +140,7 @@ export function GroupedModelChips({
                         ) : (
                           content
                         )}
+                        {renderTrailing?.(modelId)}
                         {removable ? (
                           <PressableButton
                             dialogOriginRef={removeOriginRef}

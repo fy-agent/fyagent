@@ -180,6 +180,8 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).providers.setStackMember(...args),
       adoptCodexCatalog: async (...args) =>
         (await models()).providers.adoptCodexCatalog(...args),
+      getCodexReloadStatus: async () =>
+        (await models()).providers.getCodexReloadStatus(),
       restartCodexDaemon: async (...args) =>
         (await models()).providers.restartCodexDaemon(...args),
       previewClaudeQuickSetup: async (...args) =>
@@ -190,6 +192,8 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).providers.previewBatchSetup(...args),
       applyBatchSetup: async (...args) =>
         (await models()).providers.applyBatchSetup(...args),
+      probeSavedModel: async (...args) =>
+        (await models()).providers.probeSavedModel(...args),
       getSummary: async (...args) =>
         (await models()).providers.getSummary(...args),
       getProxyRestorePreview: async (...args) =>

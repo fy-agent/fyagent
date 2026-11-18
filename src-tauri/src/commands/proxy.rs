@@ -187,6 +187,18 @@ pub async fn restart_codex_app_server_daemon(
     .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+pub async fn get_codex_reload_status(
+) -> Result<Option<crate::services::provider::codex_client_catalog::StaleClients>, String> {
+    crate::services::provider::codex_direct::off_runtime(|| {
+        crate::services::provider::codex_client_catalog::reload_status_any_mode(
+            &crate::live::engine::DeviceStore::for_device(),
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
 /// Stack 模型：把一家加入或移出名单（`enabled` 是目标值）。成功时返回客户端看不到或看不全
 /// Stack 模型的提示；失败时 `partial` 为真表示已部分写入，下次操作或重启 CC Switch 时补完。
 #[tauri::command]

@@ -121,6 +121,10 @@ export type {
   TraeWorkModelRequest,
 } from "./agents";
 
+export {
+  BATCH_SETUP_TARGET_IDS,
+  SAVED_MODEL_PROBE_CATEGORIES,
+} from "./models";
 export type {
   BatchProviderApplyRequest,
   BatchProviderApplyResult,
@@ -158,6 +162,9 @@ export type {
   ProviderSwitchResult,
   ReachabilityResult,
   ReachabilityStatus,
+  SavedModelProbeCategory,
+  SavedModelProbeRequest,
+  SavedModelProbeResult,
   TraeWorkModelIdsResult,
   WorkBuddyConcurrentModificationResult,
   WorkBuddyFetchModelsRequest,

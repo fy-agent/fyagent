@@ -24,6 +24,7 @@ import {
   type Notice,
 } from "./feedback";
 import { GroupedModelChips, ModelSearchField } from "./modelChips";
+import { InlineModelProbeButton } from "../../shared/features/controls/InlineModelProbeButton";
 import { ModelConnectivityTest } from "./ModelConnectivityTest";
 import {
   ModelsPanelHeader,
@@ -787,6 +788,18 @@ export function OpenCodeModelsPanel({
               return;
             setPendingDeleteId(modelId);
           }}
+          renderTrailing={
+            currentProvider
+              ? (modelId) => (
+                  <InlineModelProbeButton
+                    target="opencode"
+                    providerId={currentProvider.id}
+                    modelId={modelId}
+                    disabled={busy !== null || loading || readFailed}
+                  />
+                )
+              : undefined
+          }
           emptyLabel={
             existingSearch.trim()
               ? "没有匹配的模型 ID"

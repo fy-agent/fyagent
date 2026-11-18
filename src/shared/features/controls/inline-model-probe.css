@@ -1,0 +1,36 @@
+.fy-inline-probe {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fy-inline-probe-trigger {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.fy-inline-probe-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 280px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fy-inline-probe-ok {
+  background: color-mix(in srgb, var(--fy-color-success, #16a34a) 14%, transparent);
+  color: var(--fy-color-success, #15803d);
+}
+
+.fy-inline-probe-error {
+  background: color-mix(in srgb, var(--fy-color-danger, #dc2626) 12%, transparent);
+  color: var(--fy-color-danger, #b91c1c);
+}

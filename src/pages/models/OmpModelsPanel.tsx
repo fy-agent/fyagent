@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
+import { InlineModelProbeButton } from "../../shared/features/controls/InlineModelProbeButton";
 import {
   OMP_PROVIDER_APIS,
   isValidOmpModelId,
@@ -84,7 +85,10 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
   const saveOriginRef = useRef<HTMLElement | null>(null);
 
   const [selection, setSelection] = useState<OmpTargetSelection | null>(null);
-  const [draft, setDraft] = useState<OmpDraft>(() => draftFromProvider(null, null));
+  const [draftState, setDraftState] = useState<{
+    baseKey: string;
+    draft: OmpDraft;
+  } | null>(null);
   const [newModelId, setNewModelId] = useState("");
   const [errors, setErrors] = useState<OmpDraftErrors>({});
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -95,24 +99,27 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
   const effectiveSelection = selection ?? defaultOmpSelection(read);
   const selectedProvider = providerById(read, effectiveSelection);
   const editable = !selectedProvider || isEditableOmpProvider(selectedProvider);
-
-  useEffect(() => {
-    if (!read || commit.pending) return;
-    const nextSel = selection ?? defaultOmpSelection(read);
-    const prov = providerById(read, nextSel);
-    setDraft(draftFromProvider(prov, read.defaultModel));
-  }, [read, selection, commit.pending]);
+  const baseKey = `${read?.modelsRevision ?? "none"}::${read?.configRevision ?? "none"}::${effectiveSelection}`;
+  const draft =
+    draftState && (draftState.baseKey === baseKey || commit.pending)
+      ? draftState.draft
+      : draftFromProvider(selectedProvider, read?.defaultModel ?? null);
 
   const updateDraft = (patch: Partial<OmpDraft>) => {
     commit.markDirty();
-    setDraft((prev) => ({ ...prev, ...patch }));
+    setDraftState((prev) => {
+      const current =
+        prev && (prev.baseKey === baseKey || commit.pending)
+          ? prev.draft
+          : draftFromProvider(selectedProvider, read?.defaultModel ?? null);
+      return { baseKey, draft: { ...current, ...patch } };
+    });
     setErrors({});
   };
 
   const handleSelectTarget = (next: OmpTargetSelection) => {
     setSelection(next);
-    const prov = providerById(read, next);
-    setDraft(draftFromProvider(prov, read?.defaultModel ?? null));
+    setDraftState(null);
     setErrors({});
     setNotice(null);
   };
@@ -188,6 +195,7 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
       });
       await configQuery.refetch();
       commit.commitRevision(currentPending.revision);
+      setDraftState(null);
       setSelection(`existing:${result.provider.id}`);
       setNotice({
         tone: "info",
@@ -468,9 +476,20 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
                   <div className="fy-models-chip-row">
                     {mergedModels.map((m) => {
                       const fromDraft = draft.models.some((d) => d.id === m.id);
+                      const isSavedOnProvider = Boolean(
+                        selectedProvider?.models.some((s) => s.id === m.id),
+                      );
                       return (
                         <span key={m.id} className="fy-models-chip">
                           <code>{m.id}</code>
+                          {selectedProvider && isSavedOnProvider ? (
+                            <InlineModelProbeButton
+                              target="omp"
+                              providerId={selectedProvider.id}
+                              modelId={m.id}
+                              disabled={busy}
+                            />
+                          ) : null}
                           {fromDraft ? (
                             <Button
                               onClick={() => removeDraftModel(m.id)}

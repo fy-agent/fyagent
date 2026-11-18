@@ -440,8 +440,7 @@ fn find_mapping_block(
     target_key: &str,
 ) -> Option<(usize, usize, usize)> {
     let mut key_idx = None;
-    for idx in start..end {
-        let line = lines[idx];
+    for (idx, &line) in lines.iter().enumerate().take(end).skip(start) {
         if is_blank_or_comment(line) {
             continue;
         }
@@ -451,14 +450,14 @@ fn find_mapping_block(
         }
         if cur_indent == indent {
             if let Some((k, _)) = split_key_line(line) {
-                if key_idx.is_some() {
-                    return Some((key_idx.unwrap(), idx, indent));
+                if let Some(found_idx) = key_idx {
+                    return Some((found_idx, idx, indent));
                 }
                 if k == target_key {
                     key_idx = Some(idx);
                 }
-            } else if key_idx.is_some() {
-                return Some((key_idx.unwrap(), idx, indent));
+            } else if let Some(found_idx) = key_idx {
+                return Some((found_idx, idx, indent));
             }
         }
     }
@@ -475,8 +474,7 @@ fn trim_block_end(lines: &[&str], block_start: usize, raw_end: usize) -> usize {
 }
 
 fn detect_child_indent(lines: &[&str], start: usize, end: usize, parent_indent: usize) -> Option<usize> {
-    for idx in start..end {
-        let line = lines[idx];
+    for &line in lines.iter().take(end).skip(start) {
         if is_blank_or_comment(line) {
             continue;
         }
@@ -499,16 +497,17 @@ fn upsert_scalar_in_block(
     insert_before_key: Option<&str>,
 ) {
     let formatted_val = format_yaml_scalar(value);
-    for idx in (block_start + 1)..*block_end {
-        if is_blank_or_comment(&lines[idx]) {
+    for line in lines.iter_mut().take(*block_end).skip(block_start + 1) {
+        if is_blank_or_comment(line) {
             continue;
         }
-        if line_indent(&lines[idx]) == prop_indent {
-            if let Some((k, rest)) = split_key_line(&lines[idx]) {
+        if line_indent(line) == prop_indent {
+            if let Some((k, rest)) = split_key_line(line) {
                 if k == key {
                     let (_, comment) = split_trailing_comment(rest);
-                    let raw_key_prefix = &lines[idx][..lines[idx].find(':').unwrap() + 1];
-                    lines[idx] = format!("{raw_key_prefix} {formatted_val}{comment}");
+                    let colon_end = line.find(':').unwrap() + 1;
+                    let raw_key_prefix = &line[..colon_end];
+                    *line = format!("{raw_key_prefix} {formatted_val}{comment}");
                     return;
                 }
             }
@@ -521,9 +520,9 @@ fn upsert_scalar_in_block(
         *block_end,
     );
     if let Some(before) = insert_before_key {
-        for idx in (block_start + 1)..*block_end {
-            if !is_blank_or_comment(&lines[idx]) && line_indent(&lines[idx]) == prop_indent {
-                if let Some((k, _)) = split_key_line(&lines[idx]) {
+        for (idx, line) in lines.iter().enumerate().take(*block_end).skip(block_start + 1) {
+            if !is_blank_or_comment(line) && line_indent(line) == prop_indent {
+                if let Some((k, _)) = split_key_line(line) {
                     if k == before {
                         insert_at = idx;
                         break;
@@ -675,14 +674,14 @@ fn patch_models_in_block(
             if let Some(name) = &model.name {
                 let formatted_name = format_yaml_scalar(name);
                 let mut updated = false;
-                for idx in item_start..item_end {
+                for (idx, line) in lines.iter_mut().enumerate().take(item_end).skip(item_start) {
                     let check_line = if idx == item_start {
-                        let trimmed = lines[idx].trim_start();
+                        let trimmed = line.trim_start();
                         trimmed.strip_prefix("- ").unwrap_or("")
                     } else {
-                        lines[idx].trim_start()
+                        line.trim_start()
                     };
-                    if idx > item_start && line_indent(&lines[idx]) != item_prop_indent {
+                    if idx > item_start && line_indent(line) != item_prop_indent {
                         continue;
                     }
                     if let Some((k, rest)) = split_key_line(check_line) {
@@ -690,10 +689,10 @@ fn patch_models_in_block(
                             let (_, comment) = split_trailing_comment(rest);
                             if idx == item_start {
                                 let dash_pad = " ".repeat(seq_indent);
-                                lines[idx] = format!("{dash_pad}- name: {formatted_name}{comment}");
+                                *line = format!("{dash_pad}- name: {formatted_name}{comment}");
                             } else {
                                 let pad = " ".repeat(item_prop_indent);
-                                lines[idx] = format!("{pad}name: {formatted_name}{comment}");
+                                *line = format!("{pad}name: {formatted_name}{comment}");
                             }
                             updated = true;
                             break;
@@ -731,12 +730,12 @@ fn find_seq_dash_indent(
     end: usize,
     parent_indent: usize,
 ) -> Option<usize> {
-    for idx in start..end {
-        if is_blank_or_comment(&lines[idx]) {
+    for line in lines.iter().take(end).skip(start) {
+        if is_blank_or_comment(line) {
             continue;
         }
-        let ind = line_indent(&lines[idx]);
-        if ind >= parent_indent && lines[idx].trim_start().starts_with('-') {
+        let ind = line_indent(line);
+        if ind >= parent_indent && line.trim_start().starts_with('-') {
             return Some(ind);
         }
     }
@@ -753,12 +752,12 @@ fn find_model_seq_item(
     let mut items: Vec<(usize, usize)> = Vec::new();
     let mut current_start: Option<usize> = None;
 
-    for idx in start..end {
-        if is_blank_or_comment(&lines[idx]) {
+    for (idx, line) in lines.iter().enumerate().take(end).skip(start) {
+        if is_blank_or_comment(line) {
             continue;
         }
-        let ind = line_indent(&lines[idx]);
-        let trimmed = lines[idx].trim_start();
+        let ind = line_indent(line);
+        let trimmed = line.trim_start();
         if ind == seq_indent && (trimmed == "-" || trimmed.starts_with("- ")) {
             if let Some(s) = current_start {
                 items.push((s, idx));
@@ -774,16 +773,15 @@ fn find_model_seq_item(
 
     for (i_start, i_end) in items {
         let item_prop_indent = seq_indent + 2;
-        for idx in i_start..i_end {
+        for (idx, line) in lines.iter().enumerate().take(i_end).skip(i_start) {
             let candidate = if idx == i_start {
-                let trimmed = lines[idx].trim_start();
+                let trimmed = line.trim_start();
                 trimmed.strip_prefix("- ").unwrap_or("")
             } else {
-                if is_blank_or_comment(&lines[idx]) || line_indent(&lines[idx]) != item_prop_indent
-                {
+                if is_blank_or_comment(line) || line_indent(line) != item_prop_indent {
                     continue;
                 }
-                lines[idx].trim_start()
+                line.trim_start()
             };
             if let Some((k, rest)) = split_key_line(candidate) {
                 if k == "id" {
