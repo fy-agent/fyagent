@@ -77,9 +77,7 @@ export function PresetBatchDrawer({
 
   const effectiveTargets = useMemo(
     () =>
-      checkedTargets.filter(
-        (id) => selectedPreset.targets[id] !== undefined,
-      ),
+      checkedTargets.filter((id) => selectedPreset.targets[id] !== undefined),
     [checkedTargets, selectedPreset],
   );
 
@@ -190,9 +188,15 @@ export function PresetBatchDrawer({
   };
 
   const failedTargets =
-    outcomes
-      ?.filter((o) => o.status === "failed")
-      .map((o) => o.target) ?? [];
+    outcomes?.filter((o) => o.status === "failed").map((o) => o.target) ?? [];
+
+  const handleClose = () => {
+    setApiKey("");
+    setPreviewItems(null);
+    setOutcomes(null);
+    setError(null);
+    onOpenChange(false);
+  };
 
   return (
     <Dialog
@@ -201,6 +205,7 @@ export function PresetBatchDrawer({
       originRef={originRef}
       onOpenChange={(next) => {
         if (!next) {
+          setApiKey("");
           setPreviewItems(null);
           setOutcomes(null);
           setError(null);
@@ -208,10 +213,10 @@ export function PresetBatchDrawer({
         onOpenChange(next);
       }}
       title="一键配置主流大模型"
-      description="选定服务商并粘贴一次 API Key，按各客户端协议自动完成备份、无损写入与回读校验。"
+      description="选定服务商并粘贴一次 API Key，按各客户端协议自动完成备份、无损写入与回读校验（Codex / Claude / Grok Build 将同步更新一键配置方案并设为当前激活）。"
       actions={
         <>
-          <Button onClick={() => onOpenChange(false)}>关闭</Button>
+          <Button onClick={handleClose}>关闭</Button>
           {outcomes && failedTargets.length > 0 ? (
             <Button
               className="fy-control-button-primary"
@@ -292,6 +297,8 @@ export function PresetBatchDrawer({
               value={apiKey}
               onChange={(e) => {
                 setApiKey(e.target.value);
+                setPreviewItems(null);
+                setOutcomes(null);
                 setError(null);
               }}
               placeholder={`粘贴 ${selectedPreset.name} 的 API Key`}
@@ -369,7 +376,10 @@ export function PresetBatchDrawer({
             <strong>执行结果（单应用失败仅回滚自身，不影响已成功应用）</strong>
             <ul>
               {outcomes.map((outcome) => (
-                <li key={outcome.target} className="fy-preset-batch-outcome-row">
+                <li
+                  key={outcome.target}
+                  className="fy-preset-batch-outcome-row"
+                >
                   <Badge
                     tone={outcome.status === "applied" ? "accent" : "warning"}
                   >

@@ -28,7 +28,11 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { FieldFeedback, ModelsSection, type Notice } from "./feedback";
-import { ModelsPanelHeader, NoticeView, useModelsDraftCommit } from "./modelsShared";
+import {
+  ModelsPanelHeader,
+  NoticeView,
+  useModelsDraftCommit,
+} from "./modelsShared";
 import {
   OMP_API_LABELS,
   OMP_NEW_TARGET,
@@ -53,7 +57,8 @@ const FILE_STATUS_COPY: Readonly<Record<OmpFileStatus, string>> = {
 };
 
 const CHANGED_FILE_COPY: Readonly<Record<OmpChangedFile, string>> = {
-  models: "更新 models.yml 中该供应商的地址、协议、鉴权引用与所列模型（保留其余注释与字段）",
+  models:
+    "更新 models.yml 中该供应商的地址、协议、鉴权引用与所列模型（保留其余注释与字段）",
   config: "更新 config.yml 中的 modelRoles.default（保留其余角色配置与注释）",
 };
 
@@ -282,7 +287,9 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
         </div>
       ) : configQuery.isError || !read ? (
         <InlineNotice tone="error">
-          无法读取 omp 配置目录，请检查文件权限后点击“重新读取”。
+          {ompErrorCode(configQuery.error) === "config"
+            ? "omp YAML 语法无法解析。FyAgent 不会覆盖无法解析的配置文件，请先修复 ~/.omp/agent/models.yml 或 config.yml 语法后点击“重新读取”。"
+            : "无法读取 omp 配置目录，请检查文件权限后点击“重新读取”。"}
         </InlineNotice>
       ) : (
         <div className="fy-models-sections">
@@ -295,18 +302,29 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
             </p>
             <div className="fy-models-paths">
               <div>
-                <span>models.yml（{FILE_STATUS_COPY[read.modelsFileStatus]}）</span>
+                <span>
+                  models.yml（{FILE_STATUS_COPY[read.modelsFileStatus]}）
+                </span>
                 <CopyablePath value={read.modelsPath} label="models.yml 路径" />
               </div>
               <div>
-                <span>config.yml（{FILE_STATUS_COPY[read.configFileStatus]}）</span>
+                <span>
+                  config.yml（{FILE_STATUS_COPY[read.configFileStatus]}）
+                </span>
                 <CopyablePath value={read.configPath} label="config.yml 路径" />
               </div>
             </div>
           </ModelsSection>
 
-          <ModelsSection title="选择或新建供应商" invalid={Boolean(errors.providerId)}>
-            <div className="fy-models-chip-row" role="group" aria-label="omp 供应商选择">
+          <ModelsSection
+            title="选择或新建供应商"
+            invalid={Boolean(errors.providerId)}
+          >
+            <div
+              className="fy-models-chip-row"
+              role="group"
+              aria-label="omp 供应商选择"
+            >
               {read.providers.map((prov) => {
                 const targetKey: OmpTargetSelection = `existing:${prov.id}`;
                 return (
@@ -359,14 +377,18 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
 
             {!editable ? (
               <InlineNotice tone="info">
-                该供应商使用非 OpenAI 兼容协议（{selectedProvider?.api}），为保护私有字段仅展示只读状态，请在 omp 内直接编辑。
+                该供应商使用非 OpenAI 兼容协议（{selectedProvider?.api}
+                ），为保护私有字段仅展示只读状态，请在 omp 内直接编辑。
               </InlineNotice>
             ) : null}
           </ModelsSection>
 
           {editable ? (
             <>
-              <ModelsSection title="接口地址与鉴权引用" invalid={Boolean(errors.baseUrl || errors.keyRef)}>
+              <ModelsSection
+                title="接口地址与鉴权引用"
+                invalid={Boolean(errors.baseUrl || errors.keyRef)}
+              >
                 <label className="fy-models-field">
                   <span>Base URL</span>
                   <Input
@@ -405,7 +427,13 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
                   <Checkbox
                     checked={draft.auth === "none"}
                     onCheckedChange={(noAuth) =>
-                      updateDraft({ auth: noAuth ? "none" : "apiKey" })
+                      updateDraft({
+                        auth: noAuth
+                          ? "none"
+                          : selectedProvider?.auth === "oauth"
+                            ? "oauth"
+                            : "apiKey",
+                      })
                     }
                     label="本地无鉴权模型（auth: none）"
                   />
@@ -414,10 +442,15 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
 
                 {draft.auth === "apiKey" ? (
                   <div className="fy-models-field">
-                    <span>密钥引用方式（omp 推荐填写环境变量名或 !命令引用）</span>
+                    <span>
+                      密钥引用方式（omp 推荐填写环境变量名或 !命令引用）
+                    </span>
                     <div className="fy-models-chip-row">
                       {(["keep", "env", "command"] as const)
-                        .filter((mode) => mode !== "keep" || selectedProvider?.hasApiKey)
+                        .filter(
+                          (mode) =>
+                            mode !== "keep" || selectedProvider?.hasApiKey,
+                        )
                         .map((mode) => (
                           <Button
                             key={mode}
@@ -435,7 +468,9 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
                     {draft.keySource === "env" ? (
                       <Input
                         value={draft.envName}
-                        onChange={(e) => updateDraft({ envName: e.target.value })}
+                        onChange={(e) =>
+                          updateDraft({ envName: e.target.value })
+                        }
                         placeholder="例如 DEEPSEEK_API_KEY"
                       />
                     ) : draft.keySource === "command" ? (
@@ -456,7 +491,10 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
                 ) : null}
               </ModelsSection>
 
-              <ModelsSection title="模型列表与默认角色" invalid={Boolean(errors.models || errors.defaultModel)}>
+              <ModelsSection
+                title="模型列表与默认角色"
+                invalid={Boolean(errors.models || errors.defaultModel)}
+              >
                 <div className="fy-models-inline-input">
                   <Input
                     value={newModelId}

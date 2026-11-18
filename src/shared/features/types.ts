@@ -121,10 +121,7 @@ export type {
   TraeWorkModelRequest,
 } from "./agents";
 
-export {
-  BATCH_SETUP_TARGET_IDS,
-  SAVED_MODEL_PROBE_CATEGORIES,
-} from "./models";
+export { BATCH_SETUP_TARGET_IDS, SAVED_MODEL_PROBE_CATEGORIES } from "./models";
 export type {
   BatchProviderApplyRequest,
   BatchProviderApplyResult,

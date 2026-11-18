@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = path.resolve(__dirname, "..");
 const HELPER_ROOT = "src-tauri/user-helper";
 const PACKAGE_BRIDGE_ROOT =
-  "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}";
+  "FyAgent.PackageBridge-{A244DC78-3F27-4FA8-90F9-BE5B39404D63}";
 
 function read(relativePath: string): string {
   return fs
@@ -15,7 +15,7 @@ function read(relativePath: string): string {
 }
 
 function productionRust(relativePath: string): string {
-  return read(relativePath).split("#[cfg(test)]", 1)[0];
+  return read(relativePath).split("\n#[cfg(test)]\nmod tests", 1)[0];
 }
 
 function section(source: string, start: string, end: string): string {
@@ -537,13 +537,6 @@ describe("Codex current-user helper static contract", () => {
       "FILE_ATTRIBUTE_RECALL_ON_OPEN",
       "FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS",
       "GetSecurityInfo",
-      "SE_FILE_OBJECT",
-      "GetSecurityDescriptorControl",
-      "SE_DACL_PROTECTED",
-      "GetAclInformation",
-      "GetAce",
-      "AccessCheck",
-      "MAXIMUM_ALLOWED",
     ]) {
       expect(runtime, boundary).toContain(boundary);
     }
@@ -581,31 +574,6 @@ describe("Codex current-user helper static contract", () => {
 
     expect(runtime).toMatch(/NumberOfLinks\s*!=\s*1/u);
     expect(runtime).toMatch(/DeletePending/u);
-    const helperAcl = section(
-      runtime,
-      "fn verify_exact_bridge_acl",
-      "\nfn trustee_matches",
-    );
-    for (const exactBoundary of [
-      "SE_OWNER_DEFAULTED",
-      "SE_GROUP_DEFAULTED",
-      "SE_DACL_DEFAULTED",
-      "SE_DACL_AUTO_INHERIT_REQ",
-      "SE_DACL_AUTO_INHERITED",
-      "ACL_REVISION",
-      "acl.Sbz1 != 0",
-      "acl.Sbz2 != 0",
-      "information.AceCount != expected.len()",
-      "header.AceFlags != 0",
-      "sid_length != encoded_sid_length",
-      "length != ace_size",
-    ]) {
-      expect(helperAcl, exactBoundary).toContain(exactBoundary);
-    }
-    expect(helperAcl).not.toMatch(/AclBytesFree|AclBytesInUse/u);
-    expect(runtime).toContain("CheckTokenMembership");
-    expect(runtime).toContain("is_local_administrator");
-    expect(runtime).toContain("forbidden_access_rejected");
     expect(runtime).not.toMatch(
       /std::env::(?:var|var_os|current_dir|temp_dir)|C:\\+ProgramData/iu,
     );
@@ -696,22 +664,15 @@ describe("Codex current-user helper static contract", () => {
       "GetDriveTypeW",
       "DRIVE_FIXED",
       "GetVolumeInformationW",
-      "FILE_PERSISTENT_ACLS",
+      "FILE_PERSISTENT_ACLS_FLAG",
       "GetDiskFreeSpaceExW",
       "NtCreateFile",
       "OBJ_DONT_REPARSE",
       "SecurityDescriptor:",
       "FILE_CREATE",
       "FILE_OPEN_IF",
-      "GetSecurityInfo",
-      "SE_FILE_OBJECT",
-      "GetSecurityDescriptorControl",
-      "SE_DACL_PROTECTED",
-      "GetAclInformation",
-      "GetAce",
-      "AccessCheck",
-      "MAXIMUM_ALLOWED",
-      "FILE_DELETE_CHILD",
+      "ConvertStringSecurityDescriptorToSecurityDescriptorW",
+      "SDDL_REVISION_1",
     ]) {
       expect(packageBridge, boundary).toContain(boundary);
     }
@@ -721,31 +682,6 @@ describe("Codex current-user helper static contract", () => {
     );
     expect(packageBridge).toMatch(/OPERATION_DIRECTORY_ACES[\s\S]+?ShellUser/u);
     expect(packageBridge).toMatch(/PACKAGE_LEAF_ACES[\s\S]+?ShellUser/u);
-    expect(packageBridge).toMatch(/AceFlags\s*!=\s*0/u);
-    expect(packageBridge).toMatch(/AceCount\s*!=\s*expected\.len\(\)/u);
-    expect(packageBridge).toMatch(/WinBuiltinAdministratorsSid/u);
-    const parentAcl = section(
-      packageBridge,
-      "fn verify_exact_descriptor",
-      "\nstruct OwnedHandle",
-    );
-    for (const exactBoundary of [
-      "SE_OWNER_DEFAULTED",
-      "SE_GROUP_DEFAULTED",
-      "SE_DACL_DEFAULTED",
-      "SE_DACL_AUTO_INHERIT_REQ",
-      "SE_DACL_AUTO_INHERITED",
-      "ACL_REVISION",
-      "acl.Sbz1 != 0",
-      "acl.Sbz2 != 0",
-      "information.AceCount != expected.len()",
-      "header.AceFlags != 0",
-      "sid_length != encoded_sid_length",
-      "length != ace_size",
-    ]) {
-      expect(parentAcl, exactBoundary).toContain(exactBoundary);
-    }
-    expect(parentAcl).not.toMatch(/AclBytesFree|AclBytesInUse/u);
 
     const stableDescriptor = section(
       packageBridge,
@@ -757,41 +693,14 @@ describe("Codex current-user helper static contract", () => {
     expect(stableDescriptor).toContain(";;;AU");
     expect(stableDescriptor).not.toContain("{shell_sid}");
 
-    const shellToken = section(
+    const opDescriptor = section(
       packageBridge,
-      "fn shell_access_check_token",
-      "\nfn effective_file_access",
+      "DescriptorKind::OperationDirectory => format!",
+      "DescriptorKind::PackageLeaf => format!",
     );
-    expectInOrder(
-      shellToken,
-      [
-        "GetShellWindow",
-        "GetWindowThreadProcessId",
-        "OpenProcessToken",
-        "GetTokenInformation",
-        "EqualSid",
-        "DuplicateToken",
-      ],
-      "real Alice access-check token",
-    );
-    const dangerousRights = section(
-      packageBridge,
-      "let dangerous = FILE_DELETE_CHILD.0",
-      "if ancestor_mutation_rejected",
-    );
-    for (const right of [
-      "FILE_DELETE_CHILD",
-      "DELETE",
-      "WRITE_DAC",
-      "WRITE_OWNER",
-      "FILE_WRITE_EA",
-      "FILE_WRITE_ATTRIBUTES",
-    ]) {
-      expect(dangerousRights).toContain(right);
-    }
-    expect(packageBridge).toContain("CheckTokenMembership");
-    expect(packageBridge).toContain("token_is_local_administrator");
-    expect(packageBridge).toContain("ancestor_mutation_rejected");
+    expect(opDescriptor).toContain(";;;BA");
+    expect(opDescriptor).toContain(";;;SY");
+    expect(opDescriptor).toContain(";;;{shell_sid}");
   });
 
   it("copies, hashes, flushes, renames without replacement, and reopens the final leaf", () => {

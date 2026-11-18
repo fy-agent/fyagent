@@ -694,3 +694,34 @@ fn invalid_public_dto_is_rejected() {
     let err = preview_omp_save(&plan_from_read(&config, patch, None)).expect_err("invalid id");
     assert!(matches!(err, AppError::InvalidInput(_)));
 }
+
+#[test]
+#[serial]
+fn unquoted_yaml_command_tag_is_detected_and_blocked_from_probe() {
+    let _env = test_support::TestOmpEnv::new();
+    let paths = paths();
+    fs::create_dir_all(paths.agent_dir).unwrap();
+    fs::write(
+        &paths.models_path,
+        "providers:\n  vault:\n    baseUrl: https://api.deepseek.com/v1\n    api: openai-completions\n    apiKey: !op read op://Private/DeepSeek/credential\n    models:\n      - id: deepseek-chat\n",
+    )
+    .unwrap();
+    let config = read_omp_config().expect("read omp config");
+    assert!(config.providers[0].has_command_key);
+    let err = super::resolve_omp_provider_probe_target("vault").expect_err("command tag blocked");
+    assert!(err.to_string().contains("!命令引用"));
+}
+
+#[test]
+fn multiline_scalar_in_yaml_falls_back_cleanly_without_corrupting_key() {
+    let original = "# Keep header comment\nproviders:\n  fyagent-example:\n    baseUrl:\n      https://old.example/v1\n    api: openai-completions\n    apiKey: >-\n      old-multiline-secret\n    models:\n      -   id: model-from-provider\n          name: OldName\n";
+    let patched = patch_provider_in_yaml(original, &example_provider_patch()).unwrap();
+    assert!(patched.starts_with("# Keep header comment"));
+    assert!(!patched.contains("old-multiline-secret"));
+    assert!(!patched.contains("https://old.example/v1"));
+    let parsed: serde_yaml::Value = serde_yaml::from_str(&patched).unwrap();
+    assert_eq!(
+        parsed["providers"]["fyagent-example"]["apiKey"].as_str(),
+        Some("FYAGENT_OMP_EXAMPLE_KEY")
+    );
+}

@@ -154,7 +154,7 @@ fn read_process_table() -> Option<String> {
     if !ps_exe.is_file() {
         return None;
     }
-    let script = r#"Get-CimInstance Win32_Process -Filter "Name LIKE 'codex%'" -ErrorAction SilentlyContinue | ForEach-Object { if ($_.CreationDate -and $_.CommandLine) { $s = [math]::Max(0, [int]((Get-Date) - $_.CreationDate).TotalSeconds); "{0} {1:D2}:{2:D2} {3}" -f $_.ProcessId, [int]($s / 60), ($s % 60), $_.CommandLine } }"#;
+    let script = r#"Get-CimInstance Win32_Process -Filter "Name LIKE 'codex%'" -ErrorAction SilentlyContinue | ForEach-Object { if ($_.CreationDate -and $_.CommandLine) { $s = [math]::Max(0, [int]((Get-Date) - $_.CreationDate).TotalSeconds); "{0} {1:D2}:{2:D2} {3}" -f $_.ProcessId, [int][math]::Floor($s / 60), ($s % 60), $_.CommandLine } }"#;
     let mut child = std::process::Command::new(ps_exe)
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .creation_flags(CREATE_NO_WINDOW)
@@ -254,7 +254,12 @@ fn current_fingerprint() -> String {
 /// 记下新启动的 Codex 现在会读到的目录。Codex 的客户端文件每写一次（直连、进出代理、Stack
 /// 增删、退出时写回）和启动接上之后各调一次。
 pub(crate) fn observe(store: &DeviceStore) {
-    record(store, &current_fingerprint(), (env().now_ms)());
+    let now_ms = (env().now_ms)();
+    record(store, &current_fingerprint(), now_ms);
+    let combined = combined_codex_config_fingerprint();
+    if combined != NO_CATALOG {
+        record_to_file(store, CONFIG_HISTORY_FILENAME, &combined, now_ms);
+    }
 }
 
 pub(crate) const CONFIG_HISTORY_FILENAME: &str = "codex-config-reload-history.json";
@@ -372,6 +377,17 @@ fn daemon_pid() -> Option<u32> {
         .and_then(|pid| u32::try_from(pid).ok())
 }
 
+fn command_in_plugins_dir(command: &str, plugins_dir: &str) -> bool {
+    let normalized_cmd = command.trim_start_matches('"').replace('\\', "/");
+    let normalized_plugins = plugins_dir.replace('\\', "/");
+    let prefix = if normalized_plugins.ends_with('/') {
+        normalized_plugins
+    } else {
+        format!("{normalized_plugins}/")
+    };
+    normalized_cmd.starts_with(&prefix)
+}
+
 /// 从进程表里挑出 app-server。守护进程要 pid 和 `daemon.pid` 对得上、命令行还是
 /// `--managed-daemon`（防止 pid 被别的进程复用），别的配置目录的守护进程不算。`plugins_dir`
 /// 下的是 Chrome 插件自带的，没有模型选择器，不算。
@@ -388,7 +404,7 @@ fn classify(table: &str, daemon_pid: Option<u32>, plugins_dir: &str, now_ms: u64
         match role {
             Role::Daemon if Some(pid) == daemon_pid => servers.daemon = Some(started),
             Role::Daemon => {}
-            Role::Other if command.starts_with(plugins_dir) => {}
+            Role::Other if command_in_plugins_dir(command, plugins_dir) => {}
             Role::Other => servers.others.push(started),
         }
     }

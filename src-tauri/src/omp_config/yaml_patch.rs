@@ -53,12 +53,19 @@ pub(super) fn patch_provider_in_yaml(
     let mut root = parse_single_root_mapping(content, "omp models")?;
     validate_and_merge_provider_ast(&mut root, patch)?;
 
-    let output = if can_block_patch_models(content, &patch.id) {
-        block_patch_provider(content, patch).unwrap_or_else(|| {
-            serialize_mapping_preserving_header(content, &root, "omp models").unwrap_or_default()
-        })
-    } else {
-        serialize_mapping_preserving_header(content, &root, "omp models")?
+    let output = match can_block_patch_models(content, &patch.id)
+        .then(|| block_patch_provider(content, patch))
+        .flatten()
+    {
+        Some(candidate)
+            if parse_single_root_mapping(&candidate, "patched omp models")
+                .ok()
+                .as_ref()
+                == Some(&root) =>
+        {
+            candidate
+        }
+        _ => serialize_mapping_preserving_header(content, &root, "omp models")?,
     };
 
     parse_yaml_strict(&output, "patched omp models")?;
@@ -72,12 +79,19 @@ pub(super) fn patch_default_model_in_yaml(
     let mut root = parse_single_root_mapping(content, "omp config")?;
     validate_and_merge_default_role_ast(&mut root, default_model)?;
 
-    let output = if can_block_patch_config(content) {
-        block_patch_default_role(content, default_model).unwrap_or_else(|| {
-            serialize_mapping_preserving_header(content, &root, "omp config").unwrap_or_default()
-        })
-    } else {
-        serialize_mapping_preserving_header(content, &root, "omp config")?
+    let output = match can_block_patch_config(content)
+        .then(|| block_patch_default_role(content, default_model))
+        .flatten()
+    {
+        Some(candidate)
+            if parse_single_root_mapping(&candidate, "patched omp config")
+                .ok()
+                .as_ref()
+                == Some(&root) =>
+        {
+            candidate
+        }
+        _ => serialize_mapping_preserving_header(content, &root, "omp config")?,
     };
 
     parse_yaml_strict(&output, "patched omp config")?;

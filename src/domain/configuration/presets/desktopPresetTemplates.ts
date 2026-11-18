@@ -193,7 +193,8 @@ export const DESKTOP_PRESET_TEMPLATES: readonly DesktopPresetTemplate[] = [
     id: "volcengine",
     name: "火山方舟 (豆包)",
     summary: "Doubao Seed Pro 模型，原生支持 /api/v3 Responses 与兼容接口",
-    apiKeyUrl: "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
+    apiKeyUrl:
+      "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
     targets: {
       workbuddy: {
         baseUrl: "https://ark.cn-beijing.volces.com/api/v3",

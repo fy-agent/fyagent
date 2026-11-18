@@ -26,11 +26,19 @@
 }
 
 .fy-inline-probe-ok {
-  background: color-mix(in srgb, var(--fy-color-success, #16a34a) 14%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--fy-color-success, #16a34a) 14%,
+    transparent
+  );
   color: var(--fy-color-success, #15803d);
 }
 
 .fy-inline-probe-error {
-  background: color-mix(in srgb, var(--fy-color-danger, #dc2626) 12%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--fy-color-danger, #dc2626) 12%,
+    transparent
+  );
   color: var(--fy-color-danger, #b91c1c);
 }

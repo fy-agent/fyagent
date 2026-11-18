@@ -183,7 +183,7 @@ export async function installRichTauriFeatureFixture(
     // Mirror the reviewed IDs, order and URLs from commands/agent_catalog.rs.
     // The production platform parser deliberately rejects older partial lists.
     const catalog = {
-      contractVersion: 5,
+      contractVersion: 6,
       reviewedAt: "2026-08-31",
       agents: [
         {
@@ -370,6 +370,57 @@ export async function installRichTauriFeatureFixture(
             },
           ],
           capabilities: catalogCapabilities(),
+        },
+        {
+          id: "omp",
+          variantId: "omp",
+          displayName: "Oh My Pi (omp)",
+          description:
+            "支持 ~/.omp/agent/models.yml 与 config.yml 的保留注释模型配置。",
+          officialLinks: [
+            {
+              id: "product",
+              label: "打开 Oh My Pi 官方页面",
+              url: "https://omp.sh/",
+            },
+            {
+              id: "docs",
+              label: "打开 Oh My Pi 模型配置文档",
+              url: "https://github.com/can1357/oh-my-pi/blob/main/docs/models.md",
+            },
+            {
+              id: "download",
+              label: "打开 Oh My Pi 发布页面",
+              url: "https://github.com/can1357/oh-my-pi/releases",
+            },
+            {
+              id: "license",
+              label: "Oh My Pi 源码与许可证",
+              url: "https://github.com/can1357/oh-my-pi/blob/main/LICENSE",
+            },
+          ],
+          capabilities: capabilityIds.map((capabilityId) => ({
+            id: capabilityId,
+            mode:
+              capabilityId === "product.open" ||
+              capabilityId === "models.validate" ||
+              capabilityId === "models.write"
+                ? "direct"
+                : capabilityId === "app.detect"
+                  ? "unverified"
+                  : "unsupported",
+            reasonCode:
+              capabilityId === "product.open"
+                ? "official_link_reviewed"
+                : capabilityId === "models.validate"
+                  ? "fyagent_model_validation"
+                  : capabilityId === "models.write"
+                    ? "dedicated_native_contract"
+                    : capabilityId === "app.detect"
+                      ? "trusted_runtime_identity_unavailable"
+                      : "capability_not_applicable",
+            evidenceIds: ["p0_scope"],
+          })),
         },
       ],
     };
@@ -611,7 +662,9 @@ export async function installRichTauriFeatureFixture(
         };
       }
       if (
-        ["grokbuild", "qoderwork", "trae-work", "workbuddy"].includes(agentId)
+        ["grokbuild", "omp", "qoderwork", "trae-work", "workbuddy"].includes(
+          agentId,
+        )
       ) {
         return {
           kind: "handoff_only",
@@ -2145,7 +2198,9 @@ export async function installRichTauriFeatureFixture(
           case "get_agent_install_readiness": {
             const agentId = String(payload.agentId);
             const grokCli =
-              agentId === "grokbuild" || agentId === "claude-code";
+              agentId === "grokbuild" ||
+              agentId === "claude-code" ||
+              agentId === "omp";
             return {
               contractVersion: 5,
               configurationEligibility: {
@@ -2344,6 +2399,75 @@ export async function installRichTauriFeatureFixture(
               extractionSupported: false,
               writeSupported: false,
               reasonCode: "browser_fixture_no_native_runtime",
+            };
+          }
+          case "get_codex_reload_status":
+            return staleDaemon ? { daemon: true, others: false } : null;
+          case "probe_saved_model":
+            return {
+              category: "ok",
+              ok: true,
+              latencyMs: 120,
+              httpStatus: 200,
+              message: "连接可用",
+            };
+          case "read_omp_config":
+            return {
+              profile: "default",
+              modelsPath: "~/.omp/agent/models.yml",
+              configPath: "~/.omp/agent/config.yml",
+              modelsRevision: `o1:${"a".repeat(64)}`,
+              configRevision: `o1:${"b".repeat(64)}`,
+              providers: [
+                {
+                  id: "deepseek",
+                  baseUrl: "https://api.deepseek.com/v1",
+                  api: "openai-completions",
+                  auth: "apiKey",
+                  hasApiKey: true,
+                  hasCommandKey: false,
+                  models: [{ id: "deepseek-chat", name: "DeepSeek Chat" }],
+                },
+              ],
+              defaultModel: "deepseek/deepseek-chat",
+              modelsFileStatus: "ok",
+              configFileStatus: "ok",
+            };
+          case "discover_omp_cli":
+            return {
+              detected: true,
+              version: "16.17.0",
+              executablePath: "/usr/local/bin/omp",
+            };
+          case "preview_batch_provider_setup": {
+            const req = payload.request as {
+              targets: Array<{
+                target: string;
+                baseUrl: string;
+                modelId: string;
+              }>;
+            };
+            return {
+              items: (req.targets ?? []).map((t) => ({
+                target: t.target,
+                paths: [`~/.config/${t.target}/config`],
+                baseUrl: t.baseUrl,
+                modelId: t.modelId,
+                ready: true,
+              })),
+            };
+          }
+          case "apply_batch_provider_setup": {
+            const req = payload.request as {
+              targets: Array<{ target: string }>;
+            };
+            return {
+              outcomes: (req.targets ?? []).map((t) => ({
+                target: t.target,
+                status: "applied",
+                message: "已写入并完成回读校验",
+                paths: [`~/.config/${t.target}/config`],
+              })),
             };
           }
           case "get_settings":

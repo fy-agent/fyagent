@@ -58,9 +58,9 @@ export function AgentConfiguration({
   const openManagement = () => {
     const returnDescriptor = {
       agentId: entry.agentId,
-      section,
+      section: effectiveSection,
     } satisfies AgentReturnDescriptor;
-    switch (section) {
+    switch (effectiveSection) {
       case "models":
         navigate(
           appendAgentReturnToPath(
@@ -140,7 +140,10 @@ export function AgentConfiguration({
           </>
         ) : effectiveSection === "skills" ? (
           entry.assignmentId !== null ? (
-            <AgentSkillsSection entry={entry} onOpenManagement={openManagement} />
+            <AgentSkillsSection
+              entry={entry}
+              onOpenManagement={openManagement}
+            />
           ) : (
             <EmptyState title="此应用暂不支持通过 FyAgent 分配 Skills" />
           )

@@ -696,6 +696,125 @@ function assertQuickSetupRequest(
   return request;
 }
 
+function assertBatchSetupTargetSpec(spec: unknown) {
+  if (
+    !isRecord(spec) ||
+    !hasRequiredAndOptionalKeys(
+      spec,
+      ["target", "providerId", "providerName", "baseUrl", "modelId"],
+      ["extraModelIds", "protocol"],
+    ) ||
+    !isOneOf(spec.target, BATCH_SETUP_TARGET_IDS) ||
+    typeof spec.providerId !== "string" ||
+    typeof spec.providerName !== "string" ||
+    typeof spec.baseUrl !== "string" ||
+    typeof spec.modelId !== "string" ||
+    (spec.extraModelIds !== undefined && !isStringArray(spec.extraModelIds)) ||
+    (spec.protocol !== undefined && !isApiProtocol(spec.protocol))
+  ) {
+    throw new Error("Batch provider setup request is invalid");
+  }
+}
+
+function assertBatchPreviewRequest(
+  request: BatchProviderPreviewRequest,
+): BatchProviderPreviewRequest {
+  if (
+    !isRecord(request) ||
+    !hasExactKeys(request, ["targets"]) ||
+    !Array.isArray(request.targets) ||
+    request.targets.length === 0
+  ) {
+    throw new Error("Batch provider setup request is invalid");
+  }
+  request.targets.forEach(assertBatchSetupTargetSpec);
+  return request;
+}
+
+function assertBatchApplyRequest(
+  request: BatchProviderApplyRequest,
+): BatchProviderApplyRequest {
+  if (
+    !isRecord(request) ||
+    !hasExactKeys(request, ["apiKey", "targets"]) ||
+    typeof request.apiKey !== "string" ||
+    !Array.isArray(request.targets) ||
+    request.targets.length === 0
+  ) {
+    throw new Error("Batch provider setup request is invalid");
+  }
+  request.targets.forEach(assertBatchSetupTargetSpec);
+  return request;
+}
+
+function parseBatchPreviewResult(value: unknown): BatchProviderPreviewResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["items"]) ||
+    !Array.isArray(value.items)
+  ) {
+    throw new Error("Batch provider preview result is unavailable");
+  }
+  const items = value.items.map((item) => {
+    if (
+      !isRecord(item) ||
+      !hasRequiredAndOptionalKeys(
+        item,
+        ["target", "paths", "baseUrl", "modelId", "ready"],
+        ["warning"],
+      ) ||
+      !isOneOf(item.target, BATCH_SETUP_TARGET_IDS) ||
+      !isStringArray(item.paths) ||
+      typeof item.baseUrl !== "string" ||
+      typeof item.modelId !== "string" ||
+      typeof item.ready !== "boolean" ||
+      (item.warning !== undefined &&
+        item.warning !== null &&
+        typeof item.warning !== "string")
+    ) {
+      throw new Error("Batch provider preview result is unavailable");
+    }
+    return {
+      target: item.target,
+      paths: item.paths,
+      baseUrl: item.baseUrl,
+      modelId: item.modelId,
+      ready: item.ready,
+      ...(typeof item.warning === "string" ? { warning: item.warning } : {}),
+    };
+  });
+  return { items };
+}
+
+function parseBatchApplyResult(value: unknown): BatchProviderApplyResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["outcomes"]) ||
+    !Array.isArray(value.outcomes)
+  ) {
+    throw new Error("Batch provider apply result is unavailable");
+  }
+  const outcomes = value.outcomes.map((item) => {
+    if (
+      !isRecord(item) ||
+      !hasExactKeys(item, ["target", "status", "message", "paths"]) ||
+      !isOneOf(item.target, BATCH_SETUP_TARGET_IDS) ||
+      !isOneOf(item.status, ["applied", "failed"] as const) ||
+      typeof item.message !== "string" ||
+      !isStringArray(item.paths)
+    ) {
+      throw new Error("Batch provider apply result is unavailable");
+    }
+    return {
+      target: item.target,
+      status: item.status,
+      message: item.message,
+      paths: item.paths,
+    };
+  });
+  return { outcomes };
+}
+
 function assertSavedModelProbeRequest(
   request: SavedModelProbeRequest,
 ): SavedModelProbeRequest {
@@ -776,14 +895,18 @@ export function createModelFeaturePorts(): Pick<
             request: parseClaudeQuickSetupApplyRequest(request),
           }),
         ),
-      previewBatchSetup: (request: BatchProviderPreviewRequest) =>
-        invoke<BatchProviderPreviewResult>("preview_batch_provider_setup", {
-          request,
-        }),
-      applyBatchSetup: (request: BatchProviderApplyRequest) =>
-        invoke<BatchProviderApplyResult>("apply_batch_provider_setup", {
-          request,
-        }),
+      previewBatchSetup: async (request: BatchProviderPreviewRequest) =>
+        parseBatchPreviewResult(
+          await invoke<unknown>("preview_batch_provider_setup", {
+            request: assertBatchPreviewRequest(request),
+          }),
+        ),
+      applyBatchSetup: async (request: BatchProviderApplyRequest) =>
+        parseBatchApplyResult(
+          await invoke<unknown>("apply_batch_provider_setup", {
+            request: assertBatchApplyRequest(request),
+          }),
+        ),
       probeSavedModel: async (request: SavedModelProbeRequest) =>
         parseSavedModelProbeResult(
           await invoke<unknown>("probe_saved_model", {

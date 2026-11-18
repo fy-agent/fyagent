@@ -223,7 +223,7 @@
     ],
     [
       "src-tauri/src/omp_config/mod.rs",
-      "313bd869357248ce6eff6fe0c1aeac3e5e86103000fb5f0a7cce8d8094e6b405"
+      "d89108c3115baa4e920a098e7b6dd349ad9c33b511ead4cdc853a25308082e89"
     ],
     [
       "src-tauri/src/opencode_config.rs",
@@ -331,7 +331,7 @@
     ],
     [
       "src-tauri/src/services/provider/codex_client_catalog.rs",
-      "fffcd9e61d80e42076a1f6b1f2a0f54431c5a1052045a51f71c4f68e02cb7129"
+      "1ff917cf4643ec0cf482a7bd4324eb9c953884a9469b30f329e3cf201fc6d625"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
@@ -571,7 +571,7 @@
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "a4c6ec2291051988b741017a3dcb2aad48b07053f7334646689e8508d0f8a856"
+      "2d2897b8c83060236eac76c81e6a7c1c5e784a3dbd39bbbf006eb806b37420fb"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",

@@ -34,10 +34,16 @@ async function expectRecommendationIcons(guide: Locator, count: number) {
 }
 
 for (const choice of [
-  { label: "日常办公", names: ["QoderWork CN", "TRAE Work CN", "WorkBuddy"] },
+  { label: "日常办公", names: ["WorkBuddy"] },
   {
     label: "编程开发",
-    names: ["Grok Build", "Codex", "Claude Code", "OpenCode"],
+    names: [
+      "Codex",
+      "Claude Code",
+      "OpenCode",
+      "Oh My Pi (omp)",
+      "Grok Build",
+    ],
   },
   { label: "两者都用", names: ["WorkBuddy", "Codex"] },
 ]) {
@@ -104,7 +110,7 @@ for (const choice of [
     await expect(
       page.getByRole("heading", { name: "我的 AI 软件" }),
     ).toBeFocused();
-    await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
+    await expect(page.locator(".fy-agent-directory-card")).toHaveCount(8);
     const descriptions = await page
       .locator(".fy-agent-directory-description")
       .allTextContents();
@@ -183,13 +189,13 @@ for (const theme of ["light", "dark"] as const) {
     await expect(
       guide.getByRole("heading", { name: "推荐你从这些软件开始" }),
     ).toBeFocused();
-    await expectRecommendationIcons(guide, 3);
+    await expectRecommendationIcons(guide, 1);
     await page.screenshot({
       path: testInfo.outputPath(`guide-recommendations-${theme}.png`),
     });
     const configButtons = guide.getByRole("button", { name: "开始配置" });
-    await expect(configButtons).toHaveCount(3);
-    for (let i = 0; i < 3; i++) {
+    await expect(configButtons).toHaveCount(1);
+    for (let i = 0; i < 1; i++) {
       await page.keyboard.press(tabKey);
       await expect(configButtons.nth(i)).toBeFocused();
     }

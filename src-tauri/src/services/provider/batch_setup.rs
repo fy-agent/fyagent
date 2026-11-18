@@ -20,8 +20,8 @@ use crate::{
     provider::{Provider, ProviderMeta},
     services::{
         opencode_models::{
-            get_opencode_model_snapshot, save_opencode_models, SaveOpenCodeModelsOutcome,
-            SaveOpenCodeModelsRequest,
+            get_opencode_model_snapshot, save_opencode_models_with_preferred_id,
+            SaveOpenCodeModelsOutcome, SaveOpenCodeModelsRequest,
         },
         provider_api::{validate_credential_scope, ApiProtocol},
         workbuddy::{
@@ -527,8 +527,22 @@ fn apply_opencode(spec: &BatchSetupTargetSpec, api_key: &str) -> BatchTargetOutc
         }
     };
     let paths = vec![snapshot.path.clone()];
+    let preferred_slug = spec.provider_id.trim();
+    let fyagent_prefixed = format!("fyagent-{preferred_slug}");
+    let existing_editable_id = snapshot
+        .providers
+        .iter()
+        .find(|p| p.editable && (p.id == preferred_slug || p.id == fyagent_prefixed))
+        .map(|p| p.id.clone());
+    let preferred_new_id = if existing_editable_id.is_some() {
+        None
+    } else if snapshot.providers.iter().any(|p| p.id == preferred_slug) {
+        Some(fyagent_prefixed)
+    } else {
+        Some(preferred_slug.to_string())
+    };
     let mut req = SaveOpenCodeModelsRequest {
-        provider_id: Some(spec.provider_id.trim().to_string()),
+        provider_id: existing_editable_id,
         provider_name: spec.provider_name.trim().to_string(),
         base_url: spec.base_url.trim().to_string(),
         api_key: api_key.to_string(),
@@ -537,10 +551,13 @@ fn apply_opencode(spec: &BatchSetupTargetSpec, api_key: &str) -> BatchTargetOutc
         expected_revision: snapshot.revision,
         overwrite_token: None,
     };
-    let outcome = match save_opencode_models(req.clone()) {
+    let outcome = match save_opencode_models_with_preferred_id(
+        req.clone(),
+        preferred_new_id.as_deref(),
+    ) {
         Ok(SaveOpenCodeModelsOutcome::OverwriteConfirmationRequired { token, .. }) => {
             req.overwrite_token = Some(token);
-            save_opencode_models(req)
+            save_opencode_models_with_preferred_id(req, preferred_new_id.as_deref())
         }
         other => other,
     };
@@ -679,5 +696,47 @@ mod tests {
             after_fail.default_model.as_deref(),
             Some("fyagent-deepseek/deepseek-v4-pro")
         );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn opencode_target_creates_fresh_provider_and_updates_idempotently() {
+        let temp = tempfile::tempdir().unwrap();
+        let prev_home = std::env::var_os("FYAGENT_TEST_HOME");
+        let prev_settings = crate::settings::get_settings();
+        std::env::set_var("FYAGENT_TEST_HOME", temp.path());
+        crate::settings::replace_settings_in_memory_for_test(Default::default());
+
+        let spec = BatchSetupTargetSpec {
+            target: BatchSetupTargetId::Opencode,
+            provider_id: "zhipu".to_string(),
+            provider_name: "智谱 GLM (BigModel)".to_string(),
+            base_url: "https://open.bigmodel.cn/api/paas/v4".to_string(),
+            model_id: "glm-5".to_string(),
+            extra_model_ids: vec!["glm-5-turbo".to_string()],
+            protocol: Some(ApiProtocol::Chat),
+        };
+
+        // First run on fresh empty OpenCode home -> must create "zhipu" cleanly
+        let first = apply_opencode(&spec, "sk-zhipu-first-key");
+        assert_eq!(first.status, BatchTargetStatus::Applied);
+        let snap1 = get_opencode_model_snapshot().unwrap();
+        assert_eq!(snap1.providers.len(), 1);
+        assert_eq!(snap1.providers[0].id, "zhipu");
+        assert_eq!(snap1.providers[0].name, "智谱 GLM (BigModel)");
+        assert_eq!(snap1.providers[0].model_ids.len(), 2);
+
+        // Second run with same preset -> must update existing "zhipu" provider idempotently
+        let second = apply_opencode(&spec, "sk-zhipu-rotated-key");
+        assert_eq!(second.status, BatchTargetStatus::Applied);
+        let snap2 = get_opencode_model_snapshot().unwrap();
+        assert_eq!(snap2.providers.len(), 1);
+        assert_eq!(snap2.providers[0].id, "zhipu");
+
+        crate::settings::replace_settings_in_memory_for_test(prev_settings);
+        match prev_home {
+            Some(v) => std::env::set_var("FYAGENT_TEST_HOME", v),
+            None => std::env::remove_var("FYAGENT_TEST_HOME"),
+        }
     }
 }

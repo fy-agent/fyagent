@@ -290,13 +290,17 @@ fn error(code: OpenCodeModelsErrorCode) -> OpenCodeModelsErrorDto {
 pub(crate) fn resolve_saved_opencode_probe_connection(
     provider_id: &str,
 ) -> Result<(String, String), String> {
+    if is_managed_proxy_provider_id(provider_id) {
+        return Err("受管订阅连接请在「账号与来源」页查看状态".to_string());
+    }
     let _guard = lock_opencode_config();
     let bytes = read_opencode_config_bytes()
         .map_err(|_| "无法读取 OpenCode 配置文件".to_string())?
         .ok_or_else(|| "OpenCode 配置文件尚不存在".to_string())?;
     let config = parse_config_object(&bytes).map_err(|_| "OpenCode 配置文件格式无效".to_string())?;
-    let provider = config
-        .pointer(&format!("/provider/{provider_id}"))
+    let providers = providers_object(&config).map_err(|_| "OpenCode 配置文件格式无效".to_string())?;
+    let provider = providers
+        .get(provider_id)
         .ok_or_else(|| format!("未找到 OpenCode 供应商 '{provider_id}'"))?;
     let conn = resolve_connection(Some(provider), "", "")
         .map_err(|_| "该 OpenCode 供应商未包含可直接探测的接口地址".to_string())?;
@@ -398,11 +402,20 @@ pub(crate) fn save_opencode_models(
     request: SaveOpenCodeModelsRequest,
 ) -> Result<SaveOpenCodeModelsOutcome, OpenCodeModelsErrorDto> {
     let _guard = lock_opencode_config();
-    save_opencode_models_locked(&request)
+    save_opencode_models_locked(&request, None)
+}
+
+pub(crate) fn save_opencode_models_with_preferred_id(
+    request: SaveOpenCodeModelsRequest,
+    preferred_new_id: Option<&str>,
+) -> Result<SaveOpenCodeModelsOutcome, OpenCodeModelsErrorDto> {
+    let _guard = lock_opencode_config();
+    save_opencode_models_locked(&request, preferred_new_id)
 }
 
 fn save_opencode_models_locked(
     request: &SaveOpenCodeModelsRequest,
+    preferred_new_id: Option<&str>,
 ) -> Result<SaveOpenCodeModelsOutcome, OpenCodeModelsErrorDto> {
     let selected = normalize_ids(&request.selected_model_ids);
     let removed = normalize_ids(&request.removed_model_ids);
@@ -462,7 +475,7 @@ fn save_opencode_models_locked(
             OpenCodeModelsErrorCode::InvalidRequest,
         ));
     }
-    let provider_id = resolve_provider_id(&config, request)?;
+    let provider_id = resolve_provider_id(&config, request, preferred_new_id)?;
     let provider = if request.provider_id.is_some() {
         Some(editable_provider(&config, &provider_id)?)
     } else {
@@ -657,6 +670,7 @@ fn existing_targets(
 fn resolve_provider_id(
     config: &Value,
     request: &SaveOpenCodeModelsRequest,
+    preferred_new_id: Option<&str>,
 ) -> Result<String, OpenCodeModelsErrorDto> {
     let providers = providers_object(config)?;
     if let Some(id) = &request.provider_id {
@@ -674,8 +688,12 @@ fn resolve_provider_id(
             OpenCodeModelsErrorCode::InvalidRequest,
         ));
     }
-    let id = slugify(request.provider_name.trim());
-    if providers.contains_key(&id)
+    let id = preferred_new_id
+        .map(slugify)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| slugify(request.provider_name.trim()));
+    if is_managed_proxy_provider_id(&id)
+        || providers.contains_key(&id)
         || config
             .get("providers")
             .is_some_and(|native| !native.is_object() || native.get(&id).is_some())

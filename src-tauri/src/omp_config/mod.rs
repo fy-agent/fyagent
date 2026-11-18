@@ -523,7 +523,16 @@ pub(crate) fn resolve_omp_provider_probe_target(
                 "omp 使用 !命令引用鉴权，请在 omp 终端内测试".to_string(),
             ));
         }
-        let is_env_name = !trimmed.is_empty()
+        let looks_like_env_var = !trimmed.is_empty()
+            && trimmed.contains('_')
+            && trimmed
+                .bytes()
+                .next()
+                .is_some_and(|b| b.is_ascii_uppercase() || b == b'_')
+            && trimmed
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_');
+        let is_env_identifier = !trimmed.is_empty()
             && trimmed
                 .chars()
                 .next()
@@ -531,8 +540,16 @@ pub(crate) fn resolve_omp_provider_probe_target(
             && trimmed
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '_');
-        if is_env_name {
-            std::env::var(trimmed).ok().or_else(|| Some(trimmed.to_string()))
+        if is_env_identifier {
+            match std::env::var(trimmed) {
+                Ok(val) if !val.trim().is_empty() => Some(val),
+                _ if looks_like_env_var => {
+                    return Err(AppError::InvalidInput(format!(
+                        "环境变量 {trimmed} 未注入当前桌面进程，请在终端验证或改用直连密钥"
+                    )));
+                }
+                _ => Some(trimmed.to_string()),
+            }
         } else {
             Some(trimmed.to_string())
         }
@@ -583,7 +600,22 @@ fn scalar_string_or_tag(value: &YamlValueSerde) -> Option<String> {
     match value {
         YamlValueSerde::String(value) => Some(value.clone()),
         YamlValueSerde::Tagged(tagged) => {
-            scalar_string(&tagged.value).or_else(|| Some(format!("!{}", tagged.tag)))
+            let tag = tagged.tag.to_string();
+            if !tag.starts_with("!!") {
+                let normalized_tag = if tag.starts_with('!') {
+                    tag
+                } else {
+                    format!("!{tag}")
+                };
+                match scalar_string(&tagged.value) {
+                    Some(rest) if !rest.trim().is_empty() => {
+                        Some(format!("{normalized_tag} {rest}"))
+                    }
+                    _ => Some(normalized_tag),
+                }
+            } else {
+                scalar_string(&tagged.value)
+            }
         }
         _ => None,
     }
@@ -1129,8 +1161,13 @@ pub(crate) fn omp_candidates(
 pub async fn discover_omp_cli() -> Result<OmpCliDiscovery, AppError> {
     tokio::task::spawn_blocking(|| {
         let home = get_home_dir();
-        let local_app_data = home.join("AppData").join("Local");
-        let candidates = omp_candidates(Some(&local_app_data), Some(&home), Vec::new(), true);
+        let local_app_data = std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join("AppData").join("Local"));
+        let path_dirs = std::env::var_os("PATH")
+            .map(|paths| std::env::split_paths(&paths).collect())
+            .unwrap_or_default();
+        let candidates = omp_candidates(Some(&local_app_data), Some(&home), path_dirs, true);
         for candidate in candidates {
             if candidate.is_file() {
                 return Ok(OmpCliDiscovery {

@@ -209,7 +209,8 @@ async function invokeOmp<T>(
 
 export function createOmpModelsPort(): OmpModelsPort {
   return {
-    readConfig: () => invokeOmp("read_omp_config", undefined, parseOmpConfigRead),
+    readConfig: () =>
+      invokeOmp("read_omp_config", undefined, parseOmpConfigRead),
     discoverCli: () =>
       invokeOmp("discover_omp_cli", undefined, parseOmpCliDiscovery),
     previewSave: (request: OmpSaveRequest) =>
