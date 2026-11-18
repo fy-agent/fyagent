@@ -79,11 +79,18 @@ export function OpenCodeModelsPanel({
   const [allowNoApiKey, setAllowNoApiKey] = useState(false);
   const [manualDraft, setManualDraft] = useState("");
   const [draftModelIds, setDraftModelIds] = useState<string[]>([]);
+  const [fetchedModels, setFetchedModels] = useState<{
+    target: string;
+    revision: string | null;
+    ids: string[];
+    truncated: boolean;
+  } | null>(null);
+  const fetchEpoch = useRef(0);
+  const [fetchedSearch, setFetchedSearch] = useState("");
   const [ownedByById, setOwnedByById] = useState<Record<string, string>>({});
   const [existingSearch, setExistingSearch] = useState("");
   const [draftSearch, setDraftSearch] = useState("");
   const [existingOpen, setExistingOpen] = useState(false);
-  const [truncated, setTruncated] = useState(false);
   const [busy, setBusy] = useState<
     "fetch" | "save" | "delete" | "reachability" | "subscription" | null
   >(null);
@@ -131,6 +138,15 @@ export function OpenCodeModelsPanel({
   const modelIds = currentProvider?.modelIds ?? EMPTY_MODEL_IDS;
   const readOnlyProvider = currentProvider?.editable === false;
   const providerName = providerNameDraft ?? currentProvider?.name ?? "";
+  const snapshotRevision = snapshotQuery.data?.revision ?? null;
+  const currentFetchedModels =
+    fetchedModels?.target === selectedTarget &&
+    fetchedModels.revision === snapshotRevision
+      ? fetchedModels
+      : null;
+  const candidateIds = (currentFetchedModels?.ids ?? []).filter(
+    (id) => !modelIds.includes(id),
+  );
   const writeTargets: readonly ModelWriteTarget[] = snapshotQuery.data
     ? [
         {
@@ -169,6 +185,10 @@ export function OpenCodeModelsPanel({
     };
   }, []);
 
+  useEffect(() => {
+    fetchEpoch.current += 1;
+  }, [active, selectedTarget, snapshotRevision]);
+
   const applyProviderSelection = (target: string) => {
     setProviderSelection(target);
     setPendingProviderSelection(null);
@@ -178,6 +198,9 @@ export function OpenCodeModelsPanel({
     setAllowNoApiKey(false);
     setManualDraft("");
     setDraftModelIds([]);
+    setFetchedModels(null);
+    setFetchedSearch("");
+    fetchEpoch.current += 1;
     setOwnedByById({});
     setExistingSearch("");
     setDraftSearch("");
@@ -198,8 +221,9 @@ export function OpenCodeModelsPanel({
     }
   };
 
-  const validateConnection = (): boolean => {
-    if (!isHttpUrl(baseUrl.trim())) {
+  const validateConnection = (reuseSaved = true): boolean => {
+    const canReuse = reuseSaved && currentProvider?.editable === true;
+    if ((!canReuse || baseUrl.trim()) && !isHttpUrl(baseUrl.trim())) {
       show("baseUrl", {
         tone: "error",
         title: "请输入有效的服务地址",
@@ -208,8 +232,16 @@ export function OpenCodeModelsPanel({
       focusControl(baseUrlInputRef.current);
       return false;
     }
-    if (!allowNoApiKey && !apiKeyRef.current.trim()) {
-      show("apiKey", { tone: "error", title: "请输入 API Key" });
+    if (
+      !apiKeyRef.current.trim() &&
+      ((canReuse && baseUrl.trim()) || (!canReuse && !allowNoApiKey))
+    ) {
+      show("apiKey", {
+        tone: "error",
+        title: canReuse
+          ? "填写服务地址时，请同时填写新的 API Key"
+          : "请输入 API Key",
+      });
       focusControl(apiKeyInputRef.current);
       return false;
     }
@@ -217,40 +249,73 @@ export function OpenCodeModelsPanel({
   };
 
   const fetchModels = async () => {
-    if (writeLock.current || !validateConnection()) return;
+    if (
+      !active ||
+      readOnlyProvider ||
+      !snapshotQuery.data ||
+      snapshotQuery.isError ||
+      writeLock.current ||
+      !validateConnection()
+    )
+      return;
     writeLock.current = true;
+    const submittedEpoch = fetchEpoch.current;
+    const submittedRevision = draftCommit.captureRevision();
+    const isCurrentFetch = () =>
+      mountedRef.current &&
+      fetchEpoch.current === submittedEpoch &&
+      draftCommit.isCurrentRevision(submittedRevision);
     setBusy("fetch");
     clear();
     try {
       const result = await ports.opencodeModels.fetchProviderModels({
+        ...(selectedProviderId !== null
+          ? {
+              providerId: selectedProviderId,
+              expectedRevision: snapshotRevision,
+            }
+          : {}),
         baseUrl: baseUrl.trim(),
         apiKey: apiKeyRef.current.trim(),
         allowNoApiKey,
       });
-      if (!mountedRef.current) return;
+      if (!isCurrentFetch()) return;
       const ids = result.models.map((model) => model.id);
       const nextOwned: Record<string, string> = {};
       for (const model of result.models) {
         if (model.ownedBy) nextOwned[model.id] = model.ownedBy;
       }
       setOwnedByById((current) => ({ ...current, ...nextOwned }));
-      setDraftModelIds((current) => addUniqueModelIds(current, ids));
-      draftCommit.markDirty();
-      setTruncated(result.truncated);
+      setFetchedModels({
+        target: selectedTarget,
+        revision: snapshotRevision,
+        ids,
+        truncated: result.truncated,
+      });
       show("fetch", {
         tone: result.truncated ? "warning" : "info",
         title: result.truncated
           ? "已达到可显示的模型数量上限"
           : `已读取 ${ids.length} 个模型`,
-        description: "请确认选择后再保存。",
+        description: "选择需要添加的模型后保存；已有模型保持不变。",
       });
-    } catch {
-      if (mountedRef.current)
+    } catch (error) {
+      if (isCurrentFetch()) {
+        if (nativeErrorCode(error) === "OPENCODE_CONCURRENT_MODIFICATION") {
+          show("fetch", {
+            tone: "warning",
+            title: "配置已被其他操作修改",
+            description: "请检查当前设置后重新拉取模型。",
+          });
+          await refreshAuthoritativeState();
+          return;
+        }
         show("fetch", {
           tone: "error",
           title: "模型读取失败",
-          description: "请检查地址、凭据和服务状态后重试。",
+          description: "请检查服务状态，或重新填写地址和 API Key 后重试。",
         });
+      }
     } finally {
       if (mountedRef.current) setBusy(null);
       writeLock.current = false;
@@ -313,6 +378,7 @@ export function OpenCodeModelsPanel({
     setBusy("save");
     clear();
     let shouldRefresh = true;
+    let saved = false;
     let rereadNotice: { confirmed: Notice; unconfirmed: Notice } | null = null;
     try {
       const result = await ports.opencodeModels.saveModels(request);
@@ -320,16 +386,19 @@ export function OpenCodeModelsPanel({
       switch (result.state) {
         case "saved":
           setPendingOverwrite(null);
-          draftCommit.commitRevision(submittedRevision);
-          if (draftCommit.isCurrentRevision(submittedRevision)) {
-            setDraftModelIds([]);
-            setManualDraft("");
-          }
-          show("save", {
-            tone: "info",
-            title: "OpenCode 模型配置已保存",
-            description: `共 ${result.modelCount} 个模型；新增 ${result.createdEntries}，更新 ${result.updatedEntries}。`,
-          });
+          saved = true;
+          rereadNotice = {
+            confirmed: {
+              tone: "info",
+              title: "OpenCode 模型配置已保存",
+              description: `共 ${result.modelCount} 个模型；新增 ${result.createdEntries}，更新 ${result.updatedEntries}。`,
+            },
+            unconfirmed: {
+              tone: "warning",
+              title: "暂时无法确认模型配置",
+              description: "请重新打开模型页面并检查设置。",
+            },
+          };
           break;
         case "concurrent_modification":
           setPendingOverwrite(null);
@@ -406,6 +475,18 @@ export function OpenCodeModelsPanel({
       const rereadConfirmed = shouldRefresh
         ? await refreshAuthoritativeState()
         : false;
+      if (mountedRef.current && saved) {
+        if (rereadConfirmed) {
+          draftCommit.commitRevision(submittedRevision);
+          if (draftCommit.isCurrentRevision(submittedRevision)) {
+            setDraftModelIds([]);
+            setManualDraft("");
+            if (request.providerId !== null) setBaseUrl("");
+          }
+        } else {
+          onBlockWrites();
+        }
+      }
       if (mountedRef.current && rereadNotice) {
         show(
           "save",
@@ -724,6 +805,12 @@ export function OpenCodeModelsPanel({
               isErrorNotice(notices.baseUrl) || isErrorNotice(notices.apiKey)
             }
           >
+            {currentProvider && (
+              <p className="fy-models-muted">
+                地址和 API Key 留空时，拉取与保存会沿用已保存的连接。
+                如需更换服务地址，请同时填写新的 API Key。
+              </p>
+            )}
             <div className="fy-models-form">
               <label
                 className="fy-control-field"
@@ -751,10 +838,15 @@ export function OpenCodeModelsPanel({
                   value={baseUrl}
                   onChange={(event) => {
                     setBaseUrl(event.target.value);
+                    setFetchedModels(null);
                     draftCommit.markDirty();
                     dismiss("baseUrl");
                   }}
-                  placeholder="https://gateway.example/v1"
+                  placeholder={
+                    currentProvider
+                      ? "留空沿用已保存的服务地址"
+                      : "https://gateway.example/v1"
+                  }
                   autoComplete="off"
                   spellCheck={false}
                   aria-invalid={isErrorNotice(notices.baseUrl)}
@@ -775,6 +867,7 @@ export function OpenCodeModelsPanel({
                   value={apiKey}
                   onChange={(event) => {
                     setApiKey(event.target.value);
+                    setFetchedModels(null);
                     dismiss("apiKey");
                   }}
                   autoComplete="off"
@@ -785,6 +878,9 @@ export function OpenCodeModelsPanel({
                   }
                   revealLabel="显示 API Key"
                   hideLabel="隐藏 API Key"
+                  placeholder={
+                    currentProvider ? "留空沿用已保存的 API Key" : undefined
+                  }
                 />
                 <FieldFeedback
                   id="opencode-api-key-error"
@@ -795,6 +891,7 @@ export function OpenCodeModelsPanel({
                 checked={allowNoApiKey}
                 onCheckedChange={(checked) => {
                   setAllowNoApiKey(checked);
+                  setFetchedModels(null);
                   draftCommit.markDirty();
                   if (checked) dismiss("apiKey");
                 }}
@@ -810,7 +907,7 @@ export function OpenCodeModelsPanel({
             aria-label="待保存的模型 ID"
           >
             <h3>待保存的模型 ID</h3>
-            {truncated ? (
+            {currentFetchedModels?.truncated ? (
               <p className="fy-models-muted">已达到可显示的模型数量上限。</p>
             ) : null}
             {draftModelIds.length > 0 ? (
@@ -846,7 +943,7 @@ export function OpenCodeModelsPanel({
                   ownedByById={ownedByById}
                   disabled={busy !== null && busy !== "reachability"}
                   resetVersion={draftCommit.resetVersion}
-                  onPrepare={validateConnection}
+                  onPrepare={() => validateConnection(false)}
                   onBusyChange={(probing) =>
                     setBusy(probing ? "reachability" : null)
                   }
@@ -867,7 +964,7 @@ export function OpenCodeModelsPanel({
                   }
                 />
                 <Button
-                  disabled={busy !== null}
+                  disabled={busy !== null || loading || readFailed}
                   onClick={() => void fetchModels()}
                 >
                   {busy === "fetch" ? "读取中…" : "拉取模型"}
@@ -877,7 +974,6 @@ export function OpenCodeModelsPanel({
                   disabled={busy !== null || draftModelIds.length === 0}
                   onClick={() => {
                     setDraftModelIds([]);
-                    setTruncated(false);
                     draftCommit.markDirty();
                   }}
                 >
@@ -886,6 +982,39 @@ export function OpenCodeModelsPanel({
               </div>
               <FieldFeedback id="opencode-fetch-error" notice={notices.fetch} />
             </div>
+            {currentFetchedModels && (
+              <section aria-label="可添加的模型 ID">
+                <h3>选择要添加的模型</h3>
+                {candidateIds.length > 0 && (
+                  <ModelSearchField
+                    id="opencode-fetched-search"
+                    label="搜索可添加模型"
+                    value={fetchedSearch}
+                    onChange={setFetchedSearch}
+                  />
+                )}
+                <GroupedModelChips
+                  ids={filterModelIds(candidateIds, fetchedSearch)}
+                  selectedIds={draftModelIds}
+                  selectDisabled={busy !== null}
+                  ownedByById={ownedByById}
+                  onSelect={(modelId) => {
+                    setDraftModelIds((current) =>
+                      current.includes(modelId)
+                        ? current.filter((id) => id !== modelId)
+                        : [...current, modelId],
+                    );
+                    draftCommit.markDirty();
+                    dismiss("draft");
+                  }}
+                  emptyLabel={
+                    fetchedSearch.trim()
+                      ? "没有匹配的模型 ID"
+                      : "拉取到的模型均已保存。"
+                  }
+                />
+              </section>
+            )}
             <div className="fy-models-manual-row">
               <label className="fy-control-field fy-models-manual-field">
                 自定义模型 ID

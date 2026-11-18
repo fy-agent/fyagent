@@ -834,6 +834,12 @@ describe("Models page", () => {
     );
     expect(screen.getByLabelText("API Key")).toHaveValue(secret);
     expect(await screen.findByText("gpt-4o")).toBeVisible();
+    await user.click(
+      within(screen.getByRole("region", { name: "可添加的模型 ID" })).getByRole(
+        "button",
+        { name: "gpt-4o" },
+      ),
+    );
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
     await confirmWriteDisclosure(user);
     await waitFor(() =>

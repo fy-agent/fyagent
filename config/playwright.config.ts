@@ -60,6 +60,7 @@ export default defineConfig({
         "first-use-guide.spec.ts",
         "fde-presets.spec.ts",
         "xai-subscription.spec.ts",
+        "opencode-model-refresh.spec.ts",
         "presentation-choreography.spec.ts",
       ],
       use: {
