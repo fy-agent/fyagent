@@ -139,7 +139,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
-      "5e5de7cc58815a9f49b12eeaefd6e59b61121b89b2429ce8f6db69151db2e8ee"
+      "f3faac3e7403da3fd6921acc02ac442a9386cf792c32f52590910a527fb34742"
     ],
     [
       "src-tauri/src/codex_desktop/types.rs",
@@ -567,7 +567,7 @@
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
-      "d58b538143af0c26b9326c71ebc1d9e14e563eb82020b715ec43bcf160fe6ea7"
+      "9a912716e6f331841044231059660f2302a1dc1b92be433c3eb7d0ecc9275c00"
     ],
     [
       "tests/hdiutilRetry.test.ts",
