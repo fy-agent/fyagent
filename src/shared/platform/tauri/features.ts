@@ -2,40 +2,72 @@ import type { FeaturePorts } from "../../features/ports";
 import { createAgentAuthPort } from "./feature-ports/agentAuth";
 import { createAgentFeaturePorts } from "./feature-ports/agents";
 import { createAgentInstallReadinessPort } from "./feature-ports/agentInstallReadiness";
-import { createChangePlansPort } from "./feature-ports/changePlans";
-import { createContentFeaturePorts } from "./feature-ports/content";
-import { createQoderTraeFeaturePorts } from "./feature-ports/qoderTrae";
 import { createGrokToolingPort } from "./feature-ports/grokTooling";
-import { createManagedAuthPort } from "./feature-ports/managedAuth";
 import { createSimpleFeaturePorts } from "./feature-ports/simple";
 
+function memoizePort<T>(load: () => Promise<T>): () => Promise<T> {
+  let cached: Promise<T> | null = null;
+  return () => {
+    cached ??= load().catch((error) => {
+      cached = null;
+      throw error;
+    });
+    return cached;
+  };
+}
+
 export function createTauriFeaturePorts(): FeaturePorts {
-  const codexDesktop = async () => {
+  const codexDesktop = memoizePort(async () => {
     const { createCodexDesktopPort } = await import(
       "./feature-ports/codexDesktop"
     );
     return createCodexDesktopPort();
-  };
-  const configPack = async () => {
+  });
+  const configPack = memoizePort(async () => {
     const { createConfigPackPort } = await import("./feature-ports/configPack");
     return createConfigPackPort();
-  };
-  const databaseRecovery = async () => {
+  });
+  const databaseRecovery = memoizePort(async () => {
     const { createDatabaseRecoveryPort } = await import(
       "./feature-ports/databaseRecovery"
     );
     return createDatabaseRecoveryPort();
-  };
-  const models = async () => {
+  });
+  const models = memoizePort(async () => {
     const { createModelFeaturePorts } = await import("./feature-ports/models");
     return createModelFeaturePorts();
-  };
-  const sessionMigration = async () => {
+  });
+  const sessionMigration = memoizePort(async () => {
     const { createSessionMigrationPort } = await import(
       "./feature-ports/sessionMigration"
     );
     return createSessionMigrationPort();
-  };
+  });
+  const managedAuth = memoizePort(async () => {
+    const { createManagedAuthPort } = await import(
+      "./feature-ports/managedAuth"
+    );
+    return createManagedAuthPort();
+  });
+  const changePlans = memoizePort(async () => {
+    const { createChangePlansPort } = await import(
+      "./feature-ports/changePlans"
+    );
+    return createChangePlansPort();
+  });
+  const qoderTrae = memoizePort(async () => {
+    const { createQoderTraeFeaturePorts } = await import(
+      "./feature-ports/qoderTrae"
+    );
+    return createQoderTraeFeaturePorts();
+  });
+  const content = memoizePort(async () => {
+    const { createContentFeaturePorts } = await import(
+      "./feature-ports/content"
+    );
+    return createContentFeaturePorts();
+  });
+
   return {
     configPack: {
       list: async (...args) => (await configPack()).list(...args),
@@ -55,11 +87,68 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await databaseRecovery()).checkReadability(),
     },
     agentAuth: createAgentAuthPort(),
-    managedAuth: createManagedAuthPort(),
+    managedAuth: {
+      getOverview: async () => (await managedAuth()).getOverview(),
+      getAccountQuota: async (...args) =>
+        (await managedAuth()).getAccountQuota(...args),
+      startLogin: async (...args) => (await managedAuth()).startLogin(...args),
+      getLoginSession: async (...args) =>
+        (await managedAuth()).getLoginSession(...args),
+      cancelLogin: async (...args) =>
+        (await managedAuth()).cancelLogin(...args),
+      reopenLogin: async (...args) =>
+        (await managedAuth()).reopenLogin(...args),
+      switchLoginMethod: async (...args) =>
+        (await managedAuth()).switchLoginMethod(...args),
+      setDefaultAccount: async (...args) =>
+        (await managedAuth()).setDefaultAccount(...args),
+      previewAccountRemoval: async (...args) =>
+        (await managedAuth()).previewAccountRemoval(...args),
+      removeAccount: async (...args) =>
+        (await managedAuth()).removeAccount(...args),
+      previewConnectionAction: async (...args) =>
+        (await managedAuth()).previewConnectionAction(...args),
+      applyConnectionAction: async (...args) =>
+        (await managedAuth()).applyConnectionAction(...args),
+    },
     agentInstallReadiness: createAgentInstallReadinessPort(),
-    changePlans: createChangePlansPort(),
+    changePlans: {
+      createCodexProviderSwitchPlan: async (...args) =>
+        (await changePlans()).createCodexProviderSwitchPlan(...args),
+      createCodexProviderUpsertPlan: async (...args) =>
+        (await changePlans()).createCodexProviderUpsertPlan(...args),
+      createWorkBuddySubscriptionPlan: async (...args) =>
+        (await changePlans()).createWorkBuddySubscriptionPlan(...args),
+      createWorkBuddySavePlan: async (...args) =>
+        (await changePlans()).createWorkBuddySavePlan(...args),
+      applyChangePlan: async (...args) =>
+        (await changePlans()).applyChangePlan(...args),
+      cancelChangeJob: async (...args) =>
+        (await changePlans()).cancelChangeJob(...args),
+      getChangeJob: async (...args) =>
+        (await changePlans()).getChangeJob(...args),
+      listRecoverableChangeJobs: async () =>
+        (await changePlans()).listRecoverableChangeJobs(),
+    },
     ...createAgentFeaturePorts(),
-    ...createQoderTraeFeaturePorts(),
+    qoderwork: {
+      getHooks: async () => (await qoderTrae()).qoderwork.getHooks(),
+      saveHooks: async (...args) =>
+        (await qoderTrae()).qoderwork.saveHooks(...args),
+    },
+    externalMcp: {
+      validate: async (...args) =>
+        (await qoderTrae()).externalMcp.validate(...args),
+    },
+    traeWork: {
+      validateModelConfig: async (...args) =>
+        (await qoderTrae()).traeWork.validateModelConfig(...args),
+      testModelEndpoint: async (...args) =>
+        (await qoderTrae()).traeWork.testModelEndpoint(...args),
+      cancelModelEndpoint: async (...args) =>
+        (await qoderTrae()).traeWork.cancelModelEndpoint(...args),
+      getModelIds: async () => (await qoderTrae()).traeWork.getModelIds(),
+    },
     codexDesktop: {
       getLocalStatus: async (...args) =>
         (await codexDesktop()).getLocalStatus(...args),
@@ -93,7 +182,6 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).providers.adoptCodexCatalog(...args),
       restartCodexDaemon: async (...args) =>
         (await models()).providers.restartCodexDaemon(...args),
-
       previewClaudeQuickSetup: async (...args) =>
         (await models()).providers.previewClaudeQuickSetup(...args),
       applyClaudeQuickSetupPreview: async (...args) =>
@@ -164,7 +252,36 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).opencodeModels.cancelModelProbe(...args),
     },
     ...createSimpleFeaturePorts(),
-    ...createContentFeaturePorts(),
+    prompts: {
+      getAll: async (...args) => (await content()).prompts.getAll(...args),
+      getCurrentFileContent: async (...args) =>
+        (await content()).prompts.getCurrentFileContent(...args),
+      upsert: async (...args) => (await content()).prompts.upsert(...args),
+      delete: async (...args) => (await content()).prompts.delete(...args),
+      enable: async (...args) => (await content()).prompts.enable(...args),
+      importFromFile: async (...args) =>
+        (await content()).prompts.importFromFile(...args),
+    },
+    memory: {
+      readDocument: async (...args) =>
+        (await content()).memory.readDocument(...args),
+      writeDocument: async (...args) =>
+        (await content()).memory.writeDocument(...args),
+      getHermesLimits: async () => (await content()).memory.getHermesLimits(),
+      setHermesEnabled: async (...args) =>
+        (await content()).memory.setHermesEnabled(...args),
+      listDailyFiles: async () => (await content()).memory.listDailyFiles(),
+      readDailyFile: async (...args) =>
+        (await content()).memory.readDailyFile(...args),
+      writeDailyFile: async (...args) =>
+        (await content()).memory.writeDailyFile(...args),
+      deleteDailyFile: async (...args) =>
+        (await content()).memory.deleteDailyFile(...args),
+      searchDailyFiles: async (...args) =>
+        (await content()).memory.searchDailyFiles(...args),
+      openOpenClawDirectory: async (...args) =>
+        (await content()).memory.openOpenClawDirectory(...args),
+    },
     sessions: {
       listSessions: async (...args) =>
         (await sessionMigration()).listSessions(...args),
