@@ -136,6 +136,8 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       applyQuickSetupWithResult: rejectNativeOnly,
       previewClaudeQuickSetup: rejectNativeOnly,
       applyClaudeQuickSetupPreview: rejectNativeOnly,
+      previewBatchSetup: rejectNativeOnly,
+      applyBatchSetup: rejectNativeOnly,
       fetchModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
       checkModel: rejectNativeOnly,

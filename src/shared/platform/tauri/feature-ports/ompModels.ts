@@ -209,12 +209,12 @@ async function invokeOmp<T>(
 
 export function createOmpModelsPort(): OmpModelsPort {
   return {
-    readConfig: () => invokeOmp("omp_read_config", undefined, parseOmpConfigRead),
+    readConfig: () => invokeOmp("read_omp_config", undefined, parseOmpConfigRead),
     discoverCli: () =>
-      invokeOmp("omp_discover_cli", undefined, parseOmpCliDiscovery),
+      invokeOmp("discover_omp_cli", undefined, parseOmpCliDiscovery),
     previewSave: (request: OmpSaveRequest) =>
-      invokeOmp("omp_preview_save", { plan: request }, parseOmpSavePreview),
+      invokeOmp("preview_omp_save", { plan: request }, parseOmpSavePreview),
     applySave: (confirmation: OmpApplyConfirmation) =>
-      invokeOmp("omp_apply_save", { request: confirmation }, parseOmpSaveResult),
+      invokeOmp("apply_omp_save", { plan: confirmation }, parseOmpSaveResult),
   };
 }

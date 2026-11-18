@@ -186,6 +186,10 @@ export function createTauriFeaturePorts(): FeaturePorts {
         (await models()).providers.previewClaudeQuickSetup(...args),
       applyClaudeQuickSetupPreview: async (...args) =>
         (await models()).providers.applyClaudeQuickSetupPreview(...args),
+      previewBatchSetup: async (...args) =>
+        (await models()).providers.previewBatchSetup(...args),
+      applyBatchSetup: async (...args) =>
+        (await models()).providers.applyBatchSetup(...args),
       getSummary: async (...args) =>
         (await models()).providers.getSummary(...args),
       getProxyRestorePreview: async (...args) =>

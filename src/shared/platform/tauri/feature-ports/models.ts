@@ -17,6 +17,10 @@ import { parseProviderLiveSummary } from "./providerLiveSummary";
 
 import type { FeaturePorts } from "../../../features/ports";
 import type {
+  BatchProviderApplyRequest,
+  BatchProviderApplyResult,
+  BatchProviderPreviewRequest,
+  BatchProviderPreviewResult,
   FetchedModelList,
   FetchedModelRef,
   ModelProbeRequest,
@@ -708,6 +712,14 @@ export function createModelFeaturePorts(): Pick<
             request: parseClaudeQuickSetupApplyRequest(request),
           }),
         ),
+      previewBatchSetup: (request: BatchProviderPreviewRequest) =>
+        invoke<BatchProviderPreviewResult>("preview_batch_provider_setup", {
+          request,
+        }),
+      applyBatchSetup: (request: BatchProviderApplyRequest) =>
+        invoke<BatchProviderApplyResult>("apply_batch_provider_setup", {
+          request,
+        }),
       getSummary: async (app) =>
         parseProviderSummary(
           await invoke("get_provider_summary", { app }),

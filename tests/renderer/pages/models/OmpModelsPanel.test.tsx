@@ -5,7 +5,11 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { OmpModelsPanel } from "@/pages/models/OmpModelsPanel";
-import type { OmpConfigRead } from "@/shared/features/omp";
+import type {
+  OmpConfigRead,
+  OmpSavePreview,
+  OmpSaveRequest,
+} from "@/shared/features/omp";
 import { FeatureProvider } from "@/shared/features/provider";
 import { createBrowserFeaturePorts } from "@/shared/platform/browser/features";
 
@@ -32,28 +36,30 @@ function renderPanel(read: OmpConfigRead = emptyOmpRead()) {
     version: "18.12.5",
     executablePath: "~/.bun/bin/omp",
   }));
-  ports.ompModels.previewSave = vi.fn(async (req) => ({
-    planId: "omp-plan:1",
-    planDigest: "digest-1",
-    profile: "default",
-    modelsPath: "~/.omp/agent/models.yml",
-    configPath: "~/.omp/agent/config.yml",
-    provider: {
-      id: req.provider.id,
-      baseUrl: req.provider.baseUrl,
-      api: req.provider.api,
-      auth: req.provider.auth ?? "apiKey",
-      hasApiKey: Boolean(req.provider.apiKey),
-      hasCommandKey: Boolean(req.provider.apiKey?.startsWith("!")),
-      models: req.provider.models.map((m) => ({
-        id: m.id,
-        name: m.name ?? null,
-      })),
-    },
-    defaultModel: req.defaultModel ?? null,
-    changedFiles: req.defaultModel ? ["models", "config"] : ["models"],
-    warnings: [],
-  }));
+  ports.ompModels.previewSave = vi.fn(
+    async (req: OmpSaveRequest): Promise<OmpSavePreview> => ({
+      planId: "omp-plan:1",
+      planDigest: "digest-1",
+      profile: "default",
+      modelsPath: "~/.omp/agent/models.yml",
+      configPath: "~/.omp/agent/config.yml",
+      provider: {
+        id: req.provider.id,
+        baseUrl: req.provider.baseUrl,
+        api: req.provider.api,
+        auth: req.provider.auth ?? "apiKey",
+        hasApiKey: Boolean(req.provider.apiKey),
+        hasCommandKey: Boolean(req.provider.apiKey?.startsWith("!")),
+        models: req.provider.models.map((m) => ({
+          id: m.id,
+          name: m.name ?? null,
+        })),
+      },
+      defaultModel: req.defaultModel ?? null,
+      changedFiles: req.defaultModel ? ["models", "config"] : ["models"],
+      warnings: [],
+    }),
+  );
   ports.ompModels.applySave = vi.fn(async () => ({
     modelsPath: "~/.omp/agent/models.yml",
     configPath: "~/.omp/agent/config.yml",

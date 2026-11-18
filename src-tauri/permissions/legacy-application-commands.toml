@@ -249,6 +249,8 @@ commands.allow = [
   "read_omo_slim_local_file",
   "read_omp_config",
   "preview_omp_save",
+  "preview_batch_provider_setup",
+  "apply_batch_provider_setup",
   "read_workspace_file",
   "rebuild_codex_usage",
   "record_models_dev_sync_result",

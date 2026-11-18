@@ -122,6 +122,14 @@ export type {
 } from "./agents";
 
 export type {
+  BatchProviderApplyRequest,
+  BatchProviderApplyResult,
+  BatchProviderPreviewItem,
+  BatchProviderPreviewRequest,
+  BatchProviderPreviewResult,
+  BatchSetupTargetId,
+  BatchSetupTargetSpec,
+  BatchTargetOutcome,
   CodexProviderMutationWarning,
   FetchedModelList,
   FetchedModelRef,

@@ -1766,6 +1766,17 @@ pub(crate) fn inspect_codex_intended_provider(
     if !is_safe_opaque_id(&target.id) {
         return Err(ChangePlanErrorCode::InvalidTarget);
     }
+    let Some(target_settings) = target.settings_config.as_object() else {
+        return Err(ChangePlanErrorCode::InvalidTarget);
+    };
+    if let Some(config_value) = target_settings.get("config") {
+        let Some(config_text) = config_value.as_str() else {
+            return Err(ChangePlanErrorCode::InvalidTarget);
+        };
+        if config_text.parse::<toml::Table>().is_err() {
+            return Err(ChangePlanErrorCode::InvalidTarget);
+        }
+    }
     let db_current_provider_id = validate_optional_provider_id(
         state
             .db

@@ -2253,6 +2253,8 @@ pub fn run() {
             commands::preview_omp_save,
             commands::apply_omp_save,
             commands::discover_omp_cli,
+            commands::preview_batch_provider_setup,
+            commands::apply_batch_provider_setup,
             // ours: endpoint speed test + custom endpoint management
             commands::test_api_endpoints,
             commands::get_custom_endpoints,

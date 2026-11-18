@@ -1,10 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ProviderApiFormFill } from "../../shared/features/controls/ProviderApiFields";
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
 import {
   isOfficialOnlyModelTarget,
   type ProviderAppId,
 } from "../../shared/features/types";
+import { Button } from "../../shared/ui/Button";
 import {
   CatalogList,
   CatalogListItem,
@@ -29,6 +38,12 @@ import { WorkBuddyPanel } from "./WorkBuddyPanel";
 import { ConfigPackButton } from "../../shared/features/config-pack-ui/ConfigPackButton";
 import type { PortableProvider } from "../../domain/config-pack";
 import "./Page.css";
+
+const PresetBatchDrawer = lazy(() =>
+  import("./PresetBatchDrawer").then((mod) => ({
+    default: mod.PresetBatchDrawer,
+  })),
+);
 
 const TARGET_LABELS: Record<ModelTarget, string> = {
   qoderwork: "QoderWork CN",
@@ -120,6 +135,8 @@ export function ModelsPage() {
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
     Partial<Record<ProviderAppId | "opencode", boolean>>
   >({});
+  const [batchDrawerOpen, setBatchDrawerOpen] = useState(false);
+  const batchButtonOriginRef = useRef<HTMLElement | null>(null);
   const [importedForm, setImportedForm] = useState<{
     app: "claude" | "codex";
     sequence: number;
@@ -167,8 +184,28 @@ export function ModelsPage() {
     >
       <header className="fy-models-page-heading">
         <h1>模型管理</h1>
-        <ConfigPackButton onFillModelForm={fillImportedForm} />
+        <div className="fy-models-heading-actions">
+          <Button
+            className="fy-control-button-primary"
+            onClick={(e) => {
+              batchButtonOriginRef.current = e.currentTarget;
+              setBatchDrawerOpen(true);
+            }}
+          >
+            一键配置主流大模型
+          </Button>
+          <ConfigPackButton onFillModelForm={fillImportedForm} />
+        </div>
       </header>
+      {batchDrawerOpen ? (
+        <Suspense fallback={null}>
+          <PresetBatchDrawer
+            open={batchDrawerOpen}
+            originRef={batchButtonOriginRef}
+            onOpenChange={setBatchDrawerOpen}
+          />
+        </Suspense>
+      ) : null}
       <CatalogMasterDetail>
         <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择应用">
           <CatalogList>

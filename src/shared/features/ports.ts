@@ -56,6 +56,10 @@ import type {
   BindManagedProxyResult,
   BindOpenCodeManagedRequest,
   BindOpenCodeManagedResult,
+  BatchProviderPreviewRequest,
+  BatchProviderPreviewResult,
+  BatchProviderApplyRequest,
+  BatchProviderApplyResult,
   ExternalAgentLaunchDestination,
   ExternalAgentLaunchResult,
   ExternalAgentRuntimeStatus,
@@ -178,6 +182,12 @@ export interface ProvidersPort {
   applyClaudeQuickSetupPreview(
     request: ClaudeQuickSetupApplyRequest,
   ): Promise<ClaudeQuickSetupOutcome>;
+  previewBatchSetup(
+    request: BatchProviderPreviewRequest,
+  ): Promise<BatchProviderPreviewResult>;
+  applyBatchSetup(
+    request: BatchProviderApplyRequest,
+  ): Promise<BatchProviderApplyResult>;
   getSummary(app: ProviderAppId): Promise<ProviderSummaryQueryData>;
   getProxyRestorePreview(
     app: ProviderAppId,

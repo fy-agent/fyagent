@@ -1646,7 +1646,7 @@ mod tests {
         ] {
             assert!(registered.contains(command));
         }
-        assert_eq!(registered.len(), 406, "review intentional handler changes");
+        assert_eq!(registered.len(), 408, "review intentional handler changes");
         assert_eq!(
             allowed, registered,
             "every registered application command must be granted exactly once while an app ACL manifest exists"

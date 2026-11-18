@@ -120,16 +120,16 @@ fn normalize_path(url: &mut Url) {
     }
     path = path.trim_end_matches('/').to_string();
 
-    // Preserve the original URL serialization, but identify `v1` using the
-    // decoded path-segment value. `Url::path_segments()` intentionally keeps
-    // percent encoding, so comparing its raw segments would miss `%76%31`.
+    // Preserve the original URL serialization, but identify explicit API
+    // version segments (`v1`..`v9`, e.g. Volcengine `/api/v3`, Zhipu `/api/paas/v4`)
+    // using the decoded path-segment value.
     let mut path_candidate = url.clone();
     path_candidate.set_path(if path.is_empty() { "/" } else { &path });
-    let has_v1_segment = path_candidate
+    let has_version_segment = path_candidate
         .path_segments()
-        .is_some_and(|mut segments| segments.any(decoded_segment_is_v1));
+        .is_some_and(|mut segments| segments.any(decoded_segment_is_api_version));
 
-    let normalized_path = if has_v1_segment {
+    let normalized_path = if has_version_segment {
         if path.is_empty() {
             "/".to_string()
         } else {
@@ -143,8 +143,12 @@ fn normalize_path(url: &mut Url) {
     url.set_path(&normalized_path);
 }
 
-fn decoded_segment_is_v1(segment: &str) -> bool {
-    percent_decode_segment(segment).as_deref() == Some("v1")
+fn decoded_segment_is_api_version(segment: &str) -> bool {
+    let Some(decoded) = percent_decode_segment(segment) else {
+        return false;
+    };
+    let bytes = decoded.as_bytes();
+    bytes.len() == 2 && bytes[0] == b'v' && matches!(bytes[1], b'1'..=b'9')
 }
 
 fn percent_decode_segment(segment: &str) -> Option<String> {
@@ -250,11 +254,27 @@ mod tests {
             "https://example.test/%76%31/models"
         );
 
-        let encoded_non_matching =
-            normalize_workbuddy_base_url("https://example.test/%76%32").unwrap();
+        let encoded_v0 =
+            normalize_workbuddy_base_url("https://example.test/%76%30").unwrap();
         assert_eq!(
-            encoded_non_matching.base_url.as_str(),
-            "https://example.test/%76%32/v1"
+            encoded_v0.base_url.as_str(),
+            "https://example.test/%76%30/v1"
+        );
+
+        // Preserve explicit v3 / v4 endpoints (Volcengine Ark / Zhipu GLM) without appending /v1
+        let zhipu =
+            normalize_workbuddy_base_url("https://open.bigmodel.cn/api/paas/v4/").unwrap();
+        assert_eq!(zhipu.base_url.as_str(), "https://open.bigmodel.cn/api/paas/v4");
+        assert_eq!(
+            zhipu.models_url.as_str(),
+            "https://open.bigmodel.cn/api/paas/v4/models"
+        );
+
+        let volc =
+            normalize_workbuddy_base_url("https://ark.cn-beijing.volces.com/api/v3").unwrap();
+        assert_eq!(
+            volc.base_url.as_str(),
+            "https://ark.cn-beijing.volces.com/api/v3"
         );
     }
 

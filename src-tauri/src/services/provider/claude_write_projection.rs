@@ -38,8 +38,8 @@ pub enum ClaudeFileTarget {
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeQuickSetupPreview {
     contract_version: u8,
-    preview_id: String,
-    write_targets: Vec<FileWriteTarget>,
+    pub(crate) preview_id: String,
+    pub(crate) write_targets: Vec<FileWriteTarget>,
     preserved_paths: Vec<String>,
 }
 #[derive(Deserialize)]
@@ -85,7 +85,7 @@ pub struct ClaudeFileOutcome {
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeQuickSetupOutcome {
     contract_version: u8,
-    overall: ClaudeOverall,
+    pub(crate) overall: ClaudeOverall,
     provider_state: ClaudeProviderState,
     files: Vec<ClaudeFileOutcome>,
 }

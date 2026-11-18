@@ -311,3 +311,56 @@ export interface WorkBuddySubscriptionSourceResult {
     localBaseUrl: string;
   } | null;
 }
+
+export const BATCH_SETUP_TARGET_IDS = [
+  "workbuddy",
+  "codex",
+  "claude",
+  "opencode",
+  "omp",
+  "grokbuild",
+] as const;
+export type BatchSetupTargetId = (typeof BATCH_SETUP_TARGET_IDS)[number];
+
+export interface BatchSetupTargetSpec {
+  target: BatchSetupTargetId;
+  providerId: string;
+  providerName: string;
+  baseUrl: string;
+  modelId: string;
+  extraModelIds?: string[];
+  protocol?: ApiProtocol;
+}
+
+export interface BatchProviderPreviewRequest {
+  targets: BatchSetupTargetSpec[];
+}
+
+export interface BatchProviderPreviewItem {
+  target: BatchSetupTargetId;
+  paths: string[];
+  baseUrl: string;
+  modelId: string;
+  ready: boolean;
+  warning?: string;
+}
+
+export interface BatchProviderPreviewResult {
+  items: BatchProviderPreviewItem[];
+}
+
+export interface BatchProviderApplyRequest {
+  apiKey: string;
+  targets: BatchSetupTargetSpec[];
+}
+
+export interface BatchTargetOutcome {
+  target: BatchSetupTargetId;
+  status: "applied" | "failed";
+  message: string;
+  paths: string[];
+}
+
+export interface BatchProviderApplyResult {
+  outcomes: BatchTargetOutcome[];
+}
