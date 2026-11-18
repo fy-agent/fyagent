@@ -137,15 +137,9 @@ describe("FirstUseGuide", () => {
     expect(
       screen.getByRole("button", { name: "跳过引导" }),
     ).toBeInTheDocument();
-    const path = screen.getByRole("region", { name: "首次安装路径" });
-    expect(path).toHaveTextContent("第 1 步问什么");
-    expect(path).toHaveTextContent("这一步不安装软件");
-    expect(path).toHaveTextContent("待补证");
-    expect(path).toHaveTextContent("暂无免费车道");
-    expect(path).toHaveTextContent("不再被读进去");
-    expect(path).toHaveTextContent("一直转圈");
-    expect(path).toHaveTextContent("环境变量");
-    expect(path).toHaveTextContent("不进入推荐安装名单");
+    expect(
+      screen.queryByRole("region", { name: "首次安装路径" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryAllByRole("heading", { level: 2 })).toHaveLength(0);
   });
 

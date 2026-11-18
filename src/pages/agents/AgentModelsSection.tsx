@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 
-import { appendAgentReturnToPath } from "../../shared/features/agent-navigation";
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import {
@@ -18,7 +16,6 @@ import type {
 } from "../../shared/features/types";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { EmptyState, InlineNotice, Spinner } from "../../shared/ui/primitives";
-import { Button } from "../../shared/ui/Button";
 
 import { AgentSectionHeader } from "./AgentSectionHeader";
 
@@ -74,7 +71,6 @@ function ProviderLiveConfiguration({
             <p>实际配置文件已配置</p>
             <p>模型：{live.connection.modelId ?? "未指定模型"}</p>
             <p>服务地址：{live.connection.baseUrl ?? "未指定服务地址"}</p>
-            <p>尚未测试连接。</p>
           </>
         ) : (
           <p>
@@ -104,7 +100,6 @@ export function AgentModelsSection({
   catalogEntry: AgentCatalogEntry;
   onOpenManagement: () => void;
 }) {
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const workBuddyStatus = useWorkBuddyStatus(entry.agentId === "workbuddy");
   const workBuddyModels = useWorkBuddyModelIds(entry.agentId === "workbuddy");
@@ -216,33 +211,6 @@ export function AgentModelsSection({
         actionLabel="管理模型"
         onAction={onOpenManagement}
       />
-      {entry.agentId === "grokbuild" ? (
-        <>
-          <InlineNotice tone="info">
-            要让 Claude Code 或 Codex 使用 SuperGrok，请在账号与认证保存 Grok
-            账号，再到目标软件的模型管理选择账号和模型。
-          </InlineNotice>
-          <div className="fy-agent-action-row">
-            {(["claude", "codex"] as const).map((target) => (
-              <Button
-                key={target}
-                onClick={() =>
-                  navigate(
-                    appendAgentReturnToPath(`/models?target=${target}`, {
-                      agentId: entry.agentId,
-                      section: "models",
-                    }),
-                  )
-                }
-              >
-                {target === "claude"
-                  ? "为 Claude Code 设置订阅"
-                  : "为 Codex 设置订阅"}
-              </Button>
-            ))}
-          </div>
-        </>
-      ) : null}
       {providerApp && !pending ? (
         <>
           <ProviderLiveConfiguration

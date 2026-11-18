@@ -19,6 +19,8 @@
 }
 
 .fy-sessions-empty-state {
+  margin: auto;
+  text-align: center;
   color: var(--fy-text-tertiary);
 }
 

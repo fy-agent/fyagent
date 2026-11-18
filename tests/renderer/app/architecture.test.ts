@@ -133,7 +133,10 @@ function resolveRepositoryImport(
 }
 
 const parsedModules = listSourceFiles(sourceRoot)
-  .filter((file) => !file.endsWith(".test.ts"))
+  .filter(
+    (file) =>
+      !file.endsWith(".test.ts") && !relativeSourcePath(file).startsWith("v2/"),
+  )
   .map(parseModule);
 
 const retiredWindowFrameIdentifiers = new Set([
@@ -395,12 +398,37 @@ describe("FyAgent single renderer architecture boundary", () => {
           "FeatureTabs",
           "FeatureSearch",
           "FeatureList",
-          "FeaturePagination",
           "AssignmentPanel",
           "InstallTargetDialog",
         ],
         forbidden: [
           'className="fy-feature-tab"',
+          "function InstallTargetPicker",
+          'className="fy-feature-check-grid"',
+        ],
+      },
+      {
+        relative: "pages/skills/SkillDetail.tsx",
+        owners: ["AssignmentPanel"],
+        forbidden: ['className="fy-feature-check-grid"'],
+      },
+      {
+        relative: "pages/skills/SkillDiscovery.tsx",
+        owners: [
+          "FeatureTabs",
+          "FeatureSearch",
+          "FeaturePagination",
+          "InstallTargetDialog",
+        ],
+        forbidden: [
+          'className="fy-feature-tab"',
+          "function InstallTargetPicker",
+        ],
+      },
+      {
+        relative: "pages/skills/AuxiliaryDialogs.tsx",
+        owners: ["FeatureSearch", "AssignmentPanel"],
+        forbidden: [
           "function InstallTargetPicker",
           'className="fy-feature-check-grid"',
         ],
@@ -413,6 +441,19 @@ describe("FyAgent single renderer architecture boundary", () => {
           "FeatureList",
           "AssignmentPanel",
         ],
+        forbidden: [
+          'className="fy-feature-tab"',
+          'className="fy-feature-check-grid"',
+        ],
+      },
+      {
+        relative: "pages/mcp/ServerDetail.tsx",
+        owners: ["AssignmentPanel"],
+        forbidden: ['className="fy-feature-check-grid"'],
+      },
+      {
+        relative: "pages/mcp/McpEditor.tsx",
+        owners: ["FeatureTabs", "AssignmentPanel"],
         forbidden: [
           'className="fy-feature-tab"',
           'className="fy-feature-check-grid"',

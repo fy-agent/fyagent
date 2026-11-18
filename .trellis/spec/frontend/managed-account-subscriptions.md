@@ -5,9 +5,9 @@
 Read before changing the OpenAI/xAI account/model picker or managed subscription
 binding. `pages/models/XaiSubscriptionSection.tsx` is the single picker; it
 composes the current Models panels and Managed Auth overview, not a second
-authentication page. Agent Grok model entries link to the Claude/Codex Models
-target with the existing validated Agent-return tuple. Login and account
-recovery use `/auth?view=accounts`.
+authentication page. Agent Grok model entries open `/models?target=grokbuild`
+through the standard `管理模型` action with the existing validated Agent-return
+tuple. Login and account recovery use `/auth?view=accounts`.
 
 General write/draft/secret rules remain in [Models](./models.md). Native
 binding and overview authority stays in

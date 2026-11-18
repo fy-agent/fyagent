@@ -10,7 +10,7 @@ import {
 } from "./support";
 
 const navigationContract = [
-  { path: "/agents", label: "AI软件配置" },
+  { path: "/agents", label: "Agent目录" },
   { path: "/auth", label: "账号与认证" },
   { path: "/models", label: "模型管理" },
   { path: "/skills", label: "Skills 管理" },
