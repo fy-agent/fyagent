@@ -218,7 +218,7 @@ test("revisiting a page keeps its lens size while real tab changes still interpo
   const before = (await lens.boundingBox())!;
   await page
     .getByRole("navigation", { name: "主导航" })
-    .getByRole("link", { name: "AI软件配置", exact: true })
+    .getByRole("link", { name: "Agent目录", exact: true })
     .click();
   // A completed click can precede Router's commit. Establish a real departure
   // before returning, so the original visible auth page cannot start sampling.

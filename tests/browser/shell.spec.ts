@@ -10,7 +10,7 @@ import {
 } from "./support";
 
 const navigationContract = [
-  { path: "/agents", label: "AI软件配置" },
+  { path: "/agents", label: "Agent目录" },
   { path: "/auth", label: "账号与认证" },
   { path: "/models", label: "模型管理" },
   { path: "/skills", label: "Skills 管理" },
@@ -117,7 +117,7 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
   const navigation = page.getByRole("navigation", { name: "主导航" });
   await expect(navigation).toHaveAttribute("data-testid", "side-navigation");
   await expect(
-    navigation.getByText("AI软件配置", { exact: true }),
+    navigation.getByText("Agent目录", { exact: true }),
   ).toBeVisible();
   const configurationToggle = navigation.getByRole("button", {
     name: "配置管理",
@@ -386,7 +386,7 @@ test("keeps the Agents page mounted and skips the loading flash when opening Mod
   await expect(page.locator(".fy-feature-route-loading")).toHaveCount(0);
   await expect(page.getByTestId("agents-page")).toBeHidden();
 
-  await routeLink(navigation, "AI软件配置").click();
+  await routeLink(navigation, "Agent目录").click();
   await expect(page).toHaveURL(/#\/agents/);
   await expect(page.getByTestId("agents-page")).toBeVisible();
   await expect(page.getByTestId("models-page")).toBeHidden();

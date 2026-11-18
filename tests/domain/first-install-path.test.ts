@@ -1,34 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  FIRST_INSTALL_STEPS,
-  FREE_LANE_NOTICE,
-  PARENT_RULE_NOTICE,
-  PENDING_EXTERNAL_STEPS,
+  WINDOWS_ENV_HINT,
+  WINDOWS_LOGIN_SPIN_HINT,
   isPrereleaseInstallLabel,
   recommendedInstallLabels,
 } from "@/domain/first-install-path";
 
 describe("first install path", () => {
-  it("states what each recorded step asks and installs", () => {
-    expect(FIRST_INSTALL_STEPS.map((step) => step.step)).toEqual([
-      1, 2, 3, 4, 5,
-    ]);
-    for (const step of FIRST_INSTALL_STEPS) {
-      expect(step.asks.trim().length).toBeGreaterThan(0);
-      expect(step.installs.trim().length).toBeGreaterThan(0);
-    }
-    expect(FIRST_INSTALL_STEPS[0]?.installs).toContain("不安装");
-    expect(FIRST_INSTALL_STEPS[4]?.evidence).toBe("pending");
-    expect(PENDING_EXTERNAL_STEPS).toContain("待补证");
-  });
-
-  it("does not point the guide at the removed zen-gate free lane", () => {
-    expect(FREE_LANE_NOTICE).toContain("暂无免费车道");
-    expect(FREE_LANE_NOTICE).toContain("zen-gate");
-    expect(FREE_LANE_NOTICE).not.toMatch(/https?:\/\//u);
-    expect(PARENT_RULE_NOTICE).toContain("不再被读进去");
-    expect(PARENT_RULE_NOTICE).not.toMatch(/https?:\/\//u);
+  it("keeps Windows login and environment recovery hints URL-free", () => {
+    expect(WINDOWS_LOGIN_SPIN_HINT).toContain("刷新状态");
+    expect(WINDOWS_LOGIN_SPIN_HINT).not.toMatch(/https?:\/\//u);
+    expect(WINDOWS_ENV_HINT).toContain("环境变量");
+    expect(WINDOWS_ENV_HINT).not.toMatch(/https?:\/\//u);
   });
 
   it("keeps prerelease labels out of the recommended install list", () => {

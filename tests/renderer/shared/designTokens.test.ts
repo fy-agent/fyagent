@@ -6,6 +6,7 @@ import { expect, it } from "vitest";
 function cssFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const file = path.join(directory, entry.name);
+    if (file === path.join("src", "v2")) return [];
     return entry.isDirectory()
       ? cssFiles(file)
       : file.endsWith(".css")

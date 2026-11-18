@@ -114,7 +114,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
 
   const navigation = page.getByRole("navigation", { name: "主导航" });
   const activeNavigation = navigation.getByRole("link", {
-    name: "AI软件配置",
+    name: "Agent目录",
     exact: true,
   });
   const navigationLens = navigation.getByTestId("selection-lens");
@@ -327,7 +327,7 @@ test("Agent directory shows the full catalog, auto-scans, and reuses existing Sk
     /#\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
   );
   const agentsLink = page.getByRole("link", {
-    name: "AI软件配置",
+    name: "Agent目录",
     exact: true,
   });
   await expect(agentsLink).toHaveAttribute(
