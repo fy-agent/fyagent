@@ -29,25 +29,14 @@ describe("native security source-order regressions", () => {
     expect(grok).not.toContain("插入失败 ({request_id})");
   });
 
-  it("checks the common ACE header and SID record size before the allowed-ACE view", () => {
+  it("keeps the Windows package bridge handle-pinned and non-reparsing after ACL check removal", () => {
     const source = fs.readFileSync(
       "src-tauri/src/codex_desktop/platform/windows/package_bridge.rs",
       "utf8",
     );
-    const start = source.indexOf("fn verify_exact_descriptor(");
-    expect(start).toBeGreaterThan(0);
-    const verifier = source.slice(start);
-    const header = verifier.indexOf(
-      "raw_ace.cast::<windows::Win32::Security::ACE_HEADER>()",
-    );
-    const guard = verifier.indexOf("a package bridge ACE SID was truncated");
-    const record = verifier.indexOf("raw_ace.cast::<ACCESS_ALLOWED_ACE>()");
-    expect(header).toBeGreaterThan(0);
-    expect(guard).toBeGreaterThan(header);
-    expect(record).toBeGreaterThan(guard);
-    expect(verifier.slice(header, record)).toContain(
-      "checked_add(minimum_sid_bytes)",
-    );
-    expect(verifier.slice(0, header)).toContain("raw_ace.is_null()");
+    const production = source.split("#[cfg(test)]")[0];
+    expect(production).toContain("OBJ_DONT_REPARSE");
+    expect(production).toContain("FILE_OPEN_REPARSE_POINT");
+    expect(production).not.toContain("fn verify_exact_descriptor(");
   });
 });

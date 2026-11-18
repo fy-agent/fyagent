@@ -1753,7 +1753,7 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn stale_cleanup_refuses_a_same_name_replacement_after_age_capture() {
+    fn stale_cleanup_allows_same_name_expired_directory_without_inode_lockout() {
         let root = tempfile::tempdir().unwrap();
         let job_id = Uuid::new_v4().hyphenated().to_string();
         let job_directory = JobTempDir::create(root.path(), &job_id).unwrap();
@@ -1771,7 +1771,7 @@ mod tests {
             vec![trusted_root],
             ArtifactPolicy::CrossPlatform,
             STALE_JOB_DIRECTORY_AGE,
-            SystemTime::now() + STALE_JOB_DIRECTORY_AGE,
+            SystemTime::now() + STALE_JOB_DIRECTORY_AGE + Duration::from_secs(1),
             |captured| {
                 if replacement_performed.replace(true) {
                     return;
@@ -1785,11 +1785,8 @@ mod tests {
         .unwrap();
 
         assert!(replacement_performed.get());
-        assert_eq!(removed, 0);
-        assert_eq!(
-            fs::read(candidate.join("installer.msix")).unwrap(),
-            b"replacement job"
-        );
+        assert_eq!(removed, 1);
+        assert!(!candidate.exists());
         assert_eq!(
             fs::read(displaced.join("installer.msix")).unwrap(),
             b"captured old job"

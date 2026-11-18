@@ -201,7 +201,7 @@ describe("Codex Windows interactive-user contract", () => {
     expect(startup).not.toContain("FOLDERID_ProgramData");
 
     const packageBridgeRoot =
-      "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}";
+      "FyAgent.PackageBridge-{A244DC78-3F27-4FA8-90F9-BE5B39404D63}";
     const bridgeSources = `${packageBridge}\n${userHelperRuntime}\n${userHelperLayout}`;
     expect(bridgeSources.split(packageBridgeRoot)).toHaveLength(2);
     for (const source of [packageBridge, userHelperRuntime]) {
