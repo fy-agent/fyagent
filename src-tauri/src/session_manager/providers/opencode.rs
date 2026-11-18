@@ -828,17 +828,15 @@ fn is_safe_storage_id(value: &str) -> bool {
 }
 
 fn validate_storage_root(storage: &Path) -> Result<PathBuf, String> {
-    let metadata = std::fs::symlink_metadata(storage)
+    let canonical = storage
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize OpenCode storage root: {e}"))?;
+    let metadata = std::fs::metadata(&canonical)
         .map_err(|e| format!("Failed to inspect OpenCode storage root: {e}"))?;
-    if metadata.file_type().is_symlink() {
-        return Err("OpenCode storage root must not be a symlink".to_string());
-    }
     if !metadata.is_dir() {
         return Err("OpenCode storage root is not a directory".to_string());
     }
-    storage
-        .canonicalize()
-        .map_err(|e| format!("Failed to canonicalize OpenCode storage root: {e}"))
+    Ok(canonical)
 }
 
 fn validate_directory_root(
@@ -853,7 +851,13 @@ fn validate_directory_root(
         Err(error) => return Err(format!("Failed to inspect {label} root: {error}")),
     };
     if metadata.file_type().is_symlink() {
-        return Err(format!("{label} root must not be a symlink"));
+        let canonical = path
+            .canonicalize()
+            .map_err(|e| format!("Failed to resolve {label} root {}: {e}", path.display()))?;
+        if canonical != storage && !canonical.starts_with(storage) {
+            return Err(format!("{label} root is outside OpenCode storage"));
+        }
+        return Ok(Some(canonical));
     }
     if !metadata.is_dir() {
         return Err(format!("{label} root is not a directory"));
@@ -878,7 +882,19 @@ fn validate_message_source(
     let metadata = std::fs::symlink_metadata(path)
         .map_err(|e| format!("Failed to inspect OpenCode message directory: {e}"))?;
     if metadata.file_type().is_symlink() {
-        return Err("OpenCode message directory must not be a symlink".to_string());
+        let canonical = path.canonicalize().map_err(|e| {
+            format!(
+                "Failed to resolve OpenCode message directory {}: {e}",
+                path.display()
+            )
+        })?;
+        if !canonical.starts_with(&message_root) {
+            return Err(format!(
+                "OpenCode message directory is outside its session slot: {}",
+                path.display()
+            ));
+        }
+        return Ok(canonical);
     }
     if !metadata.is_dir() {
         return Err("OpenCode message source is not a directory".to_string());
@@ -916,10 +932,35 @@ fn collect_json_files_checked(root: &Path, files: &mut Vec<PathBuf>) -> Result<(
             )
         })?;
         if file_type.is_symlink() {
-            return Err(format!(
-                "OpenCode message tree must not contain a symlink: {}",
-                path.display()
-            ));
+            let canonical = path.canonicalize().map_err(|e| {
+                format!(
+                    "Failed to resolve OpenCode message entry {}: {e}",
+                    path.display()
+                )
+            })?;
+            if !canonical.starts_with(root) {
+                return Err(format!(
+                    "OpenCode message entry is outside its storage root: {}",
+                    path.display()
+                ));
+            }
+            let resolved = std::fs::metadata(&canonical).map_err(|e| {
+                format!(
+                    "Failed to inspect OpenCode message entry {}: {e}",
+                    canonical.display()
+                )
+            })?;
+            if resolved.is_dir() {
+                collect_json_files_checked(&canonical, files)?;
+            } else if resolved.is_file()
+                && canonical
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    == Some("json")
+            {
+                files.push(canonical);
+            }
+            continue;
         }
         if file_type.is_dir() {
             collect_json_files_checked(&path, files)?;
@@ -951,10 +992,20 @@ fn validate_part_targets(storage: &Path, message_ids: &[String]) -> Result<Vec<P
             }
         };
         if metadata.file_type().is_symlink() {
-            return Err(format!(
-                "OpenCode part directory must not be a symlink: {}",
-                target.display()
-            ));
+            let canonical = target.canonicalize().map_err(|e| {
+                format!(
+                    "Failed to resolve OpenCode part directory {}: {e}",
+                    target.display()
+                )
+            })?;
+            if !canonical.starts_with(&part_root) {
+                return Err(format!(
+                    "OpenCode part directory is outside the part root: {}",
+                    target.display()
+                ));
+            }
+            targets.push(canonical);
+            continue;
         }
         if !metadata.is_dir() {
             return Err(format!(
@@ -996,7 +1047,13 @@ fn validate_optional_file_target(
         Err(error) => return Err(format!("Failed to inspect {label} target: {error}")),
     };
     if metadata.file_type().is_symlink() {
-        return Err(format!("{label} target must not be a symlink"));
+        let canonical = target
+            .canonicalize()
+            .map_err(|e| format!("Failed to resolve {label} target {}: {e}", target.display()))?;
+        if canonical.parent() != Some(root.as_path()) {
+            return Err(format!("{label} target is outside its storage root"));
+        }
+        return Ok(Some(canonical));
     }
     if !metadata.is_file() {
         return Err(format!("{label} target is not a file"));
@@ -1041,10 +1098,28 @@ fn find_session_file_in_root(
             )
         })?;
         if file_type.is_symlink() {
-            return Err(format!(
-                "OpenCode session tree must not contain a symlink: {}",
-                path.display()
-            ));
+            let canonical = path.canonicalize().map_err(|e| {
+                format!(
+                    "Failed to resolve OpenCode session entry {}: {e}",
+                    path.display()
+                )
+            })?;
+            if !canonical.starts_with(root) {
+                return Err(format!(
+                    "OpenCode session entry is outside its storage root: {}",
+                    path.display()
+                ));
+            }
+            if canonical.is_dir() {
+                if let Some(found) = find_session_file_in_root(root, &canonical, expected)? {
+                    return Ok(Some(found));
+                }
+            } else if canonical.is_file()
+                && canonical.file_name().and_then(|name| name.to_str()) == Some(expected)
+            {
+                return Ok(Some(canonical));
+            }
+            continue;
         }
         if file_type.is_dir() {
             if let Some(found) = find_session_file_in_root(root, &path, expected)? {
@@ -1287,7 +1362,7 @@ mod tests {
         );
         let error = result.expect_err("checked error");
 
-        assert!(error.contains("symlink"));
+        assert!(error.contains("outside"));
         assert!(sentinel.exists());
         assert!(message_dir.exists());
     }
@@ -1318,7 +1393,7 @@ mod tests {
         );
         let error = result.expect_err("checked error");
 
-        assert!(error.contains("symlink"));
+        assert!(error.contains("outside"));
         assert!(sentinel.exists());
         assert!(message_dir.exists());
     }
@@ -1501,7 +1576,7 @@ mod tests {
 
         let error =
             load_messages(&message_dir).expect_err("symlink part directory must fail closed");
-        assert!(error.contains("symlink"));
+        assert!(error.contains("outside"));
         assert!(!error.contains("must-not-leak"));
     }
 

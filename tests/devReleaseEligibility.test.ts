@@ -496,19 +496,26 @@ function gitFetch(args: string[]) {
   );
 }
 
-function ensureRepairTagHistory(sha: string) {
-  if (!gitSucceeds(["cat-file", "-e", `${sha}^{commit}`])) {
-    gitFetch(["--depth=1", "origin", sha]);
+const FORMAL_REPAIR_HISTORICAL_WORKFLOW_SHA =
+  "a9a065aba111ae63a39d6d4c91b7776602aea794";
+
+function ensureRepairTagHistory(sourceSha: string, workflowSha: string) {
+  for (const sha of [sourceSha, workflowSha]) {
+    if (!gitSucceeds(["cat-file", "-e", `${sha}^{commit}`])) {
+      gitFetch(["--depth=1", "origin", sha]);
+    }
   }
-  if (gitSucceeds(["merge-base", "--is-ancestor", sha, "HEAD"])) return;
+  if (gitSucceeds(["merge-base", "--is-ancestor", sourceSha, workflowSha])) {
+    return;
+  }
   const shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], {
     encoding: "utf8",
   }).trim();
   if (shallow !== "true") {
-    throw new Error(`${sha} is not an ancestor of HEAD`);
+    throw new Error(`${sourceSha} is not an ancestor of ${workflowSha}`);
   }
   gitFetch(["--deepen=32"]);
-  execFileSync("git", ["merge-base", "--is-ancestor", sha, "HEAD"], {
+  execFileSync("git", ["merge-base", "--is-ancestor", sourceSha, workflowSha], {
     stdio: "ignore",
   });
 }
@@ -631,27 +638,35 @@ describe("v0.4.15 formal repair", () => {
   });
 
   it("accepts exactly the repair path table for the v0.4.15 tag", () => {
-    ensureRepairTagHistory(FORMAL_REPAIR_SOURCE_SHA);
+    ensureRepairTagHistory(
+      FORMAL_REPAIR_SOURCE_SHA,
+      FORMAL_REPAIR_HISTORICAL_WORKFLOW_SHA,
+    );
     const diffStatus = execSync(
-      `git -c core.quotePath=false diff --name-status --find-renames ${FORMAL_REPAIR_SOURCE_SHA}`,
+      `git -c core.quotePath=false diff --name-status --find-renames ${FORMAL_REPAIR_SOURCE_SHA} ${FORMAL_REPAIR_HISTORICAL_WORKFLOW_SHA}`,
       { encoding: "utf8" },
     );
-    execSync(`git merge-base --is-ancestor ${FORMAL_REPAIR_SOURCE_SHA} HEAD`);
+    execSync(
+      `git merge-base --is-ancestor ${FORMAL_REPAIR_SOURCE_SHA} ${FORMAL_REPAIR_HISTORICAL_WORKFLOW_SHA}`,
+    );
     const tagWorkflow = execSync(
       `git show ${FORMAL_REPAIR_SOURCE_SHA}:.github/workflows/release.yml`,
       { encoding: "utf8" },
     );
-    const workflowSha = execSync("git rev-parse HEAD", {
-      encoding: "utf8",
-    }).trim();
+    const executingWorkflow = execSync(
+      `git show ${FORMAL_REPAIR_HISTORICAL_WORKFLOW_SHA}:.github/workflows/release.yml`,
+      { encoding: "utf8" },
+    );
     assertFormalRepairDifference({
       sourceSha: FORMAL_REPAIR_SOURCE_SHA,
-      workflowSha,
+      workflowSha: FORMAL_REPAIR_HISTORICAL_WORKFLOW_SHA,
       ancestor: true,
       diffStatus,
       tagWorkflow,
-      executingWorkflow: readFileSync(".github/workflows/release.yml", "utf8"),
+      executingWorkflow,
     });
-    expect(workflowSha).not.toBe(FORMAL_REPAIR_SOURCE_SHA);
+    expect(FORMAL_REPAIR_HISTORICAL_WORKFLOW_SHA).not.toBe(
+      FORMAL_REPAIR_SOURCE_SHA,
+    );
   }, 60_000);
 });

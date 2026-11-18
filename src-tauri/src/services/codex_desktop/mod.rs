@@ -536,7 +536,7 @@ impl CodexDesktopService {
         RestartPlan::new(installations)
             .map(RestartPlanInspection::Plan)
             .ok_or_else(|| {
-                InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
                     .with_diagnostic_message("restart plan did not contain a trusted candidate")
             })
     }
@@ -558,12 +558,10 @@ impl CodexDesktopService {
             {
                 Ok(())
             }
-            _ => Err(
-                InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                    .with_diagnostic_message(
-                        "the selected Codex installation changed before force restart",
-                    ),
-            ),
+            _ => Err(InstallerError::new(InstallerErrorCode::MetadataChanged)
+                .with_diagnostic_message(
+                    "the selected Codex installation changed before force restart",
+                )),
         }
     }
 
@@ -620,12 +618,10 @@ impl CodexDesktopService {
                 Ok(RuntimeInspection::Running(instances)) if !instances.is_empty() => return Ok(()),
                 Ok(RuntimeInspection::Running(_)) => {}
                 Ok(RuntimeInspection::Ambiguous) => {
-                    return Err(
-                        InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                            .with_diagnostic_message(
-                                "the trusted runtime could not be bound after launch",
-                            ),
-                    );
+                    return Err(InstallerError::new(InstallerErrorCode::LaunchFailed)
+                        .with_diagnostic_message(
+                            "the trusted runtime could not be bound after launch",
+                        ));
                 }
                 Ok(RuntimeInspection::NotRunning) => {}
                 Err(error) => return Err(error),
@@ -1929,7 +1925,7 @@ mod tests {
                                     )
                                 })
                                 .collect(),
-                            error: InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                            error: InstallerError::new(InstallerErrorCode::MultipleInstallations)
                                 .to_dto(),
                         }
                     }

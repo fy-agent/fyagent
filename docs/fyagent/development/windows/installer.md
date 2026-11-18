@@ -76,7 +76,7 @@ is preserved and never blocks setup.
 That legacy path is not the Codex package bridge.
 A distinct PackageBridge is independent of the retired ProgramData runtime.
 It is fixed at
-`$COMMONPROGRAMDATA\FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}\v1`.
+`$COMMONPROGRAMDATA\FyAgent.PackageBridge-{A244DC78-3F27-4FA8-90F9-BE5B39404D63}\v1`.
 NSIS never owns or removes PackageBridge. It also never enumerates, opens,
 repairs, or changes ACLs on the bridge or its immutable operation orphans. The
 bridge module owns both cleanup paths and all orphan handling. Normal cleanup

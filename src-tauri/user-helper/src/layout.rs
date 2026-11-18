@@ -12,7 +12,7 @@ pub const PACKAGE_BRIDGE_PART_FILE_NAME: &str = "installer.msix.part";
 pub const AGENT_INSTALLER_FILE_NAME: &str = "installer.exe";
 pub const AGENT_PACKAGE_BRIDGE_PART_FILE_NAME: &str = "installer.exe.part";
 pub const PACKAGE_BRIDGE_ROOT_DIRECTORY: &str =
-    "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}";
+    "FyAgent.PackageBridge-{A244DC78-3F27-4FA8-90F9-BE5B39404D63}";
 pub const PACKAGE_BRIDGE_VERSION_DIRECTORY: &str = "v1";
 pub const FYAGENT_MAIN_EXECUTABLE_FILE_NAME: &str = "fyagent.exe";
 pub const USER_HELPER_EXECUTABLE_FILE_NAME: &str = "fyagent-user-helper.exe";
@@ -202,7 +202,7 @@ mod tests {
     fn package_bridge_components_are_exact_fixed_single_names() {
         assert_eq!(
             PACKAGE_BRIDGE_ROOT_DIRECTORY,
-            "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}"
+            "FyAgent.PackageBridge-{A244DC78-3F27-4FA8-90F9-BE5B39404D63}"
         );
         assert_eq!(PACKAGE_BRIDGE_VERSION_DIRECTORY, "v1");
         assert_eq!(PACKAGE_BRIDGE_PART_FILE_NAME, "installer.msix.part");

@@ -15,7 +15,7 @@ therefore freezes the Explorer user's authority before any user state is read
 or written. `%ProgramData%\FyAgent\runtime`, the former state/lease files, and
 the authenticated activation pipe are retired and must not be recreated. The
 one-operation
-`%ProgramData%\FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}\v1`
+`%ProgramData%\FyAgent.PackageBridge-{A244DC78-3F27-4FA8-90F9-BE5B39404D63}\v1`
 package bridge is a separate executable-installer object with no state, lease,
 HMAC, activation, or startup-admission role. Codex MSIX and the reviewed
 Agent actions may reuse the helper executable and authenticated pipe only

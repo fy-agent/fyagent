@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "fd6b2c40329e7b52377fa474414690134757d83b7d27b5aa6be7d6f0cc7da1e6"
+      "335856373b92a1b9cfd6a616e8b7746265edc8bbb1c5ff45757ca3ee12632401"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -83,7 +83,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "89c2a304a07c26d3945720329e0c969bf59775d0502760d4125fccd9e3f174d0"
+      "ccbd1bfd0aa1ceaa3b6ba530c18cc53531cb9a4efa4fdcde0410121db4f6b2ac"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -111,11 +111,11 @@
     ],
     [
       "src-tauri/src/codex_desktop_runtime.rs",
-      "d5254b0d7f72e595c2a0bc5b24290b4b193dd1cbfcb0b7d12d9e44e9c6672aa4"
+      "d1e570ffe5a5608b318f27b0f80847437f10e4d4721df105b5cede736043208f"
     ],
     [
       "src-tauri/src/codex_desktop/download.rs",
-      "c24bcc8cfe553c7ec1326a452d116be11fc4a6c26f9294f596a0688dbb8420e7"
+      "9ba938bfe13ecc394fddd39ce46e6fe09263c958961945b422754d63eb28a4ce"
     ],
     [
       "src-tauri/src/codex_desktop/platform.rs",
@@ -131,7 +131,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/deployment.rs",
-      "4b2b6f12e81c6af0701f5def6c51f5b66152439e45dcf98284822c559eaa97e4"
+      "9c28387aea416376887b5ceca5e265b0fdf2e49542ebce6f9ea0943d89041d6f"
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
@@ -139,7 +139,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
-      "caf96c18b6e07ba5728a270c7eb5a4cd8692955c03518e3647d185f4943ad78b"
+      "5e5de7cc58815a9f49b12eeaefd6e59b61121b89b2429ce8f6db69151db2e8ee"
     ],
     [
       "src-tauri/src/codex_desktop/types.rs",
@@ -471,7 +471,7 @@
     ],
     [
       "src-tauri/src/session_manager/providers/opencode.rs",
-      "ef0cee8bb74fb908026b0c417429144a409e7033dfcbb64a41fb3c1ca76716d0"
+      "64c397ffad43f918f2cb27890ef1edd07d9241e628e3cced4d158a88cb578ab2"
     ],
     [
       "src-tauri/src/session_manager/terminal/mod.rs",
@@ -551,7 +551,7 @@
     ],
     [
       "src-tauri/user-helper/src/layout.rs",
-      "72d0b9a8ad77232149beba56c73368aeac16c20e500bbe09f8bf04461d7c583c"
+      "c9ce4bd4c565c517912890db1704b258f7f4039419493c65d28cb98adfe1534f"
     ],
     [
       "src-tauri/user-helper/src/main.rs",
@@ -579,7 +579,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "56db89688c00eb9e954ff78e767c2b56dc33245a33a921ec33b30acd9f843de0"
+      "cdbd827a383d5c17e1e900fbab5d960531024039b3ee282ee72b8ba0e1c95363"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
