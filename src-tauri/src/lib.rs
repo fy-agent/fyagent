@@ -27,6 +27,7 @@ mod macos_system_commit;
 mod mcp;
 pub mod mode;
 mod model_capabilities;
+mod omp_config;
 mod openclaw_config;
 mod opencode_config;
 mod panic_hook;
@@ -2248,6 +2249,10 @@ pub fn run() {
             commands::get_opencode_model_snapshot,
             commands::fetch_opencode_provider_models,
             commands::save_opencode_models,
+            commands::read_omp_config,
+            commands::preview_omp_save,
+            commands::apply_omp_save,
+            commands::discover_omp_cli,
             // ours: endpoint speed test + custom endpoint management
             commands::test_api_endpoints,
             commands::get_custom_endpoints,

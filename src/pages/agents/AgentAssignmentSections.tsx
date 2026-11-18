@@ -1,6 +1,9 @@
 import { useRef, useState } from "react";
 
-import type { ProductDirectoryEntry } from "../../shared/features/directory";
+import type {
+  McpTargetId,
+  ProductDirectoryEntry,
+} from "../../shared/features/directory";
 import {
   buildMcpSearchText,
   buildSkillSearchText,
@@ -60,7 +63,7 @@ export function AgentSkillsSection({
   entry,
   onOpenManagement,
 }: {
-  entry: ProductDirectoryEntry;
+  entry: Extract<ProductDirectoryEntry, { assignmentId: McpTargetId }>;
   onOpenManagement: () => void;
 }) {
   const { ports } = useFeatures();
@@ -214,7 +217,7 @@ export function AgentMcpSection({
   entry,
   onOpenManagement,
 }: {
-  entry: ProductDirectoryEntry;
+  entry: Extract<ProductDirectoryEntry, { assignmentId: McpTargetId }>;
   onOpenManagement: () => void;
 }) {
   const { ports } = useFeatures();

@@ -66,6 +66,7 @@ const variantById = {
   codex: "codex",
   "claude-code": "claude-code",
   opencode: "opencode",
+  omp: "omp",
 } as const;
 
 function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
@@ -153,6 +154,7 @@ function catalog(): AgentCatalogResult {
       entry("codex", "Codex"),
       entry("claude-code", "Claude Code"),
       entry("opencode", "OpenCode"),
+      entry("omp", "Oh My Pi (omp)"),
     ],
   };
 }
@@ -558,8 +560,11 @@ describe("first-use software guide", () => {
   });
 
   it.each([
-    ["日常办公", ["QoderWork CN", "TRAE Work CN", "WorkBuddy"]],
-    ["编程开发", ["Grok Build", "Codex", "Claude Code", "OpenCode"]],
+    ["日常办公", ["WorkBuddy"]],
+    [
+      "编程开发",
+      ["Codex", "Claude Code", "OpenCode", "Oh My Pi (omp)", "Grok Build"],
+    ],
     ["两者都用", ["WorkBuddy", "Codex"]],
   ])(
     "recommends catalog entries for %s without side effects",
@@ -636,7 +641,7 @@ describe("first-use software guide", () => {
       await screen.findByText("暂时无法保存引导状态，请重试。"),
     ).toBeVisible();
     expect(screen.queryByText("private native path")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(4);
+    expect(screen.getAllByRole("article")).toHaveLength(5);
     expect(ports.agentInstallReadiness.get).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "查看全部软件" }));
     await screen.findByRole("heading", { name: "我的 AI 软件" });
@@ -768,7 +773,7 @@ describe("first-use software guide", () => {
     },
   );
 
-  it("covers every current catalog identity across the office and coding recommendations", () => {
+  it("covers every configurable catalog identity across the office and coding recommendations while excluding official-only apps", () => {
     const entries = catalog().agents;
     expect(entries.map((item) => item.id)).toEqual([...AGENT_CATALOG_IDS]);
     const recommendations = [
@@ -776,7 +781,14 @@ describe("first-use software guide", () => {
       ...firstUseRecommendations(entries, "coding"),
     ];
     expect(new Set(recommendations.map((item) => item.entry.id))).toEqual(
-      new Set(AGENT_CATALOG_IDS),
+      new Set([
+        "workbuddy",
+        "codex",
+        "claude-code",
+        "opencode",
+        "omp",
+        "grokbuild",
+      ]),
     );
     for (const recommendation of recommendations) {
       expect(recommendation.reason.trim()).not.toBe("");
@@ -784,12 +796,20 @@ describe("first-use software guide", () => {
     }
   });
 
-  it("keeps Grok Build coding recommendations in supplied catalog order with current names", () => {
-    const codex = entry("codex", "Current Codex name");
+  it("keeps coding recommendations in priority order with current names", () => {
     const grok = entry("grokbuild", "Current Grok Build name");
-    expect(firstUseRecommendations([codex, grok], "coding")).toEqual([
-      { entry: codex, reason: "开发功能、修复问题与检查代码" },
-      { entry: grok, reason: "在终端中编写代码与运行测试" },
+    const codex = entry("codex", "Current Codex name");
+    expect(firstUseRecommendations([grok, codex], "coding")).toEqual([
+      {
+        entry: codex,
+        reason: "支持桌面端与终端编码开发，可一键接入主流大模型",
+        badge: "可接入自有模型",
+      },
+      {
+        entry: grok,
+        reason: "终端编码工具，支持接入自定义 Provider 与 MCP",
+        badge: "可接入自有模型",
+      },
     ]);
     expect(firstUseRecommendations([grok], "office")).toEqual([]);
   });
@@ -797,7 +817,11 @@ describe("first-use software guide", () => {
   it("only recommends supplied catalog identities and uses their current names", () => {
     const renamed = { ...entry("codex", "Current catalog name") };
     expect(firstUseRecommendations([renamed], "coding")).toEqual([
-      { entry: renamed, reason: "开发功能、修复问题与检查代码" },
+      {
+        entry: renamed,
+        reason: "支持桌面端与终端编码开发，可一键接入主流大模型",
+        badge: "可接入自有模型",
+      },
     ]);
     expect(firstUseRecommendations([renamed], "office")).toEqual([]);
     expect(firstUseRecommendations([], "both")).toEqual([]);
@@ -805,13 +829,14 @@ describe("first-use software guide", () => {
 });
 
 const CATALOG_NAMES = [
-  "QoderWork CN",
-  "TRAE Work CN",
   "WorkBuddy",
-  "Grok Build",
   "Codex",
   "Claude Code",
   "OpenCode",
+  "Oh My Pi (omp)",
+  "Grok Build",
+  "QoderWork CN",
+  "TRAE Work CN",
 ] as const;
 
 function directoryArticle(name: (typeof CATALOG_NAMES)[number]) {
@@ -935,12 +960,23 @@ describe("V3 Agent directory and configuration shell", () => {
       "directory",
     );
     const articles = await screen.findAllByRole("article");
-    expect(articles).toHaveLength(7);
+    expect(articles).toHaveLength(8);
     expect(
       articles.map(
         (item) => within(item).getByRole("heading", { level: 2 }).textContent,
       ),
     ).toEqual([...CATALOG_NAMES]);
+    expect(directoryArticle("QoderWork CN")).toHaveAttribute(
+      "data-official-only",
+      "true",
+    );
+    expect(
+      within(directoryArticle("QoderWork CN")).getByText("仅支持官方模型"),
+    ).toBeVisible();
+    expect(directoryArticle("TRAE Work CN")).toHaveAttribute(
+      "data-official-only",
+      "true",
+    );
     expect(screen.getByRole("button", { name: "扫描中…" })).toBeDisabled();
     expect(screen.getByText("正在扫描本机 AI 软件")).toBeVisible();
     expect(screen.getByText("已发现 0 个")).toBeVisible();
@@ -976,7 +1012,7 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(
       await screen.findByRole("button", { name: "重新扫描" }),
     ).toBeEnabled();
-    expect(screen.getAllByRole("article")).toHaveLength(7);
+    expect(screen.getAllByRole("article")).toHaveLength(8);
     expect(configureButton("QoderWork CN")).toBeEnabled();
     expect(configureButton("WorkBuddy")).toBeEnabled();
     expect(configureButton("TRAE Work CN")).toBeDisabled();
@@ -984,6 +1020,7 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(configureButton("Codex")).toBeDisabled();
     expect(configureButton("Claude Code")).toBeDisabled();
     expect(configureButton("OpenCode")).toBeDisabled();
+    expect(configureButton("Oh My Pi (omp)")).toBeDisabled();
     expect(
       within(directoryArticle("TRAE Work CN")).getByText("状态未知"),
     ).toBeVisible();
@@ -998,7 +1035,7 @@ describe("V3 Agent directory and configuration shell", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/上次扫描：/)).not.toBeInTheDocument();
     expect(screen.queryByText("查看完整介绍")).not.toBeInTheDocument();
-    expect(ports.agentInstallReadiness.get).toHaveBeenCalledTimes(7);
+    expect(ports.agentInstallReadiness.get).toHaveBeenCalledTimes(8);
   });
 
   it("keeps all rows after a complete not-installed scan and retains results when a rescan fails", async () => {
@@ -1009,7 +1046,7 @@ describe("V3 Agent directory and configuration shell", () => {
     );
     renderPage(ports);
 
-    expect(await screen.findAllByRole("article")).toHaveLength(7);
+    expect(await screen.findAllByRole("article")).toHaveLength(8);
     expect(
       await screen.findByRole("button", { name: "重新扫描" }),
     ).toBeEnabled();
@@ -1025,7 +1062,7 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(
       await screen.findByText(/本次扫描未能读取任何软件状态/),
     ).toHaveTextContent("已保留上次成功结果");
-    expect(screen.getAllByRole("article")).toHaveLength(7);
+    expect(screen.getAllByRole("article")).toHaveLength(8);
     expect(configureButton("QoderWork CN")).toBeDisabled();
     expect(
       within(directoryArticle("QoderWork CN")).getByText("读取失败"),

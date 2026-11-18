@@ -20,6 +20,7 @@ mod import_export;
 mod mcp;
 mod model_fetch;
 mod omo;
+mod omp_config;
 mod openclaw;
 mod opencode_models;
 
@@ -69,6 +70,7 @@ pub use import_export::*;
 pub use mcp::*;
 pub use model_fetch::*;
 pub use omo::*;
+pub use omp_config::*;
 pub use openclaw::*;
 pub use opencode_models::*;
 pub use plugin::*;

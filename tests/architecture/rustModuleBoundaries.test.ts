@@ -42,10 +42,22 @@ describe("Rust modular architecture boundaries", () => {
         "config/recovery.rs",
         "database/backup.rs",
         "hermes_config.rs",
+        "omp_config/mod.rs",
         "openclaw_config.rs",
         "services/managed_auth/consumers/codex/swap.rs",
         "services/provider/mod.rs",
       ].sort(),
+    );
+    const omp = read("src-tauri/src/omp_config/mod.rs");
+    expect(omp).toContain("atomic_write_private(path, bytes)");
+    expect(omp).not.toMatch(
+      /\b(?:atomic_write_unbacked|restore_file_preimage)\s*\(/u,
+    );
+    expect(omp).toMatch(
+      /rolling_backup_path\(&snapshot\.path\);\s+crate::config::write_backup_file\(&backup, &snapshot\.bytes\)/u,
+    );
+    expect(omp).toMatch(
+      /restore_file_preimage_if_owned\(\s*&prepared\.models_before\.path,\s*prepared\.models_before\.preimage\(\),\s*Some\(&expected_models_hash\)/u,
     );
     expect(
       read("src-tauri/src/services/managed_auth/consumers/codex/project.rs"),

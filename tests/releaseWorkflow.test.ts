@@ -1872,10 +1872,9 @@ describe("FyAgent release workflow", () => {
           if (first.runner !== second.runner) {
             return swapFirstPair(job, first.runner, second.runner);
           }
-          return job.replaceAll(
-            `runner: ${first.runner}`,
-            "runner: wrong-signing-runner",
-          );
+          return job
+            .split(`runner: ${first.runner}`)
+            .join("runner: wrong-signing-runner");
         }),
       },
       {

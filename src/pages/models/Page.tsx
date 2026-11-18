@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderApiFormFill } from "../../shared/features/controls/ProviderApiFields";
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
-import type { ProviderAppId } from "../../shared/features/types";
+import {
+  isOfficialOnlyModelTarget,
+  type ProviderAppId,
+} from "../../shared/features/types";
 import {
   CatalogList,
   CatalogListItem,
@@ -17,6 +20,7 @@ import {
   parseExplicitModelTarget,
   type ModelTarget,
 } from "./quickSetup";
+import { OmpModelsPanel } from "./OmpModelsPanel";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { ProviderPanel } from "./ProviderPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
@@ -34,6 +38,7 @@ const TARGET_LABELS: Record<ModelTarget, string> = {
   codex: "Codex",
   claude: "Claude Code",
   opencode: "OpenCode",
+  omp: "Oh My Pi (omp)",
 };
 
 const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
@@ -44,6 +49,7 @@ const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
   codex: "codex",
   claude: "claude-code",
   opencode: "opencode",
+  omp: "omp",
 };
 
 function ModelsTargetPanel({
@@ -96,6 +102,8 @@ function ModelsTargetPanel({
           onBlockWrites={() => onBlockProviderWrites("opencode")}
         />
       );
+    case "omp":
+      return <OmpModelsPanel active={active} />;
   }
 }
 
@@ -164,25 +172,30 @@ export function ModelsPage() {
       <CatalogMasterDetail>
         <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择应用">
           <CatalogList>
-            {targets.map((candidate) => (
-              <CatalogListItem
-                key={candidate}
-                asset={getAgentBrand(TARGET_ICON_IDS[candidate])}
-                label={TARGET_LABELS[candidate]}
-                selected={candidate === target}
-                testId={`model-target-${candidate}`}
-                onSelect={() =>
-                  setSearchParams(
-                    (current) => {
-                      const next = new URLSearchParams(current);
-                      next.set("target", candidate);
-                      return next;
-                    },
-                    { replace: true },
-                  )
-                }
-              />
-            ))}
+            {targets.map((candidate) => {
+              const officialOnly = isOfficialOnlyModelTarget(candidate);
+              return (
+                <CatalogListItem
+                  key={candidate}
+                  asset={getAgentBrand(TARGET_ICON_IDS[candidate])}
+                  label={TARGET_LABELS[candidate]}
+                  summary={officialOnly ? "仅支持官方模型" : undefined}
+                  muted={officialOnly}
+                  selected={candidate === target}
+                  testId={`model-target-${candidate}`}
+                  onSelect={() =>
+                    setSearchParams(
+                      (current) => {
+                        const next = new URLSearchParams(current);
+                        next.set("target", candidate);
+                        return next;
+                      },
+                      { replace: true },
+                    )
+                  }
+                />
+              );
+            })}
           </CatalogList>
         </CatalogRail>
         <div className="fy-models-target-stack">

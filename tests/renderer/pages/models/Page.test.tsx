@@ -199,7 +199,7 @@ function catalog(): AgentCatalogResult {
     evidenceIds: ["p0_scope"],
   }));
   return {
-    contractVersion: 5,
+    contractVersion: 6,
     reviewedAt: "2026-08-20",
     agents: [
       {
@@ -524,23 +524,33 @@ describe("Models page", () => {
     });
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "QoderWork CN",
-      "TRAE Work CN",
       "WorkBuddy",
-      "Grok Build",
       "Codex",
       "Claude Code",
       "OpenCode",
+      "Oh My Pi (omp)",
+      "Grok Build",
+      "QoderWork CN仅支持官方模型",
+      "TRAE Work CN仅支持官方模型",
     ]);
+    expect(screen.getByTestId("model-target-qoderwork")).toHaveAttribute(
+      "data-muted",
+      "true",
+    );
+    expect(screen.getByTestId("model-target-trae")).toHaveAttribute(
+      "data-muted",
+      "true",
+    );
 
     const expectedIcons = [
-      getAgentIcon("qoderwork"),
-      getAgentIcon("trae-work"),
       getAgentIcon("workbuddy"),
-      getAgentIcon("grokbuild"),
       getAgentIcon("codex"),
       getAgentIcon("claude-code"),
       getAgentIcon("opencode"),
+      getAgentIcon("omp"),
+      getAgentIcon("grokbuild"),
+      getAgentIcon("qoderwork"),
+      getAgentIcon("trae-work"),
     ];
     buttons.forEach((button, index) => {
       const icon = button.querySelector("img");

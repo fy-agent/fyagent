@@ -3,6 +3,7 @@ import { useState } from "react";
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import {
+  useOmpConfig,
   useOpenCodeModelSnapshot,
   useProviderSummary,
   useTraeWorkModelIds,
@@ -105,6 +106,7 @@ export function AgentModelsSection({
   const workBuddyModels = useWorkBuddyModelIds(entry.agentId === "workbuddy");
   const traeModels = useTraeWorkModelIds(entry.agentId === "trae-work");
   const openCodeModels = useOpenCodeModelSnapshot(entry.agentId === "opencode");
+  const ompConfig = useOmpConfig(entry.agentId === "omp");
   const grokSummary = useProviderSummary(
     "grokbuild",
     entry.agentId === "grokbuild",
@@ -191,6 +193,29 @@ export function AgentModelsSection({
       );
       pending = openCodeModels.isPending;
       failed = openCodeModels.isError;
+      break;
+    case "omp":
+      observations = (ompConfig.data?.providers ?? []).flatMap((provider) =>
+        provider.models.length > 0
+          ? provider.models.map((model) => {
+              const selector = `${provider.id}/${model.id}`;
+              const isDefault = ompConfig.data?.defaultModel === selector;
+              return {
+                id: selector,
+                label: model.name ? `${model.name} (${model.id})` : model.id,
+                detail: `${isDefault ? "默认模型 · " : ""}omp Provider · ${provider.id}`,
+              };
+            })
+          : [
+              {
+                id: `provider:${provider.id}`,
+                label: provider.id,
+                detail: "omp Provider 已创建，尚未配置模型 ID",
+              },
+            ],
+      );
+      pending = ompConfig.isPending;
+      failed = ompConfig.isError;
       break;
   }
 

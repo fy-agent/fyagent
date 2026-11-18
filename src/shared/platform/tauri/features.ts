@@ -251,6 +251,14 @@ export function createTauriFeaturePorts(): FeaturePorts {
       cancelModelProbe: async (...args) =>
         (await models()).opencodeModels.cancelModelProbe(...args),
     },
+    ompModels: {
+      readConfig: async () => (await models()).ompModels.readConfig(),
+      discoverCli: async () => (await models()).ompModels.discoverCli(),
+      previewSave: async (...args) =>
+        (await models()).ompModels.previewSave(...args),
+      applySave: async (...args) =>
+        (await models()).ompModels.applySave(...args),
+    },
     ...createSimpleFeaturePorts(),
     prompts: {
       getAll: async (...args) => (await content()).prompts.getAll(...args),

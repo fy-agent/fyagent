@@ -93,6 +93,7 @@ import type { AgentAuthPort } from "./agent-auth";
 import type { ManagedAuthPort } from "./managed-auth";
 import type { ChangePlansPort } from "./change-plans";
 import type { GrokToolingPort } from "./grok-tooling";
+import type { OmpModelsPort } from "./omp";
 
 export interface AgentCatalogPort {
   get(): Promise<AgentCatalogResult>;
@@ -339,6 +340,7 @@ export interface FeaturePorts {
   providers: ProvidersPort;
   workbuddy: WorkBuddyPort;
   opencodeModels: OpenCodeModelsPort;
+  ompModels: OmpModelsPort;
   skills: SkillsPort;
   mcp: McpPort;
   prompts: PromptsPort;

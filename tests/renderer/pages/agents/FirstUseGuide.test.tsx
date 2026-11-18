@@ -143,7 +143,7 @@ describe("FirstUseGuide", () => {
     expect(screen.queryAllByRole("heading", { level: 2 })).toHaveLength(0);
   });
 
-  it("navigates to recommendations with real starting instruction presets upon selecting purpose", async () => {
+  it("navigates to recommendations with configurable model badges upon selecting purpose", async () => {
     const user = userEvent.setup();
     renderGuide();
 
@@ -155,9 +155,7 @@ describe("FirstUseGuide", () => {
 
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Grok Build")).toBeInTheDocument();
-
-    // Reuses real FDE presets lazily
-    expect(screen.getAllByText(/建议起始指令：/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("可接入自有模型").length).toBeGreaterThan(0);
 
     const configButtons = screen.getAllByRole("button", { name: "开始配置" });
     expect(configButtons.length).toBeGreaterThan(0);

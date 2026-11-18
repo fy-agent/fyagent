@@ -20,7 +20,6 @@ import {
   firstUseRecommendations,
   GUIDE_PURPOSES,
   type GuidePurpose,
-  startingPresetForAgent,
 } from "./firstUseRecommendations";
 import "./FirstUseGuide.css";
 
@@ -100,6 +99,14 @@ async function checkExistingAgentConfiguration(
         return {
           status: "configured",
           summary: `实际配置文件：已配置 ${snapshot.providers.length} 个模型提供商`,
+        };
+      }
+    } else if (agentId === "omp") {
+      const config = await ports.ompModels.readConfig();
+      if (config.providers.length > 0) {
+        return {
+          status: "configured",
+          summary: `实际配置文件：已配置 ${config.providers.length} 个模型提供商`,
         };
       }
     }
@@ -270,46 +277,34 @@ export function FirstUseGuide({ entries, onConfigure }: FirstUseGuideProps) {
       </h1>
       {purpose ? (
         <div className="fy-first-use-recommendations">
-          {recommendations.map(({ entry, reason }) => {
-            const preset = purpose
-              ? startingPresetForAgent(entry.id, purpose)
-              : undefined;
-            return (
-              <article
-                key={entry.id}
-                className="fy-first-use-recommendation"
-                data-agent-id={entry.id}
-              >
-                <BrandIconFrame asset={getAgentBrand(entry.id)} size="detail" />
-                <div className="fy-first-use-recommendation-content">
-                  <h2>{entry.displayName}</h2>
-                  <p className="fy-first-use-recommendation-reason">{reason}</p>
-                  {preset ? (
-                    <div className="fy-first-use-preset-hint">
-                      <span className="fy-first-use-preset-category">
-                        {preset.category}
-                      </span>
-                      <span className="fy-first-use-preset-name">
-                        建议起始指令：{preset.name}
-                      </span>
-                    </div>
-                  ) : null}
+          {recommendations.map(({ entry, reason, badge }) => (
+            <article
+              key={entry.id}
+              className="fy-first-use-recommendation"
+              data-agent-id={entry.id}
+            >
+              <BrandIconFrame asset={getAgentBrand(entry.id)} size="detail" />
+              <div className="fy-first-use-recommendation-content">
+                <h2>{entry.displayName}</h2>
+                <p className="fy-first-use-recommendation-reason">{reason}</p>
+                <div className="fy-first-use-preset-hint">
+                  <span className="fy-first-use-preset-category">{badge}</span>
                 </div>
-                <div className="fy-first-use-recommendation-action">
-                  <Button
-                    className="fy-first-use-entry-btn"
-                    disabled={isPending || !visible}
-                    onClick={(event) => {
-                      originRef.current = event.currentTarget;
-                      void handleSelectAgent(entry);
-                    }}
-                  >
-                    开始配置
-                  </Button>
-                </div>
-              </article>
-            );
-          })}
+              </div>
+              <div className="fy-first-use-recommendation-action">
+                <Button
+                  className="fy-first-use-entry-btn"
+                  disabled={isPending || !visible}
+                  onClick={(event) => {
+                    originRef.current = event.currentTarget;
+                    void handleSelectAgent(entry);
+                  }}
+                >
+                  开始配置
+                </Button>
+              </div>
+            </article>
+          ))}
           {recommendations.length === 0 ? (
             <p>可在软件目录中查看其他选择。</p>
           ) : null}

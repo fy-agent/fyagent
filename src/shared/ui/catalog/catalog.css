@@ -85,6 +85,14 @@
   opacity: 0.58;
 }
 
+.fy-catalog-list-item[data-muted="true"]:not([aria-current="true"]) {
+  opacity: 0.64;
+}
+
+.fy-catalog-list-item[data-muted="true"]:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
 .fy-catalog-list-copy {
   display: grid;
   gap: 3px;

@@ -1140,3 +1140,25 @@
     transition: none;
   }
 }
+
+.fy-agent-directory-card[data-official-only="true"] {
+  opacity: 0.72;
+  background: transparent;
+}
+
+.fy-agent-directory-card[data-official-only="true"]:hover,
+.fy-agent-directory-card[data-official-only="true"]:focus-within {
+  opacity: 0.94;
+}
+
+.fy-agent-official-only-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--fy-radius-pill);
+  border: 1px solid var(--fy-border);
+  background: var(--fy-surface-hover);
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}

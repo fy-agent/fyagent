@@ -1,6 +1,9 @@
 export {
   AGENT_CATALOG_IDS,
+  AGENT_DISPLAY_ORDER,
   AGENT_VARIANT_IDS,
+  isOfficialOnlyAgent,
+  isOfficialOnlyModelTarget,
   MCP_TARGET_IDS,
   MCP_TARGETS,
   PRODUCT_DIRECTORY,

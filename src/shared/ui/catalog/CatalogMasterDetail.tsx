@@ -151,6 +151,7 @@ interface CatalogListItemProps {
   onSelect: () => void;
   testId?: string;
   disabled?: boolean;
+  muted?: boolean;
 }
 
 export function CatalogListItem({
@@ -162,6 +163,7 @@ export function CatalogListItem({
   onSelect,
   testId,
   disabled,
+  muted,
 }: CatalogListItemProps) {
   const ref = useRef<HTMLButtonElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
@@ -173,6 +175,7 @@ export function CatalogListItem({
         type="button"
         className="fy-catalog-list-item"
         aria-current={selected ? "true" : undefined}
+        data-muted={muted ? "true" : undefined}
         data-testid={testId}
         disabled={disabled}
         onClick={(event) => {

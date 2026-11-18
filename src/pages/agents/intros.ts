@@ -42,6 +42,12 @@ const INTROS: Partial<Record<AgentCatalogId, AgentIntro>> = {
       "OpenCode 不再自动安装更新。要更新时，在 OpenCode 里输入 /update。升到 OpenCode 2 要另作处理。",
     ],
   },
+  omp: {
+    paragraphs: [
+      "Oh My Pi (omp) 是轻量级终端编码 Agent，使用 models.yml 与 config.yml 管理自定义模型 Provider 与默认角色。",
+      "此处仅对相关 YAML 字段执行保留注释的局部更新，不读取私钥明文，也不改动 omp 的私有状态库。",
+    ],
+  },
 };
 
 export function getAgentIntro(id: AgentCatalogId): AgentIntro | null {

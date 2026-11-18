@@ -12,6 +12,7 @@ import {
 } from "../../../../domain/configuration/providerApi";
 import { invoke } from "@tauri-apps/api/core";
 import { parseFileWriteTarget as parseModelWriteTarget } from "../../../features/file-writes";
+import { createOmpModelsPort } from "./ompModels";
 import { parseProviderLiveSummary } from "./providerLiveSummary";
 
 import type { FeaturePorts } from "../../../features/ports";
@@ -689,9 +690,10 @@ function assertQuickSetupRequest(
 
 export function createModelFeaturePorts(): Pick<
   FeaturePorts,
-  "providers" | "workbuddy" | "opencodeModels"
+  "providers" | "workbuddy" | "opencodeModels" | "ompModels"
 > {
   return {
+    ompModels: createOmpModelsPort(),
     providers: {
       ...providerAggregationPorts,
       previewClaudeQuickSetup: async (request) =>

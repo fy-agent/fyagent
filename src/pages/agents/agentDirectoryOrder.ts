@@ -1,6 +1,8 @@
 import {
   AGENT_CATALOG_IDS,
+  AGENT_DISPLAY_ORDER,
   agentDirectoryPriority,
+  isOfficialOnlyAgent,
   type AgentCatalogId,
 } from "../../shared/features/directory";
 
@@ -13,24 +15,38 @@ export type AgentDirectoryOrderBucket =
   | "installed_domestic"
   | "installed_other"
   | "unresolved"
-  | "not_installed";
+  | "not_installed"
+  | "official_only_installed"
+  | "official_only_other";
 
 const BUCKET_RANK: Record<AgentDirectoryOrderBucket, number> = {
   installed_domestic: 0,
   installed_other: 1,
   unresolved: 2,
   not_installed: 3,
+  official_only_installed: 4,
+  official_only_other: 5,
 };
 
 function canonicalIndex(agentId: AgentCatalogId): number {
-  const index = AGENT_CATALOG_IDS.indexOf(agentId);
-  return index === -1 ? AGENT_CATALOG_IDS.length : index;
+  const index = AGENT_DISPLAY_ORDER.indexOf(agentId);
+  return index === -1 ? AGENT_DISPLAY_ORDER.length : index;
 }
 
 export function classifyAgentDirectoryOrderBucket(
   agentId: AgentCatalogId,
   scan: AgentDirectoryScanView,
 ): AgentDirectoryOrderBucket {
+  if (isOfficialOnlyAgent(agentId)) {
+    if (scan.currentFailureIds.includes(agentId)) {
+      return "official_only_other";
+    }
+    const installState = scan.results[agentId]?.installState;
+    return isAgentExistenceProven(installState)
+      ? "official_only_installed"
+      : "official_only_other";
+  }
+
   if (scan.currentFailureIds.includes(agentId)) {
     return "unresolved";
   }
@@ -86,7 +102,9 @@ export function applyCommittedAgentDirectoryOrder<
   committedOrderIds: readonly AgentCatalogId[] | null | undefined,
 ): T[] {
   if (!committedOrderIds || committedOrderIds.length === 0) {
-    return [...entries];
+    return [...entries].sort(
+      (left, right) => canonicalIndex(left.id) - canonicalIndex(right.id),
+    );
   }
 
   const remaining = new Map(entries.map((entry) => [entry.id, entry]));
@@ -97,11 +115,9 @@ export function applyCommittedAgentDirectoryOrder<
     ordered.push(entry);
     remaining.delete(id);
   }
-  for (const entry of entries) {
-    if (remaining.has(entry.id)) {
-      ordered.push(entry);
-      remaining.delete(entry.id);
-    }
-  }
+  const rest = [...remaining.values()].sort(
+    (left, right) => canonicalIndex(left.id) - canonicalIndex(right.id),
+  );
+  ordered.push(...rest);
   return ordered;
 }

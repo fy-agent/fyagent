@@ -25,6 +25,7 @@ import { useFeatures } from "../../shared/features/provider";
 import { formatTransferPercent } from "../../shared/features/transfer-projection";
 import {
   AGENT_CATALOG_IDS,
+  isOfficialOnlyAgent,
   type AgentCatalogEntry,
   type AgentCatalogId,
 } from "../../shared/features/types";
@@ -171,16 +172,21 @@ function DirectoryCardShell({
 }) {
   const kindCopy = rowKindCopy(observation);
   const configurable = observation.configurable && !lifecycleBusy;
+  const officialOnly = isOfficialOnlyAgent(entry.id);
   return (
     <article
       className="fy-agent-directory-card"
       data-agent-id={entry.id}
       data-row-kind={observation.kind}
+      data-official-only={officialOnly ? "true" : undefined}
     >
       <BrandIconFrame asset={getAgentBrand(entry.id)} size="detail" />
       <div className="fy-agent-directory-card-copy">
         <div className="fy-agent-directory-card-heading">
           <h2>{entry.displayName}</h2>
+          {officialOnly ? (
+            <span className="fy-agent-official-only-badge">仅支持官方模型</span>
+          ) : null}
           {kindCopy ? (
             <span
               className="fy-agent-directory-status"

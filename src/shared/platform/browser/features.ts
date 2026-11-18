@@ -167,6 +167,12 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       getModelProbeStatus: rejectNativeOnly,
       cancelModelProbe: rejectNativeOnly,
     },
+    ompModels: {
+      readConfig: rejectNativeOnly,
+      discoverCli: rejectNativeOnly,
+      previewSave: rejectNativeOnly,
+      applySave: rejectNativeOnly,
+    },
     skills: {
       getInstalled: async () => [],
       getBackups: async () => [],
