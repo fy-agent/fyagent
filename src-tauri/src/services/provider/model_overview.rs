@@ -16,9 +16,9 @@ use super::batch_setup::{
     apply_batch_provider_setup, normalize_batch_api_key, preview_batch_provider_setup,
     BatchProviderApplyRequest, BatchProviderApplyResult, BatchProviderPreviewItem,
     BatchProviderPreviewRequest, BatchProviderPreviewResult, BatchSetupTargetId,
-    BatchSetupTargetSpec,
+    BatchSetupTargetSpec, BatchTargetOutcome, BatchTargetStatus,
 };
-use super::ProviderCredentials;
+use super::{ProviderCredentials, ProviderService};
 use crate::{
     app_config::AppType,
     omp_config::{self, OmpFileStatus},
@@ -161,7 +161,7 @@ fn inspect_workbuddy_target() -> NativeTargetDetails {
         return unconfigured_details(BatchSetupTargetId::Workbuddy, None);
     };
     let models = loaded.document.models();
-    let Some(first) = models.iter().find(|item| {
+    let is_valid_entry = |item: &&Value| {
         item.get("id")
             .and_then(Value::as_str)
             .is_some_and(|s| !s.trim().is_empty())
@@ -169,7 +169,20 @@ fn inspect_workbuddy_target() -> NativeTargetDetails {
                 .get("url")
                 .and_then(Value::as_str)
                 .is_some_and(|s| !s.trim().is_empty())
-    }) else {
+    };
+    // Prefer a real custom API-key model over proxy-managed entries when both exist.
+    let Some(first) = models
+        .iter()
+        .find(|item| {
+            is_valid_entry(item)
+                && item
+                    .get("apiKey")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .is_some_and(|k| !k.is_empty() && !is_proxy_managed_placeholder(k))
+        })
+        .or_else(|| models.iter().find(is_valid_entry))
+    else {
         return unconfigured_details(BatchSetupTargetId::Workbuddy, None);
     };
 
@@ -246,19 +259,31 @@ fn inspect_opencode_target() -> NativeTargetDetails {
     let Ok(snapshot) = get_opencode_model_snapshot() else {
         return unconfigured_details(BatchSetupTargetId::Opencode, None);
     };
-    let Some(provider) = snapshot
-        .providers
-        .iter()
-        .find(|p| !p.id.starts_with("fyagent-") || !p.model_ids.is_empty())
+    let selected_pair = snapshot
+        .selected_model
+        .as_deref()
+        .and_then(|s| s.split_once('/'));
+    let Some(provider) = selected_pair
+        .and_then(|(pid, _)| snapshot.providers.iter().find(|p| p.id == pid))
+        .or_else(|| snapshot.providers.iter().find(|p| !p.model_ids.is_empty()))
         .or_else(|| snapshot.providers.first())
     else {
         return unconfigured_details(BatchSetupTargetId::Opencode, None);
     };
 
-    let Some(first_model) = provider.model_ids.first().cloned() else {
+    let selected_model = selected_pair
+        .filter(|(pid, _)| *pid == provider.id)
+        .map(|(_, mid)| mid.to_string())
+        .filter(|mid| provider.model_ids.iter().any(|m| m == mid));
+    let Some(first_model) = selected_model.or_else(|| provider.model_ids.first().cloned()) else {
         return unconfigured_details(BatchSetupTargetId::Opencode, None);
     };
-    let extra_model_ids: Vec<String> = provider.model_ids.iter().skip(1).cloned().collect();
+    let extra_model_ids: Vec<String> = provider
+        .model_ids
+        .iter()
+        .filter(|m| m.as_str() != first_model.as_str())
+        .cloned()
+        .collect();
 
     match resolve_saved_opencode_probe_connection(&provider.id) {
         Ok((base_url, api_key)) => {
@@ -474,8 +499,16 @@ fn inspect_db_provider_target(state: &AppState, target: BatchSetupTargetId) -> N
         };
     }
 
-    let resolved = ProviderCredentials::resolve(&state.db, app_type.as_str(), &stored)
-        .unwrap_or_else(|_| stored.clone());
+    let resolved = match ProviderCredentials::resolve(&state.db, app_type.as_str(), &stored) {
+        Ok(provider) => provider,
+        Err(_) => {
+            let mut details = extract_db_provider_details(target, &app_type, &stored);
+            details.snapshot.can_probe = false;
+            details.snapshot.can_clone_source = false;
+            details.snapshot.status_note = Some("本机密钥库暂不可用，请解锁后重试".to_string());
+            return details;
+        }
+    };
     extract_db_provider_details(target, &app_type, &resolved)
 }
 
@@ -616,15 +649,33 @@ fn extract_db_provider_details(
     }
 }
 
+fn scrub_secret_echo(field: &mut Option<String>, secret: &str) {
+    if secret.len() < 8 {
+        return;
+    }
+    if let Some(value) = field.as_deref() {
+        if value.contains(secret) {
+            *field = None;
+        }
+    }
+}
+
 fn inspect_target(state: &AppState, target: BatchSetupTargetId) -> NativeTargetDetails {
-    match target {
+    let mut details = match target {
         BatchSetupTargetId::Workbuddy => inspect_workbuddy_target(),
         BatchSetupTargetId::Opencode => inspect_opencode_target(),
         BatchSetupTargetId::Omp => inspect_omp_target(),
         BatchSetupTargetId::Claude | BatchSetupTargetId::Codex | BatchSetupTargetId::Grokbuild => {
             inspect_db_provider_target(state, target)
         }
+    };
+    if let Some(secret) = details.api_key.as_deref() {
+        scrub_secret_echo(&mut details.snapshot.provider_id, secret);
+        scrub_secret_echo(&mut details.snapshot.provider_name, secret);
+        scrub_secret_echo(&mut details.snapshot.base_url, secret);
+        scrub_secret_echo(&mut details.snapshot.model_id, secret);
     }
+    details
 }
 
 pub fn get_model_health_overview(state: &AppState) -> Result<ModelHealthOverview, String> {
@@ -673,12 +724,21 @@ pub(crate) fn adapt_base_url_for_target(
         )),
         "ark.cn-beijing.volces.com" => Some((
             "https://ark.cn-beijing.volces.com/api/v3",
-            "https://ark.cn-beijing.volces.com/api/coding",
+            "https://ark.cn-beijing.volces.com/api/compatible",
         )),
         "api.minimaxi.com" => Some((
             "https://api.minimaxi.com/v1",
             "https://api.minimaxi.com/anthropic",
         )),
+        "api.minimax.cn" => Some((
+            "https://api.minimax.cn/v1",
+            "https://api.minimax.cn/anthropic",
+        )),
+        "api.siliconflow.cn" => Some((
+            "https://api.siliconflow.cn/v1",
+            "https://api.siliconflow.cn",
+        )),
+        "openrouter.ai" => Some(("https://openrouter.ai/api/v1", "https://openrouter.ai/api")),
         _ => None,
     };
 
@@ -936,6 +996,160 @@ pub fn preview_api_key_rotation(
     Ok(BatchProviderPreviewResult { items })
 }
 
+fn update_codex_toml_bearer_token(config_text: &str, new_key: &str) -> String {
+    let Ok(mut doc) = config_text.parse::<toml_edit::DocumentMut>() else {
+        return config_text.to_string();
+    };
+    if doc.contains_key("experimental_bearer_token") {
+        doc["experimental_bearer_token"] = toml_edit::value(new_key);
+    }
+    let active_provider = doc
+        .get("model_provider")
+        .and_then(|v| v.as_str())
+        .map(ToOwned::to_owned);
+    if let Some(pid) = active_provider {
+        if let Some(table) = doc
+            .get_mut("model_providers")
+            .and_then(|t| t.as_table_mut())
+            .and_then(|t| t.get_mut(&pid))
+            .and_then(|t| t.as_table_mut())
+        {
+            if table.contains_key("experimental_bearer_token") {
+                table["experimental_bearer_token"] = toml_edit::value(new_key);
+            }
+        }
+    }
+    doc.to_string()
+}
+
+fn update_grok_toml_api_key(config_text: &str, new_key: &str) -> Result<String, String> {
+    let mut doc = config_text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|_| "Grok Build 配置格式无效".to_string())?;
+    let default_model = doc
+        .get("models")
+        .and_then(|m| m.get("default"))
+        .and_then(|v| v.as_str())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| "缺少 Grok Build 默认模型配置".to_string())?;
+    let entry = doc
+        .get_mut("model")
+        .and_then(|m| m.as_table_mut())
+        .and_then(|m| m.get_mut(&default_model))
+        .and_then(|m| m.as_table_mut())
+        .ok_or_else(|| "未找到 Grok Build 当前模型条目".to_string())?;
+    entry["api_key"] = toml_edit::value(new_key);
+    Ok(doc.to_string())
+}
+
+/// Rotates ONLY the API key on the active DB-backed provider (Claude/Codex/GrokBuild)
+/// while preserving its exact provider ID, custom headers, model aliases, and metadata.
+fn rotate_db_provider_in_place(
+    state: &AppState,
+    target: BatchSetupTargetId,
+    new_key: &str,
+) -> BatchTargetOutcome {
+    let app_type = match target {
+        BatchSetupTargetId::Claude => AppType::Claude,
+        BatchSetupTargetId::Codex => AppType::Codex,
+        BatchSetupTargetId::Grokbuild => AppType::GrokBuild,
+        _ => unreachable!(),
+    };
+    let paths = ProviderService::quick_setup_write_targets(&app_type)
+        .map(|list| list.into_iter().map(|t| t.path).collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    let fail = |msg: &str| BatchTargetOutcome {
+        target,
+        status: BatchTargetStatus::Failed,
+        message: msg.to_string(),
+        paths: paths.clone(),
+    };
+
+    let Ok(current_id) = ProviderService::current(state, app_type.clone()) else {
+        return fail("未找到当前激活的配置，原文件未改动");
+    };
+    let Ok(all) = state.db.get_all_providers(app_type.as_str()) else {
+        return fail("无法读取本机配置库，原文件未改动");
+    };
+    let Some(stored) = all.get(&current_id) else {
+        return fail("当前激活的配置已不存在，原文件未改动");
+    };
+    let Ok(mut updated) = ProviderCredentials::resolve(&state.db, app_type.as_str(), stored) else {
+        return fail("本机密钥库暂不可用，无法安全轮换密钥");
+    };
+
+    match app_type {
+        AppType::Claude => {
+            let Some(env) = updated
+                .settings_config
+                .as_object_mut()
+                .and_then(|obj| obj.get_mut("env"))
+                .and_then(Value::as_object_mut)
+            else {
+                return fail("Claude 配置缺少 env 字段，原文件未改动");
+            };
+            if env.contains_key("ANTHROPIC_API_KEY") && !env.contains_key("ANTHROPIC_AUTH_TOKEN") {
+                env.insert(
+                    "ANTHROPIC_API_KEY".to_string(),
+                    Value::String(new_key.to_string()),
+                );
+            } else {
+                env.insert(
+                    "ANTHROPIC_AUTH_TOKEN".to_string(),
+                    Value::String(new_key.to_string()),
+                );
+            }
+        }
+        AppType::Codex => {
+            if let Some(obj) = updated.settings_config.as_object_mut() {
+                let auth_obj = obj
+                    .entry("auth")
+                    .or_insert_with(|| Value::Object(serde_json::Map::new()));
+                if let Some(auth) = auth_obj.as_object_mut() {
+                    auth.insert(
+                        "OPENAI_API_KEY".to_string(),
+                        Value::String(new_key.to_string()),
+                    );
+                }
+                if let Some(cfg) = obj.get("config").and_then(Value::as_str) {
+                    let next_cfg = update_codex_toml_bearer_token(cfg, new_key);
+                    obj.insert("config".to_string(), Value::String(next_cfg));
+                }
+            }
+        }
+        AppType::GrokBuild => {
+            let Some(cfg) = updated
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+            else {
+                return fail("Grok Build 缺少 config 配置，原文件未改动");
+            };
+            match update_grok_toml_api_key(&cfg, new_key) {
+                Ok(next_cfg) => {
+                    if let Some(obj) = updated.settings_config.as_object_mut() {
+                        obj.insert("config".to_string(), Value::String(next_cfg));
+                    }
+                }
+                Err(msg) => return fail(&msg),
+            }
+        }
+        _ => unreachable!(),
+    }
+
+    match ProviderService::update(state, app_type, Some(&current_id), updated) {
+        Ok(_) => BatchTargetOutcome {
+            target,
+            status: BatchTargetStatus::Applied,
+            message: "已原地轮换 API Key 并保留原有高级配置".to_string(),
+            paths,
+        },
+        Err(_) => fail("轮换写入失败，原配置未改动"),
+    }
+}
+
 pub fn apply_api_key_rotation(
     state: &AppState,
     request: ApiKeyRotationApplyRequest,
@@ -945,18 +1159,51 @@ pub fn apply_api_key_rotation(
         return Err("请至少选择 1 个要轮换 Key 的应用".to_string());
     }
     let normalized_key = normalize_batch_api_key(&request.api_key)?;
-    let mut specs = Vec::new();
+
+    // Validate all selected targets before mutating any of them.
+    let mut non_db_specs = Vec::new();
+    let mut target_order = Vec::with_capacity(targets.len());
     for target in targets {
         let details = inspect_target(state, target);
-        specs.push(build_rotation_spec(&details)?);
+        let spec = build_rotation_spec(&details)?;
+        target_order.push(target);
+        if !matches!(
+            target,
+            BatchSetupTargetId::Claude | BatchSetupTargetId::Codex | BatchSetupTargetId::Grokbuild
+        ) {
+            non_db_specs.push(spec);
+        }
     }
-    apply_batch_provider_setup(
-        state,
-        BatchProviderApplyRequest {
-            api_key: normalized_key.as_str().to_string(),
-            targets: specs,
-        },
-    )
+
+    let mut outcome_map: HashMap<BatchSetupTargetId, BatchTargetOutcome> = HashMap::new();
+    for &target in &target_order {
+        if matches!(
+            target,
+            BatchSetupTargetId::Claude | BatchSetupTargetId::Codex | BatchSetupTargetId::Grokbuild
+        ) {
+            let outcome = rotate_db_provider_in_place(state, target, normalized_key.as_str());
+            outcome_map.insert(target, outcome);
+        }
+    }
+
+    if !non_db_specs.is_empty() {
+        let batch_res = apply_batch_provider_setup(
+            state,
+            BatchProviderApplyRequest {
+                api_key: normalized_key.as_str().to_string(),
+                targets: non_db_specs,
+            },
+        )?;
+        for outcome in batch_res.outcomes {
+            outcome_map.insert(outcome.target, outcome);
+        }
+    }
+
+    let outcomes = target_order
+        .into_iter()
+        .filter_map(|t| outcome_map.remove(&t))
+        .collect();
+    Ok(BatchProviderApplyResult { outcomes })
 }
 
 #[cfg(test)]
@@ -1052,5 +1299,71 @@ mod tests {
         };
         let err = build_rotation_spec(&oauth_details).unwrap_err();
         assert!(err.contains("官方订阅账号"));
+    }
+
+    #[test]
+    fn adapts_volcengine_minimax_cn_siliconflow_and_openrouter_urls() {
+        let (volc_openai, warn1) = adapt_base_url_for_target(
+            BatchSetupTargetId::Claude,
+            "https://ark.cn-beijing.volces.com/api/compatible",
+            BatchSetupTargetId::Codex,
+        );
+        assert_eq!(volc_openai, "https://ark.cn-beijing.volces.com/api/v3");
+        assert!(warn1.is_none());
+
+        let (volc_claude, warn2) = adapt_base_url_for_target(
+            BatchSetupTargetId::Codex,
+            "https://ark.cn-beijing.volces.com/api/v3",
+            BatchSetupTargetId::Claude,
+        );
+        assert_eq!(
+            volc_claude,
+            "https://ark.cn-beijing.volces.com/api/compatible"
+        );
+        assert!(warn2.is_none());
+
+        let (minimax_cn, warn3) = adapt_base_url_for_target(
+            BatchSetupTargetId::Codex,
+            "https://api.minimax.cn/v1",
+            BatchSetupTargetId::Claude,
+        );
+        assert_eq!(minimax_cn, "https://api.minimax.cn/anthropic");
+        assert!(warn3.is_none());
+
+        let (sf_claude, warn4) = adapt_base_url_for_target(
+            BatchSetupTargetId::Codex,
+            "https://api.siliconflow.cn/v1",
+            BatchSetupTargetId::Claude,
+        );
+        assert_eq!(sf_claude, "https://api.siliconflow.cn");
+        assert!(warn4.is_none());
+
+        let (or_claude, warn5) = adapt_base_url_for_target(
+            BatchSetupTargetId::Codex,
+            "https://openrouter.ai/api/v1",
+            BatchSetupTargetId::Claude,
+        );
+        assert_eq!(or_claude, "https://openrouter.ai/api");
+        assert!(warn5.is_none());
+    }
+
+    #[test]
+    fn codex_bearer_token_rotation_preserves_custom_provider_fields() {
+        let original = r#"
+model_provider = "my_corp_gw"
+model = "gpt-5.3-codex"
+
+[model_providers.my_corp_gw]
+name = "Corp Gateway"
+base_url = "https://gw.corp.example/v1"
+wire_api = "responses"
+supports_websockets = true
+experimental_bearer_token = "sk-old-token-1234"
+"#;
+        let updated = update_codex_toml_bearer_token(original, "sk-new-token-9999");
+        assert!(updated.contains("model_provider = \"my_corp_gw\""));
+        assert!(updated.contains("supports_websockets = true"));
+        assert!(updated.contains("experimental_bearer_token = \"sk-new-token-9999\""));
+        assert!(!updated.contains("sk-old-token-1234"));
     }
 }

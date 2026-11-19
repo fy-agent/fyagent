@@ -429,12 +429,23 @@ fn strip_known_endpoints(base: &str) -> String {
     base
 }
 
+fn is_loopback_url(raw: &str) -> bool {
+    reqwest::Url::parse(raw)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
+        .is_some_and(|host| matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1" | "[::1]"))
+}
+
 async fn execute_lightweight_probe(
     spec: ResolvedProbeSpec,
 ) -> Result<SavedModelProbeResult, String> {
-    let client = Client::builder()
+    let mut builder = Client::builder()
         .timeout(QUICK_PROBE_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::none())
+        .redirect(reqwest::redirect::Policy::none());
+    if is_loopback_url(&spec.url) {
+        builder = builder.no_proxy();
+    }
+    let client = builder
         .build()
         .map_err(|_| "无法初始化网络探测客户端".to_string())?;
 

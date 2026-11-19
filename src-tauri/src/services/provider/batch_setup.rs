@@ -599,8 +599,17 @@ pub(crate) fn apply_omp(spec: &BatchSetupTargetSpec, api_key: &str) -> BatchTarg
         .into_iter()
         .map(|id| OmpModelInput { id, name: None })
         .collect::<Vec<_>>();
+    let raw_id = spec.provider_id.trim();
+    let already_exists = omp_config::read_omp_config()
+        .map(|cfg| cfg.providers.iter().any(|p| p.id == raw_id))
+        .unwrap_or(false);
+    let omp_id = if raw_id.starts_with("fyagent-") || already_exists {
+        raw_id.to_string()
+    } else {
+        format!("fyagent-{raw_id}")
+    };
     let patch = OmpProviderPatch {
-        id: format!("fyagent-{}", spec.provider_id.trim()),
+        id: omp_id,
         base_url: spec.base_url.trim().to_string(),
         api: omp_api.to_string(),
         api_key: Some(api_key.to_string()),
@@ -683,6 +692,26 @@ mod tests {
             Some("fyagent-deepseek/deepseek-v4-pro")
         );
         assert_eq!(readback.providers[0].models.len(), 2);
+
+        // Passing the already-prefixed provider_id (e.g. from model_overview rotation/clone)
+        // must update in place without creating `fyagent-fyagent-deepseek` or leaking the old key.
+        let rotate_spec = BatchSetupTargetSpec {
+            provider_id: "fyagent-deepseek".to_string(),
+            ..spec.clone()
+        };
+        let rotated = apply_omp(&rotate_spec, "sk-test-omp-rotated");
+        assert_eq!(rotated.status, BatchTargetStatus::Applied);
+        let after_rotate = omp_config::read_omp_config().unwrap();
+        assert_eq!(after_rotate.providers.len(), 1);
+        assert_eq!(after_rotate.providers[0].id, "fyagent-deepseek");
+        assert_eq!(
+            after_rotate.default_model.as_deref(),
+            Some("fyagent-deepseek/deepseek-v4-pro")
+        );
+        let raw_models = std::fs::read_to_string(&after_rotate.models_path).unwrap();
+        assert!(!raw_models.contains("fyagent-fyagent-"));
+        assert!(!raw_models.contains("sk-test-omp-batch"));
+        assert!(raw_models.contains("sk-test-omp-rotated"));
 
         // Fault inject config write on a second update: omp must fail cleanly and preserve the first write!
         crate::omp_config::test_support::arm_config_write_fault();

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import {
   BATCH_CONFIGURABLE_TARGETS,
@@ -116,6 +116,7 @@ export function ModelHealthDialog({
     Partial<Record<BatchSetupTargetId, ProbeEntry>>
   >({});
   const [probingAll, setProbingAll] = useState(false);
+  const probeGenRef = useRef(0);
 
   // Clone state
   const [cloneSource, setCloneSource] = useState<BatchSetupTargetId | null>(
@@ -163,6 +164,7 @@ export function ModelHealthDialog({
   };
 
   const invalidateModelQueries = async () => {
+    probeGenRef.current += 1;
     await Promise.all([
       queryClient.invalidateQueries({
         queryKey: featureKeys.modelHealthOverview,
@@ -190,7 +192,10 @@ export function ModelHealthDialog({
     ]);
   };
 
-  const probeSingle = async (snapshot: TargetModelSnapshot) => {
+  const probeSingle = async (
+    snapshot: TargetModelSnapshot,
+    gen = probeGenRef.current,
+  ) => {
     if (!snapshot.canProbe || !snapshot.modelId) return;
     setProbeMap((prev) => ({
       ...prev,
@@ -202,11 +207,13 @@ export function ModelHealthDialog({
         providerId: snapshot.providerId,
         modelId: snapshot.modelId,
       });
+      if (probeGenRef.current !== gen) return;
       setProbeMap((prev) => ({
         ...prev,
         [snapshot.target]: { status: "done", result },
       }));
     } catch (err) {
+      if (probeGenRef.current !== gen) return;
       setProbeMap((prev) => ({
         ...prev,
         [snapshot.target]: {
@@ -219,21 +226,24 @@ export function ModelHealthDialog({
 
   const handleProbeAll = async () => {
     if (probingAll || probeableTargets.length === 0) return;
+    const gen = ++probeGenRef.current;
     setProbingAll(true);
     try {
       const queue = [...probeableTargets];
       const workers = Array.from(
         { length: Math.min(PROBE_CONCURRENCY, queue.length) },
         async () => {
-          while (queue.length > 0) {
+          while (queue.length > 0 && probeGenRef.current === gen) {
             const next = queue.shift();
-            if (next) await probeSingle(next);
+            if (next) await probeSingle(next, gen);
           }
         },
       );
       await Promise.all(workers);
     } finally {
-      setProbingAll(false);
+      if (probeGenRef.current === gen) {
+        setProbingAll(false);
+      }
     }
   };
 
@@ -248,9 +258,11 @@ export function ModelHealthDialog({
           item.target !== "grokbuild",
       )
       .map((item) => item.target);
-    const fallbackOthers = BATCH_CONFIGURABLE_TARGETS.filter(
-      (item) => item.id !== source.target && item.defaultChecked,
-    ).map((item) => item.id);
+    const fallbackOthers = BATCH_CONFIGURABLE_TARGETS.filter((item) => {
+      if (item.id === source.target || !item.defaultChecked) return false;
+      const snap = targets.find((t) => t.target === item.id);
+      return snap?.credentialSource !== "oauth";
+    }).map((item) => item.id);
     setCloneDestinations(
       unconfiguredOthers.length > 0 ? unconfiguredOthers : fallbackOthers,
     );
@@ -331,6 +343,13 @@ export function ModelHealthDialog({
     try {
       const res = await ports.providers.applyCloneModelConfig(payload);
       setOutcomes(res.outcomes);
+      setProbeMap((prev) => {
+        const next = { ...prev };
+        for (const outcome of res.outcomes) {
+          if (outcome.status === "applied") delete next[outcome.target];
+        }
+        return next;
+      });
       await invalidateModelQueries();
     } catch (err) {
       setError(err instanceof Error ? err.message : "克隆写入失败");
@@ -386,6 +405,13 @@ export function ModelHealthDialog({
         targets: targetsToApply,
       });
       setOutcomes(res.outcomes);
+      setProbeMap((prev) => {
+        const next = { ...prev };
+        for (const outcome of res.outcomes) {
+          if (outcome.status === "applied") delete next[outcome.target];
+        }
+        return next;
+      });
       if (res.outcomes.every((o) => o.status === "applied")) {
         setRotateApiKey("");
       }
@@ -622,13 +648,21 @@ export function ModelHealthDialog({
                         <Button
                           disabled={probingAll}
                           onClick={() => {
+                            const isClaudeSource = snapshot.target === "claude";
+                            const rawUrl = snapshot.baseUrl!;
+                            const derivedOpenAiUrl = isClaudeSource
+                              ? rawUrl.replace(/\/anthropic\/?$/iu, "/v1")
+                              : rawUrl;
                             const draft: Partial<SaveCustomGatewayTemplateRequest> =
                               {
                                 name:
                                   snapshot.providerName ||
                                   snapshot.endpointHost ||
                                   "自定义网关",
-                                baseUrl: snapshot.baseUrl!,
+                                baseUrl: derivedOpenAiUrl,
+                                ...(isClaudeSource
+                                  ? { anthropicBaseUrl: rawUrl }
+                                  : {}),
                                 defaultModelId: snapshot.modelId!,
                                 codexProtocol:
                                   snapshot.protocol === "chat"
