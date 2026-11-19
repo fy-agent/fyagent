@@ -66,6 +66,32 @@ pub enum BindXaiManagedError {
     RollbackPartialStateUnknown,
 }
 
+fn managed_proxy_unavailable_reason(
+    error: &crate::services::managed_auth::ManagedAuthCoreError,
+) -> &'static str {
+    use crate::services::managed_auth::ManagedAuthCoreError;
+    match error {
+        ManagedAuthCoreError::NotFound => "proxy_credential_not_found",
+        ManagedAuthCoreError::Conflict => "credential_not_ready_or_wrong_refresh_owner",
+        ManagedAuthCoreError::SecretMissing => "secret_bundle_missing_or_expired",
+        ManagedAuthCoreError::SecretUnavailable => "secret_store_unavailable",
+        ManagedAuthCoreError::Database => "database_error",
+        ManagedAuthCoreError::InvalidData => "invalid_credential_data",
+        ManagedAuthCoreError::Stale => "stale_state",
+        ManagedAuthCoreError::MigrationBlocked => "migration_blocked",
+        ManagedAuthCoreError::CredentialTooLarge => "credential_too_large",
+        ManagedAuthCoreError::Io => "io_error",
+    }
+}
+
+fn log_proxy_bind_unavailable(app: &AppType, reason: &'static str) {
+    log::warn!(
+        "managed_proxy_bind_rejected app={} code=account_unavailable reason={}",
+        app.as_str(),
+        reason
+    );
+}
+
 impl From<QuickSetupApplyError> for BindXaiManagedError {
     fn from(error: QuickSetupApplyError) -> Self {
         match error.code {
@@ -277,9 +303,10 @@ impl ProviderService {
         if request.expected_revision != current_revision {
             return Err(BindManagedProxyError::ProviderConflict);
         }
-        let credential = auth
-            .proxy_account(&request.account_id)
-            .map_err(|_| BindManagedProxyError::AccountUnavailable)?;
+        let credential = auth.proxy_account(&request.account_id).map_err(|err| {
+            log_proxy_bind_unavailable(&app, managed_proxy_unavailable_reason(&err));
+            BindManagedProxyError::AccountUnavailable
+        })?;
         let mut provider = build_provider(
             &app,
             &credential.credential.legacy_account_id,
@@ -444,10 +471,12 @@ impl ProviderService {
     ) -> Result<BindManagedProxyResult, BindManagedProxyError> {
         let app = parse_request(&request)?;
         let _guard = Self::lock_provider_mutation(state, &app);
-        let credential = auth
-            .proxy_account(&request.account_id)
-            .map_err(|_| BindXaiManagedError::AccountUnavailable)?;
+        let credential = auth.proxy_account(&request.account_id).map_err(|err| {
+            log_proxy_bind_unavailable(&app, managed_proxy_unavailable_reason(&err));
+            BindXaiManagedError::AccountUnavailable
+        })?;
         if expected_source.is_some_and(|source| source != credential.credential.provider) {
+            log_proxy_bind_unavailable(&app, "provider_source_mismatch");
             return Err(BindXaiManagedError::AccountUnavailable);
         }
         let mut provider = build_provider(
@@ -543,5 +572,42 @@ impl ProviderService {
             }
         }
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::managed_proxy_unavailable_reason;
+    use crate::services::managed_auth::ManagedAuthCoreError;
+
+    #[test]
+    fn unavailable_reason_tokens_are_closed_and_secret_free() {
+        let cases = [
+            (ManagedAuthCoreError::NotFound, "proxy_credential_not_found"),
+            (
+                ManagedAuthCoreError::Conflict,
+                "credential_not_ready_or_wrong_refresh_owner",
+            ),
+            (
+                ManagedAuthCoreError::SecretMissing,
+                "secret_bundle_missing_or_expired",
+            ),
+            (
+                ManagedAuthCoreError::SecretUnavailable,
+                "secret_store_unavailable",
+            ),
+            (ManagedAuthCoreError::Database, "database_error"),
+            (ManagedAuthCoreError::InvalidData, "invalid_credential_data"),
+            (ManagedAuthCoreError::Stale, "stale_state"),
+            (ManagedAuthCoreError::MigrationBlocked, "migration_blocked"),
+            (
+                ManagedAuthCoreError::CredentialTooLarge,
+                "credential_too_large",
+            ),
+            (ManagedAuthCoreError::Io, "io_error"),
+        ];
+        for (err, expected) in cases {
+            assert_eq!(managed_proxy_unavailable_reason(&err), expected);
+        }
     }
 }
