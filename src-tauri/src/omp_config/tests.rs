@@ -628,12 +628,7 @@ fn omp_candidate_resolver_prioritizes_windows_install_path_and_bun_entry() {
     let home = directory.path().to_path_buf();
     let local = home.join("AppData/Local");
     let path_dir = home.join("Tools");
-    let candidates = omp_candidates(
-        Some(&local),
-        Some(&home),
-        vec![path_dir.clone()],
-        true,
-    );
+    let candidates = omp_candidates(Some(&local), Some(&home), vec![path_dir.clone()], true);
     assert_eq!(candidates[0], local.join("omp").join("omp.exe"));
     assert!(candidates.contains(&path_dir.join("omp.exe")));
     assert!(candidates.contains(&home.join(".bun").join("bin").join("omp.cmd")));

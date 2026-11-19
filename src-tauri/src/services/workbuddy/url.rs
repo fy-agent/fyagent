@@ -254,17 +254,18 @@ mod tests {
             "https://example.test/%76%31/models"
         );
 
-        let encoded_v0 =
-            normalize_workbuddy_base_url("https://example.test/%76%30").unwrap();
+        let encoded_v0 = normalize_workbuddy_base_url("https://example.test/%76%30").unwrap();
         assert_eq!(
             encoded_v0.base_url.as_str(),
             "https://example.test/%76%30/v1"
         );
 
         // Preserve explicit v3 / v4 endpoints (Volcengine Ark / Zhipu GLM) without appending /v1
-        let zhipu =
-            normalize_workbuddy_base_url("https://open.bigmodel.cn/api/paas/v4/").unwrap();
-        assert_eq!(zhipu.base_url.as_str(), "https://open.bigmodel.cn/api/paas/v4");
+        let zhipu = normalize_workbuddy_base_url("https://open.bigmodel.cn/api/paas/v4/").unwrap();
+        assert_eq!(
+            zhipu.base_url.as_str(),
+            "https://open.bigmodel.cn/api/paas/v4"
+        );
         assert_eq!(
             zhipu.models_url.as_str(),
             "https://open.bigmodel.cn/api/paas/v4/models"

@@ -17,7 +17,7 @@
   align-items: center;
   max-width: 280px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--fy-radius-pill);
   font-size: 12px;
   line-height: 1.35;
   white-space: nowrap;

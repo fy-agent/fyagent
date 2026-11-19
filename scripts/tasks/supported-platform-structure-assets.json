@@ -223,7 +223,7 @@
     ],
     [
       "src-tauri/src/omp_config/mod.rs",
-      "d89108c3115baa4e920a098e7b6dd349ad9c33b511ead4cdc853a25308082e89"
+      "8f66e0fe215356b79a4ec8590317e42a6070468a8a9b203acdd59c17326e5e81"
     ],
     [
       "src-tauri/src/opencode_config.rs",
@@ -263,7 +263,7 @@
     ],
     [
       "src-tauri/src/services/change_plan/service.rs",
-      "e7e2fadffcb90dcdb8fd160feb13552f06b057e1c0bc45fb07167a53c2b8c716"
+      "bbf842e015c7ea28182448155192881e062d1ef26960192b6a2ca1d45c4b8493"
     ],
     [
       "src-tauri/src/services/config_pack/files.rs",
@@ -331,7 +331,7 @@
     ],
     [
       "src-tauri/src/services/provider/codex_client_catalog.rs",
-      "1ff917cf4643ec0cf482a7bd4324eb9c953884a9469b30f329e3cf201fc6d625"
+      "61abf8b25065a67f7a7f7aa67858769589df03c321aacd38a0e3ad1a5810d9b8"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",

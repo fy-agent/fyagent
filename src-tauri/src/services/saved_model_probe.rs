@@ -141,14 +141,15 @@ fn resolve_saved_probe_spec(
     match target {
         BatchSetupTargetId::Workbuddy => {
             let paths = current_paths();
-            let (loaded, _) =
-                load_workbuddy_files(&paths).map_err(|_| "无法读取 WorkBuddy 配置文件".to_string())?;
+            let (loaded, _) = load_workbuddy_files(&paths)
+                .map_err(|_| "无法读取 WorkBuddy 配置文件".to_string())?;
             let entry = loaded
                 .document
                 .models()
                 .iter()
                 .find(|item| {
-                    item.get("id").and_then(Value::as_str).map(str::trim) == Some(requested_model_id)
+                    item.get("id").and_then(Value::as_str).map(str::trim)
+                        == Some(requested_model_id)
                 })
                 .ok_or_else(|| format!("未在 WorkBuddy 配置中找到模型 '{requested_model_id}'"))?;
             let base_url = entry
@@ -316,10 +317,8 @@ fn extract_provider_probe_spec(
                 Some("chat") => ApiProtocol::Chat,
                 _ => ApiProtocol::Responses,
             };
-            let api_key = crate::codex_config::extract_codex_api_key(
-                settings.get("auth"),
-                Some(config_text),
-            );
+            let api_key =
+                crate::codex_config::extract_codex_api_key(settings.get("auth"), Some(config_text));
             let model_id = if !requested_model_id.trim().is_empty() {
                 requested_model_id.trim().to_string()
             } else {
@@ -430,7 +429,9 @@ fn strip_known_endpoints(base: &str) -> String {
     base
 }
 
-async fn execute_lightweight_probe(spec: ResolvedProbeSpec) -> Result<SavedModelProbeResult, String> {
+async fn execute_lightweight_probe(
+    spec: ResolvedProbeSpec,
+) -> Result<SavedModelProbeResult, String> {
     let client = Client::builder()
         .timeout(QUICK_PROBE_TIMEOUT)
         .redirect(reqwest::redirect::Policy::none())
@@ -455,7 +456,9 @@ async fn execute_lightweight_probe(spec: ResolvedProbeSpec) -> Result<SavedModel
         }),
     };
 
-    let mut req = client.post(&spec.url).header("Content-Type", "application/json");
+    let mut req = client
+        .post(&spec.url)
+        .header("Content-Type", "application/json");
     if spec.protocol == ApiProtocol::Anthropic {
         req = req.header("anthropic-version", "2023-06-01");
         if let Some(key) = &spec.api_key {
@@ -516,7 +519,10 @@ mod tests {
 
     #[test]
     fn classifies_http_statuses_into_five_actionable_categories() {
-        assert_eq!(classify_http_probe_status(200).0, SavedModelProbeCategory::Ok);
+        assert_eq!(
+            classify_http_probe_status(200).0,
+            SavedModelProbeCategory::Ok
+        );
         assert_eq!(
             classify_http_probe_status(401).0,
             SavedModelProbeCategory::InvalidKey
@@ -550,7 +556,10 @@ mod tests {
             "https://open.bigmodel.cn/api/paas/v4/chat/completions"
         );
         assert_eq!(
-            build_endpoint_url("https://ark.cn-beijing.volces.com/api/v3", ApiProtocol::Responses),
+            build_endpoint_url(
+                "https://ark.cn-beijing.volces.com/api/v3",
+                ApiProtocol::Responses
+            ),
             "https://ark.cn-beijing.volces.com/api/v3/responses"
         );
         // DeepSeek Codex/GrokBuild root responses URL is NOT forced to /v1

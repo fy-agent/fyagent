@@ -1075,8 +1075,10 @@ fn plan_mac_key() -> &'static [u8; 32] {
 
 // ── CLI discovery & direct orchestration ────────────────────────────────────
 
+#[cfg(any(target_os = "macos", test))]
 const MAX_OMP_VERSION_BYTES: usize = 64;
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn parse_omp_version_output(output: &str) -> Option<String> {
     let line = output.lines().next()?.trim();
     let value = line
@@ -1130,12 +1132,24 @@ pub(crate) fn omp_candidates(
             );
         }
         if let Some(home) = home {
-            push_unique(&mut candidates, home.join(".bun").join("bin").join("omp.exe"));
-            push_unique(&mut candidates, home.join(".bun").join("bin").join("omp.cmd"));
-            push_unique(&mut candidates, home.join(".omp").join("bin").join("omp.exe"));
             push_unique(
                 &mut candidates,
-                home.join("AppData").join("Roaming").join("npm").join("omp.cmd"),
+                home.join(".bun").join("bin").join("omp.exe"),
+            );
+            push_unique(
+                &mut candidates,
+                home.join(".bun").join("bin").join("omp.cmd"),
+            );
+            push_unique(
+                &mut candidates,
+                home.join(".omp").join("bin").join("omp.exe"),
+            );
+            push_unique(
+                &mut candidates,
+                home.join("AppData")
+                    .join("Roaming")
+                    .join("npm")
+                    .join("omp.cmd"),
             );
         }
         for dir in path_dirs {
@@ -1263,14 +1277,16 @@ impl OmpRollbackCheckpoint {
         if let Some(expected_hash) = &self.written_models_hash {
             crate::config::restore_file_preimage_if_owned(
                 &self.models_path,
-                self.models_existed.then_some(self.models_preimage.as_slice()),
+                self.models_existed
+                    .then_some(self.models_preimage.as_slice()),
                 Some(expected_hash),
             )?;
         }
         if let Some(expected_hash) = &self.written_config_hash {
             crate::config::restore_file_preimage_if_owned(
                 &self.config_path,
-                self.config_existed.then_some(self.config_preimage.as_slice()),
+                self.config_existed
+                    .then_some(self.config_preimage.as_slice()),
                 Some(expected_hash),
             )?;
         }
@@ -1284,8 +1300,13 @@ pub(crate) fn apply_omp_provider_direct(
     expected_revisions: Option<(String, String)>,
 ) -> Result<(OmpSaveResult, OmpRollbackCheckpoint), AppError> {
     let current = read_omp_config()?;
-    let (expected_models_revision, expected_config_revision) = expected_revisions
-        .unwrap_or_else(|| (current.models_revision.clone(), current.config_revision.clone()));
+    let (expected_models_revision, expected_config_revision) =
+        expected_revisions.unwrap_or_else(|| {
+            (
+                current.models_revision.clone(),
+                current.config_revision.clone(),
+            )
+        });
     let models_before = {
         let paths = resolve_omp_paths()?;
         read_models_snapshot(&paths.models_path, &paths.legacy_json_path)?

@@ -104,7 +104,10 @@ fn validate_and_merge_provider_ast(
 ) -> Result<(), AppError> {
     let providers_key = YamlValue::String("providers".to_string());
     if !root.contains_key(&providers_key) {
-        root.insert(providers_key.clone(), YamlValue::Mapping(YamlMapping::new()));
+        root.insert(
+            providers_key.clone(),
+            YamlValue::Mapping(YamlMapping::new()),
+        );
     }
     let providers = root
         .get_mut(&providers_key)
@@ -257,7 +260,8 @@ fn can_block_patch_models(content: &str, provider_id: &str) -> bool {
         return false;
     }
     let lines: Vec<&str> = content.lines().collect();
-    if let Some((p_idx, p_end, p_indent)) = find_mapping_block(&lines, 0, lines.len(), 0, "providers")
+    if let Some((p_idx, p_end, p_indent)) =
+        find_mapping_block(&lines, 0, lines.len(), 0, "providers")
     {
         if has_inline_flow_value(lines[p_idx], "providers") {
             return false;
@@ -394,7 +398,9 @@ fn split_trailing_comment(rest: &str) -> (&str, &str) {
         if !in_single && !in_double && ch == '#' && prev_whitespace {
             let ws_start = rest[..idx]
                 .rfind(|c: char| c != ' ' && c != '\t')
-                .map_or(0, |p| p + rest[p..].chars().next().map_or(1, char::len_utf8));
+                .map_or(0, |p| {
+                    p + rest[p..].chars().next().map_or(1, char::len_utf8)
+                });
             return (&rest[..ws_start], &rest[ws_start..]);
         }
         prev_whitespace = ch == ' ' || ch == '\t';
@@ -408,7 +414,9 @@ fn strip_unquoted_comment(line: &str) -> &str {
 
 fn format_yaml_scalar(value: &str) -> String {
     let needs_quotes = value.is_empty()
-        || value.starts_with(['!', '&', '*', '{', '[', '|', '>', '%', '@', '`', ' ', '\t', '#', '-', '?', ':'])
+        || value.starts_with([
+            '!', '&', '*', '{', '[', '|', '>', '%', '@', '`', ' ', '\t', '#', '-', '?', ':',
+        ])
         || value.ends_with([' ', '\t'])
         || value.contains(['#', ':', '"', '\'', '\n', '\r'])
         || matches!(
@@ -487,7 +495,12 @@ fn trim_block_end(lines: &[&str], block_start: usize, raw_end: usize) -> usize {
     end
 }
 
-fn detect_child_indent(lines: &[&str], start: usize, end: usize, parent_indent: usize) -> Option<usize> {
+fn detect_child_indent(
+    lines: &[&str],
+    start: usize,
+    end: usize,
+    parent_indent: usize,
+) -> Option<usize> {
     for &line in lines.iter().take(end).skip(start) {
         if is_blank_or_comment(line) {
             continue;
@@ -534,7 +547,12 @@ fn upsert_scalar_in_block(
         *block_end,
     );
     if let Some(before) = insert_before_key {
-        for (idx, line) in lines.iter().enumerate().take(*block_end).skip(block_start + 1) {
+        for (idx, line) in lines
+            .iter()
+            .enumerate()
+            .take(*block_end)
+            .skip(block_start + 1)
+        {
             if !is_blank_or_comment(line) && line_indent(line) == prop_indent {
                 if let Some((k, _)) = split_key_line(line) {
                     if k == before {
@@ -556,7 +574,10 @@ fn render_provider_lines(indent: usize, patch: &OmpProviderPatch) -> Vec<String>
     let m_pad = " ".repeat(indent + 4);
     let mut out = Vec::new();
     out.push(format!("{p_pad}{}:", format_yaml_key(&patch.id)));
-    out.push(format!("{f_pad}baseUrl: {}", format_yaml_scalar(&patch.base_url)));
+    out.push(format!(
+        "{f_pad}baseUrl: {}",
+        format_yaml_scalar(&patch.base_url)
+    ));
     out.push(format!("{f_pad}api: {}", format_yaml_scalar(&patch.api)));
     if let Some(auth) = &patch.auth {
         out.push(format!("{f_pad}auth: {}", format_yaml_scalar(auth)));
@@ -600,8 +621,8 @@ fn block_patch_provider(content: &str, patch: &OmpProviderPatch) -> Option<Strin
         return Some(join_lines(&lines));
     };
 
-    let prop_indent = detect_child_indent(&r, prov_idx + 1, prov_end, child_indent)
-        .unwrap_or(child_indent + 2);
+    let prop_indent =
+        detect_child_indent(&r, prov_idx + 1, prov_end, child_indent).unwrap_or(child_indent + 2);
 
     upsert_scalar_in_block(
         &mut lines,
@@ -645,7 +666,13 @@ fn block_patch_provider(content: &str, patch: &OmpProviderPatch) -> Option<Strin
     }
 
     if !patch.models.is_empty() {
-        patch_models_in_block(&mut lines, prov_idx, &mut prov_end, prop_indent, &patch.models)?;
+        patch_models_in_block(
+            &mut lines,
+            prov_idx,
+            &mut prov_end,
+            prop_indent,
+            &patch.models,
+        )?;
     }
 
     Some(join_lines(&lines))
@@ -679,7 +706,8 @@ fn patch_models_in_block(
     };
 
     let mut m_end = m_raw_end;
-    let seq_indent = find_seq_dash_indent(lines, m_idx + 1, m_end, prop_indent).unwrap_or(prop_indent + 2);
+    let seq_indent =
+        find_seq_dash_indent(lines, m_idx + 1, m_end, prop_indent).unwrap_or(prop_indent + 2);
 
     for model in models {
         if let Some((item_start, item_end, item_prop_indent)) =

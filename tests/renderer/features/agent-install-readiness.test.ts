@@ -50,6 +50,7 @@ function readiness(
   const codex = agentId === "codex";
   const grok = agentId === "grokbuild";
   const claudeCli = agentId === "claude-code";
+  const omp = agentId === "omp";
   return {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     configurationEligibility: { state: "unknown", evidence: "none" },
@@ -71,7 +72,7 @@ function readiness(
       agentId === "opencode" ? "provider_connection_required" : "unknown",
     sourceKind: codex
       ? "codex_desktop"
-      : grok || claudeCli
+      : grok || claudeCli || omp
         ? "cli_tooling"
         : "managed_desktop",
     allowedActions: [],
@@ -330,7 +331,7 @@ describe("Agent install readiness wire contract", () => {
     ).toThrow("Agent action job is unavailable");
   });
 
-  it("maps desktop-only Agent lifecycle surfaces except Grok and Claude CLI", () => {
+  it("maps desktop-only Agent lifecycle surfaces except CLI agents (Grok, Claude CLI, omp)", () => {
     expect(AGENT_CATALOG_IDS.map(surfacesForAgent)).toEqual([
       ["desktop"],
       ["desktop"],
@@ -339,6 +340,7 @@ describe("Agent install readiness wire contract", () => {
       ["desktop"],
       ["cli"],
       ["desktop"],
+      ["cli"],
     ]);
     expect(isLegalAgentSurface("qoderwork", "cli")).toBe(false);
     expect(isLegalAgentSurface("claude-code", "cli")).toBe(true);

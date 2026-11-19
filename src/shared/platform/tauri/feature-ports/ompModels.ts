@@ -193,13 +193,12 @@ function parseOmpSaveResult(value: unknown): OmpSaveResult {
   };
 }
 
-async function invokeOmp<T>(
-  command: string,
-  args: Record<string, unknown> | undefined,
+async function runOmpInvoke<T>(
+  call: () => Promise<unknown>,
   parse: (raw: unknown) => T,
 ): Promise<T> {
   try {
-    const raw = await invoke<unknown>(command, args);
+    const raw = await call();
     return parse(raw);
   } catch (error) {
     if (error instanceof OmpPortError) throw error;
@@ -210,12 +209,24 @@ async function invokeOmp<T>(
 export function createOmpModelsPort(): OmpModelsPort {
   return {
     readConfig: () =>
-      invokeOmp("read_omp_config", undefined, parseOmpConfigRead),
+      runOmpInvoke(
+        () => invoke<unknown>("read_omp_config"),
+        parseOmpConfigRead,
+      ),
     discoverCli: () =>
-      invokeOmp("discover_omp_cli", undefined, parseOmpCliDiscovery),
+      runOmpInvoke(
+        () => invoke<unknown>("discover_omp_cli"),
+        parseOmpCliDiscovery,
+      ),
     previewSave: (request: OmpSaveRequest) =>
-      invokeOmp("preview_omp_save", { plan: request }, parseOmpSavePreview),
+      runOmpInvoke(
+        () => invoke<unknown>("preview_omp_save", { plan: request }),
+        parseOmpSavePreview,
+      ),
     applySave: (confirmation: OmpApplyConfirmation) =>
-      invokeOmp("apply_omp_save", { plan: confirmation }, parseOmpSaveResult),
+      runOmpInvoke(
+        () => invoke<unknown>("apply_omp_save", { plan: confirmation }),
+        parseOmpSaveResult,
+      ),
   };
 }

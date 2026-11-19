@@ -2999,7 +2999,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             ChangePlanService::plan_codex_switch_at(&state, &target.id, 100),
-            Err(ChangePlanErrorCode::Internal)
+            Err(ChangePlanErrorCode::InvalidTarget)
         );
 
         target.settings_config = provider("fixture", "Fixture", "gpt-target").settings_config;

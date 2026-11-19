@@ -148,9 +148,8 @@ fn read_process_table() -> Option<String> {
 fn read_process_table() -> Option<String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let ps_exe = std::path::PathBuf::from(
-        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-    );
+    let ps_exe =
+        std::path::PathBuf::from(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe");
     if !ps_exe.is_file() {
         return None;
     }
@@ -477,8 +476,7 @@ fn after_codex_executable(command: &str) -> Option<&str> {
     while let Some(found) = lower[from..].find(NAME) {
         let start = from + found;
         let end = start + NAME.len();
-        let valid_prefix =
-            start == 0 || command[..start].ends_with(['/', '\\', '"', ' ']);
+        let valid_prefix = start == 0 || command[..start].ends_with(['/', '\\', '"', ' ']);
         if valid_prefix {
             let mut rest = &command[end..];
             if lower[end..].starts_with(".exe") {

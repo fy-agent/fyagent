@@ -85,12 +85,23 @@
   opacity: 0.58;
 }
 
-.fy-catalog-list-item[data-muted="true"]:not([aria-current="true"]) {
-  opacity: 0.64;
+.fy-catalog-list-item[data-muted="true"]:not([aria-current="true"])
+  .fy-catalog-brand-frame {
+  opacity: 0.56;
+  filter: grayscale(0.75);
 }
 
-.fy-catalog-list-item[data-muted="true"]:hover:not(:disabled) {
-  opacity: 0.88;
+.fy-catalog-list-item[data-muted="true"]:not([aria-current="true"])
+  .fy-catalog-list-copy
+  strong {
+  color: var(--fy-text-secondary);
+  font-weight: 500;
+}
+
+.fy-catalog-list-item[data-muted="true"]:hover:not(:disabled)
+  .fy-catalog-brand-frame {
+  opacity: 0.85;
+  filter: grayscale(0.25);
 }
 
 .fy-catalog-list-copy {

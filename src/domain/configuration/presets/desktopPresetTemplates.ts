@@ -1,8 +1,24 @@
 import type { ApiProtocol } from "../providerApi";
-import type {
-  BatchSetupTargetId,
-  BatchSetupTargetSpec,
-} from "../../../shared/features/models";
+
+export const BATCH_SETUP_TARGET_IDS = [
+  "workbuddy",
+  "codex",
+  "claude",
+  "opencode",
+  "omp",
+  "grokbuild",
+] as const;
+export type BatchSetupTargetId = (typeof BATCH_SETUP_TARGET_IDS)[number];
+
+export interface BatchSetupTargetSpec {
+  target: BatchSetupTargetId;
+  providerId: string;
+  providerName: string;
+  baseUrl: string;
+  modelId: string;
+  extraModelIds?: string[];
+  protocol?: ApiProtocol;
+}
 
 export interface DesktopPresetTargetMapping {
   baseUrl: string;

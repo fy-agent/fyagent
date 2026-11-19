@@ -4,6 +4,17 @@ import type {
   ApiConnection,
   ApiProtocol,
 } from "../../domain/configuration/providerApi";
+import {
+  BATCH_SETUP_TARGET_IDS,
+  type BatchSetupTargetId,
+  type BatchSetupTargetSpec,
+} from "../../domain/configuration/presets/desktopPresetTemplates";
+
+export {
+  BATCH_SETUP_TARGET_IDS,
+  type BatchSetupTargetId,
+  type BatchSetupTargetSpec,
+};
 
 export type ProviderAppId = ApiConfigTarget;
 
@@ -310,26 +321,6 @@ export interface WorkBuddySubscriptionSourceResult {
     bindingVersion: number;
     localBaseUrl: string;
   } | null;
-}
-
-export const BATCH_SETUP_TARGET_IDS = [
-  "workbuddy",
-  "codex",
-  "claude",
-  "opencode",
-  "omp",
-  "grokbuild",
-] as const;
-export type BatchSetupTargetId = (typeof BATCH_SETUP_TARGET_IDS)[number];
-
-export interface BatchSetupTargetSpec {
-  target: BatchSetupTargetId;
-  providerId: string;
-  providerName: string;
-  baseUrl: string;
-  modelId: string;
-  extraModelIds?: string[];
-  protocol?: ApiProtocol;
 }
 
 export interface BatchProviderPreviewRequest {

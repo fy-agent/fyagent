@@ -297,8 +297,10 @@ pub(crate) fn resolve_saved_opencode_probe_connection(
     let bytes = read_opencode_config_bytes()
         .map_err(|_| "无法读取 OpenCode 配置文件".to_string())?
         .ok_or_else(|| "OpenCode 配置文件尚不存在".to_string())?;
-    let config = parse_config_object(&bytes).map_err(|_| "OpenCode 配置文件格式无效".to_string())?;
-    let providers = providers_object(&config).map_err(|_| "OpenCode 配置文件格式无效".to_string())?;
+    let config =
+        parse_config_object(&bytes).map_err(|_| "OpenCode 配置文件格式无效".to_string())?;
+    let providers =
+        providers_object(&config).map_err(|_| "OpenCode 配置文件格式无效".to_string())?;
     let provider = providers
         .get(provider_id)
         .ok_or_else(|| format!("未找到 OpenCode 供应商 '{provider_id}'"))?;
