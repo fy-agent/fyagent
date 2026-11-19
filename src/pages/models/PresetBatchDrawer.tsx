@@ -181,7 +181,7 @@ export function PresetBatchDrawer({
       }
       await invalidateModelQueries();
     } catch {
-      setError("批量装配未能完成，未提交的目标文件保持原状。");
+      setError("未能完成批量配置，原文件未改动。");
     } finally {
       setBusy(false);
     }
@@ -213,7 +213,7 @@ export function PresetBatchDrawer({
         onOpenChange(next);
       }}
       title="一键配置主流大模型"
-      description="选定服务商并粘贴一次 API Key，按各客户端协议自动完成备份、无损写入与回读校验（Codex / Claude / Grok Build 将同步更新一键配置方案并设为当前激活）。"
+      description="选择服务商并粘贴 API Key，一次配好多个 AI 软件。"
       actions={
         <>
           <Button onClick={handleClose}>关闭</Button>
@@ -291,7 +291,7 @@ export function PresetBatchDrawer({
 
         <section aria-label="填写 API Key 与目标软件">
           <label className="fy-models-field">
-            <strong>2. 粘贴 API Key（自动去除首尾空格与换行）</strong>
+            <strong>2. 粘贴 API Key</strong>
             <Input
               type="password"
               value={apiKey}
@@ -345,7 +345,7 @@ export function PresetBatchDrawer({
             className="fy-preset-batch-preview"
             aria-label="即将改动的配置文件预览"
           >
-            <strong>即将改动的配置文件（写前自动生成滚动备份）</strong>
+            <strong>即将改动的配置文件</strong>
             <ul>
               {previewItems.map((item) => (
                 <li key={item.target}>
@@ -373,7 +373,7 @@ export function PresetBatchDrawer({
             className="fy-preset-batch-outcomes"
             aria-label="批量写入结果"
           >
-            <strong>执行结果（单应用失败仅回滚自身，不影响已成功应用）</strong>
+            <strong>执行结果</strong>
             <ul>
               {outcomes.map((outcome) => (
                 <li

@@ -1839,7 +1839,7 @@ describe("Models page", () => {
     });
     renderPage(ports, "claude");
 
-    await screen.findByText("已有设置，将更新");
+    await screen.findByText("已配置，保存将更新");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://claude.example/v1",

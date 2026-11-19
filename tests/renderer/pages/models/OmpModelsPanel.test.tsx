@@ -122,7 +122,7 @@ describe("OmpModelsPanel", () => {
     );
     await user.click(
       screen.getByRole("checkbox", {
-        name: "设为 omp 默认模型（modelRoles.default）",
+        name: "设为 omp 默认模型",
       }),
     );
 

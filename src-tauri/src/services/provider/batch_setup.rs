@@ -136,24 +136,26 @@ fn preview_single_target(spec: &BatchSetupTargetSpec) -> BatchProviderPreviewIte
     let base_url = spec.base_url.trim().to_string();
     let model_id = spec.model_id.trim().to_string();
     match spec.target {
-        BatchSetupTargetId::Workbuddy => match futures::executor::block_on(get_workbuddy_status()) {
-            Ok(status) => BatchProviderPreviewItem {
-                target: spec.target,
-                paths: vec![status.path],
-                base_url,
-                model_id,
-                ready: true,
-                warning: None,
-            },
-            Err(_) => BatchProviderPreviewItem {
-                target: spec.target,
-                paths: Vec::new(),
-                base_url,
-                model_id,
-                ready: false,
-                warning: Some("无法读取 WorkBuddy 配置文件，请检查权限".to_string()),
-            },
-        },
+        BatchSetupTargetId::Workbuddy => {
+            match futures::executor::block_on(get_workbuddy_status()) {
+                Ok(status) => BatchProviderPreviewItem {
+                    target: spec.target,
+                    paths: vec![status.path],
+                    base_url,
+                    model_id,
+                    ready: true,
+                    warning: None,
+                },
+                Err(_) => BatchProviderPreviewItem {
+                    target: spec.target,
+                    paths: Vec::new(),
+                    base_url,
+                    model_id,
+                    ready: false,
+                    warning: Some("无法读取 WorkBuddy 配置文件，请检查权限".to_string()),
+                },
+            }
+        }
         BatchSetupTargetId::Codex | BatchSetupTargetId::Claude | BatchSetupTargetId::Grokbuild => {
             let app_type = match spec.target {
                 BatchSetupTargetId::Codex => AppType::Codex,
@@ -202,10 +204,8 @@ fn preview_single_target(spec: &BatchSetupTargetSpec) -> BatchProviderPreviewIte
             Ok(read) => {
                 let warning = if matches!(read.models_file_status, OmpFileStatus::LegacyJsonOnly) {
                     Some("检测到旧版 models.json，请先运行一次 omp 迁移为 models.yml".to_string())
-                } else if matches!(
-                    read.models_file_status,
-                    OmpFileStatus::InvalidYaml
-                ) || matches!(read.config_file_status, OmpFileStatus::InvalidYaml)
+                } else if matches!(read.models_file_status, OmpFileStatus::InvalidYaml)
+                    || matches!(read.config_file_status, OmpFileStatus::InvalidYaml)
                 {
                     Some("检测到无效 YAML 语法，已跳过以保护原文件".to_string())
                 } else {
@@ -402,14 +402,14 @@ fn apply_workbuddy(spec: &BatchSetupTargetSpec, api_key: &str) -> BatchTargetOut
                 BatchTargetOutcome {
                     target: BatchSetupTargetId::Workbuddy,
                     status: BatchTargetStatus::Applied,
-                    message: "已写入并完成回读校验".to_string(),
+                    message: "已写入并生效".to_string(),
                     paths,
                 }
             } else {
                 BatchTargetOutcome {
                     target: BatchSetupTargetId::Workbuddy,
                     status: BatchTargetStatus::Failed,
-                    message: "写入后回读校验未发现目标模型".to_string(),
+                    message: "写入后未检测到目标模型".to_string(),
                     paths,
                 }
             }
@@ -465,7 +465,11 @@ fn apply_codex_or_grok(
     }
 }
 
-fn apply_claude(state: &AppState, spec: &BatchSetupTargetSpec, api_key: &str) -> BatchTargetOutcome {
+fn apply_claude(
+    state: &AppState,
+    spec: &BatchSetupTargetSpec,
+    api_key: &str,
+) -> BatchTargetOutcome {
     let paths = ProviderService::quick_setup_write_targets(&AppType::Claude)
         .map(|list| list.into_iter().map(|t| t.path).collect::<Vec<_>>())
         .unwrap_or_default();
@@ -501,7 +505,7 @@ fn apply_claude(state: &AppState, spec: &BatchSetupTargetSpec, api_key: &str) ->
         BatchTargetOutcome {
             target: BatchSetupTargetId::Claude,
             status: BatchTargetStatus::Applied,
-            message: "已写入 Claude settings.json 并完成回读校验".to_string(),
+            message: "已写入 Claude 配置并生效".to_string(),
             paths,
         }
     } else {
@@ -551,16 +555,14 @@ fn apply_opencode(spec: &BatchSetupTargetSpec, api_key: &str) -> BatchTargetOutc
         expected_revision: snapshot.revision,
         overwrite_token: None,
     };
-    let outcome = match save_opencode_models_with_preferred_id(
-        req.clone(),
-        preferred_new_id.as_deref(),
-    ) {
-        Ok(SaveOpenCodeModelsOutcome::OverwriteConfirmationRequired { token, .. }) => {
-            req.overwrite_token = Some(token);
-            save_opencode_models_with_preferred_id(req, preferred_new_id.as_deref())
-        }
-        other => other,
-    };
+    let outcome =
+        match save_opencode_models_with_preferred_id(req.clone(), preferred_new_id.as_deref()) {
+            Ok(SaveOpenCodeModelsOutcome::OverwriteConfirmationRequired { token, .. }) => {
+                req.overwrite_token = Some(token);
+                save_opencode_models_with_preferred_id(req, preferred_new_id.as_deref())
+            }
+            other => other,
+        };
     match outcome {
         Ok(SaveOpenCodeModelsOutcome::Saved { .. }) => BatchTargetOutcome {
             target: BatchSetupTargetId::Opencode,
@@ -619,7 +621,7 @@ pub(crate) fn apply_omp(spec: &BatchSetupTargetSpec, api_key: &str) -> BatchTarg
                 BatchTargetOutcome {
                     target: BatchSetupTargetId::Omp,
                     status: BatchTargetStatus::Applied,
-                    message: "已无损更新 omp models.yml 与默认角色".to_string(),
+                    message: "已更新 omp 模型与默认配置".to_string(),
                     paths: vec![saved.models_path, saved.config_path],
                 }
             } else {
@@ -627,7 +629,7 @@ pub(crate) fn apply_omp(spec: &BatchSetupTargetSpec, api_key: &str) -> BatchTarg
                 BatchTargetOutcome {
                     target: BatchSetupTargetId::Omp,
                     status: BatchTargetStatus::Failed,
-                    message: "omp 回读校验不一致，已回滚至原文件".to_string(),
+                    message: "omp 配置校验未通过，已恢复原文件".to_string(),
                     paths,
                 }
             }

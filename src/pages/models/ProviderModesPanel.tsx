@@ -343,8 +343,8 @@ export function ProviderModesPanel({
                 <div className="fy-aggregation-heading">
                   <p className="fy-models-muted">
                     {tab.id === "stack"
-                      ? "在原生模型列表中切换供应商，不自动故障转移。"
-                      : "通过本地路由连接供应商，保留已有故障转移设置。"}
+                      ? "在原生模型列表中同时展示多家供应商模型，按需手动切换。"
+                      : "通过本地代理转发请求，支持多商容灾与协议转换。"}
                   </p>
                   <Button
                     className="fy-control-button-primary"
@@ -422,7 +422,7 @@ export function ProviderModesPanel({
                   <h3>聚合名单</h3>
                   {members.length === 0 ? (
                     <p className="fy-models-muted">
-                      从下方供应商加入模型，启用时选择默认供应商。
+                      先从下方加入供应商模型，再启用聚合。
                     </p>
                   ) : (
                     list
@@ -542,17 +542,12 @@ export function ProviderModesPanel({
         </label>
         <p>
           {enter === "stack"
-            ? `除默认供应商外，将发布 ${members.filter((member) => member.providerId !== pick).reduce((sum, member) => sum + member.modelIds.length, 0)} 个模型。普通模型请求使用默认供应商，选中聚合模型后直达对应供应商。`
-            : "客户端将通过 FyAgent 本地路由发送请求。"}
+            ? `将同时展示默认供应商与额外 ${members.filter((member) => member.providerId !== pick).reduce((sum, member) => sum + member.modelIds.length, 0)} 个聚合模型。`
+            : "请求将通过 FyAgent 本地代理转发。"}
         </p>
         <p className="fy-models-muted">
-          将更新{" "}
-          {app === "claude"
-            ? "~/.claude/settings.json"
-            : "~/.codex/config.toml"}{" "}
-          并自动启动本地路由。使用期间保持 FyAgent
-          运行；正常退出时还原直连配置。
-          {app === "codex" ? " 完成后请重新打开 Codex。" : ""}
+          使用期间需保持 FyAgent 运行，退出时自动还原直连。
+          {app === "codex" ? "启用后请重启 Codex。" : ""}
         </p>
         {enter === "stack" &&
           app === "codex" &&

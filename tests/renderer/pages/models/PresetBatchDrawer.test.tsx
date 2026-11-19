@@ -43,7 +43,7 @@ describe("PresetBatchDrawer", () => {
             message:
               attempt === 1 && t.target === "omp"
                 ? "omp 配置写入失败，原 YAML 文件未改动"
-                : "已写入并完成回读校验",
+                : "已写入并生效",
             paths: [`~/.config/${t.target}/config`],
           })),
         };

@@ -985,7 +985,9 @@ describe("AuthPage", () => {
         state === "disconnected" ||
         state === "native_projection_unavailable"
       ) {
-        expect(screen.getByText("此账号尚未连接任何软件。")).toBeVisible();
+        expect(
+          screen.getByText("此账号尚未连接任何软件，可在下方选择绑定。"),
+        ).toBeVisible();
         expect(
           screen.getByTestId("managed-auth-overview-summary"),
         ).toHaveTextContent(/^账号已保存$/);

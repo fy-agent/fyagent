@@ -303,15 +303,11 @@ function AccountDetail({
         <div className="fy-auth-section-heading">
           <div>
             <h3 id="fy-auth-account-connections">已连接软件</h3>
-            <p>连接的账号与当前模型来源可能不同。</p>
           </div>
         </div>
         {linkedConnections.length === 0 ? (
           <InlineNotice>
-            <span>此账号尚未连接任何软件。</span>
-            <span>
-              账号已登录。下一步：在下方选择软件并连接。登录不会自动连接。
-            </span>
+            <span>此账号尚未连接任何软件，可在下方选择绑定。</span>
           </InlineNotice>
         ) : (
           <div className="fy-auth-connection-grid">
@@ -341,7 +337,6 @@ function AccountDetail({
           <div className="fy-auth-section-heading">
             <div>
               <h3 id="fy-auth-account-connect">连接到软件</h3>
-              <p>登录不会自动连接软件。</p>
             </div>
           </div>
           <div className="fy-auth-connection-grid">

@@ -248,7 +248,7 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
     >
       <ModelsPanelHeader
         title="Oh My Pi (omp)"
-        summary="无损局部编辑 ~/.omp/agent/models.yml 与 config.yml，保留注释、未知字段与环境变量引用。"
+        summary="管理 omp 的自定义供应商、模型列表与默认模型。"
         pending={commit.pending}
       >
         <Button
@@ -288,17 +288,17 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
       ) : configQuery.isError || !read ? (
         <InlineNotice tone="error">
           {ompErrorCode(configQuery.error) === "config"
-            ? "omp YAML 语法无法解析。FyAgent 不会覆盖无法解析的配置文件，请先修复 ~/.omp/agent/models.yml 或 config.yml 语法后点击“重新读取”。"
-            : "无法读取 omp 配置目录，请检查文件权限后点击“重新读取”。"}
+            ? "omp 配置文件存在 YAML 语法错误，请先修复后重新读取。"
+            : "无法读取 omp 配置目录，请检查文件权限后重试。"}
         </InlineNotice>
       ) : (
         <div className="fy-models-sections">
-          <ModelsSection title="运行环境与目标文件">
+          <ModelsSection title="运行环境与配置文件">
             <p className="fy-models-hint">
               Profile：<strong>{read.profile}</strong> · CLI 状态：
               {cliQuery.data?.detected
                 ? `已检测${cliQuery.data.version ? ` (v${cliQuery.data.version})` : ""}`
-                : "未检测到 omp 可执行文件（仍可预写配置）"}
+                : "未安装 omp（仍可先写好配置）"}
             </p>
             <div className="fy-models-paths">
               <div>
@@ -386,7 +386,7 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
           {editable ? (
             <>
               <ModelsSection
-                title="接口地址与鉴权引用"
+                title="接口地址与密钥"
                 invalid={Boolean(errors.baseUrl || errors.keyRef)}
               >
                 <label className="fy-models-field">
@@ -442,9 +442,7 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
 
                 {draft.auth === "apiKey" ? (
                   <div className="fy-models-field">
-                    <span>
-                      密钥引用方式（omp 推荐填写环境变量名或 !命令引用）
-                    </span>
+                    <span>API 密钥来源</span>
                     <div className="fy-models-chip-row">
                       {(["keep", "env", "command"] as const)
                         .filter(
@@ -492,7 +490,7 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
               </ModelsSection>
 
               <ModelsSection
-                title="模型列表与默认角色"
+                title="模型列表与默认模型"
                 invalid={Boolean(errors.models || errors.defaultModel)}
               >
                 <div className="fy-models-inline-input">
@@ -557,9 +555,9 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
                           draft.defaultModelId || mergedModels[0]?.id || "",
                       })
                     }
-                    label="设为 omp 默认模型（modelRoles.default）"
+                    label="设为 omp 默认模型"
                   />
-                  <span>同步设为 omp 默认模型（更新 config.yml）</span>
+                  <span>设为 omp 默认模型</span>
                 </div>
 
                 {draft.setDefault && mergedModels.length > 0 ? (
@@ -597,7 +595,7 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
           if (!open) setPendingSave(null);
         }}
         title="确认写入 omp 配置"
-        description="写入前会自动生成滚动备份，并校验文件未被外部进程并发修改。"
+        description="将更新以下配置文件，并自动备份原文件。"
         actions={
           pendingSave ? (
             <>
@@ -621,12 +619,12 @@ export function OmpModelsPanel({ active }: { active: boolean }) {
             </p>
             {pendingSave.preview.defaultModel ? (
               <p>
-                默认模型角色：<code>{pendingSave.preview.defaultModel}</code>
+                默认模型：<code>{pendingSave.preview.defaultModel}</code>
               </p>
             ) : null}
             {pendingSave.preview.changedFiles.length === 0 ? (
               <InlineNotice tone="info">
-                当前配置与文件内容一致，确认后无需改动磁盘文件。
+                配置未变化，无需修改文件。
               </InlineNotice>
             ) : (
               <ul>

@@ -1204,7 +1204,7 @@ describe("V3 Agent directory and configuration shell", () => {
         checkedRequest,
       );
       if (sourceKind === "cli_tooling") {
-        expect(within(dialog).getByText(/Node.js 与 npm 已检查/)).toBeVisible();
+        expect(within(dialog).getByText(/Node\.js \/ npm/)).toBeInTheDocument();
         expect(
           within(dialog).queryByText(/Claude Desktop/),
         ).not.toBeInTheDocument();

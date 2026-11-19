@@ -306,7 +306,7 @@ export function FirstUseGuide({ entries, onConfigure }: FirstUseGuideProps) {
             </article>
           ))}
           {recommendations.length === 0 ? (
-            <p>可在软件目录中查看其他选择。</p>
+            <p>可在软件目录中查看全部软件。</p>
           ) : null}
         </div>
       ) : (
@@ -428,8 +428,8 @@ export function FirstUseGuide({ entries, onConfigure }: FirstUseGuideProps) {
           existingConfigState.status === "unknown" ? (
             <div className="fy-first-use-existing-config-content">
               <p>
-                无法确认 {existingConfigState.entry.displayName}{" "}
-                的现有配置状态。当前不确定是否存在可用配置。
+                暂时无法读取 {existingConfigState.entry.displayName}{" "}
+                的配置状态。
               </p>
               {existingConfigState.message ? (
                 <p className="fy-first-use-keep-notice">
@@ -440,15 +440,11 @@ export function FirstUseGuide({ entries, onConfigure }: FirstUseGuideProps) {
           ) : (
             <div className="fy-first-use-existing-config-content">
               <p>
-                检测到 {existingConfigState.entry.displayName}{" "}
-                的实际配置文件中已有设置
+                已检测到 {existingConfigState.entry.displayName} 的现有配置
                 {existingConfigState.summary
                   ? `（${existingConfigState.summary}）`
                   : ""}
-                。你可以保留现有设置，或进入重新配置。尚未测试连接。
-              </p>
-              <p className="fy-first-use-keep-notice">
-                保留现有配置不会发起模型网络请求。
+                ，要保留还是重新配置？
               </p>
             </div>
           )

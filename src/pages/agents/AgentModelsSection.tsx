@@ -85,19 +85,16 @@ function ProviderLiveConfiguration({
         <h3>实际配置文件</h3>
         {unknown ? (
           <InlineNotice tone="warning">
-            实际配置状态未知。无法读取当前配置文件，请在软件中检查或稍后重试。
+            无法读取当前配置文件，请检查文件状态或稍后重试。
           </InlineNotice>
         ) : configured ? (
           <>
-            <p>实际配置文件已配置</p>
+            <p>已生效</p>
             <p>模型：{live.connection.modelId ?? "未指定模型"}</p>
             <p>服务地址：{live.connection.baseUrl ?? "未指定服务地址"}</p>
           </>
         ) : (
-          <p>
-            实际配置尚未配置。
-            {live?.state === "missing" ? "配置文件尚不存在。" : ""}
-          </p>
+          <p>{live?.state === "missing" ? "配置文件尚未创建" : "尚未配置"}</p>
         )}
         {(!live || matching) && (data?.writeTargets.length ?? 0) > 0 ? (
           <div>
@@ -274,8 +271,7 @@ export function AgentModelsSection({
             data={providerQuery?.data}
             failed={failed}
           />
-          <h3>FyAgent 已保存方案</h3>
-          <p>已选方案记录在 FyAgent 中，与实际配置文件分别显示。</p>
+          <h3>已保存方案</h3>
         </>
       ) : null}
       {mode !== "unsupported" ? (

@@ -2465,7 +2465,7 @@ export async function installRichTauriFeatureFixture(
               outcomes: (req.targets ?? []).map((t) => ({
                 target: t.target,
                 status: "applied",
-                message: "已写入并完成回读校验",
+                message: "已写入并生效",
                 paths: [`~/.config/${t.target}/config`],
               })),
             };

@@ -279,7 +279,7 @@ test("Codex configuration loads safely without unsolicited mutation", async ({
     page.getByRole("heading", { name: "实际配置文件" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "FyAgent 已保存方案" }),
+    page.getByRole("heading", { name: "已保存方案" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "当前模型" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "管理模型" })).toBeVisible();

@@ -116,12 +116,12 @@ describe("AgentModelsSection actual files and saved plans", () => {
       const actual = await screen.findByRole("region", {
         name: "实际配置文件",
       });
-      expect(actual).toHaveTextContent("实际配置文件已配置");
+      expect(actual).toHaveTextContent("已生效");
       expect(actual).toHaveTextContent("actual-file-model");
       expect(actual).toHaveTextContent("https://live.example.test/v1");
       expect(actual).not.toHaveTextContent("saved-model");
       expect(
-        screen.getByRole("heading", { name: "FyAgent 已保存方案" }),
+        screen.getByRole("heading", { name: "已保存方案" }),
       ).toBeInTheDocument();
       expect(screen.getByText("已选方案 · 数据库方案")).toBeInTheDocument();
       expect(screen.getByText("saved-model")).toBeInTheDocument();
@@ -143,15 +143,15 @@ describe("AgentModelsSection actual files and saved plans", () => {
       setup(summary(live));
       expect(
         await screen.findByRole("region", { name: "实际配置文件" }),
-      ).toHaveTextContent("实际配置尚未配置");
+      ).toHaveTextContent(state === "missing" ? "配置文件尚未创建" : "尚未配置");
       expect(screen.getByText("saved-model")).toBeInTheDocument();
-      expect(screen.queryByText("实际配置文件已配置")).not.toBeInTheDocument();
+      expect(screen.queryByText("已生效")).not.toBeInTheDocument();
     },
   );
 
   it("shows a configured live file even when no plan has been saved in FyAgent", async () => {
     setup({ ...summary(configuredLive), currentId: "", providers: {} });
-    expect(await screen.findByText("实际配置文件已配置")).toBeInTheDocument();
+    expect(await screen.findByText("已生效")).toBeInTheDocument();
     expect(screen.getByText("FyAgent 还没有保存方案")).toBeInTheDocument();
     expect(screen.getByText("~/.codex/config.toml")).toBeInTheDocument();
   });
@@ -168,9 +168,9 @@ describe("AgentModelsSection actual files and saved plans", () => {
     async (_label, live) => {
       const user = userEvent.setup();
       const { forbiddenCalls, onOpenManagement } = setup(summary(live));
-      expect(await screen.findByText(/实际配置状态未知/)).toBeInTheDocument();
+      expect(await screen.findByText(/无法读取当前配置文件/)).toBeInTheDocument();
       expect(screen.getByText("saved-model")).toBeInTheDocument();
-      expect(screen.queryByText("实际配置文件已配置")).not.toBeInTheDocument();
+      expect(screen.queryByText("已生效")).not.toBeInTheDocument();
       await user.type(screen.getByRole("searchbox"), "saved-model");
       expect(screen.getByText("saved-model")).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "管理模型" }));
@@ -181,7 +181,7 @@ describe("AgentModelsSection actual files and saved plans", () => {
 
   it("does not reuse cached live state as current after a failed reread but preserves cached saved plans", async () => {
     setup(summary(configuredLive), "codex", true, true);
-    expect(await screen.findByText(/实际配置状态未知/)).toBeInTheDocument();
+    expect(await screen.findByText(/无法读取当前配置文件/)).toBeInTheDocument();
     expect(screen.getByText("saved-model")).toBeInTheDocument();
     const actual = screen.getByRole("region", { name: "实际配置文件" });
     expect(
@@ -194,7 +194,7 @@ describe("AgentModelsSection actual files and saved plans", () => {
 
   it("shows a safe read error when no saved data is available", async () => {
     setup(summary(undefined), "codex", true);
-    expect(await screen.findByText(/实际配置状态未知/)).toBeInTheDocument();
+    expect(await screen.findByText(/无法读取当前配置文件/)).toBeInTheDocument();
     expect(
       screen.getByText(/FyAgent 已保存方案暂时无法读取/),
     ).toBeInTheDocument();

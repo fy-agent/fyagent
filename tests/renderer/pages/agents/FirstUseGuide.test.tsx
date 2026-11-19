@@ -221,11 +221,8 @@ describe("FirstUseGuide", () => {
     });
     expect(
       screen.getByText(
-        /检测到 Codex 的实际配置文件中已有设置（模型：file-model；服务地址：https:\/\/live.example.test\/v1）/,
+        /已检测到 Codex 的现有配置（模型：file-model；服务地址：https:\/\/live.example.test\/v1）/,
       ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/保留现有配置不会发起模型网络请求/),
     ).toBeInTheDocument();
 
     // Click "保留现有配置"
@@ -306,9 +303,7 @@ describe("FirstUseGuide", () => {
       expect(screen.getByText("无法确认 Codex 配置状态")).toBeInTheDocument();
     });
     expect(
-      screen.getByText(
-        /无法确认 Codex 的现有配置状态。当前不确定是否存在可用配置。/,
-      ),
+      screen.getByText(/暂时无法读取 Codex 的配置状态。/),
     ).toBeInTheDocument();
     expect(screen.getByText(/读取当前配置失败/)).toBeInTheDocument();
     expect(onConfigure).not.toHaveBeenCalled();
@@ -369,7 +364,7 @@ describe("FirstUseGuide", () => {
     });
     expect(
       screen.getByText(
-        /检测到 Codex 的实际配置文件中已有设置（模型：file-model；服务地址：https:\/\/live.example.test\/v1）/,
+        /已检测到 Codex 的现有配置（模型：file-model；服务地址：https:\/\/live.example.test\/v1）/,
       ),
     ).toBeInTheDocument();
   });

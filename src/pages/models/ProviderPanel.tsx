@@ -876,44 +876,46 @@ export function ProviderPanel({
             暂时无法读取当前配置，请稍后重试。
           </InlineNotice>
         )}
-        {!queryUnavailable && !queryPending && (
-          <div
-            className="fy-models-status-grid"
-            data-testid={active ? "provider-status" : undefined}
-          >
-            <div className="fy-models-status-item">
-              <span>保存的配置</span>
-              <strong>
-                {providerExists ? "已有设置，将更新" : "尚未设置"}
-              </strong>
-            </div>
-            <div className="fy-models-status-item">
-              <span>当前配置</span>
-              <strong>{currentId ? "已设置" : "尚未设置"}</strong>
-            </div>
-            {providerExists &&
-            (summaryQuery.data?.providers[providerId]?.modelId ??
-              savedConnection?.modelId) ? (
-              <div className="fy-models-status-item">
-                <span>已保存模型快速测速</span>
-                <InlineModelProbeButton
-                  target={app}
-                  providerId={providerId}
-                  modelId={
-                    (summaryQuery.data?.providers[providerId]?.modelId ??
-                      savedConnection?.modelId)!
-                  }
-                  disabled={busy || fetchBusy || probeBusy}
-                />
+        {!queryUnavailable &&
+          !queryPending &&
+          (() => {
+            const savedModelId =
+              summaryQuery.data?.providers[providerId]?.modelId ??
+              savedConnection?.modelId;
+            const statusLabel = savedModelId
+              ? `已配置 · ${savedModelId}`
+              : providerExists
+                ? "已配置，保存将更新"
+                : currentId
+                  ? "已启用其他方案"
+                  : "尚未配置";
+            return (
+              <div
+                className="fy-models-status-grid"
+                data-testid={active ? "provider-status" : undefined}
+              >
+                <div className="fy-models-status-item">
+                  <span>当前配置</span>
+                  <strong>{statusLabel}</strong>
+                </div>
+                {providerExists && savedModelId ? (
+                  <div className="fy-models-status-item">
+                    <span>快速测速</span>
+                    <InlineModelProbeButton
+                      target={app}
+                      providerId={providerId}
+                      modelId={savedModelId}
+                      disabled={busy || fetchBusy || probeBusy}
+                    />
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-        )}
+            );
+          })()}
 
         {app === "codex" && summaryQuery.data ? (
           <>
             <div className="fy-models-source-entry">
-              <p>保存后将启用本次配置。</p>
               <Button
                 onClick={() => {
                   const descriptor =

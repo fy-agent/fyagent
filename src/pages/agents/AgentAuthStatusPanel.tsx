@@ -510,8 +510,11 @@ function AgentAuthStatusPanelInner({
           </>
         }
       >
-        <p>恢复账号需重新登录。</p>
-        <p>关闭窗口或停止等待后，已开始的操作仍会继续。</p>
+        <p>
+          {confirmIntent === "logout"
+            ? "退出后如需使用官方账号，需要重新登录。"
+            : "将打开官方登录页面，完成后会自动刷新状态。"}
+        </p>
       </Dialog>
     </section>
   );

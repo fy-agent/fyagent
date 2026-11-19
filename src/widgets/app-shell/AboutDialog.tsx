@@ -76,7 +76,6 @@ export default function AboutDialog({
         </div>
         <details className="fy-about-details">
           <summary>发布与许可</summary>
-          <p>更新页面提供各版本的变更说明、安装包和发布信息。</p>
           <div className="fy-about-links">
             <ExternalLinkButton url={projectUrl}>项目主页</ExternalLinkButton>
             <ExternalLinkButton url={`${projectUrl}/blob/main/LICENSING.md`}>
