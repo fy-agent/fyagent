@@ -8,6 +8,40 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.17] - 2026-11-20
+
+### Added
+
+- Add one-click mainstream model batch setup across WorkBuddy, Codex, Claude
+  Code, OpenCode, Oh My Pi (`omp`), and Grok Build, with inline saved-model
+  connectivity probing and global Codex reload notifications (#431).
+- Add cross-client model health overview, one-click cross-app cloning with
+  automatic OpenAI/Anthropic URL adaptation, host-grouped API key rotation
+  preserving advanced provider settings, and reusable custom gateway templates
+  without persisting API keys (#433).
+- Add projection-based portable workspace migration packs (`.fyagent-pack`,
+  `<= 100 MiB` hard ceiling, Zstd + SHA-256 + optional PBKDF2-HMAC-SHA256 &
+  AES-256-GCM passphrase encryption bound to payload digest via AAD, excluding
+  OAuth logins, binary assets, and tool output blobs) (#434).
+- Add agentless SSH remote configuration push: discover `~/.ssh/config` hosts,
+  render ready-to-use target configs locally (Claude Code, Codex, OpenCode,
+  `omp`, MCP, global prompts, text skills), and stream over standard SSH stdin
+  with `umask 077`, symlink guards, automatic remote backup, and mid-batch
+  rollback — requiring zero remote FyAgent installation (#434).
+
+### Changed
+
+- Streamline verbose frontend copy across primary workspaces and consolidate
+  redundant status panels while preserving route chunk budgets (#431).
+
+### Fixed
+
+- Add Codex installer and subscription proxy diagnostics while keeping auth
+  result banners compact (#377, #432).
+- Fix `omp` provider ID idempotency on rotation/clone/import, loopback HTTP
+  probe proxy bypass, and fresh-machine Skill & MCP live sync after workspace
+  pack import (#433, #434).
+
 ## [0.4.16] - 2026-11-12
 
 ### Fixed
