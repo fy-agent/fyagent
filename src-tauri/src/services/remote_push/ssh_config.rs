@@ -57,6 +57,18 @@ pub fn validate_ssh_target(spec: &SshTargetSpec) -> Result<ValidatedSshTarget, S
     if !is_safe_ssh_token(raw_host) {
         return Err("SSH 主机名包含不允许的字符或以 '-' 开头".to_string());
     }
+    let at_count = raw_host.chars().filter(|&c| c == '@').count();
+    if at_count > 1 {
+        return Err("SSH 主机格式无效，最多允许一个 '@'（user@host）".to_string());
+    }
+    let (embedded_user, host_part) = if let Some((u, h)) = raw_host.split_once('@') {
+        if u.is_empty() || h.is_empty() || h.starts_with('-') {
+            return Err("SSH 目标 user@host 格式不完整或主机名以 '-' 开头".to_string());
+        }
+        (Some(u), h)
+    } else {
+        (None, raw_host)
+    };
 
     let destination = match spec
         .user
@@ -68,10 +80,15 @@ pub fn validate_ssh_target(spec: &SshTargetSpec) -> Result<ValidatedSshTarget, S
             if user.contains('@') || !is_safe_ssh_token(user) {
                 return Err("SSH 用户名格式无效".to_string());
             }
-            if raw_host.contains('@') {
+            if let Some(inline_user) = embedded_user {
+                if inline_user != user {
+                    return Err(format!(
+                        "SSH 目标中已包含用户名 '{inline_user}'，与单独填写的用户名 '{user}' 冲突"
+                    ));
+                }
                 raw_host.to_string()
             } else {
-                format!("{user}@{raw_host}")
+                format!("{user}@{host_part}")
             }
         }
         None => raw_host.to_string(),
@@ -196,10 +213,7 @@ pub fn parse_ssh_config_text(content: &str) -> Vec<SshHostEntry> {
 }
 
 pub fn list_ssh_config_hosts() -> Vec<SshHostEntry> {
-    let Some(home) = dirs::home_dir() else {
-        return Vec::new();
-    };
-    let path: PathBuf = home.join(".ssh").join("config");
+    let path: PathBuf = crate::config::get_home_dir().join(".ssh").join("config");
     let Ok(content) = fs::read_to_string(path) else {
         return Vec::new();
     };
@@ -257,5 +271,22 @@ Host dev-box gpu-1
         })
         .unwrap();
         assert_eq!(valid.destination, "alice@dev-box");
+
+        // Reject multiple `@` and conflicting inline vs explicit user.
+        assert!(validate_ssh_target(&SshTargetSpec {
+            host: "a@b@dev-box".to_string(),
+            user: None,
+            port: None,
+            identity_file: None,
+        })
+        .is_err());
+
+        assert!(validate_ssh_target(&SshTargetSpec {
+            host: "bob@dev-box".to_string(),
+            user: Some("alice".to_string()),
+            port: None,
+            identity_file: None,
+        })
+        .is_err());
     }
 }

@@ -292,4 +292,29 @@ describe("WorkspaceTransferDialog", () => {
     );
     expect(await screen.findByText(/推送已完成/)).toBeVisible();
   });
+
+  it("rejects invalid SSH ports instead of silently falling back and renders outcome warnings", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.workspaceTransfer.listSshHosts = vi.fn(async () => []);
+    ports.workspaceTransfer.testSshTarget = vi.fn(async () => ({
+      ok: true,
+      remoteHome: "/Users/dev",
+      message: "SSH 连通正常",
+    }));
+
+    renderDialog(ports);
+    await user.click(screen.getByRole("tab", { name: "推送到 SSH 远端" }));
+    await user.type(
+      screen.getByPlaceholderText("例如 dev-box 或 10.0.0.12"),
+      "dev-box",
+    );
+    await user.type(screen.getByPlaceholderText("22"), "99999");
+    await user.click(screen.getByRole("button", { name: "测试 SSH 连通性" }));
+
+    expect(
+      await screen.findByText("SSH 端口必须为 1–65535 之间的正整数。"),
+    ).toBeVisible();
+    expect(ports.workspaceTransfer.testSshTarget).not.toHaveBeenCalled();
+  });
 });

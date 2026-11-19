@@ -237,8 +237,54 @@ export function WorkspaceTransferDialog({
         queryClient.invalidateQueries({
           queryKey: featureKeys.customGatewayTemplates,
         }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.providerSummary("codex"),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.providerSummary("claude"),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.providerSummary("grokbuild"),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.workbuddyStatus,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.workbuddyModelIds,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.openCodeModelSnapshot,
+        }),
+        queryClient.invalidateQueries({ queryKey: featureKeys.ompConfig }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.codexReloadStatus,
+        }),
         queryClient.invalidateQueries({ queryKey: featureKeys.mcp }),
         queryClient.invalidateQueries({ queryKey: featureKeys.skills }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.prompts("claude"),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.prompts("codex"),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.prompts("gemini"),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.prompts("opencode"),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.promptLiveFile("claude"),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.promptLiveFile("codex"),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.promptLiveFile("gemini"),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: featureKeys.promptLiveFile("opencode"),
+        }),
       ]);
     } catch (err) {
       setImportError(
@@ -249,17 +295,45 @@ export function WorkspaceTransferDialog({
     }
   };
 
-  const buildSshTarget = () => {
-    const parsedPort = sshPort.trim() ? Number(sshPort.trim()) : null;
+  const buildValidatedSshTarget = () => {
+    const trimmedPort = sshPort.trim();
+    let port: number | null = null;
+    if (trimmedPort) {
+      if (!/^\d+$/.test(trimmedPort)) {
+        return {
+          ok: false as const,
+          error: "SSH 端口必须为 1–65535 之间的正整数。",
+        };
+      }
+      const parsedPort = Number(trimmedPort);
+      if (
+        !Number.isInteger(parsedPort) ||
+        parsedPort < 1 ||
+        parsedPort > 65535
+      ) {
+        return {
+          ok: false as const,
+          error: "SSH 端口必须为 1–65535 之间的正整数。",
+        };
+      }
+      port = parsedPort;
+    }
     return {
-      host: sshHost.trim(),
-      user: sshUser.trim() || null,
-      port:
-        parsedPort !== null && Number.isInteger(parsedPort) && parsedPort > 0
-          ? parsedPort
-          : null,
-      identityFile: sshIdentityFile.trim() || null,
+      ok: true as const,
+      target: {
+        host: sshHost.trim(),
+        user: sshUser.trim() || null,
+        port,
+        identityFile: sshIdentityFile.trim() || null,
+      },
     };
+  };
+
+  const resetSshTransientState = () => {
+    setSshTestResult(null);
+    setSshPreview(null);
+    setSshOutcome(null);
+    setSshError(null);
   };
 
   const applyHostEntry = (entry: SshHostEntry) => {
@@ -267,10 +341,7 @@ export function WorkspaceTransferDialog({
     setSshUser(entry.user ?? "");
     setSshPort(entry.port ? String(entry.port) : "");
     setSshIdentityFile(entry.identityFile ?? "");
-    setSshTestResult(null);
-    setSshPreview(null);
-    setSshOutcome(null);
-    setSshError(null);
+    resetSshTransientState();
   };
 
   const handleTestSsh = async () => {
@@ -278,11 +349,17 @@ export function WorkspaceTransferDialog({
       setSshError("请先选择或填写 SSH 主机名。");
       return;
     }
+    const validated = buildValidatedSshTarget();
+    if (!validated.ok) {
+      setSshError(validated.error);
+      return;
+    }
     setSshBusy(true);
     setSshError(null);
     try {
-      const result =
-        await ports.workspaceTransfer.testSshTarget(buildSshTarget());
+      const result = await ports.workspaceTransfer.testSshTarget(
+        validated.target,
+      );
       setSshTestResult(result);
     } catch (err) {
       setSshError(err instanceof Error ? err.message : "测试 SSH 连接失败。");
@@ -296,12 +373,17 @@ export function WorkspaceTransferDialog({
       setSshError("请先选择或填写 SSH 主机名。");
       return;
     }
+    const validated = buildValidatedSshTarget();
+    if (!validated.ok) {
+      setSshError(validated.error);
+      return;
+    }
     setSshBusy(true);
     setSshError(null);
     setSshOutcome(null);
     try {
       const preview = await ports.workspaceTransfer.previewSshPush({
-        target: buildSshTarget(),
+        target: validated.target,
         selection: sshSelection,
       });
       setSshPreview(preview);
@@ -316,11 +398,16 @@ export function WorkspaceTransferDialog({
 
   const handleApplySsh = async () => {
     if (!sshHost.trim()) return;
+    const validated = buildValidatedSshTarget();
+    if (!validated.ok) {
+      setSshError(validated.error);
+      return;
+    }
     setSshBusy(true);
     setSshError(null);
     try {
       const outcome = await ports.workspaceTransfer.applySshPush({
-        target: buildSshTarget(),
+        target: validated.target,
         selection: sshSelection,
       });
       setSshOutcome(outcome);
@@ -659,14 +746,22 @@ export function WorkspaceTransferDialog({
             ) : null}
 
             {exportOutcome ? (
-              <InlineNotice tone="info">
-                已生成迁移包 <code>{exportOutcome.path}</code>（压缩后{" "}
-                <strong>{formatBytes(exportOutcome.compressedBytes)}</strong>，
-                SHA-256 <code>{exportOutcome.fileSha256.slice(0, 16)}…</code>，
-                含 {exportOutcome.counts.models} 端模型、
-                {exportOutcome.counts.skills} 个 Skills、
-                {exportOutcome.counts.sessionsIncluded} 条会话投影）。
-              </InlineNotice>
+              <>
+                <InlineNotice tone="info">
+                  已生成迁移包 <code>{exportOutcome.path}</code>（压缩后{" "}
+                  <strong>{formatBytes(exportOutcome.compressedBytes)}</strong>
+                  ，SHA-256{" "}
+                  <code>{exportOutcome.fileSha256.slice(0, 16)}…</code>
+                  ，含 {exportOutcome.counts.models} 端模型、
+                  {exportOutcome.counts.skills} 个 Skills、
+                  {exportOutcome.counts.sessionsIncluded} 条会话投影）。
+                </InlineNotice>
+                {exportOutcome.warnings.map((w, idx) => (
+                  <InlineNotice key={`exp-w-${idx}`} tone="warning">
+                    {w}
+                  </InlineNotice>
+                ))}
+              </>
             ) : null}
           </div>
         </FeatureTabPanel>
@@ -798,21 +893,35 @@ export function WorkspaceTransferDialog({
             ))}
 
             {importOutcome ? (
-              <InlineNotice tone="info">
-                导入完成：模型写入 {importOutcome.modelsApplied} 端（跳过{" "}
-                {importOutcome.modelsSkipped} 端）、自定义模板{" "}
-                {importOutcome.templatesImported} 个、MCP{" "}
-                {importOutcome.mcpImported} 项、提示词{" "}
-                {importOutcome.promptsImported} 条、Skills{" "}
-                {importOutcome.skillsImported} 个、会话档案{" "}
-                {importOutcome.sessionsArchived} 条。
-                {importOutcome.sessionArchiveDir ? (
-                  <>
-                    {" "}
-                    档案位置：<code>{importOutcome.sessionArchiveDir}</code>
-                  </>
-                ) : null}
-              </InlineNotice>
+              <>
+                <InlineNotice tone="info">
+                  导入完成：模型写入 {importOutcome.modelsApplied} 端（跳过{" "}
+                  {importOutcome.modelsSkipped} 端）、自定义模板{" "}
+                  {importOutcome.templatesImported} 个、MCP{" "}
+                  {importOutcome.mcpImported} 项、提示词{" "}
+                  {importOutcome.promptsImported} 条、Skills{" "}
+                  {importOutcome.skillsImported} 个、会话档案{" "}
+                  {importOutcome.sessionsArchived} 条。
+                  {importOutcome.sessionArchiveDir ? (
+                    <>
+                      {" "}
+                      档案位置：<code>{importOutcome.sessionArchiveDir}</code>
+                    </>
+                  ) : null}
+                  {importOutcome.nativeSessionPackagePath ? (
+                    <>
+                      {" "}
+                      原生还原包：
+                      <code>{importOutcome.nativeSessionPackagePath}</code>
+                    </>
+                  ) : null}
+                </InlineNotice>
+                {importOutcome.warnings.map((w, idx) => (
+                  <InlineNotice key={`imp-w-${idx}`} tone="warning">
+                    {w}
+                  </InlineNotice>
+                ))}
+              </>
             ) : null}
           </div>
         </FeatureTabPanel>
@@ -860,8 +969,7 @@ export function WorkspaceTransferDialog({
                     value={sshHost}
                     onChange={(e) => {
                       setSshHost(e.target.value);
-                      setSshPreview(null);
-                      setSshOutcome(null);
+                      resetSshTransientState();
                     }}
                     placeholder="例如 dev-box 或 10.0.0.12"
                   />
@@ -872,7 +980,7 @@ export function WorkspaceTransferDialog({
                     value={sshUser}
                     onChange={(e) => {
                       setSshUser(e.target.value);
-                      setSshPreview(null);
+                      resetSshTransientState();
                     }}
                     placeholder="例如 dev 或 alice"
                   />
@@ -883,7 +991,7 @@ export function WorkspaceTransferDialog({
                     value={sshPort}
                     onChange={(e) => {
                       setSshPort(e.target.value);
-                      setSshPreview(null);
+                      resetSshTransientState();
                     }}
                     placeholder="22"
                   />
@@ -894,7 +1002,7 @@ export function WorkspaceTransferDialog({
                     value={sshIdentityFile}
                     onChange={(e) => {
                       setSshIdentityFile(e.target.value);
-                      setSshPreview(null);
+                      resetSshTransientState();
                     }}
                     placeholder="~/.ssh/id_ed25519"
                   />
@@ -1020,6 +1128,11 @@ export function WorkspaceTransferDialog({
                     </li>
                   ))}
                 </ul>
+                {sshOutcome.warnings.map((w, idx) => (
+                  <InlineNotice key={`ssh-w-${idx}`} tone="warning">
+                    {w}
+                  </InlineNotice>
+                ))}
               </section>
             ) : null}
           </div>

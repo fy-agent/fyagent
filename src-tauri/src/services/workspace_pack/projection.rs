@@ -11,7 +11,7 @@ use std::path::{Component, Path};
 use zeroize::Zeroizing;
 
 use super::schema::{
-    sha256_hex, ProjectedDialogueTurn, ProjectedModelConfig, ProjectedPromptEntry,
+    sha256_hex, McpSecretEntry, ProjectedDialogueTurn, ProjectedModelConfig, ProjectedPromptEntry,
     ProjectedSessionEntry, ProjectedSessionKind, ProjectedSkillEntry, ProjectedSkillFile,
     SessionProjectionMode, MAX_SKILL_FILE_BYTES, SKILLS_UNCOMPRESSED_BUDGET_BYTES,
 };
@@ -187,6 +187,64 @@ pub fn collect_mcp_projections(state: &AppState) -> (Vec<McpServer>, Vec<String>
     }
 }
 
+/// Strips sensitive `env`, `headers`, and `http_headers` maps out of plaintext
+/// `McpServer` projections so MCP credentials are NEVER stored unencrypted in
+/// `.fyagent-pack`. When `include_secrets` is true, extracted maps are returned
+/// for AES-256-GCM encryption inside `WorkspacePackSecrets`.
+pub fn split_mcp_secrets(
+    servers: Vec<McpServer>,
+    include_secrets: bool,
+) -> (Vec<McpServer>, Vec<McpSecretEntry>, Vec<String>) {
+    let mut sanitized = Vec::with_capacity(servers.len());
+    let mut extracted = Vec::new();
+    let mut redacted_count = 0usize;
+
+    for mut server in servers {
+        let mut entry = McpSecretEntry {
+            server_id: server.id.clone(),
+            env: serde_json::Map::new(),
+            headers: serde_json::Map::new(),
+            http_headers: serde_json::Map::new(),
+        };
+        if let Some(obj) = server.server.as_object_mut() {
+            if let Some(serde_json::Value::Object(map)) = obj.remove("env") {
+                if !map.is_empty() {
+                    entry.env = map;
+                }
+            }
+            if let Some(serde_json::Value::Object(map)) = obj.remove("headers") {
+                if !map.is_empty() {
+                    entry.headers = map;
+                }
+            }
+            if let Some(serde_json::Value::Object(map)) = obj.remove("http_headers") {
+                if !map.is_empty() {
+                    entry.http_headers = map;
+                }
+            }
+        }
+        let has_sensitive =
+            !entry.env.is_empty() || !entry.headers.is_empty() || !entry.http_headers.is_empty();
+        if has_sensitive {
+            if include_secrets {
+                extracted.push(entry);
+            } else {
+                redacted_count += 1;
+            }
+        }
+        sanitized.push(server);
+    }
+
+    let mut warnings = Vec::new();
+    if redacted_count > 0 {
+        warnings.push(format!(
+            "出于安全原因，已从非加密迁移包中自动剥离 {redacted_count} 个 MCP 的 env/headers 凭证字段（如需携带请勾选“包含 API Key”并设置加密口令）。"
+        ));
+    }
+
+    (sanitized, extracted, warnings)
+}
+
 pub fn collect_prompt_projections(state: &AppState) -> (Vec<ProjectedPromptEntry>, Vec<String>) {
     let mut entries = Vec::new();
     let mut warnings = Vec::new();
@@ -234,6 +292,12 @@ pub fn collect_prompt_projections(state: &AppState) -> (Vec<ProjectedPromptEntry
     (entries, warnings)
 }
 
+fn has_unsafe_filename_chars(segment: &str) -> bool {
+    segment.chars().any(|c| {
+        c.is_control() || matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\\' | '/')
+    })
+}
+
 pub fn sanitize_relative_skill_path(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim().replace('\\', "/");
     if trimmed.is_empty() || trimmed.starts_with('/') {
@@ -247,8 +311,9 @@ pub fn sanitize_relative_skill_path(raw: &str) -> Result<String, String> {
                 let text = part
                     .to_str()
                     .ok_or_else(|| "技能路径包含无效字符".to_string())?;
-                if text.is_empty() || text == "." || text == ".." {
-                    return Err("技能路径包含非法段".to_string());
+                if text.is_empty() || text == "." || text == ".." || has_unsafe_filename_chars(text)
+                {
+                    return Err("技能路径包含非法段或跨平台不安全字符".to_string());
                 }
                 clean_parts.push(text);
             }
@@ -343,12 +408,27 @@ pub fn collect_skill_projections(state: &AppState) -> CollectedSkills {
     let mut remaining_budget = SKILLS_UNCOMPRESSED_BUDGET_BYTES;
     let mut total_omitted = 0usize;
 
+    let mut skipped_empty = 0usize;
+
     for meta in installed {
+        let dir_clean = match sanitize_relative_skill_path(&meta.directory) {
+            Ok(seg) if !seg.contains('/') => seg,
+            _ => {
+                warnings.push(format!(
+                    "Skill「{}」目录名包含非法路径字符，已跳过导出。",
+                    meta.name
+                ));
+                continue;
+            }
+        };
         let mut files = Vec::new();
         let mut omitted_large_files = 0usize;
         if let Some(root) = ssot_dir.as_ref() {
-            let skill_dir = root.join(&meta.directory);
-            if skill_dir.is_dir() {
+            let skill_dir = root.join(&dir_clean);
+            let is_safe_real_dir = fs::symlink_metadata(&skill_dir)
+                .map(|m| m.is_dir() && !m.file_type().is_symlink())
+                .unwrap_or(false);
+            if is_safe_real_dir {
                 collect_skill_files_recursive(
                     &skill_dir,
                     &skill_dir,
@@ -359,6 +439,10 @@ pub fn collect_skill_projections(state: &AppState) -> CollectedSkills {
             }
         }
         total_omitted += omitted_large_files;
+        if files.is_empty() {
+            skipped_empty += 1;
+            continue;
+        }
         skills.push(ProjectedSkillEntry {
             metadata: meta,
             files,
@@ -366,6 +450,11 @@ pub fn collect_skill_projections(state: &AppState) -> CollectedSkills {
         });
     }
 
+    if skipped_empty > 0 {
+        warnings.push(format!(
+            "已跳过 {skipped_empty} 个缺少可用纯文本文件的 Skill（或符号链接目录）。"
+        ));
+    }
     if total_omitted > 0 {
         warnings.push(format!(
             "Skills 投影自动跳过了 {total_omitted} 个二进制或超大文件（单文件上限 256 KiB / 总上限 15 MiB）。"
@@ -510,7 +599,23 @@ pub fn collect_session_projections(
     state: &AppState,
     options: &SessionProjectionOptions,
 ) -> CollectedSessions {
-    let all_metas = session_manager::scan_sessions();
+    let mut all_metas = session_manager::scan_sessions();
+    // Re-sort using normalized millisecond timestamps so providers reporting Unix
+    // seconds vs milliseconds never misorder newest-first selection.
+    all_metas.sort_by(|a, b| {
+        let a_ts = a
+            .last_active_at
+            .or(a.created_at)
+            .map(normalize_timestamp_ms)
+            .unwrap_or(0);
+        let b_ts = b
+            .last_active_at
+            .or(b.created_at)
+            .map(normalize_timestamp_ms)
+            .unwrap_or(0);
+        b_ts.cmp(&a_ts)
+    });
+
     let now_ms = chrono::Utc::now().timestamp_millis();
     let min_ts_ms = options
         .max_age_days
@@ -522,16 +627,28 @@ pub fn collect_session_projections(
     let mut excluded_by_budget = 0usize;
     let mut excluded_by_filter = 0usize;
     let mut used_bytes = 0u64;
+    let mut consecutive_budget_skips = 0usize;
     let max_sessions = options.max_sessions.clamp(1, 500);
 
-    for meta in all_metas {
+    let total_metas = all_metas.len();
+    for (idx, meta) in all_metas.into_iter().enumerate() {
         if let Some(cutoff) = min_ts_ms {
             let ts = meta
                 .last_active_at
                 .or(meta.created_at)
-                .map(normalize_timestamp_ms);
-            if let Some(ts_ms) = ts {
-                if ts_ms < cutoff {
+                .map(normalize_timestamp_ms)
+                .or_else(|| {
+                    meta.source_path
+                        .as_deref()
+                        .filter(|p| !p.starts_with("sqlite:"))
+                        .and_then(|p| fs::metadata(p).ok())
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as i64)
+                });
+            match ts {
+                Some(ts_ms) if ts_ms >= cutoff => {}
+                _ => {
                     excluded_count += 1;
                     excluded_by_filter += 1;
                     continue;
@@ -539,9 +656,10 @@ pub fn collect_session_projections(
             }
         }
         if sessions.len() >= max_sessions {
-            excluded_count += 1;
-            excluded_by_budget += 1;
-            continue;
+            let remaining = total_metas.saturating_sub(idx);
+            excluded_count += remaining;
+            excluded_by_budget += remaining;
+            break;
         }
         let Some(source_path) = meta.source_path.as_deref() else {
             excluded_count += 1;
@@ -582,7 +700,7 @@ pub fn collect_session_projections(
             None
         };
 
-        // 2. Fallback to structured text-only projection (covers Claude Code, Gemini, omp, compact mode).
+        // 2. Fallback to structured text-only projection (Claude/Codex/Gemini/OpenCode/Hermes/GrokBuild/OpenClaw & compact mode).
         let entry = match candidate {
             Some(strict_entry) => strict_entry,
             None => {
@@ -630,8 +748,19 @@ pub fn collect_session_projections(
         if used_bytes.saturating_add(est_bytes) > options.uncompressed_budget_bytes {
             excluded_count += 1;
             excluded_by_budget += 1;
+            consecutive_budget_skips += 1;
+            // Once the budget is effectively saturated, stop parsing older sessions so we
+            // preserve a contiguous newest-first timeline without needless disk/CPU work.
+            let remaining_budget = options.uncompressed_budget_bytes.saturating_sub(used_bytes);
+            if !sessions.is_empty() && (remaining_budget < 4096 || consecutive_budget_skips >= 3) {
+                let remaining = total_metas.saturating_sub(idx + 1);
+                excluded_count += remaining;
+                excluded_by_budget += remaining;
+                break;
+            }
             continue;
         }
+        consecutive_budget_skips = 0;
         used_bytes = used_bytes.saturating_add(est_bytes);
         sessions.push(entry);
     }

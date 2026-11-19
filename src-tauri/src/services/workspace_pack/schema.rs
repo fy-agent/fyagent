@@ -13,6 +13,7 @@ use std::io::Read;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use zeroize::Zeroize;
 
 use super::crypto::EncryptedSecretsEnvelope;
 use crate::{
@@ -185,10 +186,49 @@ pub struct ModelSecretEntry {
     pub api_key: String,
 }
 
+impl Drop for ModelSecretEntry {
+    fn drop(&mut self) {
+        self.api_key.zeroize();
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpSecretEntry {
+    pub server_id: String,
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub env: serde_json::Map<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub headers: serde_json::Map<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub http_headers: serde_json::Map<String, serde_json::Value>,
+}
+
+impl Drop for McpSecretEntry {
+    fn drop(&mut self) {
+        for map in [&mut self.env, &mut self.headers, &mut self.http_headers] {
+            for value in map.values_mut() {
+                if let serde_json::Value::String(s) = value {
+                    s.zeroize();
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspacePackSecrets {
+    #[serde(default)]
     pub models: Vec<ModelSecretEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp_secrets: Vec<McpSecretEntry>,
+}
+
+impl WorkspacePackSecrets {
+    pub fn is_empty(&self) -> bool {
+        self.models.is_empty() && self.mcp_secrets.is_empty()
+    }
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -197,14 +237,22 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-pub fn encode_pack_container(
-    manifest: &mut WorkspacePackManifest,
+pub fn serialize_payload_with_sha256(
     payload: &WorkspacePackPayload,
-    secrets: Option<&EncryptedSecretsEnvelope>,
-) -> Result<Vec<u8>, String> {
+) -> Result<(Vec<u8>, String), String> {
     let payload_json =
         serde_json::to_vec(payload).map_err(|e| format!("序列化迁移包内容失败: {e}"))?;
-    let payload_zst = zstd::bulk::compress(&payload_json, ZSTD_COMPRESSION_LEVEL)
+    let digest = sha256_hex(&payload_json);
+    Ok((payload_json, digest))
+}
+
+pub fn encode_pack_container_from_json(
+    manifest: &mut WorkspacePackManifest,
+    payload_json: &[u8],
+    payload_sha256: &str,
+    secrets: Option<&EncryptedSecretsEnvelope>,
+) -> Result<Vec<u8>, String> {
+    let payload_zst = zstd::bulk::compress(payload_json, ZSTD_COMPRESSION_LEVEL)
         .map_err(|e| format!("压缩迁移包数据失败: {e}"))?;
     let secrets_json = match secrets {
         Some(env) => serde_json::to_vec(env).map_err(|e| format!("序列化加密密钥块失败: {e}"))?,
@@ -214,7 +262,7 @@ pub fn encode_pack_container(
         return Err("加密密钥区超出大小上限".to_string());
     }
 
-    manifest.payload_sha256 = sha256_hex(&payload_json);
+    manifest.payload_sha256 = payload_sha256.to_string();
     manifest.uncompressed_bytes = payload_json.len() as u64;
     manifest.has_encrypted_secrets = !secrets_json.is_empty();
     manifest.budget_limit_bytes = HARD_LIMIT_BYTES;

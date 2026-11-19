@@ -65,11 +65,21 @@ pub struct RemotePushApplyResult {
 
 fn build_base_ssh_command(target: &ValidatedSshTarget) -> Command {
     let mut cmd = Command::new("ssh");
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
     cmd.args([
         "-o",
         "BatchMode=yes",
         "-o",
         "ConnectTimeout=10",
+        "-o",
+        "ServerAliveInterval=10",
+        "-o",
+        "ServerAliveCountMax=3",
         "-o",
         "StrictHostKeyChecking=accept-new",
         "-T",
@@ -97,18 +107,53 @@ fn run_ssh_stdin(
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("无法启动本机 ssh 命令（请确认已安装 OpenSSH）：{e}"))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(script.as_bytes())
-            .map_err(|e| format!("通过 SSH 发送数据失败：{e}"))?;
-    }
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("等待 SSH 执行完成失败：{e}"))?;
+    let mut stdin = child.stdin.take();
+
+    // Write stdin on a dedicated scoped thread while the main thread drains
+    // stdout/stderr via `wait_with_output()`, preventing bidirectional pipe deadlocks
+    // on large multi-file pushes.
+    let (write_res, output_res) = std::thread::scope(|s| {
+        let writer = s.spawn(move || -> Result<(), String> {
+            if let Some(mut pipe) = stdin.take() {
+                pipe.write_all(script.as_bytes())
+                    .map_err(|e| format!("通过 SSH 发送数据失败：{e}"))?;
+            }
+            Ok(())
+        });
+        let output = child
+            .wait_with_output()
+            .map_err(|e| format!("等待 SSH 执行完成失败：{e}"));
+        let write = writer
+            .join()
+            .unwrap_or_else(|_| Err("SSH 写入线程意外中止".to_string()));
+        (write, output)
+    });
+
+    let output = output_res?;
     let code = output.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if code == 0 {
+        write_res?;
+    }
     Ok((code, stdout, stderr))
+}
+
+fn encode_base64_wrapped(bytes: &[u8]) -> String {
+    let raw = BASE64.encode(bytes);
+    if raw.len() <= 76 {
+        return raw;
+    }
+    let mut out = String::with_capacity(raw.len() + raw.len() / 76 + 1);
+    for (idx, chunk) in raw.as_bytes().chunks(76).enumerate() {
+        if idx > 0 {
+            out.push('\n');
+        }
+        if let Ok(s) = std::str::from_utf8(chunk) {
+            out.push_str(s);
+        }
+    }
+    out
 }
 
 fn single_quote_posix(raw: &str) -> String {
@@ -202,9 +247,17 @@ pub fn probe_remote_existing_paths(
 }
 
 /// Builds the zero-dependency POSIX shell script streamed over SSH stdin.
+///
+/// Security invariants:
+/// - `umask 077` is enabled before creating backups or temp files so secret-bearing
+///   payloads are NEVER world- or group-readable even for a millisecond.
+/// - Refuses to overwrite remote symlinks (`-L`) or directories (`-d`).
+/// - Wraps base64 lines at 76 columns to stay strictly within POSIX `LINE_MAX`.
+/// - Rolls back prior files in the batch from `$BACKUP_DIR` if any later file fails.
 pub(crate) fn build_atomic_push_script(backup_stamp: &str, files: &[RenderedRemoteFile]) -> String {
     let mut script = String::from(
         "set -eu\n\
+         umask 077\n\
          if printf 'QQ==' | base64 -d >/dev/null 2>&1; then\n\
            fy_b64() { base64 -d; }\n\
          elif printf 'QQ==' | base64 -D >/dev/null 2>&1; then\n\
@@ -216,17 +269,44 @@ pub(crate) fn build_atomic_push_script(backup_stamp: &str, files: &[RenderedRemo
          BACKUP_DIR=\"$HOME/.fyagent-remote-backups/",
     );
     script.push_str(backup_stamp);
-    script.push_str("\"\nmkdir -p \"$BACKUP_DIR\"\nprintf 'FY_BACKUP:%s\\n' \"$BACKUP_DIR\"\n");
+    script.push_str(
+        "\"\n\
+         mkdir -p \"$BACKUP_DIR\"\n\
+         chmod 700 \"$BACKUP_DIR\"\n\
+         printf 'FY_BACKUP:%s\\n' \"$BACKUP_DIR\"\n\
+         CREATED_LOG=\"$BACKUP_DIR/.fy_created.log\"\n\
+         UPDATED_LOG=\"$BACKUP_DIR/.fy_updated.log\"\n\
+         : > \"$CREATED_LOG\"\n\
+         : > \"$UPDATED_LOG\"\n\
+         fy_rollback() {\n\
+           if [ -f \"$UPDATED_LOG\" ]; then\n\
+             while IFS= read -r _r; do\n\
+               [ -n \"$_r\" ] && [ -f \"$BACKUP_DIR/$_r\" ] && cp -p \"$BACKUP_DIR/$_r\" \"$HOME/$_r\" || true\n\
+             done < \"$UPDATED_LOG\"\n\
+           fi\n\
+           if [ -f \"$CREATED_LOG\" ]; then\n\
+             while IFS= read -r _r; do\n\
+               [ -n \"$_r\" ] && rm -f \"$HOME/$_r\" || true\n\
+             done < \"$CREATED_LOG\"\n\
+           fi\n\
+         }\n",
+    );
 
     for (idx, file) in files.iter().enumerate() {
         let rel_q = single_quote_posix(&file.remote_rel_path);
-        let b64 = BASE64.encode(file.content.as_slice());
+        let b64 = encode_base64_wrapped(file.content.as_slice());
         let marker = format!("FY_EOF_{idx}_{backup_stamp}");
 
         script.push_str(&format!(
             "REL={rel_q}\n\
              DEST=\"$HOME/$REL\"\n\
              DIR=\"$(dirname \"$DEST\")\"\n\
+             if [ -L \"$DIR\" ] || [ -L \"$DEST\" ] || [ -d \"$DEST\" ]; then\n\
+               printf 'FY_ERR:%s\\n' \"$REL\"\n\
+               printf 'Refusing to overwrite symlink or directory: %s\\n' \"$REL\" >&2\n\
+               fy_rollback\n\
+               exit 1\n\
+             fi\n\
              mkdir -p \"$DIR\"\n\
              ACTION=\"created\"\n\
              if [ -f \"$DEST\" ]; then\n\
@@ -236,16 +316,23 @@ pub(crate) fn build_atomic_push_script(backup_stamp: &str, files: &[RenderedRemo
                cp -p \"$DEST\" \"$BK_DEST\"\n\
              fi\n\
              TMP=\"$DEST.fyagent.tmp.$$\"\n\
+             rm -f \"$TMP\"\n\
              if fy_b64 > \"$TMP\" <<'{marker}'\n\
-             {b64}\n\
-             {marker}\n\
+{b64}\n\
+{marker}\n\
              then\n\
                chmod {mode} \"$TMP\"\n\
                mv -f \"$TMP\" \"$DEST\"\n\
+               if [ \"$ACTION\" = \"updated\" ]; then\n\
+                 printf '%s\\n' \"$REL\" >> \"$UPDATED_LOG\"\n\
+               else\n\
+                 printf '%s\\n' \"$REL\" >> \"$CREATED_LOG\"\n\
+               fi\n\
                printf 'FY_OK:%s:%s\\n' \"$ACTION\" \"$REL\"\n\
              else\n\
                rm -f \"$TMP\"\n\
                printf 'FY_ERR:%s\\n' \"$REL\"\n\
+               fy_rollback\n\
                exit 1\n\
              fi\n",
             rel_q = rel_q,
@@ -413,5 +500,243 @@ mod tests {
         )
         .unwrap();
         assert_eq!(backup, r#"{"OPENAI_API_KEY":"old"}"#);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn atomic_push_script_rejects_symlinks_and_rolls_back_earlier_files() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().expect("temp home");
+        let codex_dir = temp.path().join(".codex");
+        let claude_dir = temp.path().join(".claude");
+        std::fs::create_dir_all(&codex_dir).unwrap();
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        std::fs::write(codex_dir.join("auth.json"), r#"{"OPENAI_API_KEY":"orig"}"#).unwrap();
+
+        let outside = temp.path().join("outside-target.txt");
+        std::fs::write(&outside, "DO_NOT_TOUCH").unwrap();
+        symlink(&outside, claude_dir.join("CLAUDE.md")).unwrap();
+
+        let files = vec![
+            RenderedRemoteFile {
+                remote_rel_path: ".codex/auth.json".to_string(),
+                category: RemoteFileCategory::ModelConfig,
+                mode: "600",
+                contains_secret: true,
+                content: Zeroizing::new(br#"{"OPENAI_API_KEY":"updated-before-fail"}"#.to_vec()),
+            },
+            RenderedRemoteFile {
+                remote_rel_path: ".claude/CLAUDE.md".to_string(),
+                category: RemoteFileCategory::GlobalPrompt,
+                mode: "644",
+                contains_secret: false,
+                content: Zeroizing::new(b"# Hijack attempt\n".to_vec()),
+            },
+        ];
+
+        let script = build_atomic_push_script("20261119T140100Z", &files);
+        assert!(script.contains("umask 077"));
+        let mut child = Command::new("sh")
+            .arg("-s")
+            .env("HOME", temp.path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn sh");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(script.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(!output.status.success(), "push over symlink must fail");
+
+        // Outside symlink target MUST remain untouched.
+        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "DO_NOT_TOUCH");
+        // Earlier updated file MUST be automatically rolled back to original contents!
+        assert_eq!(
+            std::fs::read_to_string(codex_dir.join("auth.json")).unwrap(),
+            r#"{"OPENAI_API_KEY":"orig"}"#
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn real_loopback_sshd_agentless_push_e2e_verifies_backup_and_600_permissions() {
+        use std::net::TcpListener;
+        use std::path::Path;
+        use std::time::Duration;
+
+        if !Path::new("/usr/sbin/sshd").is_file() {
+            return;
+        }
+
+        // Bind a random free loopback port and release it for sshd.
+        let listener = TcpListener::bind("127.0.0.1:0").expect("pick free port");
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let temp = tempfile::tempdir().expect("sshd temp workspace");
+        let remote_home = temp.path().join("remote_home");
+        let local_home = temp.path().join("local_home");
+        std::fs::create_dir_all(remote_home.join(".codex")).unwrap();
+        std::fs::create_dir_all(local_home.join(".ssh")).unwrap();
+        std::fs::write(
+            remote_home.join(".codex/auth.json"),
+            r#"{"OPENAI_API_KEY":"legacy-remote-key"}"#,
+        )
+        .unwrap();
+
+        let host_key = temp.path().join("host_key");
+        let client_key = temp.path().join("client_key");
+        let auth_keys = temp.path().join("authorized_keys");
+        for path in [&host_key, &client_key] {
+            let status = Command::new("ssh-keygen")
+                .args(["-q", "-t", "ed25519", "-N", "", "-f"])
+                .arg(path)
+                .status()
+                .expect("run ssh-keygen");
+            assert!(status.success());
+        }
+        std::fs::copy(temp.path().join("client_key.pub"), &auth_keys).unwrap();
+
+        let sshd_config = temp.path().join("sshd_config");
+        std::fs::write(
+            &sshd_config,
+            format!(
+                "ListenAddress 127.0.0.1:{port}\n\
+                 HostKey {}\n\
+                 AuthorizedKeysFile {}\n\
+                 PidFile none\n\
+                 StrictModes no\n\
+                 UsePAM no\n\
+                 PasswordAuthentication no\n\
+                 KbdInteractiveAuthentication no\n\
+                 PubkeyAuthentication yes\n\
+                 ForceCommand /usr/bin/env HOME={} /bin/sh -c \"$SSH_ORIGINAL_COMMAND\"\n",
+                host_key.display(),
+                auth_keys.display(),
+                remote_home.display(),
+            ),
+        )
+        .unwrap();
+
+        struct ChildGuard(std::process::Child);
+        impl Drop for ChildGuard {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+
+        let _sshd = ChildGuard(
+            Command::new("/usr/sbin/sshd")
+                .args(["-D", "-e", "-f"])
+                .arg(&sshd_config)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn ephemeral sshd"),
+        );
+
+        // Isolate client known_hosts inside local_home so real user ~/.ssh is untouched.
+        let prev_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", &local_home);
+        struct RestoreHome(Option<String>);
+        impl Drop for RestoreHome {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(v) => std::env::set_var("HOME", v),
+                    None => std::env::remove_var("HOME"),
+                }
+            }
+        }
+        let _restore = RestoreHome(prev_home);
+
+        // Wait up to 2s for sshd to accept TCP connections.
+        for _ in 0..20 {
+            if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        let target = ValidatedSshTarget {
+            destination: "127.0.0.1".to_string(),
+            port: Some(port),
+            identity_file: Some(client_key.to_string_lossy().to_string()),
+        };
+
+        // 1. Live SSH connectivity probe
+        let conn = test_ssh_connection(&target);
+        assert!(conn.ok, "ssh test failed: {:?}", conn);
+        assert_eq!(
+            conn.remote_home.as_deref(),
+            Some(remote_home.to_string_lossy().as_ref())
+        );
+
+        // 2. Live remote path existence probe
+        let (_, existing) =
+            probe_remote_existing_paths(&target, &[".codex/auth.json", ".claude/settings.json"])
+                .expect("probe remote paths");
+        assert!(existing.contains(".codex/auth.json"));
+        assert!(!existing.contains(".claude/settings.json"));
+
+        // 3. Live agentless push over real TCP SSH stdin
+        let files = vec![
+            RenderedRemoteFile {
+                remote_rel_path: ".codex/auth.json".to_string(),
+                category: RemoteFileCategory::ModelConfig,
+                mode: "600",
+                contains_secret: true,
+                content: Zeroizing::new(br#"{"OPENAI_API_KEY":"sk-real-ssh-push"}"#.to_vec()),
+            },
+            RenderedRemoteFile {
+                remote_rel_path: ".claude/settings.json".to_string(),
+                category: RemoteFileCategory::ModelConfig,
+                mode: "600",
+                contains_secret: true,
+                content: Zeroizing::new(
+                    br#"{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-real-ssh-push"}}"#.to_vec(),
+                ),
+            },
+            RenderedRemoteFile {
+                remote_rel_path: ".claude/CLAUDE.md".to_string(),
+                category: RemoteFileCategory::GlobalPrompt,
+                mode: "644",
+                contains_secret: false,
+                content: Zeroizing::new(b"# Remote Rules\nShip clean code.\n".to_vec()),
+            },
+        ];
+        let applied = apply_ssh_push(&target, &files, Vec::new()).expect("apply ssh push");
+        assert!(applied.ok, "apply failed: {:?}", applied);
+        assert_eq!(applied.outcomes.len(), 3);
+        assert_eq!(applied.outcomes[0].action, "updated");
+        assert_eq!(applied.outcomes[1].action, "created");
+        assert_eq!(applied.outcomes[2].action, "created");
+
+        // 4. Verify real files & automatic backup landed on isolated remote_home!
+        assert_eq!(
+            std::fs::read_to_string(remote_home.join(".codex/auth.json")).unwrap(),
+            r#"{"OPENAI_API_KEY":"sk-real-ssh-push"}"#
+        );
+        assert_eq!(
+            std::fs::read_to_string(remote_home.join(".claude/CLAUDE.md")).unwrap(),
+            "# Remote Rules\nShip clean code.\n"
+        );
+        let backup_auth = Path::new(&applied.backup_dir).join(".codex/auth.json");
+        assert_eq!(
+            std::fs::read_to_string(&backup_auth).expect("backup auth.json"),
+            r#"{"OPENAI_API_KEY":"legacy-remote-key"}"#
+        );
+        let stat_out = Command::new("stat")
+            .args(["-f", "%Lp"])
+            .arg(remote_home.join(".claude/settings.json"))
+            .output()
+            .expect("stat remote secret file");
+        assert_eq!(String::from_utf8_lossy(&stat_out.stdout).trim(), "600");
     }
 }
