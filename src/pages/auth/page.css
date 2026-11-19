@@ -92,21 +92,32 @@
   display: grid;
   gap: 4px;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 5px 8px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-control);
   background: var(--fy-surface-inset);
 }
 
+.fy-auth-result-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+
 .fy-auth-result-line {
   display: flex;
+  flex: 1 1 220px;
   flex-wrap: wrap;
   gap: 6px;
   align-items: baseline;
+  min-width: 0;
 }
 
 .fy-auth-result-actions {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   gap: 6px;
 }

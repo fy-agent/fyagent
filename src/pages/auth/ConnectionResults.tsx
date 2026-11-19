@@ -43,13 +43,11 @@ export function ConnectionResults({
   if (entries.length === 0) return null;
   return (
     <section className="fy-auth-results" aria-label="软件连接操作结果">
-      <p className="fy-auth-results-note">
-        各软件分开保存。一个失败不会撤回其他软件。
-      </p>
       {entries.map(([id, result]) => {
         const current = connections.find((item) => item.connectionId === id);
         const label = `${managedAuthConsumerLabel(result.connection.consumer)}${result.connection.provider ? ` · ${managedAuthProviderLabel(result.connection.provider)}` : ""}`;
         const failed = result.state === "partial" || result.state === "failed";
+        const expandable = failed || result.message.length > 40;
         const open = openId === id;
         return (
           <article
@@ -58,37 +56,44 @@ export function ConnectionResults({
             className="fy-auth-result"
             data-state={result.state}
           >
-            <p className="fy-auth-result-line">
-              <strong>{label}</strong>
-              <span role="status">{result.message}</span>
-            </p>
-            <div className="fy-auth-result-actions">
-              {failed && current?.allowedActions.includes(result.action) ? (
+            <div className="fy-auth-result-row">
+              <p className="fy-auth-result-line">
+                <strong>{label}</strong>
+                <span role="status">{result.message}</span>
+              </p>
+              <div className="fy-auth-result-actions">
+                {failed && current?.allowedActions.includes(result.action) ? (
+                  <Button
+                    disabled={disabled}
+                    dialogOriginRef={originRef}
+                    onClick={() => onRetry(current, result)}
+                  >
+                    重试此连接
+                  </Button>
+                ) : null}
+                {failed ? (
+                  <Button
+                    disabled={disabled}
+                    onClick={() => void onRefresh().catch(() => {})}
+                  >
+                    重新读取连接
+                  </Button>
+                ) : null}
+                {expandable ? (
+                  <Button
+                    aria-expanded={open}
+                    onClick={() => setOpenId(open ? null : id)}
+                  >
+                    {open ? "收起" : "详情"}
+                  </Button>
+                ) : null}
                 <Button
-                  disabled={disabled}
-                  dialogOriginRef={originRef}
-                  onClick={() => onRetry(current, result)}
+                  aria-label={`关闭${label}结果`}
+                  onClick={() => onDismiss(id)}
                 >
-                  重试此连接
+                  关闭
                 </Button>
-              ) : null}
-              {failed ? (
-                <Button
-                  disabled={disabled}
-                  onClick={() => void onRefresh().catch(() => {})}
-                >
-                  重新读取连接
-                </Button>
-              ) : null}
-              <Button
-                aria-expanded={open}
-                onClick={() => setOpenId(open ? null : id)}
-              >
-                {open ? "收起" : "详情"}
-              </Button>
-              <Button onClick={() => onDismiss(id)}>
-                {`关闭${label}结果`}
-              </Button>
+              </div>
             </div>
             {open ? (
               <p className="fy-auth-result-detail">{result.message}</p>

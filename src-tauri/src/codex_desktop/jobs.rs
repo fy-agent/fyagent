@@ -17,9 +17,40 @@ use std::{
 use uuid::Uuid;
 
 use super::{
-    error::{InstallerError, InstallerErrorCode},
+    error::{InstallerError, InstallerErrorCode, InstallerErrorDto},
     types::{InstallResult, JobProgress, JobSnapshot, JobStage, RemoteReleaseStatus},
 };
+
+fn sanitize_log_field(value: Option<&str>) -> String {
+    let Some(raw) = value else {
+        return "-".to_owned();
+    };
+    let collapsed: String = raw
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(240)
+        .collect();
+    if collapsed.is_empty() {
+        "-".to_owned()
+    } else {
+        collapsed
+    }
+}
+
+pub(crate) fn format_failure_diagnostic(stage: JobStage, dto: &InstallerErrorDto) -> String {
+    let stage_token = serde_json::to_value(stage)
+        .ok()
+        .and_then(|value| value.as_str().map(ToOwned::to_owned))
+        .unwrap_or_else(|| "failed".to_owned());
+    let os_error = sanitize_log_field(dto.details.platform_error_code.as_deref());
+    let detail = sanitize_log_field(dto.details.redacted_message.as_deref());
+    format!(
+        "codex_desktop_diagnostic code={:?} message_key={} job_stage={} os_error={} detail={}",
+        dto.code, dto.message_key, stage_token, os_error, detail
+    )
+}
 
 /// Narrow event boundary used by the Tauri integration layer.
 ///
@@ -526,11 +557,13 @@ impl JobStore {
                 ));
             }
 
+            let error_dto = error.with_stage(current_stage).to_dto();
+            log::warn!("{}", format_failure_diagnostic(current_stage, &error_dto));
             controller.snapshot.stage = JobStage::Failed;
             controller.snapshot.cancellable = false;
             controller.snapshot.progress = None;
             controller.snapshot.result = None;
-            controller.snapshot.error = Some(error.with_stage(current_stage).to_dto());
+            controller.snapshot.error = Some(error_dto);
             controller.bump_sequence(timestamp)?;
             Ok(JobMutation::changed(controller.snapshot()))
         })
@@ -1249,5 +1282,24 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(error.code(), InstallerErrorCode::InternalError);
+    }
+
+    #[test]
+    fn failure_diagnostic_line_logs_stage_code_and_redacted_details() {
+        let error = InstallerError::new(InstallerErrorCode::WindowsDeploymentBlocked)
+            .with_platform_error_code("0x80073D28")
+            .with_diagnostic_message(
+                "Authorization: Bearer sk-secret-token\nC:\\Users\\alice\\AppData\\Local requires elevation",
+            );
+        let dto = error.with_stage(JobStage::Installing).to_dto();
+        let line = format_failure_diagnostic(JobStage::Installing, &dto);
+        assert!(line.contains("codex_desktop_diagnostic"));
+        assert!(line.contains("code=WindowsDeploymentBlocked"));
+        assert!(line.contains("message_key="));
+        assert!(line.contains("job_stage=installing"));
+        assert!(line.contains("os_error=0x80073D28"));
+        assert!(!line.contains('\n'));
+        assert!(!line.contains("sk-secret-token"));
+        assert!(!line.contains("alice"));
     }
 }
